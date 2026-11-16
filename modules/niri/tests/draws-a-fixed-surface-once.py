@@ -43,10 +43,11 @@ POOL = 8
 WINDOW_SURFACE = 9
 XDG_SURFACE = 10
 TOPLEVEL = 11
-SQUARE_SURFACE = 12
-LAYER_SURFACE = 13
-# Ids from here on are callbacks and buffers, one each.
-FIRST_FREE = 14
+# The window's buffer is made before the square, and a compositor refuses an id that skips one.
+WINDOW_BUFFER = 12
+SQUARE_SURFACE = 13
+LAYER_SURFACE = 14
+SQUARE_BUFFER = 15
 
 # The wl_shm format with no alpha; the window's part of the pool, a 1280x800 screen of it; and
 # the square, its side, where it sits from the screen's top left, and its colour as XRGB8888
@@ -78,7 +79,6 @@ class StandIn:
         self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.socket.connect(str(path))
         self.unread = b""
-        self.next_id = FIRST_FREE
         self.window_asked: tuple[int, int] = (0, 0)
         self.window_serial: int | None = None
         self.square_serial: int | None = None
@@ -87,12 +87,6 @@ class StandIn:
         self.bind_globals()
         self.map_window()
         self.map_square(namespace)
-
-    def new_id(self) -> int:
-        """Give out an id for a new object."""
-        made = self.next_id
-        self.next_id += 1
-        return made
 
     def send(self, request: bytes) -> None:
         """Send a request."""
@@ -161,9 +155,8 @@ class StandIn:
         socket.send_fds(self.socket, [pool], [memory])
         os.close(memory)
 
-    def commit(self, surface: int, offset: int, width: int, height: int) -> None:
-        """Commit a buffer of the size given, from the pool at the offset given, on a surface."""
-        buffer = self.new_id()
+    def commit(self, surface: int, buffer: int, offset: int, width: int, height: int) -> None:
+        """Make a buffer of the size given, from the pool at the offset given, and commit it."""
         self.send(
             message(
                 POOL, 0, struct.pack("<IiiiiI", buffer, offset, width, height, width * 4, XRGB8888)
@@ -184,7 +177,7 @@ class StandIn:
             self.event()
         width, height = self.window_asked
         self.send(message(XDG_SURFACE, 4, struct.pack("<I", self.window_serial)))
-        self.commit(WINDOW_SURFACE, 0, width or 600, height or 400)
+        self.commit(WINDOW_SURFACE, WINDOW_BUFFER, 0, width or 600, height or 400)
 
     def map_square(self, namespace: str) -> None:
         """Make the layer surface on the bottom layer, place it, and commit its colour."""
@@ -198,7 +191,7 @@ class StandIn:
         while self.square_serial is None:
             self.event()
         self.send(message(LAYER_SURFACE, 6, struct.pack("<I", self.square_serial)))
-        self.commit(SQUARE_SURFACE, WINDOW_BYTES, SIDE, SIDE)
+        self.commit(SQUARE_SURFACE, SQUARE_BUFFER, WINDOW_BYTES, SIDE, SIDE)
 
 
 def ask(request: Any) -> Any:  # noqa: ANN401 # niri's replies are JSON of many shapes.
