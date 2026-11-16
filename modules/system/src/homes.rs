@@ -277,6 +277,7 @@ mod tests {
                 name: "machines",
                 health: Health::Good,
                 says: String::new(),
+                side: Vec::new(),
                 things: vec![thing("laptop"), thing("studio")],
                 deeper: Deeper {
                     command: "mycelium machines",

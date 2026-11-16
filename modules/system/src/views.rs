@@ -156,6 +156,7 @@ mod tests {
                     says: "laptop is short of memory and processor, has a filling disk, \
                            248 GB free, runs 70 busy and 20 idle sessions"
                         .to_owned(),
+                    side: Vec::new(),
                     things: vec![Thing {
                         kind: "machine",
                         name: "laptop".to_owned(),
@@ -173,6 +174,7 @@ mod tests {
                     name: "network",
                     health: Health::Unread,
                     says: "net isn't on this machine".to_owned(),
+                    side: Vec::new(),
                     things: Vec::new(),
                     deeper: deeper("net", "network/", "Network"),
                 },
