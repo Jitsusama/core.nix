@@ -204,7 +204,7 @@ pub fn held(s: &Sources) -> Vec<Reading> {
         )
         .from(from),
         // On 16 November 469 unreaped children of pi's mesh census left
-        // equilibrius at a load of 155 and broke its ssh; twenty under one
+        // a Mac at a load of 155 and broke its ssh; twenty under one
         // parent is already a leak, well before that.
         Reading::new(
             "the most defunct children under one parent {}",
@@ -479,7 +479,7 @@ mod tests {
         );
     }
 
-    /// On 16 November equilibrius held 469 defunct children of pi's mesh
+    /// On 16 November a Mac held 469 defunct children of pi's mesh
     /// census and its load reached 155; past 20 under one parent is out,
     /// and the reading names the parent so its owner knows it at once.
     #[test]
