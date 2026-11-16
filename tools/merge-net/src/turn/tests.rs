@@ -349,16 +349,20 @@ fn a_hold_kept_while_another_waits_on_the_lock_is_kept_too() {
     let (first, second) = (Path::new("/first"), Path::new("/second"));
     // The first `ready` holds the lock and keeps its hold while the second
     // waits on it: the second must read the file only once it has the lock.
-    crate::whole::changed(&file, || {
-        std::thread::scope(|scope| {
-            let waiting = scope.spawn(|| keep_held(Some("second"), second, &file, 1000));
-            std::thread::sleep(std::time::Duration::from_millis(200));
-            let mut waited = Waited::default();
-            waited.held(Some("first"), first, 990);
-            waited.write(&file).expect("written");
-            waiting
-        })
+    // It joins only once the lock is let go, or the second would wait out
+    // its bounded wait and go round the lock.
+    let waiting = crate::whole::changed(&file, || {
+        let theirs = file.clone();
+        let waiting = std::thread::spawn(move || {
+            keep_held(Some("second"), Path::new("/second"), &theirs, 1000);
+        });
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let mut waited = Waited::default();
+        waited.held(Some("first"), first, 990);
+        waited.write(&file).expect("written");
+        waiting
     });
+    waiting.join().expect("the waiting ready ended");
     let waited = Waited::read(&file);
     let _ = fs::remove_dir_all(&folder);
     assert_eq!(
