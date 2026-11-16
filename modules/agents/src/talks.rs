@@ -47,7 +47,7 @@ pub fn folded(record: &Value) -> Talk {
                 if line["at"].is_string() {
                     talk.at = text(&line["at"]);
                 }
-                talk.words = said_alone(line["text"].as_str().unwrap_or("")).to_owned();
+                said_alone(line["text"].as_str().unwrap_or("")).clone_into(&mut talk.words);
             }
             "reading" => talk.after = text(&line["after"]),
             "replying" | "replied" => {
