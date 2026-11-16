@@ -846,6 +846,10 @@
     every home, NixOS and nix-darwin module core offers is brought into an example machine by a
     role, a hardware model, the example or another module, so two that clash fail an example
   '';
+  every-now-line-has-a-way-in = ''
+    every piece that can show a line in Now has a way into more, an action Return runs, a drawer
+    or a place it opens, but those excused by name with a reason, and one with none fails
+  '';
   every-network-row-has-a-drawer = ''
     every row the launcher's Address and Traffic show, each answer as a row too, has a drawer
     saying more than its line, each fact named by the vocabulary and each eyebrow saying where
@@ -1903,8 +1907,9 @@
   '';
   now-says-what-ails-the-work-network = ''
     Now's Work Network piece says the link to work down, since when where the warp daemon saw it
-    drop, degraded, connecting for long or WARP not answering, and nothing while it's well, Joel
-    took it down himself or it's only coming up
+    drop, degraded only once the daemon judges it held a minute, with how long, WARP's figures,
+    the hour's spells and what lies behind it, connecting for long or WARP not answering, and
+    nothing while it's well, Joel took it down himself or it's only coming up
   '';
   one-niri = ''
     the screens go off through the machine's patched niri, not a second one

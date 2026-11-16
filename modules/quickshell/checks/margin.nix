@@ -149,6 +149,14 @@
       touch $out
     '';
 
+  # Every piece that can show a line in Now has a way into more, as
+  # tests/now-lines-have-a-way-in.sh says, since a line saying a state with
+  # nothing to engage is the miss Joel found on the Work Network.
+  every-now-line-has-a-way-in = pkgs.runCommandLocal "every-now-line-has-a-way-in" { } ''
+    ${lib.getExe pkgs.bash} ${../tests/now-lines-have-a-way-in.sh} ${../pieces}
+    touch $out
+  '';
+
   # Every glyph in the margin stands the same height on the gap's middle
   # line, however tall its font draws it, and they line up from the corner
   # by how much each asks, in the colour that says so, and For You's tray
