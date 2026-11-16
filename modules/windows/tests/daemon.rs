@@ -728,8 +728,8 @@ fn a_look_asked_tells_a_screen_the_shell_changed_with_nothing_in_niris_stream() 
         "the new scale is said: {said}"
     );
     assert_eq!(
-        row["held"]["niri"]["logical"]["scale"], 1.5,
-        "the shell's acts read niri's record as it is now: {said}"
+        row["held"]["line"]["scale"]["now"], "1.5",
+        "the : line's scale isn't niri's as it is now: {said}"
     );
 }
 

@@ -151,6 +151,6 @@ agent behind it can be found.
   served ready as Screens' are.
 - **Acting on a window or a screen.** The shell asks niri itself, on
   niri's own socket, so an act never waits on this daemon. A screen's row
-  holds its connector, how it stands and niri's whole record of it
-  (`held`) for those acts and its settings until they move here, so the
-  shell asks niri nothing of a screen itself.
+  holds its connector and how it stands (`held`), never niri's whole
+  record of it, so a change niri says that moves nothing the row says
+  makes no row again, and the shell asks niri nothing of a screen itself.
