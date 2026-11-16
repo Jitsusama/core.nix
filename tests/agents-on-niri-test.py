@@ -3208,7 +3208,7 @@ def in_agents(shell: Shell) -> None:
 
 
 @pytest.fixture
-def carried(shell: Shell) -> Iterator[None]:
+def carried() -> Iterator[None]:
     """Keep two carries for one case: Listening Quest's arrived here, Paused Quest's to go.
 
     Each case's own, so no other case's rows count a carry. The node may keep the carry back
@@ -3250,8 +3250,11 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
         f"carried to {here()} by Orchestrating Quest \u00b7 it needs the camera"
     ), arrived
     assert arrived["told"][:1] == ["\u21b5 carry back"], arrived
-    # One Return asks the node, and the row says so in place while it's asked; how the
-    # node's answer ends it is tests/carry-back.qml's, since tern is no machine here.
+    # Carry Back changes where a session runs, so Return from the find only lands on it
+    # (Launcher.qml's lands) and normal's Return asks the node, the row saying so in place
+    # while it's asked; how the node's answer ends it is tests/carry-back.qml's, since tern
+    # is no machine here.
+    shell.normal()
     began = time.monotonic()
     shell.send_key("ret")
     shell.launcher_until(lambda shown: shown["selected"]["side"] == "carrying back")
