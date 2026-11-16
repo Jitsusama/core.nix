@@ -48,7 +48,14 @@ through axe-core and its own console.
    `sites.json` and every `homes.json` it names, then names each row,
    item, paragraph or heading where a known thing is named and no
    mention of it links to its home, and each `data-home` with no link to
-   its twin. A check that finds
+   its twin. A page with a picture runs `svgtext.js` too: each word
+   drawn in an inline SVG reaches 7:1 on what is painted behind it, the
+   shapes under it blended with the page, in the look it's run in. A
+   fill of `var(--name, fallback)` whose name the kit doesn't define
+   paints its fallback, which is how a diagram's blocks stayed light in
+   the dark look under light words, at 1.45:1 (2026-11-15). A picture
+   kept in an `img`, `object` or `embed` fails too, since its words
+   can't be measured. A check that finds
    nothing to test fails rather than passing: marks with no line, or
    names with no place said, or a map that never holds still for Escape
    to be judged, or no home known at all. It presses keys on the map, so run it on a page nobody
