@@ -160,8 +160,9 @@ mod tests {
         ]
         .join("\n");
         assert_eq!(last_of(&journal, "github:o/r/a").expect("found")["sent"], 3);
-        assert!(
-            last_of(&journal, "github:o/r/c").is_none(),
+        assert_eq!(
+            last_of(&journal, "github:o/r/c"),
+            None,
             "a flake never built was found in the journal"
         );
     }

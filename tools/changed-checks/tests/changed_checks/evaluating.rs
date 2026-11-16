@@ -186,7 +186,7 @@ fn the_base_is_evaluated_once_and_kept_by_its_commit() {
     assert!(
         stand_in.folder.join(kept).exists(),
         "the base's checks weren't kept at {}",
-        kept.display()
+        stand_in.folder.join(kept).display()
     );
     let runs = stand_in.runs();
     assert_eq!(runs.len(), 2, "both runs logged: {runs:?}");
@@ -231,7 +231,7 @@ fn a_clean_tree_is_kept_by_its_commit() {
     assert!(
         stand_in.folder.join(kept).exists(),
         "the clean tree's checks weren't kept at {}",
-        kept.display()
+        stand_in.folder.join(kept).display()
     );
     let runs = stand_in.runs();
     assert_eq!(evaluated(&runs[0]), ["base", "tree"], "{}", runs[0]);
