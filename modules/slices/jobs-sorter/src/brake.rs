@@ -243,8 +243,9 @@ mod tests {
     // something else set, or none, is no business of a new one.
     #[test]
     fn a_new_sorter_lets_go_of_only_its_own_brake() {
-        let said =
-            |cpu_max: [Option<&str>; 2]| move |place: usize| cpu_max[place].map(str::to_owned);
+        let said = |cpu_max: [Option<&'static str>; 2]| {
+            move |place: usize| cpu_max[place].map(str::to_owned)
+        };
         let now = Instant::now();
         let left = Brake::found(
             said([Some("400000 100000\n"), Some("max 100000\n")]),
