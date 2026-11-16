@@ -301,8 +301,11 @@ ShellRoot {
                     drawn(now) !== drawn(now + 3600000)
                         && /Kolkata \u00b7 \d\d:\d\d/u.test(drawn(now + 3600000)),
                     `${drawn(now)} then ${drawn(now + 3600000)}`);
-                expect("with their row made once", people.everything()
-                    .find(row => row.name === "Ada Brook") === timed, "made again");
+                people.minute = people.minute + 1;
+                expect("with their row made once, a minute on", people.all
+                    .find(row => row.name === "Ada Brook") === timed
+                    && people.everything().find(row => row.name === "Ada Brook") === timed,
+                    "made again");
             }
         },
         {

@@ -915,14 +915,18 @@ Provider {
     // made every listed row saying a time again, 117 rows in 13 to 20 ms
     // of Joel's first letters (his journal, 2026-11-16 10:18 and 11:13).
     // Its `side` stays what it said when made, and gives the column its
-    // room. Made here rather than in made(), so the closure keeps only
-    // the side's items (Member.js's preparing says why).
+    // room. It's said afresh at its first drawing, since a minute may have
+    // turned since it was made, and never as of a clock behind the wall's,
+    // as the launcher's is for its first tenth after an opening. Made here
+    // rather than in made(), so the closure keeps only the side's items
+    // (Member.js's preparing says why).
     function ticking(items, first) {
         let said = first;
-        let minute = Math.floor(Date.now() / 60000);
+        let minute = NaN;
         return {
             sideWidest: first,
-            counts: now => {
+            counts: drawn => {
+                const now = Math.max(drawn, Date.now());
                 const at = Math.floor(now / 60000);
                 if (at !== minute) {
                     said = Ready.sideSaid(items, now, rowWords);
@@ -931,6 +935,27 @@ Provider {
                 return said;
             }
         };
+    }
+
+    // The minute, moved on while People is wanted, which only a listing
+    // merged here reads (listedHere): someone's call ending moves them in
+    // it, so `all` asks again as each minute turns. Rows aren't made again
+    // for it, since a time runs on as it's drawn (`ticking`).
+    property int minute: Math.floor(Date.now() / 60000)
+    Timer {
+        running: provider.wanted
+        repeat: true
+        interval: 60000 - Date.now() % 60000
+        onTriggered: {
+            provider.minute = Math.floor(Date.now() / 60000);
+            interval = 60000 - Date.now() % 60000;
+        }
+        onRunningChanged: {
+            if (!running)
+                return;
+            interval = 60000 - Date.now() % 60000;
+            provider.minute = Math.floor(Date.now() / 60000);
+        }
     }
 
     FileView {
@@ -1360,7 +1385,8 @@ Provider {
     // ended since. Plain, so keeping them notifies nothing.
     readonly property var listing: ({ persons: null, stands: null, until: 0, listed: [] })
     function listedHere() {
-        const now = Date.now();
+        // Read so a call that ended is heard within the minute (`until`).
+        const now = Math.max(Date.now(), provider.minute * 60000);
         const kept = listing;
         const everyone = merged();
         if (kept.persons !== everyone.persons || kept.stands !== everyone.stands
