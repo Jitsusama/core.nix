@@ -685,9 +685,19 @@ ShellRoot {
                 // none of those it listed before: told everyone anew, a
                 // daemon started again by a switch made 136 and 137 rows
                 // at Joel's next first letter (his journal, 2026-11-14).
-                expect("the daemon back made only Gil's row",
-                    people.tally.rows - root.goneRows === 1,
-                    `${people.tally.rows - root.goneRows} rows made`);
+                // Gil's own row may be made once for each source's part
+                // of him as it lands, Tuple's and then Slack's answer when
+                // asked about him, so only the others' rows are judged
+                // (RCTRF8, 2026-11-16: 2 rows made, 1 run of 40).
+                const made = people.tally.rows - root.goneRows;
+                const keys = (made > 0 ? people.tally.lately.slice(-made) : [])
+                    .map(entry => entry.split(" ")[0]);
+                const others = keys.filter(key => key !== "person:gil@example.com");
+                expect("the daemon back made Gil's row", made > others.length,
+                    `${made} rows made: ${keys.join(", ")}`);
+                expect("the daemon back made none of those it listed before",
+                    made <= people.tallyKept && others.length === 0,
+                    `${made} rows made: ${keys.join(", ")}`);
                 launcher.held = [];
                 expect("tells the place holding them, to ask for them again",
                     guesting.told > 0, `told ${guesting.told} times`);
