@@ -39,10 +39,19 @@ Floating {
     property bool bands: false
     // How far its content stands down from the frame's inside edge.
     readonly property int above: bands ? 0 : inset
+    // What everything it holds is clipped to, so a check of where words
+    // are drawn (Launcher.qml's drawnTexts) can leave it out and still see
+    // words this floor cuts.
+    readonly property Item floor: room
 
+    // Clipped, so no word whatever its length is ever drawn outside the
+    // card, over what lies beside it (Joel, 2026-11-15: "text can escape
+    // containment"). It's the floor, not the fix: each piece still gives
+    // its words their room, and the check says when one doesn't.
     Item {
         id: room
         width: parent.width
+        clip: true
         implicitHeight: held.implicitHeight + 2 * card.above
 
         Item {
