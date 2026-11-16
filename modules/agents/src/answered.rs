@@ -32,6 +32,7 @@ use serde_json::{Value, json};
 
 use crate::clock;
 use crate::said::Said;
+use crate::talks;
 
 /// What the machine sends a session on its own, rather than Joel, as the
 /// harness starts each of its own messages.
@@ -118,7 +119,7 @@ fn delivered(lines: &[Value]) -> Option<&Value> {
 }
 
 fn asked_of(lines: &[Value]) -> Option<&str> {
-    delivered(lines)?["text"].as_str()
+    delivered(lines)?["text"].as_str().map(talks::said_alone)
 }
 
 /// The talk, if it's Joel's and on its way to an answer: delivered and
@@ -136,7 +137,7 @@ fn waiting_of(talk: &Value) -> Option<Waiting> {
     Some(Waiting {
         address: talk["address"].as_str()?.to_owned(),
         talk: talk["id"].as_str()?.to_owned(),
-        asked: delivered["text"].as_str()?.to_owned(),
+        asked: talks::said_alone(delivered["text"].as_str()?).to_owned(),
         stage: stage.to_owned(),
         at: clock::ms_of(&delivered["at"]),
     })
@@ -359,6 +360,29 @@ mod tests {
                 read: false,
             }],
             "the answer, what was asked, and when it came"
+        );
+    }
+
+    #[test]
+    fn what_joel_asked_is_his_words_without_what_the_line_attached() {
+        let with = "is the beacon lit?\n\nAttached:\n- window: kitty: ~/src";
+        let talks = [
+            talk("BEACON", "talk-1", &[delivered(with), replied("Yes.")]),
+            talk("LAMPLT", "talk-1", &[delivered(with)]),
+        ];
+        let asked: Vec<String> = answers(talks.iter(), &|_| true)
+            .into_iter()
+            .map(|one| one.asked)
+            .chain(
+                waiting(talks.iter(), &|_| true)
+                    .into_iter()
+                    .map(|one| one.asked),
+            )
+            .collect();
+        assert_eq!(
+            asked,
+            ["is the beacon lit?", "is the beacon lit?"],
+            "answered or waiting, only what he asked, never the window it went with"
         );
     }
 
