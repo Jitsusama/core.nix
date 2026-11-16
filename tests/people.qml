@@ -287,6 +287,22 @@ ShellRoot {
                 expect("and finds them by the rows listed", dee.length === 1
                     && dee[0] === open.find(row => row.name === "Dee Ellery"),
                     names(dee));
+                // Someone's time runs on as their row is drawn, as the
+                // launcher draws a side that counts, so a turning minute
+                // makes no row again: kept by the minute, the first letter
+                // after one made every listed row saying a time again, 117
+                // of them in 13 to 20 ms of Joel's "s" and "m" (his
+                // journal, 2026-11-16 10:18 and 11:13).
+                const ada = open.find(row => row.name === "Ada Brook");
+                const drawn = at => typeof ada?.counts === "function" ? ada.counts(at)
+                    : ada?.side;
+                const now = Date.now();
+                expect("a listed person's time runs on as it's drawn",
+                    drawn(now) !== drawn(now + 3600000)
+                        && /Kolkata \u00b7 \d\d:\d\d/u.test(drawn(now + 3600000)),
+                    `${drawn(now)} then ${drawn(now + 3600000)}`);
+                expect("with their row made once", people.everything()
+                    .find(row => row.name === "Ada Brook") === ada, "made again");
             }
         },
         {
