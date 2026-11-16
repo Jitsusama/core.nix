@@ -1354,6 +1354,34 @@ QtObject {
         ];
         for (const [what, widths, wide, apart, want] of acts)
             holds(`a drawer's acts: ${what}`, Value.actLines(widths, wide, apart), want);
+        // Kitty's acts with 25 windows open are laid well inside a frame:
+        // trying every split took 4.7 s for these 34, and the drawer laid
+        // again on each showing starved the shell's thread until its ipc
+        // timed out (vm-desktop-launcher-moves-windows, 2026-11-16). The
+        // fastest of three, so a busy builder's pause doesn't count.
+        const kitty = [152, 82, 124, 61, 131].concat(Array(25).fill(82), [54, 40, 75, 75]);
+        let kittyLaid = [];
+        let kittyMs = Infinity;
+        for (let at = 0; at < 3; at++) {
+            const began = Date.now();
+            kittyLaid = Value.actLines(kitty, 280, 12);
+            kittyMs = Math.min(kittyMs, Date.now() - began);
+        }
+        holds("a drawer's acts: kitty's 34 laid as evenly as before", kittyLaid,
+            [2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 4]);
+        holds("a drawer's acts: kitty's 34 laid within 50 ms", kittyMs < 50, true);
+        // As many as a drawer could ever hold, narrow, so many share each
+        // line: trying every count of lines still to lay from each act took
+        // 12.8 s for 120 such, where only a line or two of them can be
+        // laid (2026-11-16). Tried until one is in time, at most three.
+        const many = Array.from({ length: 120 }, (_, at) => 20 + at * 37 % 120);
+        let manyMs = Infinity;
+        for (let at = 0; at < 3 && manyMs >= 50; at++) {
+            const began = Date.now();
+            Value.actLines(many, 304, 12);
+            manyMs = Date.now() - began;
+        }
+        holds("a drawer's acts: 120 narrow ones laid within 50 ms", manyMs < 50, true);
         // A title breaks at its spaces, and inside a word only where the word
         // is too wide for a line alone: "10.12.03.svg" stood split at a dot
         // beside a space at 2 (RTOIMQ, 2026-11-09).
