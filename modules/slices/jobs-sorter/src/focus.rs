@@ -446,6 +446,36 @@ pub fn kittys_own(procs: &[(u32, u32, &str)], kitty: u32) -> Vec<u32> {
         .collect()
 }
 
+/// The sessions a window's scope names, from its processes' pid, parent
+/// and name, each one's command line as `cmdline` reads it and the pids
+/// each started as `children` reads them: those [`kittys_own`] attach to,
+/// or whose holder they started ([`holding`]).
+pub fn window_ids(
+    procs: &[(u32, u32, &str)],
+    kitty: u32,
+    cmdline: impl Fn(u32) -> Option<Vec<u8>>,
+    children: impl Fn(u32) -> Vec<u32>,
+) -> Vec<String> {
+    kittys_own(procs, kitty)
+        .into_iter()
+        .filter_map(|pid| {
+            attached_to(&cmdline(pid)?).or_else(|| {
+                // Only mycelium's own child is its holder: a pi run straight
+                // in the window starts its agents' commands, which may say
+                // anything.
+                let mycelium = procs
+                    .iter()
+                    .any(|&(each, _, name)| each == pid && name == "mycelium");
+                mycelium.then_some(())?;
+                children(pid)
+                    .into_iter()
+                    .filter_map(&cmdline)
+                    .find_map(|line| holding(&line))
+            })
+        })
+        .collect()
+}
+
 /// The shells a window's kitty starts, whose children it ran as Joel's.
 const SHELLS: [&str; 3] = ["zsh", "bash", "sh"];
 
@@ -1099,6 +1129,50 @@ mod tests {
             kittys_own(&[(12, 11, "mycelium"), (11, 13, "zsh")], 3864),
             Vec::<u32>::new(),
             "a shell the kitty didn't start"
+        );
+        assert_eq!(
+            kittys_own(
+                &[(11, 3864, "zsh"), (14, 11, "bash"), (15, 14, "mycelium")],
+                3864
+            ),
+            [11, 14],
+            "an attach typed in a shell inside the window's shell, as nix develop's, isn't read"
+        );
+    }
+
+    #[test]
+    fn a_window_names_the_sessions_its_own_attach_or_its_own_myceliums_holder_names() {
+        let line = |words: &[&str]| {
+            let mut line = words.join("\0").into_bytes();
+            line.push(0);
+            line
+        };
+        let holder = |id: &str| line(&["mycelium", "holder", "--id", id, "--", "pi"]);
+        let procs = [
+            (10, 3864, "mycelium"),
+            (11, 3864, "zsh"),
+            (12, 11, "mycelium"),
+            (13, 3864, "pi"),
+        ];
+        let cmdline = |pid| match pid {
+            10 => Some(line(&[
+                "mycelium", "--realm", "work", "holds", "add", "--", "pi",
+            ])),
+            12 => Some(line(&["mycelium", "attach", "67c3ecff"])),
+            13 => Some(line(&["pi"])),
+            20 => Some(holder("008742c2")),
+            30 => Some(holder("f0rg3d00")),
+            _ => None,
+        };
+        let children = |pid| match pid {
+            10 => vec![20],
+            13 => vec![30],
+            _ => Vec::new(),
+        };
+        assert_eq!(
+            window_ids(&procs, 3864, cmdline, children),
+            ["008742c2", "67c3ecff"],
+            "a pi's own child is read as no holder, though it says it is one"
         );
     }
 

@@ -117,8 +117,11 @@ pub fn scope_call(name: &str, slice: &str, pids: &[u32]) -> Vec<String> {
 mod tests {
     use super::*;
 
+    /// A command line as /proc gives it, each word ending in a NUL.
     fn line(words: &[&str]) -> Vec<u8> {
-        words.join("\0").into_bytes()
+        let mut line = words.join("\0").into_bytes();
+        line.push(0);
+        line
     }
 
     fn proc(own: u32, parent: u32, comm: &str) -> Sample {

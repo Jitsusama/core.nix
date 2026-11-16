@@ -762,6 +762,8 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
             held.extend(known.clone());
             held.extend(pi.clone());
         }
+        // A window's pi ran in its window's own scope when keeping was
+        // measured, on 11 November, so keeping its pi keeps what was.
         kept.extend(known);
         kept.extend(pi);
     }
@@ -829,28 +831,13 @@ fn beside(own: &Path, kitty: u32, windows: &Windows) -> Option<PathBuf> {
         .iter()
         .map(|proc| (proc.pid, proc.ppid, proc.comm.as_str()))
         .collect();
-    let ids: Vec<String> = focus::kittys_own(&named, kitty)
-        .into_iter()
-        .filter_map(|pid| {
-            let cmdline = fs::read(format!("/proc/{pid}/cmdline")).ok()?;
-            // Only mycelium's own child is its holder: a pi run straight in
-            // the window starts its agents' commands, which may say anything.
-            let mycelium = named
-                .iter()
-                .any(|&(each, _, comm)| each == pid && comm == "mycelium");
-            focus::attached_to(&cmdline).or_else(|| {
-                mycelium.then_some(())?;
-                children(pid)
-                    .filter_map(|child| fs::read(format!("/proc/{child}/cmdline")).ok())
-                    .find_map(|cmdline| focus::holding(&cmdline))
-            })
-        })
-        .collect();
+    let cmdline = |pid: u32| fs::read(format!("/proc/{pid}/cmdline")).ok();
+    let ids = focus::window_ids(&named, kitty, cmdline, children);
     focus::pi_scope(&ids, windows.under, windows.pis, Path::exists)
 }
 
 /// The processes `pid` started, as each of its threads' children says.
-fn children(pid: u32) -> impl Iterator<Item = String> {
+fn children(pid: u32) -> Vec<u32> {
     fs::read_dir(format!("/proc/{pid}/task"))
         .into_iter()
         .flatten()
@@ -859,9 +846,10 @@ fn children(pid: u32) -> impl Iterator<Item = String> {
         .flat_map(|children| {
             children
                 .split_whitespace()
-                .map(str::to_owned)
+                .filter_map(|pid| pid.parse().ok())
                 .collect::<Vec<_>>()
         })
+        .collect()
 }
 
 /// Holds each of `held` not held yet and gives back each held no longer,
