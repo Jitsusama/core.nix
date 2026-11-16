@@ -667,10 +667,18 @@ in
           declaringLinks = both // {
             declares = declaring;
           };
-          home = {
-            linux = linux declaringLinks;
-            mac = mac declaringLinks;
+          # Each machine whole, for its own pkgs, and its account.
+          machine = {
+            linux = declaringOn bareNixos self.nixosModules.workstation;
+            mac = declaringOn bareDarwin self.darwinModules.workstation;
           };
+          declaringOn =
+            bare: role:
+            bare [
+              role
+              { home-manager.users.someone.jitsusama.mycelium = declaringLinks; }
+            ];
+          home = lib.mapAttrs (_: account) machine;
           onLinux = home.linux.systemd.user.services;
           onMac = home.mac.launchd.agents;
           # The word after --declared, as the unit has it.
@@ -684,17 +692,16 @@ in
           # The store file, built as the machine's own, holding what its
           # account's config folder says.
           holding =
-            user:
+            system:
             let
-              inherit (user._module.args) pkgs;
-              words = user.xdg.configFile."mycelium/declared.json".text;
+              words = home.${system}.xdg.configFile."mycelium/declared.json".text;
             in
-            "${pkgs.writeText "mycelium-declared.json" words}";
+            "${machine.${system}.pkgs.writeText "mycelium-declared.json" words}";
         in
-        given (linuxWords onLinux.mycelium) == holding home.linux
-        && given (linuxWords onLinux.mycelium-other) == holding home.linux
-        && given onMac.mycelium.config.ProgramArguments == holding home.mac
-        && given onMac.mycelium-other.config.ProgramArguments == holding home.mac
+        given (linuxWords onLinux.mycelium) == holding "linux"
+        && given (linuxWords onLinux.mycelium-other) == holding "linux"
+        && given onMac.mycelium.config.ProgramArguments == holding "mac"
+        && given onMac.mycelium-other.config.ProgramArguments == holding "mac"
         && given (linuxWords bothLinux.mycelium) == null
         && given (linuxWords bothLinux.mycelium-other) == null
         && given macNode == null
