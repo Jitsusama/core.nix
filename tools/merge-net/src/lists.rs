@@ -175,7 +175,8 @@ mod tests {
 
     #[test]
     fn shared_lists_need_only_their_own_checks() {
-        let quarantine = "[{\"test\":\"vm-a\"},{\"test\":\"vm-b\"}]";
+        let quarantine = r#"[{"test":"vm-a","owner_session":"S"},
+                             {"test":"vm-b","owner_session":"S"}]"#;
         let shared = owned(&[
             "check-descriptions.nix",
             "tests/rules/every-fixed-wait-says-why-waiting.nix",
@@ -230,11 +231,11 @@ mod tests {
     fn a_quarantine_list_that_no_longer_reads_as_one_is_broken() {
         let shared = owned(&["tools/merge-net/quarantine.json"]);
         assert_eq!(
-            lists(&shared, "", "[{\"test\":\"vm-a\"}]"),
+            lists(&shared, "", r#"[{"test":"vm-a","owner_session":"S"}]"#),
             Lists::Need(Vec::new())
         );
-        let owners = r#"[{"test":"vm-a","owner_pr":1,"subtests":["test_p"]},
-                         {"test":"vm-a","owner_pr":2,"subtests":["test_q"]}]"#;
+        let owners = r#"[{"test":"vm-a","owner_pr":1,"owner_session":"S","subtests":["test_p"]},
+                         {"test":"vm-a","owner_pr":2,"owner_session":"T","subtests":["test_q"]}]"#;
         assert_eq!(
             lists(&shared, "", owners),
             Lists::Need(Vec::new()),
@@ -246,15 +247,22 @@ mod tests {
                 "it isn't a list",
             ),
             (
-                "[{\"test\":\"vm-a\"},{\"test\":\"vm-a\",\"subtests\":[\"test_p\"]}]",
+                r#"[{"test":"vm-a","owner_session":"S"},
+                    {"test":"vm-a","owner_session":"S","subtests":["test_p"]}]"#,
                 "vm-a is on it whole and again",
             ),
             (
-                r#"[{"test":"vm-a","subtests":["test_p"]},
-                    {"test":"vm-a","subtests":["test_q","test_p"]}]"#,
+                r#"[{"test":"vm-a","owner_session":"S","subtests":["test_p"]},
+                    {"test":"vm-a","owner_session":"S","subtests":["test_q","test_p"]}]"#,
                 "vm-a's test_p is on it twice",
             ),
             ("[{\"reason\":\"x\"}]", "an entry names no test"),
+            // A PR merged long ago fixes nothing, so each entry names the
+            // session that fixes it forward.
+            (
+                r#"[{"test":"vm-a","owner_pr":1}]"#,
+                "vm-a's entry names no session owning it",
+            ),
         ] {
             let Lists::Broken(said) = lists(&shared, "", merged) else {
                 panic!("{merged} read as a list");

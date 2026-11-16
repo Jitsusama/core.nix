@@ -303,6 +303,30 @@ mod tests {
     }
 
     #[test]
+    fn a_listing_no_session_owns_goes_to_the_orchestrator() {
+        // On 16 November 11 entries fell due naming only merged PRs, with
+        // no session behind any, so the orchestrator had to share them out.
+        let mut entries = Vec::new();
+        assert!(
+            list(&mut entries, "vm-c", &set("test_q"), json!({"owner_pr": 3})),
+            "vm-c wasn't listed"
+        );
+        assert_eq!(
+            entries[0]["owner_session"], "orchestrator",
+            "an entry no session owns wasn't the orchestrator's to share out"
+        );
+        let owned = json!({"owner_pr": 4, "owner_session": "S"});
+        assert!(
+            list(&mut entries, "vm-d", &set(""), owned),
+            "vm-d wasn't listed"
+        );
+        assert_eq!(
+            entries[1]["owner_session"], "S",
+            "a session that owns an entry was replaced"
+        );
+    }
+
+    #[test]
     fn a_listing_is_due_off_the_list_two_days_on() {
         let mut entries = Vec::new();
         // 14 November 2026, 23:30 UTC.
