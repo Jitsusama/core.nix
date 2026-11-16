@@ -54,8 +54,7 @@
   </svg>
   <h1>Your system, <em>now</em></h1>
   <p class="keys">Press <kbd data-key="j">j</kbd> and <kbd data-key="k">k</kbd> to step through the parts, <kbd data-key="Enter">Return</kbd> to go deeper, and <kbd data-key="?">?</kbd> for every key.</p>
-  <fieldset class="switch">
-    <legend class="sr">Theme</legend>
+  <div class="switch" role="radiogroup" aria-label="Theme">
     <label title="Light"><input type="radio" name="theme" value="light"><span class="sr">Light</span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
     </label>
@@ -65,7 +64,7 @@
     <label title="Dark"><input type="radio" name="theme" value="dark"><span class="sr">Dark</span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
     </label>
-  </fieldset>
+  </div>
 </header>
 
 <main id="main" class="stage" tabindex="-1">
