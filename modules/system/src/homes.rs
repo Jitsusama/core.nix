@@ -2,8 +2,13 @@
 //! home to it says in its `homes.json` (the web-design skill's One Home for
 //! Every Thing). An address is only ever read from there, never built by
 //! hand, so every surface opens the same page, and a home that moves moves
-//! everywhere at once. A thing whose home site says nothing of it has no
-//! address, and none is guessed.
+//! everywhere at once. A site may instead say a pattern in its row of
+//! `sites.json`, `{"kind": "machine", "address": "#machine={key}"}`, when
+//! every thing of a kind has its page there by construction, as the mycelium
+//! map's machines do: the pattern is the site's own word, so it is read, not
+//! guessed, and no record listing the things has to be kept beside a source
+//! that already knows them. A thing whose home site says nothing of it has
+//! no address, and none is guessed.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -17,7 +22,13 @@ use crate::record::System;
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Homes {
     addresses: HashMap<(String, String), String>,
+    /// Each kind a site gives every thing of a home, as its address from the
+    /// sites' root with `{key}` where the thing's name goes.
+    patterns: HashMap<String, String>,
 }
+
+/// Where a pattern's address puts the thing's name.
+const KEY: &str = "{key}";
 
 impl Homes {
     /// The homes the sites under `root` say they hold. A record that can't
@@ -34,17 +45,19 @@ impl Homes {
     }
 
     /// The homes `sites`, the sites' record, lists: each row naming kinds
-    /// it's home to, its `homes.json` as `homes` gives it by the row's path.
-    /// Where two sites claim one thing, the first row's address stands, as
-    /// the record orders them.
+    /// it's home to, its `homes.json` as `homes` gives it by the row's path,
+    /// or patterns, which give every thing of a kind a home and read no
+    /// record. Where two sites claim one thing, the first row's address
+    /// stands, as the record orders them.
     pub fn from_sites(sites: &Value, homes: impl Fn(&str) -> Option<Value>) -> Self {
         let mut addresses = HashMap::new();
+        let mut patterns = HashMap::new();
         let rows = sites.get("sites").and_then(Value::as_array);
         for row in rows.into_iter().flatten() {
             let claims = row.get("homes").and_then(Value::as_array);
-            if claims.is_none_or(Vec::is_empty) {
+            let Some(claims) = claims.filter(|claims| !claims.is_empty()) else {
                 continue;
-            }
+            };
             let Some(path) = row
                 .get("path")
                 .and_then(Value::as_str)
@@ -52,6 +65,17 @@ impl Homes {
             else {
                 continue;
             };
+            // A kind an earlier row's pattern holds stays that row's, so
+            // this row's record can't take one of its things.
+            let held: Vec<String> = patterns.keys().cloned().collect();
+            for (kind, address) in claims.iter().filter_map(pattern) {
+                patterns
+                    .entry(kind.to_owned())
+                    .or_insert_with(|| format!("{path}{address}"));
+            }
+            if !claims.iter().any(Value::is_string) {
+                continue;
+            }
             let Some(said) = homes(path) else {
                 continue;
             };
@@ -63,6 +87,9 @@ impl Homes {
                 ) else {
                     continue;
                 };
+                if held.iter().any(|held| held == kind) {
+                    continue;
+                }
                 for name in names(thing) {
                     addresses
                         .entry((kind.to_owned(), name.to_owned()))
@@ -70,22 +97,30 @@ impl Homes {
                 }
             }
         }
-        Self { addresses }
+        Self {
+            addresses,
+            patterns,
+        }
     }
 
     /// The address of a thing's home, from the sites' root, when a site is
-    /// home to it.
-    pub fn address(&self, kind: &str, name: &str) -> Option<&str> {
+    /// home to it: the one its record gives it, or else its kind's pattern
+    /// with its name in place.
+    pub fn address(&self, kind: &str, name: &str) -> Option<String> {
         self.addresses
             .get(&(kind.to_owned(), name.to_owned()))
-            .map(String::as_str)
+            .cloned()
+            .or_else(|| {
+                let pattern = self.patterns.get(kind)?;
+                Some(pattern.replace(KEY, &encoded(name)))
+            })
     }
 
     /// Gives each thing in `system` the address of its home, where it has
     /// one.
     pub fn place(&self, system: &mut System) {
         for thing in system.parts.iter_mut().flat_map(|part| &mut part.things) {
-            thing.address = self.address(thing.kind, &thing.name).map(str::to_owned);
+            thing.address = self.address(thing.kind, &thing.name);
         }
     }
 }
@@ -102,6 +137,33 @@ fn names(thing: &Value) -> impl Iterator<Item = &str> {
         .flatten()
         .filter_map(Value::as_str);
     key.into_iter().chain(name).chain(others)
+}
+
+/// A claim's kind and address when it is a pattern whose address names the
+/// thing's key and stays on the row's own site: a fragment, query or path
+/// below it, never a root, a parent or another host.
+fn pattern(claim: &Value) -> Option<(&str, &str)> {
+    let kind = claim.get("kind").and_then(Value::as_str)?;
+    let address = claim.get("address").and_then(Value::as_str)?;
+    let stays = !address.starts_with('/')
+        && !address.contains("://")
+        && address.split(['/', '#', '?']).all(|step| step != "..");
+    (address.contains(KEY) && stays).then_some((kind, address))
+}
+
+/// A name as it may sit in an address: every byte but the unreserved ones
+/// percent-encoded, so a name with a slash, a space or an ampersand still
+/// reaches the page whole.
+fn encoded(name: &str) -> String {
+    name.bytes()
+        .map(|byte| {
+            if byte.is_ascii_alphanumeric() || b"-._~".contains(&byte) {
+                char::from(byte).to_string()
+            } else {
+                format!("%{byte:02X}")
+            }
+        })
+        .collect()
 }
 
 /// Whether a site's path stays under the sites' root, so a row can only
@@ -150,7 +212,7 @@ mod tests {
         ] {
             assert_eq!(
                 homes.address("repository", name),
-                Some("code/#repo=Jitsusama%2Fcore.nix"),
+                Some("code/#repo=Jitsusama%2Fcore.nix".into()),
                 "{name} finds its home"
             );
         }
@@ -180,7 +242,7 @@ mod tests {
         assert_eq!(asked.into_inner(), vec!["mycelium/"]);
         assert_eq!(
             homes.address("machine", "laptop"),
-            Some("mycelium/#machine=laptop")
+            Some("mycelium/#machine=laptop".into())
         );
     }
 
@@ -211,7 +273,7 @@ mod tests {
         );
         assert_eq!(
             homes.address("machine", "laptop"),
-            Some("mycelium/#machine=laptop")
+            Some("mycelium/#machine=laptop".into())
         );
         assert_eq!(
             Homes::from_sites(&json!({"sites": "none"}), |_| None),
@@ -238,7 +300,7 @@ mod tests {
         );
         assert_eq!(
             homes.address("machine", "laptop"),
-            Some("mycelium/#machine=laptop")
+            Some("mycelium/#machine=laptop".into())
         );
     }
 
@@ -258,6 +320,84 @@ mod tests {
                 },
             );
             assert_eq!(homes, Homes::default(), "{path:?} isn't read");
+        }
+    }
+
+    #[test]
+    fn a_pattern_gives_every_thing_of_its_kind_a_home_with_no_record_read() {
+        let asked = std::cell::RefCell::new(Vec::new());
+        let homes = Homes::from_sites(
+            &sites(&json!([{"path": "mycelium/", "homes": [
+                {"kind": "machine", "address": "#machine={key}"},
+            ]}])),
+            |site| {
+                asked.borrow_mut().push(site.to_owned());
+                None
+            },
+        );
+        assert_eq!(asked.into_inner(), Vec::<String>::new(), "no homes.json");
+        assert_eq!(
+            homes.address("machine", "osprey"),
+            Some("mycelium/#machine=osprey".into())
+        );
+        assert_eq!(
+            homes.address("machine", "a b/c&d"),
+            Some("mycelium/#machine=a%20b%2Fc%26d".into()),
+            "the key is encoded"
+        );
+        assert_eq!(homes.address("repository", "osprey"), None);
+    }
+
+    #[test]
+    fn a_row_may_say_kinds_and_patterns_together() {
+        let homes = Homes::from_sites(
+            &sites(&json!([{"path": "mycelium/", "homes": [
+                "session",
+                {"kind": "machine", "address": "#machine={key}"},
+            ]}])),
+            |_| Some(home("session", "abc", "abc", &[], "mycelium/#session=abc")),
+        );
+        assert_eq!(
+            homes.address("session", "abc"),
+            Some("mycelium/#session=abc".into())
+        );
+        assert_eq!(
+            homes.address("machine", "osprey"),
+            Some("mycelium/#machine=osprey".into())
+        );
+    }
+
+    #[test]
+    fn the_first_row_to_claim_a_kind_by_pattern_keeps_it() {
+        let homes = Homes::from_sites(
+            &sites(&json!([
+                {"path": "mycelium/", "homes": [{"kind": "machine", "address": "#machine={key}"}]},
+                {"path": "health/", "homes": ["machine", {"kind": "machine", "address": "#m={key}"}]},
+            ])),
+            |_| Some(home("machine", "osprey", "osprey", &[], "health/#osprey")),
+        );
+        assert_eq!(
+            homes.address("machine", "osprey"),
+            Some("mycelium/#machine=osprey".into())
+        );
+    }
+
+    #[test]
+    fn a_pattern_that_names_no_key_or_leaves_the_site_is_not_read() {
+        for address in [
+            "#machine",
+            "/etc/{key}",
+            "../{key}",
+            "https://x/{key}",
+            "//x/{key}",
+        ] {
+            let homes = Homes::from_sites(
+                &sites(&json!([{"path": "mycelium/", "homes": [
+                    {"kind": "machine", "address": address},
+                ]}])),
+                |_| None,
+            );
+            assert_eq!(homes, Homes::default(), "{address:?} isn't read");
         }
     }
 
