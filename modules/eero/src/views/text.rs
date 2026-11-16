@@ -10,9 +10,8 @@
 //! tables under it on a page are each read by the others, and its tests
 //! sit beside them.
 
-use std::fmt::Write as _;
-
 use terminal_kit::Room;
+use terminal_kit::ink::Pen;
 
 use super::fit;
 
@@ -661,45 +660,45 @@ impl Table {
     }
 }
 
-/// The SGR numbers a terminal is given for each role, or none for a role
-/// drawn in its own foreground.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Palette {
-    pub text: Option<String>,
-    pub strong: Option<String>,
-    pub muted: Option<String>,
-    pub track: Option<String>,
-    pub alert: Option<String>,
-    pub warning: Option<String>,
-}
-
-impl Palette {
-    fn of(&self, role: Role) -> Option<&str> {
-        match role {
-            Role::Text => self.text.as_deref(),
-            Role::Strong => self.strong.as_deref(),
-            Role::Muted => self.muted.as_deref(),
-            Role::Track => self.track.as_deref(),
-            Role::Alert => self.alert.as_deref(),
-            Role::Warning => self.warning.as_deref(),
-        }
-    }
-}
-
-/// How a page reaches its reader: in the terminal's colours, or as plain
-/// text when it isn't a terminal.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// How a page reaches its reader: drawn with the terminal kit's pen, in
+/// the theme's roles on a terminal and as plain text anywhere else, as
+/// every command's is (docs/commands.md, Ink).
+#[derive(Debug, Clone)]
 pub struct Ink {
-    pub palette: Option<Palette>,
+    pen: Pen,
 }
 
 impl Ink {
+    /// Plain ink, as off a terminal; the program itself always takes the
+    /// kit's pen, so only its tests ask for this.
+    #[cfg(test)]
     pub fn plain() -> Self {
-        Self { palette: None }
+        Self { pen: Pen::plain() }
+    }
+
+    /// A page's ink, from the pen the kit gives standard output.
+    pub fn new(pen: Pen) -> Self {
+        Self { pen }
     }
 
     pub fn coloured(&self) -> bool {
-        self.palette.is_some()
+        self.pen.inks()
+    }
+
+    /// A run's words in its role. Strong is the kit's title, bold as well
+    /// as its colour, so it ranks in type when a theme gives it the text's
+    /// own; the track is the rule's colour, faint, as the design lays a
+    /// graph's track at half the edge colour's opacity.
+    fn inked(&self, run: &Run) -> String {
+        let words = run.text.as_str();
+        match run.role {
+            Role::Text => self.pen.role("text", words),
+            Role::Strong => self.pen.title(words),
+            Role::Muted => self.pen.role("muted", words),
+            Role::Track => self.pen.faint("rule", words),
+            Role::Alert => self.pen.role("alert", words),
+            Role::Warning => self.pen.role("warning", words),
+        }
     }
 
     /// A page laid out in `room` and inked.
@@ -708,16 +707,11 @@ impl Ink {
         for line in page.lines(room) {
             let mut set = String::new();
             for run in &line {
-                match self
-                    .palette
-                    .as_ref()
-                    .and_then(|palette| palette.of(run.role))
-                {
-                    Some(sgr) if !run.text.trim().is_empty() => {
-                        // Writing to a String can't fail.
-                        _ = write!(set, "\x1b[{sgr}m{}\x1b[0m", run.text);
-                    }
-                    _ => set.push_str(&run.text),
+                // Spaces are inked as nothing, so a line's end trims.
+                if run.text.trim().is_empty() {
+                    set.push_str(&run.text);
+                } else {
+                    set.push_str(&self.inked(run));
                 }
             }
             out.push_str(set.trim_end());
@@ -905,27 +899,32 @@ mod tests {
 
     #[test]
     fn a_role_is_coloured_only_on_a_terminal_and_only_where_there_is_ink() {
-        let palette = Palette {
-            text: None,
-            strong: Some("1".into()),
-            muted: Some("37".into()),
-            track: Some("2".into()),
-            alert: Some("31".into()),
-            warning: Some("93".into()),
-        };
+        let pen = Pen::new(terminal_kit::ink::Ink::sixteen(), None);
         let line = || vec![strong("Hall"), muted("  "), plain("online"), muted(" dBm")];
         let mut page = Page::default();
         page.line(line());
+        let inked = Ink::new(pen.clone()).page(page, Room::Unbounded);
         assert_eq!(
-            Ink {
-                palette: Some(palette)
-            }
-            .page(page, Room::Unbounded),
-            "\x1b[1mHall\x1b[0m  online\x1b[37m dBm\x1b[0m\n"
+            inked,
+            format!(
+                "{}  {}{}\n",
+                pen.title("Hall"),
+                pen.role("text", "online"),
+                pen.role("muted", " dBm")
+            ),
+            "each run isn't in its role, or the spaces between are inked"
+        );
+        assert_ne!(
+            inked, "Hall  online dBm\n",
+            "a terminal's page was drawn without ink"
         );
         let mut page = Page::default();
         page.line(line());
-        assert_eq!(set(page, Room::Unbounded), "Hall  online dBm\n");
+        assert_eq!(
+            set(page, Room::Unbounded),
+            "Hall  online dBm\n",
+            "a page off a terminal was inked"
+        );
     }
 
     fn address_facts() -> Page {
