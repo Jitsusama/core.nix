@@ -340,6 +340,22 @@ causing the page to reformat" (2026-11-10). `layout.js` measures all three.
   will paste it. "human and AI agent empathy needs to be a critical tenet"
   (2026-11-07).
 
+## What He's Loved
+
+- **The Your Sites home, as a walled garden at dusk.** "I love this page!"
+  (2026-11-16), of the laptop's own index of its sites
+  (`modules/local-sites/home/`). It opens on one centred axis, as a page to
+  read does, though it's worked in: a drawn crest (a seedling under an arch,
+  stars over the wall), a tracked mono eyebrow, a Fraunces title with its
+  italic turn ("Made for you, *kept here.*"), an italic lede, a standing line
+  counting what's there, the numbered beds as contents, then the key line.
+  The sites grow in beds by what they are, newest first, the settled kept
+  below. Rows are parted by hairlines alone, and the one he's on is a sprig
+  in the margin and its name in gold, never a filled box. One metaphor runs
+  through every mark: the crest, a sprig between beds and at the close, the
+  gold bud for what asks something of him. Start a home, an index or a list
+  of places from it.
+
 ## What He's Turned Down
 
 Each is a verdict on a real site; the rule it gave is above.

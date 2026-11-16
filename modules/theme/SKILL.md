@@ -171,6 +171,13 @@ constrain".
   so little on it. What carries to other surfaces is that restraint, an
   accent left where the keys go and colour left on glyphs, never its
   layout, its marks or its single column.
+- **The garden of his sites.** Of the Your Sites home, redrawn as a walled
+  garden at dusk: "I love this page!" (2026-11-16). One centred axis under
+  a drawn seedling, a serif title with an italic turn, beds of sites by
+  kind parted by hairlines, the chosen row a sprig and gold ink rather than
+  a fill, and one metaphor carried through every mark. What carries is the
+  whimsy held to one idea and drawn thin, and selection said by ink, never
+  a box. The web-design skill's rulings say it in full.
 
 ## What He's Turned Down
 
