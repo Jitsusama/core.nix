@@ -8,7 +8,15 @@ use unicode_width::UnicodeWidthChar;
 
 use super::{CUT, ITEMS, Room, width};
 
-/// A name cut to `room` cells at a whole word, ending in an ellipsis. A
+/// The small words a cut never ends on, so it reads as a cut rather than
+/// a sentence missing its end (VKCF3Z, 2026-11-15), as the password
+/// prompt's titles are cut too.
+const SMALL: [&str; 12] = [
+    "a", "an", "the", "of", "for", "with", "to", "in", "on", "and", "so", "from",
+];
+
+/// A name cut to `room` cells at a whole word, ending in an ellipsis, and
+/// never after a small word, though its first word is kept whatever. A
 /// first word too long for the room alone is shortened in its middle, as
 /// a path is, since a name is never cut at its end inside a word.
 pub fn cut(name: &str, room: usize) -> String {
@@ -30,6 +38,11 @@ pub fn cut(name: &str, room: usize) -> String {
             break;
         }
         kept = longer;
+    }
+    while let Some((before, last)) = kept.rsplit_once(' ')
+        && SMALL.contains(&last.to_lowercase().as_str())
+    {
+        kept.truncate(before.len());
     }
     format!("{kept}{CUT}")
 }
@@ -253,9 +266,31 @@ mod tests {
     fn a_name_gives_way_at_a_whole_word_and_says_so() {
         // A first word past the room is shortened in its middle, so a
         // name still fits and still shows both its ends.
-        assert_eq!(cut("switch the system now", 12), "switch the\u{2026}");
+        assert_eq!(
+            cut("switch the system now", 18),
+            "switch the system\u{2026}"
+        );
         assert_eq!(cut("switch the system now", 5), "sw\u{2026}ch");
         assert_eq!(cut("status", 6), "status");
+    }
+
+    #[test]
+    fn a_cut_never_ends_on_a_small_word() {
+        assert_eq!(
+            cut("Put Machine, Programs and To-Do on the Terminal Kit", 37),
+            "Put Machine, Programs and To-Do…"
+        );
+        assert_eq!(cut("Map From the Network", 14), "Map…");
+        assert_eq!(
+            cut("Read Only the Asked Play So a Turn", 30),
+            "Read Only the Asked Play…"
+        );
+        assert_eq!(
+            cut("switch the system now", 12),
+            "switch…",
+            "a small word was left before the cut"
+        );
+        assert_eq!(cut("The Thing", 6), "The…", "the first word went");
     }
 
     #[test]
