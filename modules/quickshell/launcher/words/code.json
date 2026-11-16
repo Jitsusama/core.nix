@@ -10,7 +10,9 @@
         "kind": "repository",
         "tree": "1 tree",
         "trees": "{count} trees",
-        "local": "no remote"
+        "local": "no remote",
+        "change": "1 change",
+        "changes": "{count} changes"
       }
     },
     {
@@ -44,6 +46,15 @@
       "argument": "page",
       "in": "code:repository",
       "name": "Open Its Page",
+      "verb": "open",
+      "glyph": "web"
+    },
+    {
+      "id": "verb:code:changes",
+      "command": "open",
+      "argument": "changes",
+      "in": "code:repository",
+      "name": "Open Its Open Changes",
       "verb": "open",
       "glyph": "web"
     },
