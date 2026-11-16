@@ -676,12 +676,18 @@ Rectangle {
         }
 
         // What the row is, cut to its share, reads on as the name does,
-        // after it.
+        // after it. A side of items, or one said whole, keeps what's left
+        // of it whole where it fits, but never runs past the room the name
+        // leaves, or its share where the name has none, so a last item too
+        // long for any room, as Joel's words in a talk's You Said are, is
+        // cut rather than drawn over the name and out of the card (Joel,
+        // 2026-11-15: "text can escape containment").
         ReadsOn {
             id: sideText
             anchors.right: parent.right
             visible: atRight.sided
-            width: atRight.itemised || row.sideWhole ? implicitWidth
+            width: atRight.itemised || row.sideWhole
+                ? Math.min(implicitWidth, Math.max(atRight.room, row.width * 0.45))
                 : Math.min(implicitWidth, atRight.share)
             text: atRight.dotted ? Reading.styledItems(atRight.kept, Theme.muted, atRight.inks)
                 : atRight.said

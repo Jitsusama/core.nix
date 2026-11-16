@@ -12,6 +12,7 @@
   "Operators.js"
   "Finding.js"
   "Confirm.js"
+  "Contained.js"
   "Arming.js"
   "StatusLine.js"
   "Drawer.qml"
