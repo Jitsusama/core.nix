@@ -17,7 +17,7 @@ use google::done::Went;
 use google::drive::{DOWNLOADS_KEPT, Document, Is, LISTINGS_KEPT, Unlisted, Unsaved};
 use google::files::{Failed, How, Places};
 use google::mail::Tidy;
-use google::receptor::{self, Receptors};
+use google::receptor::{Receptors, Spoke};
 use google::saves;
 use google::state::Standing;
 use google::watch::Watch;
@@ -2153,6 +2153,14 @@ const PLANTED: [&str; 4] = ["--realm personal", "skiff", "kestrel", "ignore ever
 /// piece of mail that wants Joel, a minute old, and a meeting he hasn't
 /// answered in half an hour.
 fn planted(path: &str, body: &str) -> (u16, String) {
+    if path.starts_with("GET /calendar/v3/users/me/calendarList?") {
+        return (
+            200,
+            r#"{"items": [{"id": "team@group.calendar.google.com"},
+                {"id": "joel@example.com", "primary": true}]}"#
+                .into(),
+        );
+    }
     if path.starts_with("GET /gmail/v1/users/me/messages?") && path.contains("newer_than") {
         return (200, r#"{"messages": []}"#.into());
     }
@@ -2218,12 +2226,65 @@ fn mycelium(test: &str) -> (PathBuf, PathBuf) {
 }
 
 #[test]
+fn the_receptors_say_nothing_of_an_account_the_machine_didnt_declare() {
+    let (program, said) = mycelium("receptors-another");
+    let named = || {
+        Receptors::named(Some(program.clone().into()), Some("work".into()))
+            .expect("the stand-in's mycelium and realm weren't taken")
+    };
+    // Signed in as someone else, whose primary calendar is theirs.
+    let stand_in = StandIn::new(|path, body| {
+        if path.starts_with("GET /calendar/v3/users/me/calendarList?") {
+            return (
+                200,
+                r#"{"items": [{"id": "skiff@example.com", "primary": true}]}"#.into(),
+            );
+        }
+        planted(path, body)
+    });
+    let at = now().timestamp().as_millisecond();
+    let path = credentials("receptors-another", at + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let state = watch.look(&now()).clone();
+    assert_eq!(state.mail.len(), 1, "the planted mail wasn't held");
+    let tell = |receptors: Receptors, signed_in: Option<&str>| {
+        receptors
+            .tell(&state, signed_in, &now(), Duration::from_secs(60), 4242)
+            .expect("telling the receptors failed")
+    };
+    let declared = || named().for_account(Some("joel@example.com".into()));
+    let spoke = [
+        tell(declared(), watch.signed_in_as()),
+        tell(declared(), None),
+        tell(named(), watch.signed_in_as()),
+        tell(
+            named().for_account(Some("not an address".into())),
+            Some("not an address"),
+        ),
+    ];
+    assert_eq!(
+        spoke,
+        [
+            Spoke::NotItsAccount,
+            Spoke::NotItsAccount,
+            Spoke::NoAccount,
+            Spoke::NoAccount,
+        ],
+        "an account the machine didn't declare was said"
+    );
+    assert!(
+        !said.exists(),
+        "mycelium was run for an account the machine didn't declare"
+    );
+}
+
+#[test]
 fn the_receptors_ask_google_nothing_and_say_only_counts_in_the_services_realm() {
     let (program, said) = mycelium("receptors");
     let receptors = Receptors::named(Some(program.into()), Some("work".into()))
-        .expect("the stand-in's mycelium and realm weren't taken");
+        .expect("the stand-in's mycelium and realm weren't taken")
+        .for_account(Some("joel@example.com".into()));
     let at = now().timestamp().as_millisecond();
-    let midnight = receptor::midnight(&now());
     // Two looks with the receptors off, and two with them said between.
     let off = StandIn::new(planted);
     let path = credentials("receptors-off", at + 3_600_000);
@@ -2236,10 +2297,16 @@ fn the_receptors_ask_google_nothing_and_say_only_counts_in_the_services_realm() 
     let state = watch.look(&now()).clone();
     assert_eq!(state.mail.len(), 1, "the planted mail wasn't held");
     assert_eq!(state.meetings.len(), 1, "the planted meeting wasn't held");
-    let told = receptor::told(&state, at, midnight);
-    receptors
-        .say(&told, Duration::from_secs(60), 4242)
+    let spoke = receptors
+        .tell(
+            &state,
+            watch.signed_in_as(),
+            &now(),
+            Duration::from_secs(60),
+            4242,
+        )
         .expect("the stand-in mycelium refused");
+    assert_eq!(spoke, Spoke::Said, "Joel's own account wasn't said");
     watch.look(&now());
     let lines = |stand_in: &StandIn| -> Vec<String> {
         stand_in

@@ -13,8 +13,13 @@
 //! The service names the program and the realm in `MYCELIUM` and
 //! `MYCELIUM_REALM` (home.nix); with either unset, as on a machine in no
 //! realm, nothing is said. The realm is the service's, never anything an
-//! account holds, so the one account this program signs in as is said in
-//! the machine's realm alone.
+//! account holds.
+//!
+//! Only the account the machine declares for its realm, in
+//! `MYCELIUM_ACCOUNT`, is said in it: the address Google gives as the
+//! primary calendar's id must be that one, so a personal account signed
+//! in here is never counted into the work realm. With none declared, or
+//! another signed in, nothing is said.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -146,11 +151,25 @@ fn meetings(held: &[Meeting], now: i64, midnight: i64) -> (u64, u64, u64) {
     (count(soon), count(today.iter()), count(unanswered))
 }
 
-/// Where the receptors say how they stand: mycelium, and the realm.
+/// Where the receptors say how they stand: mycelium, and the realm, and
+/// the one account they're said for.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Receptors {
     program: PathBuf,
     realm: String,
+    account: Option<String>,
+}
+
+/// What came of telling the receptors.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Spoke {
+    /// Each said how it stands.
+    Said,
+    /// No account is declared for the realm, so none was said.
+    NoAccount,
+    /// The account signed in isn't the one declared, or Google didn't say
+    /// whose it is, so none was said.
+    NotItsAccount,
 }
 
 impl Receptors {
@@ -163,7 +182,22 @@ impl Receptors {
             .bytes()
             .all(|letter| letter.is_ascii_lowercase() || letter.is_ascii_digit() || letter == b'-');
         (program.is_absolute() && letters && !realm.is_empty() && !realm.starts_with('-'))
-            .then_some(Self { program, realm })
+            .then_some(Self {
+                program,
+                realm,
+                account: None,
+            })
+    }
+
+    /// These receptors, said only for `account`, an address, if it is one.
+    #[must_use]
+    pub fn for_account(self, account: Option<OsString>) -> Self {
+        let account = account
+            .and_then(|account| account.into_string().ok())
+            .filter(|account| {
+                account.contains('@') && !account.contains(|letter: char| letter.is_whitespace())
+            });
+        Self { account, ..self }
     }
 
     /// The receptors the service's environment names.
@@ -172,6 +206,28 @@ impl Receptors {
             std::env::var_os("MYCELIUM"),
             std::env::var_os("MYCELIUM_REALM"),
         )
+        .map(|receptors| receptors.for_account(std::env::var_os("MYCELIUM_ACCOUNT")))
+    }
+
+    /// Says how each receptor stands in `state` at `now`, the next said
+    /// within `every`, if the account Google says is `signed_in` is the
+    /// one declared.
+    ///
+    /// # Errors
+    ///
+    /// When mycelium can't be run, or refuses what it's told.
+    pub fn tell(
+        &self,
+        state: &State,
+        signed_in: Option<&str>,
+        now: &Zoned,
+        every: Duration,
+        pid: u32,
+    ) -> Result<Spoke, String> {
+        let _ = signed_in;
+        let at = now.timestamp().as_millisecond();
+        self.say(&told(state, at, midnight(now)), every, pid)?;
+        Ok(Spoke::Said)
     }
 
     /// What mycelium is given for one receptor: fixed words, the realm

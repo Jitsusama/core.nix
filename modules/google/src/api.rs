@@ -137,6 +137,16 @@ pub struct Access {
     pub expires: i64,
 }
 
+/// Joel's calendar list, as Google says it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Calendars {
+    /// The ids of the calendars he may change events on.
+    pub writable: Vec<String>,
+    /// His primary calendar's id, the account's address, if Google says
+    /// which it is.
+    pub primary: Option<String>,
+}
+
 pub struct Google {
     agent: Agent,
     origins: Origins,
@@ -810,13 +820,16 @@ impl Google {
 
     /// The ids of the calendars Joel may change events on, every page of
     /// his calendar list: those he owns or was given writer access to.
-    pub fn writable(&self, token: &str) -> Result<Vec<String>, Refused> {
+    /// His primary calendar, his own, is among them, and its id is the
+    /// address of the account signed in, as Google says it.
+    pub fn writable(&self, token: &str) -> Result<Calendars, Refused> {
         let mut ids = Vec::new();
+        let mut primary = None;
         let mut page: Option<String> = None;
         loop {
             let mut query = vec![
                 ("minAccessRole", "writer"),
-                ("fields", "items(id),nextPageToken"),
+                ("fields", "items(id,primary),nextPageToken"),
             ];
             if let Some(page) = &page {
                 query.push(("pageToken", page));
@@ -827,21 +840,29 @@ impl Google {
                 &query,
                 "the calendars",
             )?;
-            ids.extend(
-                answer
-                    .get("items")
-                    .and_then(Value::as_array)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|calendar| calendar.get("id").and_then(Value::as_str))
-                    .map(str::to_owned),
-            );
+            for calendar in answer
+                .get("items")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let Some(id) = calendar.get("id").and_then(Value::as_str) else {
+                    continue;
+                };
+                if calendar.get("primary").and_then(Value::as_bool) == Some(true) {
+                    primary = Some(id.to_owned());
+                }
+                ids.push(id.to_owned());
+            }
             page = answer
                 .get("nextPageToken")
                 .and_then(Value::as_str)
                 .map(str::to_owned);
             if page.is_none() {
-                return Ok(ids);
+                return Ok(Calendars {
+                    writable: ids,
+                    primary,
+                });
             }
         }
     }
