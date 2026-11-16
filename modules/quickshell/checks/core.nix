@@ -668,6 +668,24 @@ in
       touch $out
     '';
 
+  # Words that break out of the box they're laid in, the card, or onto
+  # another's are named, as tests/contained.qml holds Contained.js, the
+  # judge the launcher's `contained` asks on niri.
+  no-words-leave-their-room =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "no-words-leave-their-room" { } ''
+      cp ${../../../tests/contained.qml} contained.qml
+      ${copied [ "Contained.js" ]}
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml contained.qml
+      touch $out
+    '';
+
   # A card says how it stands in one status line, the launcher's and held
   # notices' alike, as tests/status-line.qml holds StatusLine.js to: which
   # hints give way as room runs short, the keys list's and Return's staying.
