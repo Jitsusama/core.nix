@@ -42,7 +42,7 @@ use std::env;
 use std::io;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitCode, ExitStatus, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
 /// How often main's head is read.
@@ -62,7 +62,7 @@ const BESIDE: &str = "aarch64-darwin";
 
 /// Follow origin's main, keeping each head once it has stood, until stopped,
 /// or until `follow`, the installed program, is another than this one.
-pub fn main(follow: Option<&Path>) -> ExitCode {
+pub fn main(follow: Option<&Path>) {
     let url =
         env::var("CHANGED_CHECKS_REPOSITORY").unwrap_or_else(|_| crate::REPOSITORY.to_owned());
     let clone = crate::state().join("changed-checks/main");
@@ -80,7 +80,7 @@ pub fn main(follow: Option<&Path>) -> ExitCode {
                 "changed-checks: another changed-checks is installed, so this one ends \
                  between keeps, for the service to start that one"
             );
-            return ExitCode::SUCCESS;
+            return;
         }
         if let Some(ended) = look_aside(&mut aside) {
             eprintln!("changed-checks: the keep of {BESIDE}'s checks ended: {ended}");

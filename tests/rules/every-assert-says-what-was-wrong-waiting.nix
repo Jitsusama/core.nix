@@ -336,7 +336,7 @@
   "tools/changed-checks/src/scratch.rs" = 3;
   "tools/changed-checks/src/there.rs" = 4;
   "tools/changed-checks/src/turn.rs" = 1;
-  "tools/changed-checks/tests/changed_checks.rs" = 13;
+  "tools/changed-checks/tests/changed_checks.rs" = 11;
   "tools/merge-net/src/ready.rs" = 4;
   "tools/merge-net/src/rules.rs" = 17;
   "tools/merge-net/src/state.rs" = 1;

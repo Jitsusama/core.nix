@@ -9,3 +9,5 @@ publish = false
 
 [dependencies]
 serde_json = "1"
+# Its help, exits and failures, as every command's (docs/commands.md).
+terminal-kit = { path = "../../modules/terminal-kit" }
