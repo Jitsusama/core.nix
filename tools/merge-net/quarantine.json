@@ -42,26 +42,6 @@
     "test": "vm-desktop-launcher-finds-by-name"
   },
   {
-    "at": 1794580353,
-    "commit": "77b2c01c96435484735cb5eda87677902bda6396",
-    "due": "2026-11-15",
-    "owner_pr": 3972,
-    "owner_session": "Y2YBTS",
-    "reason": "failed, then passed, at 77b2c01c9643",
-    "subtests": [
-      "test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_ctrl_y",
-      "test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it",
-      "test_a_question_is_asked_on_return_and_answered_where_it_was_typed",
-      "test_a_search_lists_each_thing_once_and_normal_moves_through_it",
-      "test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place",
-      "test_spotify_signed_out_offers_sign_in_and_says_so",
-      "test_the_launcher_finds_emoji_in_their_own_place_and_only_there",
-      "test_the_launcher_lists_each_thing_once_for_everything_joel_types",
-      "test_wifi_finds_the_home_network_after_wi_fi_itself"
-    ],
-    "test": "vm-desktop-launcher-finds-by-name"
-  },
-  {
     "at": 1794421209,
     "commit": "042387bc604aa8b10fbf53100b0230c1f552e504",
     "due": "2026-11-17",
@@ -74,19 +54,6 @@
       "test_no_answer_raised_an_error",
       "test_quickshell_warned_of_nothing_it_drew_all_along",
       "test_the_time_here_says_how_the_clock_is_kept"
-    ],
-    "test": "vm-desktop-launcher-answers"
-  },
-  {
-    "at": 1794558951,
-    "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
-    "due": "2026-11-15",
-    "owner_pr": 3946,
-    "owner_session": "Y2YBTS",
-    "reason": "failed, then passed, at aefa56b98e80",
-    "subtests": [
-      "test_power_says_what_kept_the_processor_from_resting_on_battery",
-      "test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back"
     ],
     "test": "vm-desktop-launcher-answers"
   },

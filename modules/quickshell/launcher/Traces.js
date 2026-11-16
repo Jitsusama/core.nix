@@ -51,6 +51,18 @@ function kept(spans, span, most) {
     return all.length > most ? all.slice(all.length - most) : all;
 }
 
+// The spans of one opening, as kept: the one under way, by its trace's
+// id, or with none, the newest kept, whose root span is kept last as it
+// closes. Every span kept, as JSON, runs past 350 KB, which an IPC answer
+// was seen to cut short (2026-11-16), and a reader wants one opening.
+function latest(spans, under) {
+    if (spans.length === 0 && !under) {
+        return [];
+    }
+    const trace = under ? under : spans[spans.length - 1].trace;
+    return spans.filter(span => span.trace === trace);
+}
+
 // Whether a list settled with space above its first row, the void Joel saw:
 // its first row drawn below the list's top. Scrolled down, the first row is
 // above the top, which is no void.

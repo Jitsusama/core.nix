@@ -89,6 +89,12 @@ Scope {
         return JSON.stringify(spans);
     }
 
+    // One opening's spans, as JSON, for `qs ipc call launcher tracedLatest`:
+    // the one under way, or with none, the last to close.
+    function tracedLatest() {
+        return JSON.stringify(Traces.latest(spans, opening === null ? null : opening.trace));
+    }
+
     // One opening sent to the collector, on a connection of its own made
     // only to send it and let go after, or as soon as nothing answers: a
     // socket refused once never tries again by itself (Daemon.qml), so one

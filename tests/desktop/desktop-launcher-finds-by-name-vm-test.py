@@ -1238,7 +1238,7 @@ def walk_the_rows_follows(desktop: Desktop) -> None:
     # nothing walked before: the trace holds each look's ms and the rows it listed and made,
     # said here for the reviewer to read. Lock lives deepest of the kinds Ctrl+] looks for,
     # found from home two places down, and each look found it within its budget.
-    spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher traced"))
+    spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher tracedLatest"))
     opening = [span for span in spans if span["name"] == "open"][-1]
     looks = [
         span["about"]

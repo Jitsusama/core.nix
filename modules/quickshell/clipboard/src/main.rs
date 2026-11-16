@@ -166,8 +166,11 @@ const TERMINALS: [&str; 5] = [
 ];
 
 /// How long the launcher has to let go of the keys before a paste gives up
-/// rather than press them into it.
-const LETTING_GO: Duration = Duration::from_secs(1);
+/// rather than press them into it. A paste given up is lost without a word
+/// on screen, so it waits past a busy moment: on a loaded builder the
+/// launcher took 0.9 s to close and held the keys past a second's wait
+/// (2026-11-16), while a launcher still open after three is one that stays.
+const LETTING_GO: Duration = Duration::from_secs(3);
 
 /// How often niri is asked whether the launcher has let go of the keys.
 const ASKING: Duration = Duration::from_millis(1);
