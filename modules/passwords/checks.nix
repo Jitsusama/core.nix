@@ -101,9 +101,10 @@ onLinux {
   );
   # On a machine with 1Password, the launcher's Passwords provider runs the
   # daemon itself, with 1Password's manager, and nothing else can: there's
-  # no unit and no socket for it, and no copier is named, so nothing is
-  # copied until agents are fenced off the clipboard. The place stays off
-  # meanwhile, and the provider knows 1Password's program.
+  # no unit and no socket for it, and it copies through wl-copy by its
+  # full path, now that niri keeps a sensitive copy from fenced agents.
+  # The place stays off until Passwords is signed off as safe to turn on,
+  # and the provider knows 1Password's program.
   passwords-runs-each-password-manager =
     let
       home = account graphical;
@@ -116,7 +117,8 @@ onLinux {
         lib.hasInfix "/bin/passwords daemon /nix/store/" daemon
         && !(home.systemd.user.services ? passwords)
         && !(home.systemd.user.sockets ? passwords)
-        && !(provider ? copier)
+        && lib.hasPrefix "/nix/store/" (provider.copier or "")
+        && lib.hasSuffix "/bin/wl-copy" (provider.copier or "")
         && (provider.off or false)
         && home.jitsusama.passwords.managers ? "1password"
         && lib.any (lib.hasSuffix "/op") home.jitsusama.passwords.managers."1password".command
