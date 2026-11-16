@@ -99,7 +99,13 @@ pub fn help() -> Help {
             "probe",
             "wakes as an app would, so the kernel counts its wait for a processor",
         )
-        .option("--every MS", "how often it wakes; 100"),
+        .example(
+            "jobs-sorter probe --every 20",
+            "wakes fifty times a second, until it's stopped",
+        )
+        .option("--every MS", "how often it wakes; 100")
+        // It wakes until it's stopped, so it never ends done.
+        .never_done(),
     )
     .subcommand(
         Help::new(
