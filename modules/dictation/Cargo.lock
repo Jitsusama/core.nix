@@ -309,6 +309,7 @@ dependencies = [
  "calls",
  "daemon-serve",
  "jiff",
+ "libc",
  "nnnoiseless",
  "pipewire",
  "png",

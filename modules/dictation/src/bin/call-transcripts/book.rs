@@ -15,6 +15,7 @@
 //! folder.
 
 use std::io::Read;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::time::UNIX_EPOCH;
@@ -128,8 +129,17 @@ impl Record {
     /// taken as ended when its folder last changed.
     fn read(folder: &Path) -> Result<Option<Self>, Unreadable> {
         let mut text = String::new();
-        match std::fs::File::open(folder.join(META)) {
+        // Not followed if it's a link, and not waited on if it's a pipe:
+        // only a plain file is a record.
+        let opened = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(folder.join(META));
+        match opened {
             Ok(file) => {
+                if !file.metadata().is_ok_and(|held| held.is_file()) {
+                    return Err(Unreadable);
+                }
                 file.take(LARGEST_META + 1)
                     .read_to_string(&mut text)
                     .map_err(|_| Unreadable)?;

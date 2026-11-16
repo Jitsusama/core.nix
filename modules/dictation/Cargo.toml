@@ -17,6 +17,9 @@ jiff = "0.2"
 # The socket systemd hands every daemon of the shell, taken as each takes
 # it (../daemon-serve); noise-cancelled is one.
 daemon-serve = { path = "../daemon-serve" }
+# The flags call-transcripts opens a call's record with, so a link or a
+# pipe in its place is refused rather than followed or waited on.
+libc = "0.2"
 # The noise-cancelled microphone is a PipeWire client of its own, so
 # nothing slow runs on PipeWire's real-time thread. Asking for 1.2's
 # interface gives it what a stream asks for each cycle and target.object;
