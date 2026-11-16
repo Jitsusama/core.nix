@@ -308,6 +308,23 @@ fn a_gates_start_is_its_earliest_kept_and_none_before_starts_were() {
     assert_eq!(started(old), None, "a record with no start gave one");
 }
 
+#[test]
+fn a_pass_is_kept_when_its_run_ended_not_when_checks_were_added_to_its_record() {
+    let record = |_: &str| {
+        "{\"dir\":null,\"run\":[\"--build\"],\"started\":100,\"ended\":400}\n\
+         {\"dir\":null,\"check\":\"checks.x.a\"}\n\
+         {\"dir\":null,\"run\":[\"--build\"],\"started\":200,\"ended\":300}\n\
+         {\"dir\":\"sub\",\"run\":[\"--build\"],\"started\":500,\"ended\":900}\n\
+         {\"dir\":null,\"check\":\"checks.x.vm-b\"}\n"
+            .to_owned()
+    };
+    assert_eq!(
+        kept_at(&["head"], &record),
+        Some(400),
+        "a pass was kept from something other than when its newest run at the top ended"
+    );
+}
+
 // A process's start is read from /proc, which only Linux has: on a Mac the
 // development shell builds merge-net too, and this test failed it there.
 #[cfg(target_os = "linux")]
