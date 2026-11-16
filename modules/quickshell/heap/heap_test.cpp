@@ -10,7 +10,10 @@
 // makes strings whose text is held outside the heap. Giving the free pages
 // back leaves next to none resident, says about as much as was counted, and
 // what's kept, and what's made after in their place, reads as it was made.
-// And what it says of
+// And a heap whose free lists lead with runs too small for what's made next,
+// held off collecting, makes it in the free runs that fit rather than in new
+// chunks, as the shell's Qt keeps its large runs by size
+// (qtdeclarative-large-runs-by-size.patch). And what it says of
 // jemalloc, which the test is linked with as Quickshell is: what's in use
 // grows by a block kept, and what's freed and kept by one let go, and
 // neither is more than what's resident. It exits 0 once all of it holds,
@@ -187,6 +190,61 @@ bool givesBack() {
     return taken && said && intact;
 }
 
+// How many runs too small for what's made after are freed, each a store
+// of 256 values, about 65 of the heap's 32-byte slots; and how many large
+// enough, each of 1024, about 257 slots, freed before them, so the small
+// ones' chunks are swept last and their runs lie first in the free lists.
+// Then how many stores of 512 values, about 129 slots each, are made in
+// their place. Each array is followed by an object kept, so no two of its
+// runs join and no chunk is emptied. The stores made fit no run of their
+// own bin, so this proves a request looks past a bin with nothing that fits
+// it, not that it passes 32 runs too small in its own.
+constexpr int SMALL_RUNS = 2000;
+constexpr int LARGE_RUNS = 600;
+constexpr int FITTING = 500;
+
+// Whether stores made with the collector held off take the free runs large
+// enough for them rather than new chunks, as the launcher makes them after
+// its closing leaves room. In one list for every run of 63 slots or more, a
+// request passed 32 of the small ones and took a new chunk whenever its
+// tries ran out. It holds only if the runs were freed and what was made is
+// live, so a Qt that sized its stores otherwise fails it rather than passing
+// with nothing tried.
+bool takesRunsThatFit() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue pins = engine.evaluate(
+        QStringLiteral("(() => { const pins = [new Array(%1), new Array(%2)]; const freed = []; "
+                       "for (let i = 0; i < %1; i++) { freed.push(new Array(1024)); pins[0][i] = "
+                       "{}; } for (let i = 0; i < %2; i++) { freed.push(new Array(256)); "
+                       "pins[1][i] = {}; } return pins; })()")
+            .arg(LARGE_RUNS)
+            .arg(SMALL_RUNS));
+    const Weight freed = weighed(engine, heap);
+    heap.leaveRoom(ROOM_MB);
+    const QJSValue made = engine.evaluate(
+        QStringLiteral("(() => { const made = new Array(%1); for (let i = 0; i < %1; i++) "
+                       "made[i] = new Array(512); return made; })()")
+            .arg(FITTING));
+    const Weight after = weighed(engine, heap);
+    // Each store of 512 values is about 4 KB, and each freed run about 2 or
+    // 8 KB, 9 MB in all; half of that held but not live shows they're free.
+    const double madeMB = FITTING * 4.0 / 1024;
+    const double freedMB = (SMALL_RUNS * 2.0 + LARGE_RUNS * 8.0) / 1024;
+    const bool tried = freed.held - freed.live > freedMB / 2 &&
+                       after.live - freed.live > madeMB / 2;
+    const bool fits = !pins.isError() && !made.isError() && tried &&
+                      after.held - freed.held < madeMB / 4;
+    if (!fits)
+        std::fprintf(stderr,
+                     "FAIL %.1f MB made with the collector held off takes the free runs that "
+                     "fit it: live %.1f then %.1f MB, held %.1f then %.1f MB, free %.1f then "
+                     "%.1f MB\n",
+                     madeMB, freed.live, after.live, freed.held, after.held, freed.free,
+                     after.free);
+    return fits;
+}
+
 bool expect(const char *what, bool holds, const Weight &before, const Weight &after) {
     if (!holds)
         std::fprintf(stderr,
@@ -264,8 +322,9 @@ int main(int argc, char **argv) {
                      "it makes strings held outside it\n", ROOM_MB);
     const bool follows = allocatorFollows(heap);
     const bool given = givesBack();
+    const bool fits = takesRunsThatFit();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
-                   roomyOutside && follows && given
+                   roomyOutside && follows && given && fits
                ? 0
                : 1;
 }
