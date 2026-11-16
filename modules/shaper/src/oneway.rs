@@ -44,6 +44,13 @@
 //! met again starts from it, so the first upload after a restart or a
 //! rejoin is held under that router at once rather than after it has been
 //! found again.
+//!
+//! A network whose line is declared, its anchor, starts at the anchor's
+//! hold instead, since what it learned may be the cuts' own doing. There a
+//! wait only the VPN's round trip meets is cut for only while the link
+//! carries near that hold: under it, the line has room, the router queues
+//! nothing, and the wait is the VPN's own, said in the why line and left
+//! alone.
 
 use crate::why::Why;
 use serde::{Deserialize, Serialize};
@@ -288,8 +295,9 @@ pub enum Tunnel {
     /// Not heard, or heard while nothing of ours queued for the VPN, so
     /// it says nothing of the queue.
     Unheard,
-    /// Heard within its margin of its least while the VPN's CAKE held a
-    /// queue: the VPN's flow waits nowhere past it.
+    /// Heard no further past its least, beyond its margin, than the
+    /// probes' own delay, while the VPN's CAKE held a queue: the VPN's flow
+    /// waits nowhere the probes don't.
     Clear,
     /// Heard waiting past CAKE longer than the probes did: the queue is
     /// the router's, and only the VPN's flow meets it.
@@ -1294,6 +1302,32 @@ impl Controller {
         self.up.anchor = self.anchor;
     }
 
+    /// Starts a stay on an anchored network at the anchor's hold, whatever
+    /// the network learned: what it learned may be the cuts' own doing, as
+    /// home's 4,586 was on 16 November, and the guard takes a minute to
+    /// undo it. A controller already stepping is left as it is.
+    pub fn start_at_the_anchor(&mut self) {
+        let Some(anchor) = self.anchor else {
+            return;
+        };
+        if self.last_at.is_some() {
+            return;
+        }
+        let hold = anchor * ANCHOR_HOLD;
+        let plateau = hold / self.up.tuning.hold;
+        self.up.rate = hold;
+        self.up.plateau = Some(plateau);
+        self.up.started_from = plateau;
+    }
+
+    /// Whether the link carries enough for a queue past it to be the
+    /// router's: on an anchored network, near the anchor's hold, since a
+    /// router holds back nothing while the line has room.
+    fn may_fill_the_line(&self, carried: f64) -> bool {
+        self.anchor
+            .is_none_or(|anchor| carried >= anchor * ANCHOR_HOLD * NEAR_THE_HOLD)
+    }
+
     /// Why the upload holds where it does, in one sentence.
     pub fn why(&self) -> String {
         let at = self.last_at.unwrap_or(0.0);
@@ -1416,7 +1450,14 @@ impl Controller {
             };
         }
         let met = self.hidden(seen);
-        let heeded = self.far.heed(at, met);
+        // Under the line, a wait only the VPN's round trip meets is the
+        // VPN's own, or its far path's: at 02:05 on 16 November it read
+        // over 100 ms while the link carried half its line. It's said,
+        // and no cut is made for it.
+        let heeded = self
+            .far
+            .heed(at, met)
+            .filter(|_| self.may_fill_the_line(seen.up_kbit));
         let up = seen.up_delay_ms.map(|d| (d - air).max(0.0));
         let down = seen.down_delay_ms.map(|d| (d - air).max(0.0));
         let idle_up = self.up.idle(seen.up_kbit);
@@ -1474,7 +1515,7 @@ impl Controller {
         let hidden = heeded.unwrap_or(0.0);
         let tunnel = if hidden > seen_delay {
             Tunnel::Past
-        } else if heeded.is_some_and(|hidden| hidden <= 0.0)
+        } else if heeded.is_some()
             && seen.vpn_ms.is_some()
             && seen
                 .up_ours
@@ -3539,5 +3580,139 @@ mod tests {
         filling(&mut c, 30.0, &[]);
         assert!(c.why().starts_with("Upload "), "{}", c.why());
         assert!(c.why().contains("clear for"), "{}", c.why());
+    }
+
+    /// Steps an anchored controller whose agents send `sending` through
+    /// the VPN, its CAKE holding a queue, while the round trip through it
+    /// reads `vpn_ms` once the first ten seconds have set its least.
+    /// Answers the upload's lowest limit after those ten seconds.
+    fn sending_through_a_slow_vpn(c: &mut Controller, sending: f64, vpn_ms: f64) -> f64 {
+        let mut lowest = f64::INFINITY;
+        let mut at = 0.0;
+        while at < 120.0 {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            let limits = c.step(&Seen {
+                at_s: at,
+                up_kbit: sending.min(rate),
+                up_ours: Some(Ours {
+                    queued: true,
+                    in_vpn: true,
+                    vpn_queued: true,
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                vpn_ms: Some(if at < 10.0 { 30.0 } else { vpn_ms }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            if at >= 10.0 {
+                lowest = lowest.min(limits.up.map_or(f64::INFINITY, crate::rate::float));
+            }
+            at += 0.1;
+        }
+        lowest
+    }
+
+    // As at 02:05 on 16 November: the agents' upload through the VPN ran
+    // at half the line while the round trip through it rose past 100 ms.
+    // A router queues nothing while the line has room, so that wait is
+    // the VPN's own, and cuts here only held the upload low.
+    #[test]
+    fn an_anchored_upload_under_the_line_isnt_cut_for_the_vpn_s_own_delay() {
+        let mut c = anchored(12_000.0);
+        let lowest = sending_through_a_slow_vpn(&mut c, 6_000.0, 150.0);
+        assert!(
+            lowest >= 10_799.0,
+            "cut to {lowest} while the link carried half its line"
+        );
+        assert!(c.why().contains("no cut here reaches"), "{}", c.why());
+    }
+
+    // Near the line, the router may hold a queue only the VPN's flow
+    // meets, and a cut that drains it is still made there.
+    #[test]
+    fn an_anchored_upload_near_the_line_is_cut_for_a_queue_only_the_vpn_meets() {
+        let mut c = anchored(12_000.0);
+        let seen = behind_a_buffering_router(&mut c, 180.0, 11_000.0);
+        assert!(
+            seen.queue_ms < 15.0,
+            "Joel's call waited {} ms in the router: {seen:?}",
+            seen.queue_ms
+        );
+    }
+
+    // A round trip through the VPN a few ms over its least, less than the
+    // probes' own delay, shows no queue only the VPN's flow meets, so its
+    // flows backing off after a loss aren't the line either.
+    #[test]
+    fn a_vpn_s_flows_backing_off_with_its_round_trip_near_the_probes_keep_the_plateau() {
+        const PLATEAU: f64 = 10_000.0;
+        const LINE: f64 = 10_500.0;
+        let mut c = Controller::from_learned(
+            Learned {
+                base: None,
+                plateau: Some(PLATEAU),
+            },
+            Learned::default(),
+        );
+        let (mut least, mut at) = (f64::INFINITY, 0.0);
+        while at < 180.0 {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            let wanted = rate * crate::qdisc::VPN_SHARE;
+            // Past the line, the queue is the router's, as in the test above.
+            let ours = wanted < LINE;
+            let backing_off = at % 20.0 >= 16.0;
+            let vpn = wanted.min(LINE) * if backing_off { 0.8 } else { 1.0 };
+            c.step(&Seen {
+                at_s: at,
+                up_delay_ms: Some(10.0),
+                up_kbit: vpn,
+                up_ours: Some(Ours {
+                    queued: ours,
+                    in_vpn: ours,
+                    vpn_queued: ours,
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                // The least is 30, and 50 is 4 ms past the probes' 11 and
+                // the margin: less than the upload's own 10.
+                vpn_ms: Some(if at < 10.0 {
+                    30.0
+                } else if ours {
+                    50.0
+                } else {
+                    60.0
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            if at >= 10.0 {
+                least = least.min(c.up.plateau.unwrap_or(0.0));
+            }
+            at += 0.1;
+        }
+        assert!(
+            least >= PLATEAU * 0.95,
+            "backing off taught a plateau of {least} with the VPN's round trip near the probes'"
+        );
+    }
+
+    // On 16 November home's learned plateau had fallen to 4,586 under
+    // cuts for the VPN's own delay, and every restart began there, a
+    // minute under the line before the guard sent it back.
+    #[test]
+    fn an_anchored_start_begins_at_the_anchor_s_hold() {
+        let mut c = anchored(4_586.0);
+        c.start_at_the_anchor();
+        assert!(near(c.up.limit(), 10_800.0), "{:?}", c.up.limit());
+        let mut higher = anchored(12_500.0);
+        higher.start_at_the_anchor();
+        assert!(near(higher.up.limit(), 10_800.0), "{:?}", higher.up.limit());
+        let mut unanchored = anchored(4_586.0);
+        unanchored.anchor(None);
+        unanchored.start_at_the_anchor();
+        assert!(
+            unanchored.up.limit().is_some_and(|l| l < 5_000),
+            "with no anchor: {:?}",
+            unanchored.up.limit()
+        );
     }
 }

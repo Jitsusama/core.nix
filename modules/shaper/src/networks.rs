@@ -30,9 +30,25 @@ pub fn anchors(path: &Path) -> Anchors {
         .unwrap_or_default()
 }
 
+/// What a link joining `network` starts its upload at, in kbit/s, where
+/// the network has an anchor: the anchor's hold, as the one-way controller
+/// starts its stay there.
+pub fn hold(anchors: &Anchors, network: &str) -> Option<u64> {
+    anchors
+        .get(network)
+        .map(|&up| crate::rate::whole(up * crate::oneway::ANCHOR_HOLD))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_network_with_an_anchor_starts_at_its_hold() {
+        let anchors = Anchors::from([("00:00:5e:00:53:01".to_string(), 12_000.0)]);
+        assert_eq!(hold(&anchors, "00:00:5e:00:53:01"), Some(10_800));
+        assert_eq!(hold(&anchors, "link wlan0"), None, "a network with none");
+    }
 
     #[test]
     fn each_network_s_anchor_is_read_by_its_router_in_lower_case() {

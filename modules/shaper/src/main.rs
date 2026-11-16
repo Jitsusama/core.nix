@@ -428,7 +428,7 @@ fn ceiling(link: &str) -> links::Ceiling {
 
 fn start(
     uplink: links::Uplink,
-    (memory, learned): (&Memory, Option<&Path>),
+    (memory, learned, networks): (&Memory, Option<&Path>, Option<&Path>),
     hosts: &[String],
     echoes: &std::sync::mpsc::Sender<Echo>,
 ) -> Option<Shaped> {
@@ -446,6 +446,11 @@ fn start(
     // boot started at 15.4 Mbit/s, kept on 3 November, over a learned 10.1,
     // and queued at the modem until a cut 2 s later.
     if let Some(up) = learned.and_then(|kept| live::starting_up(kept, &network)) {
+        held.up = up;
+    }
+    // A network whose line is declared starts at its hold, as its stay in
+    // the one-way controller does (src/oneway.rs), whatever was learned.
+    if let Some(up) = networks.and_then(|path| networks::hold(&networks::anchors(path), &network)) {
         held.up = up;
     }
     let max = ceiling(&uplink.name);
@@ -1057,7 +1062,9 @@ fn look(
             None => {
                 let name = uplink.name.clone();
                 let learned = options.one_way.then(|| options.state.join("learned.json"));
-                if let Some(s) = start(uplink, (memory, learned.as_deref()), &options.hosts, send) {
+                let networks = options.networks.as_deref().filter(|_| options.one_way);
+                let kept = (&*memory, learned.as_deref(), networks);
+                if let Some(s) = start(uplink, kept, &options.hosts, send) {
                     shaped.insert(name, s);
                 }
             }
