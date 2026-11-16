@@ -355,6 +355,7 @@
     "commit": "49515264519f14ad238c8ad618f534f0b81f82e6",
     "due": "2026-11-18",
     "owner_pr": 4940,
+    "owner_session": "88LQC0",
     "reason": "failed, then passed, at 49515264519f",
     "subtests": [
       "test_lock_screen_returns_once_the_lock_is_drawn",
