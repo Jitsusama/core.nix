@@ -173,7 +173,10 @@ it("the lede names the worst part's first look, then why a part wasn't read", ()
   assert.equal(lede(worse), "Code: the build is failing.", "bad comes before worth a look");
   const stopped = {
     ...system,
-    parts: [first, { ...second, health: "bad" as const, side: ["the radio is busy, 20 hours ago."] }],
+    parts: [
+      first,
+      { ...second, health: "bad" as const, side: ["the radio is busy, 20 hours ago."] },
+    ],
   };
   assert.equal(
     lede(stopped),
