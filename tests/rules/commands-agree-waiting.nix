@@ -22,10 +22,6 @@
     "exits"
     "helps"
   ];
-  jobs-sorter = [
-    "kit"
-    "helps"
-  ];
   merge-net = [
     "kit"
     "exits"

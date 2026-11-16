@@ -1,8 +1,8 @@
 # The sorter that moves a terminal's busy work into the jobs slice, built
 # from this directory, its tests run as it builds. It takes what counts as
-# a call from modules/calls' crate, which takes its shape from the
-# terminal kit, so the source holds all three, from modules, and the build
-# runs in this one.
+# a call from modules/calls' crate, and it and that crate take their shape
+# from the terminal kit, so the source holds all three, from modules, and
+# the build runs in this one.
 { lib, rustPlatform }:
 let
   src = lib.fileset.toSource {
@@ -11,6 +11,7 @@ let
       ./Cargo.toml
       ./Cargo.lock
       ./src
+      ./tests
       ../../calls/Cargo.toml
       ../../calls/src
       ../../terminal-kit/Cargo.toml

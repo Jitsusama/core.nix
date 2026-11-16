@@ -33,7 +33,9 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
 use serde_json::Value;
+use terminal_kit::{Exit, Failure};
 
+use crate::cli;
 use crate::focus::{self, Window};
 use crate::kitty;
 
@@ -96,19 +98,31 @@ struct Range {
 /// switch it lands in, and on 13 November one asked while a switch
 /// reloaded the account's manager found no socket of niri's, and the
 /// switch went back.
-pub fn main(args: &[String]) -> Result<String, String> {
+///
+/// # Errors
+///
+/// Asked wrongly, 64, for no process or a word past it; failed, 1, for a
+/// process of root's.
+pub fn main(args: &[String]) -> Result<String, Failure> {
+    let wrongly = |why: String| cli::wrongly("jobs-sorter swap-in", why);
     let done = match args {
         [pid] => {
-            let pid = parse(pid)?;
+            let pid = parse(pid).map_err(wrongly)?;
             if roots(pid) {
-                return Err(format!(
-                    "process {pid} is root's, whose memory isn't read back"
+                return Err(Failure::new(
+                    Exit::Failed,
+                    format!("process {pid} is root's, whose memory isn't read back"),
                 ));
             }
             become_owner(pid)
         }
-        [owned, pid] if owned == "--owned" => read_back(parse(pid)?),
-        _ => return Err("usage: jobs-sorter swap-in [--owned] PID".to_owned()),
+        [owned, pid] if owned == "--owned" => read_back(parse(pid).map_err(wrongly)?),
+        _ => {
+            return Err(wrongly(
+                "jobs-sorter swap-in takes the PID of a window's process, after --owned if given"
+                    .to_owned(),
+            ));
+        }
     };
     Ok(done.unwrap_or_else(|error| format!("Read nothing back: {error}.")))
 }
