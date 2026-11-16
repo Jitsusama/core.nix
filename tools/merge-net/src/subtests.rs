@@ -74,6 +74,9 @@ pub fn failed_in(log: impl IntoIterator<Item = impl AsRef<str>>) -> BTreeSet<Str
 /// still to come, and #4953 was blamed for breaking three that never failed
 /// otherwise.
 fn failed_on(line: &str) -> Option<&str> {
+    if line.contains(LOST) {
+        return None;
+    }
     let (_, rest) = line.split_once("FAILED ")?;
     let (_, name) = rest.split_whitespace().next()?.rsplit_once(JOINED)?;
     let name = name.split('[').next().unwrap_or(name);
