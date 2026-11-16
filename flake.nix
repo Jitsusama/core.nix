@@ -284,6 +284,7 @@
         sudo = ./modules/sudo/home.nix;
         swayidle = ./modules/swayidle/home.nix;
         swayimg = moduleFrom ./modules/swayimg/home.nix { inherit (self.homeModules) niri quickshell; };
+        system = ./modules/system/home.nix;
         telnet = ./modules/telnet/home.nix;
         theme = ./modules/theme/home.nix;
         to-do = ./modules/to-do/home.nix;

@@ -8,6 +8,7 @@
     homeModules.prompt
     homeModules.git
     homeModules.repos
+    homeModules.system
     homeModules.bat
     homeModules.delta
     homeModules.broot

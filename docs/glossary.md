@@ -73,6 +73,9 @@ own, are never places.
 - **Network carries every context's traffic**, and the shaper keeps a call
   quick under it.
 - **The Library builds every context**, and Checks prove it.
+- **The system reads four at once**: Machine for every machine of the realm,
+  Agents' mycelium, Network and Code, each part good, watch or bad as its own
+  owner answers, and the whole as its worst part. `system` says it.
 
 ## Agents
 
