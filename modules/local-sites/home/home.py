@@ -221,7 +221,9 @@ def strip(site: Site, page: str, kind: str) -> str:
     bits = [
         f'<a href="{way_home}">All your sites</a>',
         f"<span>{e(KINDS[kind])}</span>",
-        f"<span>as of {e(site.when)}</span>",
+        # An app's own line says how live it is, so the strip says only when
+        # it was built, never a word that reads as how it stands.
+        f"<span>{'built' if kind == 'app' else 'as of'} {e(site.when)}</span>",
     ]
     if status:
         bits.append(f"<span>{e(status)}</span>")

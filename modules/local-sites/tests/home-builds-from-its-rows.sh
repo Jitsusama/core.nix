@@ -103,6 +103,9 @@ grep -A2 'class="skip"' "$root/map/index.html" | grep -q 'sites strip' ||
   fail "the map's strip isn't after its skip link"
 grep -q 'href="../">All your sites</a> <span>App</span>' "$root/map/index.html" ||
   fail "the map's strip doesn't link home or say App"
+grep -q '<span>App</span> <span>built ' "$root/map/index.html" ||
+  fail "the app's strip doesn't say when it was built"
+grep -q '<span>as of ' "$root/map/index.html" && fail "the app's strip reads as of, like a record"
 grep -q 'Asks: Say what&#x27;s missing.' "$root/map/index.html" || fail "the map's strip lacks its ask"
 grep -q '<span>Test</span>' "$root/map/tree.html" || fail "the map's own page doesn't say Test"
 grep -q '<span>settled</span>' "$root/old/index.html" || fail "the old one's strip doesn't say settled"
