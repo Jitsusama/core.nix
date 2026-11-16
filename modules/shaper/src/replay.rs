@@ -9,14 +9,16 @@
 //! queue of that direction's own to cause it, and a rate held under half
 //! the connection while traffic wanted more.
 
+use crate::bars;
 use crate::oneway;
 use crate::rate::{float, whole};
 use crate::record;
+use crate::trace;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Write as _;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write as _};
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
@@ -250,6 +252,12 @@ impl Reading {
     /// steps a controller as the samples come rather than at a stay's end.
     pub(crate) fn drain(&mut self) -> Vec<Second> {
         std::mem::take(&mut self.seconds)
+    }
+
+    /// When the stay's first second began, in seconds since 1970, once a
+    /// sample has said: a second's `t_s` counts from it.
+    pub(crate) fn began_s(&self) -> Option<u64> {
+        self.first
     }
 
     pub(crate) fn take(&mut self, sample: &Sample) {
@@ -514,6 +522,9 @@ pub struct Report {
     pub stays: Vec<Scored>,
     pub up: Score,
     pub down: Score,
+    /// The upload against each network's anchor, when one was given.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bars: Option<bars::Judged>,
 }
 
 /// Replays a stay through a controller, held against `base`, or against
@@ -689,6 +700,23 @@ pub fn replay<C: Controller>(
         stays: scored,
         up,
         down,
+        bars: None,
+    }
+}
+
+/// The rates a controller answers at each of a stay's seconds.
+fn play(stay: &Stay, controller: &mut impl Controller) -> Vec<Rates> {
+    stay.seconds.iter().map(|s| controller.second(s)).collect()
+}
+
+/// Rates already answered, played back a second at a time, so a stay's
+/// rates are scored and judged against its anchor from one run of its
+/// controller.
+struct Played(std::vec::IntoIter<Rates>);
+
+impl Controller for Played {
+    fn second(&mut self, _: &Second) -> Rates {
+        self.0.next().unwrap_or_default()
     }
 }
 
@@ -787,7 +815,38 @@ pub fn summary(report: &Report) -> String {
             );
         }
     }
+    if let Some(judged) = &report.bars {
+        judged_lines(&mut out, judged);
+    }
     out
+}
+
+/// The upload against each network's anchor, then within each window.
+fn judged_lines(out: &mut String, judged: &bars::Judged) {
+    let _ = writeln!(
+        out,
+        "\nagainst the line: under {} of the anchor past {} s with no cut made on the \
+         upload's own delay over {CAUSE_MS} ms in the minute before",
+        bars::UNDER,
+        bars::GRACE_S
+    );
+    for (name, bar) in judged.networks.iter().chain(&judged.windows) {
+        let hold = bar
+            .busy_hold
+            .map_or_else(|| "-".to_owned(), |h| format!("{:.0}%", h * 100.0));
+        let _ = writeln!(
+            out,
+            "{name}, against {} Mbit/s up for {}: breached {} in {} spells, longest {}; \
+             {} cuts, {} on its own delay; held {hold} of it while busy",
+            mbit(bar.anchor),
+            span(bar.seconds),
+            span(bar.breached_s),
+            bar.breaches.len(),
+            span(bar.longest_breach_s),
+            bar.cuts,
+            bar.earned
+        );
+    }
 }
 
 /// Which controller a replay runs.
@@ -799,6 +858,8 @@ pub enum Choice {
     /// The stand-in that limits nothing, for what the connection alone
     /// scores.
     Unlimited,
+    /// The rates the live shaper held, from its trace (src/trace.rs).
+    Held,
 }
 
 /// What `shaper replay` was asked.
@@ -807,6 +868,12 @@ pub struct Asked {
     pub base: Option<Base>,
     pub controller: Choice,
     pub files: Vec<PathBuf>,
+    /// The live shaper's trace folder, put back into the seconds.
+    pub heard: Option<PathBuf>,
+    /// The line each network carries up, which the upload is judged by.
+    pub anchors: bars::Anchors,
+    /// A file of windows to judge apart.
+    pub windows: Option<PathBuf>,
 }
 
 pub fn asked(args: &[String]) -> Result<Asked, String> {
@@ -814,6 +881,9 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
         base: None,
         controller: Choice::OneWay,
         files: Vec::new(),
+        heard: None,
+        anchors: bars::Anchors::new(),
+        windows: None,
     };
     let mut it = args.iter();
     while let Some(arg) = it.next() {
@@ -830,14 +900,31 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
                 asked.controller = match it.next().map_or("", String::as_str) {
                     "one-way" => Choice::OneWay,
                     "none" => Choice::Unlimited,
-                    other => return Err(format!("--controller is one-way or none, not {other:?}")),
+                    "held" => Choice::Held,
+                    other => {
+                        return Err(format!(
+                            "--controller is one-way, none or held, not {other:?}"
+                        ));
+                    }
                 };
             }
+            "--heard" => asked.heard = Some(it.next().map_or("", String::as_str).into()),
+            "--anchor" => {
+                let (network, up) = bars::anchor(it.next().map_or("", String::as_str))?;
+                asked.anchors.insert(network, up);
+            }
+            "--windows" => asked.windows = Some(it.next().map_or("", String::as_str).into()),
             file => asked.files.push(file.into()),
         }
     }
     if asked.files.is_empty() {
         return Err("name the day files to replay".into());
+    }
+    if asked.controller == Choice::Held && asked.heard.is_none() {
+        return Err("--controller held needs --heard, the trace it plays".into());
+    }
+    if asked.windows.is_some() && asked.anchors.is_empty() {
+        return Err("--windows needs an --anchor to judge them by".into());
     }
     Ok(asked)
 }
@@ -847,11 +934,44 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
 /// report as JSON when the kit is asked for it.
 pub fn command(args: &[String], json: bool) -> Result<(), Failure> {
     let asked = asked(args).map_err(|e| wrongly("replay", e))?;
-    let stays = read(&asked.files).map_err(|e| Failure::new(Exit::Failed, e))?;
-    let report = match asked.controller {
-        Choice::OneWay => replay(&stays, asked.base, || oneway::Controller::new(None, None)),
-        Choice::Unlimited => replay(&stays, asked.base, || Unlimited),
+    let failed = |e: String| Failure::new(Exit::Failed, e);
+    let mut stays = read(&asked.files).map_err(failed)?;
+    let held = match &asked.heard {
+        Some(folder) => trace::merge(&mut stays, &trace::read(folder).map_err(failed)?),
+        None => Vec::new(),
     };
+    let windows = match &asked.windows {
+        Some(path) => fs::read_to_string(path)
+            .map_err(|e| format!("{}: {e}", path.display()))
+            .and_then(|text| bars::windows(&text))
+            .map_err(failed)?,
+        None => Vec::new(),
+    };
+    let rates: Vec<Vec<Rates>> = match asked.controller {
+        Choice::OneWay => stays
+            .iter()
+            .map(|s| {
+                // Guarded by the network's anchor, as slice 1 guards it live.
+                let mut controller = oneway::Controller::new(None, None);
+                controller.anchor(asked.anchors.get(&s.network).map(|&up| float(up)));
+                play(s, &mut controller)
+            })
+            .collect(),
+        Choice::Unlimited => stays.iter().map(|s| play(s, &mut Unlimited)).collect(),
+        Choice::Held => held,
+    };
+    let mut each = rates.clone().into_iter();
+    let mut report = replay(&stays, asked.base, || {
+        Played(each.next().unwrap_or_default().into_iter())
+    });
+    if !asked.anchors.is_empty() {
+        let pairs: Vec<(&Stay, &[Rates])> = stays
+            .iter()
+            .zip(&rates)
+            .map(|(s, r)| (s, r.as_slice()))
+            .collect();
+        report.bars = Some(bars::judge(&pairs, &asked.anchors, &windows));
+    }
     let text = if json {
         serde_json::to_string(&report).expect("a report serialises") + "\n"
     } else {
@@ -1496,7 +1616,28 @@ mod tests {
                 base: Some(BASE),
                 controller: Choice::OneWay,
                 files: vec!["a.jsonl".into(), "b.jsonl".into()],
+                heard: None,
+                anchors: bars::Anchors::new(),
+                windows: None,
             })
+        );
+        let judged = asked(&args(
+            "--controller held --heard t --anchor 6C:AE:F6:C2:D6:B2=12000 --windows w a.jsonl",
+        ))
+        .expect("a replay of what was held, judged");
+        assert_eq!(judged.controller, Choice::Held, "held: {judged:?}");
+        assert_eq!(
+            judged.anchors.get("6c:ae:f6:c2:d6:b2"),
+            Some(&12_000),
+            "the anchor, by the network's name in lower case: {judged:?}"
+        );
+        assert!(
+            asked(&args("--controller held a.jsonl")).is_err(),
+            "held with no trace"
+        );
+        assert!(
+            asked(&args("--windows w a.jsonl")).is_err(),
+            "windows with no anchor"
         );
         assert_eq!(
             asked(&args("a.jsonl")).map(|a| (a.base, a.controller)),
