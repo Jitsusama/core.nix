@@ -13,7 +13,9 @@
 //! beside the change's in a folder it touches, or one that reaches every
 //! check, since the pass could then say something of the change it
 //! wouldn't say on its own base; nor when it holds a merge, or a commit
-//! doesn't apply cleanly. A file the change touches itself is enough
+//! doesn't apply cleanly. Going back, a move in a crate the change's
+//! crates read, or are read by, is beside it too, as ready counts it
+//! (modules/crate-reach), since ready refuses a pass over one. A file the change touches itself is enough
 //! applied cleanly onto a newer main, and onto an older one when ready
 //! reads its lines apart: 49 of main's 200 merges before 18:30 on 12
 //! November moved check-descriptions.nix, which most changes touch too.
@@ -22,6 +24,8 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+
+use crate_reach::Crates;
 
 use crate::there;
 
@@ -80,13 +84,25 @@ pub fn kept_in(listing: &str, system: &str) -> HashSet<String> {
 /// one beside the change's in a folder it touches. A file the change
 /// touches itself is enough applied cleanly going `forward`, onto a main
 /// holding its own base; going back, only one whose lines `merge-net
-/// ready` reads apart is, since ready refuses a pass of the rest over it.
-pub fn refusal(moved: &[String], change: &[String], forward: bool) -> Option<String> {
+/// ready` reads apart is, since ready refuses a pass of the rest over it,
+/// and no file of a crate `crates` says the change's reach or are reached
+/// by, which ready counts as shared however far apart their folders lie.
+pub fn refusal(
+    moved: &[String],
+    change: &[String],
+    forward: bool,
+    crates: &Crates,
+) -> Option<String> {
     if let Some(file) = moved
         .iter()
         .find(|file| EVERYWHERE.contains(&file.as_str()))
     {
         return Some(format!("main moved {file}, which every check reads"));
+    }
+    if !forward && let Some(file) = crates.beside(change, moved).first() {
+        return Some(format!(
+            "main moved {file}, in a crate the change's crates read or are read by"
+        ));
     }
     let touched: HashSet<&str> = change.iter().map(|file| folder(file)).collect();
     moved
@@ -151,7 +167,19 @@ pub fn replayed(
             .ok_or("git couldn't say what moved")
     };
     let forward = git(&["merge-base", "--is-ancestor", base, &onto]).is_some();
-    if let Some(why) = refusal(&names(&onto, base)?, &names(base, commit)?, forward) {
+    // Only a replay back can miss a move ready counts, so only one asks
+    // git which crates read which.
+    let crates = if forward {
+        Crates::default()
+    } else {
+        Crates::at(top, commit)
+    };
+    if let Some(why) = refusal(
+        &names(&onto, base)?,
+        &names(base, commit)?,
+        forward,
+        &crates,
+    ) {
         return Err(why);
     }
     let commits = git(&["rev-list", "--reverse", &change]).unwrap_or_default();

@@ -92,20 +92,22 @@ fn only_a_bases_checks_for_the_system_are_kept() {
 #[test]
 fn a_change_isnt_checked_where_main_moved_beside_it() {
     let change = ["modules/one/a".to_owned()];
+    let none = Crates::default();
     for forward in [false, true] {
         assert!(
-            refusal(&["flake.lock".to_owned()], &change, forward).is_some(),
+            refusal(&["flake.lock".to_owned()], &change, forward, &none).is_some(),
             "a moved lock reaches every check"
         );
         assert!(
-            refusal(&["modules/one/z".to_owned()], &change, forward).is_some(),
+            refusal(&["modules/one/z".to_owned()], &change, forward, &none).is_some(),
             "main moved a file in the change's own folder"
         );
         assert_eq!(
             refusal(
                 &["modules/two/b".to_owned(), "README.md".to_owned()],
                 &change,
-                forward
+                forward,
+                &none
             ),
             None,
             "main moved only what the change doesn't reach"
@@ -122,19 +124,20 @@ fn a_change_is_checked_where_main_moved_its_own_files_as_ready_takes() {
         "modules/one/a".to_owned(),
         "modules/one/checks.nix".to_owned(),
     ];
+    let none = Crates::default();
     for file in ["check-descriptions.nix", "modules/one/checks.nix"] {
         assert_eq!(
-            refusal(&[file.to_owned()], &change, false),
+            refusal(&[file.to_owned()], &change, false, &none),
             None,
             "refused over {file}, whose lines ready reads apart"
         );
     }
     assert!(
-        refusal(&["modules/one/a".to_owned()], &change, false).is_some(),
+        refusal(&["modules/one/a".to_owned()], &change, false, &none).is_some(),
         "replayed back over main moving its own code, where ready refuses the pass"
     );
     assert_eq!(
-        refusal(&["modules/one/a".to_owned()], &change, true),
+        refusal(&["modules/one/a".to_owned()], &change, true, &none),
         None,
         "refused forward over its own file, where a clean apply is enough"
     );
