@@ -8,7 +8,8 @@
 # 10 dB under it, both from the recordings DeepFilterNet's repository
 # keeps, since a synthetic voice is taken down as if it were noise. Choose
 # by Ear then records the same microphone, offers it four ways blind, and a
-# pick makes its twin the microphone chosen. An offer of Choose by Ear
+# pick makes its twin the microphone chosen and shows every clip's marks,
+# from the scorer in the folder the module gives. An offer of Choose by Ear
 # written beside the picks, as the service writes one after a call, the
 # trial hears and tells, until it's taken. Plugged in again after a
 # cleaned pick, the microphone's twin ranks one above it, and unranked
@@ -19,6 +20,9 @@
 let
   dictation = pkgs.callPackage ../../../modules/dictation/package.nix { };
   model = pkgs.callPackage ../../../modules/noise-cancelled/model.nix { };
+  # The folder the module gives the service and the trial: the cleaner's
+  # graph with the scorer beside it.
+  models = pkgs.callPackage ../../../modules/noise-cancelled/models.nix { };
   # Noise alone, then a person speaking over a room's noise, each a 48 kHz
   # mono WAV. The voice has a second of the room before it, while the
   # denoiser learns it.
@@ -54,7 +58,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     environment.etc."noise-cancelled-refusals.json".text = "[]";
   };
 
-  values = _: pkgs.writeText "noise-cancelled-values.json" (builtins.toJSON { inherit model; });
+  values = _: pkgs.writeText "noise-cancelled-values.json" (builtins.toJSON { inherit models; });
 
   tests = ./noise-cancelled-vm-test.py;
 }
