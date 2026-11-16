@@ -1,6 +1,7 @@
 /* The strip at the top of each of Joel's sites: the way home, what kind of page it is, as of
-   when, and what it asks of him. One line where it fits, in the mono, quiet but for the ask.
-   It takes the page's own theme, so it needs nothing of its own but its layout. */
+   when, and what it asks of him. One quiet line of italic serif where it fits, the way home in
+   the page's own text and the ask in its tint, never a bar of mono chrome. It takes the page's
+   own theme, so it needs nothing of its own but its layout. */
 .sites-strip {
   display: flex;
   flex-wrap: wrap;
@@ -8,7 +9,10 @@
   align-items: baseline;
   padding: var(--tie, 4px) var(--inset, 20px);
   border-bottom: 1px solid var(--rule);
-  font: 400 0.78rem / 1.5 var(--mono);
+  font: italic 400 var(--step-small, 0.85rem) / 1.5 var(--serif, serif);
+  font-feature-settings: normal;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--muted);
 }
 
@@ -18,6 +22,7 @@
   display: inline-flex;
   align-items: center;
   min-height: 44px;
+  font-style: normal;
 }
 
 .sites-strip a::before {
@@ -25,5 +30,5 @@
 }
 
 .sites-strip .asks {
-  color: var(--strong);
+  color: var(--tint, var(--strong));
 }

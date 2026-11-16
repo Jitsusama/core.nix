@@ -23,6 +23,9 @@ from pathlib import Path
 from typing import Any
 
 KINDS = {"mock": "Mock", "record": "Record", "explainer": "Explainer", "test": "Test", "app": "App"}
+ROMAN = ("I", "II", "III", "IV", "V", "VI")
+# Where the shell's sites go, from this marker to the end of its main.
+BEDS = "  <!-- the sites: home.py writes these -->"
 STATUS = {"withdrawn": "turned down, kept", "settled": "settled", "growing": ""}
 # What the home serves of its own, copied in since the server follows no
 # link out of its root.
@@ -73,6 +76,28 @@ class Site:
         return KINDS[kind] + (f" · {status}" if status else "")
 
 
+@dataclass(frozen=True)
+class Bed:
+    """One part of the home: the sites of some kinds, under a heading with a turn."""
+
+    anchor: str
+    name: str
+    turn: str
+    kinds: frozenset[str]
+
+
+# The home's beds, in the order it reads: what runs live, what explains,
+# what asks to be tried, and what records. Anything settled or turned down
+# goes under Kept, whatever its kind.
+BEDS_IN_ORDER = (
+    Bed("live", "Live", "as it happens.", frozenset({"app"})),
+    Bed("explained", "Explained", "in one page.", frozenset({"explainer"})),
+    Bed("to-try", "To try", "and say.", frozenset({"mock", "test"})),
+    Bed("on-record", "On record", "as it was.", frozenset({"record"})),
+)
+KEPT = Bed("kept", "Kept", "for reference.", frozenset(KINDS))
+
+
 def row(site: Site) -> str:
     """Write one site's line in the home's list."""
     e = html.escape
@@ -85,21 +110,52 @@ def row(site: Site) -> str:
     )
 
 
-def home(page: str, sites: list[Site]) -> str:
-    """Write the home's list into the page's shell."""
+def beds(sites: list[Site]) -> list[tuple[Bed, list[Site]]]:
+    """Sort the sites into the home's beds, in order, leaving out the empty ones."""
     fresh = [site for site in sites if not site.kept]
-    kept = [site for site in sites if site.kept]
-    listing = ['  <ul class="sites" id="sites" aria-label="Sites">', *map(row, fresh), "  </ul>"]
+    placed = [(bed, [site for site in fresh if site.kind in bed.kinds]) for bed in BEDS_IN_ORDER]
+    placed.append((KEPT, [site for site in sites if site.kept]))
+    return [(bed, rows) for bed, rows in placed if rows]
+
+
+def bed(number: str, bed: Bed, rows: list[Site]) -> list[str]:
+    """Write one bed: its numbered heading with its turn, then its sites a row each."""
+    return [
+        f'  <section class="bed" aria-labelledby="{bed.anchor}">',
+        f'    <h2 id="{bed.anchor}"><span class="numeral">{number}.</span> '
+        f"{bed.name}, <em>{bed.turn}</em></h2>",
+        f'    <ul class="sites" aria-label="{bed.name}">',
+        *("  " + line for line in map(row, rows)),
+        "    </ul>",
+        "  </section>",
+    ]
+
+
+def standing(sites: list[Site]) -> str:
+    """Say in one line how the home stands: how many grow, how many ask, how many are kept."""
+    fresh = [site for site in sites if not site.kept]
+    asking = sum(bool(site.asks) for site in fresh)
+    kept = len(sites) - len(fresh)
+    said = [f"{len(fresh)} growing", f"{asking} asking something of you"]
     if kept:
-        listing += [
-            '  <h2 class="shelf">Kept for Reference</h2>',
-            '  <ul class="sites" aria-label="Kept for Reference">',
-            *map(row, kept),
-            "  </ul>",
-        ]
-    start = page.index('  <ul class="sites"')
+        said.append(f"{kept} kept")
+    glyph = '<span class="glyph" aria-hidden="true"></span>'
+    return glyph + ' <span class="sep">·</span> '.join(said)
+
+
+def home(page: str, sites: list[Site]) -> str:
+    """Write the home's beds, its contents and its standing line into the page's shell."""
+    placed = beds(sites)
+    listing = [line for n, (b, rows) in enumerate(placed) for line in bed(ROMAN[n], b, rows)]
+    contents = "\n".join(
+        f'      <li><a href="#{b.anchor}"><span class="numeral">{ROMAN[n]}</span>'
+        f"<em>{b.name}</em></a></li>"
+        for n, (b, _) in enumerate(placed)
+    )
+    start = page.index(BEDS) + len(BEDS) + 1
     end = page.index("</main>")
-    return page[:start] + "\n".join(listing) + "\n" + page[end:]
+    page = page[:start] + "\n".join(listing) + "\n" + page[end:]
+    return page.replace("@contents@", contents).replace("@standing@", standing(sites))
 
 
 def grounds(page: str, root: Path) -> str:

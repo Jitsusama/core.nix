@@ -1,165 +1,449 @@
-/* The home of Joel's local sites, built by home.py from sites.json: one list, a site a row,
-   its name in the mono with its date at the right, its kind, then what it is and asks in the
-   serif; what's turned down or settled sits below under Kept for Reference. */
+/* The home of Joel's local sites, built by home.py from sites.json.
+
+   A walled garden at dusk: the kit's forest for the ground, jade for what
+   grows, gold for a bud and for whatever asks something of him, the first
+   stars over the wall. One crest at the gate (a seedling under an arch), a
+   sprig between the beds and at the close. The sites grow in beds by what
+   they are (live, explained, to try, on record), newest first, and what's
+   settled or turned down is kept below. Rows are parted by hairlines and
+   the one he's on is shown by a sprig in the margin and the name in gold,
+   never by a filled box. Names read in the serif; the mono keeps to the
+   eyebrow, the numerals and dates. */
+
+:root {
+  /* The leaf takes the state green, since the accent is blue in the light
+     look; nothing on this page says a state, so it means nothing else here. */
+  --leaf: var(--success);
+  --column: 46rem;
+  --threshold: 58rem;
+  --crest: clamp(9rem, 22vw, 13rem);
+  --gutter: 1.75rem;
+}
 
 body {
-  margin: 0;
-}
-
-.head {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  min-block-size: 100dvh;
+}
+
+/* The threshold: everything on one axis, as his favourite pages open. */
+.threshold {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--apart) var(--groups);
-  padding: var(--items) var(--inset);
-  border-bottom: 1px solid var(--rule);
+  gap: var(--apart);
+  max-inline-size: var(--threshold);
+  margin-inline: auto;
+  padding: var(--frames) var(--inset) var(--groups);
+  text-align: center;
 }
 
-.mark {
-  color: var(--accent);
+.crest {
+  inline-size: var(--crest);
+  block-size: var(--crest);
+  margin-block-end: var(--items);
 }
 
-.head h1 {
-  margin: 0;
-  font-size: var(--step-title);
+.crest :is(.ring, .beads, .wall, .gate, .ground, .tilth, .stem, .vein) {
+  fill: none;
+  stroke-linecap: round;
 }
 
-.keys {
-  margin: 0 0 0 auto;
-  font: 400 0.85rem / 1.4 var(--mono);
-  color: var(--muted);
+.crest .ring {
+  stroke: var(--rule);
+  stroke-width: 1;
 }
 
-main {
-  max-width: 44rem;
-  margin: 0 auto;
-  padding: var(--frames) var(--inset);
+.crest .beads {
+  stroke: var(--tint);
+  stroke-width: 1.4;
+  stroke-dasharray: 0.1 9;
+  opacity: 0.7;
+}
+
+.crest .wall {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.crest .gate {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.crest .ground {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.crest .tilth {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.crest .stem {
+  stroke: var(--leaf);
+  stroke-width: 2;
+}
+
+.crest .leaf,
+.sprig .leaf {
+  fill: var(--leaf);
+  opacity: 0.6;
+}
+
+.crest .vein {
+  stroke: var(--background);
+  stroke-width: 0.8;
+  opacity: 0.6;
+}
+
+.crest .bud,
+.sprig .bud {
+  fill: var(--tint);
+}
+
+.crest .star {
+  fill: var(--tint);
+  opacity: 0.8;
+}
+
+.eyebrow {
+  color: var(--tint);
+}
+
+.eyebrow .sep,
+.standing .sep {
+  color: var(--rule);
+  padding-inline: var(--mark);
+}
+
+.threshold h1 {
+  font-size: var(--step-display);
 }
 
 .lede {
-  font-style: italic;
-  line-height: 1.6;
-  margin: 0 0 var(--groups);
-}
-
-.sites {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.sites a {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: var(--tie) var(--items);
-  padding: var(--apart) var(--items);
-  border-radius: var(--radius);
-  text-decoration: none;
+  max-inline-size: 36rem;
   color: var(--text);
-  min-height: 44px;
+  font-size: var(--step-large);
+  line-height: 1.45;
 }
 
-.sites a:focus-visible,
-.sites a[aria-current="true"] {
-  background: var(--selection);
-  outline: none;
+/* The standing line: how the home stands, led by a bud. */
+.standing {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  margin-block-start: var(--items);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features);
+  font-size: var(--step-small);
 }
 
-.sites a:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
+.standing .glyph {
+  inline-size: 0.55em;
+  block-size: 0.55em;
+  margin-inline-end: var(--mark);
+  border-radius: 50%;
+  background: var(--tint);
 }
 
-.name {
-  font: 500 1rem / 1.4 var(--mono);
+/* The way through, as typography: an italic line of numbered beds. */
+.contents {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--tie) var(--groups);
+  margin-block-start: var(--items);
+  padding: 0;
+  list-style: none;
+}
+
+.contents a {
+  display: inline-flex;
+  align-items: baseline;
+  min-block-size: var(--target);
+  align-content: center;
+  text-decoration: none;
+  font-size: var(--step-large);
+}
+
+.contents a:hover em {
+  text-decoration: underline;
+  text-decoration-color: var(--tint);
+  text-underline-offset: 0.22em;
+}
+
+.numeral {
+  padding-inline-end: var(--mark);
+  color: var(--tint);
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features);
+  font-size: var(--step-small);
+  font-style: normal;
+  font-variation-settings: normal;
+  letter-spacing: 0.1em;
+}
+
+/* The keys and the switch, small and set under the way through. */
+.keys {
+  margin-block-start: var(--items);
+  color: var(--muted);
+  font-size: var(--step-small);
+}
+
+.keys kbd {
+  padding: 0 0.3em;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+html:not(.js) :is(.keys, .switch) {
+  display: none;
+}
+
+.switch {
+  display: flex;
+  gap: var(--tie);
+}
+
+.switch button {
+  display: grid;
+  place-items: center;
+  inline-size: var(--target);
+  block-size: var(--target);
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.switch button:hover {
   color: var(--strong);
 }
 
+.switch button[aria-checked="true"] {
+  color: var(--tint);
+  border-color: var(--rule);
+}
+
+.switch svg {
+  inline-size: 18px;
+  block-size: 18px;
+}
+
+/* The beds. */
+main {
+  flex: 1;
+  inline-size: 100%;
+  max-inline-size: var(--column);
+  margin-inline: auto;
+  padding: 0 var(--inset) var(--frames);
+}
+
+.bed {
+  padding-block-start: var(--frames);
+}
+
+/* A sprig drawn between the beds, in place of a rule. */
+.bed + .bed::before {
+  content: "";
+  display: block;
+  inline-size: 4rem;
+  block-size: 1.5rem;
+  margin: 0 auto var(--frames);
+  background: var(--leaf);
+  opacity: 0.6;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 24'%3E%3Cpath d='M4 12h56' stroke='black' stroke-width='1.4' stroke-linecap='round'/%3E%3Cpath d='M24 12c-5-6-11-7-16-5 4 5 10 6 16 5zM40 12c5 6 11 7 16 5-4-5-10-6-16-5z'/%3E%3Ccircle cx='32' cy='12' r='3'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+.bed h2 {
+  margin-block-end: var(--items);
+  text-align: center;
+  font-size: var(--step-title);
+}
+
+.bed h2 .numeral {
+  vertical-align: 0.35em;
+}
+
+.sites {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sites li + li {
+  border-block-start: 1px solid var(--rule);
+}
+
+/* A row: the name and its date on one line, its kind beside the date, then
+   what it is, then what it asks, in gold. The margin holds the sprig that
+   marks the row he's on. */
+.sites a {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--tie) var(--items);
+  padding: var(--items) 0 var(--items) var(--gutter);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.sites a::before {
+  content: "";
+  position: absolute;
+  inset-block-start: calc(var(--items) + 0.45em);
+  inset-inline-start: 0;
+  inline-size: 1.1rem;
+  block-size: 0.7rem;
+  background: var(--tint);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 14'%3E%3Cpath d='M1 7h12' stroke='black' stroke-width='1.6' stroke-linecap='round'/%3E%3Cpath d='M13 7c2-4 5-6 8-6-1 4-4 6-8 6zM13 7c2 4 5 6 8 6-1-4-4-6-8-6z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  opacity: 0;
+  translate: -0.4rem 0;
+  transition:
+    opacity var(--arrive) var(--ease),
+    translate var(--arrive) var(--ease);
+}
+
+.sites a[aria-current="true"]::before {
+  opacity: 1;
+  translate: 0 0;
+}
+
+.sites a:focus-visible {
+  outline-offset: 0;
+}
+
+.name {
+  color: var(--strong);
+  font-size: var(--step-large);
+  font-weight: 520;
+  line-height: 1.25;
+  transition: color var(--arrive) var(--ease);
+}
+
+.sites a:hover .name {
+  text-decoration: underline;
+  text-decoration-color: var(--tint);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+}
+
+.sites a[aria-current="true"] .name {
+  color: var(--tint);
+}
+
 .when {
-  font: 400 0.85rem / 1.6 var(--mono);
-  color: var(--muted);
   grid-row: 1;
   grid-column: 2;
+  align-self: baseline;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features);
+  font-size: var(--step-small);
+  white-space: nowrap;
 }
 
 .kind {
-  grid-column: 1 / -1;
-  font: 500 0.72rem / 1.4 var(--mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  grid-row: 2;
+  grid-column: 2;
+  justify-self: end;
   color: var(--muted);
+  font-size: var(--step-small);
+  font-style: italic;
+  white-space: nowrap;
 }
 
 .what {
-  grid-column: 1 / -1;
-  line-height: 1.5;
+  grid-row: 2;
+  grid-column: 1;
   color: var(--muted);
+  line-height: 1.5;
 }
 
 .asks {
   grid-column: 1 / -1;
+  color: var(--tint);
+  font-style: italic;
   line-height: 1.5;
-  color: var(--text);
 }
 
-.asks::before {
-  content: "Asks: ";
-  font: 500 0.85rem / 1.5 var(--mono);
-  color: var(--accent);
-}
-
-.shelf {
-  margin: var(--frames) 0 var(--apart);
-  padding: 0 var(--items);
-  font: 500 0.78rem / 1.4 var(--mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+/* The close: a sprig and one quiet line. */
+.close {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--apart);
+  padding: var(--groups) var(--inset) var(--frames);
   color: var(--muted);
+  font-size: var(--step-small);
+  text-align: center;
+}
+
+.sprig {
+  inline-size: 4rem;
+  block-size: 1.5rem;
+}
+
+.sprig .stem {
+  fill: none;
+  stroke: var(--leaf);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  opacity: 0.6;
 }
 
 .keypanel {
+  max-inline-size: min(28rem, calc(100vw - 2 * var(--inset)));
+  padding: var(--groups);
+  color: var(--text);
+  background: var(--raised);
   border: 1px solid var(--rule);
   border-radius: var(--radius);
-  background: var(--raised);
-  color: var(--text);
-  padding: var(--inset);
+}
+
+.keypanel::backdrop {
+  background: color-mix(in oklab, var(--background) 70%, transparent);
+}
+
+.keypanel h2 {
+  margin-block-end: var(--items);
+  text-align: center;
 }
 
 .keypanel dl div {
   display: grid;
   grid-template-columns: 8rem 1fr;
   gap: var(--items);
-  padding: var(--tie) 0;
+  padding-block: var(--tie);
+  border-block-start: 1px solid var(--rule);
 }
 
 .keypanel dd {
   margin: 0;
 }
 
-/* The head's three-way switch, light, as the system is, or dark, as on every site of his. */
-.switch {
-  flex: none;
-  display: flex;
-  gap: var(--tie);
-}
+/* A phone: the kind drops under the name, and the date keeps its place. */
+@media (width < 34rem) {
+  .sites a {
+    grid-template-columns: 1fr auto;
+  }
 
-.switch button {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  color: var(--muted);
-  cursor: pointer;
-}
+  .kind {
+    grid-row: auto;
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
 
-.switch button[aria-checked="true"] {
-  color: var(--strong);
-  border-color: var(--rule);
-}
-
-.switch svg {
-  width: 20px;
-  height: 20px;
+  .what {
+    grid-row: auto;
+    grid-column: 1 / -1;
+  }
 }
