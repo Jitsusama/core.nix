@@ -574,12 +574,26 @@ pub fn passed(head: &str, passes: &[&str], files: &[String], ready: &str) -> Exi
 }
 
 /// When the pass a change merges on was kept, in seconds since the epoch:
-/// when the record of the first of `passes` that kept a start was last
-/// written, which nix-offload does as its gate passes.
+/// when the newest gate at the top of the repository ended, in the record
+/// of the first of `passes` that kept a start. Not when the record was
+/// last written, since checks run later at the same commit add to it: on
+/// 16 November a pass that ended at 13:52 was written to again at 14:06,
+/// and its branch, with no pull request, held readers of the kit behind
+/// it for ten minutes more. A record from before ends were kept is read
+/// by when it was last written.
 fn kept_at(passes: &[&str], record: &dyn Fn(&str) -> String) -> Option<u64> {
     let commit = passes
         .iter()
         .find(|commit| started(&record(commit)).is_some())?;
+    let ended = record(commit)
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|line| line["dir"].is_null() && line["run"].is_array())
+        .filter_map(|line| line["ended"].as_u64())
+        .max();
+    if ended.is_some() {
+        return ended;
+    }
     let written = fs::metadata(crate::ready::record_of(commit)?)
         .ok()?
         .modified()
