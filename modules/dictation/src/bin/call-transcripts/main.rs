@@ -39,6 +39,10 @@
 //!     minding none of serve's manners
 //! ```
 //!
+//! How many calls there were, and nothing else of them, is said to the
+//! realm's mycelium node as its calls receptor, once a minute
+//! (receptor.rs).
+//!
 //! A call is what modules/calls counts as one: a program recording from a
 //! microphone for two seconds, over once none has for five (follow.rs).
 //! Its sound is kept only in memory until it's heard (hear.rs).
@@ -58,6 +62,7 @@ mod hear;
 mod meeting;
 mod notices;
 mod private;
+mod receptor;
 mod said;
 mod summarizer;
 mod summary;
@@ -249,6 +254,10 @@ fn serve(
     {
         let book = Arc::clone(&book);
         std::thread::spawn(move || dictation::daemon::answer_all(&book, &listener));
+    }
+    if let Some(receptor) = receptor::Receptor::from_env() {
+        let book = Arc::clone(&book);
+        std::thread::spawn(move || receptor::keep(&receptor, &book));
     }
     follow::follow(&book, calls, &jobs, &calling)
 }

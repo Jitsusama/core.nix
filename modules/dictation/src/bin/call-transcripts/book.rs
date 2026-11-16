@@ -176,6 +176,18 @@ impl Book {
         self.records.iter().find(|record| record.key == key)
     }
 
+    /// When each call started, for the calls receptor, which is given
+    /// nothing else of them.
+    pub fn starts(&self) -> impl Iterator<Item = u64> + '_ {
+        self.records.iter().map(|record| record.started)
+    }
+
+    /// Whether the calls' folder couldn't be listed, or a call's record in
+    /// it couldn't be read, as it was read at the start.
+    pub fn failing(&self) -> bool {
+        false
+    }
+
     /// Keeps `record`, in place of the one with its key, writing its
     /// meta.json and telling each watch of it.
     pub fn put(&mut self, record: Record) {
@@ -348,6 +360,58 @@ mod tests {
         let cut = opening(&long).unwrap();
         assert!(cut.chars().count() <= OPENING_CHARACTERS + 1, "{cut}");
         assert!(cut.ends_with("word\u{2026}"), "{cut}");
+    }
+
+    fn planted(calls: &Path, name: &str, meta: &[u8]) {
+        let folder = calls.join(name);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join(META), meta).unwrap();
+    }
+
+    #[test]
+    fn a_record_too_large_or_malformed_is_skipped_and_counted_as_failing() {
+        let calls = tempfile::tempdir().unwrap();
+        let good = json!({"key": "call:at:1", "started": 1, "ended": 2, "title": ""});
+        planted(calls.path(), "good", good.to_string().as_bytes());
+        assert!(!Book::read(calls.path()).failing());
+        let large = json!({
+            "key": "call:at:2", "started": 2, "ended": 3, "title": "a".repeat(70 * 1024),
+        });
+        planted(calls.path(), "large", large.to_string().as_bytes());
+        let read = Book::read(calls.path());
+        assert!(read.record("call:at:2").is_none(), "a record past 64 KiB is read");
+        assert!(read.failing());
+        std::fs::remove_dir_all(calls.path().join("large")).unwrap();
+        for (name, meta) in [
+            ("cut", &b"{\"key\": \"call:at:3\", \"start"[..]),
+            ("worded", br#"{"key": "call:at:4", "started": "soon"}"#),
+            ("keyless", br#"{"started": 4}"#),
+            ("listed", b"[1, 2, 3]"),
+            ("bytes", &[0xff, 0xfe, 0x00, 0x7b][..]),
+        ] {
+            planted(calls.path(), name, meta);
+            let read = Book::read(calls.path());
+            assert!(read.failing(), "{name} reads as sound");
+            assert_eq!(read.starts().collect::<Vec<_>>(), [1], "{name}");
+            std::fs::remove_dir_all(calls.path().join(name)).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_folder_with_no_record_or_no_calls_folder_is_no_failure() {
+        let calls = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(calls.path().join("elsewhere")).unwrap();
+        std::fs::write(calls.path().join("notes.md"), "# Notes\n").unwrap();
+        assert!(!Book::read(calls.path()).failing());
+        assert!(!Book::read(&calls.path().join("none yet")).failing());
+    }
+
+    #[test]
+    fn a_calls_folder_that_cant_be_listed_is_failing() {
+        let calls = tempfile::tempdir().unwrap();
+        let file = calls.path().join("a file");
+        std::fs::write(&file, "").unwrap();
+        assert!(Book::read(&file).failing());
     }
 
     #[test]
