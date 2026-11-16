@@ -83,7 +83,11 @@ QtObject {
             [MarginCat.swats(false, 30000, false, 0), MarginCat.swats(true, 19999, false, 0),
                 MarginCat.swats(true, 20000, false, 0), MarginCat.swats(true, 30000, true, 0)],
             [false, false, true, false]);
-        expect("its paw is back down within 250 ms", MarginCat.SWATS <= 250, true);
+        // On the screen a swat ran 83 ms past its hold, from the paw's
+        // first frame to the sit, at 60 Hz and at 120 (VKCF3Z, 38d40d08: 283
+        // ms with a 200 ms hold), and the paw must be back within 250.
+        expect("its paw is back down within 250 ms of showing", MarginCat.SWATS + 83 <= 250,
+            true);
         // Each drawing's cells as they land on the screen, from three cells
         // left of where it sits.
         const padded = line => line.padEnd(12, ".");
