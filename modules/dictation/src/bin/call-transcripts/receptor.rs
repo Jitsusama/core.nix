@@ -118,6 +118,9 @@ impl Receptor {
     /// and integers.
     pub fn arguments(&self, state: State, counts: Counts, pid: u32) -> Vec<OsString> {
         let number = |count: u64| OsString::from(count.to_string());
+        // mycelium takes counts as u32 and refuses anything past it, which
+        // would say nothing at all; so a larger count is said as its most.
+        let most = |count: u64| number(count.min(u64::from(u32::MAX)));
         let mut said: Vec<OsString> = ["--realm", &self.realm, "receptors", "say", SOURCE]
             .into_iter()
             .map(OsString::from)
@@ -126,12 +129,12 @@ impl Receptor {
             "--state".into(),
             state.word().into(),
             "--hour".into(),
-            number(counts.hour),
+            most(counts.hour),
             "--today".into(),
-            number(counts.today),
+            most(counts.today),
             // Every call is Joel's own, so each is addressed to him.
             "--addressed".into(),
-            number(counts.today),
+            most(counts.today),
             "--every".into(),
             number(EVERY.as_secs()),
             "--pid".into(),
