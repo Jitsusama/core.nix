@@ -275,7 +275,7 @@ ShellRoot {
             parts.includes("sound:usb-desk-speakers:level"), parts.join(", "));
         expect("and home's count says them", sound.counted() === "1 out \u00b7 1 in",
             sound.counted());
-        root.stamp = sound.spotsStamp;
+        root.stamp = sound.spotsStamp();
         root.first = rows[0];
         root.thingStamp = sound.spotsStampOf(rows[0]) ?? "";
         expect("a device says what its own spots are made of", root.thingStamp !== "",
@@ -324,15 +324,15 @@ ShellRoot {
             heard[0] === root.wanted[0] && sound.tally.rows - root.before === 1,
             `${sound.tally.rows - root.before} made`);
         expect("a volume served anew leaves what its spots are made of",
-            sound.spotsStamp === root.stamp, sound.spotsStamp);
+            sound.spotsStamp() === root.stamp, sound.spotsStamp());
         forget(`row:sound:${deskMicrophone.name}`);
         when("the gone row heard", () => sound.everything().length === 1, gone);
     }
 
     function gone() {
         expect("a device going changes what its spots are made of",
-            sound.spotsStamp !== root.stamp && sound.counted() === "1 out \u00b7 0 in",
-            `${sound.spotsStamp}, ${sound.counted()}`);
+            sound.spotsStamp() !== root.stamp && sound.counted() === "1 out \u00b7 0 in",
+            `${sound.spotsStamp()}, ${sound.counted()}`);
         // The rows whose texts are made ready while shut (Launcher.qml's
         // textsMadeClosed) are those it lists once it opens, so the first
         // search makes none (vm-desktop-launcher-goes-places, 2026-11-11).
@@ -590,8 +590,10 @@ ShellRoot {
                 .map(one => `${one.name} ${one.side}`).join(", ")
                 === "Filter Speech Clarity, Volume 50%",
             `${tuning?.side}: ${tuning?.targets().map(one => one.name).join(", ")}`);
-        expect("its spots know the filter by name", sound.spotsStamp.includes('["clarity"]'),
-            sound.spotsStamp);
+        expect("its spots know the filter by name",
+            sound.spotsStamp().includes('["clarity"]'), sound.spotsStamp());
+        expect("and each fact its card says, in the daemon's order",
+            sound.spotsStamp().includes('["playing","offers"]'), sound.spotsStamp());
     }
 
     function louderChoice() {

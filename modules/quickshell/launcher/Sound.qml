@@ -1282,13 +1282,29 @@ Provider {
     // made Sound's 77 to 80 spots again with nothing here changed (8N2CSC,
     // 2026-11-10). The sound daemon takes this over as it serves their
     // parts, by 13 November.
-    property string spotsStamp: JSON.stringify(ordered(outputs).concat(ordered(inputs))
-        .filter(node => !!node.audio).map(node => [node.name, named(node), chosen(node),
-            switches(node), ready.served(`row:sound:${node.name}:programs`)?.side ?? [],
-            filtersHeld(node).filters,
-            portsServed(node).slice(1).map(choice => choice.held.port),
-            Array.from(node.audio.channels ?? []).length, carried(node),
-            factsOf(node).map(fact => fact.name)]))
+    //
+    // Worked out only as the launcher asks, as it makes them, rather than
+    // held as a binding: held, it was worked out again for every record the
+    // sound daemon told, shut or not, each device's facts filtered from
+    // every key it serves. A knock and its stream going idle held Joel's
+    // chord 1,699 ms on 2026-11-16 at 11:11:57, and in 79 s of that hour
+    // it took 2.8 s of the 7.9 the shell's main thread ran. So the facts
+    // are found in one pass over the keys, too.
+    function spotsStamp() {
+        const facts = {};
+        for (const key of ready.keys) {
+            const row = ready.served(key);
+            if (row?.kind === "fact")
+                facts[row.parent] = (facts[row.parent] ?? []).concat([row.held?.fact ?? ""]);
+        }
+        return JSON.stringify(ordered(outputs).concat(ordered(inputs))
+            .filter(node => !!node.audio).map(node => [node.name, named(node), chosen(node),
+                switches(node), ready.served(`row:sound:${node.name}:programs`)?.side ?? [],
+                filtersHeld(node).filters,
+                portsServed(node).slice(1).map(choice => choice.held.port),
+                Array.from(node.audio.channels ?? []).length, carried(node),
+                facts[`row:sound:${node.name}`] ?? []]));
+    }
 
     // And what one device's spots are made of, so a change to one device
     // makes only its spots again as the launcher closes (Launcher.qml's
