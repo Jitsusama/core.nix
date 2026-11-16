@@ -354,6 +354,52 @@ in
       touch $out
     '';
 
+  # A place tied to a part of the system says how it stands by the system
+  # daemon's judgement of it (VKCF3Z's a1ef0c0a): nothing while it's good or
+  # the daemon's silent, a muted word while it couldn't be read, and else the
+  # daemon's own side in the warning's role or the alert's.
+  # tests/system-part.qml holds launcher/SystemPart.js to it in Qt's own
+  # engine.
+  a-place-stands-by-its-part =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-place-stands-by-its-part" { } ''
+      cp ${../../../tests/system-part.qml} system-part.qml
+      cp ${../launcher/SystemPart.js} SystemPart.js
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml system-part.qml
+      touch $out
+    '';
+
+  # The shell hears the system daemon's parts, by name, as the daemon tells
+  # them, and holds none once the daemon is gone, so no old judgement reads
+  # as current (tests/system-parts.qml), over a stand-in for the daemon.
+  the-shell-hears-the-systems-parts =
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # case, or sets what Quickshell runs it with.
+    pkgs.runCommandLocal "the-shell-hears-the-systems-parts" { } ''
+      mkdir -p runtime/daemons && chmod -R 700 runtime
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${../../../tests/lib/Watch.js} Watch.js
+      ${copied [
+        "Daemon.qml"
+        "SystemParts.qml"
+      ]}
+      cp ${singleton "Report.qml" ''
+        function say(text) { }
+      ''} Report.qml
+      cp ${../../../tests/system-parts.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # The rows drawn are told where they stand only when it changes, so a
   # refresh in the place they stay in redraws none of them:
   # tests/rows-place.qml holds launcher/RowsPlace.js to it in Qt's own engine.
