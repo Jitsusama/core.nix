@@ -18,8 +18,11 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::time::UNIX_EPOCH;
 
+pub use dictation::daemon::now;
 use dictation::daemon::{self, Answers, VERSION, Watches, error};
-pub use dictation::daemon::{now, write_whole};
+
+use crate::private::make_folder;
+pub use crate::private::write_whole;
 use serde_json::{Value, json};
 
 /// The book, shared between the daemon's threads.
@@ -176,7 +179,7 @@ impl Book {
     /// Keeps `record`, in place of the one with its key, writing its
     /// meta.json and telling each watch of it.
     pub fn put(&mut self, record: Record) {
-        if let Err(why) = std::fs::create_dir_all(&record.folder)
+        if let Err(why) = make_folder(&record.folder)
             .and_then(|()| write_whole(&record.folder.join(META), &record.meta().to_string()))
         {
             eprintln!(

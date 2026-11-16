@@ -57,6 +57,7 @@ mod follow;
 mod hear;
 mod meeting;
 mod notices;
+mod private;
 mod said;
 mod summarizer;
 mod summary;
@@ -226,6 +227,7 @@ fn serve(
     calls: &Path,
 ) -> Result<(), String> {
     let settings = Settings::read(model);
+    private::keep_private(calls);
     let book = Arc::new(book::Shared::new(book::Book::read(calls)));
     let listener = dictation::daemon::listen(socket)?;
     let calling = Arc::new(AtomicBool::new(false));
