@@ -62,21 +62,32 @@ impl Wants {
         })
     }
 
-    /// Who the want `{ "ask": "not-now", "address" }` names is (`known`),
-    /// refused where its session wants nothing; None for any other ask.
+    /// Who the want `{ "ask": "not-now", "address", "known" }` names is
+    /// (`known`), refused where its session wants nothing, or where it asks
+    /// other than the `known` Joel saw, which still needs him; None for any
+    /// other ask.
     pub fn put_off(&self, said: &Value) -> Option<Result<String, String>> {
         if said["ask"] != "not-now" {
             return None;
         }
         let address = said["address"].as_str().unwrap_or("").to_uppercase();
+        if address.is_empty() {
+            return Some(Err("not-now names no session's address".to_owned()));
+        }
+        let seen = said["known"].as_str().filter(|seen| !seen.is_empty());
         let held = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        Some(
-            held.iter()
-                .find(|one| one["address"].as_str().unwrap_or("").to_uppercase() == address)
-                .and_then(|one| one["known"].as_str())
-                .map(str::to_owned)
-                .ok_or_else(|| format!("{address} wants nothing of Joel to put off")),
-        )
+        let known = held
+            .iter()
+            .find(|one| one["address"].as_str().unwrap_or("").to_uppercase() == address)
+            .and_then(|one| one["known"].as_str())
+            .map(str::to_owned);
+        Some(match (known, seen) {
+            (None, _) => Err(format!("{address} wants nothing of Joel to put off")),
+            (Some(known), Some(seen)) if known != seen => Err(format!(
+                "{address} asks something new, which still needs Joel"
+            )),
+            (Some(known), _) => Ok(known),
+        })
     }
 }
 
@@ -132,19 +143,25 @@ impl PutOff {
         self.0.insert(known.to_owned(), now_ms + PUT_OFF_FOR_MS);
     }
 
-    /// Whether the want `known` is put off at `now_ms`.
+    /// Whether the want `known` is put off at `now_ms`: never past an hour
+    /// from now, whatever the file says or the clock did.
     pub fn holds(&self, known: &str, now_ms: u128) -> bool {
-        self.0.get(known).is_some_and(|until| *until > now_ms)
+        self.0
+            .get(known)
+            .is_some_and(|until| *until > now_ms && *until <= now_ms + PUT_OFF_FOR_MS)
     }
 
     /// How long from `now_ms` until the soonest want still put off needs
-    /// Joel again, so its record is made anew then; none while none is.
+    /// Joel again, so its record is made anew then, and at most a minute,
+    /// since a sleep stops the wait's clock but not the hour's; none while
+    /// none is.
     pub fn wait(&self, now_ms: u128) -> Option<Duration> {
         self.0
             .values()
-            .filter(|until| **until > now_ms)
+            .filter(|until| **until > now_ms && **until <= now_ms + PUT_OFF_FOR_MS)
             .min()
             .map(|until| Duration::from_millis(u64::try_from(until - now_ms).unwrap_or(u64::MAX)))
+            .map(|wait| wait.min(Duration::from_mins(1)))
     }
 }
 
@@ -358,12 +375,21 @@ mod tests {
     #[test]
     fn what_is_put_off_is_kept_waited_for_and_let_go_once_over() {
         let mut put_off = PutOff::default();
-        put_off.put("BUOY approval-1", 0);
-        put_off.put("SKIFF question-1", 600_000);
+        put_off.put("SKIFF question-1", 0);
+        put_off.put("BUOY approval-1", 600_000);
+        assert_eq!(
+            put_off.wait(PUT_OFF_FOR_MS - 10_000),
+            Some(Duration::from_secs(10)),
+            "the soonest still put off is waited for"
+        );
         assert_eq!(
             put_off.wait(600_000),
-            Some(Duration::from_secs(3_000)),
-            "the soonest still put off is waited for"
+            Some(Duration::from_mins(1)),
+            "a minute at most, lest a sleep carry the wait past its hour"
+        );
+        assert!(
+            !put_off.holds("BUOY approval-1", 0),
+            "never held past an hour from now, whatever the clock did"
         );
         assert_eq!(
             put_off.wait(PUT_OFF_FOR_MS + 600_000),
@@ -372,7 +398,7 @@ mod tests {
         );
         put_off.put("KELP approval-2", PUT_OFF_FOR_MS);
         assert!(
-            !put_off.0.contains_key("BUOY approval-1"),
+            !put_off.0.contains_key("SKIFF question-1"),
             "one whose hour is over is let go as another is put off"
         );
         let path = std::env::temp_dir()
@@ -410,6 +436,24 @@ mod tests {
                 Some(Err(_))
             ),
             "a session wanting nothing is refused"
+        );
+        assert_eq!(
+            held.put_off(&json!({"ask": "not-now", "address": "SKIFF",
+                "known": "SKIFF approval-1"})),
+            Some(Ok("SKIFF approval-1".to_owned())),
+            "as the ask Joel saw"
+        );
+        assert!(
+            matches!(
+                held.put_off(&json!({"ask": "not-now", "address": "SKIFF",
+                    "known": "SKIFF approval-0"})),
+                Some(Err(_))
+            ),
+            "a newer ask than the one he saw still needs him"
+        );
+        assert!(
+            matches!(held.put_off(&json!({"ask": "not-now"})), Some(Err(_))),
+            "and one naming no session is refused"
         );
         assert_eq!(
             held.put_off(&json!({"ask": "answer"})),

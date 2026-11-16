@@ -565,16 +565,31 @@ Singleton {
     // Joel says Not Now to what a session asks him, which the daemon puts
     // off for an hour (wants.rs's PutOff), so it leaves For You, rings for
     // nothing, and is back once the hour's over if it still stands.
-    function putOffWant(address) {
-        reopenKind.ask({ ask: "not-now", address: String(address) });
+    // It names the ask he saw (`known`), so a newer one the session asks
+    // meanwhile is refused and still needs him.
+    function putOffWant(address, known) {
+        reopenKind.ask({ ask: "not-now", address: String(address), known: String(known ?? "") });
     }
-    // The addresses whose wants the daemon says are put off, in capitals.
-    readonly property var putOff: {
+    // Who the daemon says the want of the session at `address` is, or "".
+    function wantKnown(address) {
+        return String(wantRecords[String(address).toUpperCase()]?.known ?? "");
+    }
+    // The daemon's want records by address, in capitals.
+    readonly property var wantRecords: {
         void reopenKind.revision;
         const by = {};
         for (const one of Object.values(reopenKind.held)) {
-            if (one.kind === "want" && one.putOff === true)
-                by[String(one.address).toUpperCase()] = true;
+            if (one.kind === "want")
+                by[String(one.address).toUpperCase()] = one;
+        }
+        return by;
+    }
+    // The addresses whose wants the daemon says are put off, in capitals.
+    readonly property var putOff: {
+        const by = {};
+        for (const address of Object.keys(wantRecords)) {
+            if (wantRecords[address].putOff === true)
+                by[address] = true;
         }
         return by;
     }
