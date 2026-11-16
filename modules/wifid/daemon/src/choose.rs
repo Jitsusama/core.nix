@@ -352,6 +352,7 @@ pub(crate) mod tests {
     /// The desk's access point's own 2.4 GHz radio.
     const NEAR: &str = "6c:ae:f6:c1:84:27";
     const CH52: u32 = 5260;
+    const CH149: u32 = 5745;
     const CH6: u32 = 2437;
 
     fn carried(p95: u64, lost: f64) -> Measured {
@@ -799,6 +800,85 @@ pub(crate) mod tests {
             Choice::Stay,
             "30 ms carries well, on the wider band"
         );
+    }
+
+    /// The hall's 5 GHz radio as the card on it hears it, saying how busy
+    /// its channel is.
+    fn the_hall_itself(busy: u8) -> Other {
+        Other {
+            point: HALL.into(),
+            signal: -41,
+            busy: Some(busy),
+            frequency: CH149,
+            measured: None,
+        }
+    }
+
+    #[test]
+    fn a_card_on_a_channel_56_percent_busy_tries_a_quieter_one_within_reach() {
+        let mut chooser = Chooser::default();
+        let middling = carried(38, 0.0);
+        let others = [the_hall_itself(56), desk_at(-43, None)];
+
+        let on = (HALL, &middling, -41, CH149);
+        let choice = chooser.choose(Instant::now(), on, &others, false);
+
+        assert_eq!(choice, Choice::Try(DESK.into()), "ch52 ran 20% busy");
+    }
+
+    #[test]
+    fn a_card_on_a_channel_30_percent_busy_stays() {
+        let mut chooser = Chooser::default();
+        let middling = carried(38, 0.0);
+        let others = [the_hall_itself(30), desk_at(-43, None)];
+
+        let on = (HALL, &middling, -41, CH149);
+        let choice = chooser.choose(Instant::now(), on, &others, false);
+
+        assert_eq!(choice, Choice::Stay, "30% busy leaves room");
+    }
+
+    #[test]
+    fn a_card_on_a_busy_channel_keeps_off_one_as_busy() {
+        let mut chooser = Chooser::default();
+        let middling = carried(38, 0.0);
+        let busy = Other {
+            busy: Some(45),
+            ..desk_at(-43, None)
+        };
+
+        let on = (HALL, &middling, -41, CH149);
+        let choice = chooser.choose(Instant::now(), on, &[the_hall_itself(56), busy], false);
+
+        assert_eq!(choice, Choice::Stay, "45% busy is no quieter");
+    }
+
+    #[test]
+    fn a_card_on_a_busy_channel_keeps_off_a_quieter_one_out_of_reach() {
+        let mut chooser = Chooser::default();
+        let middling = carried(38, 0.0);
+        let others = [the_hall_itself(56), desk_at(-50, None)];
+
+        let on = (HALL, &middling, -41, CH149);
+        let choice = chooser.choose(Instant::now(), on, &others, false);
+
+        assert_eq!(choice, Choice::Stay, "9 dB fainter on the same band");
+    }
+
+    #[test]
+    fn a_move_off_a_busy_channel_goes_back_if_it_carries_worse() {
+        let start = Instant::now();
+        let mut chooser = Chooser::default();
+        let middling = carried(38, 0.0);
+        let others = [the_hall_itself(56), desk_at(-43, None)];
+        let left = chooser.choose(start, (HALL, &middling, -41, CH149), &others, false);
+
+        let worse = carried(50, 0.0);
+        let on = (DESK, &worse, -43, CH52);
+        let back = chooser.choose(start + TRIAL, on, &[the_hall_itself(56)], false);
+
+        assert_eq!(left, Choice::Try(DESK.into()), "ch149 was 56% busy");
+        assert_eq!(back, Choice::Back(HALL.into()), "50 ms is worse than 38");
     }
 
     #[test]

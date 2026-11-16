@@ -215,7 +215,7 @@ mod tests {
     use crate::learn::Here;
     use crate::measure::Echo;
     use crate::measure::tests::joined;
-    use crate::radio::Radio;
+    use crate::radio::{Load, Radio};
     use crate::state::Security;
 
     const DESK: &str = "6c:ae:f6:c1:84:26";
@@ -452,5 +452,33 @@ mod tests {
         );
 
         assert_eq!(to, None, "30 ms is carrying well, and the hall is unknown");
+    }
+
+    #[test]
+    fn a_card_hears_how_busy_its_own_channel_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let learned = Learned::kept_in(&dir.path().join("carried"));
+        let (lately, now) = (Measures::default(), Instant::now());
+        let on_5_ghz = |bssid, frequency, busy| Heard {
+            frequency,
+            radio: Radio {
+                load: Some(Load { stations: 4, busy }),
+                ..Radio::default()
+            },
+            ..heard(bssid, -42)
+        };
+        let around = [on_5_ghz(HALL, 5745, 56), on_5_ghz(DESK, 5260, 20)];
+        let known = known(&lately, &learned, now, 20);
+
+        let to = chosen(
+            &mut Chooser::default(),
+            now,
+            (&joined(HALL), &carried(38)),
+            &around,
+            &known,
+            false,
+        );
+
+        assert_eq!(to, Some(Next::Move(DESK.into())), "the hall said 56% busy");
     }
 }
