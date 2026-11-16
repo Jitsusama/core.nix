@@ -271,11 +271,11 @@ pub fn riding(head: &str) -> Option<String> {
 /// What `ready` says of a rider asked of again, among the riders under
 /// `root`: that it waits, not that it was just put on the train.
 fn rides_said(root: &Path) -> String {
-    let others = riders(root).len().saturating_sub(1);
     format!(
-        "it waits with {others} others for one run of changed-checks over them all to \
+        "it waits on the train, {} riders in all, for one run of changed-checks over them to \
          pass, its words going to {}; push nothing to this branch until it lands, and once \
          it has, the pull request reads merged",
+        riders(root).len(),
         folder(root).display()
     )
 }
@@ -369,7 +369,10 @@ enum After {
 /// more than its riders, as for a main that broke or a gate that failed
 /// to run, so every rider falls back to running again alone rather than
 /// the train halving through each of them: about twice their number in
-/// runs, where falling costs one each.
+/// runs, where falling costs one each. Two riders that each break it,
+/// boarded one after the other, read the same, and the riders behind
+/// them fall back too: telling the two apart takes a run of main alone,
+/// and falling back costs only what each paid before the train.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Splitting {
     /// How many riders, the first to board, a red candidate is known to
@@ -497,6 +500,12 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
 /// falls, or every rider does, as `splitting` says.
 fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &mut Splitting) {
     let (falling, why) = match splitting.red(merged.len()) {
+        After::Falls => (merged.to_vec(), "the candidate it rode alone"),
+        After::AllFall => (
+            riders(root).into_iter().map(|rider| rider.head).collect(),
+            "the train gave up, as the second rider in a row to ride a candidate alone \
+             failed too, so its red is not one rider's; the last",
+        ),
         After::Narrows => {
             println!(
                 "merge-net: the candidate {} failed changed-checks, so the train takes its \
@@ -507,12 +516,13 @@ fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &
             );
             return;
         }
-        After::Falls => (merged.to_vec(), "the candidate it rode alone"),
-        After::AllFall => (
-            riders(root).into_iter().map(|rider| rider.head).collect(),
-            "a second candidate holding one rider alone",
-        ),
     };
+    println!(
+        "merge-net: the candidate {} failed changed-checks, so {} of the train's riders fall \
+         back to running again alone",
+        short(candidate),
+        falling.len()
+    );
     for head in &falling {
         let said = format!(
             "{why}, {}, failed changed-checks; its words are in {}",

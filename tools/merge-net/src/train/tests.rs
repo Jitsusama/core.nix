@@ -56,12 +56,39 @@ fn a_rider_asked_of_again_is_told_it_waits_not_that_it_boarded() {
     board(&root, &rider("b2", 20)).unwrap();
     let said = rides_said(&root);
     assert!(
-        said.starts_with("it waits with 1 others"),
-        "a rider asked of again wasn't told it waits with the others: {said}"
+        said.starts_with("it waits on the train, 2 riders in all"),
+        "a rider asked of again wasn't told it waits on the train with the others: {said}"
     );
     assert!(
         !said.contains("put") && !said.contains("started"),
         "a rider asked of again was told it was just put on the train: {said}"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_train_that_gives_up_makes_every_rider_fall_saying_why() {
+    let root = root("gives-up");
+    for (head, at) in [("a1", 10), ("b2", 20), ("c3", 30)] {
+        board(&root, &rider(head, at)).unwrap();
+    }
+    let mut splitting = Splitting::default();
+    let log = Path::new("/state/train/c.log");
+    red(&root, "c1", log, &["a1".to_owned()], &mut splitting);
+    assert_eq!(
+        riders(&root).len(),
+        2,
+        "the first rider to fail alone didn't fall by itself"
+    );
+    red(&root, "c2", log, &["b2".to_owned()], &mut splitting);
+    assert!(
+        riders(&root).is_empty(),
+        "riders still rode a train that gave up"
+    );
+    let why = fell(&root, "c3").unwrap_or_default();
+    assert!(
+        why.starts_with("the train gave up") && why.contains("c.log"),
+        "a rider that never rode alone wasn't told the train gave up, and where: {why}"
     );
     fs::remove_dir_all(&root).unwrap();
 }
@@ -143,6 +170,21 @@ fn two_riders_that_break_the_train_each_fall_and_the_rest_land() {
         landed,
         vec![0, 2, 4],
         "the riders that broke nothing didn't land"
+    );
+}
+
+#[test]
+fn two_breakers_boarded_one_after_the_other_send_the_riders_behind_back_alone() {
+    let (landed, fell, _) = split_out(5, &|riding| riding.contains(&1) || riding.contains(&2));
+    assert_eq!(
+        landed,
+        vec![0],
+        "a rider boarded before the two breakers didn't land"
+    );
+    assert_eq!(
+        fell,
+        vec![1, 2, 3, 4],
+        "the riders from the first breaker on didn't all fall back to running alone"
     );
 }
 
