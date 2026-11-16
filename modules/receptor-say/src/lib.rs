@@ -187,8 +187,8 @@ impl Speaker {
     ///
     /// As `say`.
     pub fn say_off(&self, sources: &[Source], every: Duration, pid: u32) -> Result<(), String> {
-        let _ = (sources, every, pid);
-        Ok(())
+        let off: Vec<Told> = sources.iter().copied().map(Told::off).collect();
+        self.say(&off, every, pid)
     }
 }
 
@@ -216,11 +216,6 @@ impl Declared {
     /// A declared GitHub login, if it is one: GitHub's letters, digits and
     /// single hyphens, neither first nor last, at most 39 of them.
     pub fn login(declared: Option<OsString>) -> Option<Self> {
-        let _ = declared?;
-        None
-    }
-
-    fn _login(declared: Option<OsString>) -> Option<Self> {
         let declared = declared?.into_string().ok()?;
         let lettered = declared
             .bytes()

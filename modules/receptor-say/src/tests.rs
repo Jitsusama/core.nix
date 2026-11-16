@@ -88,8 +88,7 @@ fn a_count_past_what_mycelium_takes_is_said_as_the_most_it_takes() {
     let said = speaker().arguments(told, Duration::from_secs(60), 1);
     let counts: Vec<&str> = [8, 10, 12].map(|at| words(&said)[at]).to_vec();
     assert_eq!(
-        counts,
-        ["4294967295"; 3],
+        counts, ["4294967295"; 3],
         "a count past u32, which mycelium refuses, wasn't held to it"
     );
 }
@@ -172,7 +171,9 @@ fn only_a_login_github_gives_is_declared_as_one() {
     .map(|login| Declared::login(Some(login.into())).is_some());
     assert_eq!(
         declared,
-        [true, true, false, false, false, false, false, false, true, false],
+        [
+            true, true, false, false, false, false, false, false, true, false
+        ],
         "only GitHub's letters, single inner hyphens and at most 39 are declared"
     );
 }
@@ -180,8 +181,10 @@ fn only_a_login_github_gives_is_declared_as_one() {
 #[test]
 fn the_declared_one_is_matched_exactly_but_for_ascii_case() {
     let declared = Declared::login(Some("JSama".into())).expect("a sound login");
-    let matched = ["jsama", "JSAMA", "JSama", "jsama2", "jsam", " jsama", "jſama"]
-        .map(|said| declared.is(said));
+    let matched = [
+        "jsama", "JSAMA", "JSama", "jsama2", "jsam", " jsama", "jſama",
+    ]
+    .map(|said| declared.is(said));
     assert_eq!(
         matched,
         [true, true, true, false, false, false, false],
@@ -193,10 +196,8 @@ fn the_declared_one_is_matched_exactly_but_for_ascii_case() {
 fn folder(name: &str) -> PathBuf {
     static MADE: AtomicUsize = AtomicUsize::new(0);
     let made = MADE.fetch_add(1, Ordering::Relaxed);
-    let folder = std::env::temp_dir().join(format!(
-        "receptor-say-{}-{made}-{name}",
-        std::process::id()
-    ));
+    let folder =
+        std::env::temp_dir().join(format!("receptor-say-{}-{made}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(&folder).expect("the test's folder is made");
     folder
@@ -250,10 +251,11 @@ fn each_receptor_is_said_by_running_mycelium_with_its_arguments_alone() {
     let expected: String = told
         .iter()
         .map(|&one| {
-            let mut lines: Vec<String> = words(&speaker.arguments(one, Duration::from_secs(60), 4242))
-                .into_iter()
-                .map(str::to_owned)
-                .collect();
+            let mut lines: Vec<String> =
+                words(&speaker.arguments(one, Duration::from_secs(60), 4242))
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect();
             lines.push(String::new());
             lines.join("\n") + "\n"
         })
@@ -271,12 +273,20 @@ fn saying_off_says_each_source_off_with_no_counts() {
     let folder = folder("off");
     let (program, given) = stand_in(&folder);
     let speaker = Speaker::named(Some(program.into()), Some("work".into())).expect("sound");
-    let mut said = speaker.say_off(&[Source::Mail, Source::Calendar], Duration::from_secs(60), 1);
+    let mut said = speaker.say_off(
+        &[Source::Mail, Source::Calendar],
+        Duration::from_secs(60),
+        1,
+    );
     for _ in 0..BUSY_TRIES {
         match &said {
             Err(why) if why.contains("os error 26") => {
                 std::thread::yield_now();
-                said = speaker.say_off(&[Source::Mail, Source::Calendar], Duration::from_secs(60), 1);
+                said = speaker.say_off(
+                    &[Source::Mail, Source::Calendar],
+                    Duration::from_secs(60),
+                    1,
+                );
             }
             _ => break,
         }
@@ -302,7 +312,10 @@ fn a_mycelium_that_refuses_is_said_as_failing_and_stops_there() {
     let (program, given) = stand_in(&folder);
     std::fs::write(folder.join("fail"), "").expect("the stand-in is told to fail");
     let speaker = Speaker::named(Some(program.into()), Some("work".into())).expect("sound");
-    let refused = said_through(&speaker, &[Told::off(Source::Mail), Told::off(Source::Calendar)]);
+    let refused = said_through(
+        &speaker,
+        &[Told::off(Source::Mail), Told::off(Source::Calendar)],
+    );
     assert!(refused.is_err(), "a refusal wasn't said: {refused:?}");
     let given = std::fs::read_to_string(&given).expect("the stand-in wrote what it was given");
     assert!(
