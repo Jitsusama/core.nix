@@ -420,6 +420,39 @@ QtObject {
             opened.words],
             [1, "B", "opened", "opened", "2026-11-08T14:00:00.000Z", "Review the change",
                 "https://github.com/o/r/pull/1", undefined, undefined, undefined]);
+        // The to-do daemon writes it the same, in its own key order and
+        // at its own moment, which says nothing new of the look.
+        const shown = Looks.rewritten(read.waiting[1], "cleared", "cleared", now);
+        const written = (changes) => {
+            const one = JSON.parse(shown);
+            const told = {};
+            for (const key of Object.keys(one).reverse())
+                told[key] = one[key];
+            return JSON.stringify(Object.assign(told, { resolvedAt: "2026-11-08T14:00:00.012Z" },
+                changes));
+        };
+        expect("a look the daemon settled as shown is alike, written its own way",
+            Looks.settledAlike(shown, written({})), true);
+        expect("one it settled another way is not",
+            Looks.settledAlike(shown, written({ how: "opened" })), false);
+        expect("nor one whose session wrote it anew",
+            Looks.settledAlike(shown, written({ title: "Review it again" })), false);
+        expect("nor one with a word more", Looks.settledAlike(shown, written({ ask: "Why?" })),
+            false);
+        expect("nor what can't be read", Looks.settledAlike(shown, "{"), false);
+        const offered = Looks.rewritten(choosing, "cleared", "cleared", now);
+        const reordered = JSON.parse(offered);
+        // Qt's engine has no Object.fromEntries, so each is turned by hand.
+        const turned = choice => {
+            const back = {};
+            for (const key of Object.keys(choice).reverse())
+                back[key] = choice[key];
+            return back;
+        };
+        reordered.choices = reordered.choices.map(choice =>
+            choice === null || typeof choice !== "object" ? choice : turned(choice));
+        expect("its choices' keys ordered otherwise, it's alike all the way down",
+            Looks.settledAlike(offered, JSON.stringify(reordered)), true);
 
         // The to-dos Joel said were done, newest first, and none
         // he put off or that still waits.

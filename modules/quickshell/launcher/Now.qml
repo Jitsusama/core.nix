@@ -921,10 +921,22 @@ Provider {
             next[one.file] = one.text;
         for (const file of Object.keys(looksSettling)) {
             const told = records[`look:${looksSettling[file].id}`]?.look;
-            if (told === undefined || told?.state === looksSettling[file].state)
-                delete looksSettling[file];
-            else
+            if (told !== undefined && told?.state !== looksSettling[file].state) {
                 next[file] = looksSettling[file].text;
+                continue;
+            }
+            if (told !== undefined && Looks.settledAlike(looksSettling[file].text, next[file]))
+                looksAsShown[file] = { told: next[file], text: looksSettling[file].text };
+            delete looksSettling[file];
+        }
+        // The daemon's text of a look settled just as the act showed it is
+        // the same look, so the act's text stands while the stream tells it
+        // so (Looks.settledAlike).
+        for (const file of Object.keys(looksAsShown)) {
+            if (next[file] === looksAsShown[file].told)
+                next[file] = looksAsShown[file].text;
+            else
+                delete looksAsShown[file];
         }
         const files = Object.keys(next);
         if (files.length === Object.keys(lookTexts).length
@@ -936,6 +948,10 @@ Provider {
     // Each look Joel settled, by its file's name, `{ id, state, text }`,
     // while the stream still tells it as it was.
     readonly property var looksSettling: ({})
+    // Each look the stream told settled as the act showed it, by its
+    // file's name, `{ told, text }`: the stream's text, and the act's, which
+    // stands for it while the stream tells it so.
+    readonly property var looksAsShown: ({})
 
     // A look Joel is done with, shown so in the act's own frame and asked
     // of the to-do daemon, which writes its file whole (#4012's
@@ -948,6 +964,7 @@ Provider {
             return;
         const was = lookTexts[one.file] ?? "";
         const text = Looks.rewritten(one, state, how, Date.now());
+        delete looksAsShown[one.file];
         looksSettling[one.file] = { id: one.id, state: state, text: text };
         lookTexts = Object.assign({}, lookTexts, { [one.file]: text });
         lookStream.ask({ ask: "settle-look", look: one.id, state: state, how: how },

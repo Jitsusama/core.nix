@@ -150,13 +150,28 @@ Scope {
     // held are asked what they hold, as the launcher would ask them again,
     // so a change makes no row's verbs that nobody's looking at.
     property string lastSaid: ""
+    // What its own rows showed then, and which rows were held below them.
+    property string lastOwn: ""
+    property string lastHeld: ""
 
+    // Since the launcher stepped in or out, what it holds below this
+    // provider's rows is what it made as it stepped, not what was said
+    // last, so that's what the rows are compared with there: said last
+    // with nothing held, the first change after Return into For You read
+    // For You's rows as new, and the launcher drew them again as Return's
+    // act, 73 of 81 times (Joel's journal, 2026-11-15).
     function changedTo(rows) {
-        const now = says(rows, heldKeys(), true);
-        if (now === lastSaid)
-            return;
+        const keys = heldKeys();
+        const held = keys.join("\u241f");
+        const now = says(rows, keys, true);
+        const own = keys.length === 0 ? now : says(rows, [], true);
+        const same = held === lastHeld ? now === lastSaid
+            : own === lastOwn && now === says(rows, keys, true, heldRows());
         lastSaid = now;
-        changed();
+        lastOwn = own;
+        lastHeld = held;
+        if (!same)
+            changed();
     }
 
     // The keys of the rows held below its collection in the launcher, in
@@ -167,13 +182,24 @@ Scope {
         return from < 0 ? [] : steps.slice(from + 1).map(step => step.row.key ?? "");
     }
 
+    // The rows the launcher shows in each step held below this provider's,
+    // in order, those that left since aside, as heldKeys names the steps.
+    function heldRows() {
+        const steps = launcher && launcher.open ? launcher.held ?? [] : [];
+        const from = steps.findIndex(step => step.row.from === provider);
+        return from < 0 ? [] : steps.slice(from + 1)
+            .map(step => (step.rows ?? []).filter(row => !row.went));
+    }
+
     // What rows show, as `changedTo` compares them; the first row keyed as
     // the next held step says what it holds too: a thing's verbs, or, below
     // a row that isn't nested, a verb's targets, as the launcher steps in.
     // A side that runs on by itself (`counts`, Launcher.qml) is said by the
     // widest it reads until it grows a figure, since the launcher draws it
     // afresh, so only its growing changes what the rows say.
-    function says(rows, held, things) {
+    // Given `shown`, the rows each held step shows, those are what each
+    // holds rather than what it would be asked for now.
+    function says(rows, held, things, shown) {
         let open = held.length > 0;
         return rows.map(row => {
             const side = typeof row.counts === "function" ? row.sideWidest ?? "" : row.side ?? "";
@@ -185,8 +211,10 @@ Scope {
                 return own;
             open = false;
             const asked = things ? row.verbs : row.targets;
-            const inside = typeof asked === "function" ? asked() ?? [] : [];
-            return `${own}\u241d${says(inside, held.slice(1), !!row.nested)}\u241c`;
+            const inside = shown ? shown[0] ?? []
+                : typeof asked === "function" ? asked() ?? [] : [];
+            const within = says(inside, held.slice(1), !!row.nested, shown?.slice(1));
+            return `${own}\u241d${within}\u241c`;
         }).join("\u241e");
     }
 

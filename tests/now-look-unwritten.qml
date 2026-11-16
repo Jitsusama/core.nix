@@ -5,7 +5,9 @@
 // The one refused is put back as it read, rather than shown done until a
 // later reading brings it back with nothing said (Y2YBTS, 2026-11-10); the
 // one settled stays cleared once the stream tells it so, with nothing of
-// Joel's act left laid over it.
+// Joel's act left laid over it, and the daemon's word on it, the same look
+// written its own way at its own moment, makes nothing new, so For You
+// isn't drawn again a moment after the act's own frame.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 pragma ComponentBehavior: Bound
 import Quickshell
@@ -26,6 +28,17 @@ ShellRoot {
             at: root.lookedAt, target: "https://example.com", title: title,
             why: "Because.", state: state, session: "" } };
     }
+
+    // A look as the daemon writes it settled: what it read, then the
+    // state and how asked, and when it wrote it (modules/to-do's looked.rs).
+    function settled(ask) {
+        const record = root.look(ask.look, "Read B", ask.state);
+        Object.assign(record.look, { how: ask.how, resolvedAt: new Date().toISOString() });
+        return record;
+    }
+
+    // The text the act laid over the second look, in its own frame.
+    property string clearedText: ""
 
     // The settle-look asks the stand-in was sent, by look.
     property var settles: []
@@ -56,7 +69,7 @@ ShellRoot {
                             ? [{ id: ask.id, error: { code: "refused",
                                 message: "the looks folder is read-only" } }]
                             : [{ id: ask.id, done: true }, { id: root.watch,
-                                changed: [root.look(ask.look, "Read B", ask.state)] }];
+                                changed: [root.settled(ask)] }];
                     }
                     for (const answer of answers)
                         asked.write(`${JSON.stringify(answer)}\n`);
@@ -130,6 +143,7 @@ ShellRoot {
             what: "the second, cleared, shows so in the act's own frame",
             run: () => {
                 root.clear("b");
+                root.clearedText = now.lookTexts["b.json"] ?? "";
                 Expect.expect("the second shows cleared in the act's own frame",
                     root.waitingFiles() === "[\"a.json\"]", root.waitingFiles());
             },
@@ -140,6 +154,10 @@ ShellRoot {
             holds: () => root.waitingFiles() === "[\"a.json\"]"
                 && Object.keys(now.looksSettling).length === 0
                 && JSON.parse(now.lookTexts["b.json"] ?? "{}").state === "cleared"
+        },
+        {
+            what: "the daemon's word on it, the same look, leaves the text the act showed",
+            holds: () => now.lookTexts["b.json"] === root.clearedText
         }
     ]
 

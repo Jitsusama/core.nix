@@ -177,3 +177,39 @@ function rewritten(one, state, how, now) {
     return JSON.stringify(Object.assign(kept, { state, how,
         resolvedAt: new Date(now).toISOString() }), null, 2);
 }
+
+// Whether the to-do daemon's text of a look, `told`, says just what the
+// text the shell showed it settled in, `shown`, did, but for when it was
+// settled: the daemon writes the same look in its own key order at its own
+// moment, so taking its text made the look's row again a moment after the
+// act's own frame, and For You was drawn again for nothing.
+function settledAlike(shown, told) {
+    const read = text => {
+        try {
+            const one = JSON.parse(text);
+            return one !== null && typeof one === "object" ? one : null;
+        } catch (_unread) {
+            return null;
+        }
+    };
+    const was = read(shown);
+    const is = read(told);
+    if (was === null || is === null) {
+        return false;
+    }
+    const unsettled = one => canonical(Object.assign({}, one, { resolvedAt: null }));
+    return unsettled(was) === unsettled(is);
+}
+
+// A value as JSON with every object's keys in order, at any depth, since
+// the daemon may order them otherwise than the look's session did.
+function canonical(value) {
+    if (Array.isArray(value)) {
+        return `[${value.map(canonical).join(",")}]`;
+    }
+    if (value !== null && typeof value === "object") {
+        return `{${Object.keys(value).sort()
+            .map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`;
+    }
+    return JSON.stringify(value);
+}

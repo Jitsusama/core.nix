@@ -45,6 +45,7 @@ import socket
 import subprocess
 import time
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -3069,6 +3070,88 @@ def test_super_s_line_shows_a_reply_the_void_wrote_once_in_its_thread_and_not_as
     shoot("replied")
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
+# How long before Return each turn lays a session's work turning, in seconds: a line takes about
+# a quarter of a second from the file to the shell, so one of these lands within Pacing.keyed's
+# 50 ms of Return's work, on a builder fast or slow.
+LEADS = [lead / 1000 for lead in range(80, 400, 20)]
+# How long the shell says nothing more of a turn before the turn is taken as told.
+TOLD_QUIET = 1.0
+
+
+def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell) -> None:
+    """A session's work turning just after Return into For You, moving none of it, draws nothing.
+
+    Joel's journal said "what Return changed in on took 76 ms to its frame: its work took 13 ms;
+    work told it 63 ms after the key" on 15 November, after 73 of 81 steps into For You. Now last
+    said what it shows with nothing held below it, as its home rows moved; the first session line
+    after Return asked again with For You held, read its rows too, and so said Now changed though
+    no row had. The launcher made the very rows again, drew them and timed them as Return's act.
+    Now comparing what For You shows is tests/now-moment.qml's; this is the path, the realm's
+    node to Now to the launcher, a line laid earlier each turn until one lands beside Return.
+    """
+    # A session asking Joel a question is a row in For You, and its work turns each time.
+    asking = {
+        "state": "listening",
+        "wants": {"kind": "question", "since": datetime.now(UTC).isoformat(), "said": "Which?"},
+    }
+    lay("TICKER", "Ticking Quest", {**asking, "busy": False})
+    try:
+        shell.as_account(shell.ipc("collection", "on"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda shown: shown["held"] == ["now"] and "For You" in shown["rows"])
+        shell.normal()
+        for turn, lead in enumerate(LEADS):
+            # Another session asking, or done asking, moves For You's own row, so Now says what
+            # it shows with nothing held below it, as Joel's home rows had before each step in.
+            ask = asking if turn % 2 == 0 else {"state": "busy", "busy": True}
+            was = shell.showing()["seen"]["sides"][0]
+            lay("NUDGER", "Nudging Quest", ask)
+            shell.launcher_until(partial(moved, was))
+            shell.down_to("For You")
+            step = {
+                "kind": "tool",
+                "name": "bash",
+                "detail": f"turn {turn}",
+                "since": datetime.now(UTC).isoformat(),
+            }
+            lay(
+                "TICKER",
+                "Ticking Quest",
+                {**asking, "busy": turn % 2 == 0, "step": f"bash turn {turn}", "stepDetail": step},
+            )
+            time.sleep(lead)
+            since = shell.mark()
+            shell.send_key("ret")
+            shell.launcher_until(lambda shown: shown["held"] == ["now", "For You"])
+            said = told_quietly(shell, since)
+            shown = [report for report in said if report.startswith("act shown in on")]
+            assert not shown, f"a turn {lead} s before Return was drawn as its act: {shown}"
+            shell.send_chars("-")
+            shell.launcher_until(lambda shown: shown["held"] == ["now"])
+    finally:
+        shell.close_launcher()
+        lay("TICKER", "Ticking Quest", {"state": "idle"}, closed=True)
+        lay("NUDGER", "Nudging Quest", {"state": "idle"}, closed=True)
+
+
+def moved(was: str, shown: Json) -> bool:
+    """Whether For You's own row says otherwise than it did, `was`."""
+    return bool(shown["seen"]["sides"][0] != was)
+
+
+def told_quietly(shell: Shell, since: int) -> list[str]:
+    """Give what the shell said since the mark, once it says nothing more for a while."""
+    said, mark = shell.said_since(since)
+    quiet = time.monotonic()
+    while time.monotonic() - quiet < TOLD_QUIET:
+        time.sleep(0.1)
+        more, mark = shell.said_since(mark)
+        if more:
+            said += more
+            quiet = time.monotonic()
+    return said
 
 
 def test_a_landing_read_finds_each_landings_session_in_one_look(shell: Shell) -> None:
