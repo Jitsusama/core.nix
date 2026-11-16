@@ -224,8 +224,10 @@ pub fn ahead(shared: &Shared, watched: &[String]) {
 /// checkout, rather than this daemon, so the terminal is no child of a
 /// service a switch restarts, and niri, which spawned it, gives its window
 /// the keys. Answered at once and asked on a thread of its own, as a
-/// kitty tab's acts are (tabs.rs), so no other ask waits on niri.
-pub fn terminal(id: &Value, folder: &str) -> Value {
+/// kitty tab's acts are (tabs.rs), so no other ask waits on niri. Edit
+/// Here is the same kitty running `program`, Neovim on the checkout,
+/// which leaves kitty when it ends, as an editor's window does.
+pub fn terminal(id: &Value, folder: &str, program: &[&str]) -> Value {
     let niri = std::env::var("PROGRAMS_NIRI").unwrap_or_else(|_| "niri".to_owned());
     let argv: Vec<String> = [
         niri.as_str(),
@@ -238,6 +240,7 @@ pub fn terminal(id: &Value, folder: &str) -> Value {
         folder,
     ]
     .iter()
+    .chain(program)
     .map(|&word| word.to_owned())
     .collect();
     std::thread::spawn(move || {

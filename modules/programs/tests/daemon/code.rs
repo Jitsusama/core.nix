@@ -478,3 +478,18 @@ fn new_terminal_here_has_niri_start_kitty_in_the_checkout() {
         "niri wasn't asked to start kitty in the checkout, so it outlives the daemon"
     );
 }
+
+#[test]
+fn edit_here_has_niri_start_neovim_in_the_checkout() {
+    let running = Running::new("code-edit");
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "code:edit", "path": "/src/alpha"}));
+    assert!(said.get("error").is_none(), "Edit Here was refused: {said}");
+    let asked = || std::fs::read_to_string(running.path("niri.asked"));
+    until("niri wasn't asked to start an editor", || asked().is_ok());
+    assert_eq!(
+        asked().unwrap(),
+        "msg action spawn -- kitty --directory /src/alpha nvim .\n",
+        "niri wasn't asked to start Neovim on the checkout in a kitty of its own"
+    );
+}
