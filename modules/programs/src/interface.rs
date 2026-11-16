@@ -173,6 +173,10 @@ pub fn own_of(said: &Value) -> Option<Own> {
             let folder = text_of(said, "path");
             folder.starts_with('/').then_some(Own::Pull(folder))
         }
+        "code:edit" => {
+            let folder = text_of(said, "path");
+            folder.starts_with('/').then_some(Own::Edit(folder))
+        }
         asked @ ("tab:go" | "tab:close") => {
             let act = if asked == "tab:go" {
                 TabAct::Go
