@@ -42,9 +42,12 @@ use crate::upstream::Upstreams;
 fn help() -> Help {
     Help::new(
         "local-sites",
-        "serves Joel's local sites, fed live by their daemons",
+        "Serves Joel's local sites, fed live by their daemons",
     )
-    .example("local-sites --config FILE", "as its unit runs it")
+    .example(
+        "local-sites --config ~/.config/local-sites/local-sites.json",
+        "serves what that config names",
+    )
     .option(
         "--config FILE",
         "where it listens, what it serves and the feeds",
@@ -59,14 +62,38 @@ fn main() -> ExitCode {
     })
 }
 
+/// The config file `args` name, as `--config FILE` or `--config=FILE`.
 fn config_file(args: &[String]) -> Result<PathBuf, Failure> {
-    match args {
-        [flag, file] if flag == "--config" => Ok(PathBuf::from(file)),
-        [flag] if flag == "--config" => Err(Failure::new(Exit::Usage, "--config names a file")),
-        [] => Err(Failure::new(Exit::Usage, "local-sites needs its config")
-            .try_this("local-sites --config FILE")),
-        [word, ..] => Err(flags::unknown("flag", word, &["--config"])),
+    let (file, rest) = match args {
+        [] => {
+            return Err(Failure::new(Exit::Usage, "local-sites needs its config")
+                .try_this("local-sites --config FILE"));
+        }
+        [flag, rest @ ..] if flag == "--config" => match rest {
+            [file, rest @ ..] if !file.starts_with("--") => (file.as_str(), rest),
+            _ => return Err(missing()),
+        },
+        [joined, rest @ ..] if joined.starts_with("--config=") => {
+            (&joined["--config=".len()..], rest)
+        }
+        [word, ..] => return Err(flags::unknown("flag", word, &["--config"])),
+    };
+    if file.is_empty() || file.starts_with("--") {
+        return Err(missing());
     }
+    if let [stray, ..] = rest {
+        return Err(Failure::new(
+            Exit::Usage,
+            format!("local-sites takes nothing after its config, not {stray}"),
+        )
+        .try_this("local-sites --config FILE"));
+    }
+    Ok(PathBuf::from(file))
+}
+
+/// What `--config` without a file says.
+fn missing() -> Failure {
+    Failure::new(Exit::Usage, "--config names a file").try_this("local-sites --config FILE")
 }
 
 fn serve(file: &PathBuf) -> Result<(), Failure> {
@@ -97,4 +124,46 @@ fn serve(file: &PathBuf) -> Result<(), Failure> {
         thread::spawn(move || http::answer(&server, stream));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What `config_file` makes of `words`: the file, or the exit code.
+    fn read(words: &[&str]) -> Result<PathBuf, u8> {
+        let args: Vec<String> = words.iter().map(|word| (*word).to_owned()).collect();
+        config_file(&args).map_err(|failure| failure.code())
+    }
+
+    #[test]
+    fn the_config_is_named_apart_or_joined() {
+        assert_eq!(read(&["--config", "a.json"]), Ok(PathBuf::from("a.json")));
+        assert_eq!(read(&["--config=a.json"]), Ok(PathBuf::from("a.json")));
+    }
+
+    #[test]
+    fn a_config_named_wrongly_is_asked_wrongly() {
+        for words in [
+            &[][..],
+            &["--config"],
+            &["--config="],
+            &["--config", "--verbose"],
+            &["--config=--verbose"],
+            &["--config", "a.json", "stray"],
+            &["--confg", "a.json"],
+        ] {
+            assert_eq!(read(words), Err(64), "{words:?} should be refused as asked wrongly");
+        }
+    }
+
+    #[test]
+    fn a_stray_word_is_named_as_one() {
+        let args = ["--config", "a.json", "stray"].map(str::to_owned);
+        let said = config_file(&args).map(|_| ()).map_err(|failure| {
+            failure.json(false).to_string()
+        });
+        let said = said.expect_err("a stray word is refused");
+        assert!(said.contains("not stray"), "the refusal names the stray word: {said}");
+    }
 }

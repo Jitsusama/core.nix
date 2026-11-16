@@ -133,6 +133,10 @@ in
     };
   };
 
+  # The config the unit serves, where its help's example reads it, so
+  # what it serves can be read without finding its path in the store.
+  config.xdg.configFile."local-sites/local-sites.json".source = served;
+
   # A switch builds the home too, since a changed builder or page changes
   # no file the path unit watches. A run that changes nothing writes nothing.
   config.home.activation.localSitesHome = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
