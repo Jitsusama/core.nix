@@ -470,6 +470,7 @@ dependencies = [
  "ready-rows",
  "serde",
  "serde_json",
+ "terminal-kit",
  "windows",
  "zbus",
 ]

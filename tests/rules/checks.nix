@@ -288,10 +288,13 @@
         network-revive = pkgs.callPackage ../../modules/network-revive/package.nix { };
         night-shift = pkgs.callPackage ../../modules/night-shift/package.nix { };
         noise-cancelled = dictation;
+        notices = pkgs.callPackage ../../modules/notices/package.nix { };
         open-now = recentFiles;
         open-with = pkgs.callPackage ../../modules/open-with/package.nix { };
+        pain-points = pkgs.callPackage ../../modules/pain-points/package.nix { };
         passwords = pkgs.callPackage ../../modules/passwords/package.nix { };
         pause-for-calls = pkgs.callPackage ../../modules/spotify/pause-for-calls/package.nix { };
+        people = pkgs.callPackage ../../modules/people/package.nix { };
         pi-agent-proxy = pkgs.callPackage ../../modules/pi/agent-proxy/package.nix { };
         pi-clipboard-door = clipboardDoor;
         pi-clipboard-shim = clipboardDoor;
