@@ -172,20 +172,12 @@ class MapView {
     }
     const view = this.#view;
     const zoom = this.#zoom;
-    const [x0, x1] = [box.x * zoom - PAD, (box.x + box.w) * zoom + PAD];
-    const [y0, y1] = [box.y * zoom - PAD, (box.y + box.h) * zoom + PAD];
-    let { scrollLeft: x, scrollTop: y } = view;
-    if (x0 < x) {
-      x = x0;
-    } else if (x1 > x + view.clientWidth) {
-      x = x1 - view.clientWidth;
-    }
-    if (y0 < y) {
-      y = y0;
-    } else if (y1 > y + view.clientHeight) {
-      y = y1 - view.clientHeight;
-    }
-    view.scrollTo({ left: x, top: y });
+    const across = { start: box.x * zoom - PAD, end: (box.x + box.w) * zoom + PAD };
+    const down = { start: box.y * zoom - PAD, end: (box.y + box.h) * zoom + PAD };
+    view.scrollTo({
+      left: shownFrom(across, view.scrollLeft, view.clientWidth),
+      top: shownFrom(down, view.scrollTop, view.clientHeight),
+    });
   }
 
   /** The keys on `id`, as opening it or a link puts them there. */
@@ -233,4 +225,16 @@ class MapView {
   }
 }
 
-export { MapView };
+/**
+ * Where a view `room` long, scrolled to `at`, scrolls to show `span` one
+ * way: not at all while it's shown, else just enough. A span longer than
+ * the room shows its start, where a device's name is, not its far end.
+ */
+function shownFrom(span: { start: number; end: number }, at: number, room: number): number {
+  if (span.start < at || span.end - span.start > room) {
+    return span.start;
+  }
+  return span.end > at + room ? span.end - room : at;
+}
+
+export { MapView, shownFrom };

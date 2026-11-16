@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { networkOf } from "../model.ts";
+import { networkOf, worthALook } from "../model.ts";
 import { records, told } from "./house.ts";
 
 /** The house's network, which every case here expects to be drawn. */
@@ -38,6 +38,38 @@ it("a concern net gave no rank goes after every one it placed", () => {
   );
   const { watched, kinds } = told(unranked);
   assert.equal(networkOf(watched, kinds)?.concerns.at(-1)?.kind, "lost");
+});
+
+it("what's worth a look about a device leaves out the internet's own ceiling", () => {
+  const ceiling = {
+    key: "concern:ceiling:modem:down",
+    kind: "concern",
+    concern: "ceiling",
+    device: "modem",
+    on: "down",
+    says: "The internet is the narrowest point down.",
+    rank: 3,
+  };
+  const { watched, kinds } = told([...records, ceiling]);
+  const network = networkOf(watched, kinds);
+  assert.ok(network, "the whole house was told, so the page draws it");
+  assert.deepEqual(
+    worthALook(network, "modem").map((concern) => concern.kind),
+    ["lost"],
+  );
+});
+
+it("what's worth a look about a device counts the concerns naming it as the other end", () => {
+  const weakToUpstairs = records.map((record) =>
+    record.key.startsWith("concern:weak") ? { ...record, other: "eero:2" } : record,
+  );
+  const { watched, kinds } = told(weakToUpstairs);
+  const network = networkOf(watched, kinds);
+  assert.ok(network, "the whole house was told, so the page draws it");
+  assert.deepEqual(
+    worthALook(network, "eero:2").map((concern) => concern.kind),
+    ["weak", "busy"],
+  );
 });
 
 it("a concern's own kind is read from its concern field, not the record's kind", () => {

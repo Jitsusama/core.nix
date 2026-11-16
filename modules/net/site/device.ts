@@ -5,7 +5,7 @@
 import { cable } from "./cable.ts";
 import { type Cell, type Child, facts, h, table } from "./elements.ts";
 import { inMycelium } from "./machine.ts";
-import type { Device, Link, Narrowest, Radio } from "./model.ts";
+import { type Device, type Link, type Narrowest, type Radio, worthALook } from "./model.ts";
 import { type Context, concernRows } from "./panel.ts";
 import { busier, endAt, linkBetween, medium } from "./shape.ts";
 import { el } from "./svg.ts";
@@ -328,10 +328,7 @@ function details(context: Context, device: Device): Child[] {
     has(device, "client") && device.vendor !== undefined && device.model === undefined
       ? `network card by ${device.vendor}`
       : [device.vendor, device.model].filter(Boolean).join(", ");
-  const mine = context.network.concerns.filter(
-    (concern) =>
-      concern.kind !== "ceiling" && (concern.device === device.id || concern.other === device.id),
-  );
+  const mine = worthALook(context.network, device.id);
   return [
     back(context),
     h("h2", {}, device.name),

@@ -2,7 +2,7 @@
 // names one: by the name the page shows, since the address bar is on
 // Joel's screen too, and by net's id only where two devices share a name.
 
-import type { Network } from "./model.ts";
+import { type Network, worthALook } from "./model.ts";
 import { endAt, linkBetween, type Shape } from "./shape.ts";
 import { dbm, plural, possessive, roleWords, slug } from "./words.ts";
 
@@ -32,9 +32,7 @@ function whereWords(network: Network, shape: Shape, id: string): string | undefi
       words += ` at ${dbm(link.signalDbm)} dBm`;
     }
   }
-  const worth = network.concerns.filter(
-    (concern) => concern.device === id || concern.other === id,
-  ).length;
+  const worth = worthALook(network, id).length;
   if (worth > 0) {
     words += `; ${plural(worth, "thing")} worth a look`;
   }

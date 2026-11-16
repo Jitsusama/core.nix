@@ -445,6 +445,17 @@ function networkOf(watched: Watched, told: ReadonlySet<string>): Network | undef
   };
 }
 
+/**
+ * What net names worth a look about the device `id`, as either end. The
+ * internet's own ceiling isn't one: the page says it under The Internet, so
+ * a device's count and its panel's list agree.
+ */
+function worthALook(network: Network, id: string): readonly Concern[] {
+  return network.concerns.filter(
+    (concern) => concern.kind !== "ceiling" && (concern.device === id || concern.other === id),
+  );
+}
+
 export type {
   Carried,
   Channel,
@@ -464,4 +475,4 @@ export type {
   Speed,
   Watched,
 };
-export { KINDS, networkOf };
+export { KINDS, networkOf, worthALook };

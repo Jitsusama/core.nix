@@ -2,7 +2,7 @@
 // walked by its own keys as a desktop's tree is.
 
 import { glyph, h } from "./elements.ts";
-import type { Device, Network } from "./model.ts";
+import { type Device, type Network, worthALook } from "./model.ts";
 import { linkBetween, type Shape } from "./shape.ts";
 import { el } from "./svg.ts";
 import { dbm, plural, v4 } from "./words.ts";
@@ -21,13 +21,6 @@ function factOf(network: Network, shape: Shape, device: Device, kids: number): s
   return link?.signalDbm === undefined ? (v4(device)[0] ?? "") : `${dbm(link.signalDbm)} dBm`;
 }
 
-/** Whether net names anything about `device` worth a look. */
-function worthALook(network: Network, device: Device): boolean {
-  return network.concerns.some(
-    (concern) => concern.device === device.id || concern.other === device.id,
-  );
-}
-
 /** One device's item, at `level`, holding `kids` when it has any. */
 function leaf(
   at: { readonly network: Network; readonly shape: Shape; readonly shut: ReadonlySet<string> },
@@ -36,7 +29,7 @@ function leaf(
   kids: readonly Device[] = [],
 ): HTMLElement {
   const fact = factOf(at.network, at.shape, device, kids.length);
-  const worth = worthALook(at.network, device);
+  const worth = worthALook(at.network, device.id).length > 0;
   // Named alone, so a reader landing on a floor hears the floor, not every
   // device under it.
   const label = [device.name, fact, worth ? "worth a look" : null].filter(Boolean).join(", ");
