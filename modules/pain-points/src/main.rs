@@ -28,6 +28,7 @@ use pi::Log;
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
+use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -291,11 +292,16 @@ fn follow_pi(
             if path.extension().is_none_or(|e| e != "jsonl") {
                 continue;
             }
-            present.push(name.clone());
             let written = entry.metadata().and_then(|m| m.modified()).map_or(0, |t| {
                 t.duration_since(UNIX_EPOCH)
                     .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
             });
+            // Left out of `present` too, so a lab a build before this one
+            // counted leaves the state and the day file at once.
+            if written >= since && begun_in_a_lab(&path) {
+                continue;
+            }
+            present.push(name.clone());
             if written < since {
                 continue;
             }
@@ -319,6 +325,31 @@ fn follow_pi(
         &serde_json::to_string(&kept).map_err(|e| e.to_string())?,
     )?;
     Ok(kept.logs)
+}
+
+/// Whether a session log began in a quest's scratch `tmp`, which is the
+/// `$TMPDIR` of the agents on that quest. An agent testing pi drives it
+/// there exactly as Joel types into it, keys and all, so only where it began
+/// tells them apart. The quest's other scratch folders stay his, since a
+/// session he talks to, such as an orchestrator, may run in one.
+fn begun_in_a_lab(path: &Path) -> bool {
+    #[derive(serde::Deserialize)]
+    struct Header {
+        cwd: PathBuf,
+    }
+    let mut first = String::new();
+    let read = fs::File::open(path)
+        .and_then(|file| io::BufReader::new(file).read_line(&mut first));
+    let Some(header) = read
+        .ok()
+        .and_then(|_| serde_json::from_str::<Header>(&first).ok())
+    else {
+        return false;
+    };
+    let parts: Vec<_> = header.cwd.components().collect();
+    parts
+        .windows(3)
+        .any(|w| w[0].as_os_str() == "quest-workspace" && w[2].as_os_str() == "tmp")
 }
 
 /// The reading state, with the build that read it.
@@ -605,6 +636,42 @@ mod tests {
             "a state that names no build is read again"
         );
         fs::remove_dir_all(&root).expect("the scratch folder goes");
+    }
+
+    #[test]
+    fn a_session_begun_in_a_quests_scratch_tmp_is_an_agents_lab_not_his() {
+        let root = env::temp_dir().join(format!("pain-points-lab-{}", std::process::id()));
+        let at: i64 = 1_794_412_800_000;
+        let scratch = "/home/someone/.cache/pi/agentic-harness.pi/quest-workspace/QEST-1-A";
+        let log = |cwd: &str| {
+            [
+                serde_json::json!({"type": "session", "version": 3, "id": "s",
+                    "timestamp": "2026-11-11T16:00:00.000Z", "cwd": cwd}),
+                serde_json::json!({"type": "message", "id": "a", "parentId": null,
+                    "timestamp": "2026-11-11T16:00:00.000Z",
+                    "message": {"role": "user", "timestamp": at, "content": "go"}}),
+            ]
+            .map(|line| line.to_string() + "\n")
+            .concat()
+        };
+        for (name, cwd) in [
+            ("lab.jsonl", format!("{scratch}/tmp")),
+            ("lab-below.jsonl", format!("{scratch}/tmp/rd")),
+            ("orchestrator.jsonl", format!("{scratch}/agentic-harness.pi")),
+        ] {
+            let folder = root.join("sessions").join(name);
+            fs::create_dir_all(&folder).expect("a scratch folder");
+            fs::write(folder.join(name), log(&cwd)).expect("a log");
+        }
+        let logs =
+            follow_pi(&root.join("sessions"), &root.join("pi-logs.json"), 0, "r").expect("reads");
+        fs::remove_dir_all(&root).expect("the scratch folder goes");
+        let names: Vec<&str> = logs.keys().map(String::as_str).collect();
+        assert_eq!(
+            names,
+            ["orchestrator.jsonl"],
+            "an agent's lab drives pi as he would, but only a session elsewhere is his"
+        );
     }
 
     #[test]
