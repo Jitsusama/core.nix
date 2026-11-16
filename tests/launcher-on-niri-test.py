@@ -3292,7 +3292,9 @@ def test_now_says_a_degraded_work_network_within_its_line_and_steps_to_its_row(
         shell.launcher_until(lambda shown: not (shown["drawer"] or {}).get("out"))
         broke = json.loads(shell.as_account(shell.ipc("contained")))
         assert broke == [], f"what broke out of Now's card: {broke}"
-        shell.step_in()
+        # Return walks from home into Network, as deep as Now is held, so it's pressed rather
+        # than stepped in, whose wait is for the launcher to hold one more.
+        shell.send_key("ret")
         shell.launcher_until(
             lambda shown: (
                 shown["path"][-1:] == ["Network"]
