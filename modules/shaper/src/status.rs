@@ -117,7 +117,7 @@ fn lanes_said(said: &lanes::Said) -> Vec<String> {
     // once in its label.
     let figure = |kbit: u64| format!("{:.1}", float(kbit) / 1_000.0);
     let mut lines = vec![format!(
-        "the upload's lanes: yours {}, first; the VPN's {}; agents' direct {} Mbit/s",
+        "the upload's lanes: yours {}, first; the VPN's {}; agents' direct {} Mb/s",
         figure(said.joel),
         figure(said.vpn),
         figure(said.agents)
@@ -388,7 +388,7 @@ mod tests {
         assert_eq!(
             lanes_said(&shared(12, 3)),
             [
-                "the upload's lanes: yours 1.7, first; the VPN's 6.3; agents' direct 1.5 Mbit/s",
+                "the upload's lanes: yours 1.7, first; the VPN's 6.3; agents' direct 1.5 Mb/s",
                 "agents waiting: 12 flows in the VPN, 3 direct",
             ],
             "the lanes weren't said as Joel reads them"

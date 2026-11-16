@@ -111,7 +111,7 @@ fn lossless(kbit: u64) -> f64 {
 }
 
 fn mbit(kbit: f64) -> String {
-    format!("{:.1} Mbit/s", kbit / 1_000.0)
+    format!("{:.1} Mb/s", kbit / 1_000.0)
 }
 
 /// A span as a person says it: seconds under a minute, else minutes.
@@ -137,11 +137,11 @@ mod tests {
     fn a_clear_upload_says_its_rate_against_the_line_and_for_how_long() {
         assert_eq!(
             say(Why::Clear, Some(10_800), Some(12_000.0), 754.0),
-            "Upload 10.8 Mbit/s of 12.0 Mbit/s, the line's rate: clear for 12 min."
+            "Upload 10.8 Mb/s of 12.0 Mb/s, the line's rate: clear for 12 min."
         );
         assert_eq!(
             say(Why::Clear, Some(10_800), None, 42.0),
-            "Upload 10.8 Mbit/s: clear for 42 s."
+            "Upload 10.8 Mb/s: clear for 42 s."
         );
     }
 
@@ -154,7 +154,7 @@ mod tests {
                 Some(12_000.0),
                 5.0
             ),
-            "Upload 10.8 Mbit/s: the VPN reads 120 ms past the line, which no cut here \
+            "Upload 10.8 Mb/s: the VPN reads 120 ms past the line, which no cut here \
              reaches, so none is made."
         );
     }
@@ -171,7 +171,7 @@ mod tests {
                 Some(12_000.0),
                 8.0
             ),
-            "Upload 10.8 Mbit/s: the VPN waited 119 ms inside its tunnel, so its own queue is \
+            "Upload 10.8 Mb/s: the VPN waited 119 ms inside its tunnel, so its own queue is \
              held to 72% of its lane; held so for 8 s."
         );
     }
@@ -191,7 +191,7 @@ mod tests {
         };
         assert_eq!(
             line(true),
-            "Upload 9.1 Mbit/s: the line's delay stood 22 ms, so it was cut, and that eased it; \
+            "Upload 9.1 Mb/s: the line's delay stood 22 ms, so it was cut, and that eased it; \
              held so for 1 s."
         );
         assert!(
@@ -205,7 +205,7 @@ mod tests {
     fn the_guard_says_the_share_it_found_the_upload_under() {
         assert_eq!(
             say(Why::Guarded, Some(10_800), Some(12_000.0), 0.0),
-            "Upload 10.8 Mbit/s: back to the line's hold after a minute under 9.6 Mbit/s with \
+            "Upload 10.8 Mb/s: back to the line's hold after a minute under 9.6 Mb/s with \
              no cut that eased a queue."
         );
     }
