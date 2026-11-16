@@ -110,6 +110,9 @@ const NUMBERS = [
 /** How the daemon closes a side that had more than it says (parts.rs's side_of). */
 const MORE = /^and (\d+) more worth a look$/u;
 
+/** Words that already end a sentence. */
+const ENDED = /[.?!]$/u;
+
 /** Healths from worst to best, as a lede picks the worst. */
 const WORST: readonly Health[] = ["bad", "watch"];
 
@@ -183,13 +186,18 @@ function lede(system: System): string | undefined {
   for (const health of WORST) {
     const worst = system.parts.find((part) => part.health === health && part.side.length > 0);
     if (worst !== undefined) {
-      return `${named(worst.part)}: ${worst.side[0] ?? ""}.`;
+      return stopped(`${named(worst.part)}: ${worst.side[0] ?? ""}`);
     }
   }
   const unread = system.parts.find((part) => part.health === "unread");
   return unread === undefined
     ? undefined
-    : `${named(unread.part)} couldn't be read: ${unread.says}.`;
+    : stopped(`${named(unread.part)} couldn't be read: ${unread.says}`);
+}
+
+/** `words` ended as a sentence, once: an owner's words may end their own. */
+function stopped(words: string): string {
+  return ENDED.test(words) ? words : `${words}.`;
 }
 
 /** `words` joined as a sentence lists them: a, b and c. */

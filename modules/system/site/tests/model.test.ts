@@ -171,6 +171,23 @@ it("the lede names the worst part's first look, then why a part wasn't read", ()
     parts: [first, { ...second, health: "bad" as const, side: ["the build is failing"] }],
   };
   assert.equal(lede(worse), "Code: the build is failing.", "bad comes before worth a look");
+  const stopped = {
+    ...system,
+    parts: [
+      first,
+      { ...second, health: "bad" as const, side: ["the radio is busy, 20 hours ago."] },
+    ],
+  };
+  assert.equal(
+    lede(stopped),
+    "Code: the radio is busy, 20 hours ago.",
+    "an owner's words that end their own sentence get no second stop",
+  );
+  const asked = {
+    ...system,
+    parts: [first, { ...second, health: "bad" as const, side: ["is the modem on?"] }],
+  };
+  assert.equal(lede(asked), "Code: is the modem on?", "a question keeps its own mark");
   const unread = {
     ...system,
     parts: [
@@ -179,6 +196,15 @@ it("the lede names the worst part's first look, then why a part wasn't read", ()
     ],
   };
   assert.equal(lede(unread), "Code couldn't be read: repos timed out.");
+  const unreadStopped = {
+    ...unread,
+    parts: [unread.parts[0], { ...second, health: "unread" as const, says: "repos timed out." }],
+  };
+  assert.equal(
+    lede(unreadStopped),
+    "Code couldn't be read: repos timed out.",
+    "why a part wasn't read gets one stop too",
+  );
   assert.equal(
     lede({ ...system, parts: [{ ...first, health: "good" as const, side: [] }] }),
     undefined,
