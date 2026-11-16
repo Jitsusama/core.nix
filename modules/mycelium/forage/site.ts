@@ -56,7 +56,15 @@ let hollowOnly = false;
 /** The cell `hash` names, as #cell=<address>. */
 function cellIn(hash: string): string | null {
   const named = CELL_HASH.exec(hash)?.[1];
-  return named === undefined ? null : decodeURIComponent(named);
+  if (named === undefined) {
+    return null;
+  }
+  try {
+    return decodeURIComponent(named);
+  } catch {
+    // A stray % in an address typed by hand names no cell.
+    return null;
+  }
 }
 
 /** The cells the find leaves, in the list's order. */
@@ -113,21 +121,58 @@ function select(): void {
 // a link reached with Tab is still the one Return follows.
 let drawnPanel: string | undefined;
 
-/** A selector finding `focused` again in a redrawn panel, or none. */
-function refound(focused: Element | null): string | undefined {
+/** What the panel can focus: its links and its copy button. */
+const FOCUSABLE = "a, button";
+
+/**
+ * Where a control stands in the panel: the fact it sits in, by its term,
+ * the cell it links to, if any, and its place among the fact's controls.
+ * The term tells a ring's Started by link from its Started link to the same
+ * cell.
+ */
+interface Place {
+  readonly fact: string | undefined;
+  readonly cell: string | undefined;
+  readonly at: number;
+}
+
+/** The fact `term` names in the panel, or the whole panel for none. */
+function factOf(term: string | undefined): Element | undefined {
+  if (term === undefined) {
+    return panel;
+  }
+  return [...panel.querySelectorAll(".facts > div")].find(
+    (fact) => fact.querySelector("dt")?.textContent === term,
+  );
+}
+
+/** Where `focused` stands in the panel, or none when it isn't there. */
+function placeOf(focused: Element | null): Place | undefined {
   if (!(focused instanceof HTMLElement && panel.contains(focused))) {
     return undefined;
   }
-  const cell = focused.dataset["cell"];
-  if (cell !== undefined) {
-    return `a[data-cell="${CSS.escape(cell)}"]`;
+  const fact = focused.closest(".facts > div");
+  const term = fact?.querySelector("dt")?.textContent ?? undefined;
+  const controls = [...(fact ?? panel).querySelectorAll(FOCUSABLE)];
+  return { fact: term, cell: focused.dataset["cell"], at: controls.indexOf(focused) };
+}
+
+/**
+ * The control at `place` in the redrawn panel: a link to the same cell in
+ * the same fact, or the control at the same place there. A cell no longer
+ * named there is none, rather than another cell's link.
+ */
+function refound(place: Place): HTMLElement | undefined {
+  const controls = [...(factOf(place.fact)?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])];
+  if (place.cell !== undefined) {
+    return controls.find((control) => control.dataset["cell"] === place.cell);
   }
-  return focused.closest(".copy") === null ? undefined : ".copy";
+  return controls[place.at];
 }
 
 function drawPanel(): void {
   const open = current();
-  const focused = refound(document.activeElement);
+  const focused = placeOf(document.activeElement);
   panel.innerHTML =
     open === undefined
       ? ""
@@ -136,23 +181,34 @@ function drawPanel(): void {
     drawnPanel = open?.cell;
     panel.scrollTop = 0;
   } else if (focused !== undefined) {
-    panel.querySelector<HTMLElement>(focused)?.focus({ preventScroll: true });
+    refound(focused)?.focus({ preventScroll: true });
   }
 }
 
 /**
- * Opens `cell`, pressed in the panel, on the floor or named in the address.
- * A find or the view of cells without purpose that would hide it ends first,
- * so the cursor lands on the cell asked for rather than the list's first row.
+ * Opens `cell`, pressed in the panel, on the floor, stepped up to or named
+ * in the address. A find or the view of cells without purpose that would
+ * hide it ends first, and only the one that does, so the cursor lands on
+ * the cell asked for rather than the list's first row. When neither hides
+ * it, only the rows and panel the step touches are redrawn.
  */
 function openCell(cell: string): void {
+  const forage = forages.find((each) => each.cell === cell);
+  if (forage === undefined) {
+    return;
+  }
   cursor = cell;
-  if (!shown().some((each) => each.cell === cell)) {
+  if (shown().includes(forage)) {
+    select();
+    drawPanel();
+    return;
+  }
+  if (!holds(forage, sought)) {
     finder.value = "";
     finder.hidden = true;
     sought = "";
-    hollowOnly = false;
   }
+  hollowOnly = hollowOnly && forage.purpose === "";
   draw();
 }
 
@@ -233,10 +289,8 @@ function move(by: number): void {
 /** Steps to the cell that started the one the cursor is on, when it is drawn. */
 function up(): void {
   const by = current()?.startedBy;
-  if (by !== undefined && shown().some((each) => each.cell === by)) {
-    cursor = by;
-    select();
-    drawPanel();
+  if (by !== undefined) {
+    openCell(by);
   }
 }
 
@@ -334,7 +388,7 @@ listen({
 
 addEventListener("hashchange", () => {
   const named = cellIn(location.hash);
-  if (named !== null && named !== cursor && forages.some((each) => each.cell === named)) {
+  if (named !== null && named !== cursor) {
     openCell(named);
   }
 });
@@ -361,7 +415,10 @@ panel.addEventListener("click", (event) => {
   const starter = event.target.closest("a[data-cell]");
   if (starter instanceof HTMLAnchorElement) {
     event.preventDefault();
-    openCell(starter.dataset["cell"] ?? cursor ?? "");
+    const cell = starter.dataset["cell"];
+    if (cell !== undefined) {
+      openCell(cell);
+    }
     list.focus();
   }
 });
@@ -382,7 +439,10 @@ floor.addEventListener("click", (event) => {
   if (!(mark instanceof SVGRectElement)) {
     return;
   }
-  openCell(mark.dataset["cell"] ?? cursor ?? "");
+  const cell = mark.dataset["cell"];
+  if (cell !== undefined) {
+    openCell(cell);
+  }
   list.focus();
 });
 

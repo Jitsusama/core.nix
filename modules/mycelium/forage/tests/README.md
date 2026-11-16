@@ -11,7 +11,8 @@ run by Node's own test runner when the local sites build the page.
 - `draw.test.ts` tries which words the page marks as its quests' own: a
   written purpose and a document's title, never the page's own words for
   what's missing; and the panel's line of the cells a cell started, each
-  linked and escaped, six named and the rest counted, no comma left loose.
+  linked and escaped, up to seven named, past that six named and the rest
+  counted, and no comma left loose.
 
 Each test builds the records it reads, so none needs a browser or a node.
 The page as drawn is walked by keys alone in a headless browser until the

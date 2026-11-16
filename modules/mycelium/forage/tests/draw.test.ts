@@ -102,6 +102,9 @@ it("links each cell a cell started to that cell's row", () => {
   });
 });
 
+/** A comma tied to the address before it, which the panel never breaks. */
+const TIED = /<span class="tie"><a [^>]*><code>[^<]*<\/code><\/a>,<\/span>/gu;
+
 /** `count` cells' addresses: AAAAAA, BBBBBB and on. */
 function cells(count: number): readonly string[] {
   return [..."ABCDEFGHI"].slice(0, count).map((letter) => letter.repeat(6));
@@ -126,9 +129,16 @@ it("escapes an address the node gives before linking it", () => {
 });
 
 it("ties each comma to the address before it, so no line starts with one", () => {
-  const line = startedLine(forage(), ["OSPREY", "SKIFFS", "TERNAA"]);
-  assert.ok(!line.includes("</a>, "), `a comma stands loose in ${line}`);
-  assert.equal(line.match(/<span class="tie">[^,]*,<\/span>/gu)?.length, 1, line);
+  // A comma follows each name but the two around "and"; eight name six.
+  for (const [count, ties] of [
+    [3, 1],
+    [7, 5],
+    [8, 5],
+  ] as const) {
+    const line = startedLine(forage(), cells(count));
+    assert.ok(!line.replace(TIED, "").includes(","), `a comma stands loose in ${line}`);
+    assert.equal(line.match(TIED)?.length, ties, line);
+  }
 });
 
 it("says the words are a quest's when the record names none", () => {
