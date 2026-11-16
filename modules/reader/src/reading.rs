@@ -145,17 +145,31 @@ mod tests {
             assert!(speed(t) <= 84.0 + 0.5, "never past the pace, at {t} s");
             t += step;
         }
-        assert!((reading.slid_out(seconds) - 300.0).abs() < 1e-6);
-        assert!((ramp - RAMP).abs() < 1e-9);
+        assert!(
+            (reading.slid_out(seconds) - 300.0).abs() < 1e-6,
+            "the slide didn't end 300 along: {}",
+            reading.slid_out(seconds)
+        );
+        assert!(
+            (ramp - RAMP).abs() < 1e-9,
+            "a long slide didn't take the whole ramp: {ramp}"
+        );
     }
 
     #[test]
     fn a_short_slide_ramps_for_half_its_time() {
         let reading = Reading::new(14.0, 84.0, Instant::now());
         let (seconds, ramp) = reading.slide();
-        assert!(ramp < RAMP);
-        assert!((reading.slid_out(seconds) - 14.0).abs() < 1e-6);
-        assert!(reading.slid_out(seconds / 2.0) > 0.0);
+        assert!(ramp < RAMP, "a short slide took the whole ramp: {ramp}");
+        assert!(
+            (reading.slid_out(seconds) - 14.0).abs() < 1e-6,
+            "the short slide didn't end 14 along: {}",
+            reading.slid_out(seconds)
+        );
+        assert!(
+            reading.slid_out(seconds / 2.0) > 0.0,
+            "the short slide hadn't moved halfway through its time"
+        );
     }
 
     #[test]
@@ -164,15 +178,32 @@ mod tests {
         let (seconds, _) = reading.slide();
         let end = REST_FIRST + seconds;
         let rest = after(&reading, end + 0.5);
-        assert!((rest.slid - 84.0).abs() < 1e-9);
-        assert!(rest.resting_until.is_some());
+        assert!(
+            (rest.slid - 84.0).abs() < 1e-9,
+            "the words weren't at their end: {}",
+            rest.slid
+        );
+        assert!(
+            rest.resting_until.is_some(),
+            "the words at their end weren't resting"
+        );
         let gliding = after(&reading, end + REST_LAST + 0.05);
-        assert!(gliding.slid > 0.0 && gliding.slid < 84.0);
+        assert!(
+            gliding.slid > 0.0 && gliding.slid < 84.0,
+            "the words weren't gliding back: {}",
+            gliding.slid
+        );
         assert_eq!(gliding.resting_until, None);
         let period = end + REST_LAST + crate::motion::ARRIVING.as_secs_f64();
         let again = after(&reading, period + 0.1);
         assert!(again.slid.abs() < 1e-9, "back at its start, resting");
-        assert!(again.resting_until.is_some());
-        assert!(after(&reading, period + REST_FIRST + 0.3).slid > 0.0);
+        assert!(
+            again.resting_until.is_some(),
+            "the words back at their start weren't resting"
+        );
+        assert!(
+            after(&reading, period + REST_FIRST + 0.3).slid > 0.0,
+            "the words didn't slide again after their rest"
+        );
     }
 }

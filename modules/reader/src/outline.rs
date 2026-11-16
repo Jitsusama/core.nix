@@ -178,19 +178,31 @@ mod tests {
         outline.by(100);
         assert_eq!((outline.chosen, outline.first), (19, 10));
         assert_eq!(outline.shown().count(), SHOWN);
-        assert!(outline.shown().last().is_some_and(|(_, chosen)| chosen));
+        assert!(
+            outline.shown().last().is_some_and(|(_, chosen)| chosen),
+            "the row chosen wasn't the last one shown"
+        );
     }
 
     #[test]
     fn a_search_goes_round_the_list_either_way_with_smartcase() {
         let mut outline = Outline::new(&blocks(10), 0.0).expect("headings");
-        assert!(outline.find("part 4", true, 1));
+        assert!(outline.find("part 4", true, 1), "part 4 wasn't found");
         assert_eq!(outline.chosen, 2);
-        assert!(outline.find("part", true, 3));
+        assert!(
+            outline.find("part", true, 3),
+            "part wasn't found three ahead, round the end"
+        );
         assert_eq!(outline.chosen, 0, "round past the end");
-        assert!(outline.find("Part", false, 1));
+        assert!(
+            outline.find("Part", false, 1),
+            "Part wasn't found searching back"
+        );
         assert_eq!(outline.chosen, 4);
-        assert!(!outline.find("PART", true, 1));
+        assert!(
+            !outline.find("PART", true, 1),
+            "PART was found, though capitals make a search exact"
+        );
         assert_eq!(outline.chosen, 4, "nothing found stays put");
     }
 }

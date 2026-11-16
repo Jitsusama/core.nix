@@ -642,7 +642,12 @@ mod tests {
             label.colour, "muted",
             "a role the page has no ink for stays"
         );
-        assert!(label.capitals && (label.tracking - 0.16).abs() < 1e-9);
+        assert!(
+            label.capitals && (label.tracking - 0.16).abs() < 1e-9,
+            "the label wasn't capitals tracked 0.16: capitals {}, tracking {}",
+            label.capitals,
+            label.tracking
+        );
         assert_eq!(
             theme.levels.part.weight,
             Theme::plain().levels.part.weight,
@@ -701,7 +706,12 @@ mod tests {
             space.rung.screen, plain.rung.screen,
             "a rung not said stays"
         );
-        assert!((space.pitch - 32.0).abs() < 1e-9 && (space.beat - 16.0).abs() < 1e-9);
+        assert!(
+            (space.pitch - 32.0).abs() < 1e-9 && (space.beat - 16.0).abs() < 1e-9,
+            "the page's line and beat weren't 32 and 16: line {}, beat {}",
+            space.pitch,
+            space.beat
+        );
         assert_eq!(space.outer, 40.0, "the outer column as the theme says it");
         let typst = theme.typst();
         assert!(
