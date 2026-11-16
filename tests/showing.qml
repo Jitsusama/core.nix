@@ -221,6 +221,20 @@ QtObject {
         // anything else show none, so pi's source needn't catch up.
         const session = { key: "agent:KESTREL", kind: "session", name: "Mend the reef" };
         const want = { key: "on:waiting:want:KESTREL", name: "Mend the reef" };
+        // Agents' daemon makes its rows itself, saying no kind, and On's
+        // For You rows are Agents' too (what: "agent").
+        const agents = { key: "collection:agents", name: "Agents" };
+        const served = { key: "agents-top:KESTREL", what: "agent", name: "Mend the reef" };
+        const fold = { key: "agents-top:fold:reef", what: "agent", name: "The reef" };
+        const forYou = { key: "on:for-you:KESTREL", what: "agent", name: "Mend the reef" };
+        const inAgents = [
+            Showing.sessionShown([served], [{ row: agents, rows: [] }]),
+            Showing.sessionShown([served], [{ row: agents, rows: [] }, { row: fold, rows: [] }]),
+            Showing.sessionShown([forYou].concat(home), []),
+            Showing.sessionShown([agents].concat(home), [])
+        ];
+        expect("Agents held open, at any depth, shows sessions; its row at home or On's do not",
+            inAgents, [true, true, false, false]);
         const shown = [
             Showing.sessionShown([session, home[0]], []),
             Showing.sessionShown(home, [{ row: session, rows: [] }]),
