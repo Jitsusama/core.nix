@@ -129,9 +129,13 @@ Floating {
         // A link is underlined in the words' own colour, never Qt's blue,
         // since colour goes on glyphs and never on text.
         linkColor: color
-        // Broken only at spaces, as a page is: a drawer too narrow for a
-        // word lets it run past the edge rather than split it (VKCF3Z).
-        wrapMode: elides || !wraps ? Text.NoWrap : Text.WordWrap
+        // Broken at spaces, as a page is, and a word too long for the
+        // whole line split where the line ends, since no words may run past
+        // the plate's edge (Joel, 2026-11-15: "text can escape containment
+        // and make things impossible to understand"). VKCF3Z had a word
+        // run past the edge rather than split; a word that fits is still
+        // never split.
+        wrapMode: elides || !wraps ? Text.NoWrap : Text.WrapAtWordBoundaryOrAnywhere
         elide: elides ? Text.ElideRight : Text.ElideNone
         lineHeightMode: leading > 0 ? Text.FixedHeight : Text.ProportionalHeight
         lineHeight: leading > 0 ? leading : 1
@@ -181,7 +185,8 @@ Floating {
                 // are drawn where they were laid, not at the far edge.
                 horizontalAlignment: words.horizontalAlignment
                 textFormat: TextEdit.RichText
-                wrapMode: words.wrapMode === Text.WordWrap ? TextEdit.WordWrap : TextEdit.NoWrap
+                wrapMode: words.wrapMode === Text.NoWrap ? TextEdit.NoWrap
+                    : TextEdit.WrapAtWordBoundaryOrAnywhere
                 text: `<div style="white-space:pre-wrap`
                     + (words.leading > 0
                         ? `; line-height:${words.leading}px; -qt-line-height-type:fixed` : "")

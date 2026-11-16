@@ -151,7 +151,12 @@ Item {
             id: words
             x: room.restAt
             width: room.moving ? implicitWidth : room.restWidth
-            text: room.text
+            // Said on one line, whatever lines its words carry, as a talk's
+            // do, so they never run down over the rows under it (Joel,
+            // 2026-11-15: "text can escape containment").
+            text: room.format === Text.PlainText ? room.text.replace(/\s*\n\s*/g, " ")
+                : room.text
+            maximumLineCount: 1
             textFormat: room.format
             elide: room.moving ? Text.ElideNone : Text.ElideRight
             color: room.color

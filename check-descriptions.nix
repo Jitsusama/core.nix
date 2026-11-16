@@ -1817,6 +1817,11 @@
     other senses and the renames still waiting that tests/repository/names-kept.nix keeps, each printed with
     its word, and the check refuses a stand-in name breaking each of its rules
   '';
+  no-words-leave-their-room = ''
+    in the shell's own Qt, words whose ink runs past the box they're laid in, past the card, or
+    onto another's are each named with their fault, and words inside all three, meeting at an
+    edge, held in a field, or past by a glyph's bearing are not
+  '';
   noise-cancelled-cleans-a-noisy-clip = ''
     a person's voice recorded over a room's noise comes out of each noise-cancelled cleaner, on
     the CPU, with the noise past it as much quieter as the cleaner promises (10 dB for

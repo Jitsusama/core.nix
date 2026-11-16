@@ -1154,13 +1154,21 @@ Item {
     // Vim's command line scrolls a long line (VKCF3Z, 2026-11-06).
     readonly property var crumbsShown: {
         void crumbsMade;
+        const width = text => Math.ceil(Measures.drawnWidth(crumbsFace, text)
+            ?? titleMeasure.widthOf(text)) + 1;
+        return Reading.crumbs(crumbSteps, pathRoom, width, betweenWide);
+    }
+    // The room the path is given way into. A last step too long for it
+    // whole, whose name is all that's left to give, is cut there, so no
+    // step's words ever run past the line (Joel, 2026-11-15: "text can
+    // escape containment").
+    readonly property real pathRoom: {
+        void crumbsMade;
         const line = end - Theme.space.rung.inset - ledWidth - pathGap;
         const width = text => Math.ceil(Measures.drawnWidth(crumbsFace, text)
             ?? titleMeasure.widthOf(text)) + 1;
-        const steps = crumbSteps;
-        const least = Reading.crumbsLeast(steps, width, betweenWide);
-        const room = Math.max(0, line - typingRoom, Math.min(least, line));
-        return Reading.crumbs(steps, room, width, betweenWide);
+        const least = Reading.crumbsLeast(crumbSteps, width, betweenWide);
+        return Math.max(0, line - typingRoom, Math.min(least, line));
     }
     readonly property var crumbSteps: chips.map(chip =>
         ({ text: chip.text, yields: chip.yields === true }))
@@ -1298,9 +1306,13 @@ Item {
 
                     // Its words as they're given way, whole, so nothing
                     // is cut and the next mark follows them at its own
-                    // spacing.
+                    // spacing, but for a step past the path's room, which
+                    // ends there in an ellipsis.
                     Text {
                         id: stepName
+                        width: Math.min(implicitWidth,
+                            Math.max(0, prompt.pathRoom - step.x - x))
+                        elide: Text.ElideRight
                         text: step.modelData
                         // The Title's own ink, strong, so the heading
                         // outranks the cursor row's name beneath it.
