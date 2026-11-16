@@ -618,9 +618,7 @@ def test_tunnel_has_a_lane_of_its_own(tunnel: Connection) -> None:
     tunnel.still("eth1")
     before, lane = tunnel.counts("eth1"), tunnel.tunnel_lane("eth1")
     tunnel.run("jobs.slice", inner)
-    retry(
-        lambda _last_try: tunnel.tunnel_lane("eth1") - lane >= LEAST_TRANSFER, timeout=STILLING
-    )
+    retry(lambda _last_try: tunnel.tunnel_lane("eth1") - lane >= LEAST_TRANSFER, timeout=STILLING)
     moved = [a - b for a, b in zip(tunnel.counts("eth1"), before, strict=True)][:VOICE]
     sent = tunnel.tunnel_lane("eth1") - lane
     assert all(tin < sent // STRAY_SHARE for tin in moved), f"lane {sent}, CAKE {moved}"
