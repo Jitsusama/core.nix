@@ -381,6 +381,18 @@
     "test": "the-margin-cat-follows-the-keys-on-niri"
   },
   {
+    "at": 1794792122,
+    "commit": "75aaf29a37d911bbea9a5b3648cb8490ff52f821",
+    "due": "2026-11-17",
+    "due_why": "Its owner makes it steady after the drag lands and takes it off, by 2026-11-17 23:59 UTC",
+    "owner_pr": 4568,
+    "reason": "blocked 15 of 47 gate runs that built the cat from 10:45 to 19:38 on 15 Nov, among them 0f3b0074 twice, 7c7bc7c1 and 4f7fe3a9, none touching the cat, passing when rerun",
+    "subtests": [
+      "test_a_middle_row_closed_under_it_has_it_fall_onto_the_row_below"
+    ],
+    "test": "the-margin-cat-follows-the-keys-on-niri"
+  },
+  {
     "at": 1794778984,
     "commit": "759d940c7ac0ca75cd385b778d48285515cea929",
     "due": "2026-11-17",
