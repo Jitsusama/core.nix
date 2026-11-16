@@ -240,6 +240,8 @@ QtObject {
         // 4125043c, slice 2). Across the tops it walks: up onto it from
         // beside its edge, along its top, and off its far end down onto
         // the tops again, never through its face nor hidden behind it.
+        // Standing 1 from the screen's top, there's no room over it for a
+        // leap's arc, so each step on and off is walked (VKCF3Z 299fb911).
         const straddles = float(500, 10, 250, 200);
         const overIt = Paths.walk({ x: 100, y: 7 }, { x: 900, y: 7 },
             world({ floats: [straddles] }));
@@ -250,14 +252,21 @@ QtObject {
         expect("one across the tops on its way, it walks over its top",
             [endsAt(overIt), overIt.beats.some(beat => beat.to.y === 1),
                 overFace(overIt, straddles)], [[900, 7], true, []]);
-        expect("up its edge from beside it, and off its far end down onto the tops",
-            [ends(named(overIt, "over")), ends(named(overIt, "hops")),
-                ends(named(overIt, "falls"))],
-            [[492, 2, 500, 1], [742, 1, 750, 1], [750, 1, 750, 7]]);
-        expect("over the tiled windows on it, and under them on the tops either side",
-            [drawn(overIt, "over"), drawn(overIt, "falls"),
-                drawnOver(overIt)[0], drawnOver(overIt)[drawnOver(overIt).length - 1]],
-            [[true], [true], false, false]);
+        // Its beats from beside a floating window's edge to beside its
+        // far one.
+        const wide = world({}).wide;
+        const by = (way, it) => way.beats.filter(beat =>
+            Math.max(beat.from.x, beat.to.x) >= it.left - wide
+                && Math.min(beat.from.x, beat.to.x) <= it.right);
+        expect("walked up beside its edge, along its top and down off its far end",
+            [by(overIt, straddles).map(beat => beat.name), by(overIt, straddles).map(ends)],
+            [["goes", "goes", "goes", "goes", "goes", "goes", "goes"],
+                [[99, 7, 492, 7], [492, 7, 492, 1], [492, 1, 500, 1], [500, 1, 742, 1],
+                    [742, 1, 750, 1], [750, 1, 750, 7], [750, 7, 900, 7]]]);
+        expect("over the tiled windows from its step up to its step down, under them either side",
+            by(overIt, straddles).map(beat =>
+                Paths.frame(overIt, (beat.begins + beat.ends) / 2).aboard === true),
+            [false, true, true, true, true, true, false]);
 
         // A step up: a column too high to leap onto from the one beside
         // it, with a floating window between that is a leap above the
@@ -285,10 +294,10 @@ QtObject {
         // and off its left end down onto the tops.
         const backOver = Paths.walk({ x: 900, y: 7 }, { x: 100, y: 7 },
             world({ floats: [straddles] }));
-        expect("right to left, up its right edge and off its left end",
-            [ends(named(backOver, "over")), ends(named(backOver, "hops")),
-                ends(named(backOver, "falls")), endsAt(backOver), overFace(backOver, straddles)],
-            [[750, 2, 742, 1], [500, 1, 492, 1], [492, 1, 492, 7], [100, 7], []]);
+        expect("right to left, up beside its right edge and down off its left end",
+            [by(backOver, straddles).map(ends), endsAt(backOver), overFace(backOver, straddles)],
+            [[[901, 7, 750, 7], [750, 7, 750, 1], [750, 1, 742, 1], [742, 1, 500, 1],
+                [500, 1, 492, 1], [492, 1, 492, 7], [492, 7, 100, 7]], [100, 7], []]);
 
         // A step down: from its end across the gap onto a lower top, as
         // a leap onto a ledge, its own floating window behind it.
@@ -327,19 +336,32 @@ QtObject {
             world({ floats: [flush] }));
         const stepsOff = Paths.walk({ x: 800, y: 5 }, { x: 100, y: 7 },
             world({ floats: [flush] }));
-        // Its beats by the floating window, not the gap's leap between
-        // columns.
-        const leapt = way => way.beats.filter(beat =>
-            Math.max(beat.from.x, beat.to.x) >= flush.left - 8
-                && ["crouches", "leaps", "over", "hops"].includes(beat.name))
-            .map(beat => beat.name);
+        // By the floating window, not the gap's leap between columns, it
+        // only walks: never a crouch, a leap or a landing's crouch.
+        const walks = (way, it) => by(way, it).every(beat =>
+            ["goes", "turns", "settles"].includes(beat.name));
         expect("onto and off one 2 above the tops, it steps within its walk, never leaping",
-            [leapt(stepsOn), leapt(stepsOff)], [[], []]);
+            [walks(stepsOn, flush), walks(stepsOff, flush)], [true, true]);
         expect("and gets where it's going",
             [ends(stepsOn.beats[stepsOn.beats.length - 1]).slice(2),
                 ends(stepsOff.beats[stepsOff.beats.length - 1]).slice(2)], [[800, 5], [100, 7]]);
         expect("never over its face, on or off it",
             [overFace(stepsOn, flush), overFace(stepsOff, flush)], [[], []]);
+        // One cell more, with room over it for an arc: a leap on, a hop
+        // off. At a cell of 2 the same 3 is a step again.
+        const three = float(700, 13, 200, 100);
+        const byThree = (from, to, more) => Paths.walk(from, to,
+            world(Object.assign({ floats: [three] }, more)));
+        const leapsBy = one => by(one, three).map(beat => beat.name)
+            .filter(name => ["crouches", "leaps", "over", "hops", "falls"].includes(name));
+        expect("3 above, with room for its arc, it leaps on and hops off",
+            [leapsBy(byThree({ x: 100, y: 7 }, { x: 800, y: 4 })),
+                leapsBy(byThree({ x: 800, y: 4 }, { x: 100, y: 7 }))],
+            [["crouches", "leaps", "over"], ["hops", "falls"]]);
+        expect("and at a cell of 2 it steps on and off",
+            [walks(byThree({ x: 100, y: 7 }, { x: 800, y: 4 }, { cell: 2 }), three),
+                walks(byThree({ x: 800, y: 4 }, { x: 100, y: 7 }, { cell: 2 }), three)],
+            [true, true]);
 
         // One off its way changes nothing, along the tops nor by a route.
         const aside = float(300, 600, 100, 100);
