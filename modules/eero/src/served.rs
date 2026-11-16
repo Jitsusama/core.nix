@@ -1,11 +1,13 @@
 //! The Home Network's rows as the socket serves them, ready to draw
 //! (ready-rows' wire): made once in each vocabulary a listener asks for,
 //! the launcher's words.json and its number settings, both read only from
-//! the Nix store, and made again with each read of the network, so a
-//! watch is told only the rows that changed.
+//! the Nix store, and made again with each read of the network, and when
+//! net's record says a different worst, so a watch is told only the rows
+//! that changed.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use ready_rows::kept::Kept;
 use ready_rows::numbers::Numbers;
@@ -60,18 +62,26 @@ impl Vocabulary {
 }
 
 /// The map of the network the rows offer: its page, and net's record it's
-/// drawn from (modules/net), read for what's worth a look each time the
-/// rows are made.
+/// drawn from (modules/net), read for what's worth a look whenever net
+/// has written it anew.
 pub struct Mapped {
     pub page: String,
     pub record: PathBuf,
 }
 
-/// Every vocabulary asked for, where they may be read from, and the map
-/// of the network, if there's one to open.
+/// What net's record said worst, as of when it was written; none written
+/// while there's no record.
+struct Heard {
+    written: Option<SystemTime>,
+    worst: Option<String>,
+}
+
+/// Every vocabulary asked for, where they may be read from, the map of
+/// the network if there's one to open, and what net last said of it.
 pub struct Vocabularies {
     store: PathBuf,
     map: Option<Mapped>,
+    heard: Option<Heard>,
     held: HashMap<Said, Vocabulary>,
 }
 
@@ -88,6 +98,7 @@ impl Vocabularies {
         Vocabularies {
             store,
             map: None,
+            heard: None,
             held: HashMap::new(),
         }
     }
@@ -123,12 +134,8 @@ impl Vocabularies {
             kept: Kept::default(),
             made: Made::new(),
         };
-        let map = now(self.map.as_ref());
-        let map = map.as_ref().map(|(page, worst)| rows::Map {
-            page,
-            worst: worst.as_deref(),
-        });
-        vocabulary.make(network, map.as_ref());
+        self.hear();
+        vocabulary.make(network, self.map_now().as_ref());
         self.held.insert(said.clone(), vocabulary);
         Ok(said)
     }
@@ -141,11 +148,11 @@ impl Vocabularies {
     /// Makes every vocabulary's rows again from the network, answering
     /// with what each held before.
     pub fn make(&mut self, network: &HomeNetwork) -> HashMap<Said, Made> {
-        // Read once for every vocabulary, so each says the same.
-        let map = now(self.map.as_ref());
-        let map = map.as_ref().map(|(page, worst)| rows::Map {
-            page,
-            worst: worst.as_deref(),
+        self.hear();
+        // Heard once for every vocabulary, so each says the same.
+        let map = self.map.as_ref().map(|map| rows::Map {
+            page: &map.page,
+            worst: self.heard.as_ref().and_then(|heard| heard.worst.as_deref()),
         });
         self.held
             .iter_mut()
@@ -175,9 +182,45 @@ impl Vocabularies {
     }
 }
 
-/// The map's page, with the worst net finds now.
-fn now(map: Option<&Mapped>) -> Option<(&str, Option<String>)> {
-    map.map(|map| (map.page.as_str(), worst(&map.record)))
+impl Vocabularies {
+    /// Whether net's record says a different worst than the rows were
+    /// last made with, as `make` would read it now. net writes its record
+    /// each minute, and it's read again only once it's written anew, a
+    /// look at its time costing far less than reading it whole.
+    pub fn net_moved(&mut self) -> bool {
+        let was = self.heard.as_ref().map(|heard| heard.worst.clone());
+        self.hear();
+        was != self.heard.as_ref().map(|heard| heard.worst.clone())
+    }
+
+    /// Hears net's record again, if it's been written since it was last
+    /// heard. Its time is taken before it's read, so a write between
+    /// the two is heard on the next look rather than missed.
+    fn hear(&mut self) {
+        let Some(map) = &self.map else { return };
+        let written = std::fs::metadata(&map.record)
+            .and_then(|record| record.modified())
+            .ok();
+        if self
+            .heard
+            .as_ref()
+            .is_some_and(|heard| heard.written == written)
+        {
+            return;
+        }
+        self.heard = Some(Heard {
+            written,
+            worst: worst(&map.record),
+        });
+    }
+
+    /// The map's page, with the worst net was last heard to find.
+    fn map_now(&self) -> Option<rows::Map<'_>> {
+        self.map.as_ref().map(|map| rows::Map {
+            page: &map.page,
+            worst: self.heard.as_ref().and_then(|heard| heard.worst.as_deref()),
+        })
+    }
 }
 
 /// The worst of what net finds worth a look in its record at `record`,

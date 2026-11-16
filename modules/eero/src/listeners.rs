@@ -15,12 +15,14 @@
 //! It also serves the Home Network's rows ready to draw, as every daemon
 //! serves its place's (served.rs): a get, list or watch of kind `row` or
 //! place `eero`, in the launcher's words, is answered with the rows, and
-//! a watch is told after each read only the rows that changed.
+//! a watch is told after each read only the rows that changed, and after
+//! net's record says a different worst, which the Map row says.
 //!
-//! Each connection has a thread that reads what it says, and one more
-//! accepts them: plain threads, since a handful of listeners and a line
+//! Each connection has a thread that reads what it says, one more
+//! accepts them, and one follows net: plain threads, since a handful of listeners and a line
 //! every half minute need no async runtime.
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::{self, BufRead, BufReader, ErrorKind, Write};
 use std::net::Shutdown;
@@ -189,34 +191,42 @@ impl Listeners {
             .as_ref()
             .map(|model| vocabularies.make(model))
             .unwrap_or_default();
-        listeners.retain_mut(|listener| {
-            let mut lines = Vec::new();
-            if listener.watching {
-                lines.push(told.clone());
+        tell(listeners, vocabularies, &before, Some(&told));
+    }
+
+    /// Makes the rows again when net's record says a different worst than
+    /// they were made with, while eero's network stays the same, telling
+    /// each watch of them the rows that changed; whether it did. The
+    /// daemon looks each `NET_LOOK` (daemon.rs), so the Map row is never
+    /// further behind net than that.
+    pub fn follow_net(&self) -> bool {
+        let mut hub = self.hub();
+        let Hub {
+            network: model,
+            vocabularies,
+            listeners,
+            ..
+        } = &mut *hub;
+        let Some(model) = model.as_ref() else {
+            return false;
+        };
+        if !vocabularies.net_moved() {
+            return false;
+        }
+        let before = vocabularies.make(model);
+        tell(listeners, vocabularies, &before, None);
+        true
+    }
+
+    /// Looks each `every` for net's record saying a different worst, on a
+    /// thread of its own, so the Map row follows net between eero's reads.
+    pub fn follow_net_every(&self, every: Duration) {
+        let following = self.clone();
+        thread::spawn(move || {
+            loop {
+                thread::sleep(every);
+                following.follow_net();
             }
-            for watch in &listener.rows {
-                let (Some(was), Some(now)) =
-                    (before.get(&watch.said), vocabularies.made(&watch.said))
-                else {
-                    continue;
-                };
-                let (changed, gone) = served::between(was, now, |key| watch.wants(key));
-                if changed.is_empty() && gone.is_empty() {
-                    continue;
-                }
-                let mut said = json!({"id": watch.id, "changed": changed});
-                if !gone.is_empty() {
-                    said["gone"] = json!(gone);
-                }
-                lines.push(said.to_string());
-            }
-            let written = lines
-                .iter()
-                .all(|line| write_line(&mut listener.stream, line).is_ok());
-            if !written {
-                let _ = listener.stream.shutdown(Shutdown::Both);
-            }
-            written
         });
     }
 
@@ -427,6 +437,45 @@ fn rows_asked(
     answer
 }
 
+/// Tells each listener `told` of the model, if it watches it, and each
+/// watch of the rows those that changed since `before`, dropping any
+/// listener that can't take it.
+fn tell(
+    listeners: &mut Vec<Listener>,
+    vocabularies: &Vocabularies,
+    before: &HashMap<Said, served::Made>,
+    told: Option<&str>,
+) {
+    listeners.retain_mut(|listener| {
+        let mut lines = Vec::new();
+        if let Some(told) = told.filter(|_| listener.watching) {
+            lines.push(told.to_owned());
+        }
+        for watch in &listener.rows {
+            let (Some(was), Some(now)) = (before.get(&watch.said), vocabularies.made(&watch.said))
+            else {
+                continue;
+            };
+            let (changed, gone) = served::between(was, now, |key| watch.wants(key));
+            if changed.is_empty() && gone.is_empty() {
+                continue;
+            }
+            let mut said = json!({"id": watch.id, "changed": changed});
+            if !gone.is_empty() {
+                said["gone"] = json!(gone);
+            }
+            lines.push(said.to_string());
+        }
+        let written = lines
+            .iter()
+            .all(|line| write_line(&mut listener.stream, line).is_ok());
+        if !written {
+            let _ = listener.stream.shutdown(Shutdown::Both);
+        }
+        written
+    });
+}
+
 fn write_line(stream: &mut UnixStream, line: &str) -> io::Result<()> {
     stream.write_all(line.as_bytes())?;
     stream.write_all(b"\n")?;
@@ -457,6 +506,15 @@ mod tests {
     /// test's own, holding the launcher's words for the Home Network; the
     /// path of those words, as a listener names them; and a connection.
     fn serving(name: &str) -> (Listeners, String, UnixStream, BufReader<UnixStream>) {
+        serving_mapped(name, None)
+    }
+
+    /// The same, its rows offering the map drawn from net's record at
+    /// `record`, if any.
+    fn serving_mapped(
+        name: &str,
+        record: Option<std::path::PathBuf>,
+    ) -> (Listeners, String, UnixStream, BufReader<UnixStream>) {
         let folder = folder(name);
         let store = folder.join("store");
         fs::create_dir_all(&store).expect("the test's store is made");
@@ -465,8 +523,13 @@ mod tests {
         let store = store.canonicalize().expect("the store is found");
         let path = folder.join("socket");
         let (wake, _woken) = mpsc::channel();
-        let listeners = Listeners::listen_within(&path, wake, Vocabularies::within(store))
-            .expect("the socket listens");
+        let map = record.map(|record| Mapped {
+            page: "http://sites.localhost/network/".into(),
+            record,
+        });
+        let listeners =
+            Listeners::listen_within(&path, wake, Vocabularies::within(store).mapped(map))
+                .expect("the socket listens");
         let (stream, reader) = connected(&path);
         (listeners, words.display().to_string(), stream, reader)
     }
@@ -754,6 +817,57 @@ mod tests {
             "unknown-kind",
             "another place is refused"
         );
+    }
+
+    /// net's record written with `concerns`, a second later than any write
+    /// before, as net writes it each minute.
+    fn net_says(record: &Path, concerns: &Value, written: std::time::SystemTime) {
+        fs::write(record, json!({"concerns": concerns}).to_string()).expect("net's record");
+        fs::File::options()
+            .write(true)
+            .open(record)
+            .and_then(|file| file.set_modified(written))
+            .expect("its time is set");
+    }
+
+    #[test]
+    fn the_map_row_follows_net_when_the_network_stays_the_same() {
+        let record = folder("follows-net").join("network.json");
+        let start = std::time::SystemTime::now();
+        let lost = json!([{"kind": "lost", "says": "The modem has lost 878"}]);
+        net_says(&record, &lost, start);
+        let (listeners, words, mut stream, mut reader) =
+            serving_mapped("follows-net", Some(record.clone()));
+        listeners.send(&home());
+        ask(
+            &mut stream,
+            &json!({"id": "map", "ask": "watch", "kind": "row", "words": words,
+                "keys": ["row:eero:map"]}),
+        );
+        assert_eq!(
+            read(&mut reader)["records"][0]["row"]["state"],
+            "The modem has lost 878",
+            "the map row warns of what net finds"
+        );
+
+        net_says(&record, &lost, start + Duration::from_secs(1));
+        assert!(
+            !listeners.follow_net(),
+            "net writing the same worst again changes no row"
+        );
+        net_says(&record, &json!([]), start + Duration::from_secs(2));
+        assert!(listeners.follow_net(), "net clearing it is followed");
+        let told = read(&mut reader);
+        assert_eq!(
+            keys(&told["changed"]),
+            vec!["row:eero:map"],
+            "the map row is told, while eero's network stayed the same"
+        );
+        assert!(
+            told["changed"][0]["row"].get("state").is_none(),
+            "it no longer warns: {told}"
+        );
+        assert!(!listeners.follow_net(), "nothing more moved");
     }
 
     #[test]

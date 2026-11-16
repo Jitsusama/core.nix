@@ -50,6 +50,11 @@ use crate::waiting;
 /// What names the network map's page, which the rows open.
 const MAP: &str = "EERO_MAP";
 
+/// How often net's record is looked at for a different worst, which the
+/// Map row says. net writes it each minute, and a look is only its time
+/// unless it was written anew, so the row follows net within this.
+const NET_LOOK: Duration = Duration::from_secs(5);
+
 /// Keeps the home network until it's stopped.
 pub fn run() -> Result<(), String> {
     let runtime = runtime()?;
@@ -66,12 +71,16 @@ pub fn run() -> Result<(), String> {
             page,
             record: runtime.join("net").join("network.json"),
         });
+    let mapped = map.is_some();
     let listeners = Listeners::listen(&folder.join("socket"), wake, map).map_err(|e| {
         format!(
             "couldn't listen at {}: {e}",
             folder.join("socket").display()
         )
     })?;
+    if mapped {
+        listeners.follow_net_every(NET_LOOK);
+    }
     let mut daemon = Daemon::new(earlier(&file), history());
     if let Some(model) = &daemon.model {
         listeners.send(&value(model));
