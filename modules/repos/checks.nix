@@ -24,7 +24,8 @@
   # whitespace, so owners joined by spaces lost a realm's list, and an
   # owner shared with it then counted in the other realm
   # (src/receptor.rs). So the check reads the unit of a machine declaring
-  # two realms, one owner listed in both.
+  # two realms, one owner listed in both;
+  # tests/repos-is-told-every-realms-owners.sh reads it.
   repos-is-told-every-realms-owners =
     let
       home = account (bareNixos [
@@ -50,11 +51,8 @@
       owners = "Environment=REPOS_RECEPTOR_OWNERS=personal=jsama,shared;work=kestrel-co,shared";
     in
     pkgs.runCommandLocal "repos-is-told-every-realms-owners" { } ''
-      if ! grep -qxF ${lib.escapeShellArg owners} ${unit}; then
-        echo "repos-refresh.service doesn't give every realm's owners as one word:" >&2
-        grep -F REPOS_RECEPTOR ${unit} >&2 || echo "it gives no owners at all" >&2
-        exit 1
-      fi
+      ${lib.getExe pkgs.bash} ${./tests/repos-is-told-every-realms-owners.sh} \
+        ${unit} ${lib.escapeShellArg owners}
       touch $out
     '';
 }
