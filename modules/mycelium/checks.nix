@@ -37,6 +37,16 @@ let
   # home-manager keeps ExecStart as a list of its lines.
   linuxNode = toString (linux links).systemd.user.services.mycelium.Service.ExecStart;
   linuxAgent = (linux links).systemd.user.services.mycelium.Service.Environment;
+  # The home realm's node for a machine naming one via, forced whole so a
+  # value the option's type refuses fails here.
+  viaNode =
+    via:
+    let
+      words =
+        toString
+          (linux (links // { vias = [ via ]; })).systemd.user.services.mycelium.Service.ExecStart;
+    in
+    builtins.deepSeq words words;
   macNode = (mac links).launchd.agents.mycelium.config.ProgramArguments;
   # A Mac workstation signs its commits from the Secure Enclave, so its node
   # signs its links in with the same key, each option after its own flag.
@@ -179,31 +189,39 @@ in
       );
 
   # A workstation in a realm runs the node in it, dialling each machine it
-  # names, over SSH or through a provider's program, in its home realm and
-  # in each further one: a user service on Linux, an agent on a Mac. One
-  # that names none runs it dialling nothing, since its node still holds its sessions and
-  # starts what others ask of it, and one in no realm has neither a realm
-  # nor a node. On Linux the node signs in with the agents' key, which asks
-  # nothing, unless its realm names a key of its own; on a Mac what it
-  # starts signs commits with that key, since nobody at another machine can
-  # touch this one's sensor.
+  # names, over SSH or through a provider's program named by its path, in
+  # its home realm and in each further one: a user service on Linux, an
+  # agent on a Mac. A program named any other way, or a place it could take
+  # for a flag or systemd would expand, doesn't evaluate. One that names
+  # none runs it dialling nothing, since its node still holds its sessions
+  # and starts what others ask of it, and one in no realm has neither a
+  # realm nor a node. On Linux the node signs in with the agents' key,
+  # which asks nothing, unless its realm names a key of its own; on a Mac
+  # what it starts signs commits with that key, since nobody at another
+  # machine can touch this one's sensor.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, a Mac's node starts sessions whose commits wait on its sensor, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, a via naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, a Mac's node starts sessions whose commits wait on its sensor, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
-        && lib.hasInfix "--ssh one --ssh two --via cell:cell-1 --serves" (
-          toString
-            (linux (links // { vias = [ "cell:cell-1" ]; })).systemd.user.services.mycelium.Service.ExecStart
-        )
-        && lib.hasInfix "--ssh two --via cell:cell-2 --serves" (
+        && lib.hasInfix "--ssh one --ssh two --via /bin/cell:cell-1 --serves" (viaNode "/bin/cell:cell-1")
+        && lib.all (wrong: !(builtins.tryEval (viaNode wrong)).success) [
+          "cell:cell-1"
+          "/bin/cell:"
+          "/bin/cell:-c"
+          "/bin/my cell:cell-1"
+          "/bin/cell:cell 1"
+          "/bin/cell:cell-%h"
+          "/bin/cell:cell-$HOME"
+        ]
+        && lib.hasInfix "--ssh two --via /bin/cell:cell-2 --serves" (
           toString
             (linux (
               both
               // {
                 alsoJoins.other = {
                   links = [ "two" ];
-                  vias = [ "cell:cell-2" ];
+                  vias = [ "/bin/cell:cell-2" ];
                 };
               }
             )).systemd.user.services.mycelium-other.Service.ExecStart

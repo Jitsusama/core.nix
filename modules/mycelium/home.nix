@@ -10,9 +10,10 @@
 #   jitsusama.mycelium.links = [ "other-machine" ];
 #
 # A machine SSH can't reach, such as one a provider lent, is dialled through
-# that provider's program instead, as `PROGRAM:PLACE`:
+# that provider's program instead, as `PROGRAM:PLACE`, the program by its
+# store path:
 #
-#   jitsusama.mycelium.vias = [ "cell:cell-1" ];
+#   jitsusama.mycelium.vias = [ "${aquifer-link}/bin/aquifer-link:sandbox-1" ];
 #
 # A machine may join further realms too, each run by a node of its own,
 # with its own state, mesh, steer inboxes, socket and key, where the harness
@@ -89,8 +90,19 @@ let
   );
   name = lib.types.strMatching "[a-z0-9-]+";
   # A machine a provider's program reaches, as `PROGRAM:PLACE`: the program
-  # by its path or as found on the node's PATH, and the place it names.
-  via = lib.types.strMatching "[^:]+:.+";
+  # by its absolute path, since a Mac's agent runs the node with PATH
+  # /usr/bin:/bin and Linux's PATH isn't one to count on, and the place it
+  # names. Neither takes whitespace, `%` or `$`, which systemd expands even
+  # inside quotes, and the place doesn't start with `-`, so the program
+  # can't read it as a flag.
+  via = lib.types.strMatching "/[^:[:space:]%$]+:[^-:[:space:]%$][^[:space:]%$]*";
+  viasDescription = ''
+    The machines of the realm this machine dials and keeps linked through a
+    provider's program, as `PROGRAM:PLACE` with the program by its absolute
+    path, for a machine SSH can't reach, such as one a provider lent.
+    mycelium's PROTOCOL.md says what the program is asked.
+  '';
+  viasExample = lib.literalExpression ''[ "''${aquifer-link}/bin/aquifer-link:sandbox-1" ]'';
   further = lib.types.submodule (
     { name, ... }:
     {
@@ -103,10 +115,8 @@ let
         vias = lib.mkOption {
           type = lib.types.listOf via;
           default = [ ];
-          description = ''
-            The machines of this realm this machine dials through a provider's
-            program, as `vias` names them.
-          '';
+          example = viasExample;
+          description = viasDescription;
         };
         signsInWith = lib.mkOption {
           type = lib.types.nullOr (lib.types.strMatching "[a-z0-9-]+");
@@ -536,13 +546,8 @@ in
     vias = lib.mkOption {
       type = lib.types.listOf via;
       default = [ ];
-      example = [ "/run/current-system/sw/bin/cell:cell-1" ];
-      description = ''
-        The machines of the realm this machine dials and keeps linked through a
-        provider's program, as `PROGRAM:PLACE`, for a machine SSH can't reach,
-        such as one a provider lent. mycelium's PROTOCOL.md says what the
-        program is asked.
-      '';
+      example = viasExample;
+      description = viasDescription;
     };
     flows = lib.mkOption {
       type = lib.types.listOf flow;
