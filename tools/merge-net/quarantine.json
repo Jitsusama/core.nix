@@ -348,5 +348,19 @@
       "test_the_home_network_and_nearby_list_whats_around_at_each_scale"
     ],
     "test": "vm-desktop-looks"
+  },
+  {
+    "at": 1794845674,
+    "commit": "009ea3f710076ce17f5627363a2d8c7979ecade6",
+    "due": "2026-11-17",
+    "due_why": "Its owner counts the wander in the cat's own steps and waits for the yarn's report, and takes it off, by 2026-11-17 23:59 UTC",
+    "owner_pr": 4365,
+    "owner_session": "XY9H5C",
+    "reason": "failed unrelated gates on 16 Nov, passing when rerun: the wander at 5afc28662 on a busy builder (7 cells of at least 16), the yarn at d6345e9 (came from nowhere)",
+    "subtests": [
+      "test_away_it_bats_a_ball_of_yarn_off_and_walks_back",
+      "test_away_it_wanders_and_a_key_brings_it_back"
+    ],
+    "test": "the-margin-cat-plays-more-the-less-he-types-on-niri"
   }
 ]
