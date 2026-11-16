@@ -1,0 +1,413 @@
+/* Murmurs: a starling murmuration at dusk over a fence wire. The sky is the
+   page's ground, the birds are inked in what speaks, and the hairlines that
+   tie one flock to another are the map's own hyphae ink, so the two pages
+   read as one world; one glow, the kit's accent ring, only where the keys
+   are.
+
+   What your sessions murmur: every murmur a quest's sessions said into its
+   web, said first in one sentence over the flock, then listed newest first
+   with its words, who said it, when, its ties and how it settled. An
+   interface to keep open: the sentence and the flock are the overview, the
+   rows the detail, and nothing moves under the reader but the cursor. */
+
+:root {
+  /* A murmur is a program speaking, so the program hue is the site's tint. */
+  --tint: var(--program);
+  --tint-word: color-mix(in oklab, var(--tint) 60%, var(--strong));
+  --hairline: color-mix(in oklab, var(--muted) 70%, var(--rule));
+  --list: minmax(0, 46rem);
+}
+
+code {
+  font-size: 0.92em;
+}
+
+/* ---- The first screen: the flock, the sentence, and where it stands. ---- */
+
+.hero {
+  display: grid;
+  justify-items: center;
+  gap: var(--items);
+  padding: calc(var(--groups) * 2) var(--inset) var(--groups);
+  text-align: center;
+}
+
+.crest {
+  inline-size: min(15rem, 70vw);
+  block-size: auto;
+  overflow: visible;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--tint-word);
+  font: var(--label-weight) var(--step-small) / 1.5 var(--label-face);
+  font-feature-settings: var(--mono-features);
+  letter-spacing: var(--label-tracking);
+  text-transform: lowercase;
+}
+
+.headline {
+  max-inline-size: 18ch;
+  margin: 0;
+  color: var(--strong);
+  font-family: var(--title-face);
+  font-size: var(--step-hero);
+  font-weight: 560;
+  font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+}
+
+.headline:focus {
+  outline: none;
+}
+
+.headline em {
+  display: inline-block;
+  color: var(--tint-word);
+  font-style: italic;
+  font-weight: 420;
+}
+
+.headline a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--hairline);
+  text-underline-offset: 0.12em;
+}
+
+.headline a:hover {
+  text-decoration-color: currentColor;
+}
+
+.lede {
+  max-inline-size: 33rem;
+  margin: 0;
+  color: var(--text);
+  font-family: var(--voice-face);
+  font-size: var(--step-large);
+  font-style: italic;
+  font-weight: var(--voice-weight);
+  font-variation-settings: "SOFT" var(--voice-soft), "WONK" var(--voice-wonk);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.standing {
+  display: flex;
+  align-items: center;
+  gap: var(--mark);
+  min-block-size: 44px;
+  margin: 0;
+}
+
+.asof {
+  color: var(--text);
+  font-size: var(--step-small);
+}
+
+/* The keys said once, quietly, inside the composition, beside the theme. */
+.ways {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--mark) var(--groups);
+  margin-block-start: var(--mark);
+  color: var(--text);
+  font-size: var(--step-small);
+}
+
+.ways .keys {
+  margin: 0;
+  max-inline-size: 40rem;
+  visibility: hidden;
+}
+
+.js .ways .keys {
+  visibility: visible;
+}
+
+.ways kbd {
+  cursor: pointer;
+}
+
+/* ---- The flock: the one drawing, leading the first screen. Before the
+   node speaks it holds the crest; then the murmurs themselves. ---- */
+
+.dusk {
+  display: grid;
+  justify-items: center;
+  inline-size: 100%;
+  margin: 0 0 var(--items);
+}
+
+.drawn {
+  display: grid;
+  justify-items: center;
+  inline-size: 100%;
+}
+
+.drawn svg:not(.crest) {
+  display: block;
+  inline-size: min(100%, var(--w, 30rem));
+  block-size: auto;
+  overflow: visible;
+}
+
+.legend {
+  max-inline-size: 36rem;
+  color: var(--text);
+  font-size: var(--step-small);
+  font-style: italic;
+  margin: calc(-1 * var(--mark)) 0 var(--items);
+}
+
+.wire {
+  fill: none;
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.tie {
+  fill: none;
+  stroke: var(--hairline);
+  stroke-width: 0.75;
+}
+
+/* A bird in flight is a stroke, a settled one a body at rest, so which is
+   which is told by shape before colour. */
+.bird {
+  fill: none;
+  stroke: var(--strong);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.roost {
+  fill: var(--tint);
+}
+
+.drawn [data-key] {
+  cursor: pointer;
+}
+
+.drawn .bird.on {
+  stroke: var(--accent);
+  stroke-width: 2.6;
+}
+
+.drawn .roost.on {
+  fill: var(--accent);
+}
+
+.drawn text {
+  fill: var(--text);
+  font: italic 400 12px var(--serif);
+}
+
+.glyph {
+  inline-size: 1rem;
+  block-size: 1rem;
+  flex: none;
+}
+
+.glyph .bird {
+  stroke: var(--tint);
+  stroke-width: 1.8;
+}
+
+/* While the page isn't live, its bird is dashed, as if half seen. */
+.standing:has([data-state="stale"]) .glyph .bird,
+.standing:has([data-state="broken"]) .glyph .bird {
+  stroke: var(--muted);
+  stroke-dasharray: 2 2;
+}
+
+/* ---- The work: the murmurs, newest first. ---- */
+
+.work {
+  display: grid;
+  grid-template-columns: var(--list);
+  justify-content: center;
+  padding: var(--groups) var(--inset) calc(var(--groups) * 2);
+  border-block-start: 1px solid var(--rule);
+}
+
+.part {
+  margin: 0 0 var(--items);
+  color: var(--strong);
+  font-family: var(--title-face);
+  font-size: var(--step-title);
+  font-weight: 560;
+  font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
+}
+
+.part em {
+  color: var(--tint-word);
+  font-weight: 420;
+}
+
+.hint {
+  padding: var(--items) 0;
+  color: var(--text);
+  font-style: italic;
+}
+
+/* A murmur's row: its mark in the gutter, then its words as the line to
+   read, who said it and when under that, and how it settled last. */
+.murmurs {
+  margin: 0;
+  padding: 0;
+  border-block-start: 1px solid var(--rule);
+}
+
+.murmurs:focus {
+  outline: none;
+}
+
+.murmurs [role="option"] {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  gap: 0 var(--items);
+  align-items: baseline;
+  min-block-size: 44px;
+  padding: var(--items) var(--mark);
+  border-block-end: 1px solid var(--edge);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.murmurs .mk {
+  align-self: start;
+  display: flex;
+  padding-block-start: 0.35em;
+}
+
+.mm {
+  inline-size: 1.25rem;
+  block-size: 0.8rem;
+  overflow: visible;
+}
+
+.murmurs .line {
+  display: grid;
+  gap: var(--tie);
+  overflow-wrap: anywhere;
+}
+
+.murmurs .words {
+  color: var(--strong);
+}
+
+.murmurs .said {
+  color: var(--text);
+  font-size: var(--step-small);
+}
+
+.murmurs .said code {
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+/* How a murmur settled is set in the voice's italic, the answer to it. */
+.murmurs .settled {
+  color: var(--text);
+  font-size: var(--step-small);
+  font-style: italic;
+}
+
+@supports (text-wrap: pretty) {
+  .murmurs .words,
+  .lede {
+    text-wrap: pretty;
+  }
+}
+
+@supports (text-wrap: balance) {
+  .headline {
+    text-wrap: balance;
+  }
+}
+
+/* ---- The cursor, after every row's own look, which it marks. ---- */
+
+.murmurs [aria-selected="true"] {
+  background-color: var(--selection);
+}
+
+.murmurs:focus-visible [aria-selected="true"] {
+  outline: var(--ring) solid var(--accent);
+  outline-offset: 0;
+}
+
+/* ---- Keys. ---- */
+
+.keypanel {
+  max-inline-size: min(34rem, calc(100vw - 2 * var(--items)));
+  background: var(--raised);
+  color: var(--text);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: var(--groups) var(--inset);
+}
+
+.keypanel::backdrop {
+  background: color-mix(in srgb, var(--shadow) 60%, transparent);
+}
+
+.keypanel h2 {
+  margin-block-end: var(--apart);
+}
+
+.keypanel dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--mark) var(--groups);
+}
+
+.keypanel dl div {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: var(--groups);
+}
+
+@supports (grid-template-columns: subgrid) {
+  .keypanel dl div {
+    display: grid;
+    grid-template-columns: subgrid;
+  }
+}
+
+.keypanel dd {
+  margin: 0;
+}
+
+.keypanel .close {
+  margin-block-start: var(--groups);
+  min-block-size: 44px;
+  padding: var(--mark) var(--apart);
+  background: none;
+  border: 1px solid var(--field);
+  border-radius: var(--radius);
+  color: var(--strong);
+}
+
+@media (forced-colors: active) {
+  .bird {
+    stroke: CanvasText;
+  }
+
+  .roost {
+    fill: CanvasText;
+  }
+
+  .drawn .bird.on,
+  .murmurs [aria-selected="true"] {
+    outline: 2px solid Highlight;
+    stroke: Highlight;
+  }
+}

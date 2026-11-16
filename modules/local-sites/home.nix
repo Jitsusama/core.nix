@@ -171,6 +171,16 @@ in
         # Its mark, in the hue the theme gives what programs are.
         tint = "program";
       };
+      # What the quests' sessions murmur into their webs, live from the
+      # node's murmur records (modules/mycelium/murmurs). It is served at
+      # web/, where the home has always listed it; the copy once written to
+      # the state folder there stays behind the mount, unread.
+      web = sites.localSite {
+        name = "web";
+        src = ../mycelium/murmurs;
+        inherit webKit;
+        tint = "program";
+      };
     };
     feeds = {
       # The system daemon's summary, its parts and their things
@@ -203,7 +213,8 @@ in
       # cell's purpose, standing, documents and lineage. The map reads its
       # networks and cells whole, as `mycelium networks` draws them; of
       # each machine only what the map draws; and of each message only who
-      # sent it, how and where, never its words.
+      # sent it, how and where, never its words. Of each murmur the murmurs
+      # page reads only what it draws, not the machine it was said on.
       node = {
         socket = "mycelium/${realm}.sock";
         kinds = {
@@ -239,6 +250,14 @@ in
             "from"
             "intent"
             "groups"
+          ];
+          murmur.fields = [
+            "writer"
+            "at"
+            "text"
+            "tied_to"
+            "purpose"
+            "settled"
           ];
         };
       };

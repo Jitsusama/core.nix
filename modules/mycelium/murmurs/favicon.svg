@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    g { stroke: @light-tint@; }
+    .fill { fill: @light-tint@; }
+    @media (prefers-color-scheme: dark) { g { stroke: @dark-tint@; } .fill { fill: @dark-tint@; } }
+  </style>
+  <g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 11Q8 6 12 13Q16 6 20 11"/>
+    <path d="M17 6Q20 3 23 8Q26 3 29 6"/>
+    <path d="M2 26C12 29 20 29 30 26"/>
+    <ellipse class="fill" cx="16" cy="23" rx="2.5" ry="3"/>
+  </g>
+</svg>
