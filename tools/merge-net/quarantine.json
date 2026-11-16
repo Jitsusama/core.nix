@@ -349,5 +349,14 @@
       "test_the_lock_screen_takes_only_the_right_password"
     ],
     "test": "vm-desktop-locks-and-asks"
+  },
+  {
+    "at": 1794838970,
+    "commit": "467f7109b3c34c6195996ce4f98c020a3064fe53",
+    "due": "2026-11-18",
+    "owner_pr": 4953,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 467f7109b3c3",
+    "test": "vm-desktop-keeps-pace"
   }
 ]
