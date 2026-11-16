@@ -18,6 +18,7 @@
 //! its refusals and its exits take the terminal kit's shape (`help()`).
 
 mod chrome;
+mod hear;
 mod pain;
 mod pi;
 mod trial;

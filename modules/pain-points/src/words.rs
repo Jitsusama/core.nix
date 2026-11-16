@@ -176,6 +176,9 @@ mod tests {
         );
         assert!(asking_status("where are we at?"), "where are we");
         assert!(asking_status("What\u{2019}s left"), "a curly apostrophe");
+        assert!(asking_status("status update"), "his most usual ask");
+        assert!(asking_status("where do things stand?"), "where things stand");
+        assert!(asking_status("what's the latest"), "the latest");
         assert!(
             !asking_status("make the status line green"),
             "status as a thing"
