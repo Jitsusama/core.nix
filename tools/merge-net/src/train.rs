@@ -214,8 +214,8 @@ const DESCRIBED: &str = "merge-net's train merges the changes that passed togeth
 #[must_use]
 pub fn offer(head: &str, branch: &str) -> Option<String> {
     let root = crate::state::State::from_env().root;
-    let rides = riders(&root).iter().any(|rider| rider.head == head);
-    match seat(rides, fell(&root, head)) {
+    let boarded = riders(&root).iter().any(|waiting| waiting.head == head);
+    match seat(boarded, fell(&root, head)) {
         Seat::Fell(_) => return None,
         Seat::Rides => {}
         Seat::Board => {
