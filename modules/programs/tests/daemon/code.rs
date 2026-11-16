@@ -206,20 +206,33 @@ fn pull_takes_what_the_branch_followed_has_and_never_merges() {
     };
     git(&upstream, &["init", "--quiet", "--bare", "-b", "main"]);
     git(&elsewhere, &["init", "--quiet", "-b", "main"]);
-    git(&elsewhere, &["remote", "add", "origin", upstream.to_str().unwrap()]);
+    git(
+        &elsewhere,
+        &["remote", "add", "origin", upstream.to_str().unwrap()],
+    );
     commit(&elsewhere, "one");
     git(&elsewhere, &["push", "--quiet", "-u", "origin", "main"]);
-    git(&home, &["clone", "--quiet", upstream.to_str().unwrap(), here.to_str().unwrap()]);
+    git(
+        &home,
+        &[
+            "clone",
+            "--quiet",
+            upstream.to_str().unwrap(),
+            here.to_str().unwrap(),
+        ],
+    );
     commit(&elsewhere, "two");
     git(&elsewhere, &["push", "--quiet"]);
     let mut client = running.client();
-    let mut pull = |id: u64, folder: &Path| {
-        client.ask(&json!({"id": id, "ask": "code:pull", "path": folder}))
-    };
+    let mut pull =
+        |id: u64, folder: &Path| client.ask(&json!({"id": id, "ask": "code:pull", "path": folder}));
     let head = |folder: &Path| git(folder, &["rev-parse", "HEAD"]);
 
     let said = pull(1, &here);
-    assert_eq!(said["said"], "pulled 1 commit", "Pull didn't fetch and take: {said}");
+    assert_eq!(
+        said["said"], "pulled 1 commit",
+        "Pull didn't fetch and take: {said}"
+    );
     assert_eq!(head(&here), head(&elsewhere));
     let said = pull(2, &here);
     assert_eq!(said["said"], "already up to date", "{said}");
@@ -231,7 +244,10 @@ fn pull_takes_what_the_branch_followed_has_and_never_merges() {
     let said = pull(3, &here);
     assert_eq!(
         (&said["error"]["refused"], &said["error"]["said"]),
-        (&json!("changed"), &json!("not pulled: it has changes of its own")),
+        (
+            &json!("changed"),
+            &json!("not pulled: it has changes of its own")
+        ),
         "a checkout with changes of its own was pulled: {said}"
     );
     assert_eq!(head(&here), was);
@@ -241,15 +257,35 @@ fn pull_takes_what_the_branch_followed_has_and_never_merges() {
     let was = head(&here);
     let said = pull(4, &here);
     assert_eq!(said["error"]["refused"], "diverged", "{said}");
-    assert_eq!(head(&here), was, "a branch with commits of its own was merged or rebased");
+    assert_eq!(
+        head(&here),
+        was,
+        "a branch with commits of its own was merged or rebased"
+    );
 
     let tree = running.path("tree");
-    git(&here, &["worktree", "add", "--quiet", "-b", "work", tree.to_str().unwrap()]);
-    git(&tree, &["branch", "--quiet", "--set-upstream-to", "origin/main"]);
+    git(
+        &here,
+        &[
+            "worktree",
+            "add",
+            "--quiet",
+            "-b",
+            "work",
+            tree.to_str().unwrap(),
+        ],
+    );
+    git(
+        &tree,
+        &["branch", "--quiet", "--set-upstream-to", "origin/main"],
+    );
     git(&tree, &["reset", "--quiet", "--hard", "origin/main~1"]);
     let was = head(&tree);
     let said = pull(5, &tree);
-    assert_eq!(said["error"]["refused"], "tree", "a tree cut from a checkout was pulled: {said}");
+    assert_eq!(
+        said["error"]["refused"], "tree",
+        "a tree cut from a checkout was pulled: {said}"
+    );
     assert_eq!(head(&tree), was);
 }
 

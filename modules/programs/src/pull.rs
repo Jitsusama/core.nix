@@ -10,7 +10,8 @@
 //! keys; nothing asks him anything, and a fetch past [`FETCH`] is stopped.
 
 use std::path::Path;
-use std::time::Duration;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
@@ -106,14 +107,77 @@ impl Words {
 }
 
 /// Brings the checkout at `folder` up to the branch it follows, by
-/// fast-forward alone, with the git at `git`.
+/// fast-forward alone, with the git at `git`: it says why before
+/// fetching where it can, so a refusal waits on no network.
 ///
 /// # Errors
 ///
 /// Says why it left the checkout as it was.
 pub fn pull(git: &str, folder: &Path) -> Result<Pulled, Refused> {
-    let _ = (git, folder);
-    Err(Refused::Failed)
+    // A tree cut from a checkout holds `.git` as a file naming it, where
+    // an agent works; only a checkout's own folder holds it as a folder.
+    if !folder.join(".git").is_dir() {
+        return Err(Refused::Tree);
+    }
+    let run = |args: &[&str]| ran(git, folder, args, None);
+    run(&["symbolic-ref", "--quiet", "HEAD"]).map_err(|()| Refused::Unfollowed)?;
+    run(&["rev-parse", "--verify", "--quiet", "@{upstream}"]).map_err(|()| Refused::Unfollowed)?;
+    let changed =
+        run(&["status", "--porcelain", "--untracked-files=no"]).map_err(|()| Refused::Failed)?;
+    if !changed.trim().is_empty() {
+        return Err(Refused::Changed);
+    }
+    ran(git, folder, &["fetch", "--quiet"], Some(FETCH)).map_err(|()| Refused::Unfetched)?;
+    let counted = run(&["rev-list", "--left-right", "--count", "HEAD...@{upstream}"])
+        .map_err(|()| Refused::Failed)?;
+    match counts(&counted).ok_or(Refused::Failed)? {
+        (_, 0) => Ok(Pulled::Even),
+        (0, behind) => {
+            run(&["merge", "--ff-only", "--quiet", "@{upstream}"]).map_err(|()| Refused::Failed)?;
+            Ok(Pulled::Took(behind))
+        }
+        _ => Err(Refused::Diverged),
+    }
+}
+
+/// The commits only the head has and only the branch it follows has, as
+/// `rev-list --left-right --count` prints them.
+fn counts(printed: &str) -> Option<(u64, u64)> {
+    let mut counts = printed.split_whitespace().map(str::parse::<u64>);
+    Some((counts.next()?.ok()?, counts.next()?.ok()?))
+}
+
+/// Runs git in `folder` with nothing to answer it, so it never waits on
+/// a prompt, answering what it printed; past `wait`, where one is given,
+/// it's stopped. Only a fetch is given one: a fast-forward stopped part
+/// way would leave the checkout half written.
+fn ran(git: &str, folder: &Path, args: &[&str], wait: Option<Duration>) -> Result<String, ()> {
+    let mut child = Command::new(git)
+        .arg("-C")
+        .arg(folder)
+        .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|_| ())?;
+    let started = Instant::now();
+    if let Some(wait) = wait {
+        while child.try_wait().map_err(|_| ())?.is_none() {
+            if started.elapsed() > wait {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(());
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+    let done = child.wait_with_output().map_err(|_| ())?;
+    if !done.status.success() {
+        return Err(());
+    }
+    String::from_utf8(done.stdout).map_err(|_| ())
 }
 
 #[cfg(test)]
@@ -137,6 +201,12 @@ mod tests {
         assert_eq!(said(Pulled::Even), "up to date");
         assert_eq!(said(Pulled::Took(1)), "took 1 commit");
         assert_eq!(said(Pulled::Took(12)), "took 12 commits");
+    }
+
+    #[test]
+    fn the_commits_each_side_has_alone_are_read_as_git_counts_them() {
+        assert_eq!(counts("2\t5\n"), Some((2, 5)));
+        assert_eq!(counts("2\n"), None);
     }
 
     #[test]
