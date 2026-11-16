@@ -51,10 +51,16 @@ impl Drop for Serving {
 }
 
 /// The daemon, looking under `at`, serving in a runtime folder of its
-/// own. That folder is named short, and not past its link, since a
-/// socket's path stops at 108 bytes.
+/// own, named for `at` as `place` names it, so no two tests share one.
+/// That folder is named short, and not past its link, since a socket's
+/// path stops at 108 bytes.
 fn serve(at: &Path) -> (Serving, PathBuf) {
-    let run = std::env::temp_dir().join(format!("repos-run-{}", std::process::id()));
+    let name = at
+        .file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|name| name.rsplit('-').next())
+        .expect("a place of the test's own");
+    let run = std::env::temp_dir().join(format!("repos-run-{}-{name}", std::process::id()));
     let _ = fs::remove_dir_all(&run);
     let child = Command::new(env!("CARGO_BIN_EXE_repos"))
         .arg("serve")
