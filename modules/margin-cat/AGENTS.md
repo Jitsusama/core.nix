@@ -103,7 +103,14 @@ Joel, 2026-11-13, by WCJQSG: "the cat should always be moving from where it
 is to where my focus shifts, in a believable and adorable way. the windows
 are the walls and roofs it is climbing or jumping off of"
 
+A gap's leap is an arc that reads at 60 Hz: a cat in flight holds each pose for a third
+of the way, and the arc is what moves (VKCF3Z, 2026-11-15, 5f8bf9e9 and 69bb37d0).
+
 - Held by `margin-cat.qml`: "across a gap between columns it crouches, leaps and lands"
+- Held by `margin-cat.qml`: "seen in at least 7 frames at 60 Hz, and quick as a leap"
+- Held by `margin-cat.qml`: "rising as it stretches, held at the top tucked, falling as it
+  reaches"
+- Held by `margin-cat.qml`: "on a ledge under a row, no higher than the row's bottom"
 - Held by `margin-cat.qml`: "to a window under another it goes down a side and leaps the gap to it"
 - Held by `margin-cat.qml`: "windows come, it climbs to its seat by an edge, never up a face"
 - Held by `margin-cat-journeys.qml`: "each ends on its seat, every frame of it a cat's"
@@ -189,16 +196,16 @@ the way things look on screen is joyful but not distracting is fun."
 Joel, 2026-11-14 17:19: "i never want the kitty to skid into place, i always
 want to see its paws moving when it is walking or running."
 
-- Owed since 2026-11-14: a walk onto its seat, never past it, at most two cells a drawing
-  walking and three at a run, each drawing held two 60 Hz frames, in every journey.
+- Held by `margin-cat.qml`: "it walks onto its seat, never past it"
+- Held by `margin-cat.qml`: "at a run, at most three cells a drawing"
+- Held by `margin-cat-journeys.qml`: "each ends on its seat, every frame of it a cat's"
 
 ### Paws Moving Up and Across Edges
 
 Joel, 2026-11-14 22:40: "the kitten when crawling up or across window edges
 still often does not look like its paws are moving."
 
-- Owed since 2026-11-14: a climb up or down a side stepped in whole strides by the ground it
-  covers, as a walk is, each drawing held two 60 Hz frames, in every journey.
+- Held by `margin-cat-journeys.qml`: "each ends on its seat, every frame of it a cat's"
 
 ### Play With the Mouse
 

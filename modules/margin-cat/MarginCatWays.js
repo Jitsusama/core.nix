@@ -14,6 +14,10 @@ const GRAVITY = 400;
 const FALLS_AT_MOST = 54;
 // The shortest a leap may last, so even a small one is seen.
 const LEAPS_AT_LEAST = 160;
+// A leap across a gap: the fewest cells it rises, and the least and most
+// it lasts in ms, so it shows in seven frames at 60 Hz and still reads as
+// a leap (VKCF3Z, 69bb37d0).
+const ACROSS = { rises: 2, ms: [120, 160] };
 // The shortest a pose may show, in ms: two frames at 60 Hz, so no drawing
 // flashes for one.
 const SHOWN = 33;
@@ -22,9 +26,11 @@ const SHOWN = 33;
 // `SURGES` either side of the pace it walks, so a climb reads as quick
 // as a walk along a top and no quicker (Joel, 2026-11-13 17:22, by
 // WCJQSG fc3f716a: "Going up the side of a window should be at the same
-// speed roughly as walking on top").
+// speed roughly as walking on top"). Its paws step by the ground, as on
+// a top, so the surge is slight: at the hurry's stride a drawing at its
+// peak still holds SHOWN.
 const BOUNDS = 6;
-const SURGES = 0.3;
+const SURGES = 0.1;
 // The longest all the beats nobody can see may take together, in ms: off
 // the screen, on a workspace above or below it, it hurries, since only
 // where it comes back into sight is seen, and a cat gone for seconds
@@ -89,6 +95,23 @@ function leap(way, to, rises, name) {
     const top = highest - rises * way.at.cell;
     const apex = highest >= 0 ? Math.max(0, top) : top;
     leg(way, "leaps", to, { name: name ?? "leaps", apex, pose: "leaping" });
+}
+
+// A leap across a gap to `to`, a beat named `name` or leaps: as high as a
+// third of the ground it crosses and never under ACROSS.rises cells, held
+// to the screen as every leap is and to the `ceiling`, the bottom of any
+// window over it, so on a ledge under a row it never rises into the row
+// above; and quick, ACROSS.ms long. It goes by
+// thirds, as a cat in flight holds its pose and only its arc moves: up
+// in its stretched drawing, slowing; held at the top tucked; and down
+// reaching, gathering speed (VKCF3Z, 69bb37d0: "a cat in flight holds
+// its pose ... what has to read is the arc").
+function across(way, to, name, ceiling) {
+    const crossed = Math.abs(to.x - way.x) / way.at.cell;
+    leap(way, to, Math.max(ACROSS.rises, crossed / 3), name);
+    const one = way.legs[way.legs.length - 1];
+    one.apex = Math.min(Math.max(one.apex, ceiling ?? -Infinity), Math.min(one.from.y, to.y));
+    one.thirds = true;
 }
 
 // Straight down to `to`, gathering speed as a thing dropped does, up to
@@ -215,6 +238,11 @@ function lasts(one, pace, at) {
     if (one.kind === "falls") {
         return one.ms;
     }
+    if (one.kind === "leaps" && one.thirds) {
+        const fall = from => Math.sqrt((2 * Math.max(0, from - one.apex)) / at.cell / GRAVITY);
+        const ms = (fall(one.from.y) + fall(one.to.y)) * MarginCat.MS;
+        return Math.min(ACROSS.ms[1], Math.max(ACROSS.ms[0], ms));
+    }
     if (one.kind === "leaps") {
         const fall = from => Math.sqrt((2 * Math.max(0, from - one.apex)) / at.cell / GRAVITY);
         return Math.max(LEAPS_AT_LEAST, (fall(one.from.y) + fall(one.to.y)) * MarginCat.MS);
@@ -233,6 +261,16 @@ function seen(one, at) {
         && Math.max(...ys) + at.tall > 0 && Math.min(...ys) < at.height;
 }
 
+// Whether `beat` strides on from `was`, round a corner or straight on;
+// one turning back on the other starts over, easing out and in, as it
+// turns.
+function joined(was, beat) {
+    return was !== undefined && beat !== undefined
+        && Boolean(STRIDING[was.kind] && STRIDING[beat.kind])
+        && (was.to.x - was.from.x) * (beat.to.x - beat.from.x)
+            + (was.to.y - was.from.y) * (beat.to.y - beat.from.y) >= 0;
+}
+
 // A way's legs as beats in time: its pace by all the ground it walks, as
 // a walk's is, about CRUISES ms where it can and never past HURRIES; its
 // stride by that pace; the theme's slowdown on all of it but the ride,
@@ -245,9 +283,28 @@ function timed(way) {
         all + Math.abs(one.to.x - one.from.x) + Math.abs(one.to.y - one.from.y), 0) / at.cell;
     const pace = Math.min(Math.max(walked / (MarginCat.CRUISES / MarginCat.MS), MarginCat.AMBLES),
         MarginCat.HURRIES);
-    const stride = Math.min(Math.max(pace * MarginCat.STRIDE_SECONDS, MarginCat.SHORTEST_STRIDE),
-        MarginCat.LONGEST_STRIDE) * at.cell;
-    const natural = way.legs.map(one => one.kind === "rides" ? 0 : lasts(one, pace, at));
+    // Whole cells, as it's drawn on them: a stride part of a cell long
+    // would end some drawings a cell early, held for two cells' time.
+    const stride = Math.min(Math.max(Math.ceil(pace * MarginCat.STRIDE_SECONDS - 1e-6),
+        MarginCat.SHORTEST_STRIDE), MarginCat.LONGEST_STRIDE) * at.cell;
+    // A walk eases in over its first stride from a standstill and out over
+    // its last, and goes at its pace between, keeping it through a leg
+    // joined to another it walks or climbs (VKCF3Z d1d1ead2): each ramp its
+    // share of the leg's ground, none where it walks on. Easing costs time
+    // rather than quickening its pace, so no drawing is held for less
+    // than its stride at that pace. A climb eases the same, or its last
+    // part-stride, too quick to be seen alone, would be drawn in the one
+    // before it, a glide.
+    const ramps = way.legs.map((one, i) => {
+        const ground = Math.abs(one.to.x - one.from.x) + Math.abs(one.to.y - one.from.y);
+        if (!STRIDING[one.kind] || ground === 0) {
+            return [0, 0];
+        }
+        const ramp = Math.min(stride, ground / 2) / ground;
+        return [joined(way.legs[i - 1], one) ? 0 : ramp, joined(one, way.legs[i + 1]) ? 0 : ramp];
+    });
+    const natural = way.legs.map((one, i) => one.kind === "rides" ? 0
+        : lasts(one, pace, at) * (1 + ramps[i][0] + ramps[i][1]));
     const unseen = way.legs.reduce((all, one, i) =>
         one.kind === "rides" || seen(one, at) ? all : all + natural[i], 0);
     const hurries = Math.min(1, UNSEEN / Math.max(unseen, 1));
@@ -259,7 +316,7 @@ function timed(way) {
         if (ms > 0) {
             const ground = Math.abs(one.to.x - one.from.x) + Math.abs(one.to.y - one.from.y);
             beats.push(Object.assign({}, one, { name: one.name ?? one.kind, begins: ends,
-                ends: ends + ms, stride: STRIDING[one.kind] ? stride : 0,
+                ends: ends + ms, stride: STRIDING[one.kind] ? stride : 0, ramps: ramps[i],
                 bounds: one.kind === "climbs"
                     ? Math.max(1, Math.round(ground / (BOUNDS * at.tall))) : 0 }));
             ends += ms;
@@ -268,13 +325,42 @@ function timed(way) {
     const from = way.legs[0]?.from ?? { x: way.x, y: way.y };
     const route = { from, to: { x: way.x, y: way.y }, facing: way.facing, stride, beats, ends,
         cell: at.cell };
-    // A striding beat too short to be seen goes on in the pose before it.
+    // Striding beats joined, a walk onto a climb or a climb onto a walk,
+    // stride on as one round the corner, rather than each starting its
+    // strides over or holding a drawing across a short one (joined()).
     for (const [i, beat] of beats.entries()) {
-        if (i > 0 && STRIDING[beat.kind] && beat.ends - beat.begins < SHOWN) {
+        const was = beats[i - 1];
+        beat.walked = joined(was, beat) ? was.walked + Math.abs(was.to.x - was.from.x)
+            + Math.abs(was.to.y - was.from.y) : 0;
+        beat.joins = joined(beat, beats[i + 1]);
+    }
+    // A striding beat too short to be seen, joined to none before it, goes
+    // on in the pose before it.
+    for (const [i, beat] of beats.entries()) {
+        if (i > 0 && STRIDING[beat.kind] && !STRIDING[beats[i - 1].kind]
+            && beat.ends - beat.begins < SHOWN) {
             beat.held = frame(route, beat.begins - 1e-6).pose;
         }
     }
     return route;
+}
+
+// How far along a walk it is at `p` of its time, from 0 to 1: speeding up
+// evenly over its first `ramps[0]` of the ground, steady, then slowing
+// evenly over its last `ramps[1]`, its time stretched to keep its pace
+// between them (timed()).
+function paced(p, ramps) {
+    const [rises, eases] = ramps;
+    const steady = 1 + rises + eases;
+    const risen = (2 * rises) / steady;
+    const easing = 1 - (2 * eases) / steady;
+    if (p < risen) {
+        return (steady * steady * p * p) / (4 * rises);
+    }
+    if (p > easing) {
+        return 1 - (steady * steady * (1 - p) * (1 - p)) / (4 * eases);
+    }
+    return rises + steady * (p - risen);
 }
 
 // A leap's pose `ms` into it, `whole` ms long, `peak` its share of the way
@@ -333,9 +419,10 @@ function frame(route, t) {
     const spot = placed(route, beat, t);
     // No stride is seen alone (RSCH-20261113-24R2QV, finding 4): one its
     // beat's last SHOWN would start isn't, and a beat too short for one
-    // goes on in the pose it came in.
+    // goes on in the pose it came in; joined to another it strides on in,
+    // its last strides are that one's first.
     const strides = STRIDING[beat.kind];
-    const last = Math.max(beat.begins, beat.ends - SHOWN);
+    const last = beat.joins ? beat.ends : Math.max(beat.begins, beat.ends - SHOWN);
     const pose = strides
         ? beat.held ?? strides[strode(beat, t < last ? spot : placed(route, beat, last)) % strides.length]
         : spot.leaps ?? beat.posed?.(t - beat.begins) ?? beat.pose ?? null;
@@ -343,12 +430,15 @@ function frame(route, t) {
         beat: beat.name, done: false };
 }
 
-// How many strides of `beat` it's taken at `spot`, by the ground drawn or
-// the bounds of a climb.
+// How many strides of `beat` it's taken at `spot`, by the ground drawn,
+// from the start of the beats it strides on through, up a side as along a
+// top (Joel, 2026-11-14 22:40: "the kitten when
+// crawling up or across window edges still often does not look like its
+// paws are moving"), a whole stride counted where floating point leaves
+// it a hair short.
 function strode(beat, spot) {
     const ground = Math.abs(spot.x - beat.from.x) + Math.abs(spot.y - beat.from.y);
-    return beat.bounds > 0 ? Math.floor(2 * beat.bounds * spot.p)
-        : Math.floor(ground / beat.stride);
+    return Math.floor(((beat.walked ?? 0) + ground) / beat.stride + 1e-6);
 }
 
 // Where `beat` of `route` has it `t` ms in, drawn, its share `p` of the beat
@@ -367,19 +457,29 @@ function placed(route, beat, t) {
     } else if (beat.kind === "climbs") {
         // Each bound a surge and a grip, its pace about its mean.
         const turns = 2 * Math.PI * beat.bounds;
-        s = p - (SURGES * Math.sin(turns * p)) / turns;
+        s = paced(p - (SURGES * Math.sin(turns * p)) / turns, beat.ramps);
     } else if (beat.kind === "falls") {
         // As far as it falls by now, of all it falls, its slowdown aside.
         const drop = Math.abs(to.y - from.y);
         const seconds = (p * beat.ms) / MarginCat.MS;
         s = drop === 0 ? 1 : Math.min(fallen(beat.speed, seconds) / drop, 1);
+    } else if (beat.kind === "goes") {
+        s = paced(p, beat.ramps);
     } else if (beat.kind !== "leaps") {
         s = MarginCat.easeInOut(p);
     }
     const x = from.x + (to.x - from.x) * s;
     let y = from.y + (to.y - from.y) * s;
     let leaps = null;
-    if (beat.kind === "leaps") {
+    if (beat.kind === "leaps" && beat.thirds) {
+        // Up to its apex over the first third, slowing as a thing thrown
+        // does, held there through the second, and down over the last.
+        const third = Math.min(2, Math.floor(p * 3));
+        const q = p * 3 - third;
+        y = third === 0 ? from.y - (from.y - beat.apex) * (1 - (1 - q) * (1 - q))
+            : third === 1 ? beat.apex : beat.apex + (to.y - beat.apex) * q * q;
+        leaps = ["leaping", "tucked", "falling"][third];
+    } else if (beat.kind === "leaps") {
         // A parabola through both ends and its apex, as a thing thrown.
         const rise = Math.sqrt(Math.max(0, from.y - beat.apex));
         const fall = Math.sqrt(Math.max(0, to.y - beat.apex));
