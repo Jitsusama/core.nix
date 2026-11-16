@@ -170,7 +170,7 @@ in
           Slice = "background.slice";
           # Shown in ps by its name, not its store path (docs/daemons.md).
           # Without --live it only writes down what it would do; taking the
-          # word out is the way back to shadow.
+          # word out, with its check's, is the way back to shadow.
           ExecStart = "@${lib.getExe pineapple} pineapple-slack run --live";
           # The keyring's reader, run each round, so a sign-in made or renewed
           # while it runs is read without a restart. With none, it says so in
@@ -197,7 +197,7 @@ in
         Service = {
           Slice = "background.slice";
           # Live, where only the repository's own stop him (src/github.rs);
-          # taking --live out is the way back to shadow.
+          # taking --live out, with its check's, is the way back to shadow.
           ExecStart = "@${pineapple}/bin/pineapple-github pineapple-github run --live";
           # Run each round, so a sign-in renewed while it runs is read without
           # a restart; with none, it says so and reads nothing.

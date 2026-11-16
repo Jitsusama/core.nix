@@ -376,11 +376,8 @@ pub fn reach(named: &[Target], context: &Context) -> Reach {
         }]
     } else if let Some(quest) = context.quest.clone() {
         vec![Target::Quest(quest)]
-    } else if !context.lanes.is_empty() {
-        context.lanes.iter().cloned().map(Target::Quest).collect()
     } else {
-        // An issue naming nothing narrower is about its repository.
-        context.repo.clone().map(Target::Repo).into_iter().collect()
+        context.lanes.iter().cloned().map(Target::Quest).collect()
     };
     if from_place.is_empty() {
         Reach::everything(true)

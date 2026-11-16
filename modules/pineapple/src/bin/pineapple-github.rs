@@ -20,11 +20,12 @@
 //! his press in the launcher resumes the rest. Since any account may
 //! comment on GitHub, and own a repository to mention him in, only a
 //! repository's owner, its organization's members and its collaborators
-//! stop him there, and only on one he works in; anyone else's words go in
-//! the log alone.
+//! stop him there, and only on one he works in or opened something on;
+//! anyone else's words go in the log alone, and an outsider's opening
+//! names no place, so it can't steer a stop elsewhere.
 //!
 //! A round spends Joel's rate limit, which gh and his agents share: two
-//! requests, and two to four more for each pull request or issue that
+//! requests, and three to five more for each pull request or issue that
 //! changed, a page more for each hundred of a long list. One his limit
 //! refuses is tried again whole, so nothing it couldn't read is skipped.
 //!
@@ -605,10 +606,14 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged) {
         }
     };
     // Where anyone may comment: GitHub's own, however its site is named.
-    let open = how.authored_by.is_none() || how.origin == GITHUB;
+    let open = how.authored_by.is_none()
+        || how
+            .origin
+            .trim_end_matches('/')
+            .eq_ignore_ascii_case(GITHUB);
     let mut heard = Vec::new();
     for thread in &threads {
-        match said_on(github, thread, &since, open) {
+        match said_on(github, thread, &since, (open, &login)) {
             Ok(found) => heard.extend(found),
             Err(Unread::Gone(why)) => eprintln!("<4>{} can't be read: {why}", thread.key()),
             Err(Unread::Failed(why)) => {
@@ -647,20 +652,37 @@ fn said_on(
     github: &GitHub<'_>,
     thread: &Thread,
     since: &str,
-    open: bool,
+    who: (bool, &str),
 ) -> Result<Sayings, Unread> {
+    let (open, login) = who;
     let base = format!("/repos/{}", thread.repo);
-    let works_in = !open || github::works_in(&github.get(&base, &[])?);
     let number = thread.number;
     let opened = github.get(&format!("{base}/issues/{number}"), &[])?;
-    let opening = format!(
-        "{}\n\n{}",
-        opened["title"].as_str().unwrap_or_default(),
-        opened["body"].as_str().unwrap_or_default()
-    );
+    // Opening it, as a pull request from his fork, he chose to work there.
+    let joel_opened = opened["user"]["login"]
+        .as_str()
+        .is_some_and(|by| by.eq_ignore_ascii_case(login));
+    let works_in = !open
+        || joel_opened
+        || match github.get(&base, &[]) {
+            Ok(repo) => github::works_in(&repo),
+            // Unreadable, it's one he doesn't work in; his own words still count.
+            Err(Unread::Gone(_)) => false,
+            Err(failed) => return Err(failed),
+        };
+    let mut found = github::said(&opened, thread, Kind::Opening);
+    let trusted = !open || joel_opened || (works_in && found.first().is_some_and(|it| it.own));
+    let opening = if trusted {
+        format!(
+            "{}\n\n{}",
+            opened["title"].as_str().unwrap_or_default(),
+            opened["body"].as_str().unwrap_or_default()
+        )
+    } else {
+        String::new()
+    };
     let context = thread.context(&opening);
     let recent = [("since", since), ("per_page", PAGE)];
-    let mut found = github::said(&opened, thread, Kind::Opening);
     let comments = github.all(&format!("{base}/issues/{number}/comments"), &recent)?;
     found.extend(github::said(&comments, thread, Kind::Comment));
     if thread.pull {

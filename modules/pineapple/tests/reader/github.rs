@@ -10,8 +10,10 @@
 //! back that a search's lagging index misses nothing, and never for more
 //! repositories than its searches allow. On GitHub, where any account may
 //! comment, a stranger's stop is only logged; a collaborator's stands,
-//! but even an owner's is only logged in a repository Joel can't push to,
-//! and a site of a company's own weighs no writer's standing.
+//! but even an owner's is only logged in a repository Joel can't push to
+//! unless he opened what it's said on; an outsider's opening can't steer
+//! a stop; a repository that can't be read still hears Joel; and a site
+//! of a company's own weighs no writer's standing.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -307,6 +309,132 @@ fn github_an_owners_stop_in_a_repository_joel_cant_push_to_is_only_logged() {
     );
     assert_eq!(each(&said, "tell"), ["log"], "and it sounds nothing");
     assert!(only_stop(&home).is_err(), "nor is any stop kept");
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+/// An issue, `repo`#1, as GitHub would answer for it: opened by `opened`
+/// (its writer, their standing and its words), its repository as
+/// `repo_answer` says, or gone when that's none, and `said` on it.
+struct Issue {
+    repo: &'static str,
+    opened: (&'static str, &'static str, &'static str),
+    repo_answer: Option<Value>,
+    said: fn(u64) -> Vec<Value>,
+}
+
+impl Issue {
+    fn answer(&self, line: &str, now: u64) -> Answered {
+        let repo = self.repo;
+        let (by, association, body) = self.opened;
+        if line.contains(" /notifications?") {
+            return Answered::ok(json!([{"subject": {"type": "Issue",
+                "url": format!("https://api.example.com/repos/{repo}/issues/1")},
+                "repository": {"full_name": repo}}]));
+        }
+        if line.contains(&format!(" /repos/{repo} ")) {
+            return self.repo_answer.clone().map_or_else(
+                || Answered {
+                    status: 404,
+                    headers: Vec::new(),
+                    body: json!({"message": "Not Found"}),
+                },
+                Answered::ok,
+            );
+        }
+        if line.contains(&format!(" /repos/{repo}/issues/1/comments?")) {
+            return Answered::ok(Value::Array((self.said)(now)));
+        }
+        if line.contains(&format!(" /repos/{repo}/issues/1 ")) {
+            return Answered::ok(json!({"title": "Broken", "body": body,
+                "html_url": format!("https://code.example.com/{repo}/issues/1"),
+                "user": {"login": by, "type": "User"},
+                "author_association": association, "created_at": stamp(now - 3600)}));
+        }
+        Answered::ok(answer_with(line, now, &[]))
+    }
+}
+
+/// What the GitHub reader, live, judges on `issue`, once it has judged
+/// `count`.
+fn judged_on(issue: Issue, count: usize) -> (Vec<Value>, PathBuf) {
+    let (origin, _) = answering_whole(move |line, now| issue.answer(line, now));
+    let home = home();
+    let mut reader = github_reader(&home, &origin, &["--live"]);
+    until_decided(&home, count);
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+    (decisions(&home), home)
+}
+
+#[test]
+fn github_a_maintainers_stop_where_joel_opened_an_issue_he_cant_push_to_stands() {
+    let (said, home) = judged_on(
+        Issue {
+            repo: "upstream/project",
+            opened: (LOGIN, "CONTRIBUTOR", "it crashes"),
+            repo_answer: Some(json!({"permissions": {"pull": true, "push": false}})),
+            said: |now| {
+                let stop = format!("@{LOGIN} pineapple override");
+                vec![commented(1, "maintainer", "MEMBER", &stop, (now, 90))]
+            },
+        },
+        1,
+    );
+    assert_eq!(each(&said, "verdict"), ["stop"], "he chose to work there");
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_an_outsiders_opening_cant_steer_a_collaborators_stop() {
+    let (said, home) = judged_on(
+        Issue {
+            repo: "example/shop",
+            opened: (
+                "stranger",
+                "NONE",
+                "see https://code.example.com/example/other/pull/3",
+            ),
+            repo_answer: Some(json!({"permissions": {"pull": true, "push": true}})),
+            said: |now| {
+                let stop = format!("@{LOGIN} pineapple override");
+                vec![comment(1, "colleague", &stop, now, 90)]
+            },
+        },
+        1,
+    );
+    assert_eq!(each(&said, "verdict"), ["stop"]);
+    assert_eq!(
+        said[0]["reaches"],
+        json!(["everything"]),
+        "not the pull request the stranger named"
+    );
+    assert_eq!(said[0]["fell_back"], true, "and Joel is told it fell back");
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_repository_that_cant_be_read_still_hears_joel_alone() {
+    let (said, home) = judged_on(
+        Issue {
+            repo: "example/shop",
+            opened: ("colleague", "MEMBER", ""),
+            repo_answer: None,
+            said: |now| {
+                let stop = format!("@{LOGIN} pineapple override");
+                vec![
+                    comment(1, LOGIN, "pineapple override", now, 90),
+                    comment(2, "colleague", &stop, now, 80),
+                ]
+            },
+        },
+        2,
+    );
+    assert_eq!(
+        each(&said, "verdict"),
+        ["stop", "waved:outsider"],
+        "his own stop still stands; no one else's counts unasked"
+    );
+    assert_eq!(said[0]["by_joel"], true);
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 

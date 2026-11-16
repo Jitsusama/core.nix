@@ -58,7 +58,9 @@ impl Thread {
     }
 
     /// What a stop said on it is about: a pull request is itself; an issue
-    /// is what its opening names, else its repository.
+    /// is what its opening names. Its repository goes with it, but alone
+    /// isn't a place: an issue naming nothing narrower stops everything,
+    /// and Joel is told it fell back (src/scope.rs).
     #[must_use]
     pub fn context(&self, opening: &str) -> Context {
         if self.pull {

@@ -244,28 +244,6 @@ mod tests {
     }
 
     #[test]
-    fn a_stop_on_an_issue_naming_nothing_narrower_reaches_its_repository() {
-        let heard = Heard {
-            platform: Platform::Slack,
-            author: "U0OTHER001".to_owned(),
-            by_bot: false,
-            outsider: false,
-            text: "<@U0JOEL0001> pineapple override".to_owned(),
-            context: Context {
-                repo: Some("example/shop".to_owned()),
-                ..Context::default()
-            },
-        };
-        let stop = decide(&heard, &joel());
-        assert_eq!(
-            stop.reaches,
-            [Target::Repo("example/shop".to_owned())],
-            "its repository, not everything"
-        );
-        assert!(!stop.fell_back, "a repository is narrower than everything");
-    }
-
-    #[test]
     fn each_verdict_is_told_and_answered_as_the_plan_says() {
         let cases = [
             (
