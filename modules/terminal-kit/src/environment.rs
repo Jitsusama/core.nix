@@ -84,13 +84,15 @@ impl Environment {
 }
 
 /// Where the kernel keeps the machine's name, then where the system
-/// keeps it when the kernel's isn't there to read, as on macOS.
+/// keeps it when the kernel's isn't there to read. macOS keeps it in
+/// neither, so `hostname` answers there.
 const NAMED_IN: [&str; 2] = ["/proc/sys/kernel/hostname", "/etc/hostname"];
 
 /// The machine's name as it calls itself, trimmed: read where the kernel
 /// keeps it, else asked of `hostname`, and "this machine" only when
 /// neither says. Records carry it to be matched against mycelium's
-/// machine names, so it is the bare hostname, never dressed.
+/// machine names, so it is the bare hostname, cut at its first dot as
+/// macOS's `hostname` can dress it with `.local` or a domain.
 pub fn machine() -> String {
     machine_named(&NAMED_IN.map(Path::new), || {
         Command::new("hostname")
@@ -105,7 +107,10 @@ pub fn machine() -> String {
 /// The machine's name from the first of `files` that names one, else
 /// from what `asked` says.
 fn machine_named(files: &[&Path], asked: impl FnOnce() -> Option<String>) -> String {
-    let named = |name: String| Some(name.trim().to_owned()).filter(|name| !name.is_empty());
+    let named = |name: String| {
+        let bare = name.trim().split('.').next().unwrap_or_default();
+        Some(bare.to_owned()).filter(|bare| !bare.is_empty())
+    };
     files
         .iter()
         .find_map(|file| std::fs::read_to_string(file).ok().and_then(named))
@@ -162,8 +167,9 @@ mod tests {
         let folder = named("first", &[("kernel", "  kernels\n"), ("system", "other\n")]);
         let files = [folder.join("kernel"), folder.join("system")];
         let name = machine_named(&files.each_ref().map(PathBuf::as_path), || {
-            Some("asked".into())
+            panic!("hostname was asked though a file named the machine")
         });
+        std::fs::remove_dir_all(&folder).unwrap();
         assert_eq!(
             name, "kernels",
             "the kernel's file, trimmed, wasn't the name"
@@ -179,6 +185,7 @@ mod tests {
             folder.join("system"),
         ];
         let name = machine_named(&files.each_ref().map(PathBuf::as_path), || None);
+        std::fs::remove_dir_all(&folder).unwrap();
         assert_eq!(
             name, "systems",
             "a missing or blank file was taken as the name"
@@ -192,10 +199,17 @@ mod tests {
         let name = machine_named(&files.each_ref().map(PathBuf::as_path), || {
             Some("asked\n".into())
         });
+        std::fs::remove_dir_all(&folder).unwrap();
         assert_eq!(
             name, "asked",
             "what hostname said, trimmed, wasn't the name"
         );
+    }
+
+    #[test]
+    fn a_dressed_name_is_cut_at_its_first_dot() {
+        let name = machine_named(&[], || Some("studio.local\n".into()));
+        assert_eq!(name, "studio", "a dressed name wasn't cut to the bare one");
     }
 
     #[test]
