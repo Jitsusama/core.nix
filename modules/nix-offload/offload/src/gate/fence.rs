@@ -7,11 +7,12 @@
 //! there to read or write. Only the fetch of the forge's main shares the
 //! network, and with it the files a name is looked up by; the bundle's
 //! own git runs with none. Sharing the network shares the abstract
-//! sockets too, and on optimus those are the terminals' remote control
-//! and the X server's (`ss -xl`, 15 November), so inside bubblewrap
+//! sockets too, and on a workstation those are the terminals' remote
+//! control and the X server's (`ss -xl`, 15 November), so inside bubblewrap
 //! `nix-offload scoped` puts each git in a Landlock domain that can't
 //! reach an abstract socket or signal a process outside it, before it
-//! runs git, and runs none where Landlock can't (ISXEG8, 15 November).
+//! runs git, and runs none where Landlock can't (security review, 15
+//! November).
 //!
 //! Git reads no settings but these: no system or global file, no hooks,
 //! no fsmonitor, no commit graph, no credential helper or prompt, and

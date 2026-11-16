@@ -11,7 +11,7 @@
 //! builder or nothing. Those terms were the harness's to build; here they
 //! are built once, for the harness and a Mac's gate (`gate.rs`) alike, so
 //! the exemption ends for both on [`ENDS`] and any tightening reaches both
-//! (ISXEG8, 15 November).
+//! (security review, 15 November).
 //!
 //! It grants nothing by itself. A fenced command that runs it stays
 //! fenced, without the key, and reaches no builder: the exemption is the
@@ -102,7 +102,7 @@ fn plain_account(user: &str) -> bool {
 /// The whole environment a call outside is given, in order, and nothing
 /// from the shell that asked. `NIX_CONFIG` turns off a flake's own
 /// settings, so a commit's `nixConfig` adds no substituter or setting for
-/// an account Nix may trust (ISXEG8, 15 November).
+/// an account Nix may trust (security review, 15 November).
 #[must_use]
 pub fn environment(
     account: &Account,
@@ -297,7 +297,7 @@ mod tests {
         // The same list, in the same order, as the harness's
         // tests/lib/internal/offload-exemption.test.ts pins for a held
         // tree, with NIX_CONFIG beside it, which the harness takes up when
-        // it runs its calls through `outside` (85PKB2, by 17 November).
+        // it runs its calls through `outside` (by 17 November).
         // Whoever changes one changes the other.
         let account = Account {
             home: "/home/someone",

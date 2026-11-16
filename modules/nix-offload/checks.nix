@@ -258,7 +258,8 @@ onLinux {
 }
 # nix-offload builds for a Mac, which asks another machine to gate its
 # commits. Its tests stay on Linux: they start a builder's services with
-# setsid and systemd, which a Mac hasn't.
+# setsid and systemd, which a Mac hasn't. check-descriptions.nix holds
+# only Linux's checks, so this one says what it proves here alone.
 // lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
   nix-offload-asks-from-a-mac = (pkgs.callPackage ./offload/package.nix { }).overrideAttrs {
     doCheck = false;
