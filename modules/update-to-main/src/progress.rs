@@ -43,7 +43,12 @@ struct Process {
 /// `group`, as one figure that grows while any of them moves: CPU
 /// microseconds and bytes written, here and on each builder in use.
 /// It means nothing alone; two readings apart say whether they moved.
-pub fn done(group: i32, roots: &Roots) -> u64 {
+/// None while a builder in use doesn't say what its builds did, as one
+/// nix-offload doesn't lend never does, since its pieces may then work
+/// unseen: by 16 November a kernel built with link-time optimization there
+/// had been stopped four times in a quiet spell, after two to eight
+/// hours each, its pieces read as doing nothing.
+pub fn done(group: i32, roots: &Roots) -> Option<u64> {
     let processes = processes(&roots.proc);
     let clients: BTreeSet<i32> = processes
         .iter()
@@ -84,12 +89,12 @@ pub fn done(group: i32, roots: &Roots) -> u64 {
         .filter(|cgroup| cgroup.contains("/nix-build-"))
         .map(|cgroup| worked(&roots.cgroups.join(cgroup.trim_start_matches('/'))))
         .sum();
-    let elsewhere: u64 = builders
+    let elsewhere: Option<u64> = builders
         .iter()
         .filter(|host| !host.contains('/') && !host.starts_with('.'))
         .map(|host| builder_worked(&roots.run.join(host).join("health.json")))
         .sum();
-    here + elsewhere
+    Some(here + elsewhere?)
 }
 
 fn processes(proc: &Path) -> HashMap<i32, Process> {
@@ -153,19 +158,16 @@ fn worked(cgroup: &Path) -> u64 {
 }
 
 /// A builder's CPU microseconds and bytes written by its builds, as
-/// nix-offload reads them there into `builds`.
-fn builder_worked(health: &Path) -> u64 {
-    let Some(health) = fs::read_to_string(health)
-        .ok()
-        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
-    else {
-        return 0;
-    };
+/// nix-offload reads them there into `builds`, or None if it says
+/// neither.
+fn builder_worked(health: &Path) -> Option<u64> {
+    let health: serde_json::Value = serde_json::from_str(&fs::read_to_string(health).ok()?).ok()?;
     let builds = &health["builds"];
-    ["cpuUsec", "writtenBytes"]
+    let figures: Vec<u64> = ["cpuUsec", "writtenBytes"]
         .iter()
         .filter_map(|figure| builds[figure].as_u64())
-        .sum()
+        .collect();
+    (!figures.is_empty()).then(|| figures.iter().sum())
 }
 
 #[cfg(test)]
@@ -247,9 +249,9 @@ mod tests {
         let other = "build.slice/nix-daemon.service/nix-build-uid-8";
         machine.process(301, 201, 301, &["bash"], &format!("/{other}"));
         machine.cgroup(other, 50_000, 0);
-        assert_eq!(done(100, &machine.roots()), 1020);
+        assert_eq!(done(100, &machine.roots()), Some(1020));
         machine.cgroup(piece, 4000, 20);
-        assert_eq!(done(100, &machine.roots()), 4020);
+        assert_eq!(done(100, &machine.roots()), Some(4020));
     }
 
     #[test]
@@ -263,18 +265,34 @@ mod tests {
             "nix-offload-more",
             r#"{"state":"passing","builds":{"cpuUsec":900,"writtenBytes":100,"at":1}}"#,
         );
-        // A builder whose health says nothing of its builds counts none.
+        assert_eq!(done(100, &machine.roots()), Some(1000));
+    }
+
+    #[test]
+    fn a_builder_that_says_nothing_of_its_builds_leaves_the_work_unknown() {
+        let machine = Machine::new();
+        machine.process(100, 1, 100, &["nix", "build", "-L"], "/user");
+        machine.process(200, 954, 954, &["nix-daemon", "100"], DAEMON);
+        machine.process(210, 200, 954, &["nix", "__build-remote", "3"], DAEMON);
+        machine.process(220, 210, 954, &["ssh", "nix-offload-more", "-x"], DAEMON);
+        machine.builder(
+            "nix-offload-more",
+            r#"{"state":"passing","builds":{"cpuUsec":900,"writtenBytes":100,"at":1}}"#,
+        );
+        // A builder nix-offload doesn't lend has no health at all.
         machine.process(211, 200, 954, &["nix", "__build-remote", "4"], DAEMON);
-        machine.process(221, 211, 954, &["ssh", "nix-offload-vm", "-x"], DAEMON);
-        machine.builder("nix-offload-vm", r#"{"state":"passing"}"#);
-        assert_eq!(done(100, &machine.roots()), 1000);
+        machine.process(221, 211, 954, &["ssh", "vm-builder", "-x"], DAEMON);
+        assert_eq!(done(100, &machine.roots()), None);
+        // One whose health says nothing of its builds can't be read either.
+        machine.builder("vm-builder", r#"{"state":"passing"}"#);
+        assert_eq!(done(100, &machine.roots()), None);
     }
 
     #[test]
     fn a_build_waiting_on_nothing_it_can_see_has_done_nothing() {
         let machine = Machine::new();
         machine.process(100, 1, 100, &["nix", "build", "-L"], "/user");
-        assert_eq!(done(100, &machine.roots()), 0);
+        assert_eq!(done(100, &machine.roots()), Some(0));
         assert_eq!(
             done(
                 100,
@@ -283,7 +301,7 @@ mod tests {
                     ..machine.roots()
                 }
             ),
-            0
+            Some(0)
         );
     }
 }
