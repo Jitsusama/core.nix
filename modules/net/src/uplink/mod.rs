@@ -430,12 +430,12 @@ mod tests {
         assert_eq!(report.agents_pct, 100);
         assert_eq!(report.joel_pct, 0);
         assert_eq!(report.processes[0].resent_pct, 10.0);
-        assert!(
-            report
-                .destinations
-                .iter()
-                .all(|to| !to.peer.to_string().starts_with("192.168"))
-        );
+        let peers: Vec<String> = report
+            .destinations
+            .iter()
+            .map(|to| to.peer.to_string())
+            .collect();
+        assert_eq!(peers, ["203.0.113.7", "198.51.100.9"]);
     }
 
     #[test]
