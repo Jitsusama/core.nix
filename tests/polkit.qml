@@ -200,6 +200,13 @@ QtObject {
             ["a title cut after small words'",
                 answer(quest, "Make Window Management Work Out of the Way of Monitors"),
                 "It says it's for Make Window Management Work Out\u00a0\u2026"],
+            // The same small words as the terminal kit's cut (#4802).
+            ["a title cut after so's",
+                answer(quest, "Make Window Management Quick So Everything Follows"),
+                "It says it's for Make Window Management Quick\u00a0\u2026"],
+            ["a title cut after from's",
+                answer(quest, "Make Window Management Work From Everywhere"),
+                "It says it's for Make Window Management Work\u00a0\u2026"],
             ["a marked title's", answer(quest, "Read `OctokitClient`'s  <b>pages</b>"),
                 "It says it's for Read OctokitClient's <b>pages</b>."],
             ["an untitled quest's", answer(quest, null), ""],

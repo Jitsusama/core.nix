@@ -215,8 +215,11 @@ const questShape = /^QEST-\d{8}-[A-Z0-9]{6}$/u;
 // What the line says before the quest's title.
 const saidFor = "It says it's for ";
 // The small words a cut never ends on, so it reads as a cut, not as a
-// sentence missing its end (VKCF3Z, 2026-11-15).
-const small = new Set(["a", "an", "the", "of", "for", "with", "to", "in", "on", "and"]);
+// sentence missing its end (VKCF3Z, 2026-11-15): the terminal kit's own,
+// in modules/terminal-kit/src/layout/words.rs, so a name is cut one way.
+const small = new Set([
+    "a", "an", "the", "of", "for", "with", "to", "in", "on", "and", "so", "from"
+]);
 // A title's code marks, which are markdown's, not words.
 const codeMarks = /`/gu;
 const spaces = /\s+/u;
