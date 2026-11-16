@@ -17,6 +17,13 @@ const GIGABYTE: f64 = 1e9;
 /// A battery at or under this, off the charger, is worth a look.
 const LOW_CHARGE: u64 = 20;
 
+/// The parts of another machine's own health this takes in: those only
+/// that machine reads. Its machines, mycelium and network are the same
+/// whole read from every machine, each already a part here, and taking
+/// them in would spread one machine's trouble to all. The first two would
+/// also latch, as each machine's word fed the other's.
+const ITS_OWN: [&str; 1] = ["code"];
+
 /// The machines of the realm, from `mycelium machines`, each with its
 /// sessions from `mycelium health` where that was read.
 pub fn machines(machines: &Answer, health: &Answer) -> Part {
@@ -37,9 +44,18 @@ pub fn machines(machines: &Answer, health: &Answer) -> Part {
         return unread("machines", "the node knows of no machine", deeper);
     }
     let sessions = health.as_ref().ok().and_then(|said| said.get("sessions"));
+    // The node says this machine first, whose own parts are parts here.
     let mut things: Vec<Thing> = list
         .iter()
-        .map(|said| machine(said, sessions.and_then(|all| all.get(name_of(said)))))
+        .enumerate()
+        .map(|(at, said)| {
+            let others = (at > 0).then(|| said.get("health")).flatten();
+            machine(
+                said,
+                sessions.and_then(|all| all.get(name_of(said))),
+                others,
+            )
+        })
         .collect();
     // The worst first, then by name, so the line a look wants leads.
     things.sort_by(|a, b| b.health.cmp(&a.health).then_with(|| a.name.cmp(&b.name)));
@@ -78,8 +94,9 @@ fn name_of(said: &Value) -> &str {
 }
 
 /// One machine: whether a link reaches it, what it's short of, its disk,
-/// its battery and its sessions, each said only when it's worth saying.
-fn machine(said: &Value, sessions: Option<&Value>) -> Thing {
+/// its battery, what its own health says of its own parts and its
+/// sessions, each said only when it's worth saying.
+fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> Thing {
     let mut health = Health::Good;
     let mut words = Vec::new();
     if said.get("state").and_then(Value::as_str) == Some("unreachable") {
@@ -126,6 +143,19 @@ fn machine(said: &Value, sessions: Option<&Value>) -> Thing {
     {
         health = health.max(Health::Watch);
         words.push(format!("is on battery at {charge}%"));
+    }
+    for part in ITS_OWN {
+        match own.and_then(|own| own.pointer(&format!("/parts/{part}"))?.as_str()) {
+            Some("watch") => {
+                health = health.max(Health::Watch);
+                words.push(format!("says its {part} wants a look"));
+            }
+            Some("bad") => {
+                health = Health::Bad;
+                words.push(format!("says its {part} is failing"));
+            }
+            _ => {}
+        }
     }
     if words.is_empty() {
         words.push("is ready".to_owned());
@@ -473,6 +503,43 @@ mod tests {
         low["power"]["on_battery"] = json!(false);
         let charging = machines(&Ok(realm(&[low])), &Err(String::new()));
         assert_eq!(charging.health, Health::Good);
+    }
+
+    #[test]
+    fn another_machine_says_what_its_own_code_is() {
+        let mut studio = json!({"name": "studio", "state": "ready", "disk_band": "healthy"});
+        studio["health"] = json!({"health": "bad", "parts": {"code": "watch", "network": "good"}});
+        let part = machines(
+            &Ok(realm(&[laptop(&[], "healthy"), studio.clone()])),
+            &Err(String::new()),
+        );
+        assert_eq!(part.health, Health::Watch, "its code is worth a look");
+        assert_eq!(part.things[0].name, "studio");
+        assert_eq!(part.things[0].says, "says its code wants a look");
+        studio["health"]["parts"]["code"] = json!("bad");
+        let part = machines(
+            &Ok(realm(&[laptop(&[], "healthy"), studio])),
+            &Err(String::new()),
+        );
+        assert_eq!(part.health, Health::Bad);
+        assert_eq!(part.things[0].says, "says its code is failing");
+    }
+
+    #[test]
+    fn the_realms_own_parts_and_this_machines_health_are_never_taken_in() {
+        let mut here = laptop(&[], "healthy");
+        here["health"] = json!({"health": "bad", "parts": {"code": "bad"}});
+        let mut studio = json!({"name": "studio", "state": "ready"});
+        studio["health"] = json!({"health": "bad", "parts": {
+            "machines": "bad", "mycelium": "bad", "network": "bad", "code": "good"}});
+        let part = machines(&Ok(realm(&[here, studio])), &Err(String::new()));
+        assert_eq!(
+            part.health,
+            Health::Good,
+            "this machine's code is its own part, and the rest are the same whole \
+             read from every machine: {}",
+            part.says
+        );
     }
 
     #[test]
