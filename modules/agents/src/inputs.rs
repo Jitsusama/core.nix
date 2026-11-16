@@ -139,6 +139,9 @@ struct LandedFrom {
     quests: u64,
     /// Read only while Joel's words were sent on a landing, else none.
     talks: u64,
+    /// How many landings were fed back, which stands for them only while
+    /// one is never replaced or taken back: anything that does needs a
+    /// count of its moves, as the sources above have.
     fed_back: usize,
     read: Reading,
     carried: Carried,
