@@ -89,6 +89,11 @@ case "$2" in
     exit 0 ;;
   # Whether changed-checks keeps a base evaluated there: the base
   # kept-<host> names. Asked before a run, so it's kept apart from it.
+  # How busy a Mac is, as load-<host> says, asked before its comparison.
+  *"sysctl -n vm.loadavg hw.ncpu"*)
+    [ -f "$here/unreached-$1" ] && exit 255
+    cat "$here/load-$1" 2>/dev/null
+    exit 0 ;;
   *"test -e \""*/changed-checks/*)
     [ -f "$here/unreached-$1" ] && exit 255
     printf '%s\n' "$1" >> "$here/asked-kept"
@@ -3407,6 +3412,8 @@ fn a_change_a_macs_checks_read_is_compared_on_the_mac_too() {
     changed.mac_at(answering.local_addr().unwrap());
     let head = changed.touching("modules/zsh/home.nix");
     fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    // Busy, but within its room.
+    fs::write(changed.bin.join("load-mac"), "{ 30.10 28.00 25.00 }\n12\n").unwrap();
 
     let (ran, _) = changed.run(&GATE);
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
@@ -3433,6 +3440,36 @@ fn a_change_a_macs_checks_read_is_compared_on_the_mac_too() {
         kept.iter()
             .any(|line| line["run"] == serde_json::json!(GATE)),
         "the gate's pass is kept once the Mac's passed: {kept:?}"
+    );
+}
+
+#[test]
+fn a_change_a_macs_checks_read_waits_while_the_mac_has_no_room_kept_as_skipped() {
+    // On 16 November seven gates sent their comparisons to a Mac at load
+    // 110 to 130 on 12 processors, and Joel's own build there missed twice.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    let head = changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("load-mac"), "{ 120.98 88.31 65.93 }\n12\n").unwrap();
+
+    let (ran, _) = changed.run(&GATE);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = fs::read_to_string(changed.bin.join("ssh-sent")).unwrap();
+    assert!(
+        !sent.contains("aarch64-darwin"),
+        "nothing went for a Mac: {sent}"
+    );
+    let because = "mac has no room, at load 121 on 12 processors";
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains(because),
+        "it never said why it waited: {ran:?}"
+    );
+    let kept = changed.kept_at(&head);
+    assert!(
+        kept.iter().any(|line| line["because"] == because),
+        "the comparison wasn't kept as skipped and owed: {kept:?}"
     );
 }
 
