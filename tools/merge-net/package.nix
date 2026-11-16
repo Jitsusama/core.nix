@@ -1,4 +1,6 @@
 # merge-net, built from this directory's crate. Its tests run as it builds.
+# It reads which crates read which from modules/crate-reach, so the source
+# is cut from the repository's root, and built from this folder.
 # The quarantine list isn't part of it: the net reads it from main, so a
 # test put on it moves no check.
 {
@@ -13,18 +15,21 @@ let
   # a wrapper, which would leave the watcher never matching what's installed.
   changed-checks = callPackage ../changed-checks/package.nix { };
 in
-rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage rec {
   pname = "merge-net";
   version = "0.1.0";
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../..;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
       ./must-run.txt
       ./src
+      ../../modules/crate-reach/Cargo.toml
+      ../../modules/crate-reach/src
     ];
   };
+  sourceRoot = "${src.name}/tools/merge-net";
   cargoLock.lockFile = ./Cargo.lock;
   env.MERGE_NET_CHANGED_CHECKS = lib.getExe changed-checks;
   # The patch id's test makes a repo of its own.

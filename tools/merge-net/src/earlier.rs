@@ -5,7 +5,9 @@
 use std::path::Path;
 use std::process::Command;
 
-use crate::{candidates, git, gone, lines, patch_id, reach, ready, stands};
+use crate_reach::Crates;
+
+use crate::{candidates, git, gone, lines, patch_id, ready, stands};
 
 /// The record of the run that passed at an earlier commit of `commit`'s
 /// change and speaks for it on `main` as `ready` takes one, since main
@@ -60,7 +62,7 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
     let id_of = |base: &str, candidate: &str| patch_id(Path::new("."), base, candidate);
     // What main moved in a crate the change's crates are in, read or are
     // read by, no run of an earlier base speaks for.
-    let crates = reach::Crates::at(commit);
+    let crates = Crates::at(Path::new("."), commit);
     let branch = ready::Side {
         changed: &files,
         gone: &renamed,

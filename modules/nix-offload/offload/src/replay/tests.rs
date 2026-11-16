@@ -92,20 +92,22 @@ fn only_a_bases_checks_for_the_system_are_kept() {
 #[test]
 fn a_change_isnt_checked_where_main_moved_beside_it() {
     let change = ["modules/one/a".to_owned()];
+    let none = Crates::default();
     for forward in [false, true] {
         assert!(
-            refusal(&["flake.lock".to_owned()], &change, forward).is_some(),
+            refusal(&["flake.lock".to_owned()], &change, forward, &none).is_some(),
             "a moved lock reaches every check"
         );
         assert!(
-            refusal(&["modules/one/z".to_owned()], &change, forward).is_some(),
+            refusal(&["modules/one/z".to_owned()], &change, forward, &none).is_some(),
             "main moved a file in the change's own folder"
         );
         assert_eq!(
             refusal(
                 &["modules/two/b".to_owned(), "README.md".to_owned()],
                 &change,
-                forward
+                forward,
+                &none
             ),
             None,
             "main moved only what the change doesn't reach"
@@ -122,19 +124,20 @@ fn a_change_is_checked_where_main_moved_its_own_files_as_ready_takes() {
         "modules/one/a".to_owned(),
         "modules/one/checks.nix".to_owned(),
     ];
+    let none = Crates::default();
     for file in ["check-descriptions.nix", "modules/one/checks.nix"] {
         assert_eq!(
-            refusal(&[file.to_owned()], &change, false),
+            refusal(&[file.to_owned()], &change, false, &none),
             None,
             "refused over {file}, whose lines ready reads apart"
         );
     }
     assert!(
-        refusal(&["modules/one/a".to_owned()], &change, false).is_some(),
+        refusal(&["modules/one/a".to_owned()], &change, false, &none).is_some(),
         "replayed back over main moving its own code, where ready refuses the pass"
     );
     assert_eq!(
-        refusal(&["modules/one/a".to_owned()], &change, true),
+        refusal(&["modules/one/a".to_owned()], &change, true, &none),
         None,
         "refused forward over its own file, where a clean apply is enough"
     );
@@ -248,6 +251,48 @@ fn a_change_isnt_replayed_over_a_move_beside_it() {
         why.as_ref().is_err_and(|why| why.contains("modules/one/z")),
         "replayed over main moving the change's folder: {why:?}"
     );
+}
+
+#[test]
+fn a_change_isnt_replayed_back_over_a_crate_its_crate_reads() {
+    // On 16 November a change to modules/programs, which reads
+    // modules/repos, went back onto a main before 17 repos files moved,
+    // and ready refused each pass of it for them, about 12 minutes a run.
+    for (moved, refused) in [
+        ("modules/two/src/lib.rs", true),
+        ("modules/three/src/lib.rs", false),
+    ] {
+        let tree = Tree::new();
+        let scratch = tempfile::tempdir().expect("no scratch");
+        tree.wrote("modules/two/Cargo.toml", "[package]\n", "two");
+        tree.wrote("modules/three/Cargo.toml", "[package]\n", "three");
+        tree.wrote(
+            "modules/one/Cargo.toml",
+            "[package]\n\n[dependencies]\ntwo = { path = \"../two\" }\n",
+            "one reads two",
+        );
+        let (kept_head, base, head) = moved_since_kept(&tree, moved);
+        let replay = replayed(
+            tree.top(),
+            &base,
+            &head,
+            "main",
+            &kept(&[&kept_head]),
+            scratch.path(),
+        );
+        if refused {
+            assert!(
+                replay.as_ref().is_err_and(|why| why.contains(moved)),
+                "replayed back over {moved}, in a crate the change's reads: {replay:?}"
+            );
+        } else {
+            assert!(
+                replay.as_ref().is_ok_and(Option::is_some),
+                "not replayed back over {moved}, in a crate the change's never reads: \
+                 {replay:?}"
+            );
+        }
+    }
 }
 
 #[test]

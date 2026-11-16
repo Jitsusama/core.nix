@@ -639,6 +639,7 @@ gather {
     ./modules/code-health/checks.nix
     ./modules/collector/checks.nix
     ./modules/console/checks.nix
+    ./modules/crate-reach/checks.nix
     ./modules/creative-pebble-x-plus/checks.nix
     ./modules/daemon-client/checks.nix
     ./modules/daemon-serve/checks.nix

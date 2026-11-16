@@ -1,0 +1,12 @@
+# crate-reach: which of core's Rust crates read which, by their manifests'
+# paths, a library merge-net and nix-offload each name by path, so both
+# judge what main moved beside a change by one rule (src/lib.rs says how).
+[package]
+name = "crate-reach"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+path = "src/lib.rs"

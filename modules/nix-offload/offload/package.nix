@@ -1,5 +1,7 @@
 # nix-offload, which lends the machine a builder while its queue holds
-# builds back, built from this directory, its tests run as it builds.
+# builds back, built from this directory, its tests run as it builds. It
+# reads which crates read which from ../../crate-reach, so the source is
+# cut from the modules folder holding both, and built from this one.
 {
   bubblewrap,
   cacert,
@@ -17,18 +19,21 @@
 let
   changed-checks = callPackage ../../../tools/changed-checks/package.nix { };
 in
-rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage rec {
   pname = "nix-offload";
   version = "0.1.0";
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../..;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
       ./src
       ./tests
+      ../../crate-reach/Cargo.toml
+      ../../crate-reach/src
     ];
   };
+  sourceRoot = "${src.name}/nix-offload/offload";
   cargoLock.lockFile = ./Cargo.lock;
   # A proof through the daemon takes this df along to measure its
   # builder's store, whose sandbox has no df of its own (src/proof.rs).
