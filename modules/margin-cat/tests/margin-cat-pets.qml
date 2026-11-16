@@ -143,6 +143,13 @@ QtObject {
             [Drawings.poses.scruffed?.length, Drawings.poses.scruffed?.every(row =>
                 row.length === 8)],
             [8, true]);
+        // The GPU rig, 2026-11-16: let go, its first frame before its first
+        // step drew it sitting in the air, between the scruff and the fall.
+        expect("scruffed while held, falling from the frame it's let go, then as its walk",
+            [MarginCat.fromHand(true, false, null), MarginCat.fromHand(false, true, null),
+                MarginCat.fromHand(false, true, { beat: "falls" }),
+                MarginCat.fromHand(false, false, null)],
+            ["scruffed", "falling", null, null]);
         // The GPU rig, 2026-11-16: wanting only its own tile while held, it
         // knew no column under Joel's hand and fell past a lower top.
         expect("every tile is wanted while it's held, as while it travels, and only then",

@@ -194,8 +194,12 @@ PanelWindow {
         : Paths.marks(MarginMarks.drawn, modelData.width, Theme.gap)
     // What it's drawn as: a pose of its walk, turned the way it
     // goes and the way it climbs, leaning into a pointer, or the
-    // scope's, sitting, asleep or stretching, or swatting after one.
-    readonly property var drawn: holding ? Theme.pixels.scruffed
+    // scope's, sitting, asleep or stretching, or swatting after one;
+    // in Joel's hand and let go of, as MarginCat.fromHand says.
+    readonly property string handed: MarginCat.fromHand(holding, going?.kind === "drop",
+        stepped) ?? ""
+    readonly property var drawn: handed === "scruffed" ? Theme.pixels.scruffed
+        : handed ? MarginCat.turned(Theme.pixels[handed], facing)
         : swatting !== 0 ? MarginCat.swatting(swatting, Theme.pixels)
         : leaning !== 0 ? MarginCat.leaning(leaning, Theme.pixels)
         : pose ? MarginCat.quartered(

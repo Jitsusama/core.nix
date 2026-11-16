@@ -245,6 +245,15 @@ function held(hand, at) {
         y: Math.min(Math.max(y, 0), at.height - at.tall) };
 }
 
+// The pose Joel's hand gives it, by the theme's name: scruffed while
+// it's `holding`, and falling once it's `dropping` from his hand until
+// its walk has `stepped`, the drop's first step being a fall's, so no
+// frame between shows it sitting in the air (the GPU rig, 2026-11-16);
+// null otherwise, its walk or its seat saying.
+function fromHand(holding, dropping, stepped) {
+    return holding ? "scruffed" : dropping && stepped === null ? "falling" : null;
+}
+
 // Whether a screen's cat wants every tile of the workspaces it crosses,
 // its ways being over them: while it's on its way to another column or
 // workspace, `going` (unless a scene's walk `handsBack`), `moving` or
