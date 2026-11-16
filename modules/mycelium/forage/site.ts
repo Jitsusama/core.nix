@@ -76,7 +76,7 @@ function sayWhen(): void {
   const problems = [...unread, ...(heard === undefined ? [] : [heard])];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
   asof.textContent = `${standing === undefined ? "Reaching the mycelium node." : said(standing)}${trouble}`;
-  asof.dataset.state = standing?.state ?? "connecting";
+  asof.dataset["state"] = standing?.state ?? "connecting";
   if (!given && standing?.state === "broken") {
     title.textContent = "Nothing to draw yet.";
     ledeLine.textContent =
@@ -90,7 +90,7 @@ function select(): void {
   // Only the row leaving the cursor and the row taking it change, so a step
   // costs the same whether the list holds five cells or ten thousand.
   for (const row of list.querySelectorAll<HTMLElement>('[aria-selected="true"]')) {
-    if (row.dataset.cell !== cursor) {
+    if (row.dataset["cell"] !== cursor) {
       row.setAttribute("aria-selected", "false");
     }
   }
@@ -101,7 +101,7 @@ function select(): void {
     row.scrollIntoView({ block: "nearest" });
   }
   for (const mark of floor.querySelectorAll<SVGRectElement>("rect[data-cell]")) {
-    mark.classList.toggle("on", mark.dataset.cell === cursor);
+    mark.classList.toggle("on", mark.dataset["cell"] === cursor);
   }
   if (cursor !== null && location.hash !== `#cell=${encodeURIComponent(cursor)}`) {
     history.replaceState(null, "", `#cell=${encodeURIComponent(cursor)}`);
@@ -118,8 +118,9 @@ function refound(focused: Element | null): string | undefined {
   if (!(focused instanceof HTMLElement && panel.contains(focused))) {
     return undefined;
   }
-  if (focused.dataset.cell !== undefined) {
-    return `a[data-cell="${CSS.escape(focused.dataset.cell)}"]`;
+  const cell = focused.dataset["cell"];
+  if (cell !== undefined) {
+    return `a[data-cell="${CSS.escape(cell)}"]`;
   }
   return focused.closest(".copy") === null ? undefined : ".copy";
 }
@@ -343,7 +344,7 @@ list.addEventListener("click", (event) => {
   if (!(row instanceof HTMLElement)) {
     return;
   }
-  cursor = row.dataset.cell ?? cursor;
+  cursor = row.dataset["cell"] ?? cursor;
   select();
   drawPanel();
   list.focus();
@@ -360,7 +361,7 @@ panel.addEventListener("click", (event) => {
   const starter = event.target.closest("a[data-cell]");
   if (starter instanceof HTMLAnchorElement) {
     event.preventDefault();
-    openCell(starter.dataset.cell ?? cursor ?? "");
+    openCell(starter.dataset["cell"] ?? cursor ?? "");
     list.focus();
   }
 });
@@ -371,7 +372,7 @@ title.addEventListener("click", (event) => {
     return;
   }
   event.preventDefault();
-  hollowOnly = asked.dataset.show === "without";
+  hollowOnly = asked.dataset["show"] === "without";
   draw();
   list.focus();
 });
@@ -381,7 +382,7 @@ floor.addEventListener("click", (event) => {
   if (!(mark instanceof SVGRectElement)) {
     return;
   }
-  openCell(mark.dataset.cell ?? cursor ?? "");
+  openCell(mark.dataset["cell"] ?? cursor ?? "");
   list.focus();
 });
 
@@ -389,11 +390,11 @@ themeSwitch();
 
 for (const key of document.querySelectorAll<HTMLElement>(".hero .keys kbd[data-key]")) {
   key.addEventListener("click", () => {
-    if (key.dataset.key === "?") {
+    if (key.dataset["key"] === "?") {
       toggle(keys);
-    } else if (key.dataset.key === "/") {
+    } else if (key.dataset["key"] === "/") {
       find();
-    } else if (key.dataset.key === "Enter") {
+    } else if (key.dataset["key"] === "Enter") {
       goDeeper();
     } else {
       list.focus();

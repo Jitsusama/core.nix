@@ -73,7 +73,7 @@ function documentOf(value: unknown): Document | undefined {
 
 /** The documents `record` keeps, in kind order, saying any it couldn't read. */
 function documentsOf(record: Fields, cell: string, unread: string[]): readonly Document[] {
-  const listed = record.documents;
+  const listed = record["documents"];
   if (!Array.isArray(listed)) {
     return [];
   }
