@@ -5,7 +5,9 @@
 # Where it looks differs between machines: a machine whose trees lie in a
 # folder of their own, under no checkout, adds that folder. So do the few
 # repositories the App can't see that a machine has read through gh's
-# sign-in instead (src/gh.rs says how narrowly).
+# sign-in instead (src/gh.rs says how narrowly). A second timer counts how
+# far each head is from the branch it follows, with git, and keeps the
+# counts for every reading to merge in too (src/upstreams.rs says why).
 {
   config,
   lib,
@@ -20,6 +22,7 @@ let
   # it's never asked elsewhere.
   settings = {
     REPOS_ROOTS = lib.concatStringsSep ":" roots;
+    REPOS_GIT = lib.getExe config.programs.git.package;
   }
   // lib.optionalAttrs (throughGh != [ ]) {
     REPOS_THROUGH_GH = lib.concatStringsSep " " throughGh;
@@ -85,6 +88,27 @@ in
       Unit.Description = "Refreshes repos's GitHub changes every five minutes";
       Timer = {
         OnBootSec = "1min";
+        OnUnitActiveSec = "5min";
+      };
+      Install.WantedBy = [ "timers.target" ];
+    };
+
+    # The counting needs only git, so it runs apart from the refresh, which
+    # waits on the broker. Its first run counts every head apart from its
+    # branch, about a minute on a machine with hundreds of trees; each
+    # after counts only the pairs of commits that moved.
+    systemd.user.services.repos-count = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit.Description = "Counts how far each head is from its branch, for repos";
+      Service = {
+        Type = "oneshot";
+        ExecStart = "${lib.getExe wrapped} count";
+        Slice = "background.slice";
+      };
+    };
+    systemd.user.timers.repos-count = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit.Description = "Counts how far repos's heads are from their branches every five minutes";
+      Timer = {
+        OnBootSec = "2min";
         OnUnitActiveSec = "5min";
       };
       Install.WantedBy = [ "timers.target" ];

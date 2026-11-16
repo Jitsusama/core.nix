@@ -19,7 +19,7 @@ use std::time::UNIX_EPOCH;
 
 use crate::keys::{self, Key};
 use crate::model::{
-    Checkout, Head, Record, Remote, Repository, SCHEMA, Source, Tree, TreeKind, Upstream,
+    Checkout, Count, Head, Record, Remote, Repository, SCHEMA, Source, Tree, TreeKind, Upstream,
 };
 use crate::reftable::{self, Ref};
 
@@ -288,10 +288,18 @@ fn head(git_dir: &Path, refs: &Refs) -> Option<Head> {
     Some(match at {
         Ref::Symbolic(name) => {
             let branch = name.strip_prefix("refs/heads/").unwrap_or(&name).to_owned();
+            let commit = refs.commit(&name);
+            // A head at its upstream's own commit is even with it, which
+            // needs no counting; any other pair waits for the timer's.
+            let upstream = refs.upstream(&branch).map(|upstream| Upstream {
+                count: (upstream.commit.is_some() && upstream.commit == commit)
+                    .then_some(Count::EVEN),
+                ..upstream
+            });
             Head {
-                upstream: refs.upstream(&branch),
+                upstream,
                 branch: Some(branch),
-                commit: refs.commit(&name),
+                commit,
             }
         }
         Ref::Commit(commit) => Head {
@@ -392,6 +400,7 @@ impl Refs {
         Some(Upstream {
             commit: self.commit(&at),
             branch: name,
+            count: None,
         })
     }
 

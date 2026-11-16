@@ -20,10 +20,11 @@ pub fn help() -> Help {
     )
     .argument("[trees]", "after a name: every tree cut from it")
     // The word after repos is always a name (docs/commands.md), so no
-    // listed subcommand stands there. The timer's refresh is unlisted,
-    // which the kit matches before a name, and taught by its example. A
-    // repository named refresh is still reached by its key.
+    // listed subcommand stands there. The timers' refresh and count are
+    // unlisted, which the kit matches before a name, and taught by their
+    // examples. A repository named either is still reached by its key.
     .subcommand(refresh().unlisted())
+    .subcommand(count().unlisted())
     .example(
         "repos",
         "each repository as a line: its changes, trees and checkouts",
@@ -39,6 +40,7 @@ pub fn help() -> Help {
         "repos refresh",
         "GitHub's part now, rather than at the timer's next",
     )
+    .example("repos count", "how far each head is from its branch, now")
     .exit(
         Exit::Usage,
         "two repositories go by that name, or the words are unknown",
@@ -70,4 +72,15 @@ fn refresh() -> Help {
         "neither the GitHub broker nor GitHub answered",
     )
     .exit(Exit::Config, "there's nowhere to keep GitHub's part")
+}
+
+/// The counting: what `repos-count.service` runs on its timer, and what
+/// Joel runs to see how far each head is at once.
+fn count() -> Help {
+    Help::new(
+        "count",
+        "count how far each head is behind or ahead of its branch, as a timer does",
+    )
+    .example("repos count", "how far each head is from its branch, now")
+    .exit(Exit::Config, "there's nowhere to keep the counts")
 }

@@ -12,8 +12,11 @@ use terminal_kit::layout::{self, Align, ITEMS, Room};
 use terminal_kit::{Exit, Failure, Pen, flags, time};
 
 use repos::github::Seen;
-use repos::model::{Change, ChecksState, Head, Record, Repository, Review, Through, Tree};
+use repos::model::{
+    COUNTED_TO, Change, ChecksState, Head, Record, Repository, Review, Through, Tree, Upstream,
+};
 use repos::read;
+use repos::upstreams::Counted;
 use repos::when::Clock;
 
 mod trees;
@@ -31,6 +34,33 @@ fn counted(count: usize, thing: &str) -> String {
         1 => format!("1 {thing}"),
         _ => format!("{count} {thing}s"),
     }
+}
+
+/// Where a head is, as a table's at column says it: its branch or commit,
+/// then how far it is from the branch it follows, where it's apart and
+/// that's been counted (`main · 3 behind · 1 ahead`, `100+ behind` past
+/// the count's end), or that the branch it follows is gone. A head even
+/// with its upstream, or not yet counted, says only where it is.
+fn at(head: &Head) -> String {
+    let far = |count: u32, way: &str| match count {
+        0 => None,
+        COUNTED_TO.. => Some(format!("{COUNTED_TO}+ {way}")),
+        count => Some(format!("{count} {way}")),
+    };
+    let apart: Vec<String> = match &head.upstream {
+        Some(upstream) if upstream.commit.is_none() => vec!["upstream gone".to_owned()],
+        Some(Upstream {
+            count: Some(count), ..
+        }) => [far(count.behind, "behind"), far(count.ahead, "ahead")]
+            .into_iter()
+            .flatten()
+            .collect(),
+        _ => Vec::new(),
+    };
+    std::iter::once(head.said())
+        .chain(apart)
+        .collect::<Vec<_>>()
+        .join(ITEMS)
 }
 
 /// When a time was, as a table's column says it, under a label that
@@ -422,10 +452,7 @@ pub fn repository(
         .checkouts
         .iter()
         .map(|checkout| {
-            let at = checkout
-                .head
-                .as_ref()
-                .map_or_else(|| "bare".to_owned(), Head::said);
+            let at = checkout.head.as_ref().map_or_else(|| "bare".to_owned(), at);
             vec![
                 shown(&checkout.path, home),
                 at,
@@ -571,7 +598,7 @@ fn quoted(name: &str) -> String {
 
 /// The names of the record's times, which an answer says in RFC 3339
 /// (docs/commands.md, The Answer), where the record keeps seconds.
-const TIMES: [&str; 3] = ["read_at", "updated_at", "written_at"];
+const TIMES: [&str; 4] = ["counted_at", "read_at", "updated_at", "written_at"];
 
 /// A value as an answer says it: each time in RFC 3339.
 fn answered(value: Value) -> Value {
@@ -616,6 +643,27 @@ pub fn seen(seen: &Seen, pen: &Pen) -> String {
     .chain(seen.unread.iter().map(|why| pen.role("muted", why)))
     .map(|line| line + "\n")
     .collect()
+}
+
+/// `repos count --json`: what the counting counted, as
+/// `repos.upstreams/1`.
+pub fn counting_json(counted: &Counted) -> Value {
+    answered(json!(counted))
+}
+
+/// What a counting counted, for a person: how many heads it counted apart
+/// from their branches, and how many of those are behind. Heads at the
+/// same two commits, as a checkout and its tree can be, count once.
+pub fn counting(kept: &Counted) -> String {
+    let behind = kept
+        .counts
+        .values()
+        .filter(|count| count.behind > 0)
+        .count();
+    format!(
+        "{} counted apart from their branches{ITEMS}{behind} behind\n",
+        counted(kept.counts.len(), "head")
+    )
 }
 
 /// `repos NAME --json`, as `repos.repository/1`.

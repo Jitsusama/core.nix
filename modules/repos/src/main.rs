@@ -7,6 +7,7 @@
 //! repos NAME changes        its open changes, with their checks and review
 //! repos NAME trees          every tree cut from it, the newest first
 //! repos refresh             asks GitHub after each one's open changes
+//! repos count               counts how far each head is from its branch
 //! ```
 //!
 //! It takes the shape every command of ours does (docs/commands.md),
@@ -16,7 +17,10 @@
 //! `repos refresh`, on a timer, writes it and every reading merges it in
 //! (the crate's github.rs says why). The few a machine lists in
 //! `REPOS_THROUGH_GH`, from `jitsusama.repos.throughGh`, are read through
-//! gh's sign-in instead, the `gh` at `REPOS_GH` (the crate's gh.rs).
+//! gh's sign-in instead, the `gh` at `REPOS_GH` (the crate's gh.rs). How
+//! far each head is behind or ahead of its branch is kept beside it by
+//! `repos count`, on a timer of its own, with the `git` at `REPOS_GIT`
+//! (the crate's upstreams.rs).
 
 mod commands;
 mod views;
@@ -30,6 +34,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use repos::github::{self, Seen};
 use repos::model::Record;
 use repos::read::{self, Reading};
+use repos::upstreams::{self, Counted};
 use repos::when::Clock;
 use repos::{broker, gh};
 use serde_json::Value;
@@ -52,6 +57,12 @@ fn run(context: &Context) -> Result<(), Failure> {
             let seen = refresh(home, now)?;
             show(context, &views::seen_json(&seen), || {
                 views::seen(&seen, &context.out)
+            })
+        }
+        ["count"] => {
+            let counted = count(home, now)?;
+            show(context, &views::counting_json(&counted), || {
+                views::counting(&counted)
             })
         }
         [] => {
@@ -176,7 +187,33 @@ fn record(home: Option<&Path>, now: u64) -> Result<Record, Failure> {
     if let Some(file) = github::seen_file(home) {
         github::merge_kept(&mut record, &file);
     }
+    if let Some(file) = upstreams::counted_file(home) {
+        upstreams::merge_kept(&mut record, &file);
+    }
     Ok(record)
+}
+
+/// Counts how far each head the disk holds is from its upstream, taking
+/// each pair already counted from the last counting, and keeps the counts,
+/// written whole or not at all.
+fn count(home: Option<&Path>, now: u64) -> Result<Counted, Failure> {
+    let file = upstreams::counted_file(home).ok_or_else(|| {
+        Failure::new(Exit::Config, "there's nowhere to keep the counts")
+            .because("neither XDG_STATE_HOME nor HOME is set")
+    })?;
+    let record = disk(home, now)?;
+    let git = std::env::var_os("REPOS_GIT").unwrap_or_else(|| "git".into());
+    let counted = upstreams::count(
+        &upstreams::pairs(&record),
+        upstreams::read(&file).as_ref(),
+        now,
+        upstreams::by_git(&git),
+    );
+    upstreams::keep(&file, &counted).map_err(|why| {
+        Failure::new(Exit::Failed, "repos couldn't keep the counts")
+            .because(format!("{}: {why}", file.display()))
+    })?;
+    Ok(counted)
 }
 
 /// The record as the disk alone says it.

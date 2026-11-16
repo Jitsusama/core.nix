@@ -16,12 +16,19 @@
 //! a section of its own, as net's sources do. It's asked through the
 //! machine's GitHub App, and through gh's sign-in for the few repositories
 //! a machine lists that the App can't see (gh.rs).
+//!
+//! How far each head is behind or ahead of the branch it follows is a
+//! source too: counting needs git's commits, which no reading opens, so a
+//! timer counts and keeps the counts, merged in the same way
+//! (upstreams.rs). Both keep their files where kept.rs says.
 
 pub mod broker;
 pub mod gh;
 pub mod github;
+pub mod kept;
 pub mod keys;
 pub mod model;
 pub mod read;
 mod reftable;
+pub mod upstreams;
 pub mod when;

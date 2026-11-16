@@ -433,6 +433,30 @@ fn each_head_knows_the_branch_it_follows_and_where_that_is() {
         ]),
         "{checkout:#?}"
     );
+    let even: Vec<String> = checkout
+        .trees
+        .iter()
+        .filter(|tree| {
+            tree.head
+                .upstream
+                .as_ref()
+                .is_some_and(|upstream| upstream.count == Some(Count::EVEN))
+        })
+        .map(|tree| tree.head.said())
+        .collect();
+    assert_eq!(
+        even,
+        ["feature", "local"],
+        "only a head at its upstream's commit is even before counting: {checkout:#?}"
+    );
+    assert_eq!(
+        checkout
+            .head
+            .as_ref()
+            .and_then(|head| head.upstream.as_ref()?.count),
+        None,
+        "a head apart from its upstream was counted without git: {checkout:#?}"
+    );
 }
 
 #[test]
