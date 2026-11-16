@@ -2242,7 +2242,11 @@ fn the_receptors_ask_google_nothing_and_say_only_counts_in_the_services_realm() 
         .expect("the stand-in mycelium refused");
     watch.look(&now());
     let lines = |stand_in: &StandIn| -> Vec<String> {
-        stand_in.heard().into_iter().map(|heard| heard.line).collect()
+        stand_in
+            .heard()
+            .into_iter()
+            .map(|heard| heard.line)
+            .collect()
     };
     assert_eq!(
         lines(&on),
@@ -2251,7 +2255,10 @@ fn the_receptors_ask_google_nothing_and_say_only_counts_in_the_services_realm() 
     );
     let said = fs::read_to_string(&said).expect("the stand-in mycelium was never run");
     for planted in PLANTED {
-        assert!(!said.contains(planted), "{planted:?} reached mycelium: {said}");
+        assert!(
+            !said.contains(planted),
+            "{planted:?} reached mycelium: {said}"
+        );
     }
     let runs: Vec<Vec<&str>> = said
         .split_terminator("--\n")
@@ -2261,12 +2268,41 @@ fn the_receptors_ask_google_nothing_and_say_only_counts_in_the_services_realm() 
         runs,
         [
             [
-                "--realm", "work", "receptors", "say", "mail", "--state", "reading", "--hour",
-                "1", "--today", "1", "--addressed", "1", "--every", "60", "--pid", "4242",
+                "--realm",
+                "work",
+                "receptors",
+                "say",
+                "mail",
+                "--state",
+                "reading",
+                "--hour",
+                "1",
+                "--today",
+                "1",
+                "--addressed",
+                "1",
+                "--every",
+                "60",
+                "--pid",
+                "4242",
             ],
             [
-                "--realm", "work", "receptors", "say", "calendar", "--state", "reading",
-                "--hour", "1", "--today", "1", "--addressed", "1", "--every", "60", "--pid",
+                "--realm",
+                "work",
+                "receptors",
+                "say",
+                "calendar",
+                "--state",
+                "reading",
+                "--hour",
+                "1",
+                "--today",
+                "1",
+                "--addressed",
+                "1",
+                "--every",
+                "60",
+                "--pid",
                 "4242",
             ],
         ],

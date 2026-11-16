@@ -38,6 +38,11 @@
 //! It says in the journal when Google can't be reached, and never a
 //! token, a meeting or anything else the account holds.
 //!
+//! After each look it says how much mail wants Joel and how many meetings
+//! he has to the realm's mycelium node, counted from what the look holds
+//! and never asked of Google, when its service names mycelium and the
+//! realm (receptor.rs).
+//!
 //! usage: google CREDENTIALS DAEMON [WORDS], CREDENTIALS the harness's
 //! file, the account asked as being its default, as pi's own is, read
 //! over by the keyring's while `SIGN_IN_KEYRING` names a program that
@@ -66,6 +71,7 @@ use google::calendar::Answer;
 use google::daemon::Daemon;
 use google::files::Places;
 use google::mail::Tidy;
+use google::receptor::{self, Receptors};
 use google::rows::Vocabulary;
 use google::saves;
 use google::state::{Standing, State};
@@ -94,6 +100,26 @@ fn help() -> Help {
             "serves the account, as its unit does",
         )
         .exit(Exit::Failed, "it couldn't serve on SOCKET")
+}
+
+/// Says how the mail and calendar receptors stand in `held`, the next said
+/// within `wait`, telling the journal only when that starts or stops
+/// failing, so a node that's gone isn't said once a minute.
+fn say(receptors: &Receptors, held: &State, wait: Duration, unsaid: &mut Option<String>) {
+    let now = Zoned::now();
+    let told = receptor::told(
+        held,
+        now.timestamp().as_millisecond(),
+        receptor::midnight(&now),
+    );
+    let failed = receptors.say(&told, wait, std::process::id()).err();
+    if failed != *unsaid {
+        match &failed {
+            Some(why) => eprintln!("<4>couldn't say the receptors: {why}"),
+            None => eprintln!("<6>saying the receptors again"),
+        }
+        *unsaid = failed;
+    }
 }
 
 fn main() -> ExitCode {
@@ -151,6 +177,8 @@ fn serve(credentials: &Path, at: &Path, words: Option<&Path>) -> Result<(), Fail
     let mut watch = Watch::new(Google::new(Origins::default()), credentials, None);
     watch.keyring = env::var_os("SIGN_IN_KEYRING").map(PathBuf::from);
     watch.weigh(&places);
+    let receptors = Receptors::from_env();
+    let mut unsaid: Option<String> = None;
     let mut wait = EVERY;
     let mut failures: u32 = 0;
     let mut last: Option<SystemTime> = None;
@@ -169,6 +197,9 @@ fn serve(credentials: &Path, at: &Path, words: Option<&Path>) -> Result<(), Fail
             };
             wait = (EVERY * 2u32.saturating_pow(failures.saturating_sub(1).min(4))).min(LONGEST);
             tell(watch.held());
+            if let Some(receptors) = &receptors {
+                say(receptors, watch.held(), wait, &mut unsaid);
+            }
         }
         // Asked less often while Meet can't be, as the calendar is.
         let calls_wait = CALLS_EVERY * 2u32.saturating_pow(watch.calls_failed().min(4));

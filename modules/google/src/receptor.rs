@@ -88,8 +88,25 @@ pub struct Told {
 /// `midnight`, both in milliseconds; nothing while no account is signed
 /// in.
 pub fn told(state: &State, now: i64, midnight: i64) -> Vec<Told> {
-    let _ = (state, now, midnight, DAY);
-    Vec::new()
+    let (hour, today) = mail(&state.mail, now, midnight);
+    let (meeting, meetings_today, unanswered) = meetings(&state.meetings, now, midnight);
+    let said = |source, hour, today, addressed| {
+        reading(state.account, today > 0).map(|reading| Told {
+            source,
+            reading,
+            hour,
+            today,
+            addressed,
+        })
+    };
+    // All the mail that wants Joel is his own to answer.
+    [
+        said(Source::Mail, hour, today, today),
+        said(Source::Calendar, meeting, meetings_today, unanswered),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 /// When `now`'s day began, in milliseconds: its local midnight, or a day
@@ -102,16 +119,31 @@ pub fn midnight(now: &Zoned) -> i64 {
 
 /// The mail that wants Joel: that which came within the hour, and today.
 fn mail(held: &[Mail], now: i64, midnight: i64) -> (u64, u64) {
-    let _ = (held, now, midnight);
-    (0, 0)
+    let came = |since: i64| count(held.iter().filter(|mail| (since..=now).contains(&mail.at)));
+    (came(now - HOUR + 1), came(midnight))
+}
+
+/// How many there are, as mycelium counts.
+fn count<T>(items: impl Iterator<Item = T>) -> u64 {
+    u64::try_from(items.count()).unwrap_or(u64::MAX)
 }
 
 /// Today's meetings Joel hasn't declined, all-day ones aside: those under
 /// way or starting within the hour, all of them, and those he hasn't
 /// answered yet.
 fn meetings(held: &[Meeting], now: i64, midnight: i64) -> (u64, u64, u64) {
-    let _ = (held, now, midnight, Answer::Waiting);
-    (0, 0, 0)
+    let today: Vec<&Meeting> = held
+        .iter()
+        .filter(|meeting| !meeting.all_day && meeting.answer != Some(Answer::No))
+        .filter(|meeting| (midnight..midnight + DAY).contains(&meeting.start))
+        .collect();
+    let soon = today
+        .iter()
+        .filter(|meeting| meeting.start < now + HOUR && meeting.end > now);
+    let unanswered = today
+        .iter()
+        .filter(|meeting| meeting.answer == Some(Answer::Waiting));
+    (count(soon), count(today.iter()), count(unanswered))
 }
 
 /// Where the receptors say how they stand: mycelium, and the realm.
@@ -125,8 +157,13 @@ impl Receptors {
     /// The receptors the service names, if it names them: an absolute
     /// program and a realm of mycelium's letters.
     pub fn named(program: Option<OsString>, realm: Option<OsString>) -> Option<Self> {
-        let _ = (program, realm);
-        None
+        let program = PathBuf::from(program?);
+        let realm = realm?.into_string().ok()?;
+        let letters = realm
+            .bytes()
+            .all(|letter| letter.is_ascii_lowercase() || letter.is_ascii_digit() || letter == b'-');
+        (program.is_absolute() && letters && !realm.is_empty() && !realm.starts_with('-'))
+            .then_some(Self { program, realm })
     }
 
     /// The receptors the service's environment names.
@@ -140,8 +177,26 @@ impl Receptors {
     /// What mycelium is given for one receptor: fixed words, the realm
     /// the service named, and integers.
     pub fn arguments(&self, told: Told, every: Duration, pid: u32) -> Vec<OsString> {
-        let _ = (told, every, pid);
-        Vec::new()
+        let words = [
+            "--realm".to_owned(),
+            self.realm.clone(),
+            "receptors".to_owned(),
+            "say".to_owned(),
+            told.source.word().to_owned(),
+            "--state".to_owned(),
+            told.reading.word().to_owned(),
+            "--hour".to_owned(),
+            told.hour.to_string(),
+            "--today".to_owned(),
+            told.today.to_string(),
+            "--addressed".to_owned(),
+            told.addressed.to_string(),
+            "--every".to_owned(),
+            every.as_secs().max(1).to_string(),
+            "--pid".to_owned(),
+            pid.to_string(),
+        ];
+        words.into_iter().map(OsString::from).collect()
     }
 
     /// Says how each receptor stands, the next said within `every`.
@@ -239,10 +294,16 @@ mod tests {
 
     #[test]
     fn mail_is_counted_in_the_last_hour_and_since_midnight() {
-        let held: Vec<Mail> = [NOW - 1, NOW - HOUR + 1, NOW - HOUR - 1, MIDNIGHT, MIDNIGHT - 1]
-            .into_iter()
-            .map(letter)
-            .collect();
+        let held: Vec<Mail> = [
+            NOW - 1,
+            NOW - HOUR + 1,
+            NOW - HOUR - 1,
+            MIDNIGHT,
+            MIDNIGHT - 1,
+        ]
+        .into_iter()
+        .map(letter)
+        .collect();
         assert_eq!(mail(&held, NOW, MIDNIGHT), (2, 4));
         assert_eq!(mail(&[], NOW, MIDNIGHT), (0, 0));
     }
@@ -275,8 +336,14 @@ mod tests {
         let mut state = ready();
         let quiet = told(&state, NOW, MIDNIGHT);
         assert_eq!(
-            quiet.iter().map(|one| (one.source, one.reading)).collect::<Vec<_>>(),
-            [(Source::Mail, Reading::Quiet), (Source::Calendar, Reading::Quiet)]
+            quiet
+                .iter()
+                .map(|one| (one.source, one.reading))
+                .collect::<Vec<_>>(),
+            [
+                (Source::Mail, Reading::Quiet),
+                (Source::Calendar, Reading::Quiet)
+            ]
         );
         state.mail = vec![letter(NOW - 1)];
         state.meetings = vec![meeting(NOW + 2 * HOUR, NOW + 3 * HOUR, None)];
@@ -335,8 +402,22 @@ mod tests {
         assert_eq!(
             words,
             [
-                "--realm", "work", "receptors", "say", "calendar", "--state", "reading",
-                "--hour", "1", "--today", "3", "--addressed", "2", "--every", "120", "--pid",
+                "--realm",
+                "work",
+                "receptors",
+                "say",
+                "calendar",
+                "--state",
+                "reading",
+                "--hour",
+                "1",
+                "--today",
+                "3",
+                "--addressed",
+                "2",
+                "--every",
+                "120",
+                "--pid",
                 "4242",
             ]
         );
@@ -345,13 +426,20 @@ mod tests {
     #[test]
     fn only_an_absolute_program_and_a_realm_of_mycelium_s_letters_are_taken() {
         let program = || Some(OsString::from("/nix/store/x-mycelium/bin/mycelium"));
-        assert!(Receptors::named(program(), Some("work".into())).is_some());
-        assert!(Receptors::named(program(), Some("personal-2".into())).is_some());
-        assert!(Receptors::named(Some("mycelium".into()), Some("work".into())).is_none());
-        assert!(Receptors::named(program(), Some("work; rm".into())).is_none());
-        assert!(Receptors::named(program(), Some("--realm".into())).is_none());
-        assert!(Receptors::named(program(), Some(String::new().into())).is_none());
-        assert!(Receptors::named(program(), None).is_none());
-        assert!(Receptors::named(None, Some("work".into())).is_none());
+        let taken = [
+            (program(), Some("work".into())),
+            (program(), Some("personal-2".into())),
+            (Some("mycelium".into()), Some("work".into())),
+            (program(), Some("work; rm".into())),
+            (program(), Some("--realm".into())),
+            (program(), Some(OsString::new())),
+            (program(), None),
+            (None, Some("work".into())),
+        ]
+        .map(|(program, realm)| Receptors::named(program, realm).is_some());
+        assert_eq!(
+            taken,
+            [true, true, false, false, false, false, false, false]
+        );
     }
 }
