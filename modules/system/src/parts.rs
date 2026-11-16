@@ -285,7 +285,7 @@ fn sentences(clauses: &[String]) -> String {
     clauses
         .iter()
         .map(|clause| {
-            if clause.ends_with(['.', '?', '!']) {
+            if clause.ends_with(['.', '?', '!', '…']) {
                 clause.clone()
             } else {
                 format!("{clause}.")
@@ -493,6 +493,27 @@ mod tests {
                 "the modem's downstream channel 16 has lost 878"
             ]
         );
+        assert_eq!(
+            part.says,
+            "modem isn't answering. The modem's downstream channel 16 has lost 878. 3 devices.",
+            "a silent source and a look are each a sentence"
+        );
+    }
+
+    #[test]
+    fn a_look_ending_its_own_way_keeps_its_ending() {
+        for ending in ["?", "!", "\u{2026}"] {
+            let look = format!("Is the modem on{ending}");
+            let part = network(&Ok(net(
+                &[("eero", "answering")],
+                &[("slow", &look), ("weak", "iphone has a weak signal.")],
+            )));
+            assert_eq!(
+                part.says,
+                format!("{look} 1 more is worth a look. 3 devices."),
+                "{ending} ends the sentence without a stop after it"
+            );
+        }
     }
 
     #[test]

@@ -35,7 +35,7 @@ QtObject {
             SystemPart.standing(part("good", [], "15 devices"), true, notRead), null);
 
         const watch = SystemPart.standing(part("watch", [lost, "and 2 more worth a look"],
-            "The modem's downstream channel 16 has lost 878; and 2 more worth a look; 15 devices"),
+            "The modem's downstream channel 16 has lost 878. 2 more are worth a look. 15 devices."),
             true, notRead);
         Expect.same("worth a look says the daemon's side, the first kept longest",
             watch?.sideItems, [{ said: lost, keep: 2 }, { said: "and 2 more worth a look", keep: 1 }]);
@@ -43,7 +43,7 @@ QtObject {
         Expect.same("and so does its side", [watch?.warns, watch?.alerts], [true, false]);
         Expect.same("the foot says the whole sentence",
             watch?.state,
-            "The modem's downstream channel 16 has lost 878; and 2 more worth a look; 15 devices");
+            "The modem's downstream channel 16 has lost 878. 2 more are worth a look. 15 devices.");
 
         const bad = SystemPart.standing(part("bad", ["eero isn't answering"], "eero isn't answering"),
             true, notRead);
