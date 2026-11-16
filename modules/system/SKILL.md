@@ -38,7 +38,9 @@ The object has `schema` (system.view/1), `machine` (where it was read),
 part has `part`, `health`, `says` (a sentence, worst first), `side` (what
 is worth a look, an item each, worded to stand at a side: lower case
 unless a name leads, no closing stop, without what the part holds, at
-most three, and empty when nothing is), `things` (the machines, worst first, each with
+most three, and empty when nothing is), `holds` (what it holds, counted
+in a few words, as "21 devices", or null when it wasn't read), `things`
+(the machines, worst first, each with
 `kind`, `name`, `health`, `says` and `address`, its home on the local
 sites as the site home to it gives it, or null while none is; empty for
 the other parts, for now) and `deeper`: the `command` that says more, the
@@ -64,7 +66,11 @@ system --json | jq -c '{health, parts: [.parts[] | {part, health, says}]}'
   whose processes are gone are worth a look.
 - **Network.** A source that isn't answering is bad. Any other concern the
   network names, but its ceiling, is worth a look.
-- **Code.** A tree git still lists whose folder is gone is worth a look.
+- **Code.** Good whenever `repos` answers. A tree git still lists whose
+  folder is gone is an agent's leftover, which the work tool's tidy
+  clears and the person can't act on from the code, so it is said in
+  what the part holds ("3 with their folders gone") and is never worth
+  a look.
 
 ## Answering
 

@@ -91,11 +91,13 @@ pub fn machines(machines: &Answer, health: &Answer) -> Part {
             .collect::<Vec<_>>()
             .join("; "),
     };
+    let holds = count(things.len() as u64, "machine", "machines");
     Part {
         name: "machines",
         health,
         says,
         side,
+        holds: Some(holds),
         things,
         deeper,
     }
@@ -262,18 +264,21 @@ pub fn mycelium(health: &Answer) -> Part {
     };
     let (busy, idle) = (of("busy"), of("idle"));
     let across = machines.map_or(0, serde_json::Map::len);
-    words.push(format!(
+    let mut held = vec![format!(
         "{busy} busy and {idle} idle sessions on {}",
         count(across as u64, "machine", "machines")
-    ));
+    )];
     if down.is_empty() && !links.is_empty() {
-        words.push(format!("{} up", count(links.len() as u64, "link", "links")));
+        held.push(format!("{} up", count(links.len() as u64, "link", "links")));
     }
+    let holds = held.join("; ");
+    words.extend(held);
     Part {
         name: "mycelium",
         health: worst,
         says: words.join("; "),
         side: side_of(side),
+        holds: Some(holds),
         things: Vec::new(),
         deeper,
     }
@@ -338,19 +343,23 @@ pub fn network(net: &Answer) -> Part {
         .get("devices")
         .and_then(Value::as_array)
         .map_or(0, Vec::len);
-    words.push(count(devices as u64, "device", "devices"));
+    let holds = count(devices as u64, "device", "devices");
+    words.push(holds.clone());
     Part {
         name: "network",
         health: worst,
         says: words.join("; "),
         side: side_of(side),
+        holds: Some(holds),
         things: Vec::new(),
         deeper,
     }
 }
 
 /// The code, from `repos --json`: its repositories and trees, and the trees
-/// still listed whose folders have gone.
+/// still listed whose folders have gone. Those are agents' leftovers,
+/// which the work tool's tidy clears and Joel can't act on from the code,
+/// so they are a fact of what the code holds and never worth his look.
 pub fn code(repos: &Answer) -> Part {
     let deeper = Deeper {
         command: "repos",
@@ -375,27 +384,22 @@ pub fn code(repos: &Answer) -> Part {
         .iter()
         .filter(|tree| tree.get("present").and_then(Value::as_bool) == Some(false))
         .count();
-    let mut words = Vec::new();
-    let mut health = Health::Good;
-    if gone > 0 {
-        health = Health::Watch;
-        words.push(count(
-            gone as u64,
-            "tree is listed with its folder gone",
-            "trees are listed with their folders gone",
-        ));
-    }
-    let side = words.clone();
-    words.push(format!(
-        "{} with {}",
+    let gone = match gone {
+        0 => String::new(),
+        1 => ", 1 with its folder gone".to_owned(),
+        many => format!(", {many} with their folders gone"),
+    };
+    let holds = format!(
+        "{} with {}{gone}",
         count(repositories.len() as u64, "repository", "repositories"),
         count(trees.len() as u64, "tree", "trees")
-    ));
+    );
     Part {
         name: "code",
-        health,
-        says: words.join("; "),
-        side,
+        health: Health::Good,
+        says: holds.clone(),
+        side: Vec::new(),
+        holds: Some(holds),
         things: Vec::new(),
         deeper,
     }
@@ -414,6 +418,7 @@ fn unread(name: &'static str, why: &str, deeper: Deeper) -> Part {
         health: Health::Unread,
         says: why.to_owned(),
         side: vec![lowered(why)],
+        holds: None,
         things: Vec::new(),
         deeper,
     }
@@ -543,6 +548,7 @@ mod tests {
         );
         assert_eq!(part.health, Health::Good);
         assert_eq!(part.says, "1 machine ready");
+        assert_eq!(part.holds.as_deref(), Some("1 machine"));
         assert_eq!(part.side, NO_LOOK, "nothing is worth a look");
         assert_eq!(
             part.things[0].says, "is ready",
@@ -630,6 +636,7 @@ mod tests {
             Health::Unread
         );
         assert_eq!(code(&Err("repos timed out".into())).says, "repos timed out");
+        assert_eq!(part.holds, None, "a part not read holds nothing it can say");
     }
 
     #[test]
@@ -641,6 +648,11 @@ mod tests {
             "57 busy and 34 idle sessions on 2 machines; 1 link up"
         );
         assert_eq!(part.side, NO_LOOK, "what it holds is no look");
+        assert_eq!(
+            part.holds.as_deref(),
+            Some("57 busy and 34 idle sessions on 2 machines; 1 link up"),
+            "what it holds is said apart"
+        );
     }
 
     #[test]
@@ -730,6 +742,7 @@ mod tests {
             (calm.health, calm.says.as_str()),
             (Health::Good, "3 devices")
         );
+        assert_eq!(calm.holds.as_deref(), Some("3 devices"));
     }
 
     #[test]
@@ -740,16 +753,28 @@ mod tests {
             {"checkouts": [{"trees": []}]},
         ]});
         let part = code(&Ok(said));
-        assert_eq!(part.health, Health::Watch);
+        assert_eq!(
+            part.health,
+            Health::Good,
+            "a gone tree isn't the code's fault"
+        );
+        assert_eq!(
+            part.side, NO_LOOK,
+            "a gone tree is an agent's leftover, which Joel can't act on from the code"
+        );
+        assert_eq!(
+            part.holds.as_deref(),
+            Some("2 repositories with 3 trees, 1 with its folder gone"),
+            "the gone trees are a fact of what it holds, for whoever tidies"
+        );
         assert_eq!(
             part.says,
-            "1 tree is listed with its folder gone; 2 repositories with 3 trees"
+            "2 repositories with 3 trees, 1 with its folder gone"
         );
         let none = code(&Ok(
             json!({"repositories": [{"checkouts": [{"trees": []}]}]}),
         ));
         assert_eq!(none.says, "1 repository with 0 trees");
         assert_eq!(none.side, NO_LOOK, "trees it holds are no look");
-        assert_eq!(part.side, ["1 tree is listed with its folder gone"]);
     }
 }
