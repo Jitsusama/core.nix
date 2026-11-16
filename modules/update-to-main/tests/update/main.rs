@@ -224,6 +224,15 @@ impl World {
             &stand_ins.join("nix-env"),
             &format!("{head}\nln -sfn \"$4\" \"$2\"\n"),
         );
+        // journalctl -u UNIT ...: the last lines a hung home-manager said
+        // before systemd gave up on it, as on 16 November.
+        write_program(
+            &stand_ins.join("journalctl"),
+            &format!(
+                "{head}\ncase \" $* \" in *' -u home-manager-joel.service '*) \
+                 echo 'Activating reloadSystemd'; echo 'start operation timed out';; esac\n"
+            ),
+        );
         let config = Config {
             repository: format!("file://{}", origin.display()),
             branch: "main".to_owned(),
@@ -270,6 +279,7 @@ impl World {
                 tar: program("tar"),
                 curl: program("curl"),
                 pmset: None,
+                journalctl: Some(stand_ins.join("journalctl")),
             },
             session: None,
             program: None,
@@ -381,6 +391,8 @@ impl World {
                 &format!(
                     "{head}\nhere=$(cd \"$(dirname \"$0\")/..\" && pwd)\n\
                      if [ -e \"$here/breaks\" ]; then echo 'activation failed' >&2; exit 1; fi\n\
+                     if [ -e \"$here/unit-fails\" ]; then echo 'warning: the following units \
+                     failed: home-manager-joel.service' >&2; exit 4; fi\n\
                      echo \"$1\" >> {modes}\n\
                      case \"$1\" in switch|boot) ln -sfn \"$here\" {boots};; esac\n\
                      case \"$1\" in switch|test) ln -sfn \"$here\" {running}\n\
@@ -784,6 +796,31 @@ fn a_switch_that_fails_goes_back_to_what_it_ran() {
     assert_eq!(world.booting(), first);
     // Not remembered, so the next ask tries main again.
     assert!(update::last(&world.config).is_none());
+}
+
+#[test]
+fn a_switch_whose_unit_failed_says_what_that_unit_said_last() {
+    let world = World::new();
+    let first = world.running();
+    let head = world.signed("one");
+    fs::write(world.system(&head).join("unit-fails"), "").unwrap();
+    let (_, ending) = world.update();
+    let Line::Failed { why, lines, .. } = ending else {
+        panic!("not failed: {ending:?}")
+    };
+    assert!(why.contains("went back to what it ran"), "{why}");
+    // On 16 November two switches said only that the machine went back,
+    // and naming the hung unit took an hour.
+    assert_eq!(
+        lines,
+        [
+            "warning: the following units failed: home-manager-joel.service",
+            "home-manager-joel.service: Activating reloadSystemd",
+            "home-manager-joel.service: start operation timed out",
+        ],
+        "the failed unit's own last lines should follow the switch's"
+    );
+    assert_eq!(world.running(), first);
 }
 
 #[test]
