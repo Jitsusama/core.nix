@@ -2,6 +2,7 @@
 //! drag, what became of last hour's, and Joel's misses, open or fixed;
 //! and what the next hour keeps of it to say so.
 
+use std::collections::BTreeMap;
 use std::fmt::Write;
 
 use serde::{Deserialize, Serialize};
@@ -36,9 +37,16 @@ pub struct Held {
 }
 
 /// The hour's card, at `at` and with the drag due at `due`, and what the
-/// next hour is to remember.
+/// next hour is to remember. `said` is each miss in Joel's own words and
+/// when, by its text, for telling him one is fixed.
 #[must_use]
-pub fn compose(at: &str, measures: &[Measure], kept: &Kept, due: &str) -> (String, Kept) {
+pub fn compose(
+    at: &str,
+    measures: &[Measure],
+    kept: &Kept,
+    said: &BTreeMap<String, String>,
+    due: &str,
+) -> (String, Kept) {
     let mut card = format!("cadence hour at {at}\n");
     for class in [
         Class::Ship,
@@ -106,7 +114,17 @@ pub fn compose(at: &str, measures: &[Measure], kept: &Kept, due: &str) -> (Strin
         .map(|miss| miss_words(miss))
         .filter(|what| !still.contains(what))
     {
-        let _ = writeln!(card, "For Joel: fixed, and a check now catches it: {what}.");
+        // Joel works on many things at once, so the line says which thing
+        // of his it was, that it's fixed, and that nothing is asked of him.
+        let thing = said
+            .get(what)
+            .cloned()
+            .unwrap_or_else(|| format!("something you ran into, {what}"));
+        let _ = writeln!(
+            card,
+            "For Joel: {thing}, is fixed, and a check now catches it if it comes back. \
+             Nothing to do."
+        );
     }
     let next = Kept {
         drag: chosen.map(|m| Held {
@@ -211,6 +229,11 @@ mod tests {
     use super::super::measure;
     use super::*;
 
+    /// No miss in Joel's own words.
+    fn none() -> BTreeMap<String, String> {
+        BTreeMap::new()
+    }
+
     fn held(key: &str, now: f64, unmoved: u32) -> Kept {
         Kept {
             drag: Some(Held {
@@ -232,14 +255,26 @@ mod tests {
             measure("notes", Class::Clean, 87.0, None),
             measure("lints", Class::Clean, 9.0, None),
         ];
-        let (card, _) = compose("18:10", &measures, &Kept::default(), "18:10 tomorrow");
+        let (card, _) = compose(
+            "18:10",
+            &measures,
+            &Kept::default(),
+            &none(),
+            "18:10 tomorrow",
+        );
         assert!(
             card.contains(
                 "Clean zones:\n  ✕ long said: 12, at most 10\n  1 more within target, 2 unjudged\n"
             ),
             "a clean measure in or unjudged was listed, or the rest weren't counted: {card}"
         );
-        let (all_in, _) = compose("18:10", &measures[1..2], &Kept::default(), "18:10 tomorrow");
+        let (all_in, _) = compose(
+            "18:10",
+            &measures[1..2],
+            &Kept::default(),
+            &none(),
+            "18:10 tomorrow",
+        );
         assert!(
             all_in.contains("Clean zones:\n  all 1 within target\n"),
             "a clean zone with nothing past didn't say so: {all_in}"
@@ -252,7 +287,13 @@ mod tests {
             measure("merge-to-on", Class::Ship, 37.9, Some(18.0)),
             measure("landed", Class::Ship, 12.0, None),
         ];
-        let (card, next) = compose("18:10", &measures, &Kept::default(), "18:10 tomorrow");
+        let (card, next) = compose(
+            "18:10",
+            &measures,
+            &Kept::default(),
+            &none(),
+            "18:10 tomorrow",
+        );
         assert!(
             card.contains("✕ merge-to-on said: 37.9, at most 18"),
             "{card}"
@@ -276,7 +317,7 @@ mod tests {
     #[test]
     fn a_drag_unmoved_two_hours_asks_the_orchestrator_to_steer_it() {
         let measures = [measure("slips", Class::Slip, 3.0, Some(0.0))];
-        let (card, next) = compose("19:10", &measures, &held("slips", 3.0, 1), "");
+        let (card, next) = compose("19:10", &measures, &held("slips", 3.0, 1), &none(), "");
         assert!(card.contains("hasn't moved in 2 hours"), "{card}");
         assert!(card.contains("Orchestrator: please steer it."), "{card}");
         assert_eq!(next.drag.map(|d| d.unmoved), Some(2), "it counts on");
@@ -285,7 +326,7 @@ mod tests {
     #[test]
     fn a_drag_that_grew_says_so_and_counts_as_unmoved() {
         let grew = [measure("slips", Class::Slip, 5.0, Some(0.0))];
-        let (card, next) = compose("01:10", &grew, &held("slips", 3.0, 0), "");
+        let (card, next) = compose("01:10", &grew, &held("slips", 3.0, 0), &none(), "");
         assert!(
             card.contains("Last hour's drag, slips said, grew from 3 to 5, with OWNER."),
             "a drag that got worse was said to hold still: {card}"
@@ -300,7 +341,7 @@ mod tests {
     #[test]
     fn a_drag_that_moved_or_came_back_in_starts_over() {
         let moved = [measure("slips", Class::Slip, 2.0, Some(0.0))];
-        let (card, next) = compose("19:10", &moved, &held("slips", 3.0, 1), "");
+        let (card, next) = compose("19:10", &moved, &held("slips", 3.0, 1), &none(), "");
         assert!(card.contains("moved from 3 to 2"), "{card}");
         assert_eq!(
             next.drag.map(|d| d.unmoved),
@@ -308,7 +349,7 @@ mod tests {
             "moving starts it over"
         );
         let back = [measure("slips", Class::Slip, 0.0, Some(0.0))];
-        let (card, next) = compose("20:10", &back, &held("slips", 2.0, 0), "");
+        let (card, next) = compose("20:10", &back, &held("slips", 2.0, 0), &none(), "");
         assert!(card.contains("is back in"), "{card}");
         assert_eq!(next.drag, None, "nothing past its target is no drag");
     }
@@ -324,15 +365,27 @@ mod tests {
                 "History · Reader paused · RCTRF8".to_owned(),
             ],
         };
-        let (card, next) = compose("19:10", &[open], &kept, "");
+        let said = BTreeMap::from([(
+            "History · Reader paused".to_owned(),
+            "what you ran into on 16 Nov at 13:38, \"history stopped\"".to_owned(),
+        )]);
+        let (card, next) = compose("19:10", &[open.clone()], &kept, &said, "");
         assert!(
-            card.contains("For Joel: fixed, and a check now catches it: History · Reader paused."),
-            "a miss's own words are said whole, only its owner cut: {card}"
+            card.contains(
+                "For Joel: what you ran into on 16 Nov at 13:38, \"history stopped\", is fixed, \
+                 and a check now catches it if it comes back. Nothing to do."
+            ),
+            "a closed miss wasn't said in Joel's own words and when: {card}"
         );
+        let (unsaid, _) = compose("19:10", &[open], &kept, &none(), "");
         assert!(
-            !card.contains("For Joel: fixed, and a check now catches it: the map"),
-            "{card}"
+            unsaid.contains(
+                "For Joel: something you ran into, History · Reader paused, is fixed, and a \
+                 check now catches it if it comes back. Nothing to do."
+            ),
+            "a miss without Joel's words wasn't said whole, only its owner cut: {unsaid}"
         );
+        assert!(!card.contains("the map had no network,"), "{card}");
         assert!(
             card.contains("Why didn't our checks catch these?"),
             "{card}"
@@ -360,7 +413,7 @@ mod tests {
                 "the notice stayed up · 88LQC0".to_owned(),
             ],
         };
-        let (card, _) = compose("12:10", &[open], &kept, "");
+        let (card, _) = compose("12:10", &[open], &kept, &none(), "");
         assert!(
             !card.contains("For Joel"),
             "a miss handed to a new owner, or noted as unread, was told fixed: {card}"
@@ -376,7 +429,7 @@ mod tests {
             Some(10.0),
         );
         suppressions.behind = vec!["net/a.rs · PN2VZC".to_owned()];
-        let (card, _) = compose("03:10", &[suppressions], &Kept::default(), "");
+        let (card, _) = compose("03:10", &[suppressions], &Kept::default(), &none(), "");
         assert!(
             card.contains("to each file's owner by"),
             "a clean drag whose files have owners named one owner: {card}"

@@ -187,6 +187,43 @@ pub fn checked(text: &str, folder: &Path, checkouts: &[String]) -> io::Result<Me
     Ok(misses(text, &repos, &found, &unread))
 }
 
+/// What each miss in `misses.jsonl` was, in Joel's own words and when he
+/// said them, by the text the misses measure names it with. The card tells
+/// him one is fixed in these words, since a cause in a session's words
+/// tells him nothing he can place: on 16 November he asked that everything
+/// reaching him say what it belongs to without his looking it up.
+#[must_use]
+pub fn said(text: &str) -> BTreeMap<String, String> {
+    lines(text)
+        .filter_map(|miss| {
+            let words = miss["words"].as_str()?;
+            let what = miss["what"].as_str().unwrap_or(words);
+            let at = miss["at"].as_str().unwrap_or_default();
+            let when = at
+                .get(5..16)
+                .and_then(|stamp| {
+                    let (month, rest) = stamp.split_once('-')?;
+                    let (day, time) = rest.split_once('T')?;
+                    let month = MONTHS.get(month.parse::<usize>().ok()?.checked_sub(1)?)?;
+                    Some(format!(
+                        " on {} {month} at {time}",
+                        day.trim_start_matches('0')
+                    ))
+                })
+                .unwrap_or_default();
+            Some((
+                what.to_owned(),
+                format!("what you ran into{when}, \"{words}\""),
+            ))
+        })
+        .collect()
+}
+
+/// The months, as a card says them.
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
 /// The misses Joel found himself, from the orchestrator's `misses.jsonl`:
 /// one stays open until its owner names the check that would have caught
 /// it and that check has merged, as `merged` holds them. A check naming no
@@ -267,6 +304,33 @@ mod tests {
             .into_iter()
             .map(|name| (name.to_owned(), PathBuf::from(format!("/{name}"))))
             .collect()
+    }
+
+    #[test]
+    fn each_miss_is_said_in_joels_own_words_and_when() {
+        let text = [
+            miss("core #1"),
+            serde_json::json!({"at": "2026-11-16T09:05:00-05:00",
+                "words": "the dock lost my screens"})
+            .to_string(),
+            serde_json::json!({"at": AT, "what": "no words kept"}).to_string(),
+        ]
+        .join("\n");
+        assert_eq!(
+            said(&text),
+            BTreeMap::from([
+                (
+                    "the cat waits".to_owned(),
+                    "what you ran into on 14 Nov at 17:34, \"w\"".to_owned()
+                ),
+                (
+                    "the dock lost my screens".to_owned(),
+                    "what you ran into on 16 Nov at 09:05, \"the dock lost my screens\"".to_owned()
+                ),
+            ]),
+            "a miss wasn't said by Joel's own words and when he said them, or one without \
+             his words was"
+        );
     }
 
     fn miss(check: &str) -> String {

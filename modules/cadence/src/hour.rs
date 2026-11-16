@@ -82,10 +82,14 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_default();
+    let said = measures::said(
+        &fs::read_to_string(state_home.join("mission/misses.jsonl")).unwrap_or_default(),
+    );
     let (card, next) = compose(
         &clock(now),
         &measures,
         &kept,
+        &said,
         &format!("{} tomorrow", clock(now + DAY)),
     );
     print!("{card}");
