@@ -5,7 +5,8 @@
 # brightness bars come and go as those change, the launcher finds and opens
 # kitty and remembers it was picked, a terminal opens below the focused
 # window, the launcher switches to a window by its title, the lock screen
-# refuses a wrong password and takes the right one, polkit's prompt lets the
+# refuses a wrong password and takes the right one, trying again a check
+# that hangs, polkit's prompt lets the
 # account start a system service, what's playing shows in the margin and a
 # media key shows what it is, a call shows in the margin while it lasts,
 # people coming and going in it are said and Joel can leave from the last
@@ -139,6 +140,17 @@ let
   # its lid suspends there, as the lid module has it, and its sleep stands
   # in, leaving a file for the test to find and returning at once.
   sleepsAtTheLid = area == "minds-the-margin";
+  # The area whose lock's password check stalls once the test leaves a
+  # file for it, as Quickshell's check can hang (modules/quickshell/Lock.qml),
+  # so the lock is seen to kill it and try again. The file goes as it's
+  # read, so only that check stalls.
+  stallsTheLock = area == "locks-and-asks";
+  stallOnce = pkgs.writeShellScript "stall-once" ''
+    if ${pkgs.coreutils}/bin/rm /run/lock-stalls/once 2>/dev/null; then
+      # Longer than any test, so it stands for a check that never ends.
+      exec ${pkgs.coreutils}/bin/sleep 600
+    fi
+  '';
 
   # A certificate authority the machine trusts, and the Office's server's
   # certificate from it, naming radius.office.test.
@@ -739,7 +751,22 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # Where a machine's disk guard says how its disks stand, for the test
       # to write in its place. Where cameras' holders are said the graphical
       # role makes itself (usb-camera-holders).
-      systemd.tmpfiles.rules = [ "d /run/disk-guard 0755 root root -" ];
+      systemd.tmpfiles.rules = [
+        "d /run/disk-guard 0755 root root -"
+      ]
+      ++ lib.optional stallsTheLock "d /run/lock-stalls 0700 ${account} - -";
+      # Before the password is asked: the lock hears nothing from a check
+      # hung there or after its answer, so the two look the same to it.
+      # Optional, so it decides nothing.
+      security.pam.services.quickshell.rules.auth.stall-once = lib.mkIf stallsTheLock {
+        order = config.security.pam.services.quickshell.rules.auth.unix.order - 10;
+        control = "optional";
+        modulePath = "${pkgs.pam}/lib/security/pam_exec.so";
+        args = [
+          "quiet"
+          "${stallOnce}"
+        ];
+      };
       services.pipewire.extraConfig.pipewire."90-stand-in-speakers"."context.objects" = [
         {
           factory = "adapter";

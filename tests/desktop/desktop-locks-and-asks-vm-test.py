@@ -22,6 +22,8 @@ if TYPE_CHECKING:
 
 # Where lock-screen and the shell say whether the screens are locked.
 LOCKED = "$XDG_RUNTIME_DIR/quickshell-locked"
+# The file that makes the lock's next password check stall (tests/desktop.nix).
+STALLS = "/run/lock-stalls/once"
 
 
 # Each test closes the launcher after it, so one failing with it open fails alone.
@@ -50,6 +52,25 @@ def test_the_lock_screen_takes_only_the_right_password(desktop: Desktop) -> None
     with desktop.told("released lock"):
         machine.send_chars(f"{desktop.values['secret']}\n")
     desktop.as_account("qs ipc call lock isLocked | grep -q false")
+
+
+def test_a_hung_password_check_is_tried_again(desktop: Desktop) -> None:
+    """A password check that hangs is killed and tried again, so the lock still takes it.
+
+    Quickshell's check can hang for good (Lock.qml says why), which left the lock refusing to
+    check any password again; here the machine stalls the first check in its place.
+    """
+    machine = desktop.machine
+    with desktop.told("keys lock"):
+        machine.send_key("meta_l-l")
+    desktop.as_account("qs ipc call lock isLocked | grep -q true")
+    desktop.as_account(f"touch {STALLS}")
+    since = desktop.mark()
+    machine.send_chars(f"{desktop.values['secret']}\n")
+    desktop.reported("retried lock", lambda rest: rest == "", since)
+    desktop.reported("released lock", lambda rest: rest == "", since)
+    desktop.as_account("qs ipc call lock isLocked | grep -q false")
+    desktop.as_account(f"! test -e {STALLS}")
 
 
 def hinted(desktop: Desktop, locked: str) -> None:
