@@ -79,6 +79,7 @@ mod alone;
 mod building;
 mod carry;
 mod checks;
+mod command;
 mod evaluating;
 mod first;
 mod gathered;
@@ -103,17 +104,7 @@ use checks::Derivations;
 use evaluating::{derivations, evaluated, names, pure};
 use quarantine::Held;
 use runs::Run;
-
-/// What a run asked for is refused with, as sysexits.h numbers it.
-const USAGE: u8 = 64;
-
-/// What a run exits with when it kept nothing since nowhere took it:
-/// sysexits.h's temporary failure, as `nix-offload there` gives.
-const UNSENT: u8 = 75;
-
-const USED: &str = "Usage: changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] \
-                    [--name-only] [--keep-base] [--here] [--first]\n       \
-                    changed-checks keep-main [--follow PATH]";
+use terminal_kit::{Exit, Failure, flags};
 
 /// Where `keep-main` follows main unless `CHANGED_CHECKS_REPOSITORY` names
 /// another.
@@ -156,7 +147,7 @@ struct Options {
 
 impl Options {
     /// Read the command line's arguments, or say what's wrong with them.
-    fn parse(arguments: impl Iterator<Item = String>) -> Result<Self, String> {
+    fn parse(arguments: impl Iterator<Item = String>) -> Result<Self, Failure> {
         let given: Vec<String> = arguments.collect();
         let mut arguments = given.clone().into_iter();
         let mut options = Self {
@@ -174,7 +165,7 @@ impl Options {
             let mut value = || {
                 arguments
                     .next()
-                    .ok_or_else(|| format!("{argument} needs a value"))
+                    .ok_or_else(|| Failure::new(Exit::Usage, format!("{argument} needs a value")))
             };
             match argument.as_str() {
                 "--base" => options.base = value()?,
@@ -185,11 +176,20 @@ impl Options {
                 "--keep-base" => options.keep_base = true,
                 "--here" => options.here = true,
                 "--first" => options.first = true,
-                _ => return Err(format!("{argument} isn't something it takes")),
+                _ => {
+                    return Err(flags::unknown(
+                        "option",
+                        &argument,
+                        &command::option_names(),
+                    ));
+                }
             }
         }
         if whole && name_only {
-            return Err("--build and --name-only ask for opposite things".to_owned());
+            return Err(Failure::new(
+                Exit::Usage,
+                "--build and --name-only ask for opposite things",
+            ));
         }
         options.build = !name_only;
         options.vm = whole && !no_vm;
@@ -218,75 +218,73 @@ fn say_vm_tests(targets: &[String]) {
 }
 
 fn main() -> ExitCode {
-    let arguments: Vec<String> = env::args().skip(1).collect();
-    if arguments.iter().any(|argument| argument == "--help") {
-        println!("{USED}");
-        return ExitCode::SUCCESS;
-    }
-    if let Some(("keep-main", rest)) = arguments
-        .split_first()
-        .map(|(first, rest)| (first.as_str(), rest))
-    {
-        return match rest {
-            [] => keep::main(None),
-            [flag, path] if flag == "--follow" => keep::main(Some(Path::new(path))),
-            _ => {
-                eprintln!("changed-checks: keep-main takes only --follow PATH\n{USED}");
-                ExitCode::from(USAGE)
-            }
-        };
-    }
-    let options = match Options::parse(arguments.into_iter()) {
-        Ok(options) => options,
-        Err(why) => {
-            eprintln!("changed-checks: {why}\n{USED}");
-            return ExitCode::from(USAGE);
+    terminal_kit::main(&command::help(), env!("CARGO_PKG_VERSION"), |context| {
+        let arguments = &context.args;
+        if let Some(("keep-main", rest)) = arguments
+            .split_first()
+            .map(|(first, rest)| (first.as_str(), rest))
+        {
+            let follow = match rest {
+                [] => None,
+                [flag, path] if flag == "--follow" => Some(Path::new(path)),
+                _ => {
+                    return Err(
+                        Failure::new(Exit::Usage, "keep-main takes only --follow PATH")
+                            .try_this("changed-checks keep-main --help"),
+                    );
+                }
+            };
+            keep::main(follow);
+            return Ok(());
         }
-    };
-    match changed(&options) {
-        Ok(code) => code,
-        Err(why) => {
-            eprintln!("changed-checks: {why}");
-            ExitCode::FAILURE
-        }
-    }
+        let options = Options::parse(arguments.iter().cloned())
+            .map_err(|failure| failure.try_this("changed-checks --help"))?;
+        changed(&options)
+    })
+}
+
+/// A run that couldn't go on, as it said why.
+fn broke(why: String) -> Failure {
+    Failure::new(Exit::Failed, why)
 }
 
 /// Name the checks the working tree's change touches, and build them if asked.
-fn changed(options: &Options) -> Result<ExitCode, String> {
-    let root = run("git", &["rev-parse", "--show-toplevel"])?;
+fn changed(options: &Options) -> Result<(), Failure> {
+    let root = run("git", &["rev-parse", "--show-toplevel"]).map_err(broke)?;
     let Ok(base) = run("git", &["-C", &root, "merge-base", "HEAD", &options.base]) else {
-        eprintln!(
-            "changed-checks: {} shares no history with HEAD",
-            options.base
-        );
-        return Ok(ExitCode::from(USAGE));
+        return Err(Failure::new(
+            Exit::Usage,
+            format!("{} shares no history with HEAD", options.base),
+        ));
     };
     let flake = format!("git+file://{root}");
     let system = match &options.system {
         Some(system) => system.clone(),
-        None => busiest_system(&flake)?,
+        None => busiest_system(&flake).map_err(broke)?,
     };
     let untracked = run(
         "git",
         &["-C", &root, "ls-files", "--others", "--exclude-standard"],
-    )?;
+    )
+    .map_err(broke)?;
     if !untracked.is_empty() {
         eprintln!("changed-checks: Nix doesn't read files git doesn't know:\n{untracked}");
     }
-    if let Some(code) = elsewhere(options, &root, &base, &system)? {
-        return Ok(code);
+    match elsewhere(options, &root, &base, &system).map_err(broke)? {
+        Some(0) => return Ok(()),
+        Some(code) => return Err(Failure::passed(code, "the run sent elsewhere failed")),
+        None => {}
     }
     // Asked to, or the far side's run, which runs where it was sent.
     let here = options.here || env::var_os(HERE).is_some();
     // A base kept ahead of time is never worth evaluating beside the
     // person's work, at about 20 GB, unless asked to.
     if options.keep_base && !here {
-        eprintln!(
-            "changed-checks: no standing builder took the base to keep, so it's left unkept; \
-             --here keeps it on this machine"
-        );
-        return Ok(ExitCode::from(UNSENT));
+        return Err(Failure::new(
+            Exit::TryAgain,
+            "no standing builder took the base to keep, so it's left unkept",
+        )
+        .because("--here keeps it on this machine"));
     }
     // A run that went nowhere else evaluates at several gigabytes and
     // builds what its builders didn't take, beside the person's work. It
@@ -296,24 +294,26 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
     // when asked, and is otherwise run again later, as nix-offload's 75
     // asks.
     if !here {
-        eprintln!(
-            "changed-checks: the run went nowhere else, so nothing was run here; --here runs \
-             it on this machine"
-        );
-        return Ok(ExitCode::from(UNSENT));
+        return Err(Failure::new(
+            Exit::TryAgain,
+            "the run went nowhere else, so nothing was run here",
+        )
+        .because("--here runs it on this machine"));
     }
     // The far side's runs share a builder made for them; this machine's
     // take turns (`turn.rs` says why).
-    let _turn = if env::var_os(HERE).is_none() {
-        let lock = cache().join("changed-checks/evaluating-here.lock");
-        Some(turn::taken(&lock, || {
+    let _turn =
+        if env::var_os(HERE).is_none() {
+            let lock = cache().join("changed-checks/evaluating-here.lock");
+            Some(turn::taken(&lock, || {
             eprintln!(
                 "changed-checks: another run evaluates on this machine, so this waits its turn"
             );
-        })?)
-    } else {
-        None
-    };
+        })
+        .map_err(broke)?)
+        } else {
+            None
+        };
     let held = quarantine::on_main(&root, ORIGIN_MAIN);
     let mut noted = Run::new(&base, &system);
     let compared = compare(options, &root, &base, &system, &held, &mut noted);
@@ -321,7 +321,27 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
     if let Err(why) = noted.record(&log) {
         eprintln!("changed-checks: couldn't log the run: {why}");
     }
-    compared
+    match compared.map_err(broke)? {
+        Compared::Passed => Ok(()),
+        Compared::Broken => Err(Failure::new(
+            Exit::Failed,
+            "a check the change touched no longer evaluates",
+        )),
+        Compared::Failed => Err(Failure::new(
+            Exit::Failed,
+            "a check the change touched failed",
+        )),
+    }
+}
+
+/// How a comparison ended.
+enum Compared {
+    /// Every check it named evaluates, and each built passed.
+    Passed,
+    /// A check no longer evaluates, so nothing was built.
+    Broken,
+    /// A check it built failed.
+    Failed,
 }
 
 /// Keep `head`'s checks where runs are sent, from the keeper's own clone,
@@ -333,9 +353,10 @@ fn keep_head(url: &str, clone: &Path, head: &str) -> Result<bool, String> {
         .map_err(|error| format!("going to {}: {error}", clone.display()))?;
     let root = clone.to_string_lossy().into_owned();
     let system = busiest_system(&format!("git+file://{root}"))?;
-    let options = Options::parse(std::iter::once("--keep-base".to_owned()))?;
+    let options = Options::parse(std::iter::once("--keep-base".to_owned()))
+        .map_err(|failure| failure.what)?;
     Ok(match elsewhere(&options, &root, head, &system)? {
-        Some(code) if code == ExitCode::SUCCESS => true,
+        Some(0) => true,
         Some(_) => return Err("the far side's run failed".to_owned()),
         None => false,
     })
@@ -383,7 +404,7 @@ fn elsewhere(
     root: &str,
     base: &str,
     system: &str,
-) -> Result<Option<ExitCode>, String> {
+) -> Result<Option<u8>, String> {
     if options.here || env::var_os(HERE).is_some() {
         return Ok(None);
     }
@@ -469,8 +490,8 @@ fn elsewhere(
             eprintln!("changed-checks: no builder took the run");
             None
         }
-        Some(code) => Some(ExitCode::from(u8::try_from(code).unwrap_or(1))),
-        None => Some(ExitCode::FAILURE),
+        Some(code) => Some(u8::try_from(code).unwrap_or(1)),
+        None => Some(1),
     })
 }
 
@@ -483,7 +504,7 @@ fn compare(
     system: &str,
     held: &[Held],
     noted: &mut Run,
-) -> Result<ExitCode, String> {
+) -> Result<Compared, String> {
     let flake = &format!("git+file://{root}");
     let short = base.get(..12).unwrap_or(base);
     if options.keep_base {
@@ -587,13 +608,13 @@ fn compare(
             noted.lent(build.sent.bytes);
         }
     }
-    Ok(
-        if whole && build.as_ref().is_none_or(|build| build.sent.passed) {
-            ExitCode::SUCCESS
-        } else {
-            ExitCode::FAILURE
-        },
-    )
+    Ok(if !whole {
+        Compared::Broken
+    } else if build.as_ref().is_none_or(|build| build.sent.passed) {
+        Compared::Passed
+    } else {
+        Compared::Failed
+    })
 }
 
 /// Evaluate the tree's ordinary checks, giving the base's derivation to
@@ -630,7 +651,7 @@ fn ordinarily(
 /// keep cut off from its machine by a reboot ran on through its grace and
 /// the next keep of that base began beside it; the one waiting then finds
 /// what the first kept.
-fn kept_base(root: &str, base: &str, system: &str, noted: &mut Run) -> Result<ExitCode, String> {
+fn kept_base(root: &str, base: &str, system: &str, noted: &mut Run) -> Result<Compared, String> {
     let short = base.get(..12).unwrap_or(base);
     let lock = cache()
         .join("changed-checks")
@@ -643,7 +664,7 @@ fn kept_base(root: &str, base: &str, system: &str, noted: &mut Run) -> Result<Ex
     })?;
     alone::keep(root, base, system, carried, noted);
     eprintln!("kept {system}'s checks at {short}");
-    Ok(ExitCode::SUCCESS)
+    Ok(Compared::Passed)
 }
 
 /// The tree's VM tests' derivations: for each the change reaches nothing

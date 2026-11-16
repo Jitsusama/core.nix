@@ -654,10 +654,8 @@ fn it_runs_here_only_when_asked_and_otherwise_says_why_it_went_nowhere() {
         let said = text(&ran.stderr);
         assert_eq!(ran.status.code(), Some(75), "{said}");
         assert!(said.contains(why), "{said}");
-        assert!(
-            said.contains("so nothing was run here; --here runs it on this machine"),
-            "{said}"
-        );
+        assert!(said.contains("so nothing was run here"), "{said}");
+        assert!(said.contains("--here runs it on this machine"), "{said}");
         assert_eq!(text(&ran.stdout), "", "nothing was evaluated here");
     };
 
@@ -2474,7 +2472,9 @@ fn keeping_a_base_elsewhere_never_asks_for_a_builder_nor_goes_where_it_must() {
     // and it isn't evaluated here instead.
     let ran = stand_in.run(&keeping);
     assert_eq!(ran.status.code(), Some(75), "{}", text(&ran.stderr));
-    assert!(text(&ran.stderr).contains("so it's left unkept; --here keeps it on this machine"));
+    let said = text(&ran.stderr);
+    assert!(said.contains("so it's left unkept"), "{said}");
+    assert!(said.contains("--here keeps it on this machine"), "{said}");
     assert!(!stand_in.path("changed").exists(), "it wasn't sent");
     let kept = stand_in.path("cache/changed-checks/0123456789abcdef0123-x86_64-linux.json");
     assert!(!kept.exists(), "nor kept here");
@@ -2545,13 +2545,27 @@ fn unnamed_the_system_compared_is_the_one_with_the_most_checks() {
 }
 
 #[test]
-fn an_option_it_doesnt_take_is_refused_saying_how_it_is_used() {
+fn an_option_it_doesnt_take_is_refused_naming_the_nearest() {
     let stand_in = StandIn::new("misused");
 
     let ran = stand_in.run(&["--bild"]);
 
-    assert_eq!(ran.status.code(), Some(64));
-    assert!(text(&ran.stderr).starts_with("changed-checks: --bild isn't something it takes\n"));
+    assert_eq!(ran.status.code(), Some(64), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains("no option called --bild")
+            && text(&ran.stderr).contains("did you mean --build?"),
+        "it didn't name the option it meant: {}",
+        text(&ran.stderr)
+    );
+
+    let ran = stand_in.run(&["keep-mian"]);
+
+    assert_eq!(ran.status.code(), Some(64), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains("did you mean keep-main?"),
+        "it didn't name the command it meant: {}",
+        text(&ran.stderr)
+    );
 
     let ran = stand_in.run(&["--build", "--name-only"]);
 
@@ -2559,6 +2573,37 @@ fn an_option_it_doesnt_take_is_refused_saying_how_it_is_used() {
     assert!(
         text(&ran.stderr).contains("--build and --name-only"),
         "{}",
+        text(&ran.stderr)
+    );
+}
+
+#[test]
+fn each_form_answers_its_own_help_and_starts_nothing() {
+    let stand_in = StandIn::new("helped");
+
+    let ran = stand_in.run(&["--help"]);
+
+    assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
+    for word in ["--name-only", "keep-main", "75"] {
+        assert!(
+            text(&ran.stdout).contains(word),
+            "its help leaves out {word}: {}",
+            text(&ran.stdout)
+        );
+    }
+
+    let ran = stand_in.run(&["keep-main", "--help"]);
+
+    assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stdout).starts_with("changed-checks keep-main")
+            && text(&ran.stdout).contains("--follow PATH"),
+        "keep-main's help isn't its own: {}",
+        text(&ran.stdout)
+    );
+    assert!(
+        !text(&ran.stderr).contains("keeping each head"),
+        "asking keep-main's help started the keeper: {}",
         text(&ran.stderr)
     );
 }
