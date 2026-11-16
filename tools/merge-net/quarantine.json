@@ -142,18 +142,6 @@
     "test": "vm-desktop-starts-clean"
   },
   {
-    "at": 1794778984,
-    "commit": "533895e2e473ebc82569f21a96983005c0c4095c",
-    "due": "2026-11-17",
-    "owner_pr": 4813,
-    "owner_session": "XY9H5C",
-    "reason": "the cat walked and never sat to be petted, in the net's reruns at 9e74a5d5f, 68bfc1629, 3a3a3d466, 0d9ff63cc and a3d200ec, and at 533895e2e473 after #4813, passing when rerun",
-    "subtests": [
-      "test_a_pointer_resting_on_the_cat_leans_it_in_and_a_click_beside_it_reaches_the_window"
-    ],
-    "test": "the-margin-cat-follows-the-keys-on-niri"
-  },
-  {
     "at": 1794792122,
     "commit": "75aaf29a37d911bbea9a5b3648cb8490ff52f821",
     "due": "2026-11-17",
@@ -202,19 +190,6 @@
     "test": "vm-desktop-keeps-pace"
   },
   {
-    "at": 1794842295,
-    "commit": "a4dad8c98727dc60da9965b811f5231d9b39ff1a",
-    "due": "2026-11-17",
-    "due_why": "Its owner makes it steady beside the middle-row case and takes it off, by 2026-11-17 23:59 UTC",
-    "owner_pr": 4813,
-    "owner_session": "XY9H5C",
-    "reason": "failed two gates on 16 Nov, at a4dad8c9 and at main for #5025, one pixel short of the cat, with neither touching it; passed at main 389e8476 and at #5016's parent",
-    "subtests": [
-      "test_windows_cover_it_but_a_floating_one_holds_it_over_them"
-    ],
-    "test": "the-margin-cat-follows-the-keys-on-niri"
-  },
-  {
     "at": 1794845579,
     "commit": "5ea2f73b278dc06f1b5d19fe4d26d6adc4898374",
     "due": "2026-11-18",
@@ -228,20 +203,6 @@
       "test_the_home_network_and_nearby_list_whats_around_at_each_scale"
     ],
     "test": "vm-desktop-looks"
-  },
-  {
-    "at": 1794845674,
-    "commit": "009ea3f710076ce17f5627363a2d8c7979ecade6",
-    "due": "2026-11-17",
-    "due_why": "Its owner counts the wander in the cat's own steps and waits for the yarn's report, and takes it off, by 2026-11-17 23:59 UTC",
-    "owner_pr": 4365,
-    "owner_session": "XY9H5C",
-    "reason": "failed unrelated gates on 16 Nov, passing when rerun: the wander at 5afc28662 on a busy builder (7 cells of at least 16), the yarn at d6345e9 (came from nowhere)",
-    "subtests": [
-      "test_away_it_bats_a_ball_of_yarn_off_and_walks_back",
-      "test_away_it_wanders_and_a_key_brings_it_back"
-    ],
-    "test": "the-margin-cat-plays-more-the-less-he-types-on-niri"
   },
   {
     "at": 1794849317,
