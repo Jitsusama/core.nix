@@ -120,8 +120,9 @@
     '';
 
   # The launcher's Screens draws each screen's row as the windows daemon
-  # serves it, makes again only the row a change names, asks the daemon a
-  # screen's Return rather than niri, and says the Brightness as the
+  # serves it, makes again only the row a change names, offers Windows the
+  # screens laid out by what their rows hold, with no record of niri's,
+  # asks the daemon a screen's Return rather than niri, and says the Brightness as the
   # place's line serves it (tests/displays.qml), with the daemon and niri
   # stood in. A screen's ways, what :setl power and unplugged do with
   # them, and what the place's :set line serves, are the windows daemon's,

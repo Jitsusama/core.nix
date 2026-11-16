@@ -11,7 +11,7 @@
 // ready from the windows daemon (modules/windows, screens.rs), its name,
 // how it stands, what it runs and its drawer, light and all, said there,
 // with what the : line's :setl takes for each setting (screens/line.rs)
-// and niri's record of it, which its acts read here; the daemon asks
+// and its connector, but no record of niri's; the daemon asks
 // niri for its screens as a display comes or goes, so the shell asks
 // niri nothing of them itself. A change made here, from a row or the :
 // line, is the daemon's to ask of niri, which says nothing of it in its
@@ -76,7 +76,7 @@ Provider {
     collection: Words.collection("displays")
 
     // The screens' rows as the windows daemon serves them, each holding
-    // niri's record of its screen and its drawer; Turn Every Screen Off is
+    // its connector, how it stands and its drawer; Turn Every Screen Off is
     // the daemon's row too, while one is lit. The screen whose drawer
     // shows is watched ahead, and the one holding the Brightness while the
     // lights can be seen, as by words asking the Room Light, or a terminal
@@ -96,19 +96,6 @@ Provider {
         make: (row, key) => provider.madeFrom(row, key)
         maker: provider
         drawn: provider.launcher?.open ?? false
-    }
-
-    // What niri says of each display, by its connector's name, as its
-    // served row holds it.
-    readonly property var outputs: {
-        void ready.placings;
-        const out = {};
-        for (const key of ready.keys) {
-            const held = ready.served(key)?.held;
-            if (held?.niri)
-                out[held.output] = Object.assign({ name: held.output }, held.niri);
-        }
-        return out;
     }
 
     // The place's : line as the windows daemon serves it on its summary
@@ -329,11 +316,18 @@ Provider {
         return ready.served(screenKey(output))?.name ?? output.name;
     }
 
-    // The screens niri lays out, in the order the daemon serves them: the
-    // built-in first, as it's always there, then by connector.
-    readonly property var lit: Object.values(outputs).filter(output => output.logical !== null)
+    // The screens niri lays out, lit or dark, each by its connector's
+    // name, in the order the daemon serves them: the built-in first, as
+    // it's always there, then by connector. One unplugged, laid out on
+    // nothing, its row says stands off.
+    readonly property var lit: {
+        void ready.placings;
+        return ready.keys.map(key => ready.served(key))
+            .filter(row => row?.kind === "screen" && row.held?.standing !== "off")
+            .map(row => ({ name: row.held.output }));
+    }
 
-    // What a served row is made into: a screen's, by the niri record it
+    // What a served row is made into: a screen's, by the connector it
     // holds, Turn Every Screen Off, or what's inside a screen's row: a lit
     // one's settings, their choices and its Variable Refresh
     // (modules/windows, screens/settings.rs), the ways it turns off or on
@@ -377,8 +371,8 @@ Provider {
                 targets: undefined
             });
         }
-        const output = outputs[row.held?.output];
-        return output ? made(output, row, key) : null;
+        return row.kind === "screen" && row.held?.output
+            ? made({ name: row.held.output }, row, key) : null;
     }
 
     // A screen's row as the daemon says it, its name, how it stands and

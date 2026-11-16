@@ -1,10 +1,11 @@
 pragma ComponentBehavior: Bound
 // Drives the launcher's Screens (modules/quickshell/launcher/Displays.qml)
 // through Quickshell itself, over a stand-in for the windows daemon
-// serving a panel's and a monitor's rows ready, each holding niri's record
-// of its screen, as modules/windows' screens.rs does. Screens draws each
-// row as it's served; a change to the monitor's row makes its row again
-// and keeps the panel's; a screen's Return asks the daemon the act it
+// serving a panel's and a monitor's rows ready, each holding its connector
+// and how it stands but no record of niri's, as modules/windows'
+// screens.rs does. Screens draws each row as it's served, and offers
+// Windows the screens laid out; a change to the monitor's row makes its
+// row again and keeps the panel's; a screen's Return asks the daemon the act it
 // serves, and niri nothing; "brightness 40" says the share the served
 // Brightness holds; and the place's :set line is the one served on the
 // summary, each option saying how it stands and asking what its way
@@ -42,22 +43,8 @@ ShellRoot {
         readonly property string typed: ""
     }
 
-    // A screen as niri says one, laid out unless `lit` is false.
-    function niri(name, make, model, lit) {
-        const mode = (width, height) => ({
-            width: width, height: height, refresh_rate: 60000, is_preferred: true
-        });
-        return {
-            name: name, make: make, model: model, serial: null, physical_size: [300, 190],
-            modes: [mode(2880, 1800), mode(1920, 1080)], current_mode: 0,
-            is_custom_mode: false, vrr_supported: false, vrr_enabled: false,
-            logical: lit ? { x: 0, y: 0, width: 1440, height: 900, scale: 2,
-                transform: "Normal" } : null
-        };
-    }
-
     // A screen's row as the windows daemon serves it, wrapped as the
-    // ready-rows crate's Kept wraps each.
+    // ready-rows crate's Kept wraps each, holding no record of niri's.
     function screen(name, said, order, lit) {
         const key = `row:displays:display:${name}`;
         const act = lit ? { key: "displays:focus", ask: { ask: "screen", do: "focus",
@@ -68,9 +55,7 @@ ShellRoot {
             order: order, name: said, glyph: "display", hue: "machine", depth: 0,
             side: lit ? [] : [{ said: "off" }],
             note: lit ? "2880 \u00d7 1800 \u00b7 60 Hz \u00b7 scale 2\u00d7" : "off",
-            held: { output: name, standing: lit ? "lit" : "off", lights: name === "eDP-1" && lit,
-                niri: root.niri(name, name === "eDP-1" ? "LG Display" : "Dell Inc.",
-                    name === "eDP-1" ? "0x07C6" : "U2723QE", lit) },
+            held: { output: name, standing: lit ? "lit" : "off", lights: name === "eDP-1" && lit },
             drawer: name === "eDP-1" && lit ? root.panelDrawer : undefined,
             acts: [act]
         } };
@@ -296,6 +281,9 @@ ShellRoot {
             first.map(row => row.name).join(", "));
         Expect.expect("and what it runs as its note",
             first[0].note === "2880 \u00d7 1800 \u00b7 60 Hz \u00b7 scale 2\u00d7", first[0].note);
+        Expect.expect("Windows is offered each screen laid out, by its connector",
+            JSON.stringify(displays.lit) === '[{"name":"eDP-1"},{"name":"DP-1"}]',
+            JSON.stringify(displays.lit));
         // Its connector is among the words it's found by, made ready as the
         // launcher's search reads them (Launcher.qml's hiddenWords).
         Expect.expect("each screen is found by its connector",
@@ -338,6 +326,8 @@ ShellRoot {
         Expect.expect("the monitor told off says so and offers to turn it on",
             now[1].side === "off" && now[1].verb !== first[1].verb,
             JSON.stringify({ side: now[1].side, verb: now[1].verb }));
+        Expect.expect("and Windows no longer offers it to move a window to",
+            JSON.stringify(displays.lit) === '[{"name":"eDP-1"}]', JSON.stringify(displays.lit));
         waiting = "the act";
         now[1].run();
     }

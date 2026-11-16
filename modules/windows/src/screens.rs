@@ -8,8 +8,9 @@
 //! Each row carries its drawer, what niri says of the screen past its
 //! row and what desk-facts reads of its EDID (`drawer`), and holds what
 //! the shell's own acts need of it (`held`: its connector, how it stands,
-//! niri's whole record of it, what the : line takes and whether its
-//! brightness follows the panel's). Inside it are what a step in offers:
+//! what the : line takes and whether its brightness follows the panel's),
+//! never niri's whole record of it, so a change niri says that moves
+//! nothing a row says makes no row again. Inside it are what a step in offers:
 //! a lit one's settings (settings.rs), the ways it turns off or on, and
 //! what its EDID says (facts.rs). Its Return, focusing it or turning it
 //! on, the ways it turns off and Turn Every Screen Off's are served as
@@ -670,7 +671,7 @@ pub fn rows(
                     lit_by(name), words),
                 // Whether its place holds the Brightness, read or not, so
                 // the shell watches it ahead and sets the light there.
-                "held": {"output": name, "standing": stands, "niri": output, "line": line,
+                "held": {"output": name, "standing": stands, "line": line,
                     "lights": holds == Some(name.as_str())},
                 "acts": acts,
             })

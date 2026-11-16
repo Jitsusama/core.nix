@@ -71,9 +71,13 @@ fn the_built_in_screen_leads_then_each_by_its_connector_then_turning_them_off() 
     );
     assert_eq!(rows[0]["held"]["output"], "eDP-1");
     assert_eq!(
-        rows[0]["held"]["niri"],
-        desk()["eDP-1"],
-        "the shell's acts read niri's whole record of the screen"
+        rows[0]["held"]["standing"], "lit",
+        "the shell can't tell a lit screen from its row"
+    );
+    assert!(
+        rows[0]["held"].get("niri").is_none(),
+        "a screen's row carries niri's whole record, which nothing reads: {}",
+        rows[0]["held"]
     );
     assert_eq!(rows[3]["key"], "row:displays:sleep");
     assert_eq!(rows[3]["note"], "a key wakes them \u{b7} hubs stay on");
