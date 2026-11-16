@@ -7,6 +7,10 @@
     a machine with Bluetooth lets a USB or PCI controller of Bluetooth's class wake it, so a paired
     keyboard's key does, in a rule udev reads without a complaint
   '';
+  a-burst-waits-rather-than-drops = ''
+    a machine with a screen gives a socket that asks for no receive buffer 4 MiB, so a VPN over
+    QUIC holds a burst rather than dropping it
+  '';
   a-card-says-how-it-stands-in-one-row = ''
     a card's status line, as the launcher's is, gives its middle hints way first
     as room runs short, the keys list's and Return's staying

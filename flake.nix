@@ -430,6 +430,7 @@
         tcp = ./modules/tcp/nixos.nix;
         touchpad = ./modules/touchpad/nixos.nix;
         tpm = ./modules/tpm/nixos.nix;
+        udp = ./modules/udp/nixos.nix;
         unlisted = ./modules/unlisted/nixos.nix;
         update-to-main = ./modules/update-to-main/nixos.nix;
         usb-camera-holders = ./modules/usb-camera-holders/nixos.nix;

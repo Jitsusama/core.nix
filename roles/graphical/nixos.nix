@@ -62,6 +62,7 @@
     nixosModules.slices
     nixosModules.swayimg
     nixosModules.tcp
+    nixosModules.udp
     nixosModules.unlisted
     nixosModules.usb-camera-holders
     nixosModules.zathura
