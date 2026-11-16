@@ -29,6 +29,9 @@ pub struct Sources {
     pub code_health: bool,
     /// Today's figures from health's day file, when it wrote one.
     pub health: Option<BTreeMap<String, f64>>,
+    /// The parent that held the most defunct children today, as health's
+    /// day file names it: its command and pid.
+    pub defunct_parent: Option<String>,
 }
 
 /// The code-health regressions found and not yet fixed: the open
@@ -200,6 +203,18 @@ pub fn held(s: &Sources) -> Vec<Reading> {
             "80ECO2",
         )
         .from(from),
+        // On 16 November 469 unreaped children of pi's mesh census left
+        // equilibrius at a load of 155 and broke its ssh; twenty under one
+        // parent is already a leak, well before that.
+        Reading::new(
+            "the most defunct children under one parent {}",
+            figure("health.defunct.most-under-one-parent"),
+            "",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(20.0))
+        .detail(s.defunct_parent.as_ref().map(|p| format!("under {p}")))
+        .from(from),
     ]
 }
 
@@ -286,7 +301,24 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         health: fs::read_to_string(health_file(state_home, now))
             .ok()
             .map(|json| healths(&json)),
+        defunct_parent: fs::read_to_string(health_file(state_home, now))
+            .ok()
+            .and_then(|json| defunct_parent(&json)),
     }
+}
+
+/// The parent health's day file names as holding the most defunct
+/// children, as `command (pid N)`; none when it names no command.
+fn defunct_parent(json: &str) -> Option<String> {
+    let written = serde_json::from_str::<serde_json::Value>(json).ok()?;
+    let defunct = written.get("defunct")?;
+    let command = defunct.get("command")?.as_str()?;
+    Some(
+        match defunct.get("pid").and_then(serde_json::Value::as_u64) {
+            Some(pid) => format!("{command} (pid {pid})"),
+            None => command.to_owned(),
+        },
+    )
 }
 
 /// Every figure in health's day file, as `health.<figure>`. Cadence day's
@@ -356,7 +388,7 @@ mod tests {
                 finding("code.mycelium.suppressions"),
             ]),
             code_health: true,
-            health: None,
+            ..Sources::default()
         };
         assert_eq!(
             regressions(&s).words(),
@@ -369,13 +401,13 @@ mod tests {
         let before = Sources {
             findings: Some(vec![]),
             code_health: false,
-            health: None,
+            ..Sources::default()
         };
         assert_eq!(regressions(&before).figure(), None);
         let no_ledger = Sources {
             findings: None,
             code_health: true,
-            health: None,
+            ..Sources::default()
         };
         assert_eq!(regressions(&no_ledger).figure(), None);
     }
@@ -437,12 +469,50 @@ mod tests {
                 "the fullest disk 93% in use, at most 90%",
                 "the most pi held at once 4,096 MiB",
                 "the most the shell held at once: no reading yet",
+                "the most defunct children under one parent: no reading yet",
             ]
         );
         assert_eq!(
             read.iter().map(Reading::out).collect::<Vec<_>>(),
-            [true, false, false],
+            [true, false, false, false],
             "only the disk has a bar to be past"
+        );
+    }
+
+    /// On 16 November equilibrius held 469 defunct children of pi's mesh
+    /// census and its load reached 155; past 20 under one parent is out,
+    /// and the reading names the parent so its owner knows it at once.
+    #[test]
+    fn defunct_children_under_one_parent_are_held_to_twenty_naming_it() {
+        let day = r#"{"figures":{"defunct.most-under-one-parent":469},
+            "defunct":{"most":469,"pid":4242,"command":"node pi","at":1794817980}}"#;
+        let s = Sources {
+            health: Some(healths(day)),
+            defunct_parent: defunct_parent(day),
+            ..Sources::default()
+        };
+        let read = held(&s);
+        let defunct = read.last().expect("held() ends with the defunct children");
+        assert_eq!(
+            defunct.words(),
+            "the most defunct children under one parent 469, at most 20"
+        );
+        assert!(defunct.out(), "469 is past a bar of 20");
+        assert_eq!(
+            defunct.detail.as_deref(),
+            Some("under node pi (pid 4242)"),
+            "the reading names the parent that kept them"
+        );
+    }
+
+    #[test]
+    fn a_day_file_without_defunct_children_names_no_parent() {
+        assert_eq!(defunct_parent(r#"{"figures":{}}"#), None);
+        assert_eq!(defunct_parent("not json"), None);
+        assert_eq!(
+            defunct_parent(r#"{"defunct":{"most":3,"pid":7}}"#),
+            None,
+            "no command, no name"
         );
     }
 
