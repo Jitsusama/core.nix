@@ -163,7 +163,7 @@ fn report_with(
     known: &HashMap<u32, Owner>,
 ) -> Report {
     let seconds = (later.at - earlier.at).max(0.001);
-    let kbit = |bytes: u64| float(bytes) * 8.0 / seconds / 1000.0;
+    let kbit = |bytes: u64| rate(bytes, seconds);
     let mut purposes: BTreeMap<Purpose, u64> = BTreeMap::new();
     let mut sides: BTreeMap<Side, u64> = BTreeMap::new();
     let mut processes: BTreeMap<(Option<u32>, String), Tally> = BTreeMap::new();
@@ -191,13 +191,7 @@ fn report_with(
         peer.0 += sent;
         peer.1 += resent;
     }
-    let share = |bytes: u64| {
-        if total == 0 {
-            0.0
-        } else {
-            float(bytes) * 100.0 / float(total)
-        }
-    };
+    let share = |bytes: u64| pct(bytes, total);
     let interfaces: BTreeMap<String, f64> = later
         .sent
         .iter()
@@ -213,15 +207,6 @@ fn report_with(
         .copied()
         .unwrap_or(0.0);
     let sockets_kbit = kbit(total);
-    let mut purposes: Vec<Share<Purpose>> = purposes
-        .into_iter()
-        .map(|(what, bytes)| Share {
-            what,
-            kbit: kbit(bytes),
-            pct: share(bytes),
-        })
-        .collect();
-    purposes.sort_by(|a, b| b.kbit.total_cmp(&a.kbit));
     let side_bytes = |which: Side| sides.get(&which).copied().unwrap_or(0);
     let mut processes: Vec<Process> = processes
         .into_iter()
@@ -236,15 +221,6 @@ fn report_with(
         })
         .collect();
     processes.sort_by(|a, b| b.kbit.total_cmp(&a.kbit));
-    let mut destinations: Vec<Destination> = destinations
-        .into_iter()
-        .map(|(peer, (sent, again))| Destination {
-            peer,
-            kbit: kbit(sent),
-            resent_pct: resent(sent, again),
-        })
-        .collect();
-    destinations.sort_by(|a, b| b.kbit.total_cmp(&a.kbit));
     Report {
         schema: SCHEMA,
         from: earlier.at,
@@ -255,28 +231,59 @@ fn report_with(
         unattributed_kbit: (uplink_kbit - sockets_kbit).max(0.0),
         joel_pct: nearest_five(share(side_bytes(Side::Joel))),
         agents_pct: nearest_five(share(side_bytes(Side::Agents))),
-        sides: sides
-            .iter()
-            .map(|(what, bytes)| Share {
-                what: *what,
-                kbit: kbit(*bytes),
-                pct: share(*bytes),
-            })
-            .collect(),
-        purposes,
+        sides: shares(&sides, seconds, total),
+        purposes: shares(&purposes, seconds, total),
         processes,
-        destinations,
+        destinations: ranked(destinations, seconds),
         interfaces,
     }
 }
 
-/// What share of what was sent was sent again.
-fn resent(sent: u64, again: u64) -> f64 {
-    if sent == 0 {
+/// Bytes over a window as kbit/s.
+fn rate(bytes: u64, seconds: f64) -> f64 {
+    float(bytes) * 8.0 / seconds / 1000.0
+}
+
+/// A part's percentage of a whole, nothing of nothing.
+fn pct(part: u64, whole: u64) -> f64 {
+    if whole == 0 {
         0.0
     } else {
-        float(again) * 100.0 / float(sent)
+        float(part) * 100.0 / float(whole)
     }
+}
+
+/// Each group's rate and share, busiest first.
+fn shares<T: Copy>(groups: &BTreeMap<T, u64>, seconds: f64, total: u64) -> Vec<Share<T>> {
+    let mut shares: Vec<Share<T>> = groups
+        .iter()
+        .map(|(what, bytes)| Share {
+            what: *what,
+            kbit: rate(*bytes, seconds),
+            pct: pct(*bytes, total),
+        })
+        .collect();
+    shares.sort_by(|a, b| b.kbit.total_cmp(&a.kbit));
+    shares
+}
+
+/// Each destination's rate and resending, busiest first.
+fn ranked(destinations: BTreeMap<IpAddr, (u64, u64)>, seconds: f64) -> Vec<Destination> {
+    let mut ranked: Vec<Destination> = destinations
+        .into_iter()
+        .map(|(peer, (sent, again))| Destination {
+            peer,
+            kbit: rate(sent, seconds),
+            resent_pct: resent(sent, again),
+        })
+        .collect();
+    ranked.sort_by(|a, b| b.kbit.total_cmp(&a.kbit));
+    ranked
+}
+
+/// What share of what was sent was sent again.
+fn resent(sent: u64, again: u64) -> f64 {
+    pct(again, sent)
 }
 
 /// A share to the nearest 5%, as a glance reads it.
