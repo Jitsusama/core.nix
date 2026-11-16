@@ -274,7 +274,7 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     let file = crate::waited::file();
     let mut waited = Waited::read(&file);
     let kept = kept_at(passes, &crate::ready::record);
-    let waits_from = waited.since(patch.as_deref(), kept, now);
+    let waits_from = waited.since(patch.as_deref(), &here, kept, now);
     let asking = Asking {
         started: places.start(&here, its_gate, now),
         waits_from,
@@ -288,7 +288,7 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     let queue = Queue::of(&here, patch.as_deref(), ours, &gates, &crates, now);
     let waited_for = now.saturating_sub(waits_from);
     if let Some((said, shared)) = queue.holds(patch.as_deref(), ours, &crates, now, waited_for) {
-        keep_held(&mut waited, patch.as_deref(), &file, now);
+        keep_held(&mut waited, patch.as_deref(), &here, &file, now);
         let left = PATIENCE.saturating_sub(waited_for).div_ceil(60);
         let said = format!("{said}; this one waits at most {left} more minutes, then goes first");
         return Some((said, shared));
@@ -306,7 +306,7 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     };
     let going = |gate: &Gate| gate.pid == 0 || alive(gate);
     let held = ahead(&gates, &asking, now, &place, &going, &touched)?;
-    keep_held(&mut waited, patch.as_deref(), &file, now);
+    keep_held(&mut waited, patch.as_deref(), &here, &file, now);
     let state = if held.gate.pid == 0 {
         "passed and keeps its turn while it merges"
     } else {
@@ -462,7 +462,7 @@ pub fn waits_to_run(commit: &str) -> Option<String> {
     if queue.ours != kit::Role::Kit {
         return None;
     }
-    let waits_from = Waited::read(&crate::waited::file()).since(patch.as_deref(), None, now);
+    let waits_from = Waited::read(&crate::waited::file()).since(patch.as_deref(), &here, None, now);
     queue
         .holds(
             patch.as_deref(),
@@ -475,12 +475,9 @@ pub fn waits_to_run(commit: &str) -> Option<String> {
 }
 
 /// Keep `now` in `waited`, written to `file`, as when the change `patch`
-/// was first held, so its [`PATIENCE`] counts from its first hold.
-fn keep_held(waited: &mut Waited, patch: Option<&str>, file: &Path, now: u64) {
-    let Some(patch) = patch else {
-        return;
-    };
-    waited.held(patch, now);
+/// in `tree` was first held, so its [`PATIENCE`] counts from its first hold.
+fn keep_held(waited: &mut Waited, patch: Option<&str>, tree: &Path, file: &Path, now: u64) {
+    waited.held(patch, tree, now);
     waited.tidy(now);
     if let Err(error) = waited.write(file) {
         eprintln!("merge-net: this hold wasn't kept, so its wait starts again: {error}");
