@@ -137,6 +137,80 @@ pub fn ways(stands: &str, acts: &[Value], named: &str, words: &Words) -> Map<Str
     Map::from_iter([(POWER.to_owned(), power), (UNPLUGGED.to_owned(), unplugged)])
 }
 
+/// The : line's options for the whole place, as :set takes them, and the
+/// act of the row each switch turns, by its key: `:set noscreens` turns
+/// every screen off, `:set nightlight` and `:set warmth` flip the Warmth's
+/// Night Light and Follow the Room. Their names are the ones Displays.qml
+/// typed until 15 November 2026, which Joel's fingers know.
+const SCREENS: &str = "screens";
+const BRIGHTNESS: &str = "brightness";
+const SWITCHES: [(&str, &str); 2] = [
+    ("nightlight", "displays:night-light"),
+    ("warmth", "displays:follow-room"),
+];
+const SLEEP: &str = "displays:sleep";
+
+/// The : line's options for the place, from the rows served (`rows`), as
+/// Displays.qml worked them out from those rows until 15 November 2026,
+/// so the shell only offers them and asks what each way serves:
+///
+/// - `screens` is on whenever the launcher can be seen; its off is Turn
+///   Every Screen Off's act, by its row and key, so the launcher closes
+///   first, while that row is served.
+/// - `brightness` is the Brightness's share, or null while it's read,
+///   from none to all, with the ask its levels make lacking only the
+///   share typed; offered only while a screen holds the Brightness.
+/// - `nightlight` and `warmth` say how the Warmth's switch stands, the
+///   way it doesn't stand its Return's ask, which always asks the other
+///   way, so turning it the way it stands asks nothing; each offered
+///   only while its switch is served.
+#[must_use]
+pub fn place(rows: &[Value]) -> Map<String, Value> {
+    let mut line = Map::new();
+    let acted = |key: &str| {
+        rows.iter().find_map(|row| {
+            row["acts"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|act| act["key"] == key && act["ask"].is_object())
+                .map(|act| (row, act))
+        })
+    };
+    let sleep =
+        acted(SLEEP).map(|(row, act)| json!({"off": {"row": row["key"], "act": act["key"]}}));
+    line.insert(
+        SCREENS.to_owned(),
+        json!({"kind": "switch", "now": true, "ways": sleep.unwrap_or_else(|| json!({}))}),
+    );
+    let brightness = |thing: &str| thing.starts_with("displays:") && thing.ends_with(":brightness");
+    let held = rows
+        .iter()
+        .find(|row| row["kind"] == "setting" && row["thing"].as_str().is_some_and(brightness));
+    if let (Some(held), Some((_, level))) = (held, acted(crate::light::brightness::LEVEL)) {
+        let mut ask = level["ask"].clone();
+        if let Some(ask) = ask.as_object_mut() {
+            ask.remove("share");
+        }
+        line.insert(
+            BRIGHTNESS.to_owned(),
+            json!({"kind": "number", "least": 0, "most": 100,
+                "now": held["held"]["share"], "ask": ask}),
+        );
+    }
+    for (name, key) in SWITCHES {
+        if let Some((row, act)) = acted(key) {
+            let on = row["held"]["on"] == true;
+            let way = if on { "off" } else { "on" };
+            line.insert(
+                name.to_owned(),
+                json!({"kind": "switch", "now": on, "ways": {way: {"ask": act["ask"]}}}),
+            );
+        }
+    }
+    line
+}
+
 /// A setting's values as the line completes them, two modes of one size
 /// and rate said once.
 fn values(choices: &[Choice]) -> Vec<Value> {

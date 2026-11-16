@@ -5,10 +5,11 @@ pragma ComponentBehavior: Bound
 // of its screen, as modules/windows' screens.rs does. Screens draws each
 // row as it's served; a change to the monitor's row makes its row again
 // and keeps the panel's; a screen's Return asks the daemon the act it
-// serves, and niri nothing; :set brightness and "brightness 40" say
-// the share the served Brightness holds; a share typed asks the daemon as a Brightness level does;
-// and :set nightlight asks what the Warmth's Night Light asks, only to
-// turn it the other way.
+// serves, and niri nothing; "brightness 40" says the share the served
+// Brightness holds; and the place's :set line is the one served on the
+// summary, each option saying how it stands and asking what its way
+// serves, a share typed as a Brightness level asks, a switch only the
+// way it doesn't stand.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -163,9 +164,24 @@ ShellRoot {
     }
 
     // How many screens there are, as screens.rs's summary serves it beside
-    // the rows, worded unlike the shell would, so what's said is the served.
-    readonly property var summary: ({ key: "summary:displays", kind: "summary",
-        summary: { place: "displays", count: 2, on: 2, said: "both screens" } })
+    // the rows, worded unlike the shell would, so what's said is the served,
+    // and the place's :set line as screens/line.rs serves it there: the
+    // Brightness at `share`, the Night Light off and Follow the Room on,
+    // which no row here serves, so only what's served on the line offers it.
+    function summaryAt(share) {
+        return { key: "summary:displays", kind: "summary",
+            summary: { place: "displays", count: 2, on: 2, said: "both screens" },
+            line: {
+                screens: { kind: "switch", now: true,
+                    ways: { off: { row: "row:displays:sleep", act: "displays:sleep" } } },
+                brightness: { kind: "number", least: 0, most: 100, now: share,
+                    ask: { ask: "light", do: "brightness" } },
+                nightlight: { kind: "switch", now: false,
+                    ways: { on: { ask: { ask: "light", do: "night-light", on: true } } } },
+                warmth: { kind: "switch", now: true, ways: { off: { ask: { ask: "light",
+                    do: "follow-the-room", follows: false } } } }
+            } };
+    }
 
     // The shell's watch, so the stand-in can tell it more, the kinds it
     // watched, and the acts it was asked of a screen and of its light.
@@ -197,7 +213,7 @@ ShellRoot {
                     } else if (ask.ask === "watch") {
                         root.watch = { socket: asked, id: ask.id };
                         root.watched = [].concat(ask.kind ?? []);
-                        answer = { id: ask.id, records: [root.summary,
+                        answer = { id: ask.id, records: [root.summaryAt(50),
                             root.screen("eDP-1", "Built-in Screen", 1024, true),
                             root.screen("DP-1", "Dell Inc. U2723QE", 2048, true), root.sleep,
                             root.brightness(50), root.level, root.room, root.warmth,
@@ -340,7 +356,7 @@ ShellRoot {
             displays.lightSaid === JSON.stringify([["50%", ""], ["312 lx", ""]]),
             displays.lightSaid);
         waiting = "the share moved";
-        tell([brightness(80)]);
+        tell([brightness(80), summaryAt(80)]);
     }
 
     // The share it moves to is what :set brightness and "brightness 40"
@@ -358,20 +374,25 @@ ShellRoot {
     }
 
     // "brightness 40" typed and :set brightness=45 each ask the windows
-    // daemon what a Brightness level asks, at the share typed; :set
-    // nonightlight, the Night Light off already, asks nothing, and :set
-    // nightlight what its Return asks. With no Follow the Room served,
-    // :set warmth isn't offered.
+    // daemon what the line serves for the Brightness, at the share typed;
+    // :set nonightlight, the Night Light off already, asks nothing, and
+    // :set nightlight what the line serves for on. :set warmth is offered
+    // as the line serves it, standing on, though no row here serves Follow
+    // the Room, and :set warmth, on already, asks nothing.
     function brightened() {
-        Expect.expect(":set nightlight says the Night Light stands off",
-            displays.setOptions.nightlight?.now() === false,
+        Expect.expect("the : line offers the options the summary serves, and only those",
+            JSON.stringify(Object.keys(displays.setOptions).sort())
+                === '["brightness","nightlight","screens","warmth"]',
             JSON.stringify(Object.keys(displays.setOptions)));
-        Expect.expect("and :set warmth isn't offered with no room to follow",
-            displays.setOptions.warmth === undefined, "");
+        Expect.expect(":set nightlight says the Night Light stands off",
+            displays.setOptions.nightlight?.now() === false, "");
+        Expect.expect("and :set warmth stands on as served",
+            displays.setOptions.warmth?.now() === true, "");
         waiting = "the shares asked";
         displays.setTo(40).run();
         displays.setOptions.brightness.set(45);
         displays.setOptions.nightlight.set(false);
+        displays.setOptions.warmth.set(true);
         displays.setOptions.nightlight.set(true);
     }
 

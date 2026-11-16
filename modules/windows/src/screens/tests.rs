@@ -109,9 +109,10 @@ fn a_screen_dark_by_name_says_its_hub_is_on() {
 #[test]
 fn the_place_counts_its_screens_and_how_many_are_on_in_its_words() {
     let words = words();
-    let said =
-        |outputs: &BTreeMap<String, Value>| summary(outputs, &words)["summary"]["said"].clone();
-    assert_eq!(summary(&desk(), &words)["key"], "summary:displays");
+    let said = |outputs: &BTreeMap<String, Value>| {
+        summary(outputs, &[], &words)["summary"]["said"].clone()
+    };
+    assert_eq!(summary(&desk(), &[], &words)["key"], "summary:displays");
     assert_eq!(
         said(&desk()),
         "2 of 3 on",
@@ -757,3 +758,4 @@ fn the_launchers_vocabulary_has_every_screens_words() {
 
 mod answers;
 mod light;
+mod set;
