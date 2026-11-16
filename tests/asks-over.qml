@@ -10,7 +10,6 @@
 // changed says no time until a frame presents it as it is now. A yes walked
 // from outside the launcher is never sent, and a no goes as served. It
 // exits 0 once every case holds, and otherwise 1, saying which didn't.
-import qs
 import Quickshell
 import QtQuick
 import KeyTimes
@@ -72,7 +71,7 @@ ShellRoot {
 
     // The launcher as Asks asks it, its frames presented as each case says.
     QtObject {
-        id: launcher
+        id: stage
 
         property bool open: false
         property var selected: null
@@ -122,7 +121,7 @@ ShellRoot {
         id: asks
 
         settings: ({ name: "asks", over: "passwords" })
-        launcher: launcher
+        launcher: stage
     }
 
     function row() {
@@ -150,7 +149,7 @@ ShellRoot {
     }
 
     function arming() {
-        launcher.opened();
+        stage.opened();
         same("a waiting ask's row arms, saying a second Return releases", row()?.arms,
             "releases");
         same("and a first Return on it only arms", Arming.pressed(Arming.rest(), root.key,
@@ -159,8 +158,8 @@ ShellRoot {
     }
 
     function shown() {
-        launcher.selected = row();
-        launcher.present(800);
+        stage.selected = row();
+        stage.present(800);
         row().run();
         same("a yes says how long since its line was presented selected",
             last().shown >= 800 && last().shown < 5000, true);
@@ -168,9 +167,9 @@ ShellRoot {
     }
 
     function reopened() {
-        launcher.open = false;
-        launcher.opened();
-        launcher.present(700);
+        stage.open = false;
+        stage.opened();
+        stage.present(700);
         row().run();
         same("a line still selected as the launcher opens again is noted from its first frame",
             last().shown >= 700 && last().shown < 5000, true);
@@ -179,11 +178,11 @@ ShellRoot {
 
     function changed() {
         link.tell("d2");
-        launcher.selected = row();
+        stage.selected = row();
         row().run();
         same("a yes for a line that changed says no time before a frame presents it",
             [last().digest, last().shown], ["d2", undefined]);
-        launcher.present(600);
+        stage.present(600);
         row().run();
         same("and counts from the frame that does",
             last().shown >= 600 && last().shown < 700, true);
@@ -191,11 +190,11 @@ ShellRoot {
 
     function outside() {
         const before = link.sent.length;
-        launcher.cataloguing = true;
+        stage.cataloguing = true;
         row().run();
-        launcher.cataloguing = false;
+        stage.cataloguing = false;
         same("a yes walked from outside the launcher is never sent", link.sent.length, before);
-        same("and is told as not done", launcher.toldNots.length, 1);
+        same("and is told as not done", stage.toldNots.length, 1);
     }
 
     function refused() {
