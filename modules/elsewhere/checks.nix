@@ -37,7 +37,10 @@ onLinux {
                 programs = [ "tla-rs" ];
                 setup = "PATH=/far/bin:$PATH";
                 bringsBack = [ "states" ];
+                needs = [ "system=darwin" ];
+                lasts = "30m";
               };
+              kinds.lint.programs = [ "cargo" ];
             };
           };
         }
@@ -57,6 +60,10 @@ onLinux {
         && check.programs == [ "tla-rs" ]
         && check.copies == "folder"
         && check.brings_back == [ "states" ]
+        && check.needs == [ "system=darwin" ]
+        && check.lasts == "30m"
+        && settings.kinds.lint.needs == [ ]
+        && settings.kinds.lint.lasts == null
         && pkgs.lib.hasPrefix "PATH=/far/bin" check.setup
         && (read none).machines == [ ]
         && (read none).kinds == { }
