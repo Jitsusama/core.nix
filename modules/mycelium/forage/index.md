@@ -33,8 +33,9 @@ a terminal, `mycelium forage` gathers the realm's.
   document it keeps with its kind, its stage (Thinking, Drafting,
   Building, Done or Put down) and how many of its steps are done, said
   in words beside gills. Under them, where it grows: its quest, the cell
-  that started it, the quest above its own, the machine it stands on and
-  the command that says its forage in a terminal.
+  that started it, the cells it started, the quest above its own, the
+  machine it stands on and the command that says its forage in a
+  terminal. Each cell named there opens when pressed.
 - **Under the sentence, whether what it shows is live:** when the node
   or the sites' server can't be reached, it says since when and why,
   and keeps showing how things stood then.

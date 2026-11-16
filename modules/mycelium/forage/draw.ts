@@ -59,6 +59,9 @@ function command(forage: Forage): string {
 /** Where the `mycelium` program's repository is at home, on the Code site. */
 const MYCELIUM_HOME = "../code/#repo=Jitsusama%2Fmycelium";
 
+/** How many of the cells a cell started its panel names before counting the rest. */
+const MOST_STARTED = 6;
+
 /** Where the map opens on `forage`'s cell. */
 function onMap(forage: Forage): string {
   return `../mycelium/#cell=${encodeURIComponent(forage.cell)}`;
@@ -231,14 +234,44 @@ function startedBy(forage: Forage, here: ReadonlySet<string>): string {
   if (by === undefined) {
     return "Nothing; it started on its own";
   }
-  const name = `<code>${escaped(by)}</code>`;
   return here.has(by)
-    ? `<a href="#cell=${encodeURIComponent(by)}" data-cell="${escaped(by)}">${name}</a>`
-    : `<span>${name}, on another machine</span>`;
+    ? cellLink(by)
+    : `<span><code>${escaped(by)}</code>, on another machine</span>`;
 }
 
-/** The panel of `forage`, the cell the cursor is on; `here` holds every cell drawn. */
-function panelOf(forage: Forage, here: ReadonlySet<string>): string {
+/**
+ * The cells `forage` started, each linked to its row, as "Started by" links
+ * back. Past `MOST_STARTED` the rest are counted rather than named, since the
+ * list already sets each in under it and a wall of links would bury the facts
+ * below. The panel sets it in one span, so it reads as a sentence rather than
+ * a row of the fact's flexed items, and ties each comma to the address before
+ * it, so no line starts with one.
+ */
+function startedOf(started: readonly string[]): string {
+  if (started.length === 0) {
+    return "None yet";
+  }
+  const count = started.length === 1 ? "One cell" : `${started.length} cells`;
+  const links = started.slice(0, MOST_STARTED).map(cellLink);
+  const rest = started.length - links.length;
+  const last = rest === 0 ? links.pop() : `${rest} more, each set in under it in the list`;
+  const before = links
+    .map((link, at) => (at < links.length - 1 ? `<span class="tie">${link},</span>` : link))
+    .join(" ");
+  return before === "" ? `${count}: ${last}` : `${count}: ${before} and ${last}`;
+}
+
+/** `cell`'s address, linked to its row, where a press moves the cursor to it. */
+function cellLink(cell: string): string {
+  const address = escaped(cell);
+  return `<a href="#cell=${encodeURIComponent(cell)}" data-cell="${address}"><code>${address}</code></a>`;
+}
+
+/**
+ * The panel of `forage`, the cell the cursor is on; `here` holds every cell
+ * drawn, and `started` the cells it started among them.
+ */
+function panelOf(forage: Forage, here: ReadonlySet<string>, started: readonly string[]): string {
   const said = escaped(command(forage));
   const quiet = forage.purpose === "" ? " quiet" : "";
   return `
@@ -251,6 +284,7 @@ ${documentsOf(forage)}
   <dl class="facts">
     <div><dt>Its quest</dt><dd><code>${escaped(forage.quest)}</code>${forage.status === "" ? "" : ` ${escaped(forage.status)}`}</dd></div>
     <div><dt>Started by</dt><dd>${startedBy(forage, here)}</dd></div>
+    <div><dt>Started</dt><dd><span>${startedOf(started)}</span></dd></div>
     <div><dt>Under the quest</dt><dd>${forage.parent === undefined ? "None" : `<code>${escaped(forage.parent)}</code>`}</dd></div>
     <div><dt>Stands on</dt><dd>${escaped(forage.machine)}</dd></div>
     <div><dt>In a terminal</dt><dd><code><a href="${MYCELIUM_HOME}">mycelium</a> forage ${escaped(forage.cell)}</code> <button type="button" class="copy" data-copy="${said}">Copy <kbd>y</kbd></button></dd></div>

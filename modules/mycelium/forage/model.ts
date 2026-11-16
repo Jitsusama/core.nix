@@ -155,6 +155,17 @@ function foragesOf(held: Held): Forages {
   return { forages, unread };
 }
 
+/**
+ * The cells `cell` started among `forages`, by address: the other end of each
+ * one's "Started by". A cell that names itself as its starter isn't counted.
+ */
+function startedFrom(forages: readonly Forage[], cell: string): readonly string[] {
+  return forages
+    .filter((each) => each.startedBy === cell && each.cell !== cell)
+    .map((each) => each.cell)
+    .sort((one, other) => one.localeCompare(other));
+}
+
 /** How many of `forage`'s steps are done, and how many there are. */
 function steps(forage: Forage): { readonly ticked: number; readonly all: number } {
   const ticked = forage.documents.reduce((sum, each) => sum + each.ticked, 0);
@@ -287,4 +298,4 @@ function holds(forage: Forage, query: string): boolean {
 }
 
 export type { Document, Forage, Forages, Headline };
-export { counted, foragesOf, headline, holds, keeps, lede, steps };
+export { counted, foragesOf, headline, holds, keeps, lede, startedFrom, steps };

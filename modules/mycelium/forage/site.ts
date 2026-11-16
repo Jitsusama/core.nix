@@ -14,7 +14,7 @@ import type { Held } from "../../local-sites/kit/records.ts";
 import { said } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { command, escaped, floorOf, forageRow, onMap, panelOf } from "./draw.ts";
-import { type Forage, foragesOf, headline, holds, lede } from "./model.ts";
+import { type Forage, foragesOf, headline, holds, lede, startedFrom } from "./model.ts";
 
 /** The element `selector` finds, which the page's markup always holds. */
 function element<T extends Element>(selector: string, kind: new () => T): T {
@@ -111,7 +111,9 @@ function select(): void {
 function drawPanel(): void {
   const open = current();
   panel.innerHTML =
-    open === undefined ? "" : panelOf(open, new Set(forages.map((each) => each.cell)));
+    open === undefined
+      ? ""
+      : panelOf(open, new Set(forages.map((each) => each.cell)), startedFrom(forages, open.cell));
 }
 
 function draw(): void {

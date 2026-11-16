@@ -5,12 +5,15 @@
 /* ---- The cell open. ---- */
 
 /* The panel stays where it is while the list scrolls past, so the cursor's
-   cell is always beside it and opening one never reflows the list. */
+   cell is always beside it and opening one never reflows the list. Its one
+   row is held to the screen's height, so a panel longer than the screen
+   scrolls in its body rather than running off the bottom out of reach. */
 .panel {
   position: sticky;
   inset-block-start: 0;
   max-block-size: 100dvh;
   display: grid;
+  grid-template-rows: minmax(0, 1fr);
   min-block-size: 0;
 }
 
@@ -170,6 +173,11 @@
   min-block-size: 44px;
   display: inline-flex;
   align-items: center;
+}
+
+/* A comma in a list of cells stays with the address before it. */
+.facts dd .tie {
+  white-space: nowrap;
 }
 
 .copy {
