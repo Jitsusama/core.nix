@@ -273,6 +273,10 @@
     granted, leave his terminal and apps to ask, keep a grant, and take only a system unit's whole
     name, never one run0 makes
   '';
+  an-account-switch-hears-each-job-end = ''
+    every NixOS account's activation switches its units with an sd-switch that reads each job's
+    end as it comes, so a switch of more than 64 jobs doesn't hang waiting for a reply
+  '';
   an-agents-run-stays-in-its-slice = ''
     systemd-run puts an agent's --user unit in the agent's own slice, and leaves Joel's own calls,
     a call naming a slice and a call to the system manager as they were
@@ -2547,6 +2551,9 @@
   '';
   screen-text-switches-to-the-new-one = ''
     a switch restarts screen-text after reloading its unit, so the shell asks the new one
+  '';
+  sd-switch-passes-its-tests = ''
+    the patched sd-switch builds and passes its own tests
   '';
   se-keys-builds-for-any-name = ''
     the Mac's key maker builds, shellcheck and all, for a name with an apostrophe

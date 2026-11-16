@@ -1,5 +1,6 @@
-# home-manager on NixOS, configuring each account with the system, and
-# holding every login until its account is set up.
+# home-manager on NixOS, configuring each account with the system, holding
+# every login until its account is set up, and switching an account's units
+# however many change at once.
 { home-manager }:
 {
   config,
@@ -23,6 +24,23 @@ in
     useGlobalPkgs = true;
     useUserPackages = true;
   };
+
+  # sd-switch, which home-manager switches an account's units with, asks
+  # systemd to be told as each job ends but reads none of it until it has
+  # sent every job. zbus keeps 64 unread messages of a kind and then stops
+  # reading the bus, so in a switch of more than 64 jobs the next job's
+  # reply never came: on 16 November two switches of about 75 hung for
+  # their 5 minutes and the machine went back to what it ran. Patched, it
+  # reads them on a thread of its own from the start, and its wait for the
+  # last job ends at its timeout saying how many were left. Through
+  # useGlobalPkgs, each account's activation uses the system's patched one.
+  nixpkgs.overlays = [
+    (_: prev: {
+      sd-switch = prev.sd-switch.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [ ./sd-switch-reads-as-it-sends.patch ];
+      });
+    })
+  ];
 
   # home-manager holds every login until each account is set up, by starting
   # before systemd-user-sessions, which the greeter waits for, so the greeter

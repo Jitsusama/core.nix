@@ -1,0 +1,101 @@
+diff -ru a/src/systemd/dbus.rs b/src/systemd/dbus.rs
+--- a/src/systemd/dbus.rs
++++ b/src/systemd/dbus.rs
+@@ -67,18 +67,41 @@
+     path: OwnedObjectPath,
+ }
+ 
++/// A finished job: its path, its unit and how it ended.
++type JobRemoved = (OwnedObjectPath, String, String);
++
+ pub struct DbusJobSet<'a> {
+     manager: &'a DbusServiceManager<'a>,
+-    job_removed_stream: Option<dbus_manager::JobRemovedIterator>,
++    job_removed: sync::mpsc::Receiver<JobRemoved>,
+     jobs: HashSet<Job>,
+ }
+ 
+ impl<'a> DbusJobSet<'a> {
++    /// Subscribes to JobRemoved and reads it from the start on a thread of
++    /// its own into an unbounded channel. zbus holds at most 64 unread
++    /// signals; left unread while the jobs are sent, a switch of more than
++    /// 64 jobs fills that queue, zbus stops reading the bus, and the next
++    /// job's method call never gets its reply.
+     fn new(manager: &'a DbusServiceManager<'a>) -> Result<DbusJobSet<'a>, Error> {
+-        let job_removed_stream = Some(manager.proxy.receive_job_removed()?);
++        let stream = manager.proxy.receive_job_removed()?;
++        let (tx, rx) = sync::mpsc::channel();
++        thread::spawn(move || {
++            for signal in stream {
++                if let Ok(args) = signal.args() {
++                    let removed = (
++                        OwnedObjectPath::from(args.job().clone()),
++                        args.unit.to_string(),
++                        args.result.to_string(),
++                    );
++                    if tx.send(removed).is_err() {
++                        break;
++                    }
++                }
++            }
++        });
+         Ok(DbusJobSet {
+             manager,
+-            job_removed_stream,
++            job_removed: rx,
+             jobs: HashSet::new(),
+         })
+     }
+@@ -113,41 +136,19 @@
+     where
+         F: Fn(&str, &str) + Send + 'static,
+     {
+-        if self.jobs.is_empty() {
+-            return Ok(());
+-        }
+-
+-        if let Some(job_removed_stream) = self.job_removed_stream.take() {
+-            let (tx, rx) = sync::mpsc::channel();
+-
+-            thread::scope(|s| {
+-                let _: thread::ScopedJoinHandle<Result<(), Error>> = s.spawn(move || {
+-                    for job_removed in job_removed_stream {
+-                        let job = Job {
+-                            path: OwnedObjectPath::from(job_removed.args()?.job().clone()),
+-                        };
+-                        self.jobs.remove(&job);
+-
+-                        if let Ok(args) = job_removed.args() {
+-                            job_handler(args.unit, args.result);
+-                        }
+-
+-                        if self.jobs.is_empty() {
+-                            break;
+-                        }
+-                    }
+-
+-                    let _ = tx.send(());
+-
+-                    Ok(())
+-                });
++        let deadline = std::time::Instant::now() + timeout;
+ 
+-                rx.recv_timeout(timeout)
+-                    .map_err(|e| Error::SdSwitch(e.to_string()))
+-            })
+-        } else {
+-            Ok(())
++        while !self.jobs.is_empty() {
++            let left = deadline.saturating_duration_since(std::time::Instant::now());
++            let (path, unit, result) = self.job_removed.recv_timeout(left).map_err(|e| {
++                Error::SdSwitch(format!("{e}, with {} jobs unfinished", self.jobs.len()))
++            })?;
++            if self.jobs.remove(&Job { path }) {
++                job_handler(&unit, &result);
++            }
+         }
++
++        Ok(())
+     }
+ }
+ 
