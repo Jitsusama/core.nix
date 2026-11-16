@@ -68,8 +68,15 @@ pub fn failed_in(log: impl IntoIterator<Item = impl AsRef<str>>) -> BTreeSet<Str
         .collect()
 }
 
-/// The subtest one line of a log says failed, if it says one did.
+/// The subtest one line of a log says failed, if it says one did. One the
+/// driver failed for losing the machine, which breaks the pipe to its shell,
+/// it never ran: on 16 November three runs that lost it named four subtests
+/// still to come, and #4953 was blamed for breaking three that never failed
+/// otherwise.
 fn failed_on(line: &str) -> Option<&str> {
+    if line.contains(LOST) {
+        return None;
+    }
     let (_, rest) = line.split_once("FAILED ")?;
     let (_, name) = rest.split_whitespace().next()?.rsplit_once(JOINED)?;
     let name = name.split('[').next().unwrap_or(name);
@@ -117,6 +124,9 @@ pub fn unbuildable(log: impl IntoIterator<Item = impl AsRef<str>>) -> bool {
     }
     missing && subtests
 }
+
+/// What pytest says of a subtest pending when the driver lost the machine.
+const LOST: &str = " - BrokenPipeError";
 
 /// What run-subtests' `subtests` throws for a check that isn't a VM test.
 const NOT_A_VM_TEST: &str = "isn't a VM test, so it has no subtests";
@@ -201,6 +211,19 @@ mod tests {
             narrowed("vm-x", &logs),
             "vm-x::test_at",
             "its parameters are dropped"
+        );
+    }
+
+    #[test]
+    fn a_subtest_failed_only_by_losing_the_machine_is_not_named() {
+        let lost = "vm-test-run-x> FAILED vm-pytest-ab/x-vm-test.py::test_the_vms - \
+                    BrokenPipeError: [Errno 32] Broken pipe\n\
+                    vm-test-run-x> FAILED vm-pytest-ab/x-vm-test.py::test_shortcuts - \
+                    AssertionError: the launcher never took the keys\n";
+        assert_eq!(
+            failed_in(lost.lines()),
+            BTreeSet::from(["test_shortcuts".to_owned()]),
+            "the driver losing the machine says nothing of the subtest it was in"
         );
     }
 
