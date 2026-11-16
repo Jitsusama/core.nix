@@ -194,7 +194,7 @@ function lede(system: System): string | undefined {
 
 /** `words` ended as a sentence, once: an owner's words may end their own. */
 function stopped(words: string): string {
-  return /[.?!]$/.test(words) ? words : `${words}.`;
+  return /[.?!]$/u.test(words) ? words : `${words}.`;
 }
 
 /** `words` joined as a sentence lists them: a, b and c. */
