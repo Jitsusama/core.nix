@@ -281,6 +281,8 @@ in
           ++ [
             "--serves"
             "${(mac links).xdg.configHome}/mycelium/serves-personal.json"
+            "--health-socket"
+            "${(mac links).xdg.stateHome}/daemons/system.sock"
           ]
         && (mac links).launchd.agents.mycelium.enable
         && (mac links).launchd.agents.mycelium.config.EnvironmentVariables.SIGN_AS == "agent"
