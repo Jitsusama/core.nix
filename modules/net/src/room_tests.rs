@@ -1,3 +1,7 @@
+//! Working the network out: each device's path to the modem, its narrowest
+//! hop, and the concerns net raises from the record, with the record and
+//! its helpers that history's tests share.
+
 use super::*;
 
 use crate::model::{ConcernKind, Device, End, Internet, Link, Medium};
@@ -359,39 +363,103 @@ fn the_internet_as_the_chokepoint_is_one_concern_each_way() {
     );
 }
 
+/// What a day of net's own readings adds: each radio's busiest share two
+/// hours ago, over any share it's busy now, and how much of the modem's
+/// worst channel's loss came in the last five hours.
+fn recall_a_day(network: &mut Network) {
+    let at = network.collected_at.saturating_sub(2 * 3600);
+    for radio in network
+        .devices
+        .iter_mut()
+        .flat_map(|device| device.radios.iter_mut())
+    {
+        radio.busiest_pct = Some(90);
+        radio.busiest_at = Some(at);
+    }
+    let modem = network
+        .devices
+        .iter_mut()
+        .find(|device| device.id == "modem")
+        .and_then(|device| device.modem.as_mut())
+        .expect("the record has the modem's channels");
+    modem.lately_s = Some(5 * 3600);
+    for channel in &mut modem.downstream {
+        channel.lost_lately = Some(if channel.channel == Some(16) { 78 } else { 0 });
+    }
+}
+
+/// Whether words are one sentence ending in a single stop: no other stop,
+/// question mark or exclamation mark, but for a decimal point between digits.
+fn is_one_sentence(says: &str) -> bool {
+    let Some(body) = says.strip_suffix('.') else {
+        return false;
+    };
+    let padded: Vec<char> = std::iter::once(' ')
+        .chain(body.chars())
+        .chain(std::iter::once(' '))
+        .collect();
+    padded.windows(3).all(|around| match around {
+        [before, '.', after] => before.is_ascii_digit() && after.is_ascii_digit(),
+        [_, '?' | '!', _] => false,
+        _ => true,
+    })
+}
+
 #[test]
 fn every_concern_is_one_whole_sentence_ending_in_a_stop() {
-    // Readers show a concern's words as they are, the system command
-    // joining them into a line of its own sentences, so each must end
-    // once and never run into the next.
-    let mut network = network();
-    computer_downloads(&mut network, 340.0);
-    busy(&mut network, "eero:2003", 64);
-    slow_cable(&mut network);
-    work_out(&mut network);
-    let mut kinds: Vec<ConcernKind> = Vec::new();
-    for concern in &network.concerns {
-        if !kinds.contains(&concern.kind) {
-            kinds.push(concern.kind);
+    // The system command lists concerns one after another, each with its
+    // stop, and the network page and the Map row show each whole, so each
+    // must be one sentence ending once. This holds net's own wording: a
+    // device's name is the network's, shown as it was named.
+    let mut bare = network();
+    busy(&mut bare, "eero:2003", 64);
+    slow_cable(&mut bare);
+    let mut recalled = bare.clone();
+    recall_a_day(&mut recalled);
+    let mut spliced = Vec::new();
+    for mut network in [bare, recalled] {
+        work_out(&mut network);
+        // Naming every kind in a match makes a new kind fail to build here
+        // until the record raises it too.
+        let place = |kind: ConcernKind| match kind {
+            ConcernKind::Busy => 0,
+            ConcernKind::Weak => 1,
+            ConcernKind::Slow => 2,
+            ConcernKind::Ceiling => 3,
+            ConcernKind::Fills => 4,
+            ConcernKind::Lost => 5,
+        };
+        let mut raised = [false; 6];
+        for concern in &network.concerns {
+            raised[place(concern.kind)] = true;
         }
+        assert_eq!(
+            raised, [true; 6],
+            "the record raises every kind: {:?}",
+            network.concerns
+        );
+        for concern in &network.concerns {
+            assert!(
+                is_one_sentence(&concern.says),
+                "one sentence ending in one stop: {}",
+                concern.says
+            );
+        }
+        spliced.push(
+            network
+                .concerns
+                .iter()
+                .filter(|concern| {
+                    concern.says.contains("at its busiest") || concern.says.contains("in the last")
+                })
+                .count(),
+        );
     }
     assert_eq!(
-        kinds.len(),
-        6,
-        "the record raises every kind: {:?}",
-        network.concerns
+        spliced,
+        [0, 2],
+        "a recalled day splices in the busiest share and the recent loss"
     );
-    for concern in &network.concerns {
-        let says = concern.says.as_str();
-        assert!(
-            says.ends_with('.') && !says.ends_with("..") && !says.contains(".;"),
-            "ends in one stop: {says}"
-        );
-        assert!(
-            !says.trim_end_matches('.').contains(". "),
-            "is one sentence: {says}"
-        );
-    }
 }
 
 #[test]
