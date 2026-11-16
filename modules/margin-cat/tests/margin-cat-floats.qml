@@ -6,6 +6,7 @@
 import QtQuick
 import "MarginCat.js" as MarginCat
 import "MarginCatPaths.js" as Paths
+import "MarginCatRoutes.js" as Routes
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -232,6 +233,99 @@ QtObject {
         expect("and under them on any other leg, even leaving a floating one",
             [MarginCat.above(floating, true, false), MarginCat.above(tiled, false, false)],
             [false, false]);
+
+        // A floating window on its way between tiled windows is a ledge
+        // and sides as theirs are (WCJQSG ade5ce02: "it climbs onto, jumps
+        // off and walks along floats as it does tiled ones"; VKCF3Z
+        // 4125043c, slice 2). Across the tops it walks: up onto it from
+        // beside its edge, along its top, and off its far end down onto
+        // the tops again, never through its face nor hidden behind it.
+        const straddles = float(500, 10, 250, 200);
+        const overIt = Paths.walk({ x: 100, y: 7 }, { x: 900, y: 7 },
+            world({ floats: [straddles] }));
+        const endsAt = way => {
+            const end = way.beats[way.beats.length - 1].to;
+            return [end.x, end.y];
+        };
+        expect("one across the tops on its way, it walks over its top",
+            [endsAt(overIt), overIt.beats.some(beat => beat.to.y === 1),
+                overFace(overIt, straddles)], [[900, 7], true, []]);
+        expect("up its edge from beside it, and off its far end down onto the tops",
+            [ends(named(overIt, "over")), ends(named(overIt, "hops")),
+                ends(named(overIt, "falls"))],
+            [[492, 2, 500, 1], [742, 1, 750, 1], [750, 1, 750, 7]]);
+        expect("over the tiled windows on it, and under them on the tops either side",
+            [drawn(overIt, "over"), drawn(overIt, "falls"),
+                drawnOver(overIt)[0], drawnOver(overIt)[drawnOver(overIt).length - 1]],
+            [[true], [true], false, false]);
+
+        // A step up: a column too high to leap onto from the one beside
+        // it, with a floating window between that is a leap above the
+        // lower and a leap below the higher. It leaps onto that and on up,
+        // never climbing the higher's side.
+        const steps = [
+            { left: 16, top: 700, width: 400, height: 84, column: 0 },
+            { left: 432, top: 640, width: 800, height: 144, column: 1 }
+        ];
+        const stone = float(300, 670, 120, 100);
+        const upIt = Paths.walk({ x: 100, y: 691 }, { x: 900, y: 631 },
+            world({ cols: Paths.columns(steps, 0), floats: [stone] }));
+        expect("a floating window a leap up on its way is a step",
+            [endsAt(upIt), upIt.beats.some(beat => beat.to.y === 661),
+                names(upIt).includes("climbs"), overFace(upIt, stone)],
+            [[900, 631], true, false, []]);
+        const leapsUp = upIt.beats.find(beat => beat.from.y === 661 && beat.to.y === 631)
+            ?? null;
+        expect("from its end up onto the higher top across the gap",
+            [ends(leapsUp), leapsUp
+                && Paths.frame(upIt, (leapsUp.begins + leapsUp.ends) / 2).aboard === true],
+            [[412, 661, 432, 631], true]);
+
+        // The same way back, right to left: up its right edge, along,
+        // and off its left end down onto the tops.
+        const backOver = Paths.walk({ x: 900, y: 7 }, { x: 100, y: 7 },
+            world({ floats: [straddles] }));
+        expect("right to left, up its right edge and off its left end",
+            [ends(named(backOver, "over")), ends(named(backOver, "hops")),
+                ends(named(backOver, "falls")), endsAt(backOver), overFace(backOver, straddles)],
+            [[750, 2, 742, 1], [500, 1, 492, 1], [492, 1, 492, 7], [100, 7], []]);
+
+        // A step down: from its end across the gap onto a lower top, as
+        // a leap onto a ledge, its own floating window behind it.
+        const level = [
+            { left: 16, top: 700, width: 400, height: 84, column: 0 },
+            { left: 432, top: 700, width: 800, height: 84, column: 1 }
+        ];
+        const downIt = Routes.next({ kind: "float", c: 0, x: 412, y: 661, row: 0 },
+            Paths.columns(level, 0), world({ floats: [stone] }));
+        expect("from its end down across the gap onto the lower top",
+            downIt.filter(one => one.stop.how === "leaps")
+                .map(one => [one.stop.x, one.stop.y]), [[432, 691]]);
+
+        // Off its end beside a column's edge, onto that column's top as a
+        // fall does anywhere, not past its top to the floor.
+        const nearEdge = float(500, 10, 128, 200);
+        const offNear = Paths.walk({ x: 100, y: 7 }, { x: 900, y: 7 },
+            world({ floats: [nearEdge] }));
+        expect("off its end part over a column, onto that column's top",
+            [offNear.beats.some(beat => beat.to.y > 7), endsAt(offNear)], [false, [900, 7]]);
+
+        // Never a leap up onto one from a gap's ledge beside its edge,
+        // which would rise into the window over the gap.
+        const inGap = float(700, 380, 200, 200);
+        const fromGap = Routes.next({ kind: "ledge", c: 1, x: 692, y: 399, row: 1 },
+            Paths.columns(tiles, 0), world({ floats: [inGap] }));
+        expect("from a gap's ledge, never a leap up into the window over it",
+            fromGap.filter(one => one.stop.how === "leapsOn").length, 0);
+
+        // One off its way changes nothing, along the tops nor by a route.
+        const aside = float(300, 600, 100, 100);
+        expect("a floating window off its way changes nothing",
+            names(Paths.walk({ x: 100, y: 7 }, { x: 900, y: 7 }, world({ floats: [aside] }))),
+            names(Paths.walk({ x: 100, y: 7 }, { x: 900, y: 7 }, world())));
+        expect("nor on a way that takes a route",
+            names(Paths.walk({ x: 100, y: 7 }, { x: 900, y: 399 }, world({ floats: [aside] }))),
+            names(Paths.walk({ x: 100, y: 7 }, { x: 900, y: 399 }, world())));
 
         for (const failure of failures)
             console.warn(failure);

@@ -13,22 +13,25 @@
 // the search finds the quickest run of them to its seat, keeping near the
 // straight line there, as a cat makes for where it's going.
 .pragma library
-.import "MarginCat.js" as MarginCat
+.import "MarginCatLedges.js" as Ledges
 
-// Its pace, in its cells a second, walking a ledge or a top or climbing
-// a side, which it does at the pace it walks (Joel, 2026-11-13 17:22, by
-// WCJQSG fc3f716a: at 320 a climb "seems accelerated"): the walker's own
-// cap on a long way, so a route planned here is timed as it's walked, and
-// one way down or up is weighed against another as the walker would take
-// it.
-const WALKS = MarginCat.HURRIES;
-// What a leap costs, crouch and landing and all, in ms: across a gap
-// between two of a column's windows or two columns, and over an edge onto
-// a ledge or a side.
-const LEAPS = 330;
-const MANTLES = 300;
-// How far across it leaps between two columns, in its own widths.
-const LEAPS_ACROSS = 6;
+// Where it can be and its paces (MarginCatLedges.js), by the names its
+// routes and the files that route through it have always used.
+const WALKS = Ledges.WALKS;
+const LEAPS = Ledges.LEAPS;
+const MANTLES = Ledges.MANTLES;
+const LEAPS_ACROSS = Ledges.LEAPS_ACROSS;
+const LEAPS_UP = Ledges.LEAPS_UP;
+const sideX = Ledges.sideX;
+const stands = Ledges.stands;
+const columnAt = Ledges.columnAt;
+const ledges = Ledges.ledges;
+const standing = Ledges.standing;
+const facing = Ledges.facing;
+const onScreen = Ledges.onScreen;
+const floor = Ledges.floor;
+const near = Ledges.near;
+const floored = Ledges.floored;
 // What hopping across the marks costs, in ms, batting and perching and
 // all.
 const CROSSES = 2500;
@@ -38,90 +41,6 @@ const STRAYS = 1.5;
 // How much further than the nearest side to where it rode it may come
 // up, in its widths.
 const COMES_UP = 3;
-// How near its seat's height a place must be to stand there, in cells.
-const STANDS_WITHIN = 1;
-
-// Where it hangs on a column's side (-1 left, 1 right), the `x` of its box.
-function sideX(column, side, at) {
-    return side < 0 ? column.left - at.wide : column.right;
-}
-
-// Where it stands on a ledge or a column's top whose window's top is `top`.
-function stands(top, at) {
-    return top - at.tall - at.air;
-}
-
-// The column under the cat's middle at `x`, or the nearest one to it.
-function columnAt(cols, x, wide) {
-    const middle = x + wide / 2;
-    let nearest = null;
-    let far = Infinity;
-    for (const column of cols) {
-        const away = Math.max(column.left - middle, middle - column.right, 0);
-        if (away < far) {
-            far = away;
-            nearest = column;
-        }
-    }
-    return nearest;
-}
-
-// The ledge over each window of a column it fits on: its top, the margin
-// above it, and each gap between two windows stacked in it it fits in, as
-// { row, y } by its window's index.
-function ledges(column, at) {
-    const found = [{ row: 0, y: stands(column.rows[0].top, at) }];
-    for (let r = 1; r < column.rows.length; r++) {
-        const room = column.rows[r].top - column.rows[r - 1].bottom;
-        if (room >= at.tall + at.air) {
-            found.push({ row: r, y: stands(column.rows[r].top, at) });
-        }
-    }
-    return found;
-}
-
-// Which ledge of `cols` it stands on at `place` ({ x, y }), any of its
-// box over it: { c, row }, or null for none.
-function standing(cols, place, at) {
-    for (const [c, column] of cols.entries()) {
-        if (place.x < column.right && place.x + at.wide > column.left) {
-            const ledge = ledges(column, at)
-                .find(one => Math.abs(one.y - place.y) <= STANDS_WITHIN * at.cell);
-            return ledge ? { c, row: ledge.row } : null;
-        }
-    }
-    return null;
-}
-
-// The column beside `c` on its `side`, near enough to leap to: its index
-// `c`, and `near`, where it stands at its nearer end.
-function facing(cols, c, side, at) {
-    const column = cols[c + side];
-    if (!column) {
-        return null;
-    }
-    const gap = side > 0 ? column.left - cols[c].right : cols[c].left - column.right;
-    return gap >= 0 && gap <= LEAPS_ACROSS * at.wide
-        ? { column, c: c + side, near: Math.min(Math.max(side > 0 ? column.left
-            : column.right - at.wide, 0), at.across - at.wide) } : null;
-}
-
-function onScreen(x, at) {
-    return x >= 0 && x + at.wide <= at.across;
-}
-
-// Where it stands on the screen's bottom, below every window.
-function floor(at) {
-    return at.height - at.tall;
-}
-
-// Whether `place` is on the screen's bottom rather than any ledge: where
-// it climbs a floating window's side from with nothing under it
-// (MarginCatFloats.js's onto()).
-function floored(cols, place, at) {
-    return at.height !== undefined && near(place.y, floor(at))
-        && standing(cols, place, at) === null;
-}
 
 // Every stop it can reach from the screen's bottom: along it, and up
 // onto the bottom of any window's side on the screen.
@@ -153,10 +72,6 @@ function inMarks(x, y, at) {
 function key(stop) {
     const at = one => Math.round(one * 100);
     return `${stop.kind}:${stop.c}:${stop.side ?? 0}:${at(stop.x)}:${at(stop.y)}`;
-}
-
-function near(one, other) {
-    return Math.abs(one - other) < 1e-6;
 }
 
 // Every stop it can reach from a side with one move, each with its cost
@@ -275,6 +190,7 @@ function fromLedge(stop, cols, at, add) {
                 perches: way }, (Math.abs(before - stop.x) / at.cell / WALKS) * 1000 + LEAPS);
         }
     }
+    ontoFloats(stop, [lowest, highest], at, add);
     const dir = stop.x >= column.right - at.wide - 1e-6 ? 1
         : stop.x <= column.left + 1e-6 ? -1 : 0;
     if (dir === 0) {
@@ -309,12 +225,135 @@ function fromLedge(stop, cols, at, add) {
 // `at.floats`' faces, which are as solid as a tiled window's top: nothing
 // goes through a floating window (VKCF3Z 26038726). Without it the cat
 // climbed the gap between two columns behind one (the GPU rig,
-// 2026-11-14).
-function throughFloats(one, other, at) {
-    return (at.floats ?? []).some(it => Math.max(one.x, other.x) + at.wide > it.left + 0.5
+// 2026-11-14). The one it leaps away from, `own` (an index, or -1), is
+// never in its way, as its corner would refuse every leap down off it.
+function throughFloats(one, other, at, own) {
+    return (at.floats ?? []).some((it, f) => f !== own
+        && Math.max(one.x, other.x) + at.wide > it.left + 0.5
         && Math.min(one.x, other.x) < it.right - 0.5
         && Math.max(one.y, other.y) + at.tall > it.top + 0.5
         && Math.min(one.y, other.y) < it.bottom - 0.5);
+}
+
+// Where it stands at either end of floating window `it`'s top, as far as
+// the screen's edges.
+function floatEnds(it, at) {
+    return [Math.max(it.left, 0), Math.min(it.right, at.across) - at.wide];
+}
+
+// What it lands on, dropping from `y` at `x`: the nearest ledge under any
+// of its box, as Falls.under() lands, or float's top under all of it, or
+// the bottom: { kind, c, y, row }, or null where the screen has none.
+function landsOn(x, y, cols, at) {
+    let found = null;
+    const take = (kind, c, under, row) => {
+        if (under > y + 1e-6 && (!found || under < found.y)) {
+            found = { kind, c, y: under, row };
+        }
+    };
+    for (const [c, column] of cols.entries()) {
+        if (x < column.right && x + at.wide > column.left) {
+            for (const ledge of ledges(column, at)) {
+                take("ledge", c, ledge.y, ledge.row);
+            }
+        }
+    }
+    for (const [f, it] of (at.floats ?? []).entries()) {
+        if (x >= it.left - 0.5 && x + at.wide <= it.right + 0.5) {
+            take("float", f, stands(it.top, at), 0);
+        }
+    }
+    return found ?? (at.height === undefined ? null
+        : { kind: "floor", c: -1, y: floor(at), row: 0 });
+}
+
+// From a ledge, along it `reach` ([lowest, highest]), onto each floating
+// window as onto a ledge of a column (WCJQSG ade5ce02: "it climbs onto,
+// jumps off and walks along floats as it does tiled ones"): along to
+// beside its edges, which its face may hide the rest of the ledge past;
+// and from beside an edge on the tops (from a gap's it would rise into
+// the window over), a leap up within LEAPS_UP of its heights and over.
+// Only one whose face crosses the ledge or whose top is a leap up adds
+// stops, so the search grows with the floats near it alone.
+function ontoFloats(stop, reach, at, add) {
+    const [lowest, highest] = reach;
+    const walk = x => (Math.abs(x - stop.x) / at.cell / WALKS) * 1000;
+    const along = x => x >= lowest - 1e-6 && x <= highest + 1e-6 && !near(x, stop.x);
+    for (const [f, it] of (at.floats ?? []).entries()) {
+        const y = stands(it.top, at);
+        const [left, right] = floatEnds(it, at);
+        const hides = it.top < stop.y + at.tall && it.bottom > stop.y;
+        const reaches = y <= stop.y + 1e-6 && stop.y - y <= LEAPS_UP * at.tall;
+        const beside = hides || reaches ? [it.left - at.wide, it.right] : [];
+        for (const x of beside.filter(along)) {
+            add("ledge", stop.c, { x, y: stop.y, row: stop.row, how: "goes" }, walk(x));
+        }
+        const side = near(stop.x, it.left - at.wide) ? -1 : near(stop.x, it.right) ? 1 : 0;
+        if (side !== 0 && reaches && stop.row === 0 && right >= left) {
+            add("float", f, { x: side < 0 ? left : right, y, row: 0, side, how: "leapsOn",
+                via: { x: stop.x, y: it.top - at.tall } }, LEAPS + MANTLES);
+        }
+    }
+}
+
+// Every stop it can reach from a floating window's top with one move, as
+// from a ledge: along it to either end, and from an end, a hop clear and
+// down onto what's under, or across onto a ledge of the column it faces
+// within a leap up or down. Straight up off it onto a ledge over it is
+// owed, as is a leap from one floating window to another.
+function fromFloat(stop, cols, at, add) {
+    const it = at.floats[stop.c];
+    const [lowest, highest] = floatEnds(it, at);
+    if (highest < lowest) {
+        return;
+    }
+    for (const x of [lowest, highest].filter(one => !near(one, stop.x))) {
+        add("float", stop.c, { x, y: stop.y, row: 0, how: "goes" },
+            (Math.abs(x - stop.x) / at.cell / WALKS) * 1000);
+    }
+    const dir = near(stop.x, highest) ? 1 : near(stop.x, lowest) ? -1 : 0;
+    if (dir === 0) {
+        return;
+    }
+    const clear = dir > 0 ? it.right : it.left - at.wide;
+    const under = onScreen(clear, at) ? landsOn(clear, stop.y, cols, at) : null;
+    if (under) {
+        add(under.kind, under.c, { x: clear, y: under.y, row: under.row, how: "hopsOff",
+            via: { x: clear, y: stop.y } }, LEAPS);
+    }
+    for (const [c, column] of cols.entries()) {
+        const gap = dir > 0 ? column.left - it.right : it.left - column.right;
+        if (gap < 0 || gap > LEAPS_ACROSS * at.wide) {
+            continue;
+        }
+        const x = dir > 0 ? Math.max(column.left, 0) : Math.min(column.right, at.across) - at.wide;
+        for (const ledge of ledges(column, at)
+            .filter(one => Math.abs(one.y - stop.y) <= LEAPS_UP * at.tall)) {
+            add("ledge", c, { x, y: ledge.y, row: ledge.row, how: "leaps" }, LEAPS);
+        }
+    }
+}
+
+// Whether a walk along the tops of `cols` between `one` and `other`, each
+// an `x`, would pass through a floating window's face, where it takes the
+// way over it instead (fromLedge()'s ontoFloats()).
+function blocked(one, other, cols, at) {
+    const low = Math.min(one, other);
+    const high = Math.max(one, other) + at.wide;
+    return cols.some(column => {
+        const from = Math.max(low, column.left);
+        const to = Math.min(high, column.right);
+        const y = stands(column.rows[0].top, at);
+        return to > from && (at.floats ?? []).some(it => it.left < to - 0.5
+            && it.right > from + 0.5 && y + at.tall > it.top + 0.5 && y < it.bottom - 0.5);
+    });
+}
+
+// Whether from `start` it walks along the tops to `goal` with no route:
+// both on them, and no floating window's face across them between.
+function alongTops(start, goal, cols, at) {
+    return start.kind === "ledge" && start.row === 0
+        && (standing(cols, goal, at)?.row ?? 0) === 0 && !blocked(start.x, goal.x, cols, at);
 }
 
 function next(stop, cols, at) {
@@ -326,11 +365,17 @@ function next(stop, cols, at) {
             Object.assign({}, at, { wide: Math.abs(more.x - stop.x) + at.wide,
                 tall: Math.abs(more.y - stop.y) + at.tall }));
         const along = (more.how === "goes" && more.row === 0) || !!more.perches;
-        if (!inMarks(more.x, more.y, at) && (!past || along) && !throughFloats(stop, more, at)) {
+        // A move by way of a point, up beside an edge or clear of one, is
+        // through no face where neither of its two legs is.
+        const own = stop.kind === "float" ? stop.c : -1;
+        const through = more.via ? throughFloats(stop, more.via, at, own)
+            || throughFloats(more.via, more, at, own) : throughFloats(stop, more, at, own);
+        if (!inMarks(more.x, more.y, at) && (!past || along) && !through) {
             found.push({ stop: Object.assign({ kind, c }, more), ms: ms + (past ? CROSSES : 0) });
         }
     };
-    const from = { side: fromSide, ledge: fromLedge, floor: fromFloor }[stop.kind];
+    const from = { side: fromSide, ledge: fromLedge, floor: fromFloor, float: fromFloat }[
+        stop.kind];
     from(stop, cols, at, add);
     return found;
 }
@@ -377,6 +422,7 @@ function quickest(open, trip, cols, at) {
             open.push({ stop: seat, ms: here.ms + ms * strays(here.stop, seat), back: here });
         }
         if (here.stop.kind === "ledge" && (goal.row === 0 ? here.stop.row === 0
+            && !blocked(here.stop.x, to.x, cols, at)
             : here.stop.c === goal.c && here.stop.row === goal.row)) {
             const gaps = cols.filter(one => one.left > Math.min(here.stop.x, to.x) + at.wide
                 && one.left < Math.max(here.stop.x, to.x) + at.wide).length;

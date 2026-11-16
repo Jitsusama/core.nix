@@ -30,6 +30,7 @@ onLinux {
           ./MarginCatFalls.js
           ./MarginCatFloats.js
           ./MarginCatGames.js
+          ./MarginCatLedges.js
           ./MarginCatPaths.js
           ./MarginCatPlays.js
           ./MarginCatRoutes.js

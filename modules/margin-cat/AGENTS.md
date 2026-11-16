@@ -11,6 +11,7 @@ layout for it. The scripts work out everything it does, so the Qt cases in
 | -------------------- | -------------------------------------------------------- |
 | `MarginCat.js`       | how lively it is, its plays, niri's spring, its drawings |
 | `MarginCatPaths.js`  | its way to a seat: a walk, or a move between workspaces  |
+| `MarginCatLedges.js` | where it can stand or hang on the columns, and its paces |
 | `MarginCatRoutes.js` | the stops a way goes by: tops, sides, gaps and the floor |
 | `MarginCatStacked.js` | a move down a workspace walked as one screen             |
 | `MarginCatWays.js`   | a way's legs as beats in time, and where it is at a time |
@@ -196,6 +197,11 @@ closes or loses focus"
 - Held by `margin-cat-floats.qml`: "leaping off one, over them until it lands on the ledge"
 - Held by `margin-cat-floats.qml`: "with no floating window on its way, never over them"
 - Held by `margin-cat-floats.qml`: "never over its face, on or off it"
+- Held by `margin-cat-floats.qml`: "one across the tops on its way, it walks over its top"
+- Held by `margin-cat-floats.qml`: "a floating window a leap up on its way is a step"
+- Held by `margin-cat-floats.qml`: "a floating window off its way changes nothing"
+- Owed since 2026-11-16: on its way, straight up off a floating window onto a ledge over
+  it, down onto one from a ledge over it, and from one floating window to another.
 - Owed since 2026-11-13: its floating window's focus gone, it waits two seconds, then leaps up
   off it; the wait is the screen's, which no Qt case reaches yet.
 
