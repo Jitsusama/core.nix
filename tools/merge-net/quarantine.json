@@ -362,5 +362,17 @@
       "test_a_session_turning_beside_return_into_for_you_draws_nothing"
     ],
     "test": "an-agents-return-does-its-harmless-act-on-niri"
+  },
+  {
+    "at": 1794854023,
+    "commit": "aeac109e3fb236c6bf47ad7f580969d3e547c5e3",
+    "due": "2026-11-18",
+    "owner_pr": 4952,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at aeac109e3fb2",
+    "subtests": [
+      "test_a_session_its_host_releases_carries_on_as_plain_pi_in_its_window"
+    ],
+    "test": "vm-desktop-moves-keep-their-window"
   }
 ]
