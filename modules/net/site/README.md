@@ -17,11 +17,12 @@ note behind.
 | `elements.ts` | the panel's HTML: facts, tables and the look mark              |
 | `panel.ts`    | the panel when nothing is open, and what a search finds        |
 | `device.ts`   | one device in full, with `cable.ts` for the modem's channels   |
-| `machine.ts`  | a machine as mycelium sees it, read by `mycelium.ts`, `beside.ts` |
+| `machine.ts`  | a machine as mycelium sees it, in its panel                    |
+| `mycelium.ts` | the mycelium node's cells and machines, as `beside.ts` watches |
 | `tree.ts`     | every device as a tree, walked by its own keys                 |
 | `where.ts`    | what's said as the keys land, and how an address names one     |
 | `index.html`  | the page, with `site.css`, `map.css` and `panel.css` its styles |
 | `index.md`    | its Markdown twin, with `llms.txt` for a model                 |
-| `tests/`      | the reading of the records, and the words, tried               |
+| `tests/`      | the reading of the records, the words and the view, tried      |
 
 [site]: ../../local-sites/site.nix

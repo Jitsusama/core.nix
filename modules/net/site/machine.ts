@@ -1,6 +1,6 @@
 // A machine mycelium runs on, in its device's panel, as mycelium sees it:
 // what runs there, what it has left and what it's short of, with a way to
-// its home on mycelium's site. mycelium names a machine by its host name,
+// its place on the mycelium map. mycelium names a machine by its host name,
 // as net does; what counts as short is mycelium's to say, not the page's.
 
 import { type Child, facts, glyph, h } from "./elements.ts";
@@ -61,7 +61,7 @@ function inMycelium(mycelium: Mycelium, device: Device): Child[] {
     machine.over.length > 0
       ? h("span", { class: "look" }, glyph(true), machine.over.join(" and "))
       : null;
-  const home = `../${homeOf(mycelium, machine.name)}`;
+  const home = `../${homeOf(machine.name)}`;
   return [
     h("h3", {}, "In Mycelium"),
     facts([

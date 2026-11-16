@@ -63,7 +63,7 @@ const heard = new Map<string, string>();
 let network: Network | undefined;
 let shape: Shape | undefined;
 let drawn: Drawn | undefined;
-let mycelium: Mycelium = myceliumOf(undefined, undefined);
+let mycelium: Mycelium = myceliumOf([], []);
 let opened: string | null = null;
 let fitted = false;
 let linked = false;

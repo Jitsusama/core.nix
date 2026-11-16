@@ -1,9 +1,10 @@
-// What the network page says of the machines mycelium runs on, read from
-// mycelium's own files beside it (its now.json and homes.json), so a
-// machine's panel says what runs there and links to its home. Nothing here
-// touches the page, so each case is proven in node.
+// What the network page says of the machines mycelium runs on, from the
+// mycelium node's cells and machines as its feed tells them, so a
+// machine's panel says what runs there and links to its place on the
+// mycelium map. Nothing here touches the page, so each case is proven in
+// node.
 
-import { isObject, number, object, text, texts } from "../../local-sites/kit/records.ts";
+import { type Fields, number, object, text, texts } from "../../local-sites/kit/records.ts";
 
 /** What waits on a machine, in percent of the last minute. */
 interface Pressure {
@@ -29,18 +30,9 @@ interface Machine {
 /** Everything the page reads of mycelium. */
 interface Mycelium {
   readonly machines: readonly Machine[];
-  /** Each machine's home address from the sites' root, by its name. */
-  readonly homes: ReadonlyMap<string, string>;
 }
 
-const objects = (from: unknown, field: string): readonly { readonly [key: string]: unknown }[] => {
-  const value = isObject(from) ? from[field] : undefined;
-  return Array.isArray(value) ? value.filter(isObject) : [];
-};
-
-function pressureOf(
-  value: { readonly [field: string]: unknown } | undefined,
-): Pressure | undefined {
+function pressureOf(value: Fields | undefined): Pressure | undefined {
   const cpu = value === undefined ? undefined : number(value, "cpu");
   const memory = value === undefined ? undefined : number(value, "memory");
   const io = value === undefined ? undefined : number(value, "io");
@@ -49,51 +41,55 @@ function pressureOf(
     : { cpu, memory, io };
 }
 
-/** mycelium as its two files say it, either of which may be missing. */
-function myceliumOf(now: unknown, homes: unknown): Mycelium {
-  const cells = objects(now, "cells");
-  const machines = objects(now, "machines").flatMap((machine) => {
-    const name = text(machine, "name");
-    if (name === undefined) {
-      return [];
-    }
-    const standing = new Map<string, number>();
-    for (const cell of cells) {
-      const stands = text(cell, "standing");
-      if (text(cell, "machine") === name && stands !== undefined) {
-        standing.set(stands, (standing.get(stands) ?? 0) + 1);
-      }
-    }
-    return [
-      {
-        name,
-        pressure: pressureOf(object(machine, "pressure")),
-        available: number(machine, "available"),
-        memory: number(machine, "memory"),
-        diskFree: number(machine, "disk_free"),
-        disk: number(machine, "disk"),
-        over: texts(machine, "over") ?? [],
-        cells: standing,
-      },
-    ];
-  });
-  const homed = new Map<string, string>();
-  for (const thing of objects(homes, "things")) {
-    const key = text(thing, "key");
-    const address = text(thing, "address");
-    if (text(thing, "kind") === "machine" && key !== undefined && address !== undefined) {
-      homed.set(key, address);
+/**
+ * Whether a cell runs on a machine: a session or a receptor. A machine is
+ * a cell of its own too, and isn't one of those running on it.
+ */
+const runs = (cell: Fields): boolean => cell.type === "session" || cell.type === "receptor";
+
+/** How many of `running` stand each way on the machine `name`. */
+function standingOn(running: readonly Fields[], name: string): Map<string, number> {
+  const standing = new Map<string, number>();
+  for (const cell of running) {
+    const stands = text(cell, "standing");
+    if (text(cell, "machine") === name && stands !== undefined) {
+      standing.set(stands, (standing.get(stands) ?? 0) + 1);
     }
   }
-  return { machines, homes: homed };
+  return standing;
 }
 
-/**
- * The machine's home as mycelium lists it, or until mycelium writes its
- * homes.json, the address its page answers to today.
- */
-function homeOf(mycelium: Mycelium, machine: string): string {
-  return mycelium.homes.get(machine) ?? `mycelium/#machine=${encodeURIComponent(machine)}`;
+/** A machine record read, with the cells running on it, or none unnamed. */
+function machineOf(machine: Fields, running: readonly Fields[]): Machine | undefined {
+  const name = text(machine, "name");
+  if (name === undefined) {
+    return undefined;
+  }
+  // The node measures a machine's room as one thing, nested.
+  const room = object(machine, "room") ?? {};
+  return {
+    name,
+    pressure: pressureOf(object(room, "pressure")),
+    available: number(room, "memory_available"),
+    memory: number(machine, "memory"),
+    diskFree: number(machine, "disk_free"),
+    disk: number(machine, "disk"),
+    over: texts(room, "over") ?? [],
+    cells: standingOn(running, name),
+  };
+}
+
+/** mycelium as the node's `cell` and `machine` records say it. */
+function myceliumOf(cells: readonly Fields[], machines: readonly Fields[]): Mycelium {
+  const running = cells.filter(runs);
+  return {
+    machines: machines.flatMap((machine) => machineOf(machine, running) ?? []),
+  };
+}
+
+/** The machine's place on the mycelium map, from the sites' root. */
+function homeOf(machine: string): string {
+  return `mycelium/#machine=${encodeURIComponent(machine)}`;
 }
 
 export type { Machine, Mycelium, Pressure };
