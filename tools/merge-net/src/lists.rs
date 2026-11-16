@@ -128,6 +128,8 @@ pub fn say(
 /// in one entry alone, or each of its subtests in one entry: a test has
 /// an entry for each owner (quarantine.rs), but two holding the same
 /// subtest, or a whole test beside another, leave who owns it unsaid.
+/// Each entry names the session that fixes it forward, `owner_session`,
+/// or `orchestrator` until one takes it (quarantine.rs).
 fn holds_tests(quarantine: &str) -> Result<(), String> {
     let entries: Vec<serde_json::Value> =
         serde_json::from_str(quarantine).map_err(|error| format!("it isn't a list: {error}"))?;
@@ -136,6 +138,9 @@ fn holds_tests(quarantine: &str) -> Result<(), String> {
         let test = entry["test"]
             .as_str()
             .ok_or_else(|| format!("an entry names no test: {entry}"))?;
+        if entry["owner_session"].as_str().is_none_or(str::is_empty) {
+            return Err(format!("{test}'s entry names no session owning it"));
+        }
         // An entry naming no subtest holds the whole test, as quarantine.rs reads it.
         let mut subtests: Vec<Option<&str>> = entry["subtests"]
             .as_array()

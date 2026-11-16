@@ -70,7 +70,8 @@ pub fn covers(list: &Value, test: &str, failing: &BTreeSet<String>) -> bool {
 /// held yet, leaving every other owner's entry as it was; one listed whole
 /// stays whole, and one listed by its subtests isn't listed whole. An
 /// entry is `due` off the list two days after its `at`, unless `fields`
-/// name a date. Gives whether the list changed.
+/// name a date, and is [`UNOWNED`] unless they name the session that owns
+/// it. Gives whether the list changed.
 pub fn list(
     entries: &mut Vec<Value>,
     test: &str,
@@ -99,6 +100,9 @@ pub fn list(
     {
         entry["due"] = json!(date(at + DUE_AFTER));
     }
+    if entry.get("owner_session").is_none() {
+        entry["owner_session"] = json!(UNOWNED);
+    }
     entry["test"] = json!(test);
     if !fresh.is_empty() {
         entry["subtests"] = json!(fresh);
@@ -106,6 +110,13 @@ pub fn list(
     entries.push(entry);
     true
 }
+
+/// Who owns an entry no session has taken yet: the orchestrator, which
+/// gives it to the session whose area it's in. The net knows only the PR
+/// that met the failure, and that PR's session has often ended: on 16
+/// November 11 entries fell due naming merged PRs with no session behind
+/// any.
+pub const UNOWNED: &str = "orchestrator";
 
 /// How long after it's listed an entry is due off the list, for its owner
 /// to fix it forward: past it, the hourly loop counts the entry as a slip.

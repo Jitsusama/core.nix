@@ -5,6 +5,7 @@
     "due": "2026-11-16",
     "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
     "owner_pr": 2855,
+    "owner_session": "orchestrator",
     "reason": "failed twice at 420e2aa35b28, and at 26852ce9a8ec after it",
     "subtests": [
       "test_capture_recent_finds_past_its_nine_by_name_then_by_what_a_screenshot_says",
@@ -18,6 +19,7 @@
     "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
     "due": "2026-11-15",
     "owner_pr": 3946,
+    "owner_session": "FEH1HE",
     "reason": "failed, then passed, at aefa56b98e80",
     "subtests": [
       "test_a_programs_media_and_sound_work_its_real_player_and_its_stream"
@@ -30,6 +32,7 @@
     "due": "2026-11-16",
     "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
     "owner_pr": 3176,
+    "owner_session": "orchestrator",
     "reason": "failed, then passed, at 6e396fae765b",
     "subtests": [
       "test_every_name_a_thing_had_still_finds_it",
@@ -43,6 +46,7 @@
     "commit": "77b2c01c96435484735cb5eda87677902bda6396",
     "due": "2026-11-15",
     "owner_pr": 3972,
+    "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at 77b2c01c9643",
     "subtests": [
       "test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_ctrl_y",
@@ -63,6 +67,7 @@
     "due": "2026-11-17",
     "due_why": "Its owner reruns it on an idle builder by 2026-11-17 23:59 UTC and takes it off if it holds, or fixes it; a day later than the rest, after tonight's builder work",
     "owner_pr": 3304,
+    "owner_session": "orchestrator",
     "reason": "failed, then passed, at 042387bc604a",
     "subtests": [
       "test_firmware_installs_an_update_once_asked_and_waits_for_the_restart",
@@ -77,6 +82,7 @@
     "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
     "due": "2026-11-15",
     "owner_pr": 3946,
+    "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at aefa56b98e80",
     "subtests": [
       "test_power_says_what_kept_the_processor_from_resting_on_battery",
@@ -90,6 +96,7 @@
     "due": "2026-11-16",
     "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
     "owner_pr": 3795,
+    "owner_session": "orchestrator",
     "reason": "failed, then passed, at 461743399d56",
     "subtests": [
       "test_a_charge_told_in_batterys_step_is_said_there",
@@ -105,6 +112,7 @@
     "due": "2026-11-16",
     "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
     "owner_pr": 3758,
+    "owner_session": "orchestrator",
     "reason": "failed, then passed, at 1e94ca1cd67d",
     "subtests": [
       "test_calendar_typed_lists_its_next_meetings_under_it",
@@ -117,6 +125,7 @@
     "commit": "93eeb7412debd50edf5d9bcc77d90d702b7ceee9",
     "due": "2026-11-16",
     "owner_pr": 4157,
+    "owner_session": "orchestrator",
     "reason": "failed, then passed, at 93eeb7412deb",
     "subtests": [
       "test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays"
@@ -129,6 +138,7 @@
     "due": "2026-11-17",
     "due_why": "Its owner reruns it on an idle builder by 2026-11-17 23:59 UTC and takes it off if it holds, or fixes it; a day later than the rest, after tonight's builder work",
     "owner_pr": 3794,
+    "owner_session": "orchestrator",
     "reason": "failed, then passed, at b0e3be7a0f1b",
     "subtests": [
       "test_y_flashes_its_rows_and_a_waiting_d_says_what_it_takes"
@@ -140,14 +150,17 @@
     "commit": "b2be6ae26c8fcb7f68b687145bafcbceec102640",
     "due": "2026-11-17",
     "owner_pr": 4884,
+    "owner_session": "80ECO2",
     "reason": "failed, then passed, at b2be6ae26c8f",
     "test": "vm-joel-comes-first"
   },
   {
     "at": 1794557415,
     "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
-    "due": "2026-11-15",
+    "due": "2026-11-17",
+    "due_why": "Agents leads with one row per orchestration since #3884, so the orchestration's tree is a step in from it, not on Agents itself; its owner moves the case's steps into the orchestration by 2026-11-17 23:59 UTC",
     "owner_pr": 3956,
+    "owner_session": "80ECO2",
     "reason": "failed twice at 1e356cd3a563, and at aefa56b98e80 after it",
     "subtests": [
       "test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_it_spent"
@@ -159,6 +172,7 @@
     "commit": "fe9f6ae1bd4ddc562eab03e03021937e076d7e19",
     "due": "2026-11-15",
     "owner_pr": 3956,
+    "owner_session": "FEH1HE",
     "reason": "failed twice at aefa56b98e80, and at fe9f6ae1bd4d after it",
     "subtests": [
       "test_an_unplugged_ergodox_is_shown_nowhere_until_its_back"
@@ -170,6 +184,7 @@
     "commit": "b7a81d60bf2144b8873172e83bd4aa19fb38414d",
     "due": "2026-11-15",
     "owner_pr": 3956,
+    "owner_session": "PN2VZC",
     "reason": "failed twice at fe9f6ae1bd4d, and at b7a81d60bf21 after it",
     "subtests": [
       "test_the_budgets_stand_behind_one_row_at_each_scale",
@@ -182,6 +197,7 @@
     "commit": "b7a81d60bf2144b8873172e83bd4aa19fb38414d",
     "due": "2026-11-15",
     "owner_pr": 4014,
+    "owner_session": "XY9H5C",
     "reason": "failed, then passed, at b7a81d60bf21",
     "test": "vm-guide-installs"
   },
@@ -190,6 +206,7 @@
     "commit": "81d294e5c2e51e5fdfa62d4d0db1d66b46a05c0b",
     "due": "2026-11-15",
     "owner_pr": 4129,
+    "owner_session": "FEH1HE",
     "reason": "failed, then passed, at 81d294e5c2e5",
     "subtests": [
       "test_each_track_is_full_once_the_image_is_read"
@@ -201,6 +218,7 @@
     "commit": "5782337e6e457780754e6e5684e6c69bd92827dd",
     "due": "2026-11-15",
     "owner_pr": 4145,
+    "owner_session": "RTOIMQ",
     "reason": "failed, then passed, at 5782337e6e45",
     "subtests": [
       "test_neovims_page_is_shot_at_each_scale"
@@ -212,6 +230,7 @@
     "commit": "93eeb7412debd50edf5d9bcc77d90d702b7ceee9",
     "due": "2026-11-16",
     "owner_pr": 4157,
+    "owner_session": "orchestrator",
     "reason": "failed, then passed, at 93eeb7412deb",
     "subtests": [
       "test_a_session_whose_attach_its_host_refuses_keeps_its_window"
@@ -223,6 +242,7 @@
     "commit": "467ec1a20da37f9e7ef094c4b9b7c72d9058c1fe",
     "due": "2026-11-16",
     "owner_pr": 4155,
+    "owner_session": "orchestrator",
     "reason": "failed, then passed, at 467ec1a20da3",
     "subtests": [
       "test_with_its_store_pressed_the_machine_expires_generations_and_collects_a_dead_build"
@@ -234,6 +254,7 @@
     "commit": "4515bb9f1e9dd08dce992c5885406b16d49da645",
     "due": "2026-11-16",
     "owner_pr": 4202,
+    "owner_session": "orchestrator",
     "reason": "failed, then passed, at 4515bb9f1e9d",
     "subtests": [
       "test_a_session_its_host_wont_take_carries_on_as_plain_pi_in_its_window"
@@ -245,6 +266,7 @@
     "commit": "580dc8dbd5803c7bea2650e02ecb099ec1408af3",
     "due": "2026-11-16",
     "owner_pr": 4228,
+    "owner_session": "orchestrator",
     "reason": "failed, then passed, at 580dc8dbd580",
     "subtests": [
       "test_a_call_loses_little",
@@ -257,6 +279,7 @@
     "commit": "4f0387b4623e6e3fee085982c9b469dbb3ddc299",
     "due": "2026-11-16",
     "owner_pr": 4243,
+    "owner_session": "orchestrator",
     "reason": "failed, then passed, at 4f0387b4623e",
     "test": "vm-boot-asks-in-the-theme"
   },
@@ -265,6 +288,7 @@
     "commit": "fb51cf3f90b06cfa8db754e4275e9faaf6b05190",
     "due": "2026-11-16",
     "owner_pr": 4266,
+    "owner_session": "orchestrator",
     "reason": "failed, then passed, at fb51cf3f90b0",
     "subtests": [
       "test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_once"
@@ -277,6 +301,7 @@
     "due": "2026-11-16",
     "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
     "owner_pr": 4560,
+    "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at 1501fe1f285b",
     "subtests": [
       "test_super_v_pastes_into_the_window_it_opened_over_a_terminal_or_not"
@@ -288,6 +313,7 @@
     "commit": "c51fcc200e172b08a4e9705edeb9c397ebb75861",
     "due": "2026-11-17",
     "owner_pr": 4356,
+    "owner_session": "orchestrator",
     "reason": "failed, then passed, at c51fcc200e17",
     "test": "niri-tells-a-resize-at-once"
   },
@@ -296,6 +322,7 @@
     "commit": "25e508c84df2ad15f66044c588f1529630a3b870",
     "due": "2026-11-17",
     "owner_pr": 671,
+    "owner_session": "orchestrator",
     "reason": "failed, then passed, at 1242616f and at e5dbb0d1 on 14 Nov",
     "subtests": [
       "test_swipes_on_the_touchscreen_move_through_the_workspaces_not_the_window"
@@ -307,6 +334,7 @@
     "commit": "2c22e6094aa171140e1525a07c163b0e076033a3",
     "due": "2026-11-17",
     "owner_pr": 4797,
+    "owner_session": "88LQC0",
     "reason": "failed, then passed, at 2c22e6094aa1; #4797 freed the four others, which passed the net's nine runs since, and owns this one, which failed about one run in eight before the lock said what it checks",
     "subtests": [
       "test_sessions_handed_over_while_locked_open_behind_the_lock_and_go_to_their_place_after"
@@ -318,6 +346,7 @@
     "commit": "2c22e6094aa171140e1525a07c163b0e076033a3",
     "due": "2026-11-17",
     "owner_pr": 4637,
+    "owner_session": "ISXEG8",
     "reason": "failed, then passed, at 2c22e6094aa1",
     "subtests": [
       "test_finds_the_connection"
@@ -329,6 +358,7 @@
     "commit": "1684d55bce393ef57a189745df52343982d91271",
     "due": "2026-11-17",
     "owner_pr": 4778,
+    "owner_session": "88LQC0",
     "reason": "failed, then passed, at 1684d55bce39",
     "subtests": [
       "test_sessions_reopened_while_their_screen_is_gone_go_to_it_once_its_back"
@@ -340,6 +370,7 @@
     "commit": "ad0c40d729464a572cf020fd38e3594708a626dc",
     "due": "2026-11-17",
     "owner_pr": 4839,
+    "owner_session": "orchestrator",
     "reason": "failed, then passed, at ad0c40d72946",
     "subtests": [
       "test_a_closed_launcher_makes_nothing_of_the_machine_queue"
@@ -351,6 +382,7 @@
     "commit": "533895e2e473ebc82569f21a96983005c0c4095c",
     "due": "2026-11-17",
     "owner_pr": 4813,
+    "owner_session": "XY9H5C",
     "reason": "the cat walked and never sat to be petted, in the net's reruns at 9e74a5d5f, 68bfc1629, 3a3a3d466, 0d9ff63cc and a3d200ec, and at 533895e2e473 after #4813, passing when rerun",
     "subtests": [
       "test_a_pointer_resting_on_the_cat_leans_it_in_and_a_click_beside_it_reaches_the_window"
@@ -363,6 +395,7 @@
     "due": "2026-11-17",
     "due_why": "Its owner makes it steady after the drag lands and takes it off, by 2026-11-17 23:59 UTC",
     "owner_pr": 4568,
+    "owner_session": "XY9H5C",
     "reason": "blocked 15 of 47 gate runs that built the cat from 10:45 to 19:38 on 15 Nov, among them 0f3b0074 twice, 7c7bc7c1 and 4f7fe3a9, none touching the cat, passing when rerun",
     "subtests": [
       "test_a_middle_row_closed_under_it_has_it_fall_onto_the_row_below"
@@ -374,6 +407,7 @@
     "commit": "3600f69230b37fd910f43cad0b79860f15e66c61",
     "due": "2026-11-17",
     "owner_pr": 4849,
+    "owner_session": "ZJ62K2",
     "reason": "failed, then passed, at 3600f69230b3",
     "subtests": [
       "test_a_meetings_call_open_in_meet_is_in_now_named_for_it"
@@ -385,6 +419,7 @@
     "commit": "2065994cec0d46523499d9bec8c170791466e1ef",
     "due": "2026-11-18",
     "owner_pr": 4874,
+    "owner_session": "ZJ62K2",
     "reason": "failed, then passed, at 2065994cec0d",
     "subtests": [
       "test_a_camera_video_shows_as_recording_and_captures_stop_recording_stops_it",
@@ -397,6 +432,7 @@
     "commit": "11c4c8f5372d412c16ea654c9260f5fa2b124dd5",
     "due": "2026-11-18",
     "owner_pr": 4892,
+    "owner_session": "ZJ62K2",
     "reason": "has been broken since #4892, whose revert won't apply; its owner fixes it forward and takes it off this list",
     "subtests": [
       "test_agents_reopens_each_session_where_it_sat"
@@ -408,6 +444,7 @@
     "commit": "48ff52ee67057f9326598011bc357bdcb3baf7c8",
     "due": "2026-11-18",
     "owner_pr": 4820,
+    "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at 48ff52ee6705",
     "subtests": [
       "test_swayimg_typed_lists_the_picture_it_shows_under_it_and_return_steps_in",
