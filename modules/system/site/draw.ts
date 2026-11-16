@@ -68,7 +68,10 @@ function mark(health: Health, size = "small"): string {
 
 /** How `health` is said to a screen reader, after a name. */
 function spoken(health: Health): string {
-  return `<span class="sr">, ${WORDS[health].toLowerCase()}</span>`;
+  // In parentheses, since a reader takes the hidden span out of flow as a
+  // block and puts a space before it: "Machines (worth a look)" reads
+  // right where "Machines , worth a look" would not.
+  return `<span class="sr"> (${WORDS[health].toLowerCase()})</span>`;
 }
 
 /** Where a thing's link goes: its home's address, or the mycelium site. */
@@ -91,13 +94,16 @@ function headlineOf(heading: Headline): string {
   return `<a href="#parts" data-to="part">${escaped(heading.parts)}</a>, ${rest}.`;
 }
 
-/** What one part's station says under its name: how many looks, or its sky. */
+/**
+ * What one part's station says under its name, as markup: how many looks,
+ * or its sky's name, with what that sky means said to a screen reader.
+ */
 function forecast(part: Part): string {
   const looks = looksIn(part);
   if (looks > 0) {
     return `${looks} worth a look`;
   }
-  return SKIES[part.health].toLowerCase();
+  return `${SKIES[part.health].toLowerCase()}${spoken(part.health)}`;
 }
 
 /** The outlook: the four parts as stations on one horizon, each its sky. */
@@ -105,7 +111,7 @@ function outlookOf(system: System): string {
   return system.parts
     .map((part, at) => {
       const name = escaped(named(part.part));
-      return `<li><a class="station ${part.health}" href="#part-${escaped(part.part)}" data-station="${at + 1}">${mark(part.health, "large")}<span class="place">${name}${spoken(part.health)}</span><span class="forecast">${escaped(forecast(part))}</span></a></li>`;
+      return `<li><a class="station ${part.health}" href="#part-${escaped(part.part)}" data-station="${at + 1}">${mark(part.health, "large")}<span class="place">${name}</span><span class="forecast">${forecast(part)}</span></a></li>`;
     })
     .join("");
 }

@@ -177,9 +177,11 @@
   stroke-width: 0.9;
 }
 
+/* A heading's sky is sized from the gutter, not the heading's type, so it
+   always ends short of the name rather than running into it. */
 .name .sky {
-  inline-size: 1.4em;
-  block-size: 1.4em;
+  inline-size: min(1.75rem, var(--gutter) - 0.75rem);
+  block-size: min(1.75rem, var(--gutter) - 0.75rem);
 }
 
 .sky.good {
@@ -211,6 +213,12 @@
   margin-block-start: var(--frames);
   padding-block-start: var(--items);
   border-block-start: 1px solid var(--rule);
+}
+
+/* Until a part is drawn the legend explains nothing on screen, and in view
+   it would only be pushed down when the parts arrive. */
+.parts:empty ~ .foot {
+  display: none;
 }
 
 .legend {

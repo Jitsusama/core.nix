@@ -47,6 +47,11 @@ interface System {
   readonly parts: readonly Part[];
   /** What the records held that couldn't be read, for the page to say. */
   readonly unread: readonly string[];
+  /**
+   * The parts the summary names whose records haven't arrived: the summary
+   * and each part are told apart, so a page can be drawn before its parts.
+   */
+  readonly untold: readonly string[];
 }
 
 /** Each health by the word the daemon says it in (modules/system's Health::word). */
@@ -255,6 +260,7 @@ function systemOf(summaries: Held, parts: Held, things: Held): System | undefine
     unread.push("the summary named no parts");
   }
   return {
+    untold: (names ?? []).filter((name) => parts.get(`part:${name}`) === undefined),
     machine: text(summary, "machine") ?? "",
     readAt: text(summary, "read_at") ?? "",
     health: healthOf(text(summary, "health")),

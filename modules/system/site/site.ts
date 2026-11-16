@@ -165,7 +165,9 @@ function draw(): void {
   const heading = headline(system);
   title.innerHTML = headlineOf(heading);
   const worst = lede(system);
-  ledeLine.hidden = worst === undefined;
+  // The lede keeps its lines while a part is still to come, since that
+  // part may be the one to name; only a sky every part has told is clear.
+  ledeLine.hidden = worst === undefined && system.untold.length === 0;
   ledeLine.textContent = worst ?? "";
   document.title = `${sentence(heading)} Your system, now`;
   drawnOutlook = redraw(outlook, outlookOf(system), drawnOutlook, "data-station");

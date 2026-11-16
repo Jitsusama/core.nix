@@ -1,5 +1,5 @@
 /* Your system, now: fair weather, a forecast over everything Joel runs.
-   A dusk ground, the sun's gold for what the page speaks in, and the accent
+   A night ground, the sun's gold for what the page speaks in, and the accent
    only where the keys are. The first screen is one sentence and one drawing:
    the headline counts what is worth a look, and the outlook stands the four
    parts on one horizon, each wearing its sky. Below it each part hangs its
@@ -9,8 +9,9 @@
    it sits at the interface size, as the sites each part leads to do. */
 
 :root {
-  /* Dusk: the grounds and the ink turned toward the evening's blue. */
-  --turn: 110;
+  /* Night: the grounds turned a little toward the sky's blue, no further,
+     so the ink stays the cream the sun's gold sits beside. */
+  --turn: 30;
   /* Gold marks the site's emphasis: the action's hue, the sun's. */
   --tint: var(--action);
   /* The skies hang in this, so every name starts on the main line. */
@@ -50,9 +51,7 @@ html:not([data-theme="light"]) body {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--mark) var(--groups);
-  max-inline-size: calc(var(--column) + 2 * var(--screen));
-  margin-inline: auto;
-  padding: var(--mark) var(--screen);
+  padding: var(--mark) max(var(--screen), (100% - var(--column)) / 2);
   background: var(--background);
   border-block-end: 1px solid var(--rule);
 }
@@ -178,8 +177,11 @@ html:not([data-theme="light"]) body {
   color: var(--warning);
 }
 
-/* Under it, the one thing that most wants a look, in the reading voice. */
+/* Under it, the one thing that most wants a look, in the reading voice.
+   A line is held for it from the first paint, so its arrival moves what
+   is below by a second line at most; only an all-clear sky lets it go. */
 .lede {
+  min-block-size: 1lh;
   max-inline-size: var(--measure);
   margin: 0 0 var(--items);
   color: var(--text);
@@ -275,6 +277,15 @@ html:not([data-theme="light"]) body {
 /* ---- The outlook: four stations on one horizon. ---- */
 
 .outlook {
+  /* One station's height, from what it is made of: its padding, a large
+     sky, a name and a forecast with a tie between each. An empty horizon
+     holds this much, so the stations' arrival moves nothing below. */
+  --station: calc(
+    var(--items) + var(--mark) + 3rem + 2 * var(--tie) + 1.2 * var(--step-large) + 1.4 *
+    var(--step-small)
+  );
+  --station-rows: 1;
+
   margin: var(--frames) 0 0;
 }
 
@@ -288,7 +299,7 @@ html:not([data-theme="light"]) body {
 }
 
 .stations:empty {
-  min-block-size: 9rem;
+  min-block-size: calc(var(--station-rows) * var(--station));
 }
 
 .station {
@@ -354,6 +365,10 @@ html:not([data-theme="light"]) body {
 
   .stations {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .outlook {
+    --station-rows: 2;
   }
 }
 

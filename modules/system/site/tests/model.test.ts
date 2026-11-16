@@ -74,6 +74,7 @@ it("the parts come in the summary's order, each with its things", () => {
     system.parts.map((each) => each.part),
     ["machines", "code"],
   );
+  assert.deepEqual(system.untold, [], "every part told leaves none to come");
   assert.deepEqual(
     system.parts[0]?.things.map((thing) => [thing.name, thing.health, thing.address]),
     [
@@ -95,6 +96,7 @@ it("a part not told yet is said, a thing not told yet left out, and the rest dra
     [["machines", ["kestrel"]]],
   );
   assert.deepEqual(system.unread, ["part:code wasn't told"]);
+  assert.deepEqual(system.untold, ["code"], "a part not told yet is named as still to come");
 });
 
 it("the daemon's not read is read as unread", () => {
