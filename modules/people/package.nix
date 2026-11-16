@@ -1,6 +1,7 @@
 # The people daemon, built from this directory, its tests run as it builds.
 # Its socket's tests ask it with a crate every daemon's tests share
-# (../daemon-client), and it keeps its rows as every daemon does
+# (../daemon-client), it takes its socket as every daemon does
+# (../daemon-serve), and it keeps its rows as every daemon does
 # (../ready-rows), and takes its shape from the terminal kit
 # (../terminal-kit), so the source is cut from the modules folder holding
 # them all, and built from this one.
