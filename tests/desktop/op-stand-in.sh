@@ -46,6 +46,16 @@ case "$1 $2" in
     echo "$card,\"fields\":[]}"
   fi
   ;;
+# A secret ask's release reads the console's password by its reference,
+# with no newline, as op read does.
+"read --no-newline")
+  if [ "$3" = "op://Keeping/Lighthouse Console/password" ]; then
+    printf %s stand-in-password
+  else
+    echo "[ERROR] the stand-in for op holds nothing at $3" >&2
+    exit 1
+  fi
+  ;;
 *)
   echo "[ERROR] the stand-in for op can't answer $*" >&2
   exit 1

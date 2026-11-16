@@ -17,7 +17,8 @@
 # swayimg and a key takes it to GIMP, a new drawing opens in Inkscape from
 # the template and leads its Recent, a document opens in zathura beside
 # the rest, a file a Neovim in kitty holds is gone to from Neovim's page,
-# a VM virsh lists is in Programs and starts from its acts,
+# a VM virsh lists is in Programs and starts from its acts, an agent's
+# secret ask is released by Joel's own key alone,
 # and GTK programs and monospaced text are in the theme. niri says which surfaces it drew,
 # shots show their colours, to the test and to a person looking, and
 # the portal and fontconfig answer for the settings. Quickshell has to
@@ -335,7 +336,13 @@ let
     "launcher-goes-places"
     "looks-programs"
     "keeps-pace"
+    "answers-secret-asks"
   ];
+  # The area whose passwords daemon answers agents' secret asks, listing
+  # the one reference they may be given, the stand-in op's console
+  # password, so the launcher draws them in Asks.
+  answersSecretAsks = area == "answers-secret-asks";
+  released = "op://Keeping/Lighthouse Console/password";
   standInOp = pkgs.writeShellScript "op" ''
     PATH=${pkgs.coreutils}/bin exec ${pkgs.lib.getExe pkgs.bash} ${./desktop/op-stand-in.sh} "$@"
   '';
@@ -1137,12 +1144,21 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # passwords daemon, asking the stand-in for op in place of the
         # one 1Password's app would answer.
         jitsusama.passwords.managers."1password".command = lib.mkIf walksPasswords (
-          lib.mkForce [
-            (lib.getExe (pkgs.callPackage ../modules/onepassword/manager/package.nix { }))
-            "--op"
-            "${standInOp}"
-          ]
+          lib.mkForce (
+            [
+              (lib.getExe (pkgs.callPackage ../modules/onepassword/manager/package.nix { }))
+              "--op"
+              "${standInOp}"
+            ]
+            # The reference listed, which the manager checks again before
+            # it reads one, as modules/onepassword/home.nix gives it.
+            ++ lib.optionals answersSecretAsks [
+              "--release"
+              released
+            ]
+          )
         );
+        jitsusama.passwords.releases = lib.mkIf answersSecretAsks [ released ];
         # The collector where the launcher's traces are tested, started by
         # the test that reads what it was sent.
         systemd.user.services.stand-in-collector = lib.mkIf (area == "launcher-goes-places") {

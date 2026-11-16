@@ -4791,6 +4791,11 @@
     its devices, saying what one plays at only while it plays; and names a USB keyboard with its
     polling rate until it's pulled out
   '';
+  vm-desktop-answers-secret-asks = ''
+    the passwords daemon the shell runs answers an agent's secret ask drawn in the launcher's Asks:
+    Joel's Return twice releases the stand-in value into the one command asked for, which no
+    journal holds, his r refuses it, and a yes walked through the launcher's IPC releases nothing
+  '';
   vm-desktop-captures = ''
     the desktop takes a screen, a window, a region, a recording and the camera's pictures and
     videos by the keys, and says how long a recording has run
