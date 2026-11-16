@@ -210,18 +210,6 @@
     "test": "vm-desktop-starts-clean"
   },
   {
-    "at": 1794736626,
-    "commit": "2c22e6094aa171140e1525a07c163b0e076033a3",
-    "due": "2026-11-17",
-    "owner_pr": 4797,
-    "owner_session": "88LQC0",
-    "reason": "failed, then passed, at 2c22e6094aa1; #4797 freed the four others, which passed the net's nine runs since, and owns this one, which failed about one run in eight before the lock said what it checks",
-    "subtests": [
-      "test_sessions_handed_over_while_locked_open_behind_the_lock_and_go_to_their_place_after"
-    ],
-    "test": "vm-desktop-launcher-finds-sessions"
-  },
-  {
     "at": 1794778984,
     "commit": "533895e2e473ebc82569f21a96983005c0c4095c",
     "due": "2026-11-17",
