@@ -17,6 +17,9 @@ pub struct Heard {
     pub author: String,
     /// Whether a bot or an app wrote it.
     pub by_bot: bool,
+    /// Whether it was written where any account may comment, by one that
+    /// isn't the repository's own, which only Joel's own words outweigh.
+    pub outsider: bool,
     /// What it says, as the platform gives it, tags and quotes and all.
     pub text: String,
     /// What the place it was said in is about.
@@ -94,21 +97,29 @@ pub fn decide(heard: &Heard, joel: &Joel) -> Decision {
         },
         joel,
     );
-    let (reaches, fell_back) = match judged.verdict {
+    // An outsider's words are only kept in the log: they stop nothing,
+    // sound nothing and are answered nothing, so a stranger can neither
+    // halt Joel's work nor fill his screen. A bot's stay a bot's.
+    let verdict = match judged.verdict {
+        Verdict::Nothing | Verdict::Waved(Waved::Bot) => judged.verdict,
+        _ if heard.outsider && !judged.by_joel => Verdict::Waved(Waved::Outsider),
+        verdict => verdict,
+    };
+    let (reaches, fell_back) = match verdict {
         Verdict::Stop | Verdict::Resume | Verdict::ResumeAsked => {
             let reached = reach(&judged.targets, &heard.context);
             (reached.targets, reached.fell_back)
         }
         _ => (Vec::new(), false),
     };
-    let (would_reach, would_fall_back) = match judged.verdict {
+    let (would_reach, would_fall_back) = match verdict {
         Verdict::StopAsked | Verdict::Waved(Waved::Joke | Waved::NoTag) => {
             let would = reach(&judged.targets, &heard.context);
             (would.targets, would.fell_back)
         }
         _ => (Vec::new(), false),
     };
-    let (tell, reply) = match judged.verdict {
+    let (tell, reply) = match verdict {
         // Joel's own stop needs no answer: he knows what he said.
         Verdict::Stop if judged.by_joel => (Tell::Loud, Reply::Nothing),
         Verdict::Stop => (Tell::Loud, Reply::WhatStopped),
@@ -120,12 +131,12 @@ pub fn decide(heard: &Heard, joel: &Joel) -> Decision {
             (Tell::Loud, Reply::Nothing)
         }
         Verdict::Resume | Verdict::Waved(Waved::TalkedAbout) => (Tell::Row, Reply::Nothing),
-        Verdict::Waved(Waved::Quoted | Waved::Bot) | Verdict::Nothing => {
+        Verdict::Waved(Waved::Quoted | Waved::Bot | Waved::Outsider) | Verdict::Nothing => {
             (Tell::Log, Reply::Nothing)
         }
     };
     Decision {
-        verdict: judged.verdict,
+        verdict,
         by_joel: judged.by_joel,
         reaches,
         fell_back,
@@ -172,14 +183,58 @@ mod tests {
     /// What a person, or a bot, saying `text` in Slack comes to, in a
     /// thread about pull request 12.
     fn decided(author: &str, by_bot: bool, text: &str) -> Decision {
+        heard_from(author, by_bot, false, text)
+    }
+
+    /// The same, written by `author` where any account may comment, as
+    /// one that isn't the repository's own.
+    fn outsider(author: &str, text: &str) -> Decision {
+        heard_from(author, false, true, text)
+    }
+
+    fn heard_from(author: &str, by_bot: bool, outsider: bool, text: &str) -> Decision {
         let heard = Heard {
             platform: Platform::Slack,
             author: author.to_owned(),
             by_bot,
+            outsider,
             text: text.to_owned(),
             context: Context::of_thread("review https://code.example.com/example/shop/pull/12"),
         };
         decide(&heard, &joel())
+    }
+
+    #[test]
+    fn an_outsider_stops_nothing_and_is_only_logged_but_joel_still_stops() {
+        for text in [
+            "<@U0JOEL0001> pineapple override",
+            "<@U0JOEL0001> pineapple resume",
+            "<@U0JOEL0001> STOP your robots",
+            "<@U0JOEL0001> pineapple override jk",
+            "pineapple override",
+            "<@U0JOEL0001> our safe word pineapple override is set",
+        ] {
+            let decision = outsider("U0OTHER001", text);
+            assert_eq!(
+                decision.verdict,
+                Verdict::Waved(Waved::Outsider),
+                "{text:?} by an outsider is waved off"
+            );
+            assert!(
+                decision.reaches.is_empty() && decision.would_reach.is_empty(),
+                "{text:?} by an outsider reaches nothing, not even for a press"
+            );
+            assert_eq!(decision.tell, Tell::Log, "{text:?} only goes in the log");
+            assert_eq!(
+                decision.reply,
+                Reply::Nothing,
+                "{text:?} is answered nothing"
+            );
+        }
+        let lunch = outsider("U0OTHER001", "<@U0JOEL0001> lunch?");
+        assert_eq!(lunch.verdict, Verdict::Nothing, "nothing stays nothing");
+        let own = outsider("U0JOEL0001", "pineapple override");
+        assert!(own.stops(), "Joel's own stop stands wherever he says it");
     }
 
     #[test]

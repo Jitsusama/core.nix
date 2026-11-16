@@ -8,7 +8,8 @@
 //! list's later pages are read too. A site with no notifications is read
 //! by searching for what Joel opened, its keys its own, from far enough
 //! back that a search's lagging index misses nothing, and never for more
-//! repositories than its searches allow.
+//! repositories than its searches allow. On GitHub, where any account may
+//! comment, a stranger's stop is only logged; a collaborator's stands.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -28,9 +29,18 @@ use super::{
 /// The stand-in's Joel on GitHub.
 const LOGIN: &str = "joel.example";
 
-/// One comment on example/shop#12, said `ago` seconds before `now`.
+/// One comment on example/shop#12, said `ago` seconds before `now` by a
+/// collaborator on it.
 fn comment(id: u64, by: &str, body: &str, now: u64, ago: u64) -> Value {
+    commented(id, by, "COLLABORATOR", body, (now, ago))
+}
+
+/// One comment on example/shop#12 by a writer GitHub names as
+/// `association` to the repository, said `ago` seconds before `now`.
+fn commented(id: u64, by: &str, association: &str, body: &str, when: (u64, u64)) -> Value {
+    let (now, ago) = when;
     json!({"id": id, "body": body, "user": {"login": by, "type": "User"},
+        "author_association": association,
         "html_url": format!("https://code.example.com/example/shop/pull/12#c{id}"),
         "created_at": stamp(now - ago), "updated_at": stamp(now - ago)})
 }
@@ -80,11 +90,11 @@ fn answer_with(line: &str, now: u64, comments: &[Value]) -> Value {
         return json!({"title": "Make checkout faster", "body": "",
             "html_url": "https://code.example.com/example/shop/pull/12",
             "user": {"login": "colleague", "type": "User"},
-            "created_at": stamp(now - 3600)});
+            "author_association": "MEMBER", "created_at": stamp(now - 3600)});
     }
     if line.contains(" /repos/example/shop/pulls/12/reviews?") {
         return json!([{"id": 9, "body": format!("@{LOGIN} can you please STOP your robots?"),
-            "user": {"login": "colleague2", "type": "User"},
+            "user": {"login": "colleague2", "type": "User"}, "author_association": "OWNER",
             "html_url": "https://code.example.com/example/shop/pull/12#r9",
             "submitted_at": stamp(now - 60)}]);
     }
@@ -190,6 +200,64 @@ fn github_a_stop_on_a_pull_request_reaches_it_in_shadow_and_is_judged_once() {
         read["read_at"].as_u64().is_some(),
         "it says when GitHub was read: {read}"
     );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_strangers_stop_is_only_logged_and_a_collaborators_stands() {
+    let (origin, _) = answering(|line, now| {
+        answer_with(
+            line,
+            now,
+            &[
+                commented(
+                    1,
+                    "stranger",
+                    "NONE",
+                    &format!("@{LOGIN} pineapple override"),
+                    (now, 90),
+                ),
+                commented(
+                    2,
+                    "passer-by",
+                    "CONTRIBUTOR",
+                    &format!("@{LOGIN} STOP your robots"),
+                    (now, 85),
+                ),
+                comment(
+                    3,
+                    "colleague",
+                    &format!("@{LOGIN} pineapple override"),
+                    now,
+                    80,
+                ),
+            ],
+        )
+    });
+    let home = home();
+    let mut reader = github_reader(&home, &origin, &["--live"]);
+    until_decided(&home, 4);
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+
+    let said = decisions(&home);
+    assert_eq!(
+        each(&said, "verdict"),
+        ["waved:outsider", "waved:outsider", "stop", "stop-asked"],
+        "a stranger's stop and ask are waved off; a collaborator's and the owner's heard"
+    );
+    assert_eq!(
+        each(&said, "tell"),
+        ["log", "log", "loud", "loud"],
+        "a stranger sounds nothing"
+    );
+    let record: Value = serde_json::from_str(&only_stop(&home).expect("one stop's record"))
+        .expect("the record is JSON");
+    assert_eq!(
+        record["said_by"], "colleague",
+        "the one stop is the collaborator's"
+    );
+    assert_eq!(record["shadow"], false, "and it stands, live");
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 

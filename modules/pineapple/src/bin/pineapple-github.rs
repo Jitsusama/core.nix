@@ -688,6 +688,7 @@ fn judge(state: &Path, joel: &Joel, said: &Said, thread: &Thread, context: Conte
             platform: Platform::Markdown,
             author: said.author.clone(),
             by_bot: said.by_bot,
+            outsider: said.outsider,
             text: said.text.clone(),
             context,
         },
