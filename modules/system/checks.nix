@@ -27,12 +27,16 @@
       mac = account macWorkstation;
       agent = mac.launchd.agents.system;
       words = agent.config.ProgramArguments;
+      path = lib.splitString ":" agent.config.EnvironmentVariables.PATH;
     in
     holds "system-serves-where-its-node-reads"
-      "The system daemon serves somewhere its machine's mycelium node doesn't read, or a Mac runs no daemon, runs it in the foreground, or doesn't start it again."
+      "The system daemon serves somewhere its machine's mycelium node doesn't read, or a Mac runs no daemon, runs another program, runs it in the foreground, doesn't start it again, or can't find the account's commands it asks."
       (
         linux.systemd.user.sockets.system.Socket.ListenStream == linux.jitsusama.mycelium.healthSocket
         && agent.enable
+        && lib.hasSuffix "/bin/system" (lib.head words)
+        && lib.elem "${mac.home.profileDirectory}/bin" path
+        && lib.elem "/run/current-system/sw/bin" path
         &&
           lib.drop 1 words == [
             "serve"

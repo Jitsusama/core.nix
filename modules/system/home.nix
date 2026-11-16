@@ -87,9 +87,15 @@ in
         "--socket"
         "${config.xdg.stateHome}/daemons/system.sock"
       ];
-      # The owners it asks are the account's own commands, found where a
-      # Mac's mycelium node finds the account's.
-      EnvironmentVariables.PATH = "/usr/bin:/bin:${config.home.profileDirectory}/bin";
+      # The owners it asks are the account's own commands, found where its
+      # login shell finds them, as on Linux; without them every part reads
+      # "not read".
+      EnvironmentVariables.PATH = lib.concatStringsSep ":" [
+        "${config.home.profileDirectory}/bin"
+        "/run/current-system/sw/bin"
+        "/usr/bin"
+        "/bin"
+      ];
       RunAtLoad = true;
       # As on Linux, it only stops on a fault; launchd waits 10 s between
       # starts.

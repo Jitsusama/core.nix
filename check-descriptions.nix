@@ -2930,7 +2930,8 @@
   system-serves-where-its-node-reads = ''
     the system daemon serves where its machine's mycelium node reads how it stands: on Linux
     the socket systemd holds in the runtime folder, and on a Mac a launchd agent, in the
-    background and started again, listening in the account's state folder
+    background and started again, listening in the account's state folder and finding the
+    account's commands as its login shell does
   '';
   system-site-holds = ''
     the system page typechecks on the kit at its strictest and builds, its tests passing: the
