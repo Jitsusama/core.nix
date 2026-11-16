@@ -727,4 +727,6 @@ pub fn trees_json(record: &Record, repository: &Repository) -> Value {
 }
 
 #[cfg(test)]
+mod apart_tests;
+#[cfg(test)]
 mod tests;
