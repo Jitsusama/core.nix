@@ -20,6 +20,7 @@ They are grouped by what they prove, a folder an area:
 | `keys/`    | the keyring, passkeys and security keys in the TPM, signed commits |
 | `disks/`   | disks and memory filling or failing, the disk guard, hibernation   |
 | `boot/`    | the boot theme's ask, a Bluetooth keyboard there, greeter, reboots |
+| `sites/`   | Joel's local sites' server reading the daemons its pages watch     |
 
 The VM tests not yet grouped are still in `../`, and move into a folder
 here as their owners free them. Shared helpers are in `../lib/`, and

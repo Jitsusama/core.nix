@@ -5063,6 +5063,12 @@
     a Litra plugged back in while a camera streams is told to light again, and the camera stopping
     puts it out; a Pebble X Plus plugged back in still has its lighting put out at a lock
   '';
+  vm-the-system-page-reads-its-daemon = ''
+    an account's sites' server, as its home module renders it, serves the system page with the strip
+    its build writes and the kit it imports, and the page's feed, asked from the page's origin as its
+    kit asks, says live with the summary the system daemon holds, read over the socket systemd holds
+    for it; stopping the daemon and its socket makes it say broken, and the socket back makes it live
+  '';
   vm-the-network-keeps-its-order = ''
     an account's jobs, background, the system's builds and a guest it forwards for go in CAKE's bulk
     tin both ways, the jobs' leaving marked CS1, what Joel waits on at a terminal and an app's pages best effort, its calls, its
