@@ -65,6 +65,9 @@ Provider {
     // this opening, and its digest then (Shown.js's noted); let go as the
     // launcher shuts, so a line is read again each opening.
     property var seen: ({})
+    // Counted up each time the selection or the opening moves, so a frame
+    // asked for before the move notes nothing: it drew a line since left.
+    property int noting: 0
 
     // The selected row, if it's an ask's, noted from the next frame niri
     // presents, the first that draws it selected; again when its line
@@ -73,17 +76,30 @@ Provider {
     // frame draws it. Every other line's frame is let go of first, so one
     // left and come back to counts from its return.
     function noteSelected() {
+        provider.noting += 1;
+        const asked = provider.noting;
         if (!(launcher?.open ?? false))
             return;
-        const key = launcher?.selected?.shownKey;
+        const selected = launcher?.selected ?? null;
+        // One of an ask's verbs, listed by the right arrow, keeps its ask's
+        // line counted from when it was shown, since Release It there is
+        // that ask's yes; a frame of the verbs never draws the line anew.
+        const stepped = launcher?.held?.[launcher.held.length - 1]?.row?.shownKey;
+        if (typeof selected?.shownKey !== "string" && typeof stepped === "string") {
+            provider.seen = Shown.kept(provider.seen, stepped);
+            return;
+        }
+        const key = selected?.shownKey;
         provider.seen = Shown.kept(provider.seen, key);
         if (typeof key !== "string")
             return;
-        const digest = ready.served(key)?.digest;
+        // The digest of the row as it's drawn, which a frame presents, not
+        // of the ask as served since, before the row is made again.
+        const digest = selected.digest;
         if (typeof digest !== "string" || seen[key]?.digest === digest)
             return;
         launcher.presentedAwait(KeyTimes.now(), at => {
-            if (launcher.open)
+            if (launcher.open && provider.noting === asked)
                 provider.seen = Shown.noted(provider.seen, key, digest, at);
         });
     }
@@ -111,10 +127,12 @@ Provider {
         // selection, so its first frame is noted here or its yes would
         // go with no time shown.
         function onOpenChanged() {
-            if (!provider.launcher.open)
+            if (!provider.launcher.open) {
+                provider.noting += 1;
                 provider.seen = {};
-            else
+            } else {
                 provider.noteSelected();
+            }
         }
     }
 
@@ -137,6 +155,8 @@ Provider {
             key: served.thing,
             // The record's key, by which a frame presenting it is noted.
             shownKey: key,
+            // The ask as this row draws it, which a frame of it presents.
+            digest: served.digest,
             waiting: served.state === "waiting",
             asked: served.attention ?? null,
             // A waiting ask arms on its first Return, saying what a second
