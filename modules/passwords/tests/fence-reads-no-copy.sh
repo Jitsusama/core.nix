@@ -27,7 +27,10 @@ fail() {
 
 logs=$(mktemp -d)
 export PI_CLIPBOARD_DOOR=$logs/door.sock
-pi-clipboard-door --socket "$PI_CLIPBOARD_DOOR" 2> "$logs/door.log" &
+# What this leaves running holds no output of the caller's, which waits for
+# it to close: the door until the trap ends it, and wl-copy's server till
+# the next copy.
+pi-clipboard-door --socket "$PI_CLIPBOARD_DOOR" > /dev/null 2> "$logs/door.log" &
 door=$!
 trap 'kill "$door" 2> /dev/null || true; rm -rf "$logs"' EXIT
 for _ in $(seq 100); do
@@ -69,7 +72,7 @@ done
 [ "$refused" = yes ] || fail "a fenced read was refused, but not as a secret: $said"
 
 word="ordinary-$RANDOM-$RANDOM"
-wl-copy "$word"
+wl-copy "$word" > /dev/null 2>&1
 read=
 for _ in $(seq 20); do
   # shellcheck disable=SC2310 # A paste refused before niri tells the door is asked again.
