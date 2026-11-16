@@ -408,6 +408,9 @@ pub struct Guard {
     /// clear would take now; none before the first survey, which a disk
     /// well under its budget may not make for six hours.
     offered: Option<crate::holders::Offers>,
+    /// What surveys sized of quest workspaces, so the next sizes again
+    /// only what was written since.
+    sizes: crate::survey::Sizes,
     /// Whether the holders are to be measured again on the next step,
     /// since a clear has just changed them.
     remeasure: bool,
@@ -739,6 +742,7 @@ impl Guard {
             damaged,
             kept: Vec::new(),
             offered: None,
+            sizes: crate::survey::Sizes::default(),
             remeasure: false,
             measured: Arc::new(Mutex::new(measured)),
             measuring: None,
@@ -2175,12 +2179,15 @@ impl Guard {
             uses: &uses,
             kept: Vec::new(),
             counted: std::cell::RefCell::default(),
+            sizes: std::cell::RefCell::new(std::mem::take(&mut self.sizes)),
             walked: 0,
             stop: &*self.stop,
         };
         let mut offers = survey(part.unwrap_or(&self.config), &mut world);
         let kept = std::mem::take(&mut world.kept);
+        let sizes = world.sizes.take();
         drop(world);
+        self.sizes = sizes;
         // A walk a stop cut short found only part of what's there, and a
         // checkout it never reached would look gone, so nothing is taken.
         if (self.stop)() {

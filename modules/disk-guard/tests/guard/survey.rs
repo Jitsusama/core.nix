@@ -7,7 +7,7 @@ use disk_guard::logs::{KEEP, LIMIT};
 use disk_guard::plan::Class;
 use disk_guard::replaced::Uses;
 use disk_guard::snapshots::Boot;
-use disk_guard::survey::{Action, Offer, World, survey};
+use disk_guard::survey::{Action, Offer, Sizes, World, survey};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs;
@@ -83,6 +83,42 @@ fn surveyed(
     uses: &Uses,
     at: f64,
 ) -> (Vec<Offer>, usize) {
+    let (found, walked, _) = surveyed_after(
+        config,
+        &Earlier {
+            processes,
+            finished,
+            ran,
+            uses,
+        },
+        at,
+        Sizes::default(),
+    );
+    (found, walked)
+}
+
+/// What a survey is told of the machine around it.
+struct Earlier<'a> {
+    processes: &'a [Process],
+    finished: &'a dyn Fn(&Path) -> bool,
+    ran: &'a BTreeMap<String, f64>,
+    uses: &'a Uses,
+}
+
+/// What a survey offers after earlier ones sized what `sizes` holds, how
+/// many times it walked a root, and what it leaves sized for the next.
+fn surveyed_after(
+    config: &Config,
+    earlier: &Earlier,
+    at: f64,
+    sizes: Sizes,
+) -> (Vec<Offer>, usize, Sizes) {
+    let Earlier {
+        processes,
+        finished,
+        ran,
+        uses,
+    } = *earlier;
     let awake = Awake::default();
     let mut finished = |dir: &Path| finished(dir);
     let said = BTreeMap::new();
@@ -100,12 +136,14 @@ fn surveyed(
         uses,
         kept: Vec::new(),
         counted: std::cell::RefCell::default(),
+        sizes: std::cell::RefCell::new(sizes),
         walked: 0,
         stop: &|| false,
     };
     let mut found = survey(config, &mut world);
     found.sort_by(|a, b| a.candidate.path.cmp(&b.candidate.path));
-    (found, world.walked)
+    let walked = world.walked;
+    (found, walked, world.sizes.take())
 }
 
 pub fn find<'a>(offers: &'a [Offer], path: &Path) -> &'a Offer {
@@ -620,6 +658,51 @@ fn a_browser_profile_in_a_quest_at_works_scratch_is_spent_once_at_rest() {
     assert_eq!(spent.candidate.class, Class::Temp);
     assert!(spent.candidate.spent);
     assert_eq!(spent.action, Action::Entry { root: tmp.clone() });
+}
+
+#[test]
+fn a_quests_old_scratch_is_sized_again_only_once_written_again() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let quests = dir(&home.join("quests"));
+    file(
+        &quests.join("QEST-20200101-ABCDEF/README.md"),
+        "---\nid: QEST-20200101-ABCDEF\nstatus: active\nupdated: 2020-01-01\n---\n# At work\n",
+    );
+    let workspaces = dir(&home.join("workspaces"));
+    let tmp = dir(&workspaces.join("QEST-20200101-ABCDEF/tmp"));
+    let run = dir(&tmp.join("run"));
+    file(&run.join("log"), &"x".repeat(20_000));
+    let config = config(&format!(
+        r#""workspaces": {{ "kind": "workspaces", "path": "{}", "quests": "{}" }}"#,
+        workspaces.display(),
+        quests.display()
+    ));
+    let earlier = Earlier {
+        processes: &[],
+        finished: &|_| false,
+        ran: &BTreeMap::new(),
+        uses: &Uses::default(),
+    };
+    let later = now() + 7.0 * 3_600.0;
+    let (found, _, sizes) = surveyed_after(&config, &earlier, later, Sizes::default());
+    let first = find(&found, &run).candidate.size;
+    assert!(first > 0, "the run's log wasn't counted: {found:?}");
+    assert_eq!(sizes.walked, 1, "the run wasn't sized once");
+    let (found, _, sizes) = surveyed_after(&config, &earlier, later + 60.0, sizes);
+    assert_eq!(sizes.walked, 1, "a run unwritten since was walked again");
+    assert_eq!(
+        find(&found, &run).candidate.size,
+        first,
+        "a run known unwritten since changed its size"
+    );
+    file(&run.join("more"), &"y".repeat(20_000));
+    let (found, _, sizes) = surveyed_after(&config, &earlier, later + 120.0, sizes);
+    assert_eq!(sizes.walked, 2, "a run written since wasn't sized again");
+    assert!(
+        find(&found, &run).candidate.size > first,
+        "a run written since kept its old size"
+    );
 }
 
 #[test]
