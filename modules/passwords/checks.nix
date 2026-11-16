@@ -2,12 +2,14 @@
 # folder's; its opening comment says what each kind of check proves.
 {
   account,
+  bareNixos,
   graphical,
   holds,
   lib,
   onLinux,
   passesClippy,
   pkgs,
+  self,
   shellFolderLint,
   ...
 }:
@@ -119,6 +121,30 @@ onLinux {
         && home.jitsusama.passwords.managers ? "1password"
         && lib.any (lib.hasSuffix "/op") home.jitsusama.passwords.managers."1password".command
         && map (manager: manager.program) (provider.managers or [ ]) == [ "com.onepassword.OnePassword" ]
+      );
+  # A release listed while the Passwords place is off answers nothing:
+  # the daemon isn't told it answers asks, Asks isn't in the launcher to
+  # draw what it would serve, and the machine is warned that releases need
+  # the place on, rather than binding Asks to a place with no daemon.
+  releases-wait-for-the-passwords-place =
+    let
+      home = account (bareNixos [
+        self.nixosModules.graphical
+        {
+          home-manager.sharedModules = [
+            { jitsusama.passwords.releases = [ "op://Private/Kiln/password" ]; }
+          ];
+        }
+      ]);
+      providers = home.jitsusama.quickshell.launcher.providers;
+    in
+    holds "releases-wait-for-the-passwords-place"
+      "A release listed with the Passwords place off still asks the daemon to answer, draws Asks, or warns of nothing."
+      (
+        (providers.passwords.off or false)
+        && !(providers.passwords.answersAsks or true)
+        && !(providers.asks.enable or false)
+        && lib.any (lib.hasInfix "jitsusama.passwords.releases") home.warnings
       );
   # While the place is off, the shell's own config names no passwords
   # daemon, so an unfenced process that rewrites the off setting finds

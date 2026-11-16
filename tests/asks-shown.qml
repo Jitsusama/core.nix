@@ -15,6 +15,7 @@ QtObject {
             unshown();
             shown();
             changed();
+            left();
             outside();
             refused();
             Qt.exit(0);
@@ -69,6 +70,17 @@ QtObject {
             key, at(4300)).shown, undefined);
         Expect.same("nor does a yes for another ask's line", Shown.stamped(yes("d1"), seen,
             "row:asks:ffffffffffffffffffffffffffffffff", at(4300)).shown, undefined);
+    }
+
+    function left() {
+        const seen = Shown.noted({}, key, "d1", 1200);
+        Expect.same("the selected line's frame is kept while it stays selected",
+            Shown.kept(seen, key), seen);
+        const away = Shown.kept(seen, "row:passwords:entry:keeping:gh");
+        Expect.same("a line no longer selected is forgotten, so coming back counts afresh",
+            Shown.stamped(yes("d1"), away, key, at(9000)).shown, undefined);
+        Expect.same("as it is with nothing selected", Object.keys(Shown.kept(seen, undefined)),
+            []);
     }
 
     function outside() {

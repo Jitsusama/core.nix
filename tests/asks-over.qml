@@ -32,7 +32,7 @@ ShellRoot {
         return { key: root.key, kind: "row", row: {
             key: root.key, thing, place: "asks", kind: "ask", state: "waiting",
             name: "op://Private/Kiln/password", glyph: "passwords", hue: "action",
-            note: "S1", side: [], attention: 1000, digest,
+            note: "S1", side: [], attention: 1000, digest, order: 1024,
             acts: [act("release"), act("refuse")],
             drawer: { eyebrow: "S1", title: "op://Private/Kiln/password",
                 body: "To fire the kiln.", facts: [] }
@@ -138,6 +138,7 @@ ShellRoot {
             arming();
             shown();
             reopened();
+            left();
             changed();
             outside();
             refused();
@@ -174,6 +175,15 @@ ShellRoot {
         same("a line still selected as the launcher opens again is noted from its first frame",
             last().shown >= 700 && last().shown < 5000, true);
         same("in that opening", last().opening, 2);
+    }
+
+    function left() {
+        stage.selected = null;
+        stage.selected = row();
+        stage.present(100);
+        row().run();
+        same("a line selected again counts from coming back, not from when it was first shown",
+            last().shown >= 100 && last().shown < 700, true);
     }
 
     function changed() {
