@@ -43,18 +43,20 @@ function holds(one, other) {
 function faults(drawn, card) {
     const found = [];
     for (const text of drawn) {
-        if (!inside(text.ink, text.room))
+        if (!inside(text.ink, text.room)) {
             found.push({ said: text.said, fault: "past its room", with: "" });
-        else if (!inside(text.ink, card))
+        } else if (!inside(text.ink, card)) {
             found.push({ said: text.said, fault: "past the card", with: "" });
+        }
     }
     for (let at = 0; at < drawn.length; at += 1) {
         for (let next = at + 1; next < drawn.length; next += 1) {
             const one = drawn[at];
             const other = drawn[next];
             const both = holds(one, other) ? null : shared(one.ink, other.ink);
-            if (both !== null && both.width > SLACK && both.height > SLACK)
+            if (both !== null && both.width > SLACK && both.height > SLACK) {
                 found.push({ said: one.said, fault: "over", with: other.said });
+            }
         }
     }
     return found;
