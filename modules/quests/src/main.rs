@@ -4,9 +4,10 @@
 //! systemd holds for it, each watch told only the rows that moved. A
 //! search finds among every quest, ended ones too (search.rs).
 //!
-//! Usage: `quests --vocabulary WORDS --node NODE --socket SOCKET`, where
-//! WORDS is the launcher's `words.json` and NODE the mycelium node's
-//! socket. A quest with no folder of its own starts in `$HOME`.
+//! Its unit alone starts it, in the terminal kit's shape, as
+//! `quests --help` says (`help()`): `--vocabulary` is the launcher's
+//! `words.json` and `--node` the mycelium node's socket. A quest with no
+//! folder of its own starts in `$HOME`.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -20,6 +21,7 @@ use quests::served::{self, Inputs};
 use quests::words::Words;
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
+use terminal_kit::{Exit, Failure, Help, flags};
 
 /// The daemon as the launcher knows it: Quests' ready rows, and how many
 /// are open.
@@ -30,7 +32,8 @@ const DOMAIN: Domain = Domain {
     named_only: &[],
 };
 
-const USAGE: &str = "usage: quests --vocabulary WORDS --node NODE --socket SOCKET";
+/// The flags its unit hands it, each with a value.
+const FLAGS: [&str; 3] = ["--vocabulary", "--node", "--socket"];
 
 /// Something the node said, of one of its watches.
 enum Heard {
@@ -46,36 +49,82 @@ struct Args {
     socket: PathBuf,
 }
 
-fn args() -> Option<Args> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let named = |flag: &str| {
-        let at = args.iter().position(|one| one == flag)?;
-        args.get(at + 1).map(PathBuf::from)
-    };
-    Some(Args {
-        vocabulary: named("--vocabulary")?,
-        node: named("--node")?,
-        socket: named("--socket")?,
-    })
+/// What `quests --help` says: how its unit runs it, and how it ends.
+fn help() -> Help {
+    Help::new("quests", "makes Quests' rows ready for the launcher")
+        .example(
+            "quests --vocabulary FILE --node SOCKET --socket SOCKET",
+            "as its unit runs it",
+        )
+        .option(
+            "--vocabulary FILE",
+            "the launcher's words, which rows are said in",
+        )
+        .option("--node SOCKET", "the mycelium node, which says the quests")
+        .option(
+            "--socket SOCKET",
+            "where the launcher asks, unless systemd hands one",
+        )
+        .exit(Exit::Failed, "its socket couldn't be listened on")
+        .exit(Exit::Usage, "asked other than its unit asks")
+        .exit(Exit::Config, "the launcher's words couldn't be read")
+}
+
+/// Where it reads and serves, from what its unit hands it.
+fn asked(args: &[String]) -> Result<Args, Failure> {
+    let wrongly = |what: String| Failure::new(Exit::Usage, what).try_this("quests --help");
+    let [mut vocabulary, mut node, mut socket] = [None, None, None];
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        let held = match arg.as_str() {
+            "--vocabulary" => &mut vocabulary,
+            "--node" => &mut node,
+            "--socket" => &mut socket,
+            flag if flag.starts_with('-') => return Err(flags::unknown("option", flag, &FLAGS)),
+            word => return Err(wrongly(format!("quests takes no word like {word}"))),
+        };
+        let value = args
+            .next()
+            .ok_or_else(|| wrongly(format!("{arg} needs a value")))?;
+        *held = Some(PathBuf::from(value));
+    }
+    let missing: Vec<&str> = FLAGS
+        .into_iter()
+        .zip([&vocabulary, &node, &socket])
+        .filter_map(|(flag, value)| value.is_none().then_some(flag))
+        .collect();
+    match (vocabulary, node, socket) {
+        (Some(vocabulary), Some(node), Some(socket)) => Ok(Args {
+            vocabulary,
+            node,
+            socket,
+        }),
+        _ => Err(wrongly(format!("quests needs {}", flags::and(&missing)))),
+    }
 }
 
 fn main() -> ExitCode {
-    let Some(args) = args() else {
-        eprintln!("{USAGE}");
-        return ExitCode::from(2);
-    };
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        serve_quests(&asked(&context.args)?)
+    })
+}
+
+/// Follows the node's quests and serves their rows for as long as it
+/// runs.
+fn serve_quests(args: &Args) -> Result<(), Failure> {
     // Started without the launcher's words, it would serve a summary
     // saying nothing, so it says why and stops for systemd to start again.
     let read = std::fs::read_to_string(&args.vocabulary).map_err(|why| why.to_string());
-    let words =
-        match read.and_then(|text| Words::from_vocabulary(&text).map_err(|why| why.to_string())) {
-            Ok(words) => words,
-            Err(why) => {
-                let path = args.vocabulary.display();
-                eprintln!("quests: can't read the vocabulary {path}: {why}");
-                return ExitCode::FAILURE;
-            }
-        };
+    let words = read
+        .and_then(|text| Words::from_vocabulary(&text).map_err(|why| why.to_string()))
+        .map_err(|why| {
+            let path = args.vocabulary.display();
+            Failure::new(
+                Exit::Config,
+                format!("it couldn't read the words in {path}"),
+            )
+            .because(why)
+        })?;
     let home = std::env::var("HOME").unwrap_or_default();
     // What a search finds among, every quest as last made, shared with
     // the asks each connection answers.
@@ -92,17 +141,16 @@ fn main() -> ExitCode {
         Some(answer)
     });
     let shared = Shared::new(DOMAIN, own);
-    match serve::listen(&args.socket) {
-        Ok(listener) => serve::accept(Arc::clone(&shared), listener),
-        Err(why) => {
-            eprintln!("quests: can't listen on {}: {why}", args.socket.display());
-            return ExitCode::FAILURE;
-        }
-    }
+    let listener = serve::listen(&args.socket).map_err(|why| {
+        let socket = args.socket.display();
+        Failure::new(Exit::Failed, format!("it couldn't listen on {socket}"))
+            .because(why.to_string())
+    })?;
+    serve::accept(Arc::clone(&shared), listener);
     let (to, heard) = mpsc::channel();
     follow(args.node.clone(), "quest", Heard::Open, to.clone());
     follow(args.node.clone(), "ended-quest", Heard::Ended, to.clone());
-    follow(args.node, "session", Heard::Sessions, to);
+    follow(args.node.clone(), "session", Heard::Sessions, to);
     let (mut open, mut ended, mut sessions) = (Held::default(), Held::default(), Held::default());
     let mut kept = Kept::default();
     while let Ok(first) = heard.recv() {
@@ -133,5 +181,5 @@ fn main() -> ExitCode {
             shared.change(kept.all().cloned().collect(), json!({}));
         }
     }
-    ExitCode::SUCCESS
+    Ok(())
 }
