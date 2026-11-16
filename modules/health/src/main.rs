@@ -91,6 +91,14 @@ fn main() -> ExitCode {
 /// Does what the words ask: follows the journals, or shows the day's
 /// view they name, fitted to the terminal.
 fn run(context: &Context) -> Result<(), Failure> {
+    // Its views are said as text alone; a caller asking for JSON is told so
+    // rather than handed text it would fail to read.
+    if context.format().is_json() {
+        return Err(
+            Failure::new(Exit::Usage, "health says its views as text alone")
+                .try_this("health --help --format json"),
+        );
+    }
     let Asked { into, day, view } = cli::read(&context.args)?;
     let into = into.unwrap_or_else(kept_in);
     if view == View::Follow {

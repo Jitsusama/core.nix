@@ -45,6 +45,10 @@ pub fn help() -> Help {
         .example("health services", "the services that said most")
         .example("health chrome", "what each thing called chrome kept saying")
         .example(
+            "health -- -x",
+            "words that open with a dash, looked for too",
+        )
+        .example(
             "health boot --day 2026-11-12",
             "that day's boots, stage by stage",
         )
@@ -98,11 +102,17 @@ pub fn help() -> Help {
         .exit(Exit::Failed, "the day's file couldn't be opened")
 }
 
-/// One of the day's views, read from its file as the day is.
+/// One of the day's views, read from its file as the day is. Words after
+/// its name are looked for with it, as `health launcher shell` always
+/// was, rather than refused.
 fn view(name: &str, words: &str) -> Help {
     Help::new(name, words)
         .example(&format!("health {name}"), "today's")
         .example(&format!("health {name} --day 2026-11-12"), "that day's")
+        .argument(
+            "[more]...",
+            "looked for with its name in the names of what spoke, not shown as the view",
+        )
         .option("--day DATE", "another day, as 2026-11-12")
         .exit(Exit::NotFound, "nothing was kept for the day")
         .exit(Exit::BadInput, "the day's file can't be read")
@@ -136,6 +146,15 @@ pub fn read(words: &[String]) -> Result<Asked, Failure> {
     let mut rest = Vec::new();
     let mut words = words.iter();
     while let Some(word) = words.next() {
+        // Past `--`, every word is looked for, a dash before it or not.
+        if word == "--" {
+            rest.extend(words.by_ref().cloned());
+            break;
+        }
+        // The kit reads these itself, to say a failure in full.
+        if word == "-v" || word == "--verbose" {
+            continue;
+        }
         // A lone `-` is a word, as the kit's walk takes it.
         if !word.starts_with('-') || word.len() == 1 {
             rest.push(word.clone());
@@ -210,6 +229,31 @@ mod tests {
         )
     }
 
+    /// The command the kit's walk took a line to, as `health boot`.
+    fn path(line: &str) -> String {
+        let words: Vec<String> = line.split_whitespace().map(str::to_owned).collect();
+        let help = help();
+        walk(&help, &words).map_or_else(
+            |failure| format!("refused: {}", failure.what),
+            |walked| walked.path(),
+        )
+    }
+
+    #[test]
+    fn each_view_is_walked_to_by_its_name_and_its_help_is_its_own() {
+        for (line, to) in [
+            ("boot", "health boot"),
+            ("services", "health services"),
+            ("follow", "health follow"),
+            ("--into /kept boot", "health boot"),
+            ("boot --day 2026-11-12", "health boot"),
+            ("chrome", "health"),
+            ("-- boot", "health"),
+        ] {
+            assert_eq!(path(line), to, "{line} was walked elsewhere");
+        }
+    }
+
     #[test]
     fn each_view_answers_to_its_name_and_other_words_are_looked_for() {
         assert_eq!(view(""), View::Day, "a bare health didn't show the day");
@@ -234,6 +278,16 @@ mod tests {
             "words weren't looked for together"
         );
         assert_eq!(view("follow"), View::Follow, "follow wasn't the daemon");
+        assert_eq!(
+            view("launcher shell"),
+            View::Words("launcher shell".into()),
+            "words after a view's name weren't looked for with it"
+        );
+        assert_eq!(
+            view("-- -x boot"),
+            View::Words("-x boot".into()),
+            "words past -- weren't looked for whole"
+        );
     }
 
     #[test]
@@ -246,6 +300,8 @@ mod tests {
         );
         assert_eq!(both.day.as_deref(), Some("2026-11-12"), "the day was lost");
         assert_eq!(both.view, View::Words("boot".into()), "the view was lost");
+        let loud = asked("boot -v").expect("the kit's -v was refused");
+        assert_eq!(loud.view, View::Words("boot".into()), "-v was looked for");
         let joined = asked("--day=2026-11-11").expect("a flag with = was taken");
         assert_eq!(
             joined.day.as_deref(),
@@ -256,7 +312,7 @@ mod tests {
 
     #[test]
     fn a_flag_it_doesnt_read_or_without_its_value_is_asked_wrongly() {
-        for line in ["--dya 2026-11-12", "boot --day", "boot again"] {
+        for line in ["--dya 2026-11-12", "boot --day", "follow again"] {
             let failure = asked(line)
                 .err()
                 .unwrap_or_else(|| panic!("{line} was taken"));
@@ -300,6 +356,14 @@ mod tests {
         assert!(
             day_in(kept.path(), "2026-11-11").is_ok(),
             "a kept day wasn't read"
+        );
+        fs::create_dir(follow::file_of(kept.path(), "2026-11-10")).expect("a folder for a day");
+        let unopened = day_in(kept.path(), "2026-11-10").expect_err("a folder was read as a day");
+        assert_eq!(
+            unopened.exit,
+            Exit::Failed,
+            "a day that couldn't be opened ended {:?}",
+            unopened.exit
         );
     }
 }
