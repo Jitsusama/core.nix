@@ -35,6 +35,7 @@
 mod ask;
 #[cfg(test)]
 mod contract;
+mod degraded;
 mod model;
 mod page;
 mod read;
