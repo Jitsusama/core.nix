@@ -231,6 +231,21 @@ mod tests {
     }
 
     #[test]
+    fn the_quarantine_list_is_no_part_of_the_crate_it_sits_in() {
+        let crates = Crates::of("c:tools/merge-net/Cargo.toml:1:[package]\n");
+        let list = files(&["tools/merge-net/quarantine.json"]);
+        let code = files(&["tools/merge-net/src/earlier.rs"]);
+        assert!(
+            crates.beside(&list, &code).is_empty(),
+            "a change to the list alone shared the crate's code moving on main"
+        );
+        assert!(
+            crates.beside(&code, &list).is_empty(),
+            "the list moving on main was counted as the crate's code"
+        );
+    }
+
+    #[test]
     fn a_crate_read_through_another_is_reached() {
         let grep = "c:a/Cargo.toml:1:[package]\nc:a/Cargo.toml:5:b = { path = \"../b\" }\n\
             c:b/Cargo.toml:1:[package]\nc:b/Cargo.toml:5:c = { path = \"../c\" }\n\
