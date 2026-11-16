@@ -16,10 +16,17 @@
 //! run against a base that isn't the merge base or before it, such as a
 //! branch it was stacked on, isn't.
 //!
+//! A head rebased over a main that moved none of its files has no run of
+//! its own, but an earlier commit of the same change does, and `ready`
+//! already merges it on that run (`ready::Before::Clean`). At 09:09 on 16
+//! November `needs` at #5018, so rebased, evaluated for 534 seconds what
+//! its earlier pass had named, so that run is read for it too.
+//!
 //! Each `needs` keeps a line in `needs.jsonl` under the net's state folder,
 //! `{at, head, seconds, asked}`: when, the head, how long it took, and
-//! whether it read a gate's run (`gate`), asked changed-checks (`changed`)
-//! or asked nothing (`none`), so the card can say what `needs` costs.
+//! whether it read a gate's run (`gate`), an earlier commit's (`earlier`),
+//! asked changed-checks (`changed`) or asked nothing (`none`), so the card
+//! can say what `needs` costs.
 
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -75,8 +82,10 @@ pub fn kept(
     if !clean {
         return None;
     }
-    let _ = earlier;
-    named(record, base, crate::SYSTEM, before).map(|said| (said, Asked::Gate))
+    if let Some(said) = named(record, base, crate::SYSTEM, before) {
+        return Some((said, Asked::Gate));
+    }
+    named(&earlier()?, base, crate::SYSTEM, before).map(|said| (said, Asked::Earlier))
 }
 
 /// What moved from `base` at the head, and how it was learned: from what
@@ -249,7 +258,7 @@ mod tests {
     fn a_rebased_head_is_answered_by_its_change_s_earlier_pass() {
         // On 16 November #5018's gate passed at f8b9be72; rebased over
         // main moving none of its files, needs at the new head had no run
-        // of its own and evaluated every check again for ten minutes.
+        // of its own and evaluated every check again for nine minutes.
         let earlier = run("\"--system\",\"x86_64-linux\"", "changed  vm-a\\n");
         let mut asked = 0;
         let rebased = kept("", true, BASE, &before, || Some(earlier.clone()));
