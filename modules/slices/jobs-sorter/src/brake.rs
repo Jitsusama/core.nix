@@ -93,7 +93,8 @@ pub fn quota_for(calling: bool, processors: usize) -> u64 {
 #[derive(Default)]
 pub struct Brake {
     stands: [Option<bool>; 2],
-    failed: [Option<Instant>; 2],
+    /// When a set last failed, and whether it was to brake.
+    failed: [Option<(Instant, bool)>; 2],
     lost: [Option<Instant>; 2],
 }
 
@@ -111,13 +112,16 @@ impl Brake {
     }
 
     /// The places in [`BRAKED`] of the slices to set `now`, with a call
-    /// `calling` or not: those not already standing so, but for one that
-    /// failed less than [`AGAIN`] ago.
+    /// `calling` or not: those not already standing so, but for one whose
+    /// set the same way failed less than [`AGAIN`] ago. A let-go that
+    /// failed as a call ended doesn't hold back the brake for the next.
     pub fn due(&self, calling: bool, now: Instant) -> Vec<usize> {
         (0..BRAKED.len())
             .filter(|&slice| self.stands[slice] != Some(calling))
             .filter(|&slice| {
-                self.failed[slice].is_none_or(|at| now.saturating_duration_since(at) >= AGAIN)
+                self.failed[slice].is_none_or(|(at, braking)| {
+                    braking != calling || now.saturating_duration_since(at) >= AGAIN
+                })
             })
             .collect()
     }
@@ -128,11 +132,12 @@ impl Brake {
         self.failed[slice] = None;
     }
 
-    /// Setting the slice at `slice` failed `now`. It may have landed
-    /// late, as a set that timed out can, so it's unknown until set again.
-    pub fn failed(&mut self, slice: usize, now: Instant) {
+    /// Setting the slice at `slice` failed `now`, `calling` or not. It may
+    /// have landed late, as a set that timed out can, so it's unknown
+    /// until set again.
+    pub fn failed(&mut self, slice: usize, calling: bool, now: Instant) {
         self.stands[slice] = None;
-        self.failed[slice] = Some(now);
+        self.failed[slice] = Some((now, calling));
     }
 
     /// The places of the slices the brake set that `read` finds with no
@@ -155,7 +160,7 @@ impl Brake {
             let again =
                 self.lost[place].is_some_and(|at| now.saturating_duration_since(at) < AGAIN);
             self.stands[place] = None;
-            self.failed[place] = again.then_some(now);
+            self.failed[place] = again.then_some((now, true));
             self.lost[place] = Some(now);
         }
         lost
@@ -262,7 +267,7 @@ mod tests {
         let now = Instant::now();
         let mut brake = Brake::default();
         brake.set(0, true);
-        brake.failed(1, now);
+        brake.failed(1, false, now);
         assert_eq!(
             brake.due(false, now + Duration::from_secs(1)),
             [0],
@@ -274,13 +279,20 @@ mod tests {
             "a refused slice wasn't tried again once it had waited"
         );
         assert!(!brake.stands(true), "a half-set brake stood as braked");
-        // A set that timed out may land late, so it's unknown both ways.
+        // A let-go that timed out may have landed, so the slice is unknown
+        // both ways, and it doesn't hold back the brake for a call that
+        // starts again.
         brake.set(1, true);
-        brake.failed(1, now);
+        brake.failed(1, false, now);
         assert_eq!(
-            brake.due(true, now + AGAIN),
+            brake.due(true, now),
+            [1],
+            "a failed let-go held back the next call's brake"
+        );
+        assert_eq!(
+            brake.due(false, now + AGAIN),
             [0, 1],
-            "a slice whose set failed was taken as standing"
+            "a slice whose let-go failed was taken as let go"
         );
     }
 
@@ -329,6 +341,18 @@ mod tests {
             brake.due(true, soon + AGAIN),
             [1],
             "it wasn't set again once it waited"
+        );
+        brake.set(1, true);
+        let later = soon + AGAIN + AGAIN;
+        assert_eq!(
+            brake.check(read, QUOTA, later),
+            [1],
+            "a later clearing went unseen"
+        );
+        assert_eq!(
+            brake.due(true, later),
+            [1],
+            "a clearing long after the last wasn't set again at once"
         );
         brake.set(1, true);
         cpu_max.borrow_mut()[0] = Some("800000 100000\n");

@@ -1891,6 +1891,12 @@ fn brake_for_calls(doorway: &mut Doorway, account: &Path) {
         Vec::new()
     };
     let due = doorway.brake.due(calling, now);
+    for place in lost.iter().filter(|place| !due.contains(place)) {
+        eprintln!(
+            "Found {} let go again mid-call, so it's braked again once 30 s have passed.",
+            brake::BRAKED[*place].1
+        );
+    }
     if due.is_empty() {
         return;
     }
@@ -1908,15 +1914,25 @@ fn brake_for_calls(doorway: &mut Doorway, account: &Path) {
                     eprintln!("Found {slice} let go mid-call, and braked it again.");
                 }
             }
+            // A let-go refused on a slice that holds no quota, as polkit
+            // refuses build.slice to an account outside wheel, stands let
+            // go, rather than being asked again for good.
+            Ok(_)
+                if !calling
+                    && braked_cpu_max(place, account)
+                        .is_some_and(|cpu_max| !brake::holds(&cpu_max, u64::MAX)) =>
+            {
+                doorway.brake.set(place, false);
+            }
             Ok(output) => {
-                doorway.brake.failed(place, now);
+                doorway.brake.failed(place, calling, now);
                 eprintln!(
                     "Couldn't set {slice}'s quota for a call: {}",
                     String::from_utf8_lossy(&output.stderr).trim()
                 );
             }
             Err(error) => {
-                doorway.brake.failed(place, now);
+                doorway.brake.failed(place, calling, now);
                 eprintln!("Couldn't run busctl to set {slice}'s quota for a call: {error}");
             }
         }
