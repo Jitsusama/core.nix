@@ -30,8 +30,15 @@ nix-darwin.lib.darwinSystem {
         home-manager.users.joel = {
           home.stateVersion = "26.05";
 
-          # A module no role brings, so it meets the others here first.
-          imports = [ core.homeModules.health ];
+          # Modules no role brings, so they meet the others here first.
+          imports = [
+            core.homeModules.health
+            core.homeModules.nix-offload
+          ];
+
+          # A Mac has no way to the builders, so another machine gates its
+          # commits through mycelium.
+          jitsusama.nix-offload.gatesOn = "kestrel";
 
           # Setting one of core's options, the way a machine is meant to
           # change what core expects to vary.

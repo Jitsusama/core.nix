@@ -19,6 +19,14 @@
 //! listens, beside any other relay on that port, and told to leave
 //! (SIGUSR1) it takes no new connection and ends once its last closes.
 //!
+//! `nix-offload ask --quest QUEST` on a machine with no way to the
+//! builders, such as a Mac, has the machine that gates run `there
+//! --changed` for its tree's commit through mycelium, which starts
+//! `nix-offload answer QUEST COMMIT` there, as src/gate.rs says.
+//! `nix-offload outside -- there WORD...` runs a call in the environment
+//! the agent fence's exemption gives it, and grants nothing by itself, as
+//! src/outside.rs says.
+//!
 //! `nix-offload progress HOST` says how far the builds on a lent builder
 //! have got, as src/progress.rs says.
 //!
@@ -154,12 +162,14 @@ mod command;
 mod decide;
 mod finishing;
 mod freeing;
+mod gate;
 mod held;
 mod journal;
 mod keep;
 mod kept;
 mod lines;
 mod machines;
+mod outside;
 mod passed;
 mod progress;
 mod proof;
@@ -266,6 +276,11 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload passed (forget COMMIT | import | ran COMMIT) \
                     | nix-offload report --rate DOLLARS \
                     | nix-offload progress HOST \
+                    | nix-offload ask --quest QUEST [--session ADDRESS] [--on MACHINE] \
+                    [--longest SECONDS] \
+                    | nix-offload answer QUEST COMMIT \
+                    | nix-offload outside [--git-dir DIR --work-tree DIR] [--lent-only] \
+                    -- there WORD... \
                     | nix-offload there [--never-ask] [-L] [--keep-going] [--apply FUNCTION] \
                     [--out DIR] [--print-out-paths] [--here] [--here-when-idle] [--outlive] \
                     [--bulk] [--first] [--lent-only] \
@@ -469,6 +484,13 @@ fn main() -> ExitCode {
     };
     if arguments.first().map(String::as_str) == Some("there") {
         return there(&arguments[1..]);
+    }
+    match arguments.first().map(String::as_str) {
+        Some("ask") => return gate::ask::ask(&arguments[1..]),
+        Some("answer") => return gate::answer::answer(&arguments[1..], &state()),
+        Some("outside") => return outside::outside(&arguments[1..]),
+        Some("scoped") => return gate::fence::scoped(&arguments[1..]),
+        _ => {}
     }
     if let [command, host] = arguments.as_slice()
         && command == "progress"

@@ -43,6 +43,8 @@ nixpkgs.lib.nixosSystem {
               builds = 6;
               more.prefix = "example-offload-vm2-";
             };
+            # A Mac's commits of this repo gated here, as it asks.
+            gateRepos = [ "github:joel/core.nix" ];
           };
 
           # Setting one of core's options, the way a machine is meant to

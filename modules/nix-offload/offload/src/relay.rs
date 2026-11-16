@@ -186,11 +186,22 @@ fn shared(address: SocketAddr) -> io::Result<TcpListener> {
         SocketAddr::V4(_) => libc::AF_INET,
         SocketAddr::V6(_) => libc::AF_INET6,
     };
+    // A Mac takes no SOCK_CLOEXEC, so it's set once the socket is made
+    // there; a Mac only ever asks for a gate, and runs no relay.
+    #[cfg(target_os = "linux")]
+    let kind = libc::SOCK_STREAM | libc::SOCK_CLOEXEC;
+    #[cfg(not(target_os = "linux"))]
+    let kind = libc::SOCK_STREAM;
     // SAFETY: a new socket, owned by the listener from here, which closes
     // it on any failure below.
-    let fd = unsafe { libc::socket(family, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0) };
+    let fd = unsafe { libc::socket(family, kind, 0) };
     failed(fd)?;
     let listener = unsafe { TcpListener::from_raw_fd(fd) };
+    #[cfg(not(target_os = "linux"))]
+    {
+        // SAFETY: a flag on a socket the listener owns.
+        failed(unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) })?;
+    }
     let set = |level, option| {
         let on: libc::c_int = 1;
         // SAFETY: an int option on a socket this owns.
