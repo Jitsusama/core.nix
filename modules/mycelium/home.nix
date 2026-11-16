@@ -167,9 +167,179 @@ let
       };
     }
   );
-  # What a machine may say of itself, and the flows between realms
-  # (declares.nix).
-  inherit (import ./declares.nix { inherit lib isLinux name; }) declares flow;
+  taint = lib.types.submodule {
+    options = {
+      key = lib.mkOption {
+        type = name;
+        description = "What work names to tolerate the taint.";
+      };
+      effect = lib.mkOption {
+        type = lib.types.enum [
+          "never"
+          "prefer_not"
+        ];
+        description = ''
+          How hard it refuses work that doesn't tolerate it: never, or only
+          while anywhere else will do.
+        '';
+      };
+      why = lib.mkOption {
+        type = lib.types.str;
+        description = "Why, for a person reading where work went.";
+      };
+    };
+  };
+  declares = lib.types.submodule {
+    options = {
+      reach = lib.mkOption {
+        type = lib.types.listOf name;
+        example = [
+          "home"
+          "internet"
+        ];
+        description = "The networks work on this machine always reaches, wherever it is.";
+      };
+      probes = lib.mkOption {
+        type = lib.types.attrsOf (lib.types.either lib.types.str (lib.types.listOf lib.types.str));
+        default = { };
+        example = {
+          home = "router.lan:53";
+          office = [
+            "/run/current-system/sw/bin/test"
+            "-e"
+            "/run/office"
+          ];
+        };
+        # The node tries each every 30 seconds, giving it 3 to answer. A
+        # command suits a network an address can't tell apart, such as one
+        # known by its Wi-Fi or a tunnel's link; it runs with no shell.
+        description = "Networks reached at times, each by a host:port or command answering only then.";
+      };
+      outlives = lib.mkOption {
+        type = lib.types.listOf (
+          lib.types.enum [
+            "window_close"
+            "node_restart"
+            "sleep"
+            "reboot"
+          ]
+        );
+        # A held session's holder is a process of its own, apart from its
+        # window and the node, which Linux keeps through a suspend.
+        default = lib.optionals isLinux [
+          "window_close"
+          "node_restart"
+          "sleep"
+        ];
+        description = "What a session held on this machine outlives.";
+      };
+      costsMoney = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Whether work on this machine costs money.";
+      };
+      taints = lib.mkOption {
+        type = lib.types.listOf taint;
+        default = [ ];
+        description = ''
+          What this machine refuses, or would rather not take, each by a key
+          work tolerates it by. The machine enforces its own.
+        '';
+      };
+      within = lib.mkOption {
+        type = lib.types.nullOr another;
+        default = null;
+        example = {
+          machine = "host-machine";
+          file = "/run/host/said.json";
+        };
+        description = ''
+          The machine this one runs within, as a virtual machine runs in its
+          host, and the file, as this machine reaches it, in which the host
+          says its power and room, which this machine then has as its own.
+        '';
+      };
+      hosts = lib.mkOption {
+        type = lib.types.listOf another;
+        default = [ ];
+        description = ''
+          The machines that run within this one, each with the file, as this
+          machine reaches it, that its node writes its power and room to
+          each minute.
+        '';
+      };
+      # A carry an orchestrator orders lands only on ground at least as
+      # firm as the session's own, judged from what each machine says
+      # here; a kind left unsaid is one no ordered carry lands in, so the
+      # default refuses them all.
+      fence = lib.mkOption {
+        type = lib.types.submodule {
+          options = lib.genAttrs [ "none" "fence" "strict" ] (
+            kind:
+            lib.mkOption {
+              type = lib.types.nullOr doors;
+              default = null;
+              description = "The doors a session run ${kind} opens here, or null if none runs.";
+            }
+          );
+        };
+        default = { };
+        example.strict = {
+          builders = [ "remote" ];
+          forges = [ "github" ];
+          secrets = [ ];
+        };
+        description = ''
+          The fences an agent session runs in here, by kind, unfenced (none),
+          fenced (fence) or strictly fenced (strict), each with the doors it
+          opens, so an orchestrator's carry never lands looser than it left.
+        '';
+      };
+    };
+  };
+  # What a fence opens, each door named as the fence's settings name it.
+  # Each is said, since a door left out would read as one shut.
+  doors = lib.types.submodule {
+    options = {
+      builders = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        description = "The builders a fenced command may build on.";
+      };
+      forges = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        description = "The forges a fenced command may reach.";
+      };
+      secrets = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        description = "The secrets released to a fenced command.";
+      };
+    };
+  };
+  # One machine within another, as either names it.
+  another = lib.types.submodule {
+    options = {
+      machine = lib.mkOption {
+        type = name;
+        description = "The other machine's name in the realm.";
+      };
+      file = lib.mkOption {
+        type = lib.types.str;
+        description = "The file the two share, as this machine reaches it.";
+      };
+    };
+  };
+  flow = lib.types.submodule {
+    options = {
+      from = lib.mkOption {
+        type = name;
+        description = "The realm whose text may cross.";
+      };
+      to = lib.mkOption {
+        type = name;
+        description = "The realm it may cross into.";
+      };
+    };
+  };
   # The flows a realm's node keeps: each realm its text may cross into,
   # and each whose text it takes.
   flowsOf =
@@ -214,10 +384,6 @@ let
     ++ [
       "--serves"
       (servesFile realm)
-    ]
-    ++ lib.optionals (cfg.healthSocket != null) [
-      "--health-socket"
-      cfg.healthSocket
     ];
   # The harness's files a realm's node serves whoever reads it, the
   # launcher first, each as a kind of records: the realm's open quests and
@@ -466,18 +632,6 @@ in
         What this machine says of itself that its node can't measure, for
         work to be placed by, or null to declare nothing, which mycelium
         reads as unknown.
-      '';
-    };
-    healthSocket = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = if isLinux then "%t/daemons/system.sock" else null;
-      defaultText = lib.literalExpression ''"%t/daemons/system.sock" on Linux, else null'';
-      description = ''
-        The socket of the daemon that says how this machine stands, whose
-        words each node carries in the machine record it shares, so every
-        machine of the realm sees them; or null to carry none. The system
-        daemon's on Linux, where `%t` is the user's runtime folder. A socket
-        nobody answers reads as health unknown.
       '';
     };
     agents = lib.mkOption {

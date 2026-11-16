@@ -1619,11 +1619,6 @@
     the launcher reads it; and each node restarts when what it serves changes, since it reads
     that only as it starts
   '';
-  mycelium-says-how-its-machine-stands = ''
-    each of a Linux machine's mycelium nodes, in its home realm or a further one, is given the
-    system daemon's socket, whose words its machine record carries; a Mac's node, and one on a
-    machine naming no socket, is given none
-  '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session
     outlives, whether work costs money, its taints, its agents by realm, the fences its agent

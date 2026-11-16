@@ -398,7 +398,7 @@ in
         )) otherNode
         && bothLinux.mycelium-other.Service.Environment == [ "SSH_AUTH_SOCK=%t/other-link.sock" ]
         && bothLinux.mycelium-other.Unit.Wants == [ "other-link.socket" ]
-        && lib.hasInfix "--realm home node --ssh one --serves /home/someone/.config/mycelium/serves-home.json --health-socket %t/daemons/system.sock" (
+        && lib.hasInfix "--realm home node --ssh one --serves /home/someone/.config/mycelium/serves-home.json" (
           toString bothLinux.mycelium.Service.ExecStart
         )
         && bothLinux.mycelium.Service.Environment == [ "SSH_AUTH_SOCK=%t/agent-signing.sock" ]
@@ -528,7 +528,7 @@ in
             };
             talk.talks = "${state}/pi/agentic-harness.pi/realms/other/steer";
           }
-        && lib.hasSuffix "--serves /home/someone/.config/mycelium/serves-other.json --health-socket %t/daemons/system.sock" otherNode
+        && lib.hasSuffix "--serves /home/someone/.config/mycelium/serves-other.json" otherNode
         && !(apart.xdg.configFile ? "mycelium/serves-home.json")
         # The node reads its serves file only as it starts, so a switch
         # changing what it serves restarts it.
@@ -550,35 +550,6 @@ in
                 realm = "other";
               }
             ]
-      );
-
-  # Each of a Linux machine's nodes carries in its machine record what the
-  # system daemon says of the machine, so every machine of the realm sees
-  # how it stands; a Mac has no system daemon, and a machine naming none
-  # carries nothing.
-  mycelium-says-how-its-machine-stands =
-    holds "mycelium-says-how-its-machine-stands"
-      "A Linux machine's node, in its home realm or a further one, isn't given the system daemon's socket, a Mac's node is given one, or a machine naming none is given one anyway."
-      (
-        let
-          health = [
-            "--health-socket"
-            "%t/daemons/system.sock"
-          ];
-          linuxWords = service: lib.splitString " " (toString service.Service.ExecStart);
-        in
-        lib.hasInfix (lib.concatStringsSep " " health) linuxNode
-        && lib.hasSuffix (lib.concatStringsSep " " health) otherNode
-        && !(lib.elem "--health-socket" macNode)
-        && !(lib.elem "--health-socket" (mac both).launchd.agents.mycelium-other.config.ProgramArguments)
-        && !(lib.elem "--health-socket" (
-          linuxWords (linux (links // { healthSocket = null; })).systemd.user.services.mycelium
-        ))
-        && lib.hasInfix "--health-socket /run/elsewhere.sock" (
-          toString
-            (linux (links // { healthSocket = "/run/elsewhere.sock"; }))
-            .systemd.user.services.mycelium.Service.ExecStart
-        )
       );
 
   # A machine that declares what its node can't measure has it written where
