@@ -14,6 +14,11 @@
 // data-home, its address as homes.json gives it, and the thing's own name
 // needn't link inside it.
 //
+// A name that reads as an ordinary word, lower-case letters alone such as a
+// repository called "documents" or "notes", is read only where the page sets
+// it as a name: in code, kbd or samp, or in a link. In running prose it is the
+// word, and "No documents yet" names no repository (2026-11-16).
+//
 // A check that finds nothing to test fails rather than passing, so a
 // sites.json no home site answers, or a homes.json that lists nothing, is
 // a fault, never a quiet pass.
@@ -94,6 +99,8 @@
     + "blockquote, [role='row'], [role='treeitem'], [role='listitem']";
   const skipped = "script, style, pre, title, [aria-hidden='true'], [data-map], [data-said-by], "
     + "nav.sites-strip";
+  const word = /^\p{Ll}+$/u;
+  const setAsName = "code, kbd, samp, a[href]";
   const homeOf = (thing) => place(thing.address);
   const linksTo = (element, home) => {
     const link = element?.closest("a[href]");
@@ -111,6 +118,9 @@
     }
     for (const found of text.textContent.matchAll(mention)) {
       const name = found[0];
+      if (word.test(name) && holder.closest(setAsName) === null) {
+        continue;
+      }
       const homes = byName.get(name).map(homeOf);
       const block = holder.closest(blocks) ?? holder;
       const own = holder.closest("[data-home]");
