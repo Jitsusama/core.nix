@@ -59,19 +59,10 @@ Provider {
     readonly property int lentRevision: ready.placings
 
     // Its rows, made only while the launcher is open or its rows are
-    // wanted (Provider.qml's wanted), as a walk of every row is, so shut
-    // it gives the rows it made last and a change wakes nothing. Open is
-    // wider than wanted, since a program's Recent and Programs' counts
-    // read them from Applications' steps (recentOf).
-    readonly property bool rowsWanted: provider.launcher?.open === true || provider.wanted
-    readonly property var madeRows: ({ rows: [] })
-    things: {
-        if (!provider.rowsWanted)
-            return provider.madeRows.rows;
-        const rows = ready.rows();
-        provider.madeRows.rows = rows;
-        return rows;
-    }
+    // wanted (Provider.qml's rowsWhileOpenOrWanted), so shut it gives the
+    // rows it made last and a change wakes nothing. Open counts, since a
+    // program's Recent and Programs' counts read them (recentOf).
+    things: provider.rowsWhileOpenOrWanted(() => ready.rows())
     onThingsChanged: changedTo(things)
 
     // A program's Recent: its kind's documents, the one he opened last

@@ -134,17 +134,9 @@ Provider {
     }
 
     // Its rows, made only while the launcher is open or its rows are
-    // wanted (Provider.qml's wanted), as a walk of every row is, so shut
-    // it gives the rows it made last and a change wakes nothing.
-    readonly property bool rowsWanted: provider.launcher?.open === true || provider.wanted
-    readonly property var madeRows: ({ rows: [] })
-    things: {
-        if (!provider.rowsWanted)
-            return provider.madeRows.rows;
-        const rows = ready.rows();
-        provider.madeRows.rows = rows;
-        return rows;
-    }
+    // wanted (Provider.qml's rowsWhileOpenOrWanted), so shut it gives the
+    // rows it made last and a change wakes nothing.
+    things: provider.rowsWhileOpenOrWanted(() => ready.rows())
     onThingsChanged: changedTo(things)
 
     // While the launcher is open, who's in each Meet call is asked of Meet,
