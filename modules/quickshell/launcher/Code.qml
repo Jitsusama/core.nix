@@ -8,7 +8,8 @@
 // GitHub or GitLab, else copies its path; inside are its acts, then Open a
 // File by Name, which steps into its checkout's files, the one changed last
 // first, each opened by Return in its default program. The daemon lists
-// them only while that row is ahead (`filesAhead`). Its drawer says its
+// them only while that row is ahead (`filesAhead`), and finds among them
+// what's typed there (`finds`). Its drawer says its
 // trunk, checkout and branch.
 import qs
 import Quickshell
@@ -37,13 +38,24 @@ Provider {
         // follows them.
         insideAfterActs: true
         ahead: provider.filesAhead !== "" ? [provider.filesAhead] : []
-        make: (row, key) => ready.thing(row, key, {
+        make: (row, key) => ready.thing(row, key, Object.assign({
             what: provider.what,
             hue: row.hue || "program",
             // The key it's served by, so a step into it says which.
             servedKey: key
-        })
+        }, key.endsWith(provider.files) ? { finds: provider.findsIn(key) } : {}))
     }
+
+    // What's typed in Open a File by Name, found among the files inside it
+    // by the daemon, by name or folder, as Recent's is. Made here, holding
+    // only the key, since a closure keeps all the function it's made in
+    // held (ReadyRows' thing).
+    function findsIn(key) {
+        return letters => ready.typedIn(key, letters) ?? [];
+    }
+
+    // How the key of an Open a File by Name row ends (code_rows.rs's FILES).
+    readonly property string files: ":files"
 
     // The Open a File by Name row whose checkout's files the daemon lists:
     // the one stepped into, else the one inside the repository stepped
@@ -55,8 +67,8 @@ Provider {
             return "";
         const served = (launcher.held ?? []).map(step => step.row?.servedKey ?? "")
             .filter(key => key.startsWith("row:code:"));
-        const files = served.find(key => key.endsWith(":files"));
-        return files ?? (served.length > 0 ? `${served[0]}:files` : "");
+        const files = served.find(key => key.endsWith(provider.files));
+        return files ?? (served.length > 0 ? `${served[0]}${provider.files}` : "");
     }
     // Named, so a test can tell it records as the daemon would.
     readonly property alias served: ready

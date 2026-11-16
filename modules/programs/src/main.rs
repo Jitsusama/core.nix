@@ -774,9 +774,7 @@ fn own(shared: &Arc<Shared>, said: &Value) -> Option<Value> {
     let id = said.get("id").cloned().unwrap_or(Value::Null);
     Some(match own_of(said)? {
         Own::Changed { keys, from } => told::heard(shared, &id, &keys, from),
-        Own::Search { place, words, most } => {
-            search::answer(shared, &lock(&shared.daemon), &id, &place, &words, most)
-        }
+        Own::Search(asked) => search::answer(shared, &lock(&shared.daemon), &id, &asked),
         Own::Tab(tab) => tabs::act(&id, tab),
         Own::Terminal(folder) => code::terminal(&id, &folder),
         Own::Settings(settings) => settle(shared, settings),
