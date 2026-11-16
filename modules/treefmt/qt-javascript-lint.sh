@@ -32,12 +32,15 @@ EOF
 esac
 
 copies=$(mktemp -d)
-trap 'rm -rf "$copies"' EXIT
-# Core's biome.jsonc, which the package names (qt-javascript-lint.nix),
-# goes beside the copies, since biome takes the folder holding its
+settings=$(mktemp -d)
+trap 'rm -rf "$copies" "$settings"' EXIT
+# Core's biome.jsonc, which the package names (qt-javascript-lint.nix), is
+# read from a folder of its own, since biome takes the folder holding its
 # settings for the project it indexes: read from the store, it indexed the
-# whole store, 13 GB of memory in six minutes.
-cp "${QT_JAVASCRIPT_LINT_CONFIG:?names no biome.jsonc}" "$copies/biome.jsonc"
+# whole store, 13 GB of memory in six minutes. The copies stay outside that
+# project, so biome reads each alone and never resolves an .import, which
+# names a file on QML's import path rather than one beside it.
+cp "${QT_JAVASCRIPT_LINT_CONFIG:?names no biome.jsonc}" "$settings/biome.jsonc"
 
 for file in "$@"; do
   mkdir -p "$copies/$(dirname "$file")"
@@ -50,4 +53,4 @@ for file in "$@"; do
 done
 
 cd "$copies" || exit
-biome lint --error-on-warnings --max-diagnostics=none .
+biome lint --error-on-warnings --max-diagnostics=none --config-path="$settings" .
