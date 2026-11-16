@@ -46,32 +46,6 @@
     "test": "vm-desktop-launcher-answers"
   },
   {
-    "at": 1794515309,
-    "commit": "1e94ca1cd67d2c73e02ea0d67f3d85a51f55ac53",
-    "due": "2026-11-16",
-    "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
-    "owner_pr": 3758,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at 1e94ca1cd67d",
-    "subtests": [
-      "test_calendar_typed_lists_its_next_meetings_under_it",
-      "test_quickshell_warned_of_nothing_it_drew_all_along"
-    ],
-    "test": "vm-desktop-launcher-holds-meetings"
-  },
-  {
-    "at": 1794619286,
-    "commit": "93eeb7412debd50edf5d9bcc77d90d702b7ceee9",
-    "due": "2026-11-16",
-    "owner_pr": 4157,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at 93eeb7412deb",
-    "subtests": [
-      "test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays"
-    ],
-    "test": "vm-desktop-launcher-holds-meetings"
-  },
-  {
     "at": 1794519380,
     "commit": "b0e3be7a0f1bf6c0be687e741bc129afcbb83cd7",
     "due": "2026-11-17",
@@ -121,18 +95,6 @@
     "test": "vm-disk-guard-keeps-the-disk"
   },
   {
-    "at": 1794627705,
-    "commit": "4515bb9f1e9dd08dce992c5885406b16d49da645",
-    "due": "2026-11-16",
-    "owner_pr": 4202,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at 4515bb9f1e9d",
-    "subtests": [
-      "test_a_session_its_host_wont_take_carries_on_as_plain_pi_in_its_window"
-    ],
-    "test": "vm-desktop-moves-keep-their-window"
-  },
-  {
     "at": 1794631096,
     "commit": "580dc8dbd5803c7bea2650e02ecb099ec1408af3",
     "due": "2026-11-16",
@@ -178,15 +140,6 @@
       "test_super_v_pastes_into_the_window_it_opened_over_a_terminal_or_not"
     ],
     "test": "vm-desktop-keeps-copies"
-  },
-  {
-    "at": 1794711310,
-    "commit": "c51fcc200e172b08a4e9705edeb9c397ebb75861",
-    "due": "2026-11-17",
-    "owner_pr": 4356,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at c51fcc200e17",
-    "test": "niri-tells-a-resize-at-once"
   },
   {
     "at": 1794709157,
@@ -274,18 +227,6 @@
       "test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal"
     ],
     "test": "vm-desktop-opens-files"
-  },
-  {
-    "at": 1794814045,
-    "commit": "5ff6eb0fa086ea6ec041ba8e68dd75d53d3225a5",
-    "due": "2026-11-18",
-    "owner_pr": 4820,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at 5ff6eb0fa086",
-    "subtests": [
-      "test_super_s_line_comes_up_again_after_both_screens_go_and_come_back"
-    ],
-    "test": "vm-screens-keep-the-launcher"
   },
   {
     "at": 1794838970,
