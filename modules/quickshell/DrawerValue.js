@@ -81,7 +81,9 @@ function identifierWords(said) {
 // whether a line rises are a sum and an either over the lines, so the
 // best of what's left after a line is the best overall; the widest line
 // is the narrowest bound under which those two still hold; and the split
-// is then read off with each line as short as that leaves it.
+// is then read off with each line as short as that leaves it. Only the
+// lines still to lay that the acts left can fill are tried, a count or
+// two from each act: trying every count took 12.8 s for 120 narrow acts.
 function actLines(widths, wide, apart) {
     const acts = actsOf(widths, wide, apart);
     if (acts.count === 0) {
@@ -102,20 +104,12 @@ function actsOf(widths, wide, apart) {
         sums.push(sums[sums.length - 1] + width);
     }
     const across = (from, to) => sums[to] - sums[from] + apart * (to - from - 1);
-    let fewest = 0;
-    for (let at = 0, from = 0; at < count; at += 1) {
-        if (at === 0 || across(from, at + 1) > wide) {
-            fewest += 1;
-            from = at;
-        }
-    }
-    // Where a line from `from` may end with `left` lines still to lay,
-    // none wider than `most`: those that fit the line, or one act alone
-    // however wide, each wider than the last, so the first too wide ends
-    // them.
-    const ends = (from, left, most) => {
+    // Where a line from `from` may end, none wider than `most`: those
+    // that fit the line, or one act alone however wide, each wider than
+    // the last, so the first too wide ends them.
+    const reach = (from, most) => {
         const found = [];
-        for (let end = from + 1; end <= count - left + 1; end += 1) {
+        for (let end = from + 1; end <= count; end += 1) {
             const width = across(from, end);
             if ((end - from > 1 && width > wide) || width > most) {
                 break;
@@ -134,7 +128,20 @@ function actsOf(widths, wide, apart) {
         const rises = before >= 0 && many && across(from, to) > across(before, from) ? 1 : 0;
         return [after[0] + (many ? 0 : 1), Math.max(after[1], rises)];
     };
-    return { count, across, fewest, ends, ranked };
+    // The fewest lines the acts from each on can be laid on: a line ending
+    // as far on as it fits leaves fewest.
+    const need = Array(count + 1).fill(0);
+    for (let from = count - 1; from >= 0; from -= 1) {
+        const far = reach(from, Number.POSITIVE_INFINITY);
+        need[from] = 1 + need[far[far.length - 1]];
+    }
+    // Where a line may end with `left` lines still to lay, this one
+    // among them: each line after it holds an act at least, and the acts
+    // after it must fit on those lines, so an end leaving too few acts or
+    // too many is passed by.
+    const ends = (from, left, most) => reach(from, most)
+        .filter(end => count - end >= left - 1 && need[end] <= left - 1);
+    return { count, across, fewest: need[0], reach, ends, ranked };
 }
 
 // The least [lone acts, whether a line rises] of laying the acts from
@@ -167,7 +174,7 @@ function rankedUnder(acts, most) {
 function boundFor(acts, wanted) {
     const bounds = [];
     for (let from = 0; from < acts.count; from += 1) {
-        for (const end of acts.ends(from, 1, Number.POSITIVE_INFINITY)) {
+        for (const end of acts.reach(from, Number.POSITIVE_INFINITY)) {
             bounds.push(acts.across(from, end));
         }
     }
