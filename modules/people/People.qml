@@ -888,11 +888,10 @@ Provider {
     // Someone's time at their row's side, "London · 17:02", or "" where
     // it's his own or the list doesn't know their zone (Person.js's
     // awaySide).
-    function away(id) {
+    function away(id, now = Date.now()) {
         const zone = zones().zones[id];
         if (!zone)
             return "";
-        const now = Date.now();
         const [minutes] = Zones.standing(zone, Math.floor(now / 1000));
         const here = -new Date(now).getTimezoneOffset();
         return Person.awaySide(id, minutes - here, Zones.clock(new Date(now + minutes * 60000)),
@@ -901,7 +900,7 @@ Provider {
 
     // The words a row's side is said in: the launcher's times, and a zone
     // as `away` says it.
-    readonly property var rowWords: Object.assign({ zone: zone => provider.away(zone) },
+    readonly property var rowWords: Object.assign({ zone: (zone, now) => provider.away(zone, now) },
         Words.field.times ?? {})
 
     // Whether a ready row says their time, so its side runs on.
