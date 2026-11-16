@@ -1,6 +1,7 @@
 # merge-net, built from this directory's crate. Its tests run as it builds.
-# It reads which crates read which from modules/crate-reach, so the source
-# is cut from the repository's root, and built from this folder.
+# It reads which crates read which from modules/crate-reach, and takes its
+# help from the terminal kit (modules/terminal-kit), so the source is cut
+# from the repository's root, and built from this folder.
 # The quarantine list isn't part of it: the net reads it from main, so a
 # test put on it moves no check.
 {
@@ -25,8 +26,11 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.lock
       ./must-run.txt
       ./src
+      ./tests
       ../../modules/crate-reach/Cargo.toml
       ../../modules/crate-reach/src
+      ../../modules/terminal-kit/Cargo.toml
+      ../../modules/terminal-kit/src
     ];
   };
   sourceRoot = "${src.name}/tools/merge-net";

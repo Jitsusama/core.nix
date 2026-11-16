@@ -47,12 +47,12 @@
 //! left from what was recorded, rather than a switch stopping it and losing
 //! every run in flight.
 //!
-//! Usage: `merge-net watch [--from COMMIT] [--branch NAME] [--once] [--follow PATH]
-//! | merge-net needs [--base REF] | merge-net ready COMMIT | merge-net status`
+//! `merge-net --help` says how each is asked (`command.rs`).
 
 mod answers;
 mod apart;
 mod candidates;
+mod command;
 mod comments;
 mod earlier;
 mod gated;
@@ -84,16 +84,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use command::Asked;
 use state::{State, short};
 use watch::Round;
 use world::Real;
-
-const USED: &str = "Usage: merge-net watch [--from COMMIT] [--branch NAME] [--once] \
-                    [--follow PATH] | merge-net needs [--base REF] | merge-net ready COMMIT \
-                    | merge-net status | merge-net run-again COMMIT";
-
-/// What a run asked for is refused with, as sysexits.h numbers it.
-const USAGE: u8 = 64;
 
 /// Where the net watches unless `MERGE_NET_REPOSITORY` names another.
 const REPOSITORY: &str = "https://github.com/Jitsusama/core.nix";
@@ -102,23 +96,29 @@ const REPOSITORY: &str = "https://github.com/Jitsusama/core.nix";
 const SYSTEM: &str = "x86_64-linux";
 
 fn main() -> ExitCode {
-    let arguments: Vec<String> = env::args().skip(1).collect();
-    let words: Vec<&str> = arguments.iter().map(String::as_str).collect();
-    let done = match words.as_slice() {
-        ["watch", rest @ ..] => watching(rest),
-        ["needs"] => needs::needs("refs/remotes/origin/main"),
-        ["needs", "--base", base] => needs::needs(base),
-        ["ready", commit] => ready(commit),
-        ["status"] => Ok(status()),
-        ["run-again", commit] => rerun::again(commit),
-        ["--help"] => {
-            println!("{USED}");
-            Ok(ExitCode::SUCCESS)
-        }
-        _ => {
-            eprintln!("{USED}");
-            return ExitCode::from(USAGE);
-        }
+    // The kit reads the words, answering help and refusing what's asked
+    // wrongly. What was asked then runs outside it, since each subcommand
+    // says its own lines and ends 0 or 1, which the merge gate and every
+    // session's gate read as they are.
+    let mut asked = None;
+    let read = terminal_kit::main(&command::help(), env!("CARGO_PKG_VERSION"), |context| {
+        asked = Some(command::asked(&context.args)?);
+        Ok(())
+    });
+    let Some(asked) = asked else {
+        return read;
+    };
+    let done = match asked {
+        Asked::Watch {
+            from,
+            branch,
+            once,
+            follow,
+        } => watching(from, branch, once, follow),
+        Asked::Needs { base } => needs::needs(&base),
+        Asked::Ready { commit } => ready(&commit),
+        Asked::Status => Ok(status()),
+        Asked::RunAgain { commit } => rerun::again(&commit),
     };
     done.unwrap_or_else(|why| {
         eprintln!("merge-net: {why}");
@@ -126,22 +126,13 @@ fn main() -> ExitCode {
     })
 }
 
-/// Follow main, a round at a time, until stopped, or once with `--once`.
-fn watching(rest: &[&str]) -> Result<ExitCode, String> {
-    let (mut from, mut once, mut branch) = (None, false, "main".to_owned());
-    let mut follow: Option<PathBuf> = None;
-    let mut words = rest.iter();
-    while let Some(word) = words.next() {
-        match *word {
-            "--from" => from = Some((*words.next().ok_or("--from needs a commit")?).to_owned()),
-            "--branch" => (*words.next().ok_or("--branch needs a name")?).clone_into(&mut branch),
-            "--once" => once = true,
-            "--follow" => {
-                follow = Some(PathBuf::from(*words.next().ok_or("--follow needs a path")?));
-            }
-            other => return Err(format!("{other} isn't something watch takes\n{USED}")),
-        }
-    }
+/// Follow `branch`, a round at a time, until stopped, or once with `once`.
+fn watching(
+    from: Option<String>,
+    branch: String,
+    once: bool,
+    follow: Option<PathBuf>,
+) -> Result<ExitCode, String> {
     let state = State::from_env();
     state.make()?;
     let world = Real {
