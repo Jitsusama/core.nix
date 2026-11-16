@@ -14,6 +14,30 @@
 # usage: switch-system-known switch-system@<escaped system>.service
 # Its status is 0 for a system the profile holds, and 1 for any other.
 # SWITCH_SYSTEM_PROFILES names another profiles folder, for its checks.
+#
+# Its help takes the shape every command of ours does (docs/commands.md), by
+# hand. Help exits 0, which polkit would read as a known system, but polkit
+# never asks for it: switch-system.rules passes only a unit matching
+# switch-system@.+\.service, and help answers only --help or -h alone.
+
+if [[ $# -eq 1 && ($1 == --help || $1 == -h) ]]; then
+  cat << 'EOF'
+switch-system-known  says whether a system has run before
+
+  A system is known when one of the system profile's
+  generations holds it, and its PAM lets no YubiKey touch in
+  without the person's own secret. polkit asks it before
+  letting a switch-system@ unit start unasked.
+
+EXAMPLES
+  switch-system-known switch-system@<system>.service
+
+EXIT
+  0   the machine has run that system
+  1   it hasn't, or its PAM takes a touch alone
+EOF
+  exit 0
+fi
 
 unit=$1
 instance=${unit#switch-system@}

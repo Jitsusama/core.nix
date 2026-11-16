@@ -34,8 +34,6 @@
     "exits"
     "helps"
   ];
-  switch-system-as-root = [ "helps" ];
-  switch-system-known = [ "helps" ];
   wifid-sign-in = [
     "kit"
     "helps"

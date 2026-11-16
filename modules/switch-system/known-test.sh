@@ -41,3 +41,18 @@ says gated 0
 says alone 1
 says at-login 1
 says never 1
+
+# Help answers --help alone, and a unit named for a system called --help is
+# still judged as any other: unknown, so it asks.
+status=0
+help=$(bash "$known" --help) || status=$?
+if [[ $status != 0 || $help != "switch-system-known  "* ]]; then
+  echo "switch-system-known --help said '${help%%$'\n'*}' and $status, not its help" >&2
+  exit 1
+fi
+status=0
+bash "$known" "switch-system@--help.service" >/dev/null || status=$?
+if [[ $status != 1 ]]; then
+  echo "switch-system-known said $status for a unit named --help, not 1" >&2
+  exit 1
+fi
