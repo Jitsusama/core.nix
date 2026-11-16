@@ -15,6 +15,7 @@
 //! folder.
 
 use std::io::Read;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::time::UNIX_EPOCH;
@@ -128,8 +129,17 @@ impl Record {
     /// taken as ended when its folder last changed.
     fn read(folder: &Path) -> Result<Option<Self>, Unreadable> {
         let mut text = String::new();
-        match std::fs::File::open(folder.join(META)) {
+        // Not followed if it's a link, and not waited on if it's a pipe:
+        // only a plain file is a record.
+        let opened = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(folder.join(META));
+        match opened {
             Ok(file) => {
+                if !file.metadata().is_ok_and(|held| held.is_file()) {
+                    return Err(Unreadable);
+                }
                 file.take(LARGEST_META + 1)
                     .read_to_string(&mut text)
                     .map_err(|_| Unreadable)?;
@@ -450,6 +460,36 @@ mod tests {
             assert_eq!(read.starts().collect::<Vec<_>>(), [1], "{name}");
             std::fs::remove_dir_all(calls.path().join(name)).unwrap();
         }
+    }
+
+    #[test]
+    fn a_record_linked_from_elsewhere_or_a_pipe_is_skipped_at_once_and_failing() {
+        let calls = tempfile::tempdir().unwrap();
+        let elsewhere = calls.path().join("elsewhere.json");
+        let sound = json!({"key": "call:at:5", "started": 5, "ended": 6, "title": ""});
+        std::fs::write(&elsewhere, sound.to_string()).unwrap();
+        std::fs::create_dir_all(calls.path().join("linked")).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, calls.path().join("linked").join(META)).unwrap();
+        std::fs::create_dir_all(calls.path().join("piped")).unwrap();
+        let made = std::process::Command::new("mkfifo")
+            .arg(calls.path().join("piped").join(META))
+            .status()
+            .unwrap();
+        assert!(made.success(), "mkfifo made no pipe: {made}");
+        // Read on its own thread, so a read that waits on the pipe fails
+        // here rather than hanging the run.
+        let (told, heard) = std::sync::mpsc::channel();
+        let folder = calls.path().to_owned();
+        std::thread::spawn(move || {
+            let read = Book::read(&folder);
+            let _ = told.send((read.failing(), read.starts().collect::<Vec<_>>()));
+        });
+        let read = heard.recv_timeout(std::time::Duration::from_secs(10));
+        assert_eq!(
+            read,
+            Ok((true, vec![])),
+            "a linked record or a pipe was read, or waited on"
+        );
     }
 
     #[test]
