@@ -341,6 +341,39 @@ fn the_gates_going_are_read_beside_what_passed() {
 }
 
 #[test]
+fn a_hold_kept_while_another_waits_on_the_lock_is_kept_too() {
+    let folder = std::env::temp_dir().join(format!("merge-net-held-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&folder);
+    fs::create_dir_all(&folder).expect("made");
+    let file = folder.join("waited.json");
+    let (first, second) = (Path::new("/first"), Path::new("/second"));
+    // The first `ready` holds the lock and keeps its hold while the second
+    // waits on it: the second must read the file only once it has the lock.
+    crate::whole::changed(&file, || {
+        std::thread::scope(|scope| {
+            let waiting = scope.spawn(|| keep_held(Some("second"), second, &file, 1000));
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            let mut waited = Waited::default();
+            waited.held(Some("first"), first, 990);
+            waited.write(&file).expect("written");
+            waiting
+        })
+    });
+    let waited = Waited::read(&file);
+    let _ = fs::remove_dir_all(&folder);
+    assert_eq!(
+        waited.since(Some("first"), first, None, 1000),
+        990,
+        "a hold kept while another ready waited on the lock was lost"
+    );
+    assert_eq!(
+        waited.since(Some("second"), second, None, 1010),
+        1000,
+        "the ready that waited on the lock didn't keep its own hold"
+    );
+}
+
+#[test]
 fn gates_are_read_as_nix_offload_says_them() {
     let folder = std::env::temp_dir().join(format!("merge-net-turn-{}", std::process::id()));
     let _ = fs::remove_dir_all(&folder);

@@ -19,9 +19,10 @@
 //! minutes" after each of the rebases main's moves forced, and #4731 the
 //! same, so neither reached its turn while main moved faster than the wait.
 //!
-//! Kept in `waited.json` in the net's state. Two asking at once may each
-//! write without the other's, and the one written last stands; a wait lost
-//! so starts again at the next hold, as it did before it was kept.
+//! Kept in `waited.json` in the net's state, read, changed and written
+//! under its lock (`whole.rs`), so two asking at once each keep their
+//! hold. Where the lock can't be had, the one written last stands, and a
+//! wait lost so starts again at the next hold, as it did before it was kept.
 
 use std::collections::BTreeMap;
 use std::fs;

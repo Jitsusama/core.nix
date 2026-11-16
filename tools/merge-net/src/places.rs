@@ -8,9 +8,10 @@
 //! that started after its first gate, and behind only those before it.
 //!
 //! Each `ready` keeps the start of every gate going and of its own pass,
-//! in `places.json` in the net's state. Two asking at once may each write
-//! a place the other read without, and the one written last stands; a
-//! place lost so is kept again by the next `ready` that sees its gate.
+//! in `places.json` in the net's state, read, changed and written under
+//! its lock (`whole.rs`), so two asking at once each keep their places.
+//! Where the lock can't be had, the one written last stands, and a place
+//! lost so is kept again by the next `ready` that sees its gate.
 
 use std::collections::BTreeMap;
 use std::fs;

@@ -13,6 +13,13 @@
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
+use std::time::{Duration, Instant};
+
+/// The longest a writer waits for another's lock. A change holds it for a
+/// read, a few git asks and a write, well under a second; one stopped or
+/// hung past this is gone round, as before the lock.
+const LOCK_WAIT: Duration = Duration::from_secs(5);
 
 /// Write `text` to `path` whole, by a rename, so a reader never sees half.
 /// The partial is named for this process and this write, so two writers
@@ -31,41 +38,73 @@ pub fn write(path: &Path, text: &str) -> Result<(), String> {
 /// Run `change`, a read of `path`, a change and a write back, holding the
 /// lock beside it (`<name>.lock`) so no other writer's change comes
 /// between. The lock goes when this ends, or when its process dies, so a
-/// writer killed mid-change holds no one up. Where it can't be taken,
-/// `change` runs anyway, as before the lock: losing a key costs a wait
-/// kept again, and a `ready` that stopped for it would cost more.
+/// writer killed mid-change holds no one up. Where it can't be taken
+/// within [`LOCK_WAIT`], `change` runs anyway, saying so, as before the
+/// lock: losing a key costs a wait kept again, and a `ready` that stopped
+/// for a stopped holder would cost more.
 pub fn changed<T>(path: &Path, change: impl FnOnce() -> T) -> T {
+    let lock = locked(&path.with_extension("lock"));
+    if let Err(why) = &lock {
+        eprintln!(
+            "merge-net: {} is changed without its lock: {why}",
+            path.display()
+        );
+    }
+    let changed = change();
+    drop(lock);
+    changed
+}
+
+/// The lock at `path`, taken within [`LOCK_WAIT`].
+fn locked(path: &Path) -> Result<fs::File, String> {
     let lock = fs::OpenOptions::new()
         .create(true)
         .truncate(false)
         .write(true)
-        .open(path.with_extension("lock"))
-        .ok()
-        .filter(|lock| lock.lock().is_ok());
-    let changed = change();
-    drop(lock);
-    changed
+        .open(path)
+        .map_err(|error| format!("opening {}: {error}", path.display()))?;
+    let since = Instant::now();
+    loop {
+        match lock.try_lock() {
+            Ok(()) => return Ok(lock),
+            Err(fs::TryLockError::WouldBlock) if since.elapsed() < LOCK_WAIT => {
+                thread::sleep(Duration::from_millis(20));
+            }
+            Err(fs::TryLockError::WouldBlock) => {
+                return Err(format!("another writer held it past {LOCK_WAIT:?}"));
+            }
+            Err(fs::TryLockError::Error(error)) => return Err(error.to_string()),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
-    use std::thread;
-    use std::time::Duration;
+    use std::path::PathBuf;
 
-    /// A folder of the test's own, emptied first.
-    fn folder(name: &str) -> std::path::PathBuf {
+    /// A folder of the test's own, emptied first and removed once it ends.
+    struct Folder(PathBuf);
+
+    impl Drop for Folder {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn folder(name: &str) -> Folder {
         let root =
             std::env::temp_dir().join(format!("merge-net-whole-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).expect("made");
-        root
+        Folder(root)
     }
 
     #[test]
     fn writers_at_once_each_write_the_file_whole() {
-        let path = folder("at-once").join("kit-owed.json");
+        let folder = folder("at-once");
+        let path = folder.0.join("kit-owed.json");
         let failed: Vec<String> = thread::scope(|scope| {
             let writers: Vec<_> = (0..8)
                 .map(|writer| {
@@ -95,11 +134,59 @@ mod tests {
             left, 1,
             "writes at once left {left} files where one is kept"
         );
+        let kept = fs::read_to_string(&path).expect("the file");
+        let whole = kept.strip_suffix('\n').is_some_and(|line| {
+            line.split(' ').count() == 2 && line.split(' ').all(|n| n.parse::<u32>().is_ok())
+        });
+        assert!(
+            whole,
+            "the file kept wasn't one writer's words whole: {kept:?}"
+        );
+    }
+
+    #[test]
+    fn a_write_that_fails_leaves_no_partial_behind() {
+        let folder = folder("fails");
+        let path = folder.0.join("waited.json");
+        // A folder with something in it where the file goes: the partial
+        // is written, and its rename onto the folder fails.
+        fs::create_dir_all(path.join("in-the-way")).expect("made");
+        assert!(
+            write(&path, "{}\n").is_err(),
+            "a rename onto a folder was taken as written"
+        );
+        let left: Vec<_> = fs::read_dir(&folder.0)
+            .expect("the folder")
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name())
+            .collect();
+        assert_eq!(
+            left.len(),
+            1,
+            "a failed write left its partial behind: {left:?}"
+        );
+    }
+
+    #[test]
+    fn a_lock_held_past_its_wait_is_gone_round() {
+        let folder = folder("held");
+        let path = folder.0.join("places.json");
+        let held = locked(&path.with_extension("lock")).expect("the lock");
+        let since = Instant::now();
+        let ran = changed(&path, || true);
+        drop(held);
+        assert!(ran, "a change under a lock held elsewhere never ran");
+        let waited = since.elapsed();
+        assert!(
+            waited >= LOCK_WAIT && waited < LOCK_WAIT * 3,
+            "a change waited {waited:?} for a held lock, not about {LOCK_WAIT:?}"
+        );
     }
 
     #[test]
     fn a_key_each_writer_adds_at_once_is_kept() {
-        let path = folder("keys").join("waited.json");
+        let folder = folder("keys");
+        let path = folder.0.join("waited.json");
         thread::scope(|scope| {
             for writer in 0..8 {
                 let path = &path;
