@@ -295,7 +295,8 @@ in
     warnings = lib.optional (config.jitsusama.passwords.releases != [ ] && !answersAsks) ''
       jitsusama.passwords.releases lists releases, but the launcher's
       Passwords place is off, so no secret ask is answered or drawn until
-      jitsusama.quickshell.launcher.providers.passwords.off is false.
+      jitsusama.quickshell.launcher.providers.passwords.off is lib.mkForce false,
+      since this module already sets it to true.
     '';
   };
 }
