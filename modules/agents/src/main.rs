@@ -37,12 +37,13 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Arc, mpsc};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use terminal_kit::{Exit, Failure, Help};
 
 use agents::acts;
 use agents::arrangement::{Arrangement, Still};
+use agents::clock;
 use agents::feedback::{self, Landings};
 use agents::inputs::Inputs;
 use agents::kept_places::KeptPlaces;
@@ -53,7 +54,7 @@ use agents::served::Served;
 use agents::session::Session;
 use agents::sources::{self, Heard, Paths};
 use agents::tell::{self, Routes};
-use agents::wants::Wants;
+use agents::wants::{self, PUT_OFF_FOR_MS, PutOff, Wants};
 use daemon_serve::asks::Domain;
 use daemon_serve::serve::{self, Own, Shared};
 use serde_json::{Value, json};
@@ -268,6 +269,18 @@ fn own(
             }
             return Some(answer);
         }
+        // Joel's Not Now on the ask a session's row showed him, refused
+        // once it asks anew: kept for an hour, which the want's record
+        // says, ringing for nothing.
+        if let Some(named) = wants.put_off(said) {
+            return Some(match named {
+                Ok(known) => {
+                    let _ = told.send(Heard::PutOffWant(known.clone(), now));
+                    json!({"putOff": known, "forMs": u64::try_from(PUT_OFF_FOR_MS).unwrap_or(0)})
+                }
+                Err(why) => json!({"error": {"code": "not-an-ask", "message": why}}),
+            });
+        }
         if let Some(answered) = wants.answer(said, node.as_deref(), now) {
             return Some(answered);
         }
@@ -298,11 +311,25 @@ fn follow_windows(windows: &Path, to: &mpsc::Sender<Heard>) {
     );
 }
 
+/// The sooner of two waits, either none.
+fn soonest(one: Option<Duration>, other: Option<Duration>) -> Option<Duration> {
+    match (one, other) {
+        (Some(one), Some(other)) => Some(one.min(other)),
+        (one, other) => one.or(other),
+    }
+}
+
 /// Everything said, at least one, waiting on nothing but what's said
-/// unless places wait to be kept once the windows are still; none once
-/// that wait ends, and an error once nothing can be said any more.
-fn hear(heard: &mpsc::Receiver<Heard>, still: &Still) -> Result<Vec<Heard>, RecvTimeoutError> {
-    let first = match still.wait(Instant::now()) {
+/// unless something waits for a time, places to be kept once the windows
+/// are still or a want's hour to end; none once that wait ends, and an
+/// error once nothing can be said any more.
+fn hear(
+    heard: &mpsc::Receiver<Heard>,
+    still: &Still,
+    put_off: &PutOff,
+) -> Result<Vec<Heard>, RecvTimeoutError> {
+    let wait = soonest(still.wait(Instant::now()), put_off.wait(clock::now_ms()));
+    let first = match wait {
         None => Some(heard.recv().map_err(|_| RecvTimeoutError::Disconnected)?),
         Some(wait) => match heard.recv_timeout(wait) {
             Ok(first) => Some(first),
@@ -335,6 +362,10 @@ fn started(words: Words, paths: &Paths) -> Inputs {
         kept_places: KeptPlaces::read(&paths.kept_places)
             .unwrap_or_else(|| KeptPlaces::from_shell(&paths.shells)),
         fed_back: feedback::kept(&paths.landed.with_file_name(FEEDBACK)),
+        put_off: PutOff::read(
+            &paths.kept.with_file_name(wants::PUT_OFF_FILE),
+            clock::now_ms(),
+        ),
         ..Inputs::default()
     }
 }
@@ -433,7 +464,7 @@ fn serve(args: Args) -> Result<(), Failure> {
     let mut inputs = started(words, &paths);
     let mut served = Served::default();
     let mut still = Still::default();
-    while let Ok(said) = hear(&heard, &still) {
+    while let Ok(said) = hear(&heard, &still, &inputs.put_off) {
         for one in said {
             if one.moves_places() {
                 still.moved(Instant::now());

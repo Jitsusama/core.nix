@@ -1594,7 +1594,8 @@ Provider {
         const answers = source("agents")?.wantOf(session.address)?.answers ?? null;
         wantsNow[session.address] = session;
         return keptAlike(wantsKept, session.address,
-            [made, asked, resting, session.title, JSON.stringify(answers)],
+            [made, asked, resting, session.title, JSON.stringify(answers),
+                Sessions.wantKnown(session.address)],
             () => madeWantRow(made, session, asked, resting, answers));
     }
     readonly property var wantsKept: keeper()
@@ -1609,6 +1610,9 @@ Provider {
             return answerRow(made, madeFrom, asked, resting, answers);
         const key = `on:waiting:want:${madeFrom.address}`;
         const address = madeFrom.address;
+        // The ask this row shows, which Put It Off names (wantRow remakes
+        // the row when it changes).
+        const known = Sessions.wantKnown(address);
         const session = () => provider.wantsNow[address] ?? madeFrom;
         const named = id => ({
             verb: Words.verb(`verb:on:waiting:${id}`),
@@ -1637,7 +1641,8 @@ Provider {
                         Sessions.wake(resting);
                     Sessions.goTo(session());
                 }
-            }))
+            })),
+            putOffWant(address, key, known)
         ];
         const row = member(Object.assign({}, made, {
             key: key,
@@ -1651,6 +1656,27 @@ Provider {
             run: () => provider.launcher?.enter(row)
         }));
         return row;
+    }
+
+    // Put It Off, for an hour, on what a session asks Joel: the agents
+    // daemon keeps it put off and says so, so it leaves For You and rings
+    // for nothing until then, and comes back if it still stands (WCJQSG,
+    // 2026-11-16, on Joel's "i can't get this highlighted notice to go
+    // away" of a yes that waited five hours). It names the ask the row
+    // showed (`known`), so the daemon refuses it once the session asks
+    // anew. It stays open, as a to-do's Not Now does, as its row leaves.
+    function putOffWant(address, key, known) {
+        return thing({
+            key: `verb:on:waiting:notNow:${key}`,
+            verb: Words.verb("verb:on:waiting:notNow"),
+            name: Words.name("verb:on:waiting:notNow"),
+            glyph: Words.glyph("verb:on:waiting:notNow"),
+            hue: "action",
+            side: (Words.of("on:waiting").said ?? {}).anHour ?? "",
+            gap: true,
+            stays: true,
+            run: () => Sessions.putOffWant(address, known)
+        });
     }
 
     // A session asking Joel one question with its answers given, answered
@@ -1668,6 +1694,7 @@ Provider {
     function answerRow(made, madeFrom, asked, resting, answers) {
         const key = `on:waiting:want:${madeFrom.address}`;
         const address = madeFrom.address;
+        const known = Sessions.wantKnown(address);
         const said = Words.of("on:waiting").said ?? {};
         const session = () => provider.wantsNow[address] ?? madeFrom;
         // Said answered only once the node has put it in the session's
@@ -1726,7 +1753,7 @@ Provider {
                 if (text !== "")
                     answer({ other: text }, text);
             }
-        }))] : []);
+        }))] : [], [putOffWant(address, key, known)]);
         const count = answers.choices.length;
         const row = member(Object.assign({}, made, {
             key: key,

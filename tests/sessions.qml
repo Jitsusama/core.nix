@@ -198,6 +198,16 @@ ShellRoot {
         expect("only a want the daemon says rings stops its session",
             Sessions.stopped.map(session => session.address).join(" ") === "LIVE01",
             Sessions.stopped.map(session => session.address).join(" "));
+        // One whose want he put off waits on him no longer, though it asks.
+        expect("a want the daemon says is put off leaves what waits on Joel",
+            JSON.stringify(Sessions.putOff) === '{"NOWIN6":true}'
+                && Sessions.asks(find("NOWIN6"))
+                && !Sessions.wanting.some(session => session.address === "NOWIN6"),
+            JSON.stringify([Sessions.putOff, Sessions.wanting.map(session => session.address)]));
+        expect("Put It Off can name the ask the daemon knows, whatever the address's case",
+            Sessions.wantKnown("nowin6") === "NOWIN6 question@now"
+                && Sessions.wantKnown("NOBODY") === "",
+            Sessions.wantKnown("nowin6"));
         expect("known as the daemon knows it, and rung for, being new",
             Sessions.key(live) === "LIVE01 question-1" && Sessions.ringing === live,
             `${Sessions.key(live)} ${Sessions.ringing?.address}`);
@@ -870,7 +880,12 @@ ShellRoot {
             { key: "want:agents:LIVE01", kind: "want", address: "LIVE01",
                 since: new Date().toISOString(), rings: true, known: "LIVE01 question-1" },
             { key: "want:agents:OTHER2", kind: "want", address: "OTHER2",
-                since: new Date().toISOString(), rings: false, known: "OTHER2 blocked" }]);
+                since: new Date().toISOString(), rings: false, known: "OTHER2 blocked" },
+            // And one Joel put off, which rings for nothing until its hour's
+            // over.
+            { key: "want:agents:NOWIN6", kind: "want", address: "NOWIN6",
+                since: new Date().toISOString(), rings: false, putOff: true,
+                known: "NOWIN6 question@now" }]);
     }
 
     // A stand-in for the agents daemon (modules/agents), speaking the
@@ -965,8 +980,10 @@ ShellRoot {
                 cwd: "/home/me/lamp/", terminal: terminal("unix:@kitty-600", "4")
             }), { window: { terminal: "kitty", id: "4", within: "unix:@kitty-600",
                 app_id: "pi-session.7" } }),
-            // In a kitty niri shows no window of.
-            here("NOWIN6", "idle", { terminal: terminal("unix:@kitty-700", "2") }),
+            // In a kitty niri shows no window of, asking Joel what he put
+            // off for an hour.
+            here("NOWIN6", "idle", { terminal: terminal("unix:@kitty-700", "2"),
+                wants: { kind: "question", said: "Shall I?", since: now } }),
             here("ENDED3", "ended", {}),
             // Parked, as the node tells of one: ended, saying it's parked.
             Object.assign(here("NAPPER", "ended", { state: "parked", busy: false,

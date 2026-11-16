@@ -10,10 +10,16 @@
 //! the shell never names a want's id. Each says too whether it rings the
 //! shell's bell (`rings`) and who it is (`known`), by which the shell
 //! rings once for each (Sessions.qml's stopped), so the shell judges no
-//! want itself (KRINS0 item 4, ending #3853's stopgap).
+//! want itself (KRINS0 item 4, ending #3853's stopgap). Joel may put one
+//! off for an hour (`PutOff`), and it says so and rings for none of it, so
+//! the shell leaves it out of what needs him until then.
 
+use std::collections::BTreeMap;
+use std::fs;
+use std::io;
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
@@ -55,10 +61,120 @@ impl Wants {
                 "message": "this machine runs no node to steer it through"}}),
         })
     }
+
+    /// Who the want `{ "ask": "not-now", "address", "known" }` names is
+    /// (`known`), refused where it names no ask Joel saw, where its session
+    /// wants nothing, or where it asks other than the `known` he saw, which
+    /// still needs him; None for any other ask.
+    pub fn put_off(&self, said: &Value) -> Option<Result<String, String>> {
+        if said["ask"] != "not-now" {
+            return None;
+        }
+        let address = said["address"].as_str().unwrap_or("").to_uppercase();
+        if address.is_empty() {
+            return Some(Err("not-now names no session's address".to_owned()));
+        }
+        let Some(seen) = said["known"].as_str().filter(|seen| !seen.is_empty()) else {
+            return Some(Err("not-now names no ask Joel saw".to_owned()));
+        };
+        let held = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let known = held
+            .iter()
+            .find(|one| one["address"].as_str().unwrap_or("").to_uppercase() == address)
+            .and_then(|one| one["known"].as_str())
+            .map(str::to_owned);
+        Some(match (known, seen) {
+            (None, _) => Err(format!("{address} wants nothing of Joel to put off")),
+            (Some(known), seen) if known != seen => Err(format!(
+                "{address} asks something new, which still needs Joel"
+            )),
+            (Some(known), _) => Ok(known),
+        })
+    }
 }
 
-/// A want record per session asking Joel, the oldest ask first.
-pub fn records(sessions: &[Session], joel_can: &JoelCan) -> Vec<Value> {
+/// How long Not Now puts a want off: an hour, after which it needs Joel
+/// again if it still stands (WCJQSG, 2026-11-16, on Joel's "i can't get
+/// this highlighted notice to go away" of a yes waiting five hours).
+pub const PUT_OFF_FOR_MS: u128 = 3_600_000;
+
+/// The file beside the daemon's others that keeps the wants put off, so a
+/// daemon started again within the hour still holds them off.
+pub const PUT_OFF_FILE: &str = "wants-put-off.json";
+
+/// The wants Joel put off, by who each is (`known`), each until when, in
+/// milliseconds.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct PutOff(BTreeMap<String, u128>);
+
+impl PutOff {
+    /// What `path` keeps at `now_ms`, each held at most an hour from then
+    /// whatever the file says or the clock did, or none put off when it
+    /// isn't there or can't be read whole.
+    pub fn read(path: &Path, now_ms: u128) -> Self {
+        let said: Value = fs::read(path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or(Value::Null);
+        let kept = said.as_object().map(|by| {
+            by.iter()
+                .filter_map(|(known, until)| {
+                    let until = u128::from(until.as_u64()?).min(now_ms + PUT_OFF_FOR_MS);
+                    Some((known.clone(), until))
+                })
+                .collect()
+        });
+        Self(kept.unwrap_or_default())
+    }
+
+    /// Writes what's put off to `path` whole, renamed into place.
+    pub fn write(&self, path: &Path) -> io::Result<()> {
+        if let Some(folder) = path.parent() {
+            fs::create_dir_all(folder)?;
+        }
+        let writing = path.with_extension("json.new");
+        let said: serde_json::Map<String, Value> = self
+            .0
+            .iter()
+            .map(|(known, until)| (known.clone(), json!(u64::try_from(*until).unwrap_or(0))))
+            .collect();
+        fs::write(&writing, Value::Object(said).to_string())?;
+        fs::rename(&writing, path)
+    }
+
+    /// Joel puts off the want `known` at `now_ms`, for an hour; those whose
+    /// hour is over are let go, so what's kept never grows.
+    pub fn put(&mut self, known: &str, now_ms: u128) {
+        self.0.retain(|_, until| *until > now_ms);
+        self.0.insert(known.to_owned(), now_ms + PUT_OFF_FOR_MS);
+    }
+
+    /// Whether the want `known` is put off at `now_ms`.
+    pub fn holds(&self, known: &str, now_ms: u128) -> bool {
+        self.0.get(known).is_some_and(|until| *until > now_ms)
+    }
+
+    /// How long from `now_ms` until the soonest want still put off needs
+    /// Joel again, so its record is made anew then, and at most a minute,
+    /// since a sleep stops the wait's clock but not the hour's; none while
+    /// none is.
+    pub fn wait(&self, now_ms: u128) -> Option<Duration> {
+        self.0
+            .values()
+            .filter(|until| **until > now_ms)
+            .min()
+            .map(|until| Duration::from_millis(u64::try_from(until - now_ms).unwrap_or(u64::MAX)))
+            .map(|wait| wait.min(Duration::from_mins(1)))
+    }
+}
+
+/// A want record per session asking Joel, the oldest ask first, one Joel
+/// put off saying so at `now_ms`.
+pub fn records(
+    sessions: &[Session],
+    joel_can: &JoelCan,
+    (put_off, now_ms): (&PutOff, u128),
+) -> Vec<Value> {
     let mut wanting: Vec<(String, Value)> = sessions
         .iter()
         .filter(|one| matches!(one.lives(), Lives::Running | Lives::Parked))
@@ -74,6 +190,8 @@ pub fn records(sessions: &[Session], joel_can: &JoelCan) -> Vec<Value> {
                 .filter(|said| !said.is_empty())
                 .map_or_else(|| title.clone(), str::to_owned);
             let since = wants["since"].as_str().unwrap_or("").to_owned();
+            let known = known(one.address(), wants);
+            let held_off = put_off.holds(&known, now_ms);
             let record = json!({
                 "key": format!("{KIND}:{PLACE}:{}", one.address()),
                 "kind": KIND,
@@ -87,8 +205,9 @@ pub fn records(sessions: &[Session], joel_can: &JoelCan) -> Vec<Value> {
                 "since": since,
                 "parked": one.lives() == Lives::Parked,
                 "answers": answers(wants),
-                "rings": rings(wants),
-                "known": known(one.address(), wants),
+                "rings": rings(wants) && !held_off,
+                "putOff": held_off,
+                "known": known,
             });
             Some((since, record))
         })
@@ -214,8 +333,145 @@ mod tests {
     }
 
     fn served(sessions: &[Value]) -> Vec<Value> {
+        served_at(sessions, &PutOff::default(), 0)
+    }
+
+    fn served_at(sessions: &[Value], put_off: &PutOff, now_ms: u128) -> Vec<Value> {
         let sessions: Vec<Session> = sessions.iter().map(Session).collect();
-        records(&sessions, &JoelCan::default())
+        records(&sessions, &JoelCan::default(), (put_off, now_ms))
+    }
+
+    #[test]
+    fn a_want_put_off_rings_for_nothing_for_an_hour_then_needs_joel_again() {
+        let approval = json!({"kind": "approval", "said": "Run it",
+            "since": "2026-11-16T08:32:01.765Z"});
+        let sessions = [
+            asking("KQL3KB", "running", &approval),
+            asking("SKIFF", "running", &json!({"kind": "question"})),
+        ];
+        let mut put_off = PutOff::default();
+        put_off.put("KQL3KB approval 2026-11-16T08:32:01.765Z", 1_000);
+        let said = |now_ms| -> Vec<(Value, Value)> {
+            served_at(&sessions, &put_off, now_ms)
+                .iter()
+                .map(|one| (one["putOff"].clone(), one["rings"].clone()))
+                .collect()
+        };
+        // Served oldest asked first, SKIFF's, saying no time, before it.
+        assert_eq!(
+            said(1_000),
+            [(json!(false), json!(true)), (json!(true), json!(false))],
+            "the one put off says so and rings for nothing, and the other is as it was"
+        );
+        assert_eq!(
+            said(1_000 + PUT_OFF_FOR_MS - 1),
+            said(1_000),
+            "for all of the hour"
+        );
+        assert_eq!(
+            said(1_000 + PUT_OFF_FOR_MS),
+            [(json!(false), json!(true)), (json!(false), json!(true))],
+            "and once it's over the want needs Joel again"
+        );
+    }
+
+    #[test]
+    fn what_is_put_off_is_kept_waited_for_and_let_go_once_over() {
+        let mut put_off = PutOff::default();
+        put_off.put("SKIFF question-1", 0);
+        put_off.put("BUOY approval-1", 600_000);
+        assert_eq!(
+            put_off.wait(PUT_OFF_FOR_MS - 10_000),
+            Some(Duration::from_secs(10)),
+            "the soonest still put off is waited for"
+        );
+        assert_eq!(
+            put_off.wait(600_000),
+            Some(Duration::from_mins(1)),
+            "a minute at most, lest a sleep carry the wait past its hour"
+        );
+        assert_eq!(
+            put_off.wait(PUT_OFF_FOR_MS + 600_000),
+            None,
+            "and none once all are over"
+        );
+        put_off.put("KELP approval-2", PUT_OFF_FOR_MS);
+        assert!(
+            !put_off.0.contains_key("SKIFF question-1"),
+            "one whose hour is over is let go as another is put off"
+        );
+        let path = std::env::temp_dir()
+            .join(format!("agents-put-off-{}", std::process::id()))
+            .join(PUT_OFF_FILE);
+        put_off.write(&path).expect("kept");
+        assert_eq!(
+            PutOff::read(&path, PUT_OFF_FOR_MS),
+            put_off,
+            "read back as it was written"
+        );
+        let stepped_back = PutOff::read(&path, 0);
+        assert!(
+            stepped_back.holds("KELP approval-2", PUT_OFF_FOR_MS - 1)
+                && !stepped_back.holds("KELP approval-2", PUT_OFF_FOR_MS),
+            "read with the clock stepped back, held only an hour from then"
+        );
+        let _ = fs::remove_dir_all(path.parent().expect("its folder"));
+        assert_eq!(
+            PutOff::read(&path, 0),
+            PutOff::default(),
+            "and none when there's no file"
+        );
+    }
+
+    #[test]
+    fn not_now_names_the_want_its_session_asks() {
+        let held = Wants::default();
+        held.hold(
+            served(&[asking(
+                "SKIFF",
+                "running",
+                &json!({"kind": "approval", "id": "approval-1"}),
+            )])
+            .iter(),
+        );
+        assert_eq!(
+            held.put_off(&json!({"ask": "not-now", "address": "skiff",
+                "known": "SKIFF approval-1"})),
+            Some(Ok("SKIFF approval-1".to_owned())),
+            "the ask Joel saw, by its address whatever its case"
+        );
+        assert!(
+            matches!(
+                held.put_off(&json!({"ask": "not-now", "address": "SKIFF"})),
+                Some(Err(_))
+            ),
+            "one naming no ask he saw is refused"
+        );
+        assert!(
+            matches!(
+                held.put_off(&json!({"ask": "not-now", "address": "BUOY",
+                    "known": "BUOY approval-1"})),
+                Some(Err(_))
+            ),
+            "a session wanting nothing is refused"
+        );
+        assert!(
+            matches!(
+                held.put_off(&json!({"ask": "not-now", "address": "SKIFF",
+                    "known": "SKIFF approval-0"})),
+                Some(Err(_))
+            ),
+            "a newer ask than the one he saw still needs him"
+        );
+        assert!(
+            matches!(held.put_off(&json!({"ask": "not-now"})), Some(Err(_))),
+            "and one naming no session is refused"
+        );
+        assert_eq!(
+            held.put_off(&json!({"ask": "answer"})),
+            None,
+            "another ask is none of this"
+        );
     }
 
     #[test]
@@ -249,7 +505,7 @@ mod tests {
             json!({"key": "want:agents:BUOY", "kind": "want", "address": "BUOY",
                 "title": "BUOY Quest", "asked": "BUOY Quest", "wants": "approval", "said": "",
                 "since": "2026-11-13T04:00:00Z",
-                "parked": true, "answers": null, "rings": true,
+                "parked": true, "answers": null, "rings": true, "putOff": false,
                 "known": "BUOY approval 2026-11-13T04:00:00Z"}),
             "one asking nothing in words is named by its session, and offers no answers"
         );
