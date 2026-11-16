@@ -5,8 +5,9 @@
 # again. With a notice up, the only screen goes, a second notice comes while
 # there's none, and a screen comes back; Quickshell must never warn of a
 # dangling screen object, as it did on the net's vm-screens-keep-the-launcher
-# as the last screen went. The shell's notices alone (notices.qml) warned of
-# none on sway, so it's the whole shell that's run.
+# as the last screen went, nor of a binding or handler that throws. The
+# shell's notices alone (notices.qml) warned of neither on sway, so it's the
+# whole shell that's run.
 # usage: shell-loses-its-screen.sh <shell folder> <logs> <shell-says.sh>
 set -euo pipefail
 
@@ -22,7 +23,10 @@ saying=300
 sockets=("${XDG_RUNTIME_DIR:?}"/sway-ipc.*.sock)
 export SWAYSOCK=${sockets[0]}
 
-WAYLAND_DISPLAY=wayland-1 qs -p "$shell" > "$said" 2>&1 &
+# The shell is drawn on sway, and asked over IPC there too, since qs finds
+# only the instances on its own display.
+export WAYLAND_DISPLAY=wayland-1
+qs -p "$shell" > "$said" 2>&1 &
 drawing=$!
 # shellcheck disable=SC2064 # The shell's pid is known now, and is what's ended.
 trap "kill $drawing 2> /dev/null || true" EXIT
@@ -51,11 +55,11 @@ for _ in $(seq "$saying"); do
 done
 qs -p "$shell" ipc call notices front
 
-# Only the dangling screen is looked for: on sway the shell also warns of
-# what this setup lacks (niri's background effect, the windows daemon and
-# the sockets of daemons nothing starts here).
-if grep -a -F dangling "$said"; then
-  echo "Quickshell warned of a dangling screen as its screen went and came." >&2
+# Only a dangling screen and what throws are looked for: on sway the shell
+# also warns of what this setup lacks (niri's background effect, the
+# windows daemon and the sockets of daemons nothing starts here).
+if grep -a -F -e dangling -e TypeError "$said"; then
+  echo "Quickshell warned of a dangling screen, or threw, as its screen went and came." >&2
   cat "$said" >&2
   exit 1
 fi
