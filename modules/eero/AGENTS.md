@@ -50,7 +50,9 @@ on a machine that's the first laptop.
   `this_machine` (one of the daemon's machine's own hardware addresses
   is its), its `node`, band, channel,
   signal, SNR, each direction's rate with its MCS, streams, width, guard
-  interval and Wi-Fi generation, retries, packets, and its speed now;
+  interval and Wi-Fi generation, retries, packets, and its speed now
+  (none in a read where eero's cloud puts every device at 0.0, which it
+  does nine reads in ten: that's no figure, not a home gone idle);
   the last hour of its signal, SNR, rates and speed, and its `roams` to
   another node or band over the last day.
 - `profiles[]`: each profile by `id`, its devices, whether it's held
