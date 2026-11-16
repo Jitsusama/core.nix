@@ -323,6 +323,7 @@ dependencies = [
  "ready-rows",
  "serde",
  "serde_json",
+ "terminal-kit",
 ]
 
 [[package]]
@@ -464,6 +465,7 @@ name = "sound"
 version = "0.1.0"
 dependencies = [
  "daemon-client",
+ "daemon-serve",
  "pipewire",
  "programs",
  "ready-rows",

@@ -10,6 +10,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The socket systemd hands every daemon of the shell, taken as each takes
+# it (../daemon-serve).
+daemon-serve = { path = "../daemon-serve" }
 # PipeWire's own API, as dictation's noise-cancelled microphones hear it.
 pipewire = { version = "0.10", features = ["v1_2_0"] }
 # The one form every daemon serves the launcher's rows in, so Sound's are

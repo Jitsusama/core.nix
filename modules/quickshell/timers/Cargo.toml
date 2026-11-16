@@ -8,6 +8,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The socket systemd hands every daemon of the shell, taken as each takes
+# it (../../daemon-serve).
+daemon-serve = { path = "../../daemon-serve" }
 # A clock that wakes at a time of day, through a suspend or a clock change.
 rustix = { version = "1.1", features = ["event", "time"] }
 serde = { version = "1", features = ["derive"] }

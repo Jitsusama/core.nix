@@ -17,6 +17,8 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.lock
       ./src
       ./tests
+      ../../daemon-serve/Cargo.toml
+      ../../daemon-serve/src
       ../../terminal-kit/Cargo.toml
       ../../terminal-kit/src
     ];

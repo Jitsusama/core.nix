@@ -26,6 +26,8 @@ let
       ./src
       ../calls/Cargo.toml
       ../calls/src
+      ../daemon-serve/Cargo.toml
+      ../daemon-serve/src
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
     ];

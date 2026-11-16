@@ -14,6 +14,9 @@ calls = { path = "../calls" }
 # The calls receptor counts the calls since local midnight, the day as
 # Joel's clock has it, as google's daemon reads its meetings.
 jiff = "0.2"
+# The socket systemd hands every daemon of the shell, taken as each takes
+# it (../daemon-serve); noise-cancelled is one.
+daemon-serve = { path = "../daemon-serve" }
 # The noise-cancelled microphone is a PipeWire client of its own, so
 # nothing slow runs on PipeWire's real-time thread. Asking for 1.2's
 # interface gives it what a stream asks for each cycle and target.object;

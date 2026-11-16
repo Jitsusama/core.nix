@@ -733,7 +733,10 @@ pub fn serve(socket: &Path, models: &Path, running: Chosen, refusals: &Path) -> 
     let offer = running.beside("offer");
     let trial = Trial::shared(models.to_path_buf(), running, refusals, Tools::default());
     crate::offer::told_to(&trial, offer.as_deref());
-    let listener = crate::handed().map_or_else(|| daemon::listen(socket), Ok)?;
+    // The socket systemd holds for it, closed on exec so the recorder and
+    // player it runs don't hold it open; or, run by hand, its own.
+    let listener = daemon_serve::serve::listen(socket)
+        .map_err(|why| format!("listening on {}: {why}", socket.display()))?;
     {
         let trial = Arc::clone(&trial);
         std::thread::spawn(move || daemon::answer_all(&trial, &listener));

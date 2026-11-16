@@ -17,8 +17,9 @@ agrees when:
 - fits: the name is at most 15 characters, all `ps -e` shows of a program;
 - shown: its command line starts `@<program> <name>`, so `ps -ef` reads its
   name rather than a store path;
-- speaks: its crate serves through daemon-serve, the one copy of the
-  interface's hello, get, list, watch, unwatch and health.
+- speaks: its crate serves through daemon-serve's accept, the one copy of
+  the interface's hello, get, list, watch, unwatch and health; taking only
+  daemon-serve's listen doesn't count.
 
 WAITING is JSON naming, for each daemon that broke the convention before the
 rule, the points it breaks while it comes to agree. A daemon breaking a point
@@ -44,7 +45,7 @@ FIXES = {
     "named": "name its socket unit, service and program for its socket",
     "fits": "give it a name of 15 characters at most",
     "shown": "start its command line @<program> <name>",
-    "speaks": "serve through daemon-serve",
+    "speaks": "serve through daemon-serve's accept",
 }
 
 # What ps shows of a program's name, from the kernel's TASK_COMM_LEN.
@@ -107,10 +108,19 @@ def programs(tree: Path) -> dict[str, Path]:
     return found
 
 
+# daemon-serve's accept, which answers the interface, by its path or as
+# imported; its listen only takes the socket, so naming the crate isn't
+# enough.
+ACCEPTS = re.compile(r"\bserve::accept\b|\buse daemon_serve::serve::\{[^}]*\baccept\b")
+
+
 def serves(manifest: Path) -> bool:
-    """Whether a crate serves through daemon-serve."""
+    """Whether a crate serves through daemon-serve: names it, and calls its accept."""
     crate = tomllib.loads(manifest.read_text())
-    return "daemon-serve" in crate.get("dependencies", {})
+    if "daemon-serve" not in crate.get("dependencies", {}):
+        return False
+    sources = (manifest.parent / "src").rglob("*.rs")
+    return any(ACCEPTS.search(source.read_text()) for source in sources)
 
 
 def started(command: str) -> tuple[str, str | None]:
