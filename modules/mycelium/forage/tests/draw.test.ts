@@ -34,7 +34,7 @@ function forage(more: Partial<Forage> = {}): Forage {
 
 /** The text of every element in `markup` marked as said by `quest`. */
 function saidBy(markup: string, quest: string): readonly string[] {
-  const marked = new RegExp(`<(\\w+)[^>]* data-said-by="${quest}"[^>]*>([^<]*)</\\1>`, "g");
+  const marked = new RegExp(`<(\\w+)[^>]* data-said-by="${quest}"[^>]*>([^<]*)</\\1>`, "gu");
   return [...markup.matchAll(marked)].map((each) => each[2] ?? "");
 }
 
