@@ -205,7 +205,12 @@ fn tried(
     };
     let room = match (busy, to.busy) {
         _ if choose::wider(to.frequency, frequency) => ", on a wider band".to_owned(),
-        (Some(busy), Some(theirs)) if busy > choose::BUSIEST && theirs <= choose::BUSIEST => {
+        (Some(busy), Some(theirs))
+            if busy > choose::BUSIEST
+                && choose::quieter(theirs, busy)
+                && to.measured.is_none()
+                && !choose::badly(measured) =>
+        {
             format!(", on a channel {theirs}% busy rather than {busy}%")
         }
         _ => String::new(),
@@ -389,6 +394,28 @@ mod tests {
             why.ends_with("heard at -50 dBm, on a channel 20% busy rather than 56%"),
             "a move off a busy channel says it's for room: {why}"
         );
+    }
+
+    #[test]
+    fn a_move_off_a_busy_channel_for_another_reason_says_nothing_of_room() {
+        let on = joined(HALL);
+        let quieter = Other {
+            busy: Some(20),
+            frequency: 5260,
+            ..other(DESK, None)
+        };
+        let known = Other {
+            measured: Some(carried(10)),
+            ..quieter.clone()
+        };
+
+        let badly = tried(&on, (&carried(52), 5745, Some(56)), &quieter, None);
+        let quicker = tried(&on, (&carried(38), 5745, Some(56)), &known, None);
+        let little = tried(&on, (&carried(38), 5745, Some(34)), &quieter, None);
+
+        assert!(!badly.contains("busy"), "it moves as bad: {badly}");
+        assert!(!quicker.contains("busy"), "it moves for speed: {quicker}");
+        assert!(!little.contains("busy"), "34% isn't past the bar: {little}");
     }
 
     #[test]

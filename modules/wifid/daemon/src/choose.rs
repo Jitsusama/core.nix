@@ -235,6 +235,7 @@ impl Chooser {
         });
         let Some(chosen) = chosen else {
             let alone = bad && others.iter().all(|other| other.point == point);
+            let hemmed = hemmed_in(crowded, (signal, frequency), others);
             let unbanded = narrow
                 && !bad
                 && !others
@@ -243,7 +244,7 @@ impl Chooser {
             let looks = [
                 (alone, Choice::Look),
                 (unbanded, Choice::LookWider),
-                (crowded.is_some(), Choice::LookQuieter),
+                (hemmed, Choice::LookQuieter),
             ];
             let look = looks
                 .into_iter()
@@ -293,15 +294,33 @@ fn for_quiet<'a>(
     (signal, frequency, busy): (i16, u32, u8),
 ) -> Option<&'a Other> {
     untried
-        .filter(|other| {
-            other.measured.is_none()
-                && wide(other.frequency)
-                && other
-                    .busy
-                    .is_some_and(|theirs| theirs <= BUSIEST && theirs + QUIETER <= busy)
-                && within_reach(other, signal, frequency)
-        })
+        .filter(|other| other.measured.is_none() && roomier(other, (signal, frequency, busy)))
         .max_by_key(|other| other.signal)
+}
+
+/// Whether a card on a channel this busy hears nowhere quieter to go, so a
+/// look could find one. One heard but known no quicker, or spurned, is
+/// left as it is, since looking again won't make it roomier.
+fn hemmed_in(crowded: Option<u8>, (signal, frequency): (i16, u32), others: &[Other]) -> bool {
+    crowded.is_some_and(|busy| {
+        !others
+            .iter()
+            .any(|other| roomier(other, (signal, frequency, busy)))
+    })
+}
+
+/// Whether another access point is heard within reach on a wider band,
+/// saying its channel is quieter than the card's own, this busy.
+fn roomier(other: &Other, (signal, frequency, busy): (i16, u32, u8)) -> bool {
+    wide(other.frequency)
+        && other.busy.is_some_and(|theirs| quieter(theirs, busy))
+        && within_reach(other, signal, frequency)
+}
+
+/// Whether a channel this busy is quiet enough to leave one that busy for:
+/// no busier than `BUSIEST`, and `QUIETER` less busy.
+pub fn quieter(theirs: u8, busy: u8) -> bool {
+    theirs <= BUSIEST && theirs + QUIETER <= busy
 }
 
 /// How busy the card's own channel says it is, where it's on a wider band
@@ -364,7 +383,7 @@ pub fn wider(to: u32, from: u32) -> bool {
 }
 
 /// Whether an access point carries badly enough to try another.
-fn badly(measured: &Measured) -> bool {
+pub fn badly(measured: &Measured) -> bool {
     slowness(measured) > SLOW || measured.lost > LOSSY
 }
 
@@ -964,10 +983,10 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_card_on_a_busy_channel_keeps_off_a_quieter_one_known_slower() {
+    fn a_card_on_a_busy_channel_keeps_off_a_quieter_one_known_no_quicker() {
         let choice = off_the_hall(38, 56, desk_at(-43, Some(carried(36, 0.0))));
 
-        assert_eq!(choice, Choice::LookQuieter, "36 ms is no quicker than 38");
+        assert_eq!(choice, Choice::Stay, "36 ms is no quicker than 38");
     }
 
     #[test]
@@ -1025,7 +1044,54 @@ pub(crate) mod tests {
         let later = start + TRIAL + SETTLE;
         let again = chooser.choose(later, (HALL, &quick, -41, CH149), &others, false);
 
-        assert_eq!(again, Choice::LookQuieter, "the desk carried worse lately");
+        assert_eq!(again, Choice::Stay, "the desk carried worse lately");
+    }
+
+    #[test]
+    fn a_card_on_a_busy_channel_tries_what_its_look_found() {
+        let start = Instant::now();
+        let mut chooser = Chooser::default();
+        let measured = carried(38, 0.0);
+        let on = (HALL, &measured, -41, CH149);
+        let looked = chooser.choose(start, on, &[the_hall_itself(56)], false);
+
+        let found = [the_hall_itself(56), desk_saying(Some(20))];
+        let after = chooser.choose(start + Duration::from_secs(60), on, &found, false);
+
+        assert_eq!(looked, Choice::LookQuieter, "it heard nothing quieter");
+        assert_eq!(after, Choice::Try(DESK.into()), "the look found the desk");
+    }
+
+    #[test]
+    fn a_card_on_a_busy_channel_tries_the_loudest_of_two_quieter() {
+        let measured = carried(38, 0.0);
+        let louder = Other {
+            point: "6c:ae:f6:ba:85:86".into(),
+            signal: -38,
+            ..desk_saying(Some(30))
+        };
+        let others = [the_hall_itself(56), desk_saying(Some(20)), louder];
+
+        let on = (HALL, &measured, -41, CH149);
+        let choice = Chooser::default().choose(Instant::now(), on, &others, false);
+
+        let to = Choice::Try("6c:ae:f6:ba:85:86".into());
+        assert_eq!(choice, to, "-38 dBm is louder than -43");
+    }
+
+    #[test]
+    fn a_busy_channel_on_2_4_ghz_is_left_to_the_band_rule() {
+        let near = Other {
+            point: NEAR.into(),
+            signal: -40,
+            busy: Some(56),
+            frequency: CH6,
+            measured: None,
+        };
+
+        let crowded = crowding((NEAR, CH6), &[near]);
+
+        assert_eq!(crowded, None, "2.4 GHz is no wider band to be crowded on");
     }
 
     #[test]
