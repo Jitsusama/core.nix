@@ -729,13 +729,15 @@ def test_a_meeting_joel_holds_is_cancelled_once_he_is_sure(desktop: Desktop) -> 
     )
     sure = desktop.showing()["selected"]["is"]
     assert sure == "calendar:meeting:planning:cancel:sure", sure
-    machine.fail(f"test -s {asked}")
+    line = json.dumps({"cancel": {"id": "planning"}}, separators=(",", ":"))
+    # Only the cancel is looked for, since the stand-in writes down every act a shell asks,
+    # and one left by a case before had this fail with nothing cancelled (25f6e305ace3).
+    machine.fail(f"grep -qxF {shlex.quote(line)} {asked}")
     # Cancelling tells the guest, so Return writes its line, banged, since the step was the
     # asking; it cancels nothing until a fresh Return there runs it, asking no more.
     desktop.line("cancel!")
-    machine.fail(f"test -s {asked}")
+    machine.fail(f"grep -qxF {shlex.quote(line)} {asked}")
     machine.send_key("ret")
-    line = json.dumps({"cancel": {"id": "planning"}}, separators=(",", ":"))
     machine.wait_until_succeeds(
         f"grep -qxF {shlex.quote(line)} {asked}", timeout=dt.timedelta(seconds=30)
     )
@@ -787,13 +789,9 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
             == f"Move It to {when}, Telling Ada Lovelace and Grace Hopper"
         )
     )
-    machine.fail(f"test -s {asked}")
+    machine.fail(moved(asked))
     machine.send_key("ret")
-    # Matched by its fields, since google's ask names them in its own order.
-    machine.wait_until_succeeds(
-        f'grep -F \'{{"move":\' {asked} | grep -qF \'"id":"standup"\'',
-        timeout=dt.timedelta(seconds=30),
-    )
+    machine.wait_until_succeeds(moved(asked), timeout=dt.timedelta(seconds=30))
     # The launcher stays, as it does once a meeting is cancelled.
     assert desktop.showing()["open"]
     desktop.as_account("qs ipc call launcher toggle")
@@ -822,16 +820,21 @@ def test_a_later_time_the_daemon_serves_moves_the_meeting_once_joel_is_sure(
             and "Telling Ada Lovelace and Grace Hopper" in shown["selected"]["name"]
         )
     )
-    machine.fail(f"test -s {asked}")
+    machine.fail(moved(asked))
     machine.send_key("ret")
-    # The daemon's ask comes with its fields in its own order, so it's
-    # matched by what it says, not where.
-    machine.wait_until_succeeds(
-        f'grep -F \'{{"move":\' {asked} | grep -qF \'"id":"standup"\'',
-        timeout=dt.timedelta(seconds=30),
-    )
+    machine.wait_until_succeeds(moved(asked), timeout=dt.timedelta(seconds=30))
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def moved(asked: str) -> str:
+    """Give a command that holds once google was asked to move Standup, and only then.
+
+    Matched by its fields, since google's ask names them in its own order. Only the move is
+    looked for, since the stand-in writes down every act a shell asks, and one left by a case
+    before had a case fail with nothing moved (25f6e305ace3).
+    """
+    return f'grep -F \'{{"move":\' {asked} | grep -qF \'"id":"standup"\''
 
 
 @pytest.mark.usefixtures("google")
