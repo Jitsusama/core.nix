@@ -377,6 +377,20 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/window-storm.py);
 
+  # A command fenced as pi fences one, trying for Joel's secret copy
+  # through X11 (../modules/pi/tests/pi-fence-keeps-x11-from-secrets.sh).
+  fenceKeepsX11 = pkgs.writeShellApplication {
+    name = "pi-fence-keeps-x11-from-secrets";
+    runtimeInputs = [
+      pkgs.bubblewrap
+      pkgs.landrun
+      pkgs.wl-clipboard
+      pkgs.xclip
+      pkgs.xlogo
+    ];
+    text = builtins.readFile ../modules/pi/tests/pi-fence-keeps-x11-from-secrets.sh;
+  };
+
   # A stand-in touchscreen, as wide as the screen, which swipes or taps as
   # it's told through /run/touchscreen (desktop/touchscreen.py).
   touchscreen = pkgs.writers.writePython3 "touchscreen" {
@@ -579,6 +593,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         ""
         "${pkgs.coreutils}/bin/touch /run/suspended"
       ];
+      # keeps-copies fences a command with landrun, which needs the Landlock
+      # of Joel's machines' kernel, refusing X11's file sockets by path,
+      # that the stock one lacks. Only there, so no other area moves with it.
+      boot.kernelPackages = lib.mkIf (area == "keeps-copies") pkgs.linuxPackages_latest;
       boot.extraModulePackages = [
         (config.boot.kernelPackages.callPackage ./stand-in-backlight { })
         (config.boot.kernelPackages.callPackage ./stand-in-light { })
@@ -1446,6 +1464,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           # there, so no other area moves with it.
           // pkgs.lib.optionalAttrs (area == "keeps-pace") {
             window_storm = windowStorm;
+          }
+          # The fenced command keeps-copies tries Joel's secret copy through
+          # X11 with, only there, so no other area moves with it.
+          // pkgs.lib.optionalAttrs (area == "keeps-copies") {
+            fence_keeps_x11 = pkgs.lib.getExe fenceKeepsX11;
           }
           // pkgs.lib.optionalAttrs standsInForWarp {
             warp_contract = "${../modules/warp/contract}";

@@ -3468,11 +3468,6 @@
     clippy finds nothing in pi-fence-display or its tests, the sandboxed display pi's fenced
     commands open windows on
   '';
-  pi-fence-keeps-x11-from-secrets = ''
-    on a real niri with xwayland-satellite, Joel's own X11 client reads a copy marked secret, but a
-    command fenced as pi fences one, given the display, never does: handed the cookie it reaches
-    no socket, and with the sockets open it holds no cookie; with both walls gone it reads it
-  '';
   pi-github-door-lets-only-allowed-calls-through = ''
     pi-github-door sends a fenced call on to GitHub with the person's token in the placeholder's
     place only when it's allowed; a merge, a push, a pull request opened, a credential, a
@@ -4549,7 +4544,10 @@
   '';
   vm-desktop-keeps-copies = ''
     the desktop keeps what's copied, text and pictures, past the programs that copied it, Super+V
-    gives it back into the window it opened over, and the launcher forgets it all when asked
+    gives it back into the window it opened over, and the launcher forgets it all when asked; and a
+    copy marked secret reaches Joel's own X11 client but never a command fenced as pi fences one,
+    given the display: handed the cookie it reaches no socket, with the sockets open it holds no
+    cookie, and with both walls gone it reads it
   '';
   vm-desktop-keeps-pace = ''
     the launcher draws its keys, arrowed or typed, nearly as soon while every core is busy in

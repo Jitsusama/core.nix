@@ -349,6 +349,14 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
     assert desktop.as_account("ls -A $XDG_RUNTIME_DIR/clipboard-history") == ""
 
 
+def test_a_fenced_command_reads_no_secret_copy_through_x11(desktop: Desktop) -> None:
+    """A fenced command reads no secret copy through X11, where Joel's own client does."""
+    # The script says each case it tried, and fails naming the one that
+    # let the secret through (modules/pi/tests).
+    said = desktop.as_account(f"{desktop.values['fence_keeps_x11']} 2>&1; echo ended $?")
+    assert said.rstrip().endswith("ended 0"), f"the fence let X11 through: {said}"
+
+
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
 

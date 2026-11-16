@@ -1,7 +1,8 @@
 # shellcheck shell=bash
-# Runs on a nested niri (tests/nested-niri.sh) whose PATH holds the
-# session's xwayland-satellite, which bridges niri's clipboard to X11 for
-# Joel's X11 programs. A copy a password manager marks secret reaches his
+# Runs as Joel in his session on the desktop's VM (vm-desktop-keeps-copies),
+# whose kernel has the Landlock the fence needs, as his machines' does and
+# the builders' doesn't. The session's xwayland-satellite bridges niri's
+# clipboard to X11 for Joel's X11 programs. A copy a password manager marks secret reaches his
 # own X11 client through it, as before, but never a command pi fences,
 # though it's given the display: the fence lays an empty folder over X's
 # sockets and empties the runtime folder the cookie is kept in, and
@@ -12,25 +13,22 @@
 # the harness's is (lib/internal/fence.ts: bubblewrap, then landrun with
 # only named sockets), and the harness's preflight holds the fence
 # itself to it.
-# usage: pi-fence-keeps-x11-from-secrets.sh <niri's log>
+# usage: pi-fence-keeps-x11-from-secrets.sh
 set -euo pipefail
-
-log=$1
-logs=$(dirname "$log")
-exec 2> "$logs/x11.log"
 
 fail() {
   echo "FAIL: $*" >&2
   exit 1
 }
 
-# niri names its X11 display as it starts: up to 10 s, in tenths.
-for _ in $(seq 100); do
-  display=$(grep -ao 'listening on X11 socket: :[0-9]*' "$log" | grep -o ':[0-9]*$' || true)
-  [ -n "$display" ] && break
-  sleep 0.1
-done
+# The display and the cookie as niri and the session hand them to Joel's
+# programs.
+session=$(systemctl --user show-environment)
+display=$(sed -n 's/^DISPLAY=//p' <<< "$session")
+XAUTHORITY=$(sed -n 's/^XAUTHORITY=//p' <<< "$session")
+export XAUTHORITY
 [ -n "$display" ] || fail "niri opened no X11 display"
+[ -n "$XAUTHORITY" ] || fail "the session names no X11 cookie"
 
 # The satellite is offered niri's clipboard only while one of its windows
 # holds the keyboard, as any Wayland client is, and then holds it for every
@@ -38,19 +36,23 @@ done
 # focused, as it is whenever he works in one. The first client starts the
 # satellite and Xwayland behind it, so it may wait for them: up to a
 # minute, in tenths.
+# The cookie, for the case that hands it to a fenced command, is a copy
+# outside the runtime folder. The window, the cookie and the secret copy
+# all go when this ends.
+cookie=$(mktemp)
 xlogo -display "$display" &
 logo=$!
-trap 'kill "$logo" 2> /dev/null || true' EXIT
+trap 'kill "$logo" 2> /dev/null || true; rm -f "$cookie"; wl-copy --clear || true' EXIT
 for _ in $(seq 600); do
   focused=$(niri msg focused-window 2> /dev/null || true)
   case $focused in
-  *"App ID"*) break ;;
+  *[Xx][Ll]ogo*) break ;;
   *) ;;
   esac
   sleep 0.1
 done
 case $focused in
-*"App ID"*) ;;
+*[Xx][Ll]ogo*) ;;
 *) fail "niri focused no X11 window: $focused" ;;
 esac
 
@@ -69,8 +71,6 @@ done
 [ "$read" = "$secret" ] ||
   fail "Joel's own X11 client didn't read his copy, so a fenced one failing proves nothing"
 
-# The cookie, for the case that hands it to a fenced command.
-cookie=$PWD/handed-cookie
 cp "$XAUTHORITY" "$cookie"
 
 # Runs xclip, as a fenced command would, given the display and a cookie,
