@@ -1,0 +1,63 @@
+wifi: iwlwifi: mld: let a large reorder buffer come from vmalloc
+
+iwl_mld_ampdu_rx_start() allocates the session data and a reorder
+buffer per RX queue in one kzalloc(). With many RX queues and a large
+block-ack window that reaches an order-5 allocation, which a machine
+whose memory has been up a while often can't find contiguous. The
+allocation then fails with a page allocation failure warning, the
+ADDBA request is refused, and the link runs that TID without
+aggregation.
+
+The XPS 14 DA14260 (BE211) logged four such failures at order 5 in one
+day on 7.3.4, from cfg80211_wiphy_work through
+ieee80211_process_addba_request, one a second after a roam. Each time
+the Normal zone held free pages, but no free block of 128 kB or larger.
+
+The buffers are only read and written by the CPU, never by the device,
+so they needn't be physically contiguous. Allocate them with
+kvzalloc(), which tries kmalloc first and falls back to vmalloc, and
+free them with kvfree() and kvfree_rcu().
+
+diff --git a/drivers/net/wireless/intel/iwlwifi/mld/agg.c b/drivers/net/wireless/intel/iwlwifi/mld/agg.c
+--- a/drivers/net/wireless/intel/iwlwifi/mld/agg.c
++++ b/drivers/net/wireless/intel/iwlwifi/mld/agg.c
+@@ -551,11 +551,17 @@ int iwl_mld_ampdu_rx_start(struct iwl_mld *mld, struct ieee80211_sta *sta,
+ 	reorder_buf_size = ALIGN(reorder_buf_size, SMP_CACHE_BYTES);
+ 
+ 	/* Allocate here so if allocation fails we can bail out early
+-	 * before starting the BA session in the firmware
++	 * before starting the BA session in the firmware.
++	 *
++	 * The reorder buffers are only ever read by the CPU, and with many
++	 * RX queues and a large window they reach an order-5 allocation,
++	 * which a fragmented machine often can't find contiguous: the
++	 * session is then refused and the link runs without aggregation.
++	 * kvzalloc() falls back to vmalloc for those.
+ 	 */
+-	baid_data = kzalloc(sizeof(*baid_data) +
+-			    mld->trans->info.num_rxqs * reorder_buf_size,
+-			    GFP_KERNEL);
++	baid_data = kvzalloc(sizeof(*baid_data) +
++			     mld->trans->info.num_rxqs * reorder_buf_size,
++			     GFP_KERNEL);
+ 	if (!baid_data)
+ 		return -ENOMEM;
+ 
+@@ -605,7 +611,7 @@ int iwl_mld_ampdu_rx_start(struct iwl_mld *mld, struct ieee80211_sta *sta,
+ 	return 0;
+ 
+ out_free:
+-	kfree(baid_data);
++	kvfree(baid_data);
+ 	return ret;
+ }
+ 
+@@ -642,7 +648,7 @@ int iwl_mld_ampdu_rx_stop(struct iwl_mld *mld, struct ieee80211_sta *sta,
+ 	iwl_mld_free_reorder_buffer(mld, baid_data);
+ 
+ 	RCU_INIT_POINTER(mld->fw_id_to_ba[baid], NULL);
+-	kfree_rcu(baid_data, rcu_head);
++	kvfree_rcu(baid_data, rcu_head);
+ 
+ 	IWL_DEBUG_HT(mld, "BAID %d is free\n", baid);
+ 

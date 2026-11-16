@@ -46,6 +46,13 @@ in
   TRANSPARENT_HUGEPAGE_ALWAYS = yes;
   TRANSPARENT_HUGEPAGE_MADVISE = no;
 
+  # Let a program name its anonymous memory, as Qt names its JavaScript heap
+  # "JSGCHeap:QtQml", so /proc/<pid>/maps and smaps say what each region is.
+  # Without it the kernel refuses the name, and a reading of the shell's
+  # memory folds its heap into the rest. It costs nothing until a region is
+  # named.
+  ANON_VMA_NAME = yes;
+
   # Tell userspace when the firmware changes a light on its own, as a laptop's
   # keyboard backlight key does, through the LED's brightness_hw_changed file,
   # which can be watched. Without it the change can be found only by polling.

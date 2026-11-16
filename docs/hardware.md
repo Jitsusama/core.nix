@@ -472,6 +472,15 @@ With the lid closed, Wi-Fi slows to a crawl even docked. Testing in
 software, though nobody has proven it, and nothing here fixes it. Docked,
 Ethernet avoids it.
 
+Each block-ack session the access point opens takes its data and a
+reorder buffer for every receive queue as one order-5 block, 128 KiB
+contiguous. Once memory has been up a while it is often fragmented past
+that: on 15 November four sessions were refused so, one a second after a
+roam, and each left that stream of traffic without aggregation.
+`kernel/local/wifi-reorder-buffer-falls-back-to-vmalloc.patch`, written
+here, lets the block come from vmalloc when kmalloc can't give it, since
+only the CPU reads it.
+
 ### Bluetooth's Power Limits
 
 The firmware gives Bluetooth two settings, as UEFI variables: a SAR table,
