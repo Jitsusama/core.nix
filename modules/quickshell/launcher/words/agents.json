@@ -336,6 +336,8 @@
     },
     {
       "id": "verb:carry:back",
+      "command": "move",
+      "argument": "back",
       "in": "agents",
       "name": "Carry Back",
       "verb": "carry back",
