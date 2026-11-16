@@ -149,9 +149,9 @@ struct Queue {
     asked: Vec<String>,
     searching: usize,
     asking: usize,
-    listing: bool,
-    forwarding: bool,
-    comparing: bool,
+    /// The lanes under way that take one job at a time: lists, held
+    /// tests' runs and a Mac's comparisons.
+    alone: Vec<Lane>,
     closing: bool,
 }
 
@@ -163,9 +163,9 @@ impl Queue {
     fn next(&mut self) -> Option<(Job, Lane)> {
         let (index, lane) = self.waiting.iter().enumerate().find_map(|(index, job)| {
             let lane = match job {
-                Job::Flaky { .. } => (!self.listing).then_some(Lane::List),
-                Job::Forward { .. } => (!self.forwarding).then_some(Lane::Forward),
-                Job::Mac { .. } => (!self.comparing).then_some(Lane::Mac),
+                Job::Flaky { .. } => self.free(Lane::List),
+                Job::Forward { .. } => self.free(Lane::Forward),
+                Job::Mac { .. } => self.free(Lane::Mac),
                 Job::Search { .. } if self.searching < SEARCHES => Some(Lane::Search),
                 Job::Search { test, .. } => (self.asking < ASKS
                     && !self.asked.iter().any(|asked| asked == test))
@@ -178,15 +178,21 @@ impl Queue {
         Some((job, lane))
     }
 
+    /// `lane`, if it takes one job at a time and has none under way.
+    fn free(&self, lane: Lane) -> Option<Lane> {
+        (!self.alone.contains(&lane)).then_some(lane)
+    }
+
     fn turn(&mut self, lane: Lane, starts: bool) {
         match (lane, starts) {
             (Lane::Search, true) => self.searching += 1,
             (Lane::Search, false) => self.searching -= 1,
             (Lane::Ask, true) => self.asking += 1,
             (Lane::Ask, false) => self.asking -= 1,
-            (Lane::List, _) => self.listing = starts,
-            (Lane::Forward, _) => self.forwarding = starts,
-            (Lane::Mac, _) => self.comparing = starts,
+            (Lane::List | Lane::Forward | Lane::Mac, true) => self.alone.push(lane),
+            (Lane::List | Lane::Forward | Lane::Mac, false) => {
+                self.alone.retain(|under_way| *under_way != lane);
+            }
         }
     }
 }

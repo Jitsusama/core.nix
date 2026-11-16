@@ -1233,6 +1233,14 @@ fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, String>
     settler.error().map_or(Ok(round), Err)
 }
 
+/// Remove the logs of runs over three days old, saying how many went.
+fn age_out_logs(state: &State) {
+    let aged = state.age_out_logs(std::time::SystemTime::now());
+    if aged > 0 {
+        state.say(&format!("removed {aged} logs of runs over three days old"));
+    }
+}
+
 /// Hand `settler` a Mac's comparison at each merge since `base` up to
 /// `head` whose gate skipped one, against the merge's first parent, so its
 /// blame is the merge's alone. Of 13 records a day on 15 November that kept
@@ -1264,10 +1272,7 @@ pub fn round_beside(
     settler: &Settler,
 ) -> Result<Round, String> {
     settler.take_up();
-    let aged = state.age_out_logs(std::time::SystemTime::now());
-    if aged > 0 {
-        state.say(&format!("removed {aged} logs of runs over three days old"));
-    }
+    age_out_logs(state);
     if let Some(why) = world.held() {
         state.say(&format!("held, starting nothing: {why}"));
         if let Err(error) = state.held(&why) {
