@@ -3,8 +3,9 @@
 //! a later watch, read behind it; the rows searched by owner; the open
 //! changes a refresh kept, and how far a counting kept its checkout
 //! behind, said beside their repository; a checkout's files served
-//! inside Open a File by Name while it's ahead, and gone once it isn't;
-//! and New Terminal Here started by a stand-in for niri as it's asked.
+//! inside Open a File by Name while it's ahead, gone once it isn't, and
+//! found there by name or folder as they're typed; and New Terminal Here
+//! started by a stand-in for niri as it's asked.
 
 use std::path::Path;
 use std::process::Command;
@@ -29,6 +30,12 @@ fn cloned(running: &Running, folder: &str, remote: &str) {
     let path = running.path(&format!("src/{folder}"));
     git_in(&path, &["init", "--quiet"]);
     git_in(&path, &["remote", "add", "origin", remote]);
+}
+
+/// A checkout's path as the daemon names it, with no link left in it,
+/// since a test's temporary folder may sit behind one.
+fn real(path: &Path) -> std::path::PathBuf {
+    path.canonicalize().unwrap()
 }
 
 fn row_of<'a>(answer: &'a Value, key: &str) -> Option<&'a Value> {
@@ -123,7 +130,7 @@ fn the_changes_a_refresh_kept_are_counted_beside_their_repository() {
 fn a_checkouts_files_are_served_inside_open_a_file_by_name_only_while_its_ahead() {
     let running = Running::new("code-files");
     cloned(&running, "alpha", "git@github.com:someone/alpha.git");
-    let checkout = running.path("src/alpha");
+    let checkout = real(&running.path("src/alpha"));
     std::fs::create_dir_all(checkout.join("docs")).unwrap();
     std::fs::write(checkout.join("docs/guide.md"), "a guide").unwrap();
     let mut client = running.client();
@@ -197,6 +204,44 @@ fn how_far_a_counting_kept_a_checkout_behind_is_said_beside_its_repository() {
         alpha["row"]["side"][0],
         json!({"said": "3 behind"}),
         "how far a counting kept its checkout behind isn't said beside it: {alpha}"
+    );
+}
+
+#[test]
+fn whats_typed_in_open_a_file_by_name_finds_its_files_by_name_or_folder() {
+    let running = Running::new("code-file-search");
+    cloned(&running, "alpha", "git@github.com:someone/alpha.git");
+    let checkout = real(&running.path("src/alpha"));
+    std::fs::create_dir_all(checkout.join("docs")).unwrap();
+    std::fs::write(checkout.join("docs/guide.md"), "a guide").unwrap();
+    std::fs::write(checkout.join("readme.md"), "a readme").unwrap();
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "code"}));
+    let find = "row:code:github:someone/alpha:files";
+    client.send(&json!({"id": "ahead", "ask": "watch", "kind": ["row"], "keys": [find]}));
+    let guide = format!("{find}:{}/docs/guide.md", checkout.display());
+    client.changed(&guide);
+    let mut typed = |words: &str, most: Option<u64>| {
+        client.ask(&json!({"id": 2, "ask": "search", "place": "code", "words": words,
+            "within": find, "most": most}))
+    };
+    let said = typed("guide", None);
+    assert_eq!(
+        said["keys"],
+        json!([guide]),
+        "what's typed in Open a File by Name didn't find a file by its name: {said}"
+    );
+    let said = typed("docs", None);
+    assert_eq!(
+        said["keys"],
+        json!([guide]),
+        "what's typed in Open a File by Name didn't find a file by its folder: {said}"
+    );
+    let said = typed("md", Some(1));
+    assert_eq!(
+        said["keys"].as_array().map(Vec::len),
+        Some(1),
+        "a search typed in a step found more than it was asked for: {said}"
     );
 }
 

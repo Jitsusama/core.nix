@@ -45,13 +45,8 @@ pub fn kind_of(key: &str) -> Option<&str> {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Own {
     /// The rows of a place whose names, or what else they're called, start
-    /// with the words typed, best first (search.rs), at most `most` of
-    /// them where the ask says.
-    Search {
-        place: String,
-        words: String,
-        most: Option<usize>,
-    },
+    /// with the words typed, best first (search.rs).
+    Search(Search),
     /// What a program says of these keys' lists: they changed, so each
     /// is read again, at once where a watch names it; `from`, the process
     /// saying so, tells of its own changes from now on.
@@ -68,6 +63,17 @@ pub enum Own {
     /// What the rows are made of, held until the next (docs/daemons.md,
     /// Settings).
     Settings(Settings),
+}
+
+/// A search of `place` for the `words` typed: at most `most` rows where
+/// it says, and only those inside the row keyed `within` where it names
+/// one, as what's typed in a step finds among the rows it steps into.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Search {
+    pub place: String,
+    pub words: String,
+    pub most: Option<usize>,
+    pub within: Option<String>,
 }
 
 /// What the rows are made of, as the shell says before it watches them;
@@ -126,11 +132,12 @@ fn text_of(said: &Value, field: &str) -> String {
 pub fn own_of(said: &Value) -> Option<Own> {
     let number = |field: &str| said.get(field).and_then(Value::as_u64);
     match said.get("ask").and_then(Value::as_str)? {
-        "search" => Some(Own::Search {
+        "search" => Some(Own::Search(Search {
             place: text_of(said, "place"),
             words: text_of(said, "words"),
             most: number("most").and_then(|most| usize::try_from(most).ok()),
-        }),
+            within: None,
+        })),
         "changed" => Some(Own::Changed {
             keys: strings(said, "keys")
                 .unwrap_or_default()
@@ -240,19 +247,32 @@ mod tests {
     fn a_search_says_its_words() {
         assert_eq!(
             own_of(&json!({"ask": "search", "place": "programs", "words": "chr"})),
-            Some(Own::Search {
+            Some(Own::Search(Search {
                 place: "programs".into(),
                 words: "chr".into(),
                 most: None,
-            })
+                within: None,
+            }))
         );
         assert_eq!(
             own_of(&json!({"ask": "search", "place": "taken", "words": "zz", "most": 50})),
-            Some(Own::Search {
+            Some(Own::Search(Search {
                 place: "taken".into(),
                 words: "zz".into(),
                 most: Some(50),
-            })
+                within: None,
+            }))
+        );
+        assert_eq!(
+            own_of(&json!({"ask": "search", "place": "code", "words": "gu",
+                "within": "row:code:github:a/b:files"})),
+            Some(Own::Search(Search {
+                place: "code".into(),
+                words: "gu".into(),
+                most: None,
+                within: Some("row:code:github:a/b:files".into()),
+            })),
+            "a search typed in a step didn't say which"
         );
     }
 
