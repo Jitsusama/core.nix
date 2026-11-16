@@ -21,6 +21,7 @@
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -277,6 +278,25 @@ pub enum Refused {
     Unreachable(String),
 }
 
+/// How long Slack is left alone after refusing for its limit without
+/// saying for how long.
+const WAIT_UNSAID: Duration = Duration::from_secs(30);
+
+/// The longest wait taken from Slack's word, so a garbled header never
+/// silences Slack for a day.
+const WAIT_MOST: Duration = Duration::from_secs(600);
+
+/// How long Slack asked to be left alone, from a 429's `Retry-After`:
+/// whole seconds, as Slack sends it, up to [`WAIT_MOST`], or
+/// [`WAIT_UNSAID`] when it's missing or not a number of seconds.
+pub fn retry_after(header: Option<&str>) -> Duration {
+    header
+        .and_then(|seconds| seconds.trim().parse::<u64>().ok())
+        .map_or(WAIT_UNSAID, |seconds| {
+            Duration::from_secs(seconds).min(WAIT_MOST)
+        })
+}
+
 /// Slack's API, at an origin given rather than fixed, so the tests can
 /// ask a stand-in on this machine.
 pub struct Slack {
@@ -285,12 +305,14 @@ pub struct Slack {
     /// Searches asked since [`Slack::searched`] was last asked, which a
     /// grid allows only about 20 of a minute.
     searches: Cell<u32>,
+    /// Until when Slack asked, with a 429, to be asked nothing more.
+    quiet_until: Cell<Option<Instant>>,
 }
 
 impl Slack {
     pub fn new(origin: impl Into<String>) -> Slack {
         let agent = Agent::config_builder()
-            .timeout_global(Some(std::time::Duration::from_secs(10)))
+            .timeout_global(Some(Duration::from_secs(10)))
             .http_status_as_error(false)
             .build()
             .into();
@@ -298,7 +320,22 @@ impl Slack {
             agent,
             origin: origin.into(),
             searches: Cell::new(0),
+            quiet_until: Cell::new(None),
         }
+    }
+
+    /// How long is left of the wait Slack last asked for, or none once
+    /// it may be asked again.
+    pub fn quiet(&self) -> Option<Duration> {
+        let left = self
+            .quiet_until
+            .get()?
+            .saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            self.quiet_until.set(None);
+            return None;
+        }
+        Some(left)
     }
 
     /// How many searches were asked since this was last asked.
@@ -415,6 +452,11 @@ impl Slack {
         method: &str,
         query: &[(&str, &str)],
     ) -> Result<Value, Refused> {
+        // Asking while Slack asked for a wait only lengthens it, so it's
+        // said busy, as Slack would, with nothing sent.
+        if self.quiet().is_some() {
+            return Err(Refused::Unreachable(search::BUSY.to_owned()));
+        }
         if method == "search.messages" {
             self.searches.set(self.searches.get() + 1);
         }
@@ -431,6 +473,12 @@ impl Slack {
             .map_err(|error| Refused::Unreachable(format!("couldn't reach Slack: {error}")))?;
         let status = answer.status().as_u16();
         if status == 429 {
+            let asked = answer
+                .headers()
+                .get("retry-after")
+                .and_then(|value| value.to_str().ok());
+            self.quiet_until
+                .set(Some(Instant::now() + retry_after(asked)));
             return Err(Refused::Unreachable(search::BUSY.to_owned()));
         }
         if status != 200 {
@@ -738,6 +786,27 @@ pub fn asked(email: &str) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn slack_saying_how_long_is_waited_that_long() {
+        assert_eq!(retry_after(Some("12")), Duration::from_secs(12));
+        assert_eq!(retry_after(Some(" 3 ")), Duration::from_secs(3));
+    }
+
+    #[test]
+    fn slack_saying_nothing_readable_is_waited_half_a_minute() {
+        assert_eq!(retry_after(None), WAIT_UNSAID);
+        assert_eq!(retry_after(Some("soon")), WAIT_UNSAID);
+        assert_eq!(
+            retry_after(Some("Wed, 21 Oct 2026 07:28:00 GMT")),
+            WAIT_UNSAID
+        );
+    }
+
+    #[test]
+    fn slack_asking_for_hours_is_waited_ten_minutes_at_most() {
+        assert_eq!(retry_after(Some("86400")), WAIT_MOST);
+    }
 
     #[test]
     fn someone_found_is_said_by_their_id_and_real_name() {

@@ -22,10 +22,12 @@ const WORDS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/words.json");
 struct Heard {
     line: String,
     headers: Vec<String>,
+    at: Instant,
 }
 
 /// A stand-in for Slack's API, answering each request's first line with
-/// what `answer` gives.
+/// what `answer` gives: a 200's body, or a status line and its headers
+/// when it starts `HTTP/1.1`.
 struct StandIn {
     origin: String,
     heard: Arc<Mutex<Vec<Heard>>>,
@@ -65,12 +67,20 @@ impl StandIn {
                 reader.read_exact(&mut body).unwrap();
                 let line = line.trim_end().to_owned();
                 let said = answer(&line);
-                kept.lock().unwrap().push(Heard { line, headers });
-                let reply = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
-                     Content-Length: {}\r\nConnection: close\r\n\r\n{said}",
-                    said.len()
-                );
+                kept.lock().unwrap().push(Heard {
+                    line,
+                    headers,
+                    at: Instant::now(),
+                });
+                let reply = if said.starts_with("HTTP/1.1 ") {
+                    format!("{said}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                } else {
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                         Content-Length: {}\r\nConnection: close\r\n\r\n{said}",
+                        said.len()
+                    )
+                };
                 stream.write_all(reply.as_bytes()).unwrap();
             }
         });
@@ -467,6 +477,36 @@ fn slack_too_busy_to_say_how_they_are_leaves_who_they_are_said() {
     let path = credentials("busy");
     let said = told(&stand_in, &path, "ada@example.com\nada@example.com\n");
     assert_eq!(said, [ADA_UNSAID, ADA_UNSAID]);
+    forget(&path);
+}
+
+/// How many asks `pausing` has answered.
+static PAUSING_ASKED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Slack as `slack` has it, but over its limit at the first ask, saying
+/// to wait two seconds, as a grid does after a restart's asks ahead.
+fn pausing(line: &str) -> String {
+    if PAUSING_ASKED.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+        "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 2".into()
+    } else {
+        slack(line)
+    }
+}
+
+#[test]
+fn asked_to_wait_it_asks_nothing_until_then_and_drops_nobody_ahead() {
+    let stand_in = StandIn::new(pausing);
+    let path = credentials("pausing");
+    let said = told(&stand_in, &path, "?ada@example.com\n?grace@example.com\n");
+    // Ada, whose ask Slack refused, is asked again once the wait is over.
+    assert!(said.contains(&ADA_UNSAID.to_owned()), "{said:?}");
+    assert!(said.contains(&GRACE_WHO.to_owned()), "{said:?}");
+    let heard = stand_in.heard();
+    let waited = heard[1].at.duration_since(heard[0].at);
+    assert!(
+        waited >= Duration::from_millis(1900),
+        "asked again after {waited:?}"
+    );
     forget(&path);
 }
 
