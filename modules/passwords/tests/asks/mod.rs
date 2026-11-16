@@ -770,6 +770,7 @@ fn one_watch_hears_the_entries_and_the_asks_but_not_the_entries_rows() {
     );
     let mut keys: Vec<String> = Vec::new();
     let mut row = Value::Null;
+    let mut summary = Value::Null;
     let mut heard = first;
     loop {
         let records = heard["records"].as_array().or(heard["changed"].as_array());
@@ -778,9 +779,17 @@ fn one_watch_hears_the_entries_and_the_asks_but_not_the_entries_rows() {
             if key == format!("row:asks:{id}") {
                 row = record["row"].clone();
             }
+            if key == "summary:asks" {
+                summary = record["summary"].clone();
+            }
             keys.push(key);
         }
-        if !row.is_null() && keys.iter().any(|key| key.starts_with("entry:")) {
+        // The asks' summary comes too, so the place counts the asks that
+        // wait rather than every one drawn.
+        if !row.is_null()
+            && !summary.is_null()
+            && keys.iter().any(|key| key.starts_with("entry:"))
+        {
             break;
         }
         heard = client.hear();
