@@ -3234,6 +3234,9 @@ ASKED_AGAIN = 0.5
 # How soon a line gone from a step still held dims, once its source has said so: at once, with
 # room for a loaded builder, and well short of what else makes the step again.
 DIMMED_AT_ONCE = timedelta(seconds=5)
+# How soon the margin says an episode of degraded WARP: the minute it must gather, the daemon's
+# next judging five seconds on, and room for a loaded builder.
+EPISODE_SAID = timedelta(seconds=100)
 
 
 def terminal_shown_until(shell: Shell, test: Callable[[Json], object], *steps: str) -> Json:
@@ -3249,6 +3252,53 @@ def terminal_shown_until(shell: Shell, test: Callable[[Json], object], *steps: s
         time.sleep(ASKED_AGAIN)
         shown = shown_to_terminal(shell, *steps)
     return shown
+
+
+def test_now_says_a_degraded_work_network_within_its_line_and_steps_to_its_row(
+    shell: Shell,
+) -> None:
+    """A degraded episode's line in Now holds its figures within it, and Return lands on WARP.
+
+    The warp daemon says an episode once a minute of degraded has gathered
+    (modules/warp/src/degraded.rs), so this is the one case here that waits a minute, a part
+    of its own (modules/quickshell/checks/core.nix); it's the only one where the margin's
+    piece carries its context, WARP's figures, the hour and what's behind it, some 170
+    characters under Now's line, which the launcher's own measure of what broke out of its
+    card judges (Y2YBTS, 2026-11-16). Return then steps into Network onto the Work Network's
+    row, as Super+N's does (pieces/WorkNetwork.qml).
+    """
+    said = warp_said()
+    contract = Path(os.environ["WARP_CONTRACT"])
+    try:
+        mark = shell.mark()
+        shutil.copyfile(contract / "status.degraded.json", said / "status.json")
+        deadline = time.monotonic() + EPISODE_SAID.total_seconds()
+        while "work network ails true" not in shell.said_since(mark)[0]:
+            assert time.monotonic() < deadline, "the margin never said WARP's episode"
+            time.sleep(ASKED_AGAIN)
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.normal()
+        shell.step_in()
+        shell.launcher_until(
+            lambda shown: (
+                shown["path"][-1:] == ["Now"] and "degraded" in reading(shown, "Work Network")
+            )
+        )
+        line = next(name for name in shell.showing()["rows"] if name.startswith("Work Network"))
+        shell.down_to(line)
+        broke = json.loads(shell.as_account(shell.ipc("contained")))
+        assert broke == [], f"what broke out of Now's card: {broke}"
+        shell.step_in()
+        shell.launcher_until(
+            lambda shown: (
+                shown["path"][-1:] == ["Network"]
+                and (shown["selected"] or {}).get("name") == "Work Network"
+            )
+        )
+        shell.close_launcher()
+    finally:
+        warp_forgotten(said)
 
 
 def test_a_terminal_is_shown_warps_state_health_and_round_trips_drawer(shell: Shell) -> None:

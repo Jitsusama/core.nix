@@ -51,13 +51,16 @@ in
     launcherOnNiri {
       name = "the-launcher-answers-whats-typed-on-niri";
       tests = ../../../tests/launcher-on-niri-test.py;
-      # Five parts side by side, of about 80 s of cases each by their
+      # Six parts side by side, of about 80 s of cases each by their
       # times on 13 November (--durations), the timed trials kept together
-      # in the last; and each judges its own run's log last.
+      # in the last, and the degraded Work Network's minute-long wait alone
+      # in the fifth, so it lengthens none; and each judges its own run's
+      # log last.
       parts = [
         "test_an_answer_asked_for_holds_its_row_from_the_keystroke"
         "test_the_shut_shell_sleeps_as_a_window_is_resized"
         "test_a_cheap_drawer_comes_in_its_keys_own_frame"
+        "test_now_says_a_degraded_work_network_within_its_line_and_steps_to_its_row"
         "test_a_terminal_is_shown_warps_state_health_and_round_trips_drawer"
       ];
       every = [ "test_no_answer_raised_an_error_and_quickshell_warned_of_nothing" ];
