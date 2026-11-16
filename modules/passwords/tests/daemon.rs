@@ -390,6 +390,21 @@ fn rows_asked_of_a_daemon_whose_words_didnt_read_are_refused_saying_so() {
         3,
         "entries were refused with the rows: {entries}"
     );
+    // The asks' rows are made in their own words, so the Passwords place
+    // watching its entries with them keeps its entries without these.
+    let beside = asking.ask(&json!({
+        "id": 5, "ask": "list", "held": true, "kind": ["entry", "row"], "place": "asks"
+    }));
+    assert_eq!(
+        beside.get("error"),
+        None,
+        "entries watched with the asks were refused for the rows' words"
+    );
+    assert_eq!(
+        keys(&beside).len(),
+        3,
+        "entries watched with the asks were refused for the rows' words: {beside}"
+    );
 }
 
 /// Have I Been Pwned's stand-in, having seen "password" 1,204 times and
