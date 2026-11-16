@@ -364,6 +364,10 @@ pkgs.runCommandLocal "web-kit"
   {
     inherit css;
     passAsFile = [ "css" ];
+    # Each look's roles as values, for what can't read the page's
+    # properties: a favicon and theme-color, which a site built by Nix fills
+    # from these (modules/local-sites/site.nix) rather than copying by hand.
+    passthru.looks = sides;
   }
   ''
     mkdir -p $out/fonts

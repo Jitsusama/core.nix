@@ -20,7 +20,14 @@
 # them. It runs whenever sites.json changes and at every switch, so a
 # changed builder reaches the home without anyone running it.
 #
-# Two sites are live. mycelium/ maps the realm as it stands, from a
+# A live site is built by Nix from its TypeScript on the kit (site.nix
+# says how) and mounted here with the feed it watches. system/ is the
+# first: how the whole system stands, watched live from the system
+# daemon's socket. Its source is modules/system/site, declared here
+# rather than in the system module, so a machine with the system daemon
+# and no local sites still evaluates.
+#
+# Two sites still read files written beside them. mycelium/ maps the realm as it stands, from a
 # now.json beside it that a timer rewrites every 20 seconds from what the
 # machine's node says (mycelium-map.sh, shaped by mycelium-map.jq). A
 # machine in no realm has no node to read, so it runs no timer. network/
@@ -38,6 +45,9 @@
 let
   cfg = config.jitsusama.local-sites;
   local-sites = pkgs.callPackage ./package.nix { };
+  sites = import ./site.nix { inherit lib pkgs; };
+  # The theme's web kit (modules/theme/web), which every site's page reads.
+  webKit = config.xdg.dataFile."jitsusama/web".source;
   documents = "${config.xdg.dataHome}/jitsusama/sites";
   # Loopback, under the names a browser sends there by itself.
   served = pkgs.writeText "local-sites.json" (
@@ -101,6 +111,9 @@ let
   ];
 in
 {
+  # Every live site wears the theme's web kit.
+  imports = [ ../theme/home.nix ];
+
   options.jitsusama.local-sites.feeds = lib.mkOption {
     type = lib.types.attrsOf feed;
     default = { };
@@ -120,6 +133,29 @@ in
     '';
   };
 
+  config.jitsusama.local-sites = {
+    mounts = {
+      local-sites = sites.kit;
+      system = sites.localSite {
+        name = "system";
+        src = ../system/site;
+        inherit webKit;
+        # Its emphasis, as its styles mark it, in the machines' hue.
+        tint = "machine";
+      };
+    };
+    # The system daemon's summary, its parts and their things
+    # (modules/system), each told whole: a page shows all of each.
+    feeds.system = {
+      socket = "daemons/system.sock";
+      kinds = {
+        summary = { };
+        part = { };
+        machine = { };
+      };
+    };
+  };
+
   config.systemd.user.paths = {
     network-site = {
       Unit.Description = "Watches net's record for the network site";
@@ -132,6 +168,10 @@ in
       Install.WantedBy = [ "paths.target" ];
     };
   };
+
+  # The config the unit serves, where its help's example reads it, so
+  # what it serves can be read without finding its path in the store.
+  config.xdg.configFile."local-sites/local-sites.json".source = served;
 
   # A switch builds the home too, since a changed builder or page changes
   # no file the path unit watches. A run that changes nothing writes nothing.

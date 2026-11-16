@@ -1,0 +1,15 @@
+# Your System, Now
+
+> A live, read-only view of how Joel's whole system stands at once:
+> every machine on his mycelium, the mycelium itself, his home network
+> and his code, each judged from its own owner's answer, with the way
+> deeper into each.
+
+- [The page](index.html): the four parts, walked by keyboard or pointer,
+  with the part the cursor is on beside them.
+- [The page as text](index.md): how each part is judged, the keys, and
+  what the data holds.
+- The data: the system daemon's records, which the page watches live
+  over the sites' server at /feed/system. An agent on the machine runs
+  `system --json` itself.
+- [All his sites](../llms.txt): the home this page sits in.

@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "types": [],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "rewriteRelativeImportExtensions": true,
+    "isolatedModules": true,
+    "noEmit": true
+  },
+  "include": ["*.ts"]
+}

@@ -1,0 +1,43 @@
+/* The theme switch every site carries in its head, which theme.ts wires:
+   three real radios, light, the system's and dark, each drawn as its mark.
+   The radio itself stays for the keys and the screen reader, and its focus
+   rings the mark it sits in. */
+
+.switch {
+  display: flex;
+  gap: var(--tie);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+}
+
+.switch label {
+  inline-size: 44px;
+  block-size: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.switch label:has(:checked) {
+  color: var(--strong);
+  border-color: var(--rule);
+}
+
+.switch label:has(:focus-visible) {
+  outline: var(--ring) solid var(--accent);
+  outline-offset: var(--ring);
+}
+
+.switch svg {
+  inline-size: 20px;
+  block-size: 20px;
+}

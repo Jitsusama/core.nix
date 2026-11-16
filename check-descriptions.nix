@@ -1372,6 +1372,11 @@
     entry on another partition for it, makes it active and first in BootOrder, and writes nothing
     once it is
   '';
+  local-sites-kit-holds = ''
+    the kit every live local site is built on typechecks at its strictest and its tests pass: a
+    daemon's records held as its watch tells them, a feed's watch saying connecting, live, broken
+    or stale and since when, and every line it can't read reported
+  '';
   local-sites-passes-clippy = ''
     clippy finds nothing in the local sites' server or its tests
   '';
@@ -2838,6 +2843,11 @@
   '';
   system-passes-clippy = ''
     clippy finds nothing in system or its tests
+  '';
+  system-site-holds = ''
+    the system page typechecks on the kit at its strictest and builds, its tests passing: the
+    parts in the summary's order with their machines, a part or machine not told said rather than
+    drawn, the whole said worst first, and a record's words reaching the page as text only
   '';
   talk-to-opens-only-on-whom-it-names = ''
     the launcher's talkTo opens a talk on the first word it's given alone: a session's address in

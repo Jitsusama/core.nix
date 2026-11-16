@@ -166,6 +166,19 @@ in
     ];
   };
 
+  # Each local site's page, its markup and the script in its head, read by
+  # biome as a browser reads them (modules/local-sites/site.nix builds them).
+  settings.formatter.site-html-lint = {
+    command = pkgs.lib.getExe pkgs.biome;
+    options = [
+      "lint"
+      "--error-on-warnings"
+      "--max-diagnostics=none"
+      "--config-path=biome.jsonc"
+    ];
+    includes = [ "modules/*/site/*.html" ];
+  };
+
   # The web kit's CSS, read by biome as a browser reads it.
   settings.formatter.css-lint = {
     command = pkgs.lib.getExe pkgs.biome;
