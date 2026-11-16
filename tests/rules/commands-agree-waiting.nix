@@ -3,11 +3,7 @@
 # to agree. The check fails on a command breaking a point it doesn't wait on,
 # and on one waiting on a point it keeps, so the list only shrinks.
 {
-  nix-offload = [
-    "kit"
-    "exits"
-    "helps"
-  ];
+  nix-offload = [ "exits" ];
   # pi-carry answers --help in agentic-harness.pi since its #1892, and pi-verbs since its
   # #1717, but both run from the harness pi-packages fetches at run time. The store holds no
   # copy for this check to run, so it judges neither their help nor how they fit, and reads
