@@ -191,6 +191,21 @@ pub enum TreeKind {
 pub struct Head {
     pub branch: Option<String>,
     pub commit: Option<String>,
+    /// The branch it follows, as its checkout's config names it; none for
+    /// a commit alone or a branch that follows nothing.
+    #[serde(default)]
+    pub upstream: Option<Upstream>,
+}
+
+/// The branch a head follows and the commit it's at here, as last
+/// fetched: a head is out of date when the two commits differ. repos
+/// never fetches, so this is as fresh as the checkout's last fetch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Upstream {
+    /// As git says it: `origin/main`, or `main` for a branch of its own.
+    pub branch: String,
+    /// None when the branch isn't there, as when the remote deleted it.
+    pub commit: Option<String>,
 }
 
 impl Head {
