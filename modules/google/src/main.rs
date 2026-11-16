@@ -119,7 +119,7 @@ fn say(receptors: &Receptors, watch: &Watch, wait: Duration, spoke: &mut Option<
         match &came {
             Ok(Spoke::Said) => eprintln!("<6>saying the receptors"),
             Ok(Spoke::NoAccount) => {
-                eprintln!("<5>no account is declared for the realm, so no receptors are said")
+                eprintln!("<5>no account is declared for the realm, so no receptors are said");
             }
             Ok(Spoke::NotItsAccount) => eprintln!(
                 "<4>the account signed in isn't the one declared for the realm, so no \
