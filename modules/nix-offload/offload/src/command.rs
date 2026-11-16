@@ -504,7 +504,9 @@ mod tests {
     /// builder. So each run here is a fresh chance at it, kept to one
     /// processor that three threads keep busy, where a laptop hit it 14 times
     /// in 20 (5 in 20 with that processor idle), and given a deadline rather
-    /// than left to hang.
+    /// than left to hang. Pinning a thread to one processor, taskset and
+    /// /proc are Linux's alone, and a Mac's builders aren't dash's.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_quick_command_ends_at_once_under_dash() {
         let asked = Asked {
