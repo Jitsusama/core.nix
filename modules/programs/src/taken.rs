@@ -78,7 +78,19 @@ pub fn ahead(shared: &Shared, keys: &[String]) {
         return;
     }
     read_named(shared, &previews);
-    make(shared, &mut lock(&shared.daemon));
+    make_ahead(shared, &mut lock(&shared.daemon), keys);
+}
+
+/// Makes the rows again with these keys counted ahead, beside those a
+/// watch already names, where one of them is Capture's. A watch beginning
+/// is counted only once it's answered, after what it asks for is read, and
+/// a preview held and current is read at once, so rows made then from the
+/// watches alone would leave its drawer without what file-preview said,
+/// and nothing would make them again.
+pub fn make_ahead(shared: &Shared, daemon: &mut Daemon, keys: &[String]) {
+    if keys.iter().any(|key| path_of(key).is_some()) {
+        made(shared, daemon, keys);
+    }
 }
 
 /// Everything the list held says was taken.
@@ -106,13 +118,23 @@ fn usual(shared: &Shared) -> String {
 /// ahead, beside them and with no `order`, so the shell's copy of it
 /// takes its drawer whole without it joining Recent's list.
 pub fn make(shared: &Shared, daemon: &mut Daemon) {
+    made(shared, daemon, &[]);
+}
+
+/// Makes the rows again as `make` does, with the rows these keys name
+/// counted ahead too.
+fn made(shared: &Shared, daemon: &mut Daemon, asked: &[String]) {
     let Some(words) = &shared.taken_words else {
         return;
     };
     let folders = daemon.folders.clone();
     let taken = listed(daemon);
     let watched = keys_watched(daemon);
-    let ahead: Vec<&str> = watched.iter().filter_map(|key| path_of(key)).collect();
+    let ahead: Vec<&str> = watched
+        .iter()
+        .chain(asked)
+        .filter_map(|key| path_of(key))
+        .collect();
     let held = &daemon.held;
     let shown = |path: &str| -> (Option<Value>, bool) {
         let key = format!("preview:{path}");
