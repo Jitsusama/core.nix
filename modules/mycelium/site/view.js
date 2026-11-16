@@ -3076,7 +3076,7 @@
       `<h2 id="panel-title">${esc(s.short)}</h2>` +
       `<p class="carries">${esc(`A cell ${home}.`)}</p>` +
       glance(esc(purpose), `<span class="doing">${stateGlyph(s)}<span>${esc(cellDoing(s))}</span></span>`, cellHealth(s)) +
-      launcherLink("cell", s.address, "Talk to it in the launcher") +
+      launcherLink("cell", s.address, "Talk to It in the Launcher") +
       factList(facts) +
       `<h3>Its Networks</h3><ul class="rows">${networks.join("")}</ul>` +
       `<h3>Lately</h3>` +
@@ -3173,7 +3173,7 @@
         `<p class="carries">${esc(networkWords(h))}</p>` +
         glance(esc(networkPurpose(h)), esc(groupDoing(allCells(h))), networkHealth(h)) +
         (h.lead ? `<p class="led">Led by <button type="button" class="inline" data-go="cell=${esc(h.lead.address)}">${esc(h.lead.short)}</button></p>` : "") +
-        (h.alone ? "" : launcherLink("network", h.key, "Open it in the launcher")) +
+        (h.alone ? "" : launcherLink("network", h.key, "Open It in the Launcher")) +
         heldUp(h.cells) +
         talkLine(touching(h.cells, h.key), true) +
         spendBlock(allCells(h), [["branch", ownSpendRow(h).concat(hubSpendRows(h.children))]]) +
@@ -3193,7 +3193,7 @@
         esc(groupDoing(n.cells)),
         `<ul class="rows health">${healthRow(`Its ${plural(n.cells.length, "cell")}`, n.cells)}</ul>`,
       ) +
-      launcherLink("network", n.key, "Open it in the launcher") +
+      launcherLink("network", n.key, "Open It in the Launcher") +
       spendBlock(n.cells) +
       `<h3>Its Cells</h3><ul class="rows">${[...n.cells].sort(worstFirst).map(cellRow).join("")}</ul>`
     );
