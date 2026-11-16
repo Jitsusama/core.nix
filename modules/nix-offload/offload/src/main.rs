@@ -165,6 +165,7 @@ mod finishing;
 mod freeing;
 mod gate;
 mod held;
+mod help;
 mod journal;
 mod keep;
 mod kept;
@@ -477,6 +478,11 @@ fn heard_after(helper: impl BufRead, place: &Mutex<Place>) {
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = env::args().skip(1).collect();
+    // Help, at any depth, is the kit's, and asks nothing else of it; every
+    // other call reads its words below, as its units and gates call it.
+    if help::asked(&arguments) {
+        return terminal_kit::main(&help::help(), env!("CARGO_PKG_VERSION"), |_| Ok(()));
+    }
     let given = |flag: &str| {
         arguments
             .iter()

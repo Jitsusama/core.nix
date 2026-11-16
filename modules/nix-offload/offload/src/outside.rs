@@ -40,22 +40,6 @@ const ENDED: u8 = 77;
 const USED: &str = "Usage: nix-offload outside [--git-dir DIR --work-tree DIR] [--lent-only] \
                     -- there WORD...";
 
-const HELP: &str = "nix-offload outside: run a `there` call in the environment the agent \
-fence's exemption gives it.
-
-It builds the environment and runs the call, and grants nothing: a fenced command that \
-runs it stays fenced. The exemption is whoever runs it outside the fence: the harness, or \
-mycelium starting a Mac's gate. It runs nothing from 2026-11-28, when the exemption ends.
-
-Options:
-  --git-dir DIR      the git folder of the tree whose commit goes, read by git alone
-  --work-tree DIR    that tree, where the call runs
-  --lent-only        keep the call, and all it starts, to the lent builders
-
-Examples:
-  nix-offload outside --git-dir /src/a/.git --work-tree /src/a --lent-only -- there --changed
-  nix-offload outside -- there /nix/store/...-a.drv^*";
-
 /// A tree whose commit a call sends, by its git folder and its folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tree<'a> {
@@ -235,15 +219,11 @@ fn asked(arguments: &[String]) -> Result<Asked<'_>, String> {
 }
 
 /// `outside`: runs the call, or says why it can't, as docs/commands.md's
-/// three parts.
+/// three parts. It builds the environment and grants nothing: a fenced
+/// command that runs it stays fenced. The exemption is whoever runs it
+/// outside the fence: the harness, or mycelium starting a Mac's gate.
+/// Its help is the kit's (src/help.rs).
 pub fn outside(arguments: &[String]) -> ExitCode {
-    if arguments
-        .first()
-        .is_some_and(|word| word == "--help" || word == "-h")
-    {
-        println!("{HELP}");
-        return ExitCode::SUCCESS;
-    }
     let asked = match asked(arguments) {
         Ok(asked) => asked,
         Err(why) => {

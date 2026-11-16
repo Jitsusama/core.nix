@@ -18,11 +18,7 @@
     "helps"
   ];
   merge-net = [ "exits" ];
-  nix-offload = [
-    "kit"
-    "exits"
-    "helps"
-  ];
+  nix-offload = [ "exits" ];
   passwords-1password = [
     "kit"
     "helps"

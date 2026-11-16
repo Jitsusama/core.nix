@@ -309,6 +309,7 @@
         net = pkgs.callPackage ../../modules/net/package.nix { };
         network-revive = pkgs.callPackage ../../modules/network-revive/package.nix { };
         night-shift = pkgs.callPackage ../../modules/night-shift/package.nix { };
+        nix-offload = pkgs.callPackage ../../modules/nix-offload/offload/package.nix { };
         noise-cancelled = dictation;
         notices = pkgs.callPackage ../../modules/notices/package.nix { };
         open-now = recentFiles;
