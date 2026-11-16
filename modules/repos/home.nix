@@ -1,8 +1,10 @@
 # repos lists every repository on the machine once, with every checkout of
 # it and every tree cut from each (src/lib.rs says how). It reads git's own
-# files as it runs, so it keeps no daemon and no record. Where it looks is
-# the one setting that differs between machines: a machine whose trees lie
-# in a folder of their own, under no checkout, adds that folder.
+# files as it runs, and merges in what GitHub last held, which a timer asks
+# every five minutes through the GitHub broker (src/github.rs says why).
+# Where it looks is the one setting that differs between machines: a
+# machine whose trees lie in a folder of their own, under no checkout,
+# adds that folder.
 {
   config,
   lib,
@@ -36,5 +38,31 @@ in
     '';
   };
 
-  config.home.packages = [ wrapped ];
+  config = {
+    home.packages = [ wrapped ];
+
+    # The refresh asks only through the broker's socket, so a machine
+    # without one skips it rather than failing every five minutes.
+    systemd.user.services.repos-refresh = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit = {
+        Description = "Asks GitHub after each repository's open changes, for repos";
+        After = [ "github-broker.socket" ];
+        Wants = [ "github-broker.socket" ];
+        ConditionPathExists = "%t/github-broker.sock";
+      };
+      Service = {
+        Type = "oneshot";
+        ExecStart = "${lib.getExe wrapped} refresh";
+        Slice = "background.slice";
+      };
+    };
+    systemd.user.timers.repos-refresh = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit.Description = "Refreshes repos's GitHub changes every five minutes";
+      Timer = {
+        OnBootSec = "1min";
+        OnUnitActiveSec = "5min";
+      };
+      Install.WantedBy = [ "timers.target" ];
+    };
+  };
 }
