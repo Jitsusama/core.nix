@@ -24,6 +24,13 @@ source sits at `modules/<name>/site/`, served at `/<name>/`, and
 ([`modules/mycelium/forage`][forage]), served at `/forage/`, sits
 beside the mycelium module it reads, since `/mycelium/` is the map's.
 
+The build also writes the strip every one of Joel's sites opens with,
+straight after the page's skip link: the way home and that the page is an
+app, nothing more, since the page's own line says how live it is. A page
+carries no strip of its own; one that does fails its build. The home
+writes the same strip into the documents it may change, so both read
+alike.
+
 | Path                     | What it holds                                           |
 | ------------------------ | ------------------------------------------------------- |
 | [`home.nix`][module]     | the server's unit, its options, the sites and the home  |
