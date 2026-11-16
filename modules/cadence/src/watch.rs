@@ -201,18 +201,21 @@ fn held(s: &Snapshot) -> bool {
 /// a switch that began after it is under way, for less than
 /// `GOING_QUIET_MIN`, or one waits out a call. A merge is counted late
 /// from when it could first go on: when it merged, or once the switches'
-/// spacing since the last one has passed, whichever is later.
+/// spacing since the last one has passed, whichever is later. One stall is
+/// said once: it's keyed by the last switch that held, so the next merge
+/// becoming oldest as the first ages out isn't a new alarm.
 fn not_on(s: &Snapshot) -> Option<Breach> {
     if s.follower.meeting || held(s) {
         return None;
     }
-    let spaced = s
+    let switched = s
         .follower
         .looks
         .iter()
         .filter(|look| look.switched)
-        .map(|look| look.at + SWITCH_EVERY_MIN * 60)
+        .map(|look| look.at)
         .max();
+    let spaced = switched.map(|at| at + SWITCH_EVERY_MIN * 60);
     let could = spaced.max(s.net_held);
     let due = |l: &Landing| could.map_or(l.merge.at, |could| could.max(l.merge.at));
     let mut waiting: Vec<&Landing> = s
@@ -237,13 +240,24 @@ fn not_on(s: &Snapshot) -> Option<Breach> {
     } else {
         String::new()
     };
+    let after = match waiting.len() - 1 {
+        0 => String::new(),
+        1 => ", nor is 1 merge after it".to_owned(),
+        n => format!(", nor are {n} merges after it"),
+    };
+    let key = switched.map_or_else(
+        || {
+            format!(
+                "noton:{}",
+                oldest.merge.sha.chars().take(12).collect::<String>()
+            )
+        },
+        |at| format!("noton:after:{at}"),
+    );
     Some(Breach {
-        key: format!(
-            "noton:{}",
-            oldest.merge.sha.chars().take(12).collect::<String>()
-        ),
+        key,
         text: format!(
-            "{} merged {} min ago and isn't on the machine yet{held}",
+            "{} merged {} min ago and isn't on the machine yet{after}{held}",
             oldest.merge.name(),
             (s.now - oldest.merge.at) / 60
         ),
@@ -502,6 +516,46 @@ pub mod tests {
             said[0].text.contains("#1 merged 48 min ago"),
             "{}",
             said[0].text
+        );
+    }
+
+    #[test]
+    fn merges_stalled_behind_one_switch_are_said_once_for_all() {
+        // The 16 November case: no switch held from 22:10, and as each
+        // oldest merge aged past six hours the next was said anew, one
+        // alarm every five minutes for the same stall.
+        let now = 100_000;
+        let mut s = calm(now);
+        s.follower.looks = vec![Look {
+            at: now - 7 * 3600,
+            core: "c".into(),
+            switched: true,
+        }];
+        s.landings = [
+            ("a", now - 6 * 3600 + 120),
+            ("b", now - 5 * 3600),
+            ("d", now - 3600),
+        ]
+        .into_iter()
+        .map(|(sha, at)| Landing {
+            merge: merge(sha, at),
+            on: None,
+        })
+        .collect();
+        let mut state = State::default();
+        let first = tick(&s, &mut state);
+        assert_eq!(first.len(), 1, "{first:?}");
+        assert!(
+            first[0].text.contains("nor are 2 merges after it"),
+            "the merges behind the oldest went unsaid: {}",
+            first[0].text
+        );
+        s.now += 300;
+        s.last_card = Some(s.now - 60);
+        assert_eq!(
+            tick(&s, &mut state),
+            [] as [Question; 0],
+            "the same stall was said again once its oldest merge aged out"
         );
     }
 
