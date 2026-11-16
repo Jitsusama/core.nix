@@ -1,10 +1,35 @@
 //! When a source's command runs: one read of each source at a time,
 //! whether a change, Tabs or a get asked for it, and once more after it
-//! where a change came meanwhile, so the last read to end is the newest.
+//! where a change came meanwhile, so the last read to end is the newest;
+//! and a list refused while it's watched read again until it answers.
 
 use std::sync::{Arc, PoisonError};
+use std::time::Duration;
+
+use serde_json::Value;
 
 use super::{Daemon, Run, Shared, due, lock, read_source, tabs, watched};
+
+/// How long a list refused while it's watched waits before each read
+/// again: soon at first, then never more than 4 s, so a page fills within
+/// 4 s of a stall ending, rather than waiting out a doubled pause past
+/// what a page's test or Joel would wait for. Neovim's page in the looks-programs VM test
+/// stood empty about two runs in five on 2026-11-16: the machine stalled
+/// as the launcher opened, open-now's read was refused, and nothing read
+/// it again while the page watched. The pauses come to 31 s, each read
+/// again may wait its command's own 10 s too, and then a change or the
+/// next opening reads it, as before.
+const PAUSES: [Duration; 9] = [
+    Duration::from_secs(1),
+    Duration::from_secs(2),
+    Duration::from_secs(4),
+    Duration::from_secs(4),
+    Duration::from_secs(4),
+    Duration::from_secs(4),
+    Duration::from_secs(4),
+    Duration::from_secs(4),
+    Duration::from_secs(4),
+];
 
 /// Runs a source's command on a thread of its own, or, while it runs
 /// already, once more after it, so the last change always counts. A list
@@ -24,7 +49,49 @@ pub fn start(shared: &Arc<Shared>, at: usize, what: Run) {
         }
     }
     let shared = Arc::clone(shared);
-    std::thread::spawn(move || read_claimed(&shared, at, what));
+    std::thread::spawn(move || {
+        read_claimed(&shared, at, what);
+        again_while_refused(&shared, at, what);
+    });
+}
+
+/// Reads a list again after each of `PAUSES` while its last read was
+/// refused and it's still watched, so a page doesn't stand without what
+/// it holds until its next opening. One list is read again by one thread
+/// at a time (`retrying`), however many openings were refused meanwhile;
+/// a read already under way says how it stands, so the next pause waits
+/// on it rather than asking for one more after it, which a get's caller
+/// would wait on.
+fn again_while_refused(shared: &Shared, at: usize, what: Run) {
+    if what != Run::List || !lock(&shared.daemon).retrying.insert(at) {
+        return;
+    }
+    let key = shared.sources[at].list_key();
+    for pause in PAUSES {
+        if !refused_and_watched(&lock(&shared.daemon), &key) {
+            break;
+        }
+        std::thread::sleep(pause);
+        {
+            let mut daemon = lock(&shared.daemon);
+            if !refused_and_watched(&daemon, &key) {
+                break;
+            }
+            if !daemon.running.insert((at, what)) {
+                continue;
+            }
+        }
+        read_claimed(shared, at, what);
+    }
+    lock(&shared.daemon).retrying.remove(&at);
+}
+
+/// Whether the last read of the list with this key was refused, and a
+/// watch still waits on it, Tabs counting as one as in `read_claimed`.
+fn refused_and_watched(daemon: &Daemon, key: &str) -> bool {
+    let state = daemon.commands.get(key).and_then(|said| said.get("state"));
+    state.and_then(Value::as_str) == Some("refused")
+        && (watched(daemon, key) || tabs::wanted(daemon))
 }
 
 /// Reads a source whose read this thread holds in `running`, and once
