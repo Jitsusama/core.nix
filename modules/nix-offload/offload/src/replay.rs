@@ -15,8 +15,8 @@
 //! wouldn't say on its own base; nor when it holds a merge, or a commit
 //! doesn't apply cleanly. Going back, a move in a crate the change's
 //! crates read, or are read by, is beside it too, as ready counts it
-//! (modules/crate-reach), since ready refuses a pass over one. A file the change touches itself is enough
-//! applied cleanly onto a newer main, and onto an older one when ready
+//! (modules/crate-reach), since ready refuses a pass over one. A file the
+//! change touches itself is enough applied cleanly onto a newer main, and onto an older one when ready
 //! reads its lines apart: 49 of main's 200 merges before 18:30 on 12
 //! November moved check-descriptions.nix, which most changes touch too.
 //! It then runs on its own base, as it would have.
