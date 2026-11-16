@@ -1625,9 +1625,10 @@
     that only as it starts
   '';
   mycelium-says-how-its-machine-stands = ''
-    each of a Linux machine's mycelium nodes, in its home realm or a further one, is given the
-    system daemon's socket, whose words its machine record carries; a Mac's node, and one on a
-    machine naming no socket, is given none
+    each of a machine's mycelium nodes, in its home realm or a further one, is given the system
+    daemon's socket, whose words its machine record carries: Linux's in the runtime folder, a
+    Mac's in the account's state folder, where its launchd agent serves; a machine naming no
+    socket gives none
   '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session
@@ -2934,6 +2935,12 @@
   '';
   system-passes-clippy = ''
     clippy finds nothing in system or its tests
+  '';
+  system-serves-where-its-node-reads = ''
+    the system daemon serves where its machine's mycelium node reads how it stands: on Linux
+    the socket systemd holds in the runtime folder, and on a Mac a launchd agent, in the
+    background and started again, listening in the account's state folder and finding the
+    account's commands as its login shell does
   '';
   system-site-holds = ''
     the system page typechecks on the kit at its strictest and builds, its tests passing: the

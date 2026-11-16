@@ -470,14 +470,16 @@ in
     };
     healthSocket = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
-      default = if isLinux then "%t/daemons/system.sock" else null;
-      defaultText = lib.literalExpression ''"%t/daemons/system.sock" on Linux, else null'';
+      default =
+        if isLinux then "%t/daemons/system.sock" else "${config.xdg.stateHome}/daemons/system.sock";
+      defaultText = lib.literalExpression ''"%t/daemons/system.sock" on Linux, "''${config.xdg.stateHome}/daemons/system.sock" on a Mac'';
       description = ''
         The socket of the daemon that says how this machine stands, whose
         words each node carries in the machine record it shares, so every
         machine of the realm sees them; or null to carry none. The system
-        daemon's on Linux, where `%t` is the user's runtime folder. A socket
-        nobody answers reads as health unknown.
+        daemon's (../system): on Linux in the user's runtime folder, `%t`,
+        and on a Mac, which has none, in the account's state folder. A
+        socket nobody answers reads as health unknown.
       '';
     };
     agents = lib.mkOption {

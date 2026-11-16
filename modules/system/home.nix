@@ -4,9 +4,13 @@
 # on the account's path, so it keeps no copy of theirs, and a machine
 # without one of them says that part wasn't read.
 #
-# On Linux it's also a daemon, holding the record ready over
-# $XDG_RUNTIME_DIR/daemons/system.sock in the shell's daemon interface, for
-# the system page and the launcher's home rows (src/serve.rs says how).
+# It's also a daemon, holding the record ready in the shell's daemon
+# interface (src/serve.rs says how): on Linux over
+# $XDG_RUNTIME_DIR/daemons/system.sock, for the system page and the
+# launcher's home rows, and on a Mac, which has no runtime folder, in the
+# account's state folder. Either way the machine's mycelium node reads it
+# there and carries how the machine stands to every machine of the realm
+# (../mycelium, healthSocket).
 {
   config,
   lib,
@@ -15,6 +19,7 @@
 }:
 let
   system = pkgs.callPackage ./package.nix { };
+  inherit (pkgs.stdenv.hostPlatform) isDarwin;
 in
 {
   home.packages = [ system ];
@@ -69,6 +74,36 @@ in
         DirectoryMode = "0700";
       };
       Install.WantedBy = [ "sockets.target" ];
+    };
+  };
+
+  # A Mac has no systemd to hold its socket, so it listens on its own.
+  launchd.agents.system = lib.mkIf isDarwin {
+    enable = true;
+    config = {
+      ProgramArguments = [
+        (lib.getExe system)
+        "serve"
+        "--socket"
+        "${config.xdg.stateHome}/daemons/system.sock"
+      ];
+      # The owners it asks are the account's own commands, found where its
+      # login shell finds them, as on Linux; without them every part reads
+      # "not read".
+      EnvironmentVariables.PATH = lib.concatStringsSep ":" [
+        "${config.home.profileDirectory}/bin"
+        "/run/current-system/sw/bin"
+        "/usr/bin"
+        "/bin"
+      ];
+      RunAtLoad = true;
+      # As on Linux, it only stops on a fault; launchd waits 10 s between
+      # starts.
+      KeepAlive = true;
+      # Whatever the account runs comes first, as background.slice does on
+      # Linux.
+      ProcessType = "Background";
+      StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/system.log";
     };
   };
 }

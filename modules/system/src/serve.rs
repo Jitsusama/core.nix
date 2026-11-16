@@ -1,7 +1,8 @@
 //! `system serve`: the system daemon. It holds the system's record ready
-//! on the socket systemd holds for it, in the shell's daemon interface
-//! (docs/daemons.md), so the launcher's home rows and the local sites'
-//! system page draw from what it holds rather than each asking the four
+//! on the socket systemd holds for it, or on a Mac one it listens on
+//! itself, in the shell's daemon interface (docs/daemons.md), so the
+//! launcher's home rows, the local sites' system page and the machine's
+//! mycelium node draw from what it holds rather than each asking the four
 //! owners themselves. The record is split by kind, the whole's summary, a
 //! record a part and one a machine, so a watch is told only what moved.
 //!

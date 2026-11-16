@@ -281,6 +281,8 @@ in
           ++ [
             "--serves"
             "${(mac links).xdg.configHome}/mycelium/serves-personal.json"
+            "--health-socket"
+            "${(mac links).xdg.stateHome}/daemons/system.sock"
           ]
         && (mac links).launchd.agents.mycelium.enable
         && (mac links).launchd.agents.mycelium.config.EnvironmentVariables.SIGN_AS == "agent"
@@ -552,13 +554,13 @@ in
             ]
       );
 
-  # Each of a Linux machine's nodes carries in its machine record what the
-  # system daemon says of the machine, so every machine of the realm sees
-  # how it stands; a Mac has no system daemon, and a machine naming none
-  # carries nothing.
+  # Each of a machine's nodes carries in its machine record what the system
+  # daemon says of the machine, so every machine of the realm sees how it
+  # stands: on Linux from the runtime folder, and on a Mac, which has none,
+  # from the account's state folder. A machine naming none carries nothing.
   mycelium-says-how-its-machine-stands =
     holds "mycelium-says-how-its-machine-stands"
-      "A Linux machine's node, in its home realm or a further one, isn't given the system daemon's socket, a Mac's node is given one, or a machine naming none is given one anyway."
+      "A machine's node, in its home realm or a further one, isn't given the system daemon's socket where that machine's daemon serves, or a machine naming none is given one anyway."
       (
         let
           health = [
@@ -566,11 +568,14 @@ in
             "%t/daemons/system.sock"
           ];
           linuxWords = service: lib.splitString " " (toString service.Service.ExecStart);
+          macSocket = "${(mac links).xdg.stateHome}/daemons/system.sock";
         in
         lib.hasInfix (lib.concatStringsSep " " health) linuxNode
         && lib.hasSuffix (lib.concatStringsSep " " health) otherNode
-        && !(lib.elem "--health-socket" macNode)
-        && !(lib.elem "--health-socket" (mac both).launchd.agents.mycelium-other.config.ProgramArguments)
+        && lib.hasSuffix "--health-socket ${macSocket}" (toString macNode)
+        && lib.hasSuffix "--health-socket ${macSocket}" (
+          toString (mac both).launchd.agents.mycelium-other.config.ProgramArguments
+        )
         && !(lib.elem "--health-socket" (
           linuxWords (linux (links // { healthSocket = null; })).systemd.user.services.mycelium
         ))
