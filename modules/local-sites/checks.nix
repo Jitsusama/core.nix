@@ -1,6 +1,12 @@
 # The checks of local-sites, which checks.nix gathers with every other
 # folder's; its opening comment says what each kind of check proves.
-{ lib, pkgs, ... }:
+{
+  lib,
+  onLinux,
+  passesClippy,
+  pkgs,
+  ...
+}:
 {
   # The home's builder lists each site from its row, settled ones apart,
   # strips each page that asks, and changes nothing on a second run
@@ -29,4 +35,18 @@
     }
     touch $out
   '';
+}
+# The server is a Linux user service, and builds only there.
+// onLinux {
+  # Its tests run as it builds, the server started as its unit starts it
+  # beside a stand-in daemon (tests/serve.rs): the documents and a mount
+  # served, a stranger's name and a stranger's page refused, two pages
+  # sharing one watch on the daemon and each told every change trimmed to
+  # what the feed shows, an act refused before it reaches the daemon, and a
+  # daemon that isn't there said broken with why.
+  local-sites-serves-its-sites = pkgs.callPackage ./package.nix { };
+  # clippy finds nothing in the server, its tests included.
+  local-sites-passes-clippy = passesClippy "local-sites-passes-clippy" (
+    pkgs.callPackage ./package.nix { }
+  );
 }

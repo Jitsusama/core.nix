@@ -1362,6 +1362,15 @@
     entry on another partition for it, makes it active and first in BootOrder, and writes nothing
     once it is
   '';
+  local-sites-passes-clippy = ''
+    clippy finds nothing in the local sites' server or its tests
+  '';
+  local-sites-serves-its-sites = ''
+    the local sites' server serves the documents and a mount, refuses a stranger's host name and a
+    stranger's page, has two pages share one watch on a daemon with each told every change trimmed
+    to the feed's fields, refuses an act before it reaches the daemon, and says a missing daemon
+    broken with why
+  '';
   locking-asked-wrongly-does-nothing = ''
     lock-screen, lock-for-sleep and swayidle-away answer --help and refuse an unknown word with
     64, asking nothing of the shell, niri or swayidle

@@ -273,6 +273,7 @@
         launcher-say = pkgs.callPackage ../../modules/quickshell/launcher-say/package.nix { };
         lid-docked = pkgs.callPackage ../../modules/lid/docked/package.nix { };
         load-proof = pkgs.callPackage ../../modules/load-proof/package.nix { };
+        local-sites = pkgs.callPackage ../../modules/local-sites/package.nix { };
         loopback-holders = pkgs.callPackage ../../modules/v4l2loopback/holders/package.nix { };
         machine = pkgs.callPackage ../../modules/machine/package.nix { };
         meaning = dictation;
