@@ -47,6 +47,8 @@ says "report[shows card A second notice]"
 # Asked where the line is with no screen to stand on, which may fail: only
 # what Quickshell warns of while it's asked is checked.
 qs -p "$shell" ipc call notices front || true
+# A second for any warning the ask gives to reach the log: a failed ask says
+# nothing the shell's log could be waited on for.
 sleep 1
 
 # The line is drawn again once there's a screen to stand on.
