@@ -201,8 +201,7 @@ def test_the_shell_draws_on_time_through_a_burst_of_work(loaded: Account) -> Non
     }
     ticks = spent(ticks_before, processors(machine))
     reclaimed = {
-        kind: count - reclaimed_before.get(kind, 0)
-        for kind, count in reclaiming(machine).items()
+        kind: count - reclaimed_before.get(kind, 0) for kind, count in reclaiming(machine).items()
     }
     waited_after = waited(machine)
     session = {kind: (waited_after[kind] - total) // 1000 for kind, total in waited_before.items()}
