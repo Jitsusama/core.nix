@@ -255,8 +255,22 @@ impl<'a> Settler<'a> {
     /// was installed tested nothing for 79 minutes, its search waiting on two
     /// 35-minute runs. `end` runs while nothing writes the hold, so none is
     /// left half written, and no job settled but still kept.
+    ///
+    /// It says when a write holds it and when it goes, since on 16 November
+    /// a watcher told at 08:28 hung to 08:33, when it was restarted, and
+    /// nothing showed whether a write held it or its own exit did.
     pub fn leave<R>(&self, end: impl FnOnce() -> R) -> R {
-        self.write(end)
+        let _writing = match self.writing.try_lock() {
+            Ok(writing) => writing,
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                self.state
+                    .say("leaving waits for a write to the hold, a settle's or a round's");
+                lock(&self.writing)
+            }
+        };
+        self.state.say("nothing writes the hold now, so this leaves");
+        end()
     }
 
     /// Run `during` while the workers wait for the queue, as a worker
