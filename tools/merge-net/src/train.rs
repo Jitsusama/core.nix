@@ -108,6 +108,13 @@ pub fn riders(root: &Path) -> Vec<Rider> {
     riders
 }
 
+/// The rider at `head`, if it rides.
+#[must_use]
+pub fn rider_at(root: &Path, head: &str) -> Option<Rider> {
+    let _ = (root, head);
+    None
+}
+
 /// Why the rider at `head` fell off, if it did.
 #[must_use]
 pub fn fell(root: &Path, head: &str) -> Option<String> {

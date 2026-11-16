@@ -32,6 +32,20 @@ fn riders_are_read_back_in_the_order_they_boarded() {
 }
 
 #[test]
+fn a_head_aboard_is_found_riding_and_no_other_is() {
+    let root = root("aboard");
+    board(&root, &rider("a1", 10)).unwrap();
+    board(&root, &rider("b2", 20)).unwrap();
+    assert_eq!(
+        rider_at(&root, "b2"),
+        Some(rider("b2", 20)),
+        "a head aboard wasn't found riding, so ready would judge it as if it didn't"
+    );
+    assert_eq!(rider_at(&root, "c3"), None, "a head never aboard was found riding");
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
 fn a_rider_that_fell_rides_no_more_and_runs_again_alone() {
     let root = root("fell");
     board(&root, &rider("a1", 10)).unwrap();
