@@ -179,18 +179,6 @@
     "test": "the-margin-cat-follows-the-keys-on-niri"
   },
   {
-    "at": 1794785729,
-    "commit": "3600f69230b37fd910f43cad0b79860f15e66c61",
-    "due": "2026-11-17",
-    "owner_pr": 4849,
-    "owner_session": "ZJ62K2",
-    "reason": "failed, then passed, at 3600f69230b3",
-    "subtests": [
-      "test_a_meetings_call_open_in_meet_is_in_now_named_for_it"
-    ],
-    "test": "vm-desktop-launcher-holds-meetings"
-  },
-  {
     "at": 1794794571,
     "commit": "2065994cec0d46523499d9bec8c170791466e1ef",
     "due": "2026-11-18",
@@ -202,18 +190,6 @@
       "test_the_camera_takes_a_picture_and_a_video_by_the_keys"
     ],
     "test": "vm-desktop-captures"
-  },
-  {
-    "at": 1794809855,
-    "commit": "11c4c8f5372d412c16ea654c9260f5fa2b124dd5",
-    "due": "2026-11-18",
-    "owner_pr": 4892,
-    "owner_session": "ZJ62K2",
-    "reason": "has been broken since #4892, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "subtests": [
-      "test_agents_reopens_each_session_where_it_sat"
-    ],
-    "test": "vm-desktop-launcher-finds-sessions"
   },
   {
     "at": 1794811244,

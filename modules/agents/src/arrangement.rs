@@ -8,7 +8,8 @@
 //! launcher").
 //!
 //! Each place is kept by the session's own id, which pi keeps as a session
-//! is reopened: the screen, by what it is (Places.js's described) and by
+//! is reopened: the screen, by what it is (the windows daemon's Screens
+//! rows, as Places.js's described says it) and by
 //! its connector, the workspace as niri numbers it there, then its column
 //! and its tile in that column, and whether it `leads`, orchestrating one
 //! of the others, so it begins first. One's kept after it ends, since a
@@ -22,6 +23,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use daemon_serve::watch::Held;
@@ -39,31 +41,38 @@ pub const KIND: &str = "arrangement";
 pub const STILL: Duration = Duration::from_secs(2);
 
 /// Each lit screen's connector and what the screen is, from the windows
-/// daemon's Screens rows, each sent whole under `row` and holding niri's
-/// record of its output. One
-/// that's off, as the laptop's is while its lid is shut on the dock, has
-/// no place in the layout, so it's as gone as one unplugged.
+/// daemon's Screens rows, each sent whole under `row` and holding what
+/// its screen is and how it stands (modules/windows, screens.rs); rows
+/// inside a screen's hold neither. One that's off, as the laptop's is
+/// while its lid is shut on the dock, has no place in the layout, so
+/// it's as gone as one unplugged. A screen's row that says neither is
+/// warned of once, since every place kept went on naming no screen
+/// unseen when the windows daemon stopped serving it (#4892).
 pub fn screens(rows: &Held) -> HashMap<String, String> {
+    static WARNED: AtomicBool = AtomicBool::new(false);
     rows.records()
-        .filter_map(|(_, row)| {
+        .filter_map(|(key, row)| {
             let held = &row["row"]["held"];
-            let niri = &held["niri"];
             let output = held["output"].as_str()?;
-            (niri.is_object() && !niri["logical"].is_null())
-                .then(|| (output.to_owned(), described(niri)))
+            let (Some(screen), Some(standing)) =
+                (held["screen"].as_str(), held["standing"].as_str())
+            else {
+                if key.starts_with(SCREEN_ROW) && !WARNED.swap(true, Ordering::Relaxed) {
+                    eprintln!(
+                        "<4>the windows daemon's {key} says not what its screen is or how it \
+                         stands, so no session's place names it"
+                    );
+                }
+                return None;
+            };
+            (standing != "off").then(|| (output.to_owned(), screen.to_owned()))
         })
         .collect()
 }
 
-/// A screen as niri describes it, as its config names one: "HP Inc. HP
-/// Z27k G3 CN41282GC1".
-fn described(output: &Value) -> String {
-    ["make", "model", "serial"]
-        .iter()
-        .filter_map(|part| output[part].as_str().filter(|said| !said.is_empty()))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
+/// A screen's own row's key, as the windows daemon serves it, beside the
+/// rows inside its hold.
+const SCREEN_ROW: &str = "row:displays:display:";
 
 /// What niri says of the desk: its windows, workspaces and lit screens.
 pub struct Desk<'a> {
@@ -348,13 +357,15 @@ mod tests {
         // Each as the windows daemon sends it: the row whole, under `row`.
         let screens = screens(&held(&json!([
             {"key": "row:displays:display:DP-4", "kind": "row", "row": {"held": {
-             "output": "DP-4",
-             "niri": {"make": "HP Inc.", "model": "HP Z27k G3", "serial": "CN41", "logical": {}}}}},
+             "output": "DP-4", "screen": "HP Inc. HP Z27k G3 CN41", "standing": "lit"}}},
             {"key": "row:displays:display:eDP-1", "kind": "row", "row": {"held": {
-             "output": "eDP-1",
-             "niri": {"make": "LG Display", "model": "0x07C6", "serial": null, "logical": {}}}}},
+             "output": "eDP-1", "screen": "LG Display 0x07C6", "standing": "dark"}}},
             {"key": "row:displays:display:HDMI-1", "kind": "row", "row": {"held": {
-             "output": "HDMI-1", "niri": {"make": "Dell", "model": "U2720", "logical": null}}}},
+             "output": "HDMI-1", "screen": "Dell U2720", "standing": "off"}}},
+            {"key": "row:displays:answer:scale:DP-4", "kind": "row", "row": {"held": {
+             "output": "DP-4", "part": "scale"}}},
+            {"key": "row:displays:display:DP-9", "kind": "row", "row": {"held": {
+             "output": "DP-9"}}},
             {"key": "row:displays:off", "kind": "row", "row": {"held": {}}}
         ])));
         (windows, workspaces, screens)
@@ -366,7 +377,7 @@ mod tests {
     }
 
     #[test]
-    fn only_lit_screens_are_named_by_what_they_are() {
+    fn only_screens_laid_out_are_named_by_what_they_are() {
         let (_, _, screens) = desk_parts();
         assert_eq!(
             screens,
@@ -374,7 +385,7 @@ mod tests {
                 ("DP-4".into(), "HP Inc. HP Z27k G3 CN41".into()),
                 ("eDP-1".into(), "LG Display 0x07C6".into()),
             ]),
-            "a screen that's off, and the row that isn't a screen, are left out"
+            "a screen that's off or says not what it is, and rows that aren't screens, are left out"
         );
     }
 

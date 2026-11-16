@@ -74,13 +74,36 @@ fn the_built_in_screen_leads_then_each_by_its_connector_then_turning_them_off() 
         rows[0]["held"]["standing"], "lit",
         "the shell can't tell a lit screen from its row"
     );
+    assert_eq!(
+        rows[2]["held"]["screen"], "Dell Inc. U2723QE",
+        "the agents daemon can't tell which screen a session sat on"
+    );
     assert!(
         rows[0]["held"].get("niri").is_none(),
-        "a screen's row carries niri's whole record, which nothing reads: {}",
+        "a screen's row carries niri's whole record, past what it is: {}",
         rows[0]["held"]
     );
     assert_eq!(rows[3]["key"], "row:displays:sleep");
     assert_eq!(rows[3]["note"], "a key wakes them \u{b7} hubs stay on");
+}
+
+// What the agents daemon keeps a place by is niri's every part of it, the
+// numbered model and serial its name leaves out among them, and never the
+// built-in's name.
+#[test]
+fn a_screen_holds_what_it_is_by_its_maker_model_and_serial() {
+    let mut panel = output("LG Display", "0x07C6", &lit(1.75));
+    panel["serial"] = json!("S1");
+    let mut dock = output("HP Inc.", "HP Z27k G3", &lit(1.0));
+    dock["serial"] = json!("");
+    let desk = BTreeMap::from([("eDP-1".to_owned(), panel), ("DP-4".to_owned(), dock)]);
+    let rows = rows(&desk, Some("eDP-1"), &words());
+    assert_eq!(rows[0]["name"], "Built-in Screen");
+    assert_eq!(rows[0]["held"]["screen"], "LG Display 0x07C6 S1");
+    assert_eq!(
+        rows[1]["held"]["screen"], "HP Inc. HP Z27k G3",
+        "a screen niri gives an empty serial is held without one"
+    );
 }
 
 #[test]
