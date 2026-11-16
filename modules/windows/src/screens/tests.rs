@@ -95,14 +95,14 @@ fn a_screen_holds_what_it_is_by_its_maker_model_and_serial() {
     let mut panel = output("LG Display", "0x07C6", &lit(1.75));
     panel["serial"] = json!("S1");
     let mut dock = output("HP Inc.", "HP Z27k G3", &lit(1.0));
-    dock["serial"] = Value::Null;
+    dock["serial"] = json!("");
     let desk = BTreeMap::from([("eDP-1".to_owned(), panel), ("DP-4".to_owned(), dock)]);
     let rows = rows(&desk, Some("eDP-1"), &words());
     assert_eq!(rows[0]["name"], "Built-in Screen");
     assert_eq!(rows[0]["held"]["screen"], "LG Display 0x07C6 S1");
     assert_eq!(
         rows[1]["held"]["screen"], "HP Inc. HP Z27k G3",
-        "a screen niri gives no serial is held without one"
+        "a screen niri gives an empty serial is held without one"
     );
 }
 
