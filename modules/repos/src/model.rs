@@ -206,6 +206,33 @@ pub struct Upstream {
     pub branch: String,
     /// None when the branch isn't there, as when the remote deleted it.
     pub commit: Option<String>,
+    /// How far the head is from it, where that's known: at once where
+    /// they're at one commit, else once the timer has counted the two
+    /// (upstreams.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub count: Option<Count>,
+}
+
+/// How many commits a branch's upstream has that the head lacks (behind),
+/// and the head has that its upstream lacks (ahead). Each side stops at
+/// `COUNTED_TO`, which says that many or more.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Count {
+    pub behind: u32,
+    pub ahead: u32,
+}
+
+/// Where a count stops: past it, how far a head has fallen behind tells
+/// nobody more, and counting a tree thousands of commits behind a very
+/// large repository's trunk takes seconds where this takes one.
+pub const COUNTED_TO: u32 = 100;
+
+impl Count {
+    /// Neither behind nor ahead.
+    pub const EVEN: Self = Self {
+        behind: 0,
+        ahead: 0,
+    };
 }
 
 impl Head {

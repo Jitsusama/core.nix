@@ -14,13 +14,13 @@
 //! following no redirect, and the token leaves only in a header.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::{self, Write};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::io;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::kept;
 use crate::model::{Change, Checks, ChecksState, GitHubChange, Record, Review, Source, Through};
 use crate::when;
 
@@ -502,19 +502,7 @@ pub fn post(endpoint: &str, token: &Token, query: &str) -> Result<Value, Failed>
 /// file beside it and renamed over it, so a reading never finds half of
 /// one, and readable by its owner alone, since it names private changes.
 pub fn keep(file: &Path, seen: &Seen) -> io::Result<()> {
-    if let Some(folder) = file.parent() {
-        std::fs::create_dir_all(folder)?;
-    }
-    let beside = file.with_extension(format!("json.{}", std::process::id()));
-    let mut written = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(&beside)?;
-    written.write_all(&serde_json::to_vec(seen).map_err(io::Error::other)?)?;
-    written.set_permissions(std::fs::Permissions::from_mode(0o600))?;
-    std::fs::rename(&beside, file)
+    kept::write(file, &serde_json::to_vec(seen).map_err(io::Error::other)?)
 }
 
 /// GitHub's answer to `query` at `endpoint`, asked with `token`. A
@@ -601,11 +589,7 @@ pub fn merge(record: &mut Record, seen: &Seen) {
 /// Where a refresh keeps what it saw: `$XDG_STATE_HOME/repos/github.json`,
 /// else under `home`'s ~/.local/state; none when neither is set.
 pub fn seen_file(home: Option<&Path>) -> Option<PathBuf> {
-    std::env::var_os("XDG_STATE_HOME")
-        .filter(|state| !state.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| home.map(|home| home.join(".local/state")))
-        .map(|state| state.join("repos/github.json"))
+    kept::file(home, "github.json")
 }
 
 /// The record with what a refresh kept at `file` merged in (`merge`), as

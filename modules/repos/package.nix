@@ -2,6 +2,7 @@
 # line takes the shape every command's does (../terminal-kit), so the
 # source is cut from the modules folder holding it, and built from this one.
 {
+  git,
   lib,
   rustPlatform,
 }:
@@ -20,6 +21,8 @@ rustPlatform.buildRustPackage rec {
   };
   sourceRoot = "${src.name}/repos";
   cargoLock.lockFile = ./Cargo.lock;
+  # The counting's test counts over a small repository it builds with git.
+  nativeCheckInputs = [ git ];
   meta = {
     description = "Lists every repository on the machine once, with its checkouts and trees";
     license = lib.licenses.mit;

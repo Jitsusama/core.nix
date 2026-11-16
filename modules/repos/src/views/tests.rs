@@ -6,7 +6,7 @@ use super::*;
 use repos::model::{Checkout, Checks, GitHubChange, Head, Remote, SCHEMA, Source, TreeKind};
 
 /// 2033-05-18 03:33:20 UTC.
-const NOW: u64 = 2_000_000_000;
+pub(super) const NOW: u64 = 2_000_000_000;
 const HOME: &str = "/home/someone";
 pub(super) const HELD: &str = ".local/state/pi/agentic-harness.pi/work/trees";
 

@@ -13,7 +13,7 @@ use terminal_kit::layout::{self, Align, ITEMS, Room};
 use repos::model::{Change, Head, Repository, Tree, TreeKind};
 use repos::when::Clock;
 
-use super::{change_name, counted, moment, shown, table, title};
+use super::{at, change_name, counted, moment, shown, table, title};
 
 /// The trees of a repository, every checkout's, the newest first.
 pub(super) fn trees_of(repository: &Repository) -> Vec<&Tree> {
@@ -218,7 +218,7 @@ pub(super) fn trees_table(
                 own.push("snapshot");
             }
             vec![
-                tree.head.said(),
+                at(&tree.head),
                 change_at(repository, tree)
                     .map(change_name)
                     .unwrap_or_default(),

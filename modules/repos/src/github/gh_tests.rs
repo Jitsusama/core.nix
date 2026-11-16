@@ -189,7 +189,9 @@ fn what_gh_s_sign_in_read_is_kept_unreadable_by_others_and_without_its_token() {
     );
     assert_eq!(seen.through["github:Jitsusama/core.nix"], Through::Gh);
     let file = std::env::temp_dir()
-        .join(format!("repos-{}-kept", std::process::id()))
+        // A folder of its own: tests.rs's keeping test empties `-kept`
+        // as it starts, which ran beside this one and lost its file.
+        .join(format!("repos-{}-kept-through-gh", std::process::id()))
         .join("github.json");
     keep(&file, &seen).expect("it keeps");
     let kept = std::fs::read_to_string(&file).expect("it reads back");
