@@ -45,6 +45,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "Hearing.js" as Hearing
+import "Mending.js" as Mending
 
 Scope {
     id: daemon
@@ -210,6 +211,16 @@ Scope {
     property string state: "starting"
     // Each of its sources by name, with the daemon's word for it.
     property var sources: ({})
+    // What its hello says of each kind: which fields a change may say
+    // deep, as mycelium's node offers a session's presence.
+    property var offered: ({})
+    // The fields each kind's changes to the watch of all say deep: those
+    // `watching` asks `deep` that hello offers, each said as only what
+    // moved inside it (Mending.js). Of Joel's 80 sessions' changes held
+    // back over 90 s on 2026-11-15, 128 KB of 207 KB was presence that
+    // hadn't moved, parsed and compared at each opening. A daemon
+    // offering none says every change whole.
+    readonly property var deepBy: Mending.deepByKind(offered, watching?.deep)
 
     // Said once a message, after `held` takes it: the keys it said anew
     // and the keys it let go. A record said as it's held already isn't
@@ -322,7 +333,7 @@ Scope {
     // ahead is answered whole, and every record of it told as changed
     // made every reader remake its rows at every opening, though nothing
     // had changed (Capture's Recent, a place's ready rows, People's).
-    function took(records, gone, changes) {
+    function took(records, gone, changes, deep) {
         const changed = [];
         const dropped = [];
         for (const record of records ?? []) {
@@ -337,7 +348,8 @@ Scope {
             }
             const holds = record.key in held;
             const now = changes && changesDiffer && holds
-                ? mended(held[record.key], record) : record;
+                ? Mending.mended(held[record.key], record, Mending.deepOf(deep ?? {}, record))
+                : record;
             if (holds && alike(held[record.key], now))
                 continue;
             held[record.key] = now;
@@ -367,20 +379,6 @@ Scope {
         const fields = Object.keys(was);
         return fields.length === Object.keys(now).length
             && fields.every(field => field in now && alike(was[field], now[field]));
-    }
-
-    // A record held with a change laid over it: a new object, so a reader
-    // holding the old one still reads it as it was, each field the change
-    // says replacing the held one's, and each it says as null let go.
-    function mended(was, change) {
-        const now = Object.assign({}, was);
-        for (const field in change) {
-            if (change[field] === null)
-                delete now[field];
-            else
-                now[field] = change[field];
-        }
-        return now;
     }
 
     // How many lines it has read, for the check that the shut shell hears
@@ -418,6 +416,7 @@ Scope {
             refusals = 0;
             state = String(answer.state ?? "answering");
             sources = answer.sources ?? {};
+            offered = answer.kinds ?? {};
             told(answer);
             return;
         }
@@ -444,7 +443,8 @@ Scope {
             const holds = new Set(answer.records.map(record => record?.key).concat(ahead));
             took(answer.records, Object.keys(held).filter(key => !holds.has(key)), false);
         } else
-            took(answer.records ?? answer.changed, answer.gone, answer.records === undefined);
+            took(answer.records ?? answer.changed, answer.gone, answer.records === undefined,
+                answer.id === "all" ? deepBy : null);
         if (whole) {
             answered = true;
             answeredThisWatch = live;

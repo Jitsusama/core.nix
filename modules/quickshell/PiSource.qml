@@ -80,8 +80,14 @@ Singleton {
             // 2026-11-11, none moved it, and each change had woken the
             // shut shell to read about 4 KB of steps and times it never
             // shows, its largest waker (RO9YDD). The node holds the rest
-            // back and sends it once the launcher shows them again.
-            watching: root.showing ? ({}) : ({ when: ["told"] })
+            // back and sends it once the launcher shows them again. A
+            // presence that changed says only what moved inside it, as
+            // the node offers: of a 90 s catch-up of 207 KB on 2026-11-15,
+            // 128 KB was presence that hadn't moved, parsed and compared
+            // in each opening's frames. Asked the same both ways, since a
+            // watch asked another `deep` starts over whole.
+            watching: root.showing ? ({ deep: ["presence"] })
+                : ({ when: ["told"], deep: ["presence"] })
             changesDiffer: true
             onHeard: (changed, gone) => root.hear(changed, gone)
             onTold: answer => root.resort(answer)

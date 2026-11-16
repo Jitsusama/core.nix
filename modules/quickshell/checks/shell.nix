@@ -326,6 +326,24 @@
       touch $out
     '';
 
+  # A change saying only what differs mends the record a daemon's client
+  # holds, a field said deep only where it moved inside it, as
+  # tests/mending.qml holds Mending.js to it in Qt's own engine.
+  a-change-mends-only-what-moved =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-change-mends-only-what-moved" { } ''
+      cp ${../../../tests/mending.qml} mending.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "Mending.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml mending.qml
+      touch $out
+    '';
+
   # A FileView told not to print errors says nothing of a file that opens
   # and then refuses every read, as some sysfs files do, in the Quickshell
   # the machine runs (fileview-quiet.patch); /proc/self/mem is one, since

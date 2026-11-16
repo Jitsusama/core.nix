@@ -17,7 +17,10 @@
   "Commands.js" = [ "Ex.js" ];
   "ConnectedKeyboards.qml" = [ "launcher/Keyboards.js" ];
   "Copied.qml" = [ "Copied.js" ];
-  "Daemon.qml" = [ "Hearing.js" ];
+  "Daemon.qml" = [
+    "Hearing.js"
+    "Mending.js"
+  ];
   "Devices.js" = [ "Crossing.js" ];
   "DrawerPage.js" = [ "Search.js" ];
   "DrawerValue.js" = [

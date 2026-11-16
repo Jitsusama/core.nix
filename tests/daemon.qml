@@ -21,7 +21,9 @@
 // and names both in the watch ahead too, and its watch ahead emptied is
 // unwatched, so the daemon hears the keys let go. A client of a daemon that says
 // only what differs, as mycelium's node does, lays a change over the
-// record it holds, letting go a field said as null. A client of a kind
+// record it holds, letting go a field said as null, and one it asked deep,
+// as hello offers, mended with only what moved inside it, while one asked
+// nothing deep is replaced whole. A client of a kind
 // with no records knows it holds none once it's answered, and one whose
 // answer is the whole of its kind, as the node's is, lets go what went in
 // a gap. What each message changed and let go is heard apart, a key let
@@ -105,9 +107,20 @@ ShellRoot {
             `${root.runtime}/daemons/kinds.sock`]
     }
 
-    // Watching sessions, told what differs, as mycelium's node tells it.
+    // Watching sessions, told what differs, as mycelium's node tells it,
+    // their presence asked deep, as hello offers it.
     Daemon {
         id: differing
+
+        socket: `${root.runtime}/daemons/kinds.sock`
+        kind: "session"
+        changesDiffer: true
+        watching: ({ deep: ["presence"] })
+    }
+
+    // Watching sessions told what differs, asking nothing deep.
+    Daemon {
+        id: flat
 
         socket: `${root.runtime}/daemons/kinds.sock`
         kind: "session"
@@ -497,6 +510,15 @@ ShellRoot {
             holds: () => differing.held["session:a"]?.state === "busy"
                 && differing.held["session:a"]?.heard === 1
                 && !("step" in differing.held["session:a"])
+        },
+        {
+            what: "a field asked deep is mended with only what moved inside it",
+            holds: () => JSON.stringify(differing.held["session:a"]?.presence)
+                === '{"at":2,"cwd":"~/src/skiff"}'
+        },
+        {
+            what: "a field not asked deep is replaced whole, though hello offers it",
+            holds: () => JSON.stringify(flat.held["session:a"]?.presence) === '{"at":2}'
         },
         {
             what: "a kind with no records is known to hold none once answered",
