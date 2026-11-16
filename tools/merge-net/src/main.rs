@@ -312,6 +312,7 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
 /// was asked of it, and refuse it until then.
 fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: &str) -> ExitCode {
     if needs_heard(commit, main, passes, files) {
+        mark_skipped_macs(commit, passes);
         return turn::passed(commit, passes, files, said);
     }
     eprintln!(
@@ -322,6 +323,21 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
         short(commit)
     );
     ExitCode::FAILURE
+}
+
+/// Mark `commit` for the net to compare a Mac's checks at its merge, when
+/// a record speaking for it, its own or one of `passes`', kept one skipped
+/// (`macs.rs`). A mark for a head that never merges is never read.
+fn mark_skipped_macs(commit: &str, passes: &[&str]) {
+    let records: Vec<String> = passes
+        .iter()
+        .chain([&commit])
+        .map(|at| ready::record(at))
+        .collect();
+    let root = state::State::from_env().root;
+    if let Err(error) = macs::keep(&root, commit, &records) {
+        eprintln!("merge-net: the Mac's skipped comparison at {commit} wasn't marked: {error}");
+    }
 }
 
 /// Whether `needs` was asked of `commit`'s change, at it, at one of

@@ -1,6 +1,7 @@
 //! What a round found, settled beside the rounds after it: the search for
-//! the merge that broke a test, the PR that lists a flaky one, and the run
-//! of a held test at main's newest head that may clear its hold.
+//! the merge that broke a test, the PR that lists a flaky one, the run
+//! of a held test at main's newest head that may clear its hold, and a
+//! Mac's comparison a merge's gate skipped.
 //!
 //! A round once waited for both before it ended, and every merge since
 //! waited for the next round to begin. Since 9 November rounds spent 30 to
@@ -21,8 +22,9 @@ use std::thread::Scope;
 use serde_json::{Value, json};
 
 use super::{
-    AT_ONCE, Outcome, SEARCHES, SPLITS, World, ask_before_settling, attempt, clear_hold_of,
-    fixed_forward, list_flaky_unless_mended, listed_on_main, lock, same_drv, search, settle,
+    AT_ONCE, Bad, Outcome, SEARCHES, SPLITS, World, ask_before_settling, attempt, clear_hold_of,
+    fixed_forward, list_flaky_unless_mended, listed_on_main, lock, pr_of, revert_and_tell,
+    same_drv, search, settle,
 };
 use crate::state::{State, short};
 
@@ -50,6 +52,10 @@ pub enum Job {
         newest: String,
         test: String,
     },
+    /// Compare a Mac's checks at `merge`, whose gate skipped it, as the
+    /// `check` naming the merge's first parent (`macs.rs`), and revert it
+    /// if it fails twice.
+    Mac { merge: String, check: String },
 }
 
 impl Job {
@@ -58,6 +64,7 @@ impl Job {
             Self::Search { test, .. } | Self::Flaky { test, .. } | Self::Forward { test, .. } => {
                 test
             }
+            Self::Mac { check, .. } => check,
         }
     }
 
@@ -66,6 +73,7 @@ impl Job {
             Self::Search { head, .. } | Self::Flaky { head, .. } | Self::Forward { head, .. } => {
                 head
             }
+            Self::Mac { merge, .. } => merge,
         }
     }
 
@@ -79,6 +87,9 @@ impl Job {
             }
             Self::Forward { head, newest, test } => {
                 json!({ "kind": "forward", "head": head, "newest": newest, "test": test })
+            }
+            Self::Mac { merge, check } => {
+                json!({ "kind": "mac", "merge": merge, "test": check })
             }
         }
     }
@@ -101,6 +112,10 @@ impl Job {
                 newest: text("newest")?,
                 test: text("test")?,
             }),
+            "mac" => Some(Self::Mac {
+                merge: text("merge")?,
+                check: text("test")?,
+            }),
             _ => None,
         }
     }
@@ -119,6 +134,9 @@ enum Lane {
     Ask,
     List,
     Forward,
+    /// Compare a Mac's checks a merge's gate skipped, one at a time, since
+    /// one Mac takes them.
+    Mac,
 }
 
 /// The jobs waiting and under way.
@@ -133,6 +151,7 @@ struct Queue {
     asking: usize,
     listing: bool,
     forwarding: bool,
+    comparing: bool,
     closing: bool,
 }
 
@@ -146,6 +165,7 @@ impl Queue {
             let lane = match job {
                 Job::Flaky { .. } => (!self.listing).then_some(Lane::List),
                 Job::Forward { .. } => (!self.forwarding).then_some(Lane::Forward),
+                Job::Mac { .. } => (!self.comparing).then_some(Lane::Mac),
                 Job::Search { .. } if self.searching < SEARCHES => Some(Lane::Search),
                 Job::Search { test, .. } => (self.asking < ASKS
                     && !self.asked.iter().any(|asked| asked == test))
@@ -166,6 +186,7 @@ impl Queue {
             (Lane::Ask, false) => self.asking -= 1,
             (Lane::List, _) => self.listing = starts,
             (Lane::Forward, _) => self.forwarding = starts,
+            (Lane::Mac, _) => self.comparing = starts,
         }
     }
 }
@@ -194,10 +215,10 @@ impl<'a> Settler<'a> {
     }
 
     /// Start the workers, one for each search and ask that may run, one for
-    /// lists and one for held tests' runs, in `scope`, which ends once
-    /// `close` lets them finish.
+    /// lists, one for held tests' runs and one for a Mac's comparisons, in
+    /// `scope`, which ends once `close` lets them finish.
     pub fn start<'scope>(&'scope self, scope: &'scope Scope<'scope, '_>) {
-        for _ in 0..=SEARCHES + ASKS + 1 {
+        for _ in 0..=SEARCHES + ASKS + 2 {
             scope.spawn(|| self.work());
         }
     }
@@ -360,6 +381,9 @@ impl<'a> Settler<'a> {
         if let Job::Forward { head, newest, test } = job {
             return self.forward(head, newest, test);
         }
+        if let Job::Mac { merge, check } = job {
+            return self.mac(merge, check);
+        }
         if listed_on_main(world, job.head(), job.test()) || self.held_for(job.test()) {
             return self.end(job.test(), || Ok(()));
         }
@@ -374,7 +398,7 @@ impl<'a> Settler<'a> {
                     None => Ok(()),
                 })
             }
-            Job::Forward { .. } => Ok(()),
+            Job::Forward { .. } | Job::Mac { .. } => Ok(()),
             Job::Flaky { head, test, owner } => {
                 let listed = if state.found("flaky", test, head)
                     || world.quarantined(head).iter().any(|kept| kept == test)
@@ -416,6 +440,34 @@ impl<'a> Settler<'a> {
         }
         let passes = format!("passes at main's newest head {}", short(newest));
         self.end(test, || clear_hold_of(state, test, &passes))
+    }
+
+    /// Compare a Mac's checks at `merge` as `check`, and revert the merge
+    /// if they fail twice there. One no Mac took is kept, and the next
+    /// round takes it up again.
+    fn mac(&self, merge: &str, check: &str) -> Result<(), String> {
+        let (world, state) = (self.world, self.state);
+        match attempt(world, state, merge, check) {
+            Outcome::Unsent => {
+                state.say(&format!(
+                    "no Mac took {check} at {}: it's tried again next round",
+                    short(merge)
+                ));
+                Ok(())
+            }
+            Outcome::Failed => {
+                let subject = world.subject(merge);
+                let found = Bad {
+                    commit: merge.to_owned(),
+                    pr: pr_of(&subject),
+                    subject,
+                    test: check.to_owned(),
+                    log: state.log(merge, check, 2).display().to_string(),
+                };
+                self.end(check, || revert_and_tell(world, state, &found, merge))
+            }
+            Outcome::Passed | Outcome::Flaky | Outcome::Stalled => self.end(check, || Ok(())),
+        }
     }
 
     /// Whether main's newest head fixed `job`'s test. An error here is

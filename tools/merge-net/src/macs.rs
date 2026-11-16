@@ -11,8 +11,50 @@
 //!
 //! A comparison run later at the same commit, by hand or by a gate again,
 //! keeps a `run` line with those same arguments beside it, which clears it.
+//!
+//! The net runs each one itself once a Mac answers. Most skipped lines
+//! aren't kept under the head a PR merged at: of 17 in a day on 15
+//! November, 4 were, since a gate replayed onto a newer main keeps its
+//! record under a commit of its own tree. So `ready`, which reads every
+//! record that speaks for the head, marks the head in the net's state,
+//! and the net compares the merge of a marked head on a Mac, against its
+//! first parent, as a check of its own name.
 
 use std::fmt::Write as _;
+use std::fs;
+use std::path::Path;
+
+/// The system a Mac's checks are built for.
+pub const SYSTEM: &str = "aarch64-darwin";
+
+/// What the check comparing a Mac's checks at a merge is named, before
+/// the merge's first parent, which it compares against.
+pub const CHECK: &str = "a-macs-checks-since-";
+
+/// The check that compares a Mac's checks at a merge against `base`.
+pub fn check(base: &str) -> String {
+    format!("{CHECK}{base}")
+}
+
+/// The base a Mac's comparison `check` compares against, if it is one.
+pub fn base_of(check: &str) -> Option<&str> {
+    check.strip_prefix(CHECK).filter(|base| !base.is_empty())
+}
+
+/// Mark `head` in `root` as merging with a Mac's comparison skipped,
+/// when any of `records`, those that speak for it, keeps one.
+pub fn keep(root: &Path, head: &str, records: &[String]) -> std::io::Result<()> {
+    if records.iter().all(|record| skipped(record).is_empty()) {
+        return Ok(());
+    }
+    fs::create_dir_all(root.join("macs"))?;
+    fs::write(root.join("macs").join(head), "")
+}
+
+/// Whether `head` was marked in `root` as merging with a comparison skipped.
+pub fn skipped_at(root: &Path, head: &str) -> bool {
+    !head.is_empty() && root.join("macs").join(head).is_file()
+}
 
 /// A Mac's comparison a gate skipped: its arguments, and why.
 #[derive(Debug, PartialEq, Eq)]
@@ -133,6 +175,31 @@ mod tests {
                 because: "ran past 20 minutes".to_owned(),
             }],
             "a comparison skipped twice wasn't named once, with its newest reason"
+        );
+    }
+
+    #[test]
+    fn a_comparison_check_gives_back_its_base() {
+        assert_eq!(
+            base_of(&check("bbbb")),
+            Some("bbbb"),
+            "a Mac's comparison check didn't give back the base it was named for"
+        );
+        assert_eq!(base_of("vm-boots"), None, "a VM test was read as a comparison");
+    }
+
+    #[test]
+    fn a_head_is_marked_only_when_a_record_for_it_skipped() {
+        let root = std::env::temp_dir().join(format!("merge-net-macs-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        keep(&root, "aaaa", &[run(LINUX), String::new()]).expect("the mark wasn't written");
+        keep(&root, "cccc", &[run(LINUX), skip(MAC, "away", 2)]).expect("the mark wasn't written");
+        let marked = (skipped_at(&root, "aaaa"), skipped_at(&root, "cccc"));
+        let _ = fs::remove_dir_all(&root);
+        assert_eq!(
+            marked,
+            (false, true),
+            "a head was marked when no record skipped, or unmarked when one did"
         );
     }
 
