@@ -9225,10 +9225,6 @@ Scope {
             askedToOpen();
         if (!open && !opening)
             openChord = name;
-        // Opened whole, a kept Super+N still to fill never is, so its
-        // landing goes with it rather than landing a later fill on this
-        // opening's rows (filled takes its own before it opens whole here).
-        landsOnFill = null;
         intoWhole(name);
         keepPlace(name);
         if (asked)
@@ -9701,6 +9697,12 @@ Scope {
             openedWholeSaid();
         const began = lapped;
         opening = false;
+        // However it opened or shut (a chord, a walk from outside, the
+        // command line, a wake), a kept Super+N's landing is spent: its own
+        // fill took it before opening, and any other way in never fills,
+        // so it would land a later fill on rows this opening never asked
+        // for.
+        landsOnFill = null;
         markOpen(open);
         if (!open) {
             Report.say("closing");
