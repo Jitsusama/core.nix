@@ -34,6 +34,8 @@ mod serve;
 mod sources;
 mod switch_reader;
 mod time;
+// Its sockets are read through Linux's sock_diag, which a Mac lacks.
+#[cfg(target_os = "linux")]
 mod uplink;
 mod views;
 mod xml;
@@ -41,7 +43,7 @@ mod xml;
 use std::io;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use model::{Network, SCHEMA};
 use serde_json::Value;
@@ -60,13 +62,7 @@ fn run(context: &Context) -> Result<(), Failure> {
         ["switch-reader", address] => {
             switch_reader::run(address).map_err(|why| Failure::new(Exit::Failed, why))
         }
-        ["uplink"] => {
-            let report = uplink_now()?;
-            let answer = serde_json::to_value(&report).unwrap_or(Value::Null);
-            show(context, &answer, || {
-                views::uplink(&report, &context.out, context.room)
-            })
-        }
+        ["uplink"] => uplink_shown(context),
         [] => {
             let network = record()?;
             show(context, &views::home_json(&network), || {
@@ -109,10 +105,31 @@ fn show(context: &Context, answer: &Value, view: impl FnOnce() -> String) -> Res
 
 /// How long `net uplink` watches before it says who sent what: long
 /// enough for a model request or two to land in it, short enough to wait.
-const UPLINK_WINDOW: Duration = Duration::from_secs(5);
+#[cfg(target_os = "linux")]
+const UPLINK_WINDOW: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// `net uplink`: who filled the uplink just now, as a page or as JSON.
+#[cfg(target_os = "linux")]
+fn uplink_shown(context: &Context) -> Result<(), Failure> {
+    let report = uplink_now()?;
+    let answer = serde_json::to_value(&report).unwrap_or(Value::Null);
+    show(context, &answer, || {
+        views::uplink(&report, &context.out, context.room)
+    })
+}
+
+/// Away from Linux there are no sockets to read their owners from.
+#[cfg(not(target_os = "linux"))]
+fn uplink_shown(_context: &Context) -> Result<(), Failure> {
+    Err(Failure::new(
+        Exit::Unavailable,
+        "net uplink reads Linux's own list of sockets, so it answers only on Linux",
+    ))
+}
 
 /// Who filled the uplink over the last `UPLINK_WINDOW`. Reading the
 /// sockets needs no privilege, but another user's have no owner to name.
+#[cfg(target_os = "linux")]
 fn uplink_now() -> Result<uplink::Report, Failure> {
     let unreadable = |error: io::Error| {
         Failure::new(Exit::Failed, "the kernel's socket list can't be read")
