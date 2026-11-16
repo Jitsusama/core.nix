@@ -46,6 +46,9 @@ pub struct Watch {
     state: State,
     /// The calendars Joel may change events on, as last heard.
     writable: Vec<String>,
+    /// The address of the account signed in, as its calendar list last
+    /// said it.
+    primary: Option<String>,
     /// The mail marked read since it was last looked at, so marking one
     /// unread again brings it back at once, before Gmail lists it again.
     read: Vec<Mail>,
@@ -109,6 +112,7 @@ impl Watch {
             keeper: Keeper::default(),
             state: State::default(),
             writable: Vec::new(),
+            primary: None,
             read: Vec::new(),
             documented: None,
             placed: None,
@@ -143,6 +147,12 @@ impl Watch {
             self.state.calls.clear();
         }
         !self.followed.is_empty()
+    }
+
+    /// The address of the account signed in, as Google last said it in
+    /// the calendar list, never as any record or file names it.
+    pub fn signed_in_as(&self) -> Option<&str> {
+        self.primary.as_deref()
     }
 
     /// How many times running Meet couldn't be asked, so it's asked less
@@ -209,8 +219,16 @@ impl Watch {
         match self.asking(now, |google, token| google.events(token, from, to)) {
             Ok(mut answer) => {
                 match self.asking(now, Google::writable) {
-                    Ok(writable) => self.writable = writable,
-                    Err(Looked::Refused(Refused::Unreachable(why))) => eprintln!("<4>{why}"),
+                    Ok(calendars) => {
+                        self.writable = calendars.writable;
+                        self.primary = calendars.primary;
+                    }
+                    // Whose account answered isn't known this look, so
+                    // nothing that needs it is said of it.
+                    Err(Looked::Refused(Refused::Unreachable(why))) => {
+                        eprintln!("<4>{why}");
+                        self.primary = None;
+                    }
                     Err(looked) => {
                         self.fell(looked, Standing::Unreachable);
                         return &self.state;

@@ -32,7 +32,20 @@
 # a failed one with Save a Copy, so nothing saved is lost. Drive's program
 # holds Drive's own places, its Recent, Starred, Shared with Me and Shared
 # Drives (DriveProgram.qml).
-{ people, quickshell }:
+#
+# How much mail wants Joel and how many meetings he has, and nothing else
+# of them, the daemon says to the machine's realm as its mail and calendar
+# receptors, cells on the mycelium map, counted from what each look holds:
+# it runs mycelium by its store path, given only fixed words and counts
+# (src/receptor.rs). A machine in no realm says nothing, and neither does
+# one whose signed-in account, as Google says it, isn't the one
+# jitsusama.google.receptorAccount declares for the realm, so a personal
+# account is never counted into the work realm.
+{
+  mycelium,
+  people,
+  quickshell,
+}:
 {
   config,
   lib,
@@ -50,6 +63,9 @@ let
       service agentic-harness username google-credentials
   '';
   xdgOpen = lib.getExe' pkgs.xdg-utils "xdg-open";
+  realm = config.jitsusama.mycelium.realm or null;
+  account = config.jitsusama.google.receptorAccount;
+  myceliumProgram = lib.getExe mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
 
   # The window command, each %u in it the link, as a desktop entry writes it.
   window = pkgs.writeShellScript "google-window" ''
@@ -87,6 +103,19 @@ in
     quickshell
     ../keys/home.nix
   ];
+
+  options.jitsusama.google.receptorAccount = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = null;
+    example = "joel@example.com";
+    description = ''
+      The one account the mail and calendar receptors are said for in the
+      machine's realm, compared with the address Google gives for the
+      account signed in. With none, or another signed in, nothing is said.
+      It names an address, so it's set in the machine's own config, never
+      here.
+    '';
+  };
 
   options.jitsusama.google.window = lib.mkOption {
     type = lib.types.nonEmptyListOf lib.types.str;
@@ -296,7 +325,14 @@ in
           # The launcher's vocabulary, which its ready rows are said in.
           (pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words))
         ];
-        Environment = "SIGN_IN_KEYRING=${keyring}";
+        Environment = [
+          "SIGN_IN_KEYRING=${keyring}"
+        ]
+        ++ lib.optionals (realm != null) [
+          "MYCELIUM=${myceliumProgram}"
+          "MYCELIUM_REALM=${realm}"
+        ]
+        ++ lib.optional (realm != null && account != null) "MYCELIUM_ACCOUNT=${account}";
         Restart = "on-failure";
         RestartSec = 10;
         # The files fetched to open go with the program, as what it held

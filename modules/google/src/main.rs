@@ -38,6 +38,11 @@
 //! It says in the journal when Google can't be reached, and never a
 //! token, a meeting or anything else the account holds.
 //!
+//! After each look it says how much mail wants Joel and how many meetings
+//! he has to the realm's mycelium node, counted from what the look holds
+//! and never asked of Google, when its service names mycelium and the
+//! realm (receptor.rs).
+//!
 //! usage: google CREDENTIALS DAEMON [WORDS], CREDENTIALS the harness's
 //! file, the account asked as being its default, as pi's own is, read
 //! over by the keyring's while `SIGN_IN_KEYRING` names a program that
@@ -66,6 +71,7 @@ use google::calendar::Answer;
 use google::daemon::Daemon;
 use google::files::Places;
 use google::mail::Tidy;
+use google::receptor::{Receptors, Spoke};
 use google::rows::Vocabulary;
 use google::saves;
 use google::state::{Standing, State};
@@ -95,6 +101,38 @@ fn help() -> Help {
         )
         .exit(Exit::Failed, "it couldn't serve on SOCKET")
 }
+
+/// Says how the mail and calendar receptors stand in what `watch` holds,
+/// the next said within `wait`, telling the journal only when what came
+/// of it changes, so a node that's gone isn't said once a minute. The
+/// journal never names the account.
+fn say(receptors: &Receptors, watch: &Watch, wait: Duration, spoke: &mut Option<Spoken>) {
+    let now = Zoned::now();
+    let came = receptors.tell(
+        watch.held(),
+        watch.signed_in_as(),
+        &now,
+        wait,
+        std::process::id(),
+    );
+    if spoke.as_ref() != Some(&came) {
+        match &came {
+            Ok(Spoke::Said) => eprintln!("<6>saying the receptors"),
+            Ok(Spoke::NoAccount) => {
+                eprintln!("<5>no account is declared for the realm, so no receptors are said");
+            }
+            Ok(Spoke::NotItsAccount) => eprintln!(
+                "<4>the account signed in isn't the one declared for the realm, so no \
+                 receptors are said"
+            ),
+            Err(why) => eprintln!("<4>couldn't say the receptors: {why}"),
+        }
+        *spoke = Some(came);
+    }
+}
+
+/// What came of the last telling.
+type Spoken = Result<Spoke, String>;
 
 fn main() -> ExitCode {
     terminal_kit::main(
@@ -151,6 +189,8 @@ fn serve(credentials: &Path, at: &Path, words: Option<&Path>) -> Result<(), Fail
     let mut watch = Watch::new(Google::new(Origins::default()), credentials, None);
     watch.keyring = env::var_os("SIGN_IN_KEYRING").map(PathBuf::from);
     watch.weigh(&places);
+    let receptors = Receptors::from_env();
+    let mut spoke: Option<Spoken> = None;
     let mut wait = EVERY;
     let mut failures: u32 = 0;
     let mut last: Option<SystemTime> = None;
@@ -169,6 +209,9 @@ fn serve(credentials: &Path, at: &Path, words: Option<&Path>) -> Result<(), Fail
             };
             wait = (EVERY * 2u32.saturating_pow(failures.saturating_sub(1).min(4))).min(LONGEST);
             tell(watch.held());
+            if let Some(receptors) = &receptors {
+                say(receptors, &watch, wait, &mut spoke);
+            }
         }
         // Asked less often while Meet can't be, as the calendar is.
         let calls_wait = CALLS_EVERY * 2u32.saturating_pow(watch.calls_failed().min(4));

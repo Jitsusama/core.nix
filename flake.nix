@@ -207,6 +207,7 @@
         glow = ./modules/glow/home.nix;
         gnupg = ./modules/gnupg/home.nix;
         google = moduleFrom ./modules/google/home.nix {
+          inherit mycelium;
           inherit (self.homeModules) people quickshell;
         };
         gtk = ./modules/gtk/home.nix;
