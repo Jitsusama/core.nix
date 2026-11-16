@@ -114,9 +114,12 @@ class Rig:
             f" {BIN}/cat /dev/zero > /dev/tcp/{FAR}/{port}; done) & done; wait'"
         )
 
-    def app_share(self) -> float:
-        """Give the app's share of what the server takes, once its upload is under way."""
-        self.uploads("app-upload", "app.slice", 1, APP_PORT)
+    def app_share(self, slice_name: str = "app.slice") -> float:
+        """Give the app's share of what the server takes, once its upload is under way.
+
+        The app's one upload runs in `slice_name`, an app's own unless a test says otherwise.
+        """
+        self.uploads("app-upload", slice_name, 1, APP_PORT)
         started = self.taken().get(APP_PORT, 0)
         retry(
             lambda _last_try: self.taken().get(APP_PORT, 0) - started >= APP_STARTS,
@@ -184,6 +187,25 @@ def test_an_app_outruns_the_jobs(loaded: Rig) -> None:
     share = loaded.app_share()
     assert share > SHAPED_SHARE, (
         f"the app got {share:.2f} of the line at {loaded.up()} kbit/s:\n{loaded.trace()}"
+    )
+
+
+def test_work_put_first_outruns_the_jobs(loaded: Rig) -> None:
+    """An upload in jobs that its account has put first gets most of the connection.
+
+    Without it, the one upload is one of 33 in jobs, as a production deploy was on 16 November
+    beside offload's copies and agents' turns.
+    """
+    folder = "/run/user/1000/shaper/first"
+    loaded.client.succeed(
+        f"su alice -c 'mkdir -p {folder} && touch {folder}/app-upload.service'",
+    )
+    try:
+        share = loaded.app_share("jobs.slice")
+    finally:
+        loaded.client.succeed(f"rm -rf {folder}")
+    assert share > SHAPED_SHARE, (
+        f"work put first got {share:.2f} of the line at {loaded.up()} kbit/s:\n{loaded.trace()}"
     )
 
 

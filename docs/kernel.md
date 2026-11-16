@@ -279,7 +279,12 @@ in the first four, and the graphical role the last two:
   with a default route, a little under the rate the connection takes, found
   as it goes, so the queue is here and sorted rather than in the modem;
   names, calls and what Joel uses go ahead of the work he started, both
-  ways.
+  ways. Work that can't wait is put first by touching its quest's id, or
+  its unit's name, in `$XDG_RUNTIME_DIR/shaper/first/`, as
+  `mkdir -p $XDG_RUNTIME_DIR/shaper/first && touch
+  $XDG_RUNTIME_DIR/shaper/first/QEST-20261116-2LNVLS`: its upload then goes
+  as what Joel uses does, ahead of offload and agents, until two hours after
+  it was last touched, or until the file goes.
 
 ## How It's Checked
 

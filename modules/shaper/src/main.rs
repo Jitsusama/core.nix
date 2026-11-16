@@ -812,6 +812,7 @@ fn run(options: &Options) -> Result<(), Failure> {
         let mut sets = classes::read(&options.cgroups);
         (sets.bulk5, sets.typed5) = classes::by_typing(&options.cgroups, &sessions);
         sets.calling = call.heed(now, &options.users);
+        sets.first = classes::first(&options.cgroups, &options.users, SystemTime::now());
         let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
         read_vpns(&vpns.0, (&mut heard, &mut up_tins), rides, t);
         let text = classes::transaction(TABLE, &sets, &reach);

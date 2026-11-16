@@ -21,6 +21,10 @@ set video5 { typeof socket cgroupv2 level 5; }
 set awaited5 { typeof socket cgroupv2 level 5; }
 set bulk5 { typeof socket cgroupv2 level 5; }
 set typed5 { typeof socket cgroupv2 level 5; }
+set first5 { typeof socket cgroupv2 level 5; }
+set first6 { typeof socket cgroupv2 level 6; }
+set first7 { typeof socket cgroupv2 level 7; }
+set first8 { typeof socket cgroupv2 level 8; }
 # Meet's media servers, as Google lists them for a firewall to let calls
 # through. Meet sends a call to them on 443, as a page would, so only where
 # it goes tells the two apart, and these addresses carry nothing but calls.
@@ -73,6 +77,16 @@ chain classify {
   udp dport { 53, 123, 853 } goto voice
   tcp dport { 53, 853 } goto voice
   socket cgroupv2 level 2 @voice2 goto voice
+
+  # Work a session has put first, by naming its quest or its unit in its
+  # runtime folder's shaper/first (src/classes.rs says how), goes as an
+  # app's would, ahead of the rest of jobs, offload and agents, whatever
+  # DSCP it sets. On 16 November a production deploy sent 32 KB/s beside
+  # offload's copies and agents' turns, until the machine was held for it.
+  socket cgroupv2 level 5 @first5 goto best
+  socket cgroupv2 level 6 @first6 goto best
+  socket cgroupv2 level 7 @first7 goto best
+  socket cgroupv2 level 8 @first8 goto best
 
   # Calls: Tuple's daemon, an app's UDP to anything but 443, which is how
   # WebRTC sends a call's sound and pictures, and anything an app sends

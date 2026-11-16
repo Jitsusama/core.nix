@@ -264,7 +264,8 @@ in
       RuntimeDirectoryMode = "0755";
       # It reads, and only reads, the file the harness keeps in an
       # account's runtime folder while a pi session runs a turn a person
-      # typed, so that one goes ahead of the turns nobody typed. That
+      # typed, so that one goes ahead of the turns nobody typed, and the
+      # names in its shaper/first, the work put ahead of the rest. That
       # folder is the account's alone, so reading it takes searching past
       # its mode, and it's the only part of the accounts' folders shown.
       CapabilityBoundingSet = [

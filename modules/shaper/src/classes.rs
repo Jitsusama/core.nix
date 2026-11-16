@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 /// The sets the table declares, each with the depth its rule matches at.
 /// The depths count from /sys/fs/cgroup: build.slice is 1,
@@ -50,6 +51,102 @@ pub struct Sets {
     /// The protocols whose every packet from an app goes as video, which
     /// `calling` gives: UDP while a call is on, and none otherwise.
     pub calling: Vec<String>,
+    /// The work in jobs a session has put first, which `first` finds, by
+    /// its depth: 5 to 8, since nft matches a cgroup at one depth.
+    pub first: [Vec<String>; FIRST_DEPTHS],
+}
+
+/// How many depths a cgroup put first can be at: 5, a unit in jobs, to 8,
+/// a unit in a quest's cell.
+pub const FIRST_DEPTHS: usize = 4;
+
+/// The shallowest of them: a unit directly in an account's jobs.
+pub const FIRST_DEPTH: usize = 5;
+
+/// How long a name put first holds unless it's put first again: one that
+/// was forgotten mustn't hold the upload for good.
+pub const FIRST_FOR: Duration = Duration::from_hours(2);
+
+/// The work in each account's jobs it has put first, by naming it in its
+/// runtime folder's shaper/first under `run`: a quest's id, as
+/// QEST-20261116-2LNVLS, names its cell's slice wherever it sits in jobs,
+/// and any other name a slice or unit of that name. A name not touched in
+/// `FIRST_FOR` before `now` is let go. On 16 November a production deploy
+/// sent 32 KB/s beside offload's copies and agents' turns until the whole
+/// machine was held for it.
+pub fn first(root: &Path, run: &Path, now: SystemTime) -> [Vec<String>; FIRST_DEPTHS] {
+    let mut found = <[Vec<String>; FIRST_DEPTHS]>::default();
+    for manager in managers(root) {
+        let Some(uid) = manager
+            .rsplit('@')
+            .next()
+            .and_then(|unit| unit.strip_suffix(".service"))
+        else {
+            continue;
+        };
+        let Ok(names) = fs::read_dir(run.join(uid).join("shaper/first")) else {
+            continue;
+        };
+        let held = |touched: SystemTime| {
+            now.duration_since(touched)
+                .map_or(true, |age| age <= FIRST_FOR)
+        };
+        let wanted: Vec<String> = names
+            .flatten()
+            .filter(|name| name.metadata().and_then(|m| m.modified()).is_ok_and(held))
+            .filter_map(|name| name.file_name().into_string().ok())
+            .collect();
+        if !wanted.is_empty() {
+            seek(
+                root,
+                &format!("{manager}/jobs.slice"),
+                FIRST_DEPTH,
+                &wanted,
+                &mut found,
+            );
+        }
+    }
+    for set in &mut found {
+        set.sort();
+    }
+    found
+}
+
+/// Finds what `wanted` names among the cgroups in `path`, which sit at
+/// `depth`, and in theirs, down to the deepest `first` holds.
+fn seek(root: &Path, path: &str, depth: usize, wanted: &[String], found: &mut [Vec<String>]) {
+    let Ok(entries) = fs::read_dir(root.join(path)) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let (Ok(kind), Ok(name)) = (entry.file_type(), entry.file_name().into_string()) else {
+            continue;
+        };
+        if !kind.is_dir() {
+            continue;
+        }
+        let here = format!("{path}/{name}");
+        if wanted.iter().any(|want| names(want, &name)) {
+            found[depth - FIRST_DEPTH].push(here);
+        } else if depth + 1 < FIRST_DEPTH + FIRST_DEPTHS {
+            seek(root, &here, depth + 1, wanted, found);
+        }
+    }
+}
+
+/// Whether the name put first, `want`, names the cgroup `dir`: its own
+/// name, or a quest's id naming its cell's slice, which systemd names
+/// for the quest in lower case without its dashes.
+fn names(want: &str, dir: &str) -> bool {
+    let cell = || {
+        let quest: String = want
+            .chars()
+            .filter(|c| *c != '-')
+            .collect::<String>()
+            .to_ascii_lowercase();
+        want.to_ascii_lowercase().starts_with("qest-") && dir.ends_with(&format!("-{quest}.slice"))
+    };
+    dir == want || cell()
 }
 
 /// The `calling` set's members: while a call is on, an app's UDP is the
@@ -304,6 +401,9 @@ pub fn transaction(table: &str, sets: &Sets, local: &Local) -> String {
     fill("voice2", &sets.voice2, true);
     fill("app4", &sets.app4, true);
     fill("video5", &sets.video5, true);
+    for (n, set) in sets.first.iter().enumerate() {
+        fill(&format!("first{}", n + FIRST_DEPTH), set, true);
+    }
     fill("awaited5", &sets.awaited5, true);
     fill("bulk5", &sets.bulk5, true);
     fill("typed5", &sets.typed5, true);
@@ -604,6 +704,71 @@ mod tests {
         assert!(text.contains("add element inet shaper local4 { 192.168.4.0/22 }\n"));
         assert!(text.contains("flush set inet shaper local6\nflush set inet shaper uplinks\n"));
         assert!(text.ends_with("add element inet shaper uplinks { \"enp1\" }\n"));
+    }
+
+    /// Names `names` put first in the account's runtime folder under `run`.
+    fn put_first(run: &Path, names: &[&str]) {
+        let folder = run.join("1000/shaper/first");
+        fs::create_dir_all(&folder).unwrap();
+        for name in names {
+            fs::write(folder.join(name), "").unwrap();
+        }
+    }
+
+    #[test]
+    fn work_put_first_is_found_at_its_depth() {
+        let cell = format!(
+            "{ACCOUNT}/jobs.slice/jobs-work.slice/jobs-work-delta.slice/\
+             jobs-work-delta-qest202611162lnvls.slice"
+        );
+        let other = format!(
+            "{ACCOUNT}/jobs.slice/jobs-work.slice/jobs-work-delta.slice/\
+             jobs-work-delta-qest20261115zejah1.slice"
+        );
+        let deploy = format!("{ACCOUNT}/jobs.slice/delta-deploy-1801.scope");
+        let root = tree(&[
+            &format!("{cell}/work-1-2.scope"),
+            &other,
+            &deploy,
+            &format!("{ACCOUNT}/jobs.slice/delta-deploy-2045.scope"),
+        ]);
+        let run = tree(&[]);
+        put_first(&run, &["QEST-20261116-2LNVLS", "delta-deploy-1801.scope"]);
+        let first = first(&root, &run, SystemTime::now());
+        assert_eq!(
+            first,
+            [vec![deploy], vec![], vec![cell], vec![]],
+            "the quest's cell at 7 and the named unit at 5, nothing else"
+        );
+    }
+
+    #[test]
+    fn work_put_first_is_let_go_once_its_name_is_old() {
+        let deploy = format!("{ACCOUNT}/jobs.slice/delta-deploy-1801.scope");
+        let root = tree(&[&deploy]);
+        let run = tree(&[]);
+        put_first(&run, &["delta-deploy-1801.scope"]);
+        let later = SystemTime::now() + FIRST_FOR + Duration::from_secs(60);
+        assert_eq!(
+            first(&root, &run, later),
+            <[Vec<String>; FIRST_DEPTHS]>::default(),
+            "a name nobody renewed in two hours still held the upload"
+        );
+    }
+
+    #[test]
+    fn work_put_first_fills_a_set_for_its_depth() {
+        let mut sets = Sets::default();
+        sets.first[2] = vec!["user.slice/a/b/jobs.slice/c/d/e.slice".into()];
+        let text = transaction("shaper", &sets, &Local::default());
+        assert!(
+            text.contains(
+                "flush set inet shaper first6\nflush set inet shaper first7\n\
+                 add element inet shaper first7 { \"user.slice/a/b/jobs.slice/c/d/e.slice\" }\n\
+                 flush set inet shaper first8\n"
+            ),
+            "each depth's set is emptied and filled: {text}"
+        );
     }
 
     #[test]
