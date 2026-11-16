@@ -52,7 +52,11 @@ system --json | jq -c '{health, parts: [.parts[] | {part, health, says}]}'
 
 - **Machines.** One out of reach, or with a nearly or critically full
   disk, is bad. One short of room (memory, processor, disk time), with a
-  filling disk, or on battery at 20% or less, is worth a look.
+  filling disk, or on battery at 20% or less, is worth a look. Another
+  machine whose own health says its code is failing is bad, and one
+  whose code wants a look is worth a look; its node carries that word
+  in its machine record. Only code is taken from it, since the network,
+  machines and mycelium are the same whole read from every machine.
 - **Mycelium.** A link that isn't up is bad. Presences left by sessions
   whose processes are gone are worth a look.
 - **Network.** A source that isn't answering is bad. Any other concern the
