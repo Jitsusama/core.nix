@@ -27,6 +27,12 @@ pub struct Crates {
     reads: BTreeMap<String, BTreeSet<String>>,
 }
 
+/// Files in a crate's folder that its build never reads. The quarantine
+/// list sits in merge-net's, but the net reads it from main: on
+/// 16 November #4983, which took its own test off the list, ran merge-net's
+/// checks again each time merge-net's code moved on main.
+const UNBUILT: [&str; 1] = ["tools/merge-net/quarantine.json"];
+
 /// What `git grep` is asked for in every manifest: the line every crate
 /// has, and each path it names.
 const ASKED: [&str; 4] = ["-e", r"^\[package\]", "-e", r#"path *= *""#];
@@ -104,11 +110,13 @@ impl Crates {
     }
 
     /// The crate `file` is in, its folder the longest that holds it.
+    /// What no build reads, its Markdown and the files `UNBUILT` names,
+    /// is in none.
     fn crate_of(&self, file: &str) -> Option<&str> {
         let markdown = Path::new(file)
             .extension()
             .is_some_and(|extension| extension.eq_ignore_ascii_case("md"));
-        if markdown {
+        if markdown || UNBUILT.contains(&file) {
             return None;
         }
         self.reads
