@@ -122,7 +122,17 @@ let
         );
         # Quoted, as systemd splits an unquoted entry at its spaces.
         Environment = lib.mapAttrsToList (name: value: ''"${name}=${lib.escape [ "\\" "\"" ] value}"'') (
-          host.environment
+          {
+            # The host reads its conversations' mesh folders off its loop,
+            # on libuv's pool, which is four threads by default. On 16
+            # November a stalled disk held those reads for up to 17 s, and
+            # four stalled reads would leave every other conversation's reads,
+            # lookups and hashing waiting behind them. libuv sizes the pool
+            # when it first starts, before any of the host's code runs, so it
+            # is set here. A machine's own value still wins.
+            UV_THREADPOOL_SIZE = "16";
+          }
+          // host.environment
           // {
             MYCELIUM_REALM = realm;
             # pi reads its own files from here, and a subagent a hosted
