@@ -823,17 +823,28 @@ in
           );
         # A sorter stopping mid-call lets go of the brake it set, since a
         # sorter that isn't back before the call ends can't; a restart
-        # mid-call brakes again on its first look.
-        ExecStopPost = [
-          (
-            "-${config.systemd.package}/bin/systemctl --user"
-            + " set-property --runtime jobs.slice CPUQuota="
-          )
-          (
-            "-${config.systemd.package}/bin/systemctl --no-ask-password"
-            + " set-property --runtime build.slice CPUQuota="
-          )
-        ];
+        # mid-call brakes again on its first look. Each is given 5 s, as the
+        # sorter's own sets are, so a stalled bus can't hold its stop.
+        ExecStopPost =
+          let
+            letGo =
+              manager: slice:
+              lib.escapeShellArgs [
+                (lib.getExe' pkgs.coreutils "timeout")
+                "5"
+                (lib.getExe' config.systemd.package "systemctl")
+                manager
+                "--no-ask-password"
+                "set-property"
+                "--runtime"
+                slice
+                "CPUQuota="
+              ];
+          in
+          [
+            "-${letGo "--user" "jobs.slice"}"
+            "-${letGo "--system" "build.slice"}"
+          ];
         Restart = "on-failure";
         RestartSec = 5;
       };

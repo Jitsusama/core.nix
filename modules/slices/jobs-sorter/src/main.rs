@@ -1792,6 +1792,11 @@ fn run(settings: &Settings) -> Result<(), String> {
         ..Ranks::default()
     };
     let mut doorway = Doorway::new(settings.calls.as_deref());
+    let processors = thread::available_parallelism().map_or(1, usize::from);
+    doorway.brake = brake::Brake::found(
+        |place| braked_cpu_max(place, &root),
+        brake::quota(processors),
+    );
     loop {
         match (&watch, &settings.background) {
             (Some(watch), Some(dir)) => {
@@ -1874,26 +1879,21 @@ impl Doorway {
 /// Holds builds and jobs to a quarter of the processors while a call is
 /// on, and lets them go once it ends, as src/brake.rs says. A slice that
 /// couldn't be set is tried again once it has waited, and one found let go
-/// mid-call is set again; `manager` is the account's manager's cgroup.
-fn brake_for_calls(doorway: &mut Doorway, manager: &Path) {
+/// mid-call is set again; `account` is the account's manager's cgroup.
+fn brake_for_calls(doorway: &mut Doorway, account: &Path) {
     let now = std::time::Instant::now();
     let calling = doorway.calls.as_mut().is_some_and(|calls| calls.on(now));
-    if calling {
-        let cgroups = Path::new(CGROUPS);
-        let read =
-            |place| fs::read_to_string(brake::cgroup(place, cgroups, manager).join("cpu.max")).ok();
-        for place in doorway.brake.check(read) {
-            eprintln!(
-                "Found {} let go mid-call, so braked it again.",
-                brake::BRAKED[place].1
-            );
-        }
-    }
+    let processors = std::thread::available_parallelism().map_or(1, usize::from);
+    let lost = if calling {
+        let read = |place| braked_cpu_max(place, account);
+        doorway.brake.check(read, brake::quota(processors), now)
+    } else {
+        Vec::new()
+    };
     let due = doorway.brake.due(calling, now);
     if due.is_empty() {
         return;
     }
-    let processors = std::thread::available_parallelism().map_or(1, usize::from);
     let quota = brake::quota_for(calling, processors);
     for place in due {
         let (manager, slice) = brake::BRAKED[place];
@@ -1902,7 +1902,12 @@ fn brake_for_calls(doorway: &mut Doorway, manager: &Path) {
             .stdout(Stdio::null())
             .output();
         match set {
-            Ok(output) if output.status.success() => doorway.brake.set(place, calling),
+            Ok(output) if output.status.success() => {
+                doorway.brake.set(place, calling);
+                if lost.contains(&place) {
+                    eprintln!("Found {slice} let go mid-call, and braked it again.");
+                }
+            }
             Ok(output) => {
                 doorway.brake.failed(place, now);
                 eprintln!(
@@ -1926,6 +1931,12 @@ fn brake_for_calls(doorway: &mut Doorway, manager: &Path) {
             }
         );
     }
+}
+
+/// What the cpu.max of the slice at `place` in brake.rs's `BRAKED` reads,
+/// `account` being the account's manager's cgroup.
+fn braked_cpu_max(place: usize, account: &Path) -> Option<String> {
+    fs::read_to_string(brake::cgroup(place, Path::new(CGROUPS), account).join("cpu.max")).ok()
 }
 
 /// Ranks new heavy starts under `cgroup` in `root` behind other work, when

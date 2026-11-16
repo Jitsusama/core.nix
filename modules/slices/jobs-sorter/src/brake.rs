@@ -15,14 +15,18 @@
 //! work-slices.rules lets an administrator set without a password.
 //!
 //! Each slice is followed apart, since one can be set while the other
-//! fails, and starts unknown: a sorter that stopped mid-call may have left
-//! a brake on, so a new one with no call lets both go. The unit lets them
-//! go as it stops, too.
+//! fails, and one whose set failed is unknown until it's set again. A
+//! sorter starts from what each slice's cpu.max reads: one holding the
+//! brake's own quota is a brake a sorter before it left, and is let go
+//! with no call on; any other is left as it is. The unit lets both go as
+//! it stops, too.
 //!
 //! Through a call each braked slice's cpu.max is read on every look, and
-//! one found without its quota is set again: on 16 November both slices
-//! read max by 16:19 of a call braked at 15:58, nothing having said it
-//! let them go, and a brake set only as a call began never came back.
+//! one found with no quota or a larger one is set again, waiting as a
+//! refusal does when it was found so within the last wait: on 16 November
+//! both slices read max by 16:19 of a call braked at 15:58, nothing having
+//! said it let them go, and a brake set only as a call began never came
+//! back.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -59,12 +63,19 @@ pub fn cgroup(place: usize, cgroups: &Path, manager: &Path) -> PathBuf {
     }
 }
 
-/// Whether a slice's `cpu.max`, as read, holds a quota rather than none.
-pub fn holds(cpu_max: &str) -> bool {
-    cpu_max
-        .split_whitespace()
-        .next()
-        .is_some_and(|quota| quota != "max")
+/// A slice's `cpu.max`, as read, in microseconds each second, as
+/// [`quota`] gives it, or none when it holds no quota.
+fn per_second(cpu_max: &str) -> Option<u64> {
+    let mut words = cpu_max.split_whitespace().map(str::parse::<u64>);
+    let (Some(Ok(most)), Some(Ok(period))) = (words.next(), words.next()) else {
+        return None;
+    };
+    (period > 0).then(|| most.saturating_mul(1_000_000) / period)
+}
+
+/// Whether a slice's `cpu.max`, as read, holds it to `quota` or less.
+pub fn holds(cpu_max: &str, quota: u64) -> bool {
+    per_second(cpu_max).is_some_and(|held| held <= quota)
 }
 
 /// The quota a slice is given while `calling` or not.
@@ -77,15 +88,28 @@ pub fn quota_for(calling: bool, processors: usize) -> u64 {
 }
 
 /// Where the brake stands on each slice of [`BRAKED`], by its place there:
-/// braked or let go as last set, or unknown, and when setting it last
-/// failed.
+/// braked or let go as last set, or unknown, when setting it last failed,
+/// and when it was last found let go mid-call.
 #[derive(Default)]
 pub struct Brake {
     stands: [Option<bool>; 2],
     failed: [Option<Instant>; 2],
+    lost: [Option<Instant>; 2],
 }
 
 impl Brake {
+    /// A brake starting from what `read` finds of each slice's cpu.max:
+    /// braked where it holds exactly `quota`, the brake's own, and let go
+    /// otherwise, so a quota something else set, or none, is left alone.
+    pub fn found(read: impl Fn(usize) -> Option<String>, quota: u64) -> Brake {
+        let mut brake = Brake::default();
+        for place in 0..BRAKED.len() {
+            let ours = read(place).and_then(|cpu_max| per_second(&cpu_max)) == Some(quota);
+            brake.stands[place] = Some(ours);
+        }
+        brake
+    }
+
     /// The places in [`BRAKED`] of the slices to set `now`, with a call
     /// `calling` or not: those not already standing so, but for one that
     /// failed less than [`AGAIN`] ago.
@@ -104,22 +128,35 @@ impl Brake {
         self.failed[slice] = None;
     }
 
-    /// Setting the slice at `slice` failed `now`.
+    /// Setting the slice at `slice` failed `now`. It may have landed
+    /// late, as a set that timed out can, so it's unknown until set again.
     pub fn failed(&mut self, slice: usize, now: Instant) {
+        self.stands[slice] = None;
         self.failed[slice] = Some(now);
     }
 
-    /// The places of the slices the brake set that `read` finds without
-    /// their quota, each of which is set again on this look. One whose
-    /// cpu.max can't be read is taken to hold.
-    pub fn check(&mut self, read: impl Fn(usize) -> Option<String>) -> Vec<usize> {
+    /// The places of the slices the brake set that `read` finds with no
+    /// quota or more than `quota` at `now`, each of which is set again:
+    /// on this look, or once it has waited, when it was found so within
+    /// the last wait too, so something clearing it over and over isn't
+    /// fought every second. One whose cpu.max can't be read is taken to
+    /// hold, and one the brake let go isn't read.
+    pub fn check(
+        &mut self,
+        read: impl Fn(usize) -> Option<String>,
+        quota: u64,
+        now: Instant,
+    ) -> Vec<usize> {
         let lost: Vec<usize> = (0..BRAKED.len())
             .filter(|&place| self.stands[place] == Some(true))
-            .filter(|&place| read(place).is_some_and(|cpu_max| !holds(&cpu_max)))
+            .filter(|&place| read(place).is_some_and(|cpu_max| !holds(&cpu_max, quota)))
             .collect();
         for &place in &lost {
+            let again =
+                self.lost[place].is_some_and(|at| now.saturating_duration_since(at) < AGAIN);
             self.stands[place] = None;
-            self.failed[place] = None;
+            self.failed[place] = again.then_some(now);
+            self.lost[place] = Some(now);
         }
         lost
     }
@@ -197,14 +234,26 @@ mod tests {
         );
     }
 
-    // A sorter that stopped mid-call may have left a brake on.
+    // A sorter that stopped mid-call may have left a brake on; a quota
+    // something else set, or none, is no business of a new one.
     #[test]
-    fn a_new_sorter_with_no_call_lets_go_of_both() {
-        let brake = Brake::default();
+    fn a_new_sorter_lets_go_of_only_its_own_brake() {
+        let said =
+            |cpu_max: [Option<&str>; 2]| move |place: usize| cpu_max[place].map(str::to_owned);
+        let now = Instant::now();
+        let left = Brake::found(
+            said([Some("400000 100000\n"), Some("max 100000\n")]),
+            4_000_000,
+        );
         assert_eq!(
-            brake.due(false, Instant::now()),
-            [0, 1],
-            "a new sorter left what another may have braked"
+            left.due(false, now),
+            [0],
+            "a brake left braked wasn't let go alone"
+        );
+        let others = Brake::found(said([Some("200000 100000\n"), None]), 4_000_000);
+        assert!(
+            others.due(false, now).is_empty(),
+            "another's quota, or an unread one, was let go"
         );
     }
 
@@ -225,45 +274,74 @@ mod tests {
             "a refused slice wasn't tried again once it had waited"
         );
         assert!(!brake.stands(true), "a half-set brake stood as braked");
+        // A set that timed out may land late, so it's unknown both ways.
+        brake.set(1, true);
+        brake.failed(1, now);
+        assert_eq!(
+            brake.due(true, now + AGAIN),
+            [0, 1],
+            "a slice whose set failed was taken as standing"
+        );
     }
 
     // On 16 November both slices read max mid-call, and nothing set them
     // again.
     #[test]
     fn a_brake_cleared_mid_call_is_set_again_from_what_cpu_max_reads() {
-        let folder = std::env::temp_dir().join(format!("brake-{}", std::process::id()));
-        let manager = folder.join("user@1000.service");
-        for place in 0..BRAKED.len() {
-            std::fs::create_dir_all(cgroup(place, &folder, &manager)).unwrap();
-        }
-        let write = |place: usize, said: &str| {
-            std::fs::write(cgroup(place, &folder, &manager).join("cpu.max"), said).unwrap();
-        };
+        const QUOTA: u64 = 4_000_000;
+        let cpu_max = std::cell::RefCell::new([Some("400000 100000\n"); 2]);
+        let asked = std::cell::RefCell::new(Vec::new());
         let read = |place: usize| {
-            std::fs::read_to_string(cgroup(place, &folder, &manager).join("cpu.max")).ok()
+            asked.borrow_mut().push(place);
+            cpu_max.borrow()[place].map(str::to_owned)
         };
         let now = Instant::now();
         let mut brake = Brake::default();
         brake.set(0, true);
         brake.set(1, true);
-        write(0, "400000 100000\n");
-        write(1, "400000 100000\n");
         assert!(
-            brake.check(read).is_empty(),
+            brake.check(read, QUOTA, now).is_empty(),
             "a held brake was taken as lost"
         );
-        assert!(
-            brake.due(true, now).is_empty(),
-            "a held brake was set again"
+        cpu_max.borrow_mut()[1] = Some("max 100000\n");
+        assert_eq!(
+            brake.check(read, QUOTA, now),
+            [1],
+            "build.slice read max, unseen"
         );
-        write(1, "max 100000\n");
-        assert_eq!(brake.check(read), [1], "build.slice read max, unseen");
         assert_eq!(
             brake.due(true, now),
             [1],
-            "a cleared brake wasn't set again"
+            "a cleared brake wasn't set again at once"
         );
-        std::fs::remove_dir_all(&folder).unwrap();
+        brake.set(1, true);
+        let soon = now + Duration::from_secs(1);
+        assert_eq!(
+            brake.check(read, QUOTA, soon),
+            [1],
+            "a second clearing went unseen"
+        );
+        assert!(
+            brake.due(true, soon).is_empty(),
+            "a slice cleared over and over was fought every look"
+        );
+        assert_eq!(
+            brake.due(true, soon + AGAIN),
+            [1],
+            "it wasn't set again once it waited"
+        );
+        brake.set(1, true);
+        cpu_max.borrow_mut()[0] = Some("800000 100000\n");
+        cpu_max.borrow_mut()[1] = None;
+        assert_eq!(
+            brake.check(read, QUOTA, soon + AGAIN),
+            [0],
+            "a raised quota passed as held, or an unread one as lost"
+        );
+        brake.set(0, false);
+        asked.borrow_mut().clear();
+        let _ = brake.check(read, QUOTA, soon + AGAIN);
+        assert_eq!(*asked.borrow(), [1], "a slice the brake let go was read");
         assert_eq!(
             cgroup(0, Path::new("/c"), Path::new("/c/u")),
             Path::new("/c/u/jobs.slice"),
