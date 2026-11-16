@@ -318,6 +318,20 @@ pub fn laned(json: &str) -> bool {
         && has("cake", "1:5")
 }
 
+/// Takes every filter off the queues `json` lists on `dev` but its ingress,
+/// so adopting leaves only the filters this version puts on: replacing a
+/// queue with one of its own kind keeps whatever filters were under it.
+pub fn unfiltered(dev: &str, json: &str) -> Vec<Vec<String>> {
+    let Ok(serde_json::Value::Array(all)) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    all.iter()
+        .filter_map(|q| q["handle"].as_str())
+        .filter(|handle| *handle != "ffff:")
+        .map(|handle| cmd(&format!("tc filter del dev {dev} parent {handle}")))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -720,5 +734,24 @@ mod tests {
             {"kind":"fq_codel","handle":"10:","parent":"1:1"}]"#;
         assert!(laned(lanes), "the lanes weren't seen");
         assert!(!laned(one), "the one CAKE was taken for the lanes");
+    }
+
+    #[test]
+    fn adopting_clears_every_filter_but_the_ingress() {
+        let held = r#"[{"kind":"htb","handle":"1:","root":true},
+            {"kind":"cake","handle":"5:","parent":"1:5"},
+            {"kind":"ingress","handle":"ffff:","parent":"ffff:fff1"}]"#;
+        let cleared: Vec<String> = unfiltered("wlan0", held)
+            .iter()
+            .map(|c| c.join(" "))
+            .collect();
+        assert_eq!(
+            cleared,
+            [
+                "tc filter del dev wlan0 parent 1:",
+                "tc filter del dev wlan0 parent 5:"
+            ],
+            "a kept queue's old filters would outlive the version that made them"
+        );
     }
 }

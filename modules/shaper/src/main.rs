@@ -596,6 +596,14 @@ fn install(link: &str, ifb: &str, (up, split): (u64, &lanes::Split), down: u64, 
     let back = sh(&words(&format!("tc -j qdisc show dev {ifb}"))).unwrap_or_default();
     let turned = if lanes::laned(&held) && qdisc::ours(&back) {
         eprintln!("taking back the queues {link} kept through a restart");
+        // tc complains of a queue with no filters to take off, which is
+        // nothing to tell.
+        for clear in lanes::unfiltered(link, &held)
+            .iter()
+            .chain(&lanes::unfiltered(ifb, &back))
+        {
+            let _ = sh(clear);
+        }
         run_all(lanes::adopt(link, ifb, (up, split), down));
         qdisc::turned(&held)
     } else {

@@ -728,6 +728,8 @@ def restart_keeps_the_queues(on_eth2: Connection) -> None:
     client.succeed(on_eth2.upload)
     # An IFB the new shaper won't take up, as a VPN gone from its list leaves.
     client.succeed("ip link add shaperfff type ifb")
+    # A filter this version doesn't make, as one an older version made and a later dropped.
+    client.succeed("tc filter add dev eth2 parent 5: protocol all prio 9 matchall action pass")
     since = client.succeed("date +%s").strip()
 
     def sent() -> int:
@@ -750,6 +752,8 @@ def restart_keeps_the_queues(on_eth2: Connection) -> None:
     said = client.succeed(f"journalctl -u shaper.service --since @{since} --no-pager")
     assert "is restarting, so its queues stay" in said, said
     client.wait_until_fails("ip link show shaperfff", timeout=SHAPING)
+    kept = client.succeed("tc filter show dev eth2 parent 5:")
+    assert "pref 9" not in kept, f"a filter no version makes outlived the restart: {kept}"
     assert "RTNETLINK" not in said, f"taking the queues back failed: {said}"
     assert "Error:" not in said, f"taking the queues back failed: {said}"
 
