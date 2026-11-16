@@ -126,7 +126,11 @@ mod tests {
 
     #[test]
     fn the_curve_is_mostly_there_at_once() {
-        assert!(eased(0.25) > 0.75, "{}", eased(0.25));
+        assert!(
+            eased(0.25) > 0.75,
+            "the curve wasn't three quarters there a quarter of the way: {}",
+            eased(0.25)
+        );
         assert!(
             eased(0.5) < 1.0,
             "the curve was all the way there at half time: {}",

@@ -644,7 +644,7 @@ mod tests {
         );
         assert!(
             label.capitals && (label.tracking - 0.16).abs() < 1e-9,
-            "the label wasn't capitals tracked 0.16: {} {}",
+            "the label wasn't capitals tracked 0.16: capitals {}, tracking {}",
             label.capitals,
             label.tracking
         );
@@ -708,7 +708,7 @@ mod tests {
         );
         assert!(
             (space.pitch - 32.0).abs() < 1e-9 && (space.beat - 16.0).abs() < 1e-9,
-            "the page's line and beat weren't 32 and 16: {} {}",
+            "the page's line and beat weren't 32 and 16: line {}, beat {}",
             space.pitch,
             space.beat
         );

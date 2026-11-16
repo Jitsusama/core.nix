@@ -650,8 +650,10 @@ fn the_menu_sets_each_line_and_the_row_says_how_to_choose() {
     };
     let set = menu_source(&ask, &menu);
     assert!(
-        set.contains("\"bn[ext]\"") && set.contains("\"Previous File\""),
-        "the menu didn't set its command and its name on each line"
+        ["\"Next File\"", "\"bp[revious]\"", "\"Previous File\""]
+            .iter()
+            .all(|said| set.contains(said)),
+        "the menu didn't set each line's command and name"
     );
     assert_eq!(
         set.matches("ink.selection").count(),

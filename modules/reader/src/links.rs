@@ -334,7 +334,7 @@ mod tests {
             for b in &many[i + 1..] {
                 assert!(
                     !b.starts_with(a.as_str()) && !a.starts_with(b.as_str()),
-                    "{a} and {b} begin one another"
+                    "one of {a} and {b} begins the other"
                 );
             }
         }
