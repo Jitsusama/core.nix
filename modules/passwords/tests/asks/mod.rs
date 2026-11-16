@@ -227,6 +227,36 @@ fn a_listed_ask_is_drawn_and_its_yes_runs_the_command_with_the_value_masked() {
 }
 
 #[test]
+fn an_asks_reading_reaches_the_journal_the_managers_file_names() {
+    // The daemon's journal is the file's, so a test's readings never
+    // reach the account's own, where health would count them.
+    let running = Running::releasing("asks-journal", &[LISTED]);
+    let journal = running.journal();
+    let id = "0323456789abcdef0123456789abcdef";
+    let bash = stored_bash();
+    let argv = saying(&bash);
+    put_up(
+        &running,
+        id,
+        LISTED,
+        &argv.iter().map(String::as_str).collect::<Vec<_>>(),
+    );
+    let mut client = running.client();
+    let row = row_of(&mut client, id);
+    let said = client.ask(&yes(&row, 812));
+    assert_eq!(said["releasing"], true, "the yes: {said}");
+    let mut line = [0_u8; 4096];
+    let length = journal
+        .recv(&mut line)
+        .expect("a reading reached the file's journal");
+    let reading = String::from_utf8_lossy(&line[..length]);
+    assert!(
+        reading.contains("ASK_OUTCOME=released\n"),
+        "the reading: {reading}"
+    );
+}
+
+#[test]
 fn an_ask_for_an_item_not_listed_is_refused_unseen() {
     let running = Running::releasing("asks-unlisted", &[LISTED]);
     let id = "2123456789abcdef0123456789abcdef";

@@ -75,6 +75,10 @@ in
             (lib.getExe pkgs.git)
             "--loginctl"
             "${pkgs.systemd}/bin/loginctl"
+            # The forge a yes may stand for: a clean tree whose origin is a
+            # repository on it, at a commit its main holds, as GitHub says.
+            "--forge"
+            "https://github.com/"
           ]
           ++ lib.optionals (settings.account != null) [
             "--account"

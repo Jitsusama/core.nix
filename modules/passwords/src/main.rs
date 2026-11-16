@@ -123,6 +123,15 @@ struct ManagersFile {
     /// and later do; without, the caches that take one are read-only.
     #[serde(default)]
     overlays: bool,
+    /// Where the asks' readings go, journald's own socket unless the file
+    /// names another, as a test names a stand-in so its readings never
+    /// reach the account's journal, whose health counts them.
+    journal: Option<PathBuf>,
+    /// The forges a yes may stand for, each a URL its repositories'
+    /// origins start with, whose main a standing yes is checked against;
+    /// none, and a yes stands for nothing past its ask.
+    #[serde(default)]
+    forges: Vec<String>,
 }
 
 /// The managers as rows name them, from the same file.
@@ -388,7 +397,10 @@ fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) -> boo
                 git,
                 home: home.to_string_lossy().into_owned(),
                 words: said,
-                journal: PathBuf::from(secret_asks::reading::JOURNAL),
+                journal: given
+                    .journal
+                    .unwrap_or_else(|| PathBuf::from(secret_asks::reading::JOURNAL)),
+                forges: given.forges,
                 least_shown_ms: Some(secret_asks::engine::LEAST_SHOWN_MS),
                 says_commits: true,
             },

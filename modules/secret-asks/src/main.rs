@@ -3,9 +3,11 @@
 //!
 //! - `secret-asks serve --socket SOCKET --asks DIR --vocabulary WORDS
 //!   --item REF --op OP --git GIT --loginctl LOGINCTL [--account ACCOUNT]
-//!   [--journal SOCKET]` serves each ask in DIR as a row in Asks, and
-//!   answers release and refuse (src/daemon.rs says how), telling the
-//!   journal at SOCKET, journald's own by default, how each ended.
+//!   [--journal SOCKET] [--forge URL]...` serves each ask in DIR as a row
+//!   in Asks, and answers release and refuse (src/daemon.rs says how),
+//!   telling the journal at SOCKET, journald's own by default, how each
+//!   ended. A yes stands only for repositories whose origin is under a
+//!   forge URL given, on that forge's main.
 //! - `secret-asks ask --item REF --tree PATH --why WORDS [--asks DIR]
 //!   [--given NAME] [--session NAME] [--quest-id ID --quest-title TITLE]`
 //!   puts up one ask for the checker, as the harness will for an agent.
@@ -21,7 +23,8 @@ use secret_asks::reading;
 use secret_asks::words::Words;
 
 const USAGE: &str = "usage: secret-asks serve --socket SOCKET --asks DIR --vocabulary WORDS \
---item REF --op OP --git GIT --loginctl LOGINCTL [--account ACCOUNT] [--journal SOCKET]
+--item REF --op OP --git GIT --loginctl LOGINCTL [--account ACCOUNT] [--journal SOCKET] \
+[--forge URL]...
        secret-asks ask --item REF --tree PATH --why WORDS [--asks DIR] [--given NAME] \
 [--session NAME] [--quest-id ID --quest-title TITLE]
        secret-asks received";
@@ -30,6 +33,14 @@ const USAGE: &str = "usage: secret-asks serve --socket SOCKET --asks DIR --vocab
 fn named(args: &[String], flag: &str) -> Option<String> {
     let at = args.iter().position(|one| one == flag)?;
     args.get(at + 1).cloned()
+}
+
+/// Every value a flag is given, in order, for a flag that may repeat.
+fn all_named(args: &[String], flag: &str) -> Vec<String> {
+    args.windows(2)
+        .filter(|pair| pair[0] == flag)
+        .map(|pair| pair[1].clone())
+        .collect()
 }
 
 /// The asks folder in the runtime directory, where the daemon watches.
@@ -81,6 +92,7 @@ fn serve(args: &[String]) -> ExitCode {
         home: std::env::var("HOME").unwrap_or_default(),
         words,
         journal: named(args, "--journal").map_or_else(|| reading::JOURNAL.into(), PathBuf::from),
+        forges: all_named(args, "--forge"),
     })
 }
 

@@ -7,6 +7,8 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
+use std::os::fd::AsRawFd;
+use std::os::unix::net::UnixDatagram;
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::rc::Rc;
@@ -96,6 +98,9 @@ pub const NPMRC: &str = "registry=https://registry.example/\n\
 /// The made-up value RELEASING releases, which no answer, log or
 /// command line may hold.
 pub const RELEASED_VALUE: &str = "tr0ub4dor-made-up-for-the-test";
+
+/// The stand-in for journald's socket, in the folder the daemon works in.
+const JOURNAL: &str = "journal.sock";
 
 /// A stand-in for bubblewrap, which a build's sandbox can't nest: it
 /// keeps the arguments it was given, then runs what follows `--` with
@@ -222,6 +227,10 @@ impl Running {
             "profiles": [stored_folder("bash"), folder.join("home/.nix-profile/bin")],
             "hidden": folder.join("fence-hidden.json"),
             "overlays": overlays,
+            // The stand-in forge a yes stands for, the folder of bare
+            // repositories a test's tree takes as origin, as a machine
+            // names GitHub.
+            "forges": [format!("file://{}/", folder.join("forge").display())],
         });
         let running = Running::started_with(
             test,
@@ -293,7 +302,12 @@ impl Running {
                 manager
             })
             .collect();
-        let mut file = json!({"managers": listed});
+        // The readings go to a stand-in for journald in the test's own
+        // folder, which the daemon works in, never to the account's
+        // journal, whose health counts them. It's named from the folder,
+        // since a socket's whole path may be no longer than 107 bytes,
+        // and nothing hears it unless a test binds it with `journal`.
+        let mut file = json!({"managers": listed, "journal": JOURNAL});
         for (field, value) in also.as_object().into_iter().flatten() {
             if field != "references" {
                 file[field] = value.clone();
@@ -308,6 +322,7 @@ impl Running {
         std::fs::set_permissions(&copier, std::os::unix::fs::PermissionsExt::from_mode(0o755))
             .unwrap();
         let mut daemon = Command::new(env!("CARGO_BIN_EXE_passwords"))
+            .current_dir(&folder)
             .arg("daemon")
             .arg(&managers_file)
             .arg(words)
@@ -397,6 +412,21 @@ impl Running {
     /// What the daemon and its managers logged so far.
     pub fn logged(&self) -> String {
         std::fs::read_to_string(self.folder.join("logged")).unwrap_or_default()
+    }
+
+    /// The stand-in for journald the daemon tells its readings to, bound
+    /// through the folder's descriptor, since the folder's own path may
+    /// be too long for a socket's. Bound only where a test reads it: a
+    /// stand-in no one reads would fill and hold the daemon's next line.
+    pub fn journal(&self) -> UnixDatagram {
+        let folder = std::fs::File::open(&self.folder).unwrap();
+        let path = format!("/proc/self/fd/{}/{JOURNAL}", folder.as_raw_fd());
+        let journal = UnixDatagram::bind(path).expect("the journal stand-in binds");
+        // A reading comes as the ask ends, so a few seconds is long.
+        journal
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        journal
     }
 }
 

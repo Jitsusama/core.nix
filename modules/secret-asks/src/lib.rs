@@ -5,6 +5,7 @@
 //!
 //! - `ask`: an ask as its file says it, checked.
 //! - `tree`: the tree an ask runs in, as git says it, asked safely.
+//! - `forge`: what a forge says a repository's default branch holds.
 //! - `row`: an ask as the launcher draws it, and the digest of it.
 //! - `mask`: a command's output with the value masked.
 //! - `words`: Asks' words, from the launcher's vocabulary.
@@ -20,6 +21,7 @@
 pub mod ask;
 pub mod daemon;
 pub mod engine;
+pub mod forge;
 pub mod grant;
 pub mod mask;
 pub mod reading;

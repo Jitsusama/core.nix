@@ -30,6 +30,7 @@ use inotify::{Inotify, WatchMask};
 use serde_json::{Value, json};
 
 use crate::ask::{self, Ask};
+use crate::forge::Forge;
 use crate::grant::{self, Grants};
 use crate::mask::{MOST_BYTES, masked};
 use crate::reading::{self, Outcome};
@@ -155,6 +156,11 @@ pub struct Setting {
     /// whose command writes a worktree's history alone (the passwords
     /// child's); off for the experiment's, whose checker writes nothing.
     pub says_commits: bool,
+    /// The forges a standing yes may be checked against, each by its
+    /// prefix, as `https://github.com/`: only a tree whose origin one
+    /// serves is granted, and covered only where that forge says its
+    /// default branch holds the tree's commit. None grants nothing.
+    pub forges: Vec<String>,
 }
 
 /// The asks held, by id, and what to tell when they change.
@@ -165,6 +171,8 @@ pub struct Engine {
     /// The grants Joel's yeses made, where this engine makes them; each
     /// lock of them is taken after the asks', never before.
     grants: Option<Mutex<Grants>>,
+    /// What the forges say each repository's main is.
+    forge: Forge,
     changed: Mutex<Sender<()>>,
 }
 
@@ -172,11 +180,13 @@ impl Engine {
     /// An engine holding no asks yet, which tells `changed` each time its
     /// rows may have moved.
     pub fn new(setting: Setting, releaser: Box<dyn Releaser>, changed: Sender<()>) -> Engine {
+        let forge = Forge::new(setting.git.clone(), setting.forges.clone());
         Engine {
             setting,
             releaser,
             asks: Mutex::new(BTreeMap::new()),
             grants: None,
+            forge,
             changed: Mutex::new(changed),
         }
     }
@@ -197,28 +207,37 @@ impl Engine {
 
     /// The repository a yes to `ask` from `tree` lasts for, by name,
     /// where this engine makes grants, the releaser says what program
-    /// the command comes to, and the tree is in a repository.
+    /// the command comes to, and the tree is in a repository whose
+    /// origin a forge it names serves.
     fn lasts(&self, ask: &Ask, tree: &Tree) -> Option<String> {
         self.grants.as_ref()?;
         self.releaser.program(ask)?;
+        tree.origin.as_ref()?;
         grant::repository(&tree.checkout).map(|repository| grant::named(&repository))
     }
 
-    /// The tree `ask` runs in, as read now; where a standing yes would
+    /// The tree `ask` runs in, as read now, and where this engine makes
+    /// grants, its origin on a forge it names; where a standing yes would
     /// cover the ask, whether its code is all on main too, which alone
-    /// has it covered, since git is run for that only where it's needed.
+    /// has it covered, since the forge and git are asked only where
+    /// that's needed.
     fn tree_of(&self, ask: &Ask, now: i64) -> Tree {
         let path = Path::new(&ask.tree);
         let mut tree = tree::read(&self.setting.git, path);
-        let would = self.releaser.program(ask).is_some_and(|program| {
-            self.grants().is_some_and(|grants| {
-                grants
-                    .covering(ask, &tree.checkout, &program, now)
-                    .is_some()
-            })
-        });
-        if would {
-            tree.landed = Some(tree::landed(&self.setting.git, path, &tree));
+        let Some(program) = self.releaser.program(ask) else {
+            return tree;
+        };
+        if self.grants.is_none() {
+            return tree;
+        }
+        tree.origin = self.forge.origin(path);
+        let would = self
+            .grants()
+            .is_some_and(|grants| grants.covering(ask, &tree, &program, now).is_some());
+        if let (true, Some(origin)) = (would, tree.origin.as_deref()) {
+            let main = self.forge.head(origin);
+            tree.landed =
+                Some(main.is_some_and(|main| tree::landed(&self.setting.git, path, &tree, &main)));
         }
         tree
     }
@@ -546,9 +565,9 @@ impl Engine {
         one.since_ms = now_ms();
         let ask = one.ask.clone();
         let granted = match (self.releaser.program(&ask), self.grants()) {
-            (Some(program), Some(mut grants)) => grants
-                .grant(&ask, &tree.checkout, &program, now_ms())
-                .is_some(),
+            (Some(program), Some(mut grants)) => {
+                grants.grant(&ask, &tree, &program, now_ms()).is_some()
+            }
             _ => false,
         };
         if granted {
