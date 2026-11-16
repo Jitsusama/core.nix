@@ -734,6 +734,39 @@ pub(crate) mod tests {
         );
     }
 
+    #[test]
+    fn a_move_never_made_keeps_off_the_point_it_was_for_an_hour() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let near = [hall(-53, Some(20), None)];
+        let badly = carried(119, 0.5);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+
+        let minute = start + Duration::from_secs(60);
+        let unmoved = chooser.choose(minute, (DESK, &badly, -50, CH52), &near, false);
+        let later = start + SETTLE + Duration::from_secs(1);
+        let again = chooser.choose(later, (DESK, &badly, -50, CH52), &near, false);
+
+        assert_eq!(unmoved, Choice::Stay, "it rests a settle from its try");
+        assert_eq!(again, Choice::Stay, "the hall wasn't reached from here");
+    }
+
+    #[test]
+    fn a_move_never_made_sends_the_card_back_nowhere() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let near = [hall(-53, Some(20), None)];
+        let badly = carried(119, 0.5);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+
+        let worse = carried(200, 1.0);
+        let judged = chooser.choose(start + TRIAL, (DESK, &worse, -50, CH52), &near, false);
+
+        assert_eq!(judged, Choice::Stay, "the card never left to go back");
+    }
+
     /// The desk's 5 GHz radio, heard this loud.
     fn desk_at(signal: i16, measured: Option<Measured>) -> Other {
         Other {
