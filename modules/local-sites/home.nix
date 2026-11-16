@@ -7,6 +7,13 @@
 # state, never a Nix value; only the server and the home's builder are
 # declared.
 #
+# The server is local-sites (src/main.rs says how), which serves the
+# documents, the folders a module mounts at their own paths, and a live
+# feed at /feed/<name> from each daemon a module declares, with the kinds
+# and fields a page may read of it, so the server enforces what a page
+# never sees. It answers only its own names on loopback and opens a feed
+# only to its own pages.
+#
 # The home is built from sites.json, a row per site, which sessions write:
 # home/home.py writes the list, its llms.txt and Markdown twin, and each
 # page's strip, and copies the home's own scripts and styles in beside
@@ -29,6 +36,61 @@
   ...
 }:
 let
+  cfg = config.jitsusama.local-sites;
+  local-sites = pkgs.callPackage ./package.nix { };
+  documents = "${config.xdg.dataHome}/jitsusama/sites";
+  # Loopback, under the names a browser sends there by itself.
+  served = pkgs.writeText "local-sites.json" (
+    builtins.toJSON {
+      listen = "127.0.0.1:8484";
+      names = [
+        "sites.localhost"
+        "localhost"
+        "127.0.0.1"
+      ];
+      inherit documents;
+      inherit (cfg) mounts feeds;
+    }
+  );
+  kind = lib.types.submodule {
+    options = {
+      fields = lib.mkOption {
+        type = lib.types.nullOr (lib.types.listOf lib.types.str);
+        default = null;
+        description = ''
+          The only fields of the kind's records a page is shown, besides
+          the key, and the only ones the daemon is asked for; null shows
+          them all.
+        '';
+      };
+      deep = lib.mkOption {
+        type = lib.types.nullOr (lib.types.listOf lib.types.str);
+        default = null;
+        description = ''
+          Fields the daemon is asked to say deep, so a change inside one
+          says only what moved in it, as the mycelium node's `deep` does.
+        '';
+      };
+    };
+  };
+  feed = lib.types.submodule {
+    options = {
+      socket = lib.mkOption {
+        type = lib.types.str;
+        example = "daemons/net.sock";
+        description = ''
+          The daemon's socket, absolute or under the user's runtime folder.
+        '';
+      };
+      kinds = lib.mkOption {
+        type = lib.types.attrsOf kind;
+        description = ''
+          The kinds a page may read, by name; a kind not named here is
+          refused, so a feed shows no more than its module declared.
+        '';
+      };
+    };
+  };
   root = "%h/.local/share/jitsusama/sites";
   realm = config.jitsusama.mycelium.realm or null;
   build = lib.escapeShellArgs [
@@ -39,7 +101,26 @@ let
   ];
 in
 {
-  systemd.user.paths = {
+  options.jitsusama.local-sites.feeds = lib.mkOption {
+    type = lib.types.attrsOf feed;
+    default = { };
+    description = ''
+      The daemons a page may read live, each at /feed/<name>, with the
+      kinds and fields of each it may read. A page reads and never acts:
+      the server passes only hello, get, list, watch, unwatch and health.
+    '';
+  };
+
+  options.jitsusama.local-sites.mounts = lib.mkOption {
+    type = lib.types.attrsOf lib.types.path;
+    default = { };
+    description = ''
+      Folders Nix built, each served at /<name>/ ahead of the documents,
+      as a live site's pages are.
+    '';
+  };
+
+  config.systemd.user.paths = {
     network-site = {
       Unit.Description = "Watches net's record for the network site";
       Path.PathChanged = "%t/net/network.json";
@@ -54,11 +135,11 @@ in
 
   # A switch builds the home too, since a changed builder or page changes
   # no file the path unit watches. A run that changes nothing writes nothing.
-  home.activation.localSitesHome = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  config.home.activation.localSitesHome = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     run ${build}
   '';
 
-  systemd.user.services = {
+  config.systemd.user.services = {
     # A copy put in place by a rename, so the page never reads half of one.
     network-site = {
       Unit.Description = "Copies net's record into the network site";
@@ -86,15 +167,8 @@ in
       Unit.Description = "Serves Joel's local sites, on loopback only";
       Service = {
         ExecStartPre = "${lib.getExe' pkgs.coreutils "mkdir"} -p ${root}";
-        ExecStart = lib.concatStringsSep " " [
-          (lib.getExe pkgs.static-web-server)
-          "--host 127.0.0.1"
-          "--port 8484"
-          "--root ${root}"
-          # A site changes while he reads it, so a reload shows the change.
-          "--cache-control-headers false"
-          "--compression true"
-        ];
+        # Its command line says its name, as a daemon's does (docs/daemons.md).
+        ExecStart = "@${lib.getExe local-sites} local-sites --config ${served}";
         # Whatever Joel runs comes first; a page waits a moment at most.
         Slice = "background.slice";
         Restart = "on-failure";
@@ -131,7 +205,7 @@ in
 
   # Every 20 seconds, as the page reads it; a run takes about a tenth of a
   # second.
-  systemd.user.timers = lib.optionalAttrs (realm != null) {
+  config.systemd.user.timers = lib.optionalAttrs (realm != null) {
     mycelium-map = {
       Unit.Description = "Rewrites the mycelium site's map every 20 seconds";
       Timer = {

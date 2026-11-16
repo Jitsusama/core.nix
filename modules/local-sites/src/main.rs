@@ -1,0 +1,100 @@
+//! local-sites --config FILE
+//!
+//! Joel's local sites, served on loopback alone, and each live page fed
+//! by the daemon that holds its data. The config (config.rs), written by
+//! the module, names where it listens and by which names, the folder of
+//! documents sessions write, the folders Nix built that it serves at their
+//! own paths, and each feed: a daemon's socket and the kinds and fields a
+//! page may read of it.
+//!
+//! A page reads a feed at `/feed/<name>`, a WebSocket over which it speaks
+//! the daemon interface every daemon here speaks (docs/daemons.md), so a
+//! page asks what the launcher asks and is told what it's told. The server
+//! is no relay: it holds one watch on the daemon for each kind any page
+//! reads and tells every page from it (upstream.rs), it lets a page read
+//! and never act (gate.rs), and it admits only its own pages, by the name
+//! a request reaches it by and the page a feed's handshake came from
+//! (door.rs). Files are found by files.rs; one connection is http.rs.
+
+mod config;
+mod door;
+mod files;
+mod gate;
+mod http;
+mod page;
+mod upstream;
+
+use std::net::TcpListener;
+use std::path::PathBuf;
+use std::process::ExitCode;
+use std::sync::Arc;
+use std::thread;
+
+use terminal_kit::failure::{Exit, Failure};
+use terminal_kit::flags;
+use terminal_kit::help::Help;
+
+use crate::config::Config;
+use crate::door::Door;
+use crate::http::Server;
+use crate::upstream::Upstreams;
+
+fn help() -> Help {
+    Help::new(
+        "local-sites",
+        "serves Joel's local sites, fed live by their daemons",
+    )
+    .example("local-sites --config FILE", "as its unit runs it")
+    .option(
+        "--config FILE",
+        "where it listens, what it serves and the feeds",
+    )
+    .exit(Exit::Failed, "it couldn't listen")
+    .exit(Exit::Config, "the config couldn't be read")
+}
+
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        serve(&config_file(&context.args)?)
+    })
+}
+
+fn config_file(args: &[String]) -> Result<PathBuf, Failure> {
+    match args {
+        [flag, file] if flag == "--config" => Ok(PathBuf::from(file)),
+        [flag] if flag == "--config" => Err(Failure::new(Exit::Usage, "--config names a file")),
+        [] => Err(Failure::new(Exit::Usage, "local-sites needs its config")
+            .try_this("local-sites --config FILE")),
+        [word, ..] => Err(flags::unknown("flag", word, &["--config"])),
+    }
+}
+
+fn serve(file: &PathBuf) -> Result<(), Failure> {
+    let unreadable = |why: String| {
+        Failure::new(
+            Exit::Config,
+            format!("local-sites can't read {}", file.display()),
+        )
+        .because(why)
+    };
+    let text = std::fs::read_to_string(file).map_err(|why| unreadable(why.to_string()))?;
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
+    let config = Config::from_json(&text, runtime.as_deref()).map_err(unreadable)?;
+    let listener = TcpListener::bind(config.listen).map_err(|why| {
+        Failure::new(
+            Exit::Failed,
+            format!("local-sites can't listen on {}", config.listen),
+        )
+        .because(why.to_string())
+    })?;
+    let server = Arc::new(Server {
+        door: Door::new(&config.names, config.listen.port()),
+        config,
+        upstreams: Arc::new(Upstreams::default()),
+    });
+    for stream in listener.incoming().flatten() {
+        let server = Arc::clone(&server);
+        thread::spawn(move || http::answer(&server, stream));
+    }
+    Ok(())
+}
