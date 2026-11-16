@@ -92,9 +92,10 @@ fn chosen(
     call: bool,
 ) -> Option<Next> {
     let here = around.iter().find(|heard| heard.bssid == on.point)?;
+    // The card's own point goes along too, since how busy it says its
+    // channel is tells the chooser whether there's more room elsewhere.
     let (others, whence): (Vec<Other>, Vec<Option<Whence>>) = around
         .iter()
-        .filter(|heard| heard.bssid != on.point)
         .map(|heard| {
             let known = known(&heard.bssid, heard.signal);
             let whence = known.as_ref().map(|(_, whence)| *whence);
@@ -109,11 +110,13 @@ fn chosen(
         })
         .unzip();
     let card = (&*on.point, measured, here.signal, here.frequency);
+    let busy = here.radio.load.map(|load| load.busy);
+    let from = (measured, here.frequency, busy);
     match chooser.choose(now, card, &others, call) {
         Choice::Stay => None,
         Choice::Try(to) => {
             let at = others.iter().position(|other| other.point == to)?;
-            let why = tried(on, (measured, here.frequency), &others[at], whence[at]);
+            let why = tried(on, from, &others[at], whence[at]);
             println!("<6>{why}");
             Some(Next::Move(to))
         }
@@ -146,6 +149,16 @@ fn chosen(
             );
             Some(Next::Look)
         }
+        Choice::LookQuieter => {
+            println!(
+                "<6>{} looks for a quieter channel, as {} says its own is {}% busy, and it \
+                 hears none of its network quieter within reach",
+                on.card,
+                on.point,
+                busy.unwrap_or_default()
+            );
+            Some(Next::Look)
+        }
     }
 }
 
@@ -169,10 +182,11 @@ async fn roam(asks: mpsc::Sender<Ask>, air: watch::Receiver<State>, card: String
 }
 
 /// Why a card tries another access point: what the one it's on carried,
-/// and what was known of the other, and from where.
+/// what was known of the other, and from where, and whether it's for a
+/// wider band or a quieter channel.
 fn tried(
     on: &Joined,
-    (measured, frequency): (&Measured, u32),
+    (measured, frequency, busy): (&Measured, u32, Option<u8>),
     to: &Other,
     whence: Option<Whence>,
 ) -> String {
@@ -189,13 +203,20 @@ fn tried(
         ),
         (None, _) => format!("is untried, heard at {} dBm", to.signal),
     };
-    let band = if choose::wider(to.frequency, frequency) {
-        ", on a wider band"
-    } else {
-        ""
+    let room = match (busy, to.busy) {
+        _ if choose::wider(to.frequency, frequency) => ", on a wider band".to_owned(),
+        (Some(busy), Some(theirs))
+            if busy > choose::BUSIEST
+                && choose::quieter(theirs, busy)
+                && to.measured.is_none()
+                && !choose::badly(measured) =>
+        {
+            format!(", on a channel {theirs}% busy rather than {busy}%")
+        }
+        _ => String::new(),
     };
     format!(
-        "{} tries {}, as {} carried {} at p95 with {:.1}% lost, and {} {known}{band}",
+        "{} tries {}, as {} carried {} at p95 with {:.1}% lost, and {} {known}{room}",
         on.card,
         to.point,
         on.point,
@@ -215,7 +236,7 @@ mod tests {
     use crate::learn::Here;
     use crate::measure::Echo;
     use crate::measure::tests::joined;
-    use crate::radio::Radio;
+    use crate::radio::{Load, Radio};
     use crate::state::Security;
 
     const DESK: &str = "6c:ae:f6:c1:84:26";
@@ -318,7 +339,7 @@ mod tests {
         assert_eq!(
             tried(
                 &on,
-                (&carried(30), 2437),
+                (&carried(30), 2437, None),
                 &other(HALL, quick.clone()),
                 Some(Whence::Learned)
             ),
@@ -328,7 +349,7 @@ mod tests {
         assert_eq!(
             tried(
                 &on,
-                (&carried(30), 2437),
+                (&carried(30), 2437, None),
                 &other(HALL, quick),
                 Some(Whence::Lately)
             ),
@@ -336,7 +357,7 @@ mod tests {
             "a move made on what was just measured says so"
         );
         assert_eq!(
-            tried(&on, (&carried(30), 2437), &other(HALL, None), None),
+            tried(&on, (&carried(30), 2437, None), &other(HALL, None), None),
             format!("{why} is untried, heard at -50 dBm"),
             "a move made on signal alone says so"
         );
@@ -350,12 +371,51 @@ mod tests {
             ..other(HALL, None)
         };
 
-        let why = tried(&on, (&carried(9), 2437), &wide, None);
+        let why = tried(&on, (&carried(9), 2437, None), &wide, None);
 
         assert!(
             why.ends_with("is untried, heard at -50 dBm, on a wider band"),
             "a move from 2.4 GHz to 5 GHz says it's for the band: {why}"
         );
+    }
+
+    #[test]
+    fn a_move_to_a_quieter_channel_says_so() {
+        let on = joined(HALL);
+        let quieter = Other {
+            busy: Some(20),
+            frequency: 5260,
+            ..other(DESK, None)
+        };
+
+        let why = tried(&on, (&carried(38), 5745, Some(56)), &quieter, None);
+
+        assert!(
+            why.ends_with("heard at -50 dBm, on a channel 20% busy rather than 56%"),
+            "a move off a busy channel says it's for room: {why}"
+        );
+    }
+
+    #[test]
+    fn a_move_off_a_busy_channel_for_another_reason_says_nothing_of_room() {
+        let on = joined(HALL);
+        let quieter = Other {
+            busy: Some(20),
+            frequency: 5260,
+            ..other(DESK, None)
+        };
+        let known = Other {
+            measured: Some(carried(10)),
+            ..quieter.clone()
+        };
+
+        let badly = tried(&on, (&carried(52), 5745, Some(56)), &quieter, None);
+        let quicker = tried(&on, (&carried(38), 5745, Some(56)), &known, None);
+        let little = tried(&on, (&carried(38), 5745, Some(34)), &quieter, None);
+
+        assert!(!badly.contains("busy"), "it moves as bad: {badly}");
+        assert!(!quicker.contains("busy"), "it moves for speed: {quicker}");
+        assert!(!little.contains("busy"), "34% isn't past the bar: {little}");
     }
 
     #[test]
@@ -452,5 +512,63 @@ mod tests {
         );
 
         assert_eq!(to, None, "30 ms is carrying well, and the hall is unknown");
+    }
+
+    #[test]
+    fn a_card_hears_how_busy_its_own_channel_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let learned = Learned::kept_in(&dir.path().join("carried"));
+        let (lately, now) = (Measures::default(), Instant::now());
+        let on_5_ghz = |bssid, frequency, busy| Heard {
+            frequency,
+            radio: Radio {
+                load: Some(Load { stations: 4, busy }),
+                ..Radio::default()
+            },
+            ..heard(bssid, -42)
+        };
+        let around = [on_5_ghz(HALL, 5745, 56), on_5_ghz(DESK, 5260, 20)];
+        let known = known(&lately, &learned, now, 20);
+
+        let to = chosen(
+            &mut Chooser::default(),
+            now,
+            (&joined(HALL), &carried(38)),
+            &around,
+            &known,
+            false,
+        );
+
+        assert_eq!(to, Some(Next::Move(DESK.into())), "the hall said 56% busy");
+    }
+
+    #[test]
+    fn a_card_on_a_busy_channel_hearing_nothing_quieter_looks() {
+        let dir = tempfile::tempdir().unwrap();
+        let learned = Learned::kept_in(&dir.path().join("carried"));
+        let (lately, now) = (Measures::default(), Instant::now());
+        let crowded = Heard {
+            frequency: 5745,
+            radio: Radio {
+                load: Some(Load {
+                    stations: 9,
+                    busy: 56,
+                }),
+                ..Radio::default()
+            },
+            ..heard(HALL, -41)
+        };
+        let known = known(&lately, &learned, now, 20);
+
+        let next = chosen(
+            &mut Chooser::default(),
+            now,
+            (&joined(HALL), &carried(38)),
+            &[crowded],
+            &known,
+            false,
+        );
+
+        assert_eq!(next, Some(Next::Look), "56% busy with nothing else heard");
     }
 }
