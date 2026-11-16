@@ -1,7 +1,8 @@
 # repos, built from this directory, its tests run as it builds. Its command
 # line takes the shape every command's does (../terminal-kit), and its
-# daemon serves as every daemon does (../daemon-serve), so the source is
-# cut from the modules folder holding it, and built from this one.
+# daemon serves as every daemon does (../daemon-serve), and its receptor is
+# said as every daemon's is (../receptor-say), so the source is cut from the
+# modules folder holding them, and built from this one.
 {
   git,
   lib,
@@ -19,6 +20,8 @@ rustPlatform.buildRustPackage rec {
       ./tests
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
+      ../receptor-say/Cargo.toml
+      ../receptor-say/src
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
     ];

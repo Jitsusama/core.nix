@@ -187,11 +187,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "receptor-say"
+version = "0.1.0"
+
+[[package]]
 name = "repos"
 version = "0.1.0"
 dependencies = [
  "daemon-serve",
  "inotify",
+ "receptor-say",
  "serde",
  "serde_json",
  "terminal-kit",

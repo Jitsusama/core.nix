@@ -176,6 +176,7 @@ fn change(number: u64, branch: &str, state: ChecksState, review: Review, ago: u6
             number,
             url: format!("https://github.com/Jitsusama/core.nix/pull/{number}"),
         }),
+        review_asked_of: Vec::new(),
     }
 }
 

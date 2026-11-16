@@ -267,7 +267,7 @@
         quests = ./modules/quests/home.nix;
         quickshell = moduleFrom ./modules/quickshell/home.nix { inherit wallpapers; };
         reader = ./modules/reader/home.nix;
-        repos = ./modules/repos/home.nix;
+        repos = moduleFrom ./modules/repos/home.nix { inherit mycelium; };
         rhythm = ./modules/rhythm/home.nix;
         ripgrep = ./modules/ripgrep/home.nix;
         sccache = ./modules/sccache/home.nix;

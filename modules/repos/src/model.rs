@@ -89,6 +89,11 @@ pub struct Change {
     /// What GitHub calls it, in its own words, where GitHub holds it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub github: Option<GitHubChange>,
+    /// The people whose review GitHub says it asks, by login: held for the
+    /// GitHub receptor's counts as a refresh reads them, and never kept or
+    /// shown, so no file or answer holds a login it didn't before.
+    #[serde(skip)]
+    pub review_asked_of: Vec<String>,
 }
 
 /// Which way a repository's changes were read from GitHub: through the

@@ -38,6 +38,7 @@ fn change(branch: &str, number: Option<u64>) -> Change {
             number,
             url: format!("https://github.com/Jitsusama/core.nix/pull/{number}"),
         }),
+        review_asked_of: Vec::new(),
     }
 }
 

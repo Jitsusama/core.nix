@@ -450,6 +450,7 @@ mod tests {
                 pending: Vec::new(),
             },
             review: Review::Waiting,
+            review_asked_of: Vec::new(),
             github: None,
         }
     }

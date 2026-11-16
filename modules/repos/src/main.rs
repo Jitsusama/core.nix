@@ -42,6 +42,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use repos::github::{self, Seen};
 use repos::model::Record;
 use repos::read::{self, Reading};
+use repos::receptor::Receptor;
 use repos::upstreams::{self, Counted};
 use repos::when::Clock;
 use repos::{broker, gh};
@@ -63,6 +64,7 @@ fn run(context: &Context) -> Result<(), Failure> {
     match words.as_slice() {
         ["refresh"] => {
             let seen = refresh(home, now)?;
+            say_the_receptor(&seen, now);
             show(context, &views::seen_json(&seen), || {
                 views::seen(&seen, &context.out)
             })
@@ -301,6 +303,28 @@ fn refresh(home: Option<&Path>, now: u64) -> Result<Seen, Failure> {
             .because(format!("{}: {why}", file.display()))
     })?;
     Ok(seen)
+}
+
+/// Says what the refresh saw to the realm's mycelium node, as the GitHub
+/// receptor, where the machine declares a realm, a login and its owners.
+/// Its pid is the user manager's whose timer runs each refresh, since a
+/// refresh ends at once: the receptor reads off once that manager goes,
+/// and failing when refreshes stop coming. Run by hand, outside systemd,
+/// it says nothing. A receptor mycelium won't take never fails the
+/// refresh, which has already kept what it saw.
+fn say_the_receptor(seen: &Seen, now: u64) {
+    let Some(receptor) = Receptor::from_env() else {
+        return;
+    };
+    let Some(pid) = std::env::var("MANAGERPID")
+        .ok()
+        .and_then(|pid| pid.parse().ok())
+    else {
+        return;
+    };
+    if let Err(why) = receptor.say(seen, now, pid) {
+        eprintln!("repos couldn't say its receptor: {why}");
+    }
 }
 
 /// The repositories a machine lists to be read through gh's sign-in, by

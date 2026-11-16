@@ -350,3 +350,60 @@ fn what_a_refresh_saw_reads_back_as_it_was_written() {
         );
     }
 }
+
+#[test]
+fn each_change_asks_whose_review_is_asked_in_the_one_query_and_still_only_reads() {
+    let text = query(&[one("Jitsusama/core.nix")]);
+    assert_eq!(
+        text.matches("reviewRequests(first: 10)").count(),
+        1,
+        "the shared query doesn't ask each change's review requests once:\n{text}"
+    );
+    assert_eq!(reads_only(&text), Ok(()), "the query no longer only reads");
+}
+
+#[test]
+fn a_review_request_github_wouldnt_say_leaves_its_repository_read() {
+    // A team asked may be refused to the App's token field by field, and
+    // GitHub then answers the rest with that reviewer null: the changes
+    // were still read, so every view of the repository still has them.
+    let mut answer = answer();
+    answer["errors"]
+        .as_array_mut()
+        .expect("the answer's errors")
+        .push(serde_json::json!({
+            "type": "FORBIDDEN",
+            "path": ["r0", "pullRequests", "nodes", 0, "reviewRequests", "nodes", 0,
+                     "requestedReviewer"],
+            "message": "Resource not accessible by integration"
+        }));
+    let (changes, unread) = parse(&answer, &asked_after(), Through::App);
+    assert!(
+        changes.contains_key("github:Jitsusama/core.nix"),
+        "a repository lost its changes to one review request GitHub wouldn't say"
+    );
+    assert!(
+        !unread
+            .iter()
+            .any(|why| why.starts_with("github:Jitsusama/core.nix")),
+        "a repository was said unread for one review request: {unread:?}"
+    );
+}
+
+#[test]
+fn a_change_holds_the_people_its_review_asks_and_no_team_and_never_keeps_them() {
+    let mut node = answer()["data"]["r0"]["pullRequests"]["nodes"][0].clone();
+    node["reviewRequests"] = serde_json::json!({"nodes": [
+        {"requestedReviewer": {"login": "jsama"}},
+        {"requestedReviewer": {}},
+        {"requestedReviewer": null},
+        {"requestedReviewer": {"login": "osprey"}},
+    ]});
+    let read = change(&node).expect("the change reads");
+    assert_eq!(read.review_asked_of, ["jsama", "osprey"]);
+    let written = serde_json::to_string(&read).expect("it writes");
+    assert!(
+        !written.contains("jsama") && !written.contains("osprey"),
+        "a login whose review was asked was kept: {written}"
+    );
+}

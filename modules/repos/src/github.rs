@@ -40,6 +40,10 @@ const CHANGES: usize = 50;
 /// How many checks are read for each change.
 const CHECKS: usize = 100;
 
+/// How many of a change's asked reviews are read, more than a change
+/// asks of people in practice.
+const REVIEWERS: usize = 10;
+
 /// What one refresh saw of GitHub.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Seen {
@@ -109,6 +113,8 @@ fragment open on Repository {{
       number title url isDraft headRefName baseRefName headRefOid updatedAt
       author {{ login }}
       reviewDecision
+      reviewRequests(first: {REVIEWERS}) {{ nodes {{ requestedReviewer {{
+        ... on User {{ login }} }} }} }}
       commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{
         contexts(first: {CHECKS}) {{ nodes {{ __typename
           ... on CheckRun {{ name status conclusion }}
@@ -136,6 +142,12 @@ pub fn parse(
     let mut unread = Vec::new();
     let mut said = BTreeSet::new();
     for error in answer["errors"].as_array().into_iter().flatten() {
+        if within_review_requests(error) {
+            // A reviewer GitHub won't name, as a team may be to the App's
+            // token, leaves its change and repository read; it's only a
+            // reviewer with no login, which counts for nobody.
+            continue;
+        }
         let why = error["message"].as_str().unwrap_or("no reason given");
         let one = error["path"][0]
             .as_str()
@@ -171,6 +183,15 @@ pub fn parse(
     (changes, unread)
 }
 
+/// Whether `error` is about one change's review requests alone, under a
+/// repository GitHub otherwise answered.
+fn within_review_requests(error: &Value) -> bool {
+    error["path"].as_array().is_some_and(|path| {
+        path.iter()
+            .any(|step| step.as_str() == Some("reviewRequests"))
+    })
+}
+
 /// Why GitHub couldn't see a repository, said for a person: one the App
 /// isn't installed on, or a sign-in can't read, answers as one that isn't
 /// there.
@@ -203,7 +224,20 @@ fn change(node: &Value) -> Option<Change> {
             number: node["number"].as_u64()?,
             url: node["url"].as_str()?.to_owned(),
         }),
+        review_asked_of: asked_of(&node["reviewRequests"]),
     })
+}
+
+/// Whose review a change asks, by login: people alone, since a team
+/// asked answers as a reviewer with no login.
+fn asked_of(requests: &Value) -> Vec<String> {
+    requests["nodes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|request| request["requestedReviewer"]["login"].as_str())
+        .map(str::to_owned)
+        .collect()
 }
 
 /// What a change's checks say, each named once: a check run by its name
