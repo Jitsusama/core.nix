@@ -7,7 +7,22 @@
   pkgs,
   ...
 }:
+let
+  sites = import ./site.nix { inherit lib pkgs; };
+in
 {
+  # The kit typechecks and its tests pass as it builds (kit/tests).
+  local-sites-kit-holds = sites.kit;
+
+  # The system page typechecks on the kit and builds, its tests passing
+  # (modules/system/site/tests). Its page's theme is no part of what it
+  # proves, so it's built on an empty one.
+  system-site-holds = sites.localSite {
+    name = "system";
+    src = ../system/site;
+    webKit = pkgs.emptyDirectory;
+  };
+
   # The home's builder lists each site from its row, settled ones apart,
   # strips each page that asks, and changes nothing on a second run
   # (tests/home-builds-from-its-rows.sh).
