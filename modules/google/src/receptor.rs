@@ -21,6 +21,8 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
+use jiff::Zoned;
+
 use crate::calendar::{Answer, Meeting};
 use crate::mail::Mail;
 use crate::state::{Standing, State};
@@ -88,6 +90,14 @@ pub struct Told {
 pub fn told(state: &State, now: i64, midnight: i64) -> Vec<Told> {
     let _ = (state, now, midnight, DAY);
     Vec::new()
+}
+
+/// When `now`'s day began, in milliseconds: its local midnight, or a day
+/// before it where the zone can't say.
+pub fn midnight(now: &Zoned) -> i64 {
+    let at = now.timestamp().as_millisecond();
+    now.start_of_day()
+        .map_or(at - DAY, |day| day.timestamp().as_millisecond())
 }
 
 /// The mail that wants Joel: that which came within the hour, and today.
