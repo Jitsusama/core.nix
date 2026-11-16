@@ -23,13 +23,12 @@
   # its first speech, so it holds Joel's voice as Choose by Ear does, and
   # may reach no more than it.
   noise-cancelled-reaches-no-network =
+    let
+      service = (account graphical).systemd.user.services.noise-cancelled.Service;
+    in
     holds "noise-cancelled-reaches-no-network"
       "noise-cancelled could reach a network with a call's speech in its memory."
-      (
-        ((account graphical).systemd.user.services.noise-cancelled.Service.RestrictAddressFamilies
-          or null
-        ) == "AF_UNIX"
-      );
+      ((service.RestrictAddressFamilies or null) == "AF_UNIX");
 
   # Choose by Ear holds a few seconds of Joel's voice; the service that
   # holds them may reach nothing but local sockets.
