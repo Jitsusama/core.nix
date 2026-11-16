@@ -265,7 +265,10 @@ mod tests {
         );
         assert_eq!(
             entries[2],
-            json!({"test": "vm-c", "owner_pr": 3, "subtests": ["test_q"]})
+            json!({
+                "test": "vm-c", "owner_pr": 3, "owner_session": UNOWNED, "subtests": ["test_q"]
+            }),
+            "a new entry wasn't listed whole, owned by the orchestrator"
         );
         assert!(
             list(
@@ -278,7 +281,9 @@ mod tests {
         );
         assert_eq!(
             entries.get(3),
-            Some(&json!({"test": "vm-b", "owner_pr": 4, "subtests": ["test_z"]})),
+            Some(&json!({
+                "test": "vm-b", "owner_pr": 4, "owner_session": UNOWNED, "subtests": ["test_z"]
+            })),
             "a new subtest wasn't listed under its own owner, alone"
         );
         assert_eq!(
