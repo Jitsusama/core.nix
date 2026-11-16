@@ -9,6 +9,12 @@
 #   jitsusama.mycelium.realm = "personal";
 #   jitsusama.mycelium.links = [ "other-machine" ];
 #
+# A machine SSH can't reach, such as one a provider lent, is dialled through
+# that provider's program instead, as `PROGRAM:PLACE`, the program by its
+# store path:
+#
+#   jitsusama.mycelium.vias = [ "${aquifer-link}/bin/aquifer-link:sandbox-1" ];
+#
 # A machine may join further realms too, each run by a node of its own,
 # with its own state, mesh, steer inboxes, socket and key, where the harness
 # keeps a realm that isn't the machine's home one. A pi is in one realm, MYCELIUM_REALM, and PI_HOME_REALM tells it
@@ -75,7 +81,7 @@ let
     install -D -m 444 ${./completion.zsh} $out/share/zsh/site-functions/_mycelium
   '';
   inherit (pkgs.stdenv.hostPlatform) isDarwin isLinux;
-  linking = cfg.links != [ ];
+  linking = cfg.links != [ ] || cfg.vias != [ ];
   serving = cfg.realm != null;
   agentsKey = config.systemd.user.sockets ? agent-signing;
   # Only the fences a machine says run here, in mycelium's shape.
@@ -83,6 +89,20 @@ let
     lib.optionalAttrs (cfg.declares != null) cfg.declares.fence
   );
   name = lib.types.strMatching "[a-z0-9-]+";
+  # A machine a provider's program reaches, as `PROGRAM:PLACE`: the program
+  # by its absolute path, since a Mac's agent runs the node with PATH
+  # /usr/bin:/bin and Linux's PATH isn't one to count on, and the place it
+  # names. Neither takes whitespace, `%` or `$`, which systemd expands even
+  # inside quotes, and the place doesn't start with `-`, so the program
+  # can't read it as a flag.
+  via = lib.types.strMatching "/[^:[:space:]%$]+:[^-:[:space:]%$][^[:space:]%$]*";
+  viasDescription = ''
+    The machines of the realm this machine dials and keeps linked through a
+    provider's program, as `PROGRAM:PLACE` with the program by its absolute
+    path, for a machine SSH can't reach, such as one a provider lent.
+    mycelium's PROTOCOL.md says what the program is asked.
+  '';
+  viasExample = lib.literalExpression ''[ "''${aquifer-link}/bin/aquifer-link:sandbox-1" ]'';
   further = lib.types.submodule (
     { name, ... }:
     {
@@ -91,6 +111,12 @@ let
           type = lib.types.listOf lib.types.str;
           default = [ ];
           description = "The machines of this realm this machine dials, as `links` names them.";
+        };
+        vias = lib.mkOption {
+          type = lib.types.listOf via;
+          default = [ ];
+          example = viasExample;
+          description = viasDescription;
         };
         signsInWith = lib.mkOption {
           type = lib.types.nullOr (lib.types.strMatching "[a-z0-9-]+");
@@ -296,7 +322,7 @@ let
     ]) (lib.filter (one: one.to == realm) cfg.flows);
   # The words that run a realm's node, given what keeps it apart.
   nodeIn =
-    realm: links: apart:
+    realm: links: vias: apart:
     [
       (lib.getExe package)
       "--realm"
@@ -315,6 +341,10 @@ let
       "--ssh"
       machine
     ]) links
+    ++ lib.concatMap (machine: [
+      "--via"
+      machine
+    ]) vias
     ++ [
       "--serves"
       (servesFile realm)
@@ -396,7 +426,7 @@ let
     };
   servesFile = realm: "${config.xdg.configHome}/mycelium/serves-${realm}.json";
   realms = lib.optional serving cfg.realm ++ lib.attrNames cfg.alsoJoins;
-  node = nodeIn cfg.realm cfg.links [ ];
+  node = nodeIn cfg.realm cfg.links cfg.vias [ ];
   # Where the harness and mycelium keep a realm that isn't the home one.
   apartIn = realm: [
     "--state"
@@ -407,7 +437,7 @@ let
     "${config.xdg.stateHome}/pi/agentic-harness.pi/realms/${realm}/steer"
   ];
   furtherNodes = lib.mapAttrs (
-    realm: joined: nodeIn realm joined.links (apartIn realm)
+    realm: joined: nodeIn realm joined.links joined.vias (apartIn realm)
   ) cfg.alsoJoins;
   linuxNode = description: words: key: realm: {
     Unit = {
@@ -513,6 +543,12 @@ in
         nothing.
       '';
     };
+    vias = lib.mkOption {
+      type = lib.types.listOf via;
+      default = [ ];
+      example = viasExample;
+      description = viasDescription;
+    };
     flows = lib.mkOption {
       type = lib.types.listOf flow;
       default = [ ];
@@ -561,7 +597,7 @@ in
       assertions = [
         {
           assertion = linking -> cfg.realm != null;
-          message = "jitsusama.mycelium.links needs jitsusama.mycelium.realm, the realm they link in.";
+          message = "jitsusama.mycelium.links and vias need jitsusama.mycelium.realm, the realm they link in.";
         }
         {
           assertion = cfg.alsoJoins != { } -> cfg.realm != null;
