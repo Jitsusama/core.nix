@@ -936,10 +936,15 @@ pub fn command(args: &[String], json: bool) -> Result<(), Failure> {
     let asked = asked(args).map_err(|e| wrongly("replay", e))?;
     let failed = |e: String| Failure::new(Exit::Failed, e);
     let mut stays = read(&asked.files).map_err(failed)?;
-    let held = match &asked.heard {
-        Some(folder) => trace::merge(&mut stays, &trace::read(folder).map_err(failed)?),
-        None => Vec::new(),
-    };
+    let mut held = Vec::new();
+    if let Some(folder) = &asked.heard {
+        let lines = trace::read(folder).map_err(failed)?;
+        held = trace::merge(&mut stays, &lines);
+        if asked.controller == Choice::Held {
+            // Only what the trace saw was held by anything it can say.
+            (stays, held) = trace::traced(stays, held, &lines);
+        }
+    }
     let windows = match &asked.windows {
         Some(path) => fs::read_to_string(path)
             .map_err(|e| format!("{}: {e}", path.display()))

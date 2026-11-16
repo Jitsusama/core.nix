@@ -166,6 +166,42 @@ pub fn merge(stays: &mut [Stay], lines: &BTreeMap<u64, Line>) -> Vec<Vec<Rates>>
         .collect()
 }
 
+/// Keeps, of each stay and the rates `merge` gave it, only the stretch
+/// from its first second the trace has a line for to its last, since a
+/// second before the trace began reads as no limit and would be judged
+/// as never held low; a stay the trace never saw is left out.
+pub fn traced(
+    stays: Vec<Stay>,
+    held: Vec<Vec<Rates>>,
+    lines: &BTreeMap<u64, Line>,
+) -> (Vec<Stay>, Vec<Vec<Rates>>) {
+    stays
+        .into_iter()
+        .zip(held)
+        .filter_map(|(stay, rates)| {
+            let began = stay.began_ms / 1_000;
+            let at = |s: &crate::replay::Second| began + crate::rate::whole(s.t_s);
+            let seen = |s: &crate::replay::Second| lines.contains_key(&at(s));
+            let first = stay.seconds.iter().position(seen)?;
+            let last = stay.seconds.iter().rposition(seen)?;
+            let from = crate::rate::whole(stay.seconds[first].t_s);
+            let seconds = stay.seconds[first..=last]
+                .iter()
+                .map(|s| crate::replay::Second {
+                    t_s: s.t_s - crate::rate::float(from),
+                    ..s.clone()
+                })
+                .collect();
+            let kept = Stay {
+                began_ms: (began + from) * 1_000,
+                seconds,
+                ..stay
+            };
+            Some((kept, rates[first..=last].to_vec()))
+        })
+        .unzip()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,6 +297,46 @@ mod tests {
             s[3].up_ours, None,
             "nothing heard, nothing put in: {:?}",
             s[3]
+        );
+    }
+
+    #[test]
+    fn only_the_seconds_the_trace_covers_are_judged_as_held() {
+        let mut stays = vec![
+            Stay {
+                network: "home".into(),
+                began_ms: NOV16 * 1_000,
+                seconds: (0..12).map(second).collect(),
+            },
+            Stay {
+                network: "cafe".into(),
+                began_ms: (NOV16 + 100) * 1_000,
+                seconds: (0..5).map(second).collect(),
+            },
+        ];
+        let lines = BTreeMap::from([
+            (NOV16 + 3, line(NOV16 + 3, Some(5_000), None)),
+            (NOV16 + 7, line(NOV16 + 7, None, None)),
+        ]);
+        let held = merge(&mut stays, &lines);
+        let (stays, held) = traced(stays, held, &lines);
+        assert_eq!(stays.len(), 1, "a stay the trace never saw is left out");
+        assert_eq!(
+            stays[0].began_ms,
+            (NOV16 + 3) * 1_000,
+            "it begins at its first traced second"
+        );
+        let starts: Vec<u64> = stays[0]
+            .seconds
+            .iter()
+            .map(|s| crate::rate::whole(s.t_s))
+            .collect();
+        assert_eq!(starts, vec![0, 1, 2, 3, 4], "and ends at its last");
+        let ups: Vec<Option<u64>> = held[0].iter().map(|r| r.up).collect();
+        assert_eq!(
+            ups,
+            vec![Some(5_000), Some(5_000), Some(5_000), Some(5_000), None],
+            "each second keeps the rate it was held at"
         );
     }
 }
