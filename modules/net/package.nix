@@ -1,6 +1,7 @@
 # net, built from this directory, its tests run as it builds. Its command
-# line takes the shape every command's does (../terminal-kit), so the
-# source is cut from the modules folder holding it, and built from this one.
+# line takes the shape every command's does (../terminal-kit), and its
+# daemon serves as every daemon does (../daemon-serve), so the source is
+# cut from the modules folder holding it, and built from this one.
 {
   lib,
   rustPlatform,
@@ -19,6 +20,8 @@ rustPlatform.buildRustPackage rec {
       ./tests/network.json
       ./contract
       ../eero/home-network.json
+      ../daemon-serve/Cargo.toml
+      ../daemon-serve/src
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
     ];

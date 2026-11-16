@@ -369,7 +369,7 @@ mod tests {
             says(&network, ConcernKind::Lost),
             "The modem's downstream channel 16 has lost 878 pieces of data it couldn't repair \
              since the modem started, against at most 18 on any other, 78 of them in the last 5 \
-             hours; Example ISP can check the line"
+             hours; Example ISP can check the line."
         );
     }
 
@@ -433,7 +433,7 @@ mod tests {
         assert_eq!(
             says(&network, ConcernKind::Busy),
             "Hall's 5 GHz high radio, on channel 149, is busy 55% of the time; 70% at its \
-             busiest, 3 hours ago"
+             busiest, 3 hours ago."
         );
     }
 
@@ -445,7 +445,7 @@ mod tests {
         let network = recalled(now, &day);
         assert_eq!(
             says(&network, ConcernKind::Busy),
-            "Hall's 5 GHz high radio, on channel 149, is busy 55% of the time"
+            "Hall's 5 GHz high radio, on channel 149, is busy 55% of the time."
         );
     }
 }
