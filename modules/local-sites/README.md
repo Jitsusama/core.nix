@@ -42,9 +42,6 @@ alike.
 | [`kit/`][kit]            | what every live site shares: feeds, records, the switch |
 | [`home/`][home]          | the home page's builder and its scripts and styles      |
 
-The network site's copy of net's record stays until that site reads its
-feed.
-
 A live page's own test reads it in headless Chromium as Joel's browser
 would, through the real server beside a stand-in for its daemon. What
 every such test shares lives once in `tests/`: the stand-in
