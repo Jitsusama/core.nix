@@ -132,10 +132,11 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 | link key | the key a realm's node signs in to the realm's other machines with, held apart from every other realm's | | `jitsusama.linkKeys`, `<realm>-link` |
 | mycelium | every cell on Joel's machines and the networks they share, seen and steered as one living thing | | `mycelium`, `jitsusama.mycelium` |
 | cell | one living thing in the mycelium, such as a session or a receptor, with its own identity and purpose | | `mycelium cells`, a cell's `kind` |
-| network | a channel cells that engage with each other share: messages passed between them, a shared file surface or a tree on a repository, which a worktree, being one session's alone, can't be | | `mycelium networks`, `tree.<repo>.<branch>` |
+| network | a channel cells that engage with each other share: messages passed between them, a shared file surface or a tree on a repository, which a worktree, being one session's alone, can't be | | `mycelium networks`, `tree.<repo key>:<branch>`, shown as `<repo>@<branch>` |
 | receptor | a cell that takes in what comes from outside the mycelium, such as Slack, mail or a call, onto a network of its own | | cell type `receptor`, `outside.<source>` networks |
 | delegate | what a cell does when its purpose outgrows it but stays one aim: it keeps its identity and purpose, hands needs to other cells and judges the whole itself | | |
 | split | what a cell does when its purpose has become two aims: it ends as an ancestor, and each part goes to a new cell born of it, with its own purpose and networks | | |
+| forage | a cell's own purpose, with the research, plans and reports it keeps for it, which go with the cell and end with it | | `mycelium forage`, the `forage` kind |
 | address | a peer's own group on the mesh, six letters | | |
 | group | a set of peers a mesh message goes to, such as an orchestration's | | `#quest/<id>` |
 | question | a mesh message asking peers for an answer | mesh question | `intent: question` |
@@ -671,10 +672,10 @@ each keeps to fungal biology or plain words. Delegate and split were
 settled by what each does to a cell's identity (Joel, 2026-11-15, of the
 page that set it out: "i love this page and what it describes"):
 
-- **forage**: a cell's own purpose, with its research, plans and audits,
-  which travels with the cell (Joel, 2026-11-15: "each cell should have a
-  forage"). It waits on whether it replaces quest, which would then join
-  quest's Not.
+- **Whether forage replaces quest**: a forage is read today from the quest
+  its cell works on (Joel, 2026-11-15: "each cell should have a forage"),
+  so quest stays the word for the work and its folder. If forage takes its
+  place, quest joins forage's Not.
 - **The tie between two cells**: link already means two machines' nodes
   joined, so it needs another word.
 - **What a cell lives on**: host already names a machine, which is its word,
