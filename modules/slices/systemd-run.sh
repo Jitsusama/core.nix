@@ -14,7 +14,29 @@
 # A slice named as a property, -p Slice=, is named too: systemd keeps the
 # last Slice= a unit is given, so an added --slice-inherit put the units
 # of a night's runs back in agents.slice, made for jobs.slice that way.
+#
+# Its help takes the shape every command of ours does (docs/commands.md), by
+# hand. It answers --help alone; -h, or --help with anything beside it,
+# reaches systemd's own, since that's where its flags are.
 real="@real@"
+if [[ $# -eq 1 && $1 == --help ]]; then
+  cat << 'EOF'
+systemd-run  run a unit, an agent's kept in its own slice
+
+  A --user call naming no slice, from anywhere but
+  app.slice or session.slice, runs in its caller's slice
+  rather than among the apps. Every other call reaches
+  systemd's own systemd-run unchanged.
+
+EXAMPLES
+  systemd-run --user --scope true  in the caller's slice
+  systemd-run -h                   systemd's own help
+
+EXIT
+  what systemd's systemd-run exits
+EOF
+  exit 0
+fi
 user=false
 before=""
 for arg in "$@"; do

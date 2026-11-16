@@ -194,6 +194,10 @@
         lock-screen = script "lock-screen" ../../modules/swayidle/lock-screen.sh { };
         mpv-command = script "mpv-command" ../../modules/mpv/command.sh { };
         mpv-stopped = script "mpv-stopped" ../../modules/mpv/stopped.sh { };
+        # Only its help is asked, which needs no libraries beside mypy.
+        mypy = pkgs.callPackage ../../modules/treefmt/mypy.nix {
+          python = pkgs.python3.withPackages (python: [ python.mypy ]);
+        };
         niri-deadline = script "niri-deadline" ../../modules/niri/niri-deadline.sh { };
         niri-off-cpu = script "niri-off-cpu" ../../modules/niri-off-cpu/niri-off-cpu.sh { };
         niri-off-cpu-as-root =
@@ -227,6 +231,8 @@
         swayidle-away = script "swayidle-away" ../../modules/swayidle/away.sh { };
         swayimg-command = script "swayimg-command" ../../modules/swayimg/command.sh { };
         switch-system = script "switch-system" ../../modules/switch-system/switch-system.sh { };
+        # Its help is its own, so it never runs systemd's.
+        systemd-run = pkgs.callPackage ../../modules/slices/systemd-run.nix { };
         tpm-follows-a-firmware-update =
           script "tpm-follows-a-firmware-update" ../../modules/lanzaboote/firmware-update.sh
             { };

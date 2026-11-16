@@ -49,9 +49,9 @@ let
     ]
     ++ config.jitsusama.mypy.packages python
   );
-  mypy = pkgs.writeShellApplication {
-    name = "mypy";
-    text = ''MYPYPATH=${driverNames}:${vmHelpers} exec ${python}/bin/mypy "$@"'';
+  mypy = pkgs.callPackage ./mypy.nix {
+    inherit python;
+    typesPath = "${driverNames}:${vmHelpers}";
   };
 in
 {

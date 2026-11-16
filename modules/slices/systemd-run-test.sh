@@ -34,6 +34,15 @@ for named in "-p Slice=jobs.slice" "-pSlice=jobs.slice" "--property=Slice=jobs.s
   # shellcheck disable=SC2086 # split on purpose, into the call's own words.
   says "${manager}/agents.slice/kitty-1-3.scope" "--user ${named} true" --user ${named} true
 done
+# --help alone is its own help, never the real one's; -h, and --help with
+# another word, are systemd's.
+help=$("${run}" --help)
+if [[ "${help}" != "systemd-run  "* ]]; then
+  echo "--help said '${help%%$'\n'*}', not its own help"
+  exit 1
+fi
+says "${manager}/jobs.slice/jobs.service" "-h" -h
+says "${manager}/jobs.slice/jobs.service" "--help --no-pager" --help --no-pager
 # Another property is no slice.
 says "${manager}/agents.slice/kitty-1-3.scope" "--slice-inherit --user -p Nice=5 true" \
   --user -p Nice=5 true
