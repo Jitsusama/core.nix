@@ -806,6 +806,14 @@ fn there(arguments: &[String]) -> ExitCode {
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
     let nearby = nearby();
     let (near, left) = there::shared(&asked, &nearby, machines::answers);
+    let (left, owed) = there::owed(left, &nearby, &this_system());
+    if !owed.is_empty() {
+        eprintln!(
+            "nix-offload: no machine nearby that builds for {} answers, and a lent builder \
+             can't, so it's left unbuilt, owed for when one does",
+            owed.join(", ")
+        );
+    }
     let (mut status, left) = built_nearby(&near, left, &dir, &scratch, &journal);
     let (vm_dirs, vm_parts, left) = vm_apart_from(left, &vm_dir);
     // The rest goes to a second builder while the first is full, when a
@@ -839,6 +847,11 @@ fn there(arguments: &[String]) -> ExitCode {
         if status == 0 {
             status = ran.status;
         }
+    }
+    // What's owed hasn't passed, so the run says it's unbuilt, as a
+    // changed run with no builder does, and isn't kept.
+    if status == 0 && !owed.is_empty() {
+        status = i32::from(changed::UNBUILT);
     }
     // Which of a build that failed passed isn't known, so only a whole
     // that passed is kept.

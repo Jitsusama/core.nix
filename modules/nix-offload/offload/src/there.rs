@@ -3434,10 +3434,28 @@ pub fn shared<'a>(
     (parts, left)
 }
 
-/// What's left after [`shared`], parted from what only a machine nearby
-/// builds for.
-pub fn owed(left: Option<Asked>, _nearby: &[Nearby], _system: &str) -> (Option<Asked>, Vec<String>) {
-    (left, Vec::new())
+/// What's left after [`shared`], parted from the attributes built for a
+/// system other than `system`, this machine's and so its lent builders',
+/// that a machine nearby takes by its system: [`shared`] left them since
+/// none of those answers, and a lent builder can't build for that system.
+/// On 16 November one for a Mac's went to a Linux lent builder while the
+/// Mac was away, and failed on the platform, saying nothing of the check.
+pub fn owed(left: Option<Asked>, nearby: &[Nearby], system: &str) -> (Option<Asked>, Vec<String>) {
+    let Some(left) = left else {
+        return (None, Vec::new());
+    };
+    let only_nearby = |attribute: &String| {
+        system_of(attribute).is_some_and(|built_for| {
+            built_for != system
+                && nearby
+                    .iter()
+                    .any(|machine| machine.systems.iter().any(|s| s == built_for))
+        })
+    };
+    let (owed, rest): (Vec<String>, Vec<String>) =
+        left.attributes.iter().cloned().partition(only_nearby);
+    let rest = (!rest.is_empty()).then(|| left.with(&left.flake, rest));
+    (rest, owed)
 }
 
 /// What was asked, split: the VM tests, for a builder of their own so they
@@ -5670,7 +5688,9 @@ mod tests {
         );
         assert_eq!(
             left.map(|left| left.attributes),
-            Some(words("checks.x86_64-linux.a checks.riscv64-linux.d equilibrium")),
+            Some(words(
+                "checks.x86_64-linux.a checks.riscv64-linux.d equilibrium"
+            )),
             "what no machine nearby names still goes the lent way"
         );
 
