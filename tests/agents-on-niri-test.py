@@ -3229,8 +3229,8 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
 ) -> None:
     """Carried lists each carry where it went, by whom and why; Return carries one back.
 
-    An arrived carry offers Carry Back alone, asked of the node; one about to go offers
-    nothing, and Carry Back says so in place while the node is asked (DCU5J4, items 1 and 2).
+    An arrived carry offers Carry Back alone, asked of the node; one about to go only opens,
+    offering no Carry Back, and Carry Back says so in place while the node is asked (DCU5J4, items 1 and 2).
     """
     in_agents(shell)
     shell.launcher_until(lambda shown: "Carried" in shown["rows"])
@@ -3242,7 +3242,7 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
     shell.launcher_until(lambda shown: shown["rows"][:2] == ["Paused Quest", "Listening Quest"])
     going = shell.showing()["selected"]
     assert going["note"] == "carried to tern by Orchestrating Quest \u00b7 tern sits idle", going
-    assert not [act for act in going["told"] if act.startswith("\u21b5")], going
+    assert not [act for act in going["told"] if act.endswith("carry back")], going
     shoot("agents-carried")
     shell.down_to("Listening Quest")
     arrived = shell.showing()["selected"]
