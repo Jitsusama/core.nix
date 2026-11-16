@@ -1930,6 +1930,10 @@
     a switch restarts noise-cancelled after it reloads the units, so the microphones offered are
     never the old program's
   '';
+  noise-cancelled-reaches-no-network = ''
+    the always-on noise cancelling, which holds each call's first speech to score it, may open
+    no socket but a local one
+  '';
   noise-cancelled-trial-reaches-no-network = ''
     the service behind Choose by Ear, which holds a few seconds of Joel's voice, may open no
     socket but a local one

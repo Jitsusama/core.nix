@@ -168,6 +168,10 @@ in
       # pw-dump, which follows calls that skip noise cancelling.
       Environment = npu ++ [ "PATH=${lib.makeBinPath [ pkgs.pipewire ]}" ];
       Slice = "session.slice";
+      # It holds each call's first speech to score it after, so what Joel
+      # said reaches nothing past PipeWire's own socket, as with Choose by
+      # Ear; where it is is read from files, not asked over a network.
+      RestrictAddressFamilies = "AF_UNIX";
       Restart = "on-failure";
       RestartSec = 5;
     };
