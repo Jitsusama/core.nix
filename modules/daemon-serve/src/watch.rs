@@ -210,7 +210,14 @@ impl Watch {
                 Some(_) => {}
             }
             if let Some(error) = answer.get("error") {
-                return Err(io::Error::other(format!("the watch was refused: {error}")));
+                // The page says this to a person, so it carries the
+                // daemon's message alone, and the whole error only when
+                // the daemon gave no message to say.
+                let why = error
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .map_or_else(|| error.to_string(), str::to_owned);
+                return Err(io::Error::other(format!("the watch was refused: {why}")));
             }
             return Ok(answer);
         }
@@ -414,10 +421,55 @@ mod tests {
             .get_ref()
             .set_read_timeout(Some(Duration::from_secs(5)))
             .expect("a bound on the wait");
-        let ended = watch.heard().expect_err("an answer with no id ends the watch");
+        let ended = watch
+            .heard()
+            .expect_err("an answer with no id ends the watch");
         assert!(
             ended.to_string().contains("not a request"),
             "it ends in the daemon's words: {ended}"
+        );
+        drop(daemon.join().expect("the stand-in daemon ends"));
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_refused_watch_ends_in_the_refusals_own_message() {
+        let folder =
+            std::env::temp_dir().join(format!("daemon-serve-refused-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a folder for the socket");
+        let socket = folder.join("node.sock");
+        let _ = std::fs::remove_file(&socket);
+        let listener = UnixListener::bind(&socket).expect("the stand-in daemon listens");
+        let daemon = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("the watch connects");
+            let mut asks = BufReader::new(stream.try_clone().expect("its stream"));
+            let mut stream = stream;
+            for id in 1..=2 {
+                let mut line = String::new();
+                asks.read_line(&mut line).expect("an ask");
+                let answer = if id == 1 {
+                    json!({"id": 1, "version": 1})
+                } else {
+                    json!({"id": 2, "error": {
+                        "code": "unknown-kind",
+                        "message": "this node holds no \"forage\"",
+                    }})
+                };
+                writeln!(stream, "{answer}").expect("an answer");
+            }
+            stream
+        });
+        let mut watch = Watch::open(&socket, "forage").expect("the watch opens");
+        watch
+            .lines
+            .get_ref()
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("a bound on the wait");
+        let ended = watch.heard().expect_err("a refusal ends the watch");
+        assert_eq!(
+            ended.to_string(),
+            "the watch was refused: this node holds no \"forage\"",
+            "a person reads the daemon's message, not its JSON"
         );
         drop(daemon.join().expect("the stand-in daemon ends"));
         let _ = std::fs::remove_dir_all(&folder);
