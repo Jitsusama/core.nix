@@ -1638,6 +1638,11 @@
     agent's run and an unfenced one or a Mac's none, one declaring nothing has no file, and agents
     in a realm it doesn't join are refused
   '';
+  mycelium-node-reads-its-declaration-from-the-store = ''
+    each realm's mycelium node, on NixOS and nix-darwin, is given what its machine declares as a
+    file in the Nix store, which only root writes, so a link in the account's config folder can't
+    widen how its agents' commands run; a machine declaring nothing names no file
+  '';
   needs-you-is-true = ''
     over the agents' own files as the node serves them, For You's to-dos hold now only what Joel
     can do now, a timed one first

@@ -654,6 +654,40 @@ in
         })
       );
 
+  # Each realm's node on either system reads what its machine declares from
+  # the store, where only root writes, never from the account's config
+  # folder, whose link anything running as the account could repoint; a
+  # machine declaring nothing names no file.
+  mycelium-node-reads-its-declaration-from-the-store =
+    holds "mycelium-node-reads-its-declaration-from-the-store"
+      "A node of a machine that declares itself, on NixOS or nix-darwin and in each realm it joins, isn't given its declaration as a file in the Nix store, or one declaring nothing is given a file."
+      (
+        let
+          declaringLinks = both // {
+            declares = declaring;
+          };
+          onLinux = (linux declaringLinks).systemd.user.services;
+          # The word after --declared, as the unit has it.
+          given =
+            words:
+            let
+              at = lib.lists.findFirstIndex (word: word == "--declared") null words;
+            in
+            if at == null then null else builtins.elemAt words (at + 1);
+          linuxWords = service: lib.splitString " " (toString service.Service.ExecStart);
+          inStore =
+            file:
+            file != null
+            && lib.hasPrefix "${builtins.storeDir}/" file
+            && lib.hasSuffix "-mycelium-declared.json" file;
+        in
+        inStore (given (linuxWords onLinux.mycelium))
+        && inStore (given (linuxWords onLinux.mycelium-other))
+        && inStore (given (mac declaringLinks).launchd.agents.mycelium.config.ProgramArguments)
+        && given (linuxWords (linux links).systemd.user.services.mycelium) == null
+        && given macNode == null
+      );
+
   # A machine's system pins each key that links to it, on either system, to
   # its own realm and machine, with a terminal for an attach; one naming
   # none authorizes nothing of mycelium's.
