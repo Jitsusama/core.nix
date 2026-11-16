@@ -16,6 +16,19 @@ onLinux {
   # builder's line and the journal, its tests run as it builds.
   nix-offload-decides-when = pkgs.callPackage ./offload/package.nix { };
 
+  # The dev shell's cargo, built over a stand-in that says its words, sends
+  # only an agent's through nix-offload (tests/ says each case).
+  agents-cargo-goes-through-nix-offload =
+    let
+      cargo = pkgs.writeShellScriptBin "cargo" ''printf '%s\n' cargo "$@"'';
+      shim = pkgs.callPackage ./cargo.nix { inherit cargo; };
+    in
+    pkgs.runCommandLocal "agents-cargo-goes-through-nix-offload" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/agents-cargo-goes-through-nix-offload.sh} \
+        ${lib.getExe shim} ${lib.getExe cargo}
+      touch $out
+    '';
+
   # With `lines` set, root's Nix reads its builders only from the folder
   # their own account writes, the service runs as that account with its
   # settings, and the lender's account needn't be trusted; unset, root
