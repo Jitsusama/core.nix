@@ -137,7 +137,7 @@ function off(way, cols, to, at) {
     if (up !== null) {
         way.facing = Math.sign(up.x - way.x) || way.facing;
         Ways.goes(way, up.x, way.y);
-        if (aStep(way, up, at)) {
+        if (steps(way, up, at)) {
             Ways.goes(way, up.x, up.y);
             return done();
         }
@@ -245,7 +245,8 @@ function lands(way, plan) {
         way.facing = -plan.side;
         // Stepped, up beside its edge and across onto its top, never
         // through the corner of its face, and on without landing.
-        if (plan.how === "leaps" && steps(way, { x: edge, y }, at)) {
+        if (plan.how === "leaps"
+            && steps(way, { x: edge, y }, at, { x: way.x, y: it.top - at.tall })) {
             Ways.goes(way, way.x, y);
             Ways.goes(way, edge, y);
         } else if (plan.how === "leaps") {
@@ -279,16 +280,17 @@ function aStep(way, to, at) {
 }
 
 // Whether a leap or hop from `way` to `to` would have no arc to show: a
-// step (aStep()), or one whose apex, RISES cells over its higher end,
-// would be off the screen, where Ways.leap holds it flat at the edge.
-// It steps up or down within its walk then, paws moving, where a leap
-// glided at the screen's edge in a leap's pose for 350 ms (VKCF3Z
-// 299fb911, the GPU rig at 120 Hz, 2026-11-16). Only up to its own
-// height: a taller one keeps its leap, flattened at the edge, rather
-// than walk up a wall.
-function steps(way, to, at) {
+// step (aStep()), or one whose apex, RISES cells over the higher end of
+// its first leap (to `first`, a cell under its landing onto a floating
+// window's top), is above the screen's top. The screen draws the cat no
+// higher than its top (MarginCatScreen.qml), so such a leap glided
+// along the edge in a leap's pose for 350 ms (VKCF3Z 299fb911, the GPU
+// rig at 120 Hz, 2026-11-16); it steps up or down within its walk
+// instead, paws moving. Only up to its own height: a taller one keeps
+// its leap, held at the edge, rather than walk up a wall.
+function steps(way, to, at, first) {
     const crossed = Math.abs(to.y - way.y);
-    const apex = Math.min(way.y, to.y) - RISES * at.cell;
+    const apex = Math.min(way.y, (first ?? to).y) - RISES * at.cell;
     return aStep(way, to, at) || (crossed <= at.tall + 1e-6 && apex < -1e-6);
 }
 
@@ -307,7 +309,8 @@ function follows(way, stop, now) {
     if (stop.how === "goes") {
         way.facing = Math.sign(stop.x - way.x) || way.facing;
         Ways.goes(way, stop.x, stop.y);
-    } else if ((stop.how === "leapsOn" || stop.how === "hopsOff") && steps(way, landing, at)) {
+    } else if ((stop.how === "leapsOn" || stop.how === "hopsOff")
+        && steps(way, landing, at, stop.via)) {
         // No arc to show: up or down within its walk, paws moving,
         // beside its edge and on, or clear of its end and down.
         // Up, it goes to its top's height beside its edge, where a leap's
