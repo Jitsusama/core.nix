@@ -133,6 +133,7 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 | mycelium | every cell on Joel's machines and the networks they share, seen and steered as one living thing | | `mycelium`, `jitsusama.mycelium` |
 | cell | one living thing in the mycelium, such as a session or a receptor, with its own identity and purpose | | `mycelium cells`, a cell's `kind` |
 | network | a channel cells that engage with each other share: messages passed between them, a shared file surface or a tree on a repository, which a worktree, being one session's alone, can't be | | `mycelium networks`, `tree.<repo key>:<branch>`, shown as `<repo>@<branch>` |
+| feeds | what a machine does for a network it runs cells in: a network is fed by every machine its cells run on and belongs to none of them | hosts, owns | |
 | receptor | a cell that takes in what comes from outside the mycelium, such as Slack, mail or a call, onto a network of its own | | cell type `receptor`, `outside.<source>` networks |
 | delegate | what a cell does when its purpose outgrows it but stays one aim: it keeps its identity and purpose, hands needs to other cells and judges the whole itself | | |
 | split | what a cell does when its purpose has become two aims: it ends as an ancestor, and each part goes to a new cell born of it, with its own purpose and networks | | |
