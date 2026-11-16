@@ -381,6 +381,7 @@
         "toTry": "{count} to try",
         "answer": "needs your answer \u00b7 {count} choices",
         "answerOne": "needs your answer \u00b7 1 choice",
+        "anHour": "for an hour",
         "recommended": "recommended",
         "answered": "answered {label}",
         "nobody": "nobody's watching this",

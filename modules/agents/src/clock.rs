@@ -120,10 +120,14 @@ pub fn text_of(ms: i64) -> String {
 /// Today's date where Joel is, `2026-11-10`, through the C library as
 /// modules/disk-guard reads the local time; none where it can't say.
 pub fn today() -> String {
-    let now = std::time::SystemTime::now()
+    date_of(i64::try_from(now_ms()).unwrap_or(0))
+}
+
+/// Now, in milliseconds since 1970, or 0 where the clock is before it.
+pub fn now_ms() -> u128 {
+    std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| since.as_millis());
-    date_of(i64::try_from(now).unwrap_or(0))
+        .map_or(0, |since| since.as_millis())
 }
 
 /// The date where Joel is of `ms` since 1970, `2026-11-10`; none where it

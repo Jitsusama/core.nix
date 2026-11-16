@@ -21,6 +21,7 @@ use crate::inboxes::{self, Inboxes};
 use crate::inputs::Inputs;
 use crate::kept_places::KeptPlaces;
 use crate::talks::Talk;
+use crate::wants;
 
 /// Something a source said.
 #[derive(Debug)]
@@ -72,6 +73,9 @@ pub enum Heard {
     /// The talks waiting in each session's inbox, all of them, as one
     /// lands or is taken (inboxes.rs).
     Inboxes(HashMap<String, Vec<Talk>>),
+    /// Joel puts off the want known so (wants.rs's `known`), at this
+    /// moment in milliseconds, for an hour.
+    PutOffWant(String, u128),
 }
 
 /// Where the files the rows are made from are kept.
@@ -278,6 +282,13 @@ impl Inputs {
             }
             Heard::FedBack(line) => self.fed_back.push(line),
             Heard::Inboxes(waiting) => self.unsent = waiting,
+            Heard::PutOffWant(known, now) => {
+                self.put_off.put(&known, now);
+                let path = paths.kept.with_file_name(wants::PUT_OFF_FILE);
+                if let Err(why) = self.put_off.write(&path) {
+                    eprintln!("agents: can't keep {}: {why}", path.display());
+                }
+            }
         }
     }
 

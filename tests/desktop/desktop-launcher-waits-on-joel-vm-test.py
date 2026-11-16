@@ -1022,7 +1022,7 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
         desktop.launcher_until(
             lambda shown: (
                 shown["held"] == ["now", "For You", "A quest of its own & whole"]
-                and shown["rows"] == ["Deal With It", "Go To"]
+                and shown["rows"] == ["Deal With It", "Go To", "Put It Off"]
             )
         )
         machine.send_key("ret")
@@ -1066,7 +1066,7 @@ def answered_in_place(desktop: Desktop, since: str) -> None:
     machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
-            shown["rows"] == ["Push it", "Hold it", "Deal With It"]
+            shown["rows"] == ["Push it", "Hold it", "Deal With It", "Put It Off"]
             and (shown["selected"] or {}).get("name") == "Push it"
         )
     )

@@ -1637,7 +1637,8 @@ Provider {
                         Sessions.wake(resting);
                     Sessions.goTo(session());
                 }
-            }))
+            })),
+            putOffWant(address, key)
         ];
         const row = member(Object.assign({}, made, {
             key: key,
@@ -1651,6 +1652,26 @@ Provider {
             run: () => provider.launcher?.enter(row)
         }));
         return row;
+    }
+
+    // Put It Off, for an hour, on what a session asks Joel: the agents
+    // daemon keeps it put off and says so, so it leaves For You and rings
+    // for nothing until then, and comes back if it still stands (WCJQSG,
+    // 2026-11-16, on Joel's "i can't get this highlighted notice to go
+    // away" of a yes that waited five hours). It stays open, as a to-do's
+    // Not Now does, as its row leaves.
+    function putOffWant(address, key) {
+        return thing({
+            key: `verb:on:waiting:notNow:${key}`,
+            verb: Words.verb("verb:on:waiting:notNow"),
+            name: Words.name("verb:on:waiting:notNow"),
+            glyph: Words.glyph("verb:on:waiting:notNow"),
+            hue: "action",
+            side: (Words.of("on:waiting").said ?? {}).anHour ?? "",
+            gap: true,
+            stays: true,
+            run: () => Sessions.putOffWant(address)
+        });
     }
 
     // A session asking Joel one question with its answers given, answered
@@ -1726,7 +1747,7 @@ Provider {
                 if (text !== "")
                     answer({ other: text }, text);
             }
-        }))] : []);
+        }))] : [], [putOffWant(address, key)]);
         const count = answers.choices.length;
         const row = member(Object.assign({}, made, {
             key: key,

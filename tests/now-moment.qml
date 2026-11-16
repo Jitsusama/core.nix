@@ -1166,9 +1166,11 @@ ShellRoot {
     // A session asking one question with its answers given is answered
     // from For You (VKCF3Z, 2026-11-12): its row says it needs his answer
     // and how many it offers, inside are the answers, the recommended
-    // first, then Deal With It set apart and In Your Own Words, and an
-    // answer's Return asks the agents daemon to answer it at once, which
-    // finds the want and steers it (wants.rs, proven there).
+    // first, then Deal With It set apart and In Your Own Words, then Put
+    // It Off apart, and an answer's Return asks the agents daemon to answer
+    // it at once, which finds the want and steers it (wants.rs, proven
+    // there). So does a yes asked of him, once the daemon serves its Yes
+    // and No (WCJQSG, 2026-11-16).
     function answersInPlace(forYou) {
         const since = "2026-11-12T07:00:00Z";
         Sessions.wanting = [{ address: "WANTE", title: "Session E", presence: {
@@ -1190,11 +1192,11 @@ ShellRoot {
                     ["Choice", "Not yet"], ["Session", "Session E"]]),
             JSON.stringify(drawer.facts));
         const inside = row.verbs();
-        expect("inside, the recommended answer first, then Deal With It apart",
+        expect("inside, the recommended answer first, then Deal With It apart, Put It Off last",
             JSON.stringify(inside.map(one => [one.name, one.side ?? "", !!one.gap]))
                 === JSON.stringify([["Yes, push it", "recommended", false],
                     ["Not yet", "", false], ["Deal With It", "", true],
-                    ["In Your Own Words", "", false]]),
+                    ["In Your Own Words", "", false], ["Put It Off", "for an hour", true]]),
             JSON.stringify(inside.map(one => [one.name, one.side, one.gap])));
         expect("an answer copies its words and its drawer leads with what it means",
             inside[0].copies === "Yes, push it"
@@ -1223,6 +1225,32 @@ ShellRoot {
         expect("his own words go as words",
             JSON.stringify(agents.answered[2]?.fields) === JSON.stringify({ other: "after lunch" }),
             JSON.stringify(agents.answered[2]));
+        inside[4].run();
+        expect("Put It Off asks the daemon to put off its session's want, staying open",
+            JSON.stringify(Sessions.putOff) === '["WANTE"]' && inside[4].stays === true,
+            JSON.stringify(Sessions.putOff));
+        Sessions.putOff = [];
+        // A yes asked of him, as the harness's approval gate asks it once
+        // its want carries Yes and No, is answered in its row the same way.
+        Sessions.wanting = [{ address: "WANTF", title: "Session F", presence: {
+            session: "s-f", addresses: [], wants: { kind: "approval", since: since,
+                said: "Run tool_gateway_enable_backend" } } }];
+        agents.wants = { WANTF: { answers: { want: "approval@2026-11-12T07:00:00.000Z",
+            own: false, choices: [{ value: "yes", label: "Yes", description: "",
+                recommended: false }, { value: "no", label: "No", description: "",
+                recommended: false }] } } };
+        const approval = forYou().find(one => one.key === "on:waiting:want:WANTF");
+        const asked = approval?.verbs() ?? [];
+        expect("a yes asked with its choices says so, and holds them, Deal With It and Put It Off",
+            approval?.side === "needs your answer \u00b7 2 choices"
+                && JSON.stringify(asked.map(one => one.name))
+                    === '["Yes","No","Deal With It","Put It Off"]',
+            JSON.stringify([approval?.side, asked.map(one => one.name)]));
+        asked[0]?.run();
+        expect("its Yes asks the daemon to answer it",
+            agents.answered[3]?.address === "WANTF"
+                && JSON.stringify(agents.answered[3]?.fields) === JSON.stringify({ value: "yes" }),
+            JSON.stringify(agents.answered[3]));
         agents.answered = [];
         agents.wants = {};
         theLauncher.said = [];

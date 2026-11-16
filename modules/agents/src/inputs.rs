@@ -108,6 +108,8 @@ pub struct Inputs {
     /// The talks waiting in each session's inbox, not yet taken, by its
     /// address in capitals (inboxes.rs).
     pub unsent: HashMap<String, Vec<Talk>>,
+    /// The wants Joel put off, each for an hour (wants.rs).
+    pub put_off: wants::PutOff,
 }
 
 impl Inputs {
@@ -528,7 +530,11 @@ impl Inputs {
         .with_landed(self.landed().0)
         .with_closed(closed)
         .with_windows(windows::records(&sessions, &self.windows, &orchestrating))
-        .with_wants(wants::records(&sessions, &joel_can))
+        .with_wants(wants::records(
+            &sessions,
+            &joel_can,
+            (&self.put_off, clock::now_ms()),
+        ))
         .with_talks(inboxes::records(
             &talks::by_address(self.talks.records().map(|(_, one)| one)),
             &self.unsent,
