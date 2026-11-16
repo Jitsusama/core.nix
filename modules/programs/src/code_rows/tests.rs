@@ -124,7 +124,7 @@ fn a_repository_is_one_row_said_by_its_trees_and_when_it_was_written() {
 }
 
 #[test]
-fn return_opens_its_page_and_copy_and_a_terminal_take_the_checkout_written_to_last() {
+fn return_opens_its_page_and_copy_a_terminal_and_an_editor_take_the_checkout_written_to_last() {
     let rows = rows(&record(vec![core()]), None, &words());
     assert_eq!(
         rows[0]["acts"],
@@ -133,6 +133,8 @@ fn return_opens_its_page_and_copy_and_a_terminal_take_the_checkout_written_to_la
             {"key": "verb:code:path", "copy": "/home/j/src/core.nix"},
             {"key": "verb:code:terminal", "closes": true,
              "ask": {"ask": "code:terminal", "path": "/home/j/src/core.nix"}},
+            {"key": "verb:code:edit", "closes": true,
+             "ask": {"ask": "code:edit", "path": "/home/j/src/core.nix"}},
         ])
     );
 }
@@ -319,6 +321,8 @@ fn a_repository_with_no_remote_copies_its_path_and_counts_no_trees() {
             {"key": "verb:code:path", "copy": "/home/j/scratch/thing"},
             {"key": "verb:code:terminal", "closes": true,
              "ask": {"ask": "code:terminal", "path": "/home/j/scratch/thing"}},
+            {"key": "verb:code:edit", "closes": true,
+             "ask": {"ask": "code:edit", "path": "/home/j/scratch/thing"}},
         ])
     );
     assert_eq!(row["drawer"]["eyebrow"][0]["said"], "no remote");

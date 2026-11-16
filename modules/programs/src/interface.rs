@@ -64,6 +64,9 @@ pub enum Own {
     /// the branch it follows by fast-forward alone, by the checkout's
     /// absolute path.
     Pull(String),
+    /// Edit Here on a repository's row (`code_rows.rs`): Neovim started
+    /// on its checkout, by the folder's absolute path.
+    Edit(String),
     /// What the rows are made of, held until the next (docs/daemons.md,
     /// Settings).
     Settings(Settings),
@@ -248,6 +251,15 @@ mod tests {
             own_of(&json!({"ask": "code:terminal", "path": "src/core.nix"})),
             None,
             "a terminal in a folder relative to nothing was taken"
+        );
+        assert_eq!(
+            own_of(&json!({"ask": "code:edit", "path": "/home/j/src/core.nix"})),
+            Some(Own::Edit("/home/j/src/core.nix".into()))
+        );
+        assert_eq!(
+            own_of(&json!({"ask": "code:edit", "path": "src/core.nix"})),
+            None,
+            "an editor in a folder relative to nothing was taken"
         );
     }
 
