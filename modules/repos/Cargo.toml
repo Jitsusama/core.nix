@@ -9,6 +9,10 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# How every daemon's receptors are said to mycelium (../receptor-say): a
+# refresh says the GitHub receptor through it, the command's alone, under
+# the github feature.
+receptor-say = { path = "../receptor-say", optional = true }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1"
 # GitHub's GraphQL API, over rustls with its own roots, as github-broker
@@ -29,10 +33,10 @@ inotify = { version = "0.11", default-features = false, optional = true }
 
 [features]
 default = ["github"]
-# Asking GitHub and serving the daemon, which only the command does. A
-# crate reading repositories through the library leaves it out with
-# `default-features = false`, so it carries no HTTP, TLS or socket.
-github = ["dep:ureq", "dep:daemon-serve", "dep:inotify"]
+# Asking GitHub, serving the daemon and saying the receptor, which only the
+# command does. A crate reading repositories through the library leaves it
+# out with `default-features = false`, so it carries no HTTP, TLS or socket.
+github = ["dep:receptor-say", "dep:ureq", "dep:daemon-serve", "dep:inotify"]
 
 [[bin]]
 name = "repos"

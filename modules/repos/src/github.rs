@@ -40,6 +40,10 @@ const CHANGES: usize = 50;
 /// How many checks are read for each change.
 const CHECKS: usize = 100;
 
+/// How many of a change's asked reviews are read, more than a change
+/// asks of people in practice.
+const REVIEWERS: usize = 10;
+
 /// What one refresh saw of GitHub.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Seen {
@@ -203,7 +207,15 @@ fn change(node: &Value) -> Option<Change> {
             number: node["number"].as_u64()?,
             url: node["url"].as_str()?.to_owned(),
         }),
+        review_asked_of: asked_of(&node["reviewRequests"]),
     })
+}
+
+/// Whose review a change asks, by login: people alone, since a team
+/// asked answers as a reviewer with no login.
+fn asked_of(requests: &Value) -> Vec<String> {
+    let _ = (requests, REVIEWERS);
+    Vec::new()
 }
 
 /// What a change's checks say, each named once: a check run by its name

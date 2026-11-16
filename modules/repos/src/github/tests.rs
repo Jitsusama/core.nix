@@ -350,3 +350,32 @@ fn what_a_refresh_saw_reads_back_as_it_was_written() {
         );
     }
 }
+
+#[test]
+fn each_change_asks_whose_review_is_asked_in_the_one_query_and_still_only_reads() {
+    let text = query(&[one("Jitsusama/core.nix")]);
+    assert_eq!(
+        text.matches("reviewRequests(first: 10)").count(),
+        1,
+        "the shared query doesn't ask each change's review requests once:\n{text}"
+    );
+    assert_eq!(reads_only(&text), Ok(()), "the query no longer only reads");
+}
+
+#[test]
+fn a_change_holds_the_people_its_review_asks_and_no_team_and_never_keeps_them() {
+    let mut node = answer()["data"]["r0"]["pullRequests"]["nodes"][0].clone();
+    node["reviewRequests"] = serde_json::json!({"nodes": [
+        {"requestedReviewer": {"login": "jsama"}},
+        {"requestedReviewer": {}},
+        {"requestedReviewer": null},
+        {"requestedReviewer": {"login": "osprey"}},
+    ]});
+    let read = change(&node).expect("the change reads");
+    assert_eq!(read.review_asked_of, ["jsama", "osprey"]);
+    let written = serde_json::to_string(&read).expect("it writes");
+    assert!(
+        !written.contains("jsama") && !written.contains("osprey"),
+        "a login whose review was asked was kept: {written}"
+    );
+}

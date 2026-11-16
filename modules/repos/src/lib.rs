@@ -23,6 +23,10 @@
 //! source too: counting needs git's commits, which no reading opens, so a
 //! timer counts and keeps the counts, merged in the same way
 //! (upstreams.rs). Both keep their files where kept.rs says.
+//!
+//! What a refresh reads is also said to the realm's mycelium node, as the
+//! GitHub receptor: how many open changes ask Joel's review, in counts
+//! alone (receptor.rs).
 
 pub mod broker;
 pub mod gh;
@@ -31,6 +35,8 @@ pub mod kept;
 pub mod keys;
 pub mod model;
 pub mod read;
+#[cfg(feature = "github")]
+pub mod receptor;
 mod reftable;
 pub mod upstreams;
 pub mod when;
