@@ -3,9 +3,11 @@ pragma ComponentBehavior: Bound
 // through Quickshell itself, over a stand-in for the system daemon
 // (modules/system) serving its part records and its summary, as Network's
 // home row reads them (launcher/SystemPart.js). The shell watches the
-// part kind; holds each part by its name, the summary aside; follows a
-// part told anew and one let go; and, the daemon gone, holds no part, so
-// no old judgement reads as current. It exits 0 once every case holds,
+// summary, part and machine kinds; holds each part by its name, the
+// summary aside, and this machine's own record as `machine`, as Machine's
+// home row reads it, the other machines aside; follows a part told anew
+// and one let go; and, the daemon gone, holds no part, so no old
+// judgement reads as current. It exits 0 once every case holds,
 // and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -28,7 +30,15 @@ ShellRoot {
         "The modem's downstream channel 16 has lost 878")
     readonly property var power: part("power", "good", [], "on the charger")
     readonly property var summary: ({ key: "summary", kind: "summary", health: "watch",
-            side: [root.lost] })
+            machine: "laptop", side: [root.lost] })
+    // A machine as the daemon serves it: this one, and another whose
+    // trouble isn't this machine's.
+    function machine(name, health, side) {
+        return { key: `machine:${name}`, kind: "machine", name, part: "machines", health, side,
+            says: `${name} says` };
+    }
+    readonly property var here: machine("laptop", "watch", ["filling disk, 40 GB free"])
+    readonly property var studio: machine("studio", "bad", ["out of reach"])
 
     property var watch: null
     property var watched: null
@@ -50,7 +60,8 @@ ShellRoot {
                     } else if (ask.ask === "watch") {
                         root.watch = { socket: asked, id: ask.id };
                         root.watched = ask;
-                        answer = { id: ask.id, records: [root.network, root.power, root.summary] };
+                        answer = { id: ask.id, records: [root.network, root.power,
+                                root.summary, root.here, root.studio] };
                     } else {
                         answer = { id: ask.id, ok: true };
                     }
@@ -103,9 +114,12 @@ ShellRoot {
         if (!SystemParts.heard || parts.network === undefined)
             return;
         root.waiting = "the network told anew";
-        Expect.same("the part kind watched", root.watched.kind, "part");
-        Expect.same("each part by its name, the summary aside", Object.keys(parts).sort(),
-            ["network", "power"]);
+        Expect.same("the summary, parts and machines watched", root.watched.kind,
+            ["summary", "part", "machine"]);
+        Expect.same("each part by its name, the summary and other machines aside",
+            Object.keys(parts).sort(), ["machine", "network", "power"]);
+        Expect.same("this machine's own record as its machine", parts.machine.side,
+            ["filling disk, 40 GB free"]);
         Expect.same("a part as the daemon said it, its side whole", parts.network.side,
             [root.lost]);
         Expect.same("and its health", parts.network.health, "watch");
@@ -127,8 +141,8 @@ ShellRoot {
         if (SystemParts.parts.power !== undefined)
             return;
         root.waiting = "the daemon gone";
-        Expect.same("the part let go is gone, the rest kept", Object.keys(SystemParts.parts),
-            ["network"]);
+        Expect.same("the part let go is gone, the rest kept",
+            Object.keys(SystemParts.parts).sort(), ["machine", "network"]);
         root.watch.socket.connected = false;
     }
 
