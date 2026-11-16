@@ -45,7 +45,7 @@ Provider {
         over: provider.passwordsLink
         active: provider.overPasswords ? provider.passwordsLink !== null
             : !!Quickshell.env("XDG_RUNTIME_DIR")
-        stamp: provider.overPasswords ? (key, ask) => provider.stamped(key, ask) : null
+        stamp: (key, ask) => provider.stamped(key, ask)
         place: "asks"
         beside: ["summary"]
         make: (row, key) => provider.made(row, key)
@@ -83,13 +83,17 @@ Provider {
         });
     }
 
-    // A verb's ask as it's sent, a yes saying how long its line was shown.
+    // A verb's ask as it's sent, a yes saying how long its line was shown,
+    // or null for a yes walked from outside the launcher, which is never
+    // sent. Only the passwords child reads the time; the experiments' own
+    // daemon is sent the ask as served.
     function stamped(key, ask) {
-        return Shown.stamped(ask, seen, key, {
+        const said = Shown.stamped(ask, seen, key, {
             now: KeyTimes.now(),
             opening: launcher?.openingsDrawn ?? 0,
             cataloguing: launcher?.cataloguing ?? true
         });
+        return overPasswords || said === null ? said : ask;
     }
 
     Connections {

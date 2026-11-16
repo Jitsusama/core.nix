@@ -3,8 +3,11 @@
 // is refused as unread (the passwords daemon's least_shown_ms). Counted from
 // the first frame niri presented with the line selected in this opening, the
 // line Joel reads and acts on, so never longer than it was in front of him.
-// A yes whose line no frame presented, whose line changed since, or made
-// while the launcher is walked from outside says no time at all.
+// A yes whose line no frame presented, or whose line changed since, says no
+// time at all; one made while the launcher is walked from outside, as its
+// IPC's do and run walk it, isn't sent, since only Joel's own key press on
+// the drawn line grants an ask, and any process running as him reaches the
+// IPC.
 .pragma library
 
 // What a yes says of its line, which only the launcher may say.
@@ -27,11 +30,15 @@ function noted(seen, key, digest, at) {
 // shown and in which opening where a frame presented exactly that line; any
 // time the served ask held is dropped, so only the launcher's own is sent.
 // `launcher` is the moment it's sent in: `now` on the frames' clock, the
-// `opening` drawn, and whether it's `cataloguing`, walked from outside. Only
-// a yes needs its line read: a no and anything else go as served.
+// `opening` drawn, and whether it's `cataloguing`, walked from outside, when
+// it's null, sending nothing. Only a yes needs its line read: a no and
+// anything else go as served.
 function stamped(ask, seen, key, launcher) {
     if (ask?.ask !== "release") {
         return ask;
+    }
+    if (launcher.cataloguing) {
+        return null;
     }
     // Copied by hand, since Qt's engine has no Object.fromEntries.
     const said = {};
@@ -41,7 +48,7 @@ function stamped(ask, seen, key, launcher) {
         }
     }
     const frame = seen?.[key];
-    if (launcher.cataloguing || !frame || frame.digest !== ask.digest) {
+    if (!frame || frame.digest !== ask.digest) {
         return said;
     }
     return Object.assign(said, {

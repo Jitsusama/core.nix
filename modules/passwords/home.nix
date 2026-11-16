@@ -258,7 +258,7 @@ in
       }) managers;
       # Its daemon answers secret asks once one is listed, and serves them
       # on the place's own connection, which Asks draws them over.
-      asking = config.jitsusama.passwords.releases != [ ];
+      answersAsks = config.jitsusama.passwords.releases != [ ];
       # The daemon the place runs as its own child, for the shell's life.
       daemon = [
         (lib.getExe passwords)

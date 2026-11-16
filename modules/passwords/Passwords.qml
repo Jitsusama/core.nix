@@ -85,8 +85,8 @@ Provider {
         // Where secret asks are listed, its asks' rows come beside the
         // entries, which Asks draws over this one connection (asksLink),
         // so the asks folder is watched once, by this daemon.
-        kind: provider.asking ? ["entry", "row"] : "entry"
-        watching: provider.asking ? { place: "asks" } : ({})
+        kind: provider.answersAsks ? ["entry", "row"] : "entry"
+        watching: provider.answersAsks ? { place: "asks" } : ({})
         // Entries change as a manager is read, so each is kept by key and
         // a manager's standing told as it changes.
         onSourcesChanged: provider.changed()
@@ -104,8 +104,8 @@ Provider {
 
     // Whether the daemon answers secret asks, as it does once any is
     // listed, and the connection Asks draws them over, held by none else.
-    readonly property bool asking: settings.asking === true
-    readonly property var asksLink: asking ? daemon : null
+    readonly property bool answersAsks: settings.answersAsks === true
+    readonly property var asksLink: answersAsks ? daemon : null
 
     // Whether the place is off, as it is until agents are fenced off Joel's
     // runtime folder and Wayland: every agent runs as his uid, so a daemon

@@ -931,6 +931,16 @@ Scope {
         });
     }
 
+    // An act the place's stamp won't send as it's asked, as a yes to a
+    // secret ask walked from outside the launcher, which only Joel's own
+    // key press grants: nothing is sent or drawn, and it's journalled and
+    // told as Joel next opens the launcher, as a shut act's refusal is.
+    function withheld(key, one) {
+        const why = Words.field.becoming?.keyed ?? "";
+        console.info(`launcher: ${one.key} withheld: ${why}`);
+        maker?.launcher?.toldNot(served(key)?.name ?? "", one.ask.act ?? verbOf(one), why);
+    }
+
     // Asks an act that shuts the launcher, as a paste does, which holds
     // nothing drawn, since nothing is drawn by the time it's answered. A
     // refusal is journalled at once and told as Joel next opens the
@@ -942,11 +952,16 @@ Scope {
             maker?.launcher?.toldNot(name, one.ask.act ?? verbOf(one), why);
         };
         const words = Words.field.becoming ?? {};
+        const ask = stamped(key, one.ask);
+        if (ask === null) {
+            withheld(key, one);
+            return;
+        }
         if (!link) {
             refused(Ready.refusal(null, words));
             return;
         }
-        link.ask(stamped(key, one.ask), answer => {
+        link.ask(ask, answer => {
             const why = Ready.refusal(answer, words);
             if (why !== "")
                 refused(why);
@@ -961,6 +976,10 @@ Scope {
     // words its fields asked for set in it, else the act's own is sent.
     function asked(key, one, given) {
         const ask = stamped(key, given ?? one.ask);
+        if (ask === null) {
+            withheld(key, one);
+            return;
+        }
         if (one.streams === true) {
             streamed(key, one, ask);
             return;
