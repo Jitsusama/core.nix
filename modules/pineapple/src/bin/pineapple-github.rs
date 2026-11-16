@@ -496,19 +496,14 @@ impl GitHub<'_> {
             .and_then(github::next_page)
             .map(str::to_owned);
         let remaining = header("x-ratelimit-remaining");
-        let limited = github::rate_limited(
-            status,
-            remaining.as_deref(),
-            header("retry-after").is_some(),
-        );
+        let retry_after = header("retry-after").is_some();
         let said: Value = answer
             .body_mut()
             .read_json()
             .map_err(|error| Unread::Failed(format!("GitHub answered {status}: {error}")))?;
-        let why = || {
-            let message = said["message"].as_str().unwrap_or("no reason");
-            format!("GitHub answered {status} for {path}: {message}")
-        };
+        let message = said["message"].as_str().unwrap_or("no reason");
+        let limited = github::rate_limited(status, remaining.as_deref(), retry_after, message);
+        let why = || format!("GitHub answered {status} for {path}: {message}");
         match status {
             200 => Ok((said, next)),
             _ if limited => Err(Unread::Failed(format!("{}, its rate limit", why()))),

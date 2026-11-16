@@ -439,6 +439,100 @@ fn github_a_repository_that_cant_be_read_still_hears_joel_alone() {
 }
 
 #[test]
+fn github_an_opening_by_the_repositorys_own_names_where_a_stop_reaches() {
+    let (said, home) = judged_on(
+        Issue {
+            repo: "example/shop",
+            opened: (
+                "colleague",
+                "MEMBER",
+                "see https://code.example.com/example/other/pull/3",
+            ),
+            repo_answer: Some(json!({"permissions": {"pull": true, "push": true}})),
+            said: |now| {
+                let stop = format!("@{LOGIN} pineapple override");
+                vec![comment(1, "colleague2", &stop, now, 90)]
+            },
+        },
+        1,
+    );
+    assert_eq!(each(&said, "verdict"), ["stop"]);
+    assert_eq!(
+        said[0]["reaches"],
+        json!(["pr:example/other#3"]),
+        "the pull request a colleague's opening names"
+    );
+    assert_eq!(said[0]["fell_back"], false, "so nothing fell back");
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_an_owners_opening_where_joel_cant_push_cant_steer_his_own_stop() {
+    let (said, home) = judged_on(
+        Issue {
+            repo: "stranger/trap",
+            opened: (
+                "stranger",
+                "OWNER",
+                "see https://code.example.com/example/other/pull/3",
+            ),
+            repo_answer: Some(json!({"permissions": {"pull": true, "push": false}})),
+            said: |now| vec![comment(1, LOGIN, "pineapple override", now, 90)],
+        },
+        1,
+    );
+    assert_eq!(each(&said, "verdict"), ["stop"], "his own stop stands");
+    assert_eq!(
+        said[0]["reaches"],
+        json!(["everything"]),
+        "not the pull request the owner of a repository he can't push to named"
+    );
+    assert_eq!(said[0]["fell_back"], true, "and Joel is told it fell back");
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_repository_its_rate_limit_refuses_is_asked_again_not_taken_as_gone() {
+    let issue = Issue {
+        repo: "example/shop",
+        opened: ("colleague", "MEMBER", ""),
+        repo_answer: Some(json!({"permissions": {"pull": true, "push": true}})),
+        said: |now| {
+            let stop = format!("@{LOGIN} pineapple override");
+            vec![comment(1, "colleague2", &stop, now, 90)]
+        },
+    };
+    let refused = Arc::new(AtomicBool::new(false));
+    let once = Arc::clone(&refused);
+    let (origin, _) = answering_whole(move |line, now| {
+        let repository = line.contains(" /repos/example/shop ");
+        if repository && !once.swap(true, Ordering::SeqCst) {
+            // A secondary limit may say so only in its words.
+            return Answered {
+                status: 403,
+                headers: Vec::new(),
+                body: json!({"message": "You have exceeded a secondary rate limit."}),
+            };
+        }
+        issue.answer(line, now)
+    });
+    let home = home();
+    let mut reader = github_reader(&home, &origin, &["--live"]);
+    until_decided(&home, 1);
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+
+    let said = decisions(&home);
+    assert!(refused.load(Ordering::SeqCst), "the limit refused it once");
+    assert_eq!(
+        each(&said, "verdict"),
+        ["stop"],
+        "a collaborator's stop, read once the limit let it be, not set aside"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
 fn github_a_round_its_rate_limit_refuses_is_read_again_not_skipped() {
     let refused = Arc::new(AtomicBool::new(false));
     let once = Arc::clone(&refused);

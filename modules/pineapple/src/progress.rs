@@ -63,7 +63,12 @@ mod tests {
 
     #[test]
     fn what_is_kept_is_read_back_and_nothing_kept_is_none() {
-        let state = std::env::temp_dir().join(format!("pineapple-progress-{}", std::process::id()));
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("the clock is past 1970")
+            .as_nanos();
+        let id = std::process::id();
+        let state = std::env::temp_dir().join(format!("pineapple-progress-{id}-{now}"));
         assert_eq!(read(&state, "code"), None, "nothing kept yet");
         let judged = Judged {
             since: 1_700_000_000,

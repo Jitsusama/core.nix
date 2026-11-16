@@ -297,12 +297,20 @@ pub fn next_page(link: &str) -> Option<&str> {
 }
 
 /// Whether GitHub refused for its rate limit rather than because what
-/// was asked is gone: a 429, or a 403 saying none is left or when to ask
-/// again. Joel's limit is shared with gh and every agent signed in as him,
-/// so it runs out, and a round it stops has to be tried again whole.
+/// was asked is gone: a 429, or a 403 saying none is left, when to ask
+/// again, or in its message that it is a rate limit, since a secondary
+/// limit may come with neither header. Joel's limit is shared with gh and
+/// every agent signed in as him, so it runs out, and a round it stops has
+/// to be tried again whole.
 #[must_use]
-pub fn rate_limited(status: u16, remaining: Option<&str>, retry_after: bool) -> bool {
-    status == 429 || (status == 403 && (remaining == Some("0") || retry_after))
+pub fn rate_limited(
+    status: u16,
+    remaining: Option<&str>,
+    retry_after: bool,
+    message: &str,
+) -> bool {
+    let says_so = message.to_ascii_lowercase().contains("rate limit");
+    status == 429 || (status == 403 && (remaining == Some("0") || retry_after || says_so))
 }
 
 /// A time as GitHub reads one in `since`.
@@ -576,11 +584,19 @@ mod tests {
 
     #[test]
     fn a_rate_limit_is_told_from_something_gone() {
-        assert!(rate_limited(429, None, false), "too many requests");
-        assert!(rate_limited(403, Some("0"), false), "none left");
-        assert!(rate_limited(403, Some("12"), true), "a secondary limit");
-        assert!(!rate_limited(403, Some("12"), false), "not his to read");
-        assert!(!rate_limited(404, Some("0"), false), "gone");
+        let secondary = "You have exceeded a secondary rate limit";
+        assert!(rate_limited(429, None, false, ""), "too many requests");
+        assert!(rate_limited(403, Some("0"), false, ""), "none left");
+        assert!(rate_limited(403, Some("12"), true, ""), "a secondary limit");
+        assert!(
+            rate_limited(403, Some("12"), false, secondary),
+            "one said only in words"
+        );
+        assert!(
+            !rate_limited(403, Some("12"), false, "Must have push access"),
+            "not his to read"
+        );
+        assert!(!rate_limited(404, Some("0"), false, "Not Found"), "gone");
     }
 
     #[test]
