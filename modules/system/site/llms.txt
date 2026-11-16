@@ -5,8 +5,10 @@
 > and his code, each judged from its own owner's answer, with the way
 > deeper into each.
 
-- [The page](index.html): the four parts, walked by keyboard or pointer,
-  with the part the cursor is on beside them.
+- [The page](index.html): the weather over everything he runs. A
+  headline counting what is worth a look, the outlook of the four parts
+  each wearing its sky (clear, cloud, storm or fog), and the four parts
+  in one column, walked by keyboard or pointer.
 - [The page as text](index.md): how each part is judged, the keys, and
   what the data holds.
 - The data: the system daemon's records, which the page watches live

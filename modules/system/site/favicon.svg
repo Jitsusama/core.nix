@@ -4,11 +4,8 @@
     @media (prefers-color-scheme: dark) { g { stroke: @dark-tint@; } }
   </style>
   <g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="16" cy="16" r="3.6"/>
-    <circle cx="16" cy="5" r="2.4"/>
-    <circle cx="27" cy="16" r="2.4"/>
-    <circle cx="16" cy="27" r="2.4"/>
-    <circle cx="5" cy="16" r="2.4"/>
-    <path d="M16 7.4v5M24.6 16h-5M16 24.6v-5M7.4 16h5"/>
+    <path d="M3 26h26"/>
+    <path d="M8.5 26a7.5 7.5 0 0 1 15 0"/>
+    <path d="M16 12.5V9M8.6 15.7 6.2 13.3M23.4 15.7l2.4-2.4"/>
   </g>
 </svg>

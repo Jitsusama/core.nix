@@ -1,0 +1,58 @@
+/* The keys dialog, which ? and F1 open: every key, in groups named in
+   Title Case. */
+
+.keypanel {
+  max-inline-size: min(34rem, calc(100vw - 2 * var(--items)));
+  background: var(--raised);
+  color: var(--text);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: var(--groups) var(--inset);
+}
+
+.keypanel::backdrop {
+  background: color-mix(in srgb, var(--shadow) 60%, transparent);
+}
+
+.keypanel h2 {
+  margin-block-end: var(--apart);
+}
+
+.keypanel h3 {
+  margin-block: var(--items) var(--mark);
+  font-size: var(--step-body);
+}
+
+.keypanel dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--mark) var(--groups);
+  margin: 0;
+}
+
+.keypanel dl div {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: var(--groups);
+}
+
+@supports (grid-template-columns: subgrid) {
+  .keypanel dl div {
+    display: grid;
+    grid-template-columns: subgrid;
+  }
+}
+
+.keypanel dd {
+  margin: 0;
+}
+
+.keypanel .close {
+  margin-block-start: var(--groups);
+  min-block-size: 44px;
+  padding: var(--mark) var(--apart);
+  background: none;
+  border: 1px solid var(--field);
+  border-radius: var(--radius);
+  color: var(--strong);
+}

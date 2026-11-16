@@ -140,8 +140,9 @@ in
         name = "system";
         src = ../system/site;
         inherit webKit;
-        # Its emphasis, as its styles mark it, in the machines' hue.
-        tint = "machine";
+        # Its emphasis, as its styles mark it, in the action's gold: the
+        # page's world is the weather over everything, and gold is its sun.
+        tint = "action";
       };
     }
     // lib.optionalAttrs (realm != null) {
