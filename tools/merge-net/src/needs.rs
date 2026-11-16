@@ -61,7 +61,7 @@ fn answer(base: &str) -> Result<ExitCode, String> {
     // hasn't moved since speaks for it, as it does for `ready`.
     let record = ready::record(&head);
     let kept = gated::kept(&record, clean, &merge_base, &came_before, || {
-        crate::earlier_pass(&head, &git(&["rev-parse", base]).ok()?)
+        crate::earlier::pass(&head, &git(&["rev-parse", base]).ok()?)
     });
     let named = kept.as_ref().map(|(said, _)| said.as_str());
     if owning.is_empty()
