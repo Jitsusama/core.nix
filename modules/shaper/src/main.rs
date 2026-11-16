@@ -627,6 +627,21 @@ fn refill(text: &str) {
     }
 }
 
+/// The one-way controller, started from what it learned and guarded by each
+/// network's anchor.
+fn started_live(options: &Options) -> live::Live {
+    let learned = options.state.join("learned.json");
+    let mut live = live::Live::new(&options.record, SystemTime::now(), &learned);
+    live.anchor(
+        options
+            .networks
+            .as_deref()
+            .map(networks::anchors)
+            .unwrap_or_default(),
+    );
+    live
+}
+
 fn run(options: &Options) -> Result<(), Failure> {
     let _ = fs::create_dir_all(&options.state);
     let _ = fs::create_dir_all(&options.runtime);
@@ -650,18 +665,7 @@ fn run(options: &Options) -> Result<(), Failure> {
     let mut up_tins = qdisc::TinRates::default();
     let mut primary: Option<String> = None;
     let mut call = Call::default();
-    let mut live = options.one_way.then(|| {
-        let learned = options.state.join("learned.json");
-        let mut live = live::Live::new(&options.record, SystemTime::now(), &learned);
-        live.anchor(
-            options
-                .networks
-                .as_deref()
-                .map(networks::anchors)
-                .unwrap_or_default(),
-        );
-        live
-    });
+    let mut live = options.one_way.then(|| started_live(options));
     // What the controller heard and held each second, which the
     // recorder's lines can't say, kept for a replay (src/trace.rs).
     let mut traces = trace::Writer::new(&options.state.join("heard"));
