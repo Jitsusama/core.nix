@@ -1,8 +1,10 @@
 //! Code's rows over the socket: every repository under the roots, each
 //! once, in a first watch's own answer; a repository cloned since told to
 //! a later watch, read behind it; the rows searched by owner; the open
-//! changes a refresh kept, said beside their repository; and New
-//! Terminal Here started by a stand-in for niri as it's asked.
+//! changes a refresh kept, said beside their repository; a checkout's
+//! files served inside Open a File by Name while it's ahead, and gone
+//! once it isn't; and New Terminal Here started by a stand-in for niri
+//! as it's asked.
 
 use std::path::Path;
 use std::process::Command;
@@ -113,6 +115,38 @@ fn the_changes_a_refresh_kept_are_counted_beside_their_repository() {
             &json!({"key": "verb:code:changes", "open": "https://github.com/someone/alpha/pulls"})
         ),
         "a repository with open changes doesn't offer their list: {alpha}"
+    );
+}
+
+#[test]
+fn a_checkouts_files_are_served_inside_open_a_file_by_name_only_while_its_ahead() {
+    let running = Running::new("code-files");
+    cloned(&running, "alpha", "git@github.com:someone/alpha.git");
+    let checkout = running.path("src/alpha");
+    std::fs::create_dir_all(checkout.join("docs")).unwrap();
+    std::fs::write(checkout.join("docs/guide.md"), "a guide").unwrap();
+    let mut client = running.client();
+    let answer = client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "code"}));
+    let find = "row:code:github:someone/alpha:files";
+    let row = row_of(&answer, find)
+        .unwrap_or_else(|| panic!("a checkout has no Open a File by Name inside it: {answer}"));
+    assert_eq!(row["row"]["parent"], "row:code:github:someone/alpha");
+    let guide = format!("{find}:{}/docs/guide.md", checkout.display());
+    assert!(
+        row_of(&answer, &guide).is_none(),
+        "a checkout's files were read before Open a File by Name was ahead: {answer}"
+    );
+    client.send(&json!({"id": "ahead", "ask": "watch", "kind": ["row"], "keys": [find]}));
+    let file = client.changed(&guide);
+    assert_eq!(
+        file["row"]["name"], "guide.md",
+        "a file ahead isn't served by its name: {file}"
+    );
+    assert_eq!(file["row"]["parent"], find, "a file isn't inside the row: {file}");
+    client.send(&json!({"id": "ahead", "ask": "unwatch"}));
+    assert!(
+        client.gone().contains(&json!(guide)),
+        "a file's row stayed once Open a File by Name wasn't ahead"
     );
 }
 

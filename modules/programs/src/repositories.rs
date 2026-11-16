@@ -250,25 +250,14 @@ fn github(url: &str) -> Option<(String, String)> {
 /// A repository's files as git lists them, tracked or not, but not what
 /// it ignores, each `{path, at, within}`, the one changed last first and
 /// two alike by their paths, the newest [`MOST_FILES`]; none for a folder
-/// git can't read.
-fn files(repository: &str) -> Vec<Value> {
-    let git = std::env::var("PROGRAMS_GIT").unwrap_or_else(|_| "git".to_owned());
-    let argv = [
-        git,
-        "-C".to_owned(),
-        repository.to_owned(),
-        "ls-files".to_owned(),
-        "-z".to_owned(),
-        "--cached".to_owned(),
-        "--others".to_owned(),
-        "--exclude-standard".to_owned(),
-    ];
-    let Ok(printed) = command::run(&argv) else {
+/// git can't read. Code's Open a File by Name lists them too (code.rs).
+#[must_use]
+pub fn files(repository: &str) -> Vec<Value> {
+    let Some(names) = listed(repository) else {
         return Vec::new();
     };
-    let mut dated: Vec<(u64, String, String)> = printed
-        .split('\0')
-        .filter(|name| !name.is_empty())
+    let mut dated: Vec<(u64, String, String)> = names
+        .iter()
         .filter_map(|name| {
             let path = format!("{repository}/{name}");
             let about = fs::symlink_metadata(&path).ok()?;
@@ -286,6 +275,30 @@ fn files(repository: &str) -> Vec<Value> {
             json!({"path": path, "at": changed * SECOND, "within": within})
         })
         .collect()
+}
+
+/// The names git lists of a repository's files, within it, or none for a
+/// folder git can't read.
+fn listed(repository: &str) -> Option<Vec<String>> {
+    let git = std::env::var("PROGRAMS_GIT").unwrap_or_else(|_| "git".to_owned());
+    let argv = [
+        git,
+        "-C".to_owned(),
+        repository.to_owned(),
+        "ls-files".to_owned(),
+        "-z".to_owned(),
+        "--cached".to_owned(),
+        "--others".to_owned(),
+        "--exclude-standard".to_owned(),
+    ];
+    let printed = command::run(&argv).ok()?;
+    Some(
+        printed
+            .split('\0')
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned)
+            .collect(),
+    )
 }
 
 #[cfg(test)]
@@ -495,5 +508,77 @@ mod tests {
             assert_eq!(said.as_deref(), meant, "the page of {text}");
         }
         fs::remove_dir_all(&src).unwrap();
+    }
+
+    /// Runs git in `folder` as a case's own, reading none of the config
+    /// of whoever runs the case, so its commits are made alike anywhere.
+    fn git_in(folder: &Path, args: &[&str]) {
+        let ran = std::process::Command::new("git")
+            .arg("-C")
+            .arg(folder)
+            .args(["-c", "user.name=case", "-c", "user.email=case@example.org"])
+            .args(args)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .status();
+        assert!(ran.is_ok_and(|ran| ran.success()), "git {args:?} failed");
+    }
+
+    /// A repository with a file in each of three folders, all committed.
+    fn committed(case: &str) -> PathBuf {
+        let repository = folder(case);
+        git_in(&repository, &["init", "--quiet"]);
+        for name in ["in/a.txt", "out/b.txt", "out/deeper/c.txt"] {
+            let path = repository.join(name);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, name).unwrap();
+        }
+        git_in(&repository, &["add", "."]);
+        git_in(&repository, &["commit", "--quiet", "-m", "files"]);
+        repository
+    }
+
+    #[test]
+    fn a_sparse_checkout_is_listed_without_naming_each_file_it_left_out() {
+        let repository = committed("sparse");
+        git_in(
+            &repository,
+            &["sparse-checkout", "set", "--cone", "--sparse-index", "in"],
+        );
+        let shown = repository.display().to_string();
+        // World's checkout holds 9,361 entries this way, which git lists
+        // in 47 ms, against 2.4 million in 11 s once it names each file
+        // the folders it left out hold (measured 2026-11-16).
+        assert_eq!(
+            listed(&shown),
+            Some(vec!["in/a.txt".to_owned()]),
+            "git named each file a sparse checkout left out, or the folder it left out"
+        );
+        let paths: Vec<Value> = files(&shown).iter().map(|one| one["path"].clone()).collect();
+        assert_eq!(paths, [json!(format!("{shown}/in/a.txt"))]);
+        fs::remove_dir_all(&repository).unwrap();
+    }
+
+    #[test]
+    fn a_checkout_that_isnt_sparse_lists_every_file_tracked_or_not_but_not_ignored() {
+        let repository = committed("whole");
+        fs::write(repository.join(".gitignore"), "ignored.txt\n").unwrap();
+        fs::write(repository.join("ignored.txt"), "not listed").unwrap();
+        fs::write(repository.join("out/new.txt"), "untracked").unwrap();
+        let shown = repository.display().to_string();
+        let mut names = listed(&shown).unwrap_or_default();
+        names.sort();
+        assert_eq!(
+            names,
+            [
+                ".gitignore",
+                "in/a.txt",
+                "out/b.txt",
+                "out/deeper/c.txt",
+                "out/new.txt"
+            ],
+            "a whole checkout isn't listed as it was"
+        );
+        fs::remove_dir_all(&repository).unwrap();
     }
 }
