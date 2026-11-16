@@ -145,7 +145,9 @@ struct Trial {
 
 impl Chooser {
     /// Chooses, from what the access point the card is on carried over the
-    /// span, the others it hears, and whether a call is on.
+    /// span, the others it hears, and whether a call is on. The card's own
+    /// point may be among the others, as it's heard, to say how busy its
+    /// channel is.
     pub fn choose(
         &mut self,
         now: Instant,
@@ -198,10 +200,10 @@ impl Chooser {
                 && (bad || wide(other.frequency) || !wide(frequency))
         });
         let narrow = frequency != 0 && !wide(frequency);
-        let banded = if narrow && !bad {
-            for_the_band(untried.clone(), (signal, frequency))
-        } else {
+        let roomier = if bad {
             None
+        } else {
+            for_room(untried.clone(), (point, signal, frequency), others)
         };
         let reached = untried.filter(|other| within_reach(other, signal, frequency));
         let faster = reached.clone().filter_map(|other| {
@@ -211,7 +213,7 @@ impl Chooser {
         let near = reached.filter(|other| {
             bad && other.measured.is_none() && other.busy.is_none_or(|busy| busy <= BUSIEST)
         });
-        let chosen = banded.or_else(|| {
+        let chosen = roomier.map(|(other, _)| other).or_else(|| {
             faster
                 .min_by_key(|(slowness, _)| *slowness)
                 .map(|(_, other)| other)
@@ -235,7 +237,7 @@ impl Chooser {
         self.trial = Some(Trial {
             from: point.to_owned(),
             before: measured.clone(),
-            banded: banded.is_some(),
+            banded: roomier.is_some_and(|(_, banded)| banded),
         });
         Choice::Try(chosen.point.clone())
     }
@@ -260,14 +262,38 @@ impl Chooser {
     }
 }
 
-/// Where a card on a narrower band carrying well goes for a wider one:
-/// the quickest within reach known to carry well from here, else the
-/// loudest untried within reach and not too busy.
-fn for_the_band<'a>(
+/// Where a card carrying well goes for more room, and whether it's for a
+/// wider band: from a narrower band to a wider one, or off a channel
+/// busier than `BUSIEST` to one on a wider band within reach that says it
+/// is no busier than that. From 10:23 to 12:14 on 16 Nov 2026 a card sat on
+/// a channel 50 to 58% busy at 33 to 65 ms p95, mostly under `SLOW`, while
+/// the same access point's channel 20% busy, heard as loud, carried 10 to
+/// 14 ms.
+fn for_room<'a>(
     untried: impl Iterator<Item = &'a Other> + Clone,
-    (signal, frequency): (i16, u32),
-) -> Option<&'a Other> {
-    let on_it = untried.filter(|other| in_band_reach(other, signal, frequency));
+    (point, signal, frequency): (&str, i16, u32),
+    others: &[Other],
+) -> Option<(&'a Other, bool)> {
+    if frequency != 0 && !wide(frequency) {
+        let on_it = untried.filter(|other| in_band_reach(other, signal, frequency));
+        return roomiest(on_it).map(|other| (other, true));
+    }
+    let itself = others.iter().find(|other| other.point == point);
+    let busy = itself.and_then(|itself| itself.busy);
+    if busy.is_none_or(|busy| busy <= BUSIEST) {
+        return None;
+    }
+    let quieter = untried.filter(|other| {
+        wide(other.frequency)
+            && other.busy.is_some_and(|busy| busy <= BUSIEST)
+            && within_reach(other, signal, frequency)
+    });
+    roomiest(quieter).map(|other| (other, false))
+}
+
+/// Of the access points a card might go to for room, the quickest known to
+/// carry well from here, else the loudest untried and not too busy.
+fn roomiest<'a>(on_it: impl Iterator<Item = &'a Other> + Clone) -> Option<&'a Other> {
     let known = on_it.clone().filter_map(|other| {
         let theirs = other.measured.as_ref()?;
         (!badly(theirs)).then_some((slowness(theirs), other))

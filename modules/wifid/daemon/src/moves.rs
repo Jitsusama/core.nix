@@ -92,9 +92,10 @@ fn chosen(
     call: bool,
 ) -> Option<Next> {
     let here = around.iter().find(|heard| heard.bssid == on.point)?;
+    // The card's own point goes along too, since how busy it says its
+    // channel is tells the chooser whether there's more room elsewhere.
     let (others, whence): (Vec<Other>, Vec<Option<Whence>>) = around
         .iter()
-        .filter(|heard| heard.bssid != on.point)
         .map(|heard| {
             let known = known(&heard.bssid, heard.signal);
             let whence = known.as_ref().map(|(_, whence)| *whence);
