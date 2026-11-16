@@ -447,7 +447,9 @@ def test_a_password_copied_pastes_is_never_kept_or_fenced_and_clears(desktop: De
     machine.wait_until_succeeds(
         desktop.in_session(f"grep -qx {STAND_IN} /tmp/pasted"), timeout=timedelta(seconds=10)
     )
-    desktop.as_account("pkill -f 'cat > /tmp/pasted'; rm -f /tmp/pasted")
+    # Each pattern's bracket keeps it from matching the shell running it, whose own
+    # command line holds the words, and which pkill would otherwise end mid-command.
+    desktop.as_account("pkill -f '[c]at > /tmp/pasted'; rm -f /tmp/pasted")
     machine.wait_until_fails(
         desktop.in_session("niri msg windows | grep -q paste-here"), timeout=timedelta(seconds=30)
     )
@@ -466,7 +468,7 @@ def test_a_password_copied_pastes_is_never_kept_or_fenced_and_clears(desktop: De
         desktop.in_session(f"niri msg focused-window | grep -q 'pasted:{STAND_IN}'"),
         timeout=timedelta(seconds=10),
     )
-    desktop.as_account("pkill -f paste-page-profile || true")
+    desktop.as_account("pkill -f '[p]aste-page-profile'")
     machine.wait_until_fails(
         desktop.in_session("niri msg windows | grep -q pasted:"), timeout=timedelta(seconds=30)
     )
