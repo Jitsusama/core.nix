@@ -251,6 +251,48 @@ fn a_change_isnt_replayed_over_a_move_beside_it() {
 }
 
 #[test]
+fn a_change_isnt_replayed_back_over_a_crate_its_crate_reads() {
+    // On 16 November a change to modules/programs, which reads
+    // modules/repos, went back onto a main before 17 repos files moved,
+    // and ready refused each pass of it for them, about 12 minutes a run.
+    for (moved, refused) in [
+        ("modules/two/src/lib.rs", true),
+        ("modules/three/src/lib.rs", false),
+    ] {
+        let tree = Tree::new();
+        let scratch = tempfile::tempdir().expect("no scratch");
+        tree.wrote("modules/two/Cargo.toml", "[package]\n", "two");
+        tree.wrote("modules/three/Cargo.toml", "[package]\n", "three");
+        tree.wrote(
+            "modules/one/Cargo.toml",
+            "[package]\n\n[dependencies]\ntwo = { path = \"../two\" }\n",
+            "one reads two",
+        );
+        let (kept_head, base, head) = moved_since_kept(&tree, moved);
+        let replay = replayed(
+            tree.top(),
+            &base,
+            &head,
+            "main",
+            &kept(&[&kept_head]),
+            scratch.path(),
+        );
+        if refused {
+            assert!(
+                replay.as_ref().is_err_and(|why| why.contains(moved)),
+                "replayed back over {moved}, in a crate the change's reads: {replay:?}"
+            );
+        } else {
+            assert!(
+                replay.as_ref().is_ok_and(Option::is_some),
+                "not replayed back over {moved}, in a crate the change's never reads: \
+                 {replay:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn a_change_is_replayed_forward_over_a_move_to_its_own_file() {
     let tree = Tree::new();
     let scratch = tempfile::tempdir().expect("no scratch");
