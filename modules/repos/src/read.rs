@@ -444,38 +444,57 @@ impl Refs {
     }
 }
 
-/// The remotes a checkout's config names, in its order, each with the
-/// first address it gives. Only what's needed is read: sections, and the
-/// url key within a remote's.
-fn remotes(config: &str) -> Vec<Remote> {
-    let mut remotes: Vec<Remote> = Vec::new();
-    let mut current: Option<String> = None;
-    for line in config.lines() {
+/// One key set in a checkout's config, under the `[kind "name"]` section
+/// it sits in, its value unquoted.
+struct Setting<'a> {
+    kind: &'a str,
+    name: &'a str,
+    key: &'a str,
+    value: &'a str,
+}
+
+/// Each key a checkout's config sets within a named section, in its
+/// order. Only what repos reads is understood: comments, blank lines,
+/// keys outside a named section and lines with no `=` are passed over.
+fn settings(config: &str) -> impl Iterator<Item = Setting<'_>> {
+    let mut section: Option<(&str, &str)> = None;
+    config.lines().filter_map(move |line| {
         let line = line.trim();
         if line.starts_with(['#', ';']) || line.is_empty() {
-            continue;
+            return None;
         }
-        if let Some(section) = line.strip_prefix('[') {
-            let section = section.split(']').next().unwrap_or_default().trim();
-            current = section
+        if let Some(header) = line.strip_prefix('[') {
+            let header = header.split(']').next().unwrap_or_default().trim();
+            section = header
                 .split_once(char::is_whitespace)
-                .filter(|(kind, _)| kind.eq_ignore_ascii_case("remote"))
-                .map(|(_, name)| name.trim().trim_matches('"').to_owned());
-            continue;
+                .map(|(kind, name)| (kind, name.trim().trim_matches('"')));
+            return None;
         }
-        let Some(name) = &current else {
-            continue;
-        };
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        if !key.trim().eq_ignore_ascii_case("url") || remotes.iter().any(|r| &r.name == name) {
-            continue;
+        let (kind, name) = section?;
+        let (key, value) = line.split_once('=')?;
+        Some(Setting {
+            kind,
+            name,
+            key: key.trim(),
+            value: value.trim().trim_matches('"'),
+        })
+    })
+}
+
+/// The remotes a checkout's config names, in its order, each with the
+/// first address it gives.
+fn remotes(config: &str) -> Vec<Remote> {
+    let mut remotes: Vec<Remote> = Vec::new();
+    let urls = settings(config)
+        .filter(|set| set.kind.eq_ignore_ascii_case("remote"))
+        .filter(|set| set.key.eq_ignore_ascii_case("url"));
+    for set in urls {
+        if !remotes.iter().any(|remote| remote.name == set.name) {
+            remotes.push(Remote {
+                name: set.name.to_owned(),
+                url: set.value.to_owned(),
+            });
         }
-        remotes.push(Remote {
-            name: name.clone(),
-            url: value.trim().trim_matches('"').to_owned(),
-        });
     }
     remotes
 }
@@ -491,28 +510,11 @@ struct Follows {
 /// with them. A key said twice takes its last value, as git does.
 fn follows(config: &str) -> HashMap<String, Follows> {
     let mut follows: HashMap<String, Follows> = HashMap::new();
-    let mut current: Option<String> = None;
-    for line in config.lines() {
-        let line = line.trim();
-        if line.starts_with(['#', ';']) || line.is_empty() {
-            continue;
-        }
-        if let Some(section) = line.strip_prefix('[') {
-            let section = section.split(']').next().unwrap_or_default().trim();
-            current = section
-                .split_once(char::is_whitespace)
-                .filter(|(kind, _)| kind.eq_ignore_ascii_case("branch"))
-                .map(|(_, name)| name.trim().trim_matches('"').to_owned());
-            continue;
-        }
-        let (Some(branch), Some((key, value))) = (&current, line.split_once('=')) else {
-            continue;
-        };
-        let value = value.trim().trim_matches('"').to_owned();
-        let entry = follows.entry(branch.clone()).or_default();
-        match key.trim().to_ascii_lowercase().as_str() {
-            "remote" => entry.remote = value,
-            "merge" => entry.merge = value,
+    for set in settings(config).filter(|set| set.kind.eq_ignore_ascii_case("branch")) {
+        let entry = follows.entry(set.name.to_owned()).or_default();
+        match set.key.to_ascii_lowercase().as_str() {
+            "remote" => set.value.clone_into(&mut entry.remote),
+            "merge" => set.value.clone_into(&mut entry.merge),
             _ => {}
         }
     }
