@@ -233,6 +233,59 @@ QtObject {
             [MarginCat.above(floating, true, false), MarginCat.above(tiled, false, false)],
             [false, false]);
 
+        // A floating window on its way between tiled windows is a ledge
+        // and sides as theirs are (WCJQSG ade5ce02: "it climbs onto, jumps
+        // off and walks along floats as it does tiled ones"; VKCF3Z
+        // 4125043c, slice 2). Across the tops it walks: up onto it from
+        // beside its edge, along its top, and off its far end down onto
+        // the tops again, never through its face nor hidden behind it.
+        const straddles = float(500, 10, 250, 200);
+        const overIt = Paths.walk({ x: 100, y: 7 }, { x: 900, y: 7 },
+            world({ floats: [straddles] }));
+        const endsAt = way => {
+            const end = way.beats[way.beats.length - 1].to;
+            return [end.x, end.y];
+        };
+        expect("one across the tops on its way, it walks over its top",
+            [endsAt(overIt), overIt.beats.some(beat => beat.to.y === 1),
+                overFace(overIt, straddles)], [[900, 7], true, []]);
+        expect("up its edge from beside it, and off its far end down onto the tops",
+            [ends(named(overIt, "over")), ends(named(overIt, "hops")),
+                ends(named(overIt, "falls"))],
+            [[492, 2, 500, 1], [742, 1, 750, 1], [750, 1, 750, 7]]);
+        expect("over the tiled windows on it, and under them on the tops either side",
+            [drawn(overIt, "over"), drawn(overIt, "falls"),
+                drawnOver(overIt)[0], drawnOver(overIt)[drawnOver(overIt).length - 1]],
+            [[true], [true], false, false]);
+
+        // A step up: a column too high to leap onto from the one beside
+        // it, with a floating window between that is a leap above the
+        // lower and a leap below the higher. It leaps onto that and on up,
+        // never climbing the higher's side.
+        const steps = [
+            { left: 16, top: 700, width: 400, height: 84, column: 0 },
+            { left: 432, top: 640, width: 800, height: 144, column: 1 }
+        ];
+        const stone = float(300, 670, 120, 100);
+        const upIt = Paths.walk({ x: 100, y: 691 }, { x: 900, y: 631 },
+            world({ cols: Paths.columns(steps, 0), floats: [stone] }));
+        expect("a floating window a leap up on its way is a step",
+            [endsAt(upIt), upIt.beats.some(beat => beat.to.y === 661),
+                names(upIt).includes("climbs"), overFace(upIt, stone)],
+            [[900, 631], true, false, []]);
+        const leapsUp = upIt.beats.find(beat => beat.from.y === 661 && beat.to.y === 631)
+            ?? null;
+        expect("from its end up onto the higher top across the gap",
+            [ends(leapsUp), leapsUp
+                && Paths.frame(upIt, (leapsUp.begins + leapsUp.ends) / 2).aboard === true],
+            [[412, 661, 432, 631], true]);
+
+        // One off its way changes nothing.
+        const aside = float(300, 600, 100, 100);
+        expect("a floating window off its way changes nothing",
+            names(Paths.walk({ x: 100, y: 7 }, { x: 900, y: 7 }, world({ floats: [aside] }))),
+            names(Paths.walk({ x: 100, y: 7 }, { x: 900, y: 7 }, world())));
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length > 0 ? 1 : 0);
