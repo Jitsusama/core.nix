@@ -283,8 +283,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         systemd.user.services.swayidle-away.Install.WantedBy = lib.mkForce [ ];
       };
       # As in the greeter test: debug lines copied to the serial console make
-      # journald fall behind, and PID 1 drops lines it won't take.
-      services.journald.settings.Journal.MaxLevelConsole = lib.mkForce "info";
+      # journald fall behind, and PID 1 drops lines it won't take. And as in
+      # the desktop's areas, the margin cat's and the shell's info reports
+      # overflow the port and hold a processor for 21 s at a time, so only
+      # warnings go there; the journal keeps the rest, where the tests read it.
+      services.journald.settings.Journal.MaxLevelConsole = lib.mkForce "warning";
     };
 
   tests = ./screens/screens-${area}-vm-test.py;
