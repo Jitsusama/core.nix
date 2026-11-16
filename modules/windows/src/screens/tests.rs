@@ -87,6 +87,25 @@ fn the_built_in_screen_leads_then_each_by_its_connector_then_turning_them_off() 
     assert_eq!(rows[3]["note"], "a key wakes them \u{b7} hubs stay on");
 }
 
+// What the agents daemon keeps a place by is niri's every part of it, the
+// numbered model and serial its name leaves out among them, and never the
+// built-in's name.
+#[test]
+fn a_screen_holds_what_it_is_by_its_maker_model_and_serial() {
+    let mut panel = output("LG Display", "0x07C6", &lit(1.75));
+    panel["serial"] = json!("S1");
+    let mut dock = output("HP Inc.", "HP Z27k G3", &lit(1.0));
+    dock["serial"] = Value::Null;
+    let desk = BTreeMap::from([("eDP-1".to_owned(), panel), ("DP-4".to_owned(), dock)]);
+    let rows = rows(&desk, Some("eDP-1"), &words());
+    assert_eq!(rows[0]["name"], "Built-in Screen");
+    assert_eq!(rows[0]["held"]["screen"], "LG Display 0x07C6 S1");
+    assert_eq!(
+        rows[1]["held"]["screen"], "HP Inc. HP Z27k G3",
+        "a screen niri gives no serial is held without one"
+    );
+}
+
 #[test]
 fn a_screen_says_how_it_stands_and_the_focused_one_only_beside_another_lit() {
     let rows = rows(&desk(), Some("eDP-1"), &words());

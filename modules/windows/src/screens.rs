@@ -279,7 +279,8 @@ fn named(name: &str, output: &Value, words: &Words) -> String {
 /// What the screen is, its maker, model and serial as niri says them and
 /// its config names one: what the agents daemon keeps a session's place
 /// by (modules/agents, arrangement.rs), since a dock can give the same
-/// screen another connector.
+/// screen another connector. It must say it as the shell's Places.js's
+/// described does, which reopened sessions are put back by.
 fn identity(output: &Value) -> String {
     ["make", "model", "serial"]
         .iter()
