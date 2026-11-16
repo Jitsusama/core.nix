@@ -331,28 +331,48 @@ fn systemctl(arguments: &[&str]) -> String {
 /// before it goes back to run again.
 const RECUTS: usize = 5;
 
-/// Whom the train takes next, after a candidate it ran.
+/// What follows a red candidate.
 #[derive(Debug, PartialEq, Eq)]
-enum Split {
-    /// Everyone aboard, as after a candidate that passed.
-    All,
-    /// Only this many riders, the first to board, as after a red one.
-    Front(usize),
-    /// The one rider that rode a red candidate alone falls; then everyone.
+enum After {
+    /// The next candidate takes fewer riders.
+    Narrows,
+    /// The one rider that rode it alone falls.
     Falls,
+    /// Every rider falls, since the train is red for more than one of them.
+    AllFall,
 }
 
-/// Whom the train takes after a candidate of `riding` riders that `passed`
-/// or not. A red one splits in half, the first to board riding first, so
-/// the riders that broke nothing still land together and only the one that
-/// breaks the candidate, found alone, falls back to running again alone:
-/// among five riders, five runs at most, against five runs again each
-/// alone had the whole train fallen.
-fn split(riding: usize, passed: bool) -> Split {
-    match riding {
-        _ if passed => Split::All,
-        0 | 1 => Split::Falls,
-        _ => Split::Front(riding / 2),
+/// What the train knows of its riders from the candidates it ran, so it
+/// finds the rider that breaks a candidate by halves.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Splitting {
+    /// How many riders, the first to board, a red candidate is known to
+    /// lie among; none while no red is being searched.
+    suspects: usize,
+}
+
+impl Splitting {
+    /// How many riders, the first to board, the next candidate takes.
+    fn take(&self) -> usize {
+        match self.suspects {
+            0 => usize::MAX,
+            suspects => (suspects / 2).max(1),
+        }
+    }
+
+    /// A candidate of `riding` riders failed.
+    fn red(&mut self, riding: usize) -> After {
+        if riding > 1 {
+            self.suspects = riding;
+            return After::Narrows;
+        }
+        *self = Self::default();
+        After::Falls
+    }
+
+    /// A candidate of `riding` riders landed.
+    fn landed(&mut self, _riding: usize) {
+        *self = Self::default();
     }
 }
 
@@ -374,7 +394,7 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
     let slug = slug_of(url);
     let owner = slug.split('/').next().unwrap_or_default().to_owned();
     let git = |arguments: &[&str]| run_git(&checkout, arguments);
-    let mut take = usize::MAX;
+    let mut splitting = Splitting::default();
     loop {
         let waiting = riders(&root);
         if waiting.is_empty() {
@@ -382,7 +402,7 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
             return Ok(ExitCode::SUCCESS);
         }
         let mut mergings = aboard(&root, &git, &slug, &owner, &waiting);
-        mergings.truncate(take);
+        mergings.truncate(splitting.take());
         if mergings.is_empty() {
             continue;
         }
@@ -412,12 +432,12 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
                 .join(", ")
         );
         if !gate(&checkout, &log) {
-            take = red(&root, &candidate, &log, &done.merged);
+            red(&root, &candidate, &log, &done.merged, &mut splitting);
             continue;
         }
         match land(&checkout, &git, &candidate, &mergings, &done.merged) {
             Landing::Landed(landed) => {
-                take = usize::MAX;
+                splitting.landed(done.merged.len());
                 for head in &done.merged {
                     alight(&root, head);
                 }
@@ -426,7 +446,7 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
             }
             Landing::Moved => {}
             Landing::Refused(why) => {
-                take = usize::MAX;
+                splitting = Splitting::default();
                 for head in &done.merged {
                     let _ = fall(
                         &root,
@@ -440,30 +460,33 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
 }
 
 /// After the candidate `candidate` of `merged` riders failed, its words in
-/// `log`: how many riders the next takes, split as `split` says, the one
-/// rider that rode it alone falling.
-fn red(root: &Path, candidate: &str, log: &Path, merged: &[String]) -> usize {
-    match split(merged.len(), false) {
-        Split::Front(front) => {
+/// `log`: the next takes fewer riders, or the rider that rode it alone
+/// falls, or every rider does, as `splitting` says.
+fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &mut Splitting) {
+    let (falling, why) = match splitting.red(merged.len()) {
+        After::Narrows => {
             println!(
                 "merge-net: the candidate {} failed changed-checks, so the train takes its \
-                 first {front} of {} riders next",
+                 first {} of {} riders next",
                 short(candidate),
+                splitting.take(),
                 merged.len()
             );
-            front
+            return;
         }
-        Split::All | Split::Falls => {
-            for head in merged {
-                let why = format!(
-                    "the candidate it rode alone, {}, failed changed-checks; its words are in {}",
-                    short(candidate),
-                    log.display()
-                );
-                let _ = fall(root, head, &why);
-            }
-            usize::MAX
-        }
+        After::Falls => (merged.to_vec(), "the candidate it rode alone"),
+        After::AllFall => (
+            riders(root).into_iter().map(|rider| rider.head).collect(),
+            "a second candidate holding one rider alone",
+        ),
+    };
+    for head in &falling {
+        let said = format!(
+            "{why}, {}, failed changed-checks; its words are in {}",
+            short(candidate),
+            log.display()
+        );
+        let _ = fall(root, head, &said);
     }
 }
 

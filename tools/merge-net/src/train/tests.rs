@@ -65,39 +65,71 @@ fn a_rider_that_fell_rides_no_more_and_runs_again_alone() {
     fs::remove_dir_all(&root).unwrap();
 }
 
+/// Which of `riders` riders land and which fall, in order, and how many
+/// candidates it took, when a candidate fails as `fails` says of the
+/// riders it holds: `Splitting` choosing whom each takes, as in `ride`.
+fn split_out(riders: usize, fails: &dyn Fn(&[usize]) -> bool) -> (Vec<usize>, Vec<usize>, usize) {
+    let mut aboard: Vec<usize> = (0..riders).collect();
+    let (mut landed, mut fell, mut runs) = (Vec::new(), Vec::new(), 0);
+    let mut splitting = Splitting::default();
+    while !aboard.is_empty() && runs < 50 {
+        let riding: Vec<usize> = aboard.iter().copied().take(splitting.take()).collect();
+        runs += 1;
+        let gone = if fails(&riding) {
+            match splitting.red(riding.len()) {
+                After::Narrows => continue,
+                After::Falls => riding,
+                After::AllFall => aboard.clone(),
+            }
+        } else {
+            splitting.landed(riding.len());
+            landed.extend(riding.iter().copied());
+            aboard.retain(|rider| !riding.contains(rider));
+            continue;
+        };
+        fell.extend(gone.iter().copied());
+        aboard.retain(|rider| !gone.contains(rider));
+    }
+    (landed, fell, runs)
+}
+
 #[test]
 fn a_red_train_splits_until_the_rider_that_breaks_it_falls_alone() {
-    let breaks = 2;
-    let mut aboard: Vec<usize> = (0..5).collect();
-    let (mut landed, mut fell, mut runs) = (Vec::new(), Vec::new(), 0);
-    let mut take = aboard.len();
-    while !aboard.is_empty() && runs < 20 {
-        let riding: Vec<usize> = aboard.iter().copied().take(take).collect();
-        runs += 1;
-        match split(riding.len(), !riding.contains(&breaks)) {
-            Split::All => landed.extend(riding.iter().copied()),
-            Split::Falls => fell.extend(riding.iter().copied()),
-            Split::Front(front) => {
-                take = front;
-                continue;
-            }
-        }
-        aboard.retain(|rider| !riding.contains(rider));
-        take = aboard.len();
+    for breaks in 0..5 {
+        let (landed, fell, runs) = split_out(5, &|riding| riding.contains(&breaks));
+        assert_eq!(
+            fell,
+            vec![breaks],
+            "not only rider {breaks}, which broke the train, fell"
+        );
+        let others: Vec<usize> = (0..5).filter(|rider| *rider != breaks).collect();
+        assert_eq!(
+            landed, others,
+            "the riders that broke nothing beside rider {breaks} didn't land"
+        );
+        assert!(
+            runs <= 5,
+            "the split took {runs} runs to find rider {breaks} of five"
+        );
     }
-    assert_eq!(
-        fell,
-        vec![breaks],
-        "not only the rider that broke the train fell"
-    );
-    assert_eq!(
-        landed,
-        vec![0, 1, 3, 4],
-        "the riders that broke nothing didn't land"
-    );
+}
+
+#[test]
+fn two_riders_that_break_the_train_each_fall_and_the_rest_land() {
+    let (landed, fell, _) = split_out(5, &|riding| riding.contains(&1) || riding.contains(&3));
+    assert_eq!(fell, vec![1, 3], "the two riders that broke the train didn't both fall");
+    assert_eq!(landed, vec![0, 2, 4], "the riders that broke nothing didn't land");
+}
+
+#[test]
+fn a_train_red_for_every_rider_gives_up_rather_than_halving_through_them_all() {
+    let (landed, fell, runs) = split_out(5, &|_| true);
+    assert!(landed.is_empty(), "a rider landed on a train red for all");
+    assert_eq!(fell, vec![0, 1, 2, 3, 4], "not every rider of a red train fell");
     assert!(
-        runs <= 5,
-        "the split took {runs} runs to find one rider in five"
+        runs <= 6,
+        "a train red for every rider took {runs} runs to give up, where running each \
+         again alone takes five"
     );
 }
 
