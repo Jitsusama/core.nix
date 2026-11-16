@@ -92,7 +92,7 @@ impl Code {
         Code {
             roots,
             home,
-            machine: machine(),
+            machine: terminal_kit::environment::machine(),
             words: code_rows::Words::read(vocabulary),
             pulled: pull::Words::read(vocabulary),
             read_once: AtomicBool::new(false),
@@ -265,17 +265,4 @@ pub fn pull(shared: &Arc<Shared>, id: &Value, folder: &str) -> Value {
         again(shared);
     }
     shared.code.pulled.answer(id, pulled)
-}
-
-/// The machine's name as it calls itself, which the record carries.
-fn machine() -> String {
-    ["/proc/sys/kernel/hostname", "/etc/hostname"]
-        .iter()
-        .find_map(|file| {
-            std::fs::read_to_string(Path::new(file))
-                .ok()
-                .map(|name| name.trim().to_owned())
-                .filter(|name| !name.is_empty())
-        })
-        .unwrap_or_else(|| "this machine".to_owned())
 }

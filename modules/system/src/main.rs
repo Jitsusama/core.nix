@@ -84,7 +84,7 @@ pub(crate) fn read() -> System {
     .try_into()
     .unwrap_or_else(|_| unreachable!("one answer is given for each command asked"));
     let mut system = System {
-        machine: machine(),
+        machine: terminal_kit::environment::machine(),
         read_at: terminal_kit::time::rfc3339(now()),
         parts: vec![
             parts::machines(&machines, &health),
@@ -117,24 +117,4 @@ fn now() -> i64 {
         .map_or(0, |since| {
             i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
         })
-}
-
-/// The machine's name as it calls itself, read where the kernel keeps it.
-fn machine() -> String {
-    ["/proc/sys/kernel/hostname", "/etc/hostname"]
-        .iter()
-        .find_map(|file| {
-            std::fs::read_to_string(file)
-                .ok()
-                .map(|name| name.trim().to_owned())
-                .filter(|name| !name.is_empty())
-        })
-        .or_else(|| {
-            std::process::Command::new("hostname")
-                .output()
-                .ok()
-                .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_owned())
-                .filter(|name| !name.is_empty())
-        })
-        .unwrap_or_else(|| "this machine".to_owned())
 }

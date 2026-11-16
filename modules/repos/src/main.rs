@@ -184,26 +184,6 @@ fn roots(home: Option<&Path>) -> Result<Vec<PathBuf>, Failure> {
     })
 }
 
-/// The machine's name as it calls itself, read where the kernel keeps it.
-fn machine() -> String {
-    ["/proc/sys/kernel/hostname", "/etc/hostname"]
-        .iter()
-        .find_map(|file| {
-            std::fs::read_to_string(file)
-                .ok()
-                .map(|name| name.trim().to_owned())
-                .filter(|name| !name.is_empty())
-        })
-        .or_else(|| {
-            std::process::Command::new("hostname")
-                .output()
-                .ok()
-                .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_owned())
-                .filter(|name| !name.is_empty())
-        })
-        .unwrap_or_else(|| "this machine".to_owned())
-}
-
 /// The record, read from the disk now, with what GitHub was last seen to
 /// hold where a refresh has asked it.
 fn record(home: Option<&Path>, now: u64) -> Result<Record, Failure> {
@@ -249,7 +229,7 @@ fn count(home: Option<&Path>, now: u64) -> Result<Counted, Failure> {
 /// The record as the disk alone says it.
 fn disk(home: Option<&Path>, now: u64) -> Result<Record, Failure> {
     let roots = roots(home)?;
-    let machine = machine();
+    let machine = terminal_kit::environment::machine();
     Ok(read::read(&Reading {
         roots: &roots,
         home,
