@@ -164,7 +164,7 @@ def joel(machine: BaseMachine, values: dict[str, Any]) -> Iterator[Joel]:
     # pw-dump on its path as the module gives it, to follow calls.
     joel.run(
         "systemd-run --user --unit=noise-cancelled --setenv=PATH=/run/current-system/sw/bin"
-        f" noise-cancelled serve {values['model']} deepfilternet {PICKED}"
+        f" noise-cancelled serve {values['models']} deepfilternet {PICKED}"
     )
     try:
         joel.wait_until_said(f"offering {DESCRIPTION}", ANSWERS_WITHIN)
@@ -235,7 +235,7 @@ def offered(joel: Joel, values: dict[str, Any]) -> Iterator[dict[str, Any]]:
     # Its folder made first, as the unit's StateDirectory makes it, so the offer is heard there.
     joel.run(f"mkdir -p {RUNTIME}/noise-cancelled")
     joel.run(
-        f"systemd-run --user --unit=trial noise-cancelled trial {TRIAL} {values['model']}"
+        f"systemd-run --user --unit=trial noise-cancelled trial {TRIAL} {values['models']}"
         f" deepfilternet {REFUSALS} {PICKED}"
     )
     try:
@@ -283,6 +283,33 @@ def test_a_pick_reveals_each_clip_and_chooses_its_microphone(
         assert spot.startswith("network="), f"the VM is at no home's node: {kept!r}"
         assert picked["spot"].startswith("away"), f"the spot named: {picked['spot']!r}"
         assert picked["running"] == picked["picked"]["cleaner"]
+
+
+# Choose by Ear's trial started and recorded, as offered leaves it.
+@pytest.mark.usefixtures("offered")
+def test_a_pick_shows_every_clips_marks(joel: Joel) -> None:
+    """Picked, every clip's marks follow, from the scorer in models.nix's folder."""
+    # Picked here when run alone; run after the pick above, it keeps that one.
+    if joel.trial()["stage"] == "ready":
+        assert joel.ask({"id": 6, "ask": "act", "act": "pick", "clip": "A"}) == {
+            "id": 6,
+            "taken": True,
+        }
+    get = shlex.quote(json.dumps({"id": 1, "ask": "get"}))
+    scored = shlex.quote('"marks":{')
+    unloaded = shlex.quote("loading the scorer")
+    # A scorer that won't load says so at once, so that ends the wait as well as the marks do.
+    joel.wait_for(
+        f"printf '%s\\n' {get} | nc -N -U {TRIAL} | grep -qF {scored}"
+        f" || journalctl --user -u trial -o cat | grep -qF {unloaded}",
+        LOADS_WITHIN,
+    )
+    failed = joel.run(f"journalctl --user -u trial -o cat | grep -F {unloaded} || true").strip()
+    assert failed == "", f"the trial couldn't score its clips: {failed}"
+    marks = joel.trial()["marks"]
+    assert set(marks) == {"raw", "deepfilternet", "deepfilternet-gentle", "rnnoise"}, (
+        f"the scorer marked {sorted(marks)}, not every clip"
+    )
 
 
 def test_an_offer_beside_the_picks_is_told_until_taken(joel: Joel, offered: dict[str, Any]) -> None:
