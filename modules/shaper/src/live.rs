@@ -374,12 +374,9 @@ impl Live {
         self.follow.now(ms(now))
     }
 
-    /// The share of its lane the VPN riding the link is held to at `now`
-    /// (src/tunnel.rs): all of it once the recorder is silent, as the rates.
-    pub fn vpn_share(&self, now: SystemTime) -> f64 {
-        let (follow, share) = (&self.follow, self.follow.controller.tunnel_share());
-        let silent = ms(now).saturating_sub(follow.last_ms) > SILENT_MS;
-        if silent { 1.0 } else { share }
+    /// The share of its lane the VPN riding the link is held to (src/tunnel.rs).
+    pub fn vpn_share(&self) -> f64 {
+        self.follow.controller.tunnel_share()
     }
 
     /// Takes each whole line the file gained, keeping one half written.

@@ -1225,17 +1225,21 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Liv
         .collect();
     // The one-way controller holds the link the recorder follows; any
     // other goes at its whole rate, its traffic still sorted by CAKE.
-    let share = live
-        .as_deref()
-        .map_or(1.0, |l| l.vpn_share(SystemTime::now()));
+    let share = live.as_deref().map_or(1.0, live::Live::vpn_share);
     let held = live.map(|l| match l.poll(SystemTime::now()) {
         Some((link, rates)) => (Some(link.to_string()), rates),
         None => (None, replay::Rates::default()),
     });
     for (name, (sent, received)) in links::connection_loads(&carried, &follows) {
         if let Some(s) = shaped.get_mut(&name) {
+            // The VPN is held only while the upload is: a recorder gone
+            // silent lets both go.
             s.vpn_share = match &held {
-                Some((link, _)) if link.as_deref() == Some(name.as_str()) => share,
+                Some((link, rates))
+                    if link.as_deref() == Some(name.as_str()) && rates.up.is_some() =>
+                {
+                    share
+                }
                 _ => 1.0,
             };
             match &held {
