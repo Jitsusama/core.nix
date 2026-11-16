@@ -191,7 +191,7 @@ fn concerns(network: &Network) -> Vec<Concern> {
                     on: Some(radio.name.clone()),
                     other: None,
                     says: format!(
-                        "{} {} radio{channel} is busy {busy}% of the time{busiest}",
+                        "{} {} radio{channel} is busy {busy}% of the time{busiest}.",
                         possessive(&device.name),
                         radio.name
                     ),
@@ -207,7 +207,7 @@ fn concerns(network: &Network) -> Vec<Concern> {
                 ConcernKind::Weak,
                 link.a.radio.clone(),
                 format!(
-                    "{near} has a weak signal to {far}: {} dBm, and from {} down its speed falls",
+                    "{near} has a weak signal to {far}: {} dBm, and from {} down its speed falls.",
                     dbm(signal),
                     dbm(WEAK_DBM)
                 ),
@@ -215,7 +215,10 @@ fn concerns(network: &Network) -> Vec<Concern> {
             (Medium::Ethernet, _, Some(speed)) if speed < GIGABIT => Some((
                 ConcernKind::Slow,
                 link.a.port.clone(),
-                format!("{} cable to {far} runs at {speed} Mbit/s", possessive(near)),
+                format!(
+                    "{} cable to {far} runs at {speed} Mbit/s.",
+                    possessive(near)
+                ),
             )),
             _ => None,
         };
@@ -315,7 +318,7 @@ fn lost(network: &Network) -> Option<Concern> {
         other: None,
         says: format!(
             "The modem's {which} has lost {most} pieces of data it couldn't repair since the \
-             modem started, against at most {others} on any other{after}"
+             modem started, against at most {others} on any other{after}."
         ),
     })
 }
@@ -345,7 +348,7 @@ fn fills(network: &Network, internet: &Internet) -> Vec<Concern> {
                     other: None,
                     says: format!(
                         "{} is using {share:.0}% of the internet's speed {way}: {:.1} of its \
-                         {line:.1} Mbit/s",
+                         {line:.1} Mbit/s.",
                         device.name,
                         tenths(using)
                     ),
@@ -401,7 +404,7 @@ fn ceiling(
         other: None,
         says: format!(
             "The internet is the narrowest point {way} for {whom}: {mbps:.1} Mbit/s, as eero \
-             last measured it"
+             last measured it."
         ),
     })
 }
@@ -599,7 +602,7 @@ pub(crate) mod tests {
             fills,
             [(
                 Some("up"),
-                "unknown computer 1 is using 83% of the internet's speed up: 9.9 of its 11.9 Mbit/s"
+                "unknown computer 1 is using 83% of the internet's speed up: 9.9 of its 11.9 Mbit/s."
             )],
             "78% of the way down is under the line, and 83% up is over it"
         );
@@ -632,7 +635,7 @@ pub(crate) mod tests {
             .expect("Hall's radio is busy");
         assert_eq!(
             hall.says,
-            "Hall's 5 GHz high radio, on channel 149, is busy 64% of the time"
+            "Hall's 5 GHz high radio, on channel 149, is busy 64% of the time."
         );
     }
 
@@ -666,7 +669,7 @@ pub(crate) mod tests {
             lost[0].says,
             "The modem's downstream channel 16 has lost 878 pieces of data it couldn't repair \
              since the modem started, against at most 18 on any other; if that keeps climbing, \
-             Example ISP can check the line"
+             Example ISP can check the line."
         );
     }
 
@@ -710,7 +713,7 @@ pub(crate) mod tests {
             .expect("the renamed node's radio is busy");
         assert_eq!(
             busy.says,
-            "Upstairs' 5 GHz high radio, on channel 149, is busy 64% of the time"
+            "Upstairs' 5 GHz high radio, on channel 149, is busy 64% of the time."
         );
     }
 
@@ -729,7 +732,7 @@ pub(crate) mod tests {
         assert_eq!(
             weak[0].says,
             "laptop computer 1 has a weak signal to Study: \u{2212}75 dBm, and from \u{2212}70 \
-             down its speed falls"
+             down its speed falls."
         );
     }
 
@@ -761,7 +764,7 @@ pub(crate) mod tests {
             .collect();
         assert_eq!(slow.len(), 1, "one slow cable: {slow:?}");
         assert_eq!(slow[0].on.as_deref(), Some("2"));
-        assert_eq!(slow[0].says, "Hall's cable to Closet runs at 100 Mbit/s");
+        assert_eq!(slow[0].says, "Hall's cable to Closet runs at 100 Mbit/s.");
     }
 
     #[test]
@@ -778,9 +781,9 @@ pub(crate) mod tests {
             ceilings,
             [
                 "The internet is the narrowest point down for 7 of the 18 devices on the eeros: \
-                 369.9 Mbit/s, as eero last measured it",
+                 369.9 Mbit/s, as eero last measured it.",
                 "The internet is the narrowest point up for every device on the eeros: 11.9 \
-                 Mbit/s, as eero last measured it",
+                 Mbit/s, as eero last measured it.",
             ]
         );
     }

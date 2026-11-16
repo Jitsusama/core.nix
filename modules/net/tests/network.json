@@ -7084,32 +7084,32 @@
       "kind": "lost",
       "device": "modem",
       "on": "downstream channel 16",
-      "says": "The modem's downstream channel 16 has lost 878 pieces of data it couldn't repair since the modem started, against at most 18 on any other; if that keeps climbing, Example ISP can check the line"
+      "says": "The modem's downstream channel 16 has lost 878 pieces of data it couldn't repair since the modem started, against at most 18 on any other; if that keeps climbing, Example ISP can check the line."
     },
     {
       "kind": "fills",
       "device": "mac:02:00:00:00:00:08",
       "on": "up",
-      "says": "unknown computer 1 is using 83% of the internet's speed up: 9.9 of its 11.9 Mbit/s"
+      "says": "unknown computer 1 is using 83% of the internet's speed up: 9.9 of its 11.9 Mbit/s."
     },
     {
       "kind": "weak",
       "device": "mac:02:00:00:00:00:0e",
       "on": "5 GHz",
       "other": "eero:2002",
-      "says": "laptop computer 1 has a weak signal to Study: −75 dBm, and from −70 down its speed falls"
+      "says": "laptop computer 1 has a weak signal to Study: −75 dBm, and from −70 down its speed falls."
     },
     {
       "kind": "ceiling",
       "device": "modem",
       "on": "down",
-      "says": "The internet is the narrowest point down for 7 of the 18 devices on the eeros: 369.9 Mbit/s, as eero last measured it"
+      "says": "The internet is the narrowest point down for 7 of the 18 devices on the eeros: 369.9 Mbit/s, as eero last measured it."
     },
     {
       "kind": "ceiling",
       "device": "modem",
       "on": "up",
-      "says": "The internet is the narrowest point up for every device on the eeros: 11.9 Mbit/s, as eero last measured it"
+      "says": "The internet is the narrowest point up for every device on the eeros: 11.9 Mbit/s, as eero last measured it."
     }
   ]
 }
