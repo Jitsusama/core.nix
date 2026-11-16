@@ -56,18 +56,6 @@ const GATE_REPOS: &str = "gate-repos";
 
 const USED: &str = "Usage: nix-offload answer QUEST COMMIT";
 
-const HELP: &str = "nix-offload answer: run the gate a Mac asked for, from its quest's scratch.
-
-Mycelium starts it, as `nix-offload ask` on the Mac asks. It reads the request and bundle in \
-the quest's handover/gates/COMMIT once, checks the bundle against a fresh clone of the \
-forge's main, runs `nix-offload there --changed` for the commit on the lent builders, and \
-leaves result.json and log beside the bundle. result.json is a convenience: a merge reads the \
-pass the build keeper kept. It gates only the repos jitsusama.nix-offload.gateRepos names, \
-and refuses a link anywhere on the way to the gate or in its own state.
-
-Example:
-  nix-offload answer QEST-20261115-ABC123 0123456789abcdef0123456789abcdef01234567";
-
 /// Where a gate's answer keeps its own: this machine's state, which no
 /// other machine's files reach.
 #[derive(Debug, Clone)]
@@ -551,13 +539,6 @@ fn said_of(exit: u8) -> String {
 /// `answer`: the gate for `QUEST COMMIT`, its result left beside the
 /// request.
 pub fn answer(arguments: &[String], state: &Path) -> ExitCode {
-    if arguments
-        .first()
-        .is_some_and(|word| word == "--help" || word == "-h")
-    {
-        println!("{HELP}");
-        return ExitCode::SUCCESS;
-    }
     let [quest, commit] = arguments else {
         eprintln!("nix-offload: answer takes a quest and a commit.\n{USED}");
         return ExitCode::from(64);

@@ -484,7 +484,7 @@ fn main() -> ExitCode {
     // Help, at any depth, is the kit's, and asks nothing else of it; every
     // other call reads its words below, as its units and gates call it.
     if help::asked(&arguments) {
-        return terminal_kit::main(&help::help(), env!("CARGO_PKG_VERSION"), |_| Ok(()));
+        return help::answered();
     }
     let given = |flag: &str| {
         arguments

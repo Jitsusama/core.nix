@@ -4,7 +4,21 @@
 //! own reading of its words, which its units, its helpers and every gate
 //! call as they are.
 
-use terminal_kit::{Exit, Help};
+use std::process::ExitCode;
+
+use terminal_kit::{Exit, Failure, Help};
+
+/// The kit's answer to a call [`asked`] takes. The kit answers every such
+/// call itself, so reaching the body means the two disagree: a bug, said
+/// as one, never a quiet success.
+pub fn answered() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |_| {
+        Err(Failure::new(
+            Exit::Bug,
+            "nix-offload took this for help, but its help didn't answer it",
+        ))
+    })
+}
 
 /// Whether the words ask for help or the version, which the kit answers:
 /// `-h` or `--help` among nix-offload's own words, or `--version` alone.
@@ -88,8 +102,8 @@ fn there() -> Help {
         "builds what changed-checks names for this change",
     )
     .example(
-        "nix-offload there --run --copy ./result -- cargo test",
-        "runs a command on a builder, its paths sent first",
+        "nix-offload there --run --copy \"$(readlink -f result)\" -- result/bin/a",
+        "runs a command on a builder, the store path it needs sent first",
     )
     .option(
         "--never-ask",
@@ -132,20 +146,27 @@ fn there() -> Help {
         "--run",
         "runs the command after -- in a checkout of this commit",
     )
-    .option("--copy PATH", "with --run, sends PATH's closure first")
+    .option(
+        "--copy PATH",
+        "with --run, sends the store path PATH's closure first",
+    )
     .option("--longest SECONDS", "with --run, gives it SECONDS at most")
     .option("--takes", "names a word each for what this there takes")
     .exit(
         Exit::Unavailable,
-        "no builder took it, so nothing was built or run",
+        "with --changed, the checks were named but no builder took their build",
     )
-    .exit(Exit::TryAgain, "a builder that was asked for didn't come")
+    .exit(
+        Exit::TryAgain,
+        "no builder took it, so nothing was built; ask again once one is lent",
+    )
 }
 
 fn outside() -> Help {
     Help::new(
         "outside",
-        "runs a there call in the environment the agent fence's exemption gives",
+        "runs a there call in the environment the agent fence's exemption gives, \
+         granting nothing: run from inside the fence, the call stays fenced",
     )
     .argument("-- there WORD...", "the call, as there takes it")
     .example(
@@ -171,16 +192,31 @@ fn outside() -> Help {
 fn ask() -> Help {
     Help::new(
         "ask",
-        "asks the machine that gates for the gate of this tree's commit",
+        "asks the machine that gates for the gate of this tree's commit, ending as the gate did",
     )
     .example(
         "nix-offload ask --quest QEST-20261112-0TUD09",
         "gates this commit for a quest",
     )
-    .option("--quest QUEST", "the quest it's gated for")
-    .option("--session ADDRESS", "the session asking")
-    .option("--on MACHINE", "the machine that gates")
-    .option("--longest SECONDS", "how long it waits for the answer")
+    .example(
+        "nix-offload ask --quest QEST-20261112-0TUD09 --session SK1FF0 --on kestrel",
+        "gates it on a named machine, for a session's journal",
+    )
+    .option("--quest QUEST", "the quest whose scratch carries the gate")
+    .option(
+        "--session ADDRESS",
+        "the asking session, for the gate's journal",
+    )
+    .option(
+        "--on MACHINE",
+        "the machine that gates, else nix-offload/gates-on in XDG's config",
+    )
+    .option(
+        "--longest SECONDS",
+        "how long it waits for the result, else 7200",
+    )
+    .exit(Exit::BadInput, "what it was asked can't be gated")
+    .exit(Exit::TryAgain, "no result came in time")
 }
 
 fn answer() -> Help {
@@ -191,16 +227,26 @@ fn answer() -> Help {
     .argument("QUEST", "the quest that asked")
     .argument("COMMIT", "the commit it's gated at")
     .example(
-        "nix-offload answer QEST-20261112-0TUD09 1fe41408b12e",
-        "as the gating machine runs it",
+        "nix-offload answer QEST-20261112-0TUD09 $(git rev-parse HEAD)",
+        "as mycelium starts it on the machine that gates",
     )
-    .exit(Exit::NotFound, "nothing asked for that gate")
+    .exit(
+        Exit::Usage,
+        "it wasn't given a quest's id and a full commit hash",
+    )
+    .exit(Exit::BadInput, "what was asked can't be gated")
+    .exit(
+        Exit::NotFound,
+        "no gate was left there, or a link is on the way to it",
+    )
+    .exit(Exit::Unavailable, "it couldn't fence its git")
+    .exit(Exit::TryAgain, "the gate couldn't run now")
 }
 
 fn passed() -> Help {
     Help::new("passed", "what's kept as passed at each commit")
         .example(
-            "nix-offload passed ran 1fe41408b12e",
+            "nix-offload passed ran $(git rev-parse HEAD)",
             "names each there --run that passed there",
         )
         .subcommand(
