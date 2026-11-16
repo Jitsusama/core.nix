@@ -179,6 +179,10 @@ closes or loses focus"
 - Held by `margin-cat-floats.qml`: "its window closed, it leaps up at once, never thinking or
   walking first"
 - Held by `margin-cat-floats.qml`: "on a floating window it's drawn over the tiled ones"
+- Held by `margin-cat-floats.qml`: "dropping onto a floating window, it's drawn over the tiled
+  ones"
+- Held by `margin-cat-floats.qml`: "leaping off one, over them until it lands on the ledge"
+- Held by `margin-cat-floats.qml`: "with no floating window on its way, never over them"
 - Owed since 2026-11-13: its floating window's focus gone, it waits two seconds, then leaps up
   off it; the wait is the screen's, which no Qt case reaches yet.
 

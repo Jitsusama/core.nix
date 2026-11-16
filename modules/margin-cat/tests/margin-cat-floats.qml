@@ -173,6 +173,42 @@ QtObject {
         expect("anywhere else it's drawn under the windows",
             [MarginCat.above(tiled, false), MarginCat.above(null, false)], [false, false]);
 
+        // On its way onto or off one, over the tiled windows for each
+        // leg that begins or ends on it or climbs its side, since it's in
+        // front of the tiled window behind, which would hide it there and
+        // have it pop onto the floating one (Joel, 2026-11-15 23:34: "the
+        // whole kitty should not have to be rendered when you are seeing
+        // it come on to your screen"); under them for every other leg.
+        const drawn = (way, name) => way.beats.filter(beat => beat.name === name)
+            .map(beat => Paths.frame(way, (beat.begins + beat.ends) / 2).aboard === true);
+        const drawnOver = way => way.beats.map(beat =>
+            Paths.frame(way, (beat.begins + beat.ends) / 2).aboard === true);
+        expect("dropping onto a floating window, it's drawn over the tiled ones",
+            [drawn(onto, "falls"), drawn(onto, "lands").pop()], [[true], true]);
+        expect("but under them along the tops on its way there",
+            drawn(onto, "goes").every(over => !over), true);
+        expect("leaping off one, over them until it lands on the ledge",
+            [drawnOver(leapsOff).slice(0, 2), drawnOver(leapsOff).slice(2)
+                .every(over => !over)], [[true, true], true]);
+        expect("hopping off its end, over them as it walks, hops and falls",
+            [drawnOver(dropsOff).slice(0, 3), drawnOver(dropsOff).slice(3).every(over => !over)],
+            [[true, true, true], true]);
+        expect("closed, over them as it falls in front of what's behind",
+            drawn(fallsOff, "falls"), [true]);
+        expect("along one, over them the whole way", drawnOver(along).every(over => over), true);
+        expect("climbing one's side and over onto it, over them",
+            [drawn(climbsOn, "climbs"), drawn(climbsOn, "over")], [[true], [true]]);
+        expect("moved to a seat on one, under them through the slide, over as it drops",
+            [drawn(moved, "rides"), drawn(moved, "falls")], [[false], [true]]);
+        const nowhereNear = Paths.walk({ x: 900, y: 7 }, { x: 100, y: 7 }, world());
+        expect("with no floating window on its way, never over them",
+            drawnOver(nowhereNear).some(over => over), false);
+        expect("over them as it walks on a leg aboard, its seat anywhere",
+            [MarginCat.above(tiled, true, true), MarginCat.above(null, true, true)], [true, true]);
+        expect("and under them on any other leg, even leaving a floating one",
+            [MarginCat.above(floating, true, false), MarginCat.above(tiled, false, false)],
+            [false, false]);
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length > 0 ? 1 : 0);
