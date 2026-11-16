@@ -335,6 +335,16 @@
       }
     },
     {
+      "id": "verb:carry:back",
+      "in": "agents",
+      "name": "Carry Back",
+      "verb": "carry back",
+      "glyph": "resume",
+      "said": {
+        "carrying": "carrying back"
+      }
+    },
+    {
       "id": "agents:standing",
       "in": "agents",
       "name": "Standing"
