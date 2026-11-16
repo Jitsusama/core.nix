@@ -11,8 +11,8 @@
 rustPlatform.buildRustPackage {
   pname = "google";
   version = "0.1.0";
-  # The ready-rows crate, the terminal kit and daemon-serve it names by path
-  # come beside it, and it builds from its own folder within.
+  # The ready-rows crate, the terminal kit, daemon-serve and receptor-say it
+  # names by path come beside it, and it builds from its own folder within.
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
@@ -26,6 +26,8 @@ rustPlatform.buildRustPackage {
       ../daemon-serve/src
       ../ready-rows/Cargo.toml
       ../ready-rows/src
+      ../receptor-say/Cargo.toml
+      ../receptor-say/src
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
     ];

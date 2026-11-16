@@ -8,7 +8,8 @@
 //! words leave: no subject, sender, title, guest or id is ever an
 //! argument, so nothing mail or an invitation says reaches the node,
 //! whatever it holds. mycelium is run by its store path, its arguments
-//! given one by one and never through a shell.
+//! given one by one and never through a shell, by the speaker every
+//! daemon's receptors share (../receptor-say).
 //!
 //! The service names the program and the realm in `MYCELIUM` and
 //! `MYCELIUM_REALM` (home.nix); with either unset, as on a machine in no
@@ -23,11 +24,13 @@
 //! off once, with none, so the map stops drawing what they last read.
 
 use std::ffi::OsString;
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use jiff::Zoned;
+use receptor_say::{Declared, Speaker};
+/// The sources a receptor reads, and how it stands, in mycelium's words;
+/// these read mail and the calendar.
+pub use receptor_say::{Source, State as Reading};
 
 use crate::calendar::{Answer, Meeting};
 use crate::mail::Mail;
@@ -39,48 +42,12 @@ const HOUR: i64 = 3_600_000;
 /// A day, in the state's milliseconds.
 const DAY: i64 = 24 * HOUR;
 
-/// The sources these receptors read, as mycelium names them.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Source {
-    Mail,
-    Calendar,
-}
-
-impl Source {
-    fn word(self) -> &'static str {
-        match self {
-            Self::Mail => "mail",
-            Self::Calendar => "calendar",
-        }
-    }
-}
-
-/// How a receptor stands, in mycelium's words.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Reading {
-    /// Google answered, and there's something to count.
-    Reading,
-    /// Google answered, and there's nothing.
-    Quiet,
-    /// Google refused the sign-in, or couldn't be reached; the counts are
-    /// what it last said.
-    Failing,
-    /// It no longer reads for the realm, its counts none.
-    Off,
-}
-
-impl Reading {
-    fn word(self) -> &'static str {
-        match self {
-            Self::Reading => "reading",
-            Self::Quiet => "quiet",
-            Self::Failing => "failing",
-            Self::Off => "off",
-        }
-    }
-}
+/// The sources these receptors read.
+const SOURCES: [Source; 2] = [Source::Mail, Source::Calendar];
 
 /// What one receptor says: its source, how it stands, and its counts.
+/// Reading is Google's word for it: Google refused the sign-in, or
+/// couldn't be reached, is failing, the counts what it last said.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Told {
     pub source: Source,
@@ -91,6 +58,19 @@ pub struct Told {
     pub today: u64,
     /// Of today's, what waits on Joel.
     pub addressed: u64,
+}
+
+impl Told {
+    /// What the shared speaker is told of it.
+    fn said(self) -> receptor_say::Told {
+        receptor_say::Told {
+            source: self.source,
+            state: self.reading,
+            hour: self.hour,
+            today: self.today,
+            addressed: self.addressed,
+        }
+    }
 }
 
 /// What each receptor says of `state`, at `now`, the day having begun at
@@ -159,9 +139,8 @@ fn meetings(held: &[Meeting], now: i64, midnight: i64) -> (u64, u64, u64) {
 /// the one account they're said for.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Receptors {
-    program: PathBuf,
-    realm: String,
-    account: Option<String>,
+    speaker: Speaker,
+    account: Option<Declared>,
 }
 
 /// What came of telling the receptors once, or why it failed.
@@ -178,7 +157,7 @@ pub fn fell_silent(was: Option<&Spoken>, came: &Spoken) -> bool {
 
 /// What each receptor says as it falls silent: off, its counts none.
 fn silent() -> Vec<Told> {
-    [Source::Mail, Source::Calendar]
+    SOURCES
         .map(|source| Told {
             source,
             reading: Reading::Off,
@@ -205,28 +184,19 @@ impl Receptors {
     /// The receptors the service names, if it names them: an absolute
     /// program and a realm of mycelium's letters.
     pub fn named(program: Option<OsString>, realm: Option<OsString>) -> Option<Self> {
-        let program = PathBuf::from(program?);
-        let realm = realm?.into_string().ok()?;
-        let letters = realm
-            .bytes()
-            .all(|letter| letter.is_ascii_lowercase() || letter.is_ascii_digit() || letter == b'-');
-        (program.is_absolute() && letters && !realm.is_empty() && !realm.starts_with('-'))
-            .then_some(Self {
-                program,
-                realm,
-                account: None,
-            })
+        Speaker::named(program, realm).map(|speaker| Self {
+            speaker,
+            account: None,
+        })
     }
 
     /// These receptors, said only for `account`, an address, if it is one.
     #[must_use]
     pub fn for_account(self, account: Option<OsString>) -> Self {
-        let account = account
-            .and_then(|account| account.into_string().ok())
-            .filter(|account| {
-                account.contains('@') && !account.contains(|letter: char| letter.is_whitespace())
-            });
-        Self { account, ..self }
+        Self {
+            account: Declared::address(account),
+            ..self
+        }
     }
 
     /// The receptors the service's environment names.
@@ -256,7 +226,7 @@ impl Receptors {
         let Some(account) = &self.account else {
             return Ok(Spoke::NoAccount);
         };
-        if !signed_in.is_some_and(|signed_in| signed_in.eq_ignore_ascii_case(account)) {
+        if !signed_in.is_some_and(|signed_in| account.is(signed_in)) {
             return Ok(Spoke::NotItsAccount);
         }
         let at = now.timestamp().as_millisecond();
@@ -268,27 +238,7 @@ impl Receptors {
     /// the service named, and integers, each count held to the most
     /// mycelium takes, so a count past it is said as that, never refused.
     pub fn arguments(&self, told: Told, every: Duration, pid: u32) -> Vec<OsString> {
-        let most = |count: u64| count.min(u64::from(u32::MAX)).to_string();
-        let words = [
-            "--realm".to_owned(),
-            self.realm.clone(),
-            "receptors".to_owned(),
-            "say".to_owned(),
-            told.source.word().to_owned(),
-            "--state".to_owned(),
-            told.reading.word().to_owned(),
-            "--hour".to_owned(),
-            most(told.hour),
-            "--today".to_owned(),
-            most(told.today),
-            "--addressed".to_owned(),
-            most(told.addressed),
-            "--every".to_owned(),
-            every.as_secs().max(1).to_string(),
-            "--pid".to_owned(),
-            pid.to_string(),
-        ];
-        words.into_iter().map(OsString::from).collect()
+        self.speaker.arguments(told.said(), every, pid)
     }
 
     /// Says each receptor off, its counts none: no account's mail or
@@ -308,18 +258,8 @@ impl Receptors {
     /// When mycelium can't be run, or refuses what it's told, for any one
     /// of them.
     pub fn say(&self, told: &[Told], every: Duration, pid: u32) -> Result<(), String> {
-        for &one in told {
-            let status = Command::new(&self.program)
-                .args(self.arguments(one, every, pid))
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .status()
-                .map_err(|why| format!("running {}: {why}", self.program.display()))?;
-            if !status.success() {
-                return Err(format!("{} {status}", self.program.display()));
-            }
-        }
-        Ok(())
+        let said: Vec<receptor_say::Told> = told.iter().map(|one| one.said()).collect();
+        self.speaker.say(&said, every, pid)
     }
 }
 
