@@ -151,19 +151,19 @@ chain input {
 }
 
 # CAKE reads the tin from the packet's priority when its major number is
-# CAKE's handle, 2:, and the root HTB sends priority 1:1 to its class for
-# local traffic. Only the shaper's uplinks are given one: elsewhere a
-# priority means whatever that link's own queue makes of it. A VPN's own
-# packets carry its mark, and go as best effort whatever they carry: the
-# connection sees a VPN as one flow, so whatever comes next inside it waits
-# behind what that flow holds, and the VPN's own CAKE sorts it instead.
-# Sent as bulk on 12 November, an app's first packets inside waited in the
-# connection's bulk queue, and were dropped there, before the VPN came out
-# of it.
+# CAKE's handle, 2:, and the root HTB sends a priority naming one of its
+# classes there: 1:1 for local traffic, and 1:4, the VPN's lane. Only the
+# shaper's uplinks are given one: elsewhere a priority means whatever that
+# link's own queue makes of it. A VPN's own packets carry its mark, and go
+# to its lane whatever they carry: the connection sees a VPN as one flow,
+# so whatever comes next inside it waits behind what that flow holds, and
+# the VPN's own CAKE sorts it instead. Sent as bulk on 12 November, an
+# app's first packets inside waited in the connection's bulk queue, and
+# were dropped there, before the VPN came out of it.
 chain postrouting {
   type filter hook postrouting priority mangle; policy accept;
   oifname != @uplinks return
-  meta mark @vpns counter name "vpnout"
+  meta mark @vpns counter name "vpnout" meta priority set 1:4 return
   ct mark and 0x08000000 != 0 meta priority set 1:1 return
   # Over Wi-Fi the radio picks its queue from DSCP and never from the
   # priority, so bulk that says nothing for itself goes out as CS1, which

@@ -75,9 +75,9 @@ class Rig:
     router: BaseMachine
 
     def cake(self, dev: str) -> Json:
-        """Give the CAKE on one of the client's devices, with its counts."""
+        """Give the CAKE on one of the client's devices, with its counts: on a link, Joel's."""
         queues: list[Json] = json.loads(self.client.succeed(f"tc -s -j qdisc show dev {dev}"))
-        return next(q for q in queues if q["kind"] == "cake")
+        return next(q for q in queues if q["kind"] == "cake" and q["handle"] == "2:")
 
     def counts(self, dev: str, what: str) -> list[int]:
         """Give one of CAKE's counts on a device, a value per tin."""

@@ -26,6 +26,7 @@ mod cost;
 mod cpu;
 mod day;
 mod icmp;
+mod lanes;
 mod links;
 mod live;
 mod memory;
@@ -35,9 +36,9 @@ mod probe;
 mod proof;
 mod qdisc;
 mod rate;
+mod realtime;
 mod record;
 mod replay;
-mod room;
 #[cfg(test)]
 mod sim;
 mod stamp;
@@ -243,7 +244,7 @@ struct Shaped {
     /// Whether the journal has been told of the connection's queue building now.
     told: bool,
     /// Whether a call's or a screen share's traffic crosses the link.
-    real_time: qdisc::RealTime,
+    real_time: realtime::RealTime,
     /// What the upload's CAKE held when last read, and of the reads since
     /// the controller was last told, how many found a queue in it.
     holding: Option<(u64, u64)>,
@@ -268,9 +269,57 @@ struct Shaped {
     /// home network's traffic, which the link sends as well.
     sent_bytes: u64,
     sent_told: Option<u64>,
+    /// How the upload is split between its lanes, what was put on its
+    /// classes, when it was last split, and what Joel's CAKE's tins sent.
+    lanes: lanes::Lanes,
+    split: lanes::Split,
+    split_at: Option<f64>,
+    straight_tins: qdisc::TinRates,
 }
 
 impl Shaped {
+    /// Splits the upload between its lanes, at `t` seconds, from what
+    /// Joel's and agents' straight on the link carried and hold, and what
+    /// Joel sent inside the VPN riding it and its agents hold, `inside`;
+    /// and puts the split on the link's classes when one moved. Answers
+    /// the VPN's class's rate, in kbit/s.
+    fn share_lanes(&mut self, inside: (f64, lanes::Agents), t: f64) -> f64 {
+        let json = sh(&words(&format!(
+            "tc -s -j qdisc show dev {}",
+            self.uplink.name
+        )))
+        .unwrap_or_default();
+        let tins = qdisc::tins(&json);
+        self.straight_tins
+            .take(tins.iter().map(|tin| tin.bytes).collect(), t);
+        let joel = self
+            .straight_tins
+            .kbit()
+            .map_or(0.0, |k| float(k.best + k.video + k.voice));
+        let bulk = tins
+            .first()
+            .map_or_else(lanes::Agents::default, |tin| lanes::Agents {
+                backlog: tin.backlog,
+                flows: tin.flows,
+            });
+        let rate = float(self.applied.0);
+        let seen = lanes::Seen {
+            rate,
+            joel_straight: joel,
+            joel_vpn: inside.0,
+            agents_straight: bulk,
+            agents_vpn: inside.1,
+        };
+        let dt = self.split_at.replace(t).map_or(1.0, |at| t - at);
+        let split = self.lanes.split(&seen, dt);
+        if split.moved_from(&self.split, rate)
+            && run_all(lanes::change(&self.uplink.name, self.applied.0, &split))
+        {
+            self.split = split;
+        }
+        self.split.vpn
+    }
+
     /// What the connection has carried each way, in bytes, as each
     /// direction's CAKE counts it. The link's own counts take in copies to
     /// this network's machines as well, which never cross the connection:
@@ -477,7 +526,9 @@ fn start(
         ),
     );
     let (up, down) = (controller.up.rate, controller.down.rate);
-    install(&uplink.name, &ifb, up, down, false);
+    let mut lanes = lanes::Lanes::default();
+    let split = lanes.at(float(up));
+    install(&uplink.name, &ifb, (up, &split), down, false);
     eprintln!(
         "shaping {} on {network} at {up} kbit/s up, {down} down",
         uplink.name
@@ -494,7 +545,7 @@ fn start(
         state: State::Resting,
         follows: None,
         told: false,
-        real_time: qdisc::RealTime::default(),
+        real_time: realtime::RealTime::default(),
         holding: None,
         queued_reads: (0, 0),
         held_bytes: 0,
@@ -505,16 +556,24 @@ fn start(
         straight: false,
         sent_bytes: 0,
         sent_told: None,
+        lanes,
+        split,
+        split_at: None,
+        straight_tins: qdisc::TinRates::default(),
     };
     let (tx, rx) = shaped.bytes();
     shaped.counted = (tx, rx, Instant::now());
     Some(shaped)
 }
 
-/// Puts a link's queues on, turning what it receives through its IFB
-/// unless it goes `straight` in.
-fn install(link: &str, ifb: &str, up: u64, down: u64, straight: bool) {
-    run_all(qdisc::install(link, ifb, up, down));
+/// Puts a link's queues on, its upload at `up` split as `split`, turning
+/// what it receives through its IFB unless it goes `straight` in. What was
+/// there goes first, since HTB can't change where it sends what nothing
+/// claims: a link's own queue from the kernel can't be taken away, and
+/// says so, which is nothing to tell.
+fn install(link: &str, ifb: &str, (up, split): (u64, &lanes::Split), down: u64, straight: bool) {
+    let _ = sh(&words(&format!("tc qdisc del dev {link} root")));
+    run_all(qdisc::install(link, ifb, (up, split), down));
     if !straight {
         run_all(qdisc::turn(link, ifb));
     }
@@ -686,11 +745,13 @@ fn run(options: &Options) -> Result<(), Failure> {
             let order = look(&mut shaped, &mut memory, options, &send);
             follow_leaders(&mut shaped, &order);
             primary = order.first().cloned();
-            let base = order
-                .first()
-                .and_then(|p| shaped.get(p))
-                .map(|s| (s.applied.0, s.applied.1, s.straight));
-            follow_vpns(&mut vpns, &options.vpns, (base, order.first()), t);
+            let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
+            follow_vpns(&mut vpns, &options.vpns, rides, (up_tins.kbit(), t));
+            for (name, s) in &mut shaped {
+                if primary.as_ref() != Some(name) {
+                    s.share_lanes((0.0, lanes::Agents::default()), t);
+                }
+            }
             reach = local(&shaped, &vpns.0);
             watch_real_time(&mut shaped, (now - began).as_secs_f64());
             if let Some(l) = live.as_mut() {
@@ -903,62 +964,40 @@ fn moved(applied: Option<u64>, kbit: u64) -> bool {
 }
 
 /// The VPNs the shaper holds, with what their packets cost the uplink past
-/// their count and what they give up for its bulk.
-type Vpns = (BTreeMap<String, Vpn>, cost::Cost, room::Room);
+/// their count.
+type Vpns = (BTreeMap<String, Vpn>, cost::Cost);
 
-/// What the VPNs give up of their upload for the uplink's own bulk, in
-/// kbit/s, from their bulk tins, read in `read`, the uplink's, `beside`,
-/// and its rate, `line` (room.rs says why), at `t` seconds.
-fn give_room(
-    room: &mut room::Room,
-    read: &[String],
-    (beside, line): (Option<&qdisc::Tin>, Option<u64>),
-    t: f64,
-) -> u64 {
-    let (Some(beside), Some(line)) = (beside, line) else {
-        return 0;
-    };
-    let bulk: Vec<qdisc::Tin> = read.iter().filter_map(|json| qdisc::bulk(json)).collect();
-    if bulk.is_empty() {
-        return 0;
-    }
-    let inside = qdisc::Tin {
-        bytes: bulk.iter().map(|tin| tin.bytes).sum(),
-        backlog: bulk.iter().map(|tin| tin.backlog).sum(),
-        ..qdisc::Tin::default()
-    };
-    let was = room.given();
-    let given = room.sample(&inside, beside, line, t);
-    if was == 0 && given > 0 {
-        eprintln!("the uplink's bulk waits behind the VPNs' bulk; the VPNs make room");
-    } else if was > 0 && given == 0 {
-        eprintln!("the VPNs' bulk has its room back");
-    }
-    given
-}
-
-/// Keeps a CAKE on each VPN that's there, each way, at its share of the
-/// primary uplink's rates, less what its own packets cost the uplink past
-/// what its CAKE counts and the room its bulk makes for the uplink's, and
-/// lets go of one that's gone or has no uplink to ride. What a VPN receives
-/// goes straight in, past its IFB, while the uplink's does. Read at `t`
-/// seconds.
+/// Keeps a CAKE on each VPN that's there, each way: up, under the class
+/// the primary uplink's lanes give the VPNs riding it, less what their own
+/// packets cost the uplink past what their CAKE counts; down, at a share
+/// of the uplink's rate. Splits the primary uplink's lanes on the way,
+/// from what was sent inside the VPNs, `inside`, and what their bulk
+/// holds. Lets go of one that's gone or has no uplink to ride. What a VPN
+/// receives goes straight in, past its IFB, while the uplink's does. Read
+/// at `t` seconds.
 fn follow_vpns(
-    (applied, spent, room): &mut Vpns,
+    (applied, spent): &mut Vpns,
     names: &[String],
-    (base, primary): (Option<(u64, u64, bool)>, Option<&String>),
-    t: f64,
+    primary: Option<&mut Shaped>,
+    (inside, t): (Option<qdisc::Tins>, f64),
 ) {
-    // The primary uplink's bulk tin, beside the VPNs riding it.
-    let beside = primary.and_then(|p| {
-        qdisc::bulk(&sh(&words(&format!("tc -s -j qdisc show dev {p}"))).unwrap_or_default())
-    });
     let read: Vec<String> = applied
         .keys()
         .map(|name| sh(&words(&format!("tc -s -j qdisc show dev {name}"))).unwrap_or_default())
         .collect();
     let counted: Option<u64> = read.iter().map(|json| qdisc::counted_bytes(json)).sum();
-    let given = give_room(room, &read, (beside.as_ref(), base.map(|b| b.0)), t);
+    let agents = read.iter().filter_map(|json| qdisc::bulk(json)).fold(
+        lanes::Agents::default(),
+        |all, tin| lanes::Agents {
+            backlog: all.backlog + tin.backlog,
+            flows: all.flows + tin.flows,
+        },
+    );
+    let joel = inside.map_or(0.0, |k| float(k.best + k.video + k.voice));
+    let base = primary.map(|s| {
+        let vpn = s.share_lanes((joel, agents), t);
+        (rate::whole(vpn * lanes::VPN_HELD), s.applied.1, s.straight)
+    });
     let carried = sh(&words(&format!(
         "nft -j list counter inet {TABLE} {}",
         cost::COUNTER
@@ -984,9 +1023,7 @@ fn follow_vpns(
             continue;
         };
         let ifb = qdisc::ifb(index);
-        let up = qdisc::vpn_rate(up)
-            .saturating_sub(extra + given)
-            .max(FLOOR.up);
+        let up = up.saturating_sub(extra).max(FLOOR.up);
         let down = qdisc::vpn_rate(down).max(FLOOR.down);
         let was = applied.get(name);
         // A VPN brought back up is a new device, with a new index.
@@ -1074,13 +1111,14 @@ fn look(
                 let ifb =
                     sh(&words(&format!("tc -j qdisc show dev {}", s.ifb))).unwrap_or_default();
                 let turned = s.straight || qdisc::turned(&json);
-                if !qdisc::ours(&json) || !turned || !qdisc::ours(&ifb) {
+                if !lanes::laned(&json) || !turned || !qdisc::ours(&ifb) {
                     eprintln!("{}'s queues were gone; putting them back", s.uplink.name);
                     s.holding = None;
+                    s.split = s.lanes.at(float(s.controller.up.rate));
                     install(
                         &s.uplink.name,
                         &s.ifb,
-                        s.controller.up.rate,
+                        (s.controller.up.rate, &s.split),
                         s.controller.down.rate,
                         s.straight,
                     );
@@ -1312,13 +1350,15 @@ fn apply(s: &mut Shaped) {
     let moved = |a: u64, b: u64| a.abs_diff(b) * 100 > b;
     let (up, down) = (s.controller.up.rate, s.controller.down.rate);
     if moved(up, s.applied.0) {
-        match sh(&qdisc::change(&s.uplink.name, up, false)) {
-            Ok(_) => s.applied.0 = up,
-            Err(e) => eprintln!("{e}"),
+        // The lanes move with the rate at once, so the classes never
+        // promise more than it.
+        let split = s.lanes.at(float(up));
+        if run_all(lanes::change(&s.uplink.name, up, &split)) {
+            (s.applied.0, s.split) = (up, split);
         }
     }
     if moved(down, s.applied.1) {
-        match sh(&qdisc::change(&s.ifb, down, true)) {
+        match sh(&qdisc::change_down(&s.ifb, down)) {
             Ok(_) => s.applied.1 = down,
             Err(e) => eprintln!("{e}"),
         }
@@ -1440,7 +1480,7 @@ fn stop() {
             continue;
         }
         let json = sh(&words(&format!("tc -j qdisc show dev {name}"))).unwrap_or_default();
-        if qdisc::ours(&json) || qdisc::vpn_ours(&json) {
+        if qdisc::ours(&json) || lanes::laned(&json) || qdisc::vpn_ours(&json) {
             let _ = sh(&words(&format!("tc qdisc del dev {name} root")));
             let _ = sh(&words(&format!("tc qdisc del dev {name} ingress")));
         }

@@ -236,7 +236,7 @@
   "modules/shaper/src/live.rs" = 1;
   "modules/shaper/src/memory.rs" = 1;
   "modules/shaper/src/oneway.rs" = 5;
-  "modules/shaper/src/qdisc.rs" = 17;
+  "modules/shaper/src/qdisc.rs" = 10;
   "modules/shaper/src/rate.rs" = 15;
   "modules/shaper/src/replay.rs" = 14;
   "modules/slack/src/lib.rs" = 4;

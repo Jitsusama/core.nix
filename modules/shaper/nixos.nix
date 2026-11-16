@@ -23,24 +23,28 @@
 # and containers slices, the account's user.slice, Nix's builds, virtual
 # machines and whatever this machine forwards for them; best effort for the
 # rest, Spotify, Chrome, Slack, pi's own requests and what Joel waits on at
-# a terminal among them. Bulk gets the whole connection while nothing else
-# wants it, and a sixteenth while something does. What a link reaches
-# without the router isn't slowed.
+# a terminal among them. What a link reaches without the router isn't
+# slowed.
 #
 # A VPN leaves and arrives by the connection as one flow, whatever it
 # carries, so CAKE there can't tell a name lookup inside it from a build's
 # upload, or a model's reply from a git fetch. A VPN named in
 # jitsusama.shaper.vpns gets a CAKE of its own each way, sorted by the same
-# classes, at a little under the connection's rates, so its queues form
-# inside it.
+# classes, so its queues form inside it.
+#
+# The upload is shared between lanes (src/lanes.rs): Joel's traffic
+# straight on the connection, the VPN's, and agents' bulk straight on the
+# connection, each a class of the connection's HTB at the controller's
+# rate. Joel comes first on both lanes; while agents have something
+# waiting, a quarter of the rate is theirs, split between the lanes by
+# their flows, and they take whatever Joel leaves.
 #
 # Each time the shaper starts, the kernel warns "htb: cake qdisc 2: is
-# non-work-conserving?", once for the uplink and once for its IFB, and
-# never again until the queues are made afresh. It's expected: CAKE keeps
-# its own rate, so when HTB asks it for a packet it holds back, it gives
-# none, and HTB says so the first time any child does (sch_htb.c,
-# qdisc_warn_nonwc in pkt_sched.h). HTB's classes never limit, so CAKE's
-# rate is the only one that does.
+# non-work-conserving?" for the IFB, and never again until the queues are
+# made afresh. It's expected: CAKE keeps its own rate on the download, so
+# when HTB asks it for a packet it holds back, it gives none, and HTB says
+# so the first time any child does (sch_htb.c, qdisc_warn_nonwc in
+# pkt_sched.h).
 {
   config,
   lib,
