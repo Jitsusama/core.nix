@@ -97,6 +97,8 @@ onLinux {
           pkgs.dbus
           pkgs.sway-unwrapped
           pkgs.wayland-utils
+          # Joel's own copies, on niri's display, outside the fence.
+          pkgs.wl-clipboard
           pkgs.wtype
         ];
         # niri draws in software, as the desktop's machine does.
