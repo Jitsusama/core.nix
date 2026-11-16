@@ -8,6 +8,9 @@
 //! whether it moved; and sends the card to the orchestrator. A miss Joel
 //! found himself outranks every figure, and stays open until a check
 //! that would have caught it merges.
+//!
+//! Long because the card's reading, keeping and sending share this file
+//! until it's split by what each does, which is its own change.
 
 mod lines;
 mod measures;
@@ -134,7 +137,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
 
 /// Reads every measure from the machine: the orchestrator's misses and
 /// asks, the net's quarantine, reverts and results, the tick's card, the
-/// three mains, and code health's hourly read.
+/// three mains, code health's hourly read, and the realm's balance.
 fn gather(
     folder: &Path,
     state_home: &Path,
@@ -187,6 +190,10 @@ fn gather(
     all.extend(measures::clean(&text(
         &state_home.join("code-health/hour.json"),
     )));
+    // The balance service names a day's file by the date here, so read yesterday's too.
+    let day = |at| text(&state_home.join(format!("mycelium/balance/{}.jsonl", today(at))));
+    let minutes = [day(now - DAY), day(now)].join("\n");
+    all.extend(measures::balanced(&minutes, now, NET_RULES));
     Ok(all)
 }
 
