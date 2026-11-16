@@ -69,6 +69,20 @@ function purposeOf(forage: Forage): string {
   return forage.purpose === "" ? "No purpose written yet." : forage.purpose;
 }
 
+/**
+ * Marks words the quest `quest` wrote, shown as written, so a page check
+ * reads them as its words rather than the page's: a purpose can quote a
+ * path, an id or a repository it never links.
+ */
+function saidBy(quest: string): string {
+  return ` data-said-by="${escaped(quest)}"`;
+}
+
+/** Where `forage`'s purpose is its quest's own words, the mark saying so. */
+function purposeSaid(forage: Forage): string {
+  return forage.purpose === "" ? "" : saidBy(forage.quest);
+}
+
 /** How far `ticked` of `all` steps have come, said, or nothing with no steps. */
 function come(ticked: number, all: number): string {
   if (all === 0) {
@@ -98,7 +112,7 @@ function forageRow(forage: Forage): string {
   <code class="name">${escaped(forage.cell)}</code>
   <span class="come" aria-label="${escaped(come(ticked, all))}">${escaped(count)}</span>
   <span class="line">
-    <span class="purpose${quiet}">${escaped(purposeOf(forage))}</span>
+    <span class="purpose${quiet}"${purposeSaid(forage)}>${escaped(purposeOf(forage))}</span>
     <span class="keeps">${escaped(keeps(forage))}</span>
   </span>
 </div>`;
@@ -173,8 +187,11 @@ ${main}${branches}${caps}${compartments}
 </svg>`;
 }
 
-/** The row of `document` in the panel, its gills saying how far it has come. */
-function documentRow(document: Document): string {
+/**
+ * The row of `document`, kept by quest `quest`, in the panel, its gills
+ * saying how far it has come.
+ */
+function documentRow(document: Document, quest: string): string {
   const all = document.ticked + document.open;
   const on = lit(document.ticked, all);
   const gills =
@@ -185,7 +202,7 @@ function documentRow(document: Document): string {
           (_, at) => `<path class="${at < on ? "gill" : "gill dim"}" d="M${2 + at * 5} 8V1"/>`,
         ).join("")}</svg>`;
   return `    <li class="doc">
-      <span class="named">${escaped(document.title)}</span>
+      <span class="named"${saidBy(quest)}>${escaped(document.title)}</span>
       <span class="said">${escaped(document.kind)} · ${escaped(staged(document.stage))}</span>
       <span class="steps">${gills}<span>${escaped(come(document.ticked, all))}</span></span>
     </li>`;
@@ -202,7 +219,7 @@ function documentsOf(forage: Forage): string {
   return `<section aria-labelledby="docs-title" class="docs">
   <h4 id="docs-title">What It Keeps</h4>
   <ul class="tl">
-${forage.documents.map(documentRow).join("\n")}
+${forage.documents.map((document) => documentRow(document, forage.quest)).join("\n")}
   </ul>
 </section>`;
 }
@@ -226,7 +243,7 @@ function panelOf(forage: Forage, here: ReadonlySet<string>): string {
   return `
 <p class="eyebrow">the cell open</p>
 <h3><code>${escaped(forage.cell)}</code></h3>
-<p class="lead${quiet}">${escaped(purposeOf(forage))}</p>
+<p class="lead${quiet}"${purposeSaid(forage)}>${escaped(purposeOf(forage))}</p>
 ${documentsOf(forage)}
 <section aria-labelledby="ties-title" class="ties">
   <h4 id="ties-title">Where It Grows</h4>
