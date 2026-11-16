@@ -150,6 +150,11 @@ let
   # texture, and is read again for another, since the wallpaper's kept a
   # second copy of the screen, 20 MB, for as long as it was shown
   # (qtdeclarative-uncached-pictures-let-go.patch).
+  # The JavaScript heap is anonymous memory rather than a private mapping
+  # of a memfd, where each page it wrote was held twice, once more in the
+  # memfd, and a shell holding 132 MB of heap held 159 MB more there
+  # (qtdeclarative-heap-held-once.patch). A shared memfd held it once too,
+  # but the launcher's first openings ran slower on it.
   # Its Wayland client focuses the window a sync asks for even while an
   # earlier change is still queued, since a leave and an enter close
   # together left the launcher holding the keys yet never active
@@ -181,6 +186,7 @@ let
             ./qtdeclarative-collector-keeps-up.patch
             ./qtdeclarative-json-strings-at-their-length.patch
             ./qtdeclarative-uncached-pictures-let-go.patch
+            ./qtdeclarative-heap-held-once.patch
           ];
         });
       }
@@ -237,6 +243,11 @@ in
             ":"
             "${heap}/${prev.qt6.qtbase.qtQmlPrefix}"
           ];
+          # So the checks read the heap module the shell loads, its test run
+          # on the shell's own Qt, whose heap's pages it gives back.
+          passthru = (old.passthru or { }) // {
+            inherit heap;
+          };
         });
       wf-recorder = prev.wf-recorder.overrideAttrs (old: {
         patches = (old.patches or [ ]) ++ [

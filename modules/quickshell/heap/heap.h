@@ -51,6 +51,12 @@ public:
     // was shut, and the closing's collects what they left (heap.cpp).
     Q_INVOKABLE void leaveRoom(double megabytes);
 
+    // Gives the heap's free pages, the ones weigh() counts as `free`, back
+    // to the kernel, and says how many megabytes of them were resident.
+    // Asked once a collection is done, since a collection under way may
+    // still be reading them; it gives nothing back while one is.
+    Q_INVOKABLE double giveBack();
+
 private:
     QJSEngine *engine;
 };

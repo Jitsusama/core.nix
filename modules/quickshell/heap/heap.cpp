@@ -14,10 +14,17 @@
 // Free pages are counted because Qt gives a chunk back only once nothing in
 // it is live, and never moves what is, so Joel's shell held three times what
 // was live after a day (2026-11-13). A page that holds no item and no free
-// run's own header could go back to the kernel and come back zeroed, as Qt
-// zeroes each item it makes, so their count says what letting them go would
-// save. Only resident ones count, as mincore says, since a page never
+// run's own header can go back to the kernel and come back zeroed, as Qt
+// zeroes each item it makes, so their count says what letting them go
+// saves. Only resident ones count, as mincore says, since a page never
 // written costs nothing.
+//
+// giveBack() gives them back, as the shell's Qt gives back a chunk, since
+// they grew with use while what's live didn't: one shell's closings left
+// 69 to 72 MB live all afternoon while what it held grew from 158 to 207 MB
+// and its free pages from 14 to 41 MB (2026-11-15). Qt reads nothing in
+// them until it makes an item there, so only a collection under way, which
+// may still be sweeping them, rules it out.
 //
 // Room is left because Qt starts a collection whenever its free lists miss
 // while what's held is over twice what the last full sweep left in use, and
@@ -70,34 +77,69 @@ constexpr std::size_t OVERALLOCATION = 2;
 
 double megabytes(std::size_t bytes) { return static_cast<double>(bytes) / BYTES_PER_MB; }
 
-// The bytes in an allocator's chunks that are resident and lie in pages
-// holding no item and no free run's header. A chunk's first page holds its
+// Each span of an allocator's pages that hold no item and no free run's
+// header, given to `each` as its start, its length and how many of its
+// bytes are resident, as mincore says. A chunk's first page holds its
 // bitmaps, and a run's header is its first slot, so a page counts when
 // every slot in it, and the one just before it, is free.
-std::size_t freePages(const QV4::BlockAllocator &allocator) {
+template <typename Each> void eachFreeSpan(const QV4::BlockAllocator &allocator, Each each) {
     using QV4::Chunk;
     const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
     const std::size_t words = page / Chunk::SlotSize / Chunk::Bits;
     if (words == 0 || Chunk::ChunkSize % page != 0)
-        return 0;
+        return;
     const std::size_t pages = Chunk::ChunkSize / page;
     std::vector<unsigned char> resident(pages);
-    std::size_t bytes = 0;
     for (Chunk *chunk : allocator.chunks) {
         if (mincore(chunk, Chunk::ChunkSize, resident.data()) != 0)
             continue;
         const auto used = [chunk](std::size_t word) {
             return chunk->objectBitmap[word] | chunk->extendsBitmap[word];
         };
-        for (std::size_t at = 1; at < pages; ++at) {
+        auto *const start = static_cast<char *>(static_cast<void *>(chunk));
+        // The first page is never free, so a span beginning at 0 is none.
+        std::size_t from = 0;
+        std::size_t residentBytes = 0;
+        for (std::size_t at = 1; at <= pages; ++at) {
+            bool empty = at < pages;
             const std::size_t first = at * words;
-            bool empty = (used(first - 1) >> (Chunk::Bits - 1)) == 0;
+            if (empty)
+                empty = (used(first - 1) >> (Chunk::Bits - 1)) == 0;
             for (std::size_t word = first; empty && word < first + words; ++word)
                 empty = used(word) == 0;
-            if (empty && (resident[at] & 1) != 0)
-                bytes += page;
+            if (empty) {
+                from = from == 0 ? at : from;
+                residentBytes += (resident[at] & 1) != 0 ? page : 0;
+            } else if (from != 0) {
+                each(start + from * page, (at - from) * page, residentBytes);
+                from = 0;
+                residentBytes = 0;
+            }
         }
     }
+}
+
+// The resident bytes in an allocator's free pages.
+std::size_t freePages(const QV4::BlockAllocator &allocator) {
+    std::size_t bytes = 0;
+    eachFreeSpan(allocator, [&bytes](char *, std::size_t, std::size_t resident) {
+        bytes += resident;
+    });
+    return bytes;
+}
+
+// Gives an allocator's free pages back to the kernel, as the shell's Qt
+// gives back a chunk it decommits, and says how many of their bytes were
+// resident. The shell's Qt reserves the heap as anonymous memory, which
+// this lets go of; a Qt that maps it from a memfd keeps the pages there.
+// Spans with none resident are left alone, so the call costs nothing for
+// them.
+std::size_t givenBack(const QV4::BlockAllocator &allocator) {
+    std::size_t bytes = 0;
+    eachFreeSpan(allocator, [&bytes](char *at, std::size_t length, std::size_t resident) {
+        if (resident > 0 && madvise(at, length, MADV_DONTNEED) == 0)
+            bytes += resident;
+    });
     return bytes;
 }
 
@@ -157,6 +199,13 @@ QVariantMap Heap::allocator() const {
     return {{QStringLiteral("used"), megabytes(read("stats.allocated"))},
             {QStringLiteral("resident"), megabytes(read("stats.resident"))},
             {QStringLiteral("kept"), megabytes(read("stats.arenas.4096.pdirty") * page)}};
+}
+
+double Heap::giveBack() {
+    QV4::MemoryManager *manager = engine->handle()->memoryManager;
+    if (manager->gcStateMachine->inProgress())
+        return 0;
+    return megabytes(givenBack(manager->blockAllocator) + givenBack(manager->icAllocator));
 }
 
 double Heap::collected() const {

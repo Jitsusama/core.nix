@@ -3973,7 +3973,8 @@
     opening every place the desktop's chords open and typing at home, three rounds over, the
     third round keeps no more than a tenth more of the shell's JavaScript heap live than the
     second, as Qt's collector says after each closing's collection, and a closing says what
-    jemalloc holds in the shell's own process
+    jemalloc holds in the shell's own process, and no memfd backs the heap, so each of its
+    pages is held once
   '';
   the-shells-list-names-what-it-runs = ''
     the list of the shell's files its companion compares after a switch also names the command

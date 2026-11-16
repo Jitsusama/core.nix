@@ -7,7 +7,10 @@
 // has spent grows with each collection; and a heap holding far more than is
 // live, as one does after the launcher's closing, starts the collector as
 // it makes more unless it's left room, and doesn't once it is, nor as it
-// makes strings whose text is held outside the heap. And what it says of
+// makes strings whose text is held outside the heap. Giving the free pages
+// back leaves next to none resident, says about as much as was counted, and
+// what's kept, and what's made after in their place, reads as it was made.
+// And what it says of
 // jemalloc, which the test is linked with as Quickshell is: what's in use
 // grows by a block kept, and what's freed and kept by one let go, and
 // neither is more than what's resident. It exits 0 once all of it holds,
@@ -138,6 +141,52 @@ bool allocatorFollows(const Heap &heap) {
     return said && grows && kept;
 }
 
+// What may stay counted free once they're given back, in megabytes: the
+// collection the weighing runs rewrites its free runs' headers, and a page
+// may hold one again.
+constexpr double GIVEN_LEFT_MB = 1;
+
+// Whether giving a thinned heap's free pages back takes them, says so, and
+// leaves what's kept, and what's made after, as it was made.
+bool givesBack() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue few = engine.evaluate(
+        QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push({ n: i, "
+                       "s: 'row ' + i }); return made.filter((_, i) => i % %2 === 0); })()")
+            .arg(KEPT)
+            .arg(SCATTERED));
+    const Weight thinned = weighed(engine, heap);
+    const double given = heap.giveBack();
+    const Weight after = weighed(engine, heap);
+    // The few are every SCATTERED-th of 0 to KEPT - 1, so their numbers sum
+    // to SCATTERED times the sum of 0 to KEPT / SCATTERED - 1.
+    const double sum = SCATTERED * (KEPT / SCATTERED) * (KEPT / SCATTERED - 1) / 2.0;
+    const QJSValue kept =
+        engine
+            .evaluate(QStringLiteral("(few) => few.reduce((sum, each, i) => each.s === 'row ' + "
+                                     "i * %1 ? sum + each.n : NaN, 0)")
+                          .arg(SCATTERED))
+            .call({few});
+    const QJSValue made = engine.evaluate(
+        QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push({ n: "
+                       "i, s: 'row ' + i }); return made.reduce((sum, each, i) => each.s === "
+                       "'row ' + i ? sum + each.n : NaN, 0); })()")
+            .arg(KEPT));
+    const double madeSum = static_cast<double>(KEPT) * (KEPT - 1) / 2.0;
+    const bool taken = after.free < GIVEN_LEFT_MB;
+    const bool said = given > thinned.free / 2 && given <= thinned.free + GIVEN_LEFT_MB;
+    const bool intact = kept.toNumber() == sum && made.toNumber() == madeSum;
+    if (!taken || !said || !intact)
+        std::fprintf(stderr,
+                     "FAIL giving %.1f MB of free pages back takes them and leaves what's "
+                     "kept: said %.1f MB, %.1f MB free after; the few summed %.0f of %.0f, "
+                     "and what was made after %.0f of %.0f\n",
+                     thinned.free, given, after.free, kept.toNumber(), sum, made.toNumber(),
+                     madeSum);
+    return taken && said && intact;
+}
+
 bool expect(const char *what, bool holds, const Weight &before, const Weight &after) {
     if (!holds)
         std::fprintf(stderr,
@@ -214,8 +263,9 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "FAIL a heap left %.0f MB of room doesn't start the collector as "
                      "it makes strings held outside it\n", ROOM_MB);
     const bool follows = allocatorFollows(heap);
+    const bool given = givesBack();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
-                   roomyOutside && follows
+                   roomyOutside && follows && given
                ? 0
                : 1;
 }
