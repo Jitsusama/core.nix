@@ -202,6 +202,22 @@ mod tests {
     }
 
     #[test]
+    fn a_router_s_queue_says_what_it_let_through_in_the_rate_s_unit() {
+        // The Work Network drawer says the rate in Mb/s and then this
+        // reason, so a second unit inside it read as two vocabularies.
+        assert_eq!(
+            say(
+                Why::Router { plateau: 9_600.0 },
+                Some(7_420),
+                Some(12_000.0),
+                30.0
+            ),
+            "Upload 7.4 Mb/s: held under the router's own queue, which let 9.6 Mb/s through; \
+             held so for 30 s."
+        );
+    }
+
+    #[test]
     fn the_guard_says_the_share_it_found_the_upload_under() {
         assert_eq!(
             say(Why::Guarded, Some(10_800), Some(12_000.0), 0.0),
