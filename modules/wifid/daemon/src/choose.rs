@@ -779,20 +779,24 @@ pub(crate) mod tests {
         let later = start + SETTLE + Duration::from_secs(1);
         let settled = chooser.choose(later, (DESK, &badly, -50, CH52), &near, false);
         let spent = minute + SPURNED;
+        let nearly = spent - Duration::from_secs(1);
+        let short = chooser.choose(nearly, (DESK, &badly, -50, CH52), &near, false);
         let hour = chooser.choose(spent, (DESK, &badly, -50, CH52), &near, false);
 
         assert_eq!(said, Some(HALL.into()), "the hall's kept off, and said so");
         assert_eq!(again, None, "it's said once");
         assert_eq!(settled, Choice::Stay, "the hall wasn't reached from here");
+        assert_eq!(short, Choice::Stay, "an hour from its judgement");
         assert_eq!(hour, Choice::Try(HALL.into()), "tried again after an hour");
     }
 
-    /// The far access point's 5 GHz radio on channel 52, heard about as
-    /// loud as the desk's.
+    /// The far access point's 5 GHz radio on channel 52, heard more faintly
+    /// than the hall's but within reach, so it's chosen only where the
+    /// hall is kept off.
     fn elsewhere() -> Other {
         Other {
             point: "6c:ae:f6:ba:85:86".into(),
-            ..hall(-52, Some(20), None)
+            ..hall(-55, Some(20), None)
         }
     }
 
@@ -823,7 +827,7 @@ pub(crate) mod tests {
 
         let worse = carried(200, 1.0);
         let point = elsewhere().point;
-        let on = (point.as_str(), &worse, -52, CH52);
+        let on = (point.as_str(), &worse, -55, CH52);
         let judged = chooser.choose(start + TRIAL, on, &near, false);
 
         assert_eq!(judged, Choice::Stay, "a third's figures judge nothing");

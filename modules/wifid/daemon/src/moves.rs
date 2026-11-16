@@ -114,10 +114,7 @@ fn chosen(
     let from = (measured, here.frequency, busy);
     let choice = chooser.choose(now, card, &others, call);
     if let Some(unreached) = chooser.unreached() {
-        println!(
-            "<6>{} keeps off {unreached} for an hour, as its move there never reached it",
-            on.card
-        );
+        println!("<6>{}", kept_off(on, &unreached));
     }
     match choice {
         Choice::Stay => None,
@@ -186,6 +183,19 @@ async fn roam(asks: mpsc::Sender<Ask>, air: watch::Receiver<State>, card: String
     if let Err(refused) = acts::roam(&asks, air, &to).await {
         eprintln!("<4>{card} couldn't move to {to}: {refused:?}");
     }
+}
+
+/// Why a card keeps off an access point it was moved to: it's somewhere
+/// else since, whether the move failed or something moved it on, and the
+/// chooser can't tell which.
+fn kept_off(on: &Joined, unreached: &str) -> String {
+    format!(
+        "{} keeps off {unreached} for {} minutes, as it's on {} rather than there since \
+         it was moved",
+        on.card,
+        choose::SPURNED.as_secs() / 60,
+        on.point
+    )
 }
 
 /// Why a card tries another access point: what the one it's on carried,
@@ -383,6 +393,19 @@ mod tests {
         assert!(
             why.ends_with("is untried, heard at -50 dBm, on a wider band"),
             "a move from 2.4 GHz to 5 GHz says it's for the band: {why}"
+        );
+    }
+
+    #[test]
+    fn a_card_keeping_off_a_point_it_was_moved_to_says_where_it_is() {
+        let why = kept_off(&joined(HALL), DESK);
+
+        assert!(
+            why.ends_with(&format!(
+                "keeps off {DESK} for 60 minutes, as it's on {HALL} rather \
+                 than there since it was moved"
+            )),
+            "a point kept off says how long and where the card is: {why}"
         );
     }
 
