@@ -147,6 +147,7 @@ pub struct Chooser {
 
 struct Trial {
     from: String,
+    to: String,
     before: Measured,
     /// Whether the move was for a wider band, kept unless it carries badly
     /// rather than unless it carries worse than the narrower one left.
@@ -175,24 +176,8 @@ impl Chooser {
         if calling && !failing {
             return Choice::Stay;
         }
-        if let Some(trial) = self.trial.take() {
-            let over = self
-                .moved
-                .is_none_or(|moved| now.duration_since(moved) >= TRIAL);
-            if !over && !failing {
-                self.trial = Some(trial);
-                return Choice::Stay;
-            }
-            let back = if trial.banded {
-                badly(measured)
-            } else {
-                worse(measured, &trial.before)
-            };
-            if back {
-                self.spurned.insert(point.to_owned(), now);
-                self.moved = Some(now);
-                return Choice::Back(trial.from);
-            }
+        if let Some(judged) = self.judge(now, (point, measured), failing) {
+            return judged;
         }
         let settled = self
             .moved
@@ -254,10 +239,44 @@ impl Chooser {
         self.moved = Some(now);
         self.trial = Some(Trial {
             from: point.to_owned(),
+            to: chosen.point.clone(),
             before: measured.clone(),
             banded: banded.is_some(),
         });
         Choice::Try(chosen.point.clone())
+    }
+
+    /// Judges the move on trial, if any, from what the card's point carried:
+    /// `Stay` while it's on trial, `Back` where it carried worse, or nothing
+    /// once it's over and choosing goes on.
+    fn judge(&mut self, now: Instant, on: (&str, &Measured), failing: bool) -> Option<Choice> {
+        let (point, measured) = on;
+        let trial = self.trial.take()?;
+        // A card still on the point it left never reached the one it tried,
+        // as when the move found it gone (NotNearby on 15 and 16 Nov 2026),
+        // so that one is kept off rather than tried again each settle, and
+        // the card isn't sent back to where it is.
+        if point == trial.from {
+            self.spurned.insert(trial.to, now);
+            return None;
+        }
+        let over = self
+            .moved
+            .is_none_or(|moved| now.duration_since(moved) >= TRIAL);
+        if !over && !failing {
+            self.trial = Some(trial);
+            return Some(Choice::Stay);
+        }
+        let back = if trial.banded {
+            badly(measured)
+        } else {
+            worse(measured, &trial.before)
+        };
+        back.then(|| {
+            self.spurned.insert(point.to_owned(), now);
+            self.moved = Some(now);
+            Choice::Back(trial.from)
+        })
     }
 
     /// Has a card look for what it doesn't hear, once a settle at most, so
