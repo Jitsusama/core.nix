@@ -10163,6 +10163,14 @@ Scope {
             warmingOn.start();
             return;
         }
+        const led = place - chordPlaces.length;
+        if (led < ledPlaces.length) {
+            warmLed(ledPlaces[led]);
+            warmedTook += KeyTimes.now() - began;
+            warmedTurnEnds(`${ledPlaces[led]} kept`);
+            warmingOn.start();
+            return;
+        }
         warmingOn.stop();
         // Home is found with no place held, as the last place kept left
         // its step held.
@@ -10196,6 +10204,35 @@ Scope {
             return !!source && typeof source.leading !== "function"
                 && leadingTo(name) === null;
         })
+
+    // The places a source leads to that Super+N opens (Notifications.qml's
+    // history), kept as the chords' are: only a chord's were, so each
+    // shell's first Super+N opened them whole, 99 ms to its frame after
+    // both of Joel's starts, while every later one drew from what was kept
+    // in 13 to 30 (2026-11-15 and 16).
+    readonly property var ledPlaces: ["onScreen", "notices"]
+
+    // Keeps a place a source leads to as its walk would leave it, each row
+    // it steps through held as a step, but stepping into none, since a
+    // step in tells its source it opened, and the notices on screen count
+    // as seen once stepped into (Now.qml's onScreenRow). No rows are kept,
+    // since they're listed as they stand as it opens (ledListing).
+    function warmLed(name) {
+        const led = leadingTo(name);
+        if (placesKept[name] || led === null)
+            return;
+        unhold(`warming was keeping ${name}`);
+        keeping = true;
+        try {
+            held = [placeStep(led.leading)].concat(led.rows.map(row =>
+                Object.assign(here(), { key: steadyId(row), row: row, rows: [] })));
+            homeDepth = held.length;
+            matches = [];
+            keepPlace(name);
+        } finally {
+            keeping = false;
+        }
+    }
 
     // Keeps a place as its chord would leave it, its rows listed whole,
     // while shut and without telling its source it opened, since a source
