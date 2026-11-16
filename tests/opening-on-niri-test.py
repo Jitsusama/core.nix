@@ -1455,6 +1455,13 @@ def test_super_n_first_after_a_restart_draws_the_notices_on_screen_from_what_was
     shell.launcher_ready()
     shell.close_launcher()
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    # Asked for by name, as a chord is, it's listed as it stands too, never drawn as kept.
+    shell.as_account(shell.ipc("collection", "notices"))
+    opening = presented_after(shell, timed + 2)
+    assert opening.get("kept"), f"the notices asked for by name were made whole: {opening}"
+    shell.launcher_ready()
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     for summary in ["Dunlin", "Sanderling"]:
         with shell.told(f"shows card {summary}"):
             shell.as_account(f"notify-send --expire-time=60000 '{summary}' 'on screen'")

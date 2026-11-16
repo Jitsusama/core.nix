@@ -9305,7 +9305,7 @@ Scope {
         if (held.length === 0)
             return;
         placesKept[name] = { held: held, matches: matches, depth: homeDepth,
-            under: keptUnder(name) };
+            under: keptUnder(name), led: ledPlaces.includes(name) };
     }
     // What a place's rows follow of the window the launcher opens over, as
     // its source says (keptOver): Shortcuts' the keys that work there. The
@@ -9328,8 +9328,9 @@ Scope {
         if (!kept || !homeHeld || parting !== "" || kept.under !== keptUnder(name))
             return false;
         const source = collections.find(one => one.settings.name === name) ?? null;
-        // One kept as the shell started by its walk (warmLed) holds no rows,
-        // so it's listed as it stands however it's asked for.
+        // One Super+N is led to is listed as it stands however it's asked
+        // for, since what it holds comes and goes, and one kept as the
+        // shell started (warmLed) holds no rows.
         const listed = source?.keptListed === true ? keptListing(source)
             : listedNow === true || kept.led === true ? ledListing(name) : kept.matches;
         if (listed === null)
@@ -10234,7 +10235,6 @@ Scope {
             homeDepth = held.length;
             matches = [];
             keepPlace(name);
-            placesKept[name].led = true;
         } finally {
             keeping = false;
         }
