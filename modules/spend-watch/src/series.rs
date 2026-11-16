@@ -319,6 +319,7 @@ impl Inputs {
                 ))
             })
             .map_err(fail)?;
+        let logged_cost = run_sessions_cost(db)?;
         for row in rows {
             let (kind, model, persona, parent, started, cost, sessions) = row.map_err(fail)?;
             let hour = crate::time::hour_of(started);
@@ -351,16 +352,11 @@ impl Inputs {
                 continue;
             }
             // What the run's logs hold is counted at their own hours.
-            let mut logged = 0.0;
-            for id in ids.iter().filter(|id| self.logged.contains(*id)) {
-                logged += db
-                    .query_row(
-                        "SELECT COALESCE(SUM(cost), 0) FROM turns WHERE session = ?1",
-                        [id],
-                        |row| row.get::<_, f64>(0),
-                    )
-                    .map_err(fail)?;
-            }
+            let logged: f64 = ids
+                .iter()
+                .filter(|id| self.logged.contains(*id))
+                .filter_map(|id| logged_cost.get(id))
+                .sum();
             let rest = known.list - logged;
             if rest > 1e-9 {
                 self.known.entry(hour).or_default().push(Known {
@@ -877,6 +873,25 @@ impl Inputs {
 }
 
 /// The run of `items`, sorted by budget, that are `budget`'s.
+/// What each session a run names spent by its own log, all of it, asked
+/// once: asked of each session apart, 12,784 of them on 16 November, it
+/// was most of what reading the inputs took on every pass.
+fn run_sessions_cost(db: &Connection) -> Result<HashMap<String, f64>, String> {
+    let mut statement = db
+        .prepare(
+            "SELECT session, SUM(cost) FROM turns WHERE session IN
+             (SELECT ids.value FROM runs, json_each(CASE WHEN json_valid(runs.sessions)
+              THEN runs.sessions ELSE '[]' END) ids) GROUP BY session",
+        )
+        .map_err(fail)?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
+        })
+        .map_err(fail)?;
+    rows.collect::<Result<_, _>>().map_err(fail)
+}
+
 fn of_budget<'a, T>(items: &'a [T], budget: &str, of: impl Fn(&T) -> &String) -> &'a [T] {
     let first = items.partition_point(|item| of(item).as_str() < budget);
     let last = items.partition_point(|item| of(item).as_str() <= budget);
@@ -1277,6 +1292,21 @@ mod tests {
         assert!(fleet.contains(&("subagent:fleet".into(), 5.0)), "{fleet:?}");
         let quests = by(&pieces, |piece| piece.quest.clone().unwrap_or_default());
         assert_eq!(quests, vec![("Q1".into(), 15.0)]);
+    }
+
+    // A run whose list of agents can't be read names none, and the rest
+    // still read: the history reads them all at once.
+    #[test]
+    fn a_run_whose_agents_cant_be_read_keeps_its_total() {
+        let history = history();
+        turn(&history, "me", H, "opus", 10.0, Some("Q1"));
+        run(&history, "fleet", "me", H, 5.0, &["f1"]);
+        history
+            .db
+            .execute("UPDATE runs SET sessions = 'not a list'", [])
+            .unwrap();
+        let pieces = read(&history, H, H + 1).unwrap().pieces(&Ratios::default());
+        assert!((total(&pieces) - 15.0).abs() < 1e-9, "{pieces:?}");
     }
 
     // A swarm's agent is its own agent, named, in its quest, and takes its
