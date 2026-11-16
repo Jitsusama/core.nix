@@ -1447,6 +1447,64 @@ def test_an_answered_talk_is_counted_at_home_until_joel_reads_it_in_its_drawer(
         talk.unlink()
 
 
+def test_no_words_however_long_leave_their_room_or_lie_on_anothers(shell: Shell) -> None:
+    """Words of any length stay inside their room and the card, and off each other's ink.
+
+    A talk Joel sent with what he was looking at attached ran its lines down over the rows,
+    and its words leftward over the row's name and out of the card (Joel at 19:00 on
+    2026-11-15: "somehting like this should never be possible"). So each step from the
+    session down to its talk's parts, with the path, the rows, their sides and the drawer
+    filled with long words and a word too long for any line, asks the launcher which words
+    broke out (Contained.js), and none may. Where words are drawn needs no system service,
+    so it's proven here rather than in a VM (docs/testing.md, The Pyramid).
+    """
+    unbroken = "whydidthewindowjumpwheneverynameranon" * 4
+    asked = (
+        "why did the launcher let a talk run past its card when i asked it about our agentic "
+        f"harness and the {unbroken} around this?\n\nAttached:\n- window: kitty \u00b7 ssh"
+    )
+    answer = f"A step drew whole: {unbroken}, and the side beside it drew whole too."
+    replies = STEER / "LISTEN" / "replies"
+    replies.mkdir(parents=True, exist_ok=True)
+    talk = replies / "talk-1794786327974.jsonl"
+    lines = [
+        {"stage": "delivered", "at": "2026-11-15T19:00:00.000Z", "session": "s-listen",
+         "from": "joel", "text": asked},
+        {"stage": "replied", "at": "2026-11-15T19:01:00.000Z", "text": answer},
+    ]  # fmt: skip
+    talk.write_text("".join(json.dumps(line) + "\n" for line in lines))
+
+    def none_broke_out(where: str) -> None:
+        broke = json.loads(shell.as_account(shell.ipc("contained")))
+        if broke:
+            said = {fault["said"] for fault in broke} | {fault.get("with") for fault in broke}
+            drawn = json.loads(shell.as_account(shell.ipc("drawnTexts")))
+            who = [each for surface in drawn for each in surface if each["said"] in said]
+            assert broke == [], f"{where}: {broke}\ndrawn by: {who}"
+
+    try:
+        found(shell, "listening quest", "Listening Quest")
+        shell.launcher_until(lambda shown: bool(shown["drawer"]))
+        none_broke_out("the session found, its drawer out")
+        shell.step_in("ctrl-bracketright")
+        shell.launcher_until(
+            lambda shown: any(row.startswith("why did the launcher") for row in shown["rows"])
+        )
+        name = next(
+            row for row in shell.showing()["rows"] if row.startswith("why did the launcher")
+        )
+        none_broke_out("inside the session")
+        shell.down_to(name)
+        none_broke_out("its talk selected, its drawer out")
+        shell.step_in()
+        shell.launcher_until(lambda shown: shown["rows"][:2] == ["You Said", "How It Went"])
+        none_broke_out("its parts, what Joel said selected")
+        shell.down_to("How It Went")
+        none_broke_out("its parts, how it went selected")
+    finally:
+        talk.unlink()
+
+
 def test_a_closed_orchestrator_stands_dimmed_at_the_trees_end_the_last_live_first(
     shell: Shell,
 ) -> None:

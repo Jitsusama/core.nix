@@ -60,6 +60,7 @@ import "ListedKeys.js" as ListedKeys
 import "Operators.js" as Operators
 import "Finding.js" as Finding
 import "Confirm.js" as Confirm
+import "Contained.js" as Contained
 import "Arming.js" as Arming
 import "Changes.js" as Changes
 import "Hearing.js" as Hearing
@@ -7661,6 +7662,19 @@ Scope {
             return root.laidOut();
         }
 
+        // Every word on the card or its drawer that broke out of its room,
+        // the card, or onto another's (Contained.js), as JSON: none, for the
+        // check that no words, however long, escape.
+        function contained(): string {
+            return JSON.stringify(root.contained());
+        }
+
+        // Every text drawn on the card and its drawer, as JSON, for the
+        // check to say what drew the words that broke out.
+        function drawnTexts(): string {
+            return JSON.stringify(root.drawnAll());
+        }
+
         // Every row Return does nothing on, as JSON, for the check.
         function actless(): string {
             return JSON.stringify(root.actless());
@@ -7807,6 +7821,80 @@ Scope {
             for (const word of wordsIn(child, into))
                 words.push(word);
         return words;
+    }
+
+    // Every text drawn in an item and all inside it, as Contained.js judges
+    // them: its ink as it's shown on `into`, from where its alignment sets
+    // it in its box, cut by every box clipping it but the card's floor, so
+    // words that floor cuts still count as broken out; the box it's laid
+    // in; and the texts it's laid inside. Clear or hidden texts are drawn
+    // nowhere, and neither are those clipped away whole, nor a list's row
+    // let go, kept aside or waiting to be destroyed, which Qt culls rather
+    // than hides. `trail` names the items it's inside, for a check to say
+    // what drew a word that broke out.
+    function drawnTexts(item, into, floor, clipped, within, drawn, trail) {
+        if (!item || !item.visible || item.opacity === 0 || item.aside === true
+            || (item.index === -1 && item.mark !== undefined))
+            return drawn;
+        const here = (trail ?? "") + "/" + String(item).replace(/\(0x[0-9a-f]+\)/, "")
+            .replace(/_QMLTYPE_[0-9]+/, "");
+        const at = item.mapToItem(into, 0, 0);
+        const own = { x: at.x, y: at.y, width: item.width, height: item.height };
+        const shows = item.clip && item !== floor
+            ? (clipped === null ? own : Contained.shared(clipped, own)) : clipped;
+        if (item.clip && item !== floor && shows === null)
+            return drawn;
+        let holding = within;
+        if (typeof item.text === "string" && typeof item.contentWidth === "number"
+            && item.text !== "" && !(item.color !== undefined && item.color.a === 0)) {
+            // Lines set at a fixed pitch stand on it, a face's descent
+            // reaching into the next line's pitch as type set on a page does,
+            // so their lines are as tall as their pitch, not their faces.
+            const tall = item.lineHeightMode === Text.FixedHeight && item.lineCount > 0
+                ? item.lineCount * item.lineHeight : item.contentHeight;
+            const across = item.width - item.contentWidth;
+            const down = item.height - tall;
+            const inked = {
+                x: at.x + (item.horizontalAlignment === Qt.AlignRight ? across
+                    : item.horizontalAlignment === Qt.AlignHCenter ? across / 2 : 0),
+                y: at.y + (item.verticalAlignment === Qt.AlignBottom ? down
+                    : item.verticalAlignment === Qt.AlignVCenter ? down / 2 : 0),
+                width: item.contentWidth, height: tall
+            };
+            const ink = shows === null ? inked : Contained.shared(inked, shows);
+            if (ink !== null) {
+                const id = drawn.length + 1;
+                drawn.push({ id, ink, room: own, within, from: here,
+                    said: item.text.replace(/\s+/g, " ").slice(0, 60) });
+                holding = within.concat([id]);
+            }
+        }
+        for (const child of item.children)
+            drawnTexts(child, into, floor, shows, holding, drawn, here);
+        return drawn;
+    }
+
+    // Every text drawn on the card and its drawer, as drawnTexts finds it,
+    // for a check to say what drew the words that broke out.
+    function drawnAll() {
+        return [card, drawerCard].filter(each => each.visible && each.opacity !== 0)
+            .map(each => drawnTexts(each, each, each.floor ?? null, null, [], [], ""));
+    }
+
+    // The words on the card, and on its drawer while it's out, that broke
+    // out (Contained.js), each judged in its own box. The drawer is a
+    // floating surface of its own rather than a card, with no floor.
+    function contained() {
+        const found = [];
+        for (const each of [card, drawerCard]) {
+            if (!each.visible || each.opacity === 0)
+                continue;
+            const box = { x: 0, y: 0, width: each.width, height: each.height };
+            for (const fault of Contained.faults(
+                drawnTexts(each, each, each.floor ?? null, null, [], [], ""), box))
+                found.push(fault);
+        }
+        return found;
     }
 
     // Where the card's words are, as JSON: the field's, the foot's, and each
@@ -11662,8 +11750,12 @@ Scope {
                         glyphWidth: root.textAreaAt
                         leadColumn: root.glyphColumn
                         // A folder's path gives way before any other step.
+                        // Each step is said on one line, as a name is, so
+                        // words carrying lines, as a talk does, never run
+                        // down over the rows.
                         chips: home ? [{ text: Words.field.home ?? "", yields: false }]
-                            : root.path.map(step => ({ text: step, yields: /^[~/]/.test(step) }))
+                            : root.path.map(step => ({ text: step.replace(/\s+/g, " ").trim(),
+                                yields: /^[~/]/.test(step) }))
                         // Asked only where the line asks something in
                         // particular, as a name to save by or a file a
                         // program wants: on a find, the mark and the caret

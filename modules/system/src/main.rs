@@ -16,9 +16,11 @@ mod serve;
 mod views;
 
 use std::io;
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use system::homes::Homes;
 use system::parts;
 use system::record::System;
 use terminal_kit::{Context, Exit, Failure, Help};
@@ -81,7 +83,7 @@ pub(crate) fn read() -> System {
     ])
     .try_into()
     .unwrap_or_else(|_| unreachable!("one answer is given for each command asked"));
-    System {
+    let mut system = System {
         machine: machine(),
         read_at: terminal_kit::time::rfc3339(now()),
         parts: vec![
@@ -90,7 +92,23 @@ pub(crate) fn read() -> System {
             parts::network(&net),
             parts::code(&repos),
         ],
+    };
+    if let Some(sites) = sites() {
+        Homes::read(&sites).place(&mut system);
     }
+    system
+}
+
+/// Where the local sites are kept on this machine (modules/local-sites),
+/// under the data home.
+fn sites() -> Option<PathBuf> {
+    let data = std::env::var_os("XDG_DATA_HOME")
+        .filter(|data| !data.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share"))
+        })?;
+    Some(data.join("jitsusama/sites"))
 }
 
 fn now() -> i64 {

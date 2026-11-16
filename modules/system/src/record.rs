@@ -51,6 +51,9 @@ pub struct Thing {
     pub health: Health,
     /// How it stands, in a short sentence's words.
     pub says: String,
+    /// Its home on the local sites, from their root, as the site that is
+    /// home to it says (homes.rs); none when no site is.
+    pub address: Option<String>,
 }
 
 /// One of the system's four parts.
@@ -128,6 +131,7 @@ impl System {
                     "part": part.name,
                     "health": thing.health.word(),
                     "says": thing.says,
+                    "address": thing.address,
                 })
             })
         });
@@ -154,6 +158,7 @@ fn part_json(part: &Part) -> Value {
             "name": thing.name,
             "health": thing.health.word(),
             "says": thing.says,
+            "address": thing.address,
         })).collect::<Vec<_>>(),
         "deeper": {
             "command": part.deeper.command,
@@ -195,6 +200,7 @@ mod tests {
             name: name.to_owned(),
             health,
             says: format!("{name} says so"),
+            address: None,
         }
     }
 
@@ -229,6 +235,25 @@ mod tests {
         );
         assert_eq!(records[3]["part"], "machines");
         assert_eq!(records[3]["says"], "studio says so");
+        assert_eq!(
+            records[3]["address"],
+            Value::Null,
+            "a thing with no home says so"
+        );
+    }
+
+    #[test]
+    fn a_thing_with_a_home_carries_its_address_in_every_record() {
+        let mut machines = part("machines", Health::Good);
+        let mut laptop = machine("laptop", Health::Good);
+        laptop.address = Some("mycelium/#machine=laptop".to_owned());
+        machines.things = vec![laptop];
+        let system = system(vec![machines]);
+        assert_eq!(
+            system.json()["parts"][0]["things"][0]["address"],
+            "mycelium/#machine=laptop"
+        );
+        assert_eq!(system.records()[2]["address"], "mycelium/#machine=laptop");
     }
 
     #[test]

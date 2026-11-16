@@ -113,18 +113,6 @@
     "test": "vm-desktop-launcher-holds-meetings"
   },
   {
-    "at": 1794555457,
-    "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
-    "due": "2026-11-15",
-    "owner_pr": 2078,
-    "reason": "failed twice at 1e356cd3a563, and at aefa56b98e80 after it",
-    "subtests": [
-      "test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_sure",
-      "test_a_meetings_attachments_open_from_inside_it"
-    ],
-    "test": "vm-desktop-launcher-holds-meetings"
-  },
-  {
     "at": 1794619286,
     "commit": "93eeb7412debd50edf5d9bcc77d90d702b7ceee9",
     "due": "2026-11-16",
@@ -146,17 +134,6 @@
       "test_y_flashes_its_rows_and_a_waiting_d_says_what_it_takes"
     ],
     "test": "vm-desktop-looks-vi"
-  },
-  {
-    "at": 1794528605,
-    "commit": "039909ee6f729f3c8d44e0ca2acb523133ce9be4",
-    "due": "2026-11-15",
-    "owner_pr": 3827,
-    "reason": "failed, then passed, at 039909ee6f72",
-    "subtests": [
-      "test_a_place_its_chord_opened_is_drawn_as_it_stood"
-    ],
-    "test": "the-launcher-opens-on-what-it-kept-on-niri"
   },
   {
     "at": 1794538359,

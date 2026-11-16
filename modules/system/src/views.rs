@@ -3,7 +3,8 @@
 //! goes deeper. What a line says is the point of it, so in a terminal it
 //! wraps under itself rather than giving way. Every line that starts a
 //! record names it, as docs/commands.md asks, so `system | grep network`
-//! reads alone, and into a pipe each record is one line.
+//! reads alone, and into a pipe each record is one line. A thing with a home
+//! on the local sites is a link to it, where the terminal draws links.
 
 use terminal_kit::Pen;
 use terminal_kit::layout::{self, Align, GAP, ITEMS, MARK, Room};
@@ -23,9 +24,14 @@ fn marked(health: Health) -> (&'static str, &'static str) {
     }
 }
 
+/// A record's line: its name, how it stands, what it says, and its home on
+/// the local sites when it has one.
+type Record<'a> = (String, Health, &'a str, Option<String>);
+
 /// Records as lines: the mark, the name and the health's word each in a
-/// column of their own, then what it says, wrapped under itself.
-fn records(records: &[(String, Health, &str)], pen: &Pen, room: Room) -> Vec<String> {
+/// column of their own, then what it says, wrapped under itself. A name
+/// with a home links to it.
+fn records(records: &[Record], pen: &Pen, room: Room) -> Vec<String> {
     let names = records
         .iter()
         .map(|(name, ..)| layout::width(name))
@@ -33,13 +39,13 @@ fn records(records: &[(String, Health, &str)], pen: &Pen, room: Room) -> Vec<Str
         .unwrap_or(0);
     let words = records
         .iter()
-        .map(|(_, health, _)| layout::width(health.word()))
+        .map(|(_, health, ..)| layout::width(health.word()))
         .max()
         .unwrap_or(0);
     let lead = MARK + names + GAP + words + GAP;
     records
         .iter()
-        .map(|(name, health, says)| {
+        .map(|(name, health, says, home)| {
             let (mark, role) = marked(*health);
             let mark = if mark.is_empty() {
                 " ".repeat(MARK)
@@ -47,9 +53,11 @@ fn records(records: &[(String, Health, &str)], pen: &Pen, room: Room) -> Vec<Str
                 pen.marked(mark, role)
             };
             let pad = |words: &str, to: usize| " ".repeat(to - layout::width(words) + GAP);
+            let drawn = pen.role("text", name);
             format!(
                 "{mark}{}{}{}{}{}",
-                pen.role("text", name),
+                home.as_ref()
+                    .map_or_else(|| drawn.clone(), |home| pen.link(home, &drawn)),
                 pad(name, names),
                 pen.role(role, health.word()),
                 pad(health.word(), words),
@@ -66,12 +74,19 @@ pub fn system(system: &System, pen: &Pen, room: Room) -> String {
         pen.title("system"),
         pen.role("muted", &format!("{ITEMS}read on {}", system.machine))
     )];
-    let parts: Vec<(String, Health, &str)> = system
+    let parts: Vec<Record> = system
         .parts
         .iter()
-        .map(|part| (part.name.to_owned(), part.health, part.says.as_str()))
+        .map(|part| {
+            (
+                part.name.to_owned(),
+                part.health,
+                part.says.as_str(),
+                Some(format!("{SITES}{}", part.deeper.site)),
+            )
+        })
         .collect();
-    let machines: Vec<(String, Health, &str)> = system
+    let machines: Vec<Record> = system
         .parts
         .iter()
         .flat_map(|part| &part.things)
@@ -81,6 +96,10 @@ pub fn system(system: &System, pen: &Pen, room: Room) -> String {
                 format!("machine {}", thing.name),
                 thing.health,
                 thing.says.as_str(),
+                thing
+                    .address
+                    .as_ref()
+                    .map(|address| format!("{SITES}{address}")),
             )
         })
         .collect();
@@ -119,6 +138,7 @@ pub fn system(system: &System, pen: &Pen, room: Room) -> String {
 mod tests {
     use super::*;
     use system::record::{Deeper, Part, Thing};
+    use terminal_kit::Ink;
 
     fn whole() -> System {
         let deeper = |command, site, launcher| Deeper {
@@ -141,6 +161,7 @@ mod tests {
                         name: "laptop".to_owned(),
                         health: Health::Watch,
                         says: "is short of memory, runs 3 busy sessions".to_owned(),
+                        address: Some("mycelium/#machine=laptop".to_owned()),
                     }],
                     deeper: deeper(
                         "mycelium machines",
@@ -197,6 +218,24 @@ mod tests {
         assert!(lines[1].starts_with(&" ".repeat(22)), "{said}");
         assert!(lines[1].chars().nth(22).is_some_and(|c| c != ' '), "{said}");
         assert!(said.contains("filling disk"), "nothing it says is lost");
+    }
+
+    #[test]
+    fn a_thing_with_a_home_links_to_it_where_links_are_drawn() {
+        let said = system(&whole(), &Pen::new(Ink::sixteen(), None), Room::Unbounded);
+        assert!(
+            said.contains("\u{1b}]8;;http://sites.localhost:8484/mycelium/#machine=laptop\u{1b}\\"),
+            "the machine links to its home: {said:?}"
+        );
+        assert!(
+            said.contains("\u{1b}]8;;http://sites.localhost:8484/network/\u{1b}\\"),
+            "a part links to its site: {said:?}"
+        );
+        let plain = system(&whole(), &Pen::plain(), Room::Unbounded);
+        assert!(
+            !plain.contains('\u{1b}'),
+            "into a pipe, the words alone: {plain:?}"
+        );
     }
 
     #[test]
