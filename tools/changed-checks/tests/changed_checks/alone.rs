@@ -110,6 +110,27 @@ fn a_gate_gives_each_check_its_change_reaches_nothing_of_the_bases_derivation() 
 }
 
 #[test]
+fn checks_are_named_without_ink_into_a_pipe_whatever_colour_is_asked() {
+    // Its readers match each row's first word, so an inked row is one
+    // they pass over, and a check none of them builds.
+    let mut always = GATING.to_vec();
+    always.extend(["--color", "always"]);
+    for (name, asked, told) in [
+        ("alone-forced", GATING.to_vec(), vec![("FORCE_COLOR", "1")]),
+        ("alone-always", always, vec![]),
+    ] {
+        let stand_in = kept_alone(name, MOVED, "M\ta.nix\n");
+        let ran = stand_in.run_told(&asked, &told);
+        assert!(ran.status.success(), "{}", text(&ran.stderr));
+        assert_eq!(
+            text(&ran.stdout),
+            "KIND     CHECK\nchanged  a\n",
+            "{asked:?} with {told:?} inked the rows its readers match"
+        );
+    }
+}
+
+#[test]
 fn a_gate_evaluates_each_check_whose_read_file_its_change_moved() {
     let stand_in = kept_alone("alone-touched", MOVED, "M\ta.nix\n");
 

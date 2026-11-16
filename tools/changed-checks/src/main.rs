@@ -95,6 +95,7 @@ mod there;
 mod turn;
 
 use std::env;
+use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::thread;
@@ -240,7 +241,15 @@ fn main() -> ExitCode {
         }
         let options = Options::parse(arguments.iter().cloned())
             .map_err(|failure| failure.try_this("changed-checks --help"))?;
-        changed(&options, &context.out)
+        // Its readers match each row's first word, so into a pipe the rows
+        // go uninked whatever colour was asked; a terminal's inks as asked.
+        let plain = Pen::plain();
+        let out = if io::stdout().is_terminal() {
+            &context.out
+        } else {
+            &plain
+        };
+        changed(&options, out)
     })
 }
 
