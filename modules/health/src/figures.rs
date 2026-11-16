@@ -52,13 +52,13 @@ pub fn side(name: &str) -> Side {
 }
 
 /// Each figure of the day, by its name: the slowest boot and shutdown in
-/// seconds, each kind's errors, his crashes and ours, the minutes lost in the day's worst
-/// moments, in all and by place, with the turns he stopped and the agents
-/// he corrected in them, the most each watched program held, the agents
-/// that died, the most defunct children under one parent, and the asks for a secret: shown, said yes to unread, asked
-/// again, avoidable; and the most any disk was in use, and each by its
-/// mount, when a guard said any; each part of
-/// the launcher's median, p99, slowest and share past its bar, the same of
+/// seconds, each kind's errors, his crashes and ours, the minutes lost in
+/// the day's worst moments, in all and by place, with the turns he stopped
+/// and the agents he corrected in them, the most each watched program
+/// held, the agents that died, the most defunct children under one parent,
+/// and the asks for a secret: shown, said yes to unread, asked again,
+/// avoidable; and the most any disk was in use, and each by its mount,
+/// when a guard said any; each part of the launcher's median, p99, slowest and share past its bar, the same of
 /// programs' openings and ends with how many outlived the wait, and the
 /// worst p99 of typing into pi, when any were timed. A kind with no errors is
 /// written as none, so its days have a median.
