@@ -2860,6 +2860,8 @@ fn named(dir: &Path, machines: &mut Machines, lent: Option<&Lent>, keeper: Optio
         (None, None) => State::None,
     };
     machines.proven(lent.map(|builder| builder.line.as_str()), state);
+    machines.way_stalled(matches!((lent, health), (Some(builder), Some(health))
+            if health.builder == builder.name && health.stalled));
     machines.placing(lent.map(|builder| placed(&builder.place)));
     machines.show(lent.map(Lent::lending));
     proof::write(dir, health, machines.beside_health().as_deref(), now());
