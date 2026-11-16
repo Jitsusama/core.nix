@@ -765,6 +765,7 @@ in
         && !((launching linux).fence.none ? runs)
         && lib.drop 1 ((launching mac).fence.strict.runs or [ ]) == lib.drop 1 launcher
         && lib.hasSuffix "/bin/pi-fence" (lib.head ((launching mac).fence.strict.runs or [ "" ]))
+        && (launching mac).fence.fence.runs or null == (launching mac).fence.strict.runs
         && !((launching mac).fence.none ? runs)
         && (
           inVm.within or null == {
