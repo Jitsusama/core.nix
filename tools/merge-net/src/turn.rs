@@ -43,8 +43,8 @@ use std::process::{Command, ExitCode};
 
 use crate::kit;
 use crate::places::Places;
-use crate_reach::Crates;
 use crate::waited::Waited;
+use crate_reach::Crates;
 
 /// The longest a gate is waited on. Gates have run past an hour on
 /// saturated lenders, so this leaves room, while a gate that hangs still

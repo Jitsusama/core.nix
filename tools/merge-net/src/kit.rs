@@ -28,8 +28,8 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate_reach::Crates;
 use crate::turn::Gate;
+use crate_reach::Crates;
 
 /// Where the kit's files are, from the top of the repository.
 pub const KIT: &str = "modules/terminal-kit/";
