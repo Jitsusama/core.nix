@@ -879,8 +879,19 @@ def test_swayimg_typed_lists_the_picture_it_shows_under_it_and_return_steps_in(
             return "tidepool.png" in rows[at + 1 : at + 4] and note.startswith("1 open")
 
         desktop.launcher_until(under_swayimg)
-        # The picture it shows is listed once, as open, and so never counted as recent too.
-        assert desktop.showing()["selected"]["note"] == "1 open", desktop.showing()["selected"]
+        # The picture it shows is listed once, as open, and so never counted as recent too. A
+        # picture an earlier subtest opened in it, as the file chooser's look.png is, is recent.
+        shown = desktop.showing()
+        rows = shown["rows"]
+        at = rows.index(shown["selected"]["name"])
+        others = [
+            row
+            for row in rows[at + 1 : at + 4]
+            if row.endswith(".png") and row != "tidepool.png" and not row.startswith("Swayimg:")
+        ]
+        counted = "1 open" + (f" · {len(others)} recent" if others else "")
+        assert rows.count("tidepool.png") == 1, rows
+        assert shown["selected"]["note"] == counted, (shown["selected"], rows)
         desktop.shoot("launcher-swayimg-typed")
         # Starting it would open nothing, so Return steps into its page,
         # which holds its Recent and its keys, and never starts it. It lands
