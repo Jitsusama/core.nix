@@ -5006,10 +5006,6 @@
     terminal's show walked into it; never open on another place, at home or on another's find,
     and at once on stepping in
   '';
-  wifi-sessions-survive-fragmented-memory = ''
-    the XPS 14's kernel lets Wi-Fi's block-ack reorder buffers come from vmalloc when memory is
-    too fragmented for an order-5 block, and frees them nowhere with kfree()
-  '';
   wifid-calls-passes-clippy = ''
     clippy finds nothing in what tells wifid of calls, or its tests
   '';
