@@ -298,6 +298,39 @@ function leansOut(way) {
     return way < 0 ? 1 : 0;
 }
 
+// A swat (VKCF3Z, 73c59942): a pointer crossing the cat on its way
+// elsewhere, gone before a pet would lean it in, has it bat after it about
+// one time in three, its paw back down SWATS ms on, never twice within
+// SWATS_APART ms, so it plays rather than nags, and never as it dozes,
+// which only a pet wakes it from.
+const SWATS = 200;
+const SWATS_APART = 20000;
+
+// Whether a pointer that `crossed` the cat, SINCE ms after its last swat,
+// has it swat, by a `roll` in [0, 1); never `asleep`.
+function swats(crossed, since, asleep, roll) {
+    return crossed && since >= SWATS_APART && !asleep && roll < 1 / 3;
+}
+
+// The cat swatting `way` (leansTo), toward the side the pointer left by,
+// in the theme's `pixels`: batting's raised paw, beside its head on its
+// tail's side. To its left, the same paw mirrored beside sitting's head,
+// over sitting's own body and tail, so only the paw moves; its drawing
+// then starts three cells out (swatsOut).
+function swatting(way, pixels) {
+    if (way > 0) {
+        return pixels.batting;
+    }
+    const paw = row => row.slice(5).split("").reverse().join("");
+    return pixels.nothingHere.map((row, r) => r < HEAD_ROWS ? `${paw(pixels.batting[r])}${row}`
+        : `...${row}`);
+}
+
+// How many cells left of where it sits its drawing swatting `way` begins.
+function swatsOut(way) {
+    return way < 0 ? 3 : 0;
+}
+
 // How the yarn at `yarn` (MarginCatGames.js's frame) looks, as a word that
 // changes only as its pose or its facing does, so the screen builds its
 // drawing again only then rather than each frame it rolls; "" with none.

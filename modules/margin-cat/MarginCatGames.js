@@ -46,6 +46,12 @@ const FASTEST = 0.2;
 const HOLDS = 34;
 // Its wiggle, back a cell and forth again, so many times.
 const TIMES = 2;
+// A click on the yarn rolls it this many cells away from the click, by
+// chance, slowing over FOLLOWS ms at the least, and the cat's bat after it
+// sends it at most NUDGES more (VKCF3Z 73c59942).
+const CLICKED = { least: 4, most: 8 };
+const FOLLOWS = 600;
+const NUDGES = 3;
 
 // The room past each side of the cat from its `seat`, in logical pixels:
 // to its window's column's ends and the screen's, and on the side the
@@ -179,6 +185,104 @@ function play(kind, at) {
     return played(kind, way, dir, yarn);
 }
 
+// Its yarn by a click on the cat, `at` as play() takes it (Joel,
+// 2026-11-12: "i want to be able to also use my mouse to engage with my
+// animals."): rolling in from behind its column's edge toward the more
+// room, as the play's does, never appearing at rest, to lie NEAR its paws
+// as it notices and eyes it. It sits as it sat, and the yarn `rests` there
+// once it's done, for a click on it (chase), with no timer and nothing
+// drawn till then. Null where the yarn has no room to lie.
+function fetch(at) {
+    const spare = room(at);
+    if (spare === null) {
+        return null;
+    }
+    const c = at.cell;
+    const dir = spare.right >= spare.left ? 1 : -1;
+    const ahead = dir > 0 ? spare.right : spare.left;
+    if (ahead < (NEAR + MarginCat.CELLS + 1) * c) {
+        return null;
+    }
+    const x = at.seat.x;
+    const past = cells => (dir > 0 ? x + at.wide + cells * c : x - at.wide - cells * c);
+    const far = Math.floor(ahead / c) + 1;
+    const near = past(NEAR);
+    const lies = { from: near, to: near, facing: -dir };
+    const yarn = {
+        within: { left: x - spare.left, right: x + at.wide + spare.right },
+        tracks: { waits: { from: past(far), to: near }, notices: lies, eyes: lies },
+        rests: { x: near, facing: -dir }
+    };
+    const way = Ways.begun(Object.assign({}, at, { facing: 0 }), at.seat);
+    Ways.holds(way, "waits", rolls(far - NEAR, ROLLS_IN));
+    way.facing = dir;
+    Ways.holds(way, "notices", NOTICES);
+    Ways.holds(way, "eyes", EYES + (at.pause ?? 0));
+    return played("fetch", way, dir, yarn);
+}
+
+// A click on its yarn, lying at `yarn` ({ x, facing }), on its `side` of
+// the yarn (-1 its left, 1 its right), as the cat sits at `at`: the yarn
+// rolls 4 to 8 cells away from the click by `chance` (0 to 1), slowing, as
+// the cat's eyes follow it; never past a cell short of its room's ends, nor
+// nearer the cat than NEAR. The cat walks up to it, NEAR short, where it's
+// further off, and bats it on a few cells more, or, with no room for that,
+// eyes it; then it sits, the yarn lying where it went, till the next click
+// (VKCF3Z 73c59942: "Clicks are not a game loop"). Null where the yarn
+// can't roll a cell that way.
+function chase(at, yarn, side, chance) {
+    const spare = room(at);
+    if (spare === null || !yarn) {
+        return null;
+    }
+    const c = at.cell;
+    const x = at.seat.x;
+    const within = { left: x - spare.left, right: x + at.wide + spare.right };
+    const dir = side < 0 ? 1 : -1;
+    // The yarn's left may go from a cell inside its room to a cell short of
+    // its far end, and no nearer the cat than NEAR.
+    const toward = yarn.x >= x ? 1 : -1;
+    const low = Math.max(within.left + c, toward > 0 ? x + at.wide + NEAR * c : -Infinity);
+    const high = Math.min(within.right - at.wide - c,
+        toward < 0 ? x - at.wide - NEAR * c : Infinity);
+    const free = Math.floor((dir > 0 ? high - yarn.x : yarn.x - low) / c + 1e-6);
+    const wanted = CLICKED.least + Math.round(chance * (CLICKED.most - CLICKED.least));
+    const cells = Math.min(wanted, free);
+    if (cells < 1) {
+        return null;
+    }
+    const rolledTo = yarn.x + dir * cells * c;
+    const lies = (still, facing) => ({ from: still, to: still, facing });
+    const tracks = { follows: { from: yarn.x, to: rolledTo } };
+    const way = Ways.begun(Object.assign({}, at, { facing: toward }), at.seat);
+    Ways.holds(way, "follows", rolls(cells, FOLLOWS));
+    const stands = rolledTo - toward * (NEAR * c + at.wide);
+    if (toward * (stands - x) > 1e-6) {
+        Ways.goes(way, stands, at.seat.y);
+        tracks.goes = lies(rolledTo, dir);
+    }
+    // A bat sends it on, away from the cat, short of its room's end.
+    const onward = Math.floor((toward > 0 ? within.right - at.wide - c - rolledTo
+        : rolledTo - within.left - c) / c + 1e-6);
+    const nudges = Math.min(NUDGES, onward);
+    let restsAt = rolledTo;
+    let restsFacing = dir;
+    if (nudges >= 1) {
+        restsAt = rolledTo + toward * nudges * c;
+        restsFacing = toward;
+        tracks.bats = lies(rolledTo, dir);
+        tracks.watches = { from: rolledTo, to: restsAt };
+        Ways.holds(way, "bats", BATS);
+        Ways.holds(way, "watches", rolls(nudges, WATCHES));
+    } else {
+        tracks.eyes = lies(rolledTo, dir);
+        Ways.holds(way, "eyes", EYES);
+    }
+    return played("chase", way, toward, {
+        within: yarn.within ?? within, tracks, rests: { x: restsAt, facing: restsFacing }
+    });
+}
+
 // How far a ball of yarn has rolled `p` of the way through its beat, as
 // rolling slows it at a steady rate: from its fastest as it's set off to
 // still as it gets there. The theme's ease-out is steeper, and had it
@@ -190,7 +294,8 @@ function rolled(p) {
 // Where a play has the cat `t` ms in, as Ways.frame says, and its `yarn`:
 // its left `x` and `y`, its drawing by the theme's name, the way it faces
 // (the way it rolls, or last rolled) and the room it's drawn `within`;
-// null where the play has none, or is done. Its drawing turns every TURNS_EVERY cells, or
+// null where the play has none, or is done, but where a click's play
+// leaves it lying (`rests`). Its drawing turns every TURNS_EVERY cells, or
 // over more ground where it's set off so fast that a drawing would show
 // for less than HOLDS ms; it only slows from there. It turns just past
 // each stretch, so never on the cell it stops on.
@@ -198,6 +303,11 @@ function frame(playing, t) {
     const now = Ways.frame(playing, t);
     const beat = playing.beats.find(one => t < one.ends);
     const track = beat && playing.yarn ? playing.yarn.tracks[beat.name] : null;
+    const rests = !beat ? playing.yarn?.rests : null;
+    if (rests) {
+        return Object.assign(now, { yarn: { x: rests.x, y: playing.from.y, pose: "yarn",
+            facing: rests.facing, within: playing.yarn.within } });
+    }
     if (!track) {
         return Object.assign(now, { yarn: null });
     }

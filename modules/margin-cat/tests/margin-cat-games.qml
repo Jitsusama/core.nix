@@ -1,5 +1,6 @@
 // The margin cat's plays that move it (MarginCatGames.js): a hop, a pounce
-// at nothing and its ball of yarn, each a way of the walk's own beats, so
+// at nothing and its ball of yarn, by itself or by Joel's clicks, each a
+// way of the walk's own beats, so
 // they keep the rules a walk keeps (RSCH-20261113-24R2QV): whole cells, a
 // leap that rises, tucks and falls, and no drawing seen for less than two
 // frames at 60 Hz, and how often the yarn comes (MarginCatPlays.js). Run in
@@ -36,6 +37,7 @@ QtObject {
         drawn(expect);
         pounce(expect);
         hop(expect);
+        clicks(expect);
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
@@ -257,6 +259,66 @@ QtObject {
                 shortest(all, frame => frame.pose) >= 33], [true, true]);
         expect("with no room for its leap, there's no pounce",
             Games.play("pounce", sat({ column: { left: 95, top: 30, width: 16 } })), null);
+    }
+
+    // Its yarn by a click (VKCF3Z 73c59942; Joel, 2026-11-12: "i want to be
+    // able to also use my mouse to engage with my animals."): a click on
+    // the cat rolls it in, and one on the yarn rolls it away from the
+    // click, the cat walking after it and batting it on, then sitting.
+    function clicks(expect) {
+        const fetched = Games.fetch(sat());
+        const at = (played, t) => Games.frame(played, t);
+        expect("a click on the cat rolls its yarn in, noticed and eyed",
+            fetched.beats.map(each => each.name), ["waits", "notices", "eyes"]);
+        expect("from just behind its column's edge, never appearing at rest",
+            [at(fetched, 0).yarn.x, at(fetched, 0).yarn.pose], [1001, "yarnRollingA"]);
+        expect("and lies by its paws once it's done, the cat sitting where it sat",
+            [at(fetched, fetched.ends + 5000).yarn, fetched.to, at(fetched, fetched.ends).pose],
+            [{ x: 110, y: 20, pose: "yarn", facing: -1, within: { left: 0, right: 1000 } },
+                { x: 100, y: 20 }, null]);
+        expect("with no room to lie, no yarn",
+            Games.fetch(sat({ column: { left: 95, top: 30, width: 16 } })), null);
+        const lying = { x: 110, facing: -1 };
+        const chased = chance => Games.chase(sat(), lying, -1, chance);
+        const rested = played => at(played, played.ends + 5000).yarn.x;
+        const followed = played => played.beats.find(each => each.name === "follows");
+        const rolledTo = played => at(played, followed(played).ends - 1e-6).yarn.x;
+        expect("a click on the yarn's near side rolls it four to eight cells away",
+            [rolledTo(chased(0)), rolledTo(chased(1))], [114, 118]);
+        const rolling = frames(chased(1)).filter(frame => frame.beat === "follows")
+            .map(frame => frame.yarn.x);
+        const half = Math.floor(rolling.length / 2);
+        expect("slowing as it goes, never back",
+            [rolling.every((x, i) => i === 0 || x >= rolling[i - 1]),
+                rolling[half] - rolling[0] > rolling[rolling.length - 1] - rolling[half]],
+            [true, true]);
+        const played = chased(0);
+        expect("the cat's eyes follow it, it walks up to it and bats it on",
+            played.beats.map(each => each.name), ["follows", "goes", "bats", "watches"]);
+        expect("two cells short of it, and the bat sends it three more",
+            [played.to, rested(played), at(played, played.ends).done],
+            [{ x: 104, y: 20 }, 117, true]);
+        const short = Games.chase(sat({ column: { left: 0, top: 30, width: 125 } }), lying, -1,
+            1);
+        expect("a cell short of its column's end, and with no room for a bat, it eyes it",
+            [rolledTo(short), rested(short), short.beats.map(each => each.name)],
+            [116, 116, ["follows", "goes", "eyes"]]);
+        const back = Games.chase(sat(), { x: 130, facing: 1 }, 1, 0);
+        expect("clicked on its far side, it rolls back toward the cat, and is batted away",
+            [rolledTo(back), back.to, rested(back)], [126, { x: 116, y: 20 }, 129]);
+        expect("never nearer the cat than two cells",
+            rolledTo(Games.chase(sat(), { x: 113, facing: 1 }, 1, 1)), 110);
+        expect("nor at all where it can't roll a cell",
+            Games.chase(sat(), { x: 110, facing: 1 }, 1, 1), null);
+        const all = [fetched, played, short, back].reduce((them, one) =>
+            them.concat(frames(one)), []);
+        expect("the cat never on the yarn", all.every(frame => frame.yarn === null
+            || frame.x + 8 <= frame.yarn.x || frame.yarn.x + 8 <= frame.x), true);
+        expect("in whole cells, no drawing of either for less than two frames at 60 Hz",
+            [all.every(frame => Number.isInteger(frame.x) && Number.isInteger(frame.yarn.x)),
+                [fetched, played, short, back].every(one =>
+                    shortest(frames(one), frame => frame.pose) >= 33
+                    && shortest(frames(one), frame => frame.yarn.pose) >= 33)], [true, true]);
     }
 
     // A hop a cell straight up from a crouch, landing crouched where it sat

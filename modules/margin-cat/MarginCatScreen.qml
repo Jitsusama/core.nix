@@ -133,8 +133,8 @@ PanelWindow {
     // Whether it's sitting still, neither going, moving, at play nor
     // stretching, so a pointer may pet it; and since when, so one it
     // came to under isn't one that moved onto it (MarginCat.strokes).
-    readonly property bool still: going === null && moving === null && yarnAt === null
-        && window.scene.posed === "" && !window.scene.stretching
+    readonly property bool still: going === null && moving === null
+        && (yarnAt === null || yarnLies) && window.scene.posed === "" && !window.scene.stretching
     property real stillSince: 0
     onStillChanged: {
         stillSince = Date.now();
@@ -148,6 +148,13 @@ PanelWindow {
     property int leaning: 0
     property int leaningTo: 0
     onLeaningChanged: say()
+    // Where across its cells the pointer was last seen, so a swat after
+    // one crossing it reaches toward the side it left by; the way its paw
+    // is out, 0 while it isn't (MarginCat.swatting); and when it last was.
+    property real across: 0
+    property int swatting: 0
+    property real swattedAt: 0
+    onSwattingChanged: say()
     // When niri showed each frame of the walk under way, how long the
     // shell took to draw each, and how many niri never showed, said
     // once it sits (MarginCat.walked). Kept as plain arrays, pushed
@@ -187,8 +194,9 @@ PanelWindow {
         : Paths.marks(MarginMarks.drawn, modelData.width, Theme.gap)
     // What it's drawn as: a pose of its walk, turned the way it
     // goes and the way it climbs, leaning into a pointer, or the
-    // scope's, sitting, asleep or stretching.
-    readonly property var drawn: leaning !== 0 ? MarginCat.leaning(leaning, Theme.pixels)
+    // scope's, sitting, asleep or stretching, or swatting after one.
+    readonly property var drawn: swatting !== 0 ? MarginCat.swatting(swatting, Theme.pixels)
+        : leaning !== 0 ? MarginCat.leaning(leaning, Theme.pixels)
         : pose ? MarginCat.quartered(
             MarginCat.turned(Theme.pixels[pose] ?? window.scene.drawing, facing), turn)
         : window.scene.drawing
@@ -684,7 +692,44 @@ PanelWindow {
     function play(asked: var): void {
         if (asked === null)
             return;
-        const playing = Games.play(asked.kind, {
+        const playing = Games.play(asked.kind, playsFrom(asked.pause));
+        if (playing === null)
+            return;
+        window.scene.strollTaken = true;
+        handsBack = true;
+        plays(playing);
+    }
+
+    // Its yarn by Joel's click on it (VKCF3Z 73c59942; Joel, 2026-11-12:
+    // "i want to be able to also use my mouse to engage with my
+    // animals."), rolled in where it sits still and awake with none out.
+    // No scene's, so no scene waits on it.
+    function clicked(): void {
+        if (!still || yarnAt !== null || window.scene.asleep || place === null || column === null
+            || resting.running || wanted !== sat)
+            return;
+        plays(Games.fetch(playsFrom(0)));
+    }
+
+    // A click on its yarn lying by it, on the yarn's `side` (-1 its left,
+    // 1 its right): the yarn rolls away from it and the cat goes after it,
+    // then sits. Its yarn kept again only once it's done, so a key cutting
+    // the chase short fades it where it rolled.
+    function batted(side: int): void {
+        if (!yarnLies || !still || window.scene.asleep || place === null || column === null
+            || resting.running || wanted !== sat)
+            return;
+        const playing = Games.chase(playsFrom(0), yarnAt, side, Math.random());
+        if (playing === null)
+            return;
+        yarnKept = false;
+        plays(playing);
+    }
+
+    // Where it plays from, as a play takes it (MarginCatGames.js), thinking
+    // `pause` ms.
+    function playsFrom(pause: real): var {
+        return {
             seat: { x: place.x, y: place.y },
             column,
             across: modelData.width,
@@ -694,13 +739,15 @@ PanelWindow {
             cell,
             wide: size,
             tall: size,
-            pause: asked.pause,
+            pause,
             slowdown: Theme.motion.slowdown
-        });
+        };
+    }
+
+    // A play, `playing`, run on the walker as a walk is.
+    function plays(playing: var): void {
         if (playing === null)
             return;
-        window.scene.strollTaken = true;
-        handsBack = true;
         roams = null;
         shown = [];
         costs = [];
@@ -721,11 +768,19 @@ PanelWindow {
 
     // Its yarn where a play has it, or null; and, a key cutting the
     // play short, how much of it is left as it fades where it lay,
-    // rather than vanishing.
+    // rather than vanishing. A click's play leaves it lying (`yarnKept`),
+    // drawn once and still, with no timer, till a click on it sends it
+    // on, or any walk, other play or doze fades it.
     property var yarnAt: null
     property real yarnLeft: 1
+    property bool yarnKept: false
+    readonly property bool yarnLies: yarnKept && yarnAt !== null && !yarnFades.running
+    onYarnLiesChanged: say()
     onGoingChanged: {
-        if (yarnAt !== null && going?.kind === undefined)
+        if (yarnAt === null || yarnFades.running)
+            return;
+        if (going === null ? !yarnKept : going.kind === undefined
+            || (yarnKept && going.kind !== "chase"))
             yarnFades.restart();
     }
     NumberAnimation {
@@ -737,6 +792,7 @@ PanelWindow {
         duration: Theme.motion.short
         onFinished: {
             window.yarnAt = null;
+            window.yarnKept = false;
             window.yarnLeft = 1;
         }
     }
@@ -790,6 +846,9 @@ PanelWindow {
             if (kind !== undefined && !yarnFades.running)
                 window.yarnAt = now.yarn;
             if (now.done) {
+                // A click's play leaves its yarn lying where it ends.
+                if (window.yarnAt !== null && !yarnFades.running)
+                    window.yarnKept = true;
                 window.tell(kind ?? "walk");
                 window.halt();
                 window.sat = window.goingTo;
@@ -900,13 +959,21 @@ PanelWindow {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     // Only its own cells take the pointer, to be petted, so the gap
     // around it stays the windows' and a click beside it reaches them.
-    mask: Region { item: cat }
+    mask: Region {
+        item: cat
+
+        Region {
+            item: yarnHit
+            intersection: Intersection.Combine
+        }
+    }
 
     // The pointer over it at `at`, in the screen's pixels, `across` its
     // cells: one that moved onto it as it sat still starts a pet.
     function felt(at: point, across: real): void {
         const moved = MarginCat.strokes(pointer, at, still ? Date.now() - stillSince : -1);
         pointer = { x: at.x, y: at.y };
+        window.across = across;
         if (moved && leaning === 0 && !petting.running) {
             leaningTo = MarginCat.leansTo(across, size);
             petting.restart();
@@ -915,29 +982,43 @@ PanelWindow {
         }
     }
 
-    // The pointer gone from it: a pet not yet come never comes, and a
-    // lean is held a moment before it sits again.
+    // The pointer gone from it: a pet not yet come never comes, though
+    // one that only crossed it may have it swat after it, and a lean is
+    // held a moment before it sits again. A swat under way plays out.
     function unfelt(): void {
         pointer = null;
-        if (leaning === 0)
-            petting.stop();
-        else
+        if (swatting !== 0)
+            return;
+        const crossed = leaning === 0 && petting.running && still;
+        if (leaning !== 0) {
             petting.restart();
+        } else if (MarginCat.swats(crossed, Date.now() - swattedAt, window.scene.asleep,
+            Math.random())) {
+            swatting = MarginCat.leansTo(across, size);
+            swattedAt = Date.now();
+            petting.restart();
+        } else {
+            petting.stop();
+        }
     }
 
-    // No pet coming and no lean, as it sets off or dozes.
+    // No pet coming, no lean and no swat, as it sets off or dozes.
     function unpetted(): void {
         petting.stop();
         leaning = 0;
+        swatting = 0;
     }
 
-    // Its one timer for a pet: run only while a pointer comes onto it or
-    // leaves it, never at rest.
+    // Its one timer for a pet and a swat: run only while a pointer comes
+    // onto it or leaves it, and for a swat's paw, never at rest.
     Timer {
         id: petting
-        interval: window.leaning === 0 ? MarginCat.PETS : MarginCat.PETTED
+        interval: window.swatting !== 0 ? MarginCat.SWATS
+            : window.leaning === 0 ? MarginCat.PETS : MarginCat.PETTED
         onTriggered: {
-            if (window.leaning !== 0)
+            if (window.swatting !== 0)
+                window.swatting = 0;
+            else if (window.leaning !== 0)
                 window.leaning = 0;
             else if (hand.hovered && window.still && !window.scene.asleep)
                 window.leaning = window.leaningTo;
@@ -973,6 +1054,8 @@ PanelWindow {
             asleep: window.scene.asleep,
             stretching: window.scene.stretching,
             leaning: window.leaning,
+            swatting: window.swatting,
+            yarn: yarnLies ? { x: yarnAt.x, y: yarnAt.y } : null,
             walk: going === null || stepped === null ? null : {
                 t: Math.round(walker.elapsedTime * 10000) / 10,
                 beat: stepped.beat,
@@ -1008,6 +1091,8 @@ PanelWindow {
     onAsleepChanged: {
         if (asleep)
             unpetted();
+        if (asleep && yarnLies)
+            yarnFades.restart();
         say();
     }
     readonly property bool stretching: window.scene.stretching
@@ -1048,14 +1133,21 @@ PanelWindow {
             }
         }
 
+        // A click on it rolls its yarn in.
+        TapHandler {
+            onTapped: window.clicked()
+        }
+
         Repeater {
             model: Pixels.runs(window.drawn)
 
             Rectangle {
                 required property var modelData
 
-                // A lean to its left starts a cell out (MarginCat.leansOut).
-                x: (modelData.x - MarginCat.leansOut(window.leaning)) * window.cell
+                // A lean to its left starts a cell out (MarginCat.leansOut),
+                // and a swat to its left three (MarginCat.swatsOut).
+                x: (modelData.x - MarginCat.leansOut(window.leaning)
+                    - MarginCat.swatsOut(window.swatting)) * window.cell
                 y: modelData.y * window.cell
                 width: modelData.across * window.cell
                 height: window.cell
@@ -1099,6 +1191,21 @@ PanelWindow {
                     color: Theme.voice
                 }
             }
+        }
+    }
+
+    // Where the yarn lying by it takes a click, on its cells only while
+    // it lies there, so they leave the input region as its fade ends.
+    Item {
+        id: yarnHit
+
+        x: window.yarnAt ? window.snapped(window.yarnAt.x) : 0
+        y: window.yarnAt ? window.snapped(window.yarnAt.y) : 0
+        width: window.yarnKept && window.yarnAt !== null ? window.size : 0
+        height: width
+
+        TapHandler {
+            onTapped: eventPoint => window.batted(eventPoint.position.x < window.size / 2 ? -1 : 1)
         }
     }
 

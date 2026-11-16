@@ -27,6 +27,7 @@ QtObject {
         };
         strokes(expect);
         leans(expect);
+        swats(expect);
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
@@ -69,5 +70,44 @@ QtObject {
             [toLeft[0], toRight[0], toLeft[1], toRight[1], /#\.#/.test(toLeft[2] + toRight[2])],
             [moved(sitting[0], -1), moved(sitting[0], 1), moved(sitting[1], -1),
                 moved(sitting[1], 1), false]);
+    }
+
+    // A swat (VKCF3Z, 73c59942): a pointer crossing it on its way elsewhere,
+    // gone before a pet would lean it in, has it swat after it now and then,
+    // never so often it nags, and never as it dozes.
+    function swats(expect) {
+        const rolls = Array.from({ length: 100 }, (_, i) => i / 100);
+        expect("a pointer crossing it swats about one time in three",
+            rolls.filter(roll => MarginCat.swats(true, 30000, false, roll)).length, 34);
+        expect("never one that stopped on it, never twice within 20 s, never asleep",
+            [MarginCat.swats(false, 30000, false, 0), MarginCat.swats(true, 19999, false, 0),
+                MarginCat.swats(true, 20000, false, 0), MarginCat.swats(true, 30000, true, 0)],
+            [false, false, true, false]);
+        expect("its paw is back down within 250 ms", MarginCat.SWATS <= 250, true);
+        // Each drawing's cells as they land on the screen, from three cells
+        // left of where it sits.
+        const padded = line => line.padEnd(12, ".");
+        const screen = (drawing, out) => drawing.map(row => padded(".".repeat(3 - out) + row));
+        const sitting = screen(Drawings.poses.nothingHere, 0);
+        const toLeft = screen(MarginCat.swatting(-1, Drawings.poses), MarginCat.swatsOut(-1));
+        const toRight = screen(MarginCat.swatting(1, Drawings.poses), MarginCat.swatsOut(1));
+        expect("swatting either way, its base and tail are on sitting's cells",
+            [toLeft.slice(5), toRight.slice(5)], [sitting.slice(5), sitting.slice(5)]);
+        // Its paw is what's lit that sitting doesn't light, by columns.
+        const paw = drawing => drawing.slice(0, 5).reduce((lit, row, r) => lit.concat(row
+            .split("").map((cell, c) => cell === "#" && sitting[r][c] !== "#" ? c : -1)
+            .filter(c => c >= 0)), []);
+        const head = sitting.slice(0, 5).map(row => [row.indexOf("#"), row.lastIndexOf("#")]);
+        const left = Math.min(...head.map(ends => ends[0]).filter(c => c >= 0));
+        const right = Math.max(...head.map(ends => ends[1]));
+        expect("a paw raised toward the side it left by, beside its head, the rest unmoved",
+            [paw(toLeft).length > 0 && paw(toLeft).every(c => c < left),
+                paw(toRight).length > 0 && paw(toRight).every(c => c > right),
+                toLeft.slice(0, 5).map(row => row.replace(/^.{3}/, "...")),
+                toRight.slice(0, 5).map(row => row.slice(0, 8))],
+            [true, true, sitting.slice(0, 5), sitting.slice(0, 5).map(row => row.slice(0, 8))]);
+        expect("either way, the same paw",
+            toLeft.slice(0, 5).map(row => row.slice(0, 3).split("").reverse().join("")),
+            toRight.slice(0, 5).map(row => row.slice(8, 11)));
     }
 }
