@@ -173,7 +173,8 @@
         "refusedTo": "refused to go to {machine}",
         "note": "{lead} \u00b7 {why}",
         "ended": "A Session That Ended",
-        "someone": "an orchestrator"
+        "someone": "an orchestrator",
+        "you": "you"
       }
     },
     {

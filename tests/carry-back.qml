@@ -77,5 +77,8 @@ QtObject {
         Expect.same("nor is a row that is no carry",
             CarryBack.underWay({ kind: "session", held: { state: "carrying" } }), null);
         Expect.same("nor nothing", CarryBack.underWay(null), null);
+        Expect.same("nor a carry Joel made himself, since he knows it",
+            CarryBack.underWay({ kind: "carry", held: { state: "carrying", by: "person",
+                at: "2026-11-16T01:00:00Z" } }), null);
     }
 }

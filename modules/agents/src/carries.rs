@@ -100,7 +100,12 @@ fn carry(record: &Value, parent: &str, rows: &HashMap<String, &Value>, words: &W
     let id = text(record, "key").trim_start_matches("carry:");
     let name =
         named(rows, text(record, "address")).unwrap_or_else(|| said.word("ended").to_owned());
-    let by = named(rows, text(record, "by")).unwrap_or_else(|| said.word("someone").to_owned());
+    // A carry Joel asked himself says so, as the node judged who asked.
+    let by = if text(record, "by") == "person" {
+        said.word("you").to_owned()
+    } else {
+        named(rows, text(record, "by")).unwrap_or_else(|| said.word("someone").to_owned())
+    };
     let to = text(record, "to");
     let side = state_of(record)
         .map(|(_, word, _, keep, hue)| vec![item(said.word(word), *keep, hue)])
@@ -127,7 +132,7 @@ fn carry(record: &Value, parent: &str, rows: &HashMap<String, &Value>, words: &W
         "hue": "program", "depth": 1, "side": side, "note": note, "acts": back(record),
         "held": {"address": text(record, "address"), "state": text(record, "state"),
             "from": text(record, "from"), "to": to, "quest": text(record, "quest"),
-            "at": text(record, "at")},
+            "at": text(record, "at"), "by": text(record, "by")},
     })
 }
 
@@ -312,6 +317,22 @@ mod tests {
             "and no why, none said"
         );
         assert_eq!(said(&made[1]), ["about to go"]);
+    }
+
+    #[test]
+    fn a_carry_joel_made_himself_says_he_carried_it() {
+        let mut his = record("HARBOR", "2026-11-16T01:00:00Z", "ordered");
+        his["by"] = json!("person");
+        his["why"] = json!(null);
+        let made = rows(&[&his], &top(), &words());
+        assert_eq!(
+            made[1]["note"], "carried to tern by you",
+            "by him, as the node judged who asked, and with no why"
+        );
+        assert_eq!(
+            made[1]["held"]["by"], "person",
+            "which For You reads to leave his own carry out"
+        );
     }
 
     #[test]
