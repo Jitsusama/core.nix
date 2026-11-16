@@ -10,10 +10,13 @@
 mod carried;
 mod device;
 mod said;
+// The uplink is read only on Linux (../uplink).
+#[cfg(target_os = "linux")]
 mod uplink;
 
 use carried::carried;
 pub use device::device;
+#[cfg(target_os = "linux")]
 pub use uplink::uplink;
 
 use serde_json::{Map, Value, json};
