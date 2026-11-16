@@ -570,12 +570,14 @@ mod tests {
         ];
         let (card, _) = compose("18:10", &measures, &Kept::default(), "18:10 tomorrow");
         assert!(
-            card.contains("Clean zones:\n  ✕ long said: 12, at most 10\n  1 more in, 2 unjudged\n"),
+            card.contains(
+                "Clean zones:\n  ✕ long said: 12, at most 10\n  1 more within target, 2 unjudged\n"
+            ),
             "a clean measure in or unjudged was listed, or the rest weren't counted: {card}"
         );
         let (all_in, _) = compose("18:10", &measures[1..2], &Kept::default(), "18:10 tomorrow");
         assert!(
-            all_in.contains("Clean zones:\n  all 1 in\n"),
+            all_in.contains("Clean zones:\n  all 1 within target\n"),
             "a clean zone with nothing past didn't say so: {all_in}"
         );
     }
