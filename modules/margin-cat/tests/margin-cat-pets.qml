@@ -1,4 +1,5 @@
-// How the margin cat is petted with the mouse (MarginCat.js), in Qt's own
+// How the margin cat is petted, and picked up, with the mouse
+// (MarginCat.js), in Qt's own
 // JavaScript engine, the one the shell runs it in, with the theme's own
 // drawings of it sitting and leaning. The
 // `the-margin-cat-sits-above-its-column` check copies modules/margin-cat's
@@ -28,6 +29,7 @@ QtObject {
         strokes(expect);
         leans(expect);
         swats(expect);
+        held(expect);
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
@@ -113,5 +115,48 @@ QtObject {
         expect("either way, the same paw",
             toLeft.slice(0, 5).map(row => row.slice(0, 3).split("").reverse().join("")),
             toRight.slice(0, 5).map(row => row.slice(8, 11)));
+    }
+
+    // Picked up by Joel's hand (VKCF3Z, 9ead6710; Joel, 2026-11-12: "i want
+    // to be able to also use my mouse to engage with my animals."): it hangs
+    // by its scruff under the pointer, wholly on the screen; and it's over
+    // the windows while held and as it falls, then as the ledge it landed
+    // on says, then by its seat.
+    function held(expect) {
+        const at = { cell: 1, wide: 8, tall: 8, across: 1000, height: 600 };
+        expect("held by the scruff, it hangs under the pointer, wholly on the screen",
+            [MarginCat.held({ x: 100, y: 50 }, at), MarginCat.held({ x: 1, y: 0 }, at),
+                MarginCat.held({ x: 999, y: 599 }, at)],
+            [{ x: 96.5, y: 49.5 }, { x: 0, y: 0 }, { x: 992, y: 592 }]);
+        const tiled = { floats: false };
+        const floating = { floats: true };
+        expect("over the windows held and falling, then by its landing, then its seat",
+            [MarginCat.inFront({ holds: true, seat: tiled }),
+                MarginCat.inFront({ falls: true, landed: tiled }),
+                MarginCat.inFront({ landed: tiled, seat: floating }),
+                MarginCat.inFront({ landed: floating, seat: tiled }),
+                MarginCat.inFront({ landed: null, seat: floating }),
+                MarginCat.inFront({ seat: floating, leaving: true }),
+                MarginCat.inFront({ seat: tiled, leaving: true, aboard: true })],
+            [true, true, false, true, true, false, true]);
+        expect("its scruffed drawing hangs whole, as wide as it sits",
+            [Drawings.poses.scruffed?.length, Drawings.poses.scruffed?.every(row =>
+                row.length === 8)],
+            [8, true]);
+        // The GPU rig, 2026-11-16: let go, its first frame before its first
+        // step drew it sitting in the air, between the scruff and the fall.
+        expect("scruffed while held, falling from the frame it's let go, then as its walk",
+            [MarginCat.fromHand(true, false, null), MarginCat.fromHand(false, true, null),
+                MarginCat.fromHand(false, true, { beat: "falls" }),
+                MarginCat.fromHand(false, false, null)],
+            ["scruffed", "falling", null, null]);
+        // The GPU rig, 2026-11-16: wanting only its own tile while held, it
+        // knew no column under Joel's hand and fell past a lower top.
+        expect("every tile is wanted while it's held, as while it travels, and only then",
+            [MarginCat.travels({ holding: true }), MarginCat.travels({ going: true }),
+                MarginCat.travels({ going: true, handsBack: true }),
+                MarginCat.travels({ moving: true }), MarginCat.travels({ resting: true }),
+                MarginCat.travels({})],
+            [true, true, false, true, true, false]);
     }
 }

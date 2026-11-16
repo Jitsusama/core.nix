@@ -133,7 +133,7 @@ PanelWindow {
     // Whether it's sitting still, neither going, moving, at play nor
     // stretching, so a pointer may pet it; and since when, so one it
     // came to under isn't one that moved onto it (MarginCat.strokes).
-    readonly property bool still: going === null && moving === null
+    readonly property bool still: going === null && moving === null && !holding
         && (yarnAt === null || yarnLies) && window.scene.posed === "" && !window.scene.stretching
     property real stillSince: 0
     onStillChanged: {
@@ -194,21 +194,26 @@ PanelWindow {
         : Paths.marks(MarginMarks.drawn, modelData.width, Theme.gap)
     // What it's drawn as: a pose of its walk, turned the way it
     // goes and the way it climbs, leaning into a pointer, or the
-    // scope's, sitting, asleep or stretching, or swatting after one.
-    readonly property var drawn: swatting !== 0 ? MarginCat.swatting(swatting, Theme.pixels)
+    // scope's, sitting, asleep or stretching, or swatting after one;
+    // in Joel's hand and let go of, as MarginCat.fromHand says.
+    readonly property string handed: MarginCat.fromHand(holding, going?.kind === "drop",
+        stepped) ?? ""
+    readonly property var drawn: handed === "scruffed" ? Theme.pixels.scruffed
+        : handed ? MarginCat.turned(Theme.pixels[handed], facing)
+        : swatting !== 0 ? MarginCat.swatting(swatting, Theme.pixels)
         : leaning !== 0 ? MarginCat.leaning(leaning, Theme.pixels)
         : pose ? MarginCat.quartered(
             MarginCat.turned(Theme.pixels[pose] ?? window.scene.drawing, facing), turn)
         : window.scene.drawing
-    // Whether it's on its way to another column or workspace, waiting
-    // to set off or going, while which every tile of the workspaces it
-    // crosses is wanted, its ways being over them, and as which it wants
-    // them; at rest, and on a scene's wander, which stays over its own
-    // window, only the tile under it is, so the shut shell hears no
-    // other (2026-11-12: watching every tile made it hear each of 20
-    // resizes).
-    readonly property bool travels: (going !== null && !handsBack) || moving !== null
-        || resting.running
+    // Whether it wants every tile it crosses (MarginCat.travels), and as
+    // which it wants them.
+    readonly property bool travels: MarginCat.travels({
+        going: going !== null,
+        handsBack,
+        moving: moving !== null,
+        resting: resting.running,
+        holding
+    })
     property string wantsAs: ""
     // Wanted once the change is done: niri's windows notify as they're
     // wanted, and set it going or moving again inside the change, a
@@ -244,6 +249,16 @@ PanelWindow {
         seen = tilesOf(space?.id);
         if (seen.some(one => one.id === standsOn()))
             seenOn = seen;
+        // Held, it goes nowhere the keys say, and stays where his hand
+        // has it (VKCF3Z, 9ead6710).
+        if (holding)
+            return;
+        // The window it was let go onto gone, it falls again from there.
+        if (going === null && landedOn?.id !== null && landedOn?.id !== undefined
+            && Niri.windows[landedOn.id] === undefined) {
+            drops();
+            return;
+        }
         if (moving !== null) {
             steer();
             return;
@@ -347,6 +362,7 @@ PanelWindow {
 
     function walkTo(hurried: bool, saw: var, to: var): void {
         roams = null;
+        landedOn = null;
         if (place === null || to === null)
             return;
         const tiles = tilesOf(space?.id);
@@ -411,6 +427,7 @@ PanelWindow {
     // the top going down, or off the bottom going up, and its way to its new seat comes
     // once niri says the new workspace's column (steer).
     function moveTo(way: int): void {
+        landedOn = null;
         halt();
         resting.stop();
         leaving.stop();
@@ -652,7 +669,7 @@ PanelWindow {
             return;
         }
         if (place === null || column === null || going !== null || resting.running
-            || wanted !== sat)
+            || wanted !== sat || holding)
             return;
         if (to === "play") {
             play(window.scene.playing);
@@ -690,7 +707,7 @@ PanelWindow {
     // its kind and how long it thinks, from where it sits: run on the
     // walker as a walk is, its seat for the walk back where it lands.
     function play(asked: var): void {
-        if (asked === null)
+        if (asked === null || holding)
             return;
         const playing = Games.play(asked.kind, playsFrom(asked.pause));
         if (playing === null)
@@ -726,6 +743,69 @@ PanelWindow {
         plays(playing);
     }
 
+    // Picked up by Joel's hand (VKCF3Z 9ead6710; Joel, 2026-11-12: "i want
+    // to be able to also use my mouse to engage with my animals."): held by
+    // the scruff, still, drawn again only as the pointer moves, with no
+    // timer, wherever it was going or playing, a scene's walk handed back;
+    // its yarn fades. A press on it dozing or asleep wakes it as any press
+    // does, being input. Let go of, it drops (drops()).
+    property bool holding: false
+    onHoldingChanged: say()
+    // What it was last let go onto (Games.drop's `landsOn`, { floats: false }
+    // for the floor), which says whether it's over the windows until it
+    // next walks, moves or plays; null otherwise.
+    property var landedOn: null
+    onLandedOnChanged: say()
+    function lift(): void {
+        if (place === null || moving !== null)
+            return;
+        halt();
+        resting.stop();
+        leaving.stop();
+        endStroll();
+        unpetted();
+        landedOn = null;
+        holding = true;
+        if (yarnAt !== null && !yarnFades.running)
+            yarnFades.restart();
+    }
+
+    // Held with Joel's hand at `hand`, in the screen's logical pixels.
+    function hold(hand: point): void {
+        if (!holding || modelData === null)
+            return;
+        place = MarginCat.held(hand, {
+            cell,
+            wide: size,
+            tall: size,
+            across: modelData.width,
+            height: modelData.height
+        });
+    }
+
+    // Let go of, it drops from where his hand had it, then sits there till
+    // the keys walk it on.
+    function letGo(): void {
+        if (!holding)
+            return;
+        drops();
+        holding = false;
+    }
+
+    // A drop from where it is (Games.drop) onto what's under it on this
+    // screen's workspace, the floating windows too; it stays where it lands,
+    // its seat for any change of the windows until the keys move.
+    function drops(): void {
+        if (place === null || modelData === null)
+            return;
+        const tiles = tilesOf(space?.id);
+        const playing = Games.drop(Object.assign(playsFrom(0), { air: cell }),
+            Paths.columns(tiles, 0), Floats.of(tiles, 0));
+        plays(playing);
+        strolled = playing.to;
+        landedOn = playing.landsOn ?? { floats: false };
+    }
+
     // Where it plays from, as a play takes it (MarginCatGames.js), thinking
     // `pause` ms.
     function playsFrom(pause: real): var {
@@ -749,6 +829,7 @@ PanelWindow {
         if (playing === null)
             return;
         roams = null;
+        landedOn = null;
         shown = [];
         costs = [];
         unseen = 0;
@@ -945,7 +1026,9 @@ PanelWindow {
     // Its seat is read as niri has it now, not as it was when it set off:
     // a window opened tiled and made floating as it walked there is a
     // floating one by the time it sits (a nested niri, 2026-11-15). Not
-    // named `leaving`, the timer's id, which a bare name finds first.
+    // named `leaving`, the timer's id, which a bare name finds first. Held, and as it falls
+    // from his hand, it's over them all, then as what it landed on says (MarginCat.inFront);
+    // its first frame let go, before its first step, still falls.
     readonly property bool departing: moving !== null || (going !== null && goingTo !== sat)
     readonly property var seatedOn: {
         void window.scene.settled;
@@ -954,7 +1037,14 @@ PanelWindow {
     }
     // Over them too on each leg of a walk aboard a floating window, onto
     // it, along it or off it, from that leg's first drawing to its end.
-    readonly property bool above: MarginCat.above(seatedOn, departing, stepped?.aboard)
+    readonly property bool above: MarginCat.inFront({
+        holds: holding,
+        falls: going?.kind === "drop" && (stepped === null || stepped.beat === "falls"),
+        landed: landedOn,
+        seat: seatedOn,
+        leaving: departing,
+        aboard: stepped?.aboard
+    })
     onAboveChanged: say()
     WlrLayershell.layer: above ? WlrLayer.Top : WlrLayer.Bottom
     WlrLayershell.namespace: "cat"
@@ -1057,6 +1147,8 @@ PanelWindow {
             stretching: window.scene.stretching,
             leaning: window.leaning,
             swatting: window.swatting,
+            held: window.holding,
+            landed: window.landedOn,
             yarn: yarnLies ? { x: yarnAt.x, y: yarnAt.y } : null,
             walk: going === null || stepped === null ? null : {
                 t: Math.round(walker.elapsedTime * 10000) / 10,
@@ -1138,6 +1230,22 @@ PanelWindow {
         // A click on it rolls its yarn in.
         TapHandler {
             onTapped: window.clicked()
+        }
+
+        // A press on it that moves 4 px picks it up, and letting go drops
+        // it. Only its cells take the press; the press's own grab carries
+        // the pointer's moves and its release wherever it goes after. Never
+        // while the launcher or a notice is in front, which take the press
+        // over it on Overlay.
+        DragHandler {
+            target: null
+            dragThreshold: MarginCat.LIFTS
+            enabled: window.moving === null && window.placed
+            onActiveChanged: active ? window.lift() : window.letGo()
+            onCentroidChanged: {
+                if (active)
+                    window.hold(centroid.scenePosition);
+            }
         }
 
         Repeater {
