@@ -138,24 +138,26 @@ pub fn begin(shared: &Arc<Shared>) {
 
 /// Reads the disk again on a thread of its own. Asked while a read is
 /// under way, which may have read the disk before what moved it, that
-/// read reads it once more as it ends, so no ask is lost.
+/// read reads it once more as it ends, so no ask is lost. Each flag is
+/// set and then the other read, on both sides, so their order is one
+/// order everywhere (`SeqCst`), or each could miss the other's.
 fn again(shared: &Arc<Shared>) {
     let code = &shared.code;
-    code.wanted.store(true, Ordering::Release);
-    if code.reading.swap(true, Ordering::AcqRel) {
+    code.wanted.store(true, Ordering::SeqCst);
+    if code.reading.swap(true, Ordering::SeqCst) {
         return;
     }
     let shared = Arc::clone(shared);
     std::thread::spawn(move || {
         let code = &shared.code;
         loop {
-            while code.wanted.swap(false, Ordering::AcqRel) {
+            while code.wanted.swap(false, Ordering::SeqCst) {
                 let rows = code.rows();
                 take(&shared, &mut lock(&shared.daemon), rows);
             }
-            code.reading.store(false, Ordering::Release);
+            code.reading.store(false, Ordering::SeqCst);
             // An ask between the last read and letting go is read here.
-            if !code.wanted.load(Ordering::Acquire) || code.reading.swap(true, Ordering::AcqRel) {
+            if !code.wanted.load(Ordering::SeqCst) || code.reading.swap(true, Ordering::SeqCst) {
                 return;
             }
         }

@@ -8,7 +8,7 @@
 //! started by a stand-in for niri as it's asked; and Pull bringing a
 //! checkout forward by fast-forward alone, saying why where it won't.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use daemon_client::until;
@@ -189,41 +189,61 @@ fn git_alone(home: &Path, folder: &Path, args: &[&str]) -> String {
     String::from_utf8(ran.stdout).unwrap().trim().to_owned()
 }
 
-#[test]
-fn pull_takes_what_the_branch_followed_has_and_never_merges() {
-    let running = Running::new("code-pull");
-    let home = running.path("");
-    let (upstream, elsewhere, here) = (
-        running.path("up.git"),
-        running.path("elsewhere"),
-        running.path("src/alpha"),
-    );
-    let git = |folder: &Path, args: &[&str]| git_alone(&home, folder, args);
-    let commit = |folder: &Path, file: &str| {
+/// Joel's checkout of a repository, cloned from a bare remote and one
+/// commit behind it, which a checkout elsewhere pushed.
+struct Behind {
+    home: PathBuf,
+    upstream: PathBuf,
+    elsewhere: PathBuf,
+    here: PathBuf,
+}
+
+impl Behind {
+    fn new(running: &Running) -> Behind {
+        let behind = Behind {
+            home: running.path(""),
+            upstream: running.path("up.git"),
+            elsewhere: running.path("elsewhere"),
+            here: running.path("src/alpha"),
+        };
+        let (upstream, elsewhere) = (behind.upstream.to_str().unwrap(), &behind.elsewhere);
+        behind.git(
+            &behind.upstream,
+            &["init", "--quiet", "--bare", "-b", "main"],
+        );
+        behind.git(elsewhere, &["init", "--quiet", "-b", "main"]);
+        behind.git(elsewhere, &["remote", "add", "origin", upstream]);
+        behind.commit(elsewhere, "one");
+        behind.git(elsewhere, &["push", "--quiet", "-u", "origin", "main"]);
+        let here = behind.here.to_str().unwrap();
+        behind.git(&behind.home, &["clone", "--quiet", upstream, here]);
+        behind.commit(elsewhere, "two");
+        behind.git(elsewhere, &["push", "--quiet"]);
+        behind
+    }
+
+    fn git(&self, folder: &Path, args: &[&str]) -> String {
+        git_alone(&self.home, folder, args)
+    }
+
+    fn commit(&self, folder: &Path, file: &str) {
         std::fs::write(folder.join(file), file).unwrap();
-        git(folder, &["add", file]);
-        git(folder, &["commit", "--quiet", "-m", file]);
-    };
-    git(&upstream, &["init", "--quiet", "--bare", "-b", "main"]);
-    git(&elsewhere, &["init", "--quiet", "-b", "main"]);
-    git(
-        &elsewhere,
-        &["remote", "add", "origin", upstream.to_str().unwrap()],
-    );
-    commit(&elsewhere, "one");
-    git(&elsewhere, &["push", "--quiet", "-u", "origin", "main"]);
-    git(
-        &home,
-        &[
-            "clone",
-            "--quiet",
-            upstream.to_str().unwrap(),
-            here.to_str().unwrap(),
-        ],
-    );
-    commit(&elsewhere, "two");
-    git(&elsewhere, &["push", "--quiet"]);
-    let head = |folder: &Path| git(folder, &["rev-parse", "HEAD"]);
+        self.git(folder, &["add", file]);
+        self.git(folder, &["commit", "--quiet", "-m", file]);
+    }
+
+    fn head(&self, folder: &Path) -> String {
+        self.git(folder, &["rev-parse", "HEAD"])
+    }
+}
+
+#[test]
+fn pull_takes_what_the_branch_followed_has_and_its_row_says_so() {
+    let running = Running::new("code-pull");
+    let behind = Behind::new(&running);
+    let (elsewhere, here) = (behind.elsewhere.clone(), behind.here.clone());
+    let git = |folder: &Path, args: &[&str]| behind.git(folder, args);
+    let head = |folder: &Path| behind.head(folder);
     // Fetched already, and counted one behind, as a refresh would say.
     git(&here, &["fetch", "--quiet"]);
     let kept = running.path("state/repos/upstreams.json");
@@ -272,9 +292,19 @@ fn pull_takes_what_the_branch_followed_has_and_never_merges() {
     );
     let said = pull(2, &here);
     assert_eq!(said["said"], "already up to date", "{said}");
+}
 
-    commit(&elsewhere, "three");
-    git(&elsewhere, &["push", "--quiet"]);
+#[test]
+fn pull_never_merges_and_never_touches_a_tree_cut_from_a_checkout() {
+    let running = Running::new("code-pull-refused");
+    let behind = Behind::new(&running);
+    let (upstream, here) = (behind.upstream.clone(), behind.here.clone());
+    let git = |folder: &Path, args: &[&str]| behind.git(folder, args);
+    let head = |folder: &Path| behind.head(folder);
+    let commit = |folder: &Path, file: &str| behind.commit(folder, file);
+    let mut client = running.client();
+    let mut pull =
+        |id: u64, folder: &Path| client.ask(&json!({"id": id, "ask": "code:pull", "path": folder}));
     std::fs::write(here.join("one"), "changed").unwrap();
     // With nowhere to fetch from, a refusal made after fetching would say
     // the fetch failed.
