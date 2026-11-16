@@ -332,5 +332,18 @@
       "test_the_vms_are_shot_at_each_scale"
     ],
     "test": "vm-desktop-looks-programs"
+  },
+  {
+    "at": 1794842295,
+    "commit": "a4dad8c98727dc60da9965b811f5231d9b39ff1a",
+    "due": "2026-11-17",
+    "due_why": "Its owner makes it steady beside the middle-row case and takes it off, by 2026-11-17 23:59 UTC",
+    "owner_pr": 4813,
+    "owner_session": "XY9H5C",
+    "reason": "failed two gates on 16 Nov, at a4dad8c9 and at main for #5025, one pixel short of the cat, with neither touching it; passed at main 389e8476 and at #5016's parent",
+    "subtests": [
+      "test_windows_cover_it_but_a_floating_one_holds_it_over_them"
+    ],
+    "test": "the-margin-cat-follows-the-keys-on-niri"
   }
 ]
