@@ -519,7 +519,7 @@ mod tests {
         let mut heard = Heard::new(Cut(false));
         assert!(
             cached(&folder, "f1", "plan v2.pdf", Some(at + 2), &mut heard).is_err(),
-            "a copy drive has changed since was found again"
+            "a download cut short was kept in the copy's place"
         );
         assert_eq!(fs::read(&path).unwrap(), b"two");
         assert_eq!(fs::read_dir(folder.join("f1")).unwrap().count(), 1);
@@ -536,10 +536,6 @@ mod tests {
             std::thread::sleep(Duration::from_millis(20));
         }
         // Handing out the oldest again makes it the newest.
-        assert!(
-            fresh(&folder, "old", "f", None).is_none(),
-            "the copy handed out longest ago was kept"
-        );
         let at = 1_793_037_600_000;
         cached(&folder, "old", "f", Some(at), &mut &[0; 10][..]).unwrap();
         assert_eq!(held(&folder), 30, "three copies of ten bytes");

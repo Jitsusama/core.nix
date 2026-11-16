@@ -283,7 +283,7 @@ fn an_act_is_handed_to_the_programs_asks_and_one_it_doesnt_do_is_refused() {
     assert_eq!(refused["error"]["code"], "unknown-ask");
     assert!(
         asked.try_recv().is_err(),
-        "an act it doesn't do was handed on"
+        "an act on an id google couldn't have made was handed on"
     );
 }
 

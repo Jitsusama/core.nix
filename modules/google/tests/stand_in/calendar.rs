@@ -130,7 +130,7 @@ fn a_call_followed_says_who_is_in_it_once_the_sign_in_grants_reading_meet() {
     assert_eq!(state.calls.len(), 1);
     assert!(
         !state.calls[0].granted && !state.calls[0].known,
-        "a call followed without reading meet granted was told: {:?}",
+        "a call followed without reading meet granted read as granted or known: {:?}",
         state.calls[0]
     );
     // Joel signs in again from pi, granting the scope that reads calls.

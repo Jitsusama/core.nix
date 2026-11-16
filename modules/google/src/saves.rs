@@ -430,10 +430,8 @@ mod tests {
             asked.recv_timeout(wait).unwrap(),
             asking(&staged(&root, &later).unwrap())
         );
-        assert!(
-            asked.recv_timeout(SETTLES).is_err(),
-            "a file was asked for twice"
-        );
+        let again = asked.recv_timeout(SETTLES);
+        assert!(again.is_err(), "a file was asked for again: {again:?}");
         fs::remove_dir_all(root).unwrap();
     }
 
