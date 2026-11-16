@@ -59,18 +59,6 @@
     "test": "vm-desktop-looks-vi"
   },
   {
-    "at": 1794614356,
-    "commit": "5782337e6e457780754e6e5684e6c69bd92827dd",
-    "due": "2026-11-15",
-    "owner_pr": 4145,
-    "owner_session": "RTOIMQ",
-    "reason": "failed, then passed, at 5782337e6e45",
-    "subtests": [
-      "test_neovims_page_is_shot_at_each_scale"
-    ],
-    "test": "vm-desktop-looks-programs"
-  },
-  {
     "at": 1794620016,
     "commit": "93eeb7412debd50edf5d9bcc77d90d702b7ceee9",
     "due": "2026-11-16",
