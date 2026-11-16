@@ -30,12 +30,14 @@ pub type Made = BTreeMap<String, Value>;
 /// Where a vocabulary's words and number settings are read from.
 pub type Said = (PathBuf, Option<PathBuf>);
 
-/// The rows made in one vocabulary.
+/// The rows made in one vocabulary, and the worst of net's they were
+/// made with, so each is known to be behind net on its own.
 struct Vocabulary {
     words: Words,
     numbers: Numbers,
     kept: Kept,
     made: Made,
+    made_with: Option<String>,
 }
 
 impl Vocabulary {
@@ -58,6 +60,7 @@ impl Vocabulary {
             .all()
             .filter_map(|record| Some((record["key"].as_str()?.to_owned(), record.clone())))
             .collect();
+        self.made_with = map.and_then(|map| map.worst).map(str::to_owned);
     }
 }
 
@@ -133,6 +136,7 @@ impl Vocabularies {
             numbers,
             kept: Kept::default(),
             made: Made::new(),
+            made_with: None,
         };
         self.hear();
         vocabulary.make(network, self.map_now().as_ref());
@@ -183,14 +187,20 @@ impl Vocabularies {
 }
 
 impl Vocabularies {
-    /// Whether net's record says a different worst than the rows were
-    /// last made with, as `make` would read it now. net writes its record
-    /// each minute, and it's read again only once it's written anew, a
-    /// look at its time costing far less than reading it whole.
+    /// Whether net's record says a different worst than any vocabulary's
+    /// rows were last made with, as `make` would read it now. net writes
+    /// its record each minute, and it's read again only once it's written
+    /// anew, a look at its time costing far less than reading it whole.
+    /// It's held against what each vocabulary was made with rather than
+    /// what was last heard, since a vocabulary asked for between looks
+    /// hears too, and may hear a worst net has since dropped. With no map
+    /// nothing is heard and every vocabulary was made with none.
     pub fn net_moved(&mut self) -> bool {
-        let was = self.heard.as_ref().map(|heard| heard.worst.clone());
         self.hear();
-        was != self.heard.as_ref().map(|heard| heard.worst.clone())
+        let now = self.heard.as_ref().and_then(|heard| heard.worst.as_deref());
+        self.held
+            .values()
+            .any(|vocabulary| vocabulary.made_with.as_deref() != now)
     }
 
     /// Hears net's record again, if it's been written since it was last

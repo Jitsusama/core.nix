@@ -69,6 +69,10 @@ fn keys(records: &Value) -> Vec<&str> {
 fn connected(path: &Path) -> (UnixStream, BufReader<UnixStream>) {
     let stream = UnixStream::connect(path).expect("the socket takes a connection");
     let reading = stream.try_clone().expect("the connection clones");
+    // A tell that never comes fails the case rather than hanging it.
+    reading
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("reads can time out");
     (stream, BufReader::new(reading))
 }
 
@@ -384,6 +388,113 @@ fn the_map_row_follows_net_when_the_network_stays_the_same() {
         "it no longer warns: {told}"
     );
     assert!(!listeners.follow_net(), "nothing more moved");
+}
+
+/// Asks to watch the Home Network's map row in the words at `words`.
+fn watch_map(stream: &mut UnixStream, words: &str) {
+    ask(
+        stream,
+        &json!({"id": "map", "ask": "watch", "kind": "row", "words": words,
+            "keys": ["row:eero:map"]}),
+    );
+}
+
+/// A shell after a switch asks for its new words the minute net writes,
+/// so a second vocabulary is made with net's newer worst while the first
+/// keeps the old one: net's record the case writes, when it began, the
+/// listeners, and each watch's connection and reader, the first's
+/// watching "The modem has lost 878" and the second's net cleared.
+struct HeardFirst {
+    record: std::path::PathBuf,
+    start: std::time::SystemTime,
+    listeners: Listeners,
+    reader: BufReader<UnixStream>,
+    later_reader: BufReader<UnixStream>,
+    _streams: (UnixStream, UnixStream),
+}
+
+fn heard_first(name: &str) -> HeardFirst {
+    let record = folder(name).join("network.json");
+    let start = std::time::SystemTime::now();
+    net_says(&record, &lost_modem(), start);
+    let (listeners, words, mut stream, mut reader) = serving_mapped(name, Some(record.clone()));
+    listeners.send(&home());
+    watch_map(&mut stream, &words);
+    let watched = read(&mut reader);
+    assert_eq!(
+        watched["records"][0]["row"]["state"], "The modem has lost 878",
+        "the first words are made with net warning: {watched}"
+    );
+
+    let newer = Path::new(&words).with_file_name("newer-words.json");
+    fs::copy(&words, &newer).expect("the newer words are kept");
+    net_says(&record, &json!([]), start + Duration::from_secs(1));
+    let (mut later, mut later_reader) = connected(&folder(name).join("socket"));
+    watch_map(&mut later, &newer.display().to_string());
+    let first = read(&mut later_reader);
+    assert_eq!(
+        first["records"][0]["key"], "row:eero:map",
+        "the new words make the map row: {first}"
+    );
+    assert!(
+        first["records"][0]["row"].get("state").is_none(),
+        "the new words are made with net cleared: {first}"
+    );
+    HeardFirst {
+        record,
+        start,
+        listeners,
+        reader,
+        later_reader,
+        _streams: (stream, later),
+    }
+}
+
+fn lost_modem() -> Value {
+    json!([{"kind": "lost", "says": "The modem has lost 878"}])
+}
+
+#[test]
+fn the_map_row_follows_net_though_a_new_vocabulary_heard_it_first() {
+    let HeardFirst {
+        listeners,
+        mut reader,
+        ..
+    } = heard_first("heard-first");
+
+    assert!(
+        listeners.follow_net(),
+        "the rows made before are still made with the old worst"
+    );
+    let told = read(&mut reader);
+    assert!(
+        told["changed"][0]["row"].get("state").is_none(),
+        "the first watch hears net cleared it: {told}"
+    );
+    assert!(!listeners.follow_net(), "every vocabulary is now current");
+}
+
+#[test]
+fn the_map_row_follows_net_going_back_before_the_follower_looks() {
+    let HeardFirst {
+        record,
+        start,
+        listeners,
+        mut later_reader,
+        ..
+    } = heard_first("went-back");
+    net_says(&record, &lost_modem(), start + Duration::from_secs(2));
+
+    assert!(
+        listeners.follow_net(),
+        "the newer words are made with a worst net has dropped"
+    );
+    let told = read(&mut later_reader);
+    assert_eq!(
+        told["changed"][0]["row"]["state"], "The modem has lost 878",
+        "the second watch hears net warn again: {told}"
+    );
+    assert!(!listeners.follow_net(), "every vocabulary is now current");
 }
 
 #[test]
