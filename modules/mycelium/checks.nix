@@ -198,10 +198,12 @@ in
   # realm nor a node. On Linux the node signs in with the agents' key,
   # which asks nothing, unless its realm names a key of its own; on a Mac
   # what it starts signs commits with that key, since nobody at another
-  # machine can touch this one's sensor.
+  # machine can touch this one's sensor. A Mac's node finds the system's
+  # ssh first and the account's programs after it, among them the
+  # harness's pi-carry, which a carry runs by name.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, a via naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, a Mac's node starts sessions whose commits wait on its sensor, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, a via naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
         && lib.hasInfix "--ssh one --ssh two --via /bin/cell:cell-1 --serves" (viaNode "/bin/cell:cell-1")
@@ -244,6 +246,9 @@ in
           ]
         && (mac links).launchd.agents.mycelium.enable
         && (mac links).launchd.agents.mycelium.config.EnvironmentVariables.SIGN_AS == "agent"
+        &&
+          (mac links).launchd.agents.mycelium.config.EnvironmentVariables.PATH
+          == "/usr/bin:/bin:${(mac links).home.profileDirectory}/bin"
         && lib.hasInfix "--realm personal node" (
           toString answering.systemd.user.services.mycelium.Service.ExecStart
         )

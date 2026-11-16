@@ -471,10 +471,12 @@ let
     enable = true;
     config = {
       ProgramArguments = words;
-      # The system's own ssh, which reads the machine's SSH config and
-      # the login session's agent.
+      # The system's own ssh first, which reads the machine's SSH config
+      # and the login session's agent. The account's profile follows it,
+      # since a carry runs the harness's pi-carry by name, as the Linux
+      # node finds it through the session's PATH.
       EnvironmentVariables = {
-        PATH = "/usr/bin:/bin";
+        PATH = "/usr/bin:/bin:${config.home.profileDirectory}/bin";
         # What the node starts is driven from another machine, where
         # nobody can touch this one's sensor, so its commits sign with
         # the agents' key, even in a held terminal.
