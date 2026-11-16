@@ -1,0 +1,91 @@
+{
+  "kinds": {
+    "summary": [
+      {
+        "key": "summary",
+        "kind": "summary",
+        "schema": "system.view/1",
+        "health": "watch",
+        "machine": "kestrel",
+        "read_at": "2026-11-16T16:34:36Z",
+        "parts": ["machines", "mycelium", "network", "code"],
+        "side": [
+          "kestrel is short of processor, has a filling disk, 135 GB free",
+          "osprey has a filling disk, 178 GB free",
+          "4 sessions say they run with their processes gone",
+          "the attic's radio is busy 53% of the time",
+          "and 3 more worth a look"
+        ]
+      }
+    ],
+    "part": [
+      {
+        "key": "part:machines",
+        "kind": "part",
+        "part": "machines",
+        "health": "watch",
+        "holds": "2 machines",
+        "says": "kestrel is short of processor, has a filling disk, 135 GB free; osprey has a filling disk, 178 GB free",
+        "side": [
+          "kestrel is short of processor, has a filling disk, 135 GB free",
+          "osprey has a filling disk, 178 GB free"
+        ],
+        "things": ["machine:kestrel", "machine:osprey"],
+        "deeper": { "command": "mycelium machines", "launcher": "Agents", "site": "mycelium/" }
+      },
+      {
+        "key": "part:mycelium",
+        "kind": "part",
+        "part": "mycelium",
+        "health": "watch",
+        "holds": "6 busy and 9 idle sessions on 2 machines; 1 link up",
+        "says": "4 sessions say they run with their processes gone; 6 busy and 9 idle sessions on 2 machines",
+        "side": ["4 sessions say they run with their processes gone"],
+        "things": [],
+        "deeper": { "command": "mycelium networks", "launcher": "Agents", "site": "mycelium/" }
+      },
+      {
+        "key": "part:network",
+        "kind": "part",
+        "part": "network",
+        "health": "watch",
+        "holds": "12 devices",
+        "says": "the attic's radio is busy 53% of the time; and 3 more worth a look; 12 devices",
+        "side": ["the attic's radio is busy 53% of the time", "and 3 more worth a look"],
+        "things": [],
+        "deeper": { "command": "net", "launcher": "Network", "site": "network/" }
+      },
+      {
+        "key": "part:code",
+        "kind": "part",
+        "part": "code",
+        "health": "good",
+        "holds": "5 repositories with 40 trees",
+        "says": "5 repositories with 40 trees",
+        "side": [],
+        "things": [],
+        "deeper": { "command": "repos", "launcher": "Code", "site": "code/" }
+      }
+    ],
+    "machine": [
+      {
+        "key": "machine:kestrel",
+        "kind": "machine",
+        "part": "machines",
+        "name": "kestrel",
+        "health": "watch",
+        "address": null,
+        "says": "is short of processor, has a filling disk, 135 GB free, runs 4 busy and 5 idle sessions"
+      },
+      {
+        "key": "machine:osprey",
+        "kind": "machine",
+        "part": "machines",
+        "name": "osprey",
+        "health": "watch",
+        "address": null,
+        "says": "has a filling disk, 178 GB free, runs 2 busy and 4 idle sessions"
+      }
+    ]
+  }
+}

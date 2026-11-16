@@ -44,6 +44,13 @@ alike.
 The mycelium map's timer (`mycelium-map.sh`, `mycelium-map.jq`) and the
 network site's copy of net's record stay until each site reads its feed.
 
+A live page's own test reads it in headless Chromium as Joel's browser
+would, through the real server beside a stand-in for its daemon. What
+every such test shares lives once in `tests/`: the stand-in
+(`stand_in_daemon.py`) and the server, the browser, a tab and the
+web-design skill's page checks (`live_page.py`, loaded as a pytest plugin
+for its `browser`). The system page's is `system-site-reads-live`.
+
 [daemons]: ../../docs/daemons.md
 [forage]: ../mycelium/forage
 [home]: ./home
