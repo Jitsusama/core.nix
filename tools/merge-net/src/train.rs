@@ -623,6 +623,26 @@ fn pull_of(slug: &str, branch: &str) -> Option<(u64, String, String)> {
     ))
 }
 
+/// How a candidate's gate ended.
+#[derive(Debug, PartialEq, Eq)]
+enum Gated {
+    /// Every check it reached passed.
+    Passed,
+    /// A check failed, so a rider among them breaks it.
+    Red,
+    /// No builder or evaluator took it, so it says nothing of its riders.
+    Unsent,
+}
+
+/// How a gate that exited `code` ended.
+fn gated(code: Option<i32>) -> Gated {
+    if code == Some(0) {
+        Gated::Passed
+    } else {
+        Gated::Red
+    }
+}
+
 /// Run the gate in `checkout`, its words going to `log`: whether it passed.
 fn gate(checkout: &Path, log: &Path) -> bool {
     let Ok(words) = fs::File::create(log) else {

@@ -19,6 +19,20 @@ fn rider(head: &str, at: u64) -> Rider {
 }
 
 #[test]
+fn a_gate_no_builder_took_says_nothing_of_its_riders() {
+    assert_eq!(gated(Some(0)), Gated::Passed, "a gate that passed");
+    assert_eq!(gated(Some(1)), Gated::Red, "a check that failed");
+    assert_eq!(gated(None), Gated::Red, "a gate a signal ended");
+    for code in [75, 69] {
+        assert_eq!(
+            gated(Some(code)),
+            Gated::Unsent,
+            "nix-offload's {code} says no builder took it, not that a rider broke it"
+        );
+    }
+}
+
+#[test]
 fn riders_are_read_back_in_the_order_they_boarded() {
     let root = root("order");
     board(&root, &rider("b2", 20)).unwrap();
