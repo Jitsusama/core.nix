@@ -140,6 +140,8 @@ in
         name = "system";
         src = ../system/site;
         inherit webKit;
+        # Its emphasis, as its styles mark it, in the machines' hue.
+        tint = "machine";
       };
     };
     # The system daemon's summary, its parts and their things

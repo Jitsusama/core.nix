@@ -153,17 +153,24 @@ mod tests {
             &["--config", "a.json", "stray"],
             &["--confg", "a.json"],
         ] {
-            assert_eq!(read(words), Err(64), "{words:?} should be refused as asked wrongly");
+            assert_eq!(
+                read(words),
+                Err(64),
+                "{words:?} should be refused as asked wrongly"
+            );
         }
     }
 
     #[test]
     fn a_stray_word_is_named_as_one() {
         let args = ["--config", "a.json", "stray"].map(str::to_owned);
-        let said = config_file(&args).map(|_| ()).map_err(|failure| {
-            failure.json(false).to_string()
-        });
+        let said = config_file(&args)
+            .map(|_| ())
+            .map_err(|failure| failure.json(false).to_string());
         let said = said.expect_err("a stray word is refused");
-        assert!(said.contains("not stray"), "the refusal names the stray word: {said}");
+        assert!(
+            said.contains("not stray"),
+            "the refusal names the stray word: {said}"
+        );
     }
 }

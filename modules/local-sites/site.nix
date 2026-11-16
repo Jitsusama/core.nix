@@ -16,20 +16,6 @@
 let
   tsc = lib.getExe' pkgs.typescript "tsc";
   node = lib.getExe pkgs.nodejs;
-  # A site's files the browser reads as they are: its page, its styles, its
-  # icon, and its Markdown and plain-text twins.
-  static = [
-    "html"
-    "css"
-    "svg"
-    "md"
-    "txt"
-  ];
-  copyStatic =
-    from:
-    lib.concatMapStringsSep "\n" (
-      ext: "find ${from} -maxdepth 1 -name '*.${ext}' -exec cp {} $out/ \\;"
-    ) static;
 in
 {
   # The kit, typechecked and tested, as the browser's modules and the
@@ -48,31 +34,36 @@ in
     The site `name`, from its source `src` (modules/<name>/site), with the
     theme's web kit `webKit` copied into its kit/ folder, where its page
     reads theme.css, base.css and the fonts. Copied rather than linked,
-    since the server follows no link out of what it serves.
+    since the server follows no link out of what it serves. Each look's
+    background and the role `tint` the site marks its emphasis in fill
+    the page's theme-color and its favicon (site.sh says how), from
+    `looks`, each look's roles, which default to the web kit's own.
   */
   localSite =
     {
       name,
       src,
       webKit,
+      tint ? "action",
+      looks ? webKit.looks,
     }:
     pkgs.runCommandLocal "${name}-site" { } ''
-      # The sources as they sit in the tree, so the site's imports of the
-      # kit resolve here as they do there.
-      mkdir -p work/modules/local-sites work/modules/${name}
-      cp -r ${./kit} work/modules/local-sites/kit
-      cp -r ${src} work/modules/${name}/site
-      chmod -R u+w work
-      cd work/modules/${name}/site
-      ${tsc} -p tsconfig.json
-      if [ -d tests ]; then
-        ${node} --test --test-reporter=spec tests/*.test.ts
-      fi
-      ${tsc} -p tsconfig.json --noEmit false --rootDir ../.. --outDir "$TMPDIR/emitted"
-      mkdir -p $out
-      cp "$TMPDIR"/emitted/${name}/site/*.js $out/
-      ${copyStatic "."}
-      cp -r ${webKit} $out/kit
-      chmod -R u+w $out/kit
+      ${lib.getExe pkgs.bash} ${./site.sh} ${
+        lib.escapeShellArgs [
+          tsc
+          node
+          "${./kit}"
+          "${src}"
+          name
+          "${webKit}"
+        ]
+      } "$out" ${
+        lib.escapeShellArgs [
+          looks.dark.background
+          looks.light.background
+          looks.dark.${tint}
+          looks.light.${tint}
+        ]
+      }
     '';
 }

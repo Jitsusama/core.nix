@@ -16,11 +16,22 @@ in
 
   # The system page typechecks on the kit and builds, its tests passing
   # (modules/system/site/tests). Its page's theme is no part of what it
-  # proves, so it's built on an empty one.
+  # proves, so it's built on an empty one, its looks plain black and white.
   system-site-holds = sites.localSite {
     name = "system";
     src = ../system/site;
     webKit = pkgs.emptyDirectory;
+    tint = "machine";
+    looks = {
+      dark = {
+        background = "black";
+        machine = "white";
+      };
+      light = {
+        background = "white";
+        machine = "black";
+      };
+    };
   };
 
   # The home's builder lists each site from its row, settled ones apart,
