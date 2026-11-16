@@ -13,12 +13,17 @@ which leaves this note behind.
 | `index.html`  | the page, and `site.css` its styles                             |
 | `index.md`    | its Markdown twin, with `llms.txt` for a model                  |
 | `favicon.svg` | its icon, tinted by the theme as the page is built              |
-| `tests/`      | the making of the map from the records, tried                   |
+| `tests/`      | the making of the map from the records, and the page, tried     |
 
 `view.js`, `index.html` and `site.css` are the drawing as it was written
 by hand, served unchanged but for the seam where site.ts hands it each
 reading. They come under the linters as the drawing is rewritten in
 TypeScript on the kit, and until then `treefmt.nix` names them as kept
 out.
+
+The `tests/` folder's `map-reads-live-test.py` reads the page as Nix builds
+it in headless Chromium, through the real server beside a stand-in node holding
+`node.json`'s small realm: live, moving, broken and stale, and passing the
+web-design skill's page checks (`mycelium-site-reads-live`).
 
 [site]: ../../local-sites/site.nix

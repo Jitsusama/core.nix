@@ -1609,6 +1609,12 @@
     title kept apart, each machine's room and reach flattened, only the latest messages' senders
     and groups, and a cut title's ellipsis as three full stops
   '';
+  mycelium-site-reads-live = ''
+    the mycelium map, served by the local sites' server beside a stand-in node, reads live in
+    headless Chromium: the realm drawn and counted, a cell moving and one going, broken while the
+    node is away and live once it's back, stale once the server goes, the web-design skill's page
+    checks passing at a phone's width and a desk's in both looks, and nothing logged
+  '';
   mycelium-serves-the-harness-files = ''
     each realm's node serves the harness's files of that realm, its open and ended quests, the
     sessions to restore, its runs of subagents and reviews, what its sessions landed, and the talks
