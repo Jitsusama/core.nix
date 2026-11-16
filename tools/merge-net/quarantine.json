@@ -402,5 +402,17 @@
       "test_agents_reopens_each_session_where_it_sat"
     ],
     "test": "vm-desktop-launcher-finds-sessions"
+  },
+  {
+    "at": 1794811244,
+    "commit": "48ff52ee67057f9326598011bc357bdcb3baf7c8",
+    "due": "2026-11-18",
+    "owner_pr": 4820,
+    "reason": "failed, then passed, at 48ff52ee6705",
+    "subtests": [
+      "test_swayimg_typed_lists_the_picture_it_shows_under_it_and_return_steps_in",
+      "test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal"
+    ],
+    "test": "vm-desktop-opens-files"
   }
 ]
