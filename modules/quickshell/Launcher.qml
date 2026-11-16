@@ -84,6 +84,7 @@ import "launcher/Presented.js" as Presented
 import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
+import "launcher/SystemPart.js" as SystemPart
 import "launcher/CommandRow.js" as CommandRow
 import "launcher/KeysHeld.js" as KeysHeld
 import "launcher/Awaited.js" as Awaited
@@ -2061,6 +2062,31 @@ Scope {
         return source?.stands?.() ?? "";
     }
 
+    // How a place tied to a part of the system stands by it (a category's
+    // `part`), as the system daemon judges it (SystemParts.qml): nothing
+    // while all is well or the daemon isn't answering, else the daemon's
+    // side, its mark and side in the warning's role or the alert's, and
+    // its whole sentence in the foot (launcher/SystemPart.js; VKCF3Z,
+    // [a1ef0c0a]). Read as home is made, as it opens, and held while it's
+    // open, the daemon having said it already, so the opening waits on
+    // nothing.
+    function partStanding(category) {
+        if (!category.part)
+            return {};
+        const standing = SystemPart.standing(SystemParts.parts[category.part] ?? null,
+            SystemParts.heard, Words.field.notRead ?? "");
+        if (standing === null)
+            return {};
+        const said = standing.state;
+        return {
+            sideItems: standing.sideItems,
+            hue: standing.hue || "voice",
+            warns: standing.warns,
+            alerts: standing.alerts,
+            state: () => said
+        };
+    }
+
     // Names as one line, as many whole as fit in `room` characters, as a
     // place's row says them (PlaceRow.js), for Now's rows to say their
     // parts the same way.
@@ -2108,7 +2134,7 @@ Scope {
                 side: PlaceRow.side(standsOf(place.category), ""),
                 count: "",
                 drawer: PlaceRow.drawer(place.name, names, placeSaid)
-            });
+            }, partStanding(place.category));
         }
         const known = keyed[id];
         if (known && !known.category)

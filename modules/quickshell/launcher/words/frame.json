@@ -98,6 +98,7 @@
       "name": "Network",
       "term": "Network",
       "glyph": "network",
+      "part": "network",
       "holds": [
         "wifi",
         "wifi:sign-in",
@@ -321,6 +322,7 @@
     "matched": "{at} of {all}",
     "waiting": "{count} new",
     "home": "Home",
+    "notRead": "not read",
     "drawer": {
       "back": "back",
       "keys": "keys",
