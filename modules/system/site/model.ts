@@ -110,6 +110,9 @@ const NUMBERS = [
 /** How the daemon closes a side that had more than it says (parts.rs's side_of). */
 const MORE = /^and (\d+) more worth a look$/u;
 
+/** Words that already end a sentence. */
+const ENDED = /[.?!]$/u;
+
 /** Healths from worst to best, as a lede picks the worst. */
 const WORST: readonly Health[] = ["bad", "watch"];
 
@@ -194,7 +197,7 @@ function lede(system: System): string | undefined {
 
 /** `words` ended as a sentence, once: an owner's words may end their own. */
 function stopped(words: string): string {
-  return /[.?!]$/u.test(words) ? words : `${words}.`;
+  return ENDED.test(words) ? words : `${words}.`;
 }
 
 /** `words` joined as a sentence lists them: a, b and c. */
