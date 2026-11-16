@@ -121,7 +121,11 @@ fn a_base_sharing_no_history_is_refused_as_asked_wrongly() {
     let ran = stand_in.run(&["--base", "elsewhere", "--system", "x86_64-linux"]);
 
     assert_eq!(ran.status.code(), Some(64));
-    assert!(text(&ran.stderr).contains("elsewhere shares no history with HEAD"));
+    assert!(
+        text(&ran.stderr).contains("elsewhere shares no history with HEAD"),
+        "the refusal didn't say the base shares no history: {}",
+        text(&ran.stderr)
+    );
 }
 
 #[test]

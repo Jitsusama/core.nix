@@ -169,7 +169,12 @@ fn the_base_is_evaluated_once_and_kept_by_its_commit() {
     let stand_in = StandIn::new("kept");
     stand_in.checks("base", BASE);
     stand_in.checks("working", BASE);
-    assert!(stand_in.run(&["--system", "x86_64-linux"]).status.success());
+    let first = stand_in.run(&["--system", "x86_64-linux"]);
+    assert!(
+        first.status.success(),
+        "the first run failed: {}",
+        text(&first.stderr)
+    );
     // Were the base evaluated again, its checks would now all be removed.
     stand_in.checks("base", "{}");
 
@@ -178,7 +183,11 @@ fn the_base_is_evaluated_once_and_kept_by_its_commit() {
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(text(&ran.stdout), "");
     let kept = Path::new("cache/changed-checks/0123456789abcdef0123-x86_64-linux.json");
-    assert!(stand_in.folder.join(kept).exists());
+    assert!(
+        stand_in.folder.join(kept).exists(),
+        "the base's checks weren't kept at {}",
+        stand_in.folder.join(kept).display()
+    );
     let runs = stand_in.runs();
     assert_eq!(runs.len(), 2, "both runs logged: {runs:?}");
     assert_eq!(evaluated(&runs[0]), ["base", "tree"], "{}", runs[0]);
@@ -205,7 +214,12 @@ fn a_clean_tree_is_kept_by_its_commit() {
     stand_in.checks("base", BASE);
     stand_in.checks("working", BASE);
     fs::write(stand_in.path("clean"), "").expect("written");
-    assert!(stand_in.run(&["--system", "x86_64-linux"]).status.success());
+    let first = stand_in.run(&["--system", "x86_64-linux"]);
+    assert!(
+        first.status.success(),
+        "the first run failed: {}",
+        text(&first.stderr)
+    );
     // Were the tree evaluated again, its checks would now all be removed.
     stand_in.checks("working", "{}");
 
@@ -214,7 +228,11 @@ fn a_clean_tree_is_kept_by_its_commit() {
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(text(&ran.stdout), "");
     let kept = Path::new("cache/changed-checks/fedcba9876543210fedc-x86_64-linux.json");
-    assert!(stand_in.folder.join(kept).exists());
+    assert!(
+        stand_in.folder.join(kept).exists(),
+        "the clean tree's checks weren't kept at {}",
+        stand_in.folder.join(kept).display()
+    );
     let runs = stand_in.runs();
     assert_eq!(evaluated(&runs[0]), ["base", "tree"], "{}", runs[0]);
     assert!(evaluated(&runs[1]).is_empty(), "{}", runs[1]);

@@ -58,19 +58,25 @@ mod tests {
         let takes = "tree\nchanged\nfirst\n";
         assert_eq!(first(false, takes, NET), First::No);
         assert_eq!(first(true, takes, NET), First::Yes);
-        assert!(matches!(first(true, takes, SESSION), First::Refused(_)));
-        assert!(matches!(
-            first(true, "tree\nchanged\n", NET),
-            First::Refused(_)
-        ));
+        let session = first(true, takes, SESSION);
+        assert!(
+            matches!(session, First::Refused(_)),
+            "a session's run wasn't refused going first: {session:?}"
+        );
+        let untaken = first(true, "tree\nchanged\n", NET);
+        assert!(
+            matches!(untaken, First::Refused(_)),
+            "the net wasn't refused going first though nix-offload doesn't take first: {untaken:?}"
+        );
     }
 
     #[test]
     fn a_unit_named_like_the_nets_is_not_it() {
         let lookalike = "0::/user.slice/app.slice/not-merge-net.service\n";
-        assert!(matches!(
-            first(true, "first\n", lookalike),
-            First::Refused(_)
-        ));
+        let asked = first(true, "first\n", lookalike);
+        assert!(
+            matches!(asked, First::Refused(_)),
+            "a unit named like the net's wasn't refused going first: {asked:?}"
+        );
     }
 }

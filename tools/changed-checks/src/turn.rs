@@ -43,7 +43,7 @@ mod tests {
         let path = scratch.join("turns/here.lock");
         let mut waited = false;
         let _turn = taken(&path, || waited = true).unwrap();
-        assert!(!waited);
+        assert!(!waited, "a free turn was waited for");
     }
 
     #[test]
