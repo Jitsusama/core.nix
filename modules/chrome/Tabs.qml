@@ -72,17 +72,10 @@ Provider {
     readonly property alias bookmarks: marked
 
     // Its bookmarks, made only while the launcher is open or its rows are
-    // wanted (Provider.qml's wanted), as Documents.qml's are, and searched
-    // from home among everything else; its tabs are its collection's.
-    readonly property bool rowsWanted: provider.launcher?.open === true || provider.wanted
-    readonly property var madeRows: ({ rows: [] })
-    things: {
-        if (!provider.rowsWanted)
-            return provider.madeRows.rows;
-        const rows = marked.rows();
-        provider.madeRows.rows = rows;
-        return rows;
-    }
+    // wanted (Provider.qml's rowsWhileOpenOrWanted), as Documents.qml's
+    // are, and searched from home among everything else; its tabs are its
+    // collection's.
+    things: provider.rowsWhileOpenOrWanted(() => marked.rows())
     onThingsChanged: changedTo(things)
 
     function everything() {

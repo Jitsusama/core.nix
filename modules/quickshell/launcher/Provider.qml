@@ -275,6 +275,20 @@ Scope {
         return provider.madeLast[name];
     }
 
+    // Rows made by `make` while the launcher is open or they're wanted, and otherwise the rows
+    // made last, or none before any were made. Open is wider than wanted, since a program's
+    // Recent and Programs' counts read a source's rows from Applications' steps (Documents.qml's
+    // recentOf), which no walk of its own asks for. Said once here, so each source that needs
+    // it keeps to one rule (Y9XISP, 2026-11-16).
+    readonly property bool openOrWanted: provider.launcher?.open === true || provider.wanted
+    readonly property var madeWhileOpen: ({ rows: [] })
+    function rowsWhileOpenOrWanted(make) {
+        if (!provider.openOrWanted)
+            return provider.madeWhileOpen.rows;
+        provider.madeWhileOpen.rows = make();
+        return provider.madeWhileOpen.rows;
+    }
+
     // What whileWanted's `name` makes as it stands while the launcher looks through its rows
     // shut (looksThrough), and otherwise `bound`, the property it made: the first made may have
     // come before what they're made of was heard. Made here, not by its binding, since a
