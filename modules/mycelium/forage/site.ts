@@ -1,6 +1,6 @@
 // What each cell is for: every cell standing on this machine that works on
 // a quest, drawn first as the forest floor cut through and then listed, each
-// under the cell it split from, with the purpose its quest states and how
+// under the cell that started it, with the purpose its quest states and how
 // far the plans it keeps have come, and beside them the cell the cursor is
 // on, with each of its documents. It watches the mycelium node's forage
 // records over the sites' server, so a cell redraws the moment a step is
