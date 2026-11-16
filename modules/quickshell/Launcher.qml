@@ -9321,11 +9321,12 @@ Scope {
     // (`listedNow`), a place a source leads to is listed as it stands
     // (ledListing) rather than drawn as kept.
     function intoKept(name, listedNow) {
-        const kept = placesKept[name];
+        const kept = placesKept[name] ?? (listedNow === true ? ledKept(name) : null);
         if (!kept || !homeHeld || parting !== "" || kept.under !== keptUnder(name))
             return false;
         const source = collections.find(one => one.settings.name === name) ?? null;
         const listed = source?.keptListed === true ? keptListing(source)
+            : kept.fresh === true ? kept.matches
             : listedNow === true ? ledListing(name) : kept.matches;
         if (listed === null)
             return false;
@@ -9382,11 +9383,37 @@ Scope {
     // goes between openings, or null where that step doesn't list them,
     // when it opens whole.
     function ledListing(name) {
-        const led = leadingTo(name)?.rows ?? [];
+        return ledRows(leadingTo(name)?.rows ?? []);
+    }
+    function ledRows(led) {
         const last = led[led.length - 1];
         if (typeof last?.targets !== "function")
             return null;
         return live(last.targets());
+    }
+    // A place a source leads to that hasn't opened since the shell
+    // started, so none is kept: its steps made as opening it whole would
+    // leave them, through the rows its source leads by, and its rows
+    // listed as they stand (`fresh`), or null where it can't be, when it
+    // opens whole. Warming keeps only the places chords open, and Super+N
+    // opens a place Now leads to, so the first Super+N after each start
+    // was made whole: all 6 of Joel's, 44 to 119 ms to the frame, while
+    // the 7 after drew from what was kept in 13 to 42 (2026-11-15 18:13
+    // to 11-16 11:15). Nothing is told it opened, as nothing is for a
+    // kept place, so the notices aren't seen until the fill steps in.
+    function ledKept(name) {
+        const { leading, rows } = leadingTo(name) ?? { leading: null, rows: [] };
+        if (!leading?.collection || leading.settings.name === name || rows.length === 0
+                || rows.some(row => !row))
+            return null;
+        const listed = ledRows(rows);
+        if (listed === null)
+            return null;
+        const steps = rows.map((row, depth) => Object.assign(here(), { typed: "", at: 0,
+            above: 0, key: steadyId(row), row: row, rows: depth === rows.length - 1 ? listed : [] }));
+        const held = [placeStep(leading)].concat(steps);
+        return { held: held, matches: listed, depth: held.length, under: keptUnder(name),
+            fresh: true };
     }
 
     function intoWhole(name, passing) {
