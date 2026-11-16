@@ -18,7 +18,8 @@ letting go, as the daemon tells its journal each paste. The shell's journal hold
 paste is asked, and the keys given back, before the closing's work runs, which took a paste's
 keys 91 ms on Joel's machine while it ran first (2026-11-10). The history also reads the text
 highlighted, the selection a middle click pastes, as a get asks for it, for Super+X's On the
-Selection, and never keeps it.
+Selection, and never keeps it. Nor does it keep a copy a password manager marks as secret, as
+wl-copy --sensitive and Passwords mark theirs, while the ordinary copy after it is kept.
 """
 
 from __future__ import annotations
@@ -244,3 +245,19 @@ def test_the_highlighted_text_is_read_as_a_get_asks_and_never_kept(shell: Shell)
     assert isinstance(selected["at"], int), f"when it was highlighted, in ms: {selected}"
     listed = json.dumps(history_answer({"ask": "list"}))
     assert highlighted not in listed, "the highlighted text is never kept as a copy"
+
+
+def test_a_secret_copy_is_never_kept_and_an_ordinary_one_is(shell: Shell) -> None:
+    """A copy marked secret leaves no row, and the ordinary copy after it is kept."""
+    marked = "a secret no row holds"
+    ordinary = "an ordinary copy after a secret"
+    shell.as_account(f"printf %s '{marked}' | wl-copy --sensitive > /dev/null 2>&1")
+    shell.as_account(f"printf %s '{ordinary}' | wl-copy > /dev/null 2>&1")
+    listed: list[str] = []
+
+    def kept() -> bool:
+        listed[:] = [json.dumps(history_answer({"ask": "list"}))]
+        return ordinary in listed[0]
+
+    until(kept, f"kept {ordinary!r}")
+    assert marked not in listed[0], f"a copy marked secret was kept: {listed[0]}"
