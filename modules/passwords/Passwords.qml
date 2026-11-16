@@ -78,8 +78,9 @@ Provider {
         // The shell's own child, with no socket another process could
         // reach, so what Joel's manager lets it read is the shell's alone.
         // Never run while the place is off. It copies nothing unless a
-        // copier is named, which only the checks do until agents are
-        // fenced off the clipboard; null keeps one out of its environment.
+        // copier is named, as the module names wl-copy, whose sensitive
+        // offer niri keeps from fenced agents; null keeps one out of its
+        // environment.
         command: provider.off ? [] : provider.settings.daemon ?? []
         environment: ({ PASSWORDS_COPIER: provider.settings.copier ?? null })
         // Where secret asks are listed, its asks' rows come beside the

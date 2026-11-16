@@ -56,7 +56,7 @@ Scope {
     // The daemon the shell runs as its own child, asked over its standard
     // input and output, for one with no socket; empty for one that has.
     property var command: []
-    // What the child's environment adds, as a check names a copier.
+    // What the child's environment adds, as Passwords names its copier.
     property var environment: ({})
     readonly property bool runsItself: command.length > 0
     // The kind of record it holds, or a list of kinds, as Google's daemon

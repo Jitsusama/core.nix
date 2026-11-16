@@ -26,8 +26,8 @@
 //! without its secrets (lib.rs); a secret goes from its manager to the
 //! ask that wanted to see it, or to the clipboard, marked sensitive and
 //! cleared after CLEARS, and is never kept, written or logged here. Copying
-//! is off while `$PASSWORDS_COPIER` names no copier, which nothing names
-//! until agents are fenced off the clipboard any of them can read.
+//! is off while `$PASSWORDS_COPIER` names no copier; the module names
+//! wl-copy, whose sensitive offer niri keeps from fenced agents.
 //!
 //! Given the launcher's vocabulary, WORDS, it serves each entry's ready row
 //! too, as kind `row` to list and watch: worded, ordered and with its acts
@@ -1253,16 +1253,15 @@ fn secret(
     }
 }
 
-/// Why nothing is copied: every agent runs as Joel, and niri lets any
-/// client of his read the clipboard, so a copied secret would reach any
-/// of them until agents are fenced off it (2026-11-10). A browser's own
-/// extension of the manager fills sign-ins without one.
+/// Why nothing is copied while no copier is named: every agent runs as
+/// Joel, and a copy is safe only where niri keeps its sensitive offer from
+/// fenced agents (2026-11-10). A browser's own extension of the manager
+/// fills sign-ins without one.
 const COPY_OFF: &str =
     "copying is off while it's made safe; use your password manager's browser extension";
 
 /// The program that holds a copy on the clipboard, `$PASSWORDS_COPIER`,
-/// or none while copying is off: nothing names it until agents are fenced
-/// off the clipboard, so nothing is copied before then.
+/// or none while copying is off, as it is for a shell that names none.
 fn copier() -> Option<String> {
     std::env::var("PASSWORDS_COPIER")
         .ok()

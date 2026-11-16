@@ -15,9 +15,9 @@
 # would answer them with whatever 1Password let it read (2026-11-10, Joel:
 # "we can't have a password backdoor here"); 1Password lets in each
 # process tree apart, so a daemon an agent starts must ask Joel itself. A
-# secret goes from its manager only to the ask for it; nothing is copied
-# while no copier is named, which nothing names until agents are fenced
-# off the clipboard. An audit, only when Joel asks, reads every password
+# secret goes from its manager only to the ask for it, or to the clipboard
+# through wl-copy, marked sensitive, which niri keeps from every fenced
+# agent, over Wayland and over X11 alike. An audit, only when Joel asks, reads every password
 # to find those reused and those breached, hashing each in the daemon's
 # memory and sending Have I Been Pwned the first five characters of a
 # hash alone. What the last check found, each troubled entry's two counts
@@ -253,6 +253,9 @@ in
       # folder and Wayland; the checks that walk it turn it on, where no
       # agent runs and no secret is real.
       off = true;
+      # Copies go through wl-copy, by its full path, as a sensitive offer
+      # niri hands no fenced agent.
+      copier = lib.getExe' pkgs.wl-clipboard "wl-copy";
       managers = map (manager: {
         inherit (manager)
           name
