@@ -790,6 +790,7 @@ fn own(shared: &Arc<Shared>, said: &Value) -> Option<Value> {
             search::answer(shared, &lock(&shared.daemon), &id, &place, &words, most)
         }
         Own::Tab(tab) => tabs::act(&id, tab),
+        Own::Terminal(folder) => code::terminal(&id, &folder),
         Own::Settings(settings) => settle(shared, settings),
     })
 }

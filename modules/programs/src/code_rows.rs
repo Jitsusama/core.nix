@@ -5,7 +5,9 @@
 //! by how many trees are cut from it and when git last wrote in it; it's
 //! found by its name, its owner and its key. Return opens its page where
 //! a remote keeps it on GitHub or GitLab, else copies its checkout's
-//! path; inside are Open Its Page and Copy Its Path, and its drawer names
+//! path; inside are Open Its Page, Copy Its Path and New Terminal Here,
+//! which asks this daemon to start kitty in it (code.rs), and shuts the
+//! launcher as it's asked so the new window takes the keys; its drawer names
 //! its key, its trunk and the checkout written to last, at its branch.
 
 use repos::model::{Checkout, Record, Repository};
@@ -147,6 +149,11 @@ fn row(repository: &Repository, home: Option<&Path>, words: &Words) -> Value {
     }
     if let Some(path) = &path {
         acts.push(json!({"key": "verb:code:path", "copy": path}));
+        acts.push(json!({
+            "key": "verb:code:terminal",
+            "ask": {"ask": "code:terminal", "path": path},
+            "closes": true,
+        }));
     }
     json!({
         "key": format!("row:{PLACE}:{}", repository.key),
@@ -304,14 +311,28 @@ mod tests {
     }
 
     #[test]
-    fn return_opens_its_page_and_copy_takes_the_checkout_written_to_last() {
+    fn return_opens_its_page_and_copy_and_a_terminal_take_the_checkout_written_to_last() {
         let rows = rows(&record(vec![core()]), None, &words());
         assert_eq!(
             rows[0]["acts"],
             json!([
                 {"key": "verb:code:page", "open": "https://github.com/Jitsusama/core.nix"},
                 {"key": "verb:code:path", "copy": "/home/j/src/core.nix"},
+                {"key": "verb:code:terminal", "closes": true,
+                 "ask": {"ask": "code:terminal", "path": "/home/j/src/core.nix"}},
             ])
+        );
+    }
+
+    #[test]
+    fn a_repository_with_no_checkout_opens_no_terminal() {
+        let mut repository = core();
+        repository.checkouts.clear();
+        let rows = rows(&record(vec![repository]), None, &words());
+        assert_eq!(
+            rows[0]["acts"],
+            json!([{"key": "verb:code:page", "open": "https://github.com/Jitsusama/core.nix"}]),
+            "a terminal was offered with nowhere to open it"
         );
     }
 
@@ -332,7 +353,11 @@ mod tests {
         assert_eq!(row["side"], json!([]), "nothing to say beside it");
         assert_eq!(
             row["acts"],
-            json!([{"key": "verb:code:path", "copy": "/home/j/scratch/thing"}])
+            json!([
+                {"key": "verb:code:path", "copy": "/home/j/scratch/thing"},
+                {"key": "verb:code:terminal", "closes": true,
+                 "ask": {"ask": "code:terminal", "path": "/home/j/scratch/thing"}},
+            ])
         );
         assert_eq!(row["drawer"]["eyebrow"][0]["said"], "no remote");
         assert!(row["drawer"].get("nerd").is_none(), "no remote to name");

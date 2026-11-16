@@ -55,6 +55,15 @@
       "name": "Copy Its Path",
       "verb": "copy",
       "glyph": "link"
+    },
+    {
+      "id": "verb:code:terminal",
+      "command": "new",
+      "argument": "terminal",
+      "in": "code:repository",
+      "name": "New Terminal Here",
+      "verb": "open",
+      "glyph": "folder"
     }
   ]
 }
