@@ -3225,7 +3225,8 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
     opened(shell)
     shell.launcher_until(lambda shown: "Carried" in shown["rows"])
     shell.down_to("Carried")
-    assert shell.showing()["selected"]["side"] == "1 about to go \u00b7 1 arrived", shell.showing()
+    # The group counts ordered and carrying as one, on their way.
+    assert shell.showing()["selected"]["side"] == "1 on its way \u00b7 1 arrived", shell.showing()
     took = presented_after(shell, "ret")
     logging.getLogger(__name__).info("LAB the step into Carried was presented %s ms on", took)
     shell.launcher_until(lambda shown: shown["rows"][:2] == ["Paused Quest", "Listening Quest"])
