@@ -189,19 +189,24 @@ function and(words: readonly string[]): string {
   return `${words.slice(0, -1).join(", ")} and ${words.at(-1) ?? ""}`;
 }
 
+/** `count` with its thousands set apart, as 3,000. */
+function grouped(count: number): string {
+  return count.toLocaleString("en-CA");
+}
+
 /** The whole in one sentence: how many cells, and how many have no purpose written. */
 function judged(forages: readonly Forage[], machine: string): string {
   const where = machine === "" ? "here" : `on ${machine}`;
   if (forages.length === 0) {
     return `No cell ${where} works on a quest right now.`;
   }
-  const cells = forages.length === 1 ? "One cell" : `${forages.length} cells`;
+  const cells = forages.length === 1 ? "One cell" : `${grouped(forages.length)} cells`;
   const works = forages.length === 1 ? "works" : "work";
   const without = forages.filter((each) => each.purpose === "").length;
   const purposes =
     without === 0
       ? `${forages.length === 1 ? "" : "each "}with its purpose written`
-      : `${without === 1 ? "one" : String(without)} with no purpose written`;
+      : `${without === 1 ? "one" : grouped(without)} with no purpose written`;
   return `${cells} ${where} ${works} on a quest, ${purposes}.`;
 }
 

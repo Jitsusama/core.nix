@@ -113,7 +113,7 @@ function startedBy(forage: Forage, here: ReadonlySet<string>): string {
   const name = `<code>${escaped(by)}</code>`;
   return here.has(by)
     ? `<a href="#cell=${encodeURIComponent(by)}" data-cell="${escaped(by)}">${name}</a>`
-    : `${name}, on another machine`;
+    : `<span>${name}, on another machine</span>`;
 }
 
 /** The panel of `forage`, the cell the cursor is on; `here` holds every cell drawn. */

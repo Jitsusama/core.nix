@@ -129,6 +129,17 @@ it("the whole says how many cells work, and how many have no purpose written", (
   assert.equal(judged([], "kestrel"), "No cell on kestrel works on a quest right now.");
 });
 
+it("the whole sets a count's thousands apart", () => {
+  const cells = Array.from({ length: 3000 }, (_, at) =>
+    forage(`C${String(at).padStart(5, "0")}`, at < 1200 ? { purpose: "" } : {}),
+  );
+  const { forages } = foragesOf(told(cells));
+  assert.equal(
+    judged(forages, "kestrel"),
+    "3,000 cells on kestrel work on a quest, 1,200 with no purpose written.",
+  );
+});
+
 it("a find matches a cell, its quest, its purpose or a document's title", () => {
   const { forages } = foragesOf(told([forage("KESTRL")]));
   const [kestrel] = forages;
