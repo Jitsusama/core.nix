@@ -75,7 +75,7 @@ const skiff = {
   disk_band: "fine",
   power: "ac",
   room: { memory_available: 30, pressure: 0.1, over: ["cpu"] },
-  declared: { reach: ["aquifer"], leaves_at: "2026-11-16T09:00:00Z" },
+  declared: { reach: ["cistern"], leaves_at: "2026-11-16T09:00:00Z" },
   measured_at: "2026-11-16T07:29:00Z",
 };
 
@@ -146,7 +146,7 @@ it("a machine's room and declared reach are flattened, as the map reads them", (
       available: 30,
       pressure: 0.1,
       over: ["cpu"],
-      reach: ["aquifer"],
+      reach: ["cistern"],
       leaves_at: "2026-11-16T09:00:00Z",
       measured_at: "2026-11-16T07:29:00Z",
     },

@@ -295,7 +295,7 @@
 
   const STANDING_OF_CELL = { "needs-you": "asks", stuck: "stuck", moving: "moving", quiet: "quiet", dormant: "dormant" };
   const SHARED_WORD = { project: "quest", repository: "repository", group: "group" };
-  // A shared network as the panel names it: "the acceluary repository".
+  // A shared network as the panel names it: "the backwater repository".
   const sharedWords = (id) => {
     const n = current?.shared.find((x) => x.key === id);
     return n ? `the ${n.short} ${SHARED_WORD[n.shape]}` : id;
@@ -2556,13 +2556,11 @@
   const PRESSURE_WATCH = 85; // percent of cpu or memory worth a look
   const CHARGE_TEND = 20; // percent of battery left that wants tending
   const LEASE_WATCH_MS = 30 * 60_000; // a sandbox this near its end is worth a look
-  // A machine that is an Aquifer box says so in what it declares: it
-  // reaches Aquifer, and it leaves at its lease's end. Bare metal says
-  // neither, so the map tells them apart by what each machine says of
-  // itself, never by its name.
-  const reachOf = (x) => x?.reach || x?.declared?.reach || [];
+  // A machine a provider lent says so in what it declares: it leaves at
+  // its lease's end. Bare metal never does, so the map tells them apart by
+  // what each machine says of itself, never by its name or its provider's.
   const leavesAt = (x) => x?.leaves_at || x?.declared?.leaves_at || null;
-  const isSandbox = (x) => reachOf(x).includes("aquifer");
+  const isSandbox = (x) => leavesAt(x) !== null;
   const leftWords = (iso) => {
     const ms = Date.parse(iso) - Date.parse(current.at);
     if (!(ms > 0)) return "its time is up";
@@ -2572,8 +2570,7 @@
     return `${span} left, until ${dayClock(iso)}`;
   };
   const sandboxWords = (x) => {
-    const end = leavesAt(x);
-    return `a cloud sandbox on Aquifer${end ? `, ${leftWords(end)}` : ", with no end said"}`;
+    return `a cloud sandbox, ${leftWords(leavesAt(x))}`;
   };
   const VERDICT = ["Well", "Watch", "Tend"];
   const contextShare = (s) => (s.usage?.context?.limit ? s.usage.context.used / s.usage.context.limit : 0);
