@@ -183,7 +183,10 @@ impl Watch {
     }
 
     /// Waits for the next answer to the watch, as it was said, passing
-    /// over the hello's, for whoever holds the records elsewhere.
+    /// over the hello's, for whoever holds the records elsewhere. An
+    /// answer with no id at all is a daemon outside the interface, as a
+    /// node from before it answers, and ends the watch in its own words,
+    /// since waiting on would leave whoever follows it waiting for ever.
     pub fn answer(&mut self) -> io::Result<Value> {
         loop {
             let mut line = String::new();
@@ -196,8 +199,15 @@ impl Watch {
             let Ok(answer) = serde_json::from_str::<Value>(&line) else {
                 continue;
             };
-            if answer.get("id") != Some(&json!(2)) {
-                continue;
+            match answer.get("id") {
+                None => {
+                    return Err(io::Error::other(format!(
+                        "the daemon answered outside the interface: {}",
+                        line.trim_end()
+                    )));
+                }
+                Some(id) if id != &json!(2) => continue,
+                Some(_) => {}
             }
             if let Some(error) = answer.get("error") {
                 return Err(io::Error::other(format!("the watch was refused: {error}")));
@@ -371,6 +381,45 @@ mod tests {
             watch.heard().is_err(),
             "the daemon hanging up ends the watch"
         );
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn an_answer_outside_the_interface_ends_the_watch_in_its_words() {
+        let folder =
+            std::env::temp_dir().join(format!("daemon-serve-foreign-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a folder for the socket");
+        let socket = folder.join("node.sock");
+        let _ = std::fs::remove_file(&socket);
+        let listener = UnixListener::bind(&socket).expect("the stand-in daemon listens");
+        // A node from before the interface answers each line in its own
+        // shape, with no id, and keeps the connection open.
+        let daemon = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("the watch connects");
+            let mut asks = BufReader::new(stream.try_clone().expect("its stream"));
+            let mut stream = stream;
+            for _ in 0..2 {
+                let mut line = String::new();
+                asks.read_line(&mut line).expect("an ask");
+                let refused = json!({"Err": "not a request: unknown variant `id`"});
+                writeln!(stream, "{refused}").expect("an answer");
+            }
+            stream
+        });
+        let mut watch = Watch::open(&socket, "cell").expect("the watch opens");
+        // A watch that waits on regardless fails here in seconds rather
+        // than holding the build, as it held the sites' page at connecting.
+        watch
+            .lines
+            .get_ref()
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("a bound on the wait");
+        let ended = watch.heard().expect_err("an answer with no id ends the watch");
+        assert!(
+            ended.to_string().contains("not a request"),
+            "it ends in the daemon's words: {ended}"
+        );
+        drop(daemon.join().expect("the stand-in daemon ends"));
         let _ = std::fs::remove_dir_all(&folder);
     }
 
