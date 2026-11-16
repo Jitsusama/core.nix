@@ -54,12 +54,24 @@ pub const DRAWER: &str = "drawer";
 
 /// What a list or a watch is of: the entries, their ready rows, or the
 /// drawers those rows name, by key, which the launcher watches only while
-/// one shows. Asked for no keys, drawers are none.
+/// one shows. Asked for no keys, drawers are none. The entries with the
+/// secret asks' rows alone is the Passwords place's one watch where asks
+/// are on, so its asks share its connection rather than a second one
+/// watching the same folder.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Of {
     Entries,
     Rows,
+    EntriesAndAsks,
     Drawers(Vec<String>),
+}
+
+impl Of {
+    /// Whether a watch of this is told the entries as they change.
+    #[must_use]
+    pub fn has_entries(&self) -> bool {
+        matches!(self, Self::Entries | Self::EntriesAndAsks)
+    }
 }
 
 /// The domain it answers for, as hello says it.
@@ -230,16 +242,37 @@ pub fn ask(line: &str) -> Ask {
             })
             .unwrap_or_default()
     };
-    let kind = said.get("kind").and_then(Value::as_str).unwrap_or(KIND);
-    let of = match kind {
+    let asks_place = said.get("place").and_then(Value::as_str) == Some(secret_asks::row::PLACE);
+    if asked == "search" && asks_place {
+        // The asks are few and drawn whole, so the launcher matches them
+        // itself, as it does the secret asks' own daemon's, rather than
+        // being answered with entries.
+        return Ask::Unknown {
+            id,
+            ask: "search of the asks".to_owned(),
+        };
+    }
+    // A list of kinds is the entries with the asks' rows, or none it
+    // keeps; a kind said alone is that kind.
+    let kind = match said.get("kind") {
+        Some(Value::Array(kinds)) => {
+            let mut named: Vec<&str> = kinds.iter().filter_map(Value::as_str).collect();
+            named.sort_unstable();
+            if named == [KIND, ROW] && asks_place {
+                "entries and asks".to_owned()
+            } else {
+                named.join(" and ")
+            }
+        }
+        said => said.and_then(Value::as_str).unwrap_or(KIND).to_owned(),
+    };
+    let of = match kind.as_str() {
+        "entries and asks" if matches!(asked, "list" | "watch") => Of::EntriesAndAsks,
         KIND => Of::Entries,
         ROW if matches!(asked, "list" | "watch") => Of::Rows,
         DRAWER if matches!(asked, "list" | "watch") => Of::Drawers(keys("drawer:passwords:")),
         _ if matches!(asked, "list" | "watch" | "search") => {
-            return Ask::UnknownKind {
-                id,
-                kind: kind.to_owned(),
-            };
+            return Ask::UnknownKind { id, kind };
         }
         _ => Of::Entries,
     };
@@ -1148,6 +1181,50 @@ mod tests {
                 held: false,
                 patience: PATIENCE
             }
+        );
+    }
+
+    #[test]
+    fn the_launcher_watches_entries_and_asks_in_one() {
+        // The Passwords place and its asks share one connection, so the
+        // launcher watches the entries with the asks' rows, never the
+        // entries' own rows, which only the passwords place's rows draw.
+        for kinds in [r#"["entry","row"]"#, r#"["row","entry"]"#] {
+            assert_eq!(
+                ask(&format!(
+                    r#"{{"id":"all","ask":"watch","kind":{kinds},"place":"asks"}}"#
+                )),
+                Ask::Watch {
+                    id: json!("all"),
+                    of: Of::EntriesAndAsks
+                },
+                "the kinds {kinds} with the asks' place weren't one watch"
+            );
+        }
+        assert!(matches!(
+            ask(r#"{"id":1,"ask":"list","kind":["entry","row"],"place":"asks"}"#),
+            Ask::List {
+                of: Of::EntriesAndAsks,
+                ..
+            }
+        ));
+        assert!(
+            matches!(
+                ask(r#"{"id":2,"ask":"watch","kind":["entry","row"]}"#),
+                Ask::UnknownKind { .. }
+            ),
+            "entries with every row were watched as entries alone"
+        );
+        assert!(matches!(
+            ask(r#"{"id":3,"ask":"watch","kind":["entry","drawer"],"place":"asks"}"#),
+            Ask::UnknownKind { .. }
+        ));
+        assert!(
+            matches!(
+                ask(r#"{"id":4,"ask":"search","place":"asks","words":"deploy"}"#),
+                Ask::Unknown { .. }
+            ),
+            "a search of the asks was answered with entries"
         );
     }
 
