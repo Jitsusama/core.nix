@@ -223,23 +223,66 @@ fn pull_takes_what_the_branch_followed_has_and_never_merges() {
     );
     commit(&elsewhere, "two");
     git(&elsewhere, &["push", "--quiet"]);
+    let head = |folder: &Path| git(folder, &["rev-parse", "HEAD"]);
+    // Fetched already, and counted one behind, as a refresh would say.
+    git(&here, &["fetch", "--quiet"]);
+    let kept = running.path("state/repos/upstreams.json");
+    std::fs::create_dir_all(kept.parent().unwrap()).unwrap();
+    let (two, one) = (head(&elsewhere), head(&here));
+    let counted = json!({"schema": "repos.upstreams/1", "counted_at": 40,
+        "counts": {format!("{two}...{one}"): {"behind": 1, "ahead": 0}}});
+    std::fs::write(&kept, counted.to_string()).unwrap();
+    let mut watcher = running.client();
+    let answer = watcher.ask(&json!({"id": 9, "ask": "watch", "kind": "row", "place": "code"}));
+    let alpha = answer["records"]
+        .as_array()
+        .and_then(|records| {
+            records
+                .iter()
+                .find(|record| record["row"]["name"] == "alpha")
+        })
+        .cloned()
+        .unwrap_or_else(|| panic!("the checkout pulled has no row: {answer}"));
+    assert_eq!(
+        alpha["row"]["side"][0],
+        json!({"said": "1 behind"}),
+        "{alpha}"
+    );
+    let key = alpha["key"].as_str().unwrap().to_owned();
+
     let mut client = running.client();
     let mut pull =
         |id: u64, folder: &Path| client.ask(&json!({"id": id, "ask": "code:pull", "path": folder}));
-    let head = |folder: &Path| git(folder, &["rev-parse", "HEAD"]);
-
+    // A file git doesn't track is no change of its own, and stays.
+    std::fs::write(here.join("loose"), "loose").unwrap();
     let said = pull(1, &here);
     assert_eq!(
         said["said"], "pulled 1 commit",
         "Pull didn't fetch and take: {said}"
     );
     assert_eq!(head(&here), head(&elsewhere));
+    assert!(
+        here.join("loose").is_file(),
+        "a file git doesn't track went"
+    );
+    let pulled = watcher.changed(&key);
+    assert!(
+        !pulled["row"]["side"].to_string().contains("behind"),
+        "the row still says it's behind once pulled: {pulled}"
+    );
     let said = pull(2, &here);
     assert_eq!(said["said"], "already up to date", "{said}");
 
     commit(&elsewhere, "three");
     git(&elsewhere, &["push", "--quiet"]);
     std::fs::write(here.join("one"), "changed").unwrap();
+    // With nowhere to fetch from, a refusal made after fetching would say
+    // the fetch failed.
+    let gone = running.path("gone.git");
+    git(
+        &here,
+        &["remote", "set-url", "origin", gone.to_str().unwrap()],
+    );
     let was = head(&here);
     let said = pull(3, &here);
     assert_eq!(
@@ -248,11 +291,30 @@ fn pull_takes_what_the_branch_followed_has_and_never_merges() {
             &json!("changed"),
             &json!("not pulled: it has changes of its own")
         ),
-        "a checkout with changes of its own was pulled: {said}"
+        "a checkout with changes of its own was pulled, or fetched first: {said}"
     );
     assert_eq!(head(&here), was);
+    git(
+        &here,
+        &["remote", "set-url", "origin", upstream.to_str().unwrap()],
+    );
 
     git(&here, &["checkout", "--quiet", "--", "one"]);
+    git(&here, &["checkout", "--quiet", "--detach"]);
+    let said = pull(6, &here);
+    assert_eq!(said["error"]["refused"], "detached", "{said}");
+    assert_eq!(head(&here), was);
+    git(&here, &["checkout", "--quiet", "main"]);
+
+    // A folder holding a `.git` that's no repository is refused, rather
+    // than git finding the checkout it sits in.
+    let inside = here.join("inside");
+    std::fs::create_dir_all(inside.join(".git")).unwrap();
+    let said = pull(7, &inside);
+    assert_eq!(said["error"]["refused"], "tree", "{said}");
+    assert_eq!(head(&here), was);
+    std::fs::remove_dir_all(&inside).unwrap();
+
     commit(&here, "mine");
     let was = head(&here);
     let said = pull(4, &here);

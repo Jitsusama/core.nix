@@ -6,11 +6,15 @@
 //! checkout's own folder, the one holding `.git` as a folder, never on a
 //! tree cut from it, which is where an agent works.
 //!
-//! Git runs as Joel's own would, with his config, since a fetch needs his
-//! keys; nothing asks him anything, and a fetch past [`FETCH`] is stopped.
+//! Git runs with Joel's config, since a fetch needs his keys, but in a
+//! session of its own with no terminal, and with no askpass, hooks or
+//! fsmonitor, so nothing asks him anything and nothing a repository's
+//! config names runs beside it. A fetch past [`FETCH`], or a read past
+//! [`READ`], is stopped with all it started.
 
+use std::os::unix::process::CommandExt;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
@@ -18,6 +22,14 @@ use serde_json::{Value, json};
 /// The longest a fetch may run before it's stopped, which leaves the
 /// checkout as it was.
 pub const FETCH: Duration = Duration::from_secs(120);
+
+/// The longest reading the checkout may take before it's stopped: its
+/// branch, the one it follows, its changes and how far apart they are.
+pub const READ: Duration = Duration::from_secs(30);
+
+/// How long git is given to let go of its locks once asked to stop,
+/// before it's stopped outright.
+const LETTING_GO: Duration = Duration::from_secs(5);
 
 /// How a pull went when it changed nothing it shouldn't.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,8 +45,14 @@ pub enum Pulled {
 pub enum Refused {
     /// The folder isn't a checkout's own, as a tree cut from one isn't.
     Tree,
-    /// Its head is no branch, or its branch follows none.
+    /// A pull of the same checkout is under way.
+    Busy,
+    /// Its head is no branch, as while a rebase is under way.
+    Detached,
+    /// Its branch follows none.
     Unfollowed,
+    /// Git couldn't read its branch, its changes or how far apart it is.
+    Unread,
     /// Its tracked files have changes of its own.
     Changed,
     /// The fetch failed or ran past [`FETCH`].
@@ -42,7 +60,7 @@ pub enum Refused {
     /// Its branch and the one it follows have each moved, so only a merge
     /// or a rebase would bring them together.
     Diverged,
-    /// Git refused the fast-forward.
+    /// Git refused the fast-forward itself.
     Failed,
 }
 
@@ -50,7 +68,10 @@ impl Refused {
     fn code(self) -> &'static str {
         match self {
             Refused::Tree => "tree",
+            Refused::Busy => "busy",
+            Refused::Detached => "detached",
             Refused::Unfollowed => "unfollowed",
+            Refused::Unread => "unread",
             Refused::Changed => "changed",
             Refused::Unfetched => "unfetched",
             Refused::Diverged => "diverged",
@@ -113,27 +134,37 @@ impl Words {
 /// # Errors
 ///
 /// Says why it left the checkout as it was.
-pub fn pull(git: &str, folder: &Path) -> Result<Pulled, Refused> {
+pub fn pull(git: &str, folder: &Path, fetch: Duration) -> Result<Pulled, Refused> {
     // A tree cut from a checkout holds `.git` as a file naming it, where
-    // an agent works; only a checkout's own folder holds it as a folder.
-    if !folder.join(".git").is_dir() {
+    // an agent works; only a checkout's own folder holds it as a folder,
+    // with a HEAD in it. Git is told that folder outright (`ran`), so it
+    // never looks past it for a repository further up.
+    let own = folder.join(".git");
+    if !own.is_dir() || !own.join("HEAD").is_file() {
         return Err(Refused::Tree);
     }
-    let run = |args: &[&str]| ran(git, folder, args, None);
-    run(&["symbolic-ref", "--quiet", "HEAD"]).map_err(|()| Refused::Unfollowed)?;
-    run(&["rev-parse", "--verify", "--quiet", "@{upstream}"]).map_err(|()| Refused::Unfollowed)?;
+    let read = |args: &[&str]| ran(git, folder, args, Some(READ));
+    read(&["symbolic-ref", "--quiet", "HEAD"]).map_err(|()| Refused::Detached)?;
+    read(&["rev-parse", "--verify", "--quiet", "@{upstream}"]).map_err(|()| Refused::Unfollowed)?;
     let changed =
-        run(&["status", "--porcelain", "--untracked-files=no"]).map_err(|()| Refused::Failed)?;
+        read(&["status", "--porcelain", "--untracked-files=no"]).map_err(|()| Refused::Unread)?;
     if !changed.trim().is_empty() {
         return Err(Refused::Changed);
     }
-    ran(git, folder, &["fetch", "--quiet"], Some(FETCH)).map_err(|()| Refused::Unfetched)?;
-    let counted = run(&["rev-list", "--left-right", "--count", "HEAD...@{upstream}"])
-        .map_err(|()| Refused::Failed)?;
-    match counts(&counted).ok_or(Refused::Failed)? {
+    ran(git, folder, &["fetch", "--quiet"], Some(fetch)).map_err(|()| Refused::Unfetched)?;
+    let counted = read(&["rev-list", "--left-right", "--count", "HEAD...@{upstream}"])
+        .map_err(|()| Refused::Unread)?;
+    match counts(&counted).ok_or(Refused::Unread)? {
         (_, 0) => Ok(Pulled::Even),
         (0, behind) => {
-            run(&["merge", "--ff-only", "--quiet", "@{upstream}"]).map_err(|()| Refused::Failed)?;
+            // Never stopped part way, which would leave it half written.
+            ran(
+                git,
+                folder,
+                &["merge", "--ff-only", "--quiet", "@{upstream}"],
+                None,
+            )
+            .map_err(|()| Refused::Failed)?;
             Ok(Pulled::Took(behind))
         }
         _ => Err(Refused::Diverged),
@@ -147,37 +178,85 @@ fn counts(printed: &str) -> Option<(u64, u64)> {
     Some((counts.next()?.ok()?, counts.next()?.ok()?))
 }
 
-/// Runs git in `folder` with nothing to answer it, so it never waits on
-/// a prompt, answering what it printed; past `wait`, where one is given,
-/// it's stopped. Only a fetch is given one: a fast-forward stopped part
-/// way would leave the checkout half written.
+/// Runs git on the checkout at `folder`, named outright, with nothing to
+/// answer it, answering what it printed. It runs in a session of its own,
+/// with no terminal for ssh to ask at and no askpass, hooks or fsmonitor,
+/// so nothing waits on a prompt and nothing the config names runs too.
+/// Past `wait`, where one is given, it's stopped with all it started.
 fn ran(git: &str, folder: &Path, args: &[&str], wait: Option<Duration>) -> Result<String, ()> {
-    let mut child = Command::new(git)
+    let mut command = Command::new(git);
+    command
         .arg("-C")
         .arg(folder)
+        .args(["-c", "core.askPass=", "-c", "core.fsmonitor=false"])
+        .args(["-c", "core.hooksPath=/dev/null"])
         .args(args)
+        .env("GIT_DIR", folder.join(".git"))
+        .env("GIT_WORK_TREE", folder)
         .env("GIT_TERMINAL_PROMPT", "0")
+        .env("SSH_ASKPASS_REQUIRE", "never")
+        .env_remove("GIT_ASKPASS")
+        .env_remove("SSH_ASKPASS")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|_| ())?;
-    let started = Instant::now();
-    if let Some(wait) = wait {
-        while child.try_wait().map_err(|_| ())?.is_none() {
-            if started.elapsed() > wait {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(());
+        .stderr(Stdio::null());
+    // SAFETY: setsid is async-signal-safe and touches no memory of ours.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() < 0 {
+                return Err(std::io::Error::last_os_error());
             }
-            std::thread::sleep(Duration::from_millis(50));
-        }
+            Ok(())
+        });
+    }
+    let mut child = command.spawn().map_err(|_| ())?;
+    if let Some(wait) = wait
+        && !ended_within(&mut child, wait)
+    {
+        stop(&mut child);
+        return Err(());
     }
     let done = child.wait_with_output().map_err(|_| ())?;
     if !done.status.success() {
         return Err(());
     }
     String::from_utf8(done.stdout).map_err(|_| ())
+}
+
+/// Whether `child` ended within `wait`. What it prints is read only once
+/// it has, which a git that reads a checkout or fetches fits well within.
+fn ended_within(child: &mut Child, wait: Duration) -> bool {
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return true,
+            Ok(None) if started.elapsed() < wait => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            _ => return false,
+        }
+    }
+}
+
+/// Stops `child` and everything it started, its session's whole group: a
+/// fetch's ssh and remote helper as well as git. Asked first, so git
+/// takes away its lock files, and stopped outright past [`LETTING_GO`].
+fn stop(child: &mut Child) {
+    let Ok(group) = libc::pid_t::try_from(child.id()) else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return;
+    };
+    // SAFETY: signals the group the child leads, which setsid made.
+    unsafe { libc::kill(-group, libc::SIGTERM) };
+    if !ended_within(child, LETTING_GO) {
+        // SAFETY: as above.
+        unsafe { libc::kill(-group, libc::SIGKILL) };
+    }
+    let _ = child.wait();
+    // What it started may outlive it, until stopped outright.
+    // SAFETY: as above; a group already gone is refused, harmlessly.
+    unsafe { libc::kill(-group, libc::SIGKILL) };
 }
 
 #[cfg(test)]
@@ -207,6 +286,61 @@ mod tests {
     fn the_commits_each_side_has_alone_are_read_as_git_counts_them() {
         assert_eq!(counts("2\t5\n"), Some((2, 5)));
         assert_eq!(counts("2\n"), None);
+    }
+
+    /// The shell the path finds, as the build has no /bin/sh.
+    fn shell() -> std::path::PathBuf {
+        std::env::var("PATH")
+            .unwrap_or_default()
+            .split(':')
+            .map(|folder| Path::new(folder).join("sh"))
+            .find(|sh| sh.is_file())
+            .expect("no sh on the path")
+    }
+
+    #[test]
+    fn a_fetch_past_its_wait_is_stopped_with_all_it_started() {
+        let folder = std::env::temp_dir().join(format!("pull-stopped-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(folder.join(".git")).unwrap();
+        std::fs::write(folder.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+        // A git whose fetch starts a helper, as ssh is, and then hangs.
+        let git = folder.join("git");
+        let started = folder.join("helper.pid");
+        std::fs::write(
+            &git,
+            format!(
+                "#!{}\ncase \"$*\" in *fetch*) sleep 60 & echo $! > {}; wait;; esac\n\
+                 case \"$*\" in *status*) exit 0;; esac\n",
+                shell().display(),
+                started.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&git, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        let asked = Instant::now();
+        let pulled = pull(git.to_str().unwrap(), &folder, Duration::from_millis(300));
+        assert_eq!(pulled, Err(Refused::Unfetched));
+        assert!(
+            asked.elapsed() < Duration::from_secs(10),
+            "a fetch past its wait wasn't stopped"
+        );
+        let helper: libc::pid_t = std::fs::read_to_string(&started)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let gone = || {
+            std::fs::read_to_string(format!("/proc/{helper}/stat"))
+                .map_or(true, |stat| stat.split_whitespace().nth(2) == Some("Z"))
+        };
+        let waited = Instant::now();
+        while !gone() && waited.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(gone(), "what the fetch started outlived it");
+        let _ = std::fs::remove_dir_all(&folder);
     }
 
     #[test]

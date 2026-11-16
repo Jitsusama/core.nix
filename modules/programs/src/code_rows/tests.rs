@@ -259,20 +259,28 @@ fn pull_is_offered_last_on_a_checkout_whose_branch_follows_another_and_only_ther
     });
     let rows = rows(&record(vec![repository.clone()]), None, &words());
     assert_eq!(
-        rows[0]["acts"][3],
-        json!({"key": "verb:code:pull", "streams": true,
-               "ask": {"ask": "code:pull", "path": "/home/j/src/core.nix"}}),
-        "Pull isn't offered on the checkout its branch follows another in"
+        rows[0]["acts"].as_array().unwrap().last(),
+        Some(&json!({"key": "verb:code:pull", "streams": true,
+               "ask": {"ask": "code:pull", "path": "/home/j/src/core.nix"}})),
+        "Pull isn't offered last on the checkout its branch follows another in"
     );
-    repository.checkouts[0].bare = true;
-    repository.checkouts[0].head = None;
-    let rows = super::rows(&record(vec![repository]), None, &words());
-    assert!(
-        rows[0]["acts"]
+    let offered = |repository: &Repository| {
+        super::rows(&record(vec![repository.clone()]), None, &words())[0]["acts"]
             .as_array()
             .unwrap()
             .iter()
-            .all(|act| act["key"] != "verb:code:pull"),
+            .any(|act| act["key"] == "verb:code:pull")
+    };
+    let mut unfollowed = repository.clone();
+    unfollowed.checkouts[0].head.as_mut().unwrap().upstream = None;
+    assert!(
+        !offered(&unfollowed),
+        "Pull was offered on a branch that follows none"
+    );
+    repository.checkouts[0].bare = true;
+    repository.checkouts[0].head = None;
+    assert!(
+        !offered(&repository),
         "Pull was offered on a checkout with no files of its own"
     );
 }
