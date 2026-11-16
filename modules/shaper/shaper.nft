@@ -50,6 +50,20 @@ chain bulk {
   ct mark set ct mark and 0xf8ffffff or 0x01000000
 }
 
+# The account's work is bulk, and each of its sessions sends as one flow,
+# so one on eight connections takes no more than another on one: in agents'
+# CAKE one took 89% beside the other's 11%, where by sessions they took 51%
+# and 49%. A session is a cgroup seven deep, the scope a background command
+# runs in, whose hash names it in the mark, 0x401 to 0x4ff; each CAKE's
+# filter makes the mark its flow (src/lanes.rs). A packet marked already
+# keeps its mark, as a VPN's own do, and one with no session keeps CAKE's
+# own flows. A mark set here reroutes nothing, since routing came first,
+# and nothing copies it to conntrack.
+chain work {
+  ct mark set ct mark and 0xf8ffffff or 0x01000000
+  meta mark 0 meta mark set jhash socket cgroupv2 level 7 mod 255 offset 0x401
+}
+
 chain best {
   ct mark set ct mark and 0xf8ffffff or 0x02000000
 }
@@ -107,7 +121,7 @@ chain classify {
   socket cgroupv2 level 5 @bulk5 goto bulk
   socket cgroupv2 level 1 @bulk1 goto bulk
   socket cgroupv2 level 2 @bulk2 goto bulk
-  socket cgroupv2 level 4 @bulk4 goto bulk
+  socket cgroupv2 level 4 @bulk4 goto work
 
   # A pi window or host running a turn Joel typed. pi keeps its connection
   # to the model's server open between turns, and the next rule keeps a

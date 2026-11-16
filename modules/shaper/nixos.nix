@@ -181,10 +181,10 @@ in
   };
 
   # The ruleset is checked as it builds, against a kernel built as a
-  # library, which can't match a socket's cgroup. The rules that do are
-  # left out of the copy it checks; the VM tests load them whole.
+  # library, which can't match a socket's cgroup or hash one. The rules that
+  # do are left out of the copy it checks; the VM tests load them whole.
   config.networking.nftables.preCheckRuleset = ''
-    sed -i '/cgroupv2 level [0-9]* @/d' ruleset.conf
+    sed -i '/cgroupv2 level [0-9]* @/d; /jhash socket cgroupv2/d' ruleset.conf
   '';
 
   # The shaper makes the IFBs it needs, one per link; the module's own two
