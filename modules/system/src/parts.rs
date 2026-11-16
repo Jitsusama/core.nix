@@ -138,6 +138,7 @@ fn machine(said: &Value, sessions: Option<&Value>) -> Thing {
         name: name_of(said).to_owned(),
         health,
         says: words.join(", "),
+        address: None,
     }
 }
 

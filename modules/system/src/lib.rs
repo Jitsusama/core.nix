@@ -11,7 +11,9 @@
 //!
 //! What the views read is one record, `system.view/1` (record.rs): the
 //! command's screens here, and next the site, the skill and the launcher's
-//! home rows.
+//! home rows. Each thing in it carries the address of its home on the
+//! local sites, as the site that is home to it says (homes.rs).
 
+pub mod homes;
 pub mod parts;
 pub mod record;

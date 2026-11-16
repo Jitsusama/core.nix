@@ -36,8 +36,9 @@ The object has `schema` (system.view/1), `machine` (where it was read),
 `read_at` (RFC 3339, UTC), `health` and `parts`, always in one order:
 machines, mycelium, network, code. Each part has `part`, `health`, `says`
 (a sentence, worst first), `things` (the machines, worst first, each with
-`kind`, `name`, `health` and `says`; empty for the other parts, for now)
-and `deeper`: the `command` that says more, the
+`kind`, `name`, `health`, `says` and `address`, its home on the local
+sites as the site home to it gives it, or null while none is; empty for
+the other parts, for now) and `deeper`: the `command` that says more, the
 `site` (from the local sites' root, at <http://sites.localhost:8484/>) and
 where it is in the `launcher`.
 
@@ -66,7 +67,8 @@ Answer in words, short, worst first, as the person would scan it:
    that every part is good.
 2. Each part that isn't good, with what it `says`.
 3. Where to go deeper, only for what he'd act on: the part's `command`
-   to run, or its site.
+   to run, or its site, or a thing's `address` under the sites' root. Use
+   the address as given; never build one by hand.
 
 Then go deeper with the part's own command or skill, never by reading its
 sources: `mycelium` for the machines and the sessions, `net` for the
