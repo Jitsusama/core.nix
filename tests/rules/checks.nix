@@ -231,6 +231,12 @@
         swayidle-away = script "swayidle-away" ../../modules/swayidle/away.sh { };
         swayimg-command = script "swayimg-command" ../../modules/swayimg/command.sh { };
         switch-system = script "switch-system" ../../modules/switch-system/switch-system.sh { };
+        switch-system-as-root =
+          script "switch-system-as-root" ../../modules/switch-system/switch-as-root.sh
+            { };
+        switch-system-known =
+          script "switch-system-known" ../../modules/switch-system/switch-system-known.sh
+            { };
         # Its help is its own, so it never runs systemd's.
         systemd-run = pkgs.callPackage ../../modules/slices/systemd-run.nix { };
         tpm-follows-a-firmware-update =
