@@ -1593,8 +1593,9 @@
     a machine declaring what mycelium's node can't measure (its reach, what a held session
     outlives, whether work costs money, its taints, its agents by realm, the fences its agent
     sessions run in) has it written where mycelium reads it, in mycelium's words; a fence it
-    doesn't say is left out, one declaring nothing has no file, and agents in a realm it doesn't
-    join are refused
+    doesn't say is left out, a fenced or strict one on Linux says the fence's launcher for an
+    agent's run and an unfenced one or a Mac's none, one declaring nothing has no file, and agents
+    in a realm it doesn't join are refused
   '';
   needs-you-is-true = ''
     over the agents' own files as the node serves them, For You's to-dos hold now only what Joel
@@ -4394,6 +4395,12 @@
     a switch that changes a system service and gives an account a user unit whose start never ends
     has that service running again within 45 s, while home-manager's setup of the account still
     waits on the unit
+  '';
+  vm-a-fenced-run-stays-fenced = ''
+    an agent's run, started through the launcher a fenced or strict fence declares, as the node starts
+    it, works in its folder but reaches none of the user bus, the display, the node, an SSH agent and
+    an abstract X socket the account reaches outside, reads no key or GitHub sign-in, writes nothing
+    outside its folder, and runs nothing in a folder that is home or holds it
   '';
   vm-a-focused-window-reads-its-swap-back = ''
     an administrator's memory-swap-in@ reads back what swap holds of a pid's scope when it belongs to

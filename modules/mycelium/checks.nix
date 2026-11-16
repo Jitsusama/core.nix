@@ -98,14 +98,14 @@ let
       }
     ];
   };
-  declared =
-    bare:
-    builtins.fromJSON (bare { declares = declaring; }).xdg.configFile."mycelium/declared.json".text;
+  # What a declaration says, read as mycelium reads it. A fence's launcher
+  # names its program in the store, which fromJSON refuses to read unless
+  # the text forgets it was built from that path; the words are the same.
+  read = text: builtins.fromJSON (builtins.unsafeDiscardStringContext text);
+  declared = bare: read (bare { declares = declaring; }).xdg.configFile."mycelium/declared.json".text;
   # A machine within another, and the host it runs in, each naming the other.
   declaredAs =
-    extra:
-    builtins.fromJSON
-      (linux { declares = declaring // extra; }).xdg.configFile."mycelium/declared.json".text;
+    extra: read (linux { declares = declaring // extra; }).xdg.configFile."mycelium/declared.json".text;
   inVm = declaredAs {
     within = {
       machine = "host-machine";
@@ -120,6 +120,26 @@ let
       secrets = [ ];
     };
   };
+  # A machine fenced every way.
+  launching =
+    bare:
+    read
+      (bare {
+        declares = declaring // {
+          fence = lib.genAttrs [ "none" "fence" "strict" ] (_: {
+            builders = [ ];
+            forges = [ ];
+            secrets = [ ];
+          });
+        };
+      }).xdg.configFile."mycelium/declared.json".text;
+  # pi's own fence, strict, which an agent's run starts through on Linux.
+  launcher = [
+    (lib.getExe (pkgs.callPackage ../pi/fence-run/package.nix { }))
+    "--kind"
+    "strict"
+    "--"
+  ];
   hosting = declaredAs {
     hosts = [
       {
@@ -511,11 +531,13 @@ in
 
   # A machine that declares what its node can't measure has it written where
   # mycelium reads it, in mycelium's words; Linux's held sessions outlive
-  # their window, the node and a suspend, and a Mac claims none yet. One that
-  # declares nothing has no file, which mycelium reads as unknown.
+  # their window, the node and a suspend, and a Mac claims none yet. A fenced
+  # or strict fence on Linux starts an agent's run through the fence's
+  # launcher; an unfenced one and a Mac's say none, so mycelium refuses it.
+  # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, a held session's outlives isn't each system's, a fence it doesn't say is written, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, a held session's outlives isn't each system's, a fence it doesn't say is written, an agent's run in a fenced or strict fence on Linux isn't said to start through the fence's launcher, an unfenced one or a Mac's is, or a machine declaring nothing gets a file anyway."
       (
         declared linux == {
           reach = [ "internet" ];
@@ -539,9 +561,14 @@ in
               builders = [ "remote" ];
               forges = [ ];
               secrets = [ ];
+              runs = launcher;
             };
           }
         )
+        && (launching linux).fence.fence.runs or null == launcher
+        && (launching linux).fence.strict.runs or null == launcher
+        && !((launching linux).fence.none ? runs)
+        && !((launching mac).fence.strict ? runs)
         && (
           inVm.within or null == {
             machine = "host-machine";

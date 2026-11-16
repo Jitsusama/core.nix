@@ -43,6 +43,9 @@ onLinux {
   vm-updates-itself-to-signed-main = import ./update-to-main.nix {
     inherit self pkgs;
   };
+  # Whether an agent's run reaches nothing its fence keeps out shows only
+  # with a live user bus, runtime folder and the kernel's Landlock.
+  vm-a-fenced-run-stays-fenced = import ./fenced-runs.nix { inherit self pkgs; };
   # Whether polkit lets an administrator tune the work slices shows only
   # with polkit and systemd.
   vm-admins-tune-the-work-slices = import ./work-slices.nix { inherit self pkgs; };
