@@ -1437,13 +1437,23 @@ def test_super_n_draws_the_notices_on_screen_from_what_was_kept(shell: Shell) ->
 def test_super_n_first_after_a_restart_draws_the_notices_on_screen_from_what_was_kept(
     shell: Shell,
 ) -> None:
-    """The first Super+N after a restart draws the notices on screen as the shell kept them.
+    """Each first Super+N after a restart draws the notices as the shell kept them, as it started.
 
     Only the places a chord opens were kept as the shell started, so each shell's first Super+N
     opened them whole: Joel's took 99 ms to the frame after two starts, 121 ms presented from the
-    ask, while every later one drew from what was kept in 13 to 30 (2026-11-15 and 16).
+    ask, while every later one drew from what was kept in 13 to 30 (2026-11-15 and 16). With
+    none on screen it opens the notices, and with some those on screen, each kept apart.
     """
     shell.restart()
+    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    launcher_on_niri.warmed(shell)
+    timed = latest(openings(shell))
+    shell.take_notices()
+    opening = presented_after(shell, timed + 1)
+    assert opening["into"] == "notices", f"the opening wasn't into the notices: {opening}"
+    assert opening.get("kept"), f"the first Super+N since the start was made whole: {opening}"
+    shell.launcher_ready()
+    shell.close_launcher()
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     for summary in ["Dunlin", "Sanderling"]:
         with shell.told(f"shows card {summary}"):
@@ -1452,7 +1462,7 @@ def test_super_n_first_after_a_restart_draws_the_notices_on_screen_from_what_was
     shell.take_notices()
     opening = presented_after(shell, timed + 1)
     assert opening["into"] == "onScreen", f"the opening wasn't into those on screen: {opening}"
-    assert opening.get("kept"), f"the first Super+N since the start was made whole: {opening}"
+    assert opening.get("kept"), f"the first on screen since the start was made whole: {opening}"
     shell.launcher_ready()
     shell.launcher_until(lambda shown: shown["rows"] == ["Dunlin", "Sanderling"])
     shell.close_launcher()

@@ -5040,8 +5040,11 @@ Scope {
         // timed in the opening's line: open is already true by then, so only
         // the ask held until its frame tells them apart. Timed again, each of
         // Joel's "→ On Screen" took its opening's frame, a median 110 ms,
-        // the slowest place in his journal (2026-11-14).
-        if (openAsked < 0)
+        // the slowest place in his journal (2026-11-14). The fill's walk
+        // into a kept place is its opening's too, though its frame is
+        // drawn and the ask let go by then: a kept Super+N timed its fill
+        // as "→ On Screen" (a gate, 2026-11-16).
+        if (openAsked < 0 && !fillingPlace)
             keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected);
         return went();
     }
@@ -9325,8 +9328,10 @@ Scope {
         if (!kept || !homeHeld || parting !== "" || kept.under !== keptUnder(name))
             return false;
         const source = collections.find(one => one.settings.name === name) ?? null;
+        // One kept as the shell started by its walk (warmLed) holds no rows,
+        // so it's listed as it stands however it's asked for.
         const listed = source?.keptListed === true ? keptListing(source)
-            : listedNow === true ? ledListing(name) : kept.matches;
+            : listedNow === true || kept.led === true ? ledListing(name) : kept.matches;
         if (listed === null)
             return false;
         keeping = true;
@@ -10229,6 +10234,7 @@ Scope {
             homeDepth = held.length;
             matches = [];
             keepPlace(name);
+            placesKept[name].led = true;
         } finally {
             keeping = false;
         }
@@ -10402,6 +10408,9 @@ Scope {
         }
     }
     property bool fillPresented: false
+    // Whether the fill is opening a kept place whole, so its steps aren't
+    // timed as Joel's (enter).
+    property bool fillingPlace: false
     function presentedFill(by) {
         if (!fillPresented)
             return;
@@ -10453,7 +10462,12 @@ Scope {
         // A place a chord opened, opened whole now, as its chord would.
         const place = openInto;
         if (place !== "") {
-            into(place);
+            fillingPlace = true;
+            try {
+                into(place);
+            } finally {
+                fillingPlace = false;
+            }
             const lands = landsOnFill;
             landsOnFill = null;
             if (lands !== null)
