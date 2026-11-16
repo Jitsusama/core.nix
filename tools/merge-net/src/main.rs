@@ -90,7 +90,7 @@ use world::Real;
 
 const USED: &str = "Usage: merge-net watch [--from COMMIT] [--branch NAME] [--once] \
                     [--follow PATH] | merge-net needs [--base REF] | merge-net ready COMMIT \
-                    | merge-net status";
+                    | merge-net status | merge-net run-again COMMIT";
 
 /// What a run asked for is refused with, as sysexits.h numbers it.
 const USAGE: u8 = 64;
@@ -110,6 +110,7 @@ fn main() -> ExitCode {
         ["needs", "--base", base] => needs::needs(base),
         ["ready", commit] => ready(commit),
         ["status"] => Ok(status()),
+        ["run-again", commit] => rerun::again(commit),
         ["--help"] => {
             println!("{USED}");
             Ok(ExitCode::SUCCESS)

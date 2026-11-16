@@ -14,9 +14,15 @@
 //! since left, as when its author rebased by hand, is stopped and started
 //! again at the new head; and one that failed at this head is left to its
 //! author rather than run again.
+//!
+//! The run ends its log with how it ended, as `merge-net run-again` says
+//! it, so the log's last line is never a note from along the way. On 15
+//! November one that passed ended on nix-offload failing to share a kept
+//! record, which read as its outcome. Only that ending counts as failed:
+//! a run that passed, and main moved under again, runs again.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, ExitCode};
 
 /// What `ready` does for a change that must run again.
 #[derive(Debug, PartialEq, Eq)]
@@ -47,8 +53,8 @@ pub struct Tree<'a> {
     pub ours: Option<&'a str>,
     /// Whether another gate goes here, its author's.
     pub theirs: bool,
-    /// Whether a run `ready` started at `asked` already ended.
-    pub ran: bool,
+    /// Whether a run `ready` started at `asked` ended without passing.
+    pub failed: bool,
 }
 
 /// What to do for the change at `tree.asked`.
@@ -62,7 +68,7 @@ pub fn decide(tree: &Tree) -> Rerun {
     }
     if tree.ours.is_some() {
         Rerun::Restart
-    } else if tree.ran {
+    } else if tree.failed {
         Rerun::Failed
     } else {
         Rerun::Start
@@ -89,6 +95,60 @@ pub fn unit(folder: &Path) -> String {
     format!("merge-net-rerun-{name}.service")
 }
 
+/// The words a run that passed ends its log with.
+const PASSED: &str = "merge-net: changed-checks passed at ";
+
+/// The words a run that ended without passing ends its log with.
+const FAILED: &str = "merge-net: changed-checks ended without passing at ";
+
+/// The log's last line, for the run at `commit` that ended with `code`,
+/// none when a signal ended it.
+#[must_use]
+pub fn ending(commit: &str, code: Option<i32>) -> String {
+    match code {
+        Some(0) => format!("{PASSED}{commit}"),
+        Some(code) => format!("{FAILED}{commit}: it ended {code}"),
+        None => format!("{FAILED}{commit}: a signal ended it"),
+    }
+}
+
+/// Whether the run whose log says `words` ended without passing, by its
+/// last line: a log that never says how its run ended, as one stopped to
+/// start again, doesn't.
+#[must_use]
+pub fn failed(words: &str) -> bool {
+    words
+        .lines()
+        .map(str::trim)
+        .rfind(|line| !line.is_empty())
+        .is_some_and(|line| line.starts_with(FAILED))
+}
+
+/// The gate a change runs by hand, which the run again is.
+fn gate() -> Command {
+    let mut gate = Command::new("nix-offload");
+    gate.args(["there", "--lent-only", "--changed"]);
+    gate
+}
+
+/// Run the gate at `commit`, as the unit `ready` started does, and end its
+/// words with how it ended.
+///
+/// # Errors
+///
+/// When nix-offload can't be started.
+pub fn again(commit: &str) -> Result<ExitCode, String> {
+    let ended = gate()
+        .status()
+        .map_err(|error| format!("running nix-offload: {error}"))?;
+    println!("{}", ending(commit, ended.code()));
+    Ok(if ended.success() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    })
+}
+
 /// What the unit's description says of the commit it runs at.
 const AT: &str = "merge-net runs changed-checks again at ";
 
@@ -97,7 +157,13 @@ const AT: &str = "merge-net runs changed-checks again at ";
 /// socket is left out, as a gate run by hand leaves it, so nothing it
 /// does asks for a key, and `path` is the asker's own.
 #[must_use]
-pub fn started(folder: &Path, commit: &str, slice: &str, log: &Path, path: &str) -> Vec<String> {
+pub fn started(
+    [folder, merge_net]: [&Path; 2],
+    commit: &str,
+    slice: &str,
+    log: &Path,
+    path: &str,
+) -> Vec<String> {
     vec![
         "--user".to_owned(),
         "--quiet".to_owned(),
@@ -111,10 +177,9 @@ pub fn started(folder: &Path, commit: &str, slice: &str, log: &Path, path: &str)
         "--property=UnsetEnvironment=SSH_AUTH_SOCK".to_owned(),
         format!("--property=StandardOutput=truncate:{}", log.display()),
         "--property=StandardError=inherit".to_owned(),
-        "nix-offload".to_owned(),
-        "there".to_owned(),
-        "--lent-only".to_owned(),
-        "--changed".to_owned(),
+        merge_net.display().to_string(),
+        "run-again".to_owned(),
+        commit.to_owned(),
     ]
 }
 
@@ -202,7 +267,7 @@ pub fn offer(folder: &Path, commit: &str, gates: &[crate::turn::Gate]) -> Option
         clean: dirty.trim().is_empty(),
         ours,
         theirs,
-        ran: ours.is_none() && log.exists(),
+        failed: ours.is_none() && std::fs::read_to_string(&log).is_ok_and(|words| failed(&words)),
     };
     let done = decide(&tree);
     let begun = match done {
@@ -231,8 +296,13 @@ fn start(folder: &Path, commit: &str, log: &Path) -> bool {
     let cgroup = std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
     let slice = slice_of(&cgroup).unwrap_or("app.slice");
     let path = std::env::var("PATH").unwrap_or_default();
+    // The merge-net that asked, rather than whichever comes first on the
+    // asker's path.
+    let Ok(merge_net) = std::env::current_exe() else {
+        return false;
+    };
     Command::new("systemd-run")
-        .args(started(folder, commit, slice, log, &path))
+        .args(started([folder, &merge_net], commit, slice, log, &path))
         .status()
         .is_ok_and(|status| status.success())
 }
@@ -271,7 +341,7 @@ mod tests {
             clean: true,
             ours: None,
             theirs: false,
-            ran: false,
+            failed: false,
         }
     }
 
@@ -340,10 +410,10 @@ mod tests {
 
     #[test]
     fn a_run_that_failed_at_the_head_is_not_started_again() {
-        let mut failed = tree("c1", "c1");
-        failed.ran = true;
+        let mut ended = tree("c1", "c1");
+        ended.failed = true;
         assert_eq!(
-            decide(&failed),
+            decide(&ended),
             Rerun::Failed,
             "a run that failed was started again at the same head"
         );
@@ -353,7 +423,8 @@ mod tests {
     fn the_run_goes_as_one_unit_per_tree_beside_its_asker() {
         let folder = Path::new("/trees/worktree-x.y");
         let log = Path::new("/state/reruns/c1.log");
-        let arguments = started(folder, "c1", "agents-pi.slice", log, "/bin");
+        let merge_net = Path::new("/bin/merge-net");
+        let arguments = started([folder, merge_net], "c1", "agents-pi.slice", log, "/bin");
         for wanted in [
             "--unit=merge-net-rerun-worktree-x-y.service",
             "--slice=agents-pi.slice",
@@ -367,9 +438,9 @@ mod tests {
             );
         }
         assert_eq!(
-            arguments[arguments.len() - 4..],
-            ["nix-offload", "there", "--lent-only", "--changed"],
-            "the run started wasn't the gate a change runs by hand"
+            arguments[arguments.len() - 3..],
+            ["/bin/merge-net", "run-again", "c1"],
+            "the run wasn't started as the merge-net that asked, to say how it ended"
         );
         let described = arguments
             .iter()
@@ -379,6 +450,55 @@ mod tests {
             described,
             Some("c1"),
             "the unit didn't say the commit it runs at"
+        );
+    }
+
+    #[test]
+    fn only_a_log_ending_without_a_pass_reads_as_failed() {
+        let along = "changed  vm-boots\nnix-offload: lent didn't take c1's kept json: it ended 255";
+        assert!(
+            !failed(&format!("{along}\n{}\n", ending("c1", Some(0)))),
+            "a run that passed read as failed, so a second move under it wasn't run again"
+        );
+        assert!(
+            failed(&format!("{along}\n{}\n", ending("c1", Some(1)))),
+            "a run that ended 1 didn't read as failed"
+        );
+        assert!(
+            failed(&ending("c1", None)),
+            "a run ended by a signal didn't read as failed"
+        );
+        assert!(
+            !failed(along),
+            "a log that never said how its run ended, as a stopped one, read as failed"
+        );
+    }
+
+    #[test]
+    fn the_run_again_is_the_gate_a_change_runs_by_hand() {
+        let gate = gate();
+        let words: Vec<String> = std::iter::once(gate.get_program())
+            .chain(gate.get_args())
+            .map(|word| word.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            words,
+            ["nix-offload", "there", "--lent-only", "--changed"],
+            "the run again wasn't the gate a change runs by hand"
+        );
+    }
+
+    #[test]
+    fn a_run_says_how_it_ended_last() {
+        assert_eq!(
+            ending("c1", Some(0)),
+            "merge-net: changed-checks passed at c1",
+            "a passed run didn't say so"
+        );
+        assert_eq!(
+            ending("c1", Some(2)),
+            "merge-net: changed-checks ended without passing at c1: it ended 2",
+            "a failed run didn't say how it ended"
         );
     }
 
