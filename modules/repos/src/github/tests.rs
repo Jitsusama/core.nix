@@ -253,6 +253,60 @@ fn a_refresh_merged_gives_each_repository_its_changes_and_github_a_source() {
     assert_eq!(github.unread.len(), 1);
 }
 
+/// A file of the case's own, beside no other case's, with nothing in it.
+fn kept_at(name: &str) -> PathBuf {
+    let folder = std::env::temp_dir().join(format!("repos-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    folder.join("repos/github.json")
+}
+
+#[test]
+fn what_a_refresh_kept_is_merged_from_its_file_and_no_file_adds_nothing() {
+    let (changes, unread) = parsed();
+    let seen = Seen {
+        schema: SCHEMA.to_owned(),
+        read_at: 1_794_755_410,
+        changes,
+        unread,
+        through: BTreeMap::new(),
+    };
+    let file = kept_at("kept");
+    keep(&file, &seen).expect("it keeps");
+    let mut record = record_of(&["github:Jitsusama/core.nix"]);
+    merge_kept(&mut record, &file);
+    assert_eq!(
+        record.repositories[0].changes.len(),
+        3,
+        "a kept refresh's changes weren't merged: {record:?}"
+    );
+    assert_eq!(record.sources.len(), 1, "GitHub isn't a source: {record:?}");
+
+    let mut record = record_of(&["github:Jitsusama/core.nix"]);
+    merge_kept(&mut record, &kept_at("none"));
+    assert_eq!(
+        record,
+        record_of(&["github:Jitsusama/core.nix"]),
+        "a machine no refresh ran on gained something"
+    );
+}
+
+#[test]
+fn a_file_no_refresh_wrote_is_said_unread_and_merges_nothing() {
+    let file = kept_at("foreign");
+    std::fs::create_dir_all(file.parent().expect("a folder")).expect("it makes");
+    std::fs::write(&file, r#"{"schema": "someone.else/1"}"#).expect("it writes");
+    let mut record = record_of(&["github:Jitsusama/core.nix"]);
+    merge_kept(&mut record, &file);
+    let github = record.sources.last().expect("GitHub as a source");
+    assert_eq!(github.name, "github");
+    assert_eq!(
+        github.unread,
+        vec![format!("{} isn't a refresh's record", file.display())],
+        "a foreign file isn't said unread: {github:?}"
+    );
+    assert!(record.repositories[0].changes.is_empty(), "a foreign file merged changes");
+}
+
 #[test]
 fn what_a_refresh_saw_reads_back_as_it_was_written() {
     let (changes, unread) = parsed();

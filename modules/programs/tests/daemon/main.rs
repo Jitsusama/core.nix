@@ -178,6 +178,7 @@ const WORDS: &str = r#"{"things": [
   {"id": "capture:dimensions", "name": "Dimensions"},
   {"id": "capture:length", "name": "Length"},
   {"id": "file-chooser:size", "name": "Size"},
+  {"id": "code:repository", "said": {"change": "1 change", "changes": "{count} changes"}},
   {"id": "path:file", "glyph": "file"}
 ]}"#;
 
@@ -255,6 +256,7 @@ impl Running {
             .env("HOME", &folder)
             .env("XDG_RUNTIME_DIR", &folder)
             .env("XDG_DATA_HOME", folder.join("near"))
+            .env("XDG_STATE_HOME", folder.join("state"))
             .env("XDG_DATA_DIRS", folder.join("far"))
             .env("PROGRAMS_PREVIEW", folder.join("file-preview"))
             .env("PROGRAMS_NIRI", folder.join("niri"))

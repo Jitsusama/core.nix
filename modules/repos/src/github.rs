@@ -16,7 +16,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -597,6 +597,15 @@ pub fn merge(record: &mut Record, seen: &Seen) {
         unread: seen.unread.clone(),
     });
 }
+
+/// Where a refresh keeps what it saw: `$XDG_STATE_HOME/repos/github.json`,
+/// else under `home`'s ~/.local/state; none when neither is set.
+pub fn seen_file(_home: Option<&Path>) -> Option<PathBuf> {
+    None
+}
+
+/// The record with what a refresh kept at `file` merged in (`merge`).
+pub fn merge_kept(_record: &mut Record, _file: &Path) {}
 
 #[cfg(test)]
 mod gh_tests;
