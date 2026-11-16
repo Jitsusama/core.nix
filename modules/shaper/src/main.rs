@@ -1389,6 +1389,10 @@ struct LinkStatus {
     /// made of it, so a trace can say why its rate held where it did.
     #[serde(default)]
     heard: Option<live::Heard>,
+    /// How the upload is shared between its lanes, and the agents'
+    /// flows waiting on each.
+    #[serde(default)]
+    lanes: Option<lanes::Said>,
 }
 
 fn write_status(
@@ -1415,6 +1419,7 @@ fn write_status(
             heard: heard
                 .filter(|(link, _)| *link == s.uplink.name)
                 .map(|(_, heard)| heard.clone()),
+            lanes: s.lanes.said(&s.split),
         })
         .collect();
     let path = runtime.join("status.json");

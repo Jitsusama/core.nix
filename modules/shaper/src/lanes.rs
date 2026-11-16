@@ -31,6 +31,8 @@
 //! controller cuts cuts V with it at once. room.rs, which did this for the
 //! two bulk tins alone, flipped its two lines about 2,200 times in two days.
 
+use serde::{Deserialize, Serialize};
+
 use crate::rate::whole;
 
 /// What Joel gets past what he carried, as a share of it, and in kbit/s,
@@ -69,6 +71,13 @@ impl Agents {
     fn waiting(self) -> bool {
         self.backlog > WAITING_BYTES
     }
+
+    /// The flows a lane's agents are waiting on: none while they hold
+    /// too little to count as waiting, and at least one while they do,
+    /// since CAKE may read none at the moment it holds a backlog.
+    fn waiting_flows(self) -> u32 {
+        if self.waiting() { self.flows.max(1) } else { 0 }
+    }
 }
 
 /// What the two lanes carried and hold, read each second.
@@ -105,6 +114,17 @@ impl Split {
     }
 }
 
+/// How the upload is shared, for `shaper status`: each class's rate, in
+/// kbit/s, and the agents' flows waiting on each lane.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Said {
+    pub joel: u64,
+    pub vpn: u64,
+    pub agents: u64,
+    pub waiting_vpn: u32,
+    pub waiting_direct: u32,
+}
+
 /// Follows the VPN's share from second to second.
 #[derive(Clone, Debug, Default)]
 pub struct Lanes {
@@ -113,6 +133,21 @@ pub struct Lanes {
 }
 
 impl Lanes {
+    /// What `split`, the split on the classes, gives each lane, beside the
+    /// agents' flows waiting on each as last seen; none before a split.
+    pub fn said(&self, split: &Split) -> Option<Said> {
+        if split.joel + split.vpn + split.agents <= 0.0 {
+            return None;
+        }
+        Some(Said {
+            joel: whole(split.joel),
+            vpn: whole(split.vpn),
+            agents: whole(split.agents),
+            waiting_vpn: self.last.agents_vpn.waiting_flows(),
+            waiting_direct: self.last.agents_straight.waiting_flows(),
+        })
+    }
+
     /// The split at a new rate, from what was seen last: the controller
     /// moves its rate between the seconds this is told of the lanes.
     pub fn at(&mut self, rate: f64) -> Split {
@@ -145,13 +180,7 @@ impl Lanes {
         // With none waiting it goes to the VPN, whose own CAKE is held to
         // V: the classes beside it borrow what it leaves.
         let left = rate - joel - joel_vpn;
-        let flows = |agents: Agents| {
-            if agents.waiting() {
-                f64::from(agents.flows.max(1))
-            } else {
-                0.0
-            }
-        };
+        let flows = |agents: Agents| f64::from(agents.waiting_flows());
         let (beside, within) = (flows(straight), flows(inside));
         let to_vpn = if beside + within > 0.0 {
             left * within / (beside + within)
@@ -295,6 +324,49 @@ mod tests {
             && split.joel >= 0.0
             && split.vpn >= 0.0
             && split.agents >= 0.0
+    }
+
+    #[test]
+    fn a_split_says_each_lane_s_rate_and_the_agents_flows_waiting_on_each() {
+        let mut lanes = Lanes::default();
+        let split = lanes.split(&seen((200.0, 0.0), (waiting(3), waiting(12))), 1.0);
+        let said = lanes.said(&split);
+        assert_eq!(
+            said,
+            Some(Said {
+                joel: whole(split.joel),
+                vpn: whole(split.vpn),
+                agents: whole(split.agents),
+                waiting_vpn: 12,
+                waiting_direct: 3,
+            }),
+            "from {split:?}"
+        );
+    }
+
+    #[test]
+    fn agents_holding_too_little_to_wait_are_said_to_wait_on_nothing() {
+        let mut lanes = Lanes::default();
+        let few = Agents {
+            backlog: WAITING_BYTES,
+            flows: 4,
+        };
+        let split = lanes.split(&seen((0.0, 0.0), (few, few)), 1.0);
+        let said = lanes.said(&split).expect("a split was said");
+        assert_eq!(
+            (said.waiting_vpn, said.waiting_direct),
+            (0, 0),
+            "agents under {WAITING_BYTES} bytes were said to wait"
+        );
+    }
+
+    #[test]
+    fn nothing_is_said_before_the_lanes_are_split() {
+        assert_eq!(
+            Lanes::default().said(&Split::default()),
+            None,
+            "an unsplit upload was said to have lanes"
+        );
     }
 
     #[test]
