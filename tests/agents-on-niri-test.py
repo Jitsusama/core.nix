@@ -3021,12 +3021,15 @@ def test_a_landing_read_finds_each_landings_session_in_one_look(shell: Shell) ->
     Return spent to its frame (2026-11-15). It's the module's last case, since the landing
     it reads, two days old, then reads as read.
     """
-    opened(shell)
-    shell.launcher_until(lambda shown: "Landed" in shown["rows"])
+    # The cases before laid sessions of their own, so Agents' first rows are theirs by now.
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["agents"] and "Landed" in shown["rows"])
     shell.down_to("Landed")
     shell.step_in()
-    shell.launcher_until(lambda shown: shown["rows"][:2] == [STOPPED, TRY_FIRST])
-    shell.down_to("Earlier change 0.")
+    earliest = "Earlier change 0."
+    shell.launcher_until(lambda shown: earliest in shown["rows"])
+    shell.down_to(earliest)
     launcher_on_niri.weighed_held_still(shell)
     looked, sought = landings_looked(shell), sessions_sought(shell)
     # It goes nowhere, so normal's Return reads it and keeps the launcher.
@@ -3037,5 +3040,8 @@ def test_a_landing_read_finds_each_landings_session_in_one_look(shell: Shell) ->
         assert time.monotonic() < deadline, "reading a landing kept no landing again"
         time.sleep(0.1)
     launcher_on_niri.weighed_held_still(shell)
+    # Each keeping looks at every landing and, once, through every session: fewer than the
+    # landings, where looking for each landing's own looked through them all again.
+    looked = landings_looked(shell) - looked
     sought = sessions_sought(shell) - sought
-    assert sought < len(LANDINGS), f"keeping Landed again looked through {sought} sessions"
+    assert sought < looked, f"keeping {looked} landings again looked through {sought} sessions"
