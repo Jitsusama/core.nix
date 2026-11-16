@@ -98,6 +98,22 @@ fn a_word_too_many_or_a_flag_is_refused_as_asked_wrongly() {
 }
 
 #[test]
+fn a_mistyped_flag_is_named_with_the_nearest_it_takes() {
+    let output = ran(&["--hepl"]);
+    let why = said(&output.stderr);
+    assert_eq!(
+        output.status.code(),
+        Some(64),
+        "--hepl ended {:?}",
+        output.status
+    );
+    assert!(
+        why.contains("no option called --hepl") && why.contains("did you mean --help?"),
+        "the refusal never named the nearest flag: {why}"
+    );
+}
+
+#[test]
 fn sources_it_cant_read_end_it_as_its_configuration() {
     let folder = folder("sources");
     let socket = folder.join("people.sock");
