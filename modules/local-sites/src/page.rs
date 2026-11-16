@@ -163,7 +163,9 @@ fn once(socket: &Path, asked: &Value) -> io::Result<Value> {
                 "it hung up before answering",
             ));
         }
-        if let Ok(answer) = serde_json::from_str::<Value>(&line)
+        // A daemon outside the interface ends this ask in the same words
+        // it ends a watch in, rather than leaving it to time out.
+        if let Some(answer) = daemon_serve::watch::spoken(&line)?
             && answer.get("id") == Some(&json!(2))
         {
             return Ok(answer);
