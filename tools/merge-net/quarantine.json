@@ -457,6 +457,7 @@
     "commit": "5ff6eb0fa086ea6ec041ba8e68dd75d53d3225a5",
     "due": "2026-11-18",
     "owner_pr": 4820,
+    "owner_session": "orchestrator",
     "reason": "failed, then passed, at 5ff6eb0fa086",
     "subtests": [
       "test_super_s_line_comes_up_again_after_both_screens_go_and_come_back"
