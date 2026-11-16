@@ -78,13 +78,14 @@ pub fn upload(status: &Path) -> Value {
     })
 }
 
-/// What the shaper holds the upload to and why, for the Work Network's
-/// Upload: `{ kbit, why }`, `kbit` null where it holds none, and `why` its
-/// reason in its own words (modules/shaper/src/why.rs), less the "Upload
-/// <rate>:" each opens with, which `kbit` says, and the stop, since a
-/// fact's note is a phrase. Null with no shaper, nothing heard or no
-/// reason given, as from a shaper older than its reasons.
-pub fn held(status: &Path) -> Value {
+/// What the shaper limits the upload to and why, for the Work Network's
+/// Upload: `{ kbit, why }`, `kbit` null where it sets no limit, and `why`
+/// its reason in its own words (modules/shaper/src/why.rs), less the
+/// "Upload <rate>:" each opens with, which `kbit` says, and the stop, since
+/// the launcher sets it within a sentence of its own. `why` is null where
+/// the shaper gave none, or none in that shape, so the rate is still said.
+/// Null with no shaper or nothing heard.
+pub fn limit(status: &Path) -> Value {
     let Ok(text) = std::fs::read_to_string(status) else {
         return Value::Null;
     };
@@ -96,13 +97,11 @@ pub fn held(status: &Path) -> Value {
     else {
         return Value::Null;
     };
-    let Some((_, why)) = heard["why"].as_str().and_then(|why| why.split_once(": ")) else {
-        return Value::Null;
-    };
-    json!({
-        "kbit": heard["up_limit"].as_u64(),
-        "why": why.trim_end().trim_end_matches('.'),
-    })
+    let why = heard["why"]
+        .as_str()
+        .and_then(|why| why.split_once(": "))
+        .map(|(_, why)| why.trim_end().trim_end_matches('.'));
+    json!({ "kbit": heard["up_limit"].as_u64(), "why": why })
 }
 
 /// A share as a percentage to the nearest 5.
@@ -141,10 +140,10 @@ mod tests {
     }
 
     #[test]
-    fn the_upload_says_what_holds_it_in_the_shapers_words() {
+    fn the_upload_says_what_limits_it_in_the_shapers_words() {
         let status = Path::new(CONTRACT).join("shaper-status.json");
         assert_eq!(
-            held(&status),
+            limit(&status),
             json!({
                 "kbit": 7416,
                 "why": "the VPN waited 75 ms inside its tunnel, so its own queue is held to 87% \
@@ -158,7 +157,7 @@ mod tests {
                "why": "Upload 10.8 Mbit/s of 12.0 Mbit/s, the line's rate: clear for 3 min."}}]"#,
         );
         assert_eq!(
-            held(&clear),
+            limit(&clear),
             json!({ "kbit": 10800, "why": "clear for 3 min" }),
             "a reason whose rate says more than one figure kept it"
         );
@@ -168,21 +167,32 @@ mod tests {
                "why": "Upload unlimited: no queue has stood on this network yet."}}]"#,
         );
         assert_eq!(
-            held(&unlimited),
+            limit(&unlimited),
             json!({ "kbit": null, "why": "no queue has stood on this network yet" }),
             "no limit was said as one, or the link that heard was missed"
         );
     }
 
     #[test]
-    fn no_reason_heard_says_nothing_of_what_holds_the_upload() {
+    fn a_limit_given_no_reason_is_still_said_and_none_heard_is_not() {
         let none = Path::new(CONTRACT).join("no-such-status.json");
-        assert_eq!(held(&none), Value::Null, "no file said something");
+        assert_eq!(limit(&none), Value::Null, "no file said something");
+        let quiet = written("quiet", r#"[{"heard": null}]"#);
+        assert_eq!(limit(&quiet), Value::Null, "nothing heard said something");
         let older = written("older", r#"[{"heard": {"up_limit": 4069}}]"#);
         assert_eq!(
-            held(&older),
-            Value::Null,
-            "a shaper giving no reason said one"
+            limit(&older),
+            json!({ "kbit": 4069, "why": null }),
+            "a shaper giving no reason hid its limit, or was given one"
+        );
+        let unshaped = written(
+            "unshaped",
+            r#"[{"heard": {"up_limit": 4069, "why": "Held by hand."}}]"#,
+        );
+        assert_eq!(
+            limit(&unshaped),
+            json!({ "kbit": 4069, "why": null }),
+            "a reason not opening with its rate was cut somewhere it didn't mean"
         );
     }
 

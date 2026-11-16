@@ -272,19 +272,21 @@ function run(failures, fromRoot) {
         slowed({ status: "Connected", reason: "NetworkDegraded" }, { waiting_ms: 120 }), null);
     machine("nor is a way down slow",
         slowed({ status: "Disconnected", reason: "NoNetwork" }, { waiting_ms: 120 }), null);
-    // What the shaper holds the upload to, and why, in its own words
-    // (modules/shaper/src/why.rs), which warp's daemon passes on as `held`.
+    // What the shaper limits the upload to, and why, in its own words
+    // (modules/shaper/src/why.rs), which warp's daemon passes on as `limit`.
     const why = "the VPN waited 75 ms inside its tunnel, so its own queue is held to 87% of "
         + "its lane; held so for 2 min";
-    const held = { kbit: 7416, why };
-    const upload = told => WarpWaiting.among([], { held: told }, {}, warpSaid)[0] ?? null;
-    machine("the upload says the rate it's held to, noted why",
-        upload(held), figure("upload", "7.42 Mb/s", why, "7.42 Mb/s"));
+    const limit = { kbit: 7416, why };
+    const upload = told => WarpWaiting.among([], { limit: told }, {}, warpSaid)[0] ?? null;
+    machine("the upload says the rate it's held to, noted why, and copies it in Mb/s",
+        upload(limit), figure("upload", "7.42 Mb/s", why, "7.416"));
     machine("an upload held to no rate is unlimited, still noted why",
         upload({ kbit: null, why: "no queue has stood on this network yet" }),
         figure("upload", "unlimited", "no queue has stood on this network yet", ""));
-    machine("no reason from the shaper says nothing of the upload", upload(null), null);
-    const linkSaid = { waiting: { running: true, through_ms: 103, at_rest_ms: 28 }, held };
+    machine("a limit given no reason still says its rate",
+        upload({ kbit: 4069, why: null }), figure("upload", "4.07 Mb/s", "", "4.069"));
+    machine("no shaper heard says nothing of the upload", upload(null), null);
+    const linkSaid = { waiting: { running: true, through_ms: 103, at_rest_ms: 28 }, limit };
     const shapedParts = WarpWaiting.among(linked.parts, linkSaid, {}, warpSaid)
         .map(each => each.id);
     machine("Waiting follows the Round Trip, and Upload follows Waiting",
@@ -349,6 +351,24 @@ function run(failures, fromRoot) {
         "Connected to work, degraded for 3 h; a round trip takes 127 ms.");
     machine("nothing heard of how it stands leaves the drawer no lead",
         drawerOf(null).body, "");
+    // Why the upload is limited follows the lead as a sentence, since a
+    // fact is only a figure; with no reason, the fact alone says the rate.
+    const limitedBy = (told, link = shapedLink) => WarpDrawer.drawer(
+        { parts: link.parts, record: Object.assign({}, warp, { limit: told }),
+            stood: stood("Connected", "NetworkHealthy", 10 * hour), now: 13 * hour },
+        { said: warpSaid, tells: vocabulary.find(thing => thing.id === "warp").tells }).body;
+    machine("the drawer says why the upload is held to its rate, after the lead",
+        limitedBy(limit), "Connected to work for 3 h; a round trip takes 127 ms. The upload is "
+            + `held to 7.42 Mb/s: ${why}.`);
+    const unlimited = { kbit: null, why: "no queue has stood on this network yet" };
+    machine("an unlimited upload says so, and why",
+        limitedBy(unlimited, { parts: WarpWaiting.among(linked.parts, { limit: unlimited }, {},
+            warpSaid) }),
+        "Connected to work for 3 h; a round trip takes 127 ms. The upload is unlimited: no "
+            + "queue has stood on this network yet.");
+    machine("a limit given no reason says nothing more than its fact",
+        limitedBy({ kbit: 7416, why: null }), "Connected to work for 3 h; a round trip takes "
+            + "127 ms.");
     // What the shell keeps of WARP's reads while it's shown, two seconds
     // apart, sparks the tunnel's Round Trip, Loss and Traffic, each with
     // a drawer saying once whose figures they are (VKCF3Z, 2026-11-08).

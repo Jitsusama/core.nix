@@ -6,8 +6,8 @@
 // VPN's together, not WARP's alone, so it's Waiting rather than a queue,
 // which would read as a count (B8RBNW, 2026-11-12). A part as Warp.js
 // makes one, in warp's words, placed after the Round Trip it explains.
-// Upload follows it: the rate the shaper holds the upload to, and why,
-// in the shaper's own words, passed on as `held`.
+// Upload follows it: the rate the shaper limits the upload to, and why,
+// in the shaper's own words, passed on as `limit`.
 .pragma library
 .import "Warp.js" as Warp
 .import "HomeNetwork.js" as HomeNetwork
@@ -45,19 +45,23 @@ function part(waiting, settings, said) {
         : Warp.part("waiting", Warp.ms(wait, settings, said), note, String(wait));
 }
 
-// Upload, from `held`, or null where the shaper gave no reason: the rate
-// it holds the upload to, "7.42 Mb/s", or unlimited where it holds none,
-// noted with why, in its words (modules/shaper/src/why.rs).
-function upload(held, settings, said) {
-    if (!held || typeof held !== "object" || typeof held.why !== "string") {
+// The shaper's kbit are thousands of bits, so a thousand are a Mb.
+const KBIT_PER_MBIT = 1000;
+
+// Upload, from `limit`, or null where warp's daemon heard no shaper: the
+// rate the shaper limits the upload to, "7.42 Mb/s", copied as Mb/s, or
+// unlimited where it sets none, noted with why in its words
+// (modules/shaper/src/why.rs), or with nothing where it gave none.
+function upload(limit, settings, said) {
+    if (!limit || typeof limit !== "object") {
         return null;
     }
-    if (!Number.isFinite(held.kbit)) {
-        return Warp.part("upload", Warp.worded(said, "unlimited"), held.why, "");
+    const why = typeof limit.why === "string" ? limit.why : "";
+    if (!Number.isFinite(limit.kbit)) {
+        return Warp.part("upload", Warp.worded(said, "unlimited"), why, "");
     }
-    // The shaper's kbit are thousands of bits, so a thousand are a Mb.
-    const rate = HomeNetwork.rate(held.kbit / 1000, settings);
-    return Warp.part("upload", rate, held.why, rate);
+    const mbit = limit.kbit / KBIT_PER_MBIT;
+    return Warp.part("upload", HomeNetwork.rate(mbit, settings), why, String(mbit));
 }
 
 // How the row says the way through is slow, in place of how WARP stands,
@@ -74,11 +78,11 @@ function slowed(state, settings, said) {
 }
 
 // The link's parts with Waiting and Upload among them, from the link's
-// record as warp's daemon says it (`record.waiting`, `record.held`),
+// record as warp's daemon says it (`record.waiting`, `record.limit`),
 // after the Round Trip, or before Through, always last, where there's no
 // tunnel to time.
 function among(parts, record, settings, said) {
-    const found = [part(record?.waiting, settings, said), upload(record?.held, settings, said)]
+    const found = [part(record?.waiting, settings, said), upload(record?.limit, settings, said)]
         .filter((each) => each !== null);
     if (found.length === 0) {
         return parts;
