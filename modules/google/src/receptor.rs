@@ -224,15 +224,22 @@ impl Receptors {
         every: Duration,
         pid: u32,
     ) -> Result<Spoke, String> {
-        let _ = signed_in;
+        let Some(account) = &self.account else {
+            return Ok(Spoke::NoAccount);
+        };
+        if !signed_in.is_some_and(|signed_in| signed_in.eq_ignore_ascii_case(account)) {
+            return Ok(Spoke::NotItsAccount);
+        }
         let at = now.timestamp().as_millisecond();
         self.say(&told(state, at, midnight(now)), every, pid)?;
         Ok(Spoke::Said)
     }
 
     /// What mycelium is given for one receptor: fixed words, the realm
-    /// the service named, and integers.
+    /// the service named, and integers, each count held to the most
+    /// mycelium takes, so a count past it is said as that, never refused.
     pub fn arguments(&self, told: Told, every: Duration, pid: u32) -> Vec<OsString> {
+        let most = |count: u64| count.min(u64::from(u32::MAX)).to_string();
         let words = [
             "--realm".to_owned(),
             self.realm.clone(),
@@ -242,11 +249,11 @@ impl Receptors {
             "--state".to_owned(),
             told.reading.word().to_owned(),
             "--hour".to_owned(),
-            told.hour.to_string(),
+            most(told.hour),
             "--today".to_owned(),
-            told.today.to_string(),
+            most(told.today),
             "--addressed".to_owned(),
-            told.addressed.to_string(),
+            most(told.addressed),
             "--every".to_owned(),
             every.as_secs().max(1).to_string(),
             "--pid".to_owned(),
@@ -476,6 +483,34 @@ mod tests {
                 "--pid",
                 "4242",
             ]
+        );
+    }
+
+    #[test]
+    fn a_count_past_what_mycelium_takes_is_said_as_the_most_it_takes() {
+        let receptors = Receptors::named(
+            Some("/nix/store/x-mycelium/bin/mycelium".into()),
+            Some("work".into()),
+        )
+        .unwrap();
+        let said = receptors.arguments(
+            Told {
+                source: Source::Mail,
+                reading: Reading::Reading,
+                hour: u64::from(u32::MAX) + 1,
+                today: u64::MAX,
+                addressed: u64::from(u32::MAX),
+            },
+            Duration::from_secs(60),
+            4242,
+        );
+        let counts: Vec<&str> = [8, 10, 12]
+            .into_iter()
+            .map(|at| said[at].to_str().unwrap())
+            .collect();
+        assert_eq!(
+            counts, ["4294967295"; 3],
+            "a count past u32 wasn't held to it"
         );
     }
 
