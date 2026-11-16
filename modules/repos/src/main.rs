@@ -28,7 +28,7 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use repos::github::{self, Seen};
-use repos::model::{Record, Source};
+use repos::model::Record;
 use repos::read::{self, Reading};
 use repos::when::Clock;
 use repos::{broker, gh};
@@ -173,21 +173,8 @@ fn machine() -> String {
 /// hold where a refresh has asked it.
 fn record(home: Option<&Path>, now: u64) -> Result<Record, Failure> {
     let mut record = disk(home, now)?;
-    let Ok(file) = seen_file(home) else {
-        return Ok(record);
-    };
-    // No file means no refresh has run here, as on a machine with no
-    // GitHub broker, and the record is the disk's alone.
-    if let Ok(text) = std::fs::read_to_string(&file) {
-        match serde_json::from_str::<Seen>(&text) {
-            Ok(seen) if seen.schema == github::SCHEMA => github::merge(&mut record, &seen),
-            _ => record.sources.push(Source {
-                name: "github".to_owned(),
-                what: "each repository's open changes and their checks".to_owned(),
-                read_at: None,
-                unread: vec![format!("{} isn't a refresh's record", file.display())],
-            }),
-        }
+    if let Some(file) = github::seen_file(home) {
+        github::merge_kept(&mut record, &file);
     }
     Ok(record)
 }
@@ -204,19 +191,13 @@ fn disk(home: Option<&Path>, now: u64) -> Result<Record, Failure> {
     }))
 }
 
-/// Where a refresh keeps what it saw: `$XDG_STATE_HOME/repos/github.json`,
-/// else under ~/.local/state.
+/// Where a refresh keeps what it saw (`github::seen_file`), else why
+/// there's nowhere.
 fn seen_file(home: Option<&Path>) -> Result<PathBuf, Failure> {
-    let state = std::env::var_os("XDG_STATE_HOME")
-        .filter(|state| !state.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| home.map(|home| home.join(".local/state")));
-    state
-        .map(|state| state.join("repos/github.json"))
-        .ok_or_else(|| {
-            Failure::new(Exit::Config, "there's nowhere to keep what GitHub holds")
-                .because("neither XDG_STATE_HOME nor HOME is set")
-        })
+    github::seen_file(home).ok_or_else(|| {
+        Failure::new(Exit::Config, "there's nowhere to keep what GitHub holds")
+            .because("neither XDG_STATE_HOME nor HOME is set")
+    })
 }
 
 /// Asks GitHub, through the machine's broker, after each repository's open

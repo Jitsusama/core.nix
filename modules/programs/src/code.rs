@@ -8,12 +8,16 @@
 //! differently and those gone. A read takes about 60 ms warm and 230 ms
 //! cold over 18 repositories and 800 trees (#4653), well past the
 //! launcher's 50 ms, which is why no watch but the first waits on one.
+//! Each read takes in what the repos timer's last refresh kept of each
+//! repository's open changes, as the repos command does, so a row
+//! counts them.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use programs::{code_rows, command};
+use repos::github;
 use repos::read::{Reading, read};
 
 use super::{Daemon, Shared, keep, lock};
@@ -59,12 +63,15 @@ impl Code {
 
     /// Code's rows as the disk holds them now.
     fn rows(&self) -> Vec<serde_json::Value> {
-        let record = read(&Reading {
+        let mut record = read(&Reading {
             roots: &self.roots,
             home: self.home.as_deref(),
             machine: &self.machine,
             now: programs::now_ms() / 1000,
         });
+        if let Some(kept) = github::seen_file(self.home.as_deref()) {
+            github::merge_kept(&mut record, &kept);
+        }
         code_rows::rows(&record, self.home.as_deref(), &self.words)
     }
 }

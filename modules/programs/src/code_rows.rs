@@ -2,10 +2,12 @@
 //! machine (docs/glossary.md's Code words), each listed once however many
 //! checkouts of it lie on the disk, as `repos` reads them
 //! (modules/repos). The one written to last comes first, said beside it
-//! by how many trees are cut from it and when git last wrote in it; it's
-//! found by its name, its owner and its key. Return opens its page where
-//! a remote keeps it on GitHub or GitLab, else copies its checkout's
-//! path; inside are Open Its Page, Copy Its Path and New Terminal Here,
+//! by how many changes are open on its remote, how many trees are cut
+//! from it and when git last wrote in it; it's found by its name, its
+//! owner and its key. Return opens its page where a remote keeps it on
+//! GitHub or GitLab, else copies its checkout's path; inside are Open Its
+//! Page, Open Its Open Changes (while any are), Copy Its Path and New
+//! Terminal Here,
 //! which asks this daemon to start kitty in it (code.rs), and shuts the
 //! launcher as it's asked so the new window takes the keys; its drawer names
 //! its key, its trunk and the checkout written to last, at its branch.
@@ -30,6 +32,10 @@ pub struct Words {
     trees: String,
     /// A repository no remote keeps, in its drawer's eyebrow.
     local: String,
+    /// How many changes are open on its remote: `1 change`,
+    /// `{count} changes`.
+    change: String,
+    changes: String,
     /// The labels of its drawer's facts.
     key: String,
     trunk: String,
@@ -65,6 +71,8 @@ impl Words {
             tree: said("tree"),
             trees: said("trees"),
             local: said("local"),
+            change: said("change"),
+            changes: said("changes"),
             key: name("code:key"),
             trunk: name("code:trunk"),
             checkout: name("code:checkout"),
@@ -74,10 +82,18 @@ impl Words {
     }
 
     fn counted(&self, count: usize) -> String {
+        Words::count(&self.tree, &self.trees, count)
+    }
+
+    fn changes_open(&self, count: usize) -> String {
+        Words::count(&self.change, &self.changes, count)
+    }
+
+    fn count(one: &str, many: &str, count: usize) -> String {
         if count == 1 {
-            self.tree.clone()
+            one.to_owned()
         } else {
-            self.trees.replace("{count}", &count.to_string())
+            many.replace("{count}", &count.to_string())
         }
     }
 }
@@ -106,6 +122,18 @@ pub fn page(key: &str) -> Option<String> {
     Some(format!("https://{host}/{path}"))
 }
 
+/// Where a repository's open changes are listed on its forge, from its
+/// key; none where it has no page.
+#[must_use]
+pub fn changes_page(key: &str) -> Option<String> {
+    let list = match key.split_once(':')?.0 {
+        "github" => "pulls",
+        "gitlab" => "-/merge_requests",
+        _ => return None,
+    };
+    page(key).map(|page| format!("{page}/{list}"))
+}
+
 /// The checkout a person works in: the one written to last with files of
 /// its own, else the first.
 fn worked_in(repository: &Repository) -> Option<&Checkout> {
@@ -123,6 +151,10 @@ fn row(repository: &Repository, home: Option<&Path>, words: &Words) -> Value {
         .map(|checkout| checkout.trees.iter().filter(|tree| tree.present).count())
         .sum();
     let mut side = Vec::new();
+    // Said first and short, since a row's side gives way past its share.
+    if !repository.changes.is_empty() {
+        side.push(json!({"said": words.changes_open(repository.changes.len())}));
+    }
     if trees > 0 {
         side.push(json!({"said": words.counted(trees)}));
     }
@@ -146,6 +178,11 @@ fn row(repository: &Repository, home: Option<&Path>, words: &Words) -> Value {
     let mut acts = Vec::new();
     if let Some(page) = &page {
         acts.push(json!({"key": "verb:code:page", "open": page}));
+    }
+    if let Some(list) = changes_page(&repository.key)
+        && !repository.changes.is_empty()
+    {
+        acts.push(json!({"key": "verb:code:changes", "open": list}));
     }
     if let Some(path) = &path {
         acts.push(json!({"key": "verb:code:path", "copy": path}));
@@ -215,13 +252,13 @@ fn drawer(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use repos::model::{Head, Remote, SCHEMA, Tree, TreeKind};
+    use repos::model::{Change, Checks, ChecksState, Head, Remote, Review, SCHEMA, Tree, TreeKind};
 
     fn words() -> Words {
         Words::read(&json!({"things": [
             {"id": "code:repository", "said": {
                 "kind": "repository", "tree": "1 tree", "trees": "{count} trees",
-                "local": "no remote",
+                "local": "no remote", "change": "1 change", "changes": "{count} changes",
             }},
             {"id": "code:key", "name": "Key"},
             {"id": "code:trunk", "name": "Trunk"},
@@ -281,6 +318,26 @@ mod tests {
         }
     }
 
+    fn change(title: &str) -> Change {
+        Change {
+            title: title.to_owned(),
+            author: Some("Jitsusama".to_owned()),
+            draft: false,
+            branch: "work".to_owned(),
+            base: "main".to_owned(),
+            commit: None,
+            updated_at: 30,
+            checks: Checks {
+                state: ChecksState::Passing,
+                passed: 1,
+                failed: Vec::new(),
+                pending: Vec::new(),
+            },
+            review: Review::Waiting,
+            github: None,
+        }
+    }
+
     fn record(repositories: Vec<Repository>) -> Record {
         Record {
             schema: SCHEMA.to_owned(),
@@ -323,6 +380,58 @@ mod tests {
                  "ask": {"ask": "code:terminal", "path": "/home/j/src/core.nix"}},
             ])
         );
+    }
+
+    #[test]
+    fn open_changes_are_counted_first_beside_it_and_opened_at_its_forges_list() {
+        let mut repository = core();
+        repository.changes = vec![change("one"), change("two")];
+        let rows = rows(&record(vec![repository]), None, &words());
+        assert_eq!(
+            rows[0]["side"][0],
+            json!({"said": "2 changes"}),
+            "open changes weren't said first beside it"
+        );
+        assert_eq!(
+            rows[0]["acts"][1],
+            json!({
+                "key": "verb:code:changes",
+                "open": "https://github.com/Jitsusama/core.nix/pulls",
+            }),
+            "its open changes weren't offered after its page"
+        );
+    }
+
+    #[test]
+    fn one_open_change_is_said_alone_and_none_says_nothing() {
+        let mut repository = core();
+        repository.changes = vec![change("one")];
+        let rows = rows(&record(vec![repository, core()]), None, &words());
+        assert_eq!(rows[0]["side"][0], json!({"said": "1 change"}));
+        assert_eq!(
+            rows[1]["side"][0],
+            json!({"said": "3 trees"}),
+            "a repository with no open changes said some"
+        );
+        let offered = rows[1]["acts"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|act| act["key"] == "verb:code:changes");
+        assert!(!offered, "a repository with no open changes offered them");
+    }
+
+    #[test]
+    fn gitlabs_open_changes_are_its_merge_requests_and_a_local_ones_have_no_list() {
+        assert_eq!(
+            changes_page("gitlab:someone/thing").as_deref(),
+            Some("https://gitlab.com/someone/thing/-/merge_requests")
+        );
+        assert_eq!(
+            changes_page("github:someone/thing").as_deref(),
+            Some("https://github.com/someone/thing/pulls")
+        );
+        assert_eq!(changes_page("local:~/scratch/thing"), None);
     }
 
     #[test]
