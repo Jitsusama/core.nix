@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use programs::code_rows;
+use programs::{code_rows, command};
 use repos::read::{Reading, read};
 
 use super::{Daemon, Shared, keep, lock};
@@ -101,8 +101,31 @@ fn take(shared: &Shared, daemon: &mut Daemon, rows: Vec<serde_json::Value>) {
     shared.code.read_once.store(true, Ordering::Release);
 }
 
-/// New Terminal Here: not done yet.
-pub fn terminal(id: &serde_json::Value, _folder: &str) -> serde_json::Value {
+/// New Terminal Here on a repository's row: niri starts kitty in its
+/// checkout, rather than this daemon, so the terminal is no child of a
+/// service a switch restarts, and niri, which spawned it, gives its window
+/// the keys. Answered at once and asked on a thread of its own, as a
+/// kitty tab's acts are (tabs.rs), so no other ask waits on niri.
+pub fn terminal(id: &serde_json::Value, folder: &str) -> serde_json::Value {
+    let niri = std::env::var("PROGRAMS_NIRI").unwrap_or_else(|_| "niri".to_owned());
+    let argv: Vec<String> = [
+        niri.as_str(),
+        "msg",
+        "action",
+        "spawn",
+        "--",
+        "kitty",
+        "--directory",
+        folder,
+    ]
+    .iter()
+    .map(|&word| word.to_owned())
+    .collect();
+    std::thread::spawn(move || {
+        if let Err(why) = command::run(&argv) {
+            eprintln!("a terminal wasn't started: {why}");
+        }
+    });
     serde_json::json!({"id": id, "asked": "terminal"})
 }
 
