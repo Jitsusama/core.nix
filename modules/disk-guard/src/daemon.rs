@@ -298,6 +298,27 @@ pub struct Places {
     pub running: Vec<PathBuf>,
 }
 
+/// How `config`'s finished sources ask whether a checkout is done, leaving
+/// out any whose remote isn't a pattern.
+fn predicates(config: &Config) -> Vec<Predicate> {
+    config
+        .sources
+        .values()
+        .filter_map(|source| match source {
+            Source::Finished {
+                remote,
+                command,
+                timeout,
+            } => Some(Predicate {
+                remote: regex_lite::Regex::new(remote).ok()?,
+                command: command.iter().map(OsString::from).collect(),
+                timeout: timeout.0,
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
 #[expect(
     clippy::struct_excessive_bools,
     reason = "its four flags are independent facts about unrelated work, not one state"
@@ -408,6 +429,9 @@ pub struct Guard {
     /// clear would take now; none before the first survey, which a disk
     /// well under its budget may not make for six hours.
     offered: Option<crate::holders::Offers>,
+    /// What surveys sized of quest workspaces, so the next sizes again
+    /// only what was written since.
+    sizes: crate::survey::Sizes,
     /// Whether the holders are to be measured again on the next step,
     /// since a clear has just changed them.
     remeasure: bool,
@@ -651,22 +675,7 @@ impl Guard {
             }
             Err(error) => return Err(error),
         };
-        let predicates = config
-            .sources
-            .values()
-            .filter_map(|source| match source {
-                Source::Finished {
-                    remote,
-                    command,
-                    timeout,
-                } => Some(Predicate {
-                    remote: regex_lite::Regex::new(remote).ok()?,
-                    command: command.iter().map(OsString::from).collect(),
-                    timeout: timeout.0,
-                }),
-                _ => None,
-            })
-            .collect();
+        let predicates = predicates(&config);
         let status_path = places.status.clone().filter(|_| config.status_file);
         let listing_path = state.join("garbage.json");
         // One that can't be read is listed afresh.
@@ -739,6 +748,7 @@ impl Guard {
             damaged,
             kept: Vec::new(),
             offered: None,
+            sizes: crate::survey::Sizes::default(),
             remeasure: false,
             measured: Arc::new(Mutex::new(measured)),
             measuring: None,
@@ -2098,6 +2108,23 @@ impl Guard {
             .clone()
     }
 
+    /// What reads this machine's processes for `me`, vouched for by the
+    /// system daemon under every source's roots when there is one.
+    fn scan(&self, me: u32) -> Scan {
+        let scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
+        let Some(socket) = &self.system else {
+            return scan;
+        };
+        let roots: Vec<PathBuf> = self
+            .config
+            .sources
+            .values()
+            .flat_map(Source::under)
+            .map(Path::to_owned)
+            .collect();
+        scan.vouched_by(socket, &roots)
+    }
+
     /// Every process, scanned for the pass to judge by, and what every
     /// source offers.
     /// What the sources offer now, or with `part`, only what its sources
@@ -2105,17 +2132,7 @@ impl Guard {
     /// leaves what the holders say of the rest as the last whole one did.
     fn offers(&mut self, tick: &Tick, part: Option<&Config>) -> io::Result<(Scan, Vec<Offer>)> {
         let me = std::process::id();
-        let mut scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
-        if let Some(socket) = &self.system {
-            let roots: Vec<PathBuf> = self
-                .config
-                .sources
-                .values()
-                .flat_map(Source::under)
-                .map(Path::to_owned)
-                .collect();
-            scan = scan.vouched_by(socket, &roots);
-        }
+        let mut scan = self.scan(me);
         let processes = scan.processes()?.to_vec();
         self.unread = (
             processes.iter().filter(|process| !process.readable).count(),
@@ -2175,12 +2192,20 @@ impl Guard {
             uses: &uses,
             kept: Vec::new(),
             counted: std::cell::RefCell::default(),
+            sizes: std::cell::RefCell::new(std::mem::take(&mut self.sizes)),
             walked: 0,
             stop: &*self.stop,
         };
         let mut offers = survey(part.unwrap_or(&self.config), &mut world);
         let kept = std::mem::take(&mut world.kept);
+        let mut sizes = world.sizes.take();
         drop(world);
+        // Only a whole survey asks for every size it would, so only one
+        // may forget the rest.
+        if part.is_none() && !(self.stop)() {
+            sizes.ended();
+        }
+        self.sizes = sizes;
         // A walk a stop cut short found only part of what's there, and a
         // checkout it never reached would look gone, so nothing is taken.
         if (self.stop)() {
