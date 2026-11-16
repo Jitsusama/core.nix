@@ -1547,10 +1547,15 @@ impl Controller {
             return false;
         };
         let late = self.up.tuning.late_ms;
-        if !self
-            .guard
-            .breached(at, self.up.rate, fed, late, cut, anchor)
-        {
+        // A probe's few seconds over the plateau aren't where the upload is
+        // held, so the guard judges the hold it falls back to: judging the
+        // probe's rate started the guard's minute again with every probe.
+        let up = &self.up;
+        let held = match (up.probing_until, up.plateau) {
+            (Some(_), Some(plateau)) => plateau * up.tuning.hold,
+            _ => up.rate,
+        };
+        if !self.guard.breached(at, held, fed, late, cut, anchor) {
             return false;
         }
         self.up.hold_at(at, anchor * ANCHOR_HOLD);
@@ -3544,6 +3549,36 @@ mod tests {
             said[0].is_some_and(|l| l < 6_000),
             "with no anchor: {:?}",
             said[0]
+        );
+    }
+
+    /// At 07:34 on 16 November a hidden queue held the plateau at 10,040,
+    /// so the upload held at 9,538, under the guard's 9,600. Agents sent
+    /// about 9 Mbit/s, under what a probe looks at, so no probe raised the
+    /// plateau, and each probe's 3 s over the guard's share started its
+    /// minute again: it held there for good.
+    #[test]
+    fn probes_over_the_guard_s_share_don_t_keep_a_low_hold_from_it() {
+        let mut c = anchored(10_040.0);
+        let mut at = 0.0;
+        while at < 200.0 {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: rate.min(9_000.0),
+                up_ours: Some(Ours {
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            at += 0.1;
+        }
+        assert_eq!(c.guarded, 1, "the guard never saw the hold under its share");
+        assert!(
+            c.up.limit().is_some_and(|l| l >= 10_800),
+            "held at {:?}",
+            c.up.limit()
         );
     }
 
