@@ -1,10 +1,12 @@
 //! Code's rows over the socket: every repository under the roots, each
 //! once, in a first watch's own answer; a repository cloned since told to
-//! a later watch, read behind it; and the rows searched by owner.
+//! a later watch, read behind it; the rows searched by owner; and New
+//! Terminal Here started by a stand-in for niri as it's asked.
 
 use std::path::Path;
 use std::process::Command;
 
+use daemon_client::until;
 use serde_json::{Value, json};
 
 use super::Running;
@@ -77,5 +79,23 @@ fn every_repository_is_a_row_of_codes_in_a_first_watchs_answer() {
         said["keys"],
         json!(["row:code:github:other/beta"]),
         "a repository isn't found by its owner: {said}"
+    );
+}
+
+#[test]
+fn new_terminal_here_has_niri_start_kitty_in_the_checkout() {
+    let running = Running::new("code-terminal");
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "code:terminal", "path": "/src/alpha"}));
+    assert!(
+        said.get("error").is_none(),
+        "New Terminal Here was refused: {said}"
+    );
+    let asked = || std::fs::read_to_string(running.path("niri.asked"));
+    until("niri wasn't asked to start a terminal", || asked().is_ok());
+    assert_eq!(
+        asked().unwrap(),
+        "msg action spawn -- kitty --directory /src/alpha\n",
+        "niri wasn't asked to start kitty in the checkout, so it outlives the daemon"
     );
 }

@@ -101,6 +101,11 @@ fn take(shared: &Shared, daemon: &mut Daemon, rows: Vec<serde_json::Value>) {
     shared.code.read_once.store(true, Ordering::Release);
 }
 
+/// New Terminal Here: not done yet.
+pub fn terminal(id: &serde_json::Value, _folder: &str) -> serde_json::Value {
+    serde_json::json!({"id": id, "asked": "terminal"})
+}
+
 /// The machine's name as it calls itself, which the record carries.
 fn machine() -> String {
     ["/proc/sys/kernel/hostname", "/etc/hostname"]

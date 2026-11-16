@@ -304,14 +304,28 @@ mod tests {
     }
 
     #[test]
-    fn return_opens_its_page_and_copy_takes_the_checkout_written_to_last() {
+    fn return_opens_its_page_and_copy_and_a_terminal_take_the_checkout_written_to_last() {
         let rows = rows(&record(vec![core()]), None, &words());
         assert_eq!(
             rows[0]["acts"],
             json!([
                 {"key": "verb:code:page", "open": "https://github.com/Jitsusama/core.nix"},
                 {"key": "verb:code:path", "copy": "/home/j/src/core.nix"},
+                {"key": "verb:code:terminal", "closes": true,
+                 "ask": {"ask": "code:terminal", "path": "/home/j/src/core.nix"}},
             ])
+        );
+    }
+
+    #[test]
+    fn a_repository_with_no_checkout_opens_no_terminal() {
+        let mut repository = core();
+        repository.checkouts.clear();
+        let rows = rows(&record(vec![repository]), None, &words());
+        assert_eq!(
+            rows[0]["acts"],
+            json!([{"key": "verb:code:page", "open": "https://github.com/Jitsusama/core.nix"}]),
+            "a terminal was offered with nowhere to open it"
         );
     }
 
@@ -332,7 +346,11 @@ mod tests {
         assert_eq!(row["side"], json!([]), "nothing to say beside it");
         assert_eq!(
             row["acts"],
-            json!([{"key": "verb:code:path", "copy": "/home/j/scratch/thing"}])
+            json!([
+                {"key": "verb:code:path", "copy": "/home/j/scratch/thing"},
+                {"key": "verb:code:terminal", "closes": true,
+                 "ask": {"ask": "code:terminal", "path": "/home/j/scratch/thing"}},
+            ])
         );
         assert_eq!(row["drawer"]["eyebrow"][0]["said"], "no remote");
         assert!(row["drawer"].get("nerd").is_none(), "no remote to name");

@@ -62,6 +62,9 @@ pub enum Own {
     /// What a kitty tab's row asks done to it, its OS window's niri id
     /// with Go to the Tab (`kitty_tabs.rs`).
     Tab(TabAsk),
+    /// New Terminal Here on a repository's row (`code_rows.rs`): a kitty
+    /// started in its checkout, by the folder's absolute path.
+    Terminal(String),
     /// What the rows are made of, held until the next (docs/daemons.md,
     /// Settings).
     Settings(Settings),
@@ -192,6 +195,24 @@ mod tests {
             own_of(&json!({"ask": "tab:close", "tab": 5})),
             None,
             "a tab's ask naming no kitty was taken"
+        );
+    }
+
+    #[test]
+    fn a_repositorys_terminal_names_the_folder_it_opens_in() {
+        assert_eq!(
+            own_of(&json!({"ask": "code:terminal", "path": "/home/j/src/core.nix"})),
+            Some(Own::Terminal("/home/j/src/core.nix".into()))
+        );
+        assert_eq!(
+            own_of(&json!({"ask": "code:terminal"})),
+            None,
+            "a terminal naming no folder was taken"
+        );
+        assert_eq!(
+            own_of(&json!({"ask": "code:terminal", "path": "src/core.nix"})),
+            None,
+            "a terminal in a folder relative to nothing was taken"
         );
     }
 
