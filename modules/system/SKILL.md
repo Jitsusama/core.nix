@@ -33,9 +33,12 @@ system          # the same, as a person reads it
 ```
 
 The object has `schema` (system.view/1), `machine` (where it was read),
-`read_at` (RFC 3339, UTC), `health` and `parts`, always in one order:
-machines, mycelium, network, code. Each part has `part`, `health`, `says`
-(a sentence, worst first), `things` (the machines, worst first, each with
+`read_at` (RFC 3339, UTC), `health`, `side` (every part's, in order) and
+`parts`, always in one order: machines, mycelium, network, code. Each
+part has `part`, `health`, `says` (a sentence, worst first), `side` (what
+is worth a look, an item each, worded to stand at a side: lower case
+unless a name leads, no closing stop, without what the part holds, at
+most three, and empty when nothing is), `things` (the machines, worst first, each with
 `kind`, `name`, `health`, `says` and `address`, its home on the local
 sites as the site home to it gives it, or null while none is; empty for
 the other parts, for now) and `deeper`: the `command` that says more, the

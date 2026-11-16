@@ -24,6 +24,10 @@ const LOW_CHARGE: u64 = 20;
 /// also latch, as each machine's word fed the other's.
 const ITS_OWN: [&str; 1] = ["code"];
 
+/// The most items a side says of a part, so thousands of machines worth a
+/// look still make a short list: past it, the last says how many more.
+const SIDE_ITEMS: usize = 3;
+
 /// The machines of the realm, from `mycelium machines`, each with its
 /// sessions from `mycelium health` where that was read.
 pub fn machines(machines: &Answer, health: &Answer) -> Part {
@@ -45,7 +49,7 @@ pub fn machines(machines: &Answer, health: &Answer) -> Part {
     }
     let sessions = health.as_ref().ok().and_then(|said| said.get("sessions"));
     // The node says this machine first, whose own parts are parts here.
-    let mut things: Vec<Thing> = list
+    let mut read: Vec<(Thing, Vec<String>)> = list
         .iter()
         .enumerate()
         .map(|(at, said)| {
@@ -58,7 +62,14 @@ pub fn machines(machines: &Answer, health: &Answer) -> Part {
         })
         .collect();
     // The worst first, then by name, so the line a look wants leads.
-    things.sort_by(|a, b| b.health.cmp(&a.health).then_with(|| a.name.cmp(&b.name)));
+    read.sort_by(|(a, _), (b, _)| b.health.cmp(&a.health).then_with(|| a.name.cmp(&b.name)));
+    let side = side_of(
+        read.iter()
+            .filter(|(thing, _)| thing.health > Health::Good)
+            .map(|(thing, looks)| format!("{} {}", thing.name, looks.join(", ")))
+            .collect(),
+    );
+    let things: Vec<Thing> = read.into_iter().map(|(thing, _)| thing).collect();
     let health = things
         .iter()
         .map(|thing| thing.health)
@@ -84,6 +95,7 @@ pub fn machines(machines: &Answer, health: &Answer) -> Part {
         name: "machines",
         health,
         says,
+        side,
         things,
         deeper,
     }
@@ -95,8 +107,9 @@ fn name_of(said: &Value) -> &str {
 
 /// One machine: whether a link reaches it, what it's short of, its disk,
 /// its battery, what its own health says of its own parts and its
-/// sessions, each said only when it's worth saying.
-fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> Thing {
+/// sessions, each said only when it's worth saying, with the words of
+/// what is worth a look in it.
+fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> (Thing, Vec<String>) {
     let mut health = Health::Good;
     let mut words = Vec::new();
     if said.get("state").and_then(Value::as_str) == Some("unreachable") {
@@ -157,19 +170,21 @@ fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> Thing
             _ => {}
         }
     }
+    let looks = words.clone();
     if words.is_empty() {
         words.push("is ready".to_owned());
     }
     if let Some(sessions) = sessions {
         words.push(format!("runs {}", sessions_said(sessions)));
     }
-    Thing {
+    let thing = Thing {
         kind: "machine",
         name: name_of(said).to_owned(),
         health,
         says: words.join(", "),
         address: None,
-    }
+    };
+    (thing, looks)
 }
 
 /// A resource a node says a machine is short of, in Joel's words for it.
@@ -234,6 +249,8 @@ pub fn mycelium(health: &Answer) -> Part {
             "sessions say they run with their processes gone",
         ));
     }
+    // What it holds, its sessions and links, is for the drawer.
+    let side = words.clone();
     let machines = said.get("sessions").and_then(Value::as_object);
     let of = |key: &str| {
         machines.map_or(0, |machines| {
@@ -256,6 +273,7 @@ pub fn mycelium(health: &Answer) -> Part {
         name: "mycelium",
         health: worst,
         says: words.join("; "),
+        side: side_of(side),
         things: Vec::new(),
         deeper,
     }
@@ -303,12 +321,18 @@ pub fn network(net: &Answer) -> Part {
                 .collect()
         })
         .unwrap_or_default();
+    let mut side = words.clone();
     if let Some(first) = looks.first() {
         worst = worst.max(Health::Watch);
         words.push(match looks.len() {
             1 => (*first).to_owned(),
             more => format!("{first}; and {} more worth a look", more - 1),
         });
+        // Net words its first look best, and orders them so.
+        side.push(lowered(first));
+        if looks.len() > 1 {
+            side.push(format!("and {} more worth a look", looks.len() - 1));
+        }
     }
     let devices = said
         .get("devices")
@@ -319,6 +343,7 @@ pub fn network(net: &Answer) -> Part {
         name: "network",
         health: worst,
         says: words.join("; "),
+        side: side_of(side),
         things: Vec::new(),
         deeper,
     }
@@ -360,6 +385,7 @@ pub fn code(repos: &Answer) -> Part {
             "trees are listed with their folders gone",
         ));
     }
+    let side = words.clone();
     words.push(format!(
         "{} with {}",
         count(repositories.len() as u64, "repository", "repositories"),
@@ -369,6 +395,7 @@ pub fn code(repos: &Answer) -> Part {
         name: "code",
         health,
         says: words.join("; "),
+        side,
         things: Vec::new(),
         deeper,
     }
@@ -386,8 +413,30 @@ fn unread(name: &'static str, why: &str, deeper: Deeper) -> Part {
         name,
         health: Health::Unread,
         says: why.to_owned(),
+        side: vec![lowered(why)],
         things: Vec::new(),
         deeper,
+    }
+}
+
+/// A side's items, at most `SIDE_ITEMS` of them, the last saying how many
+/// more there were when there were.
+fn side_of(mut items: Vec<String>) -> Vec<String> {
+    if items.len() > SIDE_ITEMS {
+        let more = items.len() - (SIDE_ITEMS - 1);
+        items.truncate(SIDE_ITEMS - 1);
+        items.push(format!("and {more} more worth a look"));
+    }
+    items
+}
+
+/// An owner's words as an item of a side, which starts lower case unless
+/// a name leads. An owner starts a sentence with "The", which is no name;
+/// any other capital is taken as one, since only the owner knows.
+fn lowered(said: &str) -> String {
+    match said.strip_prefix("The ") {
+        Some(rest) => format!("the {rest}"),
+        None => said.to_owned(),
     }
 }
 
@@ -414,6 +463,9 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    /// A side with nothing worth a look on it.
+    const NO_LOOK: [&str; 0] = [];
 
     fn laptop(over: &[&str], band: &str) -> Value {
         json!({"name": "laptop", "state": "ready", "disk_free": 278_819_094_528_u64,
@@ -461,6 +513,26 @@ mod tests {
             "the part says only the machines worth a look: {}",
             part.says
         );
+        assert_eq!(
+            part.side,
+            ["laptop is short of memory and processor, has a filling disk, 279 GB free"],
+            "a side leaves out what the machine runs"
+        );
+    }
+
+    #[test]
+    fn a_side_of_many_machines_says_how_many_more() {
+        let away = |name: &str| json!({"name": name, "state": "unreachable"});
+        let many: Vec<Value> = ["a", "b", "c", "d", "e"].into_iter().map(away).collect();
+        let part = machines(&Ok(realm(&many)), &Err(String::new()));
+        assert_eq!(
+            part.side,
+            [
+                "a is out of reach",
+                "b is out of reach",
+                "and 3 more worth a look"
+            ]
+        );
     }
 
     #[test]
@@ -471,6 +543,7 @@ mod tests {
         );
         assert_eq!(part.health, Health::Good);
         assert_eq!(part.says, "1 machine ready");
+        assert_eq!(part.side, NO_LOOK, "nothing is worth a look");
         assert_eq!(
             part.things[0].says, "is ready",
             "with no health, sessions go unsaid"
@@ -548,6 +621,11 @@ mod tests {
         assert_eq!(part.health, Health::Unread);
         assert_eq!(part.says, "mycelium isn't installed");
         assert_eq!(
+            part.side,
+            ["mycelium isn't installed"],
+            "why is worth a look"
+        );
+        assert_eq!(
             network(&Err("net said nothing".into())).health,
             Health::Unread
         );
@@ -562,6 +640,7 @@ mod tests {
             part.says,
             "57 busy and 34 idle sessions on 2 machines; 1 link up"
         );
+        assert_eq!(part.side, NO_LOOK, "what it holds is no look");
     }
 
     #[test]
@@ -577,6 +656,13 @@ mod tests {
                 .starts_with("the link to studio is down; 7 sessions say"),
             "{}",
             part.says
+        );
+        assert_eq!(
+            part.side,
+            [
+                "the link to studio is down",
+                "7 sessions say they run with their processes gone"
+            ]
         );
     }
 
@@ -604,6 +690,26 @@ mod tests {
         assert_eq!(
             part.says, "Main Floor's radio is busy; and 1 more worth a look; 3 devices",
             "the internet's ceiling is how the network is, not a look"
+        );
+        assert_eq!(
+            part.side,
+            ["Main Floor's radio is busy", "and 1 more worth a look"],
+            "a name leading keeps its capital, and the devices are left out"
+        );
+    }
+
+    #[test]
+    fn an_owners_leading_the_starts_a_side_lower_case() {
+        let part = network(&Ok(net(
+            &[("modem", "unreachable")],
+            &[("loss", "The modem's downstream channel 16 has lost 878")],
+        )));
+        assert_eq!(
+            part.side,
+            [
+                "modem isn't answering",
+                "the modem's downstream channel 16 has lost 878"
+            ]
         );
     }
 
@@ -643,5 +749,7 @@ mod tests {
             json!({"repositories": [{"checkouts": [{"trees": []}]}]}),
         ));
         assert_eq!(none.says, "1 repository with 0 trees");
+        assert_eq!(none.side, NO_LOOK, "trees it holds are no look");
+        assert_eq!(part.side, ["1 tree is listed with its folder gone"]);
     }
 }

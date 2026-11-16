@@ -64,6 +64,10 @@ pub struct Part {
     pub health: Health,
     /// How it stands, its worst first; why it wasn't read, when it wasn't.
     pub says: String,
+    /// What in it is worth a look, an item each, worded for a side: lower
+    /// case unless a name leads, with no closing stop, and without what
+    /// it holds. None when nothing is.
+    pub side: Vec<String>,
     pub things: Vec<Thing>,
     pub deeper: Deeper,
 }
@@ -89,6 +93,15 @@ impl System {
         read.map(|part| part.health).max().unwrap_or(Health::Unread)
     }
 
+    /// What is worth a look in the whole: each part's side, in the parts'
+    /// order.
+    pub fn side(&self) -> Vec<&str> {
+        self.parts
+            .iter()
+            .flat_map(|part| part.side.iter().map(String::as_str))
+            .collect()
+    }
+
     /// The record, as `system.view/1`.
     pub fn json(&self) -> Value {
         json!({
@@ -96,6 +109,7 @@ impl System {
             "machine": self.machine,
             "read_at": self.read_at,
             "health": self.health().word(),
+            "side": self.side(),
             "parts": self.parts.iter().map(part_json).collect::<Vec<_>>(),
         })
     }
@@ -113,6 +127,7 @@ impl System {
             "machine": self.machine,
             "read_at": self.read_at,
             "health": self.health().word(),
+            "side": self.side(),
             "parts": self.parts.iter().map(|part| part.name).collect::<Vec<_>>(),
         });
         let parts = self.parts.iter().map(|part| {
@@ -153,6 +168,7 @@ fn part_json(part: &Part) -> Value {
         "part": part.name,
         "health": part.health.word(),
         "says": part.says,
+        "side": part.side,
         "things": part.things.iter().map(|thing| json!({
             "kind": thing.kind,
             "name": thing.name,
@@ -177,6 +193,7 @@ mod tests {
             name,
             health,
             says: String::new(),
+            side: Vec::new(),
             things: Vec::new(),
             deeper: Deeper {
                 command: "",
@@ -254,6 +271,33 @@ mod tests {
             "mycelium/#machine=laptop"
         );
         assert_eq!(system.records()[2]["address"], "mycelium/#machine=laptop");
+    }
+
+    #[test]
+    fn the_side_of_each_part_and_of_the_whole_is_in_every_record() {
+        let mut network = part("network", Health::Watch);
+        network.side = vec!["the modem is busy".to_owned()];
+        let mut code = part("code", Health::Watch);
+        code.side = vec!["1 tree is listed with its folder gone".to_owned()];
+        let system = system(vec![part("machines", Health::Good), network, code]);
+        let whole = json!(["the modem is busy", "1 tree is listed with its folder gone"]);
+        assert_eq!(
+            system.json()["side"],
+            whole,
+            "the whole's, in the parts' order"
+        );
+        assert_eq!(
+            system.json()["parts"][1]["side"],
+            json!(["the modem is busy"])
+        );
+        let records = system.records();
+        assert_eq!(records[0]["side"], whole, "the summary says the whole's");
+        assert_eq!(
+            records[1]["side"],
+            json!([]),
+            "a part with nothing worth a look says none"
+        );
+        assert_eq!(records[2]["side"], json!(["the modem is busy"]));
     }
 
     #[test]
