@@ -3434,6 +3434,12 @@ pub fn shared<'a>(
     (parts, left)
 }
 
+/// What's left after [`shared`], parted from what only a machine nearby
+/// builds for.
+pub fn owed(left: Option<Asked>, _nearby: &[Nearby], _system: &str) -> (Option<Asked>, Vec<String>) {
+    (left, Vec::new())
+}
+
 /// What was asked, split: the VM tests, for a builder of their own so they
 /// never share one with big builds, and the rest. An attribute is one when
 /// a pattern in `patterns` describes it, an applied function's or an
@@ -5645,6 +5651,38 @@ mod tests {
 
         let darwin = super::asked(&words("path:/z checks.aarch64-darwin.b")).unwrap();
         assert_eq!(shared(&darwin, &machines, |_| true).1, None);
+    }
+
+    #[test]
+    fn what_only_an_away_machine_builds_for_is_owed_rather_than_sent_the_lent_way() {
+        let machines = [mac()];
+        let asked = asked(&words(
+            "-L path:/z checks.x86_64-linux.a checks.aarch64-darwin.b \
+             checks.aarch64-linux.c checks.riscv64-linux.d equilibrium",
+        ))
+        .unwrap();
+        let (_, left) = shared(&asked, &machines, |_| false);
+        let (left, owed) = owed(left, &machines, "x86_64-linux");
+        assert_eq!(
+            owed,
+            words("checks.aarch64-darwin.b checks.aarch64-linux.c"),
+            "only the away machine builds for its systems"
+        );
+        assert_eq!(
+            left.map(|left| left.attributes),
+            Some(words("checks.x86_64-linux.a checks.riscv64-linux.d equilibrium")),
+            "what no machine nearby names still goes the lent way"
+        );
+
+        let darwin = super::asked(&words("path:/z checks.aarch64-darwin.b")).unwrap();
+        let (_, left) = shared(&darwin, &machines, |_| false);
+        let (left, owed) = owed(left, &machines, "x86_64-linux");
+        assert_eq!(left, None, "nothing of it is the lent builder's");
+        assert_eq!(owed, words("checks.aarch64-darwin.b"));
+
+        let (left, owed) = owed(Some(darwin), &machines, "aarch64-darwin");
+        assert!(owed.is_empty(), "a Mac's own system is built where it is");
+        assert!(left.is_some());
     }
 
     #[test]
