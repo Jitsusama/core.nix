@@ -110,6 +110,25 @@ onLinux {
         && lib.hasInfix "Environment=NIRI_FULL_RANGE_WHEN_SELECTABLE=1" unit.text
       );
 
+  # niri's unit fixes to the screen the namespace the margin cat's surface
+  # gives, so a rename on either side doesn't bring back the second cat
+  # riding in on a switch (fixed-to-output.patch).
+  niri-fixes-the-cat-to-its-screen =
+    let
+      unit =
+        (account graphical).xdg.configFile."systemd/user/niri.service.d/fixed-to-output.conf" or {
+          text = "";
+        };
+    in
+    holds "niri-fixes-the-cat-to-its-screen"
+      "niri's unit doesn't name the margin cat's namespace in NIRI_FIXED_TO_OUTPUT, so a switch draws it once on each workspace."
+      (
+        lib.hasInfix ''WlrLayershell.namespace: "cat"'' (
+          builtins.readFile ../margin-cat/MarginCatScreen.qml
+        )
+        && lib.hasInfix "Environment=NIRI_FIXED_TO_OUTPUT=cat\n" unit.text
+      );
+
   # niri's unit asks for a laptop panel's saturation by the name
   # panel-saturation.patch reads, only on a machine that sets one, so the ask
   # isn't lost to a rename on either side.

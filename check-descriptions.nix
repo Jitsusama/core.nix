@@ -1908,6 +1908,10 @@
     the session's niri, nested in the sandbox, draws a bottom layer surface its unit names once on
     its screen, where it is, all through a workspace switch caught partway
   '';
+  niri-fixes-the-cat-to-its-screen = ''
+    niri's unit names the margin cat's layer namespace among the surfaces drawn once on their
+    screen
+  '';
   niri-hears-the-copilot-key = ''
     the Copilot key types, in the keymap niri builds, the key its dictation bind names
   '';
