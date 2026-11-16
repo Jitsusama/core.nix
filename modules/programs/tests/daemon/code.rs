@@ -143,6 +143,12 @@ fn a_checkouts_files_are_served_inside_open_a_file_by_name_only_while_its_ahead(
         "a file ahead isn't served by its name: {file}"
     );
     assert_eq!(file["row"]["parent"], find, "a file isn't inside the row: {file}");
+    let said = client.ask(&json!({"id": 2, "ask": "search", "place": "code", "words": "guide"}));
+    assert_eq!(
+        said["keys"],
+        json!([]),
+        "what's typed at Code found a row inside a repository: {said}"
+    );
     client.send(&json!({"id": "ahead", "ask": "unwatch"}));
     assert!(
         client.gone().contains(&json!(guide)),

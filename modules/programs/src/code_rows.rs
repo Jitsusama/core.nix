@@ -9,8 +9,11 @@
 //! Page, Open Its Open Changes (while any are), Copy Its Path and New
 //! Terminal Here,
 //! which asks this daemon to start kitty in it (code.rs), and shuts the
-//! launcher as it's asked so the new window takes the keys; its drawer names
-//! its key, its trunk and the checkout written to last, at its branch.
+//! launcher as it's asked so the new window takes the keys, then, as a row
+//! of its own (`inside`), Open a File by Name, which steps into its
+//! checkout's files (`files`), each found by its name and the folder it's
+//! in and opened by Return in its default program; its drawer names its
+//! key, its trunk and the checkout written to last, at its branch.
 
 use repos::model::{Checkout, Record, Repository};
 use repos::read::shown;
@@ -128,17 +131,67 @@ pub fn rows(record: &Record, home: Option<&Path>, words: &Words) -> Vec<Value> {
 /// with a checkout, Open a File by Name, which steps into its files.
 #[must_use]
 pub fn inside(record: &Record, words: &Words) -> Vec<Value> {
-    let _ = (record, words);
-    Vec::new()
+    record
+        .repositories
+        .iter()
+        .filter_map(|repository| {
+            let checkout = worked_in(repository)?;
+            let parent = format!("row:{PLACE}:{}", repository.key);
+            Some(json!({
+                "key": format!("{parent}{FILES}"),
+                // Its own, so the shell tells one repository's apart.
+                "thing": format!("repository:{}{FILES}", repository.key),
+                "place": PLACE,
+                "kind": "act",
+                "parent": parent,
+                "depth": 1,
+                "name": words.find,
+                "glyph": words.find_glyph,
+                "hue": "action",
+                "side": [],
+                "held": {"path": checkout.path},
+                "acts": [{"key": "verb:more", "step": "rows"}],
+            }))
+        })
+        .collect()
 }
+
+/// What ends the key of Open a File by Name's row, after its
+/// repository's row's.
+pub const FILES: &str = ":files";
 
 /// The rows inside Open a File by Name's row of key `parent`, one for each
 /// file `listed` says as repositories.rs lists them, `{path, at, within}`,
 /// in its order; Return opens one in its default program.
 #[must_use]
 pub fn files(parent: &str, listed: &[Value], words: &Words) -> Vec<Value> {
-    let _ = (parent, listed, words);
-    Vec::new()
+    listed
+        .iter()
+        .filter_map(|one| {
+            let path = one["path"].as_str()?;
+            let within = one["within"].as_str().unwrap_or_default();
+            let name = path.rsplit_once('/').map_or(path, |(_, name)| name);
+            let mut side = vec![json!({"at": one["at"], "as": "came"})];
+            if !within.is_empty() {
+                side.push(json!({"said": within, "keep": 1}));
+            }
+            Some(json!({
+                "key": format!("{parent}:{path}"),
+                "thing": format!("file:{path}"),
+                "place": PLACE,
+                "kind": "file",
+                "parent": parent,
+                "depth": 2,
+                "name": name,
+                "glyph": words.file_glyph,
+                "hue": "program",
+                "side": side,
+                "keywords": within,
+                "held": {"path": path},
+                "acts": [{"key": "verb:code:file:open", "open": path}],
+            }))
+        })
+        .collect()
 }
 
 /// Where a repository's page is, from its key, for the forges whose
@@ -564,7 +617,7 @@ mod tests {
             inside,
             [json!({
                 "key": "row:code:github:Jitsusama/core.nix:files",
-                "thing": "verb:code:find",
+                "thing": "repository:github:Jitsusama/core.nix:files",
                 "place": "code",
                 "kind": "act",
                 "parent": "row:code:github:Jitsusama/core.nix",

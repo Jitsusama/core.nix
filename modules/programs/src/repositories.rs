@@ -278,7 +278,10 @@ pub fn files(repository: &str) -> Vec<Value> {
 }
 
 /// The names git lists of a repository's files, within it, or none for a
-/// folder git can't read.
+/// folder git can't read. A sparse checkout's index is read as it stands
+/// (`--sparse`), so git names each folder it left out, with a `/` after,
+/// rather than every file in them, none of which is on the disk; those
+/// folders are passed over. One that isn't sparse is listed alike.
 fn listed(repository: &str) -> Option<Vec<String>> {
     let git = std::env::var("PROGRAMS_GIT").unwrap_or_else(|_| "git".to_owned());
     let argv = [
@@ -290,12 +293,13 @@ fn listed(repository: &str) -> Option<Vec<String>> {
         "--cached".to_owned(),
         "--others".to_owned(),
         "--exclude-standard".to_owned(),
+        "--sparse".to_owned(),
     ];
     let printed = command::run(&argv).ok()?;
     Some(
         printed
             .split('\0')
-            .filter(|name| !name.is_empty())
+            .filter(|name| !name.is_empty() && !name.ends_with('/'))
             .map(str::to_owned)
             .collect(),
     )

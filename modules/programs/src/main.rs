@@ -72,7 +72,7 @@ mod told;
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, Weak};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, Weak, mpsc};
 use std::time::{Instant, SystemTime};
 
 use daemon_serve::asks::place_of;
@@ -302,10 +302,30 @@ fn serve(given: &[String]) -> Result<(), Failure> {
         let agents = agents::socket(&socket);
         std::thread::spawn(move || agents::hear(&shared, &agents));
     }
+    follow_watches(&shared);
     accept(shared.served(), listener);
     loop {
         std::thread::park();
     }
+}
+
+/// Hears each watch begin or end, on a thread of its own, and hands the
+/// keys watched then to what's read only while a row is ahead, as Code's
+/// files are. daemon-serve says so with every record held, so it's only
+/// passed on there, and the keys read here after.
+fn follow_watches(shared: &Arc<Shared>) {
+    let (moved, heard) = mpsc::channel();
+    shared.served().on_watches(Box::new(move || {
+        let _ = moved.send(());
+    }));
+    let shared = Arc::clone(shared);
+    std::thread::spawn(move || {
+        while heard.recv().is_ok() {
+            let _ = heard.try_iter().count();
+            let watched = keys_watched(&lock(&shared.daemon));
+            code::ahead(&shared, &watched);
+        }
+    });
 }
 
 impl Shared {
