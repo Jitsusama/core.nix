@@ -117,4 +117,59 @@ onLinux {
             ${lib.getExe door} ${lib.getExe display} ${door}/share/pi-fence/bin logs
         touch $out
       '';
+
+  # xwayland-satellite bridges niri's clipboard to X11, so a copy marked
+  # secret, which niri keeps from a sandbox's windows, reaches any X11
+  # client holding the cookie. Joel's own X11 client reads his copy, but a
+  # command fenced as pi fences one, given the display, reads nothing: X's
+  # sockets are walled off and its cookie is gone with the runtime folder,
+  # and each wall holds alone (../tests/pi-fence-keeps-x11-from-secrets.sh).
+  pi-fence-keeps-x11-from-secrets =
+    let
+      home = account graphical;
+      files = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) home.xdg.configFile;
+      # As the user manager expands it.
+      auth =
+        lib.replaceStrings [ "\${XDG_RUNTIME_DIR}" ] [ "$XDG_RUNTIME_DIR" ]
+          home.systemd.user.sessionVariables.XAUTHORITY;
+      inherit (pkgs) mesa;
+    in
+    pkgs.runCommandLocal "pi-fence-keeps-x11-from-secrets"
+      {
+        nativeBuildInputs = [
+          graphical.config.programs.niri.package
+          (pkgs.callPackage ../../niri/xwayland-satellite.nix { })
+          pkgs.bubblewrap
+          pkgs.dbus
+          pkgs.landrun
+          pkgs.sway-unwrapped
+          pkgs.wl-clipboard
+          pkgs.xclip
+          pkgs.xwayland
+        ];
+        # niri draws in software, as the desktop's machine does.
+        __EGL_VENDOR_LIBRARY_FILENAMES = "${mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+        LIBGL_DRIVERS_PATH = "${mesa}/lib/dri";
+        GBM_BACKENDS_PATH = "${mesa}/lib/gbm";
+        LIBGL_ALWAYS_SOFTWARE = 1;
+      }
+      # Kept in Nix because each line sets a folder, a variable or a file
+      # from what Nix says the session holds, then runs the scripts Nix
+      # gives it, as niri-lets-x11-in-only-with-its-cookie does.
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD XDG_RUNTIME_DIR=$PWD/runtime
+        mkdir -m 700 runtime
+        export XAUTHORITY=${auth}
+        # The sockets' folder as the system makes it, open to all and sticky,
+        # before the nested sway makes it with the build's umask, which niri
+        # refuses.
+        mkdir -p /tmp/.X11-unix
+        chmod 1777 /tmp/.X11-unix
+        ${lib.concatLines (
+          lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
+        )}
+        ${lib.getExe pkgs.bash} ${../../../tests/nested-niri.sh} niri/config.kdl logs \
+          ${lib.getExe pkgs.bash} ${../tests/pi-fence-keeps-x11-from-secrets.sh} logs/niri.log
+        touch $out
+      '';
 }

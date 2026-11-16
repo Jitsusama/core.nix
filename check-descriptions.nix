@@ -3468,6 +3468,11 @@
     clippy finds nothing in pi-fence-display or its tests, the sandboxed display pi's fenced
     commands open windows on
   '';
+  pi-fence-keeps-x11-from-secrets = ''
+    on a real niri with xwayland-satellite, Joel's own X11 client reads a copy marked secret, but a
+    command fenced as pi fences one, given the display, never does: handed the cookie it reaches
+    no socket, and with the sockets open it holds no cookie; with both walls gone it reads it
+  '';
   pi-github-door-lets-only-allowed-calls-through = ''
     pi-github-door sends a fenced call on to GitHub with the person's token in the placeholder's
     place only when it's allowed; a merge, a push, a pull request opened, a credential, a
