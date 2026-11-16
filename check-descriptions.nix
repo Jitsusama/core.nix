@@ -1541,7 +1541,8 @@
   '';
   mycelium-map-keeps-its-last-map = ''
     the mycelium site's writer, while no node answers, ends well in one line and leaves the last
-    map as it was, and once one answers writes the live sessions alone and no message's words
+    map as it was, and once one answers writes the live sessions alone, each machine's declared
+    reach and lease, and no message's words
   '';
   mycelium-runs-among-the-sessions = ''
     on Linux, every realm's node runs in the agents' slice, beside Joel's programs rather than among

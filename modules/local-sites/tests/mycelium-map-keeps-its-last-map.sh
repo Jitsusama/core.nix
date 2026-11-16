@@ -3,7 +3,8 @@
 # no node answers, it ends well, says so in a line and leaves the last map as
 # it was, with nothing of its own left beside it; once one answers, it writes
 # a new map holding mycelium's networks, session cells and receptor cells as
-# it drew them, each machine, and no message's words.
+# it drew them, each machine with the reach and lease it declares, and no
+# message's words.
 # usage: mycelium-map-keeps-its-last-map.sh <mycelium-map.sh> <filter> <jq> <coreutils bin>
 set -euo pipefail
 
@@ -30,7 +31,7 @@ case "\$1" in
     echo '{"kind":"cell","type":"session","name":"AAAAAA","networks":["orchestration.y"]}'
     echo '{"kind":"cell","type":"machine","name":"m","networks":["machines"]}'
     echo '{"kind":"cell","type":"receptor","name":"slack@m","state":"reading","counts":{"hour":1,"today":4,"addressed":2},"networks":["outside.slack"]}' ;;
-  machines) echo '{"Ok":{"Machines":[{"name":"m","state":"ready","cpu":{"cores":4},"room":{}}]}}' ;;
+  machines) echo '{"Ok":{"Machines":[{"name":"m","state":"ready","cpu":{"cores":4},"room":{}},{"name":"cell-1","state":"ready","cpu":{"cores":8},"room":{},"declared":{"reach":["aquifer"],"leaves_at":"2026-11-16T07:40:00Z"}}]}}' ;;
   messages) echo '{"Ok":{"Messages":[{"at":"now","from":"AAAAAA","intent":"fyi","groups":[],"text":"words"}]}}' ;;
 esac
 EOF
@@ -63,8 +64,13 @@ fi
 rm "$work/down"
 "$BASH" "$writer" "$filter" "$work/site"
 drawn=$("$jq" -c '[.cells[].name, .networks[].name, .machines[].name]' "$work/site/now.json")
-if [ "$drawn" != '["AAAAAA","slack@m","orchestration.y","outside.slack","m"]' ]; then
+if [ "$drawn" != '["AAAAAA","slack@m","orchestration.y","outside.slack","m","cell-1"]' ]; then
   echo "Once the node answered, the map drew $drawn." >&2
+  exit 1
+fi
+leases=$("$jq" -c '[.machines[] | [.reach, .leaves_at]]' "$work/site/now.json")
+if [ "$leases" != '[[[],null],[["aquifer"],"2026-11-16T07:40:00Z"]]' ]; then
+  echo "The map gave the machines' reach and leases as $leases." >&2
   exit 1
 fi
 if ! "$jq" -e '[.. | strings] | index("words") == null' "$work/site/now.json" > /dev/null; then
