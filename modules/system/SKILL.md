@@ -38,7 +38,7 @@ machines, mycelium, network, code. Each part has `part`, `health`, `says`
 (a sentence, worst first), `things` (the machines, worst first, each with
 `kind`, `name`, `health` and `says`; empty for the other parts, for now)
 and `deeper`: the `command` that says more, the
-`site` (from the local sites' root, at http://sites.localhost:8484/) and
+`site` (from the local sites' root, at <http://sites.localhost:8484/>) and
 where it is in the `launcher`.
 
 It's small, about a kilobyte, so read it whole, or just the parts:
