@@ -11,18 +11,24 @@ use serde_json::Value;
 use super::{Daemon, Run, Shared, due, lock, read_source, tabs, watched};
 
 /// How long a list refused while it's watched waits before each read
-/// again, longer each time. Neovim's page in the looks-programs VM test
+/// again: soon at first, then never more than 4 s, so a page fills within
+/// 4 s of a stall ending, rather than waiting out a doubled pause past
+/// what a page's test or Joel would wait for. Neovim's page in the looks-programs VM test
 /// stood empty about two runs in five on 2026-11-16: the machine stalled
 /// as the launcher opened, open-now's read was refused, and nothing read
 /// it again while the page watched. The pauses come to 31 s, each read
 /// again may wait its command's own 10 s too, and then a change or the
 /// next opening reads it, as before.
-const PAUSES: [Duration; 5] = [
+const PAUSES: [Duration; 9] = [
     Duration::from_secs(1),
     Duration::from_secs(2),
     Duration::from_secs(4),
-    Duration::from_secs(8),
-    Duration::from_secs(16),
+    Duration::from_secs(4),
+    Duration::from_secs(4),
+    Duration::from_secs(4),
+    Duration::from_secs(4),
+    Duration::from_secs(4),
+    Duration::from_secs(4),
 ];
 
 /// Runs a source's command on a thread of its own, or, while it runs
