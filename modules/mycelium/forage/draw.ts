@@ -240,21 +240,23 @@ function startedBy(forage: Forage, here: ReadonlySet<string>): string {
 }
 
 /**
- * The cells `forage` started, each linked to its row, as "Started by" links
- * back. Past `MOST_STARTED` the rest are counted rather than named, since the
- * list already sets each in under it and a wall of links would bury the facts
- * below. The panel sets it in one span, so it reads as a sentence rather than
- * a row of the fact's flexed items, and ties each comma to the address before
- * it, so no line starts with one.
+ * The cells drawn here that `forage` started, each linked to its row, as
+ * "Started by" links back. Past `MOST_STARTED` the rest are counted rather
+ * than named, since a wall of links would bury the facts below; one more than
+ * that is named, since "and 1 more" says less than its name. The panel sets it
+ * in one span, so it reads as a sentence rather than a row of the fact's
+ * flexed items, and ties each comma to the address before it, so no line
+ * starts with one.
  */
-function startedOf(started: readonly string[]): string {
+function cellsStarted(started: readonly string[]): string {
   if (started.length === 0) {
-    return "None yet";
+    return "None here yet";
   }
   const count = started.length === 1 ? "One cell" : `${started.length} cells`;
-  const links = started.slice(0, MOST_STARTED).map(cellLink);
+  const named = started.length > MOST_STARTED + 1 ? MOST_STARTED : started.length;
+  const links = started.slice(0, named).map(cellLink);
   const rest = started.length - links.length;
-  const last = rest === 0 ? links.pop() : `${rest} more, each set in under it in the list`;
+  const last = rest === 0 ? links.pop() : `${rest} more`;
   const before = links
     .map((link, at) => (at < links.length - 1 ? `<span class="tie">${link},</span>` : link))
     .join(" ");
@@ -284,7 +286,7 @@ ${documentsOf(forage)}
   <dl class="facts">
     <div><dt>Its quest</dt><dd><code>${escaped(forage.quest)}</code>${forage.status === "" ? "" : ` ${escaped(forage.status)}`}</dd></div>
     <div><dt>Started by</dt><dd>${startedBy(forage, here)}</dd></div>
-    <div><dt>Started</dt><dd><span>${startedOf(started)}</span></dd></div>
+    <div><dt>Started</dt><dd><span>${cellsStarted(started)}</span></dd></div>
     <div><dt>Under the quest</dt><dd>${forage.parent === undefined ? "None" : `<code>${escaped(forage.parent)}</code>`}</dd></div>
     <div><dt>Stands on</dt><dd>${escaped(forage.machine)}</dd></div>
     <div><dt>In a terminal</dt><dd><code><a href="${MYCELIUM_HOME}">mycelium</a> forage ${escaped(forage.cell)}</code> <button type="button" class="copy" data-copy="${said}">Copy <kbd>y</kbd></button></dd></div>

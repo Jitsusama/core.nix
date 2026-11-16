@@ -1,6 +1,7 @@
-// Which words the forage page marks as its quests' own: a purpose and a
-// document's title are written by the quest and shown as written, so the
-// page's checks read them as the quest's, never as the page's own prose.
+// What the forage page draws of a cell: which words it marks as its quests'
+// own (a purpose and a document's title are written by the quest and shown as
+// written, so the page's checks read them as the quest's, never as the page's
+// own prose), and what its panel says of the cells it started.
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
@@ -86,7 +87,7 @@ function read(line: string): { readonly says: string; readonly links: readonly s
 }
 
 it("says a cell that started none started none yet", () => {
-  assert.deepEqual(read(startedLine(forage(), [])), { says: "None yet", links: [] });
+  assert.deepEqual(read(startedLine(forage(), [])), { says: "None here yet", links: [] });
 });
 
 it("links each cell a cell started to that cell's row", () => {
@@ -101,12 +102,27 @@ it("links each cell a cell started to that cell's row", () => {
   });
 });
 
-it("counts the cells a cell started past the six it names", () => {
-  const nine = [..."ABCDEFGHI"].map((letter) => letter.repeat(6));
-  assert.deepEqual(read(startedLine(forage(), nine)), {
-    says: "9 cells: AAAAAA, BBBBBB, CCCCCC, DDDDDD, EEEEEE, FFFFFF and 3 more, each set in under it in the list",
-    links: nine.slice(0, 6),
+/** `count` cells' addresses: AAAAAA, BBBBBB and on. */
+function cells(count: number): readonly string[] {
+  return [..."ABCDEFGHI"].slice(0, count).map((letter) => letter.repeat(6));
+}
+
+it("names up to seven cells a cell started, then names six and counts the rest", () => {
+  assert.deepEqual(read(startedLine(forage(), cells(7))), {
+    says: "7 cells: AAAAAA, BBBBBB, CCCCCC, DDDDDD, EEEEEE, FFFFFF and GGGGGG",
+    links: cells(7),
   });
+  assert.deepEqual(read(startedLine(forage(), cells(8))), {
+    says: "8 cells: AAAAAA, BBBBBB, CCCCCC, DDDDDD, EEEEEE, FFFFFF and 2 more",
+    links: cells(6),
+  });
+});
+
+it("escapes an address the node gives before linking it", () => {
+  const line = startedLine(forage(), ['<b a="1">&']);
+  assert.ok(!line.includes("<b"), line);
+  assert.ok(line.includes("#cell=%3Cb%20a%3D%221%22%3E%26"), line);
+  assert.ok(line.includes('data-cell="&lt;b a=&quot;1&quot;&gt;&amp;"'), line);
 });
 
 it("ties each comma to the address before it, so no line starts with one", () => {

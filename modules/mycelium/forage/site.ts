@@ -108,12 +108,51 @@ function select(): void {
   }
 }
 
+// The cell the panel last drew. A new cell's panel opens at its top; a live
+// redraw of the same one keeps where it was scrolled to and what had focus, so
+// a link reached with Tab is still the one Return follows.
+let drawnPanel: string | undefined;
+
+/** A selector finding `focused` again in a redrawn panel, or none. */
+function refound(focused: Element | null): string | undefined {
+  if (!(focused instanceof HTMLElement && panel.contains(focused))) {
+    return undefined;
+  }
+  if (focused.dataset.cell !== undefined) {
+    return `a[data-cell="${CSS.escape(focused.dataset.cell)}"]`;
+  }
+  return focused.closest(".copy") === null ? undefined : ".copy";
+}
+
 function drawPanel(): void {
   const open = current();
+  const focused = refound(document.activeElement);
   panel.innerHTML =
     open === undefined
       ? ""
       : panelOf(open, new Set(forages.map((each) => each.cell)), startedFrom(forages, open.cell));
+  if (open?.cell !== drawnPanel) {
+    drawnPanel = open?.cell;
+    panel.scrollTop = 0;
+  } else if (focused !== undefined) {
+    panel.querySelector<HTMLElement>(focused)?.focus({ preventScroll: true });
+  }
+}
+
+/**
+ * Opens `cell`, pressed in the panel, on the floor or named in the address.
+ * A find or the view of cells without purpose that would hide it ends first,
+ * so the cursor lands on the cell asked for rather than the list's first row.
+ */
+function openCell(cell: string): void {
+  cursor = cell;
+  if (!shown().some((each) => each.cell === cell)) {
+    finder.value = "";
+    finder.hidden = true;
+    sought = "";
+    hollowOnly = false;
+  }
+  draw();
 }
 
 function draw(): void {
@@ -295,8 +334,7 @@ listen({
 addEventListener("hashchange", () => {
   const named = cellIn(location.hash);
   if (named !== null && named !== cursor && forages.some((each) => each.cell === named)) {
-    cursor = named;
-    draw();
+    openCell(named);
   }
 });
 
@@ -322,8 +360,7 @@ panel.addEventListener("click", (event) => {
   const starter = event.target.closest("a[data-cell]");
   if (starter instanceof HTMLAnchorElement) {
     event.preventDefault();
-    cursor = starter.dataset.cell ?? cursor;
-    draw();
+    openCell(starter.dataset.cell ?? cursor ?? "");
     list.focus();
   }
 });
@@ -344,9 +381,7 @@ floor.addEventListener("click", (event) => {
   if (!(mark instanceof SVGRectElement)) {
     return;
   }
-  cursor = mark.dataset.cell ?? cursor;
-  hollowOnly = hollowOnly && forages.some((each) => each.cell === cursor && each.purpose === "");
-  draw();
+  openCell(mark.dataset.cell ?? cursor ?? "");
   list.focus();
 });
 

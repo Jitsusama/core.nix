@@ -85,7 +85,7 @@ it("cells that started each other in a ring each still show once", () => {
   assert.deepEqual(forages.map((each) => each.cell).sort(), ["KESTRL", "OSPREY"]);
 });
 
-it("a cell's panel names the cells it started, by address, never itself", () => {
+it("the cells a cell started are those naming it their starter, by address, never itself", () => {
   const { forages } = foragesOf(
     told([
       forage("TERNAA", { lineage: { started_by: "KESTRL" } }),
@@ -94,7 +94,8 @@ it("a cell's panel names the cells it started, by address, never itself", () => 
       forage("SKIFFS", { lineage: { started_by: "KESTRL" } }),
     ]),
   );
-  assert.deepEqual(startedFrom(forages, "KESTRL"), ["SKIFFS", "TERNAA"]);
+  // Given in any order, they still come by address.
+  assert.deepEqual(startedFrom([...forages].reverse(), "KESTRL"), ["SKIFFS", "TERNAA"]);
   assert.deepEqual(startedFrom(forages, "SKIFFS"), ["OSPREY"]);
   assert.deepEqual(startedFrom(forages, "TERNAA"), []);
 });
