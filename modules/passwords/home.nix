@@ -17,10 +17,10 @@
 # process tree apart, so a daemon an agent starts must ask Joel itself. A
 # secret goes from its manager only to the ask for it, or to the clipboard
 # through wl-copy, marked sensitive, which niri keeps from every fenced
-# agent, over Wayland and over X11 alike. An audit, only when Joel asks, reads every password
-# to find those reused and those breached, hashing each in the daemon's
-# memory and sending Have I Been Pwned the first five characters of a
-# hash alone. What the last check found, each troubled entry's two counts
+# agent, over Wayland and over X11 alike. An audit, only when Joel asks,
+# reads every password to find those reused and those breached, hashing
+# each in the daemon's memory and sending Have I Been Pwned the first five
+# characters of a hash alone. What the last check found, each troubled entry's two counts
 # and when trouble was found and cleared, is kept in the account's state
 # folder, so For You's to-do for it outlives a reboot; never a hash or a
 # password.

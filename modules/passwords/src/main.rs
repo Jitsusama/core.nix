@@ -1253,12 +1253,12 @@ fn secret(
     }
 }
 
-/// Why nothing is copied while no copier is named: every agent runs as
-/// Joel, and a copy is safe only where niri keeps its sensitive offer from
-/// fenced agents (2026-11-10). A browser's own extension of the manager
-/// fills sign-ins without one.
+/// Why nothing is copied on a machine that names no copier: every agent
+/// runs as Joel, and a copy is safe only where niri keeps its sensitive
+/// offer from fenced agents (2026-11-10). A browser's own extension of the
+/// manager fills sign-ins without one.
 const COPY_OFF: &str =
-    "copying is off while it's made safe; use your password manager's browser extension";
+    "copying is off on this machine; use your password manager's browser extension";
 
 /// The program that holds a copy on the clipboard, `$PASSWORDS_COPIER`,
 /// or none while copying is off, as it is for a shell that names none.
