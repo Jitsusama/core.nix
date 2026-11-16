@@ -358,7 +358,8 @@ onLinux {
           echo '[Back to the top](#every-key-neovim-has)'
         } > page.md
         printf '# The Second Page\n\nWhat the first page sends here.\n' > second.md
-        timeout 600 cage -- $BASH ${./tests/reader-takes-its-keys.sh} page.md page.png \
+        timeout 600 cage -- $BASH ${./tests/reader-takes-its-keys.sh} ${./tests/presses.sh} \
+          page.md page.png \
           '${srgb colours.strong}' '${srgb terminal.cursor}' '${srgb terminal.cursor_text}' \
           '${srgb colours.accent}' \
           > ran 2>&1 || true
