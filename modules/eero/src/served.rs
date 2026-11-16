@@ -188,12 +188,12 @@ impl Vocabularies {
 
 impl Vocabularies {
     /// Whether net's record says a different worst than any vocabulary's
-    /// rows were last made with, as `make` would read it now. net writes its record
-    /// each minute, and it's read again only once it's written anew, a
-    /// look at its time costing far less than reading it whole. It's
-    /// held against what each vocabulary was made with rather than what
-    /// was last heard, since a vocabulary asked for between looks hears
-    /// too, and may hear a worst net has since dropped. With no map
+    /// rows were last made with, as `make` would read it now. net writes
+    /// its record each minute, and it's read again only once it's written
+    /// anew, a look at its time costing far less than reading it whole.
+    /// It's held against what each vocabulary was made with rather than
+    /// what was last heard, since a vocabulary asked for between looks
+    /// hears too, and may hear a worst net has since dropped. With no map
     /// nothing is heard and every vocabulary was made with none.
     pub fn net_moved(&mut self) -> bool {
         self.hear();

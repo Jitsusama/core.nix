@@ -69,6 +69,10 @@ fn keys(records: &Value) -> Vec<&str> {
 fn connected(path: &Path) -> (UnixStream, BufReader<UnixStream>) {
     let stream = UnixStream::connect(path).expect("the socket takes a connection");
     let reading = stream.try_clone().expect("the connection clones");
+    // A tell that never comes fails the case rather than hanging it.
+    reading
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("reads can time out");
     (stream, BufReader::new(reading))
 }
 
@@ -416,7 +420,11 @@ fn heard_first(name: &str) -> HeardFirst {
     let (listeners, words, mut stream, mut reader) = serving_mapped(name, Some(record.clone()));
     listeners.send(&home());
     watch_map(&mut stream, &words);
-    read(&mut reader);
+    let watched = read(&mut reader);
+    assert_eq!(
+        watched["records"][0]["row"]["state"], "The modem has lost 878",
+        "the first words are made with net warning: {watched}"
+    );
 
     let newer = Path::new(&words).with_file_name("newer-words.json");
     fs::copy(&words, &newer).expect("the newer words are kept");
@@ -463,6 +471,7 @@ fn the_map_row_follows_net_though_a_new_vocabulary_heard_it_first() {
         told["changed"][0]["row"].get("state").is_none(),
         "the first watch hears net cleared it: {told}"
     );
+    assert!(!listeners.follow_net(), "every vocabulary is now current");
 }
 
 #[test]
@@ -485,6 +494,7 @@ fn the_map_row_follows_net_going_back_before_the_follower_looks() {
         told["changed"][0]["row"]["state"], "The modem has lost 878",
         "the second watch hears net warn again: {told}"
     );
+    assert!(!listeners.follow_net(), "every vocabulary is now current");
 }
 
 #[test]
