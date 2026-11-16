@@ -1921,7 +1921,7 @@ Singleton {
         if (kept.some(one => one.id === id))
             return;
         const next = Object.assign({}, awayFrom);
-        next[away.screen] = kept.concat([{ id, workspace: away.workspace }]);
+        next[away.screen] = kept.concat([{ id, workspace: away.workspace, output: away.output }]);
         awayFrom = next;
     }
     // Each workspace's screen and number as last seen with that screen
@@ -1944,7 +1944,7 @@ Singleton {
             const left = was !== undefined && !outputs.includes(was.output);
             if (left && was.output !== (one.output ?? "") && !noted.includes(one.id))
                 root.noteAway({ screen: root.screens[was.output] || was.output,
-                    workspace: was.idx }, one.id);
+                    workspace: was.idx, output: was.output }, one.id);
             next[one.id] = left ? was : { output: one.output ?? "", idx: one.idx };
         }
         root.workspacesWere = next;
@@ -2038,7 +2038,8 @@ Singleton {
         if (workspace && (shared || !Places.holds(where, { workspace, column }, beside)))
             into = root.moveTo(window, where, workspace, column, beside);
         if (into !== null && Places.connectorOf(at, screens) === undefined)
-            root.noteAway({ screen: at.screen || at.output, workspace: at.workspace }, into);
+            root.noteAway({ screen: at.screen || at.output, workspace: at.workspace,
+                output: at.output }, into);
         going.back.push({ id: window.id, at });
         if (going.used.length === going.kept.length)
             puttingBack = null;
