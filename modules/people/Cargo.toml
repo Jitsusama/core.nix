@@ -9,6 +9,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The socket systemd hands every daemon of the shell, taken as each takes
+# it (../daemon-serve).
+daemon-serve = { path = "../daemon-serve" }
 # Those listed are kept, spaced and told by what changed as every
 # daemon's ready rows are (../ready-rows).
 ready-rows = { path = "../ready-rows" }

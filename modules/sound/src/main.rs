@@ -41,9 +41,6 @@ mod profiler;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::net::Shutdown;
-use std::os::fd::FromRawFd;
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::rc::Rc;
@@ -132,7 +129,7 @@ fn main() -> ExitCode {
 
 /// Holds the devices and answers the socket for as long as it runs.
 fn hold(socket: &Path, words: Words, marks: Marks) -> Result<(), Failure> {
-    let listener = listen(socket).map_err(|why| {
+    let listener = daemon_serve::serve::listen(socket).map_err(|why| {
         Failure::new(
             Exit::Failed,
             format!("it couldn't listen on {}", socket.display()),
@@ -200,32 +197,6 @@ fn now_ms() -> u64 {
         .map_or(0, |since| {
             u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
         })
-}
-
-/// The socket systemd holds for it (sound.socket), or, run by hand, its
-/// own, in a folder only Joel reads, replacing one left behind.
-fn listen(socket: &Path) -> std::io::Result<UnixListener> {
-    if let Some(listener) = handed() {
-        return Ok(listener);
-    }
-    if let Some(folder) = socket.parent() {
-        std::fs::create_dir_all(folder)?;
-        std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o700))?;
-    }
-    let _ = std::fs::remove_file(socket);
-    UnixListener::bind(socket)
-}
-
-/// The listening socket systemd hands this process (`sd_listen_fds`).
-fn handed() -> Option<UnixListener> {
-    let pid: u32 = std::env::var("LISTEN_PID").ok()?.parse().ok()?;
-    let count: u32 = std::env::var("LISTEN_FDS").ok()?.parse().ok()?;
-    if pid != std::process::id() || count < 1 {
-        return None;
-    }
-    // SAFETY: systemd hands descriptor 3 to this process alone, named by
-    // LISTEN_PID, and nothing here has opened or taken it before.
-    Some(unsafe { UnixListener::from_raw_fd(3) })
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {

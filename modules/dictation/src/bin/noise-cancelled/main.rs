@@ -55,8 +55,6 @@ mod ways;
 mod worker;
 
 use std::io::{Read, Write};
-use std::os::unix::io::FromRawFd;
-use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -177,22 +175,6 @@ fn served(
         refusals.map_or_else(|| Ok(Vec::new()), |file| Refusal::read(Path::new(file)))?;
     let offers = Offers::new(&chosen, refusals);
     pipe::serve(Path::new(models), chosen, offers)
-}
-
-/// The listening socket systemd hands this process, as the first
-/// descriptor after the standard three, when it says so (`sd_listen_fds`).
-fn handed() -> Option<UnixListener> {
-    let pid: u32 = std::env::var("LISTEN_PID").ok()?.parse().ok()?;
-    let count: u32 = std::env::var("LISTEN_FDS").ok()?.parse().ok()?;
-    if pid != std::process::id() || count < 1 {
-        return None;
-    }
-    // SAFETY: systemd hands descriptor 3 to this process alone, named by
-    // LISTEN_PID, and nothing here has opened or taken it before.
-    let given = unsafe { UnixListener::from_raw_fd(3) };
-    // A copy closed on exec, so the recorder and player it runs don't hold
-    // the socket open, which the descriptor as handed over isn't.
-    given.try_clone().ok()
 }
 
 /// The raw samples on standard input.
