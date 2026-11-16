@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 
-use programs::{code_rows, command, repositories};
+use programs::{code_rows, command, pull, repositories};
 use repos::read::{Reading, read};
 use repos::{github, upstreams};
 use serde_json::Value;
@@ -55,6 +55,8 @@ pub struct Code {
     home: Option<PathBuf>,
     machine: String,
     words: code_rows::Words,
+    /// What Pull's answer says.
+    pulled: pull::Words,
     /// Whether the disk has been read once, so a watch knows whether rows
     /// are held to answer with.
     read_once: AtomicBool,
@@ -87,6 +89,7 @@ impl Code {
             home,
             machine: machine(),
             words: code_rows::Words::read(vocabulary),
+            pulled: pull::Words::read(vocabulary),
             read_once: AtomicBool::new(false),
             reading: AtomicBool::new(false),
             made: Mutex::new(Vec::new()),
@@ -221,6 +224,19 @@ pub fn terminal(id: &Value, folder: &str) -> Value {
         }
     });
     serde_json::json!({"id": id, "asked": "terminal"})
+}
+
+/// Pull on a repository's row, answered on a thread of its own (main.rs
+/// says it's slow), since a fetch waits on the network. Its checkout's
+/// head moves, so the disk is read again behind it, and the row says no
+/// more that it's behind.
+pub fn pull(shared: &Arc<Shared>, id: &Value, folder: &str) -> Value {
+    let git = std::env::var("PROGRAMS_GIT").unwrap_or_else(|_| "git".to_owned());
+    let pulled = pull::pull(&git, Path::new(folder));
+    if matches!(pulled, Ok(pull::Pulled::Took(_))) {
+        again(shared);
+    }
+    shared.code.pulled.answer(id, pulled)
 }
 
 /// The machine's name as it calls itself, which the record carries.

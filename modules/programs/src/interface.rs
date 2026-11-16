@@ -60,6 +60,10 @@ pub enum Own {
     /// New Terminal Here on a repository's row (`code_rows.rs`): a kitty
     /// started in its checkout, by the folder's absolute path.
     Terminal(String),
+    /// Pull on a repository's row (`pull.rs`): its checkout brought up to
+    /// the branch it follows by fast-forward alone, by the checkout's
+    /// absolute path.
+    Pull(String),
     /// What the rows are made of, held until the next (docs/daemons.md,
     /// Settings).
     Settings(Settings),
@@ -162,6 +166,10 @@ pub fn own_of(said: &Value) -> Option<Own> {
             let folder = text_of(said, "path");
             folder.starts_with('/').then_some(Own::Terminal(folder))
         }
+        "code:pull" => {
+            let folder = text_of(said, "path");
+            folder.starts_with('/').then_some(Own::Pull(folder))
+        }
         asked @ ("tab:go" | "tab:close") => {
             let act = if asked == "tab:go" {
                 TabAct::Go
@@ -209,6 +217,19 @@ mod tests {
             own_of(&json!({"ask": "tab:close", "tab": 5})),
             None,
             "a tab's ask naming no kitty was taken"
+        );
+    }
+
+    #[test]
+    fn a_repositorys_pull_names_the_checkout_it_brings_forward() {
+        assert_eq!(
+            own_of(&json!({"ask": "code:pull", "path": "/home/j/src/core.nix"})),
+            Some(Own::Pull("/home/j/src/core.nix".into()))
+        );
+        assert_eq!(
+            own_of(&json!({"ask": "code:pull", "path": "src/core.nix"})),
+            None,
+            "a pull of a folder relative to nothing was taken"
         );
     }
 

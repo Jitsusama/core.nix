@@ -10,7 +10,8 @@
 //! often it reached them ([`machines`]), inotify, which says when any of
 //! them changes ([`notify`]),
 //! every open tab's row, Chrome's ([`tab_rows`]) and kitty's
-//! ([`kitty_tabs`]), and every repository's, Code's ([`code_rows`]).
+//! ([`kitty_tabs`]), and every repository's, Code's ([`code_rows`]), whose
+//! checkouts Pull brings forward ([`pull`]).
 //!
 //! A record names every figure its source has, as the source says it,
 //! with its unit in its key (`_s` seconds since 1970, `_ms`
@@ -33,6 +34,7 @@ pub mod notify;
 pub mod package;
 pub mod preview;
 pub mod program_rows;
+pub mod pull;
 pub mod repositories;
 pub mod source;
 pub mod tab_rows;

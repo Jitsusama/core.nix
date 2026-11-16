@@ -247,6 +247,16 @@ fn worked_in(repository: &Repository) -> Option<&Checkout> {
         .or_else(|| repository.checkouts.first())
 }
 
+/// Whether a checkout has files of its own at a branch that follows
+/// another, which is what Pull brings it up to.
+fn follows(checkout: &Checkout) -> bool {
+    !checkout.bare
+        && checkout
+            .head
+            .as_ref()
+            .is_some_and(|head| head.upstream.is_some())
+}
+
 fn row(repository: &Repository, home: Option<&Path>, words: &Words) -> Value {
     let trees: usize = repository
         .checkouts
@@ -299,6 +309,15 @@ fn row(repository: &Repository, home: Option<&Path>, words: &Words) -> Value {
             "key": "verb:code:terminal",
             "ask": {"ask": "code:terminal", "path": path},
             "closes": true,
+        }));
+    }
+    // Pull asks only of a checkout's own folder, never a tree cut from it,
+    // and says in the row's foot how it went (pull.rs).
+    if let Some(checkout) = checkout.filter(|checkout| follows(checkout)) {
+        acts.push(json!({
+            "key": "verb:code:pull",
+            "ask": {"ask": "code:pull", "path": checkout.path},
+            "streams": true,
         }));
     }
     json!({
@@ -362,7 +381,8 @@ fn drawer(
 mod tests {
     use super::*;
     use repos::model::{
-        Change, Checks, ChecksState, Count, Remote, Review, SCHEMA, Tree, TreeKind, Upstream,
+        Change, Checks, ChecksState, Count, Head, Remote, Review, SCHEMA, Tree, TreeKind,
+        Upstream,
     };
 
     fn words() -> Words {
@@ -608,6 +628,35 @@ mod tests {
             Some("https://github.com/someone/thing/pulls")
         );
         assert_eq!(changes_page("local:~/scratch/thing"), None);
+    }
+
+    #[test]
+    fn pull_is_offered_last_on_a_checkout_whose_branch_follows_another_and_only_there() {
+        let mut repository = core();
+        let head = repository.checkouts[0].head.as_mut().unwrap();
+        head.upstream = Some(Upstream {
+            branch: "origin/main".to_owned(),
+            commit: None,
+            count: None,
+        });
+        let rows = rows(&record(vec![repository.clone()]), None, &words());
+        assert_eq!(
+            rows[0]["acts"][3],
+            json!({"key": "verb:code:pull", "streams": true,
+                   "ask": {"ask": "code:pull", "path": "/home/j/src/core.nix"}}),
+            "Pull isn't offered on the checkout its branch follows another in"
+        );
+        repository.checkouts[0].bare = true;
+        repository.checkouts[0].head = None;
+        let rows = super::rows(&record(vec![repository]), None, &words());
+        assert!(
+            rows[0]["acts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|act| act["key"] != "verb:code:pull"),
+            "Pull was offered on a checkout with no files of its own"
+        );
     }
 
     #[test]
