@@ -462,8 +462,7 @@ pub fn waits_to_run(commit: &str) -> Option<String> {
     if queue.ours != kit::Role::Kit {
         return None;
     }
-    let waits_from =
-        Waited::read(&crate::waited::file()).since(patch.as_deref(), &here, None, now);
+    let waits_from = Waited::read(&crate::waited::file()).since(patch.as_deref(), &here, None, now);
     queue
         .holds(
             patch.as_deref(),

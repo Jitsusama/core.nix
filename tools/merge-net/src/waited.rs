@@ -3,6 +3,14 @@
 //! patch id, the same across a rebase that met no conflict, so a change
 //! that main moves under keeps its wait rather than starting it again.
 //!
+//! It's known by its tree too, since a patch id changes with an edit, a
+//! rebase that met a conflict, or a stale origin's main in the asking tree:
+//! on 16 November #5026 was held under one patch id at 09:38 and another
+//! at 10:13, and heard "15 more minutes" anew, waiting 70 minutes in all.
+//! A tree keeps its first hold as long as it keeps its place
+//! (`places.rs`), so a new change in a tree a change merged from inherits
+//! its wait, as it inherits its place.
+//!
 //! Counting from when its pass was kept let a change rebased onto an old
 //! pass go ahead at once: on 15 November #4721, rebased 19 seconds before,
 //! went ahead of an earlier gate reading the kit. Counting from its commit
@@ -24,8 +32,8 @@ use std::process::Command;
 /// place, past which no gate it waited on still holds it.
 pub const KEPT: u64 = crate::places::KEPT;
 
-/// When each change was first held, by its patch id, in seconds since the
-/// epoch.
+/// When each change was first held, by its patch id and by its tree, in
+/// seconds since the epoch.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Waited(BTreeMap<String, u64>);
 
@@ -43,28 +51,30 @@ impl Waited {
     /// Keep `now` as when the change `patch` in `tree` was first held,
     /// unless an earlier hold is kept.
     pub fn held(&mut self, patch: Option<&str>, tree: &Path, now: u64) {
-        let _ = tree;
-        let Some(patch) = patch else {
-            return;
-        };
-        let first = self.0.entry(patch.to_owned()).or_insert(now);
-        *first = (*first).min(now);
+        for key in patch.map(str::to_owned).into_iter().chain([tree_key(tree)]) {
+            let first = self.0.entry(key).or_insert(now);
+            *first = (*first).min(now);
+        }
     }
 
     /// When the change `patch` in `tree`, whose pass was `kept`, waits from
-    /// by `now`: its first hold kept within [`KEPT`], or now, as it is held
-    /// for the first time. A change whose patch couldn't be read waits from
-    /// its pass, as before holds were kept.
+    /// by `now`: the earlier of its first hold and its tree's kept within
+    /// [`KEPT`], or now, as it is held for the first time. A change whose
+    /// patch couldn't be read and whose tree was never held waits from its
+    /// pass, as before holds were kept.
     pub fn since(&self, patch: Option<&str>, tree: &Path, kept: Option<u64>, now: u64) -> u64 {
-        let _ = tree;
-        let Some(patch) = patch else {
-            return kept.unwrap_or(now);
-        };
-        self.0
-            .get(patch)
-            .copied()
+        let first = patch
+            .map(str::to_owned)
+            .into_iter()
+            .chain([tree_key(tree)])
+            .filter_map(|key| self.0.get(&key).copied())
             .filter(|first| now.saturating_sub(*first) < KEPT)
-            .map_or(now, |first| first.min(now))
+            .min();
+        match (first, patch) {
+            (Some(first), _) => first.min(now),
+            (None, Some(_)) => now,
+            (None, None) => kept.unwrap_or(now),
+        }
     }
 
     /// Give up the holds kept past [`KEPT`] by `now`.
@@ -80,6 +90,11 @@ impl Waited {
             .and_then(|()| fs::rename(&partial, path))
             .map_err(|error| format!("writing {}: {error}", path.display()))
     }
+}
+
+/// How a tree's first hold is kept, beside the patch ids.
+fn tree_key(tree: &Path) -> String {
+    format!("tree:{}", tree.display())
 }
 
 /// The patch id of the change at `commit`, from where it leaves origin's
@@ -148,7 +163,11 @@ mod tests {
         // then under another once it was rebased with a new diff at 10:13,
         // so its wait started again, and it had waited since 09:20.
         let mut waited = Waited::default();
-        waited.held(Some("5026-first"), &tree("machine-share"), NOW - PATIENCE - 60);
+        waited.held(
+            Some("5026-first"),
+            &tree("machine-share"),
+            NOW - PATIENCE - 60,
+        );
         let since = waited.since(Some("5026-edited"), &tree("machine-share"), Some(NOW), NOW);
         assert_eq!(
             since,
