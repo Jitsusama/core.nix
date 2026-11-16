@@ -48,8 +48,8 @@ function began(state) {
 // flips to, which say "on and off"; WARP flipping to degraded for moments
 // says nothing (Joel, 2026-11-15, of a bare "degraded" from a flicker:
 // "no real details, nothing i can do"). One up but slow, as the daemon
-// judges a wait through it held for a minute, says what waits, and one connecting for longer than WARP takes to come up
-// says since when.
+// judges a wait through it held for a minute, says what waits, and one
+// connecting for longer than WARP takes to come up says since when.
 // WARP's service down says it isn't answering; any other error warp-cli
 // gives, or warp-cli missing, says nothing certain of the link, so the
 // piece stays quiet rather than raise a false alarm.
