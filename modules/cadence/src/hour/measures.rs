@@ -15,7 +15,7 @@ mod misses;
 pub use balanced::balanced;
 pub use broken::{Main, broken, failed_in};
 pub use locked::read as unlocked;
-pub use misses::checked;
+pub use misses::{checked, said};
 
 const DAY: i64 = 86_400;
 

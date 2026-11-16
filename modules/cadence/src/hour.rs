@@ -68,7 +68,10 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
 fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result<()> {
     let (_, state_home, folder) = folders()?;
     let now = now_ms() / 1000;
-    let mut measures = gather(&folder, &state_home, now, checkouts)?;
+    // Read once, so the misses measured and the words told for them come
+    // from the same ledger.
+    let misses = fs::read_to_string(state_home.join("mission/misses.jsonl")).unwrap_or_default();
+    let mut measures = gather(&folder, &state_home, &misses, now, checkouts)?;
     // A realm whose node doesn't answer says nothing of its machines.
     if !realms.is_empty() {
         let answers: Vec<String> = realms
@@ -82,10 +85,12 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_default();
+    let said = measures::said(&misses, &TimeZone::system());
     let (card, next) = compose(
         &clock(now),
         &measures,
         &kept,
+        &said,
         &format!("{} tomorrow", clock(now + DAY)),
     );
     print!("{card}");
@@ -115,6 +120,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
 fn gather(
     folder: &Path,
     state_home: &Path,
+    misses: &str,
     now: i64,
     checkouts: &[String],
 ) -> io::Result<Vec<Measure>> {
@@ -134,7 +140,7 @@ fn gather(
     let card_text = text(&folder.join("card.txt"));
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
     let mut all = vec![
-        measures::checked(&text(&mission.join("misses.jsonl")), folder, checkouts)?,
+        measures::checked(misses, folder, checkouts)?,
         measures::slips(&text(&mission.join("asks.jsonl")), now),
         measures::to_first_slice(&text(&mission.join("asks.jsonl")), now),
         measures::undated(&quarantine, &today(now), NET_RULES),
