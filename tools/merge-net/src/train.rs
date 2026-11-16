@@ -311,6 +311,24 @@ fn systemctl(arguments: &[&str]) -> String {
 /// before it goes back to run again.
 const RECUTS: usize = 5;
 
+/// Whom the train takes next, after a candidate it ran.
+#[derive(Debug, PartialEq, Eq)]
+enum Split {
+    /// Everyone aboard, as after a candidate that passed.
+    All,
+    /// Only this many riders, the first to board, as after a red one.
+    Front(usize),
+    /// The one rider that rode a red candidate alone falls; then everyone.
+    Falls,
+}
+
+/// Whom the train takes after a candidate of `riding` riders that `passed`
+/// or not.
+fn split(riding: usize, passed: bool) -> Split {
+    let _ = (riding, passed);
+    Split::Falls
+}
+
 /// Ride the train until no one waits on it: `merge-net ride`, as its unit
 /// runs it.
 ///
@@ -665,6 +683,31 @@ mod tests {
         assert_eq!(seat(true, None), Seat::Rides, "a rider boarded twice");
         assert_eq!(seat(false, None), Seat::Board, "a new head didn't board");
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_red_train_splits_until_the_rider_that_breaks_it_falls_alone() {
+        let breaks = 2;
+        let mut aboard: Vec<usize> = (0..5).collect();
+        let (mut landed, mut fell, mut runs) = (Vec::new(), Vec::new(), 0);
+        let mut take = aboard.len();
+        while !aboard.is_empty() && runs < 20 {
+            let riding: Vec<usize> = aboard.iter().copied().take(take).collect();
+            runs += 1;
+            match split(riding.len(), !riding.contains(&breaks)) {
+                Split::All => landed.extend(riding.iter().copied()),
+                Split::Falls => fell.extend(riding.iter().copied()),
+                Split::Front(front) => {
+                    take = front;
+                    continue;
+                }
+            }
+            aboard.retain(|rider| !riding.contains(rider));
+            take = aboard.len();
+        }
+        assert_eq!(fell, vec![breaks], "not only the rider that broke the train fell");
+        assert_eq!(landed, vec![0, 1, 3, 4], "the riders that broke nothing didn't land");
+        assert!(runs <= 6, "the split took {runs} runs to find one rider in five");
     }
 
     #[test]
