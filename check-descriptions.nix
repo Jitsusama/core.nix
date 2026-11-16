@@ -3925,6 +3925,11 @@
     the shell's QML asks niri for an activation token through Quickshell.activationToken and is
     given one rather than nothing
   '';
+  the-shell-warns-of-no-dangling-screen-as-its-screen-goes = ''
+    the account's whole shell, with a notice up as both of sway's screens are unplugged at once,
+    a notice sent while there's none and a screen made again, warns of no dangling screen object
+    and of no binding or handler that throws
+  '';
   flat-windows-hold-no-depth-on-niri = ''
     a full-screen window drawn flat weighs at least a quarter of a 2880 by 1800 depth and
     stencil buffer less than one drawn with them, and niri shows it drawn in order, a square over

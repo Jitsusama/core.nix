@@ -32,6 +32,7 @@ For other checks:
 | `qmllint-counted.{nix,sh}`   | qmllint, printing every message it counted                        |
 | `shell-folder-lint.{nix,sh}` | qmllint over a check's laid-out shell, against Quickshell's types |
 | `says-what-it-has-open.sh`   | a program opened on a file, asked what it has open                |
+| `shell-says.sh`              | a check's wait for what the shell it started says in its log      |
 | `page.nix`                   | the smallest PDF a viewer opens, for checks that open documents   |
 
 What belongs here is shared by more than one check. A helper one check needs

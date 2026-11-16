@@ -291,8 +291,8 @@ let
     lib.filter (word: word != "" && word != " ") (lib.splitString "\"" (lib.head spawned));
 
   # The account's notices alone on niri (tests/notices.qml): a script run
-  # against them, given the shell's folder, the logs and what more it's
-  # given.
+  # against them, given the shell's folder, the logs, the wait for what the
+  # shell says (tests/lib/shell-says.sh) and what more it's given.
   noticesOnNiri =
     {
       name,
@@ -307,7 +307,7 @@ let
         pkgs.jq
         pkgs.libnotify
       ];
-      command = "${lib.getExe pkgs.bash} ${script} quickshell logs ${lib.escapeShellArgs given}";
+      command = "${lib.getExe pkgs.bash} ${script} quickshell logs ${../../../tests/lib/shell-says.sh} ${lib.escapeShellArgs given}";
     };
 
   # The account's whole shell on niri, its launcher typed into through

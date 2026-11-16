@@ -61,9 +61,13 @@ Scope {
 
                 anchors.fill: parent
                 // Sized from the screen rather than the window, which has
-                // no size until it's shown. A screen that goes away is read
-                // once more before its window does.
-                screen: window.modelData
+                // no size until it's shown. A screen that goes away is let
+                // go as soon as Quickshell stops listing it: Qt frees it
+                // straight after, while this window lingers until it's
+                // deleted, moved onto Qt's stand-in screen and asking niri
+                // its scale again, and Quickshell warns of any read of a
+                // freed screen as a dangling screen object.
+                screen: Quickshell.screens.includes(window.modelData) ? window.modelData : null
                 file: Theme.wallpaper.desktop
                 // Whole the first time it's shown, since it's read by then.
                 opacity: status === Image.Ready || !read ? 1 : 0

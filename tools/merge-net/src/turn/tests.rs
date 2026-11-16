@@ -308,6 +308,9 @@ fn a_gates_start_is_its_earliest_kept_and_none_before_starts_were() {
     assert_eq!(started(old), None, "a record with no start gave one");
 }
 
+// A process's start is read from /proc, which only Linux has: on a Mac the
+// development shell builds merge-net too, and this test failed it there.
+#[cfg(target_os = "linux")]
 #[test]
 fn a_gate_is_alive_only_while_a_process_started_when_it_said_has_its_id() {
     let pid = std::process::id();

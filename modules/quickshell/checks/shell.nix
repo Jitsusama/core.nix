@@ -48,6 +48,17 @@
     command = "${lib.getExe pkgs.bash} ${../../../tests/activation-token-on-niri.sh} quickshell logs";
   };
 
+  # The account's whole shell, a notice up, loses its only screen and is
+  # given one back, and Quickshell never warns of a dangling screen, on
+  # sway, whose outputs can go (tests/shell-loses-its-screen.sh).
+  the-shell-warns-of-no-dangling-screen-as-its-screen-goes = shellOnNiri {
+    name = "the-shell-warns-of-no-dangling-screen-as-its-screen-goes";
+    # Away only after an hour, so the notices are shown as they come.
+    away = 3600;
+    inputs = [ pkgs.libnotify ];
+    command = "${lib.getExe pkgs.bash} ${../../../tests/shell-loses-its-screen.sh} quickshell logs ${../../../tests/lib/shell-says.sh}";
+  };
+
   # A window drawn flat holds no depth or stencil buffer, and still draws
   # what's set over its picture over it, in the Quickshell the machine runs
   # (window-drawn-flat.patch, tests/flat-windows-hold-no-depth-on-niri.sh),

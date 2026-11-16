@@ -171,8 +171,12 @@ Scope {
             required property ShellScreen modelData
 
             // Pointed only on the screen Now is open on, since that's
-            // where the eye goes between the two.
+            // where the eye goes between the two. A screen gone is never
+            // read: this window outlives it until it's deleted, while Qt
+            // frees it straight after Quickshell stops listing it, and
+            // Quickshell warns of any read of a freed screen.
             readonly property string pointed: root.asked
+                && Quickshell.screens.includes(modelData)
                 && modelData.name === (root.launcher.screenHere?.name ?? "") ? root.pointed : ""
 
             screen: modelData

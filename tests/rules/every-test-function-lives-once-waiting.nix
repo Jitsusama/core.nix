@@ -111,8 +111,6 @@
   "tests/machine.qml" = 1;
   "tests/machines.qml" = 1;
   "tests/mpv-program.qml" = 2;
-  "tests/notices-on-niri.sh" = 1;
-  "tests/notices-wait-while-away.sh" = 1;
   "tests/now-moment.qml" = 1;
   "tests/order.qml" = 1;
   "tests/pacing.qml" = 1;
