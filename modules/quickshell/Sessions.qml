@@ -204,7 +204,8 @@ Singleton {
     // scope in the slice it runs in, so every session goes with it. One
     // opened aside, or where it goes, goes without the activation token
     // niri hands what it spawns, which kitty would spend on taking the
-    // focus once its window shows.
+    // focus once its window shows; but one Go To opens `focused` keeps it,
+    // since taking Joel to it is what he asked.
     // They're numbered on from the moment this shell started, in
     // milliseconds, not from nought: a shell started again, as every switch
     // does, would otherwise name its first window as one still open from
@@ -229,7 +230,7 @@ Singleton {
                 asked.column = into.column;
             Niri.act({ OpenNextWindowOn: asked });
         }
-        const untold = kind === "pi-spawned" || placed
+        const untold = kind === "pi-spawned" || (placed && into.focused !== true)
             ? ["env", "-u", "XDG_ACTIVATION_TOKEN", "-u", "DESKTOP_STARTUP_ID"] : [];
         Niri.spawn(untold.concat(["sh", opening,
             `${Quickshell.env("XDG_RUNTIME_DIR")}/pi-sessions/kitty.sock`, classed], rest));
@@ -2163,9 +2164,11 @@ Singleton {
     // ID`), named for it alone (viewerOf), so niri's word on that window is
     // what Go To raises next time; with no words it tells `unhosted`.
     signal unhosted(var session)
+    // A window Go To opens goes where the session would reopen (goesTo),
+    // never on whichever workspace Joel is on.
     function goTo(session) {
         if (session.presence?.hosted && !session.window) {
-            view(session);
+            view(session, root.goesTo(session));
             return;
         }
         if (!session.here && !session.window && !session.kitty) {
@@ -2178,7 +2181,26 @@ Singleton {
             Niri.spawn(["kitten", "@", "--to", session.kitty.socket, "focus-window",
                 "--match", `id:${session.kitty.window}`]);
         else if (session.held)
-            attach(session.held);
+            attach(session.held, root.goesTo(session));
+    }
+
+    // Where Go To opens a new window of a session, focused, since Joel asked
+    // for it: home to its orchestrator's workspace, else beside its kin,
+    // else on the screen's empty workspace, as one reopened goes (opensOn).
+    // A session held on another machine has no window here for the rule
+    // that gathers sessions to find, so one joined where niri opens it
+    // stayed on the workspace Joel was on (Joel, 2026-11-15 18:45: "why did
+    // this window materialize on my main chrome workspace?"). Null, where
+    // niri opens it, only while Joel is on that empty workspace himself.
+    function goesTo(session) {
+        const presence = session.presence ?? {};
+        const word = value => typeof value === "string" ? value : "";
+        const one = { id: word(presence.session), address: word(session.address),
+            orchestrates: word(presence.orchestrates), title: root.named(presence).title,
+            from: "", quest: word(presence.quest), workspace: "",
+            orchestratedBy: word(presence.orchestratedBy) };
+        const into = root.opensOn(one, null, []);
+        return into === null ? null : Object.assign({}, into, { focused: true });
     }
 
     // Joins a session held on another machine in a new window here, by
@@ -2199,15 +2221,15 @@ Singleton {
             return;
         attaching = Object.assign({}, attaching, { [joining]: Date.now() });
         const command = Array.isArray(words) ? words.map(String) : ["zsh", "-lic", String(words)];
-        root.inSessions("pi-session", command);
+        root.inSessions("pi-session", command, root.goesTo(session));
         Report.say(`joined session ${session.address} on ${session.machine}`);
     }
 
     // Views a hosted session in a new window of the sessions' kitty, by its
     // node's words, once until niri lists its window, as `attach` does;
     // `into` a place kept for it (viewKept, reopenViewer), which opens
-    // without the focus, or, for Go To, where niri opens one, focused,
-    // since Joel asked for it.
+    // without the focus, or, for Go To, where goesTo says, focused, since
+    // Joel asked for it.
     function view(session, into) {
         const words = session.attach;
         const named = viewerOf(session.presence);

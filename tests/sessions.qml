@@ -259,9 +259,17 @@ ShellRoot {
         expect("this machine's first", Sessions.running.slice(0, 3).every(session => session.here),
             Sessions.running.map(session => session.address).join(" "));
         Sessions.goTo(far);
-        expect("Go To joins it by its node's words", inSessions(Niri.spawned.join(" "))
-            === "sessions zsh -lic mycelium attach r-far",
-            Niri.spawned.join(" "));
+        const joined = Niri.spawned.join(" ");
+        expect("Go To joins it by its node's words", inSessions(joined)
+            === "sessions zsh -lic mycelium attach r-far", joined);
+        // Its window opens on its orchestrator's workspace, never on the
+        // one Joel is on, and takes him there, since he asked for it (Joel,
+        // 2026-11-15 18:45: one "materialize[d] on my main chrome workspace").
+        const opened = Niri.acted?.OpenNextWindowOn;
+        expect("one elsewhere opens on its orchestrator's workspace",
+            opened?.reference?.Id === 8 && opened?.app_id === asked(joined)?.classed,
+            JSON.stringify(Niri.acted));
+        expect("and takes Joel there", !joined.includes("XDG_ACTIVATION_TOKEN"), joined);
         Sessions.goTo(out);
         expect("one out of reach isn't joined", root.unjoined === "OUTRCH", root.unjoined);
         hosts();
@@ -939,10 +947,11 @@ ShellRoot {
             presence: Object.assign({ session: `s-${address}`, addresses: [address] }, presence)
         });
         // One on another machine, running unless the node passes it over.
-        const far = (id, address, state, at, attach, standing) => record(id, {
+        const far = (id, address, state, at, attach, standing, more) => record(id, {
             address: address, machine: "lighthouse", here: false, state: state, at: at,
             attach: attach, standing: standing,
-            presence: { addresses: [address], title: `\u03c0 - ${address} - /far`, busy: true }
+            presence: Object.assign({ addresses: [address], title: `\u03c0 - ${address} - /far`,
+                busy: true }, more)
         });
         return [
             here("LIVE01", "busy", { busy: true, title: "\u03c0 - Live One - core.nix",
@@ -974,7 +983,10 @@ ShellRoot {
             here("WOKEN8", "ended", { state: "parked" }),
             here("STALE7", "ended", { state: "parked",
                 owner: { pid: 4242, bootId: "an-earlier-boot" } }),
-            far("r-far", "FARAWY", "busy", now, "mycelium attach r-far", "running"),
+            // Orchestrated from there, its orchestrator's workspace here
+            // named for it.
+            far("r-far", "FARAWY", "busy", now, "mycelium attach r-far", "running",
+                { orchestratedBy: "FARLED" }),
             far("r-out", "OUTRCH", "unreachable", now, null, "running"),
             // Last heard of before this boot, so the node says nothing of
             // how it stands.
