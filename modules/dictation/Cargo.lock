@@ -313,6 +313,7 @@ dependencies = [
  "nnnoiseless",
  "pipewire",
  "png",
+ "receptor-say",
  "rtrb",
  "serde_json",
  "tempfile",
@@ -972,6 +973,10 @@ checksum = "538895ccf2006b473aafbe8d72770e21038961ab67aae34f3c577485fc703a7d"
 dependencies = [
  "rustfft",
 ]
+
+[[package]]
+name = "receptor-say"
+version = "0.1.0"
 
 [[package]]
 name = "redox_syscall"

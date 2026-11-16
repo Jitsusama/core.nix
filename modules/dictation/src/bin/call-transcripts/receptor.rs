@@ -7,16 +7,17 @@
 //! whether the book could be read. No title, person, event or folder of a
 //! call is ever an argument, so nothing a call's files say reaches the
 //! node, whatever they hold. mycelium is run by its store path, its
-//! arguments given one by one and never through a shell.
+//! arguments given one by one and never through a shell, by the speaker
+//! every daemon's receptors share (../receptor-say).
 //!
 //! The service names the program and the realm in `MYCELIUM` and
 //! `MYCELIUM_REALM` (modules/call-transcripts/home.nix); with either unset,
 //! as on a machine in no realm, nothing is said.
 
 use std::ffi::OsString;
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
 use std::time::Duration;
+
+use receptor_say::{Source, Speaker, Told};
 
 use crate::book;
 
@@ -26,9 +27,6 @@ pub const EVERY: Duration = Duration::from_secs(60);
 
 /// An hour, in the book's milliseconds.
 const HOUR: u64 = 3_600_000;
-
-/// The source this receptor reads, as mycelium names it.
-const SOURCE: &str = "calls";
 
 /// How many calls started in the last hour, and since local midnight.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -77,11 +75,12 @@ impl State {
         }
     }
 
-    fn word(self) -> &'static str {
+    /// The state, in mycelium's words.
+    fn said(self) -> receptor_say::State {
         match self {
-            Self::Reading => "reading",
-            Self::Quiet => "quiet",
-            Self::Failing => "failing",
+            Self::Reading => receptor_say::State::Reading,
+            Self::Quiet => receptor_say::State::Quiet,
+            Self::Failing => receptor_say::State::Failing,
         }
     }
 }
@@ -89,21 +88,14 @@ impl State {
 /// Where the receptor says how it stands: mycelium, and the realm.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Receptor {
-    program: PathBuf,
-    realm: String,
+    speaker: Speaker,
 }
 
 impl Receptor {
     /// The receptor the service names, if it names one: an absolute
     /// program and a realm of mycelium's letters.
     pub fn named(program: Option<OsString>, realm: Option<OsString>) -> Option<Self> {
-        let program = PathBuf::from(program?);
-        let realm = realm?.into_string().ok()?;
-        let lettered = realm
-            .bytes()
-            .all(|letter| letter.is_ascii_lowercase() || letter.is_ascii_digit() || letter == b'-');
-        let sound = !realm.is_empty() && lettered && !realm.starts_with('-');
-        (program.is_absolute() && sound).then_some(Self { program, realm })
+        Speaker::named(program, realm).map(|speaker| Self { speaker })
     }
 
     /// The receptor the service's environment names.
@@ -114,33 +106,25 @@ impl Receptor {
         )
     }
 
+    /// What the calls say: how they stand and their counts, every call
+    /// being Joel's own, so each is addressed to him.
+    fn told(state: State, counts: Counts) -> Told {
+        Told {
+            source: Source::Calls,
+            state: state.said(),
+            hour: counts.hour,
+            today: counts.today,
+            addressed: counts.today,
+        }
+    }
+
     /// What mycelium is given: fixed words, the realm the service named,
-    /// and integers.
+    /// and integers, each count held to the most mycelium takes. `say`
+    /// hands the speaker the same, so only the tests read it here.
+    #[cfg(test)]
     pub fn arguments(&self, state: State, counts: Counts, pid: u32) -> Vec<OsString> {
-        let number = |count: u64| OsString::from(count.to_string());
-        // mycelium takes counts as u32 and refuses anything past it, which
-        // would say nothing at all; so a larger count is said as its most.
-        let most = |count: u64| number(count.min(u64::from(u32::MAX)));
-        let mut said: Vec<OsString> = ["--realm", &self.realm, "receptors", "say", SOURCE]
-            .into_iter()
-            .map(OsString::from)
-            .collect();
-        said.extend([
-            "--state".into(),
-            state.word().into(),
-            "--hour".into(),
-            most(counts.hour),
-            "--today".into(),
-            most(counts.today),
-            // Every call is Joel's own, so each is addressed to him.
-            "--addressed".into(),
-            most(counts.today),
-            "--every".into(),
-            number(EVERY.as_secs()),
-            "--pid".into(),
-            number(u64::from(pid)),
-        ]);
-        said
+        self.speaker
+            .arguments(Self::told(state, counts), EVERY, pid)
     }
 
     /// Says how the calls stand.
@@ -149,17 +133,7 @@ impl Receptor {
     ///
     /// When mycelium can't be run, or refuses what it's told.
     pub fn say(&self, state: State, counts: Counts, pid: u32) -> Result<(), String> {
-        let status = Command::new(&self.program)
-            .args(self.arguments(state, counts, pid))
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .status()
-            .map_err(|why| format!("running {}: {why}", self.program.display()))?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err(format!("{} {status}", self.program.display()))
-        }
+        self.speaker.say(&[Self::told(state, counts)], EVERY, pid)
     }
 }
 
@@ -201,6 +175,8 @@ pub fn keep(receptor: &Receptor, book: &book::Shared) {
 #[cfg(test)]
 mod tests {
     use std::os::unix::fs::PermissionsExt;
+
+    use std::path::PathBuf;
 
     use super::*;
 

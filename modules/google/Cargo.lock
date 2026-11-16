@@ -201,6 +201,7 @@ dependencies = [
  "inotify",
  "jiff",
  "ready-rows",
+ "receptor-say",
  "serde",
  "serde_json",
  "terminal-kit",
@@ -535,6 +536,10 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
 ]
+
+[[package]]
+name = "receptor-say"
+version = "0.1.0"
 
 [[package]]
 name = "ring"
