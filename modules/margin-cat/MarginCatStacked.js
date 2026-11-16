@@ -35,6 +35,14 @@ const GRABS = 34;
 const AWAY = 120;
 // How far across a corner it reaches as it drops past one, in its widths.
 const REACHES = 1;
+// How many of its rows it puts over the screen's edge as it peeks in, its
+// ears and its eyes, a row and a drawing of its paws each CREEPS 60 Hz
+// frames, so the first is seen as long as the rest; and how long it
+// peers, then looks about, in ms.
+const PEEKS = 3;
+const CREEPS = 3;
+const PEERS = 200;
+const LOOKS = 200;
 
 // How far apart niri stacks a screen's workspaces, in logical pixels: a
 // tenth of its height between each, to its device pixel and never under
@@ -57,11 +65,33 @@ function risesFrom(place, at) {
     return { x: place.x, y: Math.min(place.y, at.height + DROPS_FROM * at.tall) };
 }
 
+// It comes onto the screen head first at `x`, from under it if it's going
+// `up`, else head down from the gap over it, hanging by a side on its
+// `side`: its ears and then its eyes come over the edge, its paws moving,
+// and it peers and looks about before it comes on (Joel, Sun 15 21:20:
+// "when transitioning screens it should be able to poke its head up and
+// then come in"; 23:34: "the whole kitty should not have to be rendered
+// when you are seeing it come on to your screen"). Only the screen's edge
+// cuts it, so nothing new is drawn.
+function peeks(x, up, side, at) {
+    const way = Ways.begun(at, { x, y: up ? at.height : -at.tall });
+    if (!up) {
+        Ways.clings(way, side, 1);
+    }
+    const shows = PEEKS * at.cell;
+    Ways.leg(way, "climbs", { x, y: up ? at.height - shows : shows - at.tall },
+        { name: "peeks", ms: (PEEKS * CREEPS * MarginCat.MS) / 60, bounds: PEEKS / 2 });
+    Ways.holds(way, "peers", PEERS);
+    Ways.holds(way, "looks", LOOKS);
+    way.turn = 0;
+    return way;
+}
+
 // Up onto an empty workspace, its ride done under the screen at `place`:
-// it springs in at the bottom edge, mid-leap, onto the floor, its only
+// it peeks in at the bottom edge and springs onto the floor, its only
 // seat there, and lands, so it's never seen rising through anything.
 function risesOnto(place, at) {
-    const way = Ways.begun(at, risesFrom(place, at));
+    const way = peeks(place.x, true, 1, at);
     way.facing = at.facing || 1;
     Ways.leap(way, { x: place.x, y: Routes.floor(at) }, 0, "springs");
     Ways.holds(way, "lands", MarginCat.LANDS);
@@ -235,10 +265,10 @@ function sides(now, at) {
 // no way on from there.
 function below(foot, lands, to, at) {
     const now = Paths.columns(at.now, 0);
-    const leaves = { x: foot.x, y: foot.y - at.lift };
     const up = at.lift < 0;
-    const way = Ways.begun(at, up ? risesFrom(leaves, at) : dropsFrom(leaves, at));
-    way.facing = Math.sign(lands.x - foot.x) || Math.sign(to.x - foot.x) || at.facing || 1;
+    const facing = Math.sign(lands.x - foot.x) || Math.sign(to.x - foot.x) || at.facing || 1;
+    const way = peeks(foot.x, up, facing, at);
+    way.facing = facing;
     Ways.leap(way, lands, 0, up ? "springs" : "drops");
     if (lands.kind === "side") {
         Ways.clings(way, lands.side, -1);
