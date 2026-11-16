@@ -118,7 +118,7 @@ pub fn is_quarantine(path: &str) -> bool {
 
 /// Every measure of `files`, given `paths`, every file's path, so a folder
 /// is counted by everything in it and not only what's read.
-pub fn measure(paths: &[String], files: &[File]) -> Health {
+pub fn measure(paths: &[String], files: &[File], roots: &[String]) -> Health {
     let mut health = Health::default();
     let code: Vec<&File> = files.iter().filter(|file| is_code(&file.path)).collect();
 
@@ -173,7 +173,7 @@ pub fn measure(paths: &[String], files: &[File]) -> Health {
     let count = unreached.len();
     health.put("unreached-files", unreached, count);
 
-    let bare = notes::without_notes(paths, files);
+    let bare = notes::without_notes(paths, files, roots);
     let count = bare.len();
     health.put("folders-without-notes", bare, count);
 
@@ -434,6 +434,11 @@ mod tests {
 
     fn paths(files: &[File]) -> Vec<String> {
         files.iter().map(|file| file.path.clone()).collect()
+    }
+
+    /// A whole repository's health, read from no folder in particular.
+    fn measure(paths: &[String], files: &[File]) -> Health {
+        super::measure(paths, files, &[])
     }
 
     #[test]

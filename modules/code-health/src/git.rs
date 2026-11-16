@@ -23,8 +23,8 @@ pub fn files_in(
         unders => {
             let mut paths = Vec::new();
             let mut read = Vec::new();
-            for under in unders {
-                let top = |path: String| format!("{}/{path}", under.trim_end_matches('/'));
+            for (under, root) in unders.iter().zip(roots(unders)) {
+                let top = |path: String| format!("{root}/{path}");
                 let (inside, texts) = files(checkout, reference, under)?;
                 paths.extend(inside.into_iter().map(top));
                 read.extend(texts.into_iter().map(|file| File {
@@ -34,6 +34,19 @@ pub fn files_in(
             }
             Ok((paths, read))
         }
+    }
+}
+
+/// The folders `files_in`'s paths across `unders` start from, whose
+/// parents it didn't read; none across one folder or none, whose paths
+/// start from the folder read.
+pub fn roots(unders: &[String]) -> Vec<String> {
+    match unders {
+        [] | [_] => Vec::new(),
+        unders => unders
+            .iter()
+            .map(|under| under.trim_end_matches('/').to_owned())
+            .collect(),
     }
 }
 
@@ -325,6 +338,12 @@ mod tests {
         assert_eq!(texts, [("a/x/main.tf", "a\n"), ("b/main.tf", "b\n")]);
         let (one, _) = files_in(checkout, "main", &unders[1..]).expect("it wasn't read");
         assert_eq!(one, ["main.tf"], "one folder's paths weren't its own");
+        assert_eq!(
+            roots(&unders),
+            ["a", "b"],
+            "the roots weren't the folders read"
+        );
+        assert!(roots(&unders[1..]).is_empty(), "one folder read had a root");
     }
 
     #[test]

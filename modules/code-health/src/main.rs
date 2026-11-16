@@ -130,7 +130,8 @@ fn run(context: &Context) -> Result<(), Failure> {
     for (name, repo) in &repos {
         match git::files_in(&repo.checkout, &repo.reference, &repo.under) {
             Ok((paths, files)) => {
-                let mut health = measure::measure(&paths, &files);
+                let roots = git::roots(&repo.under);
+                let mut health = measure::measure(&paths, &files, &roots);
                 put_terraform(&mut health, &paths, &files).unwrap_or_else(|error| {
                     let said = format!("{name}'s Terraform left out: {error}");
                     let _ = context.tell("caution", "warning", &said);

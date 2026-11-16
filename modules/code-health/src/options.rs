@@ -265,7 +265,7 @@ mod tests {
             path: "quarantine.json".to_owned(),
             text: "{}".to_owned(),
         };
-        let health = measure::measure(&[], &[quarantine]);
+        let health = measure::measure(&[], &[quarantine], &[]);
         for measure in health.figures.keys() {
             assert!(MEASURES.contains(measure), "{measure} isn't in MEASURES");
         }
