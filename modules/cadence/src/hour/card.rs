@@ -385,7 +385,11 @@ mod tests {
             ),
             "a miss without Joel's words wasn't said whole, only its owner cut: {unsaid}"
         );
-        assert!(!card.contains("the map had no network,"), "{card}");
+        assert_eq!(
+            card.matches("For Joel").count(),
+            1,
+            "the one miss that closed wasn't told once, or one still open was told: {card}"
+        );
         assert!(
             card.contains("Why didn't our checks catch these?"),
             "{card}"

@@ -6,6 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::{Path, PathBuf};
 
+use jiff::Timestamp;
+use jiff::tz::TimeZone;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -188,41 +190,46 @@ pub fn checked(text: &str, folder: &Path, checkouts: &[String]) -> io::Result<Me
 }
 
 /// What each miss in `misses.jsonl` was, in Joel's own words and when he
-/// said them, by the text the misses measure names it with. The card tells
-/// him one is fixed in these words, since a cause in a session's words
-/// tells him nothing he can place: on 16 November he asked that everything
-/// reaching him say what it belongs to without his looking it up.
+/// said them, in `zone`, by the text the misses measure names it with. The
+/// card tells him one is fixed in these words, since a cause in a
+/// session's words tells him nothing he can place: on 16 November he asked
+/// that everything reaching him say what it belongs to without his looking
+/// it up. Two misses named alike keep the older's words, as the card can't
+/// tell them apart either.
 #[must_use]
-pub fn said(text: &str) -> BTreeMap<String, String> {
-    lines(text)
-        .filter_map(|miss| {
-            let words = miss["words"].as_str()?;
-            let what = miss["what"].as_str().unwrap_or(words);
-            let at = miss["at"].as_str().unwrap_or_default();
-            let when = at
-                .get(5..16)
-                .and_then(|stamp| {
-                    let (month, rest) = stamp.split_once('-')?;
-                    let (day, time) = rest.split_once('T')?;
-                    let month = MONTHS.get(month.parse::<usize>().ok()?.checked_sub(1)?)?;
-                    Some(format!(
-                        " on {} {month} at {time}",
-                        day.trim_start_matches('0')
-                    ))
-                })
-                .unwrap_or_default();
-            Some((
-                what.to_owned(),
-                format!("what you ran into{when}, \"{words}\""),
-            ))
-        })
-        .collect()
+pub fn said(text: &str, zone: &TimeZone) -> BTreeMap<String, String> {
+    let mut said = BTreeMap::new();
+    for miss in lines(text) {
+        let Some(words) = miss["words"].as_str() else {
+            continue;
+        };
+        let when = miss["at"]
+            .as_str()
+            .and_then(|at| at.parse::<Timestamp>().ok())
+            .map(|at| {
+                at.to_zoned(zone.clone())
+                    .strftime(" on %-d %b at %H:%M")
+                    .to_string()
+            })
+            .unwrap_or_default();
+        // One line of the card each: a newline in his words would end it,
+        // and a double quote inside would close the quote early.
+        let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
+        let words = words.replace('"', "'");
+        said.entry(named_as(&miss).to_owned())
+            .or_insert_with(|| format!("what you ran into{when}, \"{words}\""));
+    }
+    said
 }
 
-/// The months, as a card says them.
-const MONTHS: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
+/// The text a miss is named by on the card and in the hour it keeps: its
+/// owner's account of what went wrong, else Joel's own words.
+fn named_as(miss: &Value) -> &str {
+    miss["what"]
+        .as_str()
+        .or_else(|| miss["words"].as_str())
+        .unwrap_or_default()
+}
 
 /// The misses Joel found himself, from the orchestrator's `misses.jsonl`:
 /// one stays open until its owner names the check that would have caught
@@ -251,11 +258,7 @@ fn misses(
             if !changes.is_empty() && changes.iter().all(|change| merged.contains(change)) {
                 return None;
             }
-            let what = miss["what"]
-                .as_str()
-                .or_else(|| miss["words"].as_str())
-                .unwrap_or_default()
-                .to_owned();
+            let what = named_as(&miss).to_owned();
             let owner = first_owner(miss["owner"].as_str().unwrap_or_default());
             let note = changes
                 .iter()
@@ -306,18 +309,27 @@ mod tests {
             .collect()
     }
 
+    /// Joel's zone in November, fixed so a test reads the same anywhere.
+    fn eastern() -> TimeZone {
+        TimeZone::fixed(jiff::tz::offset(-5))
+    }
+
     #[test]
     fn each_miss_is_said_in_joels_own_words_and_when() {
         let text = [
             miss("core #1"),
-            serde_json::json!({"at": "2026-11-16T09:05:00-05:00",
+            serde_json::json!({"at": "2026-11-03T14:05:00Z",
                 "words": "the dock lost my screens"})
             .to_string(),
+            serde_json::json!({"at": "this morning", "what": "the bar",
+                "words": "it said \"done\"\n  and hung"})
+            .to_string(),
             serde_json::json!({"at": AT, "what": "no words kept"}).to_string(),
+            serde_json::json!({"at": AT, "what": "the cat waits", "words": "later"}).to_string(),
         ]
         .join("\n");
         assert_eq!(
-            said(&text),
+            said(&text, &eastern()),
             BTreeMap::from([
                 (
                     "the cat waits".to_owned(),
@@ -325,12 +337,34 @@ mod tests {
                 ),
                 (
                     "the dock lost my screens".to_owned(),
-                    "what you ran into on 16 Nov at 09:05, \"the dock lost my screens\"".to_owned()
+                    "what you ran into on 3 Nov at 09:05, \"the dock lost my screens\"".to_owned()
+                ),
+                (
+                    "the bar".to_owned(),
+                    "what you ran into, \"it said 'done' and hung\"".to_owned()
                 ),
             ]),
-            "a miss wasn't said by Joel's own words and when he said them, or one without \
-             his words was"
+            "a miss wasn't said by Joel's own words, on one line, and when in his zone, \
+             or one without his words was, or a later one named alike took the words"
         );
+    }
+
+    #[test]
+    fn a_miss_is_said_by_the_name_the_measure_gives_it() {
+        let text = [
+            miss("core #1"),
+            serde_json::json!({"at": AT, "words": "only words", "owner": "KNURBN"}).to_string(),
+        ]
+        .join("\n");
+        let open = misses(&text, &repos(), &BTreeSet::new(), &BTreeSet::new());
+        let said = said(&text, &eastern());
+        for line in &open.behind {
+            let (name, _) = line.rsplit_once(" · ").unwrap_or((line, ""));
+            assert!(
+                said.contains_key(name),
+                "the card names a miss {name:?} that has no words of Joel's: {said:?}"
+            );
+        }
     }
 
     fn miss(check: &str) -> String {
