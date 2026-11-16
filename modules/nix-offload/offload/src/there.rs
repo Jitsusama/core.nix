@@ -5685,9 +5685,9 @@ mod tests {
         ))
         .unwrap();
         let (_, left) = shared(&asked, &machines, |_| false);
-        let (left, owed) = owed(left, &machines, "x86_64-linux");
+        let (left, unbuilt) = owed(left, &machines, "x86_64-linux");
         assert_eq!(
-            owed,
+            unbuilt,
             words("checks.aarch64-darwin.b checks.aarch64-linux.c"),
             "only the away machine builds for its systems"
         );
@@ -5701,12 +5701,12 @@ mod tests {
 
         let darwin = super::asked(&words("path:/z checks.aarch64-darwin.b")).unwrap();
         let (_, left) = shared(&darwin, &machines, |_| false);
-        let (left, owed) = owed(left, &machines, "x86_64-linux");
+        let (left, unbuilt) = owed(left, &machines, "x86_64-linux");
         assert_eq!(left, None, "nothing of it is the lent builder's");
-        assert_eq!(owed, words("checks.aarch64-darwin.b"));
+        assert_eq!(unbuilt, words("checks.aarch64-darwin.b"));
 
-        let (left, owed) = owed(Some(darwin), &machines, "aarch64-darwin");
-        assert!(owed.is_empty(), "a Mac's own system is built where it is");
+        let (left, unbuilt) = owed(Some(darwin), &machines, "aarch64-darwin");
+        assert!(unbuilt.is_empty(), "a Mac's own system is built where it is");
         assert!(left.is_some());
     }
 
