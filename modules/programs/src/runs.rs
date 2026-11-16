@@ -13,9 +13,10 @@ use super::{Daemon, Run, Shared, due, lock, read_source, tabs, watched};
 /// How long a list refused while it's watched waits before each read
 /// again, longer each time. Neovim's page in the looks-programs VM test
 /// stood empty about two runs in five on 2026-11-16: the machine stalled
-/// some 17 s as the launcher opened, open-now's read was refused, and
-/// nothing read it again while the page watched. These outlast such a
-/// stall and a command's own 10 s wait, and then leave it to a change.
+/// as the launcher opened, open-now's read was refused, and nothing read
+/// it again while the page watched. The pauses come to 31 s, each read
+/// again may wait its command's own 10 s too, and then a change or the
+/// next opening reads it, as before.
 const PAUSES: [Duration; 5] = [
     Duration::from_secs(1),
     Duration::from_secs(2),
@@ -50,37 +51,41 @@ pub fn start(shared: &Arc<Shared>, at: usize, what: Run) {
 
 /// Reads a list again after each of `PAUSES` while its last read was
 /// refused and it's still watched, so a page doesn't stand without what
-/// it holds until its next opening; a read already under way stands for
-/// the next.
+/// it holds until its next opening. One list is read again by one thread
+/// at a time (`retrying`), however many openings were refused meanwhile;
+/// a read already under way says how it stands, so the next pause waits
+/// on it rather than asking for one more after it, which a get's caller
+/// would wait on.
 fn again_while_refused(shared: &Shared, at: usize, what: Run) {
-    if what != Run::List {
+    if what != Run::List || !lock(&shared.daemon).retrying.insert(at) {
         return;
     }
     let key = shared.sources[at].list_key();
     for pause in PAUSES {
         if !refused_and_watched(&lock(&shared.daemon), &key) {
-            return;
+            break;
         }
         std::thread::sleep(pause);
         {
             let mut daemon = lock(&shared.daemon);
             if !refused_and_watched(&daemon, &key) {
-                return;
+                break;
             }
             if !daemon.running.insert((at, what)) {
-                daemon.again.insert((at, what));
                 continue;
             }
         }
         read_claimed(shared, at, what);
     }
+    lock(&shared.daemon).retrying.remove(&at);
 }
 
 /// Whether the last read of the list with this key was refused, and a
-/// watch still waits on it.
+/// watch still waits on it, Tabs counting as one as in `read_claimed`.
 fn refused_and_watched(daemon: &Daemon, key: &str) -> bool {
     let state = daemon.commands.get(key).and_then(|said| said.get("state"));
-    state.and_then(Value::as_str) == Some("refused") && watched(daemon, key)
+    state.and_then(Value::as_str) == Some("refused")
+        && (watched(daemon, key) || tabs::wanted(daemon))
 }
 
 /// Reads a source whose read this thread holds in `running`, and once

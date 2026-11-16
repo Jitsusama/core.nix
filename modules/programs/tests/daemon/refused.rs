@@ -28,7 +28,10 @@ fn a_page_list_refused_while_watched_is_read_again_until_it_answers() {
         assert!(Instant::now() < deadline, "the watch's read never ran");
         std::thread::sleep(Duration::from_millis(10));
     }
-    // Once it answers again, the page still watching hears it unasked.
+    // It stays refused past the first two reads again, as a stall of some
+    // seconds has it; once it answers, the page still watching hears it
+    // unasked.
+    std::thread::sleep(Duration::from_millis(3500));
     std::fs::write(running.path("lists/stalling"), "two\n").unwrap();
     assert_eq!(
         client.changed(LISTED)["lines"],

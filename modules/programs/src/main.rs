@@ -133,6 +133,8 @@ struct Daemon {
     /// The commands running now, and those asked for again meanwhile.
     running: HashSet<(usize, Run)>,
     again: HashSet<(usize, Run)>,
+    /// The sources whose refused list a thread reads again (runs.rs).
+    retrying: HashSet<usize>,
     /// How each source's last command stood, by its key.
     commands: BTreeMap<String, Value>,
     took: VecDeque<u64>,
@@ -250,6 +252,7 @@ fn serve(given: &[String]) -> Result<(), Failure> {
             told: 0,
             running: HashSet::new(),
             again: HashSet::new(),
+            retrying: HashSet::new(),
             commands: BTreeMap::new(),
             took: VecDeque::new(),
             looked: Looked::default(),
