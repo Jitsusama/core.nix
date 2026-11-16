@@ -19,7 +19,8 @@
 //! `MYCELIUM_ACCOUNT`, is said in it: the address Google gives as the
 //! primary calendar's id must be that one, so a personal account signed
 //! in here is never counted into the work realm. With none declared, or
-//! another signed in, nothing is said.
+//! another signed in, no counts are said: receptors said before are said
+//! off once, with none, so the map stops drawing what they last read.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -171,13 +172,21 @@ pub type Spoken = Result<Spoke, String>;
 /// node would draw each as it last was until three of its rounds passed,
 /// so they're said off once, at once.
 pub fn fell_silent(was: Option<&Spoken>, came: &Spoken) -> bool {
-    let _ = (was, came);
-    false
+    let silent = |spoken: &Spoken| matches!(spoken, Ok(Spoke::NoAccount | Spoke::NotItsAccount));
+    silent(came) && was.is_some_and(|was| !silent(was))
 }
 
 /// What each receptor says as it falls silent: off, its counts none.
 fn silent() -> Vec<Told> {
-    Vec::new()
+    [Source::Mail, Source::Calendar]
+        .map(|source| Told {
+            source,
+            reading: Reading::Off,
+            hour: 0,
+            today: 0,
+            addressed: 0,
+        })
+        .to_vec()
 }
 
 /// What came of telling the receptors.
