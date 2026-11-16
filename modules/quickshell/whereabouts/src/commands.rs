@@ -42,7 +42,10 @@ fn set() -> Help {
             "a town and its country",
         )
         .argument("PIN", "the pin's file, in the state folder")
-        .argument("WORDS...", "the town, as typed")
+        .argument(
+            "WORDS...",
+            "the town, as typed, after -- if it opens with -",
+        )
         .exit(Exit::NotFound, "no place is called what was typed")
         .exit(Exit::Unavailable, "the place couldn't be asked about")
         .exit(Exit::Failed, "the pin couldn't be kept")
@@ -79,6 +82,12 @@ pub enum Start {
 /// Asked wrongly, 64, naming the help of the command the words name: a
 /// flag it doesn't take is named with the nearest it does.
 pub fn start(args: &[String]) -> Result<Start, Failure> {
+    // Words after `--` are the command's own, never flags, so a town
+    // opening with a dash can be set.
+    let (args, after) = match args.iter().position(|arg| arg == "--") {
+        Some(at) => (&args[..at], &args[at + 1..]),
+        None => (args, &[][..]),
+    };
     // `--words=FILE` is read as `--words FILE`.
     let mut args: Vec<String> = args
         .iter()
@@ -112,8 +121,17 @@ pub fn start(args: &[String]) -> Result<Start, Failure> {
     if let Some(flag) = args.iter().find(|arg| arg.starts_with('-')) {
         return Err(flags::unknown("option", flag, &["--words"]).try_this(help_for(&args)));
     }
+    args.extend_from_slice(after);
     let path = PathBuf::from;
     match args.as_slice() {
+        // The launcher's words are the daemon's, so set and again refuse
+        // them rather than dropping them unread.
+        [command, ..] if words.is_some() && matches!(command.as_str(), "set" | "again") => {
+            Err(wrongly(
+                &args,
+                format!("location {command} takes no --words; they are the daemon's"),
+            ))
+        }
         [set, pin, town @ ..] if set == "set" && !town.is_empty() => Ok(Start::Set {
             pin: path(pin),
             town: town.join(" "),
@@ -261,6 +279,26 @@ mod tests {
     }
 
     #[test]
+    fn a_town_opening_with_a_dash_is_set_after_the_end_of_flags() {
+        let (ending, asked) = started(&["set", "pin.json", "--", "-Kelpwater", "--words"]);
+
+        assert_eq!(
+            ending.exit,
+            Exit::Done,
+            "the town after -- was refused: {}",
+            ending.stderr
+        );
+        assert_eq!(
+            asked,
+            Some(Start::Set {
+                pin: PathBuf::from("pin.json"),
+                town: "-Kelpwater --words".to_owned()
+            }),
+            "the words after -- weren't the town, as typed"
+        );
+    }
+
+    #[test]
     fn the_launchers_words_may_be_joined_to_their_flag() {
         let (ending, asked) = started(&["location.sock", "/", "--words=/nix/w.json"]);
 
@@ -301,6 +339,14 @@ mod tests {
             (
                 &["location.sock", "/", "--wrods", "w.json"][..],
                 "did you mean --words?",
+            ),
+            (
+                &["set", "pin.json", "Kelpwater", "--words", "w.json"][..],
+                "location set takes no --words",
+            ),
+            (
+                &["again", "pin.json", "--words", "w.json"][..],
+                "location again takes no --words",
             ),
         ] {
             let (ending, asked) = started(words);
