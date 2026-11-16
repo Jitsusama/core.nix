@@ -346,15 +346,18 @@ async fn follow(
         .as_deref()
         .and_then(Fix::read)
         .filter(|fix| !fix.hand);
-    shared.change(|known| {
-        known.here.clone_from(&last);
-        // A here kept with its names is asked none again until the laptop
-        // moves, so the names it holds stand answered rather than starting.
-        if last.as_ref().is_some_and(|fix| !fix.unnamed()) {
-            known.names = Some(json!({"state": "answering"}));
-        }
-    });
+    shared.change(|known| known.here.clone_from(&last));
     pin_holds(shared, files, &mut last);
+    // Neither a here kept with its names nor a pin, named as it was set, is
+    // asked a name again until the laptop moves or the pin goes, so the
+    // names held stand answered rather than starting for good. A place or a
+    // zone is enough, as it is for an asking to count as answered.
+    if last
+        .as_ref()
+        .is_some_and(|fix| fix.place.is_some() || fix.zone.is_some())
+    {
+        shared.change(|known| known.names = Some(json!({"state": "answering"})));
+    }
     loop {
         let why = match geoclue_followed(shared, files, &mut last, &mut pins).await {
             Ok(why) | Err(why) => why,
