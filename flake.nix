@@ -177,6 +177,7 @@
         btop = ./modules/btop/home.nix;
         cadence = moduleFrom ./modules/cadence/home.nix { inherit (self.homeModules) quickshell; };
         call-transcripts = moduleFrom ./modules/call-transcripts/home.nix {
+          inherit mycelium;
           inherit (self.homeModules) people quickshell;
         };
         camera = ./modules/camera/home.nix;

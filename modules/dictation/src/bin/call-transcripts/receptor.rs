@@ -41,8 +41,14 @@ impl Counts {
     /// The calls of these start times, at `now`, the day having begun at
     /// `midnight`, both in milliseconds.
     pub fn of(started: impl IntoIterator<Item = u64>, now: u64, midnight: u64) -> Self {
-        let _ = (started, now, midnight);
-        Self::default()
+        let hour_ago = now.saturating_sub(HOUR);
+        started
+            .into_iter()
+            .filter(|&at| at <= now)
+            .fold(Self::default(), |counts, at| Self {
+                hour: counts.hour + u64::from(at > hour_ago),
+                today: counts.today + u64::from(at >= midnight),
+            })
     }
 }
 
@@ -62,8 +68,13 @@ impl State {
     /// How the receptor stands, given the counts and whether the book
     /// failed to read.
     pub fn of(counts: Counts, failing: bool) -> Self {
-        let _ = (counts, failing);
-        Self::Reading
+        if failing {
+            Self::Failing
+        } else if counts.today == 0 {
+            Self::Quiet
+        } else {
+            Self::Reading
+        }
     }
 
     fn word(self) -> &'static str {
@@ -86,8 +97,13 @@ impl Receptor {
     /// The receptor the service names, if it names one: an absolute
     /// program and a realm of mycelium's letters.
     pub fn named(program: Option<OsString>, realm: Option<OsString>) -> Option<Self> {
-        let _ = (program, realm);
-        None
+        let program = PathBuf::from(program?);
+        let realm = realm?.into_string().ok()?;
+        let lettered = realm
+            .bytes()
+            .all(|letter| letter.is_ascii_lowercase() || letter.is_ascii_digit() || letter == b'-');
+        let sound = !realm.is_empty() && lettered && !realm.starts_with('-');
+        (program.is_absolute() && sound).then_some(Self { program, realm })
     }
 
     /// The receptor the service's environment names.
@@ -101,8 +117,27 @@ impl Receptor {
     /// What mycelium is given: fixed words, the realm the service named,
     /// and integers.
     pub fn arguments(&self, state: State, counts: Counts, pid: u32) -> Vec<OsString> {
-        let _ = (state, counts, pid, SOURCE);
-        Vec::new()
+        let number = |count: u64| OsString::from(count.to_string());
+        let mut said: Vec<OsString> = ["--realm", &self.realm, "receptors", "say", SOURCE]
+            .into_iter()
+            .map(OsString::from)
+            .collect();
+        said.extend([
+            "--state".into(),
+            state.word().into(),
+            "--hour".into(),
+            number(counts.hour),
+            "--today".into(),
+            number(counts.today),
+            // Every call is Joel's own, so each is addressed to him.
+            "--addressed".into(),
+            number(counts.today),
+            "--every".into(),
+            number(EVERY.as_secs()),
+            "--pid".into(),
+            number(u64::from(pid)),
+        ]);
+        said
     }
 
     /// Says how the calls stand.
@@ -144,11 +179,12 @@ pub fn keep(receptor: &Receptor, book: &book::Shared) {
         let now = book::now();
         let (counts, failing) = {
             let held = book.lock();
-            (Counts::of(held.starts(), now, midnight(now)), held.failing())
+            (
+                Counts::of(held.starts(), now, midnight(now)),
+                held.failing(),
+            )
         };
-        let outcome = receptor
-            .say(State::of(counts, failing), counts, pid)
-            .err();
+        let outcome = receptor.say(State::of(counts, failing), counts, pid).err();
         if outcome != said {
             if let Some(why) = &outcome {
                 eprintln!("call-transcripts: saying the calls receptor: {why}");
@@ -209,8 +245,23 @@ mod tests {
         assert_eq!(
             words,
             [
-                "--realm", "work", "receptors", "say", "calls", "--state", "reading", "--hour",
-                "1", "--today", "2", "--addressed", "2", "--every", "60", "--pid", "4242",
+                "--realm",
+                "work",
+                "receptors",
+                "say",
+                "calls",
+                "--state",
+                "reading",
+                "--hour",
+                "1",
+                "--today",
+                "2",
+                "--addressed",
+                "2",
+                "--every",
+                "60",
+                "--pid",
+                "4242",
             ]
         );
     }
@@ -265,11 +316,27 @@ mod tests {
             .say(State::of(counts, held.failing()), counts, 4242)
             .unwrap();
         let said = std::fs::read_to_string(given).unwrap();
-        for planted in ["personal", "ignore", "skiff", "example", "kestrel", "planted"] {
-            assert!(!said.contains(planted), "{planted} reached mycelium: {said}");
+        for planted in [
+            "personal", "ignore", "skiff", "example", "kestrel", "planted",
+        ] {
+            assert!(
+                !said.contains(planted),
+                "{planted} reached mycelium: {said}"
+            );
         }
         let words: Vec<&str> = said.lines().collect();
-        assert_eq!(words[..7], ["--realm", "work", "receptors", "say", "calls", "--state", "reading"]);
+        assert_eq!(
+            words[..7],
+            [
+                "--realm",
+                "work",
+                "receptors",
+                "say",
+                "calls",
+                "--state",
+                "reading"
+            ]
+        );
         assert_eq!(words[8], "1", "the planted call is still counted");
     }
 

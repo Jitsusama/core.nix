@@ -14,6 +14,7 @@
 //! back as the daemon starts, and only then: the shell never reads the
 //! folder.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::time::UNIX_EPOCH;
@@ -33,6 +34,15 @@ const KIND: &str = "call";
 
 /// What a call's folder says of it beside its files.
 const META: &str = "meta.json";
+
+/// The most of a meta.json read: it holds a title and a few keys, so one
+/// larger was written by something else, and is skipped.
+const LARGEST_META: u64 = 64 * 1024;
+
+/// A call's folder whose meta.json couldn't be read: too large, not JSON,
+/// or lacking its key or its start.
+#[derive(Debug)]
+struct Unreadable;
 
 /// The transcript's file in a call's folder.
 pub const TRANSCRIPT: &str = "transcript.md";
@@ -113,12 +123,27 @@ impl Record {
         })
     }
 
-    /// The call a folder holds, from its meta.json and its files. One the
-    /// daemon stopped during is taken as ended when its folder last
-    /// changed.
-    fn read(folder: &Path) -> Option<Self> {
-        let meta: Value =
-            serde_json::from_str(&std::fs::read_to_string(folder.join(META)).ok()?).ok()?;
+    /// The call a folder holds, from its meta.json and its files, or none
+    /// for a folder with no meta.json. One the daemon stopped during is
+    /// taken as ended when its folder last changed.
+    fn read(folder: &Path) -> Result<Option<Self>, Unreadable> {
+        let mut text = String::new();
+        match std::fs::File::open(folder.join(META)) {
+            Ok(file) => {
+                file.take(LARGEST_META + 1)
+                    .read_to_string(&mut text)
+                    .map_err(|_| Unreadable)?;
+            }
+            Err(why) if why.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(_) => return Err(Unreadable),
+        }
+        if !u64::try_from(text.len()).is_ok_and(|read| read <= LARGEST_META) {
+            return Err(Unreadable);
+        }
+        let meta: Value = serde_json::from_str(&text).map_err(|_| Unreadable)?;
+        let (Some(key), Some(started)) = (meta["key"].as_str(), meta["started"].as_u64()) else {
+            return Err(Unreadable);
+        };
         let changed = || {
             std::fs::metadata(folder.join(TRANSCRIPT))
                 .or_else(|_| std::fs::metadata(folder))
@@ -131,10 +156,10 @@ impl Record {
         let opening = std::fs::read_to_string(&transcript)
             .ok()
             .and_then(|text| opening(&text));
-        Some(Self {
-            key: meta["key"].as_str()?.to_owned(),
+        Ok(Some(Self {
+            key: key.to_owned(),
             title: meta["title"].as_str().unwrap_or_default().to_owned(),
-            started: meta["started"].as_u64()?,
+            started,
             ended: meta["ended"].as_u64().or_else(changed),
             event: meta["event"].as_str().map(str::to_owned),
             person: meta["person"].as_str().map(str::to_owned),
@@ -143,7 +168,7 @@ impl Record {
             opening,
             summary: std::fs::read_to_string(folder.join(SUMMARY)).ok(),
             transcribing: false,
-        })
+        }))
     }
 }
 
@@ -153,22 +178,37 @@ pub struct Book {
     records: Vec<Record>,
     watches: Watches,
     since: u64,
+    /// Whether the calls' folder couldn't be listed at the start.
+    unlisted: bool,
+    /// How many calls' folders held a meta.json that couldn't be read.
+    unreadable: usize,
 }
 
 impl Book {
     /// The calls kept in `calls`, each folder's own.
     pub fn read(calls: &Path) -> Self {
-        let mut records: Vec<Record> = std::fs::read_dir(calls)
-            .into_iter()
-            .flatten()
-            .filter_map(Result::ok)
-            .filter_map(|entry| Record::read(&entry.path()))
-            .collect();
+        let (listed, unlisted) = match std::fs::read_dir(calls) {
+            Ok(listed) => (Some(listed), false),
+            // None yet, before the first call.
+            Err(why) if why.kind() == std::io::ErrorKind::NotFound => (None, false),
+            Err(_) => (None, true),
+        };
+        let mut records = Vec::new();
+        let mut unreadable = 0;
+        for entry in listed.into_iter().flatten().filter_map(Result::ok) {
+            match Record::read(&entry.path()) {
+                Ok(Some(record)) => records.push(record),
+                Ok(None) => {}
+                Err(Unreadable) => unreadable += 1,
+            }
+        }
         records.sort_by_key(|record| std::cmp::Reverse(record.started));
         Self {
             records,
             watches: Watches::default(),
             since: now(),
+            unlisted,
+            unreadable,
         }
     }
 
@@ -185,7 +225,7 @@ impl Book {
     /// Whether the calls' folder couldn't be listed, or a call's record in
     /// it couldn't be read, as it was read at the start.
     pub fn failing(&self) -> bool {
-        false
+        self.unlisted || self.unreadable > 0
     }
 
     /// Keeps `record`, in place of the one with its key, writing its
@@ -379,7 +419,10 @@ mod tests {
         });
         planted(calls.path(), "large", large.to_string().as_bytes());
         let read = Book::read(calls.path());
-        assert!(read.record("call:at:2").is_none(), "a record past 64 KiB is read");
+        assert!(
+            read.record("call:at:2").is_none(),
+            "a record past 64 KiB is read"
+        );
         assert!(read.failing());
         std::fs::remove_dir_all(calls.path().join("large")).unwrap();
         for (name, meta) in [

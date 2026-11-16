@@ -43,7 +43,17 @@
 # the people daemon through transcripts-people (src/main.rs), which
 # follows the same socket, so People makes no row of it itself; and a
 # meeting whose call was written down offers Open the Transcript.
-{ people, quickshell }:
+#
+# How many calls there were, and nothing else of them, the daemon says to
+# the machine's realm as its calls receptor, a cell on the mycelium map:
+# it runs mycelium by its store path, given only fixed words and counts
+# (src/bin/call-transcripts/receptor.rs). A machine in no realm says
+# nothing.
+{
+  mycelium,
+  people,
+  quickshell,
+}:
 {
   config,
   lib,
@@ -60,6 +70,8 @@ let
   words = pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words);
   model = pkgs.callPackage ../dictation/parakeet.nix { };
   device = config.jitsusama.call-transcripts.summarizerDevice;
+  realm = config.jitsusama.mycelium.realm or null;
+  myceliumProgram = lib.getExe mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
   # The program the daemon asks a summary's questions of.
   summarizer = pkgs.writeShellScript "call-summarizer" ''
     exec ${dictation}/bin/call-transcripts ask ${pkgs.callPackage ./summarizer.nix { }}
@@ -148,6 +160,12 @@ in
         "LD_LIBRARY_PATH=${lib.makeLibraryPath [ pkgs.level-zero ]}"
         "OPENVINO_TOKENIZERS_PATH_GENAI=${dictation.openvino-tokenizers}/lib/libopenvino_tokenizers.so"
         "OV_NPU_LOG_LEVEL=LOG_ERROR"
+      ]
+      ++ lib.optionals (realm != null) [
+        "MYCELIUM=${myceliumProgram}"
+        "MYCELIUM_REALM=${realm}"
+      ]
+      ++ [
         # The profile's last, for the program a transcript opens in:
         # xdg-open finds it by its desktop entry, which names it bare. A
         # file opens through systemd-run, in a unit of its own given this
