@@ -34,6 +34,7 @@
   "When.js"
   "Daemon.qml"
   "Hearing.js"
+  "Mending.js"
   "Watchers.qml"
   "launcher/Provider.qml"
   "launcher/Member.js"

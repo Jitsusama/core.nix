@@ -91,6 +91,11 @@
     a screenshot's or a recording's drawer says where it is and what kind, when it was taken to
     the second, its size, and a picture's dimensions or a recording's length once they're known
   '';
+  a-change-mends-only-what-moved = ''
+    a change saying only what differs mends the record a daemon's client holds, a field said null
+    let go and one said deep mended where it moved inside it, what didn't move kept as it was, and
+    a kind's fields are said deep only where its watch asked and the daemon's hello offers them
+  '';
   a-piece-says-all-it-knows = ''
     the drawers of Now's own pieces, the disk, the notices waiting, lag, a screen share, a
     recording and do not disturb, say where and what they are, then what moves first, and their
@@ -3885,7 +3890,8 @@
     never waited on, one that starts is connected to by itself, a watch narrowed to those listed
     holds them alone, a search's answer is never held, keys watched ahead and a get's answer land by
     key, what was held stays through a gap unless the client lets it go there, a client of two
-    kinds names both in every watch, a kind with none is known to hold none once answered, a
+    kinds names both in every watch, a field asked deep is mended with only what moved inside it
+    while one not asked is replaced whole, a kind with none is known to hold none once answered, a
     whole answer after a gap lets go what went in it, and a handler of a told change reads when its
     line was heard while one of a watch's whole answer, or one it put off, reads none
   '';

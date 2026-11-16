@@ -191,6 +191,7 @@
         "PiSource.js" = ../PiSource.js;
         "Daemon.qml" = ../Daemon.qml;
         "Hearing.js" = ../Hearing.js;
+        "Mending.js" = ../Mending.js;
         "Expect.js" = ../../../tests/lib/Expect.js;
         "shell.qml" = ../../../tests/waiting-kept.qml;
         "Sessions.qml" = singleton "Sessions.qml" ''

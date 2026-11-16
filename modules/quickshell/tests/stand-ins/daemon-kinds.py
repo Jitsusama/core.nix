@@ -6,7 +6,9 @@ kind asked, `<kind>:one`. Each record says the kinds its watch asked for, so tes
 tell the client sent its list of kinds in every watch, the one ahead too, and not one kind alone,
 and the pace it asked for (`every`), so it can tell a watch whose pace changed was asked again.
 A watch of sessions is answered as mycelium's node answers one: a record whole, then a change
-saying only the fields that differ, one dropped as null. A watch of marks is answered whole,
+saying only the fields that differ, one dropped as null; its presence, which hello offers deep,
+says only what moved inside it to a watch asking it deep, and comes whole to one that doesn't.
+A watch of marks is answered whole,
 then told a change, so tests/daemon.qml can tell which of the two is heard under its line.
 A watch of what waits is answered with
 two records the first time, and the connection then dropped, and with one of them alone after,
@@ -41,11 +43,20 @@ def told_after_whole(asked: dict[str, object]) -> list[dict[str, object]] | None
     """Answer a watch of a kind answered whole and then told a change, or None for another."""
     if asked.get("kind") == "session":
         whole = {"key": "session:a", "kind": "session", "heard": 1}
+        was = {"at": 1, "cwd": "~/src/skiff", "owner": "kestrel"}
+        asked_deep = asked.get("deep")
+        deep = isinstance(asked_deep, list) and "presence" in asked_deep
+        presence = {"at": 2, "owner": None} if deep else {"at": 2}
         return [
-            {"id": asked.get("id"), "records": [{**whole, "state": "idle", "step": "x"}]},
             {
                 "id": asked.get("id"),
-                "changed": [{"key": "session:a", "state": "busy", "step": None}],
+                "records": [{**whole, "state": "idle", "step": "x", "presence": was}],
+            },
+            {
+                "id": asked.get("id"),
+                "changed": [
+                    {"key": "session:a", "state": "busy", "step": None, "presence": presence}
+                ],
             },
         ]
     if asked.get("kind") == "mark":
@@ -60,7 +71,16 @@ def told_after_whole(asked: dict[str, object]) -> list[dict[str, object]] | None
 def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
     """Answer one ask, in the lines a daemon sends for it, its connection unwatched so often."""
     if asked.get("ask") == "hello":
-        return [{"id": asked.get("id"), "version": 1, "domain": "kinds", "state": "answering"}]
+        offers = {"session": {"live": [], "deep": ["presence"]}}
+        return [
+            {
+                "id": asked.get("id"),
+                "version": 1,
+                "domain": "kinds",
+                "state": "answering",
+                "kinds": offers,
+            }
+        ]
     told = told_after_whole(asked)
     if told is not None:
         return told
