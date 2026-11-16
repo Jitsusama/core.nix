@@ -1514,6 +1514,8 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         return not_taken("this folder can't be read");
     };
     let given = arguments;
+    // A run naming its system is compared for that system alone.
+    let named = changed::wanted(given).system.is_some();
     let arguments: &[String] = &with_system(arguments);
     let more_dir = more_dir();
     let source = match there::source(&folder, &scratch, None, there::Sends::Changes) {
@@ -1594,7 +1596,7 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         &passed,
         at.as_ref(),
         arguments,
-        &folder,
+        (!named).then_some(folder.as_path()),
         &finished,
         started,
         waiting,
@@ -1657,12 +1659,13 @@ fn passed_already(passed: &passed::Passed, at: Option<&passed::At>, arguments: &
 /// Keeps that a changed-checks run with `arguments`, started at `started`
 /// and ended as `finished`, passed at `at`, once a Mac's comparison joining
 /// it has passed or is kept as skipped beside it (`changed/mac.rs`). A
-/// Mac's failure is the run's, and nothing is kept.
+/// Mac's failure is the run's, and nothing is kept. With no `folder`, as
+/// for a run that named its system, no Mac is asked.
 fn kept_after_a_mac(
     passed: &passed::Passed,
     at: Option<&passed::At>,
     arguments: &[String],
-    folder: &Path,
+    folder: Option<&Path>,
     finished: &Finished,
     started: u64,
     waiting: there::Waiting,
@@ -1670,7 +1673,9 @@ fn kept_after_a_mac(
     if finished.status != 0 {
         return Ok(());
     }
-    let mac = on_a_mac(arguments, folder, waiting);
+    let mac = folder.map_or(OnAMac::Unasked, |folder| {
+        on_a_mac(arguments, folder, waiting)
+    });
     if let OnAMac::Failed(code) = mac {
         return Err(code);
     }
