@@ -318,6 +318,29 @@ QtObject {
         expect("from a gap's ledge, never a leap up into the window over it",
             fromGap.filter(one => one.stop.how === "leapsOn").length, 0);
 
+        // Onto and off one whose top is 2 above the tiles', at the
+        // screen's top: no arc to show, so it steps up and down within
+        // its walk, paws moving, rather than glide at the edge in a
+        // leap's pose (VKCF3Z 299fb911).
+        const flush = float(700, 14, 200, 100);
+        const stepsOn = Paths.walk({ x: 100, y: 7 }, { x: 800, y: 5 },
+            world({ floats: [flush] }));
+        const stepsOff = Paths.walk({ x: 800, y: 5 }, { x: 100, y: 7 },
+            world({ floats: [flush] }));
+        // Its beats by the floating window, not the gap's leap between
+        // columns.
+        const leapt = way => way.beats.filter(beat =>
+            Math.max(beat.from.x, beat.to.x) >= flush.left - 8
+                && ["crouches", "leaps", "over", "hops"].includes(beat.name))
+            .map(beat => beat.name);
+        expect("onto and off one 2 above the tops, it steps within its walk, never leaping",
+            [leapt(stepsOn), leapt(stepsOff)], [[], []]);
+        expect("and gets where it's going",
+            [ends(stepsOn.beats[stepsOn.beats.length - 1]).slice(2),
+                ends(stepsOff.beats[stepsOff.beats.length - 1]).slice(2)], [[800, 5], [100, 7]]);
+        expect("never over its face, on or off it",
+            [overFace(stepsOn, flush), overFace(stepsOff, flush)], [[], []]);
+
         // One off its way changes nothing, along the tops nor by a route.
         const aside = float(300, 600, 100, 100);
         expect("a floating window off its way changes nothing",

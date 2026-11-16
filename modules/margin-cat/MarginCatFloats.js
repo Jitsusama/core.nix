@@ -21,6 +21,9 @@ const LEAPS_UP = Ledges.LEAPS_UP;
 const LANDS_HARD = 2;
 // How high above the higher end a leap off or onto one rises, in cells.
 const RISES = 1;
+// The most cells up or down it steps within its walk rather than leap
+// (steps()).
+const STEPS = 2;
 
 // Each floating window of a workspace, from its tiles as
 // MarginCatPaths.js's columns() takes them, those with no column, moved
@@ -155,6 +158,12 @@ function off(way, cols, to, at) {
     const end = ends[0];
     way.facing = end.dir;
     Ways.goes(way, end.dir > 0 ? from.right - at.wide : from.left, way.y);
+    const ground = Falls.under({ x: end.x, y: way.y }, cols, at);
+    if (steps(way, ground, at)) {
+        Ways.goes(way, end.x, way.y);
+        Ways.goes(way, end.x, ground.y);
+        return done();
+    }
     Ways.leap(way, { x: end.x, y: way.y }, RISES, "hops");
     drops(way, cols, at);
     return done();
@@ -227,7 +236,10 @@ function lands(way, plan) {
     } else {
         const edge = plan.side < 0 ? it.left : it.right - at.wide;
         way.facing = -plan.side;
-        if (plan.how === "leaps") {
+        if (plan.how === "leaps" && steps(way, { x: edge, y }, at)) {
+            Ways.goes(way, way.x, y);
+            Ways.goes(way, edge, y);
+        } else if (plan.how === "leaps") {
             Ways.holds(way, "crouches", MarginCat.CROUCHES);
             Ways.leap(way, { x: way.x, y: it.top - at.tall }, RISES);
             Ways.leap(way, { x: edge, y }, RISES / 2, "over");
@@ -250,6 +262,14 @@ function lands(way, plan) {
     aboard(way, began);
 }
 
+// Whether a leap or hop from `way` to `to` crosses STEPS cells or less,
+// where it has no arc to show: it steps up or down within its walk then,
+// paws moving, where a leap glided at the screen's edge in a leap's pose
+// for 350 ms (VKCF3Z 299fb911, the GPU rig at 120 Hz, 2026-11-16).
+function steps(way, to, at) {
+    return Math.abs(to.y - way.y) <= STEPS * at.cell + 1e-6;
+}
+
 // A route's move to `stop` onto, along or off a floating
 // window on its way (MarginCatRoutes.js's ontoFloats() and fromFloat()),
 // over `now`'s columns (WCJQSG ade5ce02: "it climbs onto, jumps off and
@@ -265,6 +285,12 @@ function follows(way, stop, now) {
     if (stop.how === "goes") {
         way.facing = Math.sign(stop.x - way.x) || way.facing;
         Ways.goes(way, stop.x, stop.y);
+    } else if ((stop.how === "leapsOn" || stop.how === "hopsOff") && steps(way, landing, at)) {
+        // No arc to show: up or down within its walk, paws moving,
+        // beside its edge and on, or clear of its end and down.
+        way.facing = Math.sign(stop.via.x - way.x) || Math.sign(stop.x - way.x) || way.facing;
+        Ways.goes(way, stop.via.x, stop.via.y);
+        Ways.goes(way, landing.x, landing.y);
     } else if (stop.how === "leapsOn") {
         // Straight up beside its edge till its paws are level with its
         // top, and over, as lands() leaps on.
