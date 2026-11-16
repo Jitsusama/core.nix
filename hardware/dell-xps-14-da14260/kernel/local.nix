@@ -138,5 +138,13 @@
       name = "ttm-pool-defers-big-pages";
       patch = ./local/ttm-pool-defers-big-pages.patch;
     }
+    {
+      # Wi-Fi's block-ack session takes its reorder buffers as one order-5
+      # block, which fragmented memory refused four times in a day, each
+      # time leaving the link without aggregation. They're only the CPU's,
+      # so vmalloc may give them instead. Written here; the patch says why.
+      name = "wifi-reorder-buffer-falls-back-to-vmalloc";
+      patch = ./local/wifi-reorder-buffer-falls-back-to-vmalloc.patch;
+    }
   ];
 }
