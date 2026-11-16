@@ -17,7 +17,7 @@
 // - words: the first sentence of a network's drawer says "network", a
 //   machine's says "machine" and a cell's says "cell";
 // - names: on the whole map, no more names than machines and networks,
-//   branches included; once something is open, no faded name at all and at
+//   branches included, past the one the keys rest on; once something is open, no faded name at all and at
 //   most NAMES_OPEN names;
 // - parity: every drawer, Now, network, branch, machine and cell, opens
 //   with Purpose, Doing and Health, in that order, in a dl.glance, with no
@@ -133,7 +133,9 @@
     return ["nothing to check: the map drew no machines or no networks"];
   }
   const hubs = marks('[data-key^="h:"]').length;
-  const whole = names().length;
+  // The name the keys rest on is what he's engaged with, which keeps its
+  // name wherever it is, so it counts against no budget.
+  const whole = names().filter((el) => !el.classList.contains("strong")).length;
   if (whole > machines.length + hubs) {
     faults.push(`names: the whole map shows ${whole} names, past one per machine and network (${machines.length + hubs})`);
   }
