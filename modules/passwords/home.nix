@@ -221,6 +221,10 @@ in
       "quickshell/launcher/Managers.js".source = ./Managers.js;
       "quickshell/launcher/Checked.js".source = ./Checked.js;
       "quickshell/Clearing.qml".source = ./Clearing.qml;
+    }
+    # How long an ask's line was shown, which Asks reads beside it.
+    // lib.optionalAttrs (config.jitsusama.passwords.releases != [ ]) {
+      "quickshell/launcher/Shown.js".source = ../secret-asks/Shown.js;
     };
 
     # A password or a one-time code on the clipboard until it clears, in
@@ -252,6 +256,9 @@ in
         shows = if manager.shows == null then "" else manager.shows;
         fills = if manager.fills == null then "" else manager.fills;
       }) managers;
+      # Its daemon answers secret asks once one is listed, and serves them
+      # on the place's own connection, which Asks draws them over.
+      asking = config.jitsusama.passwords.releases != [ ];
       # The daemon the place runs as its own child, for the shell's life.
       daemon = [
         (lib.getExe passwords)
@@ -260,5 +267,16 @@ in
         "${words}"
       ];
     };
+
+    # Asks, inside Passwords, right after it, where any release is listed:
+    # each ask this daemon serves, drawn over the place's own connection
+    # rather than a socket, and For You's thing to do while one waits.
+    jitsusama.quickshell.launcher.providers.asks =
+      lib.mkIf (config.jitsusama.passwords.releases != [ ])
+        {
+          order = 49;
+          source = ../secret-asks/Asks.qml;
+          over = "passwords";
+        };
   };
 }

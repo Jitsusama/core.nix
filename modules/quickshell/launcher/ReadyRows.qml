@@ -35,6 +35,13 @@ Scope {
     property var watching: ({})
     // What the daemon makes the rows of, held until it changes, as Daemon.qml's settings says.
     property var settings: null
+    // Another place's connection its rows come over, as Asks' come over Passwords' where its
+    // daemon answers them, so one daemon is watched once: set, no connection of its own is
+    // made, and what that one hears is taken as its own would be.
+    property var over: null
+    // What an act's ask is sent as, `(key, ask)` to the ask, as Asks says how long its line was
+    // shown; by default the ask as served.
+    property var stamp: null
     // The keys of rows the place is about to draw more of, its selected row's, so the daemon
     // reads their drawers and inside rows only while they're ahead (ready-rows.md's Notes).
     property var ahead: []
@@ -87,7 +94,7 @@ Scope {
     property var maker: null
 
     // Each record by its key, as the daemon last said it, and its state.
-    readonly property var link: daemon.item
+    readonly property var link: over ?? daemon.item
     readonly property var held: link?.held ?? ({})
     readonly property string state: link?.state ?? "starting"
     // The rows' keys in their order, a new list each change.
@@ -127,7 +134,7 @@ Scope {
 
     LazyLoader {
         id: daemon
-        active: ready.active
+        active: ready.active && ready.over === null
 
         Daemon {
             socket: ready.socket
@@ -142,6 +149,28 @@ Scope {
                 ? ready.ahead.concat(ready.drawersAhead) : ready.ahead
             onHeard: (changed, gone) => ready.took(changed, gone)
         }
+    }
+
+    Connections {
+        target: ready.over
+        function onHeard(changed, gone) {
+            ready.took(changed, gone);
+        }
+    }
+    // What the connection held before it was handed over is placed as it is, since no change
+    // will name it.
+    onOverChanged: {
+        if (over !== null)
+            took(Object.keys(over.held ?? {}), []);
+    }
+    Component.onCompleted: {
+        if (over !== null)
+            took(Object.keys(over.held ?? {}), []);
+    }
+
+    // An act's ask as it's sent, stamped where the place says.
+    function stamped(key, ask) {
+        return typeof stamp === "function" ? stamp(key, ask) : ask;
     }
 
     // Not watched, nothing is held, so nothing it made stands.
@@ -917,7 +946,7 @@ Scope {
             refused(Ready.refusal(null, words));
             return;
         }
-        link.ask(one.ask, answer => {
+        link.ask(stamped(key, one.ask), answer => {
             const why = Ready.refusal(answer, words);
             if (why !== "")
                 refused(why);
@@ -931,7 +960,7 @@ Scope {
     // answered, so nothing fails silently (launcher/Becoming.js). `given` is the ask with the
     // words its fields asked for set in it, else the act's own is sent.
     function asked(key, one, given) {
-        const ask = given ?? one.ask;
+        const ask = stamped(key, given ?? one.ask);
         if (one.streams === true) {
             streamed(key, one, ask);
             return;
