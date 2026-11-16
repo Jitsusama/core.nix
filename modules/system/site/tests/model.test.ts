@@ -131,7 +131,11 @@ it("a side's closing and N more counts for as many", () => {
   assert.ok(machines);
   const side = ["a", "b", "and 4 more worth a look"];
   assert.equal(looksIn({ ...machines, side }), 6);
-  assert.equal(looksIn({ ...machines, side, health: "unread" }), 0, "why it wasn't read is no look");
+  assert.equal(
+    looksIn({ ...machines, side, health: "unread" }),
+    0,
+    "why it wasn't read is no look",
+  );
 });
 
 it("the headline counts the parts, what is worth a look and what wasn't read", () => {
@@ -150,7 +154,7 @@ it("the headline counts the parts, what is worth a look and what wasn't read", (
   };
   assert.equal(sentence(headline(many)), "Two parts, 12 worth a look and one not read.");
   const good = { ...system, parts: [{ ...first, health: "good" as const, side: [] }] };
-  assert.equal(sentence(headline(good)), "One part, all good.");
+  assert.equal(sentence(headline(good)), "One part, all clear.");
 });
 
 it("the lede names the worst part's first look, then why a part wasn't read", () => {
@@ -173,7 +177,10 @@ it("the lede names the worst part's first look, then why a part wasn't read", ()
     ],
   };
   assert.equal(lede(unread), "Code couldn't be read: repos timed out.");
-  assert.equal(lede({ ...system, parts: [{ ...first, health: "good" as const, side: [] }] }), undefined);
+  assert.equal(
+    lede({ ...system, parts: [{ ...first, health: "good" as const, side: [] }] }),
+    undefined,
+  );
 });
 
 it("a record's words reach the page as text, never as markup", () => {

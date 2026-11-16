@@ -1,27 +1,36 @@
-// The system page's markup: the headline and its lede, and each part as a
-// heading over what in it is worth a look and the ways deeper. Every row
-// the keys step through is a link marked data-row, in reading order, so the
-// cursor is focus itself and Return follows it. Every word read from a
-// record is escaped before it reaches the page. A health is told by its
-// mark's shape, drawn in the gutter, and said in words to a screen reader
-// and once in the legend, so nothing is told by colour alone.
+// The system page's markup, in its world: the weather over everything Joel
+// runs. Each part is a station on one horizon and how it stands is its sky,
+// clear, cloud, storm or fog, each its own shape so none is told by colour.
+// The outlook draws the four stations large under the headline; each part
+// below hangs its sky in the gutter, then what in it is worth a look and the
+// way deeper. Every row the keys step through is a link marked data-row, in
+// reading order, so the cursor is focus itself and Return follows it, and a
+// row shows its own keys while it has the cursor. Every word read from a
+// record is escaped before it reaches the page.
 
 import {
+  CLEAR,
   type Headline,
   type Health,
+  looksIn,
   named,
   type Part,
+  SKIES,
   type System,
   type Thing,
   WORDS,
 } from "./model.ts";
 
-const MARKS: { readonly [health in Health]: string } = {
-  good: '<circle cx="8" cy="8" r="6.2"/><path d="M5.2 8.3l2 2 3.8-4.3"/>',
-  watch:
-    '<circle cx="8" cy="8" r="6.2"/><path d="M8 4.6v4.2"/><circle cx="8" cy="11.2" r="0.5" fill="currentColor"/>',
-  bad: '<path d="M8 1.8l6.6 11.8H1.4z"/><path d="M8 6.2v3.4"/><circle cx="8" cy="11.6" r="0.5" fill="currentColor"/>',
-  unread: '<circle cx="8" cy="8" r="6.2" stroke-dasharray="2.2 2.2"/>',
+/**
+ * Each sky on a 16 grid, its horizon at the foot: the sun half risen with
+ * its rays, a cloud resting on the line, a storm cloud with its bolt, and
+ * fog in broken lines.
+ */
+const SKY_MARKS: { readonly [health in Health]: string } = {
+  good: '<path d="M1.5 13h13"/><path d="M4.2 13a3.8 3.8 0 0 1 7.6 0"/><path d="M8 6.4V4.6M4.2 8.1 3 6.9M11.8 8.1 13 6.9"/>',
+  watch: '<path d="M4.6 13h6.9a2.7 2.7 0 0 0 .2-5.4 3.8 3.8 0 0 0-7.3.9A2.3 2.3 0 0 0 4.6 13z"/>',
+  bad: '<path d="M4.6 9.6h6.9a2.6 2.6 0 0 0 .2-5.2 3.7 3.7 0 0 0-7.1.9 2.2 2.2 0 0 0 0 4.3z"/><path d="M8.8 10.2 7.2 12.6h2.1L7.8 15"/>',
+  unread: '<path d="M2 6.5h12M3.5 9.5h9M2 12.5h12" stroke-dasharray="2.4 1.8"/>',
 };
 
 /** The most machines a part draws, worst first, so thousands stay short. */
@@ -35,14 +44,26 @@ const ESCAPES: { readonly [character: string]: string } = {
   "'": "&#39;",
 };
 
+/** A row the keys step through: where it goes, its key, and what it shows. */
+interface Row {
+  readonly part: Part;
+  readonly href: string;
+  readonly key: string;
+  readonly inner: string;
+  /** The sky hung in its gutter, when it has one. */
+  readonly health?: Health;
+  /** The keys it answers while it has the cursor, beyond Return. */
+  readonly acts?: string;
+}
+
 /** `text` safe to put in markup, as text or an attribute's value. */
 function escaped(text: string): string {
   return text.replace(/[&<>"']/gu, (character) => ESCAPES[character] ?? character);
 }
 
-/** The mark `health` is drawn with, its word said only to a screen reader. */
-function mark(health: Health): string {
-  return `<svg class="state ${health}" viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${MARKS[health]}</g></svg>`;
+/** The sky `health` is drawn with, its word said only to a screen reader. */
+function mark(health: Health, size = "small"): string {
+  return `<svg class="sky ${health} ${size}" viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">${SKY_MARKS[health]}</g></svg>`;
 }
 
 /** How `health` is said to a screen reader, after a name. */
@@ -56,26 +77,78 @@ function home(thing: Thing): string {
 }
 
 /** The headline, its counts each a link to what it counts. */
-function headlineOf(said: Headline): string {
+function headlineOf(heading: Headline): string {
   const looks =
-    said.looks === undefined ? undefined : `<a href="#parts" data-to="look"><em>${escaped(said.looks)}</em></a>`;
+    heading.looks === undefined
+      ? undefined
+      : `<a href="#parts" data-to="look"><em>${escaped(heading.looks)}</em></a>`;
   const unread =
-    said.unread === undefined ? undefined : `<a href="#parts" data-to="unread">${escaped(said.unread)}</a>`;
+    heading.unread === undefined
+      ? undefined
+      : `<a href="#parts" data-to="unread">${escaped(heading.unread)}</a>`;
   const clauses = [looks, unread].filter((clause) => clause !== undefined);
-  const rest = clauses.length === 0 ? "all good" : clauses.join(" and ");
-  return `<a href="#parts" data-to="part">${escaped(said.parts)}</a>, ${rest}.`;
+  const rest = clauses.length === 0 ? `<em>${CLEAR}</em>` : clauses.join(" and ");
+  return `<a href="#parts" data-to="part">${escaped(heading.parts)}</a>, ${rest}.`;
 }
 
-/** A row the keys step through, in the part `part`. */
-function row(part: Part, href: string, key: string, inner: string, health?: Health): string {
-  const gutter = health === undefined ? "" : mark(health);
-  return `<li><a class="row" data-row="${escaped(key)}" data-part="${escaped(part.part)}" href="${escaped(href)}"><span class="gut">${gutter}</span><span class="line">${inner}</span></a></li>`;
+/** What one part's station says under its name: how many looks, or its sky. */
+function forecast(part: Part): string {
+  const looks = looksIn(part);
+  if (looks > 0) {
+    return `${looks} worth a look`;
+  }
+  return SKIES[part.health].toLowerCase();
 }
 
-/** A machine's row: its name in the mono a name is set in, then what it says. */
+/** The outlook: the four parts as stations on one horizon, each its sky. */
+function outlookOf(system: System): string {
+  return system.parts
+    .map((part, at) => {
+      const name = escaped(named(part.part));
+      return `<li><a class="station ${part.health}" href="#part-${escaped(part.part)}" data-station="${at + 1}">${mark(part.health, "large")}<span class="place">${name}${spoken(part.health)}</span><span class="forecast">${escaped(forecast(part))}</span></a></li>`;
+    })
+    .join("");
+}
+
+/** The place words at the top: each part's name and how many looks it has. */
+function placesOf(system: System): string {
+  return system.parts
+    .map((part) => {
+      const looks = looksIn(part);
+      const count = looks > 0 ? `<span class="n">${looks}</span>` : "";
+      return `<a class="place" href="#part-${escaped(part.part)}" data-place="${escaped(part.part)}">${escaped(named(part.part))}${count}</a>`;
+    })
+    .join("");
+}
+
+/** The keys a row answers while it has the cursor, shown on the row then. */
+function actsOf(acts: string | undefined): string {
+  const more = acts === undefined ? "" : ` ${acts}`;
+  return `<span class="acts" aria-hidden="true"><kbd>Return</kbd> opens${more}</span>`;
+}
+
+/** A row the keys step through, as a list item. */
+function row(drawn: Row): string {
+  return `<li>${link(drawn)}</li>`;
+}
+
+/** A row's link: its sky in the gutter, its words on the main line, its keys. */
+function link(drawn: Row): string {
+  const gutter = drawn.health === undefined ? "" : mark(drawn.health);
+  const health = drawn.health === undefined ? "" : ` data-health="${drawn.health}"`;
+  return `<a class="row" data-row="${escaped(drawn.key)}" data-part="${escaped(drawn.part.part)}"${health} href="${escaped(drawn.href)}"><span class="gut">${gutter}</span><span class="line">${drawn.inner}</span>${actsOf(drawn.acts)}</a>`;
+}
+
+/** A machine's row: its name, then what it says. */
 function machineRow(part: Part, thing: Thing): string {
-  const inner = `<code class="own">${escaped(thing.name)}</code>${spoken(thing.health)} ${escaped(thing.says)}`;
-  return row(part, home(thing), `machine:${thing.name}`, inner, thing.health);
+  const inner = `<span class="own" translate="no">${escaped(thing.name)}</span>${spoken(thing.health)} ${escaped(thing.says)}`;
+  return row({
+    part,
+    href: home(thing),
+    key: `machine:${thing.name}`,
+    inner,
+    health: thing.health,
+  });
 }
 
 /** What in `part` is worth a look, as rows: its machines, or its side. */
@@ -86,33 +159,43 @@ function itemsOf(part: Part): string[] {
     const more = part.things.length - MACHINES_DRAWN;
     if (more > 0) {
       const words = `and ${more} more ${more === 1 ? "machine" : "machines"}`;
-      drawn.push(row(part, site, `${part.part}:more`, escaped(words)));
+      drawn.push(row({ part, href: site, key: `${part.part}:more`, inner: escaped(words) }));
     }
     return drawn;
   }
   if (part.health === "unread") {
     return [];
   }
-  return part.side.map((item, at) => row(part, site, `${part.part}:${at}`, escaped(item)));
+  return part.side.map((item, at) =>
+    row({ part, href: site, key: `${part.part}:${at}`, inner: escaped(item) }),
+  );
 }
 
 /** The ways deeper into `part`: its command, which y copies, and where it is in the launcher. */
 function deeperOf(part: Part): string {
   const command = escaped(part.deeper.command);
-  return `<p class="deeper"><code>${command}</code><button type="button" class="copy" data-command="${command}" aria-label="Copy ${command}">copy <kbd>y</kbd></button><span class="launcher"><span class="sr">In the launcher: </span>${escaped(part.deeper.launcher)}</span></p>`;
+  return `<p class="deeper"><code>${command}</code><button type="button" class="copy" data-command="${command}" aria-label="Copy ${command}">copy</button><span class="launcher"><span class="sr">In the launcher: </span>${escaped(part.deeper.launcher)}</span></p>`;
 }
 
 /** `part`, drawn: its heading, what it holds, what is worth a look and the ways deeper. */
 function partOf(part: Part): string {
-  const name = escaped(named(part.part));
+  const id = escaped(part.part);
   const holds =
     part.health === "unread"
       ? `<p class="holds unread">${escaped(part.says)}</p>`
       : `<p class="holds">${escaped(part.holds ?? "")}</p>`;
   const items = itemsOf(part);
   const list = items.length === 0 ? "" : `<ul class="items">${items.join("")}</ul>`;
-  return `<section class="part ${part.health}" id="part-${escaped(part.part)}" aria-labelledby="name-${escaped(part.part)}">
-  <h2 class="name" id="name-${escaped(part.part)}"><a class="row" data-row="part:${escaped(part.part)}" data-part="${escaped(part.part)}" data-health="${part.health}" href="../${escaped(part.deeper.site)}"><span class="gut">${mark(part.health)}</span><span class="line">${name}${spoken(part.health)}</span></a></h2>
+  const heading = link({
+    part,
+    href: `../${part.deeper.site}`,
+    key: `part:${part.part}`,
+    inner: `${escaped(named(part.part))}${spoken(part.health)}`,
+    health: part.health,
+    acts: "and <kbd>y</kbd> copies its command",
+  });
+  return `<section class="part ${part.health}" id="part-${id}" aria-labelledby="name-${id}">
+  <h2 class="name" id="name-${id}">${heading}</h2>
   ${holds}
   ${list}
   ${deeperOf(part)}
@@ -124,12 +207,23 @@ function partsOf(system: System): string {
   return system.parts.map((part) => partOf(part)).join("\n");
 }
 
-/** The legend: each mark beside its word, said once for the whole page. */
+/** What each sky means, as the legend says it after the sky's name. */
+const MEANS: { readonly [health in Health]: string } = {
+  good: "all good",
+  watch: "worth a look",
+  bad: "bad",
+  unread: "not read",
+};
+
+/** The legend: each sky beside its name and what it means, said once. */
 function legend(): string {
   const healths: readonly Health[] = ["good", "watch", "bad", "unread"];
   return healths
-    .map((health) => `<span class="key">${mark(health)}${WORDS[health]}</span>`)
+    .map(
+      (health) =>
+        `<span class="key">${mark(health)}<span class="sky-name">${SKIES[health]}</span>, ${MEANS[health]}</span>`,
+    )
     .join("");
 }
 
-export { escaped, headlineOf, home, legend, partsOf };
+export { escaped, headlineOf, home, legend, outlookOf, partsOf, placesOf };

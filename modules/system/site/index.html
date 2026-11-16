@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Your system, now</title>
-<meta name="description" content="How your whole system stands at once: every machine on your mycelium, the mycelium itself, your home network and your code, each judged from its own owner's answer, with the way deeper into each.">
+<meta name="description" content="The weather over everything you run: every machine on your mycelium, the mycelium itself, your home network and your code, each judged from its own owner's answer, with the way deeper into each.">
 <meta property="og:title" content="Your system, now">
-<meta property="og:description" content="How your whole system stands at once: every machine on your mycelium, the mycelium itself, your home network and your code, each judged from its own owner's answer, with the way deeper into each.">
+<meta property="og:description" content="The weather over everything you run: every machine on your mycelium, the mycelium itself, your home network and your code, each judged from its own owner's answer, with the way deeper into each.">
 <meta property="og:type" content="website">
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="@dark-ground@">
@@ -30,6 +30,7 @@
 <link rel="stylesheet" href="kit/base.css">
 <link rel="stylesheet" href="../local-sites/kit/switch.css">
 <link rel="stylesheet" href="site.css">
+<link rel="stylesheet" href="parts.css">
 <link rel="stylesheet" href="keys.css">
 <link rel="alternate" type="text/markdown" href="index.md">
 <link rel="describedby" type="text/plain" href="llms.txt">
@@ -43,39 +44,53 @@
 
 <header class="mast">
   <p class="wordmark">
-    <svg class="mark" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true">
-      <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="16" cy="16" r="3.2"/>
-        <circle cx="16" cy="5" r="2.2"/>
-        <circle cx="27" cy="16" r="2.2"/>
-        <circle cx="16" cy="27" r="2.2"/>
-        <circle cx="5" cy="16" r="2.2"/>
-        <path d="M16 7.2v5.6M24.8 16h-5.6M16 24.8v-5.6M7.2 16h5.6"/>
+    <svg class="mark" width="40" height="40" viewBox="0 0 32 32" aria-hidden="true">
+      <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 25h28"/>
+        <path d="M8.5 25a7.5 7.5 0 0 1 15 0"/>
+        <path d="M16 12V8.5M8.6 15.1 6.1 12.6M23.4 15.1l2.5-2.5"/>
+        <path d="M5 28.5h6M14 28.5h13" opacity="0.5"/>
       </g>
     </svg>
     <span>Your system, <em>now</em></span>
   </p>
-  <div class="switch" role="radiogroup" aria-label="Theme">
-    <label title="Light"><input type="radio" name="theme" value="light"><span class="sr">Light</span>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-    </label>
-    <label title="Match System"><input type="radio" name="theme" value="system" checked><span class="sr">Match System</span>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor"/></svg>
-    </label>
-    <label title="Dark"><input type="radio" name="theme" value="dark"><span class="sr">Dark</span>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
-    </label>
-  </div>
-  <button type="button" class="help" id="help" aria-haspopup="dialog" aria-controls="keys"><kbd>?</kbd><span class="sr"> Keys</span></button>
+  <nav class="places" id="places" aria-label="The four parts">
+    <a class="place" href="#part-machines" data-place="machines">Machines</a>
+    <a class="place" href="#part-mycelium" data-place="mycelium">Mycelium</a>
+    <a class="place" href="#part-network" data-place="network">Network</a>
+    <a class="place" href="#part-code" data-place="code">Code</a>
+  </nav>
 </header>
 
 <main id="main" class="stage" tabindex="-1">
-  <p class="standing" id="standing" data-state="connecting">Reaching the system daemon.</p>
-  <h1 class="headline" id="headline">Asking each part's owner.</h1>
-  <p class="lede" id="lede" hidden></p>
+  <header class="hero">
+    <p class="eyebrow">the weather over everything you run</p>
+    <h1 class="headline" id="headline">Reading the <em>sky.</em></h1>
+    <p class="lede" id="lede" hidden></p>
+    <p class="standing" id="standing" data-state="connecting"><span class="glyph" aria-hidden="true"></span><span id="standing-words">Reaching the system daemon.</span></p>
+    <p class="keys"><kbd>j</kbd> and <kbd>k</kbd> step through everything, <kbd>1</kbd> to <kbd>4</kbd> go to a part, and <kbd>?</kbd> lists every key <button type="button" class="help" id="help" aria-haspopup="dialog" aria-controls="keys">Keys</button></p>
+    <div class="switch" role="radiogroup" aria-label="Theme">
+      <label title="Light"><input type="radio" name="theme" value="light"><span class="sr">Light</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </label>
+      <label title="Match System"><input type="radio" name="theme" value="system" checked><span class="sr">Match System</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor"/></svg>
+      </label>
+      <label title="Dark"><input type="radio" name="theme" value="dark"><span class="sr">Dark</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+      </label>
+    </div>
+  </header>
+
+  <figure class="outlook">
+    <ol class="stations" id="outlook" aria-label="The outlook"></ol>
+    <figcaption>Each part's sky, from its owner's own answer.</figcaption>
+  </figure>
+
   <div class="parts" id="parts"></div>
   <p class="note" id="note" role="status"></p>
   <noscript><p class="note">The parts are drawn in the browser, live from the system daemon; without scripts, read <a href="index.md">the page as text</a>, or type <code>system</code> in a terminal.</p></noscript>
+
   <footer class="foot">
     <p class="legend" id="legend"></p>
   </footer>

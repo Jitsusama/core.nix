@@ -72,8 +72,35 @@ const WORDS: { readonly [health in Health]: string } = {
   unread: "Not read",
 };
 
+/**
+ * Each health as the page's sky: the world it is drawn in, where a part is
+ * a station on a horizon and how it stands is its weather. The word in
+ * WORDS says what the sky means; this one names the sky.
+ */
+const SKIES: { readonly [health in Health]: string } = {
+  good: "Clear",
+  watch: "Cloud",
+  bad: "Storm",
+  unread: "Fog",
+};
+
+/** What a headline says when nothing anywhere is worth a look. */
+const CLEAR = "all clear";
+
 /** The numbers a headline says in words, as a sentence would. */
-const NUMBERS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+const NUMBERS = [
+  "no",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+];
 
 /** How the daemon closes a side that had more than it says (parts.rs's side_of). */
 const MORE = /^and (\d+) more worth a look$/u;
@@ -138,7 +165,7 @@ function headline(system: System): Headline {
 /** The headline as one plain sentence, for the title and the text twin. */
 function sentence(said: Headline): string {
   const clauses = [said.looks, said.unread].filter((clause) => clause !== undefined);
-  return `${said.parts}, ${clauses.length === 0 ? "all good" : and(clauses)}.`;
+  return `${said.parts}, ${clauses.length === 0 ? CLEAR : and(clauses)}.`;
 }
 
 /**
@@ -239,4 +266,4 @@ function systemOf(summaries: Held, parts: Held, things: Held): System | undefine
 }
 
 export type { Deeper, Headline, Health, Part, System, Thing };
-export { headline, lede, looksIn, named, sentence, systemOf, WORDS };
+export { CLEAR, headline, lede, looksIn, named, SKIES, sentence, systemOf, WORDS };

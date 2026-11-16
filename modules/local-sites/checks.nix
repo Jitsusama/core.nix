@@ -21,15 +21,15 @@ in
     name = "system";
     src = ../system/site;
     webKit = pkgs.emptyDirectory;
-    tint = "machine";
+    tint = "action";
     looks = {
       dark = {
         background = "black";
-        machine = "white";
+        action = "white";
       };
       light = {
         background = "white";
-        machine = "black";
+        action = "black";
       };
     };
   };

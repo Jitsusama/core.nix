@@ -9,29 +9,40 @@ anything.
 
 ## How to Read It
 
-- **A quiet first line:** the machine it was read on, when, and whether
-  what it shows is live. When the daemon or the sites' server can't be
-  reached, it says since when and why, and keeps showing how things
-  stood then.
+The page is the weather over everything Joel runs: each part is a
+station on one horizon, and how it stands is its sky.
+
+- **The places at the top:** Machines, Mycelium, Network and Code, each
+  with how many things in it are worth a look. The part the cursor is
+  in is underlined.
 - **A headline that counts:** how many parts, how many things in them
   are worth a look, and how many parts couldn't be read, as "Four parts,
   five worth a look." Each count goes to the first row of what it
-  counts. With nothing amiss, it says all are good.
+  counts. With nothing amiss, it says all clear. While it reads, it
+  says it is reading the sky.
 - **A lede under it:** the one thing that most wants a look, led by its
   part's name: the first item of the worst part, or why a part couldn't
   be read.
-- **The four parts, in one column:** Machines, Mycelium, Network and
-  Code. Each has its health's mark in the gutter, its name (a link to
-  its site), what it holds at the right ("21 devices"), what in it is
-  worth a look under it, and last the command that says more, with a
-  copy button, and where it is in the launcher.
+- **A standing line:** the machine it was read on, when, and whether
+  what it shows is live. When the daemon or the sites' server can't be
+  reached, it says since when and why, and keeps showing how things
+  stood then.
+- **The outlook:** the four parts as stations on one horizon, each
+  wearing its sky, with its name and its forecast: how many things are
+  worth a look, or its sky's name. Each goes to its part.
+- **The four parts, in one column:** each has its sky in the gutter,
+  its name (a link to its site), what it holds at the right ("21
+  devices"), what in it is worth a look under it, and last the command
+  that says more, with a copy button, and where it is in the launcher.
+  The row the cursor is on shows the keys it answers.
   - Machines draws its machines, worst first, at most three, each
     linked to its own place, then how many more.
   - The others draw at most three items, the last saying how many more
     when there are more.
-- **A legend at the foot:** each mark beside its word: Good (a ticked
-  ring), Worth a look (a ring with a stroke), Bad (a triangle) and Not
-  read (a dashed ring). A screen reader hears the word after each name.
+- **A legend at the foot:** each sky beside its name and what it means:
+  Clear (the sun half risen), all good; Cloud (a cloud on the horizon),
+  worth a look; Storm (a cloud with a bolt), bad; and Fog (broken
+  lines), not read. A screen reader hears the meaning after each name.
 - **How each part is judged:**
   - Machines: one out of reach or with a nearly or critically full disk
     is bad; one short of room, with a filling disk, or on battery at 20%

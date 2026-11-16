@@ -1,0 +1,261 @@
+/* The parts under the outlook: each a name and what it holds, what in it is
+   worth a look, and the ways deeper, every row hanging its sky in the
+   gutter so each name starts on the page's one edge (site.css). */
+
+/* ---- The parts: each a name and what it holds on one line, what is
+   worth a look under it, and the ways deeper last. Hairlines, no boxes. ---- */
+
+.parts {
+  margin-block: var(--frames) var(--groups);
+}
+
+.part {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "name holds"
+    "items items"
+    "deeper deeper";
+  align-items: center;
+  column-gap: var(--items);
+  padding-block: var(--mark) var(--items);
+  border-block-start: 1px solid var(--rule);
+  scroll-margin-block-start: 5rem;
+}
+
+.part .name {
+  grid-area: name;
+  margin: 0;
+}
+
+.part .holds {
+  grid-area: holds;
+  margin: 0;
+  color: var(--muted);
+  font: 400 var(--step-small) / 1.4 var(--mono);
+  font-feature-settings: var(--mono-features);
+  text-align: end;
+}
+
+/* A part not read says why where its holding would be, in the voice. */
+.part .holds.unread {
+  font: var(--voice-weight) var(--step-body) / 1.4 var(--serif);
+  font-style: italic;
+  text-align: start;
+}
+
+.items {
+  grid-area: items;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.deeper {
+  grid-area: deeper;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--mark);
+  margin: var(--tie) 0 0;
+  padding-inline-start: var(--gutter);
+  color: var(--muted);
+  font: 400 var(--step-small) / 1.4 var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+.deeper code {
+  color: var(--text);
+}
+
+.deeper .launcher::before {
+  content: "·";
+  margin-inline-end: var(--mark);
+  color: var(--muted);
+}
+
+.copy {
+  min-block-size: 44px;
+  min-inline-size: 44px;
+  padding: 0 var(--mark);
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.copy:hover {
+  color: var(--strong);
+}
+
+/* ---- A row: its sky in the gutter, its words on the main line, and the
+   keys it answers at its end while it has the cursor. ---- */
+
+.row {
+  display: grid;
+  grid-template-columns: var(--gutter) minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 0;
+  min-block-size: 44px;
+  padding-block: var(--tie);
+  padding-inline-end: var(--mark);
+  border-radius: var(--radius);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.row .gut {
+  display: flex;
+  align-self: center;
+}
+
+.name .row .line {
+  color: var(--strong);
+  font: var(--title-weight) var(--step-section) / 1.2 var(--serif);
+  font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
+}
+
+.items .row .line {
+  font: var(--words-weight) var(--step-body) / 1.45 var(--serif);
+  font-variation-settings: "SOFT" var(--words-soft), "WONK" var(--words-wonk);
+}
+
+.items .own {
+  margin-inline-end: 0.35em;
+  color: var(--strong);
+  font: 500 var(--step-small) / 1 var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+.row .acts {
+  visibility: hidden;
+  color: var(--muted);
+  font: 400 var(--step-small) / 1.4 var(--serif);
+  white-space: nowrap;
+}
+
+.row:hover .acts,
+.row:focus-visible .acts {
+  visibility: visible;
+}
+
+.row:hover .line {
+  color: var(--strong);
+}
+
+/* The cursor: focus itself, a quiet ground and the one accent's ring. */
+.row:focus {
+  outline: none;
+}
+
+.row:focus-visible {
+  background: var(--selection);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.row:focus-visible .line,
+.row:focus-visible .own {
+  color: var(--strong);
+}
+
+/* ---- Skies: each its own shape, in its state's hue. ---- */
+
+.sky {
+  inline-size: 1.15em;
+  block-size: 1.15em;
+  color: var(--muted);
+  flex: none;
+  stroke-width: 1.4;
+}
+
+.sky.large {
+  inline-size: 3rem;
+  block-size: 3rem;
+  stroke-width: 0.9;
+}
+
+.name .sky {
+  inline-size: 1.4em;
+  block-size: 1.4em;
+}
+
+.sky.good {
+  color: var(--success);
+}
+
+.sky.watch {
+  color: var(--warning);
+}
+
+.sky.bad {
+  color: var(--alert);
+}
+
+/* ---- The foot: what each sky says, once. ---- */
+
+.note {
+  padding-inline-start: var(--gutter);
+  color: var(--muted);
+  font: 400 var(--step-small) / 1.5 var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+.note:empty {
+  display: none;
+}
+
+.foot {
+  margin-block-start: var(--frames);
+  padding-block-start: var(--items);
+  border-block-start: 1px solid var(--rule);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tie) var(--groups);
+  margin: 0;
+  padding-inline-start: var(--gutter);
+  color: var(--muted);
+  font: 400 var(--step-small) / 1.5 var(--serif);
+}
+
+.legend .key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mark);
+}
+
+.legend .sky-name {
+  color: var(--text);
+  font-style: italic;
+}
+
+@media (max-width: 40rem) {
+  .part {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "name"
+      "holds"
+      "items"
+      "deeper";
+  }
+
+  .part .holds {
+    padding-inline-start: var(--gutter);
+    text-align: start;
+  }
+
+  .row .acts {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .row:focus-visible {
+    outline: 2px solid Highlight;
+  }
+}

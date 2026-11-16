@@ -1,33 +1,60 @@
-/* Your system, now: one column on one edge, "the main line", where the
-   headline, each part's name and every row start, with each health's mark
-   hung in a gutter before it. Two faces, each with one job: Fraunces names
-   and is read, Monaspace counts and is typed. The accent is only where the
-   keys are, and a health is told by its mark's shape, never by hue alone.
-   An interface to keep open, so it sits at the interface size, as the
-   code, network and mycelium sites do, since every part leads to one. */
+/* Your system, now: fair weather, a forecast over everything Joel runs.
+   A dusk ground, the sun's gold for what the page speaks in, and the accent
+   only where the keys are. The first screen is one sentence and one drawing:
+   the headline counts what is worth a look, and the outlook stands the four
+   parts on one horizon, each wearing its sky. Below it each part hangs its
+   sky in a gutter, so every name starts on one edge (parts.css). The display
+   serif names and is read; the mono only counts and labels. A sky is told by
+   its shape and its word, never by hue alone. An interface to keep open, so
+   it sits at the interface size, as the sites each part leads to do. */
 
 :root {
-  /* Rose marks the site's emphasis: the machine hue, since the system is
-     first the machines it runs on. */
-  --tint: var(--machine);
-  /* The marks hang in this, so every name starts on the main line. */
+  /* Dusk: the grounds and the ink turned toward the evening's blue. */
+  --turn: 110;
+  /* Gold marks the site's emphasis: the action's hue, the sun's. */
+  --tint: var(--action);
+  /* The skies hang in this, so every name starts on the main line. */
   --gutter: 2.75rem;
-  --column: 60rem;
+  --column: 62rem;
+  /* The tint deepened toward the strong ink, so words in it clear 7:1. */
+  --said: color-mix(in oklab, var(--tint) 62%, var(--strong));
+}
+
+/* In the dark, the last of the light still sits over the horizon. */
+html:not([data-theme="light"]) body {
+  background-image: radial-gradient(
+    ellipse 70rem 28rem at 50% -6rem,
+    color-mix(in oklab, var(--tint) 9%, transparent),
+    transparent 70%
+  );
+  background-repeat: no-repeat;
+}
+
+@media (prefers-color-scheme: light) {
+  html:not([data-theme="dark"]) body {
+    background-image: none;
+  }
 }
 
 .stage code {
   font-size: inherit;
 }
 
-/* ---- The masthead: the top of the page, not a bar laid over it. ---- */
+/* ---- The masthead: the page's own ground, its places at the top. ---- */
 
 .mast {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--mark);
+  gap: var(--mark) var(--groups);
   max-inline-size: calc(var(--column) + 2 * var(--screen));
   margin-inline: auto;
   padding: var(--mark) var(--screen);
+  background: var(--background);
+  border-block-end: 1px solid var(--rule);
 }
 
 .wordmark {
@@ -45,28 +72,53 @@
   flex: none;
 }
 
-/* Every word on the page clears 7:1, so the tint is deepened toward the
-   strong ink, as the other sites' are. */
 .wordmark em {
-  color: color-mix(in oklab, var(--tint) 60%, var(--strong));
+  color: var(--said);
 }
 
-.help {
-  inline-size: 44px;
-  block-size: 44px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  color: var(--muted);
-  cursor: pointer;
+/* The four places, each a word in the serif with its count in the mono.
+   The one the cursor is in is underlined, so moving changes colour and
+   never width. */
+.places {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--items);
 }
 
-.help:hover {
-  border-color: var(--edge);
+.place {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--tie);
+  min-block-size: 44px;
+  padding-block: var(--tie);
+  color: var(--text);
+  font: var(--words-weight) var(--step-body) / 2 var(--serif);
+  font-variation-settings: "SOFT" var(--words-soft), "WONK" var(--words-wonk);
+  text-decoration: underline 1px transparent;
+  text-underline-offset: 0.3em;
+}
+
+.place:hover {
   color: var(--strong);
+  text-decoration-color: var(--rule);
+}
+
+.place[aria-current] {
+  color: var(--strong);
+  text-decoration-color: var(--said);
+  text-decoration-thickness: 2px;
+}
+
+.place .n {
+  color: var(--warning);
+  font: 500 var(--step-small) / 1 var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+.place:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius);
 }
 
 /* ---- The stage. ---- */
@@ -74,42 +126,42 @@
 .stage {
   max-inline-size: calc(var(--column) + 2 * var(--screen));
   margin-inline: auto;
-  padding: var(--groups) var(--screen) var(--huge);
+  padding: var(--frames) var(--screen) var(--huge);
 }
 
 .stage:focus {
   outline: none;
 }
 
-/* The quiet first line: where it was read, when, and whether it's live. */
-.standing,
-.note,
-.legend {
+/* ---- The hero: the eyebrow, the one sentence, and how it stands. ---- */
+
+.hero {
   padding-inline-start: var(--gutter);
-  color: var(--muted);
-  font: 400 var(--step-small) / 1.5 var(--mono);
-  font-feature-settings: var(--mono-features);
 }
 
-.standing[data-state="stale"],
-.standing[data-state="broken"] {
-  color: var(--strong);
+.eyebrow {
+  margin: 0 0 var(--apart);
+  color: var(--said);
+  font: 500 var(--step-small) / 1.4 var(--mono);
+  font-feature-settings: var(--mono-features);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
 }
 
 /* The one focal point: the whole in a sentence whose counts lead to what
    they count. */
 .headline {
-  margin: var(--items) 0 var(--apart);
-  padding-inline-start: var(--gutter);
+  max-inline-size: 22ch;
+  margin: 0 0 var(--items);
   color: var(--strong);
-  font: var(--title-weight) var(--step-title) / 1.1 var(--serif);
+  font: var(--title-weight) var(--step-display) / 1.04 var(--serif);
   font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
 }
 
 .headline a {
   color: inherit;
   text-decoration: underline 1px var(--rule);
-  text-underline-offset: 0.14em;
+  text-underline-offset: 0.12em;
 }
 
 .headline a:hover {
@@ -117,18 +169,94 @@
 }
 
 .headline em {
-  color: var(--warning);
+  color: var(--said);
   font-style: italic;
+}
+
+/* A count of what is worth a look is weather to watch, not sun. */
+.headline a[data-to="look"] em {
+  color: var(--warning);
 }
 
 /* Under it, the one thing that most wants a look, in the reading voice. */
 .lede {
   max-inline-size: var(--measure);
-  margin: 0;
-  padding-inline-start: var(--gutter);
+  margin: 0 0 var(--items);
   color: var(--text);
-  font: var(--voice-weight) var(--step-body) / 1.5 var(--serif);
-  font-style: var(--voice-style);
+  font: var(--voice-weight) var(--step-large) / 1.45 var(--serif);
+  font-style: italic;
+}
+
+/* Where it was read, when, and whether it's live, after a half-lit dot. */
+.standing {
+  display: flex;
+  align-items: baseline;
+  gap: var(--mark);
+  margin: 0 0 var(--tie);
+  color: var(--muted);
+  font: 400 var(--step-small) / 1.5 var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+.standing .glyph {
+  inline-size: 0.7em;
+  block-size: 0.7em;
+  flex: none;
+  align-self: center;
+  border: 1.5px solid var(--tint);
+  border-radius: 50%;
+  background: linear-gradient(to top, var(--tint) 50%, transparent 50%);
+}
+
+.standing[data-state="live"] .glyph {
+  background: var(--tint);
+}
+
+.standing[data-state="stale"],
+.standing[data-state="broken"] {
+  color: var(--strong);
+}
+
+.standing[data-state="stale"] .glyph,
+.standing[data-state="broken"] .glyph {
+  border-color: var(--alert);
+  background: transparent;
+}
+
+.keys {
+  display: none;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--tie) var(--mark);
+  margin: 0 0 var(--mark);
+  color: var(--muted);
+  font: 400 var(--step-small) / 1.5 var(--serif);
+}
+
+.js .keys {
+  display: flex;
+}
+
+.help {
+  min-block-size: 44px;
+  min-inline-size: 44px;
+  padding: 0 var(--mark);
+  background: none;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: 500 var(--step-small) / 1 var(--mono);
+  font-feature-settings: var(--mono-features);
+  cursor: pointer;
+}
+
+.help:hover {
+  border-color: var(--rule);
+  color: var(--strong);
+}
+
+.hero .switch {
+  margin-block-start: var(--tie);
 }
 
 @supports (text-wrap: balance) {
@@ -144,225 +272,103 @@
   }
 }
 
-/* ---- The parts: each a name and what it holds on one line, what is
-   worth a look under it, and the ways deeper last. ---- */
+/* ---- The outlook: four stations on one horizon. ---- */
 
-.parts {
-  margin-block: var(--frames) var(--groups);
+.outlook {
+  margin: var(--frames) 0 0;
 }
 
-.part {
+.stations {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    "name holds"
-    "items items"
-    "deeper deeper";
-  align-items: center;
-  column-gap: var(--items);
-  padding-block: var(--mark) var(--items);
-  border-block-start: 1px solid var(--edge);
-}
-
-.part .name {
-  grid-area: name;
-  margin: 0;
-}
-
-.part .holds {
-  grid-area: holds;
-  margin: 0;
-  color: var(--muted);
-  font: 400 var(--step-small) / 1.4 var(--mono);
-  font-feature-settings: var(--mono-features);
-  text-align: end;
-}
-
-/* A part not read says why where its holding would be, in the voice. */
-.part .holds.unread {
-  font: var(--voice-weight) var(--step-body) / 1.4 var(--serif);
-  font-style: var(--voice-style);
-  text-align: start;
-}
-
-.items {
-  grid-area: items;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   list-style: none;
   margin: 0;
   padding: 0;
+  border-block-end: 1px solid var(--rule);
 }
 
-.deeper {
-  grid-area: deeper;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0 var(--mark);
-  margin: var(--tie) 0 0;
-  padding-inline-start: var(--gutter);
-  color: var(--muted);
-  font: 400 var(--step-small) / 1.4 var(--mono);
-  font-feature-settings: var(--mono-features);
+.stations:empty {
+  min-block-size: 9rem;
 }
 
-.deeper code {
-  color: var(--text);
-}
-
-.deeper .launcher::before {
-  content: "·";
-  margin-inline-end: var(--mark);
-  color: var(--muted);
-}
-
-.copy {
-  min-block-size: 44px;
-  min-inline-size: 44px;
-  padding: 0 var(--mark);
-  background: none;
-  border: 0;
-  border-radius: var(--radius);
-  color: var(--muted);
-  font: inherit;
-  cursor: pointer;
-}
-
-.copy:hover {
-  color: var(--strong);
-}
-
-/* ---- A row: its mark in the gutter, its words on the main line. ---- */
-
-.row {
+.station {
   display: grid;
-  grid-template-columns: var(--gutter) minmax(0, 1fr);
-  align-items: baseline;
-  min-block-size: 44px;
-  padding-block: var(--tie);
-  border-radius: var(--radius);
+  justify-items: center;
+  gap: var(--tie);
+  padding: var(--items) var(--mark) var(--mark);
+  border-radius: var(--radius) var(--radius) 0 0;
   color: var(--text);
+  text-align: center;
   text-decoration: none;
 }
 
-.row:hover {
+.station:hover {
   background: var(--sunken);
 }
 
-.row .gut {
-  display: flex;
-  align-self: center;
-}
-
-.name .row .line {
-  color: var(--strong);
-  font: var(--title-weight) var(--step-section) / 1.2 var(--serif);
-  font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
-}
-
-.items .row .line {
-  font: var(--words-weight) var(--step-body) / 1.45 var(--serif);
-  font-variation-settings: "SOFT" var(--words-soft), "WONK" var(--words-wonk);
-}
-
-.items .own {
-  margin-inline-end: 0.35em;
-  color: var(--strong);
-  font: 500 var(--step-small) / 1 var(--mono);
-  font-feature-settings: var(--mono-features);
-}
-
-/* The cursor: focus itself, ringed in the one accent. */
-.row:focus {
-  outline: none;
-}
-
-.row:focus-visible {
-  background: var(--selection);
+.station:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.row:focus-visible .line,
-.row:focus-visible .own {
+.station .place {
+  min-block-size: 0;
+  padding: 0;
   color: var(--strong);
+  font: italic var(--words-weight) var(--step-large) / 1.2 var(--serif);
 }
 
-/* ---- Marks: each health its own shape, in its state's hue. ---- */
-
-.state {
-  inline-size: 1.1em;
-  block-size: 1.1em;
+.station .forecast {
   color: var(--muted);
-  flex: none;
+  font: 400 var(--step-small) / 1.4 var(--mono);
+  font-feature-settings: var(--mono-features);
 }
 
-.name .state {
-  inline-size: 1.35em;
-  block-size: 1.35em;
+.station.watch .forecast,
+.station.bad .forecast {
+  color: var(--text);
 }
 
-.state.good {
-  color: var(--success);
+.outlook figcaption {
+  margin-block-start: var(--mark);
+  padding-inline-start: var(--gutter);
+  color: var(--muted);
+  font: var(--voice-weight) var(--step-small) / 1.5 var(--serif);
+  font-style: italic;
 }
 
-.state.watch {
-  color: var(--warning);
-}
-
-.state.bad {
-  color: var(--alert);
-}
-
-/* ---- The foot: what each mark says, once. ---- */
-
-.note:empty {
-  display: none;
-}
-
-.foot {
-  margin-block-start: var(--frames);
-}
-
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--tie) var(--groups);
-}
-
-.legend .key {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--mark);
-}
-
-/* ---- A phone: a narrower gutter, and what a part holds under its name. ---- */
+/* ---- A phone: a narrower gutter, and the stations two by two. ---- */
 
 @media (max-width: 40rem) {
   :root {
     --gutter: 2rem;
   }
 
+  .mast {
+    position: static;
+  }
+
   .headline {
-    font-size: var(--step-section);
+    font-size: var(--step-title);
   }
 
-  .part {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "name"
-      "holds"
-      "items"
-      "deeper";
-  }
-
-  .part .holds {
-    padding-inline-start: var(--gutter);
-    text-align: start;
+  .stations {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (forced-colors: active) {
-  .row:focus-visible {
+  .station:focus-visible,
+  .place:focus-visible {
     outline: 2px solid Highlight;
+  }
+
+  .place[aria-current] {
+    text-decoration-color: Highlight;
+  }
+
+  .standing .glyph {
+    border-color: CanvasText;
+    background: CanvasText;
   }
 }

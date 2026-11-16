@@ -1,6 +1,7 @@
-// Your system, now: the four parts of the system as the system daemon holds
-// them, under a headline that counts what is worth a look and a lede that
-// names the worst of it. It watches the daemon's summary, parts and things
+// Your system, now: the weather over everything Joel runs. The four parts
+// of the system as the system daemon holds them, under a headline that
+// counts what is worth a look, a lede that names the worst of it, and the
+// outlook, each part a station on one horizon wearing its sky. It watches the daemon's summary, parts and things
 // over the sites' server, so a part redraws the moment its owner's answer
 // moves, and the line over the headline says whether what it shows is live
 // and since when. The cursor is focus: j and k move it through every row,
@@ -11,7 +12,7 @@ import { hasOwnKeys, listen, toggle } from "../../local-sites/kit/keys.ts";
 import { Held } from "../../local-sites/kit/records.ts";
 import { clockTime, said } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
-import { headlineOf, legend, partsOf } from "./draw.ts";
+import { headlineOf, legend, outlookOf, partsOf, placesOf } from "./draw.ts";
 import { headline, lede, type Part, type System, sentence, systemOf } from "./model.ts";
 
 /** The element `selector` finds, which the page's markup always holds. */
@@ -27,6 +28,9 @@ const list = element("#parts", HTMLDivElement);
 const title = element("#headline", HTMLHeadingElement);
 const ledeLine = element("#lede", HTMLParagraphElement);
 const standingLine = element("#standing", HTMLParagraphElement);
+const standingWords = element("#standing-words", HTMLSpanElement);
+const outlook = element("#outlook", HTMLOListElement);
+const places = element("#places", HTMLElement);
 const note = element("#note", HTMLParagraphElement);
 const keys = element("#keys", HTMLDialogElement);
 
@@ -48,6 +52,8 @@ let cursor: string | null = null;
 // The parts' markup as last drawn, since the browser's own serialization
 // of it never reads back the same.
 let drawnParts = "";
+let drawnOutlook = "";
+let drawnPlaces = "";
 
 /** The worst of the three watches' states, the one the page says. */
 function standing(): Standing | undefined {
@@ -63,12 +69,16 @@ function sayWhen(): void {
   const words: string[] = [];
   if (system !== undefined) {
     const at = Date.parse(system.readAt);
-    words.push(system.machine, Number.isNaN(at) ? "read at an unknown time" : `read ${clockTime(at)}`);
+    words.push(
+      system.machine,
+      Number.isNaN(at) ? "read at an unknown time" : `read ${clockTime(at)}`,
+    );
   }
   if (now !== undefined) {
     words.push(now.state === "live" ? "live" : said(now));
   }
-  standingLine.textContent = words.length === 0 ? "Reaching the system daemon." : words.join(" · ");
+  standingWords.textContent =
+    words.length === 0 ? "Reaching the system daemon." : `${words.join(" · ")}.`;
   standingLine.dataset.state = now?.state ?? "connecting";
   const problems = [...(system?.unread ?? []), ...heard.values()];
   note.textContent = problems.length > 0 ? `Couldn't read: ${problems.join("; ")}.` : "";
@@ -111,19 +121,57 @@ function drawParts(read: System): void {
   (same ?? now[Math.min(focused, now.length - 1)])?.focus({ preventScroll: true });
 }
 
+/**
+ * Redraws `into` with `drawn` only when it reads differently from `before`,
+ * keeping focus on the link marked `attribute` it was on, so the outlook and
+ * the places never take the cursor from under Joel. Says what it drew.
+ */
+function redraw(into: Element, drawn: string, before: string, attribute: string): string {
+  if (drawn === before) {
+    return before;
+  }
+  const focused = document.activeElement;
+  const was =
+    focused instanceof HTMLElement && into.contains(focused)
+      ? focused.getAttribute(attribute)
+      : null;
+  into.innerHTML = drawn;
+  if (was !== null) {
+    into
+      .querySelector<HTMLElement>(`[${attribute}="${CSS.escape(was)}"]`)
+      ?.focus({ preventScroll: true });
+  }
+  return drawn;
+}
+
+/** Marks the place of the part the cursor is in, so the top says where Joel is. */
+function markPlace(): void {
+  const here = document.activeElement?.closest<HTMLElement>("[data-part]")?.dataset.part;
+  for (const place of places.querySelectorAll<HTMLAnchorElement>("a[data-place]")) {
+    if (place.dataset.place === here) {
+      place.setAttribute("aria-current", "location");
+    } else {
+      place.removeAttribute("aria-current");
+    }
+  }
+}
+
 function draw(): void {
   system = systemOf(held.summary, held.part, held.machine);
   sayWhen();
   if (system === undefined) {
     return;
   }
-  const said = headline(system);
-  title.innerHTML = headlineOf(said);
+  const heading = headline(system);
+  title.innerHTML = headlineOf(heading);
   const worst = lede(system);
   ledeLine.hidden = worst === undefined;
   ledeLine.textContent = worst ?? "";
-  document.title = `${sentence(said)} Your system, now`;
+  document.title = `${sentence(heading)} Your system, now`;
+  drawnOutlook = redraw(outlook, outlookOf(system), drawnOutlook, "data-station");
+  drawnPlaces = redraw(places, placesOf(system), drawnPlaces, "data-place");
   drawParts(system);
+  markPlace();
 }
 
 for (const kind of KINDS) {
@@ -182,9 +230,7 @@ function copy(command: string): void {
   );
 }
 
-const jumps = Object.fromEntries(
-  [1, 2, 3, 4].map((index) => [String(index), () => toPart(index)]),
-);
+const jumps = Object.fromEntries([1, 2, 3, 4].map((index) => [String(index), () => toPart(index)]));
 
 listen({
   help: keys,
@@ -213,7 +259,21 @@ list.addEventListener("focusin", (event) => {
   if (event.target instanceof HTMLAnchorElement && event.target.dataset.row !== undefined) {
     cursor = event.target.dataset.row;
   }
+  markPlace();
 });
+
+// A station or a place goes to its part's heading, putting the cursor there.
+for (const into of [outlook, places]) {
+  into.addEventListener("click", (event) => {
+    const link = event.target instanceof Element ? event.target.closest("a[href^='#part-']") : null;
+    if (!(link instanceof HTMLAnchorElement)) {
+      return;
+    }
+    event.preventDefault();
+    const part = link.hash.slice("#part-".length);
+    land(rows().find((row) => row.dataset.row === `part:${part}`));
+  });
+}
 
 list.addEventListener("click", (event) => {
   const button = event.target instanceof Element ? event.target.closest(".copy") : null;
