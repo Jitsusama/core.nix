@@ -2,7 +2,7 @@
 //! Meet APIs as the account. Drive's calls are in `drive_calls.rs`, beside this.
 //!
 //! The origins are given rather than fixed, so the tests can ask a stand-in
-//! on this machine instead (`tests/stand_in.rs`).
+//! on this machine instead (`tests/stand_in/`).
 
 use std::time::Duration;
 
