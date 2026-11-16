@@ -3441,6 +3441,11 @@
     bubblewrap's session, never the one claimed or what was copied; shell-preview's nested niri
     opens on the sandboxed display and takes wtype's keys, which the display itself refuses
   '';
+  pi-fence-never-runs-unfenced = ''
+    pi-fence, the store's launcher for one command in pi's own fence, refuses a kind it doesn't
+    know with its usage, and where it can't lay the fence, as in a build with neither bubblewrap
+    nor landrun, refuses either kind and says why rather than running the command unfenced
+  '';
   pi-fence-display-passes-clippy = ''
     clippy finds nothing in pi-fence-display or its tests, the sandboxed display pi's fenced
     commands open windows on

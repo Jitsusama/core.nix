@@ -294,6 +294,7 @@
         pi-agent-proxy = pkgs.callPackage ../../modules/pi/agent-proxy/package.nix { };
         pi-clipboard-door = clipboardDoor;
         pi-clipboard-shim = clipboardDoor;
+        pi-fence = pkgs.callPackage ../../modules/pi/fence-run/package.nix { };
         pi-fence-display = pkgs.callPackage ../../modules/pi/fence-display/package.nix { };
         pi-github-door = pkgs.callPackage ../../modules/pi/github-door/package.nix { };
         pi-keys = pkgs.callPackage ../../modules/pi-keys/package.nix { };

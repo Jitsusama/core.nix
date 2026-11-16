@@ -16,8 +16,8 @@ let
   harness = fetchFromGitHub {
     owner = "Jitsusama";
     repo = "agentic-harness.pi";
-    rev = "5d757173b75eb98ffaef0c9c2c820a4d675e5145";
-    hash = "sha256-UgOrKyp+i92jEZG/ySCdrknZyffjQJqjj1gIzY8PtKc=";
+    rev = "3d556098a961c0f00024213c3e4d84753cad64da";
+    hash = "sha256-IAt1km4A+ycNzsKBMSokQtrzKGWbxXTSPcRn+HHfBqc=";
   };
 in
 writeShellApplication {
