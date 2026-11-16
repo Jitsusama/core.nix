@@ -189,17 +189,18 @@ function rested(to, view) {
     return to;
 }
 
-// Whether a row is drawn in a view: only wholly in it, so the view never
-// shows a row cut at its foot, and a heading only with its first row whole
-// too, so none stands alone there. `row` says where it stands (`top`), how
-// tall it is (`tall`) and the row under it is (`under`, null for none),
-// and whether it's a heading; `view` where the view starts (`from`) and
+// Whether a row is drawn in a view: only with what it draws wholly in it,
+// so the view never shows a row cut at its foot, and a heading only with
+// its first row whole too, so none stands alone there. A row draws its
+// ground only while selected, and otherwise just its line, so `row` says
+// where what it draws starts and ends (`from`, `to`), the same of the row
+// under it (`under`, null for none), and whether it's a heading (VKCF3Z,
+// 2026-11-15 [889f9a7d]); `view` says where the view starts (`from`) and
 // how tall it is.
 function drawn(row, view) {
-    const whole = (at, high) => at >= view.from - LEEWAY
-        && at + high <= view.from + view.height + LEEWAY;
-    return whole(row.top, row.tall)
-        && !(row.heading && row.under !== null && !whole(row.top + row.tall, row.under));
+    const whole = span => span.from >= view.from - LEEWAY
+        && span.to <= view.from + view.height + LEEWAY;
+    return whole(row) && !(row.heading && row.under !== null && !whole(row.under));
 }
 
 // The rows with no heading, as a search shows them: its ranking mixes the

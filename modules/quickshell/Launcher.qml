@@ -12562,19 +12562,38 @@ Scope {
                             // view among headings.
                             // Whether the list draws `entry` where the view
                             // stands: always without headings, and with them
-                            // only whole, a heading only with its first row.
-                            // The gutter asks it too, as the view moves and
-                            // before the rows' own bindings have caught up.
+                            // only with what it draws whole, a heading only
+                            // with its first row's too. The gutter asks it
+                            // too, as the view moves and before the rows'
+                            // own bindings have caught up.
                             function draws(entry) {
-                                return root.headingsAt.length === 0 || entry.aside
-                                    || Headings.drawn({
-                                        top: entry.y,
-                                        tall: entry.height,
-                                        under: entry.index + 1 < root.matches.length
-                                            ? root.tallOf(root.matches[entry.index + 1],
-                                                entry.index + 1) : null,
-                                        heading: Headings.isHeading(entry.modelData)
-                                    }, { from: list.contentY, height: list.height });
+                                if (root.headingsAt.length === 0 || entry.aside)
+                                    return true;
+                                const span = list.extentOf(entry);
+                                const next = entry.index + 1;
+                                const below = next < root.matches.length
+                                    ? list.itemAtIndex(next) : null;
+                                return Headings.drawn({
+                                    from: span.from,
+                                    to: span.to,
+                                    heading: Headings.isHeading(entry.modelData),
+                                    under: next >= root.matches.length ? null
+                                        : below !== null ? list.extentOf(below)
+                                        : { from: entry.y + entry.height, to: entry.y
+                                            + entry.height + root.tallOf(root.matches[next],
+                                                next) }
+                                }, { from: list.contentY, height: list.height });
+                            }
+
+                            // Where in the list what `entry` draws starts
+                            // and ends: the selected row's whole ground, and
+                            // any other row's line, inside its band.
+                            function extentOf(entry) {
+                                const choice = entry.drawnRow;
+                                const top = entry.y + choice.y;
+                                if (!entry.aside && entry.index === root.current)
+                                    return { from: top, to: entry.y + entry.height };
+                                return { from: top + choice.drawnFrom, to: top + choice.drawnTo };
                             }
 
                             function headed() {
@@ -12587,16 +12606,19 @@ Scope {
                                 };
                             }
                             // The rows drawn but cut by the view, by their
-                            // place: none, where the list has headings.
+                            // place, judged by what each draws where the
+                            // list has headings: none, there.
                             function cut() {
                                 const from = list.contentY;
                                 const cuts = [];
+                                const headed = root.headingsAt.length > 0;
                                 for (let at = 0; at < root.matches.length; at += 1) {
                                     const entry = list.itemAtIndex(at);
                                     if (entry === null || entry.opacity === 0)
                                         continue;
-                                    const top = entry.y;
-                                    const bottom = top + entry.height;
+                                    const span = headed ? list.extentOf(entry) : null;
+                                    const top = headed ? span.from : entry.y;
+                                    const bottom = headed ? span.to : top + entry.height;
                                     if (bottom > from + 0.5 && top < from + list.height - 0.5
                                         && (top < from - 0.5 || bottom > from + list.height + 0.5))
                                         cuts.push(at);
