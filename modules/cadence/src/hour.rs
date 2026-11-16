@@ -8,6 +8,9 @@
 //! whether it moved; and sends the card to the orchestrator. A miss Joel
 //! found himself outranks every figure, and stays open until a check
 //! that would have caught it merges.
+//!
+//! Long because the card's reading, keeping and sending share this file
+//! until it's split by what each does, which is its own change.
 
 mod lines;
 mod measures;
