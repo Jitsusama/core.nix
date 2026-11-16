@@ -211,61 +211,10 @@ pub fn ask(arguments: &[String]) -> ExitCode {
             "Name it with --on, or set jitsusama.nix-offload.gatesOn in the machine's home.",
         );
     };
-    let commit = match git(&["rev-parse", "--verify", "HEAD^{commit}"]) {
-        Ok(commit) => commit,
-        Err(why) => {
-            return failed(
-                66,
-                "ask needs a git tree with a commit",
-                &why,
-                "Run it in the tree to gate.",
-            );
-        }
+    let (commit, repo) = match gated_here() {
+        Ok(here) => here,
+        Err(code) => return code,
     };
-    match git(&["status", "--porcelain", "--untracked-files=no"]) {
-        Ok(changes) if changes.is_empty() => {}
-        Ok(_) => {
-            return failed(
-                REFUSED,
-                "ask gates a commit",
-                "the tree has changes not committed, which the gate wouldn't see",
-                "Commit them, or set them aside, and ask again.",
-            );
-        }
-        Err(why) => {
-            return failed(
-                66,
-                "ask couldn't read the tree's changes",
-                &why,
-                "Run it in the tree to gate.",
-            );
-        }
-    }
-    let Some(repo) = git(&["remote", "get-url", "origin"])
-        .ok()
-        .as_deref()
-        .and_then(Repo::of_remote)
-    else {
-        return failed(
-            REFUSED,
-            "ask gates a repo on GitHub",
-            "origin isn't a GitHub repo",
-            "Point origin at the repo on GitHub.",
-        );
-    };
-    if let Err(why) = git(&["fetch", "--quiet", "origin", "main"]) {
-        eprintln!(
-            "nix-offload: ask couldn't fetch origin's main, so it bundles from the one it has: {why}"
-        );
-    }
-    if git(&["rev-list", "--count", "origin/main..HEAD"]).as_deref() == Ok("0") {
-        return failed(
-            REFUSED,
-            "ask has nothing to gate",
-            "HEAD has no commit past origin's main",
-            "Commit the change first.",
-        );
-    }
     let request = Request {
         repo,
         commit: commit.clone(),
@@ -281,36 +230,8 @@ pub fn ask(arguments: &[String]) -> ExitCode {
             "Check the quest's scratch folder.",
         );
     }
-    // Shared to the machine and waited for, where both ends' mycelium
-    // can; otherwise shared, and `answer` finds the gate once it crosses.
-    let shared = mycelium(&["share", &asked.quest, "--to", &on, "--wait"])
-        .or_else(|_| mycelium(&["share", &asked.quest]));
-    if let Err(why) = shared {
-        return failed(
-            69,
-            "ask couldn't share the quest",
-            &why,
-            "Check `mycelium machines` reaches the gate's machine.",
-        );
-    }
-    let machine = format!("machine={on}");
-    let answering = [
-        "start",
-        "--need",
-        &machine,
-        "--",
-        "nix-offload",
-        "answer",
-        &asked.quest,
-        &commit,
-    ];
-    if let Err(why) = mycelium(&answering) {
-        return failed(
-            69,
-            "ask couldn't start the gate",
-            &why,
-            "Check `mycelium machines` says it's ready.",
-        );
+    if let Err(code) = started(&asked.quest, &on, &commit) {
+        return code;
     }
     eprintln!(
         "nix-offload: asked {on} to gate {commit}; waiting for its result in {}",
@@ -333,6 +254,100 @@ pub fn ask(arguments: &[String]) -> ExitCode {
     }
     println!("{}", found.said);
     ExitCode::from(found.exit)
+}
+
+/// This tree's commit and its repo on GitHub, once it's committed whole
+/// and past origin's main, or why it can't be gated, already said.
+fn gated_here() -> Result<(String, Repo), ExitCode> {
+    let commit = git(&["rev-parse", "--verify", "HEAD^{commit}"]).map_err(|why| {
+        failed(
+            66,
+            "ask needs a git tree with a commit",
+            &why,
+            "Run it in the tree to gate.",
+        )
+    })?;
+    match git(&["status", "--porcelain", "--untracked-files=no"]) {
+        Ok(changes) if changes.is_empty() => {}
+        Ok(_) => {
+            return Err(failed(
+                REFUSED,
+                "ask gates a commit",
+                "the tree has changes not committed, which the gate wouldn't see",
+                "Commit them, or set them aside, and ask again.",
+            ));
+        }
+        Err(why) => {
+            return Err(failed(
+                66,
+                "ask couldn't read the tree's changes",
+                &why,
+                "Run it in the tree to gate.",
+            ));
+        }
+    }
+    let Some(repo) = git(&["remote", "get-url", "origin"])
+        .ok()
+        .as_deref()
+        .and_then(Repo::of_remote)
+    else {
+        return Err(failed(
+            REFUSED,
+            "ask gates a repo on GitHub",
+            "origin isn't a GitHub repo",
+            "Point origin at the repo on GitHub.",
+        ));
+    };
+    if let Err(why) = git(&["fetch", "--quiet", "origin", "main"]) {
+        eprintln!(
+            "nix-offload: ask couldn't fetch origin's main, so it bundles from the one it has: {why}"
+        );
+    }
+    if git(&["rev-list", "--count", "origin/main..HEAD"]).as_deref() == Ok("0") {
+        return Err(failed(
+            REFUSED,
+            "ask has nothing to gate",
+            "HEAD has no commit past origin's main",
+            "Commit the change first.",
+        ));
+    }
+    Ok((commit, repo))
+}
+
+/// The quest shared to `on` and `answer` started there for `commit`, or
+/// why not, already said.
+fn started(quest: &str, on: &str, commit: &str) -> Result<(), ExitCode> {
+    // Shared to the machine and waited for, where both ends' mycelium
+    // can; otherwise shared, and `answer` finds the gate once it crosses.
+    mycelium(&["share", quest, "--to", on, "--wait"])
+        .or_else(|_| mycelium(&["share", quest]))
+        .map_err(|why| {
+            failed(
+                69,
+                "ask couldn't share the quest",
+                &why,
+                "Check `mycelium machines` reaches the gate's machine.",
+            )
+        })?;
+    let machine = format!("machine={on}");
+    let answering = [
+        "start",
+        "--need",
+        &machine,
+        "--",
+        "nix-offload",
+        "answer",
+        quest,
+        commit,
+    ];
+    mycelium(&answering).map_err(|why| {
+        failed(
+            69,
+            "ask couldn't start the gate",
+            &why,
+            "Check `mycelium machines` says it's ready.",
+        )
+    })
 }
 
 #[cfg(test)]

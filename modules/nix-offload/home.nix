@@ -519,188 +519,207 @@ in
       default = null;
       description = "The zone the times are in, when not the machine's own.";
     };
+    gatesOn = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "kestrel";
+      description = ''
+        The mycelium machine `nix-offload ask` has gate this machine's
+        commits, for a machine with no way to the builders of its own, such
+        as a Mac. It needs nothing else here: the quest is shared and the
+        gate started through mycelium, and the machine named answers with
+        its own nix-offload.
+      '';
+    };
   };
 
-  config = lib.mkIf (cfg.helper != null || names || sendsElsewhere) {
-    home.packages = [ offload ];
+  config = lib.mkMerge [
+    # Platform-free, so a Mac can name the machine that gates for it.
+    (lib.mkIf (cfg.gatesOn != null) {
+      home.packages = [ offload ];
+      xdg.configFile."nix-offload/gates-on".text = "${cfg.gatesOn}\n";
+    })
+    (lib.mkIf (cfg.helper != null || names || sendsElsewhere) {
+      home.packages = [ offload ];
 
-    xdg.configFile."nix-offload/standing" = lib.mkIf names { text = builders cfg.standing; };
+      xdg.configFile."nix-offload/standing" = lib.mkIf names { text = builders cfg.standing; };
 
-    xdg.configFile."nix-offload/beside" = lib.mkIf names { text = builders cfg.beside; };
+      xdg.configFile."nix-offload/beside" = lib.mkIf names { text = builders cfg.beside; };
 
-    xdg.configFile."nix-offload/freeing" = lib.mkIf names {
-      text = lib.concatMapStrings (builder: "${builder.address} ${builder.free}\n") (
-        lib.filter (builder: builder.free != null) cfg.beside
-      );
-    };
+      xdg.configFile."nix-offload/freeing" = lib.mkIf names {
+        text = lib.concatMapStrings (builder: "${builder.address} ${builder.free}\n") (
+          lib.filter (builder: builder.free != null) cfg.beside
+        );
+      };
 
-    xdg.configFile."nix-offload/evaluators" = lib.mkIf (cfg.evaluators != [ ]) {
-      text = lib.concatMapStrings (
-        machine: "${machine.address} ${machine.host} ${lib.concatStringsSep "," machine.owners}\n"
-      ) cfg.evaluators;
-    };
+      xdg.configFile."nix-offload/evaluators" = lib.mkIf (cfg.evaluators != [ ]) {
+        text = lib.concatMapStrings (
+          machine: "${machine.address} ${machine.host} ${lib.concatStringsSep "," machine.owners}\n"
+        ) cfg.evaluators;
+      };
 
-    xdg.configFile."nix-offload/nearby" = lib.mkIf (cfg.nearby != [ ]) {
-      text = lib.concatMapStrings (
-        machine:
-        lib.concatStringsSep " " (
-          [
-            machine.address
-            machine.host
-            (lib.concatStringsSep "," machine.systems)
-          ]
-          ++ lib.optional (machine.attributes != [ ]) (lib.concatStringsSep "," machine.attributes)
-        )
-        + "\n"
-      ) cfg.nearby;
-    };
-
-    # The lenders, their tunnels and relays carry every build sent away, so
-    # they weigh as much as a session does rather than background's 30: on
-    # 8 November, at 48% CPU pressure, a tunnel in background was so slow to
-    # answer that its relay hung up on 11 callers in 9 minutes. Their CPU is a few
-    # percent, so the weight buys them time when they need it and little
-    # else. The disk stays background's, since an upload's reads can wait.
-    systemd.user.slices.offload.Slice = {
-      CPUWeight = 100;
-      IOWeight = 1;
-    };
-
-    systemd.user.services.nix-offload = lib.mkIf (cfg.helper != null || names) {
-      Unit = {
-        Description = "Names this machine's builders, lending one while its queue has builds one could take";
-      }
-      // reloaded;
-      Service = {
-        ExecStart = lib.concatStringsSep " " (
-          (
-            if cfg.helper == null then
-              [
-                (lib.getExe offload)
-                "stand"
-              ]
-            else
-              serving
-              ++ [ "--prefix ${cfg.prefix}" ]
-              ++ lib.optional (cfg.whenNoneAnswers != null) "--tell ${cfg.whenNoneAnswers}"
+      xdg.configFile."nix-offload/nearby" = lib.mkIf (cfg.nearby != [ ]) {
+        text = lib.concatMapStrings (
+          machine:
+          lib.concatStringsSep " " (
+            [
+              machine.address
+              machine.host
+              (lib.concatStringsSep "," machine.systems)
+            ]
+            ++ lib.optional (machine.attributes != [ ]) (lib.concatStringsSep "," machine.attributes)
           )
-          ++ lib.optionals names [
-            "--standing ${listed "standing"}"
-            "--beside ${listed "beside"}"
-            "--freeing ${listed "freeing"}"
-          ]
-        );
-        Environment = zoned;
-      }
-      // stopping;
-      Install.WantedBy = [ "default.target" ];
-    };
+          + "\n"
+        ) cfg.nearby;
+      };
 
-    assertions = [
-      {
-        assertion = cfg.vmTests == null || cfg.vmTests.more == null || cfg.vmTests.builds != null;
-        message = ''
-          jitsusama.nix-offload.vmTests.more takes the VM tests past the first's
-          room, so vmTests.builds must say how many it runs at once.
-        '';
-      }
-      {
-        assertion =
-          cfg.vmTests == null
-          || cfg.vmTests.extra == [ ]
-          || (cfg.vmTests.more != null && lib.length cfg.vmTests.extra <= extraVmLenders);
-        message = ''
-          jitsusama.nix-offload.vmTests.extra takes what's past the second VM
-          builder, so vmTests.more must be set, and it holds at most
-          ${toString extraVmLenders}, as many folders as nixos.nix makes for them.
-        '';
-      }
-    ];
+      # The lenders, their tunnels and relays carry every build sent away, so
+      # they weigh as much as a session does rather than background's 30: on
+      # 8 November, at 48% CPU pressure, a tunnel in background was so slow to
+      # answer that its relay hung up on 11 callers in 9 minutes. Their CPU is a few
+      # percent, so the weight buys them time when they need it and little
+      # else. The disk stays background's, since an upload's reads can wait.
+      systemd.user.slices.offload.Slice = {
+        CPUWeight = 100;
+        IOWeight = 1;
+      };
 
-    xdg.configFile."nix-offload/vm-tests" = lib.mkIf (cfg.vmTests != null) {
-      text = lib.concatMapStrings (pattern: "${pattern}\n") (vmTestsOfCore ++ cfg.vmTests.patterns);
-    };
+      systemd.user.services.nix-offload = lib.mkIf (cfg.helper != null || names) {
+        Unit = {
+          Description = "Names this machine's builders, lending one while its queue has builds one could take";
+        }
+        // reloaded;
+        Service = {
+          ExecStart = lib.concatStringsSep " " (
+            (
+              if cfg.helper == null then
+                [
+                  (lib.getExe offload)
+                  "stand"
+                ]
+              else
+                serving
+                ++ [ "--prefix ${cfg.prefix}" ]
+                ++ lib.optional (cfg.whenNoneAnswers != null) "--tell ${cfg.whenNoneAnswers}"
+            )
+            ++ lib.optionals names [
+              "--standing ${listed "standing"}"
+              "--beside ${listed "beside"}"
+              "--freeing ${listed "freeing"}"
+            ]
+          );
+          Environment = zoned;
+        }
+        // stopping;
+        Install.WantedBy = [ "default.target" ];
+      };
 
-    xdg.configFile."nix-offload/vm-builds" = lib.mkIf (cfg.vmTests.builds or null != null) {
-      text = "${toString cfg.vmTests.builds}\n";
-    };
-
-    systemd.user.services.nix-offload-vm = lib.mkIf (cfg.helper != null && cfg.vmTests != null) {
-      Unit = {
-        Description = "Lends a builder for VM tests alone while a build sent there waits on one";
-      }
-      // reloaded;
-      Service = {
-        ExecStart = lib.concatStringsSep " " (
-          serving
-          ++ [
-            "--prefix ${cfg.vmTests.prefix}"
-            "--dir /run/nix-offload-vm --only-there"
-          ]
-          ++ warming
-          ++ staying
-        );
-        Environment = vmEnvironment cfg.vmTests.environment;
-      }
-      // stopping;
-      Install.WantedBy = [ "default.target" ];
-    };
-
-    systemd.user.services.nix-offload-vm-more =
-      lib.mkIf (cfg.helper != null && cfg.vmTests.more or null != null)
+      assertions = [
         {
-          Unit = {
-            Description = "Lends a second builder for VM tests while the first is full";
-          }
-          // reloaded;
-          Service = {
-            ExecStart = lib.concatStringsSep " " (
-              serving
-              ++ [
-                "--prefix ${cfg.vmTests.more.prefix}"
-                "--dir /run/nix-offload-vm-more --only-there"
-              ]
-              ++ warming
-              ++ staying
-            );
-            Environment = vmEnvironment cfg.vmTests.more.environment;
-          }
-          // stopping;
-          Install.WantedBy = [ "default.target" ];
-        };
+          assertion = cfg.vmTests == null || cfg.vmTests.more == null || cfg.vmTests.builds != null;
+          message = ''
+            jitsusama.nix-offload.vmTests.more takes the VM tests past the first's
+            room, so vmTests.builds must say how many it runs at once.
+          '';
+        }
+        {
+          assertion =
+            cfg.vmTests == null
+            || cfg.vmTests.extra == [ ]
+            || (cfg.vmTests.more != null && lib.length cfg.vmTests.extra <= extraVmLenders);
+          message = ''
+            jitsusama.nix-offload.vmTests.extra takes what's past the second VM
+            builder, so vmTests.more must be set, and it holds at most
+            ${toString extraVmLenders}, as many folders as nixos.nix makes for them.
+          '';
+        }
+      ];
 
-    systemd.user.services.nix-offload-vm-3 = extraVm 3;
-    systemd.user.services.nix-offload-vm-4 = extraVm 4;
-    systemd.user.services.nix-offload-vm-5 = extraVm 5;
-    systemd.user.services.nix-offload-vm-6 = extraVm 6;
-    systemd.user.services.nix-offload-vm-7 = extraVm 7;
-    systemd.user.services.nix-offload-vm-8 = extraVm 8;
-    systemd.user.services.nix-offload-vm-9 = extraVm 9;
-    systemd.user.services.nix-offload-vm-10 = extraVm 10;
-    systemd.user.services.nix-offload-vm-11 = extraVm 11;
-    systemd.user.services.nix-offload-vm-12 = extraVm 12;
-    systemd.user.services.nix-offload-vm-13 = extraVm 13;
-    systemd.user.services.nix-offload-vm-14 = extraVm 14;
-    systemd.user.services.nix-offload-vm-15 = extraVm 15;
-    systemd.user.services.nix-offload-vm-16 = extraVm 16;
+      xdg.configFile."nix-offload/vm-tests" = lib.mkIf (cfg.vmTests != null) {
+        text = lib.concatMapStrings (pattern: "${pattern}\n") (vmTestsOfCore ++ cfg.vmTests.patterns);
+      };
 
-    systemd.user.services.nix-offload-more = lib.mkIf (cfg.helper != null && cfg.more != null) {
-      Unit = {
-        Description = "Lends another builder while the first is full and a build sent there waits on one";
-      }
-      // reloaded;
-      Service = {
-        ExecStart = lib.concatStringsSep " " (
-          serving
-          ++ [
-            "--prefix ${cfg.more.prefix}"
-            "--dir /run/nix-offload-more --only-there"
-          ]
-        );
-        Environment = zoned ++ lib.mapAttrsToList (name: value: "${name}=${value}") cfg.more.environment;
-      }
-      // stopping;
-      Install.WantedBy = [ "default.target" ];
-    };
-  };
+      xdg.configFile."nix-offload/vm-builds" = lib.mkIf (cfg.vmTests.builds or null != null) {
+        text = "${toString cfg.vmTests.builds}\n";
+      };
+
+      systemd.user.services.nix-offload-vm = lib.mkIf (cfg.helper != null && cfg.vmTests != null) {
+        Unit = {
+          Description = "Lends a builder for VM tests alone while a build sent there waits on one";
+        }
+        // reloaded;
+        Service = {
+          ExecStart = lib.concatStringsSep " " (
+            serving
+            ++ [
+              "--prefix ${cfg.vmTests.prefix}"
+              "--dir /run/nix-offload-vm --only-there"
+            ]
+            ++ warming
+            ++ staying
+          );
+          Environment = vmEnvironment cfg.vmTests.environment;
+        }
+        // stopping;
+        Install.WantedBy = [ "default.target" ];
+      };
+
+      systemd.user.services.nix-offload-vm-more =
+        lib.mkIf (cfg.helper != null && cfg.vmTests.more or null != null)
+          {
+            Unit = {
+              Description = "Lends a second builder for VM tests while the first is full";
+            }
+            // reloaded;
+            Service = {
+              ExecStart = lib.concatStringsSep " " (
+                serving
+                ++ [
+                  "--prefix ${cfg.vmTests.more.prefix}"
+                  "--dir /run/nix-offload-vm-more --only-there"
+                ]
+                ++ warming
+                ++ staying
+              );
+              Environment = vmEnvironment cfg.vmTests.more.environment;
+            }
+            // stopping;
+            Install.WantedBy = [ "default.target" ];
+          };
+
+      systemd.user.services.nix-offload-vm-3 = extraVm 3;
+      systemd.user.services.nix-offload-vm-4 = extraVm 4;
+      systemd.user.services.nix-offload-vm-5 = extraVm 5;
+      systemd.user.services.nix-offload-vm-6 = extraVm 6;
+      systemd.user.services.nix-offload-vm-7 = extraVm 7;
+      systemd.user.services.nix-offload-vm-8 = extraVm 8;
+      systemd.user.services.nix-offload-vm-9 = extraVm 9;
+      systemd.user.services.nix-offload-vm-10 = extraVm 10;
+      systemd.user.services.nix-offload-vm-11 = extraVm 11;
+      systemd.user.services.nix-offload-vm-12 = extraVm 12;
+      systemd.user.services.nix-offload-vm-13 = extraVm 13;
+      systemd.user.services.nix-offload-vm-14 = extraVm 14;
+      systemd.user.services.nix-offload-vm-15 = extraVm 15;
+      systemd.user.services.nix-offload-vm-16 = extraVm 16;
+
+      systemd.user.services.nix-offload-more = lib.mkIf (cfg.helper != null && cfg.more != null) {
+        Unit = {
+          Description = "Lends another builder while the first is full and a build sent there waits on one";
+        }
+        // reloaded;
+        Service = {
+          ExecStart = lib.concatStringsSep " " (
+            serving
+            ++ [
+              "--prefix ${cfg.more.prefix}"
+              "--dir /run/nix-offload-more --only-there"
+            ]
+          );
+          Environment = zoned ++ lib.mapAttrsToList (name: value: "${name}=${value}") cfg.more.environment;
+        }
+        // stopping;
+        Install.WantedBy = [ "default.target" ];
+      };
+    })
+  ];
 }

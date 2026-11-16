@@ -165,6 +165,30 @@ fn unreached(why: impl Into<String>) -> Refusal {
     (UNREACHED, why.into())
 }
 
+/// The locks a gate of `commit` runs under: its own, so no two gate it
+/// at once, and one of [`AT_ONCE`] slots; or why not now.
+fn held(places: &Places, commit: &str) -> Result<(Held, Held), Refusal> {
+    let locks = places.locks();
+    fs::create_dir_all(&locks)
+        .map_err(|error| unreached(format!("{}: {error}", locks.display())))?;
+    let Some(alone) = locked_now(&locks.join(format!("{commit}.lock")))
+        .map_err(|error| unreached(error.to_string()))?
+    else {
+        return Err((NOT_NOW, format!("{commit} is being gated already")));
+    };
+    for at in 0..AT_ONCE {
+        if let Some(slot) = locked_now(&locks.join(format!("slot-{at}.lock")))
+            .map_err(|error| unreached(error.to_string()))?
+        {
+            return Ok((alone, slot));
+        }
+    }
+    Err((
+        NOT_NOW,
+        format!("{AT_ONCE} gates are running; ask again once one ends"),
+    ))
+}
+
 /// The gate of `request`, read once from `gate`, to the run's exit, the
 /// run given the checked clone and its log; or why it ran none.
 ///
@@ -184,28 +208,7 @@ pub fn gated(
             "the request asks for another commit or quest than it was started for",
         ));
     }
-    let locks = places.locks();
-    fs::create_dir_all(&locks)
-        .map_err(|error| unreached(format!("{}: {error}", locks.display())))?;
-    let Some(_alone) = locked_now(&locks.join(format!("{commit}.lock")))
-        .map_err(|error| unreached(error.to_string()))?
-    else {
-        return Err((NOT_NOW, format!("{commit} is being gated already")));
-    };
-    let mut slot = None;
-    for at in 0..AT_ONCE {
-        slot = locked_now(&locks.join(format!("slot-{at}.lock")))
-            .map_err(|error| unreached(error.to_string()))?;
-        if slot.is_some() {
-            break;
-        }
-    }
-    let Some(_slot) = slot else {
-        return Err((
-            NOT_NOW,
-            format!("{AT_ONCE} gates are running; ask again once one ends"),
-        ));
-    };
+    let _held = held(places, commit)?;
     let work = places.work(commit);
     if work.exists() {
         fs::remove_dir_all(&work)

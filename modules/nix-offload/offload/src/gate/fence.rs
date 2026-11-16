@@ -52,7 +52,9 @@ pub enum Fence {
         git: PathBuf,
     },
     /// As it is, with the same settings, as a test runs it where no
-    /// namespace can be made.
+    /// namespace can be made. Only tests build it, so nothing shipped can
+    /// run a gate's git outside the fence.
+    #[cfg(test)]
     Bare {
         /// git.
         git: PathBuf,
@@ -131,6 +133,7 @@ impl Fence {
     ) -> Result<String, String> {
         let settings = SETTINGS.iter().flat_map(|setting| ["-c", setting]);
         let mut command = match self {
+            #[cfg(test)]
             Self::Bare { git } => {
                 let mut command = Command::new(git);
                 command.current_dir(folder);

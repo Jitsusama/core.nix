@@ -1730,6 +1730,9 @@
   nix-collects-before-the-disk-fills = ''
     Nix collects garbage during a build that fills the disk
   '';
+  nix-offload-asks-from-a-mac = ''
+    nix-offload builds for a Mac, so a Mac can ask another machine to gate its commits
+  '';
   nix-offload-decides-when = ''
     a builder is asked for the moment a build or VM check is queued or running, by a queue
     still writing, within the day's hours and never beside one not yet seen gone; it's named

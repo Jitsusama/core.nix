@@ -72,7 +72,10 @@ impl Repo {
     #[must_use]
     pub fn parse(key: &str) -> Option<Self> {
         let (owner, name) = key.strip_prefix("github:")?.split_once('/')?;
-        (plain_name(owner) && plain_name(name) && !name.ends_with(".git")).then(|| Self {
+        let cloned = Path::new(name)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("git"));
+        (plain_name(owner) && plain_name(name) && !cloned).then(|| Self {
             owner: owner.to_owned(),
             name: name.to_owned(),
         })
