@@ -415,17 +415,6 @@
     "test": "vm-desktop-launcher-holds-meetings"
   },
   {
-    "at": 1794787732,
-    "commit": "c15f5870c88d03fa021b6d339ddac70223180a73",
-    "due": "2026-11-18",
-    "owner_pr": 4725,
-    "reason": "has been broken since #4725, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "subtests": [
-      "test_a_service_nothing_named_a_slice_for_is_said_of_and_left"
-    ],
-    "test": "vm-apps-come-first"
-  },
-  {
     "at": 1794794571,
     "commit": "2065994cec0d46523499d9bec8c170791466e1ef",
     "due": "2026-11-18",
