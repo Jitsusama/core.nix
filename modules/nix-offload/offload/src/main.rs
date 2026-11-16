@@ -156,6 +156,7 @@
 //! builder fails its proofs, or none is lent, its file for any work names
 //! the second lent builder, else the warm VM builders, that passed theirs.
 
+mod cargo;
 mod changed;
 mod cloud;
 mod command;
@@ -288,7 +289,8 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload there [--never-ask] [--first] [--lent-only] --changed \
                     [CHANGED-CHECKS ARGUMENT...] \
                     | nix-offload there [--never-ask] --run [--copy PATH]... \
-                    [--longest SECONDS] -- COMMAND...";
+                    [--longest SECONDS] -- COMMAND... \
+                    | nix-offload cargo --cargo PATH -- WORD...";
 
 /// Set when the service is told to end, so its builder is journalled for the
 /// next start to give back.
@@ -490,6 +492,11 @@ fn main() -> ExitCode {
         Some("answer") => return gate::answer::answer(&arguments[1..], &state()),
         Some("outside") => return outside::outside(&arguments[1..]),
         Some("scoped") => return gate::fence::scoped(&arguments[1..]),
+        Some("cargo") => {
+            let dir =
+                env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
+            return cargo::cargo(&arguments[1..], [dir.as_path(), more_dir().as_path()]);
+        }
         _ => {}
     }
     if let [command, host] = arguments.as_slice()
