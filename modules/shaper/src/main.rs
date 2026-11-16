@@ -591,7 +591,7 @@ fn install(link: &str, ifb: &str, (up, split): (u64, &lanes::Split), down: u64, 
     let held = sh(&words(&format!("tc -j qdisc show dev {link}"))).unwrap_or_default();
     let back = sh(&words(&format!("tc -j qdisc show dev {ifb}"))).unwrap_or_default();
     if lanes::laned(&held) && qdisc::ours(&back) {
-        run_all(qdisc::adopt(link, ifb, (up, split), down));
+        run_all(lanes::adopt(link, ifb, (up, split), down));
     } else {
         let _ = sh(&words(&format!("tc qdisc del dev {link} root")));
         run_all(qdisc::install(link, ifb, (up, split), down));

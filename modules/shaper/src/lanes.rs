@@ -288,6 +288,15 @@ pub fn change(dev: &str, rate: u64, split: &Split) -> Vec<Vec<String>> {
     classes("change", dev, rate, split)
 }
 
+/// Takes back a link's lanes and its IFB's CAKE as a restart left them,
+/// at new rates, changing each in place: HTB refuses a change to its root,
+/// and making them afresh would drop what they hold.
+pub fn adopt(link: &str, ifb: &str, (rate, split): (u64, &Split), down: u64) -> Vec<Vec<String>> {
+    let mut all = change(link, rate, split);
+    all.push(crate::qdisc::change_down(ifb, down));
+    all
+}
+
 /// Whether a connection's queues, from `tc -j qdisc show dev`, hold the
 /// lanes: Joel's CAKE, the VPN's class's queue and agents' CAKE.
 pub fn laned(json: &str) -> bool {
@@ -679,6 +688,16 @@ mod tests {
         assert!(
             changed.len() == 4 && changed.iter().all(|c| c.starts_with("tc class change")),
             "a change moves only the four classes: {changed:#?}"
+        );
+        let adopted = words(&adopt("wlan0", "shaper3", (10_000, &split), 80_000));
+        assert!(
+            adopted.len() == 5 && adopted.iter().all(|c| c.contains(" change dev ")),
+            "adopting made or replaced something, dropping what it held: {adopted:#?}"
+        );
+        assert!(
+            adopted[4].starts_with("tc qdisc change dev shaper3")
+                && adopted[4].contains("80000kbit"),
+            "adopting left the download's rate: {adopted:#?}"
         );
     }
 

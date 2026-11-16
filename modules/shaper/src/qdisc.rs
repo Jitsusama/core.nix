@@ -94,21 +94,6 @@ pub fn install(
     all
 }
 
-/// Takes back an uplink's queues as a restart left them, at new rates:
-/// the upload's lanes and the download's CAKE are changed in place, since
-/// HTB refuses a change to its root and making them afresh would drop
-/// what they hold.
-pub fn adopt(
-    link: &str,
-    ifb: &str,
-    (up, lanes): (u64, &crate::lanes::Split),
-    down: u64,
-) -> Vec<Vec<String>> {
-    let mut all = crate::lanes::change(link, up, lanes);
-    all.push(change_down(ifb, down));
-    all
-}
-
 /// Turns what a link or a VPN receives round through its IFB, the class
 /// copied from the connection to the packet on the way.
 pub fn turn(dev: &str, ifb: &str) -> Vec<Vec<String>> {
@@ -660,30 +645,6 @@ mod tests {
         assert!(
             !all.iter().any(|c| c.contains("ffff:")),
             "installing turned downloads to the IFB before a limit asked: {all:?}"
-        );
-    }
-
-    #[test]
-    fn adopting_changes_the_queues_in_place_and_makes_none() {
-        let split = crate::lanes::Split::default();
-        let all: Vec<String> = adopt("enp1", "shaper3", (9_000, &split), 80_000)
-            .iter()
-            .map(|c| c.join(" "))
-            .collect();
-        let out = "tc class change dev enp1 parent 1: classid 1:2 htb \
-                   rate 9000kbit ceil 9000kbit prio 0 quantum 1514";
-        assert!(
-            all.contains(&out.to_string()),
-            "the upload's rate wasn't changed in {all:?}"
-        );
-        assert!(
-            all.iter()
-                .any(|c| c.starts_with("tc qdisc change dev shaper3") && c.contains("80000kbit")),
-            "the download's rate wasn't changed in {all:?}"
-        );
-        assert!(
-            all.iter().all(|c| c.contains(" change ")),
-            "adopting replaced or took something away, dropping what it held: {all:?}"
         );
     }
 

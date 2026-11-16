@@ -715,9 +715,8 @@ def test_replug(replugged: Replugged) -> None:
     connection.lands("bulk", "jobs.slice", connection.download, dev=replugged.plugged_ifb)
 
 
-@pytest.mark.usefixtures("tunnel")
-def test_a_restart_keeps_the_queues(on_eth2: Connection) -> None:
-    """A restart, as a switch makes, leaves the link shaped throughout and its queues kept.
+def restart_keeps_the_queues(on_eth2: Connection) -> None:
+    """Restart it, as a switch does, and check the links stayed shaped and kept their queues.
 
     The new shaper takes back the queues the old one left, so nothing they held or counted
     is lost, and the modem's queue never fills while none are there.
@@ -740,7 +739,7 @@ def test_a_restart_keeps_the_queues(on_eth2: Connection) -> None:
     )
     client.succeed("systemctl is-active shaper.service")
     assert "bare" not in bare, "a restart left a link unshaped while it ran"
-    assert on_eth2.shaped("eth2")
+    assert on_eth2.shaped("eth2"), "a restart left eth2 without its lanes"
     assert sent() >= before, "a restart made the queues afresh rather than keeping them"
 
 
@@ -748,9 +747,11 @@ def test_a_restart_keeps_the_queues(on_eth2: Connection) -> None:
 def test_stopping(on_eth2: Connection) -> None:
     """An administrator stops it with no password, and that leaves the links as they were.
 
-    An account outside wheel can't; an administrator starts it again just as freely, as an A/B
-    turning it on and off around each call does.
+    A restart, as a switch makes, keeps them shaped throughout instead. An account outside
+    wheel can't stop it; an administrator starts it again just as freely, as an A/B turning
+    it on and off around each call does.
     """
+    restart_keeps_the_queues(on_eth2)
     client = on_eth2.client
     eth2_ifb = on_eth2.ifb("eth2")
     wg0_ifb = on_eth2.ifb("wg0")
