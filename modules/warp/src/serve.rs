@@ -32,9 +32,7 @@
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
-use std::os::fd::FromRawFd;
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -205,7 +203,10 @@ pub fn serve(
     cli: impl Ask + Send + 'static,
     shaper: Option<Shaper>,
 ) -> std::io::Result<()> {
-    let listener = listen(socket)?;
+    // The socket systemd holds for it (warp.socket), so the shell never
+    // finds it missing while the daemon starts or starts again; or, run
+    // by hand, its own, in a folder only Joel reads.
+    let listener = daemon_serve::serve::listen(socket)?;
     let shared = Arc::new(Shared {
         held: Mutex::new(Held {
             link: None,
@@ -248,34 +249,6 @@ pub fn serve(
         std::thread::spawn(move || answer_each(&shared, stream, connection));
     }
     Ok(())
-}
-
-/// The socket systemd holds for it (warp.socket), so the shell never
-/// finds it missing while the daemon starts or starts again; or, run by
-/// hand, its own, in a folder only Joel reads, replacing one left behind.
-fn listen(socket: &Path) -> std::io::Result<UnixListener> {
-    if let Some(listener) = handed() {
-        return Ok(listener);
-    }
-    if let Some(folder) = socket.parent() {
-        std::fs::create_dir_all(folder)?;
-        std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o700))?;
-    }
-    let _ = std::fs::remove_file(socket);
-    UnixListener::bind(socket)
-}
-
-/// The listening socket systemd hands this process, as the first
-/// descriptor after the standard three, when it says so (`sd_listen_fds`).
-fn handed() -> Option<UnixListener> {
-    let pid: u32 = std::env::var("LISTEN_PID").ok()?.parse().ok()?;
-    let count: u32 = std::env::var("LISTEN_FDS").ok()?.parse().ok()?;
-    if pid != std::process::id() || count < 1 {
-        return None;
-    }
-    // SAFETY: systemd hands descriptor 3 to this process alone, named by
-    // LISTEN_PID, and nothing here has opened or taken it before.
-    Some(unsafe { UnixListener::from_raw_fd(3) })
 }
 
 /// Reads the link while anyone watches it, as each read comes due or at

@@ -1,6 +1,7 @@
 # warp, built from this directory, its tests run as it builds. It takes its
-# shape from the terminal kit (../terminal-kit), so the source is cut from
-# the folder holding both.
+# shape from the terminal kit (../terminal-kit) and its socket from
+# daemon-serve (../daemon-serve), so the source is cut from the folder
+# holding all three.
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage rec {
   pname = "warp";
@@ -14,6 +15,8 @@ rustPlatform.buildRustPackage rec {
       # The tests read warp-cli's answers and the record drawn from them.
       ./contract
       ./warp.json
+      ../daemon-serve/Cargo.toml
+      ../daemon-serve/src
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
     ];
