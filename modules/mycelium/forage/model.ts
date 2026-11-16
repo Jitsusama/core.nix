@@ -194,20 +194,85 @@ function grouped(count: number): string {
   return count.toLocaleString("en-CA");
 }
 
-/** The whole in one sentence: how many cells, and how many have no purpose written. */
-function judged(forages: readonly Forage[], machine: string): string {
-  const where = machine === "" ? "here" : `on ${machine}`;
-  if (forages.length === 0) {
-    return `No cell ${where} works on a quest right now.`;
-  }
-  const cells = forages.length === 1 ? "One cell" : `${grouped(forages.length)} cells`;
-  const works = forages.length === 1 ? "works" : "work";
+/** The whole as the headline says it: a plain lead and its turn. */
+interface Headline {
+  readonly cells: number;
+  readonly without: number;
+  /** "38 cells," or "One cell," or "No cells". */
+  readonly lead: string;
+  /** "4 without purpose." or "each with its purpose." */
+  readonly turn: string;
+}
+
+/** The whole in a sentence's two parts: how many cells, and how many have no purpose written. */
+function headline(forages: readonly Forage[]): Headline {
+  const cells = forages.length;
   const without = forages.filter((each) => each.purpose === "").length;
-  const purposes =
-    without === 0
-      ? `${forages.length === 1 ? "" : "each "}with its purpose written`
-      : `${without === 1 ? "one" : grouped(without)} with no purpose written`;
-  return `${cells} ${where} ${works} on a quest, ${purposes}.`;
+  if (cells === 0) {
+    return { cells, without, lead: "No cells", turn: "at work on a quest." };
+  }
+  const lead = cells === 1 ? "One cell," : `${grouped(cells)} cells,`;
+  if (without === 0) {
+    return {
+      cells,
+      without,
+      lead,
+      turn: cells === 1 ? "with its purpose." : "each with its purpose.",
+    };
+  }
+  if (without === cells) {
+    return {
+      cells,
+      without,
+      lead,
+      turn: cells === 1 ? "without purpose." : "all without purpose.",
+    };
+  }
+  return { cells, without, lead, turn: `${grouped(without)} without purpose.` };
+}
+
+/** `cells` named in a sentence, at most three by name and the rest counted. */
+function named(cells: readonly string[]): string {
+  const most = 3;
+  if (cells.length <= most) {
+    return and(cells);
+  }
+  const rest = cells.length - (most - 1);
+  return `${cells.slice(0, most - 1).join(", ")} and ${grouped(rest)} more`;
+}
+
+/** The cell with a plan furthest from done, and how far it has come, when one has steps left. */
+function furthest(
+  forages: readonly Forage[],
+): { readonly cell: string; readonly ticked: number; readonly all: number } | undefined {
+  let found: { cell: string; ticked: number; all: number; left: number } | undefined;
+  for (const forage of forages) {
+    const { ticked, all } = steps(forage);
+    const left = all - ticked;
+    if (left > 0 && (found === undefined || left > found.left)) {
+      found = { cell: forage.cell, ticked, all, left };
+    }
+  }
+  return found === undefined
+    ? undefined
+    : { cell: found.cell, ticked: found.ticked, all: found.all };
+}
+
+/** What the lede says: the cells with no purpose written, then the plan furthest from done. */
+function lede(forages: readonly Forage[]): string {
+  if (forages.length === 0) {
+    return "When a cell here takes up a quest, its purpose shows here, with how far its plans have come.";
+  }
+  const hollow = forages.filter((each) => each.purpose === "").map((each) => each.cell);
+  const first =
+    hollow.length === 0
+      ? "Every cell has its purpose written."
+      : `${named(hollow)} ${hollow.length === 1 ? "has" : "have"} no purpose written yet.`;
+  const far = furthest(forages);
+  if (far === undefined) {
+    return `${first} No plan has steps left.`;
+  }
+  return `${first} ${far.cell} has furthest to go, ${far.ticked} of ${far.all} steps done.`;
 }
 
 /** Whether `forage` holds `query` in its cell, quest, purpose or a document's title. */
@@ -221,5 +286,5 @@ function holds(forage: Forage, query: string): boolean {
     .some((each) => each.includes(sought));
 }
 
-export type { Document, Forage, Forages };
-export { counted, foragesOf, holds, judged, keeps, steps };
+export type { Document, Forage, Forages, Headline };
+export { counted, foragesOf, headline, holds, keeps, lede, steps };

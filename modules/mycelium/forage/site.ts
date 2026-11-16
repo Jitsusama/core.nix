@@ -1,20 +1,20 @@
-// What each cell is for: every cell of this machine that works on a quest,
-// each set in under the cell that started it, with the purpose its quest
-// states and how far the plans it keeps have come, and beside them the cell
-// the cursor is on, with each of its documents. It watches the mycelium
-// node's forage records over the sites' server, so a cell redraws the
-// moment a step is ticked or a cell comes or goes, and the line under the
-// list says whether what it shows is live and since when. A feed reaches
-// one node, so it shows this machine's cells; `mycelium forage` in a
-// terminal gathers every machine's.
+// What each cell is for: every cell standing on this machine that works on
+// a quest, drawn first as the forest floor cut through and then listed, each
+// under the cell it split from, with the purpose its quest states and how
+// far the plans it keeps have come, and beside them the cell the cursor is
+// on, with each of its documents. It watches the mycelium node's forage
+// records over the sites' server, so a cell redraws the moment a step is
+// ticked or a cell comes or goes, and the standing line says whether what it
+// shows is live and since when. A feed reaches one node, so it shows the
+// cells on this machine; `mycelium forage` in a terminal gathers the realm's.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
 import { said } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
-import { command, forageRow, onMap, panelOf } from "./draw.ts";
-import { type Forage, foragesOf, holds, judged } from "./model.ts";
+import { command, escaped, floorOf, forageRow, onMap, panelOf } from "./draw.ts";
+import { type Forage, foragesOf, headline, holds, lede } from "./model.ts";
 
 /** The element `selector` finds, which the page's markup always holds. */
 function element<T extends Element>(selector: string, kind: new () => T): T {
@@ -29,11 +29,15 @@ function element<T extends Element>(selector: string, kind: new () => T): T {
 const CELL_HASH = /^#cell=(.+)$/u;
 
 const list = element("#cells", HTMLDivElement);
-const verdict = element("#verdict", HTMLParagraphElement);
-const asof = element("#asof", HTMLParagraphElement);
+const title = element("#headline", HTMLHeadingElement);
+const ledeLine = element("#lede", HTMLParagraphElement);
+const substrate = element("#substrate", HTMLSpanElement);
+const floor = element("#floor", HTMLDivElement);
+const asof = element("#asof", HTMLSpanElement);
 const panel = element("#panel-body", HTMLDivElement);
 const keys = element("#keys", HTMLDialogElement);
 const finder = element("#find", HTMLInputElement);
+const listTitle = element("#cells-title", HTMLHeadingElement);
 
 let forages: readonly Forage[] = [];
 let unread: readonly string[] = [];
@@ -45,6 +49,9 @@ let heard: string | undefined;
 let given = false;
 let cursor: string | null = cellIn(location.hash);
 let sought = "";
+// Whether the list holds only the cells with no purpose written, as the
+// headline's second count asks.
+let hollowOnly = false;
 
 /** The cell `hash` names, as #cell=<address>. */
 function cellIn(hash: string): string | null {
@@ -54,7 +61,9 @@ function cellIn(hash: string): string | null {
 
 /** The cells the find leaves, in the list's order. */
 function shown(): readonly Forage[] {
-  return forages.filter((forage) => holds(forage, sought));
+  return forages.filter(
+    (forage) => holds(forage, sought) && (!hollowOnly || forage.purpose === ""),
+  );
 }
 
 /** The machine the cells run on, as the records say it. */
@@ -69,20 +78,30 @@ function sayWhen(): void {
   asof.textContent = `${standing === undefined ? "Reaching the mycelium node." : said(standing)}${trouble}`;
   asof.dataset.state = standing?.state ?? "connecting";
   if (!given && standing?.state === "broken") {
-    verdict.textContent = "Nothing to draw: the mycelium node didn't say what its cells are for.";
+    title.textContent = "Nothing to draw yet.";
+    ledeLine.textContent =
+      "The mycelium node didn't say what its cells are for; the line below says why.";
   }
 }
 
 const current = (): Forage | undefined => forages.find((each) => each.cell === cursor);
 
 function select(): void {
-  for (const row of list.querySelectorAll<HTMLElement>("[role=option]")) {
-    const on = row.dataset.cell === cursor;
-    row.setAttribute("aria-selected", String(on));
-    if (on) {
-      list.setAttribute("aria-activedescendant", row.id);
-      row.scrollIntoView({ block: "nearest" });
+  // Only the row leaving the cursor and the row taking it change, so a step
+  // costs the same whether the list holds five cells or ten thousand.
+  for (const row of list.querySelectorAll<HTMLElement>('[aria-selected="true"]')) {
+    if (row.dataset.cell !== cursor) {
+      row.setAttribute("aria-selected", "false");
     }
+  }
+  const row = cursor === null ? null : document.getElementById(`cell-${cursor}`);
+  if (row instanceof HTMLElement && list.contains(row)) {
+    row.setAttribute("aria-selected", "true");
+    list.setAttribute("aria-activedescendant", row.id);
+    row.scrollIntoView({ block: "nearest" });
+  }
+  for (const mark of floor.querySelectorAll<SVGRectElement>("rect[data-cell]")) {
+    mark.classList.toggle("on", mark.dataset.cell === cursor);
   }
   if (cursor !== null && location.hash !== `#cell=${encodeURIComponent(cursor)}`) {
     history.replaceState(null, "", `#cell=${encodeURIComponent(cursor)}`);
@@ -104,14 +123,33 @@ function draw(): void {
     rows.length === 0 && forages.length > 0
       ? `<p class="none">No cell here holds what you're finding.</p>`
       : rows.map(forageRow).join("");
+  if (forages.length > 0) {
+    floor.innerHTML = floorOf(forages, cursor, machine());
+  }
+  listTitle.innerHTML = hollowOnly ? "The cells <em>without purpose</em>" : "The <em>cells</em>";
   select();
   drawPanel();
+}
+
+/** The headline, its counts leading to what they count, and the lede under it. */
+function sayWhole(): void {
+  const whole = headline(forages);
+  const where = machine();
+  substrate.textContent = where === "" ? "this machine" : where;
+  if (whole.cells === 0) {
+    title.innerHTML = `${escaped(whole.lead)} <em>${escaped(whole.turn)}</em>`;
+  } else if (whole.without === 0) {
+    title.innerHTML = `<a href="#all" data-show="all">${escaped(whole.lead)}</a> <em>${escaped(whole.turn)}</em>`;
+  } else {
+    title.innerHTML = `<a href="#all" data-show="all">${escaped(whole.lead)}</a> <em><a href="#without" data-show="without">${escaped(whole.turn)}</a></em>`;
+  }
+  ledeLine.textContent = lede(forages);
 }
 
 function heardAll(held: Held): void {
   given = true;
   ({ forages, unread } = foragesOf(held));
-  verdict.textContent = judged(forages, machine());
+  sayWhole();
   sayWhen();
   draw();
 }
@@ -288,9 +326,31 @@ panel.addEventListener("click", (event) => {
   }
 });
 
+title.addEventListener("click", (event) => {
+  const asked = event.target instanceof Element ? event.target.closest("a[data-show]") : null;
+  if (!(asked instanceof HTMLAnchorElement)) {
+    return;
+  }
+  event.preventDefault();
+  hollowOnly = asked.dataset.show === "without";
+  draw();
+  list.focus();
+});
+
+floor.addEventListener("click", (event) => {
+  const mark = event.target instanceof Element ? event.target.closest("rect[data-cell]") : null;
+  if (!(mark instanceof SVGRectElement)) {
+    return;
+  }
+  cursor = mark.dataset.cell ?? cursor;
+  hollowOnly = hollowOnly && forages.some((each) => each.cell === cursor && each.purpose === "");
+  draw();
+  list.focus();
+});
+
 themeSwitch();
 
-for (const key of document.querySelectorAll<HTMLElement>(".head .keys kbd[data-key]")) {
+for (const key of document.querySelectorAll<HTMLElement>(".hero .keys kbd[data-key]")) {
   key.addEventListener("click", () => {
     if (key.dataset.key === "?") {
       toggle(keys);

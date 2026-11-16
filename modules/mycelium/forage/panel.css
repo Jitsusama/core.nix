@@ -1,10 +1,15 @@
 /* The cell the cursor is on, opened beside the list: its name, its
    purpose, the documents it keeps and how far each has come, where it
-   sits, and the keys dialog. Set as the system page's panel is. */
+   grows, and the keys dialog. Parted by hairlines, never boxes. */
 
-/* ---- The part open. ---- */
+/* ---- The cell open. ---- */
 
+/* The panel stays where it is while the list scrolls past, so the cursor's
+   cell is always beside it and opening one never reflows the list. */
 .panel {
+  position: sticky;
+  inset-block-start: 0;
+  max-block-size: 100dvh;
   display: grid;
   min-block-size: 0;
 }
@@ -13,36 +18,52 @@
   display: grid;
   align-content: start;
   gap: var(--groups);
-  padding: var(--groups) var(--inset);
+  padding: var(--items) 0 var(--groups);
   min-block-size: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  border-block-start: 1px solid var(--rule);
 }
 
 .panel-body:focus {
   outline: none;
 }
 
-.panel-body .title {
-  display: flex;
-  align-items: baseline;
-  gap: var(--mark);
+.panel-body .eyebrow {
+  text-align: start;
 }
 
 .panel-body h3 {
+  margin-block-start: calc(-1 * var(--items));
   font-size: var(--step-section);
   line-height: 1.15;
 }
 
+.panel-body h3 code {
+  color: var(--strong);
+  font-size: 0.8em;
+}
+
 .panel-body .lead {
   margin-block-start: calc(-1 * var(--items));
-  max-inline-size: var(--measure);
   color: var(--strong);
+  font-family: var(--voice-face);
+  font-size: var(--step-large);
+  font-variation-settings: "SOFT" var(--voice-soft), "WONK" var(--voice-wonk);
+  line-height: 1.35;
+}
+
+.panel-body .lead.quiet {
+  color: var(--text);
 }
 
 .panel-body h4 {
-  font-size: var(--step-body);
   margin-block-end: var(--mark);
+  color: var(--text);
+  font-family: var(--voice-face);
+  font-size: var(--step-body);
+  font-style: italic;
+  font-weight: var(--voice-weight);
 }
 
 .tl {
@@ -52,44 +73,26 @@
   border-block-start: 1px solid var(--rule);
 }
 
-/* A document's row: its kind and stage on one line, its title under
-   them, and how far it has come in words beside a bar saying the same. */
+/* A document's row: its title, what it is and where it stands, and how
+   far it has come in words beside gills saying the same. */
 .tl .doc {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    "kind stage"
-    "named named"
-    "steps steps";
-  gap: var(--tie) var(--mark);
-  align-items: baseline;
-  padding: var(--mark) var(--tie);
+  gap: var(--tie);
+  padding: var(--mark) 0;
+  border-block-end: 1px solid var(--edge);
   color: var(--text);
 }
 
-.tl .doc + .doc {
-  border-block-start: 1px solid var(--edge);
-}
-
-.tl .kind {
-  grid-area: kind;
-  font-size: var(--step-small);
-  text-transform: capitalize;
-}
-
-.tl .stage {
-  grid-area: stage;
-  font-size: var(--step-small);
-}
-
 .tl .named {
-  grid-area: named;
   color: var(--strong);
-  font-weight: 500;
+}
+
+.tl .said {
+  font-size: var(--step-small);
+  font-style: italic;
 }
 
 .tl .steps {
-  grid-area: steps;
   display: flex;
   align-items: center;
   gap: var(--mark);
@@ -97,26 +100,22 @@
   font-feature-settings: var(--mono-features);
 }
 
-/* The bar says nothing the words beside it don't; it only lets a glance
-   down the list see which have come furthest. */
-.bar {
-  flex: none;
-  inline-size: 6rem;
+/* The gills say nothing the words beside them don't; they only let a
+   glance down the list see which have come furthest. */
+.gills {
+  inline-size: 1.5rem;
   block-size: 0.5rem;
-  background: var(--sunken);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
+  flex: none;
+  overflow: visible;
 }
 
-.bar span {
-  display: block;
-  block-size: 100%;
-  background: var(--tint);
+.gills .gill {
+  stroke: var(--tint);
+  stroke-width: 2;
 }
 
-.panel-body .quiet {
-  font-style: italic;
+.gills .gill.dim {
+  stroke: var(--hyphae);
 }
 
 .facts dd a code {
@@ -124,18 +123,11 @@
   text-underline-offset: 0.2em;
 }
 
-@media (forced-colors: active) {
-  .bar span {
-    background: CanvasText;
-  }
-}
-
 .facts {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  gap: var(--mark) var(--items);
+  gap: 0 var(--items);
   margin: 0;
-  padding-block-start: var(--mark);
   border-block-start: 1px solid var(--rule);
 }
 
@@ -145,6 +137,8 @@
   grid-column: 1 / -1;
   display: flex;
   gap: var(--items);
+  padding-block: var(--tie);
+  border-block-end: 1px solid var(--edge);
 }
 
 @supports (grid-template-columns: subgrid) {
@@ -155,18 +149,20 @@
 }
 
 .facts dt {
+  align-self: center;
   color: var(--text);
   font-size: var(--step-small);
-  padding-block-start: 0.15em;
+  font-style: italic;
 }
 
 .facts dd {
   margin: 0;
+  min-block-size: 44px;
   color: var(--strong);
   overflow-wrap: anywhere;
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   gap: var(--tie) var(--mark);
 }
 
@@ -180,16 +176,37 @@
   min-block-size: 44px;
   padding: 0 var(--mark);
   background: none;
-  border: 1px solid var(--field);
-  border-radius: var(--radius);
+  border: 0;
   color: var(--strong);
   font: inherit;
   font-size: var(--step-small);
+  text-decoration: underline;
+  text-decoration-color: var(--hyphae);
+  text-underline-offset: 0.2em;
+  cursor: pointer;
 }
 
 .act {
   color: var(--text);
   font-size: var(--step-small);
+  font-style: italic;
+}
+
+@media (max-width: 64rem) {
+  .panel {
+    position: static;
+    max-block-size: none;
+  }
+
+  .panel-body {
+    overflow: visible;
+  }
+}
+
+@media (forced-colors: active) {
+  .gills .gill {
+    stroke: CanvasText;
+  }
 }
 
 /* ---- Keys. ---- */

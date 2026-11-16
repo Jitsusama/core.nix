@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
-import { foragesOf, holds, judged, keeps, steps } from "../model.ts";
+import { foragesOf, headline, holds, keeps, lede, steps } from "../model.ts";
 
 const plan = {
   id: "PLAN-20261116-HOVERS",
@@ -116,27 +116,55 @@ it("what can't be read is said, and the rest still drawn", () => {
   assert.deepEqual(unread, ["forage:NONAME named no cell", "1 of KESTRL's documents had no id"]);
 });
 
-it("the whole says how many cells work, and how many have no purpose written", () => {
+it("the headline says how many cells, and how many have no purpose written", () => {
   const { forages } = foragesOf(told([forage("KESTRL"), forage("OSPREY", { purpose: "" })]));
-  assert.equal(
-    judged(forages, "kestrel"),
-    "2 cells on kestrel work on a quest, one with no purpose written.",
-  );
-  assert.equal(
-    judged(forages.slice(0, 1), "kestrel"),
-    "One cell on kestrel works on a quest, with its purpose written.",
-  );
-  assert.equal(judged([], "kestrel"), "No cell on kestrel works on a quest right now.");
+  assert.deepEqual(headline(forages), {
+    cells: 2,
+    without: 1,
+    lead: "2 cells,",
+    turn: "1 without purpose.",
+  });
+  assert.equal(headline(forages.slice(0, 1)).turn, "with its purpose.");
+  assert.equal(headline(forages.slice(1)).turn, "without purpose.");
+  assert.deepEqual(headline([]), {
+    cells: 0,
+    without: 0,
+    lead: "No cells",
+    turn: "at work on a quest.",
+  });
 });
 
-it("the whole sets a count's thousands apart", () => {
+it("the headline sets a count's thousands apart", () => {
   const cells = Array.from({ length: 3000 }, (_, at) =>
     forage(`C${String(at).padStart(5, "0")}`, at < 1200 ? { purpose: "" } : {}),
   );
   const { forages } = foragesOf(told(cells));
+  const said = headline(forages);
+  assert.equal(`${said.lead} ${said.turn}`, "3,000 cells, 1,200 without purpose.");
+});
+
+it("the lede names the cells with no purpose, then the plan furthest from done", () => {
+  const { forages } = foragesOf(
+    told([
+      forage("KESTRL"),
+      forage("OSPREY", { purpose: "" }),
+      forage("MERLIN", { documents: [{ ...plan, ticked: 1, open: 9 }] }),
+    ]),
+  );
   assert.equal(
-    judged(forages, "kestrel"),
-    "3,000 cells on kestrel work on a quest, 1,200 with no purpose written.",
+    lede(forages),
+    "OSPREY has no purpose written yet. MERLIN has furthest to go, 1 of 10 steps done.",
+  );
+  const many = foragesOf(
+    told(
+      ["A", "B", "C", "D", "E"].map((cell) =>
+        forage(`CELL${cell}`, { purpose: "", documents: [] }),
+      ),
+    ),
+  ).forages;
+  assert.equal(
+    lede(many),
+    "CELLA, CELLB and 3 more have no purpose written yet. No plan has steps left.",
   );
 });
 

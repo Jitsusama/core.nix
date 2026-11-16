@@ -1,8 +1,12 @@
-// The forage page's markup: a cell's row, set in under the cell that
-// started it, and the panel of the cell the cursor is on, with its purpose,
-// its documents and how far each has come. Every word read from a record is
-// escaped before it reaches the page. How far a plan has come is said in
-// words beside its bar, so nothing is told by the bar alone.
+// The forage page's markup: the forest floor cut through, a cell's row with
+// its marks in the gutter, and the panel of the cell the cursor is on. On
+// the floor each cell is a compartment along its hypha, whole when its
+// purpose is written and hollow when it isn't, so a cell without purpose
+// is told by its shape and never by colour alone; a cell split from
+// another branches below it, and a cap rises over a cell whose plans have
+// landed steps, its gills lit as they land. Every word read from a record
+// is escaped before it reaches the page, and how far a plan has come is
+// said in words beside its marks.
 
 import { type Document, type Forage, keeps, steps } from "./model.ts";
 
@@ -22,6 +26,20 @@ const STAGES: { readonly [stage: string]: string } = {
   concluded: "Done",
   retired: "Put down",
 };
+
+/** The floor's measures, in its own units: a cell's room, the ground and each branch's drop. */
+const FLOOR = {
+  room: 30,
+  margin: 24,
+  ground: 52,
+  hypha: 78,
+  drop: 20,
+  gills: 5,
+  /** The most cells drawn on the floor; the list holds every one. */
+  most: 48,
+  /** How much larger than its own units the floor is drawn, where the page has room. */
+  scale: 1.5,
+} as const;
 
 /** `text` safe to put in markup, as text or an attribute's value. */
 function escaped(text: string): string {
@@ -56,35 +74,117 @@ function come(ticked: number, all: number): string {
   return `${ticked} of ${all} ${all === 1 ? "step" : "steps"} done`;
 }
 
-/** A bar of `ticked` of `all`, its words beside it saying the same. */
-function bar(ticked: number, all: number): string {
-  if (all === 0) {
-    return "";
-  }
-  const done = Math.round((ticked / all) * 100);
-  return `<span class="bar" aria-hidden="true"><span style="inline-size:${done}%"></span></span>`;
+/** How many of a cap's gills are lit for `ticked` of `all` steps. */
+function lit(ticked: number, all: number): number {
+  return all === 0 ? 0 : Math.round((ticked / all) * FLOOR.gills);
 }
 
-/** `forage`'s row in the list of cells, set in by how deep it was started. */
+/** A compartment's mark for the gutter: whole or hollow, as on the floor. */
+function compartment(forage: Forage): string {
+  const kind = forage.purpose === "" ? "hollow" : "whole";
+  return `<svg class="cm" viewBox="0 0 20 10" aria-hidden="true"><rect class="${kind}" x="1" y="1" width="18" height="8" rx="4"/></svg>`;
+}
+
+/** `forage`'s row in the list of cells, set in by how deep it split. */
 function forageRow(forage: Forage): string {
   const { ticked, all } = steps(forage);
   const quiet = forage.purpose === "" ? " quiet" : "";
+  const count = all === 0 ? "" : `${ticked}/${all}`;
   return `<div role="option" id="cell-${escaped(forage.cell)}" data-cell="${escaped(forage.cell)}" aria-selected="false" style="--depth:${forage.depth}">
+  <span class="mk">${compartment(forage)}</span>
   <code class="name">${escaped(forage.cell)}</code>
-  <span class="come">${escaped(come(ticked, all))}</span>
-  <span class="purpose${quiet}">${escaped(purposeOf(forage))}</span>
-  <span class="keeps">${escaped(keeps(forage))}</span>
+  <span class="come" aria-label="${escaped(come(ticked, all))}">${escaped(count)}</span>
+  <span class="line">
+    <span class="purpose${quiet}">${escaped(purposeOf(forage))}</span>
+    <span class="keeps">${escaped(keeps(forage))}</span>
+  </span>
 </div>`;
 }
 
-/** The row of `document` in the panel. */
+/** Where each cell drawn sits on the floor, by its place in the list and its depth. */
+function placed(
+  forages: readonly Forage[],
+): readonly { readonly forage: Forage; readonly x: number; readonly y: number }[] {
+  return forages.slice(0, FLOOR.most).map((forage, at) => ({
+    forage,
+    x: FLOOR.margin + at * FLOOR.room + FLOOR.room / 2,
+    y: FLOOR.hypha + Math.min(forage.depth, 3) * FLOOR.drop,
+  }));
+}
+
+/** The cap over a cell whose plans have landed steps, its gills lit as they land. */
+function cap(x: number, y: number, ticked: number, all: number): string {
+  const top = FLOOR.ground - 34;
+  const brim = FLOOR.ground - 14;
+  const on = lit(ticked, all);
+  const gills = Array.from({ length: FLOOR.gills }, (_, at) => {
+    const gx = x - 8 + at * 4;
+    return `<path class="${at < on ? "gill" : "gill dim"}" d="M${gx} ${brim}v-4"/>`;
+  }).join("");
+  return `<path class="stalk" d="M${x} ${y - 6}V${brim}"/><path class="cap" d="M${x - 11} ${brim}C${x - 11} ${top + 6} ${x - 6} ${top} ${x} ${top}S${x + 11} ${top + 6} ${x + 11} ${brim}Z"/>${gills}`;
+}
+
+/**
+ * The floor cut through: the ground, the hyphae under it and each cell a
+ * compartment along them, `cursor`'s ringed. Each top cell starts a hypha
+ * of its own on the main line; a cell split from another branches down
+ * from it. `substrate` names the machine the cells stand on.
+ */
+function floorOf(forages: readonly Forage[], cursor: string | null, substrate: string): string {
+  const cells = placed(forages);
+  const width = Math.max(FLOOR.margin * 2 + cells.length * FLOOR.room, 320);
+  const deepest = cells.reduce((most: number, each) => Math.max(most, each.y), FLOOR.hypha);
+  const height = deepest + 40;
+  const at = new Map(cells.map((each) => [each.forage.cell, each]));
+  const main = `<path class="hypha" d="M${FLOOR.margin / 2} ${FLOOR.hypha}H${width - FLOOR.margin / 2}"/>`;
+  const branches = cells
+    .map(({ forage, x, y }) => {
+      const from = forage.startedBy === undefined ? undefined : at.get(forage.startedBy);
+      if (from === undefined || forage.depth === 0) {
+        return "";
+      }
+      return `<path class="hypha" d="M${from.x} ${from.y}C${from.x} ${y} ${x - FLOOR.room / 2} ${y} ${x} ${y}"/>`;
+    })
+    .join("");
+  const caps = cells
+    .map(({ forage, x, y }) => {
+      const { ticked, all } = steps(forage);
+      return ticked > 0 ? cap(x, y, ticked, all) : "";
+    })
+    .join("");
+  const compartments = cells
+    .map(({ forage, x, y }) => {
+      const kind = forage.purpose === "" ? "hollow" : "whole";
+      const on = forage.cell === cursor ? " on" : "";
+      return `<rect class="${kind}${on}" data-cell="${escaped(forage.cell)}" x="${x - 11}" y="${y - 6}" width="22" height="12" rx="6"/>`;
+    })
+    .join("");
+  const more =
+    forages.length > cells.length
+      ? `<text class="note" x="${width - FLOOR.margin}" y="${height - 12}" text-anchor="end">and ${forages.length - cells.length} more in the list</text>`
+      : "";
+  return `<svg viewBox="0 0 ${width} ${height}" style="--w:${width * FLOOR.scale}px" aria-hidden="true">
+<path class="ground" d="M0 ${FLOOR.ground}H${width}"/>
+${main}${branches}${caps}${compartments}
+<text class="substrate" x="${FLOOR.margin / 2}" y="${height - 12}">${escaped(substrate)}</text>${more}
+</svg>`;
+}
+
+/** The row of `document` in the panel, its gills saying how far it has come. */
 function documentRow(document: Document): string {
   const all = document.ticked + document.open;
+  const on = lit(document.ticked, all);
+  const gills =
+    all === 0
+      ? ""
+      : `<svg class="gills" viewBox="0 0 24 8" aria-hidden="true">${Array.from(
+          { length: FLOOR.gills },
+          (_, at) => `<path class="${at < on ? "gill" : "gill dim"}" d="M${2 + at * 5} 8V1"/>`,
+        ).join("")}</svg>`;
   return `    <li class="doc">
-      <span class="kind">${escaped(document.kind)}</span>
       <span class="named">${escaped(document.title)}</span>
-      <span class="stage">${escaped(staged(document.stage))}</span>
-      <span class="steps">${bar(document.ticked, all)}<span>${escaped(come(document.ticked, all))}</span></span>
+      <span class="said">${escaped(document.kind)} · ${escaped(staged(document.stage))}</span>
+      <span class="steps">${gills}<span>${escaped(come(document.ticked, all))}</span></span>
     </li>`;
 }
 
@@ -93,7 +193,7 @@ function documentsOf(forage: Forage): string {
   if (forage.documents.length === 0) {
     return `<section aria-labelledby="docs-title" class="docs">
   <h4 id="docs-title">What It Keeps</h4>
-  <p>No plans, research, briefs or reports yet.</p>
+  <p class="none">No plans, research, briefs or reports yet.</p>
 </section>`;
   }
   return `<section aria-labelledby="docs-title" class="docs">
@@ -104,8 +204,8 @@ ${forage.documents.map(documentRow).join("\n")}
 </section>`;
 }
 
-/** Who started `forage`, linked to that cell's row when it is drawn here. */
-function startedBy(forage: Forage, here: ReadonlySet<string>): string {
+/** The cell `forage` split from, linked to that cell's row when it is drawn here. */
+function splitFrom(forage: Forage, here: ReadonlySet<string>): string {
   const by = forage.startedBy;
   if (by === undefined) {
     return "Nothing; it started on its own";
@@ -121,20 +221,21 @@ function panelOf(forage: Forage, here: ReadonlySet<string>): string {
   const said = escaped(command(forage));
   const quiet = forage.purpose === "" ? " quiet" : "";
   return `
-<div class="title"><h3><code>${escaped(forage.cell)}</code></h3></div>
+<p class="eyebrow">the cell open</p>
+<h3><code>${escaped(forage.cell)}</code></h3>
 <p class="lead${quiet}">${escaped(purposeOf(forage))}</p>
 ${documentsOf(forage)}
 <section aria-labelledby="ties-title" class="ties">
-  <h4 id="ties-title">Where It Sits</h4>
+  <h4 id="ties-title">Where It Grows</h4>
   <dl class="facts">
     <div><dt>Its quest</dt><dd><code>${escaped(forage.quest)}</code>${forage.status === "" ? "" : ` ${escaped(forage.status)}`}</dd></div>
-    <div><dt>Started by</dt><dd>${startedBy(forage, here)}</dd></div>
+    <div><dt>Split from</dt><dd>${splitFrom(forage, here)}</dd></div>
     <div><dt>Under the quest</dt><dd>${forage.parent === undefined ? "None" : `<code>${escaped(forage.parent)}</code>`}</dd></div>
-    <div><dt>Runs on</dt><dd>${escaped(forage.machine)}</dd></div>
+    <div><dt>Stands on</dt><dd>${escaped(forage.machine)}</dd></div>
     <div><dt>In a terminal</dt><dd><code>${said}</code> <button type="button" class="copy" data-copy="${said}">Copy <kbd>y</kbd></button></dd></div>
   </dl>
 </section>
 <p class="act">Press <kbd>Return</kbd> to open <code>${escaped(forage.cell)}</code> on the map.</p>`;
 }
 
-export { command, escaped, forageRow, onMap, panelOf, purposeOf };
+export { command, escaped, floorOf, forageRow, onMap, panelOf, purposeOf };

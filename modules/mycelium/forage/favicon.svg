@@ -1,12 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <style>
     g { stroke: @light-tint@; }
-    @media (prefers-color-scheme: dark) { g { stroke: @dark-tint@; } }
+    .fill { fill: @light-tint@; }
+    @media (prefers-color-scheme: dark) { g { stroke: @dark-tint@; } .fill { fill: @dark-tint@; } }
   </style>
   <g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="16" cy="8" r="3.6"/>
-    <path d="M16 11.6v6.4M16 18l-7 6.4M16 18l7 6.4M16 18v7.6"/>
-    <circle cx="8" cy="26" r="2"/>
-    <circle cx="24" cy="26" r="2"/>
+    <path class="fill" d="M5 15C5 8 10 4 16 4S27 8 27 15Z"/>
+    <path d="M16 15v7"/>
+    <path d="M2 25H30"/>
+    <rect class="fill" x="10" y="22" width="12" height="6" rx="3"/>
   </g>
 </svg>
