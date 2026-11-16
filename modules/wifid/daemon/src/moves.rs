@@ -149,6 +149,16 @@ fn chosen(
             );
             Some(Next::Look)
         }
+        Choice::LookQuieter => {
+            println!(
+                "<6>{} looks for a quieter channel, as {} says its own is {}% busy, and it \
+                 hears none of its network quieter within reach",
+                on.card,
+                on.point,
+                busy.unwrap_or_default()
+            );
+            Some(Next::Look)
+        }
     }
 }
 
@@ -503,5 +513,35 @@ mod tests {
         );
 
         assert_eq!(to, Some(Next::Move(DESK.into())), "the hall said 56% busy");
+    }
+
+    #[test]
+    fn a_card_on_a_busy_channel_hearing_nothing_quieter_looks() {
+        let dir = tempfile::tempdir().unwrap();
+        let learned = Learned::kept_in(&dir.path().join("carried"));
+        let (lately, now) = (Measures::default(), Instant::now());
+        let crowded = Heard {
+            frequency: 5745,
+            radio: Radio {
+                load: Some(Load {
+                    stations: 9,
+                    busy: 56,
+                }),
+                ..Radio::default()
+            },
+            ..heard(HALL, -41)
+        };
+        let known = known(&lately, &learned, now, 20);
+
+        let next = chosen(
+            &mut Chooser::default(),
+            now,
+            (&joined(HALL), &carried(38)),
+            &[crowded],
+            &known,
+            false,
+        );
+
+        assert_eq!(next, Some(Next::Look), "56% busy with nothing else heard");
     }
 }

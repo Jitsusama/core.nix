@@ -123,6 +123,10 @@ pub enum Choice {
     /// Look for an access point of the network on a wider band, none being
     /// heard there within reach.
     LookWider,
+    /// Look for an access point of the network on a quieter channel, the
+    /// card's own saying it's past `BUSIEST` and none quieter being heard
+    /// within reach.
+    LookQuieter,
 }
 
 /// What's been chosen lately, to keep the card from hunting.
@@ -211,11 +215,9 @@ impl Chooser {
         } else {
             None
         };
-        let quieter = if carried_badly {
-            None
-        } else {
-            for_quiet(untried.clone(), (point, signal, frequency), others)
-        };
+        let crowded = crowding((point, frequency), others).filter(|_| !carried_badly);
+        let quieter =
+            crowded.and_then(|busy| for_quiet(untried.clone(), (signal, frequency, busy)));
         let reached = untried.filter(|other| within_reach(other, signal, frequency));
         let faster = reached.clone().filter_map(|other| {
             let theirs = other.measured.as_ref()?;
@@ -238,11 +240,14 @@ impl Chooser {
                 && !others
                     .iter()
                     .any(|other| in_band_reach(other, signal, frequency));
-            let look = if alone {
-                Some(Choice::Look)
-            } else {
-                unbanded.then_some(Choice::LookWider)
-            };
+            let looks = [
+                (alone, Choice::Look),
+                (unbanded, Choice::LookWider),
+                (crowded.is_some(), Choice::LookQuieter),
+            ];
+            let look = looks
+                .into_iter()
+                .find_map(|(wanted, look)| wanted.then_some(look));
             return self.look(now, look);
         };
         self.moved = Some(now);
@@ -256,7 +261,8 @@ impl Chooser {
 
     /// Has a card look for what it doesn't hear, once a settle at most, so
     /// the next choice has it to choose from: another access point of its
-    /// network, carrying badly, or one on a wider band, on 2.4 GHz. A
+    /// network, carrying badly, one on a wider band, on 2.4 GHz, or one on a
+    /// quieter channel, on a busy one. A
     /// heard access point is forgotten 180 s after the last look, so on 15
     /// Nov 2026 a card that tried 2.4 GHz and carried well soon heard no
     /// 5 GHz point to go back to, and kept to a third of the link rate.
@@ -284,14 +290,8 @@ impl Chooser {
 /// access point's channel 20% busy, heard as loud, carried 10 to 14 ms.
 fn for_quiet<'a>(
     untried: impl Iterator<Item = &'a Other>,
-    (point, signal, frequency): (&str, i16, u32),
-    others: &[Other],
+    (signal, frequency, busy): (i16, u32, u8),
 ) -> Option<&'a Other> {
-    let itself = others.iter().find(|other| other.point == point);
-    let busy = itself.and_then(|itself| itself.busy)?;
-    if !wide(frequency) || busy <= BUSIEST {
-        return None;
-    }
     untried
         .filter(|other| {
             other.measured.is_none()
@@ -302,6 +302,16 @@ fn for_quiet<'a>(
                 && within_reach(other, signal, frequency)
         })
         .max_by_key(|other| other.signal)
+}
+
+/// How busy the card's own channel says it is, where it's on a wider band
+/// and past `BUSIEST`. Its own access point is among the others as it was
+/// last heard, which may be some minutes old: on 16 Nov 2026 the card's
+/// own was last heard 997 s before, so a look refreshes it too.
+fn crowding((point, frequency): (&str, u32), others: &[Other]) -> Option<u8> {
+    let itself = others.iter().find(|other| other.point == point)?;
+    let busy = itself.busy?;
+    (wide(frequency) && busy > BUSIEST).then_some(busy)
 }
 
 /// Where a card on a narrower band carrying well goes for a wider one:
@@ -922,21 +932,21 @@ pub(crate) mod tests {
     fn a_card_on_a_busy_channel_keeps_off_one_past_40_percent() {
         let choice = off_the_hall(38, 70, desk_saying(Some(41)));
 
-        assert_eq!(choice, Choice::Stay, "41% is past the bar");
+        assert_eq!(choice, Choice::LookQuieter, "41% is past the bar");
     }
 
     #[test]
     fn a_card_on_a_busy_channel_keeps_off_one_saying_nothing_of_its_load() {
         let choice = off_the_hall(38, 56, desk_saying(None));
 
-        assert_eq!(choice, Choice::Stay, "an unsaid load may be as busy");
+        assert_eq!(choice, Choice::LookQuieter, "an unsaid load may be as busy");
     }
 
     #[test]
     fn a_card_on_a_channel_near_the_bar_keeps_off_one_little_quieter() {
         let choice = off_the_hall(38, 48, desk_saying(Some(34)));
 
-        assert_eq!(choice, Choice::Stay, "14 points quieter isn't room enough");
+        assert_eq!(choice, Choice::LookQuieter, "14 points is too little");
     }
 
     #[test]
@@ -950,14 +960,14 @@ pub(crate) mod tests {
     fn a_card_on_a_busy_channel_keeps_off_a_quieter_one_out_of_reach() {
         let choice = off_the_hall(38, 56, desk_at(-50, None));
 
-        assert_eq!(choice, Choice::Stay, "9 dB fainter on the same band");
+        assert_eq!(choice, Choice::LookQuieter, "9 dB fainter, same band");
     }
 
     #[test]
     fn a_card_on_a_busy_channel_keeps_off_a_quieter_one_known_slower() {
         let choice = off_the_hall(38, 56, desk_at(-43, Some(carried(36, 0.0))));
 
-        assert_eq!(choice, Choice::Stay, "36 ms there is no quicker than 38");
+        assert_eq!(choice, Choice::LookQuieter, "36 ms is no quicker than 38");
     }
 
     #[test]
@@ -1015,7 +1025,43 @@ pub(crate) mod tests {
         let later = start + TRIAL + SETTLE;
         let again = chooser.choose(later, (HALL, &quick, -41, CH149), &others, false);
 
-        assert_eq!(again, Choice::Stay, "the desk carried worse lately");
+        assert_eq!(again, Choice::LookQuieter, "the desk carried worse lately");
+    }
+
+    #[test]
+    fn a_card_on_a_busy_channel_hearing_nothing_else_looks_for_a_quieter_one() {
+        let measured = carried(38, 0.0);
+        let on = (HALL, &measured, -41, CH149);
+
+        let choice = Chooser::default().choose(Instant::now(), on, &[the_hall_itself(56)], false);
+
+        assert_eq!(choice, Choice::LookQuieter, "ch149 said 56% busy");
+    }
+
+    #[test]
+    fn a_card_on_a_busy_channel_looks_once_a_settle() {
+        let start = Instant::now();
+        let mut chooser = Chooser::default();
+        let measured = carried(38, 0.0);
+        let (on, others) = ((HALL, &measured, -41, CH149), [the_hall_itself(56)]);
+
+        let first = chooser.choose(start, on, &others, false);
+        let soon = chooser.choose(start + TRIAL, on, &others, false);
+        let settled = chooser.choose(start + SETTLE, on, &others, false);
+
+        assert_eq!(first, Choice::LookQuieter, "it hears nothing quieter");
+        assert_eq!(soon, Choice::Stay, "a look rests a settle");
+        assert_eq!(settled, Choice::LookQuieter, "then it looks again");
+    }
+
+    #[test]
+    fn a_card_on_a_busy_channel_looks_for_no_quieter_one_in_a_call() {
+        let measured = carried(38, 0.0);
+        let on = (HALL, &measured, -41, CH149);
+
+        let choice = Chooser::default().choose(Instant::now(), on, &[the_hall_itself(56)], true);
+
+        assert_eq!(choice, Choice::Stay, "a call outranks room");
     }
 
     #[test]
