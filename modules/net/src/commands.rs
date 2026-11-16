@@ -22,8 +22,12 @@ pub fn help() -> Help {
         "net devices Study",
         "one device in full, from each of its sources",
     )
-    .example("net --json", "the whole record, as net.network/1");
-    [devices(), daemon(), switch_reader()]
+    .example("net --json", "the whole record, as net.network/1")
+    .example(
+        "net uplink",
+        "who filled this machine's uplink over the last 5 s",
+    );
+    [devices(), uplink(), daemon(), switch_reader()]
         .into_iter()
         .fold(root, Help::subcommand)
         .exit(Exit::Failed, "the daemon stopped")
@@ -59,6 +63,20 @@ fn devices() -> Help {
             "there's no record of the home network yet",
         )
         .exit(Exit::Config, "XDG_RUNTIME_DIR isn't set")
+}
+
+/// Who fills this machine's uplink: its own sockets, not the network's.
+fn uplink() -> Help {
+    Help::new(
+        "uplink",
+        "who filled this machine's uplink over the last 5 s, and what for",
+    )
+    .example(
+        "net uplink",
+        "the rate, your share and the agents', what it was for, who and where to",
+    )
+    .example("net uplink --json", "the same as net.uplink/1")
+    .exit(Exit::Failed, "the kernel's socket list can't be read")
 }
 
 /// The switch's reader: what the switch's system service runs, holding
