@@ -259,19 +259,6 @@
     "test": "the-margin-cat-follows-the-keys-on-niri"
   },
   {
-    "at": 1794825583,
-    "commit": "32042088321313320dce4c2d5a75e08d89b0c2bc",
-    "due": "2026-11-17",
-    "due_why": "Its owner has a cause by 2026-11-16 17:00 UTC, and a fix or a new date by 2026-11-17 21:00 UTC",
-    "owner_pr": 4057,
-    "owner_session": "XY9H5C",
-    "reason": "the second move went past where the first got to, at 32042088321 in #4959's gate, which changes only the agents daemon, nothing the cat reads",
-    "subtests": [
-      "test_a_second_move_holds_on_from_where_the_first_got_to"
-    ],
-    "test": "the-margin-cat-follows-the-keys-on-niri"
-  },
-  {
     "at": 1794785729,
     "commit": "3600f69230b37fd910f43cad0b79860f15e66c61",
     "due": "2026-11-17",
