@@ -8147,7 +8147,10 @@ Scope {
     // always perfectly match my keyboard interactions" (2026-11-08). It
     // followed after a 50 ms wait, which with the 150 ms rest after kept
     // the drawer 200 ms and more behind his key against his 50 ms bar.
-    // Closed, it's let go at once.
+    // Closed, it's let go at once. One whose kind made cheaply of late comes
+    // in the key's own frame instead (Pacing.js's drawerJoinsKey), unless
+    // letters still come, which it waits for as any drawer does, so typing
+    // never makes one on each letter.
     property var drawerRow: null
     // Whether a follow waits for the next frame, so keys handled before one
     // comes follow once, for where they left the selection.
@@ -8226,19 +8229,20 @@ Scope {
         if (!open || selected === null) {
             drawerFollowDue = false;
             drawerRow = selected;
+        } else if (!prompt.keyHeld && Pacing.lettersComing(lettersAt, KeyTimes.now())) {
+            // While letters still come, its drawer waits until they rest
+            // rather than holding the next one; the key's own frame goes
+            // on without it (Pacing.typingRests). Even a cheap one, since
+            // up to 8 ms on every letter would be the letters' cost.
+            drawerFollowDue = false;
+            drawerJoined = false;
+            lettersResting.restart();
+            afterFrame(drawerWaits);
         } else if (!prompt.keyHeld && drawerOut
             && Pacing.drawerJoinsKey(drawerMakings, drawerKindOf(selected), prompt.keyHeld)) {
             drawerFollowDue = false;
             drawerJoined = true;
             drawerFollow();
-        } else if (!prompt.keyHeld && Pacing.lettersComing(lettersAt, KeyTimes.now())) {
-            // While letters still come, its drawer waits until they rest
-            // rather than holding the next one; the key's own frame goes
-            // on without it (Pacing.typingRests).
-            drawerFollowDue = false;
-            drawerJoined = false;
-            lettersResting.restart();
-            afterFrame(drawerWaits);
         } else if (!prompt.keyHeld && !drawerFollowDue) {
             drawerFollowDue = true;
             drawerJoined = false;
@@ -8380,7 +8384,8 @@ Scope {
     // never moves, to the first frame begun after, as a key is timed, and
     // `making` ms of it the launcher's own. Slow ones are said beside the
     // keys' lines in the journal (Trials.qml's drawerTimed). It's made off
-    // the key's path, so the keys' own times never held it. One whose
+    // the key's path, so the keys' own times never held it, but for one of
+    // a kind cheap of late, made in the key's handler (drawerJoinsKey). One whose
     // launcher closes before its frame isn't timed, its frame never coming.
     // One a key brought is timed too from that key to the frame niri
     // presented with it, said as it's presented and by its place as the
