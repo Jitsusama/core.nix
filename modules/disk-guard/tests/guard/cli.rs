@@ -323,7 +323,7 @@ fn status_fits_a_narrow_terminal_without_folding() {
     let machine = Machine::new();
     let at = wall() - 5.0;
     let path = "~/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261029-6QB521/tmp/\
-                aquiferadm-tx-state-4074137-48";
+                cisternadm-tx-state-4074137-48";
     let says = "The disk is filling, with 150.0 GiB free, and at this rate it's nearly full \
                 in 2 h; the guard cleared 4.2 GiB of caches and builds nobody is using, \
                 and the rest is held by worktrees.";
@@ -354,7 +354,7 @@ fn status_fits_a_narrow_terminal_without_folding() {
         }
         assert!(out.contains("150.0 GiB free of 1000.0 GiB"), "{out}");
         assert!(
-            out.contains("aquiferadm-tx-state-4074137-48"),
+            out.contains("cisternadm-tx-state-4074137-48"),
             "the path's end names it: {out}"
         );
     }

@@ -1748,10 +1748,10 @@ def where_now(desktop: Desktop, prefix: str, titles: set[str]) -> dict[str, tupl
 
 def put_back(now: dict[str, tuple[int, int]]) -> bool:
     """Whether the browser sits between its sessions, and the chat on its own after them."""
-    if not {"01c4-left", "01c4-right", "01c4-up", "Open Acceluary", "Chat"} <= set(now):
+    if not {"01c4-left", "01c4-right", "01c4-up", "Open Backwater", "Chat"} <= set(now):
         return False
     left, right, up = now["01c4-left"], now["01c4-right"], now["01c4-up"]
-    browser, chat = now["Open Acceluary"], now["Chat"]
+    browser, chat = now["Open Backwater"], now["Chat"]
     return (
         left[0] == browser[0] == right[0]
         and browser[1] == left[1] + 1
@@ -1789,7 +1789,7 @@ def test_agents_puts_back_the_windows_that_reopen_themselves(desktop: Desktop) -
         "01c4-up": {**on, "workspace": 3, "column": 1},
     }
     others = [
-        {"app": "stand-in-browser", "title": "Open Acceluary", **on, "workspace": 1, "column": 2},
+        {"app": "stand-in-browser", "title": "Open Backwater", **on, "workspace": 1, "column": 2},
         {"app": "stand-in-chat", "title": "Chat", **on, "workspace": 2, "column": 1},
     ]
     lost = {
@@ -1830,9 +1830,9 @@ def test_agents_puts_back_the_windows_that_reopen_themselves(desktop: Desktop) -
             "~/.local/state/pi/restore.json",
             {"v": 1, "boot": "another-boot", "sessions": []},
         )
-        stand_in(desktop, "stand-in-browser", "Open Acceluary")
+        stand_in(desktop, "stand-in-browser", "Open Backwater")
         deadline = time.monotonic() + 60
-        while not put_back(now := where_now(desktop, "01c4-", {"Open Acceluary", "Chat"})):
+        while not put_back(now := where_now(desktop, "01c4-", {"Open Backwater", "Chat"})):
             assert time.monotonic() < deadline, f"not put back where they sat: {now}"
             time.sleep(1)
         # The shell's first keep with the browser in this boot's windows

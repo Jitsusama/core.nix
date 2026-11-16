@@ -309,7 +309,7 @@ ShellRoot {
     // A finding told by the socket is acted on through it, as the shell
     // spawns nothing for an act (2026-11-10).
     function acted() {
-        const burn = "A burn in Aquifer";
+        const burn = "A burn in Cistern";
         const act = what => ({ ask: "act", act: what, line: "finding:burn:s1" });
         // Listed first, as the daemon lists a finding that wants a look,
         // and marking it expected behind it.

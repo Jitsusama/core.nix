@@ -13,12 +13,12 @@
 # that provider's program instead, as `PROGRAM:PLACE`, the program by its
 # store path:
 #
-#   jitsusama.mycelium.vias = [ "${aquifer-link}/bin/aquifer-link:sandbox-1" ];
+#   jitsusama.mycelium.vias = [ "${cistern-link}/bin/cistern-link:sandbox-1" ];
 #
 # A provider's program can make such machines as well, for a start no
 # machine of the realm takes, from the shapes it offers when the node asks:
 #
-#   jitsusama.mycelium.providers = [ "${aquifer-cell}/bin/aquifer-cell" ];
+#   jitsusama.mycelium.providers = [ "${cistern-cell}/bin/cistern-cell" ];
 #
 # A machine may join further realms too, each run by a node of its own,
 # with its own state, mesh, steer inboxes, socket and key, where the harness
@@ -117,7 +117,7 @@ let
     path, for a machine SSH can't reach, such as one a provider lent.
     mycelium's PROTOCOL.md says what the program is asked.
   '';
-  viasExample = lib.literalExpression ''[ "''${aquifer-link}/bin/aquifer-link:sandbox-1" ]'';
+  viasExample = lib.literalExpression ''[ "''${cistern-link}/bin/cistern-link:sandbox-1" ]'';
   # A provider's program by its absolute path, for the reason a via's is;
   # it takes no words of its own, since the node adds what it asks.
   provider = lib.types.strMatching "/[^:[:space:]%$]+";
@@ -128,7 +128,7 @@ let
     and from one that costs money only where the start allows it.
     mycelium's PROTOCOL.md says what the program is asked.
   '';
-  providersExample = lib.literalExpression ''[ "''${aquifer-cell}/bin/aquifer-cell" ]'';
+  providersExample = lib.literalExpression ''[ "''${cistern-cell}/bin/cistern-cell" ]'';
   further = lib.types.submodule (
     { name, ... }:
     {

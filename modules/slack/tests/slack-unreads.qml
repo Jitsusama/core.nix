@@ -321,16 +321,16 @@ QtObject {
         // And those whose conversation Joel read in Slack past them, by
         // Slack's read mark for it, though no message held stands for them.
         const mark = (id, name, read) => ({ id: id, name: name, read: read });
-        const marks = [mark("C5", "#aquifer", "1000.000100"), mark("C6", "#rain", "500.000100"),
+        const marks = [mark("C5", "#cistern", "1000.000100"), mark("C6", "#rain", "500.000100"),
             mark("G5", "#proj-delta", "2000.000100"), mark("D6", "Carolyn Ng", "1000.000100"),
-            mark("G6", "burke, christian", "9000.000100"), mark("D7", "Sam Lee", "9000.000100"),
+            mark("G6", "grace, alan", "9000.000100"), mark("D7", "Sam Lee", "9000.000100"),
             mark("D8", "Sam Lee", "9000.000100")];
         const seenIn = notices => Unreads.seenRead(notices, marks);
         check("a channel's notice is read once its read mark passes it",
-            seenIn([raised("s1", "[ada] in #aquifer", "Burke: CRIU into systemd", 999900),
-                raised("s2", "[ada] in #aquifer", "Burke: and then some", 1020000)]), ["s1"]);
+            seenIn([raised("s1", "[ada] in #cistern", "Grace: CRIU into systemd", 999900),
+                raised("s2", "[ada] in #cistern", "Grace: and then some", 1020000)]), ["s1"]);
         check("its clock and Slack's a few seconds apart",
-            seenIn([raised("s3", "[ada] in #aquifer", "Burke: soon after", 1008000)]), ["s3"]);
+            seenIn([raised("s3", "[ada] in #cistern", "Grace: soon after", 1008000)]), ["s3"]);
         check("a private channel's, which its notice names without a #",
             seenIn([raised("s4", "[ada] in proj-delta", "Levi: the sync", 1500000)]), ["s4"]);
         check("a direct message's, by whose it is",
@@ -338,13 +338,13 @@ QtObject {
         check("but not one its conversation's mark hasn't reached",
             seenIn([raised("s6", "[ada] in #rain", "River: a drop", 600000)]), []);
         check("nor a group's, nor one two conversations go by the name of",
-            seenIn([raised("s7", "[ada] in Burke Libbey, Christian Bruckmayer", "Burke: hi",
-                100000), raised("s8", "[ada] in burke, christian", "Burke: hi", 100000),
+            seenIn([raised("s7", "[ada] in Grace Hopper, Alan Kay", "Grace: hi",
+                100000), raised("s8", "[ada] in grace, alan", "Grace: hi", 100000),
                 raised("s9", "[ada] from Sam Lee", "hi", 100000)]), []);
         check("nor one with no mark, one read already, nor another program's",
             seenIn([raised("s10", "[ada] in #elsewhere", "Bo: hi", 100000),
-                raised("s11", "[ada] in #aquifer", "Burke: hi", 100000, { read: true }),
-                raised("s12", "[ada] in #aquifer", "Burke: hi", 100000,
+                raised("s11", "[ada] in #cistern", "Grace: hi", 100000, { read: true }),
+                raised("s12", "[ada] in #cistern", "Grace: hi", 100000,
                     { app: "Build", entry: "" })]), []);
         check("the marks are kept as the daemon's other records are",
             [parts(Unreads.keep(byKey, { "slack-seen:C5": { kind: "slack-seen",

@@ -253,7 +253,7 @@ fn a_reftable_checkouts_heads_and_trunk_are_read_from_its_tables() {
 fn a_repository_with_no_remote_is_keyed_by_its_folder() {
     let home = place("local");
     let src = home.join("src");
-    checkout_at(&src.join("acceluary"), None, 100);
+    checkout_at(&src.join("backwater"), None, 100);
     checkout_at(&src.join("documents"), Some("."), 100);
     let record = reading(&[src], Some(&home));
     let keys: Vec<(&str, &str)> = record
@@ -264,7 +264,7 @@ fn a_repository_with_no_remote_is_keyed_by_its_folder() {
     assert_eq!(
         keys,
         [
-            ("local:~/src/acceluary", "acceluary"),
+            ("local:~/src/backwater", "backwater"),
             ("local:~/src/documents", "documents"),
         ],
         "{record:#?}"

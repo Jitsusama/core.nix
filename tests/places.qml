@@ -146,11 +146,11 @@ QtObject {
         // else the first of that program, each kept window used once.
         const others = [
             { app: "google-chrome", title: "Docs" },
-            { app: "google-chrome", title: "Open · Acceluary" },
+            { app: "google-chrome", title: "Open · Backwater" },
             { app: "slack", title: "Slack" }
         ];
         expect("a window is the kept one of its program with its title",
-            Places.matchOther(others, [], "google-chrome", "Open · Acceluary"), 1);
+            Places.matchOther(others, [], "google-chrome", "Open · Backwater"), 1);
         expect("else the first of its program not used yet",
             Places.matchOther(others, [0], "google-chrome", "New Tab"), 1);
         expect("a program kept nowhere goes nowhere",

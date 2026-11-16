@@ -183,14 +183,14 @@ fn each_conversations_read_mark_is_a_record_while_slack_answers() {
     let mut said = ok(vec![], vec![]);
     said.seen = vec![Seen {
         id: "C5".to_owned(),
-        name: "#aquifer".to_owned(),
+        name: "#cistern".to_owned(),
         read: "1730300000.000100".to_owned(),
     }];
     let made: Vec<Value> = records(Some(&said)).into_iter().map(|(_, r)| r).collect();
     assert_eq!(
         made[0],
         json!({"key": "slack-seen:C5", "kind": "slack-seen", "slack-seen": {
-            "id": "C5", "name": "#aquifer", "read": "1730300000.000100"}}),
+            "id": "C5", "name": "#cistern", "read": "1730300000.000100"}}),
         "a conversation's read mark is said by its name"
     );
     said.state = State::Unreachable;
