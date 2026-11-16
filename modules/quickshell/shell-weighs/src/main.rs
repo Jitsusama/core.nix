@@ -24,7 +24,9 @@ use terminal_kit::{Context, Exit, Failure, Help, layout};
 /// The shell's resident memory by part, in kB, from its smaps.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Parts {
-    /// Qt's JavaScript heap, the memfd it names `JSGCHeap`.
+    /// Qt's JavaScript heap, the mapping it names `JSGCHeap`: anonymous
+    /// memory in the shell's Qt, named so where the kernel names anonymous
+    /// memory, and a memfd in Qt as it ships.
     heap: u64,
     /// The code Qt's JIT made, the memfd it names `JITCode`.
     jit: u64,

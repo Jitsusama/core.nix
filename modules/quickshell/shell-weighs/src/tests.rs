@@ -11,6 +11,9 @@ Pss:                   4 kB
 7f0000000000-7f0010000000 rw-p 00000000 00:01 9 /memfd:JSGCHeap:QtQml (deleted)
 Size:             262144 kB
 Rss:              208344 kB
+7f0008000000-7f0008400000 rw-p 00000000 00:00 0                          [anon:JSGCHeap:QtQml]
+Size:               4096 kB
+Rss:                3000 kB
 7f0010000000-7f0010100000 r-xp 00000000 00:01 10 /memfd:JITCode:QtQml (deleted)
 Size:               1024 kB
 Rss:                 812 kB
@@ -36,7 +39,7 @@ fn the_heap_and_the_jits_code_are_told_apart_from_other_anonymous_memory() {
     assert_eq!(
         parts(SMAPS),
         Parts {
-            heap: 208_344,
+            heap: 208_344 + 3000,
             jit: 812,
             anonymous: 61_000 + 1000 + 368 + 60,
             files: 4 + 25_592,

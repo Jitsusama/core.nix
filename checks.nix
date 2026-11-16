@@ -145,7 +145,7 @@ let
       $out/lib/qt-6/qml/
     cp -r ${pkgs.callPackage ./modules/quickshell/key-times/package.nix { }}/lib/qt-6/qml/KeyTimes \
       $out/lib/qt-6/qml/
-    cp -r ${pkgs.callPackage ./modules/quickshell/heap/package.nix { }}/lib/qt-6/qml/Heap \
+    cp -r ${graphical.pkgs.quickshell.heap}/lib/qt-6/qml/Heap \
       $out/lib/qt-6/qml/
     chmod -R u+w $out
     echo 'depends Quickshell' >> $out/lib/qt-6/qml/Quickshell/Wayland/_BackgroundEffect/qmldir
