@@ -228,8 +228,9 @@ asked for. The last one Joel kept: auto in the middle, the thumb on
 
 ## The Key Line and the Keys List
 
-As omni-ref has them. The line sits in the head, under the parts it steps
-between and above the switch, in Note and muted. It's drawn at every width
+As omni-ref had them, set into the page's composition as the Crossing
+(`examples/tour.md`) sets them: under the contents, centred, above the switch, small and muted, never
+as a strip of chrome at the top. It's drawn at every width
 and on touch too, never hidden behind `(hover: none)`, since a tablet often
 has a keyboard; and never in a footer, the length of the page away:
 
@@ -317,7 +318,7 @@ moves:
 - **Escape closes it**, as it closes the Keys list, since a sheet of
   evidence holds nothing to lose; so do its close button and :q. A sheet
   holding work (a form, a draft) cancels its `cancel` event and closes only
-  by its own control or :q, as SKILL.md's Keys rule says.
+  by its own control or :q, as `interface.md`'s Keys rule says.
 - **From the right on a wide screen, the full screen on a phone**, sliding
   in on `--arrive` and still under reduced motion. The scrollbar's gutter is
   kept, so the page under it doesn't shift sideways.
@@ -471,7 +472,7 @@ at a time.
 
 ## A Terminal Replay
 
-A recorded terminal session is a player the reader drives (SKILL.md,
+A recorded terminal session is a player the reader drives (`interface.md`,
 Replays).
 
 - **Recorded or scripted, as an asciicast.** `asciinema rec` records a
@@ -483,7 +484,7 @@ Replays).
 - **Trimmed before it's shown**: idle gaps capped in the cast, not only in
   the player; output no reader needs cut; and every line read for a
   secret, a home path, a host name or an id before it's published.
-  Evidence is the exception (SKILL.md, Replays): its cast stays as
+  Evidence is the exception (`interface.md`, Replays): its cast stays as
   recorded, gaps shortened only by the player's `idleTimeLimit` with a note
   on the frame, and a secret masked in place, as `[masked]`.
 - **It can be a part's figure.** The gate counts drawings and tables, so a

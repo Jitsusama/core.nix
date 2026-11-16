@@ -7,7 +7,7 @@ use disk_guard::logs::{KEEP, LIMIT};
 use disk_guard::plan::Class;
 use disk_guard::replaced::Uses;
 use disk_guard::snapshots::Boot;
-use disk_guard::survey::{Action, Offer, World, survey};
+use disk_guard::survey::{Action, Offer, Sizes, World, survey};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs;
@@ -19,7 +19,7 @@ const BOOT: Boot = Boot {
     ticks: 100.0,
 };
 
-fn now() -> f64 {
+pub fn now() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -57,32 +57,48 @@ fn offers_using(
     ran: &BTreeMap<String, f64>,
     uses: &Uses,
 ) -> Vec<Offer> {
-    surveyed(config, processes, finished, ran, uses, now()).0
-}
-
-/// What a survey offers at `at`, in wall seconds.
-fn offers_at(config: &Config, at: f64) -> Vec<Offer> {
     surveyed(
         config,
-        &[],
-        &|_| false,
-        &BTreeMap::new(),
-        &Uses::default(),
-        at,
+        processes,
+        finished,
+        ran,
+        uses,
+        (now(), Sizes::default()),
     )
     .0
 }
 
-/// What a survey offers, and how many times it walked a root for targets
-/// and installs.
+/// What a survey offers at `at`, in wall seconds.
+fn offers_at(config: &Config, at: f64) -> Vec<Offer> {
+    offers_sized(config, at, Sizes::default()).0
+}
+
+/// What a survey offers at `at` after earlier ones sized what `sizes`
+/// holds, and what it leaves sized for the next.
+pub fn offers_sized(config: &Config, at: f64, sizes: Sizes) -> (Vec<Offer>, Sizes) {
+    let none = BTreeMap::new();
+    let (found, _, sizes) = surveyed(
+        config,
+        &[],
+        &|_| false,
+        &none,
+        &Uses::default(),
+        (at, sizes),
+    );
+    (found, sizes)
+}
+
+/// What a survey at `at` offers after earlier ones sized what `sizes`
+/// holds, how many times it walked a root for targets and installs, and
+/// what it leaves sized for the next.
 fn surveyed(
     config: &Config,
     processes: &[Process],
     finished: &dyn Fn(&Path) -> bool,
     ran: &BTreeMap<String, f64>,
     uses: &Uses,
-    at: f64,
-) -> (Vec<Offer>, usize) {
+    (at, sizes): (f64, Sizes),
+) -> (Vec<Offer>, usize, Sizes) {
     let awake = Awake::default();
     let mut finished = |dir: &Path| finished(dir);
     let said = BTreeMap::new();
@@ -100,12 +116,17 @@ fn surveyed(
         uses,
         kept: Vec::new(),
         counted: std::cell::RefCell::default(),
+        sizes: std::cell::RefCell::new(sizes),
         walked: 0,
         stop: &|| false,
     };
     let mut found = survey(config, &mut world);
     found.sort_by(|a, b| a.candidate.path.cmp(&b.candidate.path));
-    (found, world.walked)
+    let walked = world.walked;
+    // As the daemon does after each whole survey.
+    let mut sizes = world.sizes.take();
+    sizes.ended();
+    (found, walked, sizes)
 }
 
 pub fn find<'a>(offers: &'a [Offer], path: &Path) -> &'a Offer {
@@ -248,13 +269,13 @@ fn a_root_targets_and_installs_share_is_walked_once() {
            "installs": {{ "kind": "installs", "roots": ["{0}"] }}"#,
         roots.display()
     ));
-    let (found, walked) = surveyed(
+    let (found, walked, _) = surveyed(
         &config,
         &[],
         &|_| true,
         &BTreeMap::new(),
         &Uses::default(),
-        now(),
+        (now(), Sizes::default()),
     );
     assert_eq!(walked, 1);
     assert_eq!(find(&found, &target).candidate.class, Class::Target);

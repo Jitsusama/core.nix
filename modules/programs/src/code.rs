@@ -11,16 +11,43 @@
 //! Each read takes in what the repos timer's last refresh kept of each
 //! repository's open changes, as the repos command does, so a row
 //! counts them.
+//!
+//! A checkout's files are listed only while a watch holds its Open a File
+//! by Name row ahead (ready-rows.md's "What's read only while it's looked
+//! at"), since one holds thousands: listed as Neovim's finder lists them
+//! (repositories.rs), on the thread that follows the watches, outside the
+//! lock, and served inside the row. Once no watch names the row, its
+//! files go.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, mpsc};
 
-use programs::{code_rows, command};
+use programs::{code_rows, command, repositories};
 use repos::github;
 use repos::read::{Reading, read};
+use serde_json::Value;
 
-use super::{Daemon, Shared, keep, lock};
+use super::{Daemon, Shared, keep, keys_watched, lock};
+
+/// Hears each watch begin or end, on a thread of its own, and hands the
+/// keys watched then to `ahead`. daemon-serve says so with every record
+/// held, so it's only passed on there, and the keys read here after.
+pub fn follow(shared: &Arc<Shared>) {
+    let (moved, heard) = mpsc::channel();
+    shared.served().on_watches(Box::new(move || {
+        let _ = moved.send(());
+    }));
+    let shared = Arc::clone(shared);
+    std::thread::spawn(move || {
+        while heard.recv().is_ok() {
+            let _ = heard.try_iter().count();
+            let watched = keys_watched(&lock(&shared.daemon));
+            ahead(&shared, &watched);
+        }
+    });
+}
 
 /// Where Code looks and how it words its rows, set as the daemon starts.
 pub struct Code {
@@ -34,6 +61,10 @@ pub struct Code {
     /// Whether a read is under way on a thread of its own, so watches
     /// beginning together read the disk once.
     reading: AtomicBool,
+    /// The rows the last read made: each repository's and those inside it.
+    made: Mutex<Vec<Value>>,
+    /// The files listed of each Open a File by Name row ahead, by its key.
+    listed: Mutex<BTreeMap<String, Vec<Value>>>,
 }
 
 impl Code {
@@ -58,11 +89,13 @@ impl Code {
             words: code_rows::Words::read(vocabulary),
             read_once: AtomicBool::new(false),
             reading: AtomicBool::new(false),
+            made: Mutex::new(Vec::new()),
+            listed: Mutex::new(BTreeMap::new()),
         }
     }
 
-    /// Code's rows as the disk holds them now.
-    fn rows(&self) -> Vec<serde_json::Value> {
+    /// Code's rows as the disk holds them now, and the rows inside them.
+    fn rows(&self) -> Vec<Value> {
         let mut record = read(&Reading {
             roots: &self.roots,
             home: self.home.as_deref(),
@@ -72,7 +105,9 @@ impl Code {
         if let Some(kept) = github::seen_file(self.home.as_deref()) {
             github::merge_kept(&mut record, &kept);
         }
-        code_rows::rows(&record, self.home.as_deref(), &self.words)
+        let mut rows = code_rows::rows(&record, self.home.as_deref(), &self.words);
+        rows.extend(code_rows::inside(&record, &self.words));
+        rows
     }
 }
 
@@ -102,10 +137,59 @@ fn again(shared: &Arc<Shared>) {
 }
 
 /// Keeps the rows read, telling each watch only what moved.
-fn take(shared: &Shared, daemon: &mut Daemon, rows: Vec<serde_json::Value>) {
+fn take(shared: &Shared, daemon: &mut Daemon, rows: Vec<Value>) {
+    *lock(&shared.code.made) = rows;
+    served(shared, daemon);
+    shared.code.read_once.store(true, Ordering::Release);
+}
+
+/// Serves the rows the last read made and the files listed inside them,
+/// telling each watch only what moved.
+fn served(shared: &Shared, daemon: &mut Daemon) {
+    let mut rows = lock(&shared.code.made).clone();
+    for (parent, files) in lock(&shared.code.listed).iter() {
+        rows.extend(code_rows::files(parent, files, &shared.code.words));
+    }
     let moved = daemon.code.take(rows, Vec::new());
     keep(daemon, moved.changed, &moved.gone);
-    shared.code.read_once.store(true, Ordering::Release);
+}
+
+/// As the watches move: lists the files of each Open a File by Name row a
+/// watch now names, on this thread and outside the lock, and lets go of
+/// those of each no watch names any more, then serves them. Those still
+/// named keep what was listed as their row came ahead.
+pub fn ahead(shared: &Shared, watched: &[String]) {
+    let wanted: Vec<&String> = watched
+        .iter()
+        .filter(|key| key.starts_with("row:code:") && key.ends_with(code_rows::FILES))
+        .collect();
+    let was = lock(&shared.code.listed).clone();
+    if wanted.len() == was.len() && wanted.iter().all(|key| was.contains_key(*key)) {
+        return;
+    }
+    let checkouts: Vec<(String, Option<String>)> = {
+        let made = lock(&shared.code.made);
+        wanted
+            .iter()
+            .map(|key| {
+                let row = made.iter().find(|row| row["key"] == key.as_str());
+                let path = row.and_then(|row| row["held"]["path"].as_str());
+                ((*key).clone(), path.map(str::to_owned))
+            })
+            .collect()
+    };
+    let listed: BTreeMap<String, Vec<Value>> = checkouts
+        .into_iter()
+        .filter_map(|(key, path)| {
+            let files = match was.get(&key) {
+                Some(files) => files.clone(),
+                None => repositories::files(&path?),
+            };
+            Some((key, files))
+        })
+        .collect();
+    *lock(&shared.code.listed) = listed;
+    served(shared, &mut lock(&shared.daemon));
 }
 
 /// New Terminal Here on a repository's row: niri starts kitty in its
@@ -113,7 +197,7 @@ fn take(shared: &Shared, daemon: &mut Daemon, rows: Vec<serde_json::Value>) {
 /// service a switch restarts, and niri, which spawned it, gives its window
 /// the keys. Answered at once and asked on a thread of its own, as a
 /// kitty tab's acts are (tabs.rs), so no other ask waits on niri.
-pub fn terminal(id: &serde_json::Value, folder: &str) -> serde_json::Value {
+pub fn terminal(id: &Value, folder: &str) -> Value {
     let niri = std::env::var("PROGRAMS_NIRI").unwrap_or_else(|_| "niri".to_owned());
     let argv: Vec<String> = [
         niri.as_str(),

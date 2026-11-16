@@ -40,6 +40,9 @@ let unread: readonly string[] = [];
 let standing: Standing | undefined;
 // The last thing the watch couldn't read, said until it reads another.
 let heard: string | undefined;
+// Whether the node has given any records yet, so a refusal before the first
+// never leaves the page saying it's still asking.
+let given = false;
 let cursor: string | null = cellIn(location.hash);
 let sought = "";
 
@@ -65,6 +68,9 @@ function sayWhen(): void {
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
   asof.textContent = `${standing === undefined ? "Reaching the mycelium node." : said(standing)}${trouble}`;
   asof.dataset.state = standing?.state ?? "connecting";
+  if (!given && standing?.state === "broken") {
+    verdict.textContent = "Nothing to draw: the mycelium node didn't say what its cells are for.";
+  }
 }
 
 const current = (): Forage | undefined => forages.find((each) => each.cell === cursor);
@@ -103,6 +109,7 @@ function draw(): void {
 }
 
 function heardAll(held: Held): void {
+  given = true;
   ({ forages, unread } = foragesOf(held));
   verdict.textContent = judged(forages, machine());
   sayWhen();

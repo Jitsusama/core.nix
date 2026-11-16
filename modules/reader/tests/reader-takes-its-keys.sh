@@ -14,93 +14,27 @@
 # filling it, as a busy machine's does, so the reader has to look again
 # by itself: nothing else comes to wake a window that hasn't shown yet.
 #
-# usage: reader-takes-its-keys.sh <file> <photo> <heading colour> <cursor> <cursor text> <accent>
+# usage: reader-takes-its-keys.sh <presses.sh> <file> <photo> <heading colour> <cursor> <cursor text> <accent>
 #
 # The markdown a copy is held to holds backticks and dollars, meant as
 # themselves, so it's quoted whole in single quotes.
 # shellcheck disable=SC2016
 set -euo pipefail
 
-file=$1
-photo=$2
-strong=$3
-cursor=$4
-cursor_text=$5
-accent=$6
+presses=$1
+file=$2
+photo=$3
+strong=$4
+cursor=$5
+cursor_text=$6
+accent=$7
 : > said
 
 READER_KEYS_LOG=1 READER_LATE_FENCE=1 reader "$file" > said 2>&1 &
-reader=$!
 
-fail() {
-  echo "$1"
-  cat said
-  kill "$reader" 2> /dev/null || true
-  exit 1
-}
-
-# Whether the log holds `count` lines matching `pattern`.
-holds() { [ "$(grep -c -a -E "$1" said || true)" -ge "$2" ]; }
-
-# Waits until the log holds `count` lines matching `pattern`, or 50 seconds
-# pass, however quiet the log is meanwhile.
-logged() {
-  local deadline=$((SECONDS + 50))
-  until holds "$1" "$2"; do
-    ((SECONDS < deadline)) || fail "the reader never logged $2 of: $1"
-    inotifywait -q -q -t 1 -e modify said || true
-  done
-}
-
-# Where the view's top was after the last key, in points.
-heading() { grep -a -E '^key ' said | tail -n 1 | sed -E 's/.*heading ([0-9.]+) pt/\1/'; }
-
-# Where the cursor was after the last key, in points.
-cursor() { grep -a -E '^cursor: ' said | tail -n 1 | sed -E 's/cursor: ([0-9.]+) pt/\1/'; }
-
-# Whether two places are a point apart at most.
-near() { awk "BEGIN { exit !($1 - $2 < 1 && $2 - $1 < 1) }"; }
-
-# Presses keys after the reader has taken wtype's keyboard. wtype puts a
-# space between separate words, so a sequence is one word: gg, not g g.
-press() { wtype -s 800 "$@"; }
-
-# How many lines of the log match `pattern`.
-how_many() { grep -c -a -E "$1" said || true; }
-
-# Presses keys that make `acts` acts, and waits until the reader has done
-# them all.
-keys=0
-act() {
-  local acts=$1
-  shift
-  press "$@"
-  keys=$((keys + acts))
-  logged '^key ' "$keys"
-}
-
-# Whether the selection shows `words` as the page sets them, said as Rust
-# quotes them, by the log's last word on it, which comes before its key's,
-# whichever kind of selection it is.
-shows() {
-  local said
-  said=$(grep -a -E '^selected: ' said | tail -n 1)
-  said=${said#selected: }
-  said=${said#Chars }
-  said=${said#Pieces }
-  [ "$said" = "$1" ] || fail "the selection is $said, not $1"
-}
-
-# Waits for the next copy, and whether it took `markdown`, said as Rust
-# quotes it.
-copies=0
-copied() {
-  copies=$((copies + 1))
-  logged '^copied: ' "$copies"
-  local said
-  said=$(grep -a -E '^copied: ' said | sed -n "${copies}p")
-  [ "$said" = "copied: $1" ] || fail "copied ${said#copied: }, not $1"
-}
+# The library is handed in by its store path; shellcheck reads it from here.
+# shellcheck source=SCRIPTDIR/presses.sh
+source "$presses" "$!" "$strong"
 
 deadline=$((SECONDS + 60))
 until holds '^key Last None' 1; do
@@ -120,17 +54,6 @@ until grim "$photo" \
   inotifywait -q -q -t 1 -e modify said || true
 done
 cp "$photo" at-rest.png
-
-# How many pixels of a photo, left of the title's words, are `colour`.
-left_of_words() {
-  local box left
-  box=$(magick "$1" -fill black +opaque "$strong" -fill white -opaque "$strong" \
-    -format '%@' info:)
-  left=${box#*+}
-  left=${left%%+*}
-  magick "$1" -crop "${left}x100000+0+0" +repage -fill black +opaque "$2" \
-    -fill white -opaque "$2" -format '%[fx:round(mean*w*h)]' info:
-}
 
 # The cursor's line, at the top after gg, is marked by a rule in the
 # accent in the margin left of the words, where nothing else is.
@@ -471,9 +394,6 @@ logged '^opened: (.*/)?second.md, ' 2
 echo 'Written on since.' >> second.md
 logged '^saved: ' 1
 
-# How many lines the log holds matching `pattern`.
-seen() { grep -c -a -E "$1" said || true; }
-
 # [b goes back to the markdown file before this one in the folder, and ]b
 # on to the next, round its ends.
 press '[b'
@@ -487,9 +407,9 @@ logged '^opened: (.*/)?page.md, ' 3
 
 # } and { by paragraphs, ]] and [[ by headings, from the top. A selection
 # took them already, so they're counted on from what it left.
-tops=$(seen '^key First None')
-ons=$(seen '^key ParagraphOn None')
-backs=$(seen '^key ParagraphBack None')
+tops=$(how_many '^key First None')
+ons=$(how_many '^key ParagraphOn None')
+backs=$(how_many '^key ParagraphBack None')
 # Each puts the cursor on the line it goes to, as Vim's: the view stays
 # while the line shows, and a heading a screen on is set in its middle.
 press gg

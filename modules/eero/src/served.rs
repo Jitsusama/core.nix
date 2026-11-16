@@ -41,7 +41,7 @@ impl Vocabulary {
     /// order where it can, and the place's own drawer beside them; none
     /// while there's no network yet. The map is offered where there's a
     /// `map` page to open.
-    fn make(&mut self, network: Option<&HomeNetwork>, map: Option<&str>) {
+    fn make(&mut self, network: Option<&HomeNetwork>, map: Option<&rows::Map>) {
         let (rows, beside) = network.map_or_else(Default::default, |network| {
             (
                 rows::rows(network, &self.words, &self.numbers, map),
@@ -59,11 +59,19 @@ impl Vocabulary {
     }
 }
 
+/// The map of the network the rows offer: its page, and net's record it's
+/// drawn from (modules/net), read for what's worth a look each time the
+/// rows are made.
+pub struct Mapped {
+    pub page: String,
+    pub record: PathBuf,
+}
+
 /// Every vocabulary asked for, where they may be read from, and the map
-/// of the network's page, if there's one to open.
+/// of the network, if there's one to open.
 pub struct Vocabularies {
     store: PathBuf,
-    map: Option<String>,
+    map: Option<Mapped>,
     held: HashMap<Said, Vocabulary>,
 }
 
@@ -85,7 +93,7 @@ impl Vocabularies {
     }
 
     /// The same, its rows offering the map of the network at `map`.
-    pub fn mapped(self, map: Option<String>) -> Vocabularies {
+    pub fn mapped(self, map: Option<Mapped>) -> Vocabularies {
         Vocabularies { map, ..self }
     }
 
@@ -115,7 +123,12 @@ impl Vocabularies {
             kept: Kept::default(),
             made: Made::new(),
         };
-        vocabulary.make(network, self.map.as_deref());
+        let map = now(self.map.as_ref());
+        let map = map.as_ref().map(|(page, worst)| rows::Map {
+            page,
+            worst: worst.as_deref(),
+        });
+        vocabulary.make(network, map.as_ref());
         self.held.insert(said.clone(), vocabulary);
         Ok(said)
     }
@@ -128,12 +141,17 @@ impl Vocabularies {
     /// Makes every vocabulary's rows again from the network, answering
     /// with what each held before.
     pub fn make(&mut self, network: &HomeNetwork) -> HashMap<Said, Made> {
-        let map = self.map.as_deref();
+        // Read once for every vocabulary, so each says the same.
+        let map = now(self.map.as_ref());
+        let map = map.as_ref().map(|(page, worst)| rows::Map {
+            page,
+            worst: worst.as_deref(),
+        });
         self.held
             .iter_mut()
             .map(|(said, vocabulary)| {
                 let before = std::mem::take(&mut vocabulary.made);
-                vocabulary.make(Some(network), map);
+                vocabulary.make(Some(network), map.as_ref());
                 (said.clone(), before)
             })
             .collect()
@@ -155,6 +173,27 @@ impl Vocabularies {
         }
         Ok(found)
     }
+}
+
+/// The map's page, with the worst net finds now.
+fn now(map: Option<&Mapped>) -> Option<(&str, Option<String>)> {
+    map.map(|map| (map.page.as_str(), worst(&map.record)))
+}
+
+/// The worst of what net finds worth a look in its record at `record`,
+/// in net's words: the first of its concerns, which net lists worst
+/// first, but the internet's ceilings, which are the line's speed rather
+/// than a fault (net's own view says them apart). None while there's
+/// none, or no record to read, since net may not run here.
+fn worst(record: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(record).ok()?;
+    let record: Value = serde_json::from_str(&text).ok()?;
+    record["concerns"]
+        .as_array()?
+        .iter()
+        .find(|concern| concern["kind"] != "ceiling")?["says"]
+        .as_str()
+        .map(str::to_owned)
 }
 
 /// A file in the store, read whole as JSON.
@@ -221,4 +260,54 @@ pub fn between(
 /// An error answer, by the interface's codes.
 pub fn error(id: &Value, code: &str, message: &str) -> Value {
     json!({"id": id, "error": {"code": code, "message": message}})
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// net's record as it would be written, at a path of the test's own.
+    fn record(name: &str, concerns: &Value) -> PathBuf {
+        let folder = std::env::temp_dir().join(format!("eero-served-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("the test's folder is made");
+        let path = folder.join(format!("{name}.json"));
+        std::fs::write(&path, json!({"concerns": concerns}).to_string())
+            .expect("the record is written");
+        path
+    }
+
+    #[test]
+    fn the_worst_is_the_first_net_finds_but_the_internets_ceilings() {
+        let path = record(
+            "worst",
+            &json!([
+                {"kind": "ceiling", "says": "The internet is the narrowest point up"},
+                {"kind": "lost", "says": "The modem's downstream channel 16 has lost 878"},
+                {"kind": "weak", "says": "laptop computer 1 has a weak signal"},
+            ]),
+        );
+        assert_eq!(
+            worst(&path).as_deref(),
+            Some("The modem's downstream channel 16 has lost 878"),
+            "a ceiling is the line's speed, not a fault, as net's own view says it apart"
+        );
+    }
+
+    #[test]
+    fn nothing_is_worst_with_only_ceilings_or_no_record() {
+        let path = record(
+            "ceilings",
+            &json!([{"kind": "ceiling", "says": "The internet is the narrowest point up"}]),
+        );
+        assert_eq!(
+            worst(&path),
+            None,
+            "the line's speed alone is nothing to look at"
+        );
+        assert_eq!(
+            worst(Path::new("/nonexistent/net/network.json")),
+            None,
+            "with net not running, the map says what it is"
+        );
+    }
 }

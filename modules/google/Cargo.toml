@@ -17,6 +17,8 @@ jiff = "0.2"
 # The ready-row form every daemon shares: rows' spaced order, and figures
 # said as the launcher says them.
 ready-rows = { path = "../ready-rows" }
+# How every daemon's receptors are said to mycelium (../receptor-say).
+receptor-say = { path = "../receptor-say" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # The shape every command of ours takes (docs/commands.md).

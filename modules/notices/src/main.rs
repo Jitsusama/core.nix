@@ -3,18 +3,16 @@
 //! socket systemd holds for it as one record and its rows, each watch
 //! told only those that changed.
 //!
-//! Usage: `notices --socket SOCKET --state FOLDER --levels LEVELS
-//! --senders SENDERS --quiet QUIET --vocabulary WORDS --marks MARKS
-//! [--addressed ADDRESSED] [--shells SHELLS]`, where FOLDER keeps the
-//! history and the pictures
-//! sent as pixels, LEVELS is each sender's level as home.nix writes it,
-//! SENDERS is senders.json, QUIET is Quiet.qml's file, WORDS is the
-//! launcher's words.json, MARKS each program's mark as home.nix writes
-//! them, ADDRESSED what's to Joel from each chat program the machine
-//! names, and SHELLS is Quickshell's `by-shell` state folder, whose
-//! history is taken the first time it starts.
+//! Its unit alone starts it, in the terminal kit's shape, as
+//! `notices --help` says (`help()`): `--state` keeps the history and the
+//! pictures sent as pixels, `--levels` is each sender's level as home.nix
+//! writes it, `--senders` is senders.json, `--quiet` is Quiet.qml's file,
+//! `--vocabulary` the launcher's words.json, `--marks` each program's
+//! mark as home.nix writes them, `--addressed` what's to Joel from each
+//! chat program the machine names, and `--shells` Quickshell's `by-shell`
+//! state folder, whose history is taken the first time it starts.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -35,6 +33,7 @@ use notices::store;
 use notices::words::Words;
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
+use terminal_kit::{Exit, Failure, Help, flags};
 use windows::entries::{self, Entries};
 
 /// The daemon as the shell knows it: a record for each recent notice
@@ -49,9 +48,22 @@ const DOMAIN: Domain = Domain {
     named_only: &["summary"],
 };
 
-const USAGE: &str = "usage: notices --socket SOCKET --state FOLDER --levels LEVELS \
-                     --senders SENDERS --quiet QUIET --vocabulary WORDS --marks MARKS \
-                     [--addressed ADDRESSED] [--shells SHELLS]";
+/// The flags its unit hands it, each with a value, those it can't start
+/// without first.
+const FLAGS: [&str; 9] = [
+    "--socket",
+    "--state",
+    "--levels",
+    "--senders",
+    "--quiet",
+    "--vocabulary",
+    "--marks",
+    "--addressed",
+    "--shells",
+];
+
+/// How many of `FLAGS` it can't start without.
+const NEEDED: usize = 7;
 
 /// Where it serves, keeps and reads.
 struct Args {
@@ -66,22 +78,88 @@ struct Args {
     shells: Option<PathBuf>,
 }
 
-fn args() -> Option<Args> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let named = |flag: &str| {
-        let at = args.iter().position(|one| one == flag)?;
-        args.get(at + 1).map(PathBuf::from)
-    };
-    Some(Args {
-        socket: named("--socket")?,
-        state: named("--state")?,
-        levels: named("--levels")?,
-        senders: named("--senders")?,
-        quiet: named("--quiet")?,
-        vocabulary: named("--vocabulary")?,
-        marks: named("--marks")?,
-        addressed: named("--addressed"),
-        shells: named("--shells"),
+/// What `notices --help` says: how its unit runs it, and how it ends.
+fn help() -> Help {
+    Help::new("notices", "holds the desktop's notices for the shell")
+        .example(
+            "notices --socket SOCKET --state FOLDER ...",
+            "as its unit runs it, with every flag below",
+        )
+        .option(
+            "--socket SOCKET",
+            "where the shell asks, unless systemd hands one",
+        )
+        .option(
+            "--state FOLDER",
+            "where the history and its pictures are kept",
+        )
+        .option(
+            "--levels FILE",
+            "each sender's level, as home.nix writes it",
+        )
+        .option("--senders FILE", "the desktop's own senders, senders.json")
+        .option(
+            "--quiet FILE",
+            "Quiet.qml's file, saying whether it's quiet",
+        )
+        .option(
+            "--vocabulary FILE",
+            "the launcher's words, which rows are said in",
+        )
+        .option(
+            "--marks FILE",
+            "each program's mark, as home.nix writes them",
+        )
+        .option("--addressed FILE", "what's to Joel from each chat program")
+        .option(
+            "--shells FOLDER",
+            "the shell's history, taken the first time",
+        )
+        .exit(Exit::Failed, "its history, the bus or its socket failed it")
+        .exit(Exit::Config, "its levels or senders couldn't be read")
+}
+
+/// Where it serves, keeps and reads, from what its unit hands it.
+///
+/// # Errors
+///
+/// Asked wrongly, 64, for a flag it doesn't know, a flag with no value, a
+/// word that isn't a flag's, or short of one it can't start without.
+fn asked(args: &[String]) -> Result<Args, Failure> {
+    let wrongly = |what: String| Failure::new(Exit::Usage, what).try_this("notices --help");
+    let mut given: HashMap<&str, PathBuf> = HashMap::new();
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        let flag = match FLAGS.iter().find(|flag| **flag == arg) {
+            Some(flag) => *flag,
+            None if arg.starts_with('-') => return Err(flags::unknown("option", arg, &FLAGS)),
+            None => return Err(wrongly(format!("notices takes no word like {arg}"))),
+        };
+        let value = args
+            .next()
+            .ok_or_else(|| wrongly(format!("{flag} needs a value")))?;
+        given.insert(flag, PathBuf::from(value));
+    }
+    let missing: Vec<&str> = FLAGS[..NEEDED]
+        .iter()
+        .copied()
+        .filter(|flag| !given.contains_key(flag))
+        .collect();
+    if !missing.is_empty() {
+        return Err(wrongly(format!("notices needs {}", flags::and(&missing))));
+    }
+    // Each needed flag is there, since none is missing.
+    let mut take = |flag: &str| given.remove(flag);
+    Ok(Args {
+        socket: take("--socket").unwrap_or_default(),
+        state: take("--state").unwrap_or_default(),
+        levels: take("--levels").unwrap_or_default(),
+        senders: take("--senders").unwrap_or_default(),
+        quiet: take("--quiet").unwrap_or_default(),
+        vocabulary: take("--vocabulary").unwrap_or_default(),
+        marks: take("--marks").unwrap_or_default(),
+        addressed: take("--addressed"),
+        shells: take("--shells"),
     })
 }
 
@@ -248,25 +326,31 @@ fn followed(changed: mpsc::Sender<()>) -> (Arc<Mutex<Entries>>, Arc<AtomicBool>)
 }
 
 fn main() -> ExitCode {
-    let Some(args) = args() else {
-        eprintln!("{USAGE}");
-        return ExitCode::from(2);
-    };
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        serve_notices(&asked(&context.args)?)
+    })
+}
+
+/// Takes the bus and serves the shell for as long as it runs.
+///
+/// # Errors
+///
+/// Its configuration, 78, where its levels or senders can't be read;
+/// failed, 1, where its history, the bus or its socket fails it.
+fn serve_notices(args: &Args) -> Result<(), Failure> {
     let kept = args.state.join("notices.json");
-    let (judge, holding) = match judge(&args).and_then(|judge| Ok((judge, holding(&args, &kept)?)))
-    {
-        Ok(both) => both,
-        Err(why) => {
-            eprintln!("notices: {why}");
-            return ExitCode::FAILURE;
-        }
-    };
+    let judge = judge(args).map_err(|why| {
+        Failure::new(Exit::Config, "notices couldn't read its levels or senders").because(why)
+    })?;
+    let holding = holding(args, &kept).map_err(|why| {
+        Failure::new(Exit::Failed, "notices couldn't read its history").because(why)
+    })?;
     // Written at once, so the shell's history, where it was taken, is
     // read only the once.
     if let Err(why) = store::write(&kept, &holding) {
         eprintln!("notices: can't write {}: {why}", kept.display());
     }
-    let (senders, marks, words) = signing(&args);
+    let (senders, marks, words) = signing(args);
     // Those still open when it last stopped stay open: their senders may
     // still hear what's done with them.
     let state = Arc::new(Mutex::new(State::new(
@@ -313,24 +397,18 @@ fn main() -> ExitCode {
         held.unserved(served.unserved());
         told
     };
-    match serve::listen(&args.socket) {
-        Ok(listener) => serve::accept(Arc::clone(&shared), listener),
-        Err(why) => {
-            eprintln!("notices: can't listen on {}: {why}", args.socket.display());
-            return ExitCode::FAILURE;
-        }
-    }
+    let listener = serve::listen(&args.socket).map_err(|why| {
+        let socket = args.socket.display();
+        Failure::new(Exit::Failed, format!("notices couldn't listen on {socket}"))
+            .because(why.to_string())
+    })?;
+    serve::accept(Arc::clone(&shared), listener);
     let asker = changed.clone();
-    let connection = match bus::serve(Server {
+    let connection = bus::serve(Server {
         state: Arc::clone(&state),
         changed,
-    }) {
-        Ok(connection) => connection,
-        Err(why) => {
-            eprintln!("notices: {why}");
-            return ExitCode::FAILURE;
-        }
-    };
+    })
+    .map_err(|why| Failure::new(Exit::Failed, "notices couldn't take the bus").because(why))?;
     let first = records(&mut state.lock().unwrap_or_else(PoisonError::into_inner));
     shared.change(first, json!({}));
     // Everything changed meanwhile is taken at once, so a burst is told
@@ -357,7 +435,7 @@ fn main() -> ExitCode {
             }
         }
     }
-    ExitCode::SUCCESS
+    Ok(())
 }
 
 /// Asks a sender's daemon, on a thread of its own, whether a notice it

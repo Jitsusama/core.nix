@@ -733,6 +733,7 @@ gather {
     ./modules/quickshell/checks.nix
     ./modules/reader/checks.nix
     ./modules/ready-rows/checks.nix
+    ./modules/receptor-say/checks.nix
     ./modules/repos/checks.nix
     ./modules/rhythm/checks.nix
     ./modules/sccache/checks.nix

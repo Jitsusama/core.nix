@@ -94,6 +94,14 @@
       }
     },
     {
+      "id": "verb:eero:device:map",
+      "command": "open",
+      "in": "eero:device",
+      "name": "Show It on the Map",
+      "verb": "open",
+      "glyph": "web"
+    },
+    {
       "id": "eero:internet",
       "in": "eero",
       "name": "Internet",

@@ -15,6 +15,11 @@
 #
 #   jitsusama.mycelium.vias = [ "${aquifer-link}/bin/aquifer-link:sandbox-1" ];
 #
+# A provider's program can make such machines as well, for a start no
+# machine of the realm takes, from the shapes it offers when the node asks:
+#
+#   jitsusama.mycelium.providers = [ "${aquifer-cell}/bin/aquifer-cell" ];
+#
 # A machine may join further realms too, each run by a node of its own,
 # with its own state, mesh, steer inboxes, socket and key, where the harness
 # keeps a realm that isn't the machine's home one. A pi is in one realm, MYCELIUM_REALM, and PI_HOME_REALM tells it
@@ -81,7 +86,7 @@ let
     install -D -m 444 ${./completion.zsh} $out/share/zsh/site-functions/_mycelium
   '';
   inherit (pkgs.stdenv.hostPlatform) isDarwin isLinux;
-  linking = cfg.links != [ ] || cfg.vias != [ ];
+  linking = cfg.links != [ ] || cfg.vias != [ ] || cfg.providers != [ ];
   serving = cfg.realm != null;
   agentsKey = config.systemd.user.sockets ? agent-signing;
   # Only the fences a machine says run here, in mycelium's shape.
@@ -103,6 +108,17 @@ let
     mycelium's PROTOCOL.md says what the program is asked.
   '';
   viasExample = lib.literalExpression ''[ "''${aquifer-link}/bin/aquifer-link:sandbox-1" ]'';
+  # A provider's program by its absolute path, for the reason a via's is;
+  # it takes no words of its own, since the node adds what it asks.
+  provider = lib.types.strMatching "/[^:[:space:]%$]+";
+  providersDescription = ''
+    The programs of providers that may make this realm's machines, each by
+    its absolute path. The node asks each what it offers, and makes a
+    machine from an offer only for a start no machine of the realm takes,
+    and from one that costs money only where the start allows it.
+    mycelium's PROTOCOL.md says what the program is asked.
+  '';
+  providersExample = lib.literalExpression ''[ "''${aquifer-cell}/bin/aquifer-cell" ]'';
   further = lib.types.submodule (
     { name, ... }:
     {
@@ -117,6 +133,12 @@ let
           default = [ ];
           example = viasExample;
           description = viasDescription;
+        };
+        providers = lib.mkOption {
+          type = lib.types.listOf provider;
+          default = [ ];
+          example = providersExample;
+          description = providersDescription;
         };
         signsInWith = lib.mkOption {
           type = lib.types.nullOr (lib.types.strMatching "[a-z0-9-]+");
@@ -322,7 +344,7 @@ let
     ]) (lib.filter (one: one.to == realm) cfg.flows);
   # The words that run a realm's node, given what keeps it apart.
   nodeIn =
-    realm: links: vias: apart:
+    realm: links: vias: providers: apart:
     [
       (lib.getExe package)
       "--realm"
@@ -345,6 +367,10 @@ let
       "--via"
       machine
     ]) vias
+    ++ lib.concatMap (program: [
+      "--provider"
+      program
+    ]) providers
     ++ [
       "--serves"
       (servesFile realm)
@@ -426,7 +452,7 @@ let
     };
   servesFile = realm: "${config.xdg.configHome}/mycelium/serves-${realm}.json";
   realms = lib.optional serving cfg.realm ++ lib.attrNames cfg.alsoJoins;
-  node = nodeIn cfg.realm cfg.links cfg.vias [ ];
+  node = nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ];
   # Where the harness and mycelium keep a realm that isn't the home one.
   apartIn = realm: [
     "--state"
@@ -437,7 +463,7 @@ let
     "${config.xdg.stateHome}/pi/agentic-harness.pi/realms/${realm}/steer"
   ];
   furtherNodes = lib.mapAttrs (
-    realm: joined: nodeIn realm joined.links joined.vias (apartIn realm)
+    realm: joined: nodeIn realm joined.links joined.vias joined.providers (apartIn realm)
   ) cfg.alsoJoins;
   linuxNode = description: words: key: realm: {
     Unit = {
@@ -471,10 +497,12 @@ let
     enable = true;
     config = {
       ProgramArguments = words;
-      # The system's own ssh, which reads the machine's SSH config and
-      # the login session's agent.
+      # The system's own ssh first, which reads the machine's SSH config
+      # and the login session's agent. The account's profile follows it,
+      # since a carry runs the harness's pi-carry by name, as the Linux
+      # node finds it through the session's PATH.
       EnvironmentVariables = {
-        PATH = "/usr/bin:/bin";
+        PATH = "/usr/bin:/bin:${config.home.profileDirectory}/bin";
         # What the node starts is driven from another machine, where
         # nobody can touch this one's sensor, so its commits sign with
         # the agents' key, even in a held terminal.
@@ -562,6 +590,12 @@ in
       example = viasExample;
       description = viasDescription;
     };
+    providers = lib.mkOption {
+      type = lib.types.listOf provider;
+      default = [ ];
+      example = providersExample;
+      description = providersDescription;
+    };
     flows = lib.mkOption {
       type = lib.types.listOf flow;
       default = [ ];
@@ -610,7 +644,7 @@ in
       assertions = [
         {
           assertion = linking -> cfg.realm != null;
-          message = "jitsusama.mycelium.links and vias need jitsusama.mycelium.realm, the realm they link in.";
+          message = "jitsusama.mycelium.links, vias and providers need jitsusama.mycelium.realm, the realm they link in.";
         }
         {
           assertion = cfg.alsoJoins != { } -> cfg.realm != null;

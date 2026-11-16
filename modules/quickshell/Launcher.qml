@@ -7859,19 +7859,24 @@ Scope {
         let holding = within;
         if (typeof item.text === "string" && typeof item.contentWidth === "number"
             && item.text !== "" && !(item.color !== undefined && item.color.a === 0)) {
-            // Lines set at a fixed pitch stand on it, a face's descent
-            // reaching into the next line's pitch as type set on a page does,
-            // so their lines are as tall as their pitch, not their faces.
-            const tall = item.lineHeightMode === Text.FixedHeight && item.lineCount > 0
-                ? item.lineCount * item.lineHeight : item.contentHeight;
+            // Lines set at a fixed pitch stand on their baselines, their
+            // letters from the first's ascent to the last's descent, which
+            // the baseline Qt gives already sets where its alignment puts it
+            // (Contained.inkedLines); others are as tall as they lay.
+            inkFace.font = item.font;
+            const fixed = item.lineHeightMode === Text.FixedHeight;
+            const lines = Contained.inkedLines({ fixed, lines: item.lineCount,
+                pitch: item.lineHeight, baseline: item.baselineOffset,
+                ascent: inkFace.ascent, descent: inkFace.descent, tall: item.contentHeight });
             const across = item.width - item.contentWidth;
-            const down = item.height - tall;
+            const down = item.height - item.contentHeight;
+            const aligned = item.verticalAlignment === Qt.AlignBottom ? down
+                : item.verticalAlignment === Qt.AlignVCenter ? down / 2 : 0;
             const inked = {
                 x: at.x + (item.horizontalAlignment === Qt.AlignRight ? across
                     : item.horizontalAlignment === Qt.AlignHCenter ? across / 2 : 0),
-                y: at.y + (item.verticalAlignment === Qt.AlignBottom ? down
-                    : item.verticalAlignment === Qt.AlignVCenter ? down / 2 : 0),
-                width: item.contentWidth, height: tall
+                y: at.y + (fixed && item.lineCount > 0 ? lines.top : aligned),
+                width: item.contentWidth, height: lines.height
             };
             const ink = shows === null ? inked : Contained.shared(inked, shows);
             if (ink !== null) {
@@ -7888,6 +7893,10 @@ Scope {
 
     // Every text drawn on the card and its drawer, as drawnTexts finds it,
     // for a check to say what drew the words that broke out.
+    // The face of the text drawnTexts is reading, for its ascent and
+    // descent, which a Text doesn't say.
+    readonly property FontMetrics inkFace: FontMetrics {}
+
     function drawnAll() {
         return [card, drawerCard].filter(each => each.visible && each.opacity !== 0)
             .map(each => drawnTexts(each, each, each.floor ?? null, null, [], [], ""));
@@ -8619,13 +8628,17 @@ Scope {
         return Math.floor((screen.height - tall) / 2 * ratio) / ratio;
     }
 
+    // How many rows the : line's menu has made, for the launcher's life, so
+    // a case sees a second : make none.
+    property int commandRowsMade: 0
+
     // The : line's row drawn on the selection's ground, -1 for none: read
     // from the rows as drawn, so a case sees what Joel would.
     function commandDrawnChosen() {
         const rows = commandRows.contentItem.children;
         for (let at = 0; at < rows.length; at += 1) {
             if (rows[at].drawnChosen === true)
-                return rows[at].index;
+                return rows[at].at;
         }
         return -1;
     }
@@ -8714,6 +8727,7 @@ Scope {
                 // The line drawn on the selection's ground, -1 for none, as
                 // the rows draw it rather than as the line says.
                 drawnChosen: root.commandDrawnChosen(),
+                rowsMade: root.commandRowsMade,
                 menu: commandLoader.item.shown.map(line => (line.argument ?? "") === ""
                     ? `${line.command} ${line.title}`
                     : `${line.command} ${line.argument} ${line.title}`),
@@ -12240,61 +12254,145 @@ Scope {
                         // organizational concept"). The place's rows stay
                         // as they were beneath it, the cursor on its row, so
                         // they come back as the line is let go.
-                        ListView {
+                        //
+                        // Its rows are made once, as many as the room shows,
+                        // and kept for the launcher's life, each showing the
+                        // line at its place in the menu, so a : rebinds them
+                        // rather than making them again. A row is a Choice,
+                        // about 3 ms to make, and a list making a menu's anew
+                        // on every : spent most of Joel's 48 to 72 ms on the
+                        // key (his journal, 15 November); a ListView's reuse
+                        // drops what it keeps within a layout or two, so a :
+                        // minutes on made them all again. It answers what the
+                        // gutter, the containment judge and the cases read of
+                        // a ListView: count, contentY, indexAt, itemAtIndex
+                        // and contentItem.
+                        Item {
                             id: commandRows
                             x: root.textAreaAt
                             width: parent.width - x
                             height: parent.height
                             visible: root.commanding !== null
                             clip: true
-                            interactive: false
-                            boundsBehavior: Flickable.StopAtBounds
-                            model: commandLoader.item?.shown ?? []
+
+                            readonly property var shown: commandLoader.item?.shown ?? []
+                            readonly property int count: shown.length
                             // The line Tab or an arrow chose, -1 for none, read
-                            // from the command line rather than the list's own
-                            // currentIndex, which a ListView sets to its first
-                            // row as a model comes, so a line stood chosen
+                            // from the command line rather than a list's own
+                            // current row, which a ListView set to its first
+                            // row as a model came, so a line stood chosen
                             // before any key chose it.
                             readonly property int chosen: commandLoader.item?.choosing.at ?? -1
-                            onChosenChanged: {
-                                if (chosen >= 0)
-                                    positionViewAtIndex(chosen, ListView.Contain);
-                                else
-                                    positionViewAtBeginning();
+                            // How far down the menu it shows, as a list's
+                            // contentY: the chosen line kept whole in view.
+                            property real contentY: 0
+                            readonly property int first: Math.floor(contentY / root.rowTall)
+                            // As many rows as the tallest room shows, the
+                            // card's or a viewer's ten, and one a scroll cuts.
+                            readonly property int room: Math.ceil(Math.max(root.tall,
+                                10 * root.rowTall) / root.rowTall) + 1
+                            readonly property alias contentItem: commandLines
+
+                            function indexAt(x, y) {
+                                const at = Math.floor(y / root.rowTall);
+                                return at >= 0 && at < count ? at : -1;
+                            }
+                            function itemAtIndex(at) {
+                                const row = commandSlots.itemAt(at - first);
+                                return row && row.at === at && row.visible ? row : null;
+                            }
+                            // Kept in bounds, as a list stops at its own.
+                            function bounded(y) {
+                                return Math.max(0, Math.min(y, count * root.rowTall - height));
+                            }
+                            function keepChosen() {
+                                if (chosen < 0) {
+                                    contentY = 0;
+                                    return;
+                                }
+                                const top = chosen * root.rowTall;
+                                if (top < contentY)
+                                    contentY = top;
+                                else if (top + root.rowTall > contentY + height)
+                                    contentY = top + root.rowTall - height;
+                                contentY = bounded(contentY);
+                            }
+                            // Rows are made only as a menu first needs more
+                            // than it has, so a launcher that never sees :
+                            // makes none.
+                            function makeRows() {
+                                const wanted = Math.min(count, room);
+                                while (commandMade.count < wanted)
+                                    commandMade.append({ slot: commandMade.count });
+                            }
+                            onChosenChanged: keepChosen()
+                            // A room grown under the same menu makes the rows
+                            // it now shows, and a box grown or shrunk keeps
+                            // the chosen line whole, as a list's would.
+                            onRoomChanged: makeRows()
+                            onHeightChanged: keepChosen()
+                            onCountChanged: {
+                                makeRows();
+                                contentY = bounded(contentY);
+                                Qt.callLater(root.placeNumbers);
                             }
                             onContentYChanged: Qt.callLater(root.placeNumbers)
-                            onCountChanged: Qt.callLater(root.placeNumbers)
 
-                            delegate: Item {
-                                id: commandRow
+                            ListModel {
+                                id: commandMade
+                            }
 
-                                required property int index
-                                required property var modelData
-                                readonly property var act: modelData.act ?? null
-                                readonly property string named: Commands.called(modelData)
-                                    + (modelData.after ?? "")
-
+                            Item {
+                                id: commandLines
+                                y: -commandRows.contentY
                                 width: commandRows.width
-                                height: root.rowTall
-                                // Its name's baseline, down from its top, which
-                                // the gutter sets its number on.
-                                readonly property real nameBaseline: commandChoice.nameBaseline
-                                readonly property bool drawnChosen: commandChoice.selected
+                                height: commandRows.count * root.rowTall
 
-                                Choice {
-                                    id: commandChoice
-                                    anchors.fill: parent
-                                    groundFrom: commandRows.x
-                                    selected: commandRow.index === commandRows.chosen
-                                    shown: card.opacity > 0
-                                    glyph: commandRow.modelData.glyph
-                                        || (commandRow.act?.glyph ?? "")
-                                    hue: Theme[commandRow.modelData.hue
-                                        || (commandRow.act?.hue ?? "")] ?? Theme.text
-                                    name: commandRow.named
-                                    plainName: commandRow.named
-                                    count: commandRow.modelData.title ?? ""
-                                    side: commandRow.modelData.key ?? ""
+                                Repeater {
+                                    id: commandSlots
+                                    model: commandMade
+
+                                    delegate: Item {
+                                        id: commandRow
+
+                                        required property int index
+                                        // The menu's line it shows, as a
+                                        // list's delegate's index.
+                                        readonly property int at: commandRows.first + index
+                                        readonly property var modelData: commandRows.shown[at]
+                                            ?? null
+                                        readonly property var act: modelData?.act ?? null
+                                        readonly property string named: modelData === null ? ""
+                                            : Commands.called(modelData) + (modelData.after ?? "")
+
+                                        visible: modelData !== null
+                                        y: at * root.rowTall
+                                        width: commandRows.width
+                                        height: root.rowTall
+                                        // Its name's baseline, down from its top,
+                                        // which the gutter sets its number on.
+                                        readonly property real nameBaseline:
+                                            commandChoice.nameBaseline
+                                        readonly property bool drawnChosen: visible
+                                            && commandChoice.selected
+                                        Component.onCompleted: root.commandRowsMade += 1
+
+                                        Choice {
+                                            id: commandChoice
+                                            anchors.fill: parent
+                                            groundFrom: commandRows.x
+                                            selected: commandRow.at === commandRows.chosen
+                                            shown: card.opacity > 0 && commandRow.visible
+                                            glyph: commandRow.modelData?.glyph
+                                                || (commandRow.act?.glyph ?? "")
+                                            hue: Theme[commandRow.modelData?.hue
+                                                || (commandRow.act?.hue ?? "")] ?? Theme.text
+                                            name: commandRow.named
+                                            plainName: commandRow.named
+                                            count: commandRow.modelData?.title ?? ""
+                                            side: commandRow.modelData?.key ?? ""
+                                        }
+                                    }
                                 }
                             }
                         }

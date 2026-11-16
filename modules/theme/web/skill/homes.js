@@ -1,4 +1,4 @@
-// The gate's probe for SKILL.md's "One Home for Every Thing" (checks.md),
+// The gate's probe for sites.md's "One Home for Every Thing" (checks.md),
 // beside gate.js, layout.js and map.js and run the same way: whole, as one
 // expression in the page as published. It reads every home site's
 // homes.json through sites.json, then answers with each place the page names

@@ -139,10 +139,13 @@ Provider {
         });
         if (made === null)
             return null;
+        // A step in lists what the daemon serves inside the row first, as
+        // the internet's Run a Speed Test and a device's Show It on the Map,
+        // then its figures.
         return entering(made, kind === "internet"
             ? () => ready.rows(key).concat(provider.parts(made.key,
                 provider.withoutSwitch(said())))
-            : () => provider.parts(made.key, said()));
+            : () => ready.rows(key).concat(provider.parts(made.key, said())));
     }
 
     // Every figure a row's drawer says, which its step in lists: the drawer

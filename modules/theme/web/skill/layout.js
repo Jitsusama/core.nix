@@ -1,7 +1,7 @@
 // The gate's second probe (checks.md), beside gate.js and run the same way:
 // whole, as one expression in the page as published, at each width and in
 // each look. It answers with where the page's layout doesn't hold
-// (SKILL.md's Layout That Holds), each in a line saying what to do, and an
+// (rulings.md's Layout That Holds), each in a line saying what to do, and an
 // empty answer passes. It measures rows of things set side by side, then
 // opens each fold and closes it again, so run it on a page nobody is
 // reading. It ends without a semicolon, since an eval asked for one

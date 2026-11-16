@@ -1,4 +1,5 @@
-//! people SOCKET SOURCES [WORDS]
+//! people SOCKET SOURCES [WORDS], in the terminal kit's shape, as
+//! `people --help` says (`help()`).
 //!
 //! Everyone Joel deals with, held ready for the shell and anything else
 //! that asks, over SOCKET in the shell's daemon interface (lib.rs). Each
@@ -47,8 +48,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
-use std::process::{ChildStdin, Command, Stdio};
+use std::process::{ChildStdin, Command, ExitCode, Stdio};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -59,8 +59,10 @@ use people::listing::Stands;
 use people::{Ask, Book, Heard, KIND, Record, Standing, VERSION, address, ask, error, heard, now};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use terminal_kit::{Exit, Failure};
 use watching::{Watch, gather, listing, watched};
 
+mod cli;
 mod watching;
 
 /// How long a source that stopped waits before it's started again, at
@@ -119,31 +121,42 @@ struct Daemon {
 
 type Shared = Arc<(Mutex<Daemon>, Condvar)>;
 
-fn main() {
-    let mut args = std::env::args().skip(1);
-    let (Some(socket), Some(sources)) = (args.next(), args.next()) else {
-        eprintln!("usage: people SOCKET SOURCES [WORDS]");
-        std::process::exit(64);
-    };
-    let (said, drawn, vocabulary) = drawer::words_at(args.next().as_deref());
-    let sources: Vec<Source> = match std::fs::read_to_string(&sources)
+fn main() -> ExitCode {
+    terminal_kit::main(&cli::help(), env!("CARGO_PKG_VERSION"), |context| {
+        let asked = cli::asked(&context.args)?;
+        serve_people(&asked.socket, &asked.sources, asked.words)
+    })
+}
+
+/// Runs its sources and serves the shell for as long as it runs.
+///
+/// # Errors
+///
+/// Its configuration, 78, where its sources can't be read; failed, 1,
+/// where its socket can't be listened on.
+fn serve_people(
+    socket: &std::path::Path,
+    sources: &std::path::Path,
+    words: Option<&str>,
+) -> Result<(), Failure> {
+    let (said, drawn, vocabulary) = drawer::words_at(words);
+    let sources: Vec<Source> = std::fs::read_to_string(sources)
         .map_err(|error| error.to_string())
         .and_then(|text| serde_json::from_str::<Sources>(&text).map_err(|error| error.to_string()))
-    {
-        Ok(read) => read.sources,
-        Err(why) => {
-            eprintln!("<3>couldn't read the sources: {why}");
-            std::process::exit(78);
-        }
-    };
-    let socket = PathBuf::from(socket);
-    let listener = match daemon_serve::serve::listen(&socket) {
-        Ok(listener) => listener,
-        Err(why) => {
-            eprintln!("<3>couldn't listen on {}: {why}", socket.display());
-            std::process::exit(71);
-        }
-    };
+        .map_err(|why| {
+            let file = sources.display();
+            Failure::new(
+                Exit::Config,
+                format!("people couldn't read its sources in {file}"),
+            )
+            .because(why)
+        })?
+        .sources;
+    let listener = daemon_serve::serve::listen(socket).map_err(|why| {
+        let socket = socket.display();
+        Failure::new(Exit::Failed, format!("people couldn't listen on {socket}"))
+            .because(why.to_string())
+    })?;
     let names: Vec<String> = sources.iter().map(|source| source.name.clone()).collect();
     let shared: Shared = Arc::new((
         Mutex::new(Daemon {
@@ -186,6 +199,7 @@ fn main() {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || serve(&shared, stream, connection));
     }
+    Ok(())
 }
 
 fn lock(shared: &Shared) -> MutexGuard<'_, Daemon> {

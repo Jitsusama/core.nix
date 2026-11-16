@@ -2,10 +2,12 @@
 //! survey offers it.
 
 use crate::discover::{dir, file};
-use crate::survey::{DAY, config, find, offers, real, written_ago};
+use crate::survey::{DAY, config, find, now, offers, offers_sized, real, written_ago};
 use disk_guard::activity::Process;
 use disk_guard::plan::Class;
-use disk_guard::survey::Action;
+use disk_guard::survey::{Action, Sizes};
+
+const HOUR: f64 = 3_600.0;
 
 // A quest at work can leave its tmp/ for weeks: on one laptop 124 GiB of
 // quest scratch lay in tmp/ folders, a quarter of it written to over a
@@ -258,5 +260,50 @@ fn old_quest_scratch_is_judged_against_the_processes_once() {
     assert!(
         took < std::time::Duration::from_secs(10),
         "a survey of old scratch took {took:?}, as if each entry were judged alone"
+    );
+}
+
+// Every pass of a filling disk walked each old entry whole to size it
+// again: 68,202 on one laptop, 178 GB read in four hours. An entry
+// unwritten since an earlier survey keeps the size it found.
+#[test]
+fn old_scratch_is_sized_again_only_once_written_again() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let quests = dir(&home.join("quests"));
+    file(
+        &quests.join("QEST-20200101-ABCDEF/README.md"),
+        "---\nid: QEST-20200101-ABCDEF\nstatus: active\nupdated: 2020-01-01\n---\n# At work\n",
+    );
+    let workspaces = dir(&home.join("workspaces"));
+    let tmp = dir(&workspaces.join("QEST-20200101-ABCDEF/tmp"));
+    let run = dir(&tmp.join("run"));
+    file(&run.join("log"), &"x".repeat(20_000));
+    written_ago(&run.join("log"), 8.0 * HOUR);
+    written_ago(&run, 8.0 * HOUR);
+    let config = config(&format!(
+        r#""workspaces": {{ "kind": "workspaces", "path": "{}", "quests": "{}" }}"#,
+        workspaces.display(),
+        quests.display()
+    ));
+    let (found, sizes) = offers_sized(&config, now(), Sizes::default());
+    let first = find(&found, &run).candidate.size;
+    assert!(first > 0, "the run's log wasn't counted: {found:?}");
+    assert_eq!(sizes.walked, 1, "the run wasn't sized once");
+    let (found, sizes) = offers_sized(&config, now(), sizes);
+    assert_eq!(sizes.walked, 1, "a run unwritten since was walked again");
+    assert_eq!(
+        find(&found, &run).candidate.size,
+        first,
+        "a run known unwritten since changed its size"
+    );
+    file(&run.join("more"), &"y".repeat(20_000));
+    written_ago(&run.join("more"), 7.0 * HOUR);
+    written_ago(&run, 7.0 * HOUR);
+    let (found, sizes) = offers_sized(&config, now(), sizes);
+    assert_eq!(sizes.walked, 2, "a run written since wasn't sized again");
+    assert!(
+        find(&found, &run).candidate.size > first,
+        "a run written since kept its old size"
     );
 }

@@ -312,6 +312,17 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A hosted pi gives the event loop a turn before each extension's import
+  # and each factory, so one conversation's load never holds the host's one
+  # thread whole, and the extensions still load in the order they were given.
+  pi-hosted-yields-between-extensions =
+    pkgs.runCommandLocal "pi-hosted-yields-between-extensions" { }
+      ''
+        HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-hosted-yields-between-extensions.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
+
   # A hosted pi's screen stays in its own conversation: quitting or a crash
   # ends only that screen and what it was doing, a stopped screen builds
   # nothing for an extension and disposes the footer, header and editor one

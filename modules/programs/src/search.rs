@@ -84,7 +84,9 @@ fn sites(kept: &Kept, id: &Value, words: &str) -> Value {
 /// The keys of a place's rows that what's typed finds, best first, each
 /// by its name or by all `called` says it's called, with the letters of
 /// each name to bring forward. Those alike in score keep the order the
-/// rows are served in.
+/// rows are served in. A row inside another, as Code's files are inside
+/// Open a File by Name, is passed over, since what's typed at a place
+/// finds among its own rows.
 fn found<'a>(
     kept: &'a Kept,
     typed: &Typed,
@@ -92,7 +94,7 @@ fn found<'a>(
 ) -> (Vec<&'a str>, Map<String, Value>) {
     let mut rows: Vec<&Value> = kept
         .all()
-        .filter(|record| record["kind"] == "row")
+        .filter(|record| record["kind"] == "row" && record["row"]["parent"].is_null())
         .collect();
     rows.sort_by_key(|record| record["row"]["order"].as_i64().unwrap_or(i64::MAX));
     let mut found: Vec<(i32, &str, Item)> = Vec::new();

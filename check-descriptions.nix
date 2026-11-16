@@ -1539,9 +1539,10 @@
   '';
   mycelium-links-what-a-machine-names = ''
     a workstation in a realm runs mycelium's node there, dialling each machine it names, over SSH
-    or through a provider's program, as a user service on Linux signing in with the agents' key,
-    or the key its realm names, and an agent on a Mac whose sessions sign commits with that key;
-    one naming none runs it dialling nothing, and one in no realm has neither a realm nor a node
+    or through a provider's program, and asking each provider's program it names what it could
+    make, as a user service on Linux signing in with the agents' key,
+    or the key its realm names, and an agent on a Mac whose sessions sign commits with that key,
+    finding the system's ssh before the account's programs; one naming none runs it dialling nothing, and one in no realm has neither a realm nor a node
   '';
   mycelium-watches-its-balance = ''
     a machine in a realm reads each minute how evenly its home realm's machines carry their work,
@@ -2236,6 +2237,11 @@
     jiti's own order does, and evaluates each extension's modules afresh for each folder and after
     a reload
   '';
+  pi-hosted-yields-between-extensions = ''
+    pi built with the host's patches, applied exactly, gives the event loop a turn before it
+    imports each extension and before it runs each factory, and still loads every extension in
+    the order it was given
+  '';
   pi-hosted-screen-reaches-its-viewers = ''
     pi built with the host's patches, applied exactly, copies (a fullscreen selection too)
     through a hosted screen's viewers' terminals, sends a viewer who joins late the images
@@ -2512,6 +2518,14 @@
   '';
   ready-rows-passes-clippy = ''
     clippy finds nothing in ready-rows, the form every daemon serves the launcher's rows in
+  '';
+  receptor-say-gives-mycelium-words-and-numbers-alone = ''
+    a receptor is said by running mycelium's absolute path with fixed words, a realm of
+    mycelium's letters and counts held to the most it takes; said off, each count is none;
+    and only the account or login declared, ASCII case aside, is taken as the source's own
+  '';
+  receptor-say-passes-clippy = ''
+    clippy finds nothing in receptor-say, how the daemons say mycelium's receptors
   '';
   record-window-passes-clippy = ''
     clippy finds nothing in record-window or its tests
@@ -2879,6 +2893,11 @@
     the forage page typechecks on the kit at its strictest and builds, its tests passing: each
     cell's forage under the cell that started it, even in a ring, plans first with their steps
     added up, how many cells have no purpose written, and a record it can't read said, not dropped
+  '';
+  carry-back-asks-the-node-only-a-carry = ''
+    Carry Back asks the realm's node only a carry of a quest's id to a machine's name, rebuilt from
+    the act's parts so nothing else it holds is sent, and says it done once the carry ended
+    carried, else the node's own why, that its why couldn't be read, or that no answer came
   '';
   talk-to-opens-only-on-whom-it-names = ''
     the launcher's talkTo opens a talk on the first word it's given alone: a session's address in
@@ -4544,7 +4563,10 @@
   '';
   vm-desktop-keeps-copies = ''
     the desktop keeps what's copied, text and pictures, past the programs that copied it, Super+V
-    gives it back into the window it opened over, and the launcher forgets it all when asked
+    gives it back into the window it opened over, and the launcher forgets it all when asked; and a
+    copy marked secret reaches Joel's own X11 client but never a command fenced as pi fences one,
+    given the display: handed the cookie it reaches no socket, with the sockets open it holds no
+    cookie, and with both walls gone it reads it
   '';
   vm-desktop-keeps-pace = ''
     the launcher draws its keys, arrowed or typed, nearly as soon while every core is busy in

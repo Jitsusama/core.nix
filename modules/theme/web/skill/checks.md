@@ -15,7 +15,7 @@ Every publish passes these steps, in this order, before the page goes out
 and again on the live page after it, whichever model built it. Each passes
 or fails; a page failing any isn't published, and is reported as
 unfinished, naming each failure, never as done. None is traded for another
-or for a deadline (SKILL.md's [gates](SKILL.md#what-matters-and-how-much)).
+or for a deadline ([gates.md](gates.md#what-must-pass)).
 The browser tool's names are given; another browser runs the same checks
 through axe-core and its own console.
 
@@ -96,7 +96,7 @@ through axe-core and its own console.
 6. **Speed.** `kind: "perf"` meets [Speed](#speed)'s budgets, and no request
    leaves the site.
 7. **The look, beside its model.** Open the page beside the one it's built
-   like ([Judging Without Him](SKILL.md#judging-without-him)), part by part:
+   like ([Judging Without Him](gates.md#judging-without-him)), part by part:
    every figure, ornament and fold the model has, this one has too, or says
    why not. Then [Looking](#looking).
 8. **First sight.** A reader who hasn't seen the page, given only its shots
@@ -201,8 +201,8 @@ and passed every run with a mouse.
   page, and single letters do nothing in a text field. On every page, j, k, g
   and G step through its parts, ? opens and closes the Keys list, Escape
   closes it and gives focus back, and the head says so in its one key line.
-- **The switch, as omni-ref's.** Light, Match System and Dark sit in the
-  head; a choice holds across a reload with no flash of the other look, and
+- **The switch, as `sites.md` has it.** Light, Match System and Dark sit
+  under the key line; a choice holds across a reload with no flash of the other look, and
   Match System follows the system when it changes.
 - **A cold walk by keyboard alone** (2026-11-14), never touching the pointer,
   by a reader told nothing: reach every part and every thing a picture holds,
@@ -258,7 +258,7 @@ On a throttled middling phone (4 times slower CPU, a fast 4G network):
 - **The published copy is the local copy.** After publishing, fetch every file
   back and compare it; open the live page and look, never trusting the
   publish's own report.
-- **A local site is on its home** (`SKILL.md`, Where a Site Lives): its row
+- **A local site is on its home** (`sites.md`, Where a Site Lives): its row
   is in `sites.json`, the home was rebuilt from it, and every page opens
   with the strip whose first link goes home and whose ask is the row's.
 

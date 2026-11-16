@@ -5,8 +5,11 @@
 // with the repos library under the folders repos reads (modules/repos),
 // and the daemon ranks them for what's typed (search.rs), so the shell only
 // draws them. Return opens a repository's page where its remote is on
-// GitHub or GitLab, else copies its path; inside are Open Its Page and Copy
-// Its Path, and its drawer says its trunk, checkout and branch.
+// GitHub or GitLab, else copies its path; inside are its acts, then Open a
+// File by Name, which steps into its checkout's files, the one changed last
+// first, each opened by Return in its default program. The daemon lists
+// them only while that row is ahead (`filesAhead`). Its drawer says its
+// trunk, checkout and branch.
 import qs
 import Quickshell
 import QtQuick
@@ -30,10 +33,30 @@ Provider {
         live: provider.wanted || provider.launcher?.open === true
         maker: provider
         drawn: provider.launcher?.open ?? false
+        // A repository's own acts lead inside it, and Open a File by Name
+        // follows them.
+        insideAfterActs: true
+        ahead: provider.filesAhead !== "" ? [provider.filesAhead] : []
         make: (row, key) => ready.thing(row, key, {
             what: provider.what,
-            hue: row.hue || "program"
+            hue: row.hue || "program",
+            // The key it's served by, so a step into it says which.
+            servedKey: key
         })
+    }
+
+    // The Open a File by Name row whose checkout's files the daemon lists:
+    // the one stepped into, else the one inside the repository stepped
+    // into, so its files are there by the time it's stepped into; none
+    // with the launcher shut.
+    readonly property string filesAhead: {
+        const launcher = provider.launcher;
+        if (!(launcher?.open ?? false))
+            return "";
+        const served = (launcher.held ?? []).map(step => step.row?.servedKey ?? "")
+            .filter(key => key.startsWith("row:code:"));
+        const files = served.find(key => key.endsWith(":files"));
+        return files ?? (served.length > 0 ? `${served[0]}:files` : "");
     }
     // Named, so a test can tell it records as the daemon would.
     readonly property alias served: ready

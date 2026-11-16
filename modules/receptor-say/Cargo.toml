@@ -1,0 +1,12 @@
+# receptor-say: how a daemon says one of mycelium's receptors, a library
+# each daemon that reads an outside source names by path, so the rules of
+# what reaches mycelium are written once (src/lib.rs says them).
+[package]
+name = "receptor-say"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+path = "src/lib.rs"

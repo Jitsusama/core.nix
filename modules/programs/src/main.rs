@@ -89,7 +89,7 @@ use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 use terminal_kit::{Exit, Failure, Help};
 
-use heard::{heard, notice};
+use heard::hear;
 use named::read_named;
 use runs::{claim, read_claimed, start};
 
@@ -286,22 +286,7 @@ fn serve(given: &[String]) -> Result<(), Failure> {
         let shared = Arc::downgrade(&shared);
         move || shared.upgrade().map_or(json!({}), |shared| health(&shared))
     }));
-    if let Some(notify) = &shared.notify {
-        // Its folders are watched before the socket answers, so no
-        // change after a first answer goes unheard.
-        let folders = heard(&shared, notify);
-        let shared = Arc::clone(&shared);
-        std::thread::spawn(move || notice(&shared, &folders));
-    }
-    {
-        let shared = Arc::clone(&shared);
-        std::thread::spawn(move || rows::hear(&shared, &shared.windows));
-    }
-    {
-        let shared = Arc::clone(&shared);
-        let agents = agents::socket(&socket);
-        std::thread::spawn(move || agents::hear(&shared, &agents));
-    }
+    hear(&shared, &socket);
     accept(shared.served(), listener);
     loop {
         std::thread::park();

@@ -43,6 +43,7 @@ import "../Fuzzy.js" as Fuzzy
 import "../Places.js" as Places
 import "../SessionTalks.js" as Said
 import "../When.js" as When
+import "CarryBack.js" as CarryBack
 import "Landed.js" as Landed
 import "Moment.js" as Moment
 import "Numbers.js" as Numbers
@@ -109,10 +110,25 @@ Provider {
                 provider.topNetwork(row)))
         actMade: (key, one, row) => provider.topTalk(key, one, row)
             ?? provider.topGoTo(one)
+            ?? provider.topCarryBack(one, row)
         maker: provider
         drawn: provider.launcher?.open ?? false
     }
     readonly property bool topServed: top.keys.length > 0
+
+    // The realm's node, asked only Carry Back (CarryBack.js), on a
+    // connection of the shell's own, since the node carries a quest only
+    // for the person's own login and tells that by who asks. Nothing of it
+    // is watched.
+    Daemon {
+        id: node
+
+        socket: Quickshell.env("XDG_RUNTIME_DIR") && Sessions.realm !== ""
+            ? `${Quickshell.env("XDG_RUNTIME_DIR")}/mycelium/${Sessions.realm}.sock` : ""
+        kind: "carry"
+        live: false
+        connects: socket !== ""
+    }
 
     // Yet its sessions' rows are wrapped as the shell starts, in Agents'
     // turn of it (Launcher.qml's warmNext), and kept by key (wrapped), so
@@ -193,6 +209,42 @@ Provider {
                 provider.told = (Words.of("orchestrators").said ?? {}).sent
                     ?.replace("{name}", row.name ?? "") ?? "";
             }
+        });
+    }
+
+    // Carry Back on a carry under Carried is the shell's, asked of the
+    // realm's node, never the daemon (CarryBack.js): its row reads as
+    // carrying back until the node says the carry has ended, and a refusal
+    // is said in place in the node's own words. Null for any other act.
+    function topCarryBack(one, row) {
+        const ask = one.key === "verb:carry:back" ? CarryBack.asked(one.ask) : null;
+        if (ask === null)
+            return null;
+        return thing({
+            key: one.key,
+            verb: Words.verb(one.key),
+            name: Words.name(one.key),
+            glyph: Words.glyph(one.key),
+            hue: "action",
+            stays: true,
+            run: () => provider.carryBack(row, ask)
+        });
+    }
+
+    function carryBack(row, ask) {
+        const said = Words.of("verb:carry:back").said ?? {};
+        const shown = row.thing ?? row.key;
+        let answered = false;
+        provider.becomes(shown, {
+            side: said.carrying ?? "",
+            sideItems: [{ said: said.carrying ?? "", keep: 4 }]
+        }, row.name ?? "", "carry back", { done: () => answered });
+        node.find(ask, answer => {
+            const ended = CarryBack.ended(answer, said);
+            if (ended.done)
+                answered = true;
+            else
+                provider.refused(shown, ended.why);
         });
     }
 

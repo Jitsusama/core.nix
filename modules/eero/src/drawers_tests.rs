@@ -185,8 +185,11 @@ fn every_row_names_the_drawer_served_beside_it() {
     let words = words();
     let numbers = Numbers::default();
 
-    let page = Some("http://sites.localhost:8484/network/");
-    let rows = crate::rows::rows(&model, &words, &numbers, page);
+    let map = crate::rows::Map {
+        page: "http://sites.localhost:8484/network/",
+        worst: None,
+    };
+    let rows = crate::rows::rows(&model, &words, &numbers, Some(&map));
     let drawers = records(&model, &words, &numbers);
 
     // A row inside another is something to do to it, as the internet's

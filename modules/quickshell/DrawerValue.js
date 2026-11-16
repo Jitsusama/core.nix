@@ -70,60 +70,160 @@ function identifierWords(said) {
 // the widest line is as short as it can be. One wider than the line stands
 // on its own, as does one that can share it with neither neighbour, and a
 // line of one act is never held wider than the line above, since it
-// stands as it must.
+// stands as it must. Of splits that rank alike, the one whose first lines
+// hold fewest is taken.
+//
+// Trying every split took 117 ms for 25 acts, 812 for 30 and 4.7 s for 35
+// in Qt's engine, as many as kitty holds with 25 windows open, and the
+// shell's thread starved as the drawer was laid again and again
+// (vm-desktop-launcher-moves-windows, 2026-11-16). So each rank is found
+// in turn over what's left from each act on: the fewest lone acts and
+// whether a line rises are a sum and an either over the lines, so the
+// best of what's left after a line is the best overall; the widest line
+// is the narrowest bound under which those two still hold; and the split
+// is then read off with each line as short as that leaves it. Only the
+// lines still to lay that the acts left can fill are tried, a count or
+// two from each act: trying every count took 12.8 s for 120 narrow acts.
 function actLines(widths, wide, apart) {
-    const across = (from, to) => widths.slice(from, to).reduce((sum, one) => sum + one, 0)
-        + apart * (to - from - 1);
-    let fewest = 0;
-    for (let at = 0, from = 0; at < widths.length; at += 1) {
-        if (at === 0 || across(from, at + 1) > wide) {
-            fewest += 1;
-            from = at;
-        }
+    const acts = actsOf(widths, wide, apart);
+    if (acts.count === 0) {
+        return [];
     }
-    // Declared before cut, which reads it: Qt's engine warns of a name
-    // read above its declaration, and the shell is held to warning of
-    // nothing.
-    const scored = counts => {
-        const lines = counts.map((count, at) => {
-            const from = counts.slice(0, at).reduce((sum, one) => sum + one, 0);
-            return across(from, from + count);
-        });
-        return {
-            counts,
-            rank: [
-                counts.filter(count => count === 1).length,
-                lines.some((line, at) => at > 0 && counts[at] > 1 && line > lines[at - 1])
-                    ? 1 : 0,
-                Math.max(...lines)
-            ]
-        };
-    };
-    let best = null;
-    const cut = (from, left, counts) => {
-        if (left === 0) {
-            if (from === widths.length) {
-                best = better(scored(counts), best);
-            }
-            return;
-        }
-        for (let to = from + 1; to <= widths.length - left + 1; to += 1) {
-            if (to - from === 1 || across(from, to) <= wide) {
-                cut(to, left - 1, counts.concat([to - from]));
-            }
-        }
-    };
-    cut(0, fewest, []);
-    return best?.counts ?? [];
+    const wanted = rankedUnder(acts, Number.POSITIVE_INFINITY)(-1, 0, acts.fewest);
+    const most = boundFor(acts, wanted);
+    return readOff(acts, wanted, rankedUnder(acts, most), most);
 }
 
-// The split ranked first of two, the earlier where they rank alike.
-function better(split, best) {
-    if (best === null) {
-        return split;
+// What laying a drawer's acts reads: how many, how wide those from one to
+// another stand on a line, the fewest lines that hold them, and where a
+// line from one may end.
+function actsOf(widths, wide, apart) {
+    const count = widths.length;
+    const sums = [0];
+    for (const width of widths) {
+        sums.push(sums[sums.length - 1] + width);
     }
-    const at = split.rank.findIndex((one, which) => one !== best.rank[which]);
-    return at >= 0 && split.rank[at] < best.rank[at] ? split : best;
+    const across = (from, to) => sums[to] - sums[from] + apart * (to - from - 1);
+    // Where a line from `from` may end, none wider than `most`: those
+    // that fit the line, or one act alone however wide, each wider than
+    // the last, so the first too wide ends them.
+    const reach = (from, most) => {
+        const found = [];
+        for (let end = from + 1; end <= count; end += 1) {
+            const width = across(from, end);
+            if ((end - from > 1 && width > wide) || width > most) {
+                break;
+            }
+            found.push(end);
+        }
+        return found;
+    };
+    // A line of acts from `from` to `to`, after one begun at `before` (-1
+    // for none), ranked with the rank of what follows it.
+    const ranked = (before, from, to, after) => {
+        if (after === null) {
+            return null;
+        }
+        const many = to - from > 1;
+        const rises = before >= 0 && many && across(from, to) > across(before, from) ? 1 : 0;
+        return [after[0] + (many ? 0 : 1), Math.max(after[1], rises)];
+    };
+    // The fewest lines the acts from each on can be laid on: a line ending
+    // as far on as it fits leaves fewest.
+    const need = Array(count + 1).fill(0);
+    for (let from = count - 1; from >= 0; from -= 1) {
+        const far = reach(from, Number.POSITIVE_INFINITY);
+        need[from] = 1 + need[far[far.length - 1]];
+    }
+    // Where a line may end with `left` lines still to lay, this one
+    // among them: each line after it holds an act at least, and the acts
+    // after it must fit on those lines, so an end leaving too few acts or
+    // too many is passed by.
+    const ends = (from, left, most) => reach(from, most)
+        .filter(end => count - end >= left - 1 && need[end] <= left - 1);
+    return { count, across, fewest: need[0], reach, ends, ranked };
+}
+
+// The least [lone acts, whether a line rises] of laying the acts from
+// `from` on on `left` lines no wider than `most`, after a line begun at
+// `before`, or null where they can't be, each answer kept once found.
+function rankedUnder(acts, most) {
+    const kept = new Map();
+    const least = (before, from, left) => {
+        const key = ((before + 1) * (acts.count + 1) + from) * (acts.fewest + 1) + left;
+        if (kept.has(key)) {
+            return kept.get(key);
+        }
+        let found = left === 0 && from === acts.count ? [0, 0] : null;
+        if (left > 0) {
+            for (const end of acts.ends(from, left, most)) {
+                const one = acts.ranked(before, from, end, least(from, end, left - 1));
+                if (one !== null && (found === null || lower(one, found))) {
+                    found = one;
+                }
+            }
+        }
+        kept.set(key, found);
+        return found;
+    };
+    return least;
+}
+
+// The narrowest widest line under which the acts still rank as `wanted`,
+// one of the widths a line can stand at.
+function boundFor(acts, wanted) {
+    const bounds = [];
+    for (let from = 0; from < acts.count; from += 1) {
+        for (const end of acts.reach(from, Number.POSITIVE_INFINITY)) {
+            bounds.push(acts.across(from, end));
+        }
+    }
+    bounds.sort((one, other) => one - other);
+    let low = 0;
+    let high = bounds.length - 1;
+    while (low < high) {
+        const middle = Math.floor((low + high) / 2);
+        const found = rankedUnder(acts, bounds[middle])(-1, 0, acts.fewest);
+        if (found !== null && !lower(wanted, found)) {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    return bounds[low];
+}
+
+// The split read off line by line, each the shortest whose split can
+// still rank as wanted: what's laid so far, this line and the best of the
+// rest, whole, since once a line rises a rest that rises too ranks no
+// worse.
+function readOff(acts, wanted, least, most) {
+    const counts = [];
+    let alone = 0;
+    let rose = 0;
+    for (let before = -1, from = 0, left = acts.fewest; left > 0; left -= 1) {
+        let to = -1;
+        for (const end of acts.ends(from, left, most)) {
+            const one = acts.ranked(before, from, end, least(from, end, left - 1));
+            if (one !== null && !lower(wanted, [alone + one[0], Math.max(rose, one[1])])) {
+                to = end;
+                break;
+            }
+        }
+        const line = acts.ranked(before, from, to, [0, 0]);
+        alone += line[0];
+        rose = Math.max(rose, line[1]);
+        counts.push(to - from);
+        before = from;
+        from = to;
+    }
+    return counts;
+}
+
+// Whether one rank is lower than another, by its first figure that differs.
+function lower(one, other) {
+    const at = one.findIndex((figure, which) => figure !== other[which]);
+    return at >= 0 && one[at] < other[at];
 }
 
 // A list alone in a value, as its one line no wider than `wide`: every

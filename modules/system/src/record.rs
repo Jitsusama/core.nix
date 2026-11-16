@@ -68,6 +68,10 @@ pub struct Part {
     /// case unless a name leads, with no closing stop, and without what
     /// it holds. None when nothing is.
     pub side: Vec<String>,
+    /// What it holds, counted in a few words, as "21 devices": the end of
+    /// what it says, apart from what is worth a look. None when it wasn't
+    /// read.
+    pub holds: Option<String>,
     pub things: Vec<Thing>,
     pub deeper: Deeper,
 }
@@ -169,6 +173,7 @@ fn part_json(part: &Part) -> Value {
         "health": part.health.word(),
         "says": part.says,
         "side": part.side,
+        "holds": part.holds,
         "things": part.things.iter().map(|thing| json!({
             "kind": thing.kind,
             "name": thing.name,
@@ -194,6 +199,7 @@ mod tests {
             health,
             says: String::new(),
             side: Vec::new(),
+            holds: None,
             things: Vec::new(),
             deeper: Deeper {
                 command: "",
@@ -278,9 +284,9 @@ mod tests {
         let mut network = part("network", Health::Watch);
         network.side = vec!["the modem is busy".to_owned()];
         let mut code = part("code", Health::Watch);
-        code.side = vec!["1 tree is listed with its folder gone".to_owned()];
+        code.side = vec!["the build is failing".to_owned()];
         let system = system(vec![part("machines", Health::Good), network, code]);
-        let whole = json!(["the modem is busy", "1 tree is listed with its folder gone"]);
+        let whole = json!(["the modem is busy", "the build is failing"]);
         assert_eq!(
             system.json()["side"],
             whole,
@@ -298,6 +304,24 @@ mod tests {
             "a part with nothing worth a look says none"
         );
         assert_eq!(records[2]["side"], json!(["the modem is busy"]));
+    }
+
+    #[test]
+    fn a_part_says_what_it_holds_apart_and_none_when_unread() {
+        let mut network = part("network", Health::Good);
+        network.holds = Some("21 devices".to_owned());
+        let system = system(vec![network, part("code", Health::Unread)]);
+        assert_eq!(system.json()["parts"][0]["holds"], "21 devices");
+        let records = system.records();
+        assert_eq!(
+            records[1]["holds"], "21 devices",
+            "the part's record says it"
+        );
+        assert!(
+            records[2]["holds"].is_null(),
+            "a part not read holds nothing it can say: {}",
+            records[2]
+        );
     }
 
     #[test]

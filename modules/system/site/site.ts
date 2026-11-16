@@ -29,7 +29,9 @@ const panel = element("#panel-body", HTMLDivElement);
 const keys = element("#keys", HTMLDialogElement);
 
 const KINDS = ["summary", "part", "machine"] as const;
-const held = {
+// Each watch's records as it holds them: empty until its watch starts below,
+// which puts the records it fills in their place.
+const held: { [kind in (typeof KINDS)[number]]: Held } = {
   summary: new Held(),
   part: new Held(),
   machine: new Held(),
@@ -112,7 +114,7 @@ function draw(): void {
 }
 
 for (const kind of KINDS) {
-  follow(
+  held[kind] = follow(
     { feed: "system", kind },
     {
       moved: draw,
@@ -125,7 +127,7 @@ for (const kind of KINDS) {
         sayWhen();
       },
     },
-  );
+  ).held;
 }
 
 /** Inside a part, the cursor is the machine whose link holds focus. */

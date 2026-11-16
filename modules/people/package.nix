@@ -1,8 +1,9 @@
 # The people daemon, built from this directory, its tests run as it builds.
 # Its socket's tests ask it with a crate every daemon's tests share
-# (../daemon-client), and it keeps its rows as every daemon does
-# (../ready-rows), so the source is cut from the modules folder holding
-# them all, and built from this one.
+# (../daemon-client). It takes its socket (../daemon-serve) and keeps its
+# rows (../ready-rows) as every daemon does, and its shape from the
+# terminal kit (../terminal-kit), so the source is cut from the modules
+# folder holding them all, and built from this one.
 {
   lib,
   rustPlatform,
@@ -19,6 +20,7 @@ rustPlatform.buildRustPackage rec {
       ./src
       # The crate's own tests, and not the QML case beside them, which the
       # shell's engine runs (checks.nix).
+      ./tests/asked.rs
       ./tests/daemon.rs
       ./tests/words.json
       ../daemon-client/Cargo.toml
@@ -27,6 +29,8 @@ rustPlatform.buildRustPackage rec {
       ../daemon-serve/src
       ../ready-rows/Cargo.toml
       ../ready-rows/src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
   sourceRoot = "${src.name}/people";

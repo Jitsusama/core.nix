@@ -75,6 +75,29 @@
       "name": "New Terminal Here",
       "verb": "open",
       "glyph": "folder"
+    },
+    {
+      "id": "verb:code:find",
+      "command": "edit",
+      "in": "code:repository",
+      "name": "Open a File by Name",
+      "verb": "open",
+      "glyph": "folder"
+    },
+    {
+      "id": "code:file",
+      "in": "code",
+      "name": "File",
+      "verb": "open",
+      "glyph": "path"
+    },
+    {
+      "id": "verb:code:file:open",
+      "command": "open",
+      "in": "code:file",
+      "name": "Open",
+      "verb": "open",
+      "glyph": "path"
     }
   ]
 }

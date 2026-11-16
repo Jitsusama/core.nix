@@ -31,7 +31,7 @@ case "\$1" in
     echo '{"kind":"cell","type":"session","name":"AAAAAA","networks":["orchestration.y"]}'
     echo '{"kind":"cell","type":"machine","name":"m","networks":["machines"]}'
     echo '{"kind":"cell","type":"receptor","name":"slack@m","state":"reading","counts":{"hour":1,"today":4,"addressed":2},"networks":["outside.slack"]}' ;;
-  machines) echo '{"Ok":{"Machines":[{"name":"m","state":"ready","cpu":{"cores":4},"room":{}},{"name":"cell-1","state":"ready","cpu":{"cores":8},"room":{},"declared":{"reach":["aquifer"],"leaves_at":"2026-11-16T07:40:00Z"}}]}}' ;;
+  machines) echo '{"Ok":{"Machines":[{"name":"m","state":"ready","cpu":{"cores":4},"room":{}},{"name":"cell-1","state":"ready","cpu":{"cores":8},"room":{},"declared":{"reach":["cistern"],"leaves_at":"2026-11-16T07:40:00Z"}}]}}' ;;
   messages) echo '{"Ok":{"Messages":[{"at":"now","from":"AAAAAA","intent":"fyi","groups":[],"text":"words"}]}}' ;;
 esac
 EOF
@@ -69,7 +69,7 @@ if [ "$drawn" != '["AAAAAA","slack@m","orchestration.y","outside.slack","m","cel
   exit 1
 fi
 leases=$("$jq" -c '[.machines[] | [.reach, .leaves_at]]' "$work/site/now.json")
-if [ "$leases" != '[[[],null],[["aquifer"],"2026-11-16T07:40:00Z"]]' ]; then
+if [ "$leases" != '[[[],null],[["cistern"],"2026-11-16T07:40:00Z"]]' ]; then
   echo "The map gave the machines' reach and leases as $leases." >&2
   exit 1
 fi

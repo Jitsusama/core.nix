@@ -247,19 +247,6 @@
     "test": "the-margin-cat-follows-the-keys-on-niri"
   },
   {
-    "at": 1794825583,
-    "commit": "32042088321313320dce4c2d5a75e08d89b0c2bc",
-    "due": "2026-11-17",
-    "due_why": "Its owner has a cause by 2026-11-16 17:00 UTC, and a fix or a new date by 2026-11-17 21:00 UTC",
-    "owner_pr": 4057,
-    "owner_session": "XY9H5C",
-    "reason": "the second move went past where the first got to, at 32042088321 in #4959's gate, which changes only the agents daemon, nothing the cat reads",
-    "subtests": [
-      "test_a_second_move_holds_on_from_where_the_first_got_to"
-    ],
-    "test": "the-margin-cat-follows-the-keys-on-niri"
-  },
-  {
     "at": 1794785729,
     "commit": "3600f69230b37fd910f43cad0b79860f15e66c61",
     "due": "2026-11-17",
@@ -322,20 +309,28 @@
     "test": "vm-screens-keep-the-launcher"
   },
   {
-    "at": 1794825583,
-    "commit": "6e2239bfc8b8cd24315e6b74067fdd950cfb0e49",
+    "at": 1794838970,
+    "commit": "467f7109b3c34c6195996ce4f98c020a3064fe53",
     "due": "2026-11-18",
-    "due_why": "Its owner reads where the shell's hang points by 2026-11-16 11:45 UTC and mends it by 2026-11-18 23:59 UTC; the four after Super+Tab fail only because the shell stopped answering",
-    "owner_pr": 1707,
-    "owner_session": "Y2YBTS",
-    "reason": "the shell's IPC hung in Super+Tab, failing 1 of 2 runs at a8da6b4d9b65, 11c4c8f5372d and 6e2239bfc8b8, and passing at 9 other heads since 21:55 on 15 Nov; no merge between touched the shell or the test",
+    "owner_pr": 4953,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 467f7109b3c3",
+    "test": "vm-desktop-keeps-pace"
+  },
+  {
+    "at": 1794841205,
+    "commit": "2c12c3c9f8be5869c79ed19e4c268da713b95c76",
+    "due": "2026-11-18",
+    "owner_pr": 4953,
+    "owner_session": "orchestrator",
+    "reason": "has been broken since #4953, whose revert won't apply; its owner fixes it forward and takes it off this list",
     "subtests": [
-      "test_super_tab_goes_back_to_the_window_before_and_finds_any_by_typing",
-      "test_the_launcher_moves_a_window_and_copies_its_title",
-      "test_the_window_joel_is_in_holds_what_can_be_done_to_it",
-      "test_v_o_gv_ip_and_a_window_waiting_behind_what_is_chosen",
-      "test_what_is_picked_inside_a_programs_page_is_learned_there"
+      "test_a_terminal_programs_drawer_is_shot_at_each_scale",
+      "test_chromes_page_and_its_download_are_shot_at_each_scale",
+      "test_passwords_and_a_copy_are_shot_at_each_scale",
+      "test_shortcuts_over_google_are_shot_at_each_scale",
+      "test_the_vms_are_shot_at_each_scale"
     ],
-    "test": "vm-desktop-launcher-moves-windows"
+    "test": "vm-desktop-looks-programs"
   }
 ]

@@ -9,8 +9,11 @@
 //! Page, Open Its Open Changes (while any are), Copy Its Path and New
 //! Terminal Here,
 //! which asks this daemon to start kitty in it (code.rs), and shuts the
-//! launcher as it's asked so the new window takes the keys; its drawer names
-//! its key, its trunk and the checkout written to last, at its branch.
+//! launcher as it's asked so the new window takes the keys, then, as a row
+//! of its own (`inside`), Open a File by Name, which steps into its
+//! checkout's files (`files`), each found by its name and the folder it's
+//! in and opened by Return in its default program; its drawer names its
+//! key, its trunk and the checkout written to last, at its branch.
 
 use repos::model::{Checkout, Record, Repository};
 use repos::read::shown;
@@ -42,6 +45,12 @@ pub struct Words {
     checkout: String,
     branch: String,
     remote: String,
+    /// The row inside a repository that steps into its files, and its
+    /// glyph.
+    find: String,
+    find_glyph: String,
+    /// The glyph a file's row wears.
+    file_glyph: String,
 }
 
 impl Words {
@@ -57,6 +66,12 @@ impl Words {
         let name = |id: &str| {
             of(id)
                 .and_then(|thing| thing["name"].as_str())
+                .unwrap_or(id)
+                .to_owned()
+        };
+        let glyph = |id: &str| {
+            of(id)
+                .and_then(|thing| thing["glyph"].as_str())
                 .unwrap_or(id)
                 .to_owned()
         };
@@ -78,6 +93,9 @@ impl Words {
             checkout: name("code:checkout"),
             branch: name("code:branch"),
             remote: name("code:remote"),
+            find: name("verb:code:find"),
+            find_glyph: glyph("verb:code:find"),
+            file_glyph: glyph("code:file"),
         }
     }
 
@@ -106,6 +124,73 @@ pub fn rows(record: &Record, home: Option<&Path>, words: &Words) -> Vec<Value> {
         .repositories
         .iter()
         .map(|repository| row(repository, home, words))
+        .collect()
+}
+
+/// The rows inside the repositories' rows, served beside them: for each
+/// with a checkout, Open a File by Name, which steps into its files.
+#[must_use]
+pub fn inside(record: &Record, words: &Words) -> Vec<Value> {
+    record
+        .repositories
+        .iter()
+        .filter_map(|repository| {
+            let checkout = worked_in(repository)?;
+            let parent = format!("row:{PLACE}:{}", repository.key);
+            Some(json!({
+                "key": format!("{parent}{FILES}"),
+                // Its own, so the shell tells one repository's apart.
+                "thing": format!("repository:{}{FILES}", repository.key),
+                "place": PLACE,
+                "kind": "act",
+                "parent": parent,
+                "depth": 1,
+                "name": words.find,
+                "glyph": words.find_glyph,
+                "hue": "action",
+                "side": [],
+                "held": {"path": checkout.path},
+                "acts": [{"key": "verb:more", "step": "rows"}],
+            }))
+        })
+        .collect()
+}
+
+/// What ends the key of Open a File by Name's row, after its
+/// repository's row's.
+pub const FILES: &str = ":files";
+
+/// The rows inside Open a File by Name's row of key `parent`, one for each
+/// file `listed` says as repositories.rs lists them, `{path, at, within}`,
+/// in its order; Return opens one in its default program.
+#[must_use]
+pub fn files(parent: &str, listed: &[Value], words: &Words) -> Vec<Value> {
+    listed
+        .iter()
+        .filter_map(|one| {
+            let path = one["path"].as_str()?;
+            let within = one["within"].as_str().unwrap_or_default();
+            let name = path.rsplit_once('/').map_or(path, |(_, name)| name);
+            let mut side = vec![json!({"at": one["at"], "as": "came"})];
+            if !within.is_empty() {
+                side.push(json!({"said": within, "keep": 1}));
+            }
+            Some(json!({
+                "key": format!("{parent}:{path}"),
+                "thing": format!("file:{path}"),
+                "place": PLACE,
+                "kind": "file",
+                "parent": parent,
+                "depth": 2,
+                "name": name,
+                "glyph": words.file_glyph,
+                "hue": "program",
+                "side": side,
+                "keywords": within,
+                "held": {"path": path},
+                "acts": [{"key": "verb:code:file:open", "open": path}],
+            }))
+        })
         .collect()
 }
 
@@ -265,6 +350,8 @@ mod tests {
             {"id": "code:checkout", "name": "Checkout"},
             {"id": "code:branch", "name": "Branch"},
             {"id": "code:remote", "name": "Remote"},
+            {"id": "verb:code:find", "name": "Open a File by Name", "glyph": "folder"},
+            {"id": "code:file", "name": "File", "glyph": "path"},
         ]}))
     }
 
@@ -518,6 +605,67 @@ mod tests {
         );
         assert_eq!(page("git.example.org:thing"), None);
         assert_eq!(page("local:~/x"), None);
+    }
+
+    #[test]
+    fn a_repository_with_a_checkout_steps_into_its_files_by_name() {
+        let mut gone = core();
+        gone.key = "github:someone/gone".to_owned();
+        gone.checkouts.clear();
+        let inside = inside(&record(vec![core(), gone]), &words());
+        assert_eq!(
+            inside,
+            [json!({
+                "key": "row:code:github:Jitsusama/core.nix:files",
+                "thing": "repository:github:Jitsusama/core.nix:files",
+                "place": "code",
+                "kind": "act",
+                "parent": "row:code:github:Jitsusama/core.nix",
+                "depth": 1,
+                "name": "Open a File by Name",
+                "glyph": "folder",
+                "hue": "action",
+                "side": [],
+                "held": {"path": "/home/j/src/core.nix"},
+                "acts": [{"key": "verb:more", "step": "rows"}],
+            })],
+            "a repository with no checkout had files to find, or one with one didn't"
+        );
+    }
+
+    #[test]
+    fn a_file_is_a_row_named_by_its_name_that_opens_it() {
+        let parent = "row:code:github:Jitsusama/core.nix:files";
+        let listed = [
+            json!({"path": "/src/core.nix/modules/a.nix", "at": 2000, "within": "modules"}),
+            json!({"path": "/src/core.nix/flake.nix", "at": 1000, "within": ""}),
+        ];
+        let rows = files(parent, &listed, &words());
+        assert_eq!(
+            rows[0],
+            json!({
+                "key": "row:code:github:Jitsusama/core.nix:files:/src/core.nix/modules/a.nix",
+                "thing": "file:/src/core.nix/modules/a.nix",
+                "place": "code",
+                "kind": "file",
+                "parent": parent,
+                "depth": 2,
+                "name": "a.nix",
+                "glyph": "path",
+                "hue": "program",
+                "side": [{"at": 2000, "as": "came"}, {"said": "modules", "keep": 1}],
+                "keywords": "modules",
+                "held": {"path": "/src/core.nix/modules/a.nix"},
+                "acts": [{"key": "verb:code:file:open", "open": "/src/core.nix/modules/a.nix"}],
+            }),
+            "a file's row doesn't name it, say where it is or open it"
+        );
+        assert_eq!(
+            rows[1]["side"],
+            json!([{"at": 1000, "as": "came"}]),
+            "a file at the top of its repository said a folder"
+        );
+        assert_eq!(rows.len(), 2, "each file listed isn't a row");
     }
 
     #[test]

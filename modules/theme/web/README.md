@@ -6,7 +6,13 @@ What the theme module gives a website, on every machine:
   `theme.css`, generated from the theme; `base.css`, beside it, written by hand;
   and the two faces, cut small by `fonts.py`.
 - `skill/`: the web-design skill, installed for every agent beside the
-  aesthetic skill. `SKILL.md` says how a site is built to Joel's taste and why;
+  aesthetic skill. `SKILL.md` is short: how to think about a site and the
+  process for designing one, drawn from the four sites Joel is proud of,
+  with an index of the files beside it, each loaded when a step needs it:
+  `examples/` (each loved site taken apart, and what went wrong on 15
+  November), `language.md` (the design language), `rulings.md` (his
+  verdicts), `interface.md`, `sites.md` (the local home and the kit) and
+  `gates.md` (what must pass, at verification);
   `writing.md`, `craft.md` and `checks.md` are what it refers to, and
   `gate.js` is the probe `checks.md` runs in a page first, before it's
   published, naming each part it lacks and each fault in its words, and

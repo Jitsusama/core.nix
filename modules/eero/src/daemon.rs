@@ -42,6 +42,7 @@ use crate::notices::{self, Watch};
 use crate::probe::{self, Targets};
 use crate::read::{self, Answers};
 use crate::schedule::{Looks, Read, Schedule};
+use crate::served::Mapped;
 use crate::session;
 use crate::time;
 use crate::waiting;
@@ -51,11 +52,20 @@ const MAP: &str = "EERO_MAP";
 
 /// Keeps the home network until it's stopped.
 pub fn run() -> Result<(), String> {
-    let folder = runtime()?.join("eero");
+    let runtime = runtime()?;
+    let folder = runtime.join("eero");
     fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
     let file = folder.join("home-network.json");
     let (wake, woken) = mpsc::channel();
-    let map = std::env::var(MAP).ok().filter(|page| !page.is_empty());
+    // net writes its record beside eero's (modules/net), which the map is
+    // drawn from and says what's worth a look in.
+    let map = std::env::var(MAP)
+        .ok()
+        .filter(|page| !page.is_empty())
+        .map(|page| Mapped {
+            page,
+            record: runtime.join("net").join("network.json"),
+        });
     let listeners = Listeners::listen(&folder.join("socket"), wake, map).map_err(|e| {
         format!(
             "couldn't listen at {}: {e}",
