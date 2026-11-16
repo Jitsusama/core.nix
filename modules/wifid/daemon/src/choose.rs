@@ -71,6 +71,13 @@ const WIDE: u32 = 5000;
 /// on 2.4, so the margin of `FAINTER` would never let one be tried.
 const FAINTEST: i16 = -67;
 
+/// How much fainter than `FAINTER` a radio on a wider band may be heard
+/// and still be tried for it: the same access point's 5 GHz radio was 2 to
+/// 8 dB fainter than its 2.4 GHz one on 15 and 16 Nov 2026, but at 04:54
+/// on the 16th a card heard at -36 dBm on 2.4 GHz moved to another's at
+/// -66, linked at 432 Mbit/s and carried worse.
+const ACROSS: i16 = 10;
+
 /// How much quicker one measured lately must have been to be moved to:
 /// both, so neither a small figure's ratio nor a large one's few
 /// milliseconds moves the card.
@@ -190,7 +197,7 @@ impl Chooser {
         });
         let narrow = frequency != 0 && !wide(frequency);
         let banded = if narrow && !bad {
-            for_the_band(untried.clone())
+            for_the_band(untried.clone(), (signal, frequency))
         } else {
             None
         };
@@ -248,19 +255,20 @@ impl Chooser {
 }
 
 /// Where a card on a narrower band carrying well goes for a wider one:
-/// the quickest known to carry well from here, else the loudest untried
-/// heard well enough and not too busy.
-fn for_the_band<'a>(untried: impl Iterator<Item = &'a Other> + Clone) -> Option<&'a Other> {
-    let on_it = untried.filter(|other| wide(other.frequency));
+/// the quickest within reach known to carry well from here, else the
+/// loudest untried within reach and not too busy.
+fn for_the_band<'a>(
+    untried: impl Iterator<Item = &'a Other> + Clone,
+    (signal, frequency): (i16, u32),
+) -> Option<&'a Other> {
+    let on_it =
+        untried.filter(|other| wide(other.frequency) && within_reach(other, signal, frequency));
     let known = on_it.clone().filter_map(|other| {
         let theirs = other.measured.as_ref()?;
         (!badly(theirs)).then_some((slowness(theirs), other))
     });
-    let heard = on_it.filter(|other| {
-        other.measured.is_none()
-            && other.signal >= FAINTEST
-            && other.busy.is_none_or(|busy| busy <= BUSIEST)
-    });
+    let heard = on_it
+        .filter(|other| other.measured.is_none() && other.busy.is_none_or(|busy| busy <= BUSIEST));
     known
         .min_by_key(|(slowness, _)| *slowness)
         .map(|(_, other)| other)
@@ -269,11 +277,12 @@ fn for_the_band<'a>(untried: impl Iterator<Item = &'a Other> + Clone) -> Option<
 
 /// Whether another access point is heard loud enough, from one heard this
 /// loud on this channel, to be tried: within `FAINTER`, or on a wider band
-/// and no fainter than `FAINTEST`, since the same access point is heard
-/// fainter there.
+/// within `ACROSS` more and no fainter than `FAINTEST`, since the same
+/// access point is heard fainter there.
 fn within_reach(other: &Other, signal: i16, frequency: u32) -> bool {
     other.signal >= signal - FAINTER
-        || (wider(other.frequency, frequency) && other.signal >= FAINTEST)
+        || (wider(other.frequency, frequency)
+            && other.signal >= FAINTEST.max(signal - FAINTER - ACROSS))
 }
 
 /// Whether a channel is on 5 or 6 GHz.
