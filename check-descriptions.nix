@@ -1619,7 +1619,8 @@
     networks and cells as the command prints them, machines' cells left out, two cells sharing a
     title kept apart, each machine's room and reach flattened, only the latest messages' senders
     and groups, a cut title's ellipsis as three full stops, and each machine's share of the work
-    from the balance's latest reading, none when it is past three minutes old or not served
+    from the balance's latest reading, none when it is past three minutes old, has no time or is
+    not served
   '';
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node, reads live in

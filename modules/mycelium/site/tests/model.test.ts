@@ -246,9 +246,11 @@ it("a fresh balance reading gives each machine its share and the map what's held
   });
 });
 
-it("a balance reading past three minutes old, or none, is no share at all", () => {
+it("a balance reading past three minutes old, with no time, or none, is no share at all", () => {
+  const { at: _at, ...timeless } = reading(0);
   for (const heard of [
     toldBalance([skiff], [reading(181_000)]),
+    toldBalance([skiff], [timeless]),
     toldBalance([skiff], []),
     told([skiff]),
   ]) {
