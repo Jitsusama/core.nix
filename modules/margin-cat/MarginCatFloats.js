@@ -289,5 +289,5 @@ function follows(way, stop, now) {
     }
     // Its crouch on a tiled window before it leaps on, and its landing
     // back on one, are under them.
-    Ways.aboard(way, began, stop.kind === "float" ? ["crouches"] : ["lands"]);
+    aboard(way, began, stop.kind === "float" ? ["crouches"] : ["lands"]);
 }
