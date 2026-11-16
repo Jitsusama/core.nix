@@ -22,20 +22,30 @@ fn a_stale_token_is_refreshed_and_the_meetings_are_told() {
     assert_eq!(state.meetings.len(), 1);
     assert_eq!(state.meetings[0].title, "Standup");
     let heard = stand_in.heard();
-    assert!(heard[0].line.starts_with("POST /token"));
+    assert!(
+        heard[0].line.starts_with("POST /token"),
+        "the first ask was {}",
+        heard[0].line
+    );
     let asked = &heard[1];
     assert_eq!(asked.authorization, "Bearer mine");
     assert!(
         asked
             .line
-            .starts_with("GET /calendar/v3/calendars/primary/events?")
+            .starts_with("GET /calendar/v3/calendars/primary/events?"),
+        "the meetings were asked as {}",
+        asked.line
     );
     assert!(
         asked.line.contains("timeMin=2026-10-26T04%3A00%3A00Z"),
         "{}",
         asked.line
     );
-    assert!(asked.line.contains("singleEvents=true"));
+    assert!(
+        asked.line.contains("singleEvents=true"),
+        "repeats weren't asked one by one: {}",
+        asked.line
+    );
     assert_eq!(
         fs::read(&path).unwrap(),
         before,
@@ -53,12 +63,14 @@ fn pis_fresh_token_is_used_without_a_refresh() {
     assert!(
         heard
             .iter()
-            .all(|heard| !heard.line.starts_with("POST /token"))
+            .all(|heard| !heard.line.starts_with("POST /token")),
+        "a fresh token was refreshed"
     );
     assert!(
         heard
             .iter()
-            .all(|heard| heard.authorization == "Bearer pis")
+            .all(|heard| heard.authorization == "Bearer pis"),
+        "an ask went without pi's token"
     );
 }
 
@@ -244,5 +256,8 @@ fn no_file_is_no_account_and_google_is_never_asked() {
         None,
     );
     assert_eq!(watch.look(&now()).account, Standing::None);
-    assert!(stand_in.heard().is_empty());
+    assert!(
+        stand_in.heard().is_empty(),
+        "google was asked with no account"
+    );
 }

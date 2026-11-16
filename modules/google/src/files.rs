@@ -459,13 +459,25 @@ mod tests {
         let path = folder.join("plan.pdf");
         fs::write(&path, b"old").unwrap();
         let mut heard = Heard::new(Cut(false));
-        assert!(put(&path, &mut heard).is_err());
-        assert!(heard.fell);
+        assert!(
+            put(&path, &mut heard).is_err(),
+            "a download cut short was taken as whole"
+        );
+        assert!(
+            heard.fell,
+            "a download cut short wasn't blamed on the far side"
+        );
         assert_eq!(fs::read(&path).unwrap(), b"old");
         let mut heard = Heard::new(Cut(false));
-        assert!(saved(&folder, "notes.txt", &mut heard).is_err());
+        assert!(
+            saved(&folder, "notes.txt", &mut heard).is_err(),
+            "a save cut short was taken as whole"
+        );
         let mut heard = Heard::new(Cut(false));
-        assert!(kept(&folder, "f1", "notes.txt", &mut heard).is_err());
+        assert!(
+            kept(&folder, "f1", "notes.txt", &mut heard).is_err(),
+            "a copy cut short was kept"
+        );
         assert_eq!(
             fs::read_dir(&folder).unwrap().count(),
             2,
@@ -474,7 +486,7 @@ mod tests {
         assert_eq!(fs::read_dir(folder.join("f1")).unwrap().count(), 0);
         let mut heard = Heard::new(&b"whole"[..]);
         assert_eq!(put(&path, &mut heard).unwrap(), path);
-        assert!(!heard.fell);
+        assert!(!heard.fell, "a whole download was blamed on the far side");
         fs::remove_dir_all(&folder).unwrap();
     }
 
@@ -505,7 +517,10 @@ mod tests {
         assert_eq!(names, ["plan v2.pdf"]);
         // One cut short leaves the copy before it as it was.
         let mut heard = Heard::new(Cut(false));
-        assert!(cached(&folder, "f1", "plan v2.pdf", Some(at + 2), &mut heard).is_err());
+        assert!(
+            cached(&folder, "f1", "plan v2.pdf", Some(at + 2), &mut heard).is_err(),
+            "a copy drive has changed since was found again"
+        );
         assert_eq!(fs::read(&path).unwrap(), b"two");
         assert_eq!(fs::read_dir(folder.join("f1")).unwrap().count(), 1);
         fs::remove_dir_all(&folder).unwrap();
@@ -521,7 +536,10 @@ mod tests {
             std::thread::sleep(Duration::from_millis(20));
         }
         // Handing out the oldest again makes it the newest.
-        assert!(fresh(&folder, "old", "f", None).is_none());
+        assert!(
+            fresh(&folder, "old", "f", None).is_none(),
+            "the copy handed out longest ago was kept"
+        );
         let at = 1_793_037_600_000;
         cached(&folder, "old", "f", Some(at), &mut &[0; 10][..]).unwrap();
         assert_eq!(held(&folder), 30, "three copies of ten bytes");

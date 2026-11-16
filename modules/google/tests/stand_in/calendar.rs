@@ -56,7 +56,10 @@ fn a_meeting_is_made_for_its_link_only_once_the_sign_in_grants_meet() {
         r#""scope": "calendar https://www.googleapis.com/auth/meetings.space.created""#,
     );
     fs::write(&path, file).unwrap();
-    assert!(watch.look(&now()).meet.granted);
+    assert!(
+        watch.look(&now()).meet.granted,
+        "a sign-in granting meet wasn't seen"
+    );
     let asking = watch.making(&now()).meet.made.clone().unwrap();
     assert!(!asking.failed && asking.link.is_none(), "{asking:?}");
     let state = watch.make(&now()).clone();
@@ -114,7 +117,10 @@ fn a_call_followed_says_who_is_in_it_once_the_sign_in_grants_reading_meet() {
             .filter(|heard| heard.line.starts_with("GET /v2/conferenceRecords"))
             .count()
     };
-    assert!(!watch.following(&now()));
+    assert!(
+        !watch.following(&now()),
+        "a call was followed before anyone asked"
+    );
     let state = watch.follow(vec!["abc-defg-hij".into()], &now()).clone();
     assert_eq!(
         asked(&stand_in),
@@ -122,7 +128,11 @@ fn a_call_followed_says_who_is_in_it_once_the_sign_in_grants_reading_meet() {
         "Meet was asked without the scope to read it"
     );
     assert_eq!(state.calls.len(), 1);
-    assert!(!state.calls[0].granted && !state.calls[0].known);
+    assert!(
+        !state.calls[0].granted && !state.calls[0].known,
+        "a call followed without reading meet granted was told: {:?}",
+        state.calls[0]
+    );
     // Joel signs in again from pi, granting the scope that reads calls.
     let file = fs::read_to_string(&path).unwrap().replace(
         r#""scope": "calendar""#,
@@ -145,7 +155,7 @@ fn a_call_followed_says_who_is_in_it_once_the_sign_in_grants_reading_meet() {
     assert_eq!(watch.calls(&now()).calls[0].people.len(), 2);
     // A follow the shell doesn't say again lapses, as when it went away.
     failing.store(false, Ordering::SeqCst);
-    assert!(watch.following(&now()));
+    assert!(watch.following(&now()), "a follow lapsed at once");
     let later = now().checked_add(jiff::Span::new().minutes(2)).unwrap();
     assert!(!watch.following(&later), "a follow nobody said again held");
     // The call's window closed: nothing followed, nothing asked.
@@ -155,7 +165,10 @@ fn a_call_followed_says_who_is_in_it_once_the_sign_in_grants_reading_meet() {
         watch.follow(Vec::new(), &now()).calls,
         Vec::<google::meet::Call>::new()
     );
-    assert!(!watch.following(&now()));
+    assert!(
+        !watch.following(&now()),
+        "a call whose window closed was still followed"
+    );
     assert_eq!(asked(&stand_in), before);
 }
 
@@ -404,7 +417,10 @@ fn a_meeting_joel_holds_is_cancelled_telling_every_guest_and_let_go_at_once() {
     let stand_in = StandIn::new(cancelled);
     let path = credentials("cancel", now().timestamp().as_millisecond() + 3_600_000);
     let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
-    assert!(watch.look(&now()).meetings[0].holds);
+    assert!(
+        watch.look(&now()).meetings[0].holds,
+        "a meeting Joel holds wasn't his"
+    );
     let state = watch.cancel("e1", &now()).clone();
     assert_eq!(state.meetings, [] as [google::calendar::Meeting; 0]);
     let heard = stand_in.heard();
@@ -442,7 +458,8 @@ fn a_meeting_joel_is_only_asked_to_is_never_cancelled() {
         stand_in
             .heard()
             .iter()
-            .all(|heard| !heard.line.starts_with("DELETE"))
+            .all(|heard| !heard.line.starts_with("DELETE")),
+        "a meeting Joel is only asked to was cancelled"
     );
 }
 
@@ -555,7 +572,8 @@ fn a_meeting_joel_may_not_change_is_never_moved() {
         stand_in
             .heard()
             .iter()
-            .all(|heard| !heard.line.starts_with("PATCH"))
+            .all(|heard| !heard.line.starts_with("PATCH")),
+        "a meeting Joel may not change was moved"
     );
 }
 
