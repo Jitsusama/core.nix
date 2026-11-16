@@ -1,0 +1,312 @@
+Says, at debug, what each frame drawn after an idle spell spent between
+being asked for and reaching the screen: when its redraw was asked, how
+long its render waited to begin and took, and how long it waited for
+the screen once queued, with the refreshes from the ask. A shell opening
+its launcher after a quiet moment saw its frame reach the screen a
+median 6 refreshes after its swap at 120 Hz, though niri queues a
+redraw as a layer surface commits and renders it at once. The times are
+by the monotonic clock presentation feedback uses, so a client's own
+timings line up with niri's line. An output counts as idle once 100 ms
+have passed since its last frame reached the screen, so a steady stream
+of frames says nothing. It adds no setting; the tty backend alone says
+it, since only it knows when a frame reaches the screen.
+
+diff --git a/src/backend/tty.rs b/src/backend/tty.rs
+index 7cce2b79..e1b04257 100644
+--- a/src/backend/tty.rs
++++ b/src/backend/tty.rs
+@@ -68,6 +68,7 @@ use crate::niri::{Niri, RedrawState, State};
+ use crate::render_helpers::debug::draw_damage;
+ use crate::render_helpers::renderer::AsGlesRenderer;
+ use crate::render_helpers::{resources, shaders, RenderCtx, RenderTarget};
++use crate::utils::frame_steps::FrameSteps;
+ use crate::utils::{get_monotonic_time, is_laptop_panel, logical_output, PanelOrientation};
+ 
+ mod gamut;
+@@ -1845,6 +1846,13 @@ impl Tty {
+         }
+         output_state.last_drm_sequence = Some(meta.sequence);
+ 
++        // Said before the clock takes this presentation, by the time clients are told of it.
++        if let Some(steps) = output_state.frame_after_idle.take() {
++            if !presentation_time.is_zero() {
++                debug!("{name}: {}", steps.said(presentation_time, refresh_interval));
++            }
++        }
++
+         output_state.frame_clock.presented(presentation_time);
+         if let Some(refresh) = refresh_interval {
+             output_state
+@@ -1919,6 +1927,7 @@ impl Tty {
+         target_presentation_time: Duration,
+     ) -> RenderResult {
+         let span = tracy_client::span!("Tty::render");
++        let rendering = get_monotonic_time();
+ 
+         let mut rv = RenderResult::Skipped;
+ 
+@@ -2031,6 +2040,15 @@ impl Tty {
+                     match drm_compositor.queue_frame(data) {
+                         Ok(()) => {
+                             let output_state = niri.output_state.get_mut(output).unwrap();
++                            output_state.frame_after_idle =
++                                output_state.redraw_asked_at.take().and_then(|asked| {
++                                    FrameSteps::after_idle(
++                                        asked,
++                                        output_state.frame_clock.last_presentation_time(),
++                                        rendering,
++                                        get_monotonic_time(),
++                                    )
++                                });
+                             let new_state = RedrawState::WaitingForVBlank {
+                                 redraw_needed: false,
+                             };
+diff --git a/src/frame_clock.rs b/src/frame_clock.rs
+index f96475c8..f94097cc 100644
+--- a/src/frame_clock.rs
++++ b/src/frame_clock.rs
+@@ -44,6 +44,11 @@ impl FrameClock {
+         self.vrr
+     }
+ 
++    /// When the last frame reached the screen, if one has since the clock was made or reset.
++    pub fn last_presentation_time(&self) -> Option<Duration> {
++        self.last_presentation_time
++    }
++
+     pub fn presented(&mut self, presentation_time: Duration) {
+         if presentation_time.is_zero() {
+             // Not interested in these.
+diff --git a/src/niri.rs b/src/niri.rs
+index e5662426..d2e3bf26 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -172,6 +172,7 @@ use crate::ui::hotkey_overlay::HotkeyOverlay;
+ use crate::ui::mru::{MruCloseRequest, WindowMruUi, WindowMruUiRenderElement};
+ use crate::ui::screen_transition::{self, ScreenTransition};
+ use crate::ui::screenshot_ui::{OutputScreenshot, ScreenshotUi, ScreenshotUiRenderElement};
++use crate::utils::frame_steps::FrameSteps;
+ use crate::utils::refresh_pacer::RefreshPacer;
+ use crate::utils::scale::{closest_representable_scale, guess_monitor_scale};
+ use crate::utils::spawning::{CHILD_DISPLAY, CHILD_ENV};
+@@ -554,6 +555,27 @@ pub struct OutputState {
+     screen_transition: Option<ScreenTransition>,
+     /// Damage tracker used for the debug damage visualization.
+     pub debug_damage_tracker: OutputDamageTracker,
++    /// When a redraw was asked of this output with no frame of it in flight, until it's drawn.
++    pub redraw_asked_at: Option<Duration>,
++    /// The steps of the frame in flight, when it was asked for after an idle spell, said once it
++    /// reaches the screen (utils/frame_steps.rs).
++    pub frame_after_idle: Option<FrameSteps>,
++}
++
++impl OutputState {
++    /// Schedules an immediate redraw if one is not already scheduled, noting when one was asked
++    /// with no frame in flight, so the frame can say what it spent after a client's commit woke
++    /// an idle output.
++    fn queue_redraw(&mut self) {
++        let in_flight = !matches!(
++            self.redraw_state,
++            RedrawState::Idle | RedrawState::WaitingForEstimatedVBlank(_)
++        );
++        if !in_flight && self.redraw_asked_at.is_none() {
++            self.redraw_asked_at = Some(get_monotonic_time());
++        }
++        self.redraw_state = mem::take(&mut self.redraw_state).queue_redraw();
++    }
+ }
+ 
+ #[derive(Debug, Default)]
+@@ -3102,6 +3124,8 @@ impl Niri {
+             first_frame_shown: !self.holding_first_frames,
+             screen_transition: None,
+             debug_damage_tracker: OutputDamageTracker::from_output(&output),
++            redraw_asked_at: None,
++            frame_after_idle: None,
+         };
+         let rv = self.output_state.insert(output.clone(), state);
+         assert!(rv.is_none(), "output was already tracked");
+@@ -3959,14 +3983,13 @@ impl Niri {
+     /// Schedules an immediate redraw on all outputs if one is not already scheduled.
+     pub fn queue_redraw_all(&mut self) {
+         for state in self.output_state.values_mut() {
+-            state.redraw_state = mem::take(&mut state.redraw_state).queue_redraw();
++            state.queue_redraw();
+         }
+     }
+ 
+     /// Schedules an immediate redraw if one is not already scheduled.
+     pub fn queue_redraw(&mut self, output: &Output) {
+-        let state = self.output_state.get_mut(output).unwrap();
+-        state.redraw_state = mem::take(&mut state.redraw_state).queue_redraw();
++        self.output_state.get_mut(output).unwrap().queue_redraw();
+     }
+ 
+     pub fn redraw_queued_outputs(&mut self, backend: &mut Backend) {
+@@ -5049,6 +5072,9 @@ impl Niri {
+             }
+         }
+ 
++        // A frame queued took the ask with it; a redraw that queued none leaves nothing to say.
++        state.redraw_asked_at = None;
++
+         if res == RenderResult::Skipped {
+             // Update the redraw state on failed render.
+             state.redraw_state = if let RedrawState::WaitingForEstimatedVBlank(token)
+diff --git a/src/utils/frame_steps.rs b/src/utils/frame_steps.rs
+new file mode 100644
+index 00000000..939a9be5
+--- /dev/null
++++ b/src/utils/frame_steps.rs
+@@ -0,0 +1,139 @@
++//! What a frame drawn after an idle spell spent between being asked for and reaching the screen.
++//!
++//! A shell opening its launcher after a quiet moment saw its frame reach the screen five to seven
++//! refreshes after its swap, though niri queues a redraw the moment a commit lands and renders it
++//! at once. Each step's time is said, by the monotonic clock clients' presentation times use, so a
++//! client's own timings line up with niri's: how long the redraw waited to start, how long it took,
++//! and how long the frame waited for the screen once queued.
++
++use std::time::Duration;
++
++/// How long an output must have shown nothing new for a frame on it to be said.
++///
++/// It's well past any frame, so a steady stream of frames says nothing, and short enough that a
++/// keypress or a launcher opening after a moment's pause is said.
++pub const IDLE: Duration = Duration::from_millis(100);
++
++/// When each step of a frame after an idle spell happened, by the monotonic clock.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub struct FrameSteps {
++    /// When the redraw was asked of the output, with no frame of it in flight.
++    pub asked: Duration,
++    /// How long the output had gone since its last frame reached the screen.
++    pub idle: Duration,
++    /// When rendering the frame began.
++    pub rendering: Duration,
++    /// When the frame was queued to the display.
++    pub queued: Duration,
++}
++
++impl FrameSteps {
++    /// The steps of a frame asked for at `asked`, when the output had been idle long enough for
++    /// them to be said: none for an output whose last frame is recent, or that has shown none.
++    pub fn after_idle(
++        asked: Duration,
++        last_presented: Option<Duration>,
++        rendering: Duration,
++        queued: Duration,
++    ) -> Option<Self> {
++        let idle = asked.saturating_sub(last_presented?);
++        (idle >= IDLE).then_some(Self {
++            asked,
++            idle,
++            rendering,
++            queued,
++        })
++    }
++
++    /// What the frame spent, once it reached the screen at `presented`, in milliseconds, with the
++    /// refreshes from its ask to the screen when the output's refresh is known.
++    pub fn said(&self, presented: Duration, refresh: Option<Duration>) -> String {
++        let ms = |duration: Duration| duration.as_secs_f64() * 1000.;
++        let waited = self.rendering.saturating_sub(self.asked);
++        let rendered = self.queued.saturating_sub(self.rendering);
++        let shown = presented.saturating_sub(self.queued);
++        let refreshes = refresh
++            .filter(|refresh| !refresh.is_zero())
++            .map(|refresh| {
++                let taken = presented.saturating_sub(self.asked);
++                let frames = taken.as_secs_f64() / refresh.as_secs_f64();
++                // Presentation lies on the refresh grid, so a hair past a whole refresh is one.
++                let frames = (frames - 0.01).ceil().max(1.) as u64;
++                let plural = if frames == 1 { "" } else { "es" };
++                format!("; {frames} refresh{plural} from the ask")
++            })
++            .unwrap_or_default();
++        format!(
++            "a frame after {:.0} ms idle, asked for at {:.1} ms: its render began {:.1} ms later \
++             and took {:.1}, then it reached the screen {:.1} ms after being queued{refreshes}",
++            ms(self.idle),
++            ms(self.asked),
++            ms(waited),
++            ms(rendered),
++            ms(shown),
++        )
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn ms(value: f64) -> Duration {
++        Duration::from_secs_f64(value / 1000.)
++    }
++
++    /// A frame asked for 500 ms after the last, begun 1 ms later and queued 3 ms after that.
++    fn steps() -> FrameSteps {
++        FrameSteps::after_idle(ms(2000.), Some(ms(1500.)), ms(2001.), ms(2004.)).unwrap()
++    }
++
++    #[test]
++    fn a_frame_soon_after_the_last_says_nothing() {
++        assert_eq!(
++            FrameSteps::after_idle(ms(1050.), Some(ms(1000.)), ms(1051.), ms(1053.)),
++            None
++        );
++    }
++
++    #[test]
++    fn an_output_that_has_shown_nothing_says_nothing() {
++        assert_eq!(FrameSteps::after_idle(ms(1050.), None, ms(1051.), ms(1053.)), None);
++    }
++
++    #[test]
++    fn a_frame_after_an_idle_spell_keeps_its_steps() {
++        assert_eq!(
++            FrameSteps::after_idle(ms(2000.), Some(ms(1500.)), ms(2001.), ms(2004.)),
++            Some(FrameSteps {
++                asked: ms(2000.),
++                idle: ms(500.),
++                rendering: ms(2001.),
++                queued: ms(2004.),
++            })
++        );
++    }
++
++    #[test]
++    fn a_frame_says_each_step_and_its_refreshes() {
++        assert_eq!(
++            steps().said(ms(2008.3), Some(ms(8.333))),
++            "a frame after 500 ms idle, asked for at 2000.0 ms: its render began 1.0 ms later and \
++             took 3.0, then it reached the screen 4.3 ms after being queued; 1 refresh from the ask"
++        );
++    }
++
++    #[test]
++    fn a_frame_held_a_while_counts_its_refreshes() {
++        assert!(steps()
++            .said(ms(2050.), Some(ms(8.333)))
++            .ends_with("46.0 ms after being queued; 6 refreshes from the ask"));
++    }
++
++    #[test]
++    fn an_unknown_refresh_counts_none() {
++        assert!(steps()
++            .said(ms(2010.), None)
++            .ends_with("6.0 ms after being queued"));
++    }
++}
+diff --git a/src/utils/mod.rs b/src/utils/mod.rs
+index ecc90f0f..f1da535b 100644
+--- a/src/utils/mod.rs
++++ b/src/utils/mod.rs
+@@ -36,6 +36,7 @@ use wayland_backend::server::Credentials;
+ use crate::handlers::KdeDecorationsModeState;
+ use crate::niri::ClientState;
+ 
++pub mod frame_steps;
+ pub mod id;
+ pub mod refresh_pacer;
+ pub mod region;
