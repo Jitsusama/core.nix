@@ -146,12 +146,14 @@ pub fn network(net: &Answer) -> Part {
     let mut side = words.clone();
     if let Some(first) = looks.first() {
         worst = worst.max(Health::Watch);
-        words.push(match looks.len() {
-            1 => (*first).to_owned(),
-            more => format!("{first}; and {} more worth a look", more - 1),
-        });
+        words.push((*first).to_owned());
+        match looks.len() - 1 {
+            0 => {}
+            1 => words.push("1 more is worth a look".to_owned()),
+            more => words.push(format!("{more} more are worth a look")),
+        }
         // Net words its first look best, and orders them so.
-        side.push(lowered(first));
+        side.push(lowered(unstopped(first)));
         if looks.len() > 1 {
             side.push(format!("and {} more worth a look", looks.len() - 1));
         }
@@ -165,7 +167,14 @@ pub fn network(net: &Answer) -> Part {
     Part {
         name: "network",
         health: worst,
-        says: words.join("; "),
+        // Net says each look as a sentence that may hold its own
+        // semicolons, so the network is said in sentences too, and a look
+        // never runs into what follows it. A count alone is said bare, as
+        // the other parts say theirs.
+        says: match words.as_slice() {
+            [holds] => holds.clone(),
+            _ => sentences(&words),
+        },
         side: side_of(side),
         holds: Some(holds),
         things: Vec::new(),
@@ -260,6 +269,30 @@ fn lowered(said: &str) -> String {
         Some(rest) => format!("the {rest}"),
         None => said.to_owned(),
     }
+}
+
+/// An owner's sentence as an item of a list, without its closing full
+/// stop. An ellipsis is kept whole.
+fn unstopped(said: &str) -> &str {
+    match said.strip_suffix('.') {
+        Some(rest) if !rest.ends_with('.') => rest,
+        _ => said,
+    }
+}
+
+/// Clauses said as sentences, each ended once: an owner's may end its own.
+fn sentences(clauses: &[String]) -> String {
+    clauses
+        .iter()
+        .map(|clause| {
+            if clause.ends_with(['.', '?', '!', '…']) {
+                clause.clone()
+            } else {
+                format!("{clause}.")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A count and its noun, in the singular for one.
@@ -403,7 +436,7 @@ mod tests {
         )));
         assert_eq!(part.health, Health::Watch);
         assert_eq!(
-            part.says, "Main Floor's radio is busy; and 1 more worth a look; 3 devices",
+            part.says, "Main Floor's radio is busy. 1 more is worth a look. 3 devices.",
             "the internet's ceiling is how the network is, not a look"
         );
         assert_eq!(
@@ -411,6 +444,40 @@ mod tests {
             ["Main Floor's radio is busy", "and 1 more worth a look"],
             "a name leading keeps its capital, and the devices are left out"
         );
+    }
+
+    #[test]
+    fn nets_sentences_stay_whole_and_stop_once() {
+        let busy = "Hall's 5 GHz radio, on channel 36, is busy 60% of the time; \
+                    80% at its busiest, 20 hours ago.";
+        let part = network(&Ok(net(
+            &[("eero", "answering")],
+            &[
+                ("busy", busy),
+                ("weak", "iphone has a weak signal."),
+                ("slow", "The modem is slow."),
+            ],
+        )));
+        assert_eq!(
+            part.says,
+            format!("{busy} 2 more are worth a look. 3 devices."),
+            "net's own semicolon stays inside its sentence, which ends once"
+        );
+        assert_eq!(
+            part.side,
+            [
+                "Hall's 5 GHz radio, on channel 36, is busy 60% of the time; \
+                 80% at its busiest, 20 hours ago",
+                "and 2 more worth a look"
+            ],
+            "an item of a side carries no stop"
+        );
+        let alone = network(&Ok(net(&[("eero", "answering")], &[("weak", "Wait...")])));
+        assert_eq!(
+            alone.says, "Wait... 3 devices.",
+            "a single look, its ellipsis whole"
+        );
+        assert_eq!(alone.side, ["Wait..."]);
     }
 
     #[test]
@@ -426,6 +493,27 @@ mod tests {
                 "the modem's downstream channel 16 has lost 878"
             ]
         );
+        assert_eq!(
+            part.says,
+            "modem isn't answering. The modem's downstream channel 16 has lost 878. 3 devices.",
+            "a silent source and a look are each a sentence"
+        );
+    }
+
+    #[test]
+    fn a_look_ending_its_own_way_keeps_its_ending() {
+        for ending in ["?", "!", "\u{2026}"] {
+            let look = format!("Is the modem on{ending}");
+            let part = network(&Ok(net(
+                &[("eero", "answering")],
+                &[("slow", &look), ("weak", "iphone has a weak signal.")],
+            )));
+            assert_eq!(
+                part.says,
+                format!("{look} 1 more is worth a look. 3 devices."),
+                "{ending} ends the sentence without a stop after it"
+            );
+        }
     }
 
     #[test]
@@ -439,7 +527,7 @@ mod tests {
             &[],
         )));
         assert_eq!(part.health, Health::Bad);
-        assert_eq!(part.says, "modem and hp aren't answering; 3 devices");
+        assert_eq!(part.says, "modem and hp aren't answering. 3 devices.");
         let calm = network(&Ok(net(&[("eero", "answering")], &[("ceiling", "")])));
         assert_eq!(
             (calm.health, calm.says.as_str()),

@@ -50,7 +50,7 @@
         "part": "network",
         "health": "watch",
         "holds": "12 devices",
-        "says": "the attic's radio is busy 53% of the time; and 3 more worth a look; 12 devices",
+        "says": "The attic's radio is busy 53% of the time. 3 more are worth a look. 12 devices.",
         "side": ["the attic's radio is busy 53% of the time", "and 3 more worth a look"],
         "things": [],
         "deeper": { "command": "net", "launcher": "Network", "site": "network/" }
