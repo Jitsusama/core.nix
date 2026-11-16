@@ -8,6 +8,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The shell's one daemon interface, which the daemon serves the record in
+# on its socket (../daemon-serve).
+daemon-serve = { path = "../daemon-serve" }
 # Instants and device clocks as seconds since the epoch; no zone database,
 # since every time net keeps is UTC.
 jiff = { version = "0.2", default-features = false, features = ["std"] }

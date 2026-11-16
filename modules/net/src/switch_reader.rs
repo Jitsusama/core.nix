@@ -1,11 +1,11 @@
 //! The switch's reader: what the switch's system service runs, apart from
-//! net-daemon, since signing in to the switch takes its admin password,
+//! net's daemon, since signing in to the switch takes its admin password,
 //! which lets its holder change the switch. Each minute it reads the four
 //! status pages, and signs in only when they come back holding no status,
 //! as they do once the switch's session has ended: the sign-in is plain
 //! HTTP, so each one puts the password on the home network in the clear.
 //! It writes only what the pages show, as a report (sources/switch.rs),
-//! for net-daemon to read; never the password or the sign-in.
+//! for net's daemon to read; never the password or the sign-in.
 
 use std::fs;
 use std::io::{self, Read, Write};
@@ -20,7 +20,7 @@ use crate::model::SourceState;
 use crate::sources::switch::{self, Pages, Report};
 use crate::time;
 
-/// How often the switch is read, as often as net-daemon reads its report.
+/// How often the switch is read, as often as net's daemon reads its report.
 const EVERY: Duration = Duration::from_secs(60);
 
 /// How long one page may take.
@@ -257,7 +257,7 @@ fn again<T>(mut ask: impl FnMut() -> Result<T, &'static str>) -> Result<T, &'sta
     ask()
 }
 
-/// Writes a file whole, so net-daemon never reads half of one.
+/// Writes a file whole, so net's daemon never reads half of one.
 fn write(file: &Path, contents: &str) -> io::Result<()> {
     let fresh = file.with_extension("json.new");
     fs::write(&fresh, contents)?;

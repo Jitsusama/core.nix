@@ -2,7 +2,7 @@
 //! daemon's file, the modem's status pages and what each receiver and
 //! printer eero lists says, and writes the home network's record whole to
 //! `$XDG_RUNTIME_DIR/net/network.json`, so a view never reads half of one.
-//! It listens on nothing and sends nothing but reads, one at a time and
+//! It listens only on its own socket and sends nothing but reads, one at a time and
 //! each given two seconds: the modem's pages, and a receiver's description
 //! and the SOAP actions that only ask (src/sources/sony.rs), each only at
 //! the receiver's own address and never following a redirect, and a
@@ -12,19 +12,27 @@
 //! Each minute's swinging figures are kept for a day in
 //! `$XDG_STATE_HOME/net/day.jsonl` (src/history.rs), so the record can say
 //! what a modem channel lost lately and when each radio was busiest.
+//!
+//! It serves the same record, split by kind (src/serve.rs), on the socket
+//! systemd holds for it at `$XDG_RUNTIME_DIR/daemons/net.sock`, through
+//! daemon-serve, so a page or the launcher watches what moves rather
+//! than reading the file each minute.
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use daemon_serve::serve::{self, Shared};
 use serde_json::Value;
 use ureq::Agent;
 
 use crate::collect::{self, Said};
 use crate::history::{self, Moment};
 use crate::room;
+use crate::serve as served;
 use crate::sources::{airplay, hp, modem, sony, switch};
 use crate::time;
 
@@ -52,6 +60,11 @@ pub fn run() -> Result<(), String> {
     fs::create_dir_all(&state)
         .map_err(|error| format!("can't make net's state folder: {error}"))?;
     let day = state.join("day.jsonl");
+    let socket = runtime.join("daemons/net.sock");
+    let shared = Shared::new(served::DOMAIN, Box::new(|_| None));
+    let listener = serve::listen(&socket)
+        .map_err(|error| format!("can't listen on {}: {error}", socket.display()))?;
+    serve::accept(Arc::clone(&shared), listener);
     let agent: Agent = Agent::config_builder()
         .timeout_global(Some(PAGE))
         .build()
@@ -109,6 +122,7 @@ pub fn run() -> Result<(), String> {
         let written = serde_json::to_string_pretty(&network).map_err(|error| error.to_string())?;
         write(&record, &(written + "\n"))
             .map_err(|error| format!("can't write the record: {error}"))?;
+        shared.change(served::records(&network), served::sources(&network));
         thread::sleep(EVERY);
     }
 }
