@@ -62,3 +62,13 @@ function standing(record, heard, notRead) {
         state: says
     };
 }
+
+// How a thing's row stands by its part, as Agents' at home by the
+// mycelium's, or null to keep the count it says: as `standing`, but only
+// while the part is worth a look or failing, since the daemon judges by
+// what Joel can act on from it; a part not read leaves the count alone,
+// as it says nothing he could do (VKCF3Z, [1130c24f], [b4530faf]).
+function overCount(record, heard, notRead) {
+    const said = standing(record, heard, notRead);
+    return said !== null && (said.warns || said.alerts) ? said : null;
+}
