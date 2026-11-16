@@ -590,7 +590,7 @@ struct Windows<'a> {
     /// The prefix of the pi hosts' units, when they're ranked.
     hosts: Option<&'a str>,
     /// The prefixes of the scopes a session window's pi runs in beside it
-    /// (`--weigh`), held with the window ([`focus::pis_of`]).
+    /// (`--weigh`), held with the window ([`focus::attached_to`]).
     pis: &'a [String],
 }
 
@@ -786,8 +786,7 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
 }
 
 /// The scope of the pi of `window`, whose own scope is `own`, as last
-/// found, looked for again once it's gone and every [`LOOK_AGAIN`], as
-/// a shell in the window may attach to another session.
+/// found while it stands ([`focus::stands`]), or looked for again.
 fn pi_of(
     window: u64,
     own: Option<&Path>,
@@ -800,8 +799,7 @@ fn pi_of(
         return None;
     };
     if let Some((pi, when)) = found.get(&window)
-        && pi.as_deref().is_none_or(Path::exists)
-        && now.saturating_duration_since(*when) < LOOK_AGAIN
+        && focus::stands(pi.as_deref(), *when, now, Path::exists)
     {
         return pi.clone();
     }
@@ -814,22 +812,12 @@ fn pi_of(
 /// process in the window's scope `own` attaches to ([`focus::attached_to`]).
 fn beside(own: &Path, windows: &Windows) -> Option<PathBuf> {
     let procs = fs::read_to_string(own.join("cgroup.procs")).ok()?;
-    procs
+    let ids: Vec<String> = procs
         .lines()
         .filter_map(|pid| fs::read(format!("/proc/{pid}/cmdline")).ok())
         .filter_map(|cmdline| focus::attached_to(&cmdline))
-        .find_map(|id| {
-            windows
-                .under
-                .iter()
-                .flat_map(|slice| {
-                    windows
-                        .pis
-                        .iter()
-                        .map(|prefix| slice.join(format!("{prefix}{id}.scope")))
-                })
-                .find(|scope| scope.exists())
-        })
+        .collect();
+    focus::pi_scope(&ids, windows.under, windows.pis, Path::exists)
 }
 
 /// Holds each of `held` not held yet and gives back each held no longer,
