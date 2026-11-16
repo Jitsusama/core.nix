@@ -68,9 +68,6 @@ class Values(TypedDict):
     # Windows retitled without rest, as a crowd of agents' windows is (desktop/window-storm.py):
     # only keeps-pace, which opens the launcher through the storm.
     window_storm: str
-    # A command fenced as pi fences one, trying for Joel's secret copy through X11
-    # (modules/pi/tests/pi-fence-keeps-x11-from-secrets.sh): only keeps-copies.
-    fence_keeps_x11: str
     # The packages whose programs the test runs by their paths.
     coreutils: str
     dbus: str

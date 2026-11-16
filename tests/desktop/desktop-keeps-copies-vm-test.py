@@ -358,8 +358,8 @@ def test_a_fenced_command_reads_no_secret_copy_through_x11(desktop: Desktop) -> 
         desktop.in_session("systemctl --user show-environment | grep -q '^DISPLAY='")
     )
     # The script says each case it tried, and fails naming the one that
-    # let the secret through (modules/pi/tests).
-    said = desktop.as_account(f"{desktop.values['fence_keeps_x11']} 2>&1; echo ended $?")
+    # let the secret through (modules/pi/tests); this area alone has it.
+    said = desktop.as_account("pi-fence-keeps-x11-from-secrets 2>&1; echo ended $?")
     assert said.rstrip().endswith("ended 0"), f"the fence let X11 through: {said}"
 
 
