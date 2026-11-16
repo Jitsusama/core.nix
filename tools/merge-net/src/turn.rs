@@ -101,12 +101,27 @@ pub fn gates(folder: &Path) -> Vec<Gate> {
 /// started, of those that built what they named at the top of the
 /// repository; none for a record kept before starts were.
 pub fn started(record: &str) -> Option<u64> {
+    built_runs(record)
+        .filter_map(|line| line["started"].as_u64())
+        .min()
+}
+
+/// The lines of a commit's record of what passed for the gates that built
+/// what they named at the top of the repository: not a run in a folder
+/// below, a `there --run`, a run that only named its checks or one that
+/// kept main's derivations, which nix-offload adds later at the same
+/// commit and none of which is a pass.
+fn built_runs(record: &str) -> impl Iterator<Item = serde_json::Value> + '_ {
     record
         .lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .filter(|line| line["dir"].is_null() && line["run"].is_array())
-        .filter_map(|line| line["started"].as_u64())
-        .min()
+        .filter(|line| line["dir"].is_null())
+        .filter(|line| {
+            line["run"].as_array().is_some_and(|run| {
+                !run.iter()
+                    .any(|word| matches!(word.as_str(), Some("--name-only" | "--keep-base")))
+            })
+        })
 }
 
 /// The gates of `trees`, each a folder with its head, that ended with a
@@ -517,7 +532,10 @@ fn heads(places: &Places) -> Vec<(PathBuf, String)> {
 /// kept, from nix-offload's record of it.
 fn passed_at(commit: &str) -> Option<(u64, u64)> {
     let started = started(&crate::ready::record(commit))?;
-    Some((started, kept_at(&[commit], &crate::ready::record, &written_at)?))
+    Some((
+        started,
+        kept_at(&[commit], &crate::ready::record, &written_at)?,
+    ))
 }
 
 /// Whether `gate`'s change and the one at `head` gave `file`, one of the
@@ -580,7 +598,8 @@ pub fn passed(head: &str, passes: &[&str], files: &[String], ready: &str) -> Exi
 /// 16 November a pass that ended at 13:52 was written to again at 14:06,
 /// and its branch, with no pull request, held readers of the kit behind
 /// it for ten minutes more. A record from before ends were kept is read
-/// by when it was last written.
+/// by when it was last written, and no end is read as later than that,
+/// since no run ends after its record was written.
 fn kept_at(
     passes: &[&str],
     record: &dyn Fn(&str) -> String,
@@ -589,16 +608,13 @@ fn kept_at(
     let commit = passes
         .iter()
         .find(|commit| started(&record(commit)).is_some())?;
-    let ended = record(commit)
-        .lines()
-        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .filter(|line| line["dir"].is_null() && line["run"].is_array())
+    let ended = built_runs(&record(commit))
         .filter_map(|line| line["ended"].as_u64())
         .max();
-    if ended.is_some() {
-        return ended;
+    match (ended, written(commit)) {
+        (Some(ended), Some(written)) => Some(ended.min(written)),
+        (ended, written) => ended.or(written),
     }
-    written(commit)
 }
 
 /// When nix-offload's record of the run at `commit` was last written, in

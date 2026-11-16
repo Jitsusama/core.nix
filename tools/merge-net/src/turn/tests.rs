@@ -336,7 +336,8 @@ fn a_pass_is_kept_when_its_run_ended_not_when_checks_were_added_to_its_record() 
 
 #[test]
 fn a_pass_from_before_runs_kept_their_end_is_kept_from_when_its_record_was_written() {
-    let record = |_: &str| "{\"dir\":null,\"run\":[\"--system\",\"x\"],\"started\":100}\n".to_owned();
+    let record =
+        |_: &str| "{\"dir\":null,\"run\":[\"--system\",\"x\"],\"started\":100}\n".to_owned();
     assert_eq!(
         kept_at(&["head"], &record, &|_| Some(1234)),
         Some(1234),
@@ -346,8 +347,9 @@ fn a_pass_from_before_runs_kept_their_end_is_kept_from_when_its_record_was_writt
 
 #[test]
 fn a_pass_ending_after_its_record_was_written_is_kept_from_when_it_was_written() {
-    let record =
-        |_: &str| "{\"dir\":null,\"run\":[\"--system\",\"x\"],\"started\":100,\"ended\":5000}\n".to_owned();
+    let record = |_: &str| {
+        "{\"dir\":null,\"run\":[\"--system\",\"x\"],\"started\":100,\"ended\":5000}\n".to_owned()
+    };
     assert_eq!(
         kept_at(&["head"], &record, &|_| Some(1000)),
         Some(1000),
