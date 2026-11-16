@@ -11,11 +11,15 @@
 //! to the gateway but carries far less.
 //! wpa_supplicant still roams on its own when the signal fades; this
 //! moves the card only between access points it can already hear, and
-//! has one carrying badly that hears no other look, as often as it moves.
+//! has it look for what it doesn't, as often as it moves: another of its
+//! network when it carries badly, or one on a wider band from 2.4 GHz.
 //!
 //! The figures to beat are a desk's on 14 Nov 2026, one access point's
 //! two radios at 4 dB apart: the gateway's p95 was 15 ms on one and
 //! 119 ms on the other, with 2% and 31% of ten-second spells over 150 ms.
+//!
+//! Long because its cases, near two thirds of it, stay beside the private
+//! rules they prove one by one, as every module in wifid keeps them.
 
 use std::collections::HashMap;
 
@@ -101,6 +105,9 @@ pub enum Choice {
     Back(String),
     /// Look for another access point of the network, none being heard.
     Look,
+    /// Look for an access point of the network on a wider band, none being
+    /// heard there.
+    LookWider,
 }
 
 /// What's been chosen lately, to keep the card from hunting.
@@ -202,7 +209,14 @@ impl Chooser {
                 .or_else(|| near.max_by_key(|other| (wide(other.frequency), other.signal)))
         });
         let Some(chosen) = chosen else {
-            return self.look(now, bad && others.iter().all(|other| other.point == point));
+            let alone = bad && others.iter().all(|other| other.point == point);
+            let unbanded = narrow && !bad && !others.iter().any(|other| wide(other.frequency));
+            let look = if alone {
+                Some(Choice::Look)
+            } else {
+                unbanded.then_some(Choice::LookWider)
+            };
+            return self.look(now, look);
         };
         self.moved = Some(now);
         self.trial = Some(Trial {
@@ -213,18 +227,23 @@ impl Chooser {
         Choice::Try(chosen.point.clone())
     }
 
-    /// Has a card carrying badly that hears no other access point of its
-    /// network look for one, once a settle at most, so the next choice has
-    /// others to choose from.
-    fn look(&mut self, now: Instant, alone: bool) -> Choice {
+    /// Has a card look for what it doesn't hear, once a settle at most, so
+    /// the next choice has it to choose from: another access point of its
+    /// network, carrying badly, or one on a wider band, on 2.4 GHz. A
+    /// heard access point is forgotten 180 s after the last look, so on 15
+    /// Nov 2026 a card that tried 2.4 GHz and carried well soon heard no
+    /// 5 GHz point to go back to, and kept to a third of the link rate.
+    fn look(&mut self, now: Instant, look: Option<Choice>) -> Choice {
         let rested = self
             .looked
             .is_none_or(|looked| now.duration_since(looked) >= SETTLE);
-        if !alone || !rested {
-            return Choice::Stay;
+        match look {
+            Some(look) if rested => {
+                self.looked = Some(now);
+                look
+            }
+            _ => Choice::Stay,
         }
-        self.looked = Some(now);
-        Choice::Look
     }
 }
 
@@ -425,6 +444,38 @@ pub(crate) mod tests {
         );
         assert_eq!(calling, Choice::Stay, "no look in a call, as no move");
         assert_eq!(looking, Choice::Look, "52 ms at p95 is worth a look");
+    }
+
+    #[test]
+    fn a_card_on_2_4_ghz_carrying_well_and_hearing_no_5_ghz_looks_for_it() {
+        let mut chooser = Chooser::default();
+        let well = carried(17, 0.0);
+        let now = Instant::now();
+
+        let calling = chooser.choose(now, (NEAR, &well, -43, CH6), &[], true);
+        let looking = chooser.choose(now, (NEAR, &well, -43, CH6), &[], false);
+        let soon = now + Duration::from_secs(60);
+        let soon = chooser.choose(soon, (NEAR, &well, -43, CH6), &[], false);
+        let later = chooser.choose(now + SETTLE, (NEAR, &well, -43, CH6), &[], false);
+
+        assert_eq!(calling, Choice::Stay, "no look in a call");
+        assert_eq!(looking, Choice::LookWider, "5 GHz is worth a look");
+        assert_eq!(soon, Choice::Stay, "a minute on, it isn't asked again");
+        assert_eq!(later, Choice::LookWider, "once settled, it is");
+    }
+
+    #[test]
+    fn a_card_on_2_4_ghz_hearing_only_2_4_ghz_looks_for_5_ghz() {
+        let mut chooser = Chooser::default();
+        let well = carried(17, 0.0);
+        let other = Other {
+            point: HALL.into(),
+            ..near_at(-45, None)
+        };
+
+        let choice = chooser.choose(Instant::now(), (NEAR, &well, -43, CH6), &[other], false);
+
+        assert_eq!(choice, Choice::LookWider, "2.4 GHz is no wider");
     }
 
     #[test]

@@ -135,6 +135,17 @@ fn chosen(
             );
             Some(Next::Look)
         }
+        Choice::LookWider => {
+            println!(
+                "<6>{} looks for an access point on 5 GHz, as {} carried {} at p95 on {} MHz, \
+                 and it hears none of its network there",
+                on.card,
+                on.point,
+                measure::ms(measured.p95),
+                here.frequency
+            );
+            Some(Next::Look)
+        }
     }
 }
 
@@ -424,7 +435,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let learned = Learned::kept_in(&dir.path().join("carried"));
         let (lately, now) = (Measures::default(), Instant::now());
-        let around = [heard(DESK, -50), heard(HALL, -50)];
+        let on_5_ghz = |bssid| Heard {
+            frequency: 5260,
+            ..heard(bssid, -50)
+        };
+        let around = [on_5_ghz(DESK), on_5_ghz(HALL)];
         let known = known(&lately, &learned, now, 20);
 
         let to = chosen(
