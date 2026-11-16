@@ -56,13 +56,16 @@ fn answer(base: &str) -> Result<ExitCode, String> {
     };
     // What a gate that passed here says moved is read before deciding
     // nothing runs, since it costs no evaluation and a change can move a
-    // machine's initrd from a file no area names.
+    // machine's initrd from a file no area names. A rebased head has no run
+    // of its own, but an earlier commit of the same change whose files main
+    // hasn't moved since speaks for it, as it does for `ready`.
     let record = ready::record(&head);
-    let kept = clean
-        .then(|| gated::named(&record, &merge_base, SYSTEM, &came_before))
-        .flatten();
+    let kept = gated::kept(&record, clean, &merge_base, &came_before, || {
+        crate::earlier::pass(&head, &git(&["rev-parse", base]).ok()?)
+    });
+    let named = kept.as_ref().map(|(said, _)| said.as_str());
     if owning.is_empty()
-        && rules::first(&areas, &files, kept.as_deref(), known.as_deref())
+        && rules::first(&areas, &files, named, known.as_deref())
             .touched
             .is_empty()
     {
@@ -74,15 +77,18 @@ fn answer(base: &str) -> Result<ExitCode, String> {
     // hasn't, so changed-checks is asked which moved; it costs an
     // evaluation, which only a change touching an area or a VM test's
     // files pays, and none whose gate already passed at its head.
-    let (said, asked) = gated::moved(&record, clean, &merge_base, &came_before, || {
-        moved_from(base)
-    });
+    let (said, asked) = gated::moved(kept, || moved_from(base));
     gated::keep(&head, began, asked);
-    if asked == gated::Asked::Gate {
-        println!(
+    match asked {
+        gated::Asked::Gate => println!(
             "(a run that passed at {} named what moved, so none was evaluated)",
             short(&head)
-        );
+        ),
+        gated::Asked::Earlier => println!(
+            "(a run that passed at an earlier commit of the same change, whose files main \
+             hasn't moved since, named what moved, so none was evaluated)"
+        ),
+        gated::Asked::Changed | gated::Asked::Nothing => {}
     }
     if said.is_none() {
         println!("(changed-checks couldn't say which VM tests moved, so every one named runs)");
