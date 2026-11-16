@@ -788,6 +788,7 @@ gather {
     ./tests/vm/guide/checks.nix
     ./tests/vm/keys/checks.nix
     ./tests/vm/network/checks.nix
+    ./tests/vm/sites/checks.nix
     ./tests/vm/sound/checks.nix
     ./tools/changed-checks/checks.nix
     ./tools/merge-net/checks.nix
