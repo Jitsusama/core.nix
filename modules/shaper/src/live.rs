@@ -59,6 +59,32 @@ pub struct Heard {
     /// controller heard.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub up_tins_kbit: Option<crate::qdisc::Tins>,
+    /// Why the upload holds where it does, in one sentence (src/why.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub why: Option<String>,
+}
+
+/// Each network's declared upload rate, its anchor, in kbit/s, by its
+/// router's hardware address, as `jitsusama.shaper.networks` sets them.
+pub type Anchors = BTreeMap<String, f64>;
+
+/// The anchors written at `path`, or none where there is no such file or it
+/// can't be read as one, which leaves every network unguarded.
+pub fn anchors(path: &Path) -> Anchors {
+    #[derive(Deserialize)]
+    struct Network {
+        up: f64,
+    }
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<BTreeMap<String, Network>>(&text).ok())
+        .map(|networks| {
+            networks
+                .into_iter()
+                .map(|(router, network)| (router.to_lowercase(), network.up))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// What a link joining `network` starts its upload at, in kbit/s: the
@@ -108,6 +134,8 @@ pub struct Follow {
     from_ms: u64,
     /// The trial the upload is tuned by, which outlasts a stay.
     trial: Option<Tuning>,
+    /// Each network's anchor, which a stay on it is guarded by.
+    anchors: Anchors,
 }
 
 impl Follow {
@@ -125,7 +153,14 @@ impl Follow {
             known,
             from_ms: 0,
             trial: None,
+            anchors: Anchors::new(),
         }
+    }
+
+    /// Guards each network's upload by its anchor, the stay's from now.
+    pub fn anchor(&mut self, anchors: Anchors) {
+        self.controller.anchor(anchors.get(&self.network).copied());
+        self.anchors = anchors;
     }
 
     /// Tunes the upload by a trial from now on, or by none, and in every
@@ -172,6 +207,7 @@ impl Follow {
                 let (up, down) = self.known.get(network).copied().unwrap_or_default();
                 self.controller = oneway::Controller::from_learned(up, down);
                 self.controller.up.tune(self.trial.unwrap_or_default());
+                self.controller.anchor(self.anchors.get(network).copied());
                 self.network.clone_from(network);
                 self.rates = Rates::default();
                 return;
@@ -193,7 +229,16 @@ impl Follow {
         for mut second in self.reading.drain() {
             second.up_ours = ours;
             second.vpn_ms = self.vpn_ms;
+            let guarded = self.controller.guarded;
             self.rates = self.controller.second(&second);
+            if self.controller.guarded > guarded {
+                eprintln!(
+                    "the upload was held under {:.0}% of {}'s anchor for a minute with no cut \
+                     that drained a queue, so it's back to the anchor's hold",
+                    oneway::ANCHOR_LOW * 100.0,
+                    self.network
+                );
+            }
             self.last = Some(second);
         }
     }
@@ -216,6 +261,7 @@ impl Follow {
             plateau: self.controller.up.learned().plateau,
             trial: self.trial,
             up_tins_kbit: None,
+            why: Some(self.controller.why()),
         };
         Some((link, heard))
     }
@@ -300,6 +346,11 @@ impl Live {
     /// Tunes the upload by a trial, or by none.
     pub fn tune(&mut self, trial: Option<Tuning>) {
         self.follow.tune(trial);
+    }
+
+    /// Guards each network's upload by its anchor.
+    pub fn anchor(&mut self, anchors: Anchors) {
+        self.follow.anchor(anchors);
     }
 
     /// The link the controller holds, and what it last heard of it.
@@ -745,6 +796,24 @@ mod tests {
             "a network with no plateau"
         );
         assert_eq!(starting_up(&kept, "park"), None, "a network never met");
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn each_network_s_anchor_is_read_by_its_router_in_lower_case() {
+        let folder = std::env::temp_dir().join(format!("shaper-anchors-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let file = folder.join("networks.json");
+        assert!(anchors(&file).is_empty(), "with no file");
+        fs::write(&file, r#"{"00:00:5E:00:53:01": {"up": 12000}}"#).expect("the networks");
+        assert_eq!(
+            anchors(&file).get("00:00:5e:00:53:01"),
+            Some(&12_000.0),
+            "as nixos.nix writes it"
+        );
+        fs::write(&file, "not json").expect("a broken file");
+        assert!(anchors(&file).is_empty(), "a broken file anchors nothing");
         let _ = fs::remove_dir_all(&folder);
     }
 }

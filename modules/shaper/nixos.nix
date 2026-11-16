@@ -81,6 +81,8 @@ let
   ) "--set-default SHAPER_SPEED_SERVER ${lib.escapeShellArg speedServer}";
   vpns = config.jitsusama.shaper.vpns;
   oneWay = config.jitsusama.shaper.controller == "one-way";
+  networks = config.jitsusama.shaper.networks;
+  networksFile = pkgs.writeText "shaper-networks.json" (builtins.toJSON networks);
 in
 {
   imports = [
@@ -111,6 +113,31 @@ in
       had (src/rate.rs), from pings to distant resolvers. `one-way` is its
       rebuild (src/oneway.rs), from each direction's own delay as
       shaper-record measures it, the controller `shaper replay` scores.
+    '';
+  };
+
+  options.jitsusama.shaper.networks = lib.mkOption {
+    type = lib.types.attrsOf (
+      lib.types.submodule {
+        options.up = lib.mkOption {
+          type = lib.types.ints.positive;
+          example = 12000;
+          description = "What the network's line carries up, in kbit/s.";
+        };
+      }
+    );
+    default = { };
+    example = {
+      "00:00:5e:00:53:01".up = 12000;
+    };
+    description = ''
+      What each network's line is known to carry, keyed by its router's
+      hardware address in lower case. On a network named here the one-way
+      controller keeps the upload near the line: a queue past its CAKE
+      counts as the router's only while the link carries near the line,
+      and an upload held under four fifths of it for a minute, with no cut
+      that drained a queue, goes back to nine tenths. Leaving a network
+      out turns both off on it.
     '';
   };
 
@@ -216,7 +243,8 @@ in
       ExecStart =
         "${shaper}/bin/shaper run"
         + lib.optionalString (vpns != [ ]) " --vpns ${lib.concatStringsSep "," vpns}"
-        + lib.optionalString oneWay " --controller one-way --record /var/lib/shaper-record";
+        + lib.optionalString oneWay " --controller one-way --record /var/lib/shaper-record"
+        + lib.optionalString (networks != { }) " --networks ${networksFile}";
       ExecStopPost = "${shaper}/bin/shaper stop";
       Restart = "always";
       RestartSec = 2;

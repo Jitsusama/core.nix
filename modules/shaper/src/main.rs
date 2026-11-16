@@ -42,6 +42,7 @@ mod stamp;
 mod status;
 mod vpndelay;
 mod waiting;
+mod why;
 
 use memory::{Held, Memory};
 use probe::{Echo, Probes};
@@ -90,6 +91,9 @@ struct Options {
     /// Where a trial of how the upload finds its line may be written, by
     /// an account that may stop the shaper anyway (src/live.rs).
     trial: PathBuf,
+    /// Where each network's declared upload rate is written, its anchor,
+    /// which the one-way controller's guard holds the upload near.
+    networks: Option<PathBuf>,
 }
 
 /// Reads the flags `run`, `status` and `record` take, refusing any other
@@ -112,6 +116,7 @@ fn options(command: &str, args: &[String]) -> Result<Options, Failure> {
         one_way: false,
         record: "/var/lib/shaper-record".into(),
         trial: "/run/shaper-trial/upload.json".into(),
+        networks: None,
     };
     // A network of its own, a test's among them, names its own distant hosts.
     if let Ok(hosts) = std::env::var("SHAPER_HOSTS") {
@@ -133,6 +138,7 @@ fn options(command: &str, args: &[String]) -> Result<Options, Failure> {
             "--users" => o.users = value()?.into(),
             "--record" => o.record = value()?.into(),
             "--trial" => o.trial = value()?.into(),
+            "--networks" => o.networks = Some(value()?.into()),
             "--controller" => match value()?.as_str() {
                 "one-way" => o.one_way = true,
                 "round-trip" => o.one_way = false,
@@ -643,7 +649,15 @@ fn run(options: &Options) -> Result<(), Failure> {
     let mut call = Call::default();
     let mut live = options.one_way.then(|| {
         let learned = options.state.join("learned.json");
-        live::Live::new(&options.record, SystemTime::now(), &learned)
+        let mut live = live::Live::new(&options.record, SystemTime::now(), &learned);
+        live.anchor(
+            options
+                .networks
+                .as_deref()
+                .map(live::anchors)
+                .unwrap_or_default(),
+        );
+        live
     });
     loop {
         let now = Instant::now();

@@ -69,6 +69,9 @@ fn said(link: &LinkStatus) -> Vec<String> {
     let mut lines = vec![format!("{}  on {}", link.name, link.network)];
     let mut say = |line: String| lines.push(format!("{INSET}{line}"));
     say(format!("up {}, down {}", mbit(link.up), mbit(link.down)));
+    if let Some(why) = link.heard.as_ref().and_then(|heard| heard.why.clone()) {
+        say(why);
+    }
     if let Some(leader) = &link.follows {
         say(format!("at {leader}'s rate: both reach the same router"));
     }

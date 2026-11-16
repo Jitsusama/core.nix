@@ -41,6 +41,10 @@ fn run() -> Help {
         .option("--controller CONTROLLER", "round-trip, or one-way")
         .option("--record DIR", "where the recorder writes, for one-way")
         .option("--trial FILE", "a trial of how the upload finds its line")
+        .option(
+            "--networks FILE",
+            "each network's upload rate, to guard it by",
+        )
         .option("--state DIR", "where each network's rate is kept")
         .option("--runtime DIR", "where its status is written")
         .option("--cgroups DIR", "where the slices' cgroups are")
@@ -159,6 +163,8 @@ mod tests {
             "one-way",
             "--record",
             "/var/lib/shaper-record",
+            "--networks",
+            "/etc/shaper-networks.json",
         ],
         &["stop"],
         &["record", "--state", "/var/lib/shaper-record"],
@@ -190,6 +196,11 @@ mod tests {
         assert_eq!(asked.vpns, ["wg0", "wg1"], "--vpns");
         assert!(asked.one_way, "--controller one-way left the round trip's");
         assert_eq!(asked.record, std::path::Path::new("/var/lib/shaper-record"));
+        assert_eq!(
+            asked.networks.as_deref(),
+            Some(std::path::Path::new("/etc/shaper-networks.json")),
+            "--networks"
+        );
         let Ok(recorder) = crate::options("record", &owned(&UNITS[3][1..])) else {
             panic!("the recorder's unit words were refused");
         };

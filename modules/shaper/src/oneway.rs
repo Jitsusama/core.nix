@@ -45,6 +45,7 @@
 //! rejoin is held under that router at once rather than after it has been
 //! found again.
 
+use crate::why::Why;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
@@ -180,6 +181,26 @@ const HOLD: f64 = 0.95;
 const PROBE_EVERY_S: f64 = 60.0;
 const PROBE_UP: f64 = 1.1;
 const PROBE_S: f64 = 3.0;
+/// The share of a network's declared upload rate, its anchor, that the
+/// guard sends the upload back to: within the 85% to 95% of a cable
+/// modem's rate that `LibreQoS` holds one at.
+pub const ANCHOR_HOLD: f64 = 0.9;
+/// An upload held under this share of its anchor for `ANCHOR_LOW_S`, with
+/// no cut in that time that drained the queue it was made for, goes back
+/// to the anchor's hold. On 15 November it sat at a third of a 12 Mbit/s
+/// line for two hours, behind cuts for a delay no cut here reached.
+pub const ANCHOR_LOW: f64 = 0.8;
+const ANCHOR_LOW_S: f64 = 60.0;
+/// How long after a cut the delay it was made for has to fall under a
+/// queue's for the cut to count as having drained it.
+const DRAINED_S: f64 = UNSEEN_DRAIN_S;
+/// On a network with an anchor, the share of the anchor's hold the link
+/// must carry for a queue past our CAKE to be the router's: a router holds
+/// back nothing while the line has room. At 02:05 on 16 November the
+/// VPN's own sending dipped under its CAKE's rate while the link carried
+/// 5.6 of 12 Mbit/s, the reflectors 5 to 9 ms, and each 2 s dip was taken
+/// for the line, holding the upload at 4.
+const NEAR_THE_HOLD: f64 = 0.9;
 
 /// How the upload tells a queue and finds its line, which a trial may set
 /// in place of the constants above to learn how near the line it may hold.
@@ -442,6 +463,8 @@ pub struct Way {
     anothers_until: f64,
     /// How it tells a queue and finds its line.
     tuning: Tuning,
+    /// The network's declared rate, in kbit/s, where it has one.
+    anchor: Option<f64>,
 }
 
 impl Way {
@@ -475,6 +498,7 @@ impl Way {
             draining: None,
             anothers_until: f64::NEG_INFINITY,
             tuning: Tuning::default(),
+            anchor: None,
         }
     }
 
@@ -615,9 +639,13 @@ impl Way {
         // dip, taken for the line, held the upload at half of it for 20
         // minutes, with the round trip within 6 ms of its least.
         let backing_off = ours.in_vpn && tunnel == Tunnel::Clear;
+        let line_full = self
+            .anchor
+            .is_none_or(|anchor| through >= anchor * ANCHOR_HOLD * NEAR_THE_HOLD);
         let elsewhere = ours.waiting
             && held_back
             && !backing_off
+            && line_full
             && through > FLOWING_KBIT
             && self.reached(at) > 0.0
             && through >= self.reached(at) * REACHED;
@@ -716,6 +744,20 @@ impl Way {
         }
         self.ceiling = None;
         self.late_since = None;
+        self.probing_until = None;
+        self.next_probe = at + PROBE_EVERY_S;
+    }
+
+    /// Holds at `kbit` from now, as a start from a plateau would, and
+    /// climbs back to at least that after a cut or a probe.
+    fn hold_at(&mut self, at: f64, kbit: f64) {
+        self.rate = kbit;
+        let plateau = kbit / self.tuning.hold;
+        self.plateau = Some(self.plateau.map_or(plateau, |now| now.max(plateau)));
+        self.ceiling = None;
+        self.late_since = None;
+        self.elsewhere = None;
+        self.under_half_since = None;
         self.probing_until = None;
         self.next_probe = at + PROBE_EVERY_S;
     }
@@ -1125,6 +1167,70 @@ struct Released {
     plateau: Option<f64>,
 }
 
+/// The anchor's guard: an upload held under `ANCHOR_LOW` of its network's
+/// anchor for `ANCHOR_LOW_S`, with no cut in that time that drained the
+/// queue it was made for, is held too low by a guess, whatever made it.
+#[derive(Clone, Debug, Default)]
+struct Guard {
+    /// Since when the upload has been held under the guard's share.
+    low_since: Option<f64>,
+    /// When the latest cut not yet seen to drain was made.
+    cut_at: Option<f64>,
+    /// When a cut was last seen to drain its queue.
+    drained_at: Option<f64>,
+}
+
+impl Guard {
+    /// Takes a moment: the upload's rate, the delay it was stepped on,
+    /// whether it was cut, and the anchor, in kbit/s, and answers whether
+    /// it has been held low for longer than a drained cut excuses.
+    fn breached(
+        &mut self,
+        at: f64,
+        rate: f64,
+        delay_ms: Option<f64>,
+        late_ms: f64,
+        cut: bool,
+        anchor: f64,
+    ) -> bool {
+        if cut {
+            self.cut_at = Some(at);
+        } else if let Some(cut_at) = self.cut_at {
+            if delay_ms.is_some_and(|delay| delay <= late_ms) {
+                self.drained_at = Some(at);
+                self.cut_at = None;
+            } else if at - cut_at > DRAINED_S {
+                self.cut_at = None;
+            }
+        }
+        if rate >= anchor * ANCHOR_LOW {
+            self.low_since = None;
+            return false;
+        }
+        let since = *self.low_since.get_or_insert(at);
+        let from = self.drained_at.map_or(since, |drained| drained.max(since));
+        if at - from < ANCHOR_LOW_S {
+            return false;
+        }
+        self.low_since = None;
+        self.cut_at = None;
+        true
+    }
+
+    /// Whether a cut made at `cut_at` has been seen to drain its queue.
+    fn eased(&self, cut_at: f64) -> bool {
+        self.drained_at.is_some_and(|drained| drained >= cut_at)
+    }
+}
+
+/// The delay the upload's latest cut was made on, in ms, and whether it
+/// was the VPN's alone.
+#[derive(Clone, Copy, Debug, Default)]
+struct LastCut {
+    delay_ms: f64,
+    vpn: bool,
+}
+
 /// Both directions on one network, and what stands over them.
 #[derive(Clone, Debug)]
 pub struct Controller {
@@ -1141,6 +1247,16 @@ pub struct Controller {
     started_at: Option<f64>,
     returns: usize,
     gave_up_at: Option<f64>,
+    /// The network's declared upload rate, its anchor, in kbit/s.
+    anchor: Option<f64>,
+    guard: Guard,
+    /// How many times the guard has sent the upload back to the anchor's
+    /// hold, for the shaper to say each.
+    pub guarded: u32,
+    /// Why the upload holds where it does, and since when.
+    why: Why,
+    why_since: Option<f64>,
+    last_cut: LastCut,
 }
 
 impl Controller {
@@ -1162,7 +1278,27 @@ impl Controller {
             started_at: None,
             returns: 0,
             gave_up_at: None,
+            anchor: None,
+            guard: Guard::default(),
+            guarded: 0,
+            why: Why::Unmeasured,
+            why_since: None,
+            last_cut: LastCut::default(),
         }
+    }
+
+    /// Anchors the upload to its network's declared rate, in kbit/s, or to
+    /// none, which leaves it unguarded.
+    pub fn anchor(&mut self, up: Option<f64>) {
+        self.anchor = up.filter(|kbit| kbit.is_finite() && *kbit > 0.0);
+        self.up.anchor = self.anchor;
+    }
+
+    /// Why the upload holds where it does, in one sentence.
+    pub fn why(&self) -> String {
+        let at = self.last_at.unwrap_or(0.0);
+        let since = self.why_since.unwrap_or(at);
+        crate::why::say(self.why, self.up.limit(), self.anchor, at - since)
     }
 
     /// A controller for a network met before, from what each direction
@@ -1266,45 +1402,30 @@ impl Controller {
             self.down.start_over();
         }
         if self.given_up() || unanswered {
+            self.judge(
+                at,
+                if unanswered {
+                    Why::Unanswered
+                } else {
+                    Why::GaveUp
+                },
+            );
             return Limits {
                 up: None,
                 down: None,
             };
         }
-        let hidden = self.hidden(seen);
-        let heeded = self.far.heed(at, hidden);
-        let hidden = heeded.unwrap_or(0.0);
+        let met = self.hidden(seen);
+        let heeded = self.far.heed(at, met);
         let up = seen.up_delay_ms.map(|d| (d - air).max(0.0));
         let down = seen.down_delay_ms.map(|d| (d - air).max(0.0));
         let idle_up = self.up.idle(seen.up_kbit);
         let idle_down = self.down.idle(seen.down_kbit);
-        if let Some(delay) = up {
+        let cuts = self.up.last_cut;
+        let fed = up.map(|delay| {
             let beside = if idle_down { down.unwrap_or(0.0) } else { 0.0 };
-            let seen_delay = (delay - beside).max(0.0);
-            let tunnel = if hidden > seen_delay {
-                Tunnel::Past
-            } else if heeded.is_some_and(|hidden| hidden <= 0.0)
-                && seen.vpn_ms.is_some()
-                && seen
-                    .up_ours
-                    .is_some_and(|ours| ours.in_vpn || ours.vpn_queued)
-            {
-                Tunnel::Clear
-            } else {
-                Tunnel::Unheard
-            };
-            let (cuts, plateau) = (self.up.last_cut, self.up.plateau);
-            self.up.step(
-                at,
-                seen_delay.max(hidden),
-                seen.up_kbit,
-                seen.up_ours,
-                tunnel,
-            );
-            if tunnel == Tunnel::Past && self.up.last_cut > cuts {
-                self.cut_for_the_vpn(at, plateau);
-            }
-        }
+            self.step_up(seen, (delay - beside).max(0.0), heeded)
+        });
         if let Some(delay) = down {
             let beside = if idle_up { up.unwrap_or(0.0) } else { 0.0 };
             // The download's queue at home is the cable's, first come,
@@ -1329,17 +1450,118 @@ impl Controller {
         }
         if self.given_up() {
             self.gave_up_at.get_or_insert(at);
-        }
-        if self.given_up() {
+            self.judge(at, Why::GaveUp);
             return Limits {
                 up: None,
                 down: None,
             };
         }
+        let cut = self.up.last_cut > cuts;
+        let guarded = self.guard_the_anchor(at, fed, cut);
+        let why = self.reason(at, guarded, met, heeded);
+        self.judge(at, why);
         Limits {
             up: self.up.limit(),
             down: self.down.limit(),
         }
+    }
+
+    /// Steps the upload on its own delay, `seen_delay`, and on the queue
+    /// only the VPN's flow meets, while it's `heeded`, and gives the delay
+    /// it was stepped on.
+    fn step_up(&mut self, seen: &Seen, seen_delay: f64, heeded: Option<f64>) -> f64 {
+        let at = seen.at_s;
+        let hidden = heeded.unwrap_or(0.0);
+        let tunnel = if hidden > seen_delay {
+            Tunnel::Past
+        } else if heeded.is_some_and(|hidden| hidden <= 0.0)
+            && seen.vpn_ms.is_some()
+            && seen
+                .up_ours
+                .is_some_and(|ours| ours.in_vpn || ours.vpn_queued)
+        {
+            Tunnel::Clear
+        } else {
+            Tunnel::Unheard
+        };
+        let (cuts, plateau) = (self.up.last_cut, self.up.plateau);
+        let fed = seen_delay.max(hidden);
+        self.up.step(at, fed, seen.up_kbit, seen.up_ours, tunnel);
+        if self.up.last_cut > cuts {
+            self.last_cut = LastCut {
+                delay_ms: fed,
+                vpn: tunnel == Tunnel::Past,
+            };
+            if tunnel == Tunnel::Past {
+                self.cut_for_the_vpn(at, plateau);
+            }
+        }
+        fed
+    }
+
+    /// Sends the upload back to its anchor's hold once the guard finds it
+    /// held low past what a drained cut excuses, answering whether it did.
+    fn guard_the_anchor(&mut self, at: f64, fed: Option<f64>, cut: bool) -> bool {
+        let Some(anchor) = self.anchor else {
+            return false;
+        };
+        let late = self.up.tuning.late_ms;
+        if !self
+            .guard
+            .breached(at, self.up.rate, fed, late, cut, anchor)
+        {
+            return false;
+        }
+        self.up.hold_at(at, anchor * ANCHOR_HOLD);
+        self.guarded += 1;
+        true
+    }
+
+    /// What set the upload's rate this moment: `met` is the queue only the
+    /// VPN's flow meets, and `heeded` it while cuts still heed it.
+    fn reason(&self, at: f64, guarded: bool, met: f64, heeded: Option<f64>) -> Why {
+        let up = &self.up;
+        let cut_lately = at - up.last_cut < CEILING_S;
+        let since = self.why_since.unwrap_or(at);
+        // The guard's return is the reason until a cut or a minute passes.
+        if guarded || self.why == Why::Guarded && up.last_cut < since && at - since < ANCHOR_LOW_S {
+            return Why::Guarded;
+        }
+        if !up.rate.is_finite() {
+            return Why::Unmeasured;
+        }
+        if heeded.is_none() && met > 0.0 {
+            return Why::Far { delay_ms: met };
+        }
+        if cut_lately {
+            let delay_ms = self.last_cut.delay_ms;
+            return if self.last_cut.vpn {
+                Why::Vpn { delay_ms }
+            } else {
+                Why::Line {
+                    delay_ms,
+                    eased: self.guard.eased(up.last_cut),
+                }
+            };
+        }
+        let at_the_hold = self
+            .anchor
+            .is_some_and(|anchor| up.rate >= anchor * ANCHOR_HOLD - 1.0);
+        match up.plateau {
+            Some(plateau) if !at_the_hold && up.rate <= plateau * up.tuning.hold + 1.0 => {
+                Why::Router { plateau }
+            }
+            _ => Why::Clear,
+        }
+    }
+
+    /// Takes `why` as the reason now, counting how long from when its kind
+    /// last changed.
+    fn judge(&mut self, at: f64, why: Why) {
+        if self.why_since.is_none() || !why.same_kind(self.why) {
+            self.why_since = Some(at);
+        }
+        self.why = why;
     }
 }
 
@@ -3180,5 +3402,142 @@ mod tests {
             ..quiet(12_000.0, 300.0)(0.0)
         });
         assert_eq!(limits.up, None);
+    }
+
+    /// Steps a controller on a 12000 line with room to spare, behind a
+    /// VPN whose own sending falls to four fifths of its CAKE's rate for
+    /// three seconds in every ten, as at 02:05 on 16 November: its CAKE
+    /// holds a queue, the link's holds none, and the reflectors read the
+    /// line clear. Answers the upload's lowest limit.
+    fn behind_a_wobbling_vpn(c: &mut Controller, to: f64) -> f64 {
+        let mut lowest = f64::INFINITY;
+        let mut at = 0.0;
+        while at < to {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            let cake = rate * crate::qdisc::VPN_SHARE;
+            let vpn = if at % 10.0 >= 7.0 { cake * 0.8 } else { cake };
+            let limits = c.step(&Seen {
+                at_s: at,
+                up_kbit: vpn.min(12_000.0),
+                up_ours: Some(Ours {
+                    queued: true,
+                    in_vpn: true,
+                    vpn_queued: true,
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            lowest = lowest.min(limits.up.map_or(f64::INFINITY, crate::rate::float));
+            at += 0.1;
+        }
+        lowest
+    }
+
+    fn anchored(plateau: f64) -> Controller {
+        let mut c = Controller::from_learned(
+            Learned {
+                base: None,
+                plateau: Some(plateau),
+            },
+            Learned::default(),
+        );
+        c.anchor(Some(12_000.0));
+        c
+    }
+
+    #[test]
+    fn a_vpn_s_own_dips_don_t_hold_an_anchored_upload_under_the_line() {
+        let held = behind_a_wobbling_vpn(&mut anchored(12_000.0), 300.0);
+        assert!(
+            held >= 10_000.0,
+            "held down to {held} on a clear 12000 line"
+        );
+        let mut unanchored = anchored(12_000.0);
+        unanchored.anchor(None);
+        let fell = behind_a_wobbling_vpn(&mut unanchored, 300.0);
+        assert!(
+            fell < 8_000.0,
+            "with no anchor it held at least {fell}, so the wobble shows nothing"
+        );
+    }
+
+    /// Steps a controller whose upload fills what it's held to, with no
+    /// queue anywhere, and answers its limit at each moment named.
+    fn filling(c: &mut Controller, to: f64, at_moments: &[f64]) -> Vec<Option<u64>> {
+        let mut said = vec![None; at_moments.len()];
+        let mut at = 0.0;
+        while at < to {
+            let rate = c.up.limit().map_or(12_000.0, crate::rate::float);
+            let limits = c.step(&Seen {
+                at_s: at,
+                up_kbit: rate.min(12_000.0),
+                up_ours: Some(Ours {
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            for (moment, limit) in at_moments.iter().zip(said.iter_mut()) {
+                if (at - moment).abs() < 0.05 {
+                    *limit = limits.up;
+                }
+            }
+            at += 0.1;
+        }
+        said
+    }
+
+    #[test]
+    fn an_anchored_upload_held_low_with_no_cut_that_drained_goes_back_to_its_hold() {
+        let mut c = anchored(4_069.0);
+        let said = filling(&mut c, 70.0, &[50.0, 65.0]);
+        assert!(near(said[0], 3_866.0), "before a minute: {:?}", said[0]);
+        assert!(near(said[1], 10_800.0), "after a minute: {:?}", said[1]);
+        assert_eq!(c.guarded, 1);
+        assert!(c.why().contains("back to the line's hold"), "{}", c.why());
+        let mut unanchored = anchored(4_069.0);
+        unanchored.anchor(None);
+        let said = filling(&mut unanchored, 70.0, &[65.0]);
+        assert!(
+            said[0].is_some_and(|l| l < 6_000),
+            "with no anchor: {:?}",
+            said[0]
+        );
+    }
+
+    #[test]
+    fn cuts_that_drain_a_line_fallen_under_its_anchor_keep_the_guard_off() {
+        let mut c = anchored(12_000.0);
+        let mut at = 0.0;
+        while at < 200.0 {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            c.step(&Seen {
+                at_s: at,
+                up_delay_ms: Some(if rate > 6_000.0 { 40.0 } else { 1.0 }),
+                up_kbit: rate.min(6_000.0),
+                up_ours: Some(Ours {
+                    queued: rate < 6_000.0,
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            at += 0.1;
+        }
+        assert_eq!(c.guarded, 0, "the guard undid cuts that drained");
+        assert!(
+            c.up.limit().is_some_and(|l| l < 7_000),
+            "{:?}",
+            c.up.limit()
+        );
+    }
+
+    #[test]
+    fn a_clear_anchored_upload_says_so() {
+        let mut c = anchored(12_000.0);
+        filling(&mut c, 30.0, &[]);
+        assert!(c.why().starts_with("Upload "), "{}", c.why());
+        assert!(c.why().contains("clear for"), "{}", c.why());
     }
 }
