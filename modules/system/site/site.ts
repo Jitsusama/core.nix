@@ -6,6 +6,7 @@
 // says whether what it shows is live and since when.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
+import { hasOwnKeys, listen, toggle } from "../../local-sites/kit/keys.ts";
 import { Held } from "../../local-sites/kit/records.ts";
 import { clockTime, said } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
@@ -209,69 +210,40 @@ function copy(): void {
   );
 }
 
-function toggleKeys(): void {
-  if (keys.open) {
-    keys.close();
-  } else {
-    keys.showModal();
-  }
+/** Whether focus is on one of the part's machines, which is the cursor. */
+function onThing(): boolean {
+  return document.activeElement?.closest("#things") !== null;
 }
 
-/** What each key does in the list, or inside a part. */
-const ACTIONS: { readonly [key: string]: () => void } = {
-  j: () => move(1),
-  ArrowDown: () => move(1),
-  k: () => move(-1),
-  ArrowUp: () => move(-1),
-  g: () => move(Number.NEGATIVE_INFINITY),
-  Home: () => move(Number.NEGATIVE_INFINITY),
-  G: () => move(Number.POSITIVE_INFINITY),
-  End: () => move(Number.POSITIVE_INFINITY),
-  l: goIn,
-  ArrowRight: goIn,
-  "-": goOut,
-  h: goOut,
-  ArrowLeft: goOut,
-  y: copy,
-};
-
-/** Whether `target` is somewhere Joel types, whose keys are its own. */
-function typing(target: Element): boolean {
-  return target.closest("input, textarea, [contenteditable]") !== null;
-}
-
-function pressed(event: KeyboardEvent): void {
-  const target = event.target instanceof Element ? event.target : document.body;
-  if (event.altKey || event.ctrlKey || event.metaKey || typing(target)) {
-    return;
-  }
-  if (event.key === "?" || event.key === "F1") {
-    toggleKeys();
-    event.preventDefault();
-    return;
-  }
-  // The keys are the page's wherever focus is, but on another control,
-  // whose own keys come first; a machine's link is the cursor, not one.
-  const onThing = target.closest("#things") !== null;
-  const inList = onThing || target.closest("a, button, select, summary") === null;
-  const action = ACTIONS[event.key];
-  if (keys.open || !inList) {
-    return;
-  }
-  if (event.key === "Enter" && !onThing) {
-    goDeeper();
-  } else if (action === undefined) {
-    return;
-  } else {
-    action();
-  }
-  event.preventDefault();
-  if (inner === null && document.activeElement !== list) {
-    list.focus();
-  }
-}
-
-addEventListener("keydown", pressed);
+listen({
+  help: keys,
+  // On a machine, Return follows its link; anywhere else in the list it
+  // goes the part's way deeper.
+  actions: {
+    Enter: () => (onThing() ? false : goDeeper()),
+    j: () => move(1),
+    ArrowDown: () => move(1),
+    k: () => move(-1),
+    ArrowUp: () => move(-1),
+    g: () => move(Number.NEGATIVE_INFINITY),
+    Home: () => move(Number.NEGATIVE_INFINITY),
+    G: () => move(Number.POSITIVE_INFINITY),
+    End: () => move(Number.POSITIVE_INFINITY),
+    l: goIn,
+    ArrowRight: goIn,
+    "-": goOut,
+    h: goOut,
+    ArrowLeft: goOut,
+    y: copy,
+  },
+  // A machine's link is the cursor, not a control of its own.
+  answersAt: (target) => target.closest("#things") !== null || !hasOwnKeys(target),
+  afterwards: () => {
+    if (inner === null && document.activeElement !== list) {
+      list.focus();
+    }
+  },
+});
 
 list.addEventListener("click", (event) => {
   const row = event.target instanceof Element ? event.target.closest("[role=option]") : null;
@@ -315,7 +287,7 @@ themeSwitch();
 for (const key of document.querySelectorAll<HTMLElement>(".head .keys kbd[data-key]")) {
   key.addEventListener("click", () => {
     if (key.dataset.key === "?") {
-      toggleKeys();
+      toggle(keys);
     } else if (key.dataset.key === "Enter") {
       goDeeper();
     } else {

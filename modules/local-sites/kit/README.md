@@ -7,6 +7,7 @@ a site's compiled imports land.
 | File          | What it holds                                                 |
 | ------------- | ------------------------------------------------------------- |
 | `feed.ts`     | a watch of a daemon's feed: connecting, live, stale or broken |
+| `keys.ts`     | the keys a page answers, and its list of them on `?` and F1   |
 | `records.ts`  | a daemon's records, held as its watch tells them              |
 | `status.ts`   | the line saying how live a page is and since when             |
 | `theme.ts`    | the theme switch, on real radios, and the look it keeps       |
