@@ -31,15 +31,58 @@ pub struct Unrun {
 /// read from its findings.
 #[must_use]
 pub fn unrun(findings: &Path, since: i64) -> Vec<Unrun> {
-    let _ = (findings, since, CHECK);
-    Vec::new()
+    let mut kept = crate::net::kept_since(findings, since);
+    kept.sort_by_key(|finding| finding["at"].as_i64());
+    kept.iter()
+        .filter(|finding| finding["kind"] == "mac-unrun")
+        .filter_map(|finding| {
+            Some(Unrun {
+                owner_pr: finding["owner_pr"].as_u64(),
+                commit: finding["commit"].as_str()?.to_owned(),
+                base: finding["test"].as_str()?.strip_prefix(CHECK)?.to_owned(),
+            })
+        })
+        .collect()
 }
 
 /// The unrun merges not yet told, each once, remembered in `told`.
 #[must_use]
 pub fn due(unrun: &[Unrun], landings: &str, told: &mut Told, now: i64) -> Vec<Tell> {
-    let _ = (unrun, landings, told, now, REMEMBER, reverted::owner);
-    Vec::new()
+    told.unrun.retain(|_, at| now - *at < REMEMBER);
+    let mut out = Vec::new();
+    for merge in unrun {
+        let key = format!("mac:{}", merge.commit);
+        if told.unrun.contains_key(&key) {
+            continue;
+        }
+        told.unrun.insert(key.clone(), now);
+        let to = merge.owner_pr.and_then(|pr| reverted::owner(landings, pr));
+        let text = said_to(merge, to.is_some());
+        out.push(Tell { to, key, text });
+    }
+    out
+}
+
+/// What the owner is told of `merge`, or the watcher when no landing
+/// `named` the owner.
+fn said_to(merge: &Unrun, named: bool) -> String {
+    let short = merge.commit.get(..12).unwrap_or(&merge.commit);
+    let what = format!(
+        "no Mac took its Mac checks at {short} in a day, so the net let them go unchecked. \
+         Build them on a Mac, in a tree at {}: nix-offload there --changed --build --no-vm \
+         --base {} --system aarch64-darwin, and fix forward if any fail.",
+        merge.commit, merge.base
+    );
+    match (merge.owner_pr, named) {
+        (Some(pr), true) => format!("Cadence: your #{pr} merged, but {what}"),
+        (Some(pr), false) => format!(
+            "Cadence: no landing names who merged #{pr}, so tell its owner: it merged, but {what}"
+        ),
+        (None, _) => format!(
+            "Cadence: no PR is named by the merge {short}, so tell its owner: it merged, but \
+             {what}"
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -60,9 +103,18 @@ mod tests {
                 "owner_pr": owner_pr, "since": at - 86_400, "at": at,
             })
         };
-        keep("90-aaaa.json", unrun_at(90, "aaaa", serde_json::json!(4900)));
-        keep("210-cccc.json", unrun_at(210, "cccc", serde_json::Value::Null));
-        keep("200-dddd.json", unrun_at(200, "dddd", serde_json::json!(4925)));
+        keep(
+            "90-aaaa.json",
+            unrun_at(90, "aaaa", serde_json::json!(4900)),
+        );
+        keep(
+            "210-cccc.json",
+            unrun_at(210, "cccc", serde_json::Value::Null),
+        );
+        keep(
+            "200-dddd.json",
+            unrun_at(200, "dddd", serde_json::json!(4925)),
+        );
         keep(
             "220-eeee.json",
             serde_json::json!({"kind": "failed", "test": "vm-a", "owner_pr": 4930, "at": 220}),
@@ -103,7 +155,12 @@ mod tests {
     #[test]
     fn each_unrun_merge_is_told_to_its_owner_once_with_how_to_run_it() {
         let mut told = Told::default();
-        let tells = due(&[merge(Some(4925)), merge(Some(1))], LANDINGS, &mut told, 1000);
+        let tells = due(
+            &[merge(Some(4925)), merge(Some(1))],
+            LANDINGS,
+            &mut told,
+            1000,
+        );
         assert_eq!(
             tells.iter().map(|t| t.to.as_deref()).collect::<Vec<_>>(),
             [Some("Y2YBTS")],

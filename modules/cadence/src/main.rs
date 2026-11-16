@@ -330,8 +330,8 @@ fn run(args: &Args) -> io::Result<()> {
     write_whole(&path, &serde_json::to_string_pretty(&state)?)
 }
 
-/// Tells each merge's owner that the net reverted it, remembering in
-/// `reverted.json` which reverts were told.
+/// Tells each merge's owner that the net reverted it, or that no Mac took
+/// its Mac checks in a day, remembering in `reverted.json` which were told.
 fn tell_reverted(
     mesh: &Mesh,
     net: &Path,
@@ -344,11 +344,15 @@ fn tell_reverted(
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
-    let reverts = reverted::reverts(&net.join("findings"), now - 3600);
+    let findings = net.join("findings");
+    let reverts = reverted::reverts(&findings, now - 3600);
+    let unrun = unrun::unrun(&findings, now - 3600);
     let landings =
         fs::read_to_string(mesh.root.join("mesh-workflow/landings.json")).unwrap_or_default();
     let mut failed = None;
-    for tell in reverted::due(&reverts, &landings, &mut told, now) {
+    let mut tells = reverted::due(&reverts, &landings, &mut told, now);
+    tells.extend(unrun::due(&unrun, &landings, &mut told, now));
+    for tell in tells {
         // The owner is told as a finding, which it acts on in its next
         // turn; the watcher is asked, since only it can find the owner.
         let sent = match &tell.to {
@@ -356,8 +360,10 @@ fn tell_reverted(
             None => mesh.send(&message(watcher, "question", tell.text)),
         };
         if let Err(err) = sent {
-            // Not told, so the next tick tells it again.
+            // Not told, so the next tick tells it again. The keys don't
+            // overlap, since an unrun merge's starts "mac:".
             told.reverts.remove(&tell.key);
+            told.unrun.remove(&tell.key);
             failed = Some(err);
         }
     }
