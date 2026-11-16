@@ -80,6 +80,7 @@ mod train;
 mod turn;
 mod waited;
 mod watch;
+mod whole;
 mod world;
 
 use std::env;
