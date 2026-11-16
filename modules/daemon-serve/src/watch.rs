@@ -52,8 +52,10 @@ impl Held {
             .map(|(key, record)| (key.as_str(), record))
     }
 
-    /// How many answers have moved what's held: the same while every
-    /// record reads as it did, and more once one moved.
+    /// How many answers have named a record that changed or went: the
+    /// same while none does, and more once one does. An answer giving
+    /// records as they already read counts too, so a reader keyed on it
+    /// may make something again for nothing, never keep it stale.
     pub fn taken(&self) -> u64 {
         self.taken
     }

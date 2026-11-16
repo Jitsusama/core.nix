@@ -833,6 +833,59 @@ mod tests {
     }
 
     #[test]
+    fn landed_is_made_again_once_any_input_it_reads_moves() {
+        let mut inputs = inputs();
+        inputs.landings.took(&json!({"records": [
+            {"key": "landing:s-p:o#1", "session": "s-p", "ref": "o#1",
+             "at": "2026-11-11T01:00:00Z", "what": "One"}]}));
+        let now = 1_763_000_000_000;
+        let mut was = inputs.landed_at(now).0;
+        let mut remade = |inputs: &Inputs, what: &str| {
+            let made = inputs.landed_at(now).0;
+            assert!(
+                !Rc::ptr_eq(&was, &made),
+                "{what} moved, yet the landings were kept"
+            );
+            was = made;
+        };
+        inputs
+            .quests
+            .took(&json!({"changed": [{"key": "quest:QEST-O", "title": "Kelp"}]}));
+        remade(&inputs, "a quest");
+        inputs
+            .read
+            .at
+            .insert("landing:s-p:o#1".to_owned(), Some(now));
+        remade(&inputs, "what Joel read");
+        inputs.carried = Carried::of(&[1]);
+        remade(&inputs, "what the system carries");
+        inputs.sessions.took(
+            &json!({"changed": [{"key": "session:p", "standing": "running",
+            "presence": {"addresses": ["P"], "session": "s-p", "busy": true,
+                         "orchestratedBy": "O", "landings": [{"ref": "o#3"}]}}]}),
+        );
+        remade(&inputs, "a live session's landings");
+        inputs
+            .fed_back
+            .push(json!({"by": "talk", "landing": "landing:s-p:o#1",
+            "sent": "t-1", "at": 1}));
+        remade(&inputs, "what Joel fed back");
+        inputs
+            .talks
+            .took(&json!({"changed": [{"key": "talk:t-1", "id": "t-1", "stage": "read"}]}));
+        remade(&inputs, "a talk, with something fed back");
+        inputs.fed_back.clear();
+        let none_fed_back = inputs.landed_at(now).0;
+        inputs
+            .talks
+            .took(&json!({"changed": [{"key": "talk:t-2", "id": "t-2", "stage": "sent"}]}));
+        assert!(
+            Rc::ptr_eq(&none_fed_back, &inputs.landed_at(now).0),
+            "with nothing fed back no landing reads a talk, yet one moving made them again"
+        );
+    }
+
+    #[test]
     fn a_sessions_window_was_used_when_the_oldest_opened_with_its_app_id_was() {
         let mut inputs = inputs();
         inputs.sessions.took(&json!({"records": [
