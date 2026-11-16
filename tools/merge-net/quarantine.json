@@ -333,5 +333,20 @@
       "test_windows_cover_it_but_a_floating_one_holds_it_over_them"
     ],
     "test": "the-margin-cat-follows-the-keys-on-niri"
+  },
+  {
+    "at": 1794845579,
+    "commit": "5ea2f73b278dc06f1b5d19fe4d26d6adc4898374",
+    "due": "2026-11-18",
+    "owner_pr": 4966,
+    "owner_session": "orchestrator",
+    "reason": "failed at 6e2239bfc8b8, and at 5ea2f73b278d after it",
+    "subtests": [
+      "test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_it_spent",
+      "test_an_unplugged_ergodox_is_shown_nowhere_until_its_back",
+      "test_the_budgets_stand_behind_one_row_at_each_scale",
+      "test_the_home_network_and_nearby_list_whats_around_at_each_scale"
+    ],
+    "test": "vm-desktop-looks"
   }
 ]
