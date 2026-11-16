@@ -331,6 +331,7 @@
         "refusedTo": "refused to go to {machine}",
         "note": "{lead} \u00b7 {why}",
         "ended": "A Session That Ended",
+        "travelling": "A Session on Its Way",
         "someone": "an orchestrator",
         "you": "you"
       }

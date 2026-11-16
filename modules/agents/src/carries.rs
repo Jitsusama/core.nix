@@ -98,8 +98,13 @@ fn named(rows: &HashMap<String, &Value>, address: &str) -> Option<String> {
 fn carry(record: &Value, parent: &str, rows: &HashMap<String, &Value>, words: &Words) -> Value {
     let said = &words.carried;
     let id = text(record, "key").trim_start_matches("carry:");
-    let name =
-        named(rows, text(record, "address")).unwrap_or_else(|| said.word("ended").to_owned());
+    // A session between machines has no row anywhere, yet hasn't ended.
+    let gone = if matches!(text(record, "state"), "ordered" | "carrying") {
+        "travelling"
+    } else {
+        "ended"
+    };
+    let name = named(rows, text(record, "address")).unwrap_or_else(|| said.word(gone).to_owned());
     // A carry Joel asked himself says so, as the node judged who asked.
     let by = if text(record, "by") == "person" {
         said.word("you").to_owned()
