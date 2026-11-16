@@ -824,9 +824,9 @@ fn uploading(nix: &str, systemd_run: Option<&str>) -> Command {
     command
 }
 
-/// What a copy up tells its ssh before anything `NIX_SSHOPTS` already
-/// says, so it wins: give the builder up once nothing at all has come back
-/// from it for 15 s. A builder taking what it's sent says so as it goes,
+/// What a copy up tells its ssh after what `NIX_SSHOPTS` says, unless
+/// that says otherwise: give the builder up once nothing at all has come
+/// back from it for 15 s. A builder taking what it's sent says so as it goes,
 /// ssh's window opening as its side reads, so one nothing reaches is cut.
 /// ssh's keepalive waits in the stream behind what it already wrote, up to
 /// its window of about 2 MB, so a copy moving faster than about 1 Mbit/s
@@ -837,10 +837,19 @@ fn uploading(nix: &str, systemd_run: Option<&str>) -> Command {
 /// and the relay's buffers held what Nix said it had sent.
 pub const COPY_ALIVE: &str = "-o ServerAliveInterval=5 -o ServerAliveCountMax=3";
 
-/// [`COPY_ALIVE`] and then what `NIX_SSHOPTS` says here.
+/// What `NIX_SSHOPTS` says here and then [`COPY_ALIVE`].
 fn copy_sshopts() -> String {
-    match std::env::var("NIX_SSHOPTS") {
-        Ok(given) if !given.trim().is_empty() => format!("{COPY_ALIVE} {given}"),
+    ahead_of_alive(std::env::var("NIX_SSHOPTS").ok().as_deref())
+}
+
+/// `given` ahead of [`COPY_ALIVE`], since ssh keeps the first value it
+/// reads for each option: a run whose copy is too slow for 15 s, behind
+/// an uplink others fill, can then give it longer. On 16 November a
+/// 267 MB copy up was cut four times that way, its run's own
+/// `ServerAliveCountMax` read second and ignored.
+fn ahead_of_alive(given: Option<&str>) -> String {
+    match given {
+        Some(given) if !given.trim().is_empty() => format!("{given} {COPY_ALIVE}"),
         _ => COPY_ALIVE.to_owned(),
     }
 }
@@ -4533,6 +4542,26 @@ mod tests {
     use std::os::unix::process::CommandExt;
     use std::sync::mpsc;
     use std::time::Duration;
+
+    #[test]
+    fn a_runs_own_ssh_options_come_before_the_copys_keepalive() {
+        let given = "-o ServerAliveCountMax=40 -o Compression=yes";
+        assert_eq!(
+            ahead_of_alive(Some(given)),
+            format!("{given} {COPY_ALIVE}"),
+            "the run's own options came after the copy's, where ssh ignores them"
+        );
+        assert_eq!(
+            ahead_of_alive(Some(" ")),
+            COPY_ALIVE,
+            "blank options weren't left out"
+        );
+        assert_eq!(
+            ahead_of_alive(None),
+            COPY_ALIVE,
+            "with none given, the keepalive was lost"
+        );
+    }
 
     #[test]
     fn an_upload_runs_in_a_scope_of_its_own_where_systemd_can_make_one() {
