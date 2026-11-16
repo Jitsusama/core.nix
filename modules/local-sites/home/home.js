@@ -1,9 +1,9 @@
 // The home of Joel's local sites: j and k move through the list, Return opens,
 // gg and G go to the ends, and ? shows the keys.
 
-// The keys the head names are buttons too, for a reader who taps or clicks.
+// The keys the threshold names are buttons too, for a reader who taps or clicks.
 const tapKeys = (taps) => {
-  for (const kbd of document.querySelectorAll(".head .keys kbd")) {
+  for (const kbd of document.querySelectorAll(".threshold .keys kbd")) {
     const act = taps.get(kbd.textContent);
     if (act) {
       kbd.setAttribute("role", "button");

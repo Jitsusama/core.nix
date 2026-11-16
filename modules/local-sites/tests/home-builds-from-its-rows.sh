@@ -1,8 +1,10 @@
 # shellcheck shell=bash
 # Checks the home's builder against a sites.json of three rows: a growing
 # site with a strip and a page of its own kind, a growing one with none, and
-# a settled one. The home lists the two growing ones in order and the
-# settled one under Kept for Reference, with every name escaped; llms.txt
+# a settled one. The home lists the two growing ones in their beds in order
+# (live before on record) and the settled one under Kept, with every name
+# escaped, a contents line naming each bed and a standing line counting
+# them; llms.txt
 # and the twin list all three; each stripped page gets its strip after the
 # skip link, linking home from its depth; the home's own files are put
 # beside it; its theme-color takes each look's ground from the kit, and
@@ -70,11 +72,22 @@ grep -q '<span class="name">The map</span>' "$index" || fail "the home lacks The
 grep -q '<span class="name">Notes &amp; such</span>' "$index" || fail "a name wasn't escaped"
 map_at=$(grep -n 'The map' "$index" | cut -d: -f1)
 notes_at=$(grep -n 'Notes &amp; such' "$index" | cut -d: -f1)
-shelf_at=$(grep -n 'Kept for Reference</h2>' "$index" | cut -d: -f1)
+shelf_at=$(grep -n '<h2 id="kept">' "$index" | cut -d: -f1)
 old_at=$(grep -n 'The old one' "$index" | cut -d: -f1)
 [ "$map_at" -lt "$notes_at" ] && [ "$notes_at" -lt "$shelf_at" ] && [ "$shelf_at" -lt "$old_at" ] ||
   fail "the home's rows are out of order: map $map_at, notes $notes_at, shelf $shelf_at, old $old_at"
 grep -q 'Mock · settled' "$index" || fail "the settled row doesn't say so"
+for bed in live on-record kept; do
+  grep -q "<a href=\"#$bed\">" "$index" || fail "the contents line lacks the $bed bed"
+done
+if grep -q 'href="#explained"' "$index"; then
+  fail "the contents line names a bed with nothing in it"
+fi
+grep -q '2 growing <span class="sep">·</span> 1 asking something of you' "$index" ||
+  fail "the standing line doesn't count the sites"
+if grep -q '@standing@\|@contents@' "$index"; then
+  fail "a placeholder was left in the home"
+fi
 grep -q 'media="(prefers-color-scheme: dark)" content="forest"' "$index" ||
   fail "the dark theme-color isn't the kit's dark ground"
 grep -q 'media="(prefers-color-scheme: light)" content="paper"' "$index" ||
@@ -90,6 +103,9 @@ grep -A2 'class="skip"' "$root/map/index.html" | grep -q 'sites strip' ||
   fail "the map's strip isn't after its skip link"
 grep -q 'href="../">All your sites</a> <span>App</span>' "$root/map/index.html" ||
   fail "the map's strip doesn't link home or say App"
+grep -q '<span>App</span> <span>built ' "$root/map/index.html" ||
+  fail "the app's strip doesn't say when it was built"
+grep -q '<span>as of ' "$root/map/index.html" && fail "the app's strip reads as of, like a record"
 grep -q 'Asks: Say what&#x27;s missing.' "$root/map/index.html" || fail "the map's strip lacks its ask"
 grep -q '<span>Test</span>' "$root/map/tree.html" || fail "the map's own page doesn't say Test"
 grep -q '<span>settled</span>' "$root/old/index.html" || fail "the old one's strip doesn't say settled"

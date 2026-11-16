@@ -16,9 +16,12 @@
     const t = localStorage.getItem("theme");
     if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
   } catch {}
+  document.documentElement.classList.add("js");
 </script>
 <link rel="icon" href="launcher-shape/favicon.svg" type="image/svg+xml">
 <link rel="preload" href="kit/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="kit/fonts/fraunces-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="kit/fonts/monaspace.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="kit/theme.css">
 <link rel="stylesheet" href="kit/base.css">
 <link rel="stylesheet" href="home.css">
@@ -26,14 +29,36 @@
 </head>
 <body>
 
-<a class="skip" href="#sites">Skip to the sites</a>
+<a class="skip" href="#main">Skip to the sites</a>
 
-<header class="head">
-  <svg class="mark" width="28" height="28" viewBox="-1 -1 14 14" aria-hidden="true">
-    <path d="M2 0H10V3H2Z M0 5H3V8H9V5H12V12H0Z" fill="currentColor"/>
+<header class="threshold">
+  <svg class="crest" viewBox="0 0 200 200" aria-hidden="true">
+    <circle class="ring" cx="100" cy="100" r="94"/>
+    <circle class="beads" cx="100" cy="100" r="86"/>
+    <path class="wall" d="M54 164V96a46 46 0 0 1 92 0v68"/>
+    <path class="gate" d="M66 164V98a34 34 0 0 1 68 0v66"/>
+    <path class="ground" d="M34 164h132"/>
+    <path class="tilth" d="M72 172h56M84 180h32"/>
+    <path class="stem" d="M100 164c0-18-3-34 0-56"/>
+    <path class="leaf" d="M100 140c-15-1-25-11-27-25 15 0 25 10 27 25z"/>
+    <path class="leaf" d="M100 126c13-4 23-14 25-28-14 1-24 11-25 28z"/>
+    <path class="vein" d="M100 140c-8-4-15-11-20-19M100 126c6-6 12-13 18-21"/>
+    <circle class="bud" cx="100" cy="104" r="5"/>
+    <circle class="star" cx="78" cy="72" r="1.6"/>
+    <circle class="star" cx="124" cy="66" r="1.2"/>
+    <circle class="star" cx="110" cy="52" r="1.6"/>
+    <circle class="star" cx="88" cy="56" r="1"/>
   </svg>
-  <h1>Your sites</h1>
-  <p class="keys"><kbd>j</kbd> <kbd>k</kbd> move, <kbd>Return</kbd> opens, and <kbd>?</kbd> lists every key</p>
+  <p class="eyebrow label">Your sites <span class="sep">·</span> on this laptop</p>
+  <h1>Made for you, <em>kept here.</em></h1>
+  <p class="lede voice">Everything made just for you grows here, on this laptop, each saying what it is and what it asks of you. Anything shared with other people goes on a shared host instead.</p>
+  <p class="standing">@standing@</p>
+  <nav aria-label="Parts">
+    <ol class="contents">
+@contents@
+    </ol>
+  </nav>
+  <p class="keys"><kbd>j</kbd> and <kbd>k</kbd> step from site to site, <kbd>Return</kbd> opens one, and <kbd>?</kbd> lists every key</p>
   <div class="switch" role="radiogroup" aria-label="Theme">
     <button type="button" role="radio" aria-checked="false" tabindex="-1" data-choice="light" aria-label="Light" title="Light">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
@@ -48,10 +73,18 @@
 </header>
 
 <main id="main">
-  <p class="lede">Everything made just for you lives here, on this laptop, newest first. Anything shared with other people goes on Quick instead.</p>
-  <ul class="sites" id="sites" aria-label="Sites">
-  </ul>
+  <!-- the sites: home.py writes these -->
 </main>
+
+<footer class="close">
+  <svg class="sprig" viewBox="0 0 64 24" aria-hidden="true">
+    <path class="stem" d="M4 12h56"/>
+    <path class="leaf" d="M24 12c-5-6-11-7-16-5 4 5 10 6 16 5z"/>
+    <path class="leaf" d="M40 12c5 6 11 7 16 5-4-5-10-6-16-5z"/>
+    <circle class="bud" cx="32" cy="12" r="3"/>
+  </svg>
+  <p class="voice">Newest first in each bed. A site goes under Kept once it's settled or turned down.</p>
+</footer>
 
 <dialog class="keypanel" id="keys" aria-labelledby="keys-h">
   <h2 id="keys-h">Keys</h2>
@@ -59,7 +92,7 @@
     <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next site, previous site</dd></div>
     <div><dt><kbd>gg</kbd> <kbd>G</kbd></dt><dd>First site, last site</dd></div>
     <div><dt><kbd>Return</kbd></dt><dd>Open the site</dd></div>
-    <div><dt><kbd>?</kbd></dt><dd>Show or hide this list</dd></div>
+    <div><dt><kbd>?</kbd> <kbd>Escape</kbd></dt><dd>Show or hide this list</dd></div>
   </dl>
 </dialog>
 
