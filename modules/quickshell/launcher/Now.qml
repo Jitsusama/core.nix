@@ -1005,7 +1005,7 @@ Provider {
     }
 
     // The cell a look leads to, running or parked, as Looks.js finds it:
-    // the session that left it, else one on its quest.
+    // the session that left it, else its quest's own, else one on its quest.
     function lookCell(one) {
         return Looks.cellOf(one, Sessions.running, Sessions.parked);
     }
@@ -1026,16 +1026,19 @@ Provider {
     // "the look list is useless. i have no way to go from the thing it
     // shows to engaging with the thing working on it"): Talk, Agents' own,
     // whose words go to that cell, and Go To its window, which a terminal's
-    // Open already is. None while no cell is held for it, or Agents isn't
-    // there to talk through.
+    // Open already is, offered as Agents offers it: where it has a window,
+    // or is parked and wakes into one. None while no cell is held for it,
+    // or Agents isn't there to talk through.
     function cellActs(one) {
         const cell = lookCell(one);
         const agents = provider.source("agents");
         if (cell === null || !agents)
             return [];
         const talk = agents.sessionAct(cell, "talk");
-        return one.kind === "terminal" ? [talk] : [talk, thing({
-            key: `verb:on:look:go:${one.id}`,
+        const reachable = agents.windowedOf(cell) || !!Sessions.parkedAs(cell.address);
+        return one.kind === "terminal" || !reachable ? [talk] : [talk, thing({
+            // Under Go To's own word, so the : line names it as a want's is.
+            key: `verb:on:waiting:go:on:look:${one.id}`,
             verb: Words.verb("verb:on:waiting:go"),
             name: Words.name("verb:on:waiting:go"),
             glyph: Words.glyph("verb:on:waiting:go"),
