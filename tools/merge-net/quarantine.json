@@ -222,18 +222,6 @@
     "test": "vm-desktop-launcher-finds-sessions"
   },
   {
-    "at": 1794764338,
-    "commit": "1684d55bce393ef57a189745df52343982d91271",
-    "due": "2026-11-17",
-    "owner_pr": 4778,
-    "owner_session": "88LQC0",
-    "reason": "failed, then passed, at 1684d55bce39",
-    "subtests": [
-      "test_sessions_reopened_while_their_screen_is_gone_go_to_it_once_its_back"
-    ],
-    "test": "vm-screens-keep-places"
-  },
-  {
     "at": 1794778984,
     "commit": "533895e2e473ebc82569f21a96983005c0c4095c",
     "due": "2026-11-17",
