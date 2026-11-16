@@ -7,10 +7,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use jiff::Timestamp;
 use serde_json::Value;
 
+mod balanced;
 mod broken;
 mod locked;
 mod misses;
 
+pub use balanced::balanced;
 pub use broken::{Main, broken, failed_in};
 pub use locked::read as unlocked;
 pub use misses::checked;

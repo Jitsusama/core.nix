@@ -421,7 +421,9 @@
     with its owner, and holds the figures health writes, a boot past 30 s, an unread yes to an
     ask for a secret and a disk past 90% used among them, and tells it once of the net hanging
     and of each test the net quarantined for a merge it couldn't revert, naming the owner's PR,
-    and tells a merge's owner once when no Mac took its Mac checks in a day, saying how to run them
+    and tells a merge's owner once when no Mac took its Mac checks in a day, saying how to run them,
+    and says how far the machines' loads spread over the hour, each machine's share busiest first
+    and the minutes each of balance's flags was held, from the newer definition alone
   '';
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
