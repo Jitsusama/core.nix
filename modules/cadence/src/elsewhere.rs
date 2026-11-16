@@ -26,14 +26,7 @@ pub struct Failing {
 /// update failed; none when the answer doesn't parse.
 #[must_use]
 pub fn failing_elsewhere(answer: &str, this: &str) -> Vec<Failing> {
-    let Ok(said) = serde_json::from_str::<serde_json::Value>(answer) else {
-        return Vec::new();
-    };
-    let machines = said["Ok"]["Machines"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
-    machines
+    machines(answer)
         .iter()
         .filter(|m| m["name"].as_str().is_some_and(|name| name != this))
         .filter_map(|m| {
@@ -80,13 +73,7 @@ pub struct Crowded {
 /// another has room; none when the answer doesn't parse.
 #[must_use]
 pub fn crowded(answer: &str) -> Vec<Crowded> {
-    let Ok(said) = serde_json::from_str::<serde_json::Value>(answer) else {
-        return Vec::new();
-    };
-    let machines = said["Ok"]["Machines"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let machines = machines(answer);
     let words = |list: &serde_json::Value| -> Vec<String> {
         list.as_array()
             .map(|list| {
@@ -122,6 +109,18 @@ pub fn crowded(answer: &str) -> Vec<Crowded> {
             })
         })
         .collect()
+}
+
+/// The machines a `mycelium machines` answer names; none when it doesn't
+/// parse. The answer is a document a line, the builders' following the
+/// machines' once a machine names builders (16 November), so each document
+/// is read until one holds the machines.
+fn machines(answer: &str) -> Vec<serde_json::Value> {
+    serde_json::Deserializer::from_str(answer)
+        .into_iter::<serde_json::Value>()
+        .map_while(Result::ok)
+        .find_map(|said| said["Ok"]["Machines"].as_array().cloned())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -216,5 +215,32 @@ mod tests {
         );
         assert_eq!(failing_elsewhere("not json", "here"), []);
         assert_eq!(failing_elsewhere(r#"{"Err":"no node"}"#, "here"), []);
+    }
+
+    #[test]
+    fn the_machines_are_read_past_the_builders_line_after_them() {
+        let answer = format!(
+            "{}\n{}\n",
+            format_args!(
+                r#"{{"Ok":{{"Machines":[{},{}]}}}}"#,
+                machine("laptop", r#""cpu""#, 0),
+                machine("mac", "", 10),
+            ),
+            r#"{"Ok":{"Builders":[{"name":"lent"}]}}"#,
+        );
+        assert_eq!(
+            crowded(&answer).len(),
+            1,
+            "the builders' line after the machines' made the whole answer unreadable"
+        );
+        let failed = answer.replace(
+            r#""name":"mac","#,
+            r#""name":"mac","updated":{"at":"2026-11-15T04:14:23Z","step":"failed","why":"x"},"#,
+        );
+        assert_eq!(
+            failing_elsewhere(&failed, "laptop").len(),
+            1,
+            "the builders' line hid another machine's failed update"
+        );
     }
 }
