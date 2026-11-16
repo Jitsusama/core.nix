@@ -1,9 +1,10 @@
 //! The agents that died: a pi session whose presence still says it's busy
 //! or listening, though the process that wrote it is gone. A session put
-//! down parks, and says so; one that crashed, was killed or lost its
-//! window leaves its last word behind, and nothing else tells of it.
+//! down parks, and says so, and one shut down for good says when it
+//! ended; one that crashed, was killed or lost its window leaves its last
+//! word behind, and nothing else tells of it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -38,36 +39,51 @@ pub struct Agents {
     pub looked: i64,
     /// Gone at the last look, whenever each died.
     pub gone: BTreeMap<String, Died>,
-    /// Each that died in the day, kept though its presence goes.
+    /// Each that died in the day, kept though its presence goes, until
+    /// the same session runs again.
     pub died: BTreeMap<String, Died>,
+}
+
+/// What one look at the presences found.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Looked {
+    /// The sessions gone without parking, by session.
+    pub gone: BTreeMap<String, Died>,
+    /// The sessions whose owner runs here, parked or not.
+    pub running: BTreeSet<String>,
 }
 
 impl Agents {
     /// Keep what a look at `at` found gone, those that died on `date`
-    /// among them.
-    pub fn saw(&mut self, at: i64, gone: BTreeMap<String, Died>, died_today: impl Fn(i64) -> bool) {
+    /// among them. A session that restarts in place writes its presence
+    /// again under a new owner, so one found running again didn't die,
+    /// and leaves the day's dead.
+    pub fn saw(&mut self, at: i64, looked: Looked, died_today: impl Fn(i64) -> bool) {
         self.looked = at;
-        for (session, died) in &gone {
+        for (session, died) in &looked.gone {
             if died_today(died.at) {
                 self.died.insert(session.clone(), died.clone());
             }
         }
-        self.gone = gone;
+        self.died
+            .retain(|session, _| !looked.running.contains(session));
+        self.gone = looked.gone;
     }
 }
 
 /// Look in `presences` for sessions whose owner is gone from `proc` and
-/// that didn't park, by session.
+/// that didn't park, and those whose owner runs.
 #[must_use]
-pub fn look(presences: &Path, proc: &Path) -> BTreeMap<String, Died> {
+pub fn look(presences: &Path, proc: &Path) -> Looked {
     let boot = fs::read_to_string(proc.join("sys/kernel/random/boot_id")).unwrap_or_default();
     gone_from(presences, |owner| alive(owner, proc, boot.trim()))
 }
 
 /// Look in `presences` for sessions whose owner `ps` no longer shows and
-/// that didn't park, by session, where there's no `/proc`, as on a Mac.
+/// that didn't park, and those whose owner runs, where there's no
+/// `/proc`, as on a Mac.
 #[must_use]
-pub fn asked(presences: &Path, now: i64) -> BTreeMap<String, Died> {
+pub fn asked(presences: &Path, now: i64) -> Looked {
     let said = |program: &str, args: &[&str]| {
         Command::new(program)
             .args(args)
@@ -78,16 +94,16 @@ pub fn asked(presences: &Path, now: i64) -> BTreeMap<String, Died> {
     };
     // Without what ps says, every session would look dead, so none is.
     let Some(processes) = said("/bin/ps", &["-axo", "pid=,etime="]) else {
-        return BTreeMap::new();
+        return Looked::default();
     };
     let boot = said("/usr/sbin/sysctl", &["-n", "kern.bootsessionuuid"]).unwrap_or_default();
     gone_by_ps(presences, &processes, now, boot.trim())
 }
 
-/// The sessions in `presences` gone without parking, by what
-/// `ps -o pid=,etime=` said at `now`, in microseconds since the epoch, in
-/// the boot `boot`.
-fn gone_by_ps(presences: &Path, processes: &str, now: i64, boot: &str) -> BTreeMap<String, Died> {
+/// The sessions in `presences` gone without parking, and those running,
+/// by what `ps -o pid=,etime=` said at `now`, in microseconds since the
+/// epoch, in the boot `boot`.
+fn gone_by_ps(presences: &Path, processes: &str, now: i64, boot: &str) -> Looked {
     let now = now / 1_000_000;
     let started: BTreeMap<u64, i64> = processes
         .lines()
@@ -110,34 +126,52 @@ fn gone_by_ps(presences: &Path, processes: &str, now: i64, boot: &str) -> BTreeM
 }
 
 /// The sessions in `presences` that didn't park and whose owner isn't
-/// `alive`, by session; one with no owner here is left unjudged.
-fn gone_from(presences: &Path, alive: impl Fn(&Value) -> bool) -> BTreeMap<String, Died> {
-    fs::read_dir(presences)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|presence| {
-            let said: Value = serde_json::from_slice(&fs::read(presence.path()).ok()?).ok()?;
-            let state = said["state"].as_str()?;
-            // A session held on another machine is heard here with no
-            // owner, since its process isn't this machine's to look for.
-            let owner = said.get("owner").filter(|owner| owner.is_object())?;
-            if state == "parked" || alive(owner) {
-                return None;
-            }
-            let died = Died {
-                state: state.to_owned(),
-                at: said["at"]
-                    .as_str()?
-                    .parse::<Timestamp>()
-                    .ok()?
-                    .as_microsecond(),
-                quest: said["quest"].as_str().unwrap_or_default().to_owned(),
-                title: said["title"].as_str().unwrap_or_default().to_owned(),
-            };
-            Some((said["session"].as_str()?.to_owned(), died))
-        })
-        .collect()
+/// `alive`, and those whose owner is; one with no owner here is left
+/// unjudged.
+fn gone_from(presences: &Path, alive: impl Fn(&Value) -> bool) -> Looked {
+    let mut looked = Looked::default();
+    let presences = fs::read_dir(presences).into_iter().flatten().flatten();
+    for presence in presences {
+        let Some(said) = fs::read(presence.path())
+            .ok()
+            .and_then(|read| serde_json::from_slice::<Value>(&read).ok())
+        else {
+            continue;
+        };
+        let (Some(session), Some(state)) = (said["session"].as_str(), said["state"].as_str())
+        else {
+            continue;
+        };
+        // A session held on another machine is heard here with no
+        // owner, since its process isn't this machine's to look for.
+        let Some(owner) = said.get("owner").filter(|owner| owner.is_object()) else {
+            continue;
+        };
+        if alive(owner) {
+            looked.running.insert(session.to_owned());
+            continue;
+        }
+        // A session shut down for good, by a quit, a closed tab or a new
+        // session, says when it ended; an older harness never says so.
+        let ended = said.get("ended").is_some_and(|ended| !ended.is_null());
+        if state == "parked" || ended {
+            continue;
+        }
+        let Some(at) = said["at"]
+            .as_str()
+            .and_then(|at| at.parse::<Timestamp>().ok())
+        else {
+            continue;
+        };
+        let died = Died {
+            state: state.to_owned(),
+            at: at.as_microsecond(),
+            quest: said["quest"].as_str().unwrap_or_default().to_owned(),
+            title: said["title"].as_str().unwrap_or_default().to_owned(),
+        };
+        looked.gone.insert(session.to_owned(), died);
+    }
+    looked
 }
 
 /// Whether a presence's owner still runs: the same boot, and a process of
@@ -220,11 +254,21 @@ mod tests {
             500,
             "c6d02106",
         );
-        let died = look(presences.path(), proc.path());
+        let looked = look(presences.path(), proc.path());
+        let died = &looked.gone;
         assert_eq!(
             died.keys().map(String::as_str).collect::<Vec<_>>(),
             ["last-boot", "mid-turn", "pid-again"],
             "neither the running nor the parked: {died:?}"
+        );
+        assert_eq!(
+            looked
+                .running
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["running"],
+            "only the one whose owner runs: {looked:?}"
         );
         assert_eq!(
             died["mid-turn"],
@@ -265,7 +309,12 @@ mod tests {
             11,
             started * 1_000,
         );
-        let died = gone_by_ps(presences.path(), processes, now, "F9D442DF-0001");
+        let looked = gone_by_ps(presences.path(), processes, now, "F9D442DF-0001");
+        let died = &looked.gone;
+        assert!(
+            looked.running.contains("running"),
+            "the one ps shows runs: {looked:?}"
+        );
         assert_eq!(
             died.keys().map(String::as_str).collect::<Vec<_>>(),
             ["gone", "pid-again"],
@@ -273,7 +322,7 @@ mod tests {
         );
         let after_a_restart = gone_by_ps(presences.path(), processes, now, "0A1B2C3D-0002");
         assert!(
-            after_a_restart.contains_key("running"),
+            after_a_restart.gone.contains_key("running"),
             "an owner of another boot is gone: {after_a_restart:?}"
         );
     }
@@ -290,14 +339,79 @@ mod tests {
         fs::write(presences.path().join("elsewhere.json"), said).expect("a presence");
         let proc = tempfile::tempdir().expect("a stand-in /proc");
         let looked = look(presences.path(), proc.path());
-        assert!(looked.is_empty(), "none gone from /proc: {looked:?}");
+        assert_eq!(looked, Looked::default(), "none judged from /proc");
         let asked = gone_by_ps(
             presences.path(),
             "   10 01:00:00\n",
             1_794_600_000_000_000,
             "",
         );
-        assert!(asked.is_empty(), "none gone from ps: {asked:?}");
+        assert_eq!(asked, Looked::default(), "none judged from ps");
+    }
+
+    #[test]
+    fn a_session_that_says_it_ended_did_not_die() {
+        let presences = tempfile::tempdir().expect("the presences");
+        let proc = tempfile::tempdir().expect("a stand-in /proc");
+        // A session shut down for good says when, as a quit or a closed
+        // tab writes it; an older harness writes no such word.
+        let said = concat!(
+            r#"{"session":"closed","state":"listening","#,
+            r#""at":"2026-11-12T05:16:23.062Z","ended":"2026-11-12T05:16:24.001Z","#,
+            r#""owner":{"pid":13,"startTicks":1}}"#
+        );
+        fs::write(presences.path().join("closed.json"), said).expect("a presence");
+        presence(presences.path(), "crashed", "listening", 14, 1, BOOT);
+        let looked = look(presences.path(), proc.path());
+        assert_eq!(
+            looked.gone.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["crashed"],
+            "only the one that never said it ended: {looked:?}"
+        );
+    }
+
+    #[test]
+    fn a_session_running_again_did_not_die() {
+        let mut agents = Agents::default();
+        let died = Died {
+            state: "busy".into(),
+            at: 5,
+            ..Died::default()
+        };
+        let gone = Looked {
+            gone: BTreeMap::from([
+                ("restarted".to_owned(), died.clone()),
+                ("ended".to_owned(), died.clone()),
+            ]),
+            running: BTreeSet::new(),
+        };
+        agents.saw(10, gone, |_| true);
+        assert_eq!(agents.died.len(), 2, "both gone at first: {agents:?}");
+        let back = Looked {
+            gone: BTreeMap::from([("ended".to_owned(), died)]),
+            running: BTreeSet::from(["restarted".to_owned()]),
+        };
+        agents.saw(20, back, |_| true);
+        assert_eq!(
+            agents.died.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["ended"],
+            "the one running again leaves the dead: {agents:?}"
+        );
+    }
+
+    #[test]
+    fn a_death_stays_once_its_presence_goes() {
+        let mut agents = Agents::default();
+        let gone = Looked {
+            gone: BTreeMap::from([("ended".to_owned(), Died::default())]),
+            running: BTreeSet::new(),
+        };
+        agents.saw(10, gone, |_| true);
+        agents.saw(20, Looked::default(), |_| true);
+        assert!(
+            agents.died.contains_key("ended"),
+            "no presence isn't a sign of running: {agents:?}"
+        );
     }
 
     #[test]
