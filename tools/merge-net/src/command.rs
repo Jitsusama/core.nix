@@ -227,3 +227,54 @@ fn short_of(what: &str, sub: &str) -> Failure {
 fn unknown(word: &str, known: &[&str], sub: &str) -> Failure {
     flags::unknown("option", word, known).try_this(format!("merge-net {sub} --help"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn asking(words: &[&str]) -> Asked {
+        let words: Vec<String> = words.iter().map(|word| (*word).to_owned()).collect();
+        let Ok(asked) = asked(&words) else {
+            panic!("{words:?} was refused, though a caller asks it so");
+        };
+        asked
+    }
+
+    /// The words the net's unit, the merge gate and ready's rerun ask with
+    /// today, which each must keep taking as they are.
+    #[test]
+    fn every_callers_words_are_taken_as_they_were() {
+        let watched = asking(&["watch", "--follow", "/profile/bin/merge-net"]);
+        assert!(
+            matches!(&watched, Asked::Watch { from: None, branch, once: false, follow: Some(path) }
+                if branch == "main" && path == &PathBuf::from("/profile/bin/merge-net")),
+            "the unit's watch --follow PATH wasn't taken as following main from PATH"
+        );
+        let once = asking(&["watch", "--once", "--from", "c1", "--branch", "next"]);
+        assert!(
+            matches!(&once, Asked::Watch { from: Some(from), branch, once: true, follow: None }
+                if from == "c1" && branch == "next"),
+            "watch --once --from c1 --branch next lost one of its words"
+        );
+        assert!(
+            matches!(asking(&["needs"]), Asked::Needs { base } if base == ORIGIN_MAIN),
+            "a bare needs didn't compare with origin's main"
+        );
+        assert!(
+            matches!(asking(&["needs", "--base", "r1"]), Asked::Needs { base } if base == "r1"),
+            "needs --base r1 didn't compare with r1"
+        );
+        assert!(
+            matches!(asking(&["ready", "abc123"]), Asked::Ready { commit } if commit == "abc123"),
+            "ready COMMIT didn't judge COMMIT"
+        );
+        assert!(
+            matches!(asking(&["run-again", "c1"]), Asked::RunAgain { commit } if commit == "c1"),
+            "run-again COMMIT, as ready starts it, didn't run COMMIT"
+        );
+        assert!(
+            matches!(asking(&["status"]), Asked::Status),
+            "status wasn't taken"
+        );
+    }
+}
