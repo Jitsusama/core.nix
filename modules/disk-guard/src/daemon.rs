@@ -2185,8 +2185,13 @@ impl Guard {
         };
         let mut offers = survey(part.unwrap_or(&self.config), &mut world);
         let kept = std::mem::take(&mut world.kept);
-        let sizes = world.sizes.take();
+        let mut sizes = world.sizes.take();
         drop(world);
+        // Only a whole survey asks for every size it would, so only one
+        // may forget the rest.
+        if part.is_none() && !(self.stop)() {
+            sizes.ended();
+        }
         self.sizes = sizes;
         // A walk a stop cut short found only part of what's there, and a
         // checkout it never reached would look gone, so nothing is taken.

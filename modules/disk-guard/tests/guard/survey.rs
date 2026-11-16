@@ -143,7 +143,10 @@ fn surveyed_after(
     let mut found = survey(config, &mut world);
     found.sort_by(|a, b| a.candidate.path.cmp(&b.candidate.path));
     let walked = world.walked;
-    (found, walked, world.sizes.take())
+    // As the daemon does after each whole survey.
+    let mut sizes = world.sizes.take();
+    sizes.ended();
+    (found, walked, sizes)
 }
 
 pub fn find<'a>(offers: &'a [Offer], path: &Path) -> &'a Offer {

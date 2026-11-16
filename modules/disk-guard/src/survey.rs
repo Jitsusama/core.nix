@@ -18,7 +18,7 @@ use crate::{
     workspaces,
 };
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -151,17 +151,50 @@ pub struct World<'a> {
 /// next. On 16 November 215 workspaces held 70,882 entries, 68,202 of them
 /// unwritten for six hours, and every pass of a filling disk walked each
 /// old one whole to size it again, reading 178 GB in four hours.
+///
+/// A size only says what taking an entry would free: whether it may be
+/// taken is dated afresh each survey, so a size kept from an earlier one
+/// never makes anything look idle. A write deeper than the dating reads
+/// leaves a size behind until a shallower one, and a size known this way
+/// adds nothing to the survey's shared blocks, so a block two entries
+/// share may count in both; either only misstates what a pass frees.
 #[derive(Debug, Default)]
 pub struct Sizes {
+    /// Each entry's size, by the bits of the write it was sized at.
+    known: BTreeMap<PathBuf, (u64, u64)>,
+    /// The entries asked for since the last survey began.
+    asked: BTreeSet<PathBuf>,
     /// How many were walked to be sized, rather than known.
     pub walked: usize,
 }
 
 impl Sizes {
-    /// What `path`, last written at `written`, holds, `measure`d.
-    fn of(&mut self, _path: &Path, _written: f64, measure: impl FnOnce() -> u64) -> u64 {
+    /// What `path`, last written at `written`, holds: known when an earlier
+    /// survey sized it at that write, `measure`d otherwise. A write too
+    /// deep to date is never known, as it may be under way.
+    fn of(&mut self, path: &Path, written: f64, measure: impl FnOnce() -> u64) -> u64 {
+        self.asked.insert(path.to_owned());
+        let at = written.to_bits();
+        if let Some(&(was, size)) = self.known.get(path)
+            && was == at
+        {
+            return size;
+        }
         self.walked += 1;
-        measure()
+        let size = measure();
+        if written.is_finite() {
+            self.known.insert(path.to_owned(), (at, size));
+        } else {
+            self.known.remove(path);
+        }
+        size
+    }
+
+    /// Forgets every entry the survey just ended never asked for, gone or
+    /// no longer old, so what's kept is only what the next may ask.
+    pub fn ended(&mut self) {
+        let asked = std::mem::take(&mut self.asked);
+        self.known.retain(|path, _| asked.contains(path));
     }
 }
 
