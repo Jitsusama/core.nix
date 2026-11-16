@@ -11,6 +11,7 @@ home, or holds it, runs nothing.
 
 from __future__ import annotations
 
+import re
 import shlex
 from typing import TYPE_CHECKING
 
@@ -41,14 +42,24 @@ SOCKETS = {
 }
 SECRETS = [f"{HOME}/.ssh/id_ed25519", f"{HOME}/.config/gh/hosts.yml"]
 KINDS = ["fence", "strict"]
-# How a fence says no: Landlock's refusals, or a path its mounts hide. Any
-# other failure, a missing program say, would pass a refusal test for nothing.
-REFUSALS = ["Permission denied", "Operation not permitted", "No such file or directory"]
+# How a fence says no: Landlock's refusals, or what its mounts hide or hold
+# read-only. Any other failure, a missing program say, would pass a refusal
+# test for nothing.
+REFUSALS = [
+    "Permission denied",
+    "Operation not permitted",
+    "No such file or directory",
+    "Read-only file system",
+]
+# A login shell in the strict fence can't read the home's startup files and
+# says so, which is no refusal of the command it then runs.
+STARTUP = re.compile(r"^-?bash: .*/\.(bash_profile|bash_login|profile|bashrc)\b")
 
 
 def refused(status: int, said: str) -> bool:
     """Say whether a command failed as a fence refuses, not for some other reason."""
-    return status != 0 and any(refusal in said for refusal in REFUSALS)
+    lines = [line for line in said.splitlines() if not STARTUP.match(line)]
+    return status != 0 and any(refusal in line for line in lines for refusal in REFUSALS)
 
 
 def as_someone(machine: BaseMachine, command: str, folder: str = FOLDER) -> tuple[int, str]:

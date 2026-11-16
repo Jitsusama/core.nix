@@ -98,14 +98,14 @@ let
       }
     ];
   };
-  declared =
-    bare:
-    builtins.fromJSON (bare { declares = declaring; }).xdg.configFile."mycelium/declared.json".text;
+  # What a declaration says, read as mycelium reads it. A fence's launcher
+  # names its program in the store, which fromJSON refuses to read unless
+  # the text forgets it was built from that path; the words are the same.
+  read = text: builtins.fromJSON (builtins.unsafeDiscardStringContext text);
+  declared = bare: read (bare { declares = declaring; }).xdg.configFile."mycelium/declared.json".text;
   # A machine within another, and the host it runs in, each naming the other.
   declaredAs =
-    extra:
-    builtins.fromJSON
-      (linux { declares = declaring // extra; }).xdg.configFile."mycelium/declared.json".text;
+    extra: read (linux { declares = declaring // extra; }).xdg.configFile."mycelium/declared.json".text;
   inVm = declaredAs {
     within = {
       machine = "host-machine";
@@ -120,10 +120,10 @@ let
       secrets = [ ];
     };
   };
-  # A machine fenced every way, whose fence ships a launcher for runs.
+  # A machine fenced every way.
   launching =
     bare:
-    builtins.fromJSON
+    read
       (bare {
         declares = declaring // {
           fence = lib.genAttrs [ "none" "fence" "strict" ] (_: {
@@ -132,10 +132,10 @@ let
             secrets = [ ];
           });
         };
-        fenceRuns = launcher;
       }).xdg.configFile."mycelium/declared.json".text;
+  # pi's own fence, strict, which an agent's run starts through on Linux.
   launcher = [
-    "/nix/store/00000000000000000000000000000000-fence/bin/fence"
+    (lib.getExe (pkgs.callPackage ../pi/fence-run/package.nix { }))
     "--kind"
     "strict"
     "--"
@@ -561,6 +561,7 @@ in
               builders = [ "remote" ];
               forges = [ ];
               secrets = [ ];
+              runs = launcher;
             };
           }
         )

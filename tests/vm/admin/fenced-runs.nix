@@ -3,20 +3,11 @@
 # declared.json says, as the node would: in the run's folder, with the
 # account's runtime folder, bus, agents and sockets all live beside it.
 # Nothing the fence keeps out is reachable from inside, and the folder
-# still is. Only a running system has a user bus, a runtime folder and the
-# kernel's Landlock, which is why this is a VM test. The tests are
-# fenced-runs-vm-test.py, which pytest runs inside the driver.
+# still is. Only a running system has a user bus, a runtime folder, user
+# namespaces for bubblewrap and the kernel's Landlock, which is why this is
+# a VM test. The tests are fenced-runs-vm-test.py, which pytest runs inside
+# the driver.
 { self, pkgs }:
-let
-  # Landlock alone, as a stand-in for the fence's launcher until it ships:
-  # it leaves named sockets reachable, which the tests show.
-  standIn = pkgs.writeShellScript "fence-stand-in" ''
-    exec ${pkgs.landrun}/bin/landrun \
-      --rox /nix/store --rox /run/current-system --rox /etc/profiles \
-      --ro /etc --ro /proc --rw "$PWD" --rw /dev/null \
-      --unrestricted-network --ignore-missing --env PATH --env HOME -- "$@"
-  '';
-in
 import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "fenced-runs";
 
@@ -30,8 +21,12 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       uid = 1000;
       linger = true;
     };
+    # The fence takes bubblewrap and landrun from the system's own profile,
+    # as a machine's pi module puts them there.
     environment.systemPackages = [
+      pkgs.bubblewrap
       pkgs.jq
+      pkgs.landrun
       pkgs.openssh
       pkgs.socat
     ];
@@ -51,7 +46,6 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
             secrets = [ ];
           };
         };
-        fenceRuns = [ "${standIn}" ];
       };
     };
   };

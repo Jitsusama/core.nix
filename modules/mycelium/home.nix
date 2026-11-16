@@ -647,17 +647,29 @@ in
         declaring nothing says none, and whatever starts a session picks.
       '';
     };
-    # Internal, so no machine widens it: the fence's own launcher sets it,
-    # and a test its stand-in.
+    # Internal, so no machine widens it; only a test sets it otherwise. An
+    # agent asking as fenced runs strict, which is stricter than it needs,
+    # never looser.
     fenceRuns = lib.mkOption {
       type = lib.types.nullOr (lib.types.listOf lib.types.str);
-      default = null;
+      default =
+        if isLinux then
+          [
+            (lib.getExe (pkgs.callPackage ../pi/fence-run/package.nix { }))
+            "--kind"
+            "strict"
+            "--"
+          ]
+        else
+          null;
+      defaultText = lib.literalExpression ''[ "\''${pi-fence}/bin/pi-fence" "--kind" "strict" "--" ]'';
       internal = true;
       description = ''
         The words an agent's `mycelium run` is put after to run in its
         fence here, the first a program in the Nix store, as each fenced
-        and strict fence the machine declares says them; null until the
-        fence ships its launcher, so every agent's run is refused.
+        and strict fence the machine declares says them: pi's own fence,
+        strict, on Linux, and null on a Mac, where every agent's run is
+        refused.
       '';
     };
   };
