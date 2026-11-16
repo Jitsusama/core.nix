@@ -1569,15 +1569,14 @@
     mycelium's end of a link or an attach, as the realm and machine it names, with a terminal for
     the attach; a machine naming none authorizes nothing of mycelium's
   '';
+  mycelium-map-keeps-its-last-map = ''
+    the mycelium site's writer, while no node answers, ends well in one line and leaves the last
+    map as it was, and once one answers writes the live sessions alone, each machine's declared
+    reach and lease, and no message's words
+  '';
   mycelium-runs-among-the-sessions = ''
     on Linux, every realm's node runs in the agents' slice, beside Joel's programs rather than among
     them
-  '';
-  mycelium-site-holds = ''
-    the mycelium map typechecks on the kit at its strictest and builds, its tests passing: the
-    networks and cells as the command prints them, machines' cells left out, two cells sharing a
-    title kept apart, each machine's room and reach flattened, only the latest messages' senders
-    and groups, and a cut title's ellipsis as three full stops
   '';
   mycelium-serves-the-harness-files = ''
     each realm's node serves the harness's files of that realm, its open and ended quests, the

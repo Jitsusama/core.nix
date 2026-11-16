@@ -229,7 +229,7 @@
         libvirt = ./modules/libvirt/home.nix;
         link-keys = ./modules/link-keys/home.nix;
         load-proof = ./modules/load-proof/home.nix;
-        local-sites = ./modules/local-sites/home.nix;
+        local-sites = moduleFrom ./modules/local-sites/home.nix { inherit mycelium; };
         lsd = ./modules/lsd/home.nix;
         machine = ./modules/machine/home.nix;
         margin-cat = moduleFrom ./modules/margin-cat/home.nix {

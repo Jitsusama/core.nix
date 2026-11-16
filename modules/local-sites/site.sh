@@ -29,12 +29,10 @@ fi
 mkdir -p "${out}"
 cp "${work}/emitted/${name}/site/"*.js "${out}/"
 # The files the browser reads as they are: the page, its styles, its icon,
-# any script written by hand rather than in TypeScript, and its Markdown and
-# plain-text twins. A README.md is the folder's note for whoever reads the
-# tree, not a page, so it stays behind.
+# and its Markdown and plain-text twins. A README.md is the folder's note
+# for whoever reads the tree, not a page, so it stays behind.
 find . -maxdepth 1 -type f \( -name '*.html' -o -name '*.css' -o -name '*.svg' \
-  -o -name '*.js' -o -name '*.md' -o -name '*.txt' \) -not -name README.md \
-  -exec cp -t "${out}/" {} +
+  -o -name '*.md' -o -name '*.txt' \) -not -name README.md -exec cp -t "${out}/" {} +
 for page in "${out}"/*.html "${out}"/*.svg; do
   [[ -f ${page} ]] || continue
   sed -i -e "s|@dark-ground@|${dark_ground}|g" -e "s|@light-ground@|${light_ground}|g" \
