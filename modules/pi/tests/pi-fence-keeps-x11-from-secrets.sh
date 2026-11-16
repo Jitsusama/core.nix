@@ -6,10 +6,13 @@
 # own X11 client through it, as before, but never a command pi fences,
 # though it's given the display: the fence lays an empty folder over X's
 # sockets and empties the runtime folder the cookie is kept in, and
-# Landlock refuses the abstract socket. Each wall holds alone: handed the
-# cookie, the fenced command still reaches no socket, and with the sockets
-# open it still holds no cookie. Only with both taken away does it read
-# the secret, which shows the reader would. The fence here is shaped as
+# Landlock refuses the abstract socket. Each of two walls holds alone:
+# handed the cookie, the fenced command still reaches no socket, and with
+# the sockets open it still holds no cookie. The empty folder can't be
+# shown alone this way, since Xlib tries the abstract socket first and
+# gives up at Landlock's refusal, never trying the file socket. Only with
+# both walls taken away does it read the secret, which shows the reader
+# would. The fence here is shaped as
 # the harness's is (lib/internal/fence.ts: bubblewrap, then landrun with
 # only named sockets), and the harness's preflight holds the fence
 # itself to it.
