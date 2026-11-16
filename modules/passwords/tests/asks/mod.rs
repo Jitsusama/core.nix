@@ -786,9 +786,7 @@ fn one_watch_hears_the_entries_and_the_asks_but_not_the_entries_rows() {
         }
         // The asks' summary comes too, so the place counts the asks that
         // wait rather than every one drawn.
-        if !row.is_null()
-            && !summary.is_null()
-            && keys.iter().any(|key| key.starts_with("entry:"))
+        if !row.is_null() && !summary.is_null() && keys.iter().any(|key| key.starts_with("entry:"))
         {
             break;
         }

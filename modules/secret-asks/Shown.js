@@ -26,6 +26,18 @@ function noted(seen, key, digest, at) {
     return next;
 }
 
+// The frames seen, keeping only the selected row's, so a line left and come
+// back to counts again from its return rather than from when it was first
+// shown; nothing for `key` undefined, with nothing selected. Returns the
+// same object when nothing changed, as `noted` does.
+function kept(seen, key) {
+    const others = Object.keys(seen).filter(name => name !== key);
+    if (others.length === 0) {
+        return seen;
+    }
+    return key in seen ? { [key]: seen[key] } : {};
+}
+
 // The ask a verb sends, as the row served it, with how long its line was
 // shown and in which opening where a frame presented exactly that line; any
 // time the served ask held is dropped, so only the launcher's own is sent.

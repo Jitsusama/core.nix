@@ -209,6 +209,23 @@ pub enum Ask {
 /// longer, which a client says by its own patience.
 pub const PATIENCE: u64 = 10_000;
 
+/// The kind a line asks for: a list of kinds is the entries with the
+/// asks' rows, or none it keeps; a kind said alone is that kind.
+fn kind_of(said: &Value, asks_place: bool) -> String {
+    match said.get("kind") {
+        Some(Value::Array(kinds)) => {
+            let mut named: Vec<&str> = kinds.iter().filter_map(Value::as_str).collect();
+            named.sort_unstable();
+            if named == [KIND, ROW] && asks_place {
+                "entries and asks".to_owned()
+            } else {
+                named.join(" and ")
+            }
+        }
+        said => said.and_then(Value::as_str).unwrap_or(KIND).to_owned(),
+    }
+}
+
 /// What a line from a client asks.
 pub fn ask(line: &str) -> Ask {
     let Ok(said) = serde_json::from_str::<Value>(line) else {
@@ -252,20 +269,7 @@ pub fn ask(line: &str) -> Ask {
             ask: "search of the asks".to_owned(),
         };
     }
-    // A list of kinds is the entries with the asks' rows, or none it
-    // keeps; a kind said alone is that kind.
-    let kind = match said.get("kind") {
-        Some(Value::Array(kinds)) => {
-            let mut named: Vec<&str> = kinds.iter().filter_map(Value::as_str).collect();
-            named.sort_unstable();
-            if named == [KIND, ROW] && asks_place {
-                "entries and asks".to_owned()
-            } else {
-                named.join(" and ")
-            }
-        }
-        said => said.and_then(Value::as_str).unwrap_or(KIND).to_owned(),
-    };
+    let kind = kind_of(&said, asks_place);
     let of = match kind.as_str() {
         "entries and asks" if matches!(asked, "list" | "watch") => Of::EntriesAndAsks,
         KIND => Of::Entries,
@@ -1201,13 +1205,16 @@ mod tests {
                 "the kinds {kinds} with the asks' place weren't one watch"
             );
         }
-        assert!(matches!(
-            ask(r#"{"id":1,"ask":"list","kind":["entry","row"],"place":"asks"}"#),
-            Ask::List {
-                of: Of::EntriesAndAsks,
-                ..
-            }
-        ));
+        assert!(
+            matches!(
+                ask(r#"{"id":1,"ask":"list","kind":["entry","row"],"place":"asks"}"#),
+                Ask::List {
+                    of: Of::EntriesAndAsks,
+                    ..
+                }
+            ),
+            "a list of the entries and the asks wasn't one list"
+        );
         assert!(
             matches!(
                 ask(r#"{"id":2,"ask":"watch","kind":["entry","row"]}"#),
@@ -1215,10 +1222,13 @@ mod tests {
             ),
             "entries with every row were watched as entries alone"
         );
-        assert!(matches!(
-            ask(r#"{"id":3,"ask":"watch","kind":["entry","drawer"],"place":"asks"}"#),
-            Ask::UnknownKind { .. }
-        ));
+        assert!(
+            matches!(
+                ask(r#"{"id":3,"ask":"watch","kind":["entry","drawer"],"place":"asks"}"#),
+                Ask::UnknownKind { .. }
+            ),
+            "entries with drawers were watched though no place keeps them together"
+        );
         assert!(
             matches!(
                 ask(r#"{"id":4,"ask":"search","place":"asks","words":"deploy"}"#),

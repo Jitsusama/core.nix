@@ -69,9 +69,14 @@ Provider {
     // The selected row, if it's an ask's, noted from the next frame niri
     // presents, the first that draws it selected; again when its line
     // changes. Nothing is noted where frames can't be timed, so no yes
-    // there says it was read.
+    // there says it was read, nor while the launcher is shut, when no
+    // frame draws it. Every other line's frame is let go of first, so one
+    // left and come back to counts from its return.
     function noteSelected() {
+        if (!(launcher?.open ?? false))
+            return;
         const key = launcher?.selected?.shownKey;
+        provider.seen = Shown.kept(provider.seen, key);
         if (typeof key !== "string")
             return;
         const digest = ready.served(key)?.digest;
@@ -102,9 +107,14 @@ Provider {
         function onSelectedChanged() {
             provider.noteSelected();
         }
+        // An ask still selected as the launcher opens again changes no
+        // selection, so its first frame is noted here or its yes would
+        // go with no time shown.
         function onOpenChanged() {
             if (!provider.launcher.open)
                 provider.seen = {};
+            else
+                provider.noteSelected();
         }
     }
 

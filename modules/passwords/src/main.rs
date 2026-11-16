@@ -172,10 +172,13 @@ impl Watch {
 fn hears(of: &Of, key: &str) -> bool {
     match of {
         Of::Entries => false,
-        Of::EntriesAndAsks => key
-            .strip_prefix("row:")
-            .and_then(|key| key.strip_prefix(secret_asks::row::PLACE))
-            .is_some_and(|key| key.starts_with(':')),
+        Of::EntriesAndAsks => {
+            key == secret_asks::row::SUMMARY
+                || key
+                    .strip_prefix("row:")
+                    .and_then(|key| key.strip_prefix(secret_asks::row::PLACE))
+                    .is_some_and(|key| key.starts_with(':'))
+        }
         Of::Rows => key.starts_with("row:"),
         Of::Drawers(keys) => keys.iter().any(|each| each == key),
     }
@@ -569,11 +572,15 @@ fn tell_rows(daemon: &mut Daemon, also: Option<&Of>) {
     let made = if rowing { rows_of(daemon) } else { Vec::new() };
     let beside = drawers_of(daemon, &drawing);
     let mut moved = daemon.rows.kept.take(made, beside);
-    let asked = match (&daemon.asks, asking) {
-        (Some(engine), true) => engine.rows().0,
-        _ => Vec::new(),
+    // The asks' summary comes beside their rows, saying how many wait.
+    let (asked, summary) = match (&daemon.asks, asking) {
+        (Some(engine), true) => {
+            let (rows, summary) = engine.rows();
+            (rows, vec![summary])
+        }
+        _ => (Vec::new(), Vec::new()),
     };
-    let asks_moved = daemon.rows.asks.take(asked, Vec::new());
+    let asks_moved = daemon.rows.asks.take(asked, summary);
     moved.changed.extend(asks_moved.changed);
     moved.gone.extend(asks_moved.gone);
     for watch in &daemon.watches {
@@ -597,7 +604,10 @@ fn wordless(shared: &Shared, asked: &Ask) -> Option<Value> {
     let (Ask::List { id, of, .. } | Ask::Watch { id, of }) = asked else {
         return None;
     };
-    (*of != Of::Entries && lock(shared).rows.words.is_none()).then(|| {
+    // The asks' rows are made in their own words, so entries watched
+    // with them need none of these.
+    let worded = matches!(of, Of::Rows | Of::Drawers(_));
+    (worded && lock(shared).rows.words.is_none()).then(|| {
         error(
             id,
             "no-words",
