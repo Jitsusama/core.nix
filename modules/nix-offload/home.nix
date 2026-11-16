@@ -531,6 +531,19 @@ in
         its own nix-offload.
       '';
     };
+
+    gateRepos = lib.mkOption {
+      type = lib.types.listOf (lib.types.strMatching "github:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+");
+      default = [ ];
+      example = [ "github:kestrel/osprey" ];
+      description = ''
+        The repos `nix-offload answer` gates for a machine that asks, as
+        `github:OWNER/NAME`; a request for any other is refused before it's
+        fetched. A gate builds a commit's flake on the agent fence's
+        exemption, so this is the list that exemption covers: none by
+        default, so no machine gates until it's named.
+      '';
+    };
   };
 
   config = lib.mkMerge [
@@ -538,6 +551,12 @@ in
     (lib.mkIf (cfg.gatesOn != null) {
       home.packages = [ offload ];
       xdg.configFile."nix-offload/gates-on".text = "${cfg.gatesOn}\n";
+    })
+    (lib.mkIf (cfg.gateRepos != [ ]) {
+      home.packages = [ offload ];
+      xdg.configFile."nix-offload/gate-repos".text = lib.concatMapStrings (
+        repo: "${repo}\n"
+      ) cfg.gateRepos;
     })
     (lib.mkIf (cfg.helper != null || names || sendsElsewhere) {
       home.packages = [ offload ];

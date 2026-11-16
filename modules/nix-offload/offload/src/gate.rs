@@ -25,10 +25,12 @@
 pub mod answer;
 pub mod ask;
 pub mod fence;
+pub mod folder;
 
 use std::env;
 use std::fs;
 use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
@@ -49,7 +51,7 @@ pub const LOG: &str = "log";
 /// folder carries.
 pub const LARGEST_BUNDLE: u64 = 64 << 20;
 /// The largest request a gate reads.
-const LARGEST_REQUEST: u64 = 16 << 10;
+pub const LARGEST_REQUEST: u64 = 16 << 10;
 
 /// What a gate exits with when what it was asked is wrong: sysexits.h's
 /// data error.
@@ -329,43 +331,37 @@ pub fn scratches() -> PathBuf {
     cache.join("pi/agentic-harness.pi/quest-workspace")
 }
 
+/// What `nix-offload/NAME` under XDG's config folder says, as the home
+/// module writes it, or nothing when it isn't there.
+#[must_use]
+pub fn configured(name: &str) -> Option<String> {
+    let config = env::var_os("XDG_CONFIG_HOME").map_or_else(
+        || PathBuf::from(env::var_os("HOME").unwrap_or_default()).join(".config"),
+        PathBuf::from,
+    );
+    fs::read_to_string(config.join("nix-offload").join(name)).ok()
+}
+
 /// A gate's folder in a quest's scratch.
 #[must_use]
 pub fn folder(quest: &str, commit: &str) -> PathBuf {
     scratches().join(quest).join(GATES).join(commit)
 }
 
-/// Reads at most `largest` bytes of `path`, once, refusing a larger file
-/// rather than reading part of it.
-///
-/// # Errors
-///
-/// When it can't be read, or is larger.
-pub fn read_once(path: &Path, largest: u64) -> Result<Vec<u8>, String> {
-    use std::io::Read;
-    let file = fs::File::open(path).map_err(|error| format!("{}: {error}", path.display()))?;
-    let mut bytes = Vec::new();
-    file.take(largest + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|error| format!("{}: {error}", path.display()))?;
-    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > largest {
-        return Err(format!("{} is larger than {largest} bytes", path.display()));
-    }
-    Ok(bytes)
-}
-
-/// Reads a request, once.
+/// Reads a request, once, from a gate's folder.
 ///
 /// # Errors
 ///
 /// When it can't be read, or isn't a request.
-pub fn read_request(path: &Path) -> Result<Request, String> {
-    let bytes = read_once(path, LARGEST_REQUEST)?;
+pub fn read_request(gate: &folder::GateFolder) -> Result<Request, String> {
+    let bytes = gate.read(REQUEST, LARGEST_REQUEST)?;
     Request::parse(&String::from_utf8_lossy(&bytes))
 }
 
 /// Writes `bytes` as `name` in `folder` whole: hidden while it's written,
-/// since mycelium carries no hidden file, then named.
+/// since mycelium carries no hidden file, then named. The hidden file is
+/// made new, following no link, so one planted in its place is replaced
+/// rather than written through.
 ///
 /// # Errors
 ///
@@ -373,7 +369,15 @@ pub fn read_request(path: &Path) -> Result<Request, String> {
 pub fn write_whole(folder: &Path, name: &str, bytes: &[u8]) -> Result<(), String> {
     let writing = folder.join(format!(".{name}.writing"));
     let said = |error: std::io::Error| format!("{}: {error}", folder.join(name).display());
-    let mut file = fs::File::create(&writing).map_err(said)?;
+    // One that isn't there is what's wanted; any other error shows at the
+    // open, which makes only a new file.
+    let _ = fs::remove_file(&writing);
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(&writing)
+        .map_err(said)?;
     file.write_all(bytes).map_err(said)?;
     file.sync_all().map_err(said)?;
     fs::rename(&writing, folder.join(name)).map_err(said)

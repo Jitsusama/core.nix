@@ -10,9 +10,8 @@
 //! config folder. It then waits for `result.json` to come back beside
 //! them, at most `--longest` seconds, and exits as the gate did.
 
-use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -118,11 +117,7 @@ fn git(arguments: &[&str]) -> Result<String, String> {
 
 /// The machine that gates, as `nix-offload/gates-on` names it.
 fn configured_machine() -> Option<String> {
-    let config = env::var_os("XDG_CONFIG_HOME").map_or_else(
-        || PathBuf::from(env::var_os("HOME").unwrap_or_default()).join(".config"),
-        PathBuf::from,
-    );
-    let named = fs::read_to_string(config.join("nix-offload/gates-on")).ok()?;
+    let named = super::configured("gates-on")?;
     Some(named.trim().to_owned()).filter(|name| !name.is_empty())
 }
 

@@ -13,18 +13,29 @@
 //! `there --changed` run, through `outside`, on the exemption's terms,
 //! kept to the lent builders, so its pass is kept where a merge reads it.
 //!
+//! It runs as the person, outside the agent fence, so it trusts nothing
+//! in the quest's scratch by its path: the gate's folder is held open
+//! through no link (`folder.rs`), and it sweeps nothing there, since the
+//! harness clears a quest's scratch when the quest ends. Its own state is
+//! refused when any folder of it is a link or another account's, and it
+//! gates only the repos `jitsusama.nix-offload.gateRepos` names, so no
+//! agent can have it build a stranger's flake on the exemption's terms
+//! (security review, 16 November).
+//!
 //! Two gates run at once at most, and a commit already being gated isn't
 //! gated beside itself; either waits for the Mac to ask again. Each run is
-//! journalled, and a gate's folders go a week after.
+//! journalled, and its own work goes a week after.
 
 use std::fs;
 use std::io::{self, Write};
 use std::os::fd::AsRawFd;
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, SystemTime};
 
 use super::fence::{Fence, Net};
+use super::folder::GateFolder;
 use super::{BUNDLE, Found, LARGEST_BUNDLE, LOG, NOT_NOW, REFUSED, REQUEST, RESULT, Repo, Request};
 
 /// How many gates run at once.
@@ -36,6 +47,12 @@ const LARGEST_LOG: u64 = 8 << 20;
 /// What a gate exits with when the forge or git couldn't be reached:
 /// sysexits.h's unavailable service.
 const UNREACHED: u8 = 69;
+/// What it exits with when its own state can't be trusted: sysexits.h's
+/// permission denied.
+const UNTRUSTED: u8 = 77;
+/// The repos a gate takes, one `github:OWNER/NAME` a line, as the home
+/// module writes them under XDG's config folder.
+const GATE_REPOS: &str = "gate-repos";
 
 const USED: &str = "Usage: nix-offload answer QUEST COMMIT";
 
@@ -45,7 +62,8 @@ Mycelium starts it, as `nix-offload ask` on the Mac asks. It reads the request a
 the quest's handover/gates/COMMIT once, checks the bundle against a fresh clone of the \
 forge's main, runs `nix-offload there --changed` for the commit on the lent builders, and \
 leaves result.json and log beside the bundle. result.json is a convenience: a merge reads the \
-pass the build keeper kept.
+pass the build keeper kept. It gates only the repos jitsusama.nix-offload.gateRepos names, \
+and refuses a link anywhere on the way to the gate or in its own state.
 
 Example:
   nix-offload answer QEST-20261115-ABC123 0123456789abcdef0123456789abcdef01234567";
@@ -58,9 +76,52 @@ pub struct Places {
     pub state: PathBuf,
     /// Where repos are fetched from ([`super::forge`]).
     pub forge: String,
+    /// The repos it gates; any other is refused before it's fetched.
+    pub repos: Vec<Repo>,
+}
+
+/// Makes `folder` with only its account able to enter it, when it isn't
+/// there, and refuses it when it's a link, not a folder, or another
+/// account's, so nothing planted turns a write or a removal elsewhere.
+fn owned(folder: &Path) -> Result<(), Refusal> {
+    let untrusted = |why: String| (UNTRUSTED, format!("{}: {why}", folder.display()));
+    match fs::DirBuilder::new().mode(0o700).create(folder) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(untrusted(error.to_string())),
+    }
+    let meta = fs::symlink_metadata(folder).map_err(|error| untrusted(error.to_string()))?;
+    if meta.file_type().is_symlink() || !meta.is_dir() {
+        return Err(untrusted("it's a link or not a folder".to_owned()));
+    }
+    // SAFETY: geteuid can't fail.
+    if meta.uid() != unsafe { libc::geteuid() } {
+        return Err(untrusted("another account holds it".to_owned()));
+    }
+    Ok(())
+}
+
+/// Opens `path` to write, following no link.
+fn unlinked() -> fs::OpenOptions {
+    let mut options = fs::OpenOptions::new();
+    options.custom_flags(libc::O_NOFOLLOW);
+    options
 }
 
 impl Places {
+    /// Its folders, each made or refused by [`owned`]: the state, and its
+    /// work, mirrors and locks.
+    fn owned(&self) -> Result<(), Refusal> {
+        if let Some(parent) = self.state.parent() {
+            owned(parent)?;
+        }
+        owned(&self.state)?;
+        for folder in ["work", "mirrors", "locks"] {
+            owned(&self.state.join(folder))?;
+        }
+        Ok(())
+    }
+
     fn work(&self, commit: &str) -> PathBuf {
         self.state.join("work").join(commit)
     }
@@ -84,7 +145,7 @@ struct Held {
 
 /// The lock on `path`, taken now or not at all.
 fn locked_now(path: &Path) -> io::Result<Option<Held>> {
-    let file = fs::OpenOptions::new()
+    let file = unlinked()
         .create(true)
         .truncate(false)
         .write(true)
@@ -104,7 +165,7 @@ fn locked_now(path: &Path) -> io::Result<Option<Held>> {
 
 /// The lock on `path`, waited for.
 fn locked(path: &Path) -> io::Result<Held> {
-    let file = fs::OpenOptions::new()
+    let file = unlinked()
         .create(true)
         .truncate(false)
         .write(true)
@@ -117,7 +178,8 @@ fn locked(path: &Path) -> io::Result<Held> {
     }
 }
 
-/// Takes away what's in `folder` last changed over [`KEPT`] ago.
+/// Takes away what's in `folder`, a folder of its own state, last changed
+/// over [`KEPT`] ago; a link there goes itself, never what it names.
 fn sweep(folder: &Path) {
     let Ok(entries) = fs::read_dir(folder) else {
         return;
@@ -139,16 +201,19 @@ fn sweep(folder: &Path) {
 /// mycelium couldn't wait for it to before starting this.
 const CROSSING: Duration = Duration::from_mins(2);
 
-/// Whether the gate's request and bundle are here, waited for at most
-/// [`CROSSING`].
-fn arrived(gate: &Path) -> bool {
+/// The gate's folder once its request and bundle are there, waited for
+/// at most [`CROSSING`].
+fn arrived(quest: &str, commit: &str) -> Option<GateFolder> {
     let since = std::time::Instant::now();
     loop {
-        if gate.join(REQUEST).is_file() && gate.join(BUNDLE).is_file() {
-            return true;
+        if let Ok(gate) = GateFolder::open(&super::scratches(), quest, commit)
+            && gate.holds(REQUEST)
+            && gate.holds(BUNDLE)
+        {
+            return Some(gate);
         }
         if since.elapsed() >= CROSSING {
-            return false;
+            return None;
         }
         std::thread::sleep(Duration::from_secs(2));
     }
@@ -169,8 +234,6 @@ fn unreached(why: impl Into<String>) -> Refusal {
 /// at once, and one of [`AT_ONCE`] slots; or why not now.
 fn held(places: &Places, commit: &str) -> Result<(Held, Held), Refusal> {
     let locks = places.locks();
-    fs::create_dir_all(&locks)
-        .map_err(|error| unreached(format!("{}: {error}", locks.display())))?;
     let Some(alone) = locked_now(&locks.join(format!("{commit}.lock")))
         .map_err(|error| unreached(error.to_string()))?
     else {
@@ -198,7 +261,7 @@ fn held(places: &Places, commit: &str) -> Result<(Held, Held), Refusal> {
 pub fn gated(
     fence: &Fence,
     places: &Places,
-    gate: &Path,
+    gate: &GateFolder,
     request: &Request,
     (quest, commit): (&str, &str),
     run: &mut dyn FnMut(&Path, &Path) -> Result<u8, String>,
@@ -208,22 +271,35 @@ pub fn gated(
             "the request asks for another commit or quest than it was started for",
         ));
     }
+    if !places.repos.contains(&request.repo) {
+        return Err(refused(format!(
+            "{} isn't a repo this machine gates; jitsusama.nix-offload.gateRepos names those it does",
+            request.repo.key()
+        )));
+    }
+    places.owned()?;
     let _held = held(places, commit)?;
     let work = places.work(commit);
-    if work.exists() {
+    if fs::symlink_metadata(&work).is_ok() {
+        // A link goes itself, never what it names.
         fs::remove_dir_all(&work)
+            .or_else(|_| fs::remove_file(&work))
             .map_err(|error| unreached(format!("{}: {error}", work.display())))?;
     }
-    fs::create_dir_all(&work).map_err(|error| unreached(format!("{}: {error}", work.display())))?;
+    owned(&work)?;
     // Read once, into a folder nothing else writes, and judged from those
     // bytes: the quest's scratch is the quest's agents' to write.
-    let bytes = super::read_once(&gate.join(BUNDLE), LARGEST_BUNDLE).map_err(refused)?;
+    let bytes = gate.read(BUNDLE, LARGEST_BUNDLE).map_err(refused)?;
     let header = super::header(&bytes).map_err(refused)?;
     if let Some(why) = super::unlike_asked(&header, commit) {
         return Err(refused(why));
     }
     let bundle = work.join(BUNDLE);
-    fs::write(&bundle, &bytes)
+    unlinked()
+        .write(true)
+        .create_new(true)
+        .open(&bundle)
+        .and_then(|mut file| file.write_all(&bytes))
         .map_err(|error| unreached(format!("{}: {error}", bundle.display())))?;
     let tree = work.join("tree");
     cloned(fence, places, &request.repo, &work, &tree)?;
@@ -298,11 +374,13 @@ fn cloned(
 ) -> Result<(), Refusal> {
     let mirror = places.mirror(repo);
     let parent = mirror.parent().unwrap_or(&places.state).to_path_buf();
-    fs::create_dir_all(&parent)
-        .map_err(|error| unreached(format!("{}: {error}", parent.display())))?;
+    owned(&parent)?;
     let _filling =
         locked(&mirror.with_extension("lock")).map_err(|error| unreached(error.to_string()))?;
     let url = repo.url(&places.forge);
+    if fs::symlink_metadata(&mirror).is_ok() {
+        owned(&mirror)?;
+    }
     if !mirror.join("HEAD").exists() {
         let named = mirror.to_string_lossy();
         fence
@@ -346,10 +424,14 @@ fn cloned(
             work,
             &[work],
             &[&mirror],
+            // Through git's transport rather than a copy of its files, so
+            // each object is checked against its hash as it's taken.
             &[
+                "-c",
+                "transfer.fsckObjects=true",
                 "clone",
                 "--quiet",
-                "--no-hardlinks",
+                "--no-local",
                 "--no-checkout",
                 "--single-branch",
                 "--branch",
@@ -376,7 +458,11 @@ fn cloned(
 fn changed_checks(tree: &Path, log: &Path) -> Result<u8, String> {
     let program =
         std::env::current_exe().map_err(|error| format!("this program's path: {error}"))?;
-    let said = fs::File::create(log).map_err(|error| format!("{}: {error}", log.display()))?;
+    let said = unlinked()
+        .write(true)
+        .create_new(true)
+        .open(log)
+        .map_err(|error| format!("{}: {error}", log.display()))?;
     let also = said.try_clone().map_err(|error| error.to_string())?;
     let (git_dir, work_tree) = (tree.join(".git"), tree.to_path_buf());
     let status = Command::new(program)
@@ -399,9 +485,9 @@ fn changed_checks(tree: &Path, log: &Path) -> Result<u8, String> {
 
 /// Copies the end of `log` into the gate's folder, at most
 /// [`LARGEST_LOG`], since its whole could pass what a shared folder takes.
-fn carried_log(log: &Path, gate: &Path) {
+fn carried_log(log: &Path, gate: &GateFolder) {
     use std::io::{Read, Seek, SeekFrom};
-    let Ok(mut file) = fs::File::open(log) else {
+    let Ok(mut file) = unlinked().read(true).open(log) else {
         return;
     };
     let length = file.metadata().map_or(0, |meta| meta.len());
@@ -409,7 +495,7 @@ fn carried_log(log: &Path, gate: &Path) {
     let mut bytes = Vec::new();
     if file.read_to_end(&mut bytes).is_ok() {
         // The log is a convenience: the result says the run's end.
-        let _ = super::write_whole(gate, LOG, &bytes);
+        let _ = gate.write_whole(LOG, &bytes);
     }
 }
 
@@ -425,14 +511,19 @@ fn journalled(places: &Places, quest: &str, request: Option<&Request>, found: &F
         "said": found.said,
     });
     let journal = places.state.join("journal.jsonl");
-    if let Ok(mut file) = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&journal)
-    {
+    if let Ok(mut file) = unlinked().create(true).append(true).open(&journal) {
         // A journal that can't be written loses a line, never the gate.
         let _ = writeln!(file, "{line}");
     }
+}
+
+/// Whether the gate's own work folder is one to read a log from: its
+/// state trusted, and the folder there, neither a link nor another's.
+fn trusted_work(places: &Places, commit: &str) -> bool {
+    let work = places.work(commit);
+    places.owned().is_ok()
+        && fs::symlink_metadata(&work).is_ok_and(|meta| meta.is_dir())
+        && owned(&work).is_ok()
 }
 
 /// What a run's exit says, in a sentence.
@@ -461,22 +552,25 @@ pub fn answer(arguments: &[String], state: &Path) -> ExitCode {
         eprintln!("nix-offload: answer takes a quest's id and a full commit hash.\n{USED}");
         return ExitCode::from(64);
     }
-    let gate = super::folder(quest, commit);
-    if !arrived(&gate) {
+    let Some(gate) = arrived(quest, commit) else {
         eprintln!(
-            "nix-offload: answer found no gate at {}. Run `nix-offload ask` on the machine \
-             asking, which leaves it there and starts this.",
-            gate.display()
+            "nix-offload: answer found no gate at {}, or found a link on the way to it. Run \
+             `nix-offload ask` on the machine asking, which leaves it there and starts this.",
+            super::folder(quest, commit).display()
         );
         return ExitCode::from(66);
-    }
+    };
     let places = Places {
         state: state.join("nix-offload/gates"),
         forge: super::forge(),
+        repos: super::configured(GATE_REPOS)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|line| Repo::parse(line.trim()))
+            .collect(),
     };
-    sweep(&places.state.join("work"));
-    if let Some(gates) = gate.parent() {
-        sweep(gates);
+    if places.owned().is_ok() {
+        sweep(&places.state.join("work"));
     }
     let fence = match Fence::found() {
         Ok(fence) => fence,
@@ -485,7 +579,7 @@ pub fn answer(arguments: &[String], state: &Path) -> ExitCode {
             return ExitCode::from(69);
         }
     };
-    let request = super::read_request(&gate.join(REQUEST));
+    let request = super::read_request(&gate);
     let mut ran = |tree: &Path, log: &Path| changed_checks(tree, log);
     let gone = request
         .as_ref()
@@ -496,14 +590,18 @@ pub fn answer(arguments: &[String], state: &Path) -> ExitCode {
         Err((exit, why)) => (exit, why),
     };
     let request = request.ok();
-    carried_log(&places.work(commit).join(LOG), &gate);
+    if trusted_work(&places, commit) {
+        carried_log(&places.work(commit).join(LOG), &gate);
+    }
     let found = Found {
         commit: commit.clone(),
         exit,
         said,
     };
-    journalled(&places, quest, request.as_ref(), &found);
-    if let Err(error) = super::write_whole(&gate, RESULT, found.json().as_bytes()) {
+    if places.owned().is_ok() {
+        journalled(&places, quest, request.as_ref(), &found);
+    }
+    if let Err(error) = gate.write_whole(RESULT, found.json().as_bytes()) {
         eprintln!("nix-offload: answer couldn't leave its result: {error}");
     }
     println!("{}", found.said);
@@ -579,18 +677,25 @@ mod tests {
         }
 
         /// A gate's folder for `commit`, with `bundle` and a request.
-        fn gate(&self, commit: &str, bundle: &[u8]) -> PathBuf {
-            let gate = self.root.path().join("gate");
+        fn gate(&self, commit: &str, bundle: &[u8]) -> GateFolder {
+            self.gate_of("github:kestrel/osprey", commit, bundle)
+        }
+
+        /// A gate's folder for `commit` of `repo`, with `bundle` and a
+        /// request.
+        fn gate_of(&self, repo: &str, commit: &str, bundle: &[u8]) -> GateFolder {
+            let scratch = self.root.path().join("scratch");
+            let gate = scratch.join(QUEST).join(super::super::GATES).join(commit);
             fs::create_dir_all(&gate).expect("the gate's folder");
             fs::write(gate.join(BUNDLE), bundle).expect("the bundle");
             let request = Request {
-                repo: Repo::parse("github:kestrel/osprey").expect("a repo"),
+                repo: Repo::parse(repo).expect("a repo"),
                 commit: commit.to_owned(),
                 quest: QUEST.to_owned(),
                 session: None,
             };
             fs::write(gate.join(REQUEST), request.json()).expect("the request");
-            gate
+            GateFolder::open(&scratch, QUEST, commit).expect("the gate's folder opens")
         }
 
         fn bundle(&self, range: &str) -> Vec<u8> {
@@ -617,14 +722,15 @@ mod tests {
                     .join("forge")
                     .to_string_lossy()
                     .into_owned(),
+                repos: vec![Repo::parse("github:kestrel/osprey").expect("a repo")],
             }
         }
 
         /// The gate run with a run that says what it ran and passes.
-        fn gated(&self, gate: &Path, commit: &str) -> Result<String, Refusal> {
+        fn gated(&self, gate: &GateFolder, commit: &str) -> Result<String, Refusal> {
             let git_program = super::super::fence::on_path("git").expect("git is on the PATH");
             let fence = Fence::Bare { git: git_program };
-            let request = super::super::read_request(&gate.join(REQUEST)).map_err(refused)?;
+            let request = super::super::read_request(gate).map_err(refused)?;
             let mut checked_out = String::new();
             let mut run = |tree: &Path, _: &Path| {
                 checked_out = git(tree, &["rev-parse", "HEAD"]);
@@ -653,6 +759,48 @@ mod tests {
             forge.gated(&gate, &head),
             Ok(head),
             "the commit asked for should be the one run"
+        );
+    }
+
+    #[test]
+    fn a_repo_this_machine_doesnt_gate_is_refused_before_any_fetch() {
+        let forge = Forge::new();
+        let head = committed(&forge.tree(), "three");
+        let gate = forge.gate_of(
+            "github:stranger/flake",
+            &head,
+            &forge.bundle("origin/main..HEAD"),
+        );
+        let refusal = forge
+            .gated(&gate, &head)
+            .expect_err("another owner's repo should be refused");
+        assert_eq!(refusal.0, REFUSED, "{}", refusal.1);
+        assert!(
+            !forge.places().state.join("mirrors").exists(),
+            "nothing should be fetched for a repo it doesn't gate"
+        );
+    }
+
+    #[test]
+    fn a_link_in_its_own_state_is_refused_and_what_it_names_untouched() {
+        let forge = Forge::new();
+        let head = committed(&forge.tree(), "three");
+        let gate = forge.gate(&head, &forge.bundle("origin/main..HEAD"));
+        let victim = forge.root.path().join("victim");
+        let theirs = victim.join(head.clone());
+        fs::create_dir_all(&theirs).expect("a folder of the person's");
+        fs::write(theirs.join("kept"), "the person's").expect("a file of the person's");
+        let state = forge.places().state;
+        fs::create_dir_all(&state).expect("the state folder");
+        std::os::unix::fs::symlink(&victim, state.join("work")).expect("a link");
+        let refusal = forge
+            .gated(&gate, &head)
+            .expect_err("work as a link should be refused");
+        assert_eq!(refusal.0, UNTRUSTED, "{}", refusal.1);
+        assert_eq!(
+            fs::read_to_string(theirs.join("kept")).expect("the file is still there"),
+            "the person's",
+            "what the link names should be untouched"
         );
     }
 
