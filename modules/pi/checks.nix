@@ -238,6 +238,17 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A run a hosted pi's agent starts itself, carrying a conversation on with
+  # no starting message, is prepared by extensions and settled by pi as a
+  # prompt's run is, so a carried turn keeps every section they add.
+  pi-hosted-runs-its-own-turns-through-pi =
+    pkgs.runCommandLocal "pi-hosted-runs-its-own-turns-through-pi" { }
+      ''
+        HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-hosted-runs-its-own-turns-through-pi.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
+
   pi-hosted-loads-where-a-link-points =
     pkgs.runCommandLocal "pi-hosted-loads-where-a-link-points" { }
       ''

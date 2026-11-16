@@ -1,0 +1,157 @@
+A host's agent starts runs of its own that pi never began: as a conversation
+reopens, it carries on the turn a restart cut off, and asks again a request
+the restart cut off. pi prepares only the runs it starts from a message, so
+these went out on the session's base prompt options. Every section an
+extension adds in before_agent_start (its resident block, standing context,
+the index of tools it can load) was dropped from the request and recorded
+as dropped, then put back at the next prompt, rewriting the provider's
+cache twice. The session also read idle through the run, so extensions'
+steers were refused, and no agent_settled ever said it ended.
+
+runForHost runs the host's work as one of pi's runs with no starting
+message: busy from its start, before_agent_start fired with a "continue"
+trigger, its prompt options kept for every turn of the run, and pi's own
+settle at its end. A message a handler returns waits for the next prompt,
+as a nextTurn message does, so none lands between a tool call and its
+result. hostRuns marks a runtime that has it. Nothing in pi calls it, so a
+pi no host drives behaves as before.
+
+Its hunk sits on _startRun's own ending, so a pi whose run lifecycle moved
+fails to apply here rather than in a host. Apply only to the host's private
+pi build; ordinary interactive pi stays unchanged.
+
+--- a/packages/coding-agent/src/core/agent-session.ts
++++ b/packages/coding-agent/src/core/agent-session.ts
+@@ -414,6 +414,8 @@
+ 	static readonly hostAgentInterfaceVersion = 1;
+ 	/** Hosts show words their agent queued with showQueued, and say so when a runtime lacks it. */
+ 	static readonly hostQueueDisplay = true;
++	/** Hosts open the runs their agent starts itself through runForHost, so they run as pi's do. */
++	static readonly hostRuns = true;
+ 	readonly agent: SessionAgent;
+ 	readonly sessionManager: SessionManager;
+ 	readonly settingsManager: SettingsManager;
+@@ -1990,6 +1992,51 @@
+ 			this._runSystemPromptOptions = undefined;
+ 			this._flushPendingBashMessages();
+ 			this._flushPendingCustomMessages();
++			await this._emitAgentSettled();
++		}
++	}
++
++	/**
++	 * Run work the host's agent does itself, such as a turn a restart cut off carried on, as one of
++	 * pi's runs with no starting message. The session is busy from here on; before_agent_start
++	 * fires as a "continue" run, and the prompt options it returns hold for every turn of the run,
++	 * as a prompt's do. A message a handler returns waits for the next prompt, so none lands
++	 * between a tool call and its result. agent_settled fires as the work ends. Inside a run of
++	 * pi's own, the work joins it, and pi's run settles it. Nothing in pi calls this.
++	 */
++	async runForHost(work: () => Promise<void>): Promise<void> {
++		if (this._isAgentRunActive) return work();
++		this._isAgentRunActive = true;
++		this._agentRunAbortRequested = false;
++		try {
++			const result = await this._extensionRunner.emitBeforeAgentStart(
++				{ messageType: "continue" },
++				this._baseSystemPromptOptions,
++			);
++			for (const msg of result.messages) {
++				this._pendingNextTurnMessages.push({
++					role: "custom",
++					customType: msg.customType,
++					content: msg.content ?? [],
++					display: msg.display,
++					details: msg.details,
++					timestamp: Date.now(),
++				});
++			}
++			// The next turn's refresh applies these with the live tool loadout, as it does a prompt's.
++			this._runSystemPromptOptions = result.systemPromptOptions;
++		} catch (error) {
++			this._isAgentRunActive = false;
++			this._resolveIdleWaitIfIdle();
++			throw error;
++		}
++		try {
++			await work();
++		} finally {
++			if (this._agentRunAbortRequested) this._finishCancelledRetry();
++			this._runSystemPromptOptions = undefined;
++			this._flushPendingBashMessages();
++			this._flushPendingCustomMessages();
+ 			await this._emitAgentSettled();
+ 		}
+ 	}
+--- a/packages/coding-agent/src/core/extensions/types.ts
++++ b/packages/coding-agent/src/core/extensions/types.ts
+@@ -974,8 +974,19 @@
+ 	message: CustomMessage;
+ }
+ 
++/**
++ * A run a host carries on from its own transcript with no starting message, as a conversation
++ * reopens on a turn a restart cut off. A message a handler returns waits for the next prompt.
++ */
++export interface BeforeAgentStartContinueEvent extends BeforeAgentStartEventBase {
++	messageType: "continue";
++}
++
+ /** Fired before a run starts from a user message or an idle custom message with `triggerTurn`. */
+-export type BeforeAgentStartEvent = BeforeAgentStartUserEvent | BeforeAgentStartCustomEvent;
++export type BeforeAgentStartEvent =
++	| BeforeAgentStartUserEvent
++	| BeforeAgentStartCustomEvent
++	| BeforeAgentStartContinueEvent;
+ 
+ /** Fired when an agent loop starts */
+ export interface AgentStartEvent {
+--- a/packages/coding-agent/src/core/extensions/runner.ts
++++ b/packages/coding-agent/src/core/extensions/runner.ts
+@@ -27,6 +27,7 @@
+ import type { VirtualModelDefinition } from "../virtual-models.ts";
+ import type {
+ 	AgentBeforeSettleEvent,
++	BeforeAgentStartContinueEvent,
+ 	BeforeAgentStartCustomEvent,
+ 	BeforeAgentStartEvent,
+ 	BeforeAgentStartEventResult,
+@@ -170,6 +171,9 @@
+ 	| Pick<BeforeAgentStartUserEvent, "messageType" | "prompt" | "images">
+ 	| Pick<BeforeAgentStartCustomEvent, "messageType" | "message">;
+ 
++/** A run a host carries on with no starting message. */
++export type BeforeAgentStartContinueTrigger = Pick<BeforeAgentStartContinueEvent, "messageType">;
++
+ /** Combined result from all before_agent_start handlers. */
+ interface BeforeAgentStartCombinedResult {
+ 	messages: NonNullable<BeforeAgentStartEventResult["message"]>[];
+@@ -1455,7 +1459,7 @@
+ 	}
+ 
+ 	async emitBeforeAgentStart(
+-		trigger: BeforeAgentStartTrigger,
++		trigger: BeforeAgentStartTrigger | BeforeAgentStartContinueTrigger,
+ 		systemPromptOptions: BuildSystemPromptOptions,
+ 	): Promise<BeforeAgentStartCombinedResult> {
+ 		const currentOptions = normalizeBuildSystemPromptOptions(systemPromptOptions);
+--- a/packages/coding-agent/src/core/extensions/index.ts
++++ b/packages/coding-agent/src/core/extensions/index.ts
+@@ -37,6 +37,7 @@
+ 	// Events - Tool (ToolCallEvent types)
+ 	BashToolCallEvent,
+ 	BashToolResultEvent,
++	BeforeAgentStartContinueEvent,
+ 	BeforeAgentStartCustomEvent,
+ 	BeforeAgentStartEvent,
+ 	BeforeAgentStartEventResult,
+--- a/packages/coding-agent/src/index.ts
++++ b/packages/coding-agent/src/index.ts
+@@ -64,6 +64,7 @@
+ 	AppKeybinding,
+ 	AutocompleteProviderFactory,
+ 	BashToolCallEvent,
++	BeforeAgentStartContinueEvent,
+ 	BeforeAgentStartCustomEvent,
+ 	BeforeAgentStartEvent,
+ 	BeforeAgentStartEventResult,

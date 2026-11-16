@@ -2156,6 +2156,12 @@
     once to check them, dropping ones that don't fit as before, where unpatched it built before the
     handlers and after each, read or not
   '';
+  pi-hosted-runs-its-own-turns-through-pi = ''
+    pi built with the host's patches, applied exactly, runs work the host's agent starts itself as
+    one of its own runs: busy from its start, before_agent_start told it carries on, the same prompt
+    and sections a prompt's run sends with no change recorded, a handler's message held for the next
+    prompt, and one agent_settled at its end; work inside a run already going joins it
+  '';
   pi-hosted-loads-where-a-link-points = ''
     pi built with the host's patches, applied exactly, loads a linked extension through the file
     its link points at now, so once the link moves, a reload loads the new copy and its own helpers,
