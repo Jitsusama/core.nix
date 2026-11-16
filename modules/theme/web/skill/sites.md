@@ -25,10 +25,15 @@ that is awesome" (2026-11-11).
   built from `sites.json` at the root, a row per site: its path, name, what
   it is in a sentence, what it asks of him (or nothing), its date, its kind
   (mock, record, explainer, test or app), its status (growing, settled or
-  withdrawn), the quest it came from, and the kinds of thing it's home to,
-  if any (One Home for Every Thing, below). A new site adds its row there and
-  rebuilds the home with the builder beside it; a turned-down or settled
-  one moves to the home's Kept for Reference, below the rest.
+  withdrawn), the quest it came from, the kinds of thing it's home to, if
+  any (One Home for Every Thing, below), and `pages`, its own pages whose
+  strip says another kind (a test page beside a record). A new site adds
+  its row there, and that's all: core's local-sites module rebuilds the
+  home, its `llms.txt` and every page's strip within a second of the
+  record changing. Write the whole record to a file beside it and rename
+  it over, so the builder never reads it half written; a record it can't
+  read keeps the last build. A turned-down or settled site moves to the
+  home's Kept for Reference, below the rest.
 - **Every page has a way home.** Each page opens with one quiet strip,
   `<nav class="sites-strip">` from `base.css`: All your sites, linking the
   home, then the page's kind, as of when, and what it asks of him. Built
@@ -40,8 +45,11 @@ that is awesome" (2026-11-11).
   served, not where code is kept. An app he relies on (a live map, a page
   that reads a program's record) keeps its source beside the program that
   feeds it, in that program's repository, with its probes as its gate, and
-  is installed into its folder from there. A dated record or a mock is
-  written once and stays in the folder as it was written.
+  is installed into its folder from there. A live site in core is
+  TypeScript on the local-sites kit at `modules/<name>/site/`, built and
+  tested by Nix and fed by its daemon (`modules/local-sites/README.md`).
+  A dated record or a mock is written once and stays in the folder as it
+  was written, with no core change, so a quick one stays quick.
 
 ## One Home for Every Thing
 
