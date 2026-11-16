@@ -416,7 +416,7 @@ function onward(way, to, at) {
     // Along a floating window's top, it's over the tiled windows behind
     // the whole way (MarginCat.above).
     if (stays) {
-        Ways.aboard(way, legs);
+        Floats.aboard(way, legs);
     }
     return way;
 }

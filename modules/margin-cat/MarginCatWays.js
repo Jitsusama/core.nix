@@ -74,17 +74,6 @@ function leg(way, kind, to, more) {
     way.y = to.y;
 }
 
-// Every leg of `way` from its `from`th on, but those named in `but`,
-// taken aboard a floating window, where it's drawn over the tiled ones
-// (MarginCat.above).
-function aboard(way, from, but) {
-    for (const one of way.legs.slice(from)) {
-        if (!(but ?? []).includes(one.name)) {
-            one.aboard = true;
-        }
-    }
-}
-
 // A beat held `ms`, moving it to `to` on the theme's ease-out if it's
 // given, as a crouch draws back.
 function holds(way, name, ms, to) {

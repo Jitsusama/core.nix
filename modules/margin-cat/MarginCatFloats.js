@@ -31,6 +31,17 @@ function of(tiles, dy) {
             bottom: tile.top + tile.height + dy, id: tile.id }));
 }
 
+// Every leg of `way` from its `from`th on, but those named in `but`,
+// taken aboard a floating window, where it's drawn over the tiled ones
+// (MarginCat.above).
+function aboard(way, from, but) {
+    for (const one of way.legs.slice(from)) {
+        if (!(but ?? []).includes(one.name)) {
+            one.aboard = true;
+        }
+    }
+}
+
 // The floating window of `floats` whose top it stands on at `place`, all
 // of its box over it, or null.
 function on(floats, place, at) {
@@ -105,7 +116,7 @@ function off(way, cols, to, at) {
     // (MarginCat.above), and under them as it lands.
     const began = way.legs.length;
     const done = () => {
-        Ways.aboard(way, began, ["lands", "shakes"]);
+        aboard(way, began, ["lands", "shakes"]);
         return true;
     };
     const reach = { wide: at.wide, at, up: LEAPS_UP * at.tall };
@@ -235,5 +246,5 @@ function lands(way, plan) {
     }
     // Over the tiled windows the whole way on, in front of them
     // (MarginCat.above).
-    Ways.aboard(way, began);
+    aboard(way, began);
 }
