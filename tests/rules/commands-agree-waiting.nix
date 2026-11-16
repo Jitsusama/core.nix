@@ -9,7 +9,9 @@
   ];
   changed-checks = [
     "kit"
+    "exits"
     "helps"
+    "tables"
   ];
   clipboard-history = [
     "kit"
