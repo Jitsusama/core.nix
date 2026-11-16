@@ -272,7 +272,7 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     let places = placed(&gates, &here, Some(its_gate), now);
     let patch = crate::waited::patch_of(commit);
     let file = crate::waited::file();
-    let mut waited = Waited::read(&file);
+    let waited = Waited::read(&file);
     let kept = kept_at(passes, &crate::ready::record);
     let waits_from = waited.since(patch.as_deref(), &here, kept, now);
     let asking = Asking {
@@ -288,7 +288,7 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     let queue = Queue::of(&here, patch.as_deref(), ours, &gates, &crates, now);
     let waited_for = now.saturating_sub(waits_from);
     if let Some((said, shared)) = queue.holds(patch.as_deref(), ours, &crates, now, waited_for) {
-        keep_held(&mut waited, patch.as_deref(), &here, &file, now);
+        keep_held(patch.as_deref(), &here, &file, now);
         let left = PATIENCE.saturating_sub(waited_for).div_ceil(60);
         let said = format!("{said}; this one waits at most {left} more minutes, then goes first");
         return Some((said, shared));
@@ -306,7 +306,7 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     };
     let going = |gate: &Gate| gate.pid == 0 || alive(gate);
     let held = ahead(&gates, &asking, now, &place, &going, &touched)?;
-    keep_held(&mut waited, patch.as_deref(), &here, &file, now);
+    keep_held(patch.as_deref(), &here, &file, now);
     let state = if held.gate.pid == 0 {
         "passed and keeps its turn while it merges"
     } else {
@@ -417,10 +417,13 @@ impl Queue {
         } else {
             if let Some(patch) = patch {
                 let file = kit::file();
-                let mut owed = kit::Owed::read(&file);
-                owed.waits(patch, &held.commit, now, &|kit| on_main(kit) == Some(true));
-                owed.tidy(now);
-                if let Err(error) = owed.write(&file) {
+                let kept = crate::whole::changed(&file, || {
+                    let mut owed = kit::Owed::read(&file);
+                    owed.waits(patch, &held.commit, now, &|kit| on_main(kit) == Some(true));
+                    owed.tidy(now);
+                    owed.write(&file)
+                });
+                if let Err(error) = kept {
                     eprintln!("merge-net: this wait for the kit wasn't kept: {error}");
                 }
             }
@@ -474,12 +477,17 @@ pub fn waits_to_run(commit: &str) -> Option<String> {
         .map(|(said, _)| said)
 }
 
-/// Keep `now` in `waited`, written to `file`, as when the change `patch`
-/// in `tree` was first held, so its [`PATIENCE`] counts from its first hold.
-fn keep_held(waited: &mut Waited, patch: Option<&str>, tree: &Path, file: &Path, now: u64) {
-    waited.held(patch, tree, now);
-    waited.tidy(now);
-    if let Err(error) = waited.write(file) {
+/// Keep `now` in `file` as when the change `patch` in `tree` was first
+/// held, so its [`PATIENCE`] counts from its first hold. It reads the file
+/// again under its lock, so a hold another `ready` kept since is kept too.
+fn keep_held(patch: Option<&str>, tree: &Path, file: &Path, now: u64) {
+    let kept = crate::whole::changed(file, || {
+        let mut waited = Waited::read(file);
+        waited.held(patch, tree, now);
+        waited.tidy(now);
+        waited.write(file)
+    });
+    if let Err(error) = kept {
         eprintln!("merge-net: this hold wasn't kept, so its wait starts again: {error}");
     }
 }
@@ -602,15 +610,19 @@ pub fn keep_place(passes: &[&str]) {
 /// the next `ready` to see the gate keeps again.
 fn placed(gates: &[Gate], here: &Path, passed: Option<u64>, now: u64) -> Places {
     let file = crate::places::file();
-    let mut places = Places::read(&file);
-    for gate in gates.iter().filter(|gate| alive(gate)) {
-        places.keep(&gate.folder, gate.started);
-    }
-    if let Some(passed) = passed {
-        places.keep(here, passed);
-    }
-    places.tidy(now, &|folder| folder.exists());
-    if let Err(why) = places.write(&file) {
+    let (places, kept) = crate::whole::changed(&file, || {
+        let mut places = Places::read(&file);
+        for gate in gates.iter().filter(|gate| alive(gate)) {
+            places.keep(&gate.folder, gate.started);
+        }
+        if let Some(passed) = passed {
+            places.keep(here, passed);
+        }
+        places.tidy(now, &|folder| folder.exists());
+        let kept = places.write(&file);
+        (places, kept)
+    });
+    if let Err(why) = kept {
         eprintln!("merge-net: {why}");
     }
     places

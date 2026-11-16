@@ -64,13 +64,10 @@ impl Places {
             .retain(|folder, place| now.saturating_sub(*place) < KEPT && stands(folder));
     }
 
-    /// Write them whole to `path`, by a rename, so a reader never sees half.
+    /// Write them whole to `path`, so a reader never sees half.
     pub fn write(&self, path: &Path) -> Result<(), String> {
-        let partial = path.with_extension("partial");
         let text = serde_json::to_string_pretty(&self.0).map_err(|error| error.to_string())?;
-        fs::write(&partial, text + "\n")
-            .and_then(|()| fs::rename(&partial, path))
-            .map_err(|error| format!("writing {}: {error}", path.display()))
+        crate::whole::write(path, &(text + "\n"))
     }
 }
 

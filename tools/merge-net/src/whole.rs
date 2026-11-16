@@ -2,22 +2,49 @@
 //! it too. Several sessions ask `ready` at once, and each keeps what it
 //! learned in the same few files (`kit-owed.json`, `waited.json`,
 //! `places.json`): it reads one, changes its own key and writes it back.
+//!
+//! At 15:15 on 16 November two of them wrote `kit-owed.json` through one
+//! shared partial file: the first rename took it, the second failed with
+//! "No such file or directory", and the reader lost its wait for the kit,
+//! as each read, change and write lost the other's key. So each writer's
+//! partial is its own, and a lock beside the file keeps a read, a change
+//! and a write together.
 
 use std::fs;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Write `text` to `path` whole, by a rename, so a reader never sees half.
+/// The partial is named for this process and this write, so two writers
+/// at once never rename each other's.
 pub fn write(path: &Path, text: &str) -> Result<(), String> {
-    let partial = path.with_extension("partial");
-    fs::write(&partial, text)
-        .and_then(|()| fs::rename(&partial, path))
-        .map_err(|error| format!("writing {}: {error}", path.display()))
+    static WRITES: AtomicU64 = AtomicU64::new(0);
+    let write = WRITES.fetch_add(1, Ordering::Relaxed);
+    let partial = path.with_extension(format!("{}-{write}.partial", std::process::id()));
+    let written = fs::write(&partial, text).and_then(|()| fs::rename(&partial, path));
+    if written.is_err() {
+        let _ = fs::remove_file(&partial);
+    }
+    written.map_err(|error| format!("writing {}: {error}", path.display()))
 }
 
-/// Run `change`, a read of `path`, a change and a write back, with no
-/// other writer's change to it between.
-pub fn changed<T>(_path: &Path, change: impl FnOnce() -> T) -> T {
-    change()
+/// Run `change`, a read of `path`, a change and a write back, holding the
+/// lock beside it (`<name>.lock`) so no other writer's change comes
+/// between. The lock goes when this ends, or when its process dies, so a
+/// writer killed mid-change holds no one up. Where it can't be taken,
+/// `change` runs anyway, as before the lock: losing a key costs a wait
+/// kept again, and a `ready` that stopped for it would cost more.
+pub fn changed<T>(path: &Path, change: impl FnOnce() -> T) -> T {
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(path.with_extension("lock"))
+        .ok()
+        .filter(|lock| lock.lock().is_ok());
+    let changed = change();
+    drop(lock);
+    changed
 }
 
 #[cfg(test)]
@@ -29,7 +56,8 @@ mod tests {
 
     /// A folder of the test's own, emptied first.
     fn folder(name: &str) -> std::path::PathBuf {
-        let root = std::env::temp_dir().join(format!("merge-net-whole-{name}-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("merge-net-whole-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).expect("made");
         root
@@ -63,7 +91,10 @@ mod tests {
         let left = fs::read_dir(path.parent().expect("its folder"))
             .expect("the folder")
             .count();
-        assert_eq!(left, 1, "writes at once left {left} files where one is kept");
+        assert_eq!(
+            left, 1,
+            "writes at once left {left} files where one is kept"
+        );
     }
 
     #[test]
