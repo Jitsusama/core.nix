@@ -122,7 +122,7 @@ const AIR_MARGIN_MS: f64 = 8.0;
 const AIR_RISE_MS: f64 = 0.05;
 /// A call's round trip through the VPN jitters by this much, a server's
 /// whole path away, with no queue standing.
-const VPN_MARGIN_MS: f64 = 5.0;
+pub(crate) const VPN_MARGIN_MS: f64 = 5.0;
 /// How long back that round trip's least is taken from. A least that rose
 /// a millisecond a second whenever the VPN's CAKE held nothing went from
 /// 25 to 62 ms on 11 November, under a queue of 100 to 350 ms standing for
@@ -137,12 +137,12 @@ const VPN_LEAST_S: f64 = 300.0;
 /// from 119 ms to 15 in one, then held there by cuts that each find it
 /// no lower. The far path's delay is no lower for a cut, and its jitter
 /// keeps coming back to where it was.
-const FAR_CUTS: u32 = 3;
+pub(crate) const FAR_CUTS: u32 = 3;
 /// How long the far path's delay then goes unheeded, at first and at
 /// most: it doubles each time it's found again, and a cut that drains a
 /// queue brings it back to the first.
-const FAR_S: f64 = VPN_LEAST_S;
-const FAR_MOST_S: f64 = 1_800.0;
+pub(crate) const FAR_S: f64 = VPN_LEAST_S;
+pub(crate) const FAR_MOST_S: f64 = 1_800.0;
 /// A direction carrying under this share of its rate is idle, and its
 /// delay measures the path.
 const IDLE: f64 = 0.1;
@@ -156,7 +156,7 @@ const FUTILE_S: f64 = 30.0;
 const GUARD_RETURNS: usize = 3;
 /// How long data must wait to go while our CAKE holds nothing and the link
 /// carries under its rate before the queue is taken to be another's.
-const ELSEWHERE_S: f64 = 2.0;
+pub(crate) const ELSEWHERE_S: f64 = 2.0;
 /// How long a download carrying a sliver of its connection may be held
 /// under what arrives, with its queue standing, before the queue is taken
 /// to be another's, beyond twice how deep the queue then was: cut under
@@ -1265,6 +1265,8 @@ pub struct Controller {
     why: Why,
     why_since: Option<f64>,
     last_cut: LastCut,
+    /// The hold on the VPN's own queue, for a wait inside its tunnel.
+    tunnel: crate::tunnel::Hold,
 }
 
 impl Controller {
@@ -1292,7 +1294,14 @@ impl Controller {
             why: Why::Unmeasured,
             why_since: None,
             last_cut: LastCut::default(),
+            tunnel: crate::tunnel::Hold::default(),
         }
+    }
+
+    /// The share of its lane the VPN's own queue is held to: under one
+    /// while it waits inside its tunnel with the line to spare.
+    pub fn tunnel_share(&self) -> f64 {
+        self.tunnel.share()
     }
 
     /// Anchors the upload to its network's declared rate, in kbit/s, or to
@@ -1454,10 +1463,17 @@ impl Controller {
         // VPN's own, or its far path's: at 02:05 on 16 November it read
         // over 100 ms while the link carried half its line. It's said,
         // and no cut is made for it.
-        let heeded = self
-            .far
-            .heed(at, met)
-            .filter(|_| self.may_fill_the_line(seen.up_kbit));
+        // That wait the VPN's own queue is held for instead, so it
+        // stands in the VPN's CAKE, where Joel's packets go first, rather
+        // than inside its tunnel, where they wait alike with agents'.
+        let far = self.far.heed(at, met);
+        let heeded = far.filter(|_| self.may_fill_the_line(seen.up_kbit));
+        self.tunnel.step(
+            at,
+            dt,
+            far.filter(|_| heeded.is_none()),
+            self.up.tuning.late_ms,
+        );
         let up = seen.up_delay_ms.map(|d| (d - air).max(0.0));
         let down = seen.down_delay_ms.map(|d| (d - air).max(0.0));
         let idle_up = self.up.idle(seen.up_kbit);
@@ -1575,6 +1591,13 @@ impl Controller {
         }
         if !up.rate.is_finite() {
             return Why::Unmeasured;
+        }
+        let share = self.tunnel.share();
+        if heeded.is_none() && share < 1.0 {
+            return Why::Tunnel {
+                delay_ms: self.tunnel.waited_ms(),
+                share,
+            };
         }
         if heeded.is_none() && met > 0.0 {
             return Why::Far { delay_ms: met };
@@ -3615,6 +3638,105 @@ mod tests {
         filling(&mut c, 30.0, &[]);
         assert!(c.why().starts_with("Upload "), "{}", c.why());
         assert!(c.why().contains("clear for"), "{}", c.why());
+    }
+
+    /// Steps an anchored controller for `seconds` whose agents fill the
+    /// VPN, its CAKE holding a queue, through a tunnel that delivers
+    /// `tunnel(at)` kbit/s: what the VPN's CAKE sends past that waits in
+    /// the tunnel, where the round trip through it meets it. Answers the
+    /// upload's lowest limit, and the tunnel's mean wait over the last
+    /// half of the run, in ms.
+    fn filling_a_tunnel(
+        c: &mut Controller,
+        from: f64,
+        seconds: f64,
+        tunnel: impl Fn(f64) -> f64,
+        queued_bits: &mut f64,
+    ) -> (f64, f64) {
+        const BASE_MS: f64 = 30.0;
+        const DT: f64 = 0.1;
+        let (mut lowest, mut waited, mut heard) = (f64::INFINITY, 0.0, 0.0_f64);
+        let mut at = from;
+        while at < from + seconds {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            let cake = rate * crate::qdisc::VPN_SHARE * c.tunnel_share();
+            let delivered = tunnel(at);
+            *queued_bits = (*queued_bits + (cake - delivered) * 1_000.0 * DT).max(0.0);
+            let wait_ms = *queued_bits / delivered;
+            let limits = c.step(&Seen {
+                at_s: at,
+                up_kbit: cake.min(delivered),
+                up_ours: Some(Ours {
+                    queued: true,
+                    in_vpn: true,
+                    vpn_queued: true,
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                vpn_ms: Some(BASE_MS + wait_ms),
+                ..quiet(0.0, 300.0)(at)
+            });
+            lowest = lowest.min(limits.up.map_or(f64::INFINITY, crate::rate::float));
+            if at >= from + seconds / 2.0 {
+                waited += wait_ms;
+                heard += 1.0;
+            }
+            at += DT;
+        }
+        (lowest, waited / heard.max(1.0))
+    }
+
+    // As in a proof at 08:58 on 16 November: agents filled the tunnel past
+    // what it delivered, 7 to 9 Mbit/s under a line with room, and the
+    // queue formed past the VPN's CAKE, where Joel's upload inside the VPN
+    // got 2 to 3% of the link. Held under the tunnel, the queue is the
+    // CAKE's, where his packets go first.
+    #[test]
+    fn a_wait_inside_the_tunnel_holds_the_vpn_s_own_queue_not_the_upload() {
+        let mut c = anchored(12_000.0);
+        let mut queued = 0.0;
+        let (lowest, waited) = filling_a_tunnel(&mut c, 0.0, 120.0, |_| 7_500.0, &mut queued);
+        assert!(
+            lowest >= 10_799.0,
+            "the upload was cut to {lowest} for the tunnel's own queue"
+        );
+        assert!(
+            waited < 30.0,
+            "the tunnel held {waited:.0} ms on average past the VPN's CAKE, at a share of {:.2}",
+            c.tunnel_share()
+        );
+        assert!(c.why().contains("inside its tunnel"), "{}", c.why());
+    }
+
+    #[test]
+    fn the_vpn_s_own_queue_climbs_back_once_the_tunnel_delivers_again() {
+        let mut c = anchored(12_000.0);
+        let mut queued = 0.0;
+        filling_a_tunnel(&mut c, 0.0, 60.0, |_| 7_500.0, &mut queued);
+        let held = c.tunnel_share();
+        assert!(
+            held < 0.95,
+            "a full tunnel left the VPN's share at {held:.2}"
+        );
+        filling_a_tunnel(&mut c, 60.0, 60.0, |_| 20_000.0, &mut queued);
+        assert!(
+            c.tunnel_share() > 0.99,
+            "a clear tunnel left the VPN's share at {:.2}, from {held:.2}",
+            c.tunnel_share()
+        );
+    }
+
+    // A wait no hold drains is the far path's, as on 15 November, and
+    // holding the VPN for it would only slow everything inside.
+    #[test]
+    fn a_far_wait_the_vpn_s_hold_doesn_t_drain_lets_the_hold_go() {
+        let mut c = anchored(12_000.0);
+        sending_through_a_slow_vpn(&mut c, 6_000.0, 150.0);
+        assert!(
+            c.tunnel_share() > 0.99,
+            "a far path's wait held the VPN to {:.2} of its lane",
+            c.tunnel_share()
+        );
     }
 
     /// Steps an anchored controller whose agents send `sending` through
