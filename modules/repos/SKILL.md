@@ -6,7 +6,8 @@ description: >
   asked which repositories Joel has, where one is checked out, what its
   trunk or remote is, which trees or worktrees exist for it and what each
   is at, whether a tree for a branch is already there, which trees are gone
-  from the disk, or what was worked on lately; and before cloning or
+  from the disk, what was worked on lately, or which changes are open on a
+  repository and how their checks and review stand; and before cloning or
   cutting a tree, to find the copy already there.
 ---
 
@@ -50,9 +51,11 @@ Names match in any case, by name, `owner/name` or the whole key. Add
 repos                        # each repository: trees, checkouts, written
 repos core.nix               # one: remotes, trunk, each checkout, newest trees
 repos core.nix trees         # every tree of it, newest first
+repos core.nix changes       # its open changes, updated last first
 repos --json                 # the whole record, repos.repositories/1
 repos core.nix --json        # one, repos.repository/1
 repos core.nix trees --json  # its trees, repos.trees/1
+repos core.nix changes --json  # its open changes, repos.changes/1
 ```
 
 A name two repositories share is refused with exit 64 and each one's key, so
@@ -63,7 +66,11 @@ nearest. `repos --help` lists both.
 
 `repos.repositories/1` is `{schema, read_at, machine, roots, sources,
 repositories}`. Each repository is `{key, name, owner, remotes [{name, url}],
-trunk, written_at, checkouts}`, the one written to last first; each checkout
+trunk, written_at, changes, checkouts}`, the one written to last first; each
+change `{title, author, draft, branch, base, commit, updated_at, checks
+{state, passed, failed, pending}, review, github {number, url}}`, where a
+check's `state` is passing, failing, pending or none and `review` is approved,
+changes_asked, waiting or none; each checkout
 `{path, bare, head {branch, commit}, written_at, trees}`; each tree `{path,
 kind ("worktree" or "snapshot"), present, head, written_at}`. A bare
 checkout's `head` is null, and a `branch` is null where the head is a bare
@@ -78,6 +85,9 @@ repos core.nix --json | jq -r '.repository.checkouts[].path'
 # Whether a tree for a branch is already there, and where.
 repos core.nix trees --json \
   | jq -r '.trees[] | select(.head.branch == "fix/x" and .present) | .path'
+# Open changes whose checks fail, and where each is.
+repos core.nix changes --json \
+  | jq -r '.changes[] | select(.checks.state == "failing") | .github.url'
 # Trees gone from the disk, which the checkout still lists.
 repos --json | jq -r '.repositories[] | .key as $k
   | .checkouts[].trees[] | select(.present | not) | "\($k) \(.path)"'
@@ -89,6 +99,8 @@ repos --json | jq -r '.repositories[] | .key as $k
   (`REPOS_ROOTS`, from `jitsusama.repos.roots`); a tree is found from its
   checkout wherever it lies. A repository checked out nowhere under them
   isn't listed.
-- It says nothing yet of changes or checks, which come from each source's
-  host; read a change with the harness's review tools until it does.
+- Changes are GitHub's alone, asked for by a timer every five minutes, so
+  they may be that old: the github source's `read_at` says when, and
+  `repos refresh` asks now. A change's diff and conversation are read with
+  the harness's review tools.
 - One machine's disk only: `machine` says which.
