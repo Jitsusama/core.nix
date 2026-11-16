@@ -213,7 +213,7 @@ mod tests {
     use std::path::PathBuf;
 
     use crate::model::ConcernKind;
-    use crate::room::tests::{busy, device, network};
+    use crate::room::tests::{busy, device, earlier, network};
     use crate::room::work_out;
 
     /// A day file of the test's own, in a folder no other test uses.
@@ -303,24 +303,6 @@ mod tests {
     }
 
     const HOUR: u64 = 60 * 60;
-
-    /// The golden record's figures as they were `ago` seconds before it,
-    /// with channel 16's losses and Hall's busy 5 GHz high radio as given.
-    fn earlier(network: &Network, ago: u64, sixteen: u64, hall: u32) -> Moment {
-        let mut moment = Moment::of(network);
-        moment.at = network.collected_at - ago;
-        for lost in &mut moment.lost {
-            if lost.channel == Some(16) {
-                lost.uncorrectable = sixteen;
-            }
-        }
-        for busy in &mut moment.busy {
-            if busy.device == "eero:2003" && busy.radio == "5 GHz high" {
-                busy.pct = hall;
-            }
-        }
-        moment
-    }
 
     /// The golden record with the day recalled and its concerns worked
     /// out over it, as the daemon does each minute.

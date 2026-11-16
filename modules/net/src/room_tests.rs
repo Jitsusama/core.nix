@@ -1,8 +1,10 @@
-//! Working the network out: each device's path to the modem, its narrowest
-//! hop, and the concerns net raises from the record, with the record and
-//! its helpers that history's tests share.
+//! The tests of room.rs, working the network out: each device's path to
+//! the modem, its narrowest hop and the concerns net raises; and the
+//! record and the helpers history's tests share.
 
 use super::*;
+
+use crate::history::{Moment, recall};
 
 use crate::model::{ConcernKind, Device, End, Internet, Link, Medium};
 
@@ -144,17 +146,6 @@ pub(crate) fn busy(network: &mut Network, node: &str, pct: u32) {
     radio.busy_pct = Some(pct);
 }
 
-/// Sets how fast the record's computer is downloading.
-fn computer_downloads(network: &mut Network, mbps: f64) {
-    let computer = network
-        .devices
-        .iter_mut()
-        .find(|device| device.id == "mac:02:00:00:00:00:08")
-        .and_then(|device| device.speed.as_mut())
-        .expect("the record has the computer's speed");
-    computer.down_mbps = Some(mbps);
-}
-
 /// Cables Hall's port 2 to Closet at 100 Mbit/s.
 fn slow_cable(network: &mut Network) {
     network.links.push(Link {
@@ -181,7 +172,13 @@ fn a_device_using_most_of_the_internet_one_way_fills_it() {
     // The record's computer moves 9.86 of the line's 11.93 up; down,
     // 290 of 369.86 is 78%, under the line.
     let mut network = network();
-    computer_downloads(&mut network, 290.0);
+    let computer = network
+        .devices
+        .iter_mut()
+        .find(|device| device.id == "mac:02:00:00:00:00:08")
+        .and_then(|device| device.speed.as_mut())
+        .expect("the record has the computer's speed");
+    computer.down_mbps = Some(290.0);
     work_out(&mut network);
     let fills: Vec<(Option<&str>, &str)> = network
         .concerns
@@ -363,35 +360,29 @@ fn the_internet_as_the_chokepoint_is_one_concern_each_way() {
     );
 }
 
-/// What a day of net's own readings adds: each radio's busiest share two
-/// hours ago, over any share it's busy now, and how much of the modem's
-/// worst channel's loss came in the last five hours.
-fn recall_a_day(network: &mut Network) {
-    let at = network.collected_at.saturating_sub(2 * 3600);
-    for radio in network
-        .devices
-        .iter_mut()
-        .flat_map(|device| device.radios.iter_mut())
-    {
-        radio.busiest_pct = Some(90);
-        radio.busiest_at = Some(at);
+/// The golden record's figures as they were `ago` seconds before it,
+/// with channel 16's losses and Hall's busy 5 GHz high radio as given.
+pub(crate) fn earlier(network: &Network, ago: u64, sixteen: u64, hall: u32) -> Moment {
+    let mut moment = Moment::of(network);
+    moment.at = network.collected_at - ago;
+    for lost in &mut moment.lost {
+        if lost.channel == Some(16) {
+            lost.uncorrectable = sixteen;
+        }
     }
-    let modem = network
-        .devices
-        .iter_mut()
-        .find(|device| device.id == "modem")
-        .and_then(|device| device.modem.as_mut())
-        .expect("the record has the modem's channels");
-    modem.lately_s = Some(5 * 3600);
-    for channel in &mut modem.downstream {
-        channel.lost_lately = Some(if channel.channel == Some(16) { 78 } else { 0 });
+    for busy in &mut moment.busy {
+        if busy.device == "eero:2003" && busy.radio == "5 GHz high" {
+            busy.pct = hall;
+        }
     }
+    moment
 }
 
 /// Whether words are one sentence ending in a single stop: no other stop,
-/// question mark or exclamation mark, but for a decimal point between digits.
+/// question mark, exclamation mark or ellipsis, but for a decimal point
+/// between digits.
 fn is_one_sentence(says: &str) -> bool {
-    let Some(body) = says.strip_suffix('.') else {
+    let Some(body) = says.strip_suffix('.').filter(|body| !body.is_empty()) else {
         return false;
     };
     let padded: Vec<char> = std::iter::once(' ')
@@ -400,42 +391,90 @@ fn is_one_sentence(says: &str) -> bool {
         .collect();
     padded.windows(3).all(|around| match around {
         [before, '.', after] => before.is_ascii_digit() && after.is_ascii_digit(),
-        [_, '?' | '!', _] => false,
+        [_, '?' | '!' | '\u{2026}', _] => false,
         _ => true,
     })
 }
 
 #[test]
+fn one_sentence_ends_once_and_holds_only_decimal_points() {
+    let told: Vec<(&str, bool)> = [
+        "Up 11.9 Mbit/s.",
+        "No stop",
+        ".",
+        "Ends twice..",
+        "One. Two.",
+        "One.Two.",
+        "Asks? No.",
+        "Trails\u{2026} off.",
+    ]
+    .into_iter()
+    .map(|says| (says, is_one_sentence(says)))
+    .collect();
+    assert_eq!(
+        told,
+        [
+            ("Up 11.9 Mbit/s.", true),
+            ("No stop", false),
+            (".", false),
+            ("Ends twice..", false),
+            ("One. Two.", false),
+            ("One.Two.", false),
+            ("Asks? No.", false),
+            ("Trails\u{2026} off.", false),
+        ],
+        "only a decimal point may stand inside, and one stop at the end"
+    );
+}
+
+#[test]
 fn every_concern_is_one_whole_sentence_ending_in_a_stop() {
-    // The system command lists concerns one after another, each with its
-    // stop, and the network page and the Map row show each whole, so each
-    // must be one sentence ending once. This holds net's own wording: a
-    // device's name is the network's, shown as it was named.
+    // The system command says the worst concern among its own sentences,
+    // adding a stop only to words without one, and the network page and
+    // the Map row show each whole, so each must be one sentence ending
+    // once. This holds net's own wording: a device's name is the
+    // network's, shown as it was named.
     let mut bare = network();
     busy(&mut bare, "eero:2003", 64);
     slow_cable(&mut bare);
+    // A day recalled as the daemon does each minute, so the busiest share
+    // is said in minutes and the recent loss in hours.
     let mut recalled = bare.clone();
-    recall_a_day(&mut recalled);
+    let day = [
+        earlier(&bare, 5 * 3600, 800, 41),
+        earlier(&bare, 30 * 60, 850, 90),
+    ];
+    recall(&mut recalled, &day);
+    // Naming every kind in a match makes a new kind fail to build here,
+    // to be added to every as well.
+    let every = [
+        ConcernKind::Busy,
+        ConcernKind::Weak,
+        ConcernKind::Slow,
+        ConcernKind::Ceiling,
+        ConcernKind::Fills,
+        ConcernKind::Lost,
+    ];
+    for kind in every {
+        match kind {
+            ConcernKind::Busy
+            | ConcernKind::Weak
+            | ConcernKind::Slow
+            | ConcernKind::Ceiling
+            | ConcernKind::Fills
+            | ConcernKind::Lost => {}
+        }
+    }
     let mut spliced = Vec::new();
     for mut network in [bare, recalled] {
         work_out(&mut network);
-        // Naming every kind in a match makes a new kind fail to build here
-        // until the record raises it too.
-        let place = |kind: ConcernKind| match kind {
-            ConcernKind::Busy => 0,
-            ConcernKind::Weak => 1,
-            ConcernKind::Slow => 2,
-            ConcernKind::Ceiling => 3,
-            ConcernKind::Fills => 4,
-            ConcernKind::Lost => 5,
-        };
-        let mut raised = [false; 6];
-        for concern in &network.concerns {
-            raised[place(concern.kind)] = true;
-        }
-        assert_eq!(
-            raised, [true; 6],
-            "the record raises every kind: {:?}",
+        let missing: Vec<ConcernKind> = every
+            .into_iter()
+            .filter(|kind| !network.concerns.iter().any(|concern| concern.kind == *kind))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "the record raises no {missing:?}: {:?}",
             network.concerns
         );
         for concern in &network.concerns {
