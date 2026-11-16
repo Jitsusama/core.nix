@@ -239,17 +239,24 @@ in
     # (shaper.nft says why).
     path = [
       callIsOn
+      config.systemd.package
       pkgs.iproute2
       pkgs.iputils
       pkgs.nftables
     ];
+    # A switch restarts it rather than stopping the old and starting the
+    # new, and a restart's stop leaves the queues for the new shaper to
+    # take back (src/restart.rs): at 13:29 on 16 November the link went
+    # 5 s unshaped, and the gateway's round trip rose from 10 to 30 ms to
+    # 102. A stop, or a restart after a crash, still takes them all away.
+    stopIfChanged = false;
     serviceConfig = {
       ExecStart =
         "${shaper}/bin/shaper run"
         + lib.optionalString (vpns != [ ]) " --vpns ${lib.concatStringsSep "," vpns}"
         + lib.optionalString oneWay " --controller one-way --record /var/lib/shaper-record"
         + lib.optionalString (networks != { }) " --networks ${networksFile}";
-      ExecStopPost = "${shaper}/bin/shaper stop";
+      ExecStopPost = "${shaper}/bin/shaper stop --unless-restarting shaper.service";
       Restart = "always";
       RestartSec = 2;
       StateDirectory = "shaper";

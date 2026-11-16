@@ -39,6 +39,7 @@ mod rate;
 mod realtime;
 mod record;
 mod replay;
+mod restart;
 #[cfg(test)]
 mod sim;
 mod stamp;
@@ -53,7 +54,7 @@ use memory::{Held, Memory};
 use probe::{Echo, Probes};
 use rate::{Bounds, Controller, Direction, Settings, State, float};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -182,8 +183,19 @@ fn asked(context: &Context) -> Result<(), Failure> {
         "status" => status::status(&options("status", rest)?.runtime, context),
         "stop" => {
             // The kit refuses a stray word; a stray flag is refused here.
-            if let Some(flag) = rest.first() {
-                return Err(wrongly("stop", format!("{flag} isn't a flag it takes")));
+            let unit = match rest {
+                [] => None,
+                [flag, unit] if flag == "--unless-restarting" => Some(unit),
+                [flag] if flag == "--unless-restarting" => {
+                    return Err(wrongly("stop", format!("{flag} takes the unit's name")));
+                }
+                [flag, ..] => {
+                    return Err(wrongly("stop", format!("{flag} isn't a flag it takes")));
+                }
+            };
+            if let Some(unit) = unit.filter(|unit| restarting(unit)) {
+                eprintln!("{unit} is restarting, so its queues stay for it to take back");
+                return Ok(());
             }
             stop();
             Ok(())
@@ -572,15 +584,38 @@ fn start(
 }
 
 /// Puts a link's queues on, its upload at `up` split as `split`, turning
-/// what it receives through its IFB unless it goes `straight` in. What was
-/// there goes first, since HTB can't change where it sends what nothing
-/// claims: a link's own queue from the kernel can't be taken away, and
-/// says so, which is nothing to tell.
+/// what it receives through its IFB unless it goes `straight` in. Lanes
+/// and an IFB already there, as a restart leaves them, are taken back at
+/// these rates, so the link is never unshaped and nothing queued is lost;
+/// a turn already there stays, since matchall refuses to replace its one
+/// filter. Otherwise what was there goes first, since HTB can't change
+/// where it sends what nothing claims: a link's own queue from the kernel
+/// can't be taken away, and says so, which is nothing to tell.
 fn install(link: &str, ifb: &str, (up, split): (u64, &lanes::Split), down: u64, straight: bool) {
-    let _ = sh(&words(&format!("tc qdisc del dev {link} root")));
-    run_all(qdisc::install(link, ifb, (up, split), down));
-    if !straight {
+    let held = sh(&words(&format!("tc -j qdisc show dev {link}"))).unwrap_or_default();
+    let back = sh(&words(&format!("tc -j qdisc show dev {ifb}"))).unwrap_or_default();
+    let turned = if lanes::laned(&held) && qdisc::ours(&back) {
+        eprintln!("taking back the queues {link} kept through a restart");
+        // tc complains of a queue with no filters to take off, which is
+        // nothing to tell.
+        for clear in lanes::unfiltered(link, &held)
+            .iter()
+            .chain(&lanes::unfiltered(ifb, &back))
+        {
+            let _ = sh(clear);
+        }
+        run_all(lanes::adopt(link, ifb, (up, split), down));
+        qdisc::turned(&held)
+    } else {
+        let _ = sh(&words(&format!("tc qdisc del dev {link} root")));
+        let _ = sh(&qdisc::unturn(link));
+        run_all(qdisc::install(link, ifb, (up, split), down));
+        false
+    };
+    if !straight && !turned {
         run_all(qdisc::turn(link, ifb));
+    } else if straight && turned {
+        let _ = sh(&qdisc::unturn(link));
     }
 }
 
@@ -738,6 +773,7 @@ fn run(options: &Options) -> Result<(), Failure> {
     // What the controller heard and held each second, which the
     // recorder's lines can't say, kept for a replay (src/trace.rs).
     let mut traces = trace::Writer::new(&options.state.join("heard"));
+    let mut swept = false;
     loop {
         let now = Instant::now();
         let t = (now - began).as_secs_f64();
@@ -752,6 +788,12 @@ fn run(options: &Options) -> Result<(), Failure> {
             primary = order.first().cloned();
             let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
             follow_vpns(&mut vpns, &options.vpns, rides, (up_tins.kbit(), t));
+            // A restart left the old shaper's queues; once this one has
+            // taken up the links and VPNs it shapes, the rest go.
+            if !swept {
+                swept = true;
+                sweep(&held(&shaped, &vpns.0));
+            }
             for (name, s) in &mut shaped {
                 if primary.as_ref() != Some(name) {
                     s.share_lanes((0.0, lanes::Agents::default()), t);
@@ -1489,13 +1531,45 @@ fn mbit(kbit: u64) -> String {
     format!("{:.1} Mbit/s", float(kbit) / 1000.0)
 }
 
+/// Whether systemd is restarting `unit`. When it can't say, it isn't, so
+/// the queues go as on any stop.
+fn restarting(unit: &str) -> bool {
+    let mut ask = words("systemctl list-jobs --no-legend --plain --full");
+    ask.push(unit.to_string());
+    match sh(&ask) {
+        Ok(jobs) => restart::pending(&jobs, unit),
+        Err(why) => {
+            eprintln!("systemd couldn't say whether {unit} restarts, so its queues go: {why}");
+            false
+        }
+    }
+}
+
 /// Takes every queue the shaper made away, for when it stops.
 fn stop() {
+    sweep(&BTreeSet::new());
+}
+
+/// The links, VPNs and IFBs the shaper holds now.
+fn held(shaped: &BTreeMap<String, Shaped>, vpns: &BTreeMap<String, Vpn>) -> BTreeSet<String> {
+    let links = shaped.iter().map(|(name, s)| (name, &s.ifb));
+    let tunnels = vpns.iter().map(|(name, v)| (name, &v.ifb));
+    links
+        .chain(tunnels)
+        .flat_map(|(name, ifb)| [name.clone(), ifb.clone()])
+        .collect()
+}
+
+/// Takes away every queue the shaper made but on the devices `kept`.
+fn sweep(kept: &BTreeSet<String>) {
     let Ok(devices) = fs::read_dir("/sys/class/net") else {
         return;
     };
     for device in devices.flatten() {
         let name = device.file_name().to_string_lossy().to_string();
+        if kept.contains(&name) {
+            continue;
+        }
         if name.starts_with("shaper") {
             let _ = sh(&words(&format!("ip link del {name}")));
             continue;

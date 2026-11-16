@@ -715,13 +715,58 @@ def test_replug(replugged: Replugged) -> None:
     connection.lands("bulk", "jobs.slice", connection.download, dev=replugged.plugged_ifb)
 
 
+def restart_keeps_the_queues(on_eth2: Connection) -> None:
+    """Restart it, as a switch does, and check the links stayed shaped and kept their queues.
+
+    The new shaper takes back the queues the old one left, so nothing they held or counted
+    is lost, and the modem's queue never fills while none are there.
+    """
+    client = on_eth2.client
+    # A switch restarts it only while the unit says so; otherwise it stops the old and starts
+    # the new, and the stop takes every queue away.
+    client.succeed("grep -q X-StopIfChanged=false /etc/systemd/system/shaper.service")
+    client.succeed(on_eth2.upload)
+    # An IFB the new shaper won't take up, as a VPN gone from its list leaves.
+    client.succeed("ip link add shaperfff type ifb")
+    # A filter this version doesn't make, as one an older version made and a later dropped.
+    client.succeed("tc filter add dev eth2 parent 5: protocol all prio 9 matchall action pass")
+    since = client.succeed("date +%s").strip()
+
+    def sent() -> int:
+        """Give the bytes eth2's root HTB has sent."""
+        return int(next(q for q in on_eth2.qdiscs("eth2") if q["kind"] == "htb")["bytes"])
+
+    before = sent()
+    watch = (
+        "for _ in $(seq 100); do"
+        ' tc -j qdisc show dev eth2 | grep -q \'"kind":"htb"\' || echo bare;'
+        " tc -j qdisc show dev wg0 | grep -q cake || echo bare; sleep 0.05; done"
+    )
+    bare = client.succeed(
+        f"({watch}) > /tmp/watched & systemctl restart shaper.service; wait; cat /tmp/watched"
+    )
+    client.succeed("systemctl is-active shaper.service")
+    assert "bare" not in bare, "a restart left a link unshaped while it ran"
+    assert on_eth2.shaped("eth2"), "a restart left eth2 without its lanes"
+    assert sent() >= before, "a restart made the queues afresh rather than keeping them"
+    said = client.succeed(f"journalctl -u shaper.service --since @{since} --no-pager")
+    assert "is restarting, so its queues stay" in said, said
+    client.wait_until_fails("ip link show shaperfff", timeout=SHAPING)
+    kept = client.succeed("tc filter show dev eth2 parent 5:")
+    assert "pref 9" not in kept, f"a filter no version makes outlived the restart: {kept}"
+    assert "RTNETLINK" not in said, f"taking the queues back failed: {said}"
+    assert "Error:" not in said, f"taking the queues back failed: {said}"
+
+
 @pytest.mark.usefixtures("tunnel")
 def test_stopping(on_eth2: Connection) -> None:
     """An administrator stops it with no password, and that leaves the links as they were.
 
-    An account outside wheel can't; an administrator starts it again just as freely, as an A/B
-    turning it on and off around each call does.
+    A restart, as a switch makes, keeps them shaped throughout instead. An account outside
+    wheel can't stop it; an administrator starts it again just as freely, as an A/B turning
+    it on and off around each call does.
     """
+    restart_keeps_the_queues(on_eth2)
     client = on_eth2.client
     eth2_ifb = on_eth2.ifb("eth2")
     wg0_ifb = on_eth2.ifb("wg0")
