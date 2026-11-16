@@ -1,7 +1,7 @@
 //! The Google account, for the desktop, as a library the program
 //! (main.rs) and its tests share: the account as the harness keeps it
 //! (account.rs), the token to ask with (token.rs), asking Google
-//! (api.rs), the meetings and the link each is joined by (calendar.rs,
+//! (api/), the meetings and the link each is joined by (calendar.rs,
 //! link.rs), the mail that wants Joel (mail.rs) and where the files it
 //! carries go (files.rs), the documents he looked at lately and Drive's
 //! own places (drive.rs),
