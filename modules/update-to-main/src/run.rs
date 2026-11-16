@@ -365,7 +365,10 @@ where
 /// alone isn't stuck, so a build past its limit is stopped only if its
 /// pieces did no work since the last look either (`progress::done`), and
 /// never runs quiet past `PATIENT_MOST` limits whatever they did, since a
-/// builder's figures count other builds than this one's.
+/// builder's figures count other builds than this one's. A builder that
+/// says nothing of its builds, as one nix-offload doesn't lend, leaves
+/// its pieces unseen, so the build may then stay quiet as long as a copy
+/// back at its most, an hour for a four-minute limit.
 pub fn built<I, S>(
     command: Command,
     what: &str,
@@ -389,7 +392,7 @@ fn built_watching<I, S>(
     what: &str,
     args: I,
     silent: Duration,
-    done: &dyn Fn(libc::pid_t) -> u64,
+    done: &dyn Fn(libc::pid_t) -> Option<u64>,
 ) -> Result<String, Failure>
 where
     I: IntoIterator<Item = S>,
@@ -457,15 +460,15 @@ where
     }
     let said = std::mem::take(&mut heard.lock().unwrap_or_else(PoisonError::into_inner).1);
     let status = status.map_err(|e| Failure::new(format!("{what}: {e}")))?;
-    if let Some((quiet, worked)) = quiet {
+    if let Some((quiet, pieces)) = quiet {
         return Err(Failure {
             why: format!(
                 "{what} said nothing for {} minutes{}, so it was stopped",
                 quiet.as_secs() / 60,
-                if worked {
-                    ""
-                } else {
-                    " and its pieces did no work"
+                match pieces {
+                    Pieces::Worked => "",
+                    Pieces::Idle => " and its pieces did no work",
+                    Pieces::Unseen => " and its builders can't say what its pieces did",
                 }
             ),
             lines: tail(&said),
@@ -485,18 +488,31 @@ where
 /// or copying back.
 type Heard = Arc<Mutex<(Instant, String, bool)>>;
 
+/// What a quiet build's pieces were seen doing when it was stopped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Pieces {
+    /// They worked, but it had been quiet the most it may be.
+    Worked,
+    /// They did nothing since the last look.
+    Idle,
+    /// A builder they used doesn't say, so they may have worked unseen.
+    Unseen,
+}
+
 /// Waits for `child` to end, stopping its group once it is quiet past
 /// its limit with its pieces doing no work, or past the most whatever
-/// they do. Gives how it ended and, if it was stopped, how long it had
-/// been quiet and whether its pieces still worked.
+/// they do. A build whose pieces can't be seen may be quiet as long as
+/// the most a copy back may, since its quiet can't be told from a stuck
+/// one's. Gives how it ended and, if it was stopped, how long it had
+/// been quiet and what its pieces were seen doing.
 fn watched(
     child: &mut std::process::Child,
     heard: &Heard,
     silent: Duration,
-    done: &dyn Fn(libc::pid_t) -> u64,
+    done: &dyn Fn(libc::pid_t) -> Option<u64>,
 ) -> (
     std::io::Result<std::process::ExitStatus>,
-    Option<(Duration, bool)>,
+    Option<(Duration, Pieces)>,
 ) {
     let group = child.id().cast_signed();
     let mut quiet = None;
@@ -516,17 +532,26 @@ fn watched(
         let limit = if patient { silent * COPYING } else { silent };
         let clock = working.map_or(last, |working| working.max(last));
         if quiet.is_none() && clock.elapsed() >= limit {
-            let now = done(group);
-            let moved = now != seen;
-            seen = now;
-            if moved && last.elapsed() < limit * PATIENT_MOST {
-                // Its pieces work, so the clock starts again, but the
-                // quiet spell it is in still counts towards the most.
+            let pieces = match done(group) {
+                None => Pieces::Unseen,
+                Some(now) if now != seen => {
+                    seen = now;
+                    Pieces::Worked
+                }
+                Some(_) => Pieces::Idle,
+            };
+            let most = match pieces {
+                Pieces::Unseen => silent * COPYING * PATIENT_MOST,
+                Pieces::Worked | Pieces::Idle => limit * PATIENT_MOST,
+            };
+            if pieces != Pieces::Idle && last.elapsed() < most {
+                // Its pieces work, or may, so the clock starts again, but
+                // the quiet spell it is in still counts towards the most.
                 working = Some(Instant::now());
             } else {
                 // SAFETY: kill only sends a signal; a group already gone is ESRCH.
                 unsafe { libc::kill(-group, libc::SIGTERM) };
-                quiet = Some((last.elapsed(), moved));
+                quiet = Some((last.elapsed(), pieces));
             }
         }
         thread::sleep(Duration::from_millis(200));
@@ -644,7 +669,7 @@ mod tests {
 
     #[test]
     fn a_quiet_build_whose_pieces_work_runs_on_but_not_for_ever() {
-        let quiet = |then: &str, done: &dyn Fn(libc::pid_t) -> u64| {
+        let quiet = |then: &str, done: &dyn Fn(libc::pid_t) -> Option<u64>| {
             let mut sh = Command::new(std::env::var_os("BASH").unwrap_or_else(|| "sh".into()));
             sh.args([
                 "-c",
@@ -659,11 +684,11 @@ mod tests {
             )
         };
         let work = std::sync::atomic::AtomicU64::new(0);
-        let working = |_| work.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        let working = |_| Some(work.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1);
         assert!(quiet("sleep 1.6; echo done", &working).is_ok());
         // Its pieces stopped working, so it's stopped at the next look.
         let started = Instant::now();
-        let failed = quiet("sleep 30", &|_| 7).unwrap_err();
+        let failed = quiet("sleep 30", &|_| Some(7)).unwrap_err();
         assert!(
             started.elapsed() < Duration::from_secs(10),
             "it waited for the end"
@@ -679,6 +704,40 @@ mod tests {
         );
         assert!(failed.why.contains("said nothing for"), "{}", failed.why);
         assert!(!failed.why.contains("did no work"), "{}", failed.why);
+    }
+
+    #[test]
+    fn a_quiet_build_on_a_builder_it_can_t_read_waits_the_longest() {
+        let quiet = |then: &str| {
+            let mut sh = Command::new(std::env::var_os("BASH").unwrap_or_else(|| "sh".into()));
+            sh.args([
+                "-c",
+                &format!("echo 'these 2 derivations will be built:'; {then}"),
+            ]);
+            built_watching(
+                sh,
+                "building",
+                std::iter::empty::<&str>(),
+                Duration::from_millis(200),
+                &|_| None,
+            )
+        };
+        // A kernel's link may say nothing for many minutes on a busy
+        // builder, which can't be told from a stuck one, so it runs on.
+        assert_eq!(quiet("sleep 1.6; echo done").err().map(|f| f.why), None);
+        // Still, it's quiet no longer than a copy back may be, the most.
+        let started = Instant::now();
+        let failed = quiet("sleep 30").unwrap_err();
+        let took = started.elapsed();
+        assert!(
+            took >= Duration::from_millis(3000) && took < Duration::from_secs(10),
+            "{took:?}"
+        );
+        assert_eq!(
+            failed.why,
+            "building said nothing for 0 minutes and its builders can't say what its pieces \
+             did, so it was stopped"
+        );
     }
 
     #[test]
