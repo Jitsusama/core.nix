@@ -61,6 +61,19 @@ holds only the listener and sets off none of the link's reads. Where
 nothing listens, as while WARP's service is down, the status is asked
 once instead each time, so a link coming back is said within seconds.
 
+WARP flips between degraded and healthy every 15 to 30 seconds at times,
+so the state's `degraded` is the daemon's judgement, never the last
+line ([`src/degraded.rs`][degraded]). Spells under a minute apart are
+one episode, said only once a minute of degraded has gathered, and over
+after a healthy minute; a lone blip is never said. The episode carries
+when it began, whether it's degraded now, its spells, the last hour's
+spells and minutes, WARP's latency and loss to its edge, how full the
+upload is from the shaper's status and whose it is, and a cause from
+those: agents filling it, the upload full, or past the home. It's
+judged again every five seconds while the state is watched, the upload
+rounded to 5% so a wobble tells nobody (Joel, 2026-11-15: "if we are
+going to put something in now, it has to give me more information").
+
 ## The Switch
 
 `src/switch.rs` decides what a switch says before it asks warp-cli: a
@@ -74,6 +87,7 @@ answer it can't read. warp-cli decides the rest, as it does for anyone,
 so nothing here needs root.
 
 [contract]: contract/README.md
+[degraded]: src/degraded.rs
 [serve]: src/serve.rs
 [record]: warp.json
 [golden]: src/golden/

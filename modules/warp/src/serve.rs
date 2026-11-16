@@ -43,6 +43,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde_json::{Value, json};
 
 use crate::ask::{Ask, Listening, Said, Unasked};
+use crate::degraded::{Episode, Evidence, Spells};
 use crate::slow::{Bars, Judge, Slow};
 
 /// The interface's version this speaks.
@@ -70,6 +71,11 @@ const QUEUED: usize = 256;
 /// How long to wait after a connection couldn't be taken, as when the
 /// process is out of descriptors, so the loop doesn't spin a core.
 const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
+/// How often an episode of degraded is judged again while how WARP stands
+/// is watched, so one is said once a minute of it has gathered and gone
+/// once a healthy minute has passed, with no line from warp-cli to set
+/// either off.
+const JUDGE_EVERY: Duration = Duration::from_secs(5);
 
 /// Which of the two kinds an ask names.
 #[derive(Clone, Copy)]
@@ -96,6 +102,10 @@ struct Held {
     /// What waits through the VPN while the way is slow, and since when,
     /// as last judged.
     slow: Option<Slow>,
+    /// The spells of degraded WARP told over the last hour, and the
+    /// episode of them said on the state, or null (degraded.rs).
+    spells: Spells,
+    degraded: Value,
     watches: Vec<Watch>,
     /// Whether it's to be read at once, rather than when it's next due.
     now: bool,
@@ -201,6 +211,8 @@ pub fn serve(
             link: None,
             state: None,
             slow: None,
+            spells: Spells::default(),
+            degraded: Value::Null,
             watches: Vec::new(),
             now: false,
             listening: None,
@@ -222,6 +234,10 @@ pub fn serve(
     if shared.shaper.is_some() {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || slow_loop(&shared));
+    }
+    {
+        let shared = Arc::clone(&shared);
+        std::thread::spawn(move || degraded_loop(&shared));
     }
     for (connection, stream) in (1u64..).zip(listener.incoming()) {
         let Ok(stream) = stream else {
@@ -337,7 +353,8 @@ fn listen_loop<A: Ask>(shared: &Shared<A>) {
         for line in lines.lines() {
             let Ok(line) = line else { break };
             if let Some((status, reason)) = told(&line) {
-                stand(shared, &json!({"status": status, "reason": reason}));
+                let said = json!({"status": status, "reason": reason});
+                stand(shared, &said, evidence(&line));
             }
             if changed(&line, &mut last) {
                 let mut held = lock(&shared.held);
@@ -360,7 +377,7 @@ fn listen_loop<A: Ask>(shared: &Shared<A>) {
 fn ask_instead<A: Ask>(shared: &Shared<A>) {
     let said = standing(shared.cli.ask(&["status"]));
     if !lock(&shared.held).watches.is_empty() {
-        stand(shared, &said);
+        stand(shared, &said, Evidence::default());
     }
     std::thread::sleep(LISTEN_AGAIN);
 }
@@ -384,9 +401,16 @@ fn standing(said: Result<Said, Unasked>) -> Value {
 
 /// Holds how WARP stands, and tells each watch of it, when it's other
 /// than what's held. When it began is said only where it was seen to
-/// begin, since a state first heard may have stood for hours.
-fn stand<A: Ask>(shared: &Shared<A>, said: &Value) {
+/// begin, since a state first heard may have stood for hours. Each status
+/// is heard as a spell of degraded or not, with WARP's evidence, so the
+/// episode said beside it is judged as it comes.
+fn stand<A: Ask>(shared: &Shared<A>, said: &Value, evidence: Evidence) {
+    let upload = upload(shared);
     let mut held = lock(&shared.held);
+    let degraded = said["status"] == "Connected" && said["reason"] == "NetworkDegraded";
+    held.spells.heard(degraded.then_some(evidence), now_ms());
+    // The same words with new figures leave the episode to the next
+    // judging, which tells it, so nothing is told twice.
     if held
         .state
         .as_ref()
@@ -394,6 +418,7 @@ fn stand<A: Ask>(shared: &Shared<A>, said: &Value) {
     {
         return;
     }
+    held.degraded = episode(held.spells.said(now_ms()), &upload);
     let since = held.state.as_ref().map(|_| now_ms());
     let state = json!({
         "key": STATE_KEY,
@@ -402,6 +427,7 @@ fn stand<A: Ask>(shared: &Shared<A>, said: &Value) {
         "since_ms": since,
         "said": said,
         "slow": slowly(held.slow),
+        "degraded": held.degraded,
     });
     held.tell(&state, |kinds| kinds.state);
     // Said in the journal as it changes, which is rarely, so how the work
@@ -468,6 +494,78 @@ fn slowed<A: Ask>(shared: &Shared<A>, slow: Option<Slow>) {
     state["read_at_ms"] = json!(now_ms());
     held.tell(&state, |kinds| kinds.state);
     held.state = Some(state);
+}
+
+/// The upload as the shaper hears it, where there's a shaper (waiting.rs).
+fn upload<A>(shared: &Shared<A>) -> Value {
+    shared
+        .shaper
+        .as_ref()
+        .map_or(Value::Null, |shaper| crate::waiting::upload(&shaper.status))
+}
+
+/// An episode of degraded as the state says it, or null while there's
+/// none worth saying: since when, whether it's degraded now or in a gap,
+/// how often it flipped, the hour's spells and minutes, WARP's round trip
+/// and loss to its edge, the upload, and what lies behind it.
+fn episode(episode: Option<Episode>, upload: &Value) -> Value {
+    episode.map_or(Value::Null, |episode| {
+        json!({
+            "since_ms": episode.since_ms,
+            "now": episode.now,
+            "times": episode.times,
+            "hour": {"times": episode.hour_times, "minutes": episode.hour_minutes},
+            "rtt_ms": episode.evidence.rtt_ms,
+            "loss_percent": episode.evidence.loss_percent.map(|loss| (loss * 10.0).round() / 10.0),
+            "cause": crate::degraded::cause(upload),
+            "upload": upload,
+        })
+    })
+}
+
+/// Judges the episode of degraded again every few seconds while how WARP
+/// stands is watched, and tells each watch of the state as it changes.
+/// Nobody watching, nothing listens to WARP, so no spell could be seen to
+/// end: the spells are let go, and gathered afresh once someone watches.
+fn degraded_loop<A: Ask>(shared: &Shared<A>) {
+    loop {
+        {
+            let mut held = lock(&shared.held);
+            while !held.watches.iter().any(|watch| watch.kinds.state) {
+                held.spells = Spells::default();
+                held.degraded = Value::Null;
+                held = shared
+                    .woken
+                    .wait(held)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+            }
+        }
+        let upload = upload(shared);
+        let mut held = lock(&shared.held);
+        let said = episode(held.spells.said(now_ms()), &upload);
+        if held.degraded != said {
+            held.degraded = said.clone();
+            if let Some(mut state) = held.state.clone() {
+                state["degraded"] = said;
+                state["read_at_ms"] = json!(now_ms());
+                held.tell(&state, |kinds| kinds.state);
+                held.state = Some(state);
+            }
+        }
+        drop(held);
+        std::thread::sleep(JUDGE_EVERY);
+    }
+}
+
+/// WARP's evidence in a line it told: the round trip and loss its
+/// `NetworkDegraded` reason carries, or none where it carries none.
+fn evidence(line: &str) -> Evidence {
+    let said: Value = serde_json::from_str(line).unwrap_or(Value::Null);
+    let figures = &said["reason"]["NetworkDegraded"];
+    Evidence {
+        rtt_ms: figures["rtt_ms"].as_u64(),
+        loss_percent: figures["loss_percent"].as_f64(),
+    }
 }
 
 /// The status and reason a line of warp-cli's tells, a reason being a

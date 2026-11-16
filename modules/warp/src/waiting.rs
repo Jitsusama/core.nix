@@ -35,9 +35,95 @@ pub fn heard(status: &Path) -> Value {
     })
 }
 
+/// How full the upload is, as the shaper hears it, for the Work Network
+/// to say whether a full line is why WARP is degraded: `{ full_pct,
+/// shares }`, the share of the limit the shaper holds the upload to that
+/// it carries, to the nearest 5% so a figure wavering doesn't tell every
+/// watch, and each class's share of what it carries, to the nearest 5%,
+/// where the shaper serves its `up_tins_kbit` (B8RBNW, 2026-11-15): bulk is
+/// agents' traffic, best effort Joel's own turns and browser, video his
+/// calls and apps. Null with no shaper or nothing heard.
+pub fn upload(status: &Path) -> Value {
+    let Ok(text) = std::fs::read_to_string(status) else {
+        return Value::Null;
+    };
+    let links: Vec<Value> = serde_json::from_str(&text).unwrap_or_default();
+    let Some(heard) = links
+        .iter()
+        .map(|link| &link["heard"])
+        .find(|heard| !heard.is_null())
+    else {
+        return Value::Null;
+    };
+    let (Some(carried), Some(limit)) = (heard["up_kbit"].as_f64(), heard["up_limit"].as_f64())
+    else {
+        return Value::Null;
+    };
+    let tins = &heard["up_tins_kbit"];
+    let names = ["bulk", "best", "video", "voice"];
+    let each: Option<Vec<f64>> = names.iter().map(|name| tins[name].as_f64()).collect();
+    let shares = each
+        .filter(|each| each.iter().sum::<f64>() > 0.0)
+        .map(|each| {
+            let all: f64 = each.iter().sum();
+            names
+                .iter()
+                .zip(each)
+                .map(|(name, kbit)| ((*name).to_owned(), json!(fives(kbit / all))))
+                .collect::<serde_json::Map<_, _>>()
+        });
+    json!({
+        "full_pct": (limit > 0.0).then(|| fives(carried / limit)),
+        "shares": shares,
+    })
+}
+
+/// A share as a percentage to the nearest 5.
+fn fives(share: f64) -> u64 {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a share is floored at 0 and a few hundred at most"
+    )]
+    let pct = ((share * 20.0).round().max(0.0) as u64) * 5;
+    pct
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_upload_says_how_full_it_is_and_whose_where_the_shaper_says() {
+        let status = Path::new(CONTRACT).join("shaper-status.json");
+        assert_eq!(
+            upload(&status),
+            json!({ "full_pct": 90, "shares": null }),
+            "6690 of 7416 kbit/s is 90% full, and the contract has no classes"
+        );
+        let status = written(
+            "tins",
+            r#"[{"heard": {"up_kbit": 4000, "up_limit": 4069,
+               "up_tins_kbit": {"bulk": 3000, "best": 900, "video": 80, "voice": 0}}}]"#,
+        );
+        assert_eq!(
+            upload(&status),
+            json!({ "full_pct": 100, "shares": {"bulk": 75, "best": 25, "video": 0, "voice": 0} }),
+            "each class's share went unsaid"
+        );
+    }
+
+    #[test]
+    fn no_shaper_or_nothing_heard_says_nothing_of_the_upload() {
+        let none = Path::new(CONTRACT).join("no-such-status.json");
+        assert_eq!(upload(&none), Value::Null, "no file said something");
+        let idle = written("idle-up", r#"[{"name": "wlan0", "heard": null}]"#);
+        assert_eq!(
+            upload(&idle),
+            Value::Null,
+            "a link that heard nothing said something"
+        );
+    }
     use std::path::PathBuf;
 
     const CONTRACT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/contract");

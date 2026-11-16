@@ -3316,7 +3316,10 @@ def test_network_says_how_warp_stands_before_its_link_is_read(shell: Shell) -> N
     The margin watches how WARP stands all the time (WarpState.qml), so the row waiting on
     the link's first read says it rather than an ellipsis: degraded here, and with no round
     trip beside it, since none is read yet. Opening and closing the launcher first forgets
-    what an earlier case's terminal ask kept (Warp.qml's onOpenChanged).
+    what an earlier case's terminal ask kept (Warp.qml's onOpenChanged). The margin's own
+    piece says nothing of a moment's degraded, since the warp daemon says an episode only
+    once it has held a minute (modules/warp/src/degraded.rs), so the case waits on what
+    WarpState.qml says it heard, which reads nothing of the link either.
     """
     said = warp_said()
     try:
@@ -3329,7 +3332,7 @@ def test_network_says_how_warp_stands_before_its_link_is_read(shell: Shell) -> N
         (said / "status.json").write_text(json.dumps(status))
         deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
         while not any(
-            report.startswith("holds margin") and "tunnel" in report.split()
+            report.startswith("warp stands") and "degraded" in report.lower()
             for report in shell.said_since(mark)[0]
         ):
             assert time.monotonic() < deadline, "the margin never heard WARP degraded"

@@ -20,9 +20,17 @@ function filled(template, fields) {
 }
 
 // Whether what ails it hangs on the time, so the piece looks again as it
-// passes: only while it's connecting.
+// passes: while it's connecting, and while it's degraded, whose minutes
+// are said.
 function timed(state) {
-    return state?.said?.status === "Connecting";
+    return state?.said?.status === "Connecting" || Boolean(state?.degraded);
+}
+
+// How long an episode has lasted, in whole minutes, or hours and minutes.
+function lasted(since, now) {
+    const minutes = Math.max(1, Math.floor((now - since) / 60000));
+    return minutes < 60 ? `${minutes} min`
+        : `${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${minutes % 60} min` : ""}`;
 }
 
 // When the state began: as the daemon saw it begin, or else when it was
@@ -34,9 +42,13 @@ function began(state) {
 // What ails it, at `now`, with `clock` writing a time as Joel reads one.
 // A link Joel took down himself (Manual, ManualDisconnection) is his
 // choice, so says nothing; one that dropped otherwise says since when,
-// where the daemon saw it drop. A link degraded says so, one up but
-// slow, as the daemon judges a wait through it held for a minute, says
-// what waits, and one connecting for longer than WARP takes to come up
+// where the daemon saw it drop. A link degraded says so for how long,
+// once the daemon judges a minute of it has gathered
+// (modules/warp/src/degraded.rs), even through the healthy gaps WARP
+// flips to, which say "on and off"; WARP flipping to degraded for moments
+// says nothing (Joel, 2026-11-15, of a bare "degraded" from a flicker:
+// "no real details, nothing i can do"). One up but slow, as the daemon
+// judges a wait through it held for a minute, says what waits, and one connecting for longer than WARP takes to come up
 // says since when.
 // WARP's service down says it isn't answering; any other error warp-cli
 // gives, or warp-cli missing, says nothing certain of the link, so the
@@ -51,8 +63,10 @@ function ails(state, said, now, clock) {
     }
     const reason = String(stands.reason ?? "");
     if (stands.status === "Connected") {
-        if (reason === "NetworkDegraded") {
-            return [said.degraded];
+        const episode = state.degraded;
+        if (episode) {
+            const words = episode.times > 1 ? said.degradedOnAndOff : said.degraded;
+            return [filled(words, { lasted: lasted(episode.since_ms, now) })];
         }
         const waited = state.slow?.waiting_ms;
         return Number.isFinite(waited) ? [filled(said.slow, { waiting: `${waited} ms` })] : [];
@@ -67,4 +81,25 @@ function ails(state, said, now, clock) {
     }
     return state.since_ms === null || state.since_ms === undefined ? [said.down]
         : [filled(said.downSince, { time: clock(state.since_ms) })];
+}
+
+// What more there is to know of an episode of degraded, as Now says it
+// beneath the line: WARP's own evidence, the hour, and what lies behind
+// it as the daemon judges, with what Joel can do, which is nothing in each
+// case today, said plainly, as a sentence of its own from `tells`. Empty
+// with no episode.
+function context(state, said, tells) {
+    const episode = state?.degraded;
+    if (!episode || state?.said?.status !== "Connected") {
+        return "";
+    }
+    const evidence = Number.isFinite(episode.rtt_ms) && Number.isFinite(episode.loss_percent)
+        ? filled(said.evidence, { rtt: `${episode.rtt_ms} ms`, loss: `${episode.loss_percent}%` })
+        : said.evidenceNone;
+    const times = episode.hour?.times ?? 0;
+    const hour = filled(times === 1 ? said.hourOnce : said.hour,
+        { minutes: `${episode.hour?.minutes ?? 0} min`, times: `${times}` });
+    const cause = filled(tells[episode.cause] ?? tells.beyond,
+        { full: `${episode.upload?.full_pct ?? ""}%` });
+    return `${evidence}; ${hour}. ${cause}`;
 }
