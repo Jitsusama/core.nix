@@ -36,6 +36,8 @@ Beside this file:
 - `map.js`: the probe for a walked map or graph, finding arrows that don't
   keep to one rule and names that cross a line or each other (a picture
   is walked, under [Keys](#keys)).
+- `svgtext.js`: the probe finding each word drawn in a picture that stands
+  under 7:1 on what is painted behind it, in the look it's run in.
 - `homes.js`: the probe finding each mention of a thing that doesn't link
   to its home ([One Home for Every Thing](#one-home-for-every-thing)).
 
