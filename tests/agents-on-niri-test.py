@@ -3195,6 +3195,13 @@ def ordered(address: str, ago: int, **said: str) -> Json:
     }
 
 
+def in_agents(shell: Shell) -> None:
+    """Open Agents as it stands this late in the run, whatever sessions the cases before laid."""
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["agents"])
+
+
 @pytest.fixture
 def carried(shell: Shell) -> Iterator[None]:
     """Keep two carries for one case: Listening Quest's arrived here, Paused Quest's to go.
@@ -3208,7 +3215,7 @@ def carried(shell: Shell) -> Iterator[None]:
     yield
     CARRIES.unlink()
     touched("LISTEN")
-    opened(shell)
+    in_agents(shell)
     shell.launcher_until(lambda shown: "Carried" not in shown["rows"])
     shell.close_launcher()
 
@@ -3222,7 +3229,7 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
     An arrived carry offers Carry Back alone, asked of the node; one about to go offers
     nothing, and a carry back the node refuses says why in place (DCU5J4, items 1 and 2).
     """
-    opened(shell)
+    in_agents(shell)
     shell.launcher_until(lambda shown: "Carried" in shown["rows"])
     shell.down_to("Carried")
     # The group counts ordered and carrying as one, on their way.
@@ -3256,26 +3263,30 @@ def test_a_carry_under_way_waits_quietly_in_for_you_and_goes_as_it_arrives(
     Only one about to go or on its way is there, never one arrived (DCU5J4, item 3).
     """
     kept(
-        ordered("ARRIVE", 90, **{"from": "tern", "to": here(), "why": "it needs the camera"}),
+        ordered("AFLOAT", 90, **{"from": "tern", "to": here(), "why": "it needs the camera"}),
         ordered("PAUSED", 60, **{"from": here(), "to": "tern", "why": "tern sits idle"}),
     )
     try:
+        # Served first, so a For You without them is For You's own miss.
+        in_agents(shell)
+        shell.launcher_until(lambda shown: "Carried" in shown["rows"])
+        shell.close_launcher()
         in_for_you(shell)
-        # Arriving Quest's session runs nowhere yet, so its carry is on its way.
+        # Afloat Quest's session runs nowhere yet, so its carry is on its way.
         shell.launcher_until(
             lambda shown: {"Paused Quest", "A Session on Its Way"} <= set(shown["rows"])
         )
-        lay("ARRIVE", "Arriving Quest", {"orchestratedBy": "BOSSES", "state": "listening"})
+        lay("AFLOAT", "Afloat Quest", {"orchestratedBy": "BOSSES", "state": "listening"})
         shell.launcher_until(
             lambda shown: (
                 "Paused Quest" in shown["rows"]
                 and "A Session on Its Way" not in shown["rows"]
-                and "Arriving Quest" not in shown["rows"]
+                and "Afloat Quest" not in shown["rows"]
             )
         )
     finally:
         CARRIES.unlink()
-        (PRESENCE / "arrive.json").unlink(missing_ok=True)
+        (PRESENCE / "afloat.json").unlink(missing_ok=True)
         touched("LISTEN")
 
 
