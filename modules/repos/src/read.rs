@@ -86,6 +86,7 @@ pub fn read(reading: &Reading) -> Record {
                 written_at,
                 checkouts,
                 changes: Vec::new(),
+                read_through: None,
             }
         })
         .collect();

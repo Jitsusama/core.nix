@@ -6,11 +6,11 @@
 use super::*;
 use crate::model::{Repository, SCHEMA as RECORD};
 
-fn answer() -> Value {
+pub(super) fn answer() -> Value {
     serde_json::from_str(include_str!("answer.json")).expect("the answer is JSON")
 }
 
-fn one(key: &str) -> Asked {
+pub(super) fn one(key: &str) -> Asked {
     let (owner, name) = key.split_once('/').expect("an owner and a name");
     Asked {
         key: format!("github:{key}"),
@@ -30,7 +30,7 @@ fn asked_after() -> Vec<Asked> {
 }
 
 fn parsed() -> (BTreeMap<String, Vec<Change>>, Vec<String>) {
-    parse(&answer(), &asked_after())
+    parse(&answer(), &asked_after(), Through::App)
 }
 
 fn busy() -> Vec<Change> {
@@ -50,6 +50,7 @@ fn repository(key: &str) -> Repository {
         written_at: None,
         checkouts: Vec::new(),
         changes: Vec::new(),
+        read_through: None,
     }
 }
 
@@ -114,7 +115,7 @@ fn a_repository_the_app_cannot_see_is_said_to_be_unread() {
     );
     assert_eq!(
         unread,
-        ["github:someone/private: GitHub's App can't see it, or it's gone"]
+        ["github:someone/private: not readable here: GitHub's App can't see it, or it's gone"]
     );
 }
 
@@ -196,7 +197,7 @@ fn a_query_refused_whole_says_why() {
     let refused = serde_json::json!({
         "errors": [{ "message": "Bad credentials" }]
     });
-    let (changes, unread) = parse(&refused, &asked_after());
+    let (changes, unread) = parse(&refused, &asked_after(), Through::App);
     assert_eq!(changes, BTreeMap::new());
     assert_eq!(unread, ["GitHub: Bad credentials"]);
 }
@@ -240,6 +241,7 @@ fn a_refresh_merged_gives_each_repository_its_changes_and_github_a_source() {
         read_at: 1_794_755_410,
         changes,
         unread,
+        through: BTreeMap::new(),
     };
     let mut record = record_of(&["github:Jitsusama/core.nix", "local:~/scratch"]);
     merge(&mut record, &seen);
@@ -259,6 +261,7 @@ fn what_a_refresh_saw_reads_back_as_it_was_written() {
         read_at: 1_794_755_410,
         changes,
         unread,
+        through: BTreeMap::from([("github:Jitsusama/core.nix".to_owned(), Through::Gh)]),
     };
     let written = serde_json::to_string(&seen).expect("it writes");
     let back: Seen = serde_json::from_str(&written).expect("it reads back");

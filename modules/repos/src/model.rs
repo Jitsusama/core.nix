@@ -64,6 +64,9 @@ pub struct Repository {
     /// none where no source has read them.
     #[serde(default)]
     pub changes: Vec<Change>,
+    /// Which way its changes were read, where any source read them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_through: Option<Through>,
 }
 
 /// Work put up for review on a repository's remote.
@@ -86,6 +89,16 @@ pub struct Change {
     /// What GitHub calls it, in its own words, where GitHub holds it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub github: Option<GitHubChange>,
+}
+
+/// Which way a repository's changes were read from GitHub: through the
+/// machine's GitHub App, which most are, or through gh's sign-in, for the
+/// few a machine lists that the App can't see (github.rs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Through {
+    App,
+    Gh,
 }
 
 /// A change as GitHub names it: its pull request.

@@ -2,9 +2,10 @@
 # it and every tree cut from each (src/lib.rs says how). It reads git's own
 # files as it runs, and merges in what GitHub last held, which a timer asks
 # every five minutes through the GitHub broker (src/github.rs says why).
-# Where it looks is the one setting that differs between machines: a
-# machine whose trees lie in a folder of their own, under no checkout,
-# adds that folder.
+# Where it looks differs between machines: a machine whose trees lie in a
+# folder of their own, under no checkout, adds that folder. So do the few
+# repositories the App can't see that a machine has read through gh's
+# sign-in instead (src/gh.rs says how narrowly).
 {
   config,
   lib,
@@ -13,15 +14,27 @@
 }:
 let
   repos = pkgs.callPackage ./package.nix { };
-  # The command with its roots set, as a default a caller may still set
-  # for one run.
+  inherit (config.jitsusama.repos) roots throughGh;
+  # The command's settings, as defaults a caller may still set for one
+  # run. gh is named only where a machine lists repositories for it, so
+  # it's never asked elsewhere.
+  settings = {
+    REPOS_ROOTS = lib.concatStringsSep ":" roots;
+  }
+  // lib.optionalAttrs (throughGh != [ ]) {
+    REPOS_THROUGH_GH = lib.concatStringsSep " " throughGh;
+    REPOS_GH = lib.getExe config.programs.gh.package;
+  };
   wrapped = pkgs.symlinkJoin {
     name = "repos-${repos.version}";
     paths = [ repos ];
     nativeBuildInputs = [ pkgs.makeWrapper ];
     postBuild = ''
-      wrapProgram $out/bin/repos \
-        --set-default REPOS_ROOTS ${lib.escapeShellArg (lib.concatStringsSep ":" config.jitsusama.repos.roots)}
+      wrapProgram $out/bin/repos ${
+        lib.concatStringsSep " " (
+          lib.mapAttrsToList (name: value: "--set-default ${name} ${lib.escapeShellArg value}") settings
+        )
+      }
     '';
     inherit (repos) meta;
   };
@@ -35,6 +48,18 @@ in
       tree is found from the checkout it was cut from, wherever it lies,
       so only a folder of trees whose checkout is under no root needs
       naming.
+    '';
+  };
+
+  options.jitsusama.repos.throughGh = lib.mkOption {
+    type = lib.types.listOf (lib.types.strMatching "github:[^/ ]+/[^/ ]+");
+    default = [ ];
+    example = [ "github:someone/private" ];
+    description = ''
+      Repositories, by their keys, whose open changes are read through
+      gh's own sign-in rather than the GitHub App, which can't see them.
+      Read-only and fixed: one query, to GitHub's GraphQL endpoint alone,
+      with the token held in memory for each refresh. None by default.
     '';
   };
 

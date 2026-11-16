@@ -65,6 +65,7 @@ fn made(key: &str, owner: Option<&str>, checkouts: Vec<Checkout>, ago: u64) -> R
         written_at: Some(NOW - ago),
         checkouts,
         changes: Vec::new(),
+        read_through: None,
     }
 }
 
@@ -186,7 +187,9 @@ fn refreshed() -> Record {
         what: "each repository's open changes and their checks".to_owned(),
         read_at: Some(NOW - 120),
         unread: vec![
-            "github:someone-else/walgit-rs: GitHub's App can't see it, or it's gone".to_owned(),
+            "github:someone-else/walgit-rs: not readable here: GitHub's App can't see it, or \
+             it's gone"
+                .to_owned(),
         ],
     });
     let mut draft = change(
@@ -591,6 +594,35 @@ fn every_change_is_listed_the_one_updated_last_first() {
 }
 
 #[test]
+fn changes_read_through_gh_s_sign_in_say_so_where_counted() {
+    let mut record = refreshed();
+    record.repositories[0].read_through = Some(Through::Gh);
+    record.repositories[1].read_through = Some(Through::App);
+    let core = &record.repositories[0];
+    let listed = changes(&record, core, &clock(), &Pen::plain(), Room::Cells(80));
+    let page = repository(
+        &record,
+        core,
+        &clock(),
+        Some(home()),
+        &Pen::plain(),
+        Room::Cells(80),
+    );
+    for text in [&listed, &page] {
+        assert!(
+            text.contains("7 open · 1 failing · 2 pending · 1 approved · through gh's sign-in"),
+            "it didn't say gh read them: {text}"
+        );
+    }
+    let quiet = &record.repositories[1];
+    let quiet = changes(&record, quiet, &clock(), &Pen::plain(), Room::Cells(80));
+    assert!(
+        quiet.contains("none open") && !quiet.contains("through"),
+        "the App's way was said: {quiet}"
+    );
+}
+
+#[test]
 fn a_repository_with_no_remote_says_it_is_only_here() {
     let record = record();
     let text = repository(
@@ -691,5 +723,8 @@ fn the_changes_answer_says_when_github_was_asked_and_what_it_couldnt_read() {
     assert_eq!(answer["changes"].as_array().map(Vec::len), Some(7));
     assert_eq!(answer["changes"][0]["updated_at"], "2033-05-18T03:33:10Z");
     let unread = changes_json(&record, &record.repositories[2]);
-    assert_eq!(unread["unread"], "GitHub's App can't see it, or it's gone");
+    assert_eq!(
+        unread["unread"],
+        "not readable here: GitHub's App can't see it, or it's gone"
+    );
 }

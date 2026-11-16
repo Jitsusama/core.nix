@@ -14,21 +14,24 @@
 //! its Home Manager module sets from `jitsusama.repos.roots`, else ~/src.
 //! What GitHub was last seen to hold is kept in the state folder, where
 //! `repos refresh`, on a timer, writes it and every reading merges it in
-//! (the crate's github.rs says why).
+//! (the crate's github.rs says why). The few a machine lists in
+//! `REPOS_THROUGH_GH`, from `jitsusama.repos.throughGh`, are read through
+//! gh's sign-in instead, the `gh` at `REPOS_GH` (the crate's gh.rs).
 
 mod commands;
 mod views;
 
+use std::collections::BTreeSet;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use repos::broker;
 use repos::github::{self, Seen};
 use repos::model::{Record, Source};
 use repos::read::{self, Reading};
 use repos::when::Clock;
+use repos::{broker, gh};
 use serde_json::Value;
 use terminal_kit::{Context, Exit, Failure};
 
@@ -231,25 +234,36 @@ fn refresh(home: Option<&Path>, now: u64) -> Result<Seen, Failure> {
     let token = broker::token(&socket)
         .map_err(|why| unreached(why).try_this("systemctl --user status github-broker.socket"))?;
     let record = disk(home, now)?;
-    let seen = github::refresh(&github::asked(&record), now, |query| {
-        github::post(&token, query)
+    let listed = through_gh();
+    let (by_gh, by_app): (Vec<_>, Vec<_>) = github::asked(&record)
+        .into_iter()
+        .partition(|one| listed.contains(&one.key));
+    let mut seen = github::refresh(&by_app, now, |query| {
+        github::post(github::GRAPHQL, &token, query).map_err(|failed| failed.why)
     })
     .map_err(unreached)?;
+    let gh = std::env::var_os("REPOS_GH").unwrap_or_else(|| "gh".into());
+    seen.add(github::refresh_through_gh(
+        &by_gh,
+        now,
+        || gh::token(gh::command(&gh)),
+        |token, query| github::post(github::GRAPHQL, token, query),
+    ));
     let file = seen_file(home)?;
-    keep(&file, &seen).map_err(|why| {
+    github::keep(&file, &seen).map_err(|why| {
         Failure::new(Exit::Failed, "repos couldn't keep what GitHub holds")
             .because(format!("{}: {why}", file.display()))
     })?;
     Ok(seen)
 }
 
-/// `seen` written to `file` through a file beside it, renamed over it, so
-/// a reading never finds half of one.
-fn keep(file: &Path, seen: &Seen) -> io::Result<()> {
-    if let Some(folder) = file.parent() {
-        std::fs::create_dir_all(folder)?;
-    }
-    let beside = file.with_extension(format!("json.{}", std::process::id()));
-    std::fs::write(&beside, serde_json::to_vec(seen).map_err(io::Error::other)?)?;
-    std::fs::rename(&beside, file)
+/// The repositories a machine lists to be read through gh's sign-in, by
+/// their keys, `REPOS_THROUGH_GH` separated by spaces: the few GitHub's
+/// App can't see. None by default, so gh is asked only where listed.
+fn through_gh() -> BTreeSet<String> {
+    std::env::var("REPOS_THROUGH_GH")
+        .unwrap_or_default()
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect()
 }
