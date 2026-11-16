@@ -124,10 +124,24 @@ fn carry(record: &Value, parent: &str, rows: &HashMap<String, &Value>, words: &W
     json!({
         "key": key_of(&format!("carried:{id}")), "thing": format!("carry:{id}"),
         "place": PLACE, "parent": parent, "kind": "carry", "name": name, "glyph": "agent",
-        "hue": "program", "depth": 1, "side": side, "note": note, "acts": [],
+        "hue": "program", "depth": 1, "side": side, "note": note, "acts": back(record),
         "held": {"address": text(record, "address"), "state": text(record, "state"),
-            "from": text(record, "from"), "to": to},
+            "from": text(record, "from"), "to": to, "quest": text(record, "quest")},
     })
+}
+
+/// What a carry's Return does: one that has arrived is carried back to
+/// where it came from, asked of the node itself in its own shape, since
+/// only the person's own login may carry a quest and the node tells that
+/// by who asks (mycelium's PROTOCOL.md). The shell asks it, never this
+/// daemon, which would ask in its own name. One still on its way, refused
+/// or back offers nothing.
+fn back(record: &Value) -> Value {
+    let (quest, from) = (text(record, "quest"), text(record, "from"));
+    if record["state"] != "arrived" || quest.is_empty() || from.is_empty() {
+        return json!([]);
+    }
+    json!([{"key": "verb:carry:back", "ask": {"ask": "carry", "quest": quest, "to": from}}])
 }
 
 /// Every row of the Carried row, it first, from the node's `carry`
@@ -309,6 +323,28 @@ mod tests {
             Vec::<&str>::new(),
             "saying no state it can't word"
         );
+    }
+
+    #[test]
+    fn an_arrived_carry_is_carried_back_in_one_ask_of_the_node_and_no_other_is() {
+        let arrived = record("HARBOR", "2026-11-16T01:00:00Z", "arrived");
+        let made = rows(&[&arrived], &top(), &words());
+        assert_eq!(
+            made[1]["acts"],
+            json!([{"key": "verb:carry:back",
+                "ask": {"ask": "carry", "quest": "QEST-20261115-HARBOR", "to": "skiff"}}]),
+            "back to where it came from, asked of the node as it stands"
+        );
+        assert_eq!(made[1]["held"]["quest"], "QEST-20261115-HARBOR");
+        for state in ["ordered", "carrying", "refused", "back", "paused"] {
+            let other = record("HARBOR", "2026-11-16T01:00:00Z", state);
+            let made = rows(&[&other], &top(), &words());
+            assert_eq!(made[1]["acts"], json!([]), "{state} offers nothing");
+        }
+        let mut questless = arrived.clone();
+        questless["quest"] = json!("");
+        let made = rows(&[&questless], &top(), &words());
+        assert_eq!(made[1]["acts"], json!([]), "nor one naming no quest");
     }
 
     #[test]

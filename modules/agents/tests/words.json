@@ -177,6 +177,20 @@
       }
     },
     {
+      "id": "verb:carry:back",
+      "command": "move",
+      "argument": "back",
+      "in": "agents",
+      "name": "Carry Back",
+      "verb": "carry back",
+      "glyph": "resume",
+      "said": {
+        "carrying": "carrying back",
+        "unanswered": "its machine didn't answer",
+        "unread": "its refusal couldn't be read"
+      }
+    },
+    {
       "id": "agents:standing",
       "in": "agents",
       "name": "Standing"

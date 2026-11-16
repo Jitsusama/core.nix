@@ -28,4 +28,5 @@
   "launcher/SessionDrawer.js"
   "launcher/Holders.js"
   "launcher/TalkTo.js"
+  "launcher/CarryBack.js"
 ]

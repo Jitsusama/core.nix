@@ -89,6 +89,25 @@
       touch $out
     '';
 
+  # Carry Back asks the realm's node only a carry of a quest to a machine,
+  # rebuilt from the act's parts, and says how it ended in the node's own
+  # words, as tests/carry-back.qml holds launcher/CarryBack.js to it in Qt's
+  # own engine.
+  carry-back-asks-the-node-only-a-carry =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "carry-back-asks-the-node-only-a-carry" { } ''
+      cp ${../../../tests/carry-back.qml} carry-back.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "launcher/CarryBack.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml carry-back.qml
+      touch $out
+    '';
+
   # A mycelium: link a page hands the desktop reaches mycelium-link's entry
   # through niri's own list of defaults, and asks the launcher to talk to
   # the cell or show the network it names, by its name alone, and nothing
