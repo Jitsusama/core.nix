@@ -62,3 +62,7 @@ The repos daemon (`repos serve`) holds five kinds of record. The sole
 
 `repos --json` says the same as one record, and `repos <name>` one
 repository.
+
+The cells at work come from the machine's mycelium node, its `cell` kind:
+each cell's `name`, `cwd`, `title`, `standing` and `networks`. A cell is
+at work in the deepest tree or checkout its `cwd` lies in.

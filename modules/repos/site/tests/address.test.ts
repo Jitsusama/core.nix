@@ -100,5 +100,5 @@ it("says the tree the cursor is on, else its repository, as landing reads it bac
 it("opens a tree's change, else the repository where GitHub keeps it", () => {
   assert.equal(outward(core, "/home/ada/trees/fresh"), "https://github.com/owl/core/pull/41");
   assert.equal(outward(core, "/home/ada/trees/old"), "https://github.com/owl/core");
-  assert.equal(outward({ ...core, key: "equilibrius:src/acceluary" }, null), undefined);
+  assert.equal(outward({ ...core, key: "heron:src/notes" }, null), undefined);
 });

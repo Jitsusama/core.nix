@@ -2,8 +2,8 @@
 // drawn as a grove above the list of them, with the one the cursor is on
 // open beside the list. It watches the daemon's reading, repositories,
 // checkouts, trees and changes over the sites' server, so the page moves the
-// moment git writes, and reads the cells at work from the mycelium's map
-// while the page is seen. Nothing under the reader moves unless they moved
+// moment git writes, and the cells at work from the machine's mycelium
+// node. Nothing under the reader moves unless they moved
 // it: each repository keeps its place, and the cursor stays where it was.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";

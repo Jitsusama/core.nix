@@ -12,7 +12,7 @@ note behind.
 | `draw.ts`     | the grove, the repositories as rows, and the one open          |
 | `head.ts`     | the headline, its lede and the line at the foot                |
 | `address.ts`  | where the address lands, and what it says as the cursor moves  |
-| `mycelium.ts` | the cells at work and their homes, read while the page is seen |
+| `mycelium.ts` | the cells at work, live from the node, and their homes         |
 | `page.ts`     | the page's parts marked and copied from, given what to act on  |
 | `index.html`  | the page, and `site.css` its styles                            |
 | `grove.css`   | the grove and the marks every part draws                       |

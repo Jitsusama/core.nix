@@ -138,7 +138,7 @@ function plural(count: number, one: string, many = `${one}s`): string {
   return `${count.toLocaleString("en-CA")} ${count === 1 ? one : many}`;
 }
 
-/** The cells the mycelium's map holds, from its now.json, as far as each reads. */
+/** The cells in `map.cells`, the node's cell records, as far as each reads. */
 function cellsOf(map: unknown): readonly Cell[] {
   const cells = isObject(map) ? map["cells"] : undefined;
   if (!Array.isArray(cells)) {

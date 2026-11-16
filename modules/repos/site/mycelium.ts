@@ -1,8 +1,10 @@
-// What Code reads from the mycelium's site beside it: the cells at work, from
-// its map, and where each cell is home, from its homes. The map is a file
-// its timer rewrites every 20 seconds, so it's read as often, and only while
-// the page is seen: idle is nothing.
+// What Code reads of the mycelium: the cells at work, watched live from the
+// machine's node over the sites' feed, so a cell joins its tree the moment
+// it starts there, and where each cell is home, from the mycelium site's
+// homes. A machine in no realm has no node, so its feed never answers and
+// no cell is drawn, which is the truth there.
 
+import { follow } from "../../local-sites/kit/feed.ts";
 import { isObject, text } from "../../local-sites/kit/records.ts";
 import { type Cell, cellsOf } from "./model.ts";
 
@@ -15,7 +17,6 @@ interface Mycelium {
   readonly homes: ReadonlyMap<string, string>;
 }
 
-const CELLS_EVERY = 20_000;
 const HOME_FOLDER = /^\/home\/[^/]+/u;
 
 /** The home folder the first of `cells` with one works under, else `known`. */
@@ -24,16 +25,6 @@ function homeOf(cells: readonly Cell[], known: string | undefined): string | und
     .map((each) => HOME_FOLDER.exec(each.cwd)?.[0])
     .find((each) => each !== undefined);
   return match ?? known;
-}
-
-/** The cells at work, from the mycelium's map; none when it can't be read. */
-async function readCells(): Promise<readonly Cell[]> {
-  try {
-    const answer = await fetch("../mycelium/now.json", { cache: "no-cache" });
-    return answer.ok ? cellsOf(await answer.json()) : [];
-  } catch {
-    return [];
-  }
 }
 
 /** The mycelium's homes for cells, when its row in sites.json says it has them. */
@@ -64,28 +55,25 @@ async function readHomes(): Promise<ReadonlyMap<string, string>> {
   }
 }
 
-/** Reads the mycelium while the page is seen, telling `heard` each time it has more. */
+/** Watches the mycelium, telling `heard` each time it has more. */
 function watchMycelium(heard: (now: Mycelium) => void): void {
   let now: Mycelium = { cells: [], home: undefined, homes: new Map() };
-  const cellsRead = async (): Promise<void> => {
-    const cells = await readCells();
-    now = { ...now, cells, home: homeOf(cells, now.home) };
-    heard(now);
-  };
-  let every: number | undefined;
-  const whileSeen = (): void => {
-    if (document.visibilityState === "visible") {
-      cellsRead().catch(() => undefined);
-      every ??= globalThis.setInterval(() => {
-        cellsRead().catch(() => undefined);
-      }, CELLS_EVERY);
-    } else if (every !== undefined) {
-      globalThis.clearInterval(every);
-      every = undefined;
-    }
-  };
-  document.addEventListener("visibilitychange", whileSeen);
-  whileSeen();
+  // Only what Code draws of a cell is asked for, so its usage and leads
+  // moving every turn don't redraw the grove.
+  follow(
+    { feed: "node", kind: "cell", fields: ["name", "cwd", "title", "standing", "networks"] },
+    {
+      moved: (held) => {
+        const cells = cellsOf({ cells: held.all() });
+        now = { ...now, cells, home: homeOf(cells, now.home) };
+        heard(now);
+      },
+      // A node away leaves the cells last heard, as the map does; the page's
+      // own standing is the repos daemon's, which is what it's about.
+      stands: () => undefined,
+      problem: () => undefined,
+    },
+  );
   readHomes()
     .then((homes) => {
       now = { ...now, homes };
