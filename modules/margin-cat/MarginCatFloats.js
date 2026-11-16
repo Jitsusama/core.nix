@@ -198,7 +198,10 @@ function onto(from, to, cols, at) {
 
 // From `way.via`, where it's come to, onto the floating window and along
 // its top to its seat: dropped, landing crouched, a beat longer from past
-// a leap's height; leapt; or climbed and over its edge.
+// a leap's height; leapt up beside its edge, then over it; or climbed and
+// over its edge. A leap that went across as it rose cut over the corner
+// of its face for 230 ms, drawn over the tiled windows there (VKCF3Z
+// 4125043c: never over the floating window's own face).
 function lands(way, plan) {
     const at = way.at;
     const it = plan.float;
@@ -214,7 +217,8 @@ function lands(way, plan) {
         way.facing = -plan.side;
         if (plan.how === "leaps") {
             Ways.holds(way, "crouches", MarginCat.CROUCHES);
-            Ways.leap(way, { x: edge, y }, RISES);
+            Ways.leap(way, { x: way.x, y: it.top - at.tall }, RISES);
+            Ways.leap(way, { x: edge, y }, RISES / 2, "over");
         } else {
             Ways.clings(way, plan.side, -1);
             Ways.climb(way, { rows: [it] }, it.top - at.tall, RISES);
