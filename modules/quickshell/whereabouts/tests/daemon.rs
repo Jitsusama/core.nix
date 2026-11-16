@@ -1,7 +1,8 @@
 //! The daemon over its socket, with a root and files of its own and no
 //! GeoClue to ask: hello says it's location's; a watch is answered with
 //! where it kept the laptop and the clock's zone the root's link names,
-//! and health says the names a kept here was given answer;
+//! and health says the names a kept here or a pin was given answer, and
+//! an unnamed one's start;
 //! the link changed, clock-follows' move written, and a pin set and then
 //! taken away are each said to the watch as they happen; Location's rows,
 //! worded from the launcher's words, are told only to a watch of their
@@ -12,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use daemon_client::{Client, Daemon, until};
+use daemon_client::{Client, Daemon};
 use serde_json::{Value, json};
 
 /// Where the laptop was kept before the daemon started, found by Wi-Fi.
@@ -31,6 +32,12 @@ struct Running {
 
 impl Running {
     fn new(test: &str) -> Running {
+        Running::with(test, Some(&kept()), None)
+    }
+
+    /// The daemon started with this here kept and this pin set, either
+    /// left out when none.
+    fn with(test: &str, here: Option<&Value>, pin: Option<&Value>) -> Running {
         let folder =
             std::env::temp_dir().join(format!("whereabouts-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
@@ -38,7 +45,12 @@ impl Running {
         std::fs::create_dir_all(folder.join("kept")).unwrap();
         std::fs::create_dir_all(folder.join("state")).unwrap();
         zone_set(&folder, "America/Halifax");
-        std::fs::write(folder.join("kept/here.json"), kept().to_string()).unwrap();
+        if let Some(here) = here {
+            std::fs::write(folder.join("kept/here.json"), here.to_string()).unwrap();
+        }
+        if let Some(pin) = pin {
+            std::fs::write(folder.join("state/pin.json"), pin.to_string()).unwrap();
+        }
         let socket = folder.join("daemons/location.sock");
         let mut command = Command::new(env!("CARGO_BIN_EXE_location"));
         command
@@ -89,6 +101,23 @@ fn written(file: &Path, said: &Value) {
     std::fs::rename(new, file).unwrap();
 }
 
+/// Health as it first says what's wanted, asked until then, saying what it
+/// last said if it never does.
+fn health_until(running: &Running, wanted: impl Fn(&Value) -> bool) -> Value {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let health = running.client().ask(&json!({"id": "h", "ask": "health"}));
+        if wanted(&health) {
+            return health;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "health never said what was wanted: {health}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 /// The laptop's record as a watch is next told it, once `wanted` holds of
 /// it, passing over changes that don't.
 fn changed_until(client: &mut Client, wanted: impl Fn(&Value) -> bool) -> Value {
@@ -135,10 +164,39 @@ fn a_here_kept_named_says_its_names_answer() {
     // A here named before a restart is asked no name again until the
     // laptop moves, so health would otherwise say "starting" for good.
     let running = Running::new("named");
-    until("health never said the kept names answer", || {
-        let health = running.client().ask(&json!({"id": "h", "ask": "health"}));
+    health_until(&running, |health| {
         health["sources"]["names"] == json!({"state": "answering", "reason": ""})
     });
+}
+
+#[test]
+fn a_pin_held_through_a_restart_says_its_names_answer() {
+    // While the pin holds no name is asked, so its own stand answered.
+    let pin = json!({
+        "v": 2, "latitude": 44.65, "longitude": -63.57, "accuracy": 1000.0, "when": 1_790_000_200,
+        "place": "Quaystead, Westmark", "zone": "America/Halifax", "hand": true,
+    });
+    let running = Running::with("pin-kept", None, Some(&pin));
+    health_until(&running, |health| {
+        health["sources"]["names"] == json!({"state": "answering", "reason": ""})
+    });
+}
+
+#[test]
+fn a_here_kept_unnamed_says_its_names_are_starting() {
+    let mut here = kept();
+    here["place"] = Value::Null;
+    here["zone"] = Value::Null;
+    let running = Running::with("unnamed", Some(&here), None);
+    // GeoClue is refused only once the kept here has been judged, so by
+    // then names would have said answering if it were going to.
+    let health = health_until(&running, |health| {
+        health["sources"]["geoclue"]["state"] == "refused"
+    });
+    assert_eq!(
+        health["sources"]["names"]["state"], "starting",
+        "an unnamed here's names said they answer: {health}"
+    );
 }
 
 #[test]
