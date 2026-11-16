@@ -256,6 +256,7 @@
         dictation-chord = dictation;
         disk-guard = pkgs.callPackage ../../modules/disk-guard/package.nix { };
         eero = pkgs.callPackage ../../modules/eero/package.nix { };
+        elsewhere = pkgs.callPackage ../../modules/elsewhere/package.nix { };
         file-preview = pkgs.callPackage ../../modules/open-with/file-preview.nix { };
         firmware-notice = pkgs.callPackage ../../modules/firmware-notice/package.nix { };
         firmware-settings = pkgs.callPackage ../../modules/firmware-settings/package.nix { };
