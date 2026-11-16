@@ -1689,6 +1689,11 @@
     opened, closed or moved, a cast or a screenshot, as niri's events did, with a window used or a
     workspace activated making no list again
   '';
+  niri-keeps-secret-copies-from-sandboxes = ''
+    the session's niri, nested in the sandbox, offers a sandbox's focused window no copy a password
+    manager marked secret, in either selection, while ordinary text still reaches it and Joel's own
+    window is offered the secret and reads it
+  '';
   niri-lets-x11-in-only-with-its-cookie = ''
     the session's niri, nested in the sandbox, starts an Xwayland that lets in an X11 client holding
     its cookie and refuses one without it

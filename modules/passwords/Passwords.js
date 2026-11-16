@@ -429,7 +429,7 @@ function fill(saying, values) {
 
 // What the foot says of a copy, by `said`'s words, at `now`: while it's
 // asked, "copying GitHub's password…"; once on the clipboard, "copied
-// GitHub's password · clears in 90 s", counting down to the time the
+// GitHub's password · clears in 30 s", counting down to the time the
 // daemon said it clears; a one-time code instead says the seconds left in
 // its period, from the daemon's answer, and once its period ends that it
 // lapsed; once cleared, that it's gone; and one refused, why. A copy is

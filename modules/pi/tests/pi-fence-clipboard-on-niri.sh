@@ -6,7 +6,9 @@
 # niri). The display's socket offers ordinary clients what they need and
 # none of the privileged protocols niri's own does; a command bubblewrap
 # fences copies and pastes both selections through the door and its shims,
-# a password manager's secret is refused, and a command outside the fence
+# a password manager's secret is refused, Joel's own included, while his
+# ordinary copy reaches the fence and one over a secret ends the wl-copy
+# holding it, as Passwords holds its copy, and a command outside the fence
 # is refused before it asks; the door's journal names the session pi gave
 # the bubblewrap, and never what was copied. A nested niri, as core's
 # shell-preview starts one from a fenced command, opens on the sandboxed
@@ -88,6 +90,68 @@ fenced() {
   PI_SESSION_ID=check-session bwrap --unshare-pid --dev-bind / / --proc /proc -- \
     env PI_SESSION_ID=forged PATH="$shims:$PATH" bash -euo pipefail -c "$1"
 }
+
+# Whether a fenced paste is refused as a password manager's secret. The
+# door reads the selection niri last told it of, a moment after a copy:
+# up to two seconds, in tenths, for it to hear. Any paste that's served
+# says no at once.
+refused_as_a_secret() {
+  for _ in $(seq 20); do
+    if said=$(fenced "wl-paste -n" 2>&1); then
+      echo "a fenced command read it: $said" >&2
+      return 1
+    fi
+    case $said in
+    *password*) return 0 ;;
+    # Refused for some other reason, as before niri has told the door of
+    # the copy, so it's asked again.
+    *) ;;
+    esac
+    sleep 0.1
+  done
+  echo "its refusal said: $said" >&2
+  return 1
+}
+
+# Whether a fenced paste reads $1, within two seconds, in tenths.
+reads_as() {
+  for _ in $(seq 20); do
+    # A paste refused, as before niri has told the door of the copy, is
+    # asked again.
+    read=$(fenced "wl-paste -n" 2> /dev/null) || read=
+    [ "$read" = "$1" ] && return 0
+    sleep 0.1
+  done
+  return 1
+}
+
+# A password manager's copy on Joel's own display, marked secret as
+# wl-copy --sensitive and Passwords mark it, is refused to a fenced
+# command, while his ordinary copy still reaches it.
+secret="secret-$RANDOM-$RANDOM"
+wl-copy --sensitive "$secret"
+refused_as_a_secret || fail "Joel's copy marked secret reached a fenced command"
+word="ordinary-$RANDOM-$RANDOM"
+wl-copy "$word"
+reads_as "$word" || fail "Joel's ordinary copy didn't reach a fenced command"
+
+# Passwords holds its copy in a wl-copy in the foreground, and anything
+# copied over it ends that wl-copy at once, so its copy is gone then,
+# well before its time is up.
+wl-copy --sensitive --foreground "$secret" &
+holder=$!
+refused_as_a_secret || fail "a copy held in the foreground wasn't refused as a secret"
+word="ordinary-$RANDOM-$RANDOM"
+wl-copy "$word"
+# Up to two seconds, in tenths, for niri to tell the holder it's replaced.
+for _ in $(seq 20); do
+  kill -0 "$holder" 2> /dev/null || break
+  sleep 0.1
+done
+! kill -0 "$holder" 2> /dev/null || fail "a secret held in the foreground outlived a copy over it"
+wait "$holder" || true
+reads_as "$word" || fail "the copy over a secret didn't reach a fenced command"
+
 fenced "
   echo '$line' | wl-copy -p -n
   [ \"\$(wl-paste -p -n)\" = '$line' ] || { echo 'the primary selection did not round-trip'; exit 1; }
@@ -144,5 +208,5 @@ kill $!
 EOF
 fenced "bash $logs/preview.sh $inner $filtered $logs" ||
   fail "shell-preview's nested niri on the sandboxed display"
-! grep -qe "$line" -e hunter2 -e "two words" "$logs/door.log" || fail "the door's journal holds what was copied"
+! grep -qe "$line" -e hunter2 -e "two words" -e "$secret" "$logs/door.log" || fail "the door's journal holds what was copied"
 echo "the fence's clipboard and display hold on niri"

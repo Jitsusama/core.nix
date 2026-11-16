@@ -253,16 +253,16 @@ QtObject {
         const asking = { title: "GitHub", detail: "password", clears: 0, lapses: 0 };
         check("while it's asked", Passwords.told(asking, now, said),
             "copying GitHub's password\u2026");
-        const copied = Passwords.answered(asking, { copied: true, clears: now + 90_000 }, now,
+        const copied = Passwords.answered(asking, { copied: true, clears: now + 30_000 }, now,
             "away");
         check("once it's copied", Passwords.told(copied, now, said),
-            "copied GitHub's password \u00b7 clears in 90 s");
-        check("counting down", Passwords.told(copied, now + 30_500, said),
-            "copied GitHub's password \u00b7 clears in 60 s");
-        check("once it's cleared", Passwords.told(copied, now + 90_000, said),
+            "copied GitHub's password \u00b7 clears in 30 s");
+        check("counting down", Passwords.told(copied, now + 10_500, said),
+            "copied GitHub's password \u00b7 clears in 20 s");
+        check("once it's cleared", Passwords.told(copied, now + 30_000, said),
             "GitHub's password is cleared from the clipboard");
         const code = Passwords.answered(Object.assign({}, asking, { detail: "one-time code" }),
-            { copied: true, clears: now + 90_000, period: 30, left: 12 }, now, "away");
+            { copied: true, clears: now + 30_000, period: 30, left: 12 }, now, "away");
         check("a code's seconds left in its period", Passwords.told(code, now + 2_000, said),
             "copied GitHub's one-time code \u00b7 10 s left of 30");
         check("a code that lapsed", Passwords.told(code, now + 12_000, said),

@@ -232,6 +232,14 @@
     # how long its render waited and took, and how long it waited for the
     # screen once queued, by the clock the shell's own times use. It adds
     # no setting.
+    #
+    # A sandbox's window that had the keyboard was still offered the
+    # clipboard and the primary selection through its data device, as any
+    # focused window is, so a copy a password manager marked secret
+    # reached it. The patch (keeps-secret-copies-from-sandboxes.patch)
+    # offers a selection holding such a mark to no wp-security-context-v1
+    # client, as the clipboard door judges the mark, while ordinary copies
+    # and Joel's own windows are served as before. It adds no setting.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -270,6 +278,7 @@
         ./sandboxed-windows-stay-behind.patch
         ./sandbox-sees-no-idle.patch
         ./says-a-frames-steps-after-idle.patch
+        ./keeps-secret-copies-from-sandboxes.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.

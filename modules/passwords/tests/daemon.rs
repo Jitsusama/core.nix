@@ -3,8 +3,7 @@
 //! without a secret, even one a manager gives with its secrets left on; a
 //! get reads an entry in full, still without them; a held list or get asks
 //! no manager anything; a secret goes only to the ask for it, never to a
-//! watch, or to the clipboard, cleared when its time is up, and no copy is
-//! made while no copier is named; the daemon can't be read through /proc
+//! watch; the daemon can't be read through /proc
 //! by the account's other processes, and ends once whatever ran it closes
 //! its end; a one-time code says its period, and its detail gives
 //! the code, never its seed; a manager signed out is said so and refuses
@@ -20,13 +19,15 @@
 //! nor any hash, and dresses the entries again once the daemon starts
 //! again; and since when trouble's been found holds while it does, and
 //! clears once a check finds none, each told to a watch. Secret asks the
-//! daemon answers are its own module's (asks/mod.rs).
+//! daemon answers are their own module's (asks/mod.rs), and so are the
+//! copies it makes (copies/mod.rs).
 
 mod asks;
 mod common;
+mod copies;
 
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use common::{AUDITING, Breaches, KEEPING, Running, SIGNED_OUT, until};
 use passwords::audit::hash;
@@ -134,33 +135,6 @@ fn a_secret_goes_only_to_the_ask_for_it() {
 }
 
 #[test]
-fn no_copy_is_made_while_no_copier_is_named() {
-    let running = Running::with_env(
-        "uncopied",
-        &[("keeping", KEEPING)],
-        &[("PASSWORDS_COPIER", "")],
-    );
-    let mut client = running.client();
-    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
-    let refused = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:keeping:gh"}));
-    assert_eq!(refused["error"]["code"], "refused", "{refused}");
-    assert!(
-        refused["error"]["message"]
-            .as_str()
-            .is_some_and(|said| said.contains("browser extension")),
-        "a refused copy didn't say what to use instead: {refused}"
-    );
-    holds_no_secret(&refused);
-    // Refused before any secret was read: the manager was asked no reveal.
-    let asked = running.asked_of("keeping");
-    assert!(
-        !asked.contains("reveal"),
-        "a secret was read to copy: {asked}"
-    );
-    assert!(!running.copied().exists(), "something was copied");
-}
-
-#[test]
 fn the_account_cant_read_the_daemon_through_proc() {
     let running = Running::with("undumpable", &[("keeping", KEEPING)]);
     let mut client = running.client();
@@ -199,44 +173,6 @@ fn the_daemon_ends_once_whatever_ran_it_closes_its_end() {
         );
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
-}
-
-#[test]
-fn a_copy_is_marked_sensitive_and_cleared_when_its_time_is_up() {
-    let running = Running::with("copy", &[("keeping", KEEPING)]);
-    let mut client = running.client();
-    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
-    let copied = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:keeping:gh"}));
-    assert_eq!(copied["copied"], true, "{copied}");
-    holds_no_secret(&copied);
-    // The copier writes what it's given, then its flags, so both are
-    // waited for: reading the flags once the copy is there races it.
-    let flagged = running.copied().with_extension("flags");
-    until("the password is copied with its flags", || {
-        std::fs::read_to_string(running.copied()).is_ok_and(|copied| copied == "hunter2")
-            && std::fs::read_to_string(&flagged).is_ok_and(|flags| flags.ends_with('\n'))
-    });
-    let flags = std::fs::read_to_string(&flagged).unwrap();
-    assert!(
-        flags.contains("--sensitive") && flags.contains("--foreground"),
-        "{flags}"
-    );
-    // The copier is ended once its time is up, which clears the clipboard.
-    until("the copy is cleared", || !copier_runs(&running.copied()));
-}
-
-/// Whether the stand-in copier still holds the clipboard.
-fn copier_runs(copied: &Path) -> bool {
-    let wanted = copied.to_string_lossy().into_owned();
-    std::fs::read_dir("/proc")
-        .unwrap()
-        .flatten()
-        .any(|process| {
-            std::fs::read(process.path().join("environ"))
-                .is_ok_and(|environ| String::from_utf8_lossy(&environ).contains(&wanted))
-                && std::fs::read_to_string(process.path().join("cmdline"))
-                    .is_ok_and(|line| line.contains("copier"))
-        })
 }
 
 #[test]

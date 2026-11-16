@@ -86,9 +86,11 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use terminal_kit::{Exit, Failure};
 
-/// How long a copied secret stays on the clipboard, as 1Password's own
-/// app clears it, unless `$PASSWORDS_CLEARS_MS` says otherwise.
-const CLEARS: Duration = Duration::from_secs(90);
+/// How long a copied secret stays on the clipboard, unless
+/// `$PASSWORDS_CLEARS_MS` says otherwise: a third of 1Password's own
+/// 90 s, long enough to paste and short enough that a copy forgotten
+/// there is soon gone, as the fence's terms for copying ask (2026-11-16).
+const CLEARS: Duration = Duration::from_secs(30);
 
 /// How long a manager that stopped waits before it's started again, at
 /// first and at most.
