@@ -99,7 +99,7 @@ fn carry(record: &Value, parent: &str, rows: &HashMap<String, &Value>, words: &W
     let said = &words.carried;
     let id = text(record, "key").trim_start_matches("carry:");
     // A session between machines has no row anywhere, yet hasn't ended.
-    let gone = if matches!(text(record, "state"), "ordered" | "carrying") {
+    let gone = if matches!(state_of(record), Some((_, _, "underWayCount", ..))) {
         "travelling"
     } else {
         "ended"

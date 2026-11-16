@@ -3242,7 +3242,7 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
     shell.launcher_until(lambda shown: shown["rows"][:2] == ["Paused Quest", "Listening Quest"])
     going = shell.showing()["selected"]
     assert going["note"] == "carried to tern by Orchestrating Quest \u00b7 tern sits idle", going
-    assert going["told"][:1] != ["\u21b5 carry back"], going
+    assert not [act for act in going["told"] if act.startswith("\u21b5")], going
     shoot("agents-carried")
     shell.down_to("Listening Quest")
     arrived = shell.showing()["selected"]
@@ -3254,8 +3254,8 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
     # (Launcher.qml's lands) and normal's Return asks the node, the row becoming "carrying
     # back" while it's asked. The node here answers tern, no machine of its, at once, and the
     # row reads as it did again before a poll may see it (the whole run, 2026-11-16), so the
-    # shell's own report of the row becoming says it was; how the node's answer ends it is
-    # tests/carry-back.qml's.
+    # shell's own reports say it: the row becoming, then not, in the node's words, which only
+    # its answer gives. How each answer ends it is tests/carry-back.qml's.
     shell.normal()
     # An act's Return is no key the launcher times to its frame (Launcher.qml's keyTimed), so
     # this is the most it took: when the case read the report, its polls of the log in.
@@ -3265,6 +3265,7 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
     shell.reported(f"becoming {arrived['is']}", lambda rest: rest == "", since)
     took = round((time.monotonic() - began) * 1000)
     logging.getLogger(__name__).info("LAB Carry Back was reported becoming %s ms on", took)
+    shell.reported(f"not become {arrived['is']}: ", bool, since)
 
 
 def in_to_read(shell: Shell) -> None:
@@ -3288,9 +3289,12 @@ def test_a_carry_under_way_waits_quietly_in_for_you_and_goes_as_it_arrives(
         ordered("PAUSED", 60, **{"from": here(), "to": "tern", "why": "tern sits idle"}),
     )
     try:
-        # Served first, so a For You without them is For You's own miss.
+        # Served first, so a For You without them is For You's own miss: these two, not the
+        # case before's, which the node may not yet have read gone.
         in_agents(shell)
         shell.launcher_until(lambda shown: "Carried" in shown["rows"])
+        shell.down_to("Carried")
+        shell.launcher_until(lambda shown: shown["selected"]["side"] == "2 on their way")
         shell.close_launcher()
         in_to_read(shell)
         # Afloat Quest's session runs nowhere yet, so its carry is on its way.
@@ -3309,7 +3313,7 @@ def test_a_carry_under_way_waits_quietly_in_for_you_and_goes_as_it_arrives(
         )
     finally:
         CARRIES.unlink(missing_ok=True)
-        (PRESENCE / "afloat.json").unlink(missing_ok=True)
+        lay("AFLOAT", "Afloat Quest", {"state": "idle"}, closed=True)
         touched("LISTEN")
 
 

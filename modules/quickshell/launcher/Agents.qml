@@ -2000,24 +2000,33 @@ Provider {
     // copy. Each row is kept while its carry row reads the same, among
     // For You's own (forYouKeeping), so it's asked only as that's made.
     function carriesUnderWay() {
-        // The rows first, since asking them is what tells forYou of each
-        // change: the group alone, asked before any carry came, told it
-        // nothing, so For You never showed one until something else moved
-        // (the carries' niri case, 2026-11-16).
-        const carries = top.rows("row:agents-top:carried");
-        const group = top.rowAt("row:agents-top:carried");
+        const waiting = JSON.parse(carriesWaiting);
+        const group = waiting.length === 0 ? null : top.rowAt("row:agents-top:carried");
         if (!group)
             return [];
-        return carries.map(made => ({
-            made,
-            waits: CarryBack.underWay(top.served(top.madeOf[made.key]))
-        })).filter(one => one.waits !== null).map(one => ({
-            row: provider.keptOr(forYouKeeping, `on:carrying:${one.made.key}`,
-                JSON.stringify([one.made.name, one.made.side, one.made.note]),
-                () => carryUnderWay(group, one.made)),
+        return waiting.map(one => ({
+            row: provider.keptOr(forYouKeeping, `on:carrying:${one.key}`,
+                JSON.stringify([one.name, one.side, one.note]),
+                () => carryUnderWay(group, top.rowAt(one.key) ?? one)),
             thing: one.waits
         }));
     }
+    // The carries under way as Carried's rows read them, said as text, so
+    // For You is told only as one comes, goes or reads otherwise. Asking
+    // the rows is what tells of a change: the group alone, asked before any
+    // carry came, told nothing, so For You never showed one until something
+    // else moved (the carries' niri case, 2026-11-16). Asked from forYou
+    // itself, every change to Agents' rows made For You again, carries or
+    // none (the carries' council); a string binding tells only as it differs.
+    readonly property string carriesWaiting: JSON.stringify(top.rows("row:agents-top:carried")
+        .map(made => ({
+            key: made.key,
+            name: made.name,
+            side: made.side,
+            note: made.note,
+            glyph: made.glyph,
+            waits: CarryBack.underWay(top.served(top.madeOf[made.key]))
+        })).filter(one => one.waits !== null))
     function carryUnderWay(group, made) {
         const trail = () => ["collection:agents", provider.launcher?.steadyId(group),
             provider.launcher?.steadyId(made)];
