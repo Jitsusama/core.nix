@@ -17,12 +17,24 @@ const MACHINE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 // The node's ask `served` names, or null for anything but a carry of a
 // quest to a machine.
 function asked(served) {
-    return null;
+    const quest = String(served?.quest ?? "");
+    const to = String(served?.to ?? "");
+    if (served?.ask !== "carry" || !QUEST.test(quest) || !MACHINE.test(to)) {
+        return null;
+    }
+    return { ask: "carry", quest, to };
 }
 
 // How the node's answer to it ended: `{ done: true }` once the carry has
 // ended carried, else `{ done: false, why }` with the node's own words
 // for its refusal, or `said`'s where it gave none or never answered.
 function ended(answer, said) {
-    return { done: false, why: "" };
+    if (answer === null || answer === undefined) {
+        return { done: false, why: said.unanswered ?? "" };
+    }
+    if (answer.carried?.state === "done") {
+        return { done: true };
+    }
+    const why = answer.error?.message;
+    return { done: false, why: typeof why === "string" && why !== "" ? why : said.unread ?? "" };
 }

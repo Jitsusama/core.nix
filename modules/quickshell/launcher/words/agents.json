@@ -341,7 +341,9 @@
       "verb": "carry back",
       "glyph": "resume",
       "said": {
-        "carrying": "carrying back"
+        "carrying": "carrying back",
+        "unanswered": "its machine didn't answer",
+        "unread": "its refusal couldn't be read"
       }
     },
     {
