@@ -374,6 +374,11 @@ impl Live {
         self.follow.now(ms(now))
     }
 
+    /// The share of its lane the VPN riding the link is held to (src/tunnel.rs).
+    pub fn vpn_share(&self) -> f64 {
+        self.follow.controller.tunnel_share()
+    }
+
     /// Takes each whole line the file gained, keeping one half written.
     fn read_on(&mut self) {
         let Ok(mut file) = File::open(&self.file.0) else {

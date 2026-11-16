@@ -44,6 +44,7 @@ mod sim;
 mod stamp;
 mod status;
 mod trace;
+mod tunnel;
 mod vpndelay;
 mod waiting;
 mod why;
@@ -255,6 +256,9 @@ struct Shaped {
     /// queue in one: a VPN held under the link holds the queue in its own
     /// CAKE, and one the link's CAKE doesn't see is no router's.
     vpn_reads: (u32, u32),
+    /// The share of its lane the VPN riding the link is held to, while it
+    /// waits inside its tunnel (src/tunnel.rs).
+    vpn_share: f64,
     /// The packets the upload's CAKE had dropped when last read, and what
     /// it and the VPNs riding the link dropped since the controller was
     /// last told, and when that was.
@@ -550,6 +554,7 @@ fn start(
         queued_reads: (0, 0),
         held_bytes: 0,
         vpn_reads: (0, 0),
+        vpn_share: 1.0,
         drops: None,
         dropped: 0,
         told_at: None,
@@ -996,7 +1001,10 @@ fn follow_vpns(
     let joel = inside.map_or(0.0, |k| float(k.best + k.video + k.voice));
     let base = primary.map(|s| {
         let vpn = s.share_lanes((joel, agents), t);
-        (rate::whole(vpn * lanes::VPN_HELD), s.applied.1, s.straight)
+        // Held under its tunnel's pace while it waits inside it, so the
+        // queue stands in this CAKE; agents' direct lane borrows the rest.
+        let held = vpn * lanes::VPN_HELD * s.vpn_share;
+        (rate::whole(held), s.applied.1, s.straight)
     });
     let carried = sh(&words(&format!(
         "nft -j list counter inet {TABLE} {}",
@@ -1217,12 +1225,23 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Liv
         .collect();
     // The one-way controller holds the link the recorder follows; any
     // other goes at its whole rate, its traffic still sorted by CAKE.
+    let share = live.as_deref().map_or(1.0, live::Live::vpn_share);
     let held = live.map(|l| match l.poll(SystemTime::now()) {
         Some((link, rates)) => (Some(link.to_string()), rates),
         None => (None, replay::Rates::default()),
     });
     for (name, (sent, received)) in links::connection_loads(&carried, &follows) {
         if let Some(s) = shaped.get_mut(&name) {
+            // The VPN is held only while the upload is: a recorder gone
+            // silent lets both go.
+            s.vpn_share = match &held {
+                Some((link, rates))
+                    if link.as_deref() == Some(name.as_str()) && rates.up.is_some() =>
+                {
+                    share
+                }
+                _ => 1.0,
+            };
             match &held {
                 None => step(s, t, sent, received),
                 Some((link, rates)) if link.as_deref() == Some(name.as_str()) => hold(s, *rates),
@@ -1389,6 +1408,10 @@ struct LinkStatus {
     /// made of it, so a trace can say why its rate held where it did.
     #[serde(default)]
     heard: Option<live::Heard>,
+    /// How the upload is shared between its lanes, and the agents'
+    /// flows waiting on each.
+    #[serde(default)]
+    lanes: Option<lanes::Said>,
 }
 
 fn write_status(
@@ -1415,6 +1438,7 @@ fn write_status(
             heard: heard
                 .filter(|(link, _)| *link == s.uplink.name)
                 .map(|(_, heard)| heard.clone()),
+            lanes: s.lanes.said(&s.split),
         })
         .collect();
     let path = runtime.join("status.json");

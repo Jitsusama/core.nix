@@ -13,7 +13,7 @@ use terminal_kit::layout::{self, Align, Room};
 use terminal_kit::{Context, Exit, Failure, Pen};
 
 use crate::rate::{float, whole};
-use crate::{LinkStatus, cpu, mbit, qdisc, sh, words};
+use crate::{LinkStatus, cpu, lanes, mbit, qdisc, sh, words};
 
 /// CAKE's four tins, in the order `tc` gives them.
 const TINS: [&str; 4] = ["bulk", "best effort", "video", "voice"];
@@ -69,6 +69,9 @@ fn said(link: &LinkStatus) -> Vec<String> {
     let mut lines = vec![format!("{}  on {}", link.name, link.network)];
     let mut say = |line: String| lines.push(format!("{INSET}{line}"));
     say(format!("up {}, down {}", mbit(link.up), mbit(link.down)));
+    for line in link.lanes.as_ref().map(lanes_said).unwrap_or_default() {
+        say(line);
+    }
     if let Some(why) = link.heard.as_ref().and_then(|heard| heard.why.clone()) {
         say(why);
     }
@@ -104,6 +107,47 @@ fn said(link: &LinkStatus) -> Vec<String> {
         .map(|(host, ms)| format!("{host} {ms:.0} ms"))
         .collect();
     say(format!("quiet round trips: {}", pings.join(", ")));
+    lines
+}
+
+/// How the upload is shared between its lanes, Joel's first, and the
+/// agents' flows waiting on each, said only while some wait.
+fn lanes_said(said: &lanes::Said) -> Vec<String> {
+    // The unit is said once, at the end, as the tins' table says each
+    // once in its label.
+    let figure = |kbit: u64| format!("{:.1}", float(kbit) / 1_000.0);
+    let mut lines = vec![format!(
+        "the upload's lanes: yours {}, first; the VPN's {}; agents' direct {} Mbit/s",
+        figure(said.joel),
+        figure(said.vpn),
+        figure(said.agents)
+    )];
+    let flows = |n: u32| {
+        if n == 1 {
+            "1 flow".to_owned()
+        } else {
+            format!("{n} flows")
+        }
+    };
+    let waiting: Vec<String> = [
+        (said.waiting_vpn, "in the VPN"),
+        (said.waiting_direct, "direct"),
+    ]
+    .into_iter()
+    .filter(|&(n, _)| n > 0)
+    .enumerate()
+    // The noun is said once, with the first lane's count.
+    .map(|(at, (n, lane))| {
+        if at == 0 {
+            format!("{} {lane}", flows(n))
+        } else {
+            format!("{n} {lane}")
+        }
+    })
+    .collect();
+    if !waiting.is_empty() {
+        lines.push(format!("agents waiting: {}", waiting.join(", ")));
+    }
     lines
 }
 
@@ -327,6 +371,47 @@ mod tests {
                 lines[0]
             );
         }
+    }
+
+    fn shared(waiting_vpn: u32, waiting_direct: u32) -> lanes::Said {
+        lanes::Said {
+            joel: 1_740,
+            vpn: 6_310,
+            agents: 1_460,
+            waiting_vpn,
+            waiting_direct,
+        }
+    }
+
+    #[test]
+    fn the_lanes_say_yours_first_then_the_vpn_s_then_agents_direct() {
+        assert_eq!(
+            lanes_said(&shared(12, 3)),
+            [
+                "the upload's lanes: yours 1.7, first; the VPN's 6.3; agents' direct 1.5 Mbit/s",
+                "agents waiting: 12 flows in the VPN, 3 direct",
+            ],
+            "the lanes weren't said as Joel reads them"
+        );
+    }
+
+    #[test]
+    fn agents_waiting_on_one_lane_are_said_on_that_lane_alone() {
+        let lines = lanes_said(&shared(0, 1));
+        assert_eq!(
+            lines.get(1).map(String::as_str),
+            Some("agents waiting: 1 flow direct"),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn no_agent_waiting_leaves_the_waiting_line_out() {
+        assert_eq!(
+            lanes_said(&shared(0, 0)).len(),
+            1,
+            "a line said that no agent waits"
+        );
     }
 
     #[test]

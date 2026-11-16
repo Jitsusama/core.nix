@@ -26,6 +26,9 @@ pub enum Why {
     /// The VPN's round trip stands this far past the line, in ms, where
     /// cuts didn't drain it, so it goes unheeded.
     Far { delay_ms: f64 },
+    /// The VPN waited this long, in ms, inside its own tunnel, under a
+    /// line with room, so its own queue is held to `share` of its lane.
+    Tunnel { delay_ms: f64, share: f64 },
     /// Held under what got through a router that queues flow by flow, in
     /// kbit/s, where only data waiting shows its queue.
     Router { plateau: f64 },
@@ -79,6 +82,11 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
         Why::Far { delay_ms } => format!(
             "Upload {rate}: the VPN reads {delay_ms:.0} ms past the line, which no cut here \
              reaches, so none is made."
+        ),
+        Why::Tunnel { delay_ms, share } => format!(
+            "Upload {rate}: the VPN waited {delay_ms:.0} ms inside its tunnel, so its own queue \
+             is held to {:.0}% of its lane; {held}.",
+            share * 100.0
         ),
         Why::Router { plateau } => format!(
             "Upload {rate}: held under the router's own queue, which let {} through; {held}.",
@@ -148,6 +156,23 @@ mod tests {
             ),
             "Upload 10.8 Mbit/s: the VPN reads 120 ms past the line, which no cut here \
              reaches, so none is made."
+        );
+    }
+
+    #[test]
+    fn a_tunnel_s_own_queue_says_the_share_its_queue_is_held_to() {
+        assert_eq!(
+            say(
+                Why::Tunnel {
+                    delay_ms: 118.6,
+                    share: 0.723
+                },
+                Some(10_800),
+                Some(12_000.0),
+                8.0
+            ),
+            "Upload 10.8 Mbit/s: the VPN waited 119 ms inside its tunnel, so its own queue is \
+             held to 72% of its lane; held so for 8 s."
         );
     }
 
