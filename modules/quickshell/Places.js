@@ -101,17 +101,14 @@ function placed(places, screens, inUse) {
 }
 
 // The moves that take workspaces given in place of a gone screen to it once
-// it's connected again. `away` holds, by each such screen's description (or
-// its connector, for a place kept before screens were named so), the
-// workspaces given in its place, by niri's id, each with the number it was
-// kept at there and the connector it left (`output`), when known. The moves
-// go lowest kept number first; their order there is the windows daemon's to
-// put back, as Joel last had it. One gone already isn't moved, and one on
-// the screen already is marked (`there`) and left. Of two screens alike, as
-// two monitors of one model without serials are, each goes to the connector
-// it left, since niri lists its screens in no set order, and the first
-// alike listed may be the one it waited on. `home` names the screens
-// connected again, which are done with.
+// it's connected again. `away` holds, by each screen's description (or its
+// connector, for a place kept before screens were named so), the workspaces
+// given in its place, by niri's id, each with the number it was kept at
+// there and the connector it left (`output`), if known, which wins among
+// screens alike, as niri lists them in no set order. The moves go lowest
+// kept number first; their order there is the windows daemon's to put back.
+// One gone already isn't moved; one on the screen already is marked
+// (`there`) and left. `home` names the screens connected again, done with.
 function homeward(away, screens, workspaces) {
     const moves = [];
     const home = [];
