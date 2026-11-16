@@ -149,6 +149,7 @@ it("a machine's room and declared reach are flattened, as the map reads them", (
       reach: ["cistern"],
       leaves_at: "2026-11-16T09:00:00Z",
       measured_at: "2026-11-16T07:29:00Z",
+      share: null,
     },
   ]);
 });
@@ -192,6 +193,106 @@ it("a cut title reads with three full stops, wherever it sits", () => {
   const cut = { ...session("OSPREY", "Serve the map\u2026"), trees: [{ branch: "map\u2026" }] };
   const [cell] = nowOf(told([cut]), AT).cells;
   assert.deepEqual([cell?.title, cell?.trees], ["Serve the map...", [{ branch: "map..." }]]);
+});
+
+/** The balance service's latest reading, as the node serves it, `ago` ms before AT. */
+function reading(ago: number) {
+  return {
+    key: "balance:skiff",
+    kind: "balance",
+    heard: AT,
+    measures: "balance/2",
+    at: new Date(AT - ago).toISOString(),
+    machines: [
+      {
+        machine: "skiff",
+        ready: true,
+        memory: 0.63,
+        stall: 0.85,
+        processor: 0.27,
+        load: 0.85,
+        over: false,
+        room: false,
+        busy: 30,
+        idle: 42,
+        busy_per_core: 1.88,
+        age: 0,
+      },
+    ],
+    imbalance: 0.06,
+    flags: [],
+    held: [{ flag: "stranded", machine: "skiff", spent: "processor" }],
+  };
+}
+
+/** The four watches and the balance's, told `these` and the balance `latest`. */
+function toldBalance(these: Parameters<typeof told>[0], latest: readonly object[]) {
+  const balance = new Held();
+  balance.took({ records: latest });
+  return { ...told(these), balance };
+}
+
+it("a fresh balance reading gives each machine its share and the map what's held", () => {
+  const now = nowOf(toldBalance([skiff], [reading(60_000)]), AT);
+  assert.deepEqual(
+    now.machines.map((machine) => machine.share),
+    [{ busy: 30, idle: 42, busy_per_core: 1.88, load: 0.85, over: false, room: false }],
+  );
+  assert.deepEqual(now.balance, {
+    measures: "balance/2",
+    at: new Date(AT - 60_000).toISOString(),
+    imbalance: 0.06,
+    held: [{ flag: "stranded", machine: "skiff", spent: "processor" }],
+  });
+});
+
+it("a balance reading past three minutes old, ahead of the clock, with no time, or none, is no share at all", () => {
+  const { at: _at, ...timeless } = reading(0);
+  for (const [why, heard] of [
+    ["181 s old", toldBalance([skiff], [reading(181_000)])],
+    ["181 s ahead", toldBalance([skiff], [reading(-181_000)])],
+    ["no time", toldBalance([skiff], [timeless])],
+    ["no reading", toldBalance([skiff], [])],
+    ["no balance watch", told([skiff])],
+  ] as const) {
+    const now = nowOf(heard, AT);
+    assert.deepEqual(
+      [now.machines.map((machine) => machine.share), now.balance],
+      [[null], null],
+      why,
+    );
+  }
+});
+
+it("a balance reading 179 s old, or as far ahead, still gives its shares", () => {
+  for (const ago of [179_000, -179_000]) {
+    const now = nowOf(toldBalance([skiff], [reading(ago)]), AT);
+    assert.notEqual(now.balance, null, `${ago} ms`);
+  }
+});
+
+it("of the readings each machine's node serves, the newest is the one drawn", () => {
+  const older = { ...reading(90_000), key: "balance:tern", imbalance: 0.3 };
+  const now = nowOf(toldBalance([skiff], [reading(30_000), older]), AT);
+  assert.equal(now.balance?.imbalance, 0.06);
+});
+
+it("a reading of one machine has no spread, and one that holds nothing holds none", () => {
+  const { held: _held, ...alone } = { ...reading(0), imbalance: null };
+  const now = nowOf(toldBalance([skiff], [alone]), AT);
+  assert.deepEqual([now.balance?.imbalance, now.balance?.held], [null, []]);
+});
+
+it("a machine the balance doesn't name has no share, and the others keep theirs", () => {
+  const tern = { ...skiff, key: "machine:tern", name: "tern" };
+  const now = nowOf(toldBalance([skiff, tern], [reading(0)]), AT);
+  assert.deepEqual(
+    now.machines.map((machine) => [machine.name, machine.share === null]),
+    [
+      ["skiff", false],
+      ["tern", true],
+    ],
+  );
 });
 
 it("a cell's change is drawn, and a cell gone is gone from the map", () => {

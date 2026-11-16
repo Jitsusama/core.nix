@@ -15,12 +15,32 @@ import { type Fields, type Held, isObject, text } from "../../local-sites/kit/re
 /** How many messages the map hears, the latest, as `mycelium messages` says. */
 const LATEST_MESSAGES = 20;
 
-/** The node's records, a watch's for each kind the map reads. */
+/**
+ * How old the balance's latest reading may be and still be drawn. The
+ * service reads each minute, so three minutes is two missed: past it, the
+ * service has stopped and its last reading would only look current.
+ */
+const BALANCE_FRESH_MS = 180_000;
+
+/**
+ * The node's records, a watch's for each kind the map reads. The balance is
+ * the balance service's latest reading, which a node serves only where the
+ * service runs, so a map without it draws as before.
+ */
 interface Heard {
   readonly network: Held;
   readonly cell: Held;
   readonly machine: Held;
   readonly message: Held;
+  readonly balance?: Held;
+}
+
+/** The realm's balance as the map says it, from the service's latest reading. */
+interface Balance {
+  readonly measures: unknown;
+  readonly at: string;
+  readonly imbalance: unknown;
+  readonly held: unknown;
 }
 
 /** A message as the map draws it: who sent, of what intent, to which groups. */
@@ -38,6 +58,7 @@ interface Now {
   readonly cells: readonly Fields[];
   readonly machines: readonly Fields[];
   readonly messages: readonly Message[];
+  readonly balance: Balance | null;
 }
 
 /**
@@ -113,6 +134,57 @@ function messagesOf(held: Held): Message[] {
   return told.slice(-LATEST_MESSAGES);
 }
 
+/**
+ * The newest balance reading held, when it is fresh at `at`: each machine's node
+ * serves its own, so the newest wins, and one dated further ahead than a reading
+ * may age is a wrong clock, never fresh.
+ */
+function latestReading(held: Held | undefined, at: number): Fields | undefined {
+  let latest: Fields | undefined;
+  let latestAt = Number.NEGATIVE_INFINITY;
+  for (const record of held?.all() ?? []) {
+    const when = Date.parse(text(record, "at") ?? "");
+    if (when > latestAt) {
+      latest = record;
+      latestAt = when;
+    }
+  }
+  return Math.abs(at - latestAt) <= BALANCE_FRESH_MS ? latest : undefined;
+}
+
+/** Each machine's share of the realm's work in `reading`, by its name. */
+function sharesOf(reading: Fields | undefined): Map<unknown, Fields> {
+  const shares = new Map<unknown, Fields>();
+  const machines = reading?.["machines"];
+  for (const load of Array.isArray(machines) ? machines : []) {
+    if (isObject(load)) {
+      shares.set(load["machine"], {
+        busy: load["busy"],
+        idle: load["idle"],
+        busy_per_core: load["busy_per_core"],
+        load: load["load"],
+        over: load["over"],
+        room: load["room"],
+      });
+    }
+  }
+  return shares;
+}
+
+/** The realm's balance from `reading`: its definition, time, spread and held flags. */
+function balanceOf(reading: Fields | undefined): Balance | null {
+  const at = reading === undefined ? undefined : text(reading, "at");
+  if (reading === undefined || at === undefined) {
+    return null;
+  }
+  return {
+    measures: reading["measures"],
+    at,
+    imbalance: reading["imbalance"] ?? null,
+    held: reading["held"] ?? [],
+  };
+}
+
 /** Whether a cell is drawn as one: a session or a receptor, not a machine. */
 function drawn(cell: Fields): boolean {
   return cell["type"] === "session" || cell["type"] === "receptor";
@@ -120,6 +192,8 @@ function drawn(cell: Fields): boolean {
 
 /** What the map draws from `heard`, read at `at` (milliseconds since the epoch). */
 function nowOf(heard: Heard, at: number): Now {
+  const reading = latestReading(heard.balance, at);
+  const shares = sharesOf(reading);
   const now: Now = {
     at: new Date(at).toISOString(),
     networks: heard.network.all().map((record) => asPrinted(record, "network")),
@@ -127,12 +201,16 @@ function nowOf(heard: Heard, at: number): Now {
       .all()
       .filter(drawn)
       .map((record) => asPrinted(record, "cell")),
-    machines: heard.machine.all().map(machineOf),
+    machines: heard.machine.all().map((record) => ({
+      ...machineOf(record),
+      share: shares.get(text(record, "name") ?? "") ?? null,
+    })),
     messages: messagesOf(heard.message),
+    balance: balanceOf(reading),
   };
   // Every field is untyped JSON from the node, and plain keeps its shape.
   return plain(now) as Now;
 }
 
-export type { Heard, Message, Now };
-export { LATEST_MESSAGES, nowOf };
+export type { Balance, Heard, Message, Now };
+export { BALANCE_FRESH_MS, LATEST_MESSAGES, nowOf };
