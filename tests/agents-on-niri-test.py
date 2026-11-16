@@ -3255,11 +3255,9 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
     # while it's asked; how the node's answer ends it is tests/carry-back.qml's, since tern
     # is no machine here.
     shell.normal()
-    began = time.monotonic()
-    shell.send_key("ret")
+    took = presented_after(shell, "ret")
     shell.launcher_until(lambda shown: shown["selected"]["side"] == "carrying back")
-    took = round((time.monotonic() - began) * 1000)
-    logging.getLogger(__name__).info("LAB Carry Back was said in place %s ms on", took)
+    logging.getLogger(__name__).info("LAB Carry Back was presented %s ms on", took)
     shoot("agents-carrying-back")
 
 
