@@ -32,6 +32,7 @@ XAUTHORITY=$(sed -n 's/^XAUTHORITY=//p' <<< "$session")
 export XAUTHORITY
 [ -n "$display" ] || fail "niri opened no X11 display"
 [ -n "$XAUTHORITY" ] || fail "the session names no X11 cookie"
+runtime=${XDG_RUNTIME_DIR:?Joel's session names no runtime folder}
 
 # The satellite is offered niri's clipboard only while one of its windows
 # holds the keyboard, as any Wayland client is, and then holds it for every
@@ -84,7 +85,7 @@ cp "$XAUTHORITY" "$cookie"
 fenced_read() {
   local sockets=$1 auth=$XAUTHORITY
   if [ "$2" = handed ]; then auth=$cookie; fi
-  local fence=(bwrap --unshare-pid --dev-bind / / --proc /proc --tmpfs "$XDG_RUNTIME_DIR")
+  local fence=(bwrap --unshare-pid --dev-bind / / --proc /proc --tmpfs "$runtime")
   local landlock=()
   if [ "$sockets" = walled ]; then
     fence+=(--tmpfs /tmp/.X11-unix)
@@ -100,6 +101,7 @@ env=$(command -v env)
 # Whether a fenced read is refused, saying what it read when it isn't.
 refused() {
   local said
+  # shellcheck disable=SC2310 # A read that fails is the refusal sought, not an error.
   if said=$(fenced_read "$1" "$2" 2>&1); then
     echo "the fenced command read: $said" >&2
     return 1
@@ -120,6 +122,8 @@ refused walled handed || fail "a fenced command handed the cookie reached X11's 
 refused open session || fail "a command with X11's sockets open read through them without the cookie"
 # Both taken away, the same reader reads it, so each refusal above was
 # the fence's and not the reader's.
-[ "$(fenced_read open handed)" = "$secret" ] ||
+# shellcheck disable=SC2310 # A failed read is said by the check below.
+read=$(fenced_read open handed) || read=
+[ "$read" = "$secret" ] ||
   fail "with no walls and the cookie, the reader still couldn't read the copy"
 echo "a fenced command reads no secret through X11 on $display"
