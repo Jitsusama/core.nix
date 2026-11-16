@@ -2065,19 +2065,21 @@ Scope {
         return source?.stands?.() ?? "";
     }
 
-    // How a place tied to a part of the system stands by it (a category's
-    // `part`), as the system daemon judges it (SystemParts.qml): nothing
-    // while all is well or the daemon isn't answering, else the daemon's
+    // How a place tied to a part of the system stands by it (its
+    // `systemPart`, never a thing's `part`, which is its name as a part
+    // of another), as the system daemon judges it (SystemParts.qml):
+    // nothing while all is well or the daemon isn't answering, else the daemon's
     // side, its mark and side in the warning's role or the alert's, and
     // its whole sentence in the foot (launcher/SystemPart.js; VKCF3Z,
     // [a1ef0c0a]). Read as home is made, as it opens, and held while it's
     // open, the daemon having said it already, so the opening waits on
-    // nothing.
-    function partStanding(category) {
-        if (!category.part)
+    // nothing. A thing's row, as Agents', is judged by `overCount`, which
+    // keeps its count but for a concern Joel can act on from it.
+    function partStanding(owner, judge = SystemPart.standing) {
+        if (!owner?.systemPart)
             return {};
-        const standing = SystemPart.standing(SystemParts.parts[category.part] ?? null,
-            SystemParts.heard, Words.field.notRead ?? "");
+        const standing = judge(SystemParts.parts[owner.systemPart] ?? null, SystemParts.heard,
+            Words.field.notRead ?? "");
         if (standing === null)
             return {};
         const said = standing.state;
@@ -2147,7 +2149,7 @@ Scope {
         if (!source)
             return null;
         if (source.collection && !entry.question)
-            return whole(source, false);
+            return Object.assign(whole(source, false), partStanding(entry, SystemPart.overCount));
         const question = entry.question ?? source.questions[0];
         if (question !== undefined) {
             const said = source.answer(question);

@@ -2,7 +2,11 @@ pragma Singleton
 // How each part of the system stands, as the system daemon judges it
 // (modules/system): its `part:<name>` records, by name, so a place the
 // vocabulary ties to a part (a category's `part`) says from it how it
-// stands (launcher/SystemPart.js). Empty while the daemon isn't
+// stands (launcher/SystemPart.js). Beside them, as `machine`, is this
+// machine's own record, the one the summary names, so Machine says only
+// what's wrong here and never another machine's trouble, which Agents
+// holds (VKCF3Z, [efcaeaf0]); the daemon's own part of every machine is
+// `machines`, so the two names never meet. Empty while the daemon isn't
 // answering, so no old judgement is shown as current, and a machine
 // without the daemon has nothing to say.
 //
@@ -16,7 +20,8 @@ import QtQuick
 Singleton {
     id: root
 
-    // Each part's record as the daemon last told it, by its name.
+    // Each part's record as the daemon last told it, by its name, and this
+    // machine's as `machine`.
     property var parts: ({})
     // Whether the daemon is answering, so a part it hasn't said yet reads
     // as unsaid rather than as not read.
@@ -26,7 +31,7 @@ Singleton {
         id: daemon
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/system.sock`
-        kind: "part"
+        kind: ["summary", "part", "machine"]
         keptThroughGap: false
         onHeard: (changed, gone) => {
             const parts = {};
@@ -35,6 +40,10 @@ Singleton {
                 if (record?.kind === "part" && typeof record.part === "string")
                     parts[record.part] = record;
             }
+            const here = daemon.held.summary?.machine;
+            const machine = typeof here === "string" ? daemon.held[`machine:${here}`] : null;
+            if (machine?.kind === "machine")
+                parts.machine = machine;
             root.parts = parts;
             // What it heard, so a test sees the launcher's half apart from
             // the daemon's.

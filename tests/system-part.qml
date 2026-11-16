@@ -66,5 +66,22 @@ QtObject {
         Expect.same("before the daemon words its side, none is made up",
             unworded?.sideItems, []);
         Expect.same("but the mark still warns", unworded?.hue, "warning");
+
+        // A thing's row, as Agents' at home by the mycelium part, keeps
+        // its count unless what's wrong is Joel's to act on from it
+        // (VKCF3Z, [1130c24f], [b4530faf]).
+        const down = "link to studio down";
+        const over = SystemPart.overCount(part("bad", [down], "the link to studio is down"),
+            true, notRead);
+        Expect.same("a concern takes the count's place", over?.sideItems,
+            [{ said: down, keep: 1 }]);
+        Expect.same("in the failing role, mark and words", [over?.hue, over?.alerts],
+            ["alert", true]);
+        Expect.same("good keeps the count",
+            SystemPart.overCount(part("good", [], "1 link up"), true, notRead), null);
+        Expect.same("not read keeps the count, saying nothing it can't act on",
+            SystemPart.overCount(part("not read", [], "timed out"), true, notRead), null);
+        Expect.same("with no daemon answering, the count is as it was",
+            SystemPart.overCount(part("bad", [down], "x"), false, notRead), null);
     }
 }

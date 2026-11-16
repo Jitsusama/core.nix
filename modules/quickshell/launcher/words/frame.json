@@ -51,6 +51,7 @@
       "name": "Machine",
       "term": "Machine",
       "glyph": "computer",
+      "systemPart": "machine",
       "holds": [
         "waits",
         "machine:cpu",
@@ -98,7 +99,7 @@
       "name": "Network",
       "term": "Network",
       "glyph": "network",
-      "part": "network",
+      "systemPart": "network",
       "holds": [
         "wifi",
         "wifi:sign-in",
