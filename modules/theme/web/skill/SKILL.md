@@ -171,10 +171,8 @@ that is awesome" (2026-11-11).
   it is in a sentence, what it asks of him (or nothing), its date, its kind
   (mock, record, explainer, test or app), its status (growing, settled or
   withdrawn), the quest it came from, and the kinds of thing it's home to,
-  if any (One Home for Every Thing, below), and any page of its own that
-  says another kind in its strip (`"pages": {"tree.html": "test"}`). A new
-  site adds its row there, and the home rebuilds itself within a second,
-  its builder kept in core's local-sites module; a turned-down or settled
+  if any (One Home for Every Thing, below). A new site adds its row there and
+  rebuilds the home with the builder beside it; a turned-down or settled
   one moves to the home's Kept for Reference, below the rest.
 - **Every page has a way home.** Each page opens with one quiet strip,
   `<nav class="sites-strip">` from `base.css`: All your sites, linking the
