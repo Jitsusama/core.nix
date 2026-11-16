@@ -154,6 +154,23 @@ fn a_bundle_of_commits_past_main_is_checked_out_and_run() {
 }
 
 #[test]
+fn a_gate_keeps_neither_its_clone_nor_its_bundle_once_it_ends() {
+    let forge = Forge::new();
+    let head = committed(&forge.tree(), "three");
+    let gate = forge.gate(&head, &forge.bundle("origin/main..HEAD"));
+    assert_eq!(forge.gated(&gate, &head), Ok(head.clone()), "the gate runs");
+    let work = forge.places().work(&head);
+    assert!(
+        !work.join("tree").exists(),
+        "the clone and checkout should go as the run ends"
+    );
+    assert!(
+        !work.join(BUNDLE).exists(),
+        "the bundle should go as the run ends"
+    );
+}
+
+#[test]
 fn a_repo_this_machine_doesnt_gate_is_refused_before_any_fetch() {
     let forge = Forge::new();
     let head = committed(&forge.tree(), "three");

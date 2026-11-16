@@ -302,6 +302,7 @@ pub fn gated(
         .and_then(|mut file| file.write_all(&bytes))
         .map_err(|error| unreached(format!("{}: {error}", bundle.display())))?;
     let tree = work.join("tree");
+    let _cleared = Cleared([tree.clone(), bundle.clone()]);
     cloned(fence, places, &request.repo, &work, &tree)?;
     let git = |net, arguments: &[&str]| fence.git(net, &tree, &[&work], &[], arguments);
     for needed in &header.prerequisites {
@@ -361,6 +362,19 @@ pub fn gated(
     .map_err(|_| refused("the commit doesn't descend from the forge's main"))?;
     git(Net::None, &["checkout", "--quiet", "--detach", commit]).map_err(refused)?;
     run(&tree, &work.join(LOG)).map_err(unreached)
+}
+
+/// A gate's clone and bundle, taken away however its run ends: a clone
+/// is about 100 MB, and only the log is read afterwards.
+struct Cleared([PathBuf; 2]);
+
+impl Drop for Cleared {
+    fn drop(&mut self) {
+        let [tree, bundle] = &self.0;
+        // Either may never have been made; what's left is swept a week on.
+        let _ = fs::remove_dir_all(tree);
+        let _ = fs::remove_file(bundle);
+    }
 }
 
 /// A fresh clone of the repo's main in `tree`, from a mirror that only
