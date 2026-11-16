@@ -502,22 +502,22 @@ ShellRoot {
     function findingServed() {
         const shown = JSON.parse(root.collected);
         shown.findings = [{
-            key: "finding:burn:s1", name: "A burn in Aquifer", side: "alert",
-            copy: "A burn in Aquifer.", role: "alert",
+            key: "finding:burn:s1", name: "A burn in Cistern", side: "alert",
+            copy: "A burn in Cistern.", role: "alert",
             run: ["spend-watch", "sessions", "s1", "go"], verb: "go to",
             expect: ["spend-watch", "findings", "burn:s1", "expect"]
         }];
         shown.shown = ["finding:burn:s1"].concat(shown.shown);
         shown.summaryRows = ["finding:burn:s1"].concat(shown.summaryRows);
         rewrite(shown, "a finding served",
-            () => spend.everything()[0]?.name === "A burn in Aquifer", () => step(() => {
+            () => spend.everything()[0]?.name === "A burn in Cistern", () => step(() => {
                 const burn = spend.everything()[0];
                 expect("a finding first", burn.verb === "go to" && burn.hue === "alert",
                     `${burn.verb} ${burn.hue}`);
                 // The answer for "spend" leads with it too, as the
                 // collection does, before the rows of how things stand.
                 const answered = spend.answer("spend").rows;
-                expect("the answer's finding first", answered[0]?.name === "A burn in Aquifer",
+                expect("the answer's finding first", answered[0]?.name === "A burn in Cistern",
                     answered.map(row => row.name).join(", "));
                 // Asked of serve, which acts on nothing, each act says
                 // why, spawning nothing.
@@ -548,7 +548,7 @@ ShellRoot {
     // served, and a row shown elsewhere is made as it reads now. Wanted
     // again, they're as last served, none made twice.
     function shut() {
-        const finding = rows => rows.some(row => row.name === "A burn in Aquifer");
+        const finding = rows => rows.some(row => row.name === "A burn in Cistern");
         expect("wanted, it lists what was last served", finding(shutSpend.everything()),
             shutSpend.everything().map(row => row.name).join(", "));
         shutLauncher.wanting = false;

@@ -67,7 +67,7 @@ impl fmt::Display for Target {
 }
 
 /// What a saying's own words name. `after` is where the phrase ends among
-/// `words`, since a bare name ("on aquifer") is read only after it.
+/// `words`, since a bare name ("on cistern") is read only after it.
 #[must_use]
 pub fn targets(own: &str, words: &[String], after: usize) -> Vec<Target> {
     const EVERYTHING: [&[&str]; 9] = [
@@ -196,7 +196,7 @@ fn quest_ids(words: &[String]) -> Vec<Target> {
         .collect()
 }
 
-/// A bare name just after the phrase, "pineapple override on aquifer",
+/// A bare name just after the phrase, "pineapple override on cistern",
 /// leaving out the words that are only the sentence going on.
 fn bare_name(words: &[String], after: usize) -> Option<Target> {
     const NOT_NAMES: [&str; 28] = [

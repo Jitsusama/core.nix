@@ -264,12 +264,12 @@ fn a_branch_draws_on_its_own_ancestors() {
         &tree_turn("b", "a", "2026-11-07T02:00:00Z"),
         &budget("c", "b", Some("delta")),
         &tree_turn("d", "c", "2026-11-07T02:21:00Z"),
-        &budget("e", "d", Some("aquifer")),
+        &budget("e", "d", Some("cistern")),
         &tree_turn("f", "e", "2026-11-07T02:22:00Z"),
     ]);
     let mut carry = Carry::default();
     let (events, _) = read(&first, &mut carry, &refusals());
-    assert_eq!(budgets(&events), [Some(""), Some("delta"), Some("aquifer")]);
+    assert_eq!(budgets(&events), [Some(""), Some("delta"), Some("cistern")]);
     let kept = serde_json::to_string(&carry).unwrap();
     assert!(!kept.contains("\"c\"") && !kept.contains("\"d\""), "{kept}");
     let mut carry: Carry = serde_json::from_str(&kept).unwrap();
@@ -333,11 +333,11 @@ fn a_budget_entry_of_another_version_is_passed_over() {
         HEADER,
         &newer,
         &turn("2026-11-07T02:00:00Z", 0, 1, 0),
-        &budget("y", "", Some("aquifer")),
+        &budget("y", "", Some("cistern")),
         &turn("2026-11-07T02:01:00Z", 0, 1, 0),
     ]);
     let (events, _) = read(&bytes, &mut Carry::default(), &refusals());
-    assert_eq!(budgets(&events), [None, Some("aquifer")]);
+    assert_eq!(budgets(&events), [None, Some("cistern")]);
 }
 
 #[test]

@@ -272,8 +272,8 @@ Singleton {
     // started afresh on the quest instead, in `folder`. A session's folder
     // can be gone by now, a tree since given back, and kitty given a
     // missing folder opens in the home folder without a word, where pi
-    // starts a new session apart from the old one (Joel's Aquifer
-    // orchestrator, 2026-10-29). So the folder is looked for first; when
+    // starts a new session apart from the old one (one of Joel's
+    // orchestrators, 2026-10-29). So the folder is looked for first; when
     // it's gone, the quest starts afresh in `folder` if that's there, and
     // `gone(cwd, startedIn)` is told either way, `startedIn` empty when
     // nothing could be opened, so the caller says so.

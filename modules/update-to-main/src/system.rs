@@ -1628,11 +1628,11 @@ mod tests {
 
     #[test]
     fn a_pattern_stands_for_any_run_where_it_says_so() {
-        assert!(matches("aquifer-link*", "aquifer-link-0.1.0"));
-        assert!(matches("aquifer-link*", "aquifer-link"));
-        assert!(matches("*-far", "aquifer-link-far"));
+        assert!(matches("cistern-link*", "cistern-link-0.1.0"));
+        assert!(matches("cistern-link*", "cistern-link"));
+        assert!(matches("*-far", "cistern-link-far"));
         assert!(matches("a*b*c", "a-x-b-y-c"));
-        assert!(!matches("aquifer-link*", "an-aquifer-link"));
+        assert!(!matches("cistern-link*", "a-cistern-link"));
         assert!(!matches("vault", "vault-people"));
         assert!(!matches("a*c", "a-b"));
     }

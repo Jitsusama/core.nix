@@ -139,9 +139,9 @@ pub(super) fn record() -> Record {
                 7_200,
             ),
             made(
-                "local:~/src/acceluary",
+                "local:~/src/backwater",
                 None,
-                vec![checkout("src/acceluary", Vec::new(), 172_800)],
+                vec![checkout("src/backwater", Vec::new(), 172_800)],
                 172_800,
             ),
         ],
@@ -299,7 +299,7 @@ fn the_collection_is_a_line_for_each_repository_under_its_labels() {
     );
     assert!(
         text.lines()
-            .any(|line| line.starts_with("acceluary") && line.contains(" Mon ")),
+            .any(|line| line.starts_with("backwater") && line.contains(" Mon ")),
         "two days ago isn't its weekday: {text}"
     );
 }

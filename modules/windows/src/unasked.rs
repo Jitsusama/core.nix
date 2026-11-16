@@ -136,7 +136,7 @@ mod tests {
     const HOST: &str = "0::/user.slice/user-1000.slice/user@1000.service/agents.slice/\
                         pi-host-work-background.service\n";
     const JOB: &str = "0::/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice/\
-                       jobs-work-aquifer-qest20261017wjatin.slice/run-r1.scope\n";
+                       jobs-work-cistern-qest20261017wjatin.slice/run-r1.scope\n";
     const SESSIONS: &str =
         "0::/user.slice/user-1000.slice/user@1000.service/agents.slice/sessions-kitty.service\n";
     const APP: &str =

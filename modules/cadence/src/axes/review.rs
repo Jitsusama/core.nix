@@ -458,14 +458,14 @@ mod tests {
 
     #[test]
     fn an_example_too_long_is_cut_at_a_word_and_says_so() {
-        // 13 November's page quoted "... and acceluary-next? d", the
+        // 13 November's page quoted "... and backwater-next? d", the
         // next word cut to its first letter.
         // Seventeen words are 84 characters, so the question ends at 100.
         let words = "word ".repeat(17);
-        let long = format!("{words}acceluary-next? done");
+        let long = format!("{words}backwater-next? done");
         assert_eq!(
             shortened(&long),
-            format!("{words}acceluary-next? ..."),
+            format!("{words}backwater-next? ..."),
             "a long example was cut mid-word or not said to be cut"
         );
         assert_eq!(

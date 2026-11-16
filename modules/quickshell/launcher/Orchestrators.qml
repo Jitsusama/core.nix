@@ -158,7 +158,7 @@ Provider {
     // left off"); one with no session yet is started on its quest, in the
     // folder its quest says a new one starts in, never the quest's own.
     // Never by the quest's `sessions`, which can hold one long dead whose
-    // pid was used again (Joel's Aquifer orchestrator, 2026-10-29). When
+    // pid was used again (one of Joel's orchestrators, 2026-10-29). When
     // the session's folder went since it was listed, it starts afresh in
     // that start folder, never the home folder, and the foot says so once
     // the launcher opens next, never a notice.

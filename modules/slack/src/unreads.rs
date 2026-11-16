@@ -670,7 +670,7 @@ mod tests {
             ("C2", ""),
             ("C3", "1730000003.1"),
         ]);
-        let names: HashMap<String, String> = [("C1", "#aquifer"), ("C2", "#rain")]
+        let names: HashMap<String, String> = [("C1", "#cistern"), ("C2", "#rain")]
             .into_iter()
             .map(|(id, name)| (id.to_owned(), name.to_owned()))
             .collect();
@@ -678,7 +678,7 @@ mod tests {
             seen(&read, &names),
             [Seen {
                 id: "C1".to_owned(),
-                name: "#aquifer".to_owned(),
+                name: "#cistern".to_owned(),
                 read: "1730000001.000100".to_owned(),
             }],
             "one never read, or not yet named, says no mark"

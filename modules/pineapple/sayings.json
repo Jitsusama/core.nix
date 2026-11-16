@@ -276,9 +276,9 @@
       "name": "a name after the phrase",
       "platform": "slack",
       "author": "U0OTHER001",
-      "text": "<@U0JOEL0001> pineapple override on aquifer",
+      "text": "<@U0JOEL0001> pineapple override on cistern",
       "verdict": "stop",
-      "targets": ["named:aquifer"]
+      "targets": ["named:cistern"]
     },
     {
       "name": "the sentence going on is no name",
