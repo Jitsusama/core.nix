@@ -345,7 +345,14 @@ def restored(swapping: QemuMachine, values: dict[str, Any]) -> Restore:
     before = shoot(machine, burst, "before")
     machine.send_monitor_command(f"block_set_io_throttle {disk} 0 0 0 0 0 0")
     shots = shots_until(machine, burst, READ)
-    after = shoot(machine, burst, "after")
+    # The kernel lets the screens go within milliseconds of saying it has read the image,
+    # and QEMU shoots one screen after the other, so on a busy host the second was shot
+    # once its picture had gone. Held still, both are shot as the kernel left them.
+    machine.send_monitor_command("stop")
+    try:
+        after = shoot(machine, burst, "after")
+    finally:
+        machine.send_monitor_command("cont")
     machine.wait_for_unit("default.target")
     return Restore(machine, before, shots, after)
 
