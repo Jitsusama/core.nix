@@ -203,7 +203,7 @@ function nowOf(heard: Heard, at: number): Now {
       .map((record) => asPrinted(record, "cell")),
     machines: heard.machine.all().map((record) => ({
       ...machineOf(record),
-      share: shares.get(record.name) ?? null,
+      share: shares.get(text(record, "name") ?? "") ?? null,
     })),
     messages: messagesOf(heard.message),
     balance: balanceOf(reading),
