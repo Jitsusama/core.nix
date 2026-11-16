@@ -644,11 +644,11 @@ Provider {
                 // doesn't hold gives: Slack's are the daemon's, so someone
                 // Slack found once is held only while listed or found, and
                 // a first letter makes no row for them.
-                // One saying their time is kept for the minute too, as one
-                // listed is.
+                // One saying their time is kept through the minutes, as
+                // one listed is, since the time runs on as it's drawn.
                 const record = readyFor(person);
                 return record ? keptAlike(made.keeping, person.key,
-                    [record.key, record.stamp, clocked(record.row) ? provider.minute : 0],
+                    [record.key, record.stamp],
                     () => provider.made(person, Person.standing(person, []), record.row,
                         () => record.drawer))
                     : keptOr(made.keeping, person.key, JSON.stringify(person),
@@ -700,8 +700,7 @@ Provider {
         // Listed and standing as when last asked, they're the same rows,
         // with no one's text written again to find so.
         const listed = listedPersons();
-        const now = provider.minute;
-        if (listedRows.from === listed && listedRows.minute === now)
+        if (listedRows.from === listed)
             return listedRows.rows;
         keepingBegun(keptListed);
         // Those a source holds something of its own for, as a favourite
@@ -729,10 +728,10 @@ Provider {
             const record = own[`person:${person.key}`] ? null
                 : lister.held[`person:${person.key}`];
             const ready = record ? rowsHeld[`row:people:${person.key}`] : null;
-            // One saying their time is kept for the minute too.
+            // One saying their time is kept through the minutes too,
+            // since it runs on as it's drawn (`ticking`).
             if (ready)
-                return keptAlike(keptListed, person.key,
-                    [record.stamp ?? record, clocked(ready) ? now : 0],
+                return keptAlike(keptListed, person.key, [record.stamp ?? record],
                     () => made(person, person.stood, ready,
                         () => Ready.drawerServed(ready, lister.held)));
             const stood = person.stood ?? standOf(person);
@@ -740,19 +739,18 @@ Provider {
                 () => made(person, stood));
         });
         keptOnly(keptListed);
-        // A minute that moved no one's time leaves the rows as they were,
-        // so it tells the launcher nothing.
-        const same = listedRows.from === listed && rows.length === listedRows.rows.length
+        // A listing that changed no one's row leaves the rows as they
+        // were, so it tells the launcher nothing.
+        const same = rows.length === listedRows.rows.length
             && rows.every((row, at) => row === listedRows.rows[at]);
         listedRows.from = listed;
-        listedRows.minute = now;
         if (same)
             return listedRows.rows;
         listedRows.rows = rows;
         return rows;
     }
     readonly property var keptListed: keeper()
-    readonly property var listedRows: ({ from: null, minute: 0, rows: [] })
+    readonly property var listedRows: ({ from: null, rows: [] })
 
     // A drawer the daemon served, as the drawer draws one: its times said
     // as of now, a zone as the time there (`there`), and a fact that says
@@ -859,7 +857,7 @@ Provider {
         return Object.assign(row, {
             named: Fuzzy.letters([person.name.toLowerCase()]),
             mailed: Fuzzy.letters([person.emails.join(" ")])
-        });
+        }, clocked(ready) ? ticking(ready.side, row.side) : {});
     }
 
     // tzdata's zones, as Clocks reads them (Zones.js), read once when a
@@ -890,11 +888,10 @@ Provider {
     // Someone's time at their row's side, "London · 17:02", or "" where
     // it's his own or the list doesn't know their zone (Person.js's
     // awaySide).
-    function away(id) {
+    function away(id, now = Date.now()) {
         const zone = zones().zones[id];
         if (!zone)
             return "";
-        const now = Date.now();
         const [minutes] = Zones.standing(zone, Math.floor(now / 1000));
         const here = -new Date(now).getTimezoneOffset();
         return Person.awaySide(id, minutes - here, Zones.clock(new Date(now + minutes * 60000)),
@@ -903,23 +900,48 @@ Provider {
 
     // The words a row's side is said in: the launcher's times, and a zone
     // as `away` says it.
-    readonly property var rowWords: Object.assign({ zone: zone => provider.away(zone) },
+    readonly property var rowWords: Object.assign({ zone: (zone, now) => provider.away(zone, now) },
         Words.field.times ?? {})
 
-    // Whether a ready row says their time, so it's made again as the
-    // minute turns.
+    // Whether a ready row says their time, so its side runs on.
     function clocked(ready) {
         return (ready?.side ?? []).some(item => item?.as === "zone");
     }
 
-    // The minute the listed rows were said in, moved on while they're
-    // wanted, so those saying someone's time are made again (`clocked`);
-    // while they aren't, nothing ticks and nothing is made.
+    // A side saying someone's time runs on as it's drawn, as a running
+    // stopwatch's does (Launcher.qml's `counts`), said again only once its
+    // minute has passed, so the row is made once rather than as each
+    // minute turns: kept by the minute, the first letter after an idle one
+    // made every listed row saying a time again, 117 rows in 13 to 20 ms
+    // of Joel's first letters (his journal, 2026-11-16 10:18 and 11:13).
+    // Its `side` stays what it said when made, and gives the column its
+    // room. It's said afresh at its first drawing, since a minute may have
+    // turned since it was made, and never as of a clock behind the wall's,
+    // as the launcher's is for its first tenth after an opening. Made here
+    // rather than in made(), so the closure keeps only the side's items
+    // (Member.js's preparing says why).
+    function ticking(items, first) {
+        let said = first;
+        let minute = NaN;
+        return {
+            sideWidest: first,
+            counts: drawn => {
+                const now = Math.max(drawn, Date.now());
+                const at = Math.floor(now / 60000);
+                if (at !== minute) {
+                    said = Ready.sideSaid(items, now, rowWords);
+                    minute = at;
+                }
+                return said;
+            }
+        };
+    }
+
+    // The minute, moved on while People is wanted, which only a listing
+    // merged here reads (listedHere): someone's call ending moves them in
+    // it, so `all` asks again as each minute turns. Rows aren't made again
+    // for it, since a time runs on as it's drawn (`ticking`).
     property int minute: Math.floor(Date.now() / 60000)
-    // Those found saying their time are made again as it turns. It costs
-    // only a pass over everyone, since keptAlike keeps each row that says
-    // no time as it was.
-    onMinuteChanged: rowsOfEveryone.stale = true
     Timer {
         running: provider.wanted
         repeat: true
@@ -1363,7 +1385,8 @@ Provider {
     // ended since. Plain, so keeping them notifies nothing.
     readonly property var listing: ({ persons: null, stands: null, until: 0, listed: [] })
     function listedHere() {
-        const now = Date.now();
+        // Read so a call that ended is heard within the minute (`until`).
+        const now = Math.max(Date.now(), provider.minute * 60000);
         const kept = listing;
         const everyone = merged();
         if (kept.persons !== everyone.persons || kept.stands !== everyone.stands
