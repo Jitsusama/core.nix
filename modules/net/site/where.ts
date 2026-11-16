@@ -53,10 +53,18 @@ function fragment(network: Network, shape: Shape, id: string): string {
 /**
  * The device an address's fragment names. The sites' shared form is
  * #device=<name>; a bare name or id, and #host=<name> from mycelium, still
- * land, since an address that was once a home never breaks.
+ * land, since an address that was once a home never breaks. One that
+ * doesn't decode, typed or cut short, names nothing, so the page opens as
+ * it would with none rather than stopping.
  */
 function linkedTo(network: Network, shape: Shape, hash: string): string | null {
-  const asked = decodeURIComponent(hash.slice(1)).replace(ASKED, "");
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(hash.slice(1));
+  } catch {
+    return null;
+  }
+  const asked = decoded.replace(ASKED, "");
   if (asked === "") {
     return null;
   }
