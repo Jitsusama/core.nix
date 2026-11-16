@@ -141,6 +141,28 @@ fn a_change_is_checked_where_main_moved_its_own_files_as_ready_takes() {
 }
 
 #[test]
+fn a_main_head_with_no_change_on_it_is_never_replayed() {
+    // On 15 November keep-main's keep of a new main head, whose base is
+    // the head itself, went onto the older kept head instead, which had
+    // passed already, so from 22:31 no newer main was kept at all.
+    let tree = Tree::new();
+    let scratch = tempfile::tempdir().expect("no scratch");
+    let (kept_head, base, _) = moved_since_kept(&tree, "modules/two/b");
+    assert_eq!(
+        replayed(
+            tree.top(),
+            &base,
+            &base,
+            "main",
+            &kept(&[&kept_head]),
+            scratch.path()
+        ),
+        Ok(None),
+        "a head kept for itself was replayed onto an older kept one"
+    );
+}
+
+#[test]
 fn a_change_is_replayed_whole_onto_the_kept_main() {
     let tree = Tree::new();
     let scratch = tempfile::tempdir().expect("no scratch");
