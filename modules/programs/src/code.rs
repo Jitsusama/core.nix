@@ -22,14 +22,32 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 
 use programs::{code_rows, command, repositories};
-use serde_json::Value;
 use repos::github;
 use repos::read::{Reading, read};
+use serde_json::Value;
 
-use super::{Daemon, Shared, keep, lock};
+use super::{Daemon, Shared, keep, keys_watched, lock};
+
+/// Hears each watch begin or end, on a thread of its own, and hands the
+/// keys watched then to `ahead`. daemon-serve says so with every record
+/// held, so it's only passed on there, and the keys read here after.
+pub fn follow(shared: &Arc<Shared>) {
+    let (moved, heard) = mpsc::channel();
+    shared.served().on_watches(Box::new(move || {
+        let _ = moved.send(());
+    }));
+    let shared = Arc::clone(shared);
+    std::thread::spawn(move || {
+        while heard.recv().is_ok() {
+            let _ = heard.try_iter().count();
+            let watched = keys_watched(&lock(&shared.daemon));
+            ahead(&shared, &watched);
+        }
+    });
+}
 
 /// Where Code looks and how it words its rows, set as the daemon starts.
 pub struct Code {

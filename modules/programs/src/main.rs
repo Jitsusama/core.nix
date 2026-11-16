@@ -70,9 +70,9 @@ mod taken;
 mod told;
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::ExitCode;
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, Weak, mpsc};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::{Instant, SystemTime};
 
 use daemon_serve::asks::place_of;
@@ -89,7 +89,7 @@ use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 use terminal_kit::{Exit, Failure, Help};
 
-use heard::{heard, notice};
+use heard::hear;
 use named::read_named;
 use runs::{claim, read_claimed, start};
 
@@ -291,46 +291,6 @@ fn serve(given: &[String]) -> Result<(), Failure> {
     loop {
         std::thread::park();
     }
-}
-
-/// Starts the threads that hear what changes: the folders, the windows
-/// and agents daemons beside this one, and the watches. All begin before
-/// the socket answers, so no change after a first answer goes unheard.
-fn hear(shared: &Arc<Shared>, socket: &Path) {
-    if let Some(notify) = &shared.notify {
-        let folders = heard(shared, notify);
-        let shared = Arc::clone(shared);
-        std::thread::spawn(move || notice(&shared, &folders));
-    }
-    {
-        let shared = Arc::clone(shared);
-        std::thread::spawn(move || rows::hear(&shared, &shared.windows));
-    }
-    {
-        let shared = Arc::clone(shared);
-        let agents = agents::socket(socket);
-        std::thread::spawn(move || agents::hear(&shared, &agents));
-    }
-    follow_watches(shared);
-}
-
-/// Hears each watch begin or end, on a thread of its own, and hands the
-/// keys watched then to what's read only while a row is ahead, as Code's
-/// files are. daemon-serve says so with every record held, so it's only
-/// passed on there, and the keys read here after.
-fn follow_watches(shared: &Arc<Shared>) {
-    let (moved, heard) = mpsc::channel();
-    shared.served().on_watches(Box::new(move || {
-        let _ = moved.send(());
-    }));
-    let shared = Arc::clone(shared);
-    std::thread::spawn(move || {
-        while heard.recv().is_ok() {
-            let _ = heard.try_iter().count();
-            let watched = keys_watched(&lock(&shared.daemon));
-            code::ahead(&shared, &watched);
-        }
-    });
 }
 
 impl Shared {

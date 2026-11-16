@@ -558,7 +558,10 @@ mod tests {
             Some(vec!["in/a.txt".to_owned()]),
             "git named each file a sparse checkout left out, or the folder it left out"
         );
-        let paths: Vec<Value> = files(&shown).iter().map(|one| one["path"].clone()).collect();
+        let paths: Vec<Value> = files(&shown)
+            .iter()
+            .map(|one| one["path"].clone())
+            .collect();
         assert_eq!(paths, [json!(format!("{shown}/in/a.txt"))]);
         fs::remove_dir_all(&repository).unwrap();
     }
