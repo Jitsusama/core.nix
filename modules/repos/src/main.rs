@@ -206,13 +206,19 @@ fn machine() -> String {
 /// hold where a refresh has asked it.
 fn record(home: Option<&Path>, now: u64) -> Result<Record, Failure> {
     let mut record = disk(home, now)?;
+    kept(home, &mut record);
+    Ok(record)
+}
+
+/// Merges into a record read from the disk what GitHub was last seen to
+/// hold and the last counts, as every view of the record takes them.
+fn kept(home: Option<&Path>, record: &mut Record) {
     if let Some(file) = github::seen_file(home) {
-        github::merge_kept(&mut record, &file);
+        github::merge_kept(record, &file);
     }
     if let Some(file) = upstreams::counted_file(home) {
-        upstreams::merge_kept(&mut record, &file);
+        upstreams::merge_kept(record, &file);
     }
-    Ok(record)
 }
 
 /// Counts how far each head the disk holds is from its upstream, taking

@@ -4,9 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
 
-use repos::model::{Checkout, Head, Record, Repository, SCHEMA, Tree, TreeKind};
-
-use super::{Folder, Heard, folders};
+use super::{Folder, Folders, Heard, Of, Watch, folders};
 
 /// A folder of the test's own, emptied first, so no two tests share one.
 fn place(name: &str) -> PathBuf {
@@ -18,8 +16,8 @@ fn place(name: &str) -> PathBuf {
 
 /// A checkout's git folder as git leaves it, written by hand: HEAD, its
 /// refs a folder deep, and one tree in `worktrees/`.
-fn checkout(at: &Path) -> PathBuf {
-    let git = at.join("core.nix/.git");
+fn checkout(at: &Path, name: &str) -> PathBuf {
+    let git = at.join(name).join(".git");
     for folder in [
         "refs/heads/joel",
         "refs/remotes/origin",
@@ -38,68 +36,45 @@ fn checkout(at: &Path) -> PathBuf {
     git
 }
 
-fn record(at: &Path) -> Record {
-    let head = Head {
-        branch: Some("main".to_owned()),
-        commit: Some("aaaa".to_owned()),
-        upstream: None,
-    };
-    Record {
-        schema: SCHEMA.to_owned(),
-        read_at: 0,
-        machine: "laptop".to_owned(),
-        roots: Vec::new(),
-        sources: Vec::new(),
-        repositories: vec![Repository {
-            key: "github:Jitsusama/core.nix".to_owned(),
-            name: "core.nix".to_owned(),
-            owner: Some("Jitsusama".to_owned()),
-            remotes: Vec::new(),
-            trunk: Some("main".to_owned()),
-            written_at: None,
-            checkouts: vec![Checkout {
-                path: at.join("core.nix").display().to_string(),
-                bare: false,
-                head: Some(head.clone()),
-                written_at: None,
-                trees: vec![Tree {
-                    path: at.join("trees/say-trees").display().to_string(),
-                    kind: TreeKind::Worktree,
-                    head,
-                    present: true,
-                    written_at: None,
-                }],
-            }],
-            changes: Vec::new(),
-            read_through: None,
-        }],
-    }
+/// Watches `folders`, telling what moved on what's returned.
+fn hear(folders: &Folders) -> (Heard, mpsc::Receiver<BTreeSet<Of>>) {
+    let (tell, told) = mpsc::channel();
+    let mut heard = Heard::start(tell).expect("inotify");
+    heard.follow(folders, |_| true);
+    (heard, told)
 }
 
 #[test]
 fn a_checkout_is_watched_by_its_git_folder_refs_and_trees_never_its_objects() {
     let at = place("folders");
-    let git = checkout(&at);
+    let git = checkout(&at, "core.nix");
     let kept = [
         at.join("state/github.json"),
         at.join("state/upstreams.json"),
     ];
-    let named = folders(&record(&at), &kept);
+    let named = folders([&git], &kept);
+    let its = |folder| Watch {
+        folder,
+        of: Of::Checkout(git.clone()),
+    };
     let expected = [
-        (git.clone(), Folder::Git),
-        (git.join("refs"), Folder::Refs),
-        (git.join("refs/heads"), Folder::Refs),
-        (git.join("refs/heads/joel"), Folder::Refs),
-        (git.join("refs/remotes"), Folder::Refs),
-        (git.join("refs/remotes/origin"), Folder::Refs),
-        (git.join("worktrees"), Folder::Trees),
-        (git.join("worktrees/say-trees"), Folder::Git),
+        (git.clone(), its(Folder::Git)),
+        (git.join("refs"), its(Folder::Refs)),
+        (git.join("refs/heads"), its(Folder::Refs)),
+        (git.join("refs/heads/joel"), its(Folder::Refs)),
+        (git.join("refs/remotes"), its(Folder::Refs)),
+        (git.join("refs/remotes/origin"), its(Folder::Refs)),
+        (git.join("worktrees"), its(Folder::Trees)),
+        (git.join("worktrees/say-trees"), its(Folder::Git)),
         (
             at.join("state"),
-            Folder::Kept(BTreeSet::from([
-                "github.json".to_owned(),
-                "upstreams.json".to_owned(),
-            ])),
+            Watch {
+                folder: Folder::Kept(BTreeSet::from([
+                    "github.json".to_owned(),
+                    "upstreams.json".to_owned(),
+                ])),
+                of: Of::Kept,
+            },
         ),
     ];
     assert_eq!(named.into_iter().collect::<Vec<_>>(), expected);
@@ -143,12 +118,11 @@ fn only_the_names_a_reading_reads_are_heeded() {
 }
 
 #[test]
-fn a_branch_landing_is_heard_and_an_index_written_is_not() {
+fn a_branch_landing_is_told_as_its_checkouts_and_an_index_written_is_not() {
     let at = place("landing");
-    let git = checkout(&at);
-    let (tell, told) = mpsc::channel();
-    let mut heard = Heard::start(tell).expect("inotify");
-    heard.follow(folders(&record(&at), &[]));
+    let git = checkout(&at, "core.nix");
+    let other = checkout(&at, "notes");
+    let (_heard, told) = hear(&folders([&git, &other], &[]));
 
     fs::write(git.join("index"), "written at a status").expect("an index");
     assert!(
@@ -163,20 +137,32 @@ fn a_branch_landing_is_heard_and_an_index_written_is_not() {
         git.join("refs/heads/main"),
     )
     .expect("landed");
-    assert!(
-        told.recv_timeout(Duration::from_secs(5)).is_ok(),
-        "a branch landing is heard"
-    );
+    let moved = told
+        .recv_timeout(Duration::from_secs(5))
+        .expect("a branch landing is heard");
+    assert_eq!(moved, BTreeSet::from([Of::Checkout(git.clone())]));
     fs::remove_dir_all(&at).expect("cleaned");
 }
 
 #[test]
-fn a_folder_of_refs_made_after_is_heard_once_followed() {
+fn a_kept_file_written_is_told_as_the_timers() {
+    let at = place("kept");
+    fs::create_dir_all(at.join("state")).expect("a state folder");
+    let (_heard, told) = hear(&folders([], &[at.join("state/github.json")]));
+
+    fs::write(at.join("state/github.json"), "{}").expect("kept");
+    let moved = told
+        .recv_timeout(Duration::from_secs(5))
+        .expect("a kept file is heard");
+    assert_eq!(moved, BTreeSet::from([Of::Kept]));
+    fs::remove_dir_all(&at).expect("cleaned");
+}
+
+#[test]
+fn a_folder_of_refs_made_after_is_heard_once_its_checkout_is_renewed() {
     let at = place("followed");
-    let git = checkout(&at);
-    let (tell, told) = mpsc::channel();
-    let mut heard = Heard::start(tell).expect("inotify");
-    heard.follow(folders(&record(&at), &[]));
+    let git = checkout(&at, "core.nix");
+    let (mut heard, told) = hear(&folders([&git], &[]));
     let watched = heard.watched();
 
     fs::create_dir_all(git.join("refs/heads/new")).expect("a folder of refs");
@@ -184,7 +170,7 @@ fn a_folder_of_refs_made_after_is_heard_once_followed() {
         told.recv_timeout(Duration::from_secs(5)).is_ok(),
         "the folder's making is heard"
     );
-    heard.follow(folders(&record(&at), &[]));
+    heard.follow(&folders([&git], &[]), |of| *of == Of::Checkout(git.clone()));
     assert_eq!(heard.watched(), watched + 1, "the new folder is watched");
     while told.try_recv().is_ok() {}
 
@@ -197,15 +183,34 @@ fn a_folder_of_refs_made_after_is_heard_once_followed() {
 }
 
 #[test]
+fn a_folder_made_again_in_its_place_is_heard_once_renewed() {
+    let at = place("made-again");
+    let git = checkout(&at, "core.nix");
+    let (mut heard, told) = hear(&folders([&git], &[]));
+
+    fs::remove_dir_all(git.join("refs/heads/joel")).expect("a folder of refs gone");
+    fs::create_dir_all(git.join("refs/heads/joel")).expect("and made again");
+    assert!(
+        told.recv_timeout(Duration::from_secs(5)).is_ok(),
+        "heard going"
+    );
+    heard.follow(&folders([&git], &[]), |_| true);
+    while told.try_recv().is_ok() {}
+
+    fs::write(git.join("refs/heads/joel/y"), "dddd\n").expect("a branch in it");
+    assert!(
+        told.recv_timeout(Duration::from_secs(5)).is_ok(),
+        "a branch in the folder made again is heard"
+    );
+    fs::remove_dir_all(&at).expect("cleaned");
+}
+
+#[test]
 fn a_folder_no_longer_named_is_given_back() {
     let at = place("given-back");
-    let git = checkout(&at);
-    let (tell, told) = mpsc::channel();
-    let mut heard = Heard::start(tell).expect("inotify");
-    heard.follow(folders(&record(&at), &[]));
-    let mut gone = record(&at);
-    gone.repositories.clear();
-    heard.follow(folders(&gone, &[]));
+    let git = checkout(&at, "core.nix");
+    let (mut heard, told) = hear(&folders([&git], &[]));
+    heard.follow(&Folders::new(), |_| true);
     assert_eq!(heard.watched(), 0);
     while told.try_recv().is_ok() {}
 

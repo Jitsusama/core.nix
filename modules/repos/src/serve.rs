@@ -6,13 +6,16 @@
 //! counts merged in, as the launcher's Code rows read it too, so the page
 //! and the launcher agree.
 //!
-//! It reads the disk again when inotify says git wrote a name a reading
-//! reads (heard.rs), once the writing has settled, since one commit or
-//! fetch writes several. A pace reads it too, for what's not watched: a
-//! checkout cloned under a root, and when a tree was last written, which
-//! moves with its index. A reading takes about 60 ms: a quiet disk costs
-//! one a minute, and a busy one at most one every two seconds.
+//! It holds each checkout as it last read it, and reads one again when
+//! inotify says git wrote a name a reading reads in that checkout's
+//! folders (heard.rs), once the writing has settled, since one commit or
+//! fetch writes several. Agents write in a few checkouts of hundreds of
+//! trees each all day, so reading only the one that moved keeps a busy
+//! disk cheap. A pace reads everything, walking the roots, for what's not
+//! watched: a checkout cloned under a root, and when a tree was last
+//! written, which moves with its index.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -21,13 +24,15 @@ use std::time::{Duration, Instant};
 
 use daemon_serve::serve::{self, Shared};
 use repos::model::Record;
+use repos::read::{self, Found, Reading};
 use repos::{github, upstreams};
 use serde_json::json;
 use terminal_kit::{Exit, Failure};
 
-use crate::{feed, heard};
+use crate::feed;
+use crate::heard::{self, Folders, Heard, Of};
 
-/// How often the disk is read with nothing heard.
+/// How often the disk is read whole with nothing heard.
 const PACE: Duration = Duration::from_mins(1);
 
 /// How long the disk is to be quiet after something's heard before it's
@@ -39,10 +44,9 @@ const QUIET: Duration = Duration::from_millis(300);
 /// writing without pause are still told within this.
 const LONGEST: Duration = Duration::from_secs(2);
 
-/// The least time between two readings' starts. Dozens of agents write
-/// in their trees all day, and each reading costs about 60 ms, so this
-/// keeps the daemon to a few readings a minute however busy they are,
-/// with a view still within a breath of the disk.
+/// The least time between two readings' starts, so dozens of agents
+/// writing at once cost a reading every two seconds at most, with a view
+/// still within a breath of the disk.
 const SPACED: Duration = Duration::from_secs(2);
 
 /// Holds the record, read again as the disk moves, for as long as it
@@ -61,8 +65,14 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
             "read_ms": taking.load(Ordering::Relaxed),
         })
     }));
+    let mut disk = Disk {
+        home,
+        roots: crate::roots(home)?,
+        machine: crate::machine(),
+        found: BTreeMap::new(),
+    };
     let mut began = Instant::now();
-    let mut record = read(home, &took)?;
+    let record = timed(&took, || disk.read_whole());
     shared.change(feed::records(&record), feed::sources(&record));
     let listener = serve::listen(&socket).map_err(|why| {
         let socket = socket.display();
@@ -71,42 +81,124 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     })?;
     serve::accept(Arc::clone(&shared), listener);
     let (tell, told) = mpsc::channel();
-    let mut heard = heard::Heard::start(tell).map_err(|why| deaf(&why.to_string()))?;
+    let mut heard = Heard::start(tell).map_err(|why| deaf(&why.to_string()))?;
     let kept: Vec<PathBuf> = [github::seen_file(home), upstreams::counted_file(home)]
         .into_iter()
         .flatten()
         .collect();
+    let mut folders = heard::folders(disk.found.keys(), &kept);
+    heard.follow(&folders, |_| true);
     loop {
-        heard.follow(heard::folders(&record, &kept));
         watched.store(heard.watched(), Ordering::Relaxed);
-        match told.recv_timeout(PACE) {
-            Ok(()) => settle(&told, began)?,
-            Err(RecvTimeoutError::Timeout) => {}
+        let record = match told.recv_timeout(PACE) {
+            Ok(moved) => {
+                let moved = settle(&told, moved, began)?;
+                began = Instant::now();
+                let record = timed(&took, || disk.read_again(&moved));
+                follow_again(&mut folders, &disk, &moved);
+                heard.follow(&folders, |of| moved.contains(of));
+                record
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                began = Instant::now();
+                let record = timed(&took, || disk.read_whole());
+                folders = heard::folders(disk.found.keys(), &kept);
+                heard.follow(&folders, |_| true);
+                record
+            }
             Err(RecvTimeoutError::Disconnected) => return Err(deaf("inotify stopped")),
-        }
-        began = Instant::now();
-        record = read(home, &took)?;
+        };
         shared.change(feed::records(&record), feed::sources(&record));
     }
 }
 
-/// The record as the command reads it, and how long that took.
-fn read(home: Option<&Path>, took: &AtomicU64) -> Result<Record, Failure> {
+/// The disk as last read: each checkout by its own git folder.
+struct Disk<'a> {
+    home: Option<&'a Path>,
+    roots: Vec<PathBuf>,
+    machine: String,
+    found: BTreeMap<PathBuf, Found>,
+}
+
+impl Disk<'_> {
+    /// Walks the roots for every checkout and reads each.
+    fn read_whole(&mut self) -> Record {
+        self.found = read::commons(&self.roots)
+            .into_iter()
+            .map(|common| {
+                let found = read::checkout(&common, self.home);
+                (common, found)
+            })
+            .collect();
+        self.record()
+    }
+
+    /// Reads again only the checkouts that `moved`, letting go of any now
+    /// gone; the timers' files moving needs no checkout read.
+    fn read_again(&mut self, moved: &BTreeSet<Of>) -> Record {
+        for of in moved {
+            let Of::Checkout(common) = of else {
+                continue;
+            };
+            if common.is_dir() {
+                let found = read::checkout(common, self.home);
+                self.found.insert(common.clone(), found);
+            } else {
+                self.found.remove(common);
+            }
+        }
+        self.record()
+    }
+
+    /// The record of the checkouts as held, with the timers' parts merged
+    /// in as the command merges them.
+    fn record(&self) -> Record {
+        let reading = Reading {
+            roots: &self.roots,
+            home: self.home,
+            machine: &self.machine,
+            now: crate::now(),
+        };
+        let mut record = read::assemble(&reading, self.found.values().cloned());
+        crate::kept(self.home, &mut record);
+        record
+    }
+}
+
+/// The folders to watch once the checkouts that `moved` are read again:
+/// theirs named afresh, everyone else's as they were.
+fn follow_again(folders: &mut Folders, disk: &Disk, moved: &BTreeSet<Of>) {
+    folders.retain(|_, watch| !moved.contains(&watch.of) || watch.of == Of::Kept);
+    for of in moved {
+        if let Of::Checkout(common) = of
+            && disk.found.contains_key(common)
+        {
+            folders.extend(heard::checkout(common));
+        }
+    }
+}
+
+/// What `reading` gives, saying how long it took for health.
+fn timed(took: &AtomicU64, reading: impl FnOnce() -> Record) -> Record {
     let began = Instant::now();
-    let record = crate::record(home, crate::now())?;
+    let record = reading();
     let ms = u64::try_from(began.elapsed().as_millis()).unwrap_or(u64::MAX);
     took.store(ms, Ordering::Relaxed);
-    Ok(record)
+    record
 }
 
 /// Waits for the disk to go quiet, or for `LONGEST` at most, and until
-/// `SPACED` has passed since the last reading `began`. What's heard
-/// meanwhile is taken in by the reading that follows.
-fn settle(told: &Receiver<()>, began: Instant) -> Result<(), Failure> {
+/// `SPACED` has passed since the last reading `began`, gathering whose
+/// folders moved meanwhile with what was first heard.
+fn settle(
+    told: &Receiver<BTreeSet<Of>>,
+    mut moved: BTreeSet<Of>,
+    began: Instant,
+) -> Result<BTreeSet<Of>, Failure> {
     let heard = Instant::now();
     while heard.elapsed() < LONGEST {
         match told.recv_timeout(QUIET) {
-            Ok(()) => {}
+            Ok(more) => moved.extend(more),
             Err(RecvTimeoutError::Timeout) => break,
             Err(RecvTimeoutError::Disconnected) => return Err(deaf("inotify stopped")),
         }
@@ -114,8 +206,10 @@ fn settle(told: &Receiver<()>, began: Instant) -> Result<(), Failure> {
     if let Some(left) = SPACED.checked_sub(began.elapsed()) {
         std::thread::sleep(left);
     }
-    while told.try_recv().is_ok() {}
-    Ok(())
+    while let Ok(more) = told.try_recv() {
+        moved.extend(more);
+    }
+    Ok(moved)
 }
 
 /// That it can no longer hear the disk, so systemd starts it again rather

@@ -12,6 +12,9 @@
 //! every status an agent asks for; when a tree was last written moves with
 //! the daemon's pace instead. A lock file is git's own on the way to the
 //! name it renames to, which is heard as it lands.
+//!
+//! Each watch knows whose it is, a checkout's or the timers', so what's
+//! told is which checkouts moved, and the daemon reads only those again.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
@@ -20,7 +23,24 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 
 use inotify::{Inotify, WatchDescriptor, WatchMask, Watches};
-use repos::model::Record;
+
+/// Whose a watched folder is: a checkout's, by its own git folder, or the
+/// timers', whose kept files every reading merges in.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Of {
+    Checkout(PathBuf),
+    Kept,
+}
+
+/// A watched folder: what it is, and whose.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Watch {
+    pub folder: Folder,
+    pub of: Of,
+}
+
+/// The folders to watch, by path.
+pub type Folders = BTreeMap<PathBuf, Watch>;
 
 /// What a watched folder is, which says the names in it that matter.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -59,47 +79,62 @@ impl Folder {
     }
 }
 
-/// Every folder to watch for `record`, and what each is; `kept` names the
-/// files the timers keep.
-pub fn folders(record: &Record, kept: &[PathBuf]) -> BTreeMap<PathBuf, Folder> {
-    let mut folders = BTreeMap::new();
-    let checkouts = record
-        .repositories
-        .iter()
-        .flat_map(|repository| &repository.checkouts);
-    for checkout in checkouts {
-        let path = PathBuf::from(&checkout.path);
-        let common = if checkout.bare {
-            path
-        } else {
-            path.join(".git")
-        };
-        if !common.is_dir() {
-            continue;
-        }
-        git_folder(&common, &mut folders);
-        refs(&common.join("refs"), &mut folders);
-        let trees = common.join("worktrees");
-        if let Ok(entries) = fs::read_dir(&trees) {
-            folders.insert(trees, Folder::Trees);
-            for entry in entries.flatten() {
-                if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
-                    git_folder(&entry.path(), &mut folders);
-                }
+/// Every folder to watch for the checkouts whose own git folders are
+/// `commons`, and for `kept`, the files the timers keep.
+pub fn folders<'a>(commons: impl IntoIterator<Item = &'a PathBuf>, kept: &[PathBuf]) -> Folders {
+    let mut folders = Folders::new();
+    for common in commons {
+        folders.extend(checkout(common));
+    }
+    folders.extend(kept_folders(kept));
+    folders
+}
+
+/// The folders to watch for one checkout, by its own git folder: that,
+/// its reftable, its refs at every depth, its `worktrees/` and each tree's
+/// folder in it. None, once it's gone.
+pub fn checkout(common: &Path) -> Folders {
+    let mut named = BTreeMap::new();
+    if !common.is_dir() {
+        return Folders::new();
+    }
+    git_folder(common, &mut named);
+    refs(&common.join("refs"), &mut named);
+    let trees = common.join("worktrees");
+    if let Ok(entries) = fs::read_dir(&trees) {
+        named.insert(trees, Folder::Trees);
+        for entry in entries.flatten() {
+            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                git_folder(&entry.path(), &mut named);
             }
         }
     }
+    let of = Of::Checkout(common.to_path_buf());
+    named
+        .into_iter()
+        .map(|(path, folder)| {
+            let of = of.clone();
+            (path, Watch { folder, of })
+        })
+        .collect()
+}
+
+/// The folders the timers keep their files in, each with the names that
+/// are theirs.
+fn kept_folders(kept: &[PathBuf]) -> Folders {
+    let mut folders = Folders::new();
     for file in kept {
         let (Some(folder), Some(name)) = (file.parent(), file.file_name()) else {
             continue;
         };
         let name = name.to_string_lossy().into_owned();
-        // A kept file in a git folder would be a strange place, and that
-        // folder's watch is kept as git's.
-        if let Folder::Kept(names) = folders
+        let watch = folders
             .entry(folder.to_path_buf())
-            .or_insert_with(|| Folder::Kept(BTreeSet::new()))
-        {
+            .or_insert_with(|| Watch {
+                folder: Folder::Kept(BTreeSet::new()),
+                of: Of::Kept,
+            });
+        if let Folder::Kept(names) = &mut watch.folder {
             names.insert(name);
         }
     }
@@ -129,9 +164,9 @@ fn refs(folder: &Path, folders: &mut BTreeMap<PathBuf, Folder>) {
 }
 
 /// What each watch is, shared with the thread that hears them.
-type Held = Arc<Mutex<HashMap<WatchDescriptor, Folder>>>;
+type Held = Arc<Mutex<HashMap<WatchDescriptor, Watch>>>;
 
-fn lock(held: &Held) -> MutexGuard<'_, HashMap<WatchDescriptor, Folder>> {
+fn lock(held: &Held) -> MutexGuard<'_, HashMap<WatchDescriptor, Watch>> {
     held.lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
@@ -151,14 +186,14 @@ const HEARD: WatchMask = WatchMask::CREATE
 pub struct Heard {
     watches: Watches,
     held: Held,
-    by_path: HashMap<PathBuf, WatchDescriptor>,
+    by_path: HashMap<PathBuf, (WatchDescriptor, Of)>,
 }
 
 impl Heard {
     /// Watches nothing yet, and sends on `tell` from a thread of its own
-    /// each time a read of inotify's events holds one that's heeded, until
-    /// `tell`'s receiver goes, or inotify fails.
-    pub fn start(tell: mpsc::Sender<()>) -> io::Result<Heard> {
+    /// whose folders moved, each time a read of inotify's events holds one
+    /// that's heeded, until `tell`'s receiver goes, or inotify fails.
+    pub fn start(tell: mpsc::Sender<BTreeSet<Of>>) -> io::Result<Heard> {
         let mut inotify = Inotify::init()?;
         let watches = inotify.watches();
         let held: Held = Arc::new(Mutex::new(HashMap::new()));
@@ -177,15 +212,18 @@ impl Heard {
                     // A watch given back is no longer held, so what's
                     // still on its way from it, its own end included, is
                     // passed over; a folder going is always heeded.
-                    let moved = events.into_iter().any(|event| {
-                        held.get(&event.wd).is_some_and(|folder| {
+                    let moved: BTreeSet<Of> = events
+                        .into_iter()
+                        .filter_map(|event| {
+                            let watch = held.get(&event.wd)?;
                             event
                                 .name
-                                .is_none_or(|name| folder.heeds(&name.to_string_lossy()))
+                                .is_none_or(|name| watch.folder.heeds(&name.to_string_lossy()))
+                                .then(|| watch.of.clone())
                         })
-                    });
+                        .collect();
                     drop(held);
-                    if moved && tell.send(()).is_err() {
+                    if !moved.is_empty() && tell.send(moved).is_err() {
                         return;
                     }
                 }
@@ -197,26 +235,42 @@ impl Heard {
         })
     }
 
-    /// Watches `folders` from now on, and none it watched that they don't
-    /// name. A folder that can't be watched, as one gone since it was read,
-    /// is passed over; the next reading names what's there.
-    pub fn follow(&mut self, folders: BTreeMap<PathBuf, Folder>) {
+    /// Watches `folders` from now on, renewing the watches that are
+    /// `renewed`'s, the checkouts just read: each of theirs is watched
+    /// again, since a folder made again in a place is a new one to inotify,
+    /// and each they no longer name is given back. Everyone else's are
+    /// left as they are, so a round costs what the checkouts read do. A
+    /// folder that can't be watched, as one gone since it was read, is
+    /// passed over; the next reading names what's there.
+    pub fn follow(&mut self, folders: &Folders, renewed: impl Fn(&Of) -> bool) {
         let gone: Vec<PathBuf> = self
             .by_path
-            .keys()
-            .filter(|path| !folders.contains_key(*path))
-            .cloned()
+            .iter()
+            .filter(|(path, (_, of))| renewed(of) && !folders.contains_key(*path))
+            .map(|(path, _)| path.clone())
             .collect();
         for path in gone {
-            if let Some(watch) = self.by_path.remove(&path) {
+            if let Some((watch, _)) = self.by_path.remove(&path) {
                 lock(&self.held).remove(&watch);
                 let _ = self.watches.remove(watch);
             }
         }
-        for (path, folder) in folders {
-            if let Ok(watch) = self.watches.add(&path, HEARD) {
-                lock(&self.held).insert(watch.clone(), folder);
-                self.by_path.insert(path, watch);
+        for (path, watch) in folders {
+            if self.by_path.contains_key(path) && !renewed(&watch.of) {
+                continue;
+            }
+            if let Ok(held) = self.watches.add(path, HEARD) {
+                // A folder made again in a place has a watch of its own,
+                // so the old one is given back.
+                if let Some((old, _)) = self
+                    .by_path
+                    .insert(path.clone(), (held.clone(), watch.of.clone()))
+                    && old != held
+                {
+                    lock(&self.held).remove(&old);
+                    let _ = self.watches.remove(old);
+                }
+                lock(&self.held).insert(held, watch.clone());
             }
         }
     }
