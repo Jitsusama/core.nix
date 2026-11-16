@@ -13,6 +13,26 @@
   ...
 }:
 {
+  # A yes says how long its line was on the screen, from the first frame
+  # niri presented it in this opening, and nothing where it wasn't, where
+  # the line changed since, or where the launcher is walked from outside,
+  # as tests/asks-shown.qml holds secret-asks/Shown.js to asks made up there.
+  the-asks-say-how-long-each-line-was-shown =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-asks-say-how-long-each-line-was-shown" { } ''
+      mkdir launcher
+      cp ${../../../tests/asks-shown.qml} asks-shown.qml
+      cp ${../../secret-asks/Shown.js} launcher/Shown.js
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml asks-shown.qml
+      touch $out
+    '';
+
   # Asks lists what the secret-asks daemon serves, run here over its own
   # folder with stand-ins for op and loginctl, and two asks put up as an
   # agent puts one (tests/asks-stand-ins.sh): For You holds each waiting
@@ -40,6 +60,7 @@
         "launcher/words.json"
       ]}
       cp ${../../secret-asks/Asks.qml} launcher/Asks.qml
+      cp ${../../secret-asks/Shown.js} launcher/Shown.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${../../../tests/asks-served.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
