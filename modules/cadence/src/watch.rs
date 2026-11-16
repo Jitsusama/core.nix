@@ -506,6 +506,42 @@ pub mod tests {
     }
 
     #[test]
+    fn merges_stalled_behind_one_switch_are_said_once_for_all() {
+        // The 16 November case: no switch held from 22:10, and as each
+        // oldest merge aged past six hours the next was said anew, one
+        // alarm every five minutes for the same stall.
+        let now = 100_000;
+        let mut s = calm(now);
+        s.follower.looks = vec![Look {
+            at: now - 7 * 3600,
+            core: "c".into(),
+            switched: true,
+        }];
+        s.landings = [("a", now - 6 * 3600 + 120), ("b", now - 5 * 3600), ("d", now - 3600)]
+            .into_iter()
+            .map(|(sha, at)| Landing {
+                merge: merge(sha, at),
+                on: None,
+            })
+            .collect();
+        let mut state = State::default();
+        let first = tick(&s, &mut state);
+        assert_eq!(first.len(), 1, "{first:?}");
+        assert!(
+            first[0].text.contains("nor are 2 merges after it"),
+            "the merges behind the oldest went unsaid: {}",
+            first[0].text
+        );
+        s.now += 300;
+        s.last_card = Some(s.now - 60);
+        assert_eq!(
+            tick(&s, &mut state),
+            [] as [Question; 0],
+            "the same stall was said again once its oldest merge aged out"
+        );
+    }
+
+    #[test]
     fn a_merge_on_the_machine_or_of_docs_alone_isnt_said() {
         let mut s = calm(100_000);
         let mut docs = merge("doc", 100_000 - 30 * 60);
