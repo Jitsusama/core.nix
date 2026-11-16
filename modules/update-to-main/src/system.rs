@@ -1029,7 +1029,8 @@ pub fn switch(config: &Config, system: &Path) -> Result<Switched, Failure> {
                 run::command(&system.join("bin/switch-to-configuration"), &config.state),
                 "switching",
                 [if unbooted { "test" } else { "switch" }],
-            )?;
+            )
+            .map_err(|failure| with_journals(config, failure))?;
             Ok(Switched {
                 applied: Applied::Now,
                 restart: waits,
@@ -1055,6 +1056,46 @@ pub fn switch(config: &Config, system: &Path) -> Result<Switched, Failure> {
             })
         }
     }
+}
+
+/// How many units a failed switch quotes, and how many of each one's
+/// last lines.
+const UNITS_QUOTED: usize = 3;
+const JOURNAL_LINES: &str = "10";
+
+/// `failure` with the last lines of each unit it says failed, read before
+/// the machine goes back, which would start them again: on 16 November two
+/// switches said only that home-manager failed, and finding the step it
+/// hung on took an hour.
+fn with_journals(config: &Config, mut failure: Failure) -> Failure {
+    let Some(journalctl) = &config.tools.journalctl else {
+        return failure;
+    };
+    for unit in failed_units(&failure.lines).into_iter().take(UNITS_QUOTED) {
+        let mut command = run::command(journalctl, &config.state);
+        command.args(["-u", &unit, "-n", JOURNAL_LINES, "-o", "cat", "--no-pager"]);
+        // The journal only adds to what's said, so one that can't be read
+        // leaves the failure as it was.
+        if let Ok(said) = run::output(command, "reading a unit's journal", ["-q"]) {
+            failure.lines.extend(
+                said.lines()
+                    .filter(|line| !line.trim().is_empty())
+                    .map(|line| format!("{unit}: {line}")),
+            );
+        }
+    }
+    failure
+}
+
+/// The units switch-to-configuration says failed, in its last lines.
+fn failed_units(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter_map(|l| l.strip_prefix("warning: the following units failed: "))
+        .flat_map(|units| units.split(", "))
+        .map(|u| u.trim().to_owned())
+        .filter(|u| !u.is_empty())
+        .collect()
 }
 
 /// Switches back to `system`, the one the machine left.
