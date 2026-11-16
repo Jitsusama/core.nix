@@ -12326,6 +12326,11 @@ Scope {
                                     commandMade.append({ slot: commandMade.count });
                             }
                             onChosenChanged: keepChosen()
+                            // A room grown under the same menu makes the rows
+                            // it now shows, and a box grown or shrunk keeps
+                            // the chosen line whole, as a list's would.
+                            onRoomChanged: makeRows()
+                            onHeightChanged: keepChosen()
                             onCountChanged: {
                                 makeRows();
                                 contentY = bounded(contentY);
