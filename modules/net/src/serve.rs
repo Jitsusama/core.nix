@@ -12,7 +12,8 @@
 //!   everything hangs on apart from one a single device uses without
 //!   counting routes itself. It counts routes, not traffic.
 //! - A concern's own kind, busy or weak, is `concern`, since `kind` is the
-//!   record's.
+//!   record's, and its `rank` is its place in net's order, worst first
+//!   from 0, since a watch is told records by key.
 //!
 //! The record's `collected_at` isn't served: each record carries its own
 //! time where it has one, a device's and a source's `read_at` and the
@@ -128,7 +129,7 @@ pub fn records(network: &Network) -> Vec<Value> {
     if let Some(internet) = &network.internet {
         records.push(record("internet", "internet", internet));
     }
-    for concern in &network.concerns {
+    for (rank, concern) in network.concerns.iter().enumerate() {
         let mut fields = serde_json::to_value(concern).unwrap_or_else(|_| json!({}));
         let own = fields["kind"].take();
         let mut key = format!("concern:{}:{}", own.as_str().unwrap_or(""), concern.device);
@@ -137,6 +138,7 @@ pub fn records(network: &Network) -> Vec<Value> {
             key.push_str(part);
         }
         fields["concern"] = own;
+        fields["rank"] = json!(rank);
         records.push(record("concern", &key, &fields));
     }
     records
@@ -315,6 +317,29 @@ mod tests {
         assert_eq!(lost["kind"], "concern", "{lost}");
         assert_eq!(lost["concern"], "lost", "{lost}");
         assert!(lost["says"].is_string(), "{lost}");
+    }
+
+    #[test]
+    fn each_concern_says_its_place_worst_first() {
+        let network = network();
+        let records = records(&network);
+        let places: Vec<(&Value, &Value)> = records
+            .iter()
+            .filter(|record| record["kind"] == "concern")
+            .map(|record| (&record["says"], &record["rank"]))
+            .collect();
+        let worst_first: Vec<(&str, usize)> = network
+            .concerns
+            .iter()
+            .enumerate()
+            .map(|(place, concern)| (concern.says.as_str(), place))
+            .collect();
+        for (says, place) in worst_first {
+            assert!(
+                places.iter().any(|(s, r)| *s == says && *r == place),
+                "{says} is told at place {place}, as net orders them: {places:?}"
+            );
+        }
     }
 
     #[test]

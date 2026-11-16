@@ -87,7 +87,8 @@ watch is told only what moved:
 - `source:<name>`: how each vendor's source stands, with its reason.
 - `internet`: the one record of the internet beyond the modem.
 - `concern:<concern>:<device>[:<on>][:<other>]`: what's worth a look, its
-  own kind as `concern`, since `kind` is the record's.
+  own kind as `concern`, since `kind` is the record's, and its `rank`, its
+  place worst first from 0, since a watch hears records in key order.
 - `uplink`: who fills this machine's own upload, served only while it's
   watched, and only on Linux ([The Uplink](#the-uplink)).
 
