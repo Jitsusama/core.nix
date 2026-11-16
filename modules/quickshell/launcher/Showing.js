@@ -364,6 +364,17 @@ function fact(one) {
 }
 
 // Styled text's words, its tags taken away and its entities read.
+// Whether a session is on screen: a session's row among the rows shown
+// (Agents', at home or in Agents), or a session's drawer held open. Only
+// a session's row says its step and how full it is, which pi's source
+// holds back while none is shown (PiSource.qml), so opening On or a
+// notice hears none of it. Whether each works is heard regardless.
+const SESSION = "session";
+function sessionShown(rows, held) {
+    return rows.some(row => row?.kind === SESSION)
+        || held.some(holding => holding?.row?.kind === SESSION);
+}
+
 function unstyled(text) {
     return text.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, "")
         .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">")

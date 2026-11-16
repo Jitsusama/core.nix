@@ -216,6 +216,21 @@ QtObject {
             Showing.acted({ title: "Drafts" }, { name: "Drafts" }).acts,
             Showing.acted(null, { verbs: () => verbs })
         ], [own, undefined, null]);
+        // A session is on screen only where its row is shown, or its
+        // drawer is held open; On's rows, a notice's or a place's of
+        // anything else show none, so pi's source needn't catch up.
+        const session = { key: "agent:KESTREL", kind: "session", name: "Mend the reef" };
+        const want = { key: "on:waiting:want:KESTREL", name: "Mend the reef" };
+        const shown = [
+            Showing.sessionShown([session, home[0]], []),
+            Showing.sessionShown(home, [{ row: session, rows: [] }]),
+            Showing.sessionShown([want].concat(home), []),
+            Showing.sessionShown(home, [{ row: home[0], rows: [] }]),
+            Showing.sessionShown([], []),
+            Showing.sessionShown([null, undefined], [{}])
+        ];
+        expect("a session is shown by its row or its drawer, never by On's want or a place",
+            shown, [true, true, false, false, false, false]);
         if (failed > 0) {
             console.warn(`${failed} failed`);
             Qt.exit(1);

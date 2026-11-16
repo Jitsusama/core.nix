@@ -60,12 +60,14 @@ ShellRoot {
         value: theLauncher.open
     }
 
-    // A session's step and what it has used are shown only in the launcher,
-    // so they're taken only while it's open or walked (PiSource.qml).
+    // A session's step and what it has used are shown only on its row in
+    // the launcher, so they're taken only while one is on screen or the
+    // launcher is walked (PiSource.qml). An opening of On or a notice
+    // shows none, so it doesn't hear what every session did meanwhile.
     Binding {
         target: PiSource
         property: "showing"
-        value: theLauncher.open || theLauncher.cataloguing
+        value: theLauncher.cataloguing || theLauncher.open && theLauncher.sessionShown
     }
 
     // Sessions opened behind the lock are placed once it's let go, since
