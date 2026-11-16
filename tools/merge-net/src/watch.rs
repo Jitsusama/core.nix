@@ -1255,7 +1255,11 @@ fn hand_skipped_macs(
     for merge in world.merges(base, head)? {
         if world.mac_skipped(&merge) {
             let check = crate::macs::check(&world.parent(&merge)?);
-            settler.hand(Job::Mac { merge, check });
+            settler.hand(Job::Mac {
+                merge,
+                check,
+                since: crate::state::now(),
+            });
         }
     }
     Ok(())
@@ -2885,6 +2889,39 @@ mod tests {
         assert!(
             world.reverted.lock().unwrap().is_empty(),
             "a merge was reverted for a comparison that never ran"
+        );
+    }
+
+    #[test]
+    fn a_mac_comparison_no_mac_took_for_a_day_is_told_and_let_go() {
+        let state = state("mac-unrun");
+        let check = crate::macs::check("s");
+        state.set_heads("h", "h").unwrap();
+        state
+            .keep_settling(
+                &check,
+                &json!({"kind": "mac", "merge": "m1", "test": check, "since": 0}),
+            )
+            .unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("m1", &check, &[UNSENT; SENDS as usize]);
+        round(&world, &state, "s").unwrap();
+        let told: Vec<Value> = findings(&state)
+            .into_iter()
+            .filter(|finding| finding["kind"] == "mac-unrun")
+            .collect();
+        assert!(
+            told.iter().any(|finding| finding["commit"] == "m1"),
+            "a Mac's comparison no Mac took for a day wasn't told: {told:?}"
+        );
+        assert!(
+            state.settling().is_empty(),
+            "a Mac's comparison told as unrun was still kept to try again"
         );
     }
 
