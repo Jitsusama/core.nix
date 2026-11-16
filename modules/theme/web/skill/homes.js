@@ -90,8 +90,11 @@
   }
   const names = [...byName.keys()].sort((one, other) => other.length - one.length);
   const escaped = names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"));
+  // A name joined to a letter, a slash, a dot or a dash is part of a longer
+  // one, and so is a name joined to an ellipsis (U+2026): a page that
+  // shortens a long name in its middle still names only the whole.
   const mention = new RegExp(
-    `(?<![\\p{L}\\p{N}_/.-])(?:${escaped.join("|")})(?![\\p{L}\\p{N}_/-]|\\.[\\p{L}\\p{N}])`,
+    `(?<![\\p{L}\\p{N}_/.\u2026-])(?:${escaped.join("|")})(?![\\p{L}\\p{N}_/\u2026-]|\\.[\\p{L}\\p{N}])`,
     "gu",
   );
 
