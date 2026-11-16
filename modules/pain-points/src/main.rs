@@ -296,8 +296,7 @@ fn follow_pi(
                 t.duration_since(UNIX_EPOCH)
                     .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
             });
-            // Left out of `present` too, so a lab a build before this one
-            // counted leaves the state and the day file at once.
+            // Not `present` either, so a lab is never kept in the state.
             if written >= since && begun_in_a_lab(&path) {
                 continue;
             }
@@ -338,8 +337,7 @@ fn begun_in_a_lab(path: &Path) -> bool {
         cwd: PathBuf,
     }
     let mut first = String::new();
-    let read = fs::File::open(path)
-        .and_then(|file| io::BufReader::new(file).read_line(&mut first));
+    let read = fs::File::open(path).and_then(|file| io::BufReader::new(file).read_line(&mut first));
     let Some(header) = read
         .ok()
         .and_then(|_| serde_json::from_str::<Header>(&first).ok())
@@ -643,7 +641,7 @@ mod tests {
         let root = env::temp_dir().join(format!("pain-points-lab-{}", std::process::id()));
         let at: i64 = 1_794_412_800_000;
         let scratch = "/home/someone/.cache/pi/agentic-harness.pi/quest-workspace/QEST-1-A";
-        let log = |cwd: &str| {
+        let log = |cwd: Option<&str>| {
             [
                 serde_json::json!({"type": "session", "version": 3, "id": "s",
                     "timestamp": "2026-11-11T16:00:00.000Z", "cwd": cwd}),
@@ -655,13 +653,19 @@ mod tests {
             .concat()
         };
         for (name, cwd) in [
-            ("lab.jsonl", format!("{scratch}/tmp")),
-            ("lab-below.jsonl", format!("{scratch}/tmp/rd")),
-            ("orchestrator.jsonl", format!("{scratch}/agentic-harness.pi")),
+            ("lab.jsonl", Some(format!("{scratch}/tmp"))),
+            ("lab-below.jsonl", Some(format!("{scratch}/tmp/rd"))),
+            (
+                "orchestrator.jsonl",
+                Some(format!("{scratch}/agentic-harness.pi")),
+            ),
+            ("system-tmp.jsonl", Some("/tmp".to_owned())),
+            ("home-tmp.jsonl", Some("/home/someone/src/tmp".to_owned())),
+            ("no-cwd.jsonl", None),
         ] {
-            let folder = root.join("sessions").join(name);
+            let folder = root.join("sessions").join("sessions");
             fs::create_dir_all(&folder).expect("a scratch folder");
-            fs::write(folder.join(name), log(&cwd)).expect("a log");
+            fs::write(folder.join(name), log(cwd.as_deref())).expect("a log");
         }
         let logs =
             follow_pi(&root.join("sessions"), &root.join("pi-logs.json"), 0, "r").expect("reads");
@@ -669,8 +673,13 @@ mod tests {
         let names: Vec<&str> = logs.keys().map(String::as_str).collect();
         assert_eq!(
             names,
-            ["orchestrator.jsonl"],
-            "an agent's lab drives pi as he would, but only a session elsewhere is his"
+            [
+                "home-tmp.jsonl",
+                "no-cwd.jsonl",
+                "orchestrator.jsonl",
+                "system-tmp.jsonl"
+            ],
+            "an agent's lab drives pi as he would; any other tmp, or no header, is his"
         );
     }
 
