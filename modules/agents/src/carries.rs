@@ -380,4 +380,20 @@ mod tests {
         let rows = networks::sessions(&tree);
         assert_eq!(named(&rows, "harbor").as_deref(), Some("Chart the Harbour"));
     }
+
+    #[test]
+    fn a_session_on_its_way_with_no_row_yet_is_said_to_travel_not_to_have_ended() {
+        // Between leaving one machine and starting on the other, a carried
+        // session has no row anywhere, yet it hasn't ended.
+        for state in ["ordered", "carrying"] {
+            let under_way = record("AFLOAT", "2026-11-16T01:00:00Z", state);
+            let made = rows(&[&under_way], &top(), &words());
+            assert_eq!(made[1]["name"], "A Session on Its Way", "{state}");
+        }
+        for state in ["arrived", "refused", "back"] {
+            let settled = record("AFLOAT", "2026-11-16T01:00:00Z", state);
+            let made = rows(&[&settled], &top(), &words());
+            assert_eq!(made[1]["name"], "A Session That Ended", "{state}");
+        }
+    }
 }

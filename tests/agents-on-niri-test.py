@@ -3154,6 +3154,130 @@ def told_quietly(shell: Shell, since: int) -> list[str]:
     return said
 
 
+# The carries the node ordered, as it keeps them (mycelium's carry::ordered), in its state.
+CARRIES = STATE / "mycelium/carries.jsonl"
+
+
+def here() -> str:
+    """Give the name the node goes by, as it recorded it for every command on the machine."""
+    return (STATE / "mycelium/machine").read_text().strip()
+
+
+def touched(address: str) -> None:
+    """Lay a session's presence again as it stands, a moment on, so the node judges it anew."""
+    path = PRESENCE / f"{address.lower()}.json"
+    record = json.loads(path.read_text())
+    record["at"] = datetime.now(UTC).isoformat()
+    laid = path.with_suffix(".tmp")
+    laid.write_text(json.dumps(record))
+    laid.rename(path)
+
+
+def kept(*carries: Json) -> None:
+    """Keep these carries whole, as the node keeps those it ordered, and have it read them."""
+    laid = CARRIES.with_suffix(".tmp")
+    laid.parent.mkdir(parents=True, exist_ok=True)
+    laid.write_text("".join(f"{json.dumps(carry)}\n" for carry in carries))
+    laid.rename(CARRIES)
+    touched("LISTEN")
+
+
+def ordered(address: str, ago: int, **said: str) -> Json:
+    """Give a carry of a session the node ordered `ago` seconds ago, by its orchestrator."""
+    at = datetime.now(UTC) - timedelta(seconds=ago)
+    return {
+        "at": at.isoformat().replace("+00:00", "Z"),
+        "by": "BOSSES",
+        "session": f"s-{address.lower()}",
+        "address": address,
+        "quest": f"QEST-20261107-{address}",
+        **said,
+    }
+
+
+@pytest.fixture
+def carried(shell: Shell) -> Iterator[None]:
+    """Keep two carries for one case: Listening Quest's arrived here, Paused Quest's to go.
+
+    Each case's own, so no other case's rows count a carry; gone again after it.
+    """
+    kept(
+        ordered("LISTEN", 120, **{"from": "tern", "to": here(), "why": "it needs the camera"}),
+        ordered("PAUSED", 60, **{"from": here(), "to": "tern", "why": "tern sits idle"}),
+    )
+    yield
+    CARRIES.unlink()
+    touched("LISTEN")
+    opened(shell)
+    shell.launcher_until(lambda shown: "Carried" not in shown["rows"])
+    shell.close_launcher()
+
+
+@pytest.mark.usefixtures("carried", "at_shots_scale")
+def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_in_one_act(
+    shell: Shell, shoot: Callable[[str], None]
+) -> None:
+    """Carried lists each carry where it went, by whom and why; Return carries one back.
+
+    An arrived carry offers Carry Back alone, asked of the node; one about to go offers
+    nothing, and a carry back the node refuses says why in place (DCU5J4, items 1 and 2).
+    """
+    opened(shell)
+    shell.launcher_until(lambda shown: "Carried" in shown["rows"])
+    shell.down_to("Carried")
+    assert shell.showing()["selected"]["side"] == "1 about to go \u00b7 1 arrived", shell.showing()
+    took = presented_after(shell, "ret")
+    logging.getLogger(__name__).info("LAB the step into Carried was presented %s ms on", took)
+    shell.launcher_until(lambda shown: shown["rows"][:2] == ["Paused Quest", "Listening Quest"])
+    going = shell.showing()["selected"]
+    assert going["note"] == "carried to tern by Orchestrating Quest \u00b7 tern sits idle", going
+    assert going["told"][:1] != ["\u21b5 carry back"], going
+    shoot("agents-carried")
+    shell.down_to("Listening Quest")
+    arrived = shell.showing()["selected"]
+    assert arrived["note"] == (
+        f"carried to {here()} by Orchestrating Quest \u00b7 it needs the camera"
+    ), arrived
+    assert arrived["told"][:1] == ["\u21b5 carry back"], arrived
+    since = shell.mark()
+    took = presented_after(shell, "ret")
+    logging.getLogger(__name__).info("LAB Carry Back was presented %s ms on", took)
+    # Tern is no machine this one links to, so the node refuses it, and says why.
+    shell.reported("not become carry:s-listen:", lambda why: why.split(": ", 1)[-1] != "", since)
+    shoot("agents-carried-refused")
+
+
+def test_a_carry_under_way_waits_quietly_in_for_you_and_goes_as_it_arrives(
+    shell: Shell,
+) -> None:
+    """A carry under way is a thing to read in For You, and goes from it once it arrives.
+
+    Only one about to go or on its way is there, never one arrived (DCU5J4, item 3).
+    """
+    kept(
+        ordered("ARRIVE", 90, **{"from": "tern", "to": here(), "why": "it needs the camera"}),
+        ordered("PAUSED", 60, **{"from": here(), "to": "tern", "why": "tern sits idle"}),
+    )
+    try:
+        in_for_you(shell)
+        # Arriving Quest's session runs nowhere yet, so its carry is on its way.
+        shell.launcher_until(
+            lambda shown: {"Paused Quest", "A Session on Its Way"} <= set(shown["rows"])
+        )
+        lay("ARRIVE", "Arriving Quest", {"orchestratedBy": "BOSSES", "state": "listening"})
+        shell.launcher_until(
+            lambda shown: (
+                "Paused Quest" in shown["rows"]
+                and "A Session on Its Way" not in shown["rows"]
+                and "Arriving Quest" not in shown["rows"]
+            )
+        )
+    finally:
+        CARRIES.unlink()
+        (PRESENCE / "arrive.json").unlink(missing_ok=True)
+        touched("LISTEN")
+
+
 def test_a_landing_read_finds_each_landings_session_in_one_look(shell: Shell) -> None:
     """A landing read keeps Landed's rows again looking through the sessions once, not each time.
 
