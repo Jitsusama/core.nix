@@ -97,7 +97,6 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::thread;
-use std::time::Instant;
 
 use building::{built, clean_commit, passed_at, unpassed};
 use checks::Derivations;
@@ -228,7 +227,14 @@ fn main() -> ExitCode {
         .split_first()
         .map(|(first, rest)| (first.as_str(), rest))
     {
-        return keep_main(rest);
+        return match rest {
+            [] => keep::main(None),
+            [flag, path] if flag == "--follow" => keep::main(Some(Path::new(path))),
+            _ => {
+                eprintln!("changed-checks: keep-main takes only --follow PATH\n{USED}");
+                ExitCode::from(USAGE)
+            }
+        };
     }
     let options = match Options::parse(arguments.into_iter()) {
         Ok(options) => options,
@@ -316,65 +322,6 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
         eprintln!("changed-checks: couldn't log the run: {why}");
     }
     compared
-}
-
-/// Follow origin's main, keeping each head once it has stood, until stopped.
-fn keep_main(rest: &[String]) -> ExitCode {
-    let follow = match rest {
-        [] => None,
-        [flag, path] if flag == "--follow" => Some(PathBuf::from(path)),
-        _ => {
-            eprintln!("changed-checks: keep-main takes only --follow PATH\n{USED}");
-            return ExitCode::from(USAGE);
-        }
-    };
-    let url = env::var("CHANGED_CHECKS_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned());
-    let clone = state().join("changed-checks/main");
-    let mut keeper = keep::Keeper::default();
-    eprintln!(
-        "changed-checks: keeping each head of {url}'s main once it has stood {} s",
-        keep::STOOD.as_secs()
-    );
-    loop {
-        if let Some(installed) = &follow
-            && keep::replaced(std::fs::canonicalize(installed), env::current_exe())
-        {
-            eprintln!(
-                "changed-checks: another changed-checks is installed, so this one ends \
-                 between keeps, for the service to start that one"
-            );
-            return ExitCode::SUCCESS;
-        }
-        // The store line names the lent builder by its host key, which is
-        // new for each one lent, so it says when what's kept is gone.
-        let builder = std::fs::read_to_string(offload_dir().join("store")).ok();
-        let builder = builder
-            .as_deref()
-            .map(str::trim)
-            .filter(|line| !line.is_empty());
-        match keep::head(&url) {
-            Ok(head) => {
-                if let (Some(head), Some(builder)) =
-                    (keeper.due(&head, builder, Instant::now()), builder)
-                {
-                    let short = head.get(..12).unwrap_or(&head);
-                    match keep_head(&url, &clone, &head) {
-                        Ok(true) => keeper.kept(&head, builder),
-                        Ok(false) => {
-                            eprintln!("changed-checks: nothing took {short}, so it waits");
-                            keeper.failed(&head, builder, Instant::now());
-                        }
-                        Err(why) => {
-                            eprintln!("changed-checks: couldn't keep {short}: {why}");
-                            keeper.failed(&head, builder, Instant::now());
-                        }
-                    }
-                }
-            }
-            Err(why) => eprintln!("changed-checks: couldn't read main's head: {why}"),
-        }
-        std::thread::sleep(keep::LOOK_EVERY);
-    }
 }
 
 /// Keep `head`'s checks where runs are sent, from the keeper's own clone,
