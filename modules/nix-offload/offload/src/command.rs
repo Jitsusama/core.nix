@@ -688,6 +688,8 @@ mod tests {
         assert_ne!(ended, Some(0), "one cut off passed");
     }
 
+    // It finds what the command left running in /proc, which only Linux has.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_command_whose_caller_is_gone_ends_with_all_it_started() {
         // The caller stands in for an ssh session, starting the run in a
@@ -874,6 +876,8 @@ mod tests {
     /// against a beat stamped in whole seconds, came after the command's 8 s
     /// (2 of 5 runs failed on a loaded machine, 14 November). The command
     /// now sleeps a minute, so only a kill keeps it from touching `left`.
+    /// It finds them in /proc, which only Linux has.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_run_nothing_follows_ends_with_all_it_started() {
         let folder = tempfile::tempdir().unwrap();
@@ -904,6 +908,7 @@ mod tests {
     }
 
     /// The processes whose words hold `mark`, this test's own aside.
+    #[cfg(target_os = "linux")]
     fn carrying(mark: &str) -> Vec<u32> {
         let me = std::process::id();
         std::fs::read_dir("/proc")

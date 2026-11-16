@@ -4353,6 +4353,9 @@ exit 3
         status
     }
 
+    // Lending, and so handing a builder over, is Linux's alone, as are the
+    // two after this.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_builder_handed_over_as_the_service_ends_is_named_until_the_next_start_holds_it() {
         // On 13 November a switch restarted both lenders while builds ran
@@ -4400,6 +4403,7 @@ exit 3
         end(&mut lent.helper);
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_start_that_cant_take_back_what_was_handed_over_names_it_nowhere_first() {
         let _heard = unstopped();
@@ -4766,6 +4770,7 @@ exit 1
 {"at":9,"event":"ended","name":"lend-5","seconds":4}
 "#;
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_builder_a_start_cant_take_back_is_kept_while_its_way_carries_builds() {
         let _heard = unstopped();

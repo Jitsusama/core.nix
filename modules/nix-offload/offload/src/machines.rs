@@ -1036,6 +1036,9 @@ mod tests {
         );
     }
 
+    // A Mac's loopback holds 127.0.0.1 alone, so the address of its own is
+    // Linux's.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_builder_answers_only_while_something_listens() {
         // On a loopback address of its own, since a port it frees on the

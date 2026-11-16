@@ -1438,6 +1438,8 @@ mod tests {
         );
     }
 
+    // A proof runs only from a lender, which only Linux has.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_proof_that_hangs_fails_within_its_time_and_ends_what_it_started() {
         let dir = tempfile::tempdir().unwrap();
