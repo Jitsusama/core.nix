@@ -1,0 +1,1429 @@
+/* Your mycelium, now: the network drawn as it is, on one screen. The map
+   takes the room the screen has and moves under the hand (drag, wheel,
+   keys); the panel beside it says what is chosen, or how things stand. An
+   interface to keep open, so its words sit at the interface size. */
+
+:root {
+  /* Sea glass marks the site's emphasis, since gold is a session here and
+     vermilion a machine: each glyph hue keeps the one meaning the map
+     gives it. */
+  --tint: var(--program);
+  /* The panel is wide enough for a title in two lines and a fact on one,
+     and never more than a third of the screen. */
+  --panel: min(27rem, 34vw);
+}
+
+/* One screen: the strip, the head, then the stage taking what's left, so
+   the page itself never scrolls; only the panel's list does. Where the
+   screen is too small for both side by side, they stack and the page
+   scrolls as any page does. */
+html,
+body {
+  block-size: 100%;
+}
+
+body {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-block-size: 100dvh;
+}
+
+@media (min-width: 60rem) and (min-height: 34rem) {
+  body {
+    block-size: 100dvh;
+    overflow: hidden;
+  }
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mark) var(--groups);
+  padding: var(--mark) var(--inset);
+  border-block-end: 1px solid var(--rule);
+}
+
+.mark {
+  color: var(--tint);
+  flex: none;
+}
+
+.head h1 {
+  font-size: var(--step-large);
+  line-height: 1.2;
+}
+
+/* Every word on the page clears 7:1, the enhanced contrast, so words a
+   step back are told apart by size and face rather than by fading: the
+   muted ink is kept for marks. The title's tint is deepened toward the
+   strong ink for the same reason. */
+.head h1 em {
+  color: color-mix(in oklab, var(--tint) 60%, var(--strong));
+}
+
+.head .keys {
+  margin-inline-start: auto;
+  color: var(--text);
+  font-size: var(--step-small);
+}
+
+.head .keys kbd {
+  cursor: pointer;
+}
+
+.switch {
+  display: flex;
+  gap: var(--tie);
+}
+
+.switch button {
+  inline-size: 44px;
+  block-size: 44px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--muted);
+}
+
+.switch button[aria-checked="true"] {
+  color: var(--strong);
+  border-color: var(--rule);
+}
+
+.switch svg {
+  inline-size: 20px;
+  block-size: 20px;
+}
+
+.sr {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- The stage: the map and its panel. ---- */
+
+/* The heading line over the whole width, then the map, with the drawer
+   laid over the map's right side: the map keeps that side as an empty
+   gutter, so opening the drawer never moves it. */
+.stage {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  min-block-size: 0;
+  overflow: clip;
+}
+
+.headline {
+  grid-area: 1 / 1;
+}
+
+.map,
+.panel {
+  grid-area: 2 / 1;
+}
+
+@media (max-width: 60rem), (max-height: 34rem) {
+  .map {
+    block-size: max(26rem, 70dvh);
+  }
+}
+
+.map {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-block-size: 0;
+  margin: 0;
+  background: var(--sunken);
+}
+
+.map-view {
+  min-block-size: 0;
+  position: relative;
+}
+
+.map-view:focus-visible {
+  outline-offset: -3px;
+}
+
+/* The grounds and every line are painted on a canvas under the marks,
+   from the same inks as below, so thousands of them cost one element. */
+.map-ground {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  pointer-events: none;
+}
+
+/* A peek: three short lines on a plate of the map's own paper, edged by a
+   hairline, never a card; it follows the pointer and takes no clicks. */
+.peek {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  z-index: 2;
+  max-inline-size: min(22rem, 80vw);
+  padding: var(--tie) var(--items);
+  background: var(--background);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  pointer-events: none;
+  color: var(--text);
+  font-size: var(--step-small);
+}
+
+.peek[hidden] {
+  display: none;
+}
+
+.peek p {
+  margin: 0;
+}
+
+.peek .peek-name {
+  color: var(--strong);
+  font-weight: 600;
+}
+
+.peek .mono {
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+.map-draw {
+  position: relative;
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.map-draw:active {
+  cursor: grabbing;
+}
+
+/* Over a line, which opens what it carries. */
+.map-draw.on-line {
+  cursor: pointer;
+}
+
+/* ---- The heading line: where the keys are, read from the machine down,
+   with the time the facts were read and the zoom at its end. Find takes
+   its place while it's open, so the line never grows a second row of
+   controls. ---- */
+
+.headline {
+  display: flex;
+  align-items: center;
+  gap: var(--items);
+  min-block-size: 52px;
+  padding: var(--tie) var(--tie) var(--tie) var(--items);
+  border-block-end: 1px solid var(--rule);
+  background: var(--background);
+}
+
+.trail {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.trail ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.trail li {
+  display: flex;
+  align-items: center;
+  min-inline-size: 0;
+}
+
+.trail li + li::before {
+  content: "\203A";
+  padding-inline: var(--tie);
+  color: var(--muted);
+  font-family: var(--serif);
+}
+
+.trail .step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mark);
+  min-block-size: 44px;
+  min-inline-size: 0;
+  padding: 0 var(--tie);
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: 400 var(--step-base) / 1.25 var(--serif);
+  text-align: start;
+  overflow-wrap: break-word;
+  cursor: pointer;
+}
+
+.trail .step:hover {
+  color: var(--strong);
+}
+
+.trail .step[aria-current] {
+  color: var(--strong);
+  font-weight: 600;
+}
+
+.trail .step .mono {
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+.trail .glyph {
+  flex: none;
+  inline-size: 16px;
+  block-size: 16px;
+}
+
+.asof {
+  flex: none;
+  color: var(--text);
+  font: 400 var(--step-small) / 1.4 var(--mono);
+  font-feature-settings: var(--mono-features);
+  white-space: nowrap;
+}
+
+.asof.stale {
+  color: var(--strong);
+}
+
+/* How things stand, in a few words, and who needs him as the way to
+   them: nothing at all when nobody does. */
+.status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--mark);
+  color: var(--text);
+  font-size: var(--step-small);
+  white-space: nowrap;
+}
+
+.needs {
+  min-block-size: 44px;
+  padding: 0 var(--tie);
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--strong);
+  font: 600 var(--step-small) / 1.2 var(--serif);
+  /* Underlined in the ink the map rings a cell that needs him with. */
+  text-decoration: underline;
+  text-decoration-color: var(--person);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.25em;
+  cursor: pointer;
+}
+
+.needs:hover {
+  background: var(--sunken);
+}
+
+.needs[hidden] {
+  display: none;
+}
+
+.zoom {
+  flex: none;
+  display: flex;
+}
+
+.zoom button {
+  inline-size: 44px;
+  block-size: 44px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--strong);
+}
+
+.zoom button:hover {
+  background: var(--sunken);
+}
+
+@media (max-width: 30rem) {
+  .headline {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+
+  .trail,
+  .find {
+    flex-basis: 100%;
+    order: 2;
+  }
+}
+
+.zoom svg {
+  inline-size: 20px;
+  block-size: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+/* ---- The drawing's inks, all roles, so it follows the look. ---- */
+
+/* A hub's ground: the faint disc its cells are sown in. */
+.m-colony {
+  fill: color-mix(in oklab, var(--background) 55%, transparent);
+  stroke: var(--rule);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+/* A folded network's ground holds its cells unseen, so it reads fuller. */
+.m-colony.folded {
+  fill: color-mix(in oklab, var(--muted) 22%, var(--background));
+  stroke: var(--muted);
+}
+
+/* Three kinds of line, each with a look of its own: what hangs from what
+   is solid and neutral, what is shared is dotted in its hue, and talk is
+   the one solid colour, so messaging reads as the live layer over a calm
+   structure. */
+
+/* Cords carry a hub's weight from its machine, so they read as the
+   network's trunk lines, wider with more cells on them, in an ink
+   between the strongest and the muted so structure never outshouts talk. */
+.m-cord {
+  fill: none;
+  stroke: color-mix(in oklab, var(--strong) 62%, var(--muted));
+  stroke-width: var(--w, 2px);
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.m-link {
+  fill: none;
+  stroke: var(--machine);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Hyphae say which hub a cell hangs from, so they are marks to read and
+   need 3:1 against the map, which the rule's colour doesn't reach; most
+   of the way to the muted ink does. */
+.m-hypha {
+  fill: none;
+  stroke: color-mix(in oklab, var(--muted) 70%, var(--rule));
+  stroke-width: 1.25;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Cross-hyphae are the web under the network: what's shared, drawn as
+   a run of round dots, a texture no other line has, so sharing is never
+   read as talk or as hanging from. A repository's are sea glass, a
+   group's the voice hue, a project's gold, and each is named in words
+   in the panel too. */
+.m-cross {
+  fill: none;
+  stroke-width: 2;
+  stroke-dasharray: 0 5;
+  stroke-linecap: round;
+  opacity: 0.85;
+  vector-effect: non-scaling-stroke;
+}
+
+.m-repository {
+  stroke: var(--program);
+}
+
+.m-group {
+  stroke: var(--voice);
+}
+
+.m-project {
+  stroke: var(--action);
+}
+
+.m-bridge {
+  stroke: var(--strong);
+}
+
+.m-hit {
+  fill: transparent;
+}
+
+.m-hub {
+  fill: var(--background);
+  stroke: var(--strong);
+  stroke-width: 2.5;
+}
+
+.m-hub-shape {
+  fill: var(--strong);
+}
+
+/* A network with no cell at work: its hub, cord and ground in the muted
+   ink, which still clears 3:1 as a mark, so the live ones lead. */
+.hub.quiet .m-hub {
+  stroke: var(--muted);
+  stroke-width: 1.75;
+}
+
+.hub.quiet .m-hub-shape {
+  fill: var(--muted);
+}
+
+.m-cord.quiet {
+  stroke: var(--muted);
+}
+
+/* A twig fans out of a trunk to one network, so fifty of them side by
+   side must still read as lines and not a wedge: the hyphae's ink, which
+   still clears 3:1 as a mark. */
+.m-cord.m-twig {
+  stroke: color-mix(in oklab, var(--muted) 70%, var(--rule));
+}
+
+.m-colony.quiet {
+  fill: none;
+  stroke-dasharray: 3 4;
+}
+
+.m-membrane {
+  fill: var(--background);
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.m-nucleus {
+  fill: var(--action);
+}
+
+.m-quiet {
+  fill: none;
+  stroke: var(--action);
+  stroke-width: 2;
+}
+
+.m-dormant {
+  fill: var(--background);
+  stroke: var(--action);
+  stroke-width: 1.5;
+  stroke-dasharray: 3.5 3;
+}
+
+.m-off {
+  stroke: var(--machine);
+}
+
+.m-machine {
+  fill: var(--machine);
+}
+
+.m-asks {
+  stroke: var(--person);
+  stroke-width: 3;
+}
+
+.m-stuck {
+  stroke: var(--alert);
+  stroke-width: 3;
+}
+
+.m-waits {
+  fill: none;
+  stroke: var(--person);
+  stroke-width: 2;
+  stroke-dasharray: 3 3;
+  pointer-events: none;
+}
+
+.m-held {
+  stroke-width: 2.5;
+  stroke-dasharray: 6 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.m-changed {
+  fill: none;
+  stroke: var(--rule);
+  stroke-width: 3;
+  opacity: 0.8;
+}
+
+.cell,
+.hub {
+  cursor: pointer;
+}
+
+/* The accent ring is only ever where the keys are; what is open is
+   drawn in the strongest ink, so the two never read as one. */
+.cell.hover .m-membrane,
+.cell.hover .m-dormant,
+.hub:hover .m-hub {
+  stroke: var(--strong);
+  stroke-width: 2.5;
+}
+
+.cell.chosen .m-membrane,
+.cell.chosen .m-dormant,
+.hub.chosen .m-hub {
+  stroke: var(--strong);
+  stroke-width: 4;
+}
+
+/* What the chosen thing doesn't touch steps back, and what it does is
+   drawn strong, so its neighbourhood stands out without anything moving. */
+.focused .far {
+  opacity: 0.22;
+}
+
+.m-cross.lit {
+  opacity: 1;
+  stroke-width: 3;
+  stroke-dasharray: 0 6;
+}
+
+.m-hypha.lit {
+  stroke: var(--strong);
+  stroke-width: 2;
+}
+
+/* Talk of the last ten minutes stays drawn: an arc straight from one
+   cell to another that messaged, bowed off the hyphae so it is never
+   read as one of them, thickening in three steps the more was said.
+   It is the voice ink let down toward the ground, still past 3:1, so a
+   dot in the full ink stands out on the very arc it travels. */
+.m-talk {
+  fill: none;
+  stroke: color-mix(in oklab, var(--voice) 88%, var(--sunken));
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.m-talk.warm1 {
+  stroke-width: 1.5;
+}
+
+.m-talk.warm2 {
+  stroke-width: 2.5;
+}
+
+.m-talk.warm3 {
+  stroke-width: 4;
+}
+
+/* The talk opened: the full voice ink, as thick as the most said. */
+.m-talk.lit {
+  stroke: var(--voice);
+  stroke-width: 4;
+}
+
+/* A message on its way: a bead of the voice ink travelling the hyphae,
+   ringed in the map's ground so it stands off whatever it crosses, and a
+   ring opening where it lands. */
+.pulse {
+  fill: var(--voice);
+  stroke: var(--background);
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.trail {
+  fill: none;
+  stroke: var(--voice);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 1 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.ripple {
+  fill: none;
+  stroke: var(--voice);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+/* A cell being born: a hypha drawing itself out of its hub in the
+   working ink. One ending: a ghost of its membrane, dashed, shrinking
+   back toward where it hung from. */
+.birth {
+  fill: none;
+  stroke: var(--action);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.ghost {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}
+
+/* An ended cell in Now is a fact, not a way anywhere: a row with no
+   button, its mark the ghost's. */
+.row.gone,
+.row.still {
+  margin: 0;
+  cursor: default;
+}
+
+.row.gone:hover,
+.row.still:hover {
+  background: none;
+}
+
+/* At a glance: purpose, doing and health, the same three heads at the top
+   of every drawer, the labels in a column and the words in strong ink. */
+.glance {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--tie) var(--items);
+  margin: 0;
+}
+
+.glance div {
+  display: contents;
+}
+
+.glance dt {
+  color: var(--text);
+  font-size: var(--step-small);
+  padding-block-start: 0.15em;
+}
+
+.glance dd {
+  margin: 0;
+  color: var(--strong);
+}
+
+.glance .doing {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mark);
+}
+
+.glance .doing .glyph {
+  flex: none;
+  inline-size: 1.1em;
+  block-size: 1.1em;
+  margin-block-start: 0.15em;
+}
+
+.glance .health-line {
+  margin: 0;
+}
+
+/* The verdict leads each level by weight alone; the accent is never text. */
+.verdict {
+  color: var(--strong);
+  font-weight: 700;
+}
+
+.verdict.v0 {
+  font-weight: 400;
+}
+
+@media (forced-colors: active) {
+  .pulse {
+    fill: Highlight;
+  }
+
+  .birth,
+  .ghost,
+  .ripple,
+  .trail,
+  .m-talk {
+    stroke: Highlight;
+  }
+}
+
+/* Words on the map, at reading size whatever the zoom, each with a halo
+   of the map's ground so lines under it never cut a letter. */
+/* Each name sits on a plate of the map's own ground, so no line or mark
+   runs under its letters. */
+.t-plate {
+  fill: var(--sunken);
+  opacity: 0.92;
+}
+
+.tag text {
+  paint-order: stroke;
+  stroke: var(--sunken);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.t-name {
+  fill: var(--strong);
+  font: 600 16px / 1 var(--serif);
+  font-variation-settings: "SOFT" 100, "WONK" 1;
+}
+
+.t-cell .t-name {
+  font-size: 14px;
+  font-weight: 500;
+  font-variation-settings: "SOFT" 50, "WONK" 0;
+}
+
+.t-cell.strong .t-name {
+  font-weight: 700;
+}
+
+.t-name.mono {
+  font: 600 14px / 1 var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+/* Where the keys have walked to: a ring in the accent with a halo of the
+   map's ground, so it reads over hyphae and cells alike. */
+.p-halo,
+.p-ring {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.p-halo {
+  stroke: var(--sunken);
+  stroke-width: 7;
+}
+
+.p-ring {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.t-sub {
+  fill: var(--text);
+  font: 400 14px / 1 var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+.labels {
+  pointer-events: none;
+}
+
+/* ---- The panel. ---- */
+
+/* The drawer: what's chosen, or Now, then the network as a tree, in one
+   column that scrolls as one, so nothing in it scrolls inside anything
+   else. Closed, it is out of sight and out of reach, keys included. */
+.panel {
+  position: relative;
+  z-index: 2;
+  justify-self: end;
+  inline-size: var(--panel);
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-inline-start: 1px solid var(--rule);
+  background: var(--background);
+  transform: translateX(100%);
+  visibility: hidden;
+  transition:
+    transform 180ms ease-in,
+    visibility 0s linear 180ms;
+}
+
+.panel.open {
+  transform: none;
+  visibility: visible;
+  transition:
+    transform 220ms ease-out,
+    visibility 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .panel.open {
+    transition: none;
+  }
+}
+
+.network {
+  border-block-start: 1px solid var(--rule);
+}
+
+.tree-title {
+  padding: var(--items) var(--inset) var(--tie);
+  font-size: var(--step-base);
+}
+
+/* Too narrow for a gutter, the drawer takes the map's whole width. */
+@media (max-width: 60rem), (max-height: 34rem) {
+  .panel {
+    inline-size: 100%;
+    border-inline-start: 0;
+  }
+}
+
+.tree {
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--inset) var(--groups);
+}
+
+.tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tree [role="treeitem"] {
+  outline: none;
+}
+
+/* A row of the tree: its turn, its mark and its words, stepped in by
+   its depth. Focus rings the row alone, never the branch under it. */
+.ti {
+  display: grid;
+  grid-template-columns: 1rem 1.4rem minmax(0, 1fr);
+  gap: var(--mark);
+  align-items: start;
+  min-block-size: 44px;
+  padding: var(--mark) var(--tie) var(--mark) calc(var(--tie) + var(--level) * 1.25rem);
+  border-radius: var(--radius);
+  color: var(--text);
+  cursor: pointer;
+  /* A big network lists hundreds of rows; those out of sight skip layout,
+     each kept at a two-line row's height until it comes into view. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 62px;
+}
+
+.ti:hover {
+  background: var(--sunken);
+}
+
+.ti.opened {
+  background: var(--sunken);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.tree [role="treeitem"]:focus-visible > .ti {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.ti .twisty {
+  inline-size: 10px;
+  block-size: 10px;
+  margin-block-start: 0.45em;
+  fill: none;
+  stroke: var(--strong);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: rotate var(--arrive) var(--ease);
+}
+
+[aria-expanded="true"] > .ti .twisty {
+  rotate: 90deg;
+}
+
+.ti .glyph {
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+  margin-block-start: 0.2em;
+  color: var(--strong);
+  overflow: visible;
+}
+
+.ti .what {
+  display: grid;
+  gap: 2px;
+}
+
+.ti .name {
+  color: var(--strong);
+  font-weight: 600;
+}
+
+.ti .name.mono {
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+.ti .fact {
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features);
+  font-size: var(--step-small);
+  overflow-wrap: anywhere;
+}
+
+.find {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--mark);
+}
+
+.find[hidden],
+.trail[hidden] {
+  display: none;
+}
+
+.find-count {
+  color: var(--text);
+  font: 400 var(--step-small) / 1.4 var(--mono);
+  font-feature-settings: var(--mono-features);
+  white-space: nowrap;
+}
+
+/* Finding: what matches keeps its ink, everything else recedes to a
+   ghost of itself, so the matches read as the map. */
+.world.finding .links,
+.world.finding .talk,
+.world.finding .colonies,
+.world.finding g[data-key]:not(.match),
+.labels.finding .tag:not(.match) {
+  opacity: 0.22;
+}
+
+.find svg {
+  inline-size: 18px;
+  block-size: 18px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.find input {
+  inline-size: 100%;
+  min-block-size: 44px;
+}
+
+.panel-body {
+  display: grid;
+  align-content: start;
+  gap: var(--apart);
+  padding: var(--items) var(--inset) var(--groups);
+}
+
+.panel-body h2 {
+  font-size: var(--step-large);
+  line-height: 1.2;
+}
+
+.panel-body h2.with-glyph {
+  display: flex;
+  gap: var(--mark);
+  align-items: start;
+}
+
+/* A talk's two ends, each a title of its own, with the "and" between them
+   a step back, so two long titles never run together. */
+.panel-body h2.ends {
+  display: grid;
+  gap: var(--tie);
+}
+
+.panel-body h2.ends .and {
+  color: var(--text);
+  font-size: var(--step-small);
+  font-weight: 400;
+  font-style: italic;
+}
+
+.panel-body h2 .glyph {
+  flex: none;
+  inline-size: 0.8em;
+  block-size: 0.8em;
+  margin-block-start: 0.22em;
+  color: var(--strong);
+}
+
+.panel-body h3 {
+  margin-block-start: var(--groups);
+  font-size: var(--step-base);
+}
+
+.panel-body .mono,
+.panel-body .counts,
+.panel-body .fact,
+.panel-body dt,
+.lately .when {
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+.carries,
+.hint {
+  color: var(--text);
+}
+
+.counts {
+  color: var(--text);
+  font-size: var(--step-small);
+}
+
+.standing,
+.talk-line {
+  color: var(--text);
+}
+
+.asks-line {
+  color: var(--strong);
+}
+
+.asks-line.quiet {
+  color: var(--text);
+}
+
+.says {
+  color: var(--strong);
+  font-style: italic;
+}
+
+.cell-standing {
+  display: flex;
+  align-items: center;
+  gap: var(--mark);
+  color: var(--strong);
+}
+
+.cell-standing .glyph {
+  inline-size: 22px;
+  block-size: 22px;
+}
+
+/* A list to choose from: each row a whole button, its mark in a column
+   of its own so the words start on one edge. */
+.rows {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+}
+
+.rows li + li {
+  border-block-start: 1px solid var(--edge);
+}
+
+.rows .branch .row {
+  padding-inline-start: var(--groups);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1.4rem minmax(0, 1fr);
+  gap: var(--mark);
+  align-items: start;
+  inline-size: 100%;
+  min-block-size: 44px;
+  padding: var(--mark) var(--tie);
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--sunken);
+}
+
+/* A health row has no glyph, so its words take the whole row. */
+.rows.health .row {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.row .glyph {
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+  margin-block-start: 0.2em;
+  color: var(--strong);
+  overflow: visible;
+}
+
+.row .what {
+  display: grid;
+  gap: 2px;
+}
+
+.row .name {
+  color: var(--strong);
+  font-weight: 600;
+}
+
+.row .fact {
+  color: var(--text);
+  font-size: var(--step-small);
+  overflow-wrap: anywhere;
+}
+
+.back,
+.inline {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mark);
+  min-block-size: 44px;
+  padding: 0 var(--tie);
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.back svg {
+  inline-size: 12px;
+  block-size: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.inline {
+  display: inline;
+  min-block-size: 0;
+  padding: 0;
+  color: var(--strong);
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 0.2em;
+}
+
+/* Who leads stands on a line of its own, so its name can be a whole
+   target rather than a word's height. */
+.led .inline {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 44px;
+  text-align: start;
+}
+
+/* Facts as a label and its value on one line, the labels in a column. */
+.facts,
+.machine-facts dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--tie) var(--items);
+  margin: 0;
+}
+
+.facts div,
+.machine-facts dl div {
+  display: contents;
+}
+
+.facts dt,
+.machine-facts dt {
+  color: var(--text);
+  font-size: var(--step-small);
+  padding-block-start: 0.15em;
+}
+
+.facts dd,
+.machine-facts dd {
+  margin: 0;
+  color: var(--text);
+}
+
+.machines {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--items);
+}
+
+.machine-facts h4 {
+  color: var(--strong);
+  margin-block-end: var(--tie);
+}
+
+.lately {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--tie);
+}
+
+.lately li,
+.lately .said {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr);
+  gap: var(--mark);
+}
+
+/* A message with one other end opens the talk between the two. */
+.lately li:has(> .said) {
+  display: block;
+}
+
+.lately .said {
+  /* Its words line up with the rows beside it; only the target is wider. */
+  box-sizing: border-box;
+  inline-size: calc(100% + 2 * var(--tie));
+  min-block-size: 44px;
+  align-items: start;
+  padding: var(--mark) var(--tie);
+  margin-inline-start: calc(-1 * var(--tie));
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.lately .said:hover {
+  background: var(--sunken);
+}
+
+.lately .when {
+  color: var(--text);
+  font-size: var(--step-small);
+  padding-block-start: 0.15em;
+}
+
+.legend {
+  margin-block-start: var(--groups);
+}
+
+/* A disclosure: the legend, and a sum that opens on what it counts. */
+.fold summary {
+  display: flex;
+  align-items: center;
+  gap: var(--mark);
+  min-block-size: 44px;
+  color: var(--strong);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.fold summary::-webkit-details-marker {
+  display: none;
+}
+
+.fold .turn {
+  inline-size: 10px;
+  block-size: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: rotate var(--arrive) var(--ease);
+}
+
+.fold[open] .turn {
+  rotate: 90deg;
+}
+
+.spend .sum {
+  margin-inline-start: auto;
+  font-weight: 400;
+}
+
+.spend .hint {
+  margin-block: var(--tie) var(--apart);
+}
+
+/* Its parts sit under the sum, so they read smaller than it. */
+.panel-body .spend h3 {
+  color: var(--text);
+  font-size: var(--step-small);
+  font-weight: 600;
+  margin-block: var(--apart) var(--tie);
+}
+
+.legend dl {
+  display: grid;
+  grid-template-columns: 1.8rem minmax(0, 1fr);
+  gap: var(--mark) var(--items);
+  margin: var(--apart) 0 0;
+}
+
+.legend dl div {
+  display: contents;
+}
+
+.legend dt svg {
+  inline-size: 1.6rem;
+  block-size: 1.6rem;
+  overflow: visible;
+}
+
+.legend dd {
+  margin: 0;
+}
+
+/* ---- Keys. ---- */
+
+.keypanel {
+  max-inline-size: min(30rem, calc(100vw - 2 * var(--items)));
+  background: var(--raised);
+  color: var(--text);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: var(--groups) var(--inset);
+}
+
+.keypanel::backdrop {
+  background: color-mix(in srgb, var(--shadow) 60%, transparent);
+}
+
+.keypanel h2 {
+  margin-block-end: var(--apart);
+}
+
+.keypanel dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--mark) var(--groups);
+}
+
+.keypanel dl div {
+  display: contents;
+}
+
+.keypanel dd {
+  margin: 0;
+}
+
+.keypanel .close {
+  margin-block-start: var(--groups);
+  padding: var(--mark) var(--apart);
+  background: none;
+  border: 1px solid var(--field);
+  border-radius: var(--radius);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fold .turn,
+  .ti .twisty {
+    transition: none;
+  }
+}

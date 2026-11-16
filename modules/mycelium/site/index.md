@@ -1,0 +1,210 @@
+# Your Mycelium, Now
+
+Every session and machine at work for Joel this minute, drawn as one
+network of nodes and links, like a mind map grown from the machines
+outward. The page is a live map: it hears the machine's mycelium node as
+it changes while its tab shows, and redraws at most every 2 seconds.
+Nothing on it acts on the network.
+
+## How to Read It
+
+- **Machines are the roots.** Each machine is a ringed mark with its name
+  and how busy it is. A dashed link joins machines on the same network.
+- **Three kinds of line, each with its own look.** What hangs from what
+  is solid and neutral: cords and hyphae. What is shared is a run of
+  dots in the colour of what is shared. Talk is the one solid colour,
+  so messaging reads as the live layer over a calm structure.
+- **A line opens what it carries.** Pointed at, a line thickens and the
+  pointer becomes a hand; a click opens the network a cord or a dotted
+  line belongs to, or the cell a hypha leads to. A talk arc opens what
+  passed between the two: who sent what kind of message to whom and
+  when, never the words. Inside a network's ground its own cords and
+  hyphae leave the click to the ground.
+- **A cord runs from a machine to each network's hub.** A hub is an
+  orchestration, known by its shape (a square, a triangle, a plus and so
+  on) and named beside it. The cord goes to the machine most of its cells
+  run on, and is thicker the more cells it carries. An orchestration
+  started inside another hangs from its parent's hub by a cord of its own.
+- **Hyphae join a hub to its cells.** Each session is a cell, seeded round
+  its hub like the seeds of a sunflower, and joined to it by fine hyphae.
+- **Dotted cross-hyphae join cells sharing something else**: sea glass
+  for a repository, gold for a quest, the voice colour for a mesh
+  group.
+- **Names keep clear of lines.** Each name takes the place round its
+  mark that lies over the fewest lines, nearest first, and never a place
+  nearer another mark than its own where it has a choice.
+- **How a cell stands:** a filled centre is moving (in a turn now); a
+  hollow centre is quiet (waiting for its next word); a dashed ring is
+  dormant (parked, its place kept). A magenta ring needs Joel, a red one
+  is stuck. A cell that needs him is named once the map is in close
+  enough to read it; a stuck one says so by its ring alone.
+- **A faint outer ring** marks a cell whose standing changed since Joel
+  last had the page in view.
+- **One dot is one message.** When a cell sends a word on the mesh, a
+  ring opens round it and a dot runs on an arc straight to the cell or
+  hub it went to, where a second ring opens as it lands. A message
+  passes through no one on the way, so the arc crosses the map rather
+  than following its hyphae, and a cell the dot passes over took no
+  part. A message to a shared network goes to a few of its cells at
+  once, one dot each. The page hears the mesh as it is said and
+  redraws at most every 2 seconds, replaying what was said over those
+  seconds, so a pulse runs up to 2 seconds behind. Only who sent, to whom and when are drawn;
+  never the words. With reduced motion asked for, nothing moves.
+- **Cells are born and end in view.** When a reading brings a cell the
+  page hadn't heard of, a hypha draws itself out of its hub to it and a
+  ring opens round it. When a cell has gone, a dashed ghost of its
+  membrane shrinks back toward its hub. Now lists both under Born and
+  Ended Lately for ten minutes: a born cell opens; an ended one is only
+  named, with the time. On a fresh load, a cell counts as born if it
+  started within the last ten minutes. With reduced motion asked for,
+  nothing moves and the list says it all. Nothing is drawn while
+  nothing changes.
+- **Talk stays drawn for ten minutes.** The arc between two that
+  messaged stays solid in the voice ink, thickening in three steps the
+  more they said, so who has been talking to whom reads without
+  anything moving.
+- **Live networks lead.** A network none of whose cells is at work has
+  its hub, cord and ground drawn in the lighter ink.
+- **A dashed magenta ring is a question waiting.** A cell asked a
+  question three minutes or more ago, and has said nothing on the mesh
+  since, is ringed and named; the ring widens with each question and
+  with the age of the first, full at half an hour. Its network is
+  ringed round its whole ground, so where the talk is held up reads from
+  the whole map. The node keeps no link from an answer to its question,
+  so any word since counts as one. The panel lists them under Questions
+  Waiting, oldest first, with who asked.
+- **Big networks fold.** Past 400 cells, a network whose cells would be
+  drawn too small to read, or that sits off the map, draws as its ground
+  and hub alone, its ground a shade fuller; its cells unfold as you zoom
+  close or open it. What is open, chosen, pointed at or found never
+  folds. Under 400 cells nothing folds. Once networks fold, only the 40
+  busiest are named, and each machine's plate says how many it carries.
+- **Each machine carries one arc.** Its networks sit together on its
+  side of the ring, so opening a machine shows its arc. Past 24 networks
+  a machine's cords bundle: one trunk each way, forking into a twig for
+  each network, and the machine moves out from the middle to its own
+  arc, so two machines' arcs read as two.
+- **The map has the screen; details come in a drawer.** Over the map,
+  the heading line says where the keys are, how things stand in Now's
+  own words (how many cells, how many moving, how many stuck), and who
+  needs Joel, which opens them; when nobody does it says nothing of it.
+  A screen reader hears coarser words (a few at work, most at work),
+  and only when those change. A
+  drawer slides in from the right over an empty gutter the map keeps
+  for it, so opening it never moves the map; on a narrow screen it
+  covers the map instead. It holds what is open, or Now: how the whole
+  network stands, what it spent today, how to read the map and the
+  network as a tree. Full stop, or the last control over the map,
+  opens Now.
+- **Signal against noise** is said in Now: of the latest messages,
+  how many asked or found something, against how many were for context
+  only; a network's details count the messages that touch it. A cell's
+  details list its latest messages, and each one with a single other end
+  opens the talk between the two, so the keys reach every talk the map
+  draws.
+- **Spend at every layer.** The whole map, each machine and each
+  network say what their cells spent today, and the tree says it after
+  each machine and network. Each sum opens on what it counts: the
+  machines, networks or branches it splits into, then the ten cells
+  that spent most. It is each session's own count of the list price of
+  its calls since local midnight, so the bill may differ.
+- **Every drawer opens the same way.** A machine, a network, a branch, a
+  cell and Now each begin with one sentence saying what it is, then
+  Purpose, Doing and Health. Health goes by level: a network gives its
+  own cells, then each branch, which opens it, then all of them
+  together; a machine gives the machine itself, then its cells; Now
+  gives each machine, then the whole. Each level leads with one word,
+  Well, Watch or Tend, set heavier the more it wants tending.
+- **A peek before opening.** Pointing at a network, a machine or a
+  line that opens one shows what it is for and how it stands in three
+  short lines by the pointer; walking to one with the keys shows the
+  same in the map's lower corner. It says nothing the drawer doesn't.
+- **What's open leads.** Opening a network brings forward the cells
+  directly joined to it, its own, those of its branches, those that
+  belong to it from elsewhere and those that talk with it, and fades
+  the rest.
+- **Names come one tier at a time, and only for what you're on.** The
+  whole view names machines and networks only. Once something is open,
+  only it and what it directly joins keep their names. A cell is named
+  when it is open, when the keys or the pointer are on it, when find
+  finds it, or when it needs Joel and the map is in close enough to
+  read it as its own; a cell with no title is named "Unnamed cell on"
+  its machine, never by its id. A name on the map stops at about 40
+  characters, and a step of the trail at about 32, each cut at a whole
+  word with three full stops; the drawer and the tree give it whole.
+- **Two rings, two meanings.** The coloured ring with a halo is where the
+  keys are; the heavy dark ring is what is open in the drawer.
+- **Places hold still.** The layout is seeded, never shaken by a
+  simulation, so the same network draws the same way every time. When an
+  orchestration begins or ends, the hubs round its machine make room, and
+  their cells move with them.
+
+## Moving Through It
+
+The keyboard comes first and the pointer works too.
+
+- **Arrows, or h, j, k and l**, walk one level at a time, to the nearest
+  thing that way on that level. On the whole map the level is the
+  machines and networks; inside a network it is only that network's
+  cells. The line over the map is the trail: where you are, and each
+  step of it opens. Pressing the opposite arrow retraces the last step.
+- **Return** opens what you reached: the map centres on it and the
+  drawer shows its details. Opening a network goes in to its cells,
+  with the whole cord it hangs from in view, out to its machine or the
+  network it branches from. Its drawer says it as a network first: how
+  many cells it joins, in which branches and on which machines, then
+  the work it carries.
+  The address records it, so the browser's back goes back.
+- **Zooming changes the level too**: zoom in on a network until it fills
+  much of the map and the arrows walk its cells; zoom back out and they
+  walk the networks again.
+- **Minus** steps back out of what's open, or up a level to what it
+  hangs from.
+- **Escape** lets go: the drawer closes and nothing is open, with the
+  map left where it stands and the keys on what was open, so Return
+  opens it again. A click on empty map does the same, a
+  click on a network's ground opens that network, and a click on a line
+  opens what it carries.
+- **Shift with an arrow** moves the map; **i** and **o** zoom in and out,
+  and **+** zooms in too; **0** shows it whole.
+- **/** opens the find line over the map: what doesn't match fades,
+  Return goes to the first match, n and N step to the next and previous,
+  and Escape closes the line.
+- **Full stop** opens Now in the drawer, and closes it again.
+- **Now holds the same network as a tree**, for a screen reader and
+  for anyone who would rather walk a list: j and k step, l opens a branch,
+  h closes it or climbs, g and G go to the first and last, and Return
+  opens.
+- **? or F1** lists every key; Escape closes the list.
+
+## The Data
+
+The page watches the machine's mycelium node through the sites' server,
+which core.nix's local-sites module carries: its `network`, `cell`,
+`machine` and `message` kinds, the same records `mycelium networks -o
+json`, `mycelium machines` and `mycelium messages` print. The server
+passes only the fields the page draws, and of the messages never their
+words. The line over the map says whether it is live and since when, and
+when the node or the server can't be reached, it keeps the last map and
+says so. What it draws holds:
+
+- `at`: when the map was last handed a change.
+- `cells`: every session, each with its name (its address), title, window
+  title, machine, standing (moving, quiet, dormant, needs-you or stuck),
+  the networks it belongs to, its repository, when it began, and today's
+  spend, turns and context.
+- `networks`: every network mycelium knows, each with its name, shape
+  (orchestration, project, repository, group or machines), short name,
+  title, the network it sits within, its cells, its machines and its
+  counts by standing.
+- `machines`: each machine's state, model, cores, memory, disk, power and
+  pressure (the share of the last ten seconds work waited for CPU, memory
+  or IO).
+- `messages`: the latest messages' time, sender, intent and groups, never
+  their words.
+
+## Not Grown Yet
+
+A large orchestration folding into its hub when the map is zoomed out, and Outside
+and its sensors are in Joel's picture of the mycelium but not yet on this
+map.
