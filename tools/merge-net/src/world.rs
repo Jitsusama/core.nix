@@ -611,29 +611,82 @@ impl Real {
         let mut clock = Clock::new(log, Instant::now());
         let takes = run(Command::new("nix-offload").args(["there", "--takes"])).unwrap_or_default();
         let args = build_args(&self.flake(commit), &self.system, check, picked, &takes);
-        let mut child = Command::new("nix-offload")
+        let child = Command::new("nix-offload")
             .args(args)
             .stdin(Stdio::null())
             .stdout(output.try_clone().ok()?)
             .stderr(output)
             .spawn()
             .ok()?;
-        loop {
-            match child.try_wait() {
-                // A run whose builder couldn't fetch the commit's source ran
-                // nothing, so it's sent again like one no builder took.
-                Ok(Some(status)) if !status.success() && unfetched(lines_of(log), commit) => {
-                    return Some(UNSENT);
-                }
-                Ok(Some(status)) => return status.code(),
-                Ok(None) if dropped() || clock.overdue(log, Instant::now()) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return None;
-                }
-                Ok(None) => std::thread::sleep(Duration::from_secs(5)),
-                Err(_) => return None,
+        ended(child, &mut clock, commit, log, dropped)
+    }
+
+    /// Compare a Mac's checks at `commit` against `base` into `log`, as a
+    /// gate whose Mac was away would have, in a checkout of `commit`; none
+    /// when it couldn't be started or ran past its time. One no Mac took
+    /// ends `UNSENT`, as nix-offload ends 75 for a Mac part it can't send.
+    fn compared_on_a_mac(
+        &self,
+        commit: &str,
+        base: &str,
+        log: &Path,
+        dropped: &dyn Fn() -> bool,
+    ) -> Option<i32> {
+        let apart = Comparing::at(self, commit).ok()?;
+        let output = file(log).ok()?;
+        let mut clock = Clock::new(log, Instant::now());
+        let child = Command::new("nix-offload")
+            .args(mac_args(base))
+            .current_dir(&apart.folder)
+            .stdin(Stdio::null())
+            .stdout(output.try_clone().ok()?)
+            .stderr(output)
+            .spawn()
+            .ok()?;
+        match ended(child, &mut clock, commit, log, dropped)? {
+            UNSENT | UNREACHED => Some(UNSENT),
+            code => Some(code),
+        }
+    }
+}
+
+/// What nix-offload ends with when no builder for the system answers.
+const UNREACHED: i32 = 69;
+
+/// What the net asks `nix-offload there` to compare a Mac's checks with,
+/// against `base`: the arguments a gate keeps for a comparison it skipped.
+pub fn mac_args(base: &str) -> Vec<String> {
+    ["there", "--changed", "--build", "--no-vm", "--base", base]
+        .into_iter()
+        .chain(["--system", crate::macs::SYSTEM])
+        .map(str::to_owned)
+        .collect()
+}
+
+/// How `child`, building at `commit` into `log`, ended; none when it was
+/// dropped or ran past its time, which stops it.
+fn ended(
+    mut child: std::process::Child,
+    clock: &mut Clock,
+    commit: &str,
+    log: &Path,
+    dropped: &dyn Fn() -> bool,
+) -> Option<i32> {
+    loop {
+        match child.try_wait() {
+            // A run whose builder couldn't fetch the commit's source ran
+            // nothing, so it's sent again like one no builder took.
+            Ok(Some(status)) if !status.success() && unfetched(lines_of(log), commit) => {
+                return Some(UNSENT);
             }
+            Ok(Some(status)) => return status.code(),
+            Ok(None) if dropped() || clock.overdue(log, Instant::now()) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            Ok(None) => std::thread::sleep(Duration::from_secs(5)),
+            Err(_) => return None,
         }
     }
 }
@@ -706,6 +759,11 @@ impl World for Real {
         self.git(&["rev-parse", &format!("{commit}^1")])
     }
 
+    fn mac_skipped(&self, merge: &str) -> bool {
+        self.git(&["rev-parse", &format!("{merge}^2")])
+            .is_ok_and(|head| crate::macs::skipped_at(&self.state, &head))
+    }
+
     fn changed(&self, base: &str, head: &str) -> Result<Changed, String> {
         // What two commits' checks differ in never changes, so it's kept.
         let kept = self
@@ -750,6 +808,9 @@ impl World for Real {
     }
 
     fn has_check(&self, commit: &str, check: &str) -> Result<bool, String> {
+        if crate::macs::base_of(check).is_some() {
+            return Ok(true);
+        }
         let check = subtests::whole(check);
         let attribute = format!("{}#checks.{}", self.flake(commit), self.system);
         let asked = format!("checks: builtins.hasAttr \"{check}\" checks");
@@ -758,6 +819,11 @@ impl World for Real {
     }
 
     fn drv(&self, commit: &str, check: &str) -> Result<String, String> {
+        // A Mac's comparison builds nothing of its own name, and runs
+        // again at every other commit.
+        if crate::macs::base_of(check).is_some() {
+            return Ok(format!("{check}@{commit}"));
+        }
         let check = subtests::whole(check);
         let attribute = format!(
             "{}#checks.{}.{check}.drvPath",
@@ -770,8 +836,11 @@ impl World for Real {
     }
 
     fn build(&self, commit: &str, check: &str, log: &Path) -> Option<i32> {
-        let picked = subtests::subtests_of(check);
         let dropped = || self.dropped(commit, check);
+        if let Some(base) = crate::macs::base_of(check) {
+            return self.compared_on_a_mac(commit, base, log, &dropped);
+        }
+        let picked = subtests::subtests_of(check);
         let code = self.built(commit, check, &picked, log, &dropped)?;
         if picked.is_empty() || code == 0 {
             return Some(code);

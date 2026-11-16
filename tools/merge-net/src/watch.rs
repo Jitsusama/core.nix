@@ -215,6 +215,9 @@ pub trait World: Sync {
     fn parent(&self, commit: &str) -> Result<String, String>;
     /// What changed-checks names between `base` and `head`.
     fn changed(&self, base: &str, head: &str) -> Result<Changed, String>;
+    /// Whether `merge` merged a head whose gate skipped a Mac's comparison
+    /// (`macs.rs`).
+    fn mac_skipped(&self, merge: &str) -> bool;
     /// Whether `commit` has the check at all.
     fn has_check(&self, commit: &str, check: &str) -> Result<bool, String>;
     /// The derivation a check builds at a commit, which names everything
@@ -1230,6 +1233,34 @@ fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, String>
     settler.error().map_or(Ok(round), Err)
 }
 
+/// Remove the logs of runs over three days old, saying how many went.
+fn age_out_logs(state: &State) {
+    let aged = state.age_out_logs(std::time::SystemTime::now());
+    if aged > 0 {
+        state.say(&format!("removed {aged} logs of runs over three days old"));
+    }
+}
+
+/// Hand `settler` a Mac's comparison at each merge since `base` up to
+/// `head` whose gate skipped one, against the merge's first parent, so its
+/// blame is the merge's alone. Of 13 records a day on 15 November that kept
+/// one skipped, 12 were kept out by `--lent-only` and one ran past 20
+/// minutes, and none was compared before or after its merge.
+fn hand_skipped_macs(
+    world: &dyn World,
+    settler: &Settler,
+    base: &str,
+    head: &str,
+) -> Result<(), String> {
+    for merge in world.merges(base, head)? {
+        if world.mac_skipped(&merge) {
+            let check = crate::macs::check(&world.parent(&merge)?);
+            settler.hand(Job::Mac { merge, check });
+        }
+    }
+    Ok(())
+}
+
 /// One round: look at main's head, if there's something new to look at.
 /// `start` is the base of the first round, before any head has passed.
 /// What takes longer than its tests to settle goes to `settler`, and the
@@ -1241,10 +1272,7 @@ pub fn round_beside(
     settler: &Settler,
 ) -> Result<Round, String> {
     settler.take_up();
-    let aged = state.age_out_logs(std::time::SystemTime::now());
-    if aged > 0 {
-        state.say(&format!("removed {aged} logs of runs over three days old"));
-    }
+    age_out_logs(state);
     if let Some(why) = world.held() {
         state.say(&format!("held, starting nothing: {why}"));
         if let Err(error) = state.held(&why) {
@@ -1274,6 +1302,7 @@ pub fn round_beside(
     state.begin(&head)?;
     state.say(&format!("comparing {} with {}", short(&base), short(&head)));
     let changed = world.changed(&base, &head)?;
+    hand_skipped_macs(world, settler, &base, &head)?;
     let hold = clear_if_fixed_forward(world, state, settler, &changed, &head)?;
     find_broken(world, state, &changed, &base, &head)?;
     // A test held for a revert not yet merged is left until it is; one held
@@ -2446,6 +2475,8 @@ mod tests {
         /// Commits where a failed run's log says only that something it
         /// needs didn't build, so the test never ran.
         unbuilt: Vec<String>,
+        /// Merges of heads whose gate skipped a Mac's comparison.
+        mac_skipped: Vec<String>,
     }
 
     impl Stand {
@@ -2519,6 +2550,9 @@ mod tests {
         }
         fn changed(&self, _: &str, _: &str) -> Result<Changed, String> {
             Ok(self.changed.clone())
+        }
+        fn mac_skipped(&self, merge: &str) -> bool {
+            self.mac_skipped.iter().any(|skipped| skipped == merge)
         }
         fn has_check(&self, commit: &str, check: &str) -> Result<bool, String> {
             Ok(!self
@@ -2801,6 +2835,78 @@ mod tests {
             Some(1660)
         );
         assert_eq!(pr_of("fix(zsh): something"), None);
+    }
+
+    #[test]
+    fn a_merge_whose_gate_skipped_a_mac_is_compared_there_and_reverted_failing_twice() {
+        let state = state("mac-skipped");
+        let check = crate::macs::check("s");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 h"),
+            changed: changed("vm-a"),
+            mac_skipped: names("m1"),
+            ..Stand::default()
+        }
+        .exits("m1", &check, &[1, 1])
+        .exits("h", &check, &[1, 1]);
+        round(&world, &state, "s").unwrap();
+        assert!(
+            world.built().contains(&("m1".to_owned(), check.clone())),
+            "the Mac's comparison m1's gate skipped wasn't run at m1: {:?}",
+            world.built()
+        );
+        assert_eq!(
+            *world.reverted.lock().unwrap(),
+            names("m1"),
+            "m1, whose Mac's comparison failed twice there, wasn't reverted"
+        );
+    }
+
+    #[test]
+    fn a_mac_comparison_no_mac_takes_is_kept_for_a_later_round() {
+        let state = state("mac-unsent");
+        let check = crate::macs::check("s");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 h"),
+            changed: changed("vm-a"),
+            mac_skipped: names("m1"),
+            ..Stand::default()
+        }
+        .exits("m1", &check, &[UNSENT; SENDS as usize]);
+        round(&world, &state, "s").unwrap();
+        let kept: Vec<Value> = state.settling();
+        assert!(
+            kept.iter()
+                .any(|job| job["kind"] == "mac" && job["merge"] == "m1"),
+            "a Mac's comparison no Mac took wasn't kept to try again: {kept:?}"
+        );
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "a merge was reverted for a comparison that never ran"
+        );
+    }
+
+    #[test]
+    fn a_merge_whose_gate_compared_a_mac_is_not_compared_again() {
+        let state = state("mac-compared");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        };
+        round(&world, &state, "s").unwrap();
+        let compared: Vec<(String, String)> = world
+            .built()
+            .into_iter()
+            .filter(|(_, check)| crate::macs::base_of(check).is_some())
+            .collect();
+        assert!(
+            compared.is_empty(),
+            "a Mac's checks were compared where no gate skipped them: {compared:?}"
+        );
     }
 
     #[test]
