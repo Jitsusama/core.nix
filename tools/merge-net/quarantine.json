@@ -393,17 +393,6 @@
     "test": "the-margin-cat-follows-the-keys-on-niri"
   },
   {
-    "at": 1794778984,
-    "commit": "759d940c7ac0ca75cd385b778d48285515cea929",
-    "due": "2026-11-17",
-    "owner_pr": 4845,
-    "reason": "Quickshell warned of a dangling screen object, failing twice at 9bf894fb7d68 and at 759d940c7ac0 and once of two at a14dc5cd465d, passing alone at each and whole at ab85b124599e and 428bb1944fb0",
-    "subtests": [
-      "test_quickshell_warned_of_nothing_as_the_screens_came_and_went"
-    ],
-    "test": "vm-screens-keep-the-launcher"
-  },
-  {
     "at": 1794785729,
     "commit": "3600f69230b37fd910f43cad0b79860f15e66c61",
     "due": "2026-11-17",
