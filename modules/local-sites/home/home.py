@@ -122,8 +122,10 @@ def bed(number: str, bed: Bed, rows: list[Site]) -> list[str]:
     """Write one bed: its numbered heading with its turn, then its sites a row each."""
     return [
         f'  <section class="bed" aria-labelledby="{bed.anchor}">',
-        f'    <h2 id="{bed.anchor}"><span class="numeral">{number}.</span> '
-        f"{bed.name}, <em>{bed.turn}</em></h2>",
+        (
+            f'    <h2 id="{bed.anchor}"><span class="numeral">{number}.</span> '
+            f"{bed.name}, <em>{bed.turn}</em></h2>"
+        ),
         f'    <ul class="sites" aria-label="{bed.name}">',
         *("  " + line for line in map(row, rows)),
         "    </ul>",
