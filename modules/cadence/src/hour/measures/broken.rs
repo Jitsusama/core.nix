@@ -99,7 +99,7 @@ pub fn broken(
     now: i64,
     owner: &str,
     main: &Main,
-    failed: &dyn Fn(&str) -> Vec<String>,
+    failed: &dyn Fn(&str) -> Failures,
 ) -> Measure {
     let mut by_check: BTreeMap<String, Vec<Run>> = BTreeMap::new();
     for result in lines(text).filter(|r| r["stalled"] != Value::Bool(true)) {
@@ -123,7 +123,7 @@ pub fn broken(
     let failing: Vec<String> = by_check
         .iter()
         .filter_map(|(check, runs)| {
-            let [.., before, last] = runs.as_slice() else {
+            let [.., before, last] = alive(runs, failed) else {
                 return None;
             };
             (before.passed
@@ -144,6 +144,20 @@ pub fn broken(
     }
 }
 
+/// A check's runs without the newest that the VM died under: like a stall,
+/// such a run proves nothing, so the run before it decides. Only the newest
+/// failures' logs are read, so an hour opens a few logs, not thousands.
+fn alive<'a>(runs: &'a [Run], failed: &dyn Fn(&str) -> Failures) -> &'a [Run] {
+    let mut runs = runs;
+    while let [rest @ .., last] = runs {
+        if last.passed || last.log.is_empty() || !failed(&last.log).died {
+            break;
+        }
+        runs = rest;
+    }
+    runs
+}
+
 /// Whether main has answered a check's last failure since. A subtest's is
 /// answered by its whole test passing after it, which ran it again. A whole
 /// test's is answered when each subtest its log says failed is quarantined,
@@ -154,13 +168,13 @@ fn answered(
     last: &Run,
     by_check: &BTreeMap<String, Vec<Run>>,
     main: &Main,
-    failed: &dyn Fn(&str) -> Vec<String>,
+    failed: &dyn Fn(&str) -> Failures,
 ) -> bool {
     let passed_after = |runs: &[Run]| runs.iter().any(|run| run.passed && run.key > last.key);
     if let Some((whole, _)) = check.split_once("::") {
         return by_check.get(whole).is_some_and(|runs| passed_after(runs));
     }
-    let subtests = failed(&last.log);
+    let subtests = failed(&last.log).subtests;
     !subtests.is_empty()
         && subtests.iter().all(|subtest| {
             main.quarantined
@@ -174,11 +188,12 @@ fn answered(
 }
 
 /// The subtests a VM test's log says failed, from pytest's closing lines,
-/// `FAILED <file>::<subtest> - <why>`.
+/// `FAILED <file>::<subtest> - <why>`, but those its VM died under.
 #[must_use]
 pub fn failed_subtests(log: &str) -> Vec<String> {
     let mut found: Vec<String> = log
         .lines()
+        .filter(|line| !line.contains(BROKEN_PIPE))
         .filter_map(|line| {
             let (_, rest) = line.split_once("FAILED ")?;
             let (_, subtest) = rest.split_whitespace().next()?.rsplit_once("::")?;
@@ -190,12 +205,44 @@ pub fn failed_subtests(log: &str) -> Vec<String> {
     found
 }
 
-/// The subtests the log kept at `path` says failed; a log that can't be
-/// read says none.
+/// What a run's log says failed: the subtests that failed on their own
+/// checks, and whether the VM died under the run instead.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Failures {
+    pub subtests: Vec<String>,
+    pub died: bool,
+}
+
+/// What pytest says of a subtest whose VM went away under it: the test
+/// driver's pipe to the machine broke, so nothing the subtest checked
+/// failed. On 16 November 20 of the net's logs failed only so.
+const BROKEN_PIPE: &str = "BrokenPipeError";
+
+/// What `log` says failed. The VM died when every subtest pytest closes
+/// with as failed or erred did so on a broken pipe.
 #[must_use]
-pub fn failed_in(path: &str) -> Vec<String> {
+pub fn failures(log: &str) -> Failures {
+    let closing: Vec<&str> = log
+        .lines()
+        .filter(|line| {
+            ["FAILED ", "ERROR "].iter().any(|mark| {
+                line.split_once(mark)
+                    .is_some_and(|(_, rest)| rest.contains("::"))
+            })
+        })
+        .collect();
+    Failures {
+        subtests: failed_subtests(log),
+        died: !closing.is_empty() && closing.iter().all(|line| line.contains(BROKEN_PIPE)),
+    }
+}
+
+/// What the log kept at `path` says failed; a log that can't be read says
+/// nothing failed.
+#[must_use]
+pub fn failed_in(path: &str) -> Failures {
     fs::read_to_string(path)
-        .map(|log| failed_subtests(&log))
+        .map(|log| failures(&log))
         .unwrap_or_default()
 }
 
@@ -213,8 +260,8 @@ mod tests {
         .to_string()
     }
 
-    fn none(_: &str) -> Vec<String> {
-        Vec::new()
+    fn none(_: &str) -> Failures {
+        Failures::default()
     }
 
     #[test]
@@ -269,14 +316,17 @@ mod tests {
         let quarantine = r#"[{"test": "held", "subtests": ["test_q"]},
             {"test": "half", "subtests": ["test_q"]}]"#;
         let main = Main::of("", quarantine);
-        let failed = |log: &str| -> Vec<String> {
+        let failed = |log: &str| -> Failures {
             let names: &[&str] = match log {
                 "held.log" => &["test_q"],
                 "half.log" => &["test_q", "test_r"],
                 "flaky.log" => &["test_f", "test_g"],
                 _ => &[],
             };
-            names.iter().map(|name| (*name).to_owned()).collect()
+            Failures {
+                subtests: names.iter().map(|name| (*name).to_owned()).collect(),
+                died: false,
+            }
         };
         let text = [
             result("held", "", -900, true, ""),
@@ -295,6 +345,62 @@ mod tests {
             ["half", "unread"],
             "a failure whose every failed subtest is quarantined or passed alone since still \
              counted, or one with a subtest unanswered, or a log unread, didn't"
+        );
+    }
+
+    #[test]
+    fn a_run_the_vm_died_under_gives_way_to_the_failure_before_it() {
+        let failed = |log: &str| -> Failures {
+            match log {
+                "real.log" => Failures {
+                    subtests: vec!["test_v".to_owned()],
+                    died: false,
+                },
+                "died.log" => Failures {
+                    subtests: Vec::new(),
+                    died: true,
+                },
+                _ => Failures::default(),
+            }
+        };
+        let text = [
+            result("answered", "", -900, true, ""),
+            result("answered", "", -600, false, "real.log"),
+            result("answered::test_v", "", -400, true, ""),
+            result("answered", "", -300, false, "died.log"),
+            result("died", "", -900, true, ""),
+            result("died", "", -60, false, "died.log"),
+            result("unanswered", "", -900, true, ""),
+            result("unanswered", "", -600, false, "real.log"),
+            result("unanswered", "", -300, false, "died.log"),
+        ]
+        .join("\n");
+        assert_eq!(
+            broken(&text, NOW, "D5QEKR", &Main::default(), &failed).behind,
+            ["unanswered"],
+            "a run the VM died under was taken for the newest failure, or hid a real one"
+        );
+    }
+
+    #[test]
+    fn a_log_whose_every_failure_is_a_broken_pipe_says_the_vm_died() {
+        let died = "run> FAILED vm-pytest-v/x-vm-test.py::test_a - BrokenPipeError: [Errno 32]\n\
+                    run> ERROR vm-pytest-v/x-vm-test.py::test_b - BrokenPipeError: [Errno 32]\n";
+        let mixed = "run> FAILED vm-pytest-v/x-vm-test.py::test_a - AssertionError: no\n\
+                     run> FAILED vm-pytest-v/x-vm-test.py::test_b - BrokenPipeError: [Errno 32]\n";
+        assert_eq!(
+            (failures(died), failures(mixed)),
+            (
+                Failures {
+                    subtests: Vec::new(),
+                    died: true
+                },
+                Failures {
+                    subtests: vec!["test_a".to_owned()],
+                    died: false
+                },
+            ),
+            "a broken pipe was read as a subtest's own failure, or a real one as the VM dying"
         );
     }
 
