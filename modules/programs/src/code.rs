@@ -12,6 +12,15 @@
 //! repository's open changes, as the repos command does, so a row
 //! counts them.
 //!
+//! How many tracked files each worked-in checkout has changed and not
+//! committed is counted by git behind a watch, after the rows read are
+//! served, never on the first watch's own read: a status of the largest
+//! checkout here takes about 150 ms warm, and seconds cold. Code is
+//! watched whenever the launcher is open, so each opening counts again,
+//! a few checkouts at once, unless one counted in the last `FRESH`. A
+//! row's count is as old as the last opening, and is brought up to date
+//! just after.
+//!
 //! A checkout's files are listed only while a watch holds its Open a File
 //! by Name row ahead (ready-rows.md's "What's read only while it's looked
 //! at"), since one holds thousands: listed as Neovim's finder lists them
@@ -25,13 +34,27 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
+use std::time::{Duration, Instant};
 
 use programs::{code_rows, command, pull, repositories, switch};
+use repos::model::Record;
 use repos::read::{Reading, read};
 use repos::{github, upstreams};
 use serde_json::Value;
 
 use super::{Daemon, Shared, keep, keys_watched, lock};
+
+/// The longest a count of one checkout's uncommitted files may take
+/// before it's stopped, so one on a stalled disk never holds the others'
+/// for long.
+const COUNTING: Duration = Duration::from_secs(5);
+
+/// How many checkouts' files are counted at once.
+const AT_ONCE: usize = 4;
+
+/// How long a count stands before a watch beginning counts again, so the
+/// launcher opened and closed in a run counts each checkout once.
+const FRESH: Duration = Duration::from_secs(10);
 
 /// Hears each watch begin or end, on a thread of its own, and has `ahead`
 /// list what the watches name then. daemon-serve says so with every
@@ -75,6 +98,11 @@ pub struct Code {
     /// Held for the whole of a listing, so two at once, as the watches
     /// moving and a switch's give, never keep each other's older list.
     listing: Mutex<()>,
+    /// How many tracked files each checkout counted has changed and not
+    /// committed, by its path, kept until it's counted again.
+    uncommitted: Mutex<BTreeMap<String, u32>>,
+    /// When they were last counted.
+    counted_at: Mutex<Option<Instant>>,
     /// The rows the last read made: each repository's and those inside it.
     made: Mutex<Vec<Value>>,
     /// The files listed of each Open a File by Name row ahead, and the
@@ -109,13 +137,15 @@ impl Code {
             wanted: AtomicBool::new(false),
             busy: Mutex::new(BTreeSet::new()),
             listing: Mutex::new(()),
+            uncommitted: Mutex::new(BTreeMap::new()),
+            counted_at: Mutex::new(None),
             made: Mutex::new(Vec::new()),
             listed: Mutex::new(BTreeMap::new()),
         }
     }
 
-    /// Code's rows as the disk holds them now, and the rows inside them.
-    fn rows(&self) -> Vec<Value> {
+    /// The repositories as the disk holds them now.
+    fn record(&self) -> Record {
         let mut record = read(&Reading {
             roots: &self.roots,
             home: self.home.as_deref(),
@@ -128,10 +158,82 @@ impl Code {
         if let Some(kept) = upstreams::counted_file(self.home.as_deref()) {
             upstreams::merge_kept(&mut record, &kept);
         }
-        let mut rows = code_rows::rows(&record, self.home.as_deref(), &self.words);
-        rows.extend(code_rows::inside(&record, &self.words));
+        record
+    }
+
+    /// Code's rows from `record`, with the uncommitted files last counted,
+    /// and the rows inside them.
+    fn made(&self, record: &Record) -> Vec<Value> {
+        let uncommitted = lock(&self.uncommitted).clone();
+        let home = self.home.as_deref();
+        let mut rows = code_rows::rows(record, home, &self.words, &uncommitted);
+        rows.extend(code_rows::inside(record, &self.words));
         rows
     }
+
+    /// Counts the uncommitted files of each repository's worked-in
+    /// checkout, unless they were counted in the last `FRESH`, answering
+    /// whether any count moved. git runs outside every lock.
+    fn count(&self, record: &Record) -> bool {
+        {
+            let mut at = lock(&self.counted_at);
+            if at.is_some_and(|at| at.elapsed() < FRESH) {
+                return false;
+            }
+            *at = Some(Instant::now());
+        }
+        let paths: Vec<&str> = record
+            .repositories
+            .iter()
+            .filter_map(code_rows::worked_in)
+            .filter(|checkout| !checkout.bare)
+            .map(|checkout| checkout.path.as_str())
+            .collect();
+        let counted = counted(&git(), &paths);
+        let mut held = lock(&self.uncommitted);
+        let now = kept(&held, counted);
+        let moved = now != *held;
+        *held = now;
+        moved
+    }
+}
+
+/// What git says each checkout at `paths` holds uncommitted, `AT_ONCE`
+/// at a time, none for one it couldn't say.
+fn counted<'a>(git: &str, paths: &[&'a str]) -> Vec<(&'a str, Option<u32>)> {
+    let each = paths.len().div_ceil(AT_ONCE).max(1);
+    std::thread::scope(|scope| {
+        let runs: Vec<_> = paths
+            .chunks(each)
+            .map(|chunk| {
+                scope.spawn(move || {
+                    chunk
+                        .iter()
+                        .map(|path| {
+                            let count = programs::git::uncommitted(git, Path::new(path), COUNTING);
+                            (*path, count)
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        runs.into_iter()
+            .flat_map(|run| run.join().unwrap_or_default())
+            .collect()
+    })
+}
+
+/// The counts to hold after counting: each checkout counted at what git
+/// said, one git couldn't read at its last count, and one no longer
+/// counted gone.
+fn kept(held: &BTreeMap<String, u32>, counted: Vec<(&str, Option<u32>)>) -> BTreeMap<String, u32> {
+    counted
+        .into_iter()
+        .filter_map(|(path, count)| {
+            let count = count.or_else(|| held.get(path).copied())?;
+            Some((path.to_owned(), count))
+        })
+        .collect()
 }
 
 /// As a watch of Code's rows begins: the first ever reads the disk on
@@ -142,8 +244,10 @@ pub fn begin(shared: &Arc<Shared>) {
         again(shared);
         return;
     }
-    let rows = shared.code.rows();
+    let rows = shared.code.made(&shared.code.record());
     take(shared, &mut lock(&shared.daemon), rows);
+    // Counted behind its answer, which never waits on git.
+    again(shared);
 }
 
 /// Reads the disk again on a thread of its own. Asked while a read is
@@ -162,8 +266,12 @@ fn again(shared: &Arc<Shared>) {
         let code = &shared.code;
         loop {
             while code.wanted.swap(false, Ordering::SeqCst) {
-                let rows = code.rows();
-                take(&shared, &mut lock(&shared.daemon), rows);
+                // Served before counting, so nothing read waits on git.
+                let record = code.record();
+                take(&shared, &mut lock(&shared.daemon), code.made(&record));
+                if code.count(&record) {
+                    take(&shared, &mut lock(&shared.daemon), code.made(&record));
+                }
             }
             code.reading.store(false, Ordering::SeqCst);
             // An ask between the last read and letting go is read here.
@@ -429,9 +537,22 @@ fn branches(shared: &Shared, path: &str) -> Option<Vec<Value>> {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use super::*;
+
+    #[test]
+    fn a_count_git_couldnt_read_keeps_the_last_and_one_no_longer_counted_goes() {
+        let held = BTreeMap::from([
+            ("/src/a".to_owned(), 2),
+            ("/src/b".to_owned(), 3),
+            ("/src/gone".to_owned(), 4),
+        ]);
+        let counted = vec![("/src/a", Some(0)), ("/src/b", None), ("/src/new", None)];
+        assert_eq!(
+            kept(&held, counted),
+            BTreeMap::from([("/src/a".to_owned(), 0), ("/src/b".to_owned(), 3)]),
+            "a count git couldn't read wasn't kept at its last, or one no longer counted stayed"
+        );
+    }
 
     /// A checkout already held is refused, the first hold kept, and let
     /// go once it ends. Asked on a thread of its own, so a hold that

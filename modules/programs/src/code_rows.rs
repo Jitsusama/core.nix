@@ -4,8 +4,10 @@
 //! (modules/repos). The one written to last comes first, said beside it
 //! by how many changes are open on its remote, how far the checkout
 //! written to last is behind and ahead of the branch it follows (as repos'
-//! timer last counted), how many trees are cut from it and when git last wrote in it; it's found by its name, its
-//! owner and its key. Return opens its page where a remote keeps it on
+//! timer last counted), how many of its tracked files that checkout has
+//! changed and not committed (as the daemon last counted), how many trees
+//! are cut from it and when git last wrote in it; it's found by its name,
+//! its owner and its key. Return opens its page where a remote keeps it on
 //! GitHub or GitLab, else copies its checkout's path; inside are Open Its
 //! Page, Open Its Open Changes (while any are), Copy Its Path, New
 //! Terminal Here and Edit Here,
@@ -22,6 +24,7 @@
 use repos::model::{COUNTED_TO, Checkout, Head, Record, Repository};
 use repos::read::shown;
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 /// The place these rows are of.
@@ -48,6 +51,10 @@ pub struct Words {
     /// lacks, not yet pushed: `{count} ahead`.
     behind: String,
     ahead: String,
+    /// How many tracked files its checkout has changed and not committed:
+    /// `{count} uncommitted`, git's word, since a change is work put up for
+    /// review.
+    uncommitted: String,
     /// The labels of its drawer's facts.
     key: String,
     trunk: String,
@@ -109,6 +116,7 @@ impl Words {
             changes: said("changes"),
             behind: said("behind"),
             ahead: said("ahead"),
+            uncommitted: said("uncommitted"),
             key: name("code:key"),
             trunk: name("code:trunk"),
             checkout: name("code:checkout"),
@@ -142,16 +150,19 @@ impl Words {
         };
         [(count.behind, &self.behind), (count.ahead, &self.ahead)]
             .into_iter()
-            .filter(|(far, _)| *far > 0)
-            .map(|(far, words)| {
-                let far = if far >= COUNTED_TO {
-                    format!("{COUNTED_TO}+")
-                } else {
-                    far.to_string()
-                };
-                words.replace("{count}", &far)
-            })
+            .filter_map(|(far, words)| Words::up_to(words, far))
             .collect()
+    }
+
+    /// A count said only where it's above none, as `100+` past the
+    /// count's end.
+    fn up_to(words: &str, count: u32) -> Option<String> {
+        let count = match count {
+            0 => return None,
+            far if far >= COUNTED_TO => format!("{COUNTED_TO}+"),
+            far => far.to_string(),
+        };
+        Some(words.replace("{count}", &count))
     }
 
     fn count(one: &str, many: &str, count: usize) -> String {
@@ -164,13 +175,20 @@ impl Words {
 }
 
 /// Every repository's row, in the record's order, the one written to
-/// last first; paths are said from `home` as `~`.
+/// last first; paths are said from `home` as `~`, and `uncommitted` says
+/// how many tracked files each checkout counted has changed and not
+/// committed, by its path.
 #[must_use]
-pub fn rows(record: &Record, home: Option<&Path>, words: &Words) -> Vec<Value> {
+pub fn rows(
+    record: &Record,
+    home: Option<&Path>,
+    words: &Words,
+    uncommitted: &BTreeMap<String, u32>,
+) -> Vec<Value> {
     record
         .repositories
         .iter()
-        .map(|repository| row(repository, home, words))
+        .map(|repository| row(repository, home, words, uncommitted))
         .collect()
 }
 
@@ -335,7 +353,7 @@ pub fn changes_page(key: &str) -> Option<String> {
 
 /// The checkout a person works in: the one written to last with files of
 /// its own, else the first.
-fn worked_in(repository: &Repository) -> Option<&Checkout> {
+pub fn worked_in(repository: &Repository) -> Option<&Checkout> {
     repository
         .checkouts
         .iter()
@@ -353,7 +371,12 @@ fn follows(checkout: &Checkout) -> bool {
             .is_some_and(|head| head.upstream.is_some())
 }
 
-fn row(repository: &Repository, home: Option<&Path>, words: &Words) -> Value {
+fn row(
+    repository: &Repository,
+    home: Option<&Path>,
+    words: &Words,
+    uncommitted: &BTreeMap<String, u32>,
+) -> Value {
     let trees: usize = repository
         .checkouts
         .iter()
@@ -372,6 +395,14 @@ fn row(repository: &Repository, home: Option<&Path>, words: &Words) -> Value {
                 .into_iter()
                 .map(|said| json!({"said": said})),
         );
+    }
+    // What a Pull or a Switch would be refused over, after how far apart.
+    if let Some(said) = checkout
+        .filter(|checkout| !checkout.bare)
+        .and_then(|checkout| uncommitted.get(&checkout.path))
+        .and_then(|count| Words::up_to(&words.uncommitted, *count))
+    {
+        side.push(json!({"said": said}));
     }
     if trees > 0 {
         side.push(json!({"said": words.counted(trees)}));

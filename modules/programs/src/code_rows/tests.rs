@@ -9,6 +9,7 @@ fn words() -> Words {
             "kind": "repository", "tree": "1 tree", "trees": "{count} trees",
             "local": "no remote", "change": "1 change", "changes": "{count} changes",
             "behind": "{count} behind", "ahead": "{count} ahead",
+            "uncommitted": "{count} uncommitted",
         }},
         {"id": "code:key", "name": "Key"},
         {"id": "code:trunk", "name": "Trunk"},
@@ -21,6 +22,12 @@ fn words() -> Words {
         {"id": "verb:code:find", "name": "Open a File by Name", "glyph": "folder"},
         {"id": "code:file", "name": "File", "glyph": "path"},
     ]}))
+}
+
+/// The rows as they're made where no checkout's uncommitted files were
+/// counted.
+fn rows(record: &Record, home: Option<&Path>, words: &Words) -> Vec<Value> {
+    super::rows(record, home, words, &BTreeMap::new())
 }
 
 fn tree(path: &str, present: bool) -> Tree {
@@ -200,6 +207,70 @@ fn a_checkout_apart_from_its_branch_says_how_far_after_its_open_changes() {
 }
 
 #[test]
+fn a_checkout_with_files_not_committed_says_how_many_after_how_far_apart() {
+    let repository = apart(Some(Count {
+        behind: 3,
+        ahead: 1,
+    }));
+    let uncommitted = BTreeMap::from([("/home/j/src/core.nix".to_owned(), 2)]);
+    let rows = super::rows(&record(vec![repository]), None, &words(), &uncommitted);
+    assert_eq!(
+        rows[0]["side"],
+        json!([
+            {"said": "3 behind"},
+            {"said": "1 ahead"},
+            {"said": "2 uncommitted"},
+            {"said": "3 trees"},
+            {"at": 1_700_000_000_000_i64, "as": "came", "keep": 1},
+        ]),
+        "how many files its checkout hasn't committed wasn't said after how far apart it is"
+    );
+}
+
+#[test]
+fn none_uncommitted_uncounted_bare_or_another_checkouts_says_nothing_and_many_say_100_plus() {
+    let said_of = |repository: Repository, path: &str, count: u32| {
+        let uncommitted = BTreeMap::from([(path.to_owned(), count)]);
+        super::rows(&record(vec![repository]), None, &words(), &uncommitted)[0]["side"][0].clone()
+    };
+    let said = |path: &str, count: u32| said_of(core(), path, count);
+    let trees = json!({"said": "3 trees"});
+    assert_eq!(
+        said("/home/j/src/core.nix", 0),
+        trees,
+        "a checkout with no files uncommitted said 0 uncommitted"
+    );
+    let bare = Repository {
+        checkouts: vec![checkout(
+            "/home/j/src/core.nix.git",
+            true,
+            vec![tree("/t/a", true)],
+        )],
+        ..core()
+    };
+    assert_eq!(
+        said_of(bare, "/home/j/src/core.nix.git", 2),
+        json!({"said": "1 tree"}),
+        "a bare checkout, with no files of its own, said how many it hasn't committed"
+    );
+    assert_eq!(
+        said("/home/j/old/core.nix", 4),
+        trees,
+        "a checkout not worked in said how many it hasn't committed"
+    );
+    assert_eq!(
+        rows(&record(vec![core()]), None, &words())[0]["side"][0],
+        trees,
+        "a checkout not counted said how many it hasn't committed"
+    );
+    assert_eq!(
+        said("/home/j/src/core.nix", COUNTED_TO),
+        json!({"said": "100+ uncommitted"}),
+        "past the count's end didn't say as much"
+    );
+}
+
+#[test]
 fn past_the_counts_end_it_says_as_much_and_even_or_uncounted_says_nothing() {
     let far = apart(Some(Count {
         behind: COUNTED_TO,
@@ -278,7 +349,7 @@ fn pull_is_offered_last_on_a_checkout_whose_branch_follows_another_and_only_ther
         "Pull isn't offered last on the checkout its branch follows another in"
     );
     let offered = |repository: &Repository| {
-        super::rows(&record(vec![repository.clone()]), None, &words())[0]["acts"]
+        self::rows(&record(vec![repository.clone()]), None, &words())[0]["acts"]
             .as_array()
             .unwrap()
             .iter()

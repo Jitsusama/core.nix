@@ -200,6 +200,7 @@ checkout lives is a machine. Its command is `repos`.
 | gone | a tree its checkout still lists whose folder isn't there | | `prunable` |
 | branch | a named line of commits a tree can be checked out at | | `refs/heads/` |
 | commit | one recorded state of a repository's files | | |
+| uncommitted | a checkout's tracked files changed since its last commit, staged or not | dirty | `git status` |
 | trunk | the branch a repository's changes merge into, as its remote names it | default branch | `origin/HEAD` |
 | change | work put up for review, whichever source holds it | PR, pull request, merge request, proposal | |
 | stack | changes each built on the one before | | |
