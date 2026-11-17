@@ -1141,6 +1141,7 @@ Scope {
     // way to one took about 40 of To Try's 84 ms Return (2026-11-14).
     function walkTo(spot) {
         const came = here();
+        const begun = stepBegun();
         held = [];
         const last = spot.trail.length - 1;
         if (last < 0)
@@ -1165,7 +1166,7 @@ Scope {
                 above: 0 };
             const first = held.length === 0;
             const searchedBefore = root.searched;
-            if (row === null || !enter(row, { passing: depth < last, stood: stood })) {
+            if (row === null || !enter(row, { passing: depth < last, stood: stood, begun })) {
                 if (!listed)
                     listHeld();
                 return;
@@ -5010,11 +5011,11 @@ Scope {
         // the row, so a slow place shows in the journal and the trials
         // (Joel, 2026-10-28: "programs from the main launcher screen takes
         // for fucking ever to load").
-        const began = Date.now();
-        const heard = KeyTimes.now();
-        const pressed = KeyTimes.pressed();
-        const collected = Heap.collected();
-        const thread = threadNow();
+        // A walk is one step, timed once as the place it ends in from when
+        // it began (`begun`), so Machine on the way to Power is no step of
+        // its own: timed as each, one walk said two steps, and the first
+        // left out what the last took (a council, 2026-11-17).
+        const { began, heard, pressed, collected, thread } = walk?.begun ?? stepBegun();
         if (held.length > 0 && row.given) {
             ask(row);
             return true;
@@ -5041,7 +5042,7 @@ Scope {
         // into a kept place is its opening's too, though its frame is
         // drawn and the ask let go by then: a kept Super+N timed its fill
         // as "→ On Screen" (a gate, 2026-11-16).
-        const timed = openAsked < 0 && !fillingPlace;
+        const timed = openAsked < 0 && !fillingPlace && !passing;
         // A place found from the top that sits in another is stepped into
         // through it, so the path says where it lives. Its line says the
         // places it made as a step's does, beside the search that drew it.
@@ -5107,6 +5108,12 @@ Scope {
         if (timed)
             keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread);
         return went();
+    }
+
+    // When a step began, on each clock its timing reads.
+    function stepBegun() {
+        return { began: Date.now(), heard: KeyTimes.now(), pressed: KeyTimes.pressed(),
+            collected: Heap.collected(), thread: threadNow() };
     }
 
     // Lists a step's rows, the field emptied or given the row's words as
@@ -9595,12 +9602,13 @@ Scope {
         // only the last. All 19 of Joel's Super+N openings were past 50
         // ms, a median 204 (2026-11-11 to 14).
         const { leading, rows } = leadingTo(name) ?? { leading: null, rows: [] };
+        const begun = stepBegun();
         if (leading !== null && leading.settings.name !== name) {
             intoWhole(leading.settings.name, rows.length > 0);
             for (const [depth, row] of rows.entries()) {
                 const stood = { typed: "", above: 0,
                     at: Math.max(0, offered.findIndex(one => steadyId(one) === steadyId(row))) };
-                if (!enter(row, { passing: depth < rows.length - 1, stood: stood })) {
+                if (!enter(row, { passing: depth < rows.length - 1, stood: stood, begun })) {
                     listHeld();
                     break;
                 }
