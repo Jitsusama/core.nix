@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 from desktop_session import (
+    KEY_PACE,
+    KEYS_IN_FLIGHT,
     LATEST_DOWNLOAD,
     NOTICES,
     STARTING,
@@ -423,10 +425,25 @@ def takes_a_selection(
 
 
 def ran(desktop: Desktop, line: str, *, closes: bool = False) -> None:
-    """Type a command on the launcher's line from normal, and wait until it's run."""
+    """Type a command on the launcher's line from normal, and wait until it's run.
+
+    It's typed as type_in types, paced and KEYS_IN_FLIGHT at a time, each held before the
+    next go: sent at once, `:e ~/chosen-notes/` is past 64 events with its shifted keys, and
+    on a loaded builder lost every key after its e (2026-11-16).
+    """
     desktop.normal()
-    desktop.machine.send_chars(f":{line}")
-    desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == line)
+    sent = ""
+
+    def holds_sent(shown: Json) -> object:
+        return (shown["command"] or {}).get("line") == sent
+
+    desktop.machine.send_chars(":", delay=KEY_PACE)
+    desktop.launcher_until(holds_sent)
+    while sent != line:
+        keys = line[len(sent) : len(sent) + KEYS_IN_FLIGHT]
+        sent += keys
+        desktop.machine.send_chars(keys, delay=KEY_PACE)
+        desktop.launcher_until(holds_sent)
     desktop.machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
