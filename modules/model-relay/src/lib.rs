@@ -100,6 +100,9 @@ const SENT_AGAIN_AT_MOST: usize = 2;
 /// How long after an attempt to open a connection failed before one is
 /// opened behind others again.
 const OPEN_BEHIND_AGAIN_AFTER: Duration = Duration::from_secs(30);
+/// How long a leaving relay still takes connections, to send each direct,
+/// when its idle time is longer.
+const TAKES_LATE_CONNECTIONS_FOR: Duration = Duration::from_secs(10);
 /// How long a connection taken just as the relay leaves has to say its
 /// request, which pi sends as it connects.
 const LEAVING_GRACE: Duration = Duration::from_millis(500);
@@ -468,9 +471,21 @@ impl Relay {
         relay.leaving.store(true, Ordering::SeqCst);
         // Nobody is left to tell when every connection has gone already.
         let _ = leave.send(true);
+        // Pis that keep connecting would keep a relay taking them going for
+        // ever, so it takes them only a while; after that they wait on the
+        // socket for whatever systemd starts next.
+        let taking_for = relay
+            .clocks
+            .idle_exit
+            .map_or(TAKES_LATE_CONNECTIONS_FOR, |idle| {
+                idle.min(TAKES_LATE_CONNECTIONS_FOR)
+            });
+        let drained = relay.connections.none_held();
+        tokio::pin!(drained);
         tokio::select! {
             () = relay.accept(&listener, &leaving) => {}
-            () = relay.connections.none_held() => {}
+            () = tokio::time::sleep(taking_for) => drained.await,
+            () = &mut drained => {}
         }
     }
 

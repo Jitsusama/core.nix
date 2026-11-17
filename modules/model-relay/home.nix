@@ -18,7 +18,7 @@
 #
 # The relay trusts the public roots built into it, so an origin whose
 # certificate chains to a private root isn't reached: each request is
-# answered as a 502, and the journal says why.
+# answered as a 421, which sends pi direct, and the journal says why.
 #
 # The relay runs in background.slice, which the shaper sends in the agents'
 # lane, and its connections are the account's own, so they ride the work VPN
@@ -99,8 +99,10 @@ in
         # no more of the machine than reaching the origin needs: no home,
         # no shared /tmp, nothing written, no capability, no namespace of
         # its own making. A user manager takes these by putting it in a
-        # user namespace of its own, where the kernel allows one; its socket comes
-        # from systemd, so the runtime folder it hides isn't needed.
+        # user namespace of its own, so a kernel refusing unprivileged ones
+        # fails the unit, and its socket, after a few tries, refuses pi, who
+        # then goes direct. Its socket comes from systemd, so the runtime
+        # folder it hides isn't needed.
         ProtectSystem = "strict";
         ProtectHome = true;
         PrivateTmp = true;

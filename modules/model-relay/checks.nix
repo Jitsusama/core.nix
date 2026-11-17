@@ -21,10 +21,10 @@ onLinux {
   # asked for on every request, a failure that ends as the origin comes
   # back, an origin it can't trust sending pi direct, a request answered
   # beside an answer longer than the idle time, the relay leaving once idle
-  # even while refusing other hosts or held open by a kept connection, a
-  # socket the account's alone, never taken from a relay answering it nor
-  # from a file that isn't a socket, and nothing of a header or body
-  # logged, a failure included.
+  # even while refusing other hosts, held open by a kept connection or
+  # knocked on as it goes, a socket the account's alone, never taken from a
+  # relay answering it nor from a file or a link that isn't a socket, and
+  # nothing of a header or body logged, a failure included.
   model-relay-carries-requests-whole = pkgs.callPackage ./package.nix { };
 
   # clippy finds nothing in model-relay, its tests included.
@@ -74,6 +74,16 @@ onLinux {
         && service.SystemCallFilter or null == "@system-service"
         && service.UMask or null == "0077"
         && service.RestrictRealtime or null == true
+        && service.NoNewPrivileges or null == true
+        && service.LockPersonality or null == true
+        && service.MemoryDenyWriteExecute or null == true
+        &&
+          service.RestrictAddressFamilies or null == [
+            "AF_UNIX"
+            "AF_INET"
+            "AF_INET6"
+          ]
+        && service.SystemCallArchitectures or null == "native"
         && named.systemd.user.sessionVariables.PI_PROXY_RELAY == "\${XDG_RUNTIME_DIR}/model-relay"
       );
 }

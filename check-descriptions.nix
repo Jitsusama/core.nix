@@ -1580,9 +1580,9 @@
     an origin out of reach as a 502 or a 504 without queueing, doesn't ask for a connection that
     won't open on every request, forgets a failure once the origin is back, sends pi direct with a
     421 when it can't trust the origin, answers beside an answer longer than its idle time, leaves
-    once idle even while refusing other hosts or held open by a kept connection, keeps its socket
-    to its account, from a second relay and off a file that isn't a socket, and logs nothing of a
-    header or a body, a failure included
+    once idle even while refusing other hosts, held open by a kept connection or knocked on as it
+    goes, keeps its socket to its account, from a second relay and off a file or a link that isn't
+    a socket, and logs nothing of a header or a body, a failure included
   '';
   model-relay-passes-clippy = ''
     clippy finds nothing in model-relay or its tests

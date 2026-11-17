@@ -935,8 +935,12 @@ async fn a_file_at_its_socket_is_left_be_and_a_socket_left_behind_is_taken() {
     std::fs::write(&notes, "kept").expect("a file");
     let left = folder.path().join("agents.sock");
     drop(std::os::unix::net::UnixListener::bind(&left).expect("a socket"));
+    // A link to nothing is a file of its own, not a way to somewhere free.
+    let link = folder.path().join("link.sock");
+    std::os::unix::fs::symlink(folder.path().join("gone"), &link).expect("a link");
 
     let on_the_file = relay_at(&notes, &host);
+    let on_the_link = relay_at(&link, &host);
     let relay = Relay::start_at(
         folder,
         left,
@@ -956,6 +960,11 @@ async fn a_file_at_its_socket_is_left_be_and_a_socket_left_behind_is_taken() {
         std::fs::read_to_string(&notes).expect("the file"),
         "kept",
         "the file was touched"
+    );
+    assert!(
+        said_of(&on_the_link).contains("isn't a socket") && link.symlink_metadata().is_ok(),
+        "a relay took a link to nothing: {}",
+        said_of(&on_the_link)
     );
     assert_eq!(
         got.status,
@@ -1063,5 +1072,57 @@ async fn a_connection_pi_keeps_open_doesnt_keep_the_relay() {
     );
     assert!(closed.is_ok(), "the relay left the kept connection open");
     drop(sender);
+    drop(relay.said());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn pis_knocking_while_it_leaves_dont_keep_the_relay() {
+    let origin = origin().await;
+    let mut relay = Relay::start_with(
+        &format!("https://{}", origin.address),
+        &origin.roots,
+        1,
+        &["--idle-exit", "1"],
+    );
+    // A request for another host isn't the relay's work, so it goes idle
+    // and leaves while these keep coming, each connection held a while
+    // before its request, so some are always open.
+    let socket = relay.socket.clone();
+    let knocking = tokio::spawn(async move {
+        loop {
+            let socket = socket.clone();
+            tokio::spawn(async move {
+                let Ok(stream) = UnixStream::connect(&socket).await else {
+                    return;
+                };
+                let Ok((mut sender, connection)) =
+                    hyper::client::conn::http1::handshake(TokioIo::new(stream)).await
+                else {
+                    return;
+                };
+                tokio::spawn(connection);
+                // Silent for a while, as a pi slow to send would be.
+                tokio::time::sleep(HELD).await;
+                drop(
+                    sender
+                        .send_request(request("elsewhere.example", "/echo", b""))
+                        .await,
+                );
+            });
+            tokio::time::sleep(LOOK_EVERY).await;
+        }
+    });
+
+    // Waited on beside the runtime, so the knocking goes on meanwhile.
+    let (left, relay) =
+        tokio::task::spawn_blocking(move || (relay.left_within(Duration::from_secs(6)), relay))
+            .await
+            .expect("the wait ends");
+    knocking.abort();
+
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "pis knocking kept a leaving relay: {left:?}"
+    );
     drop(relay.said());
 }
