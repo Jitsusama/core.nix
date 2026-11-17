@@ -166,10 +166,17 @@ let
         # a second through a night's work on 12 November, the longest an
         # answer waited was 6.5 s; on 11 November a starved machine ran 13 s
         # of work in 96 s, and two minutes leaves the loop that slowdown five
-        # times over. systemd kills a quiet host with SIGABRT, so its core,
-        # the one record of where its loop wedged, goes to systemd-coredump;
-        # writing it may take TimeoutStopSec's minute before SIGKILL.
+        # times over.
         WatchdogSec = "2min";
+        # A host dumps no core. Its heap runs to 4 GB, and no core of one was
+        # ever kept: the watchdog kills on 15 November and V8's out-of-memory
+        # abort on 16 November all show missing in coredumpctl. On 16 November
+        # the host couldn't exit while the kernel streamed 4.4 GB into
+        # systemd-coredump, so the watchdog's SIGABRT and then its SIGKILL
+        # came three minutes late, and coredump wrote 12.5 GB to disk before
+        # it gave up. Without one, a host that dies restarts in seconds. Its
+        # journal says why it held: its loop's stall lines name the call.
+        LimitCORE = "0";
         # The host exits 78 when what it was given is refused (its kind, its
         # realm, a pi missing a host patch), which another start would only
         # refuse again, so it waits for a fix rather than retrying forever.
