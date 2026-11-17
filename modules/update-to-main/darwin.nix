@@ -122,8 +122,9 @@ in
       AbandonProcessGroup = true;
       # launchd's 256 open files are too few for git reading a checkout of
       # hundreds of packs, which fails saying it "Could not read" an object.
+      # Only the soft limit rises: launchd's hard one is unlimited, and
+      # setting it would lower it for everything the daemon starts.
       SoftResourceLimits.NumberOfFiles = 8192;
-      HardResourceLimits.NumberOfFiles = 8192;
       StandardOutPath = "/var/log/update-to-main.log";
       StandardErrorPath = "/var/log/update-to-main.log";
     };
@@ -142,9 +143,9 @@ in
         RunAtLoad = true;
         KeepAlive.SuccessfulExit = false;
         ThrottleInterval = 30;
-        # As the daemon's: git reads many packs at once.
+        # As the daemon's: the account's `changed` command reads the
+        # checkout's packs with git on each look.
         SoftResourceLimits.NumberOfFiles = 8192;
-        HardResourceLimits.NumberOfFiles = 8192;
         StandardOutPath = "/Users/${cfg.follower}/Library/Logs/update-to-main-follows.log";
         StandardErrorPath = "/Users/${cfg.follower}/Library/Logs/update-to-main-follows.log";
       };
