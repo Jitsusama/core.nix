@@ -68,7 +68,7 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     let mut disk = Disk {
         home,
         roots: crate::roots(home)?,
-        machine: crate::machine(),
+        machine: terminal_kit::environment::machine(),
         found: BTreeMap::new(),
     };
     let (tell, told) = mpsc::channel();
