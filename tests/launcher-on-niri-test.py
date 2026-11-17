@@ -4754,10 +4754,10 @@ def test_a_step_in_by_a_word_and_a_space_is_timed_once_as_the_step(shell: Shell)
 
 
 def test_a_word_and_a_space_typed_at_once_time_only_the_last_key_as_the_step(shell: Shell) -> None:
-    """Network and a space typed in one go is searched once, only the space timed as the step.
+    """Network and a space typed in one go time only the space as the step into Network.
 
-    Every key of a burst is timed by the one search that took the step, so naming each of them
-    the step would count one step as many.
+    The keys of a burst are timed together by the search that took the step, so naming each of
+    them the step would count one step as many.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()

@@ -2413,12 +2413,13 @@ Scope {
             from = { typed: "", at: Math.max(0, inner), key: inner < 0 ? ""
                 : steadyId(rows[inner]), scroll: 0 };
         });
-        held = steps;
-        // When its places were made, so a step's line says them apart
-        // from the search that drew them.
+        // When its places were made and held, so a step's line says them
+        // apart from the search that drew them.
         const made = Date.now();
+        held = steps;
+        const pushed = Date.now();
         restart("");
-        return made;
+        return { made, pushed };
     }
 
     // Puts a command's start in the field, out at the top, where it's
@@ -5048,12 +5049,12 @@ Scope {
             if (meant)
                 learnAfterFrame(typed, row.key);
             searchParts = null;
-            let made = began;
+            let at = { made: began, pushed: began };
             listedAsStep(() => {
-                made = intoCategory(row.category, walk === undefined ? typed : "");
+                at = intoCategory(row.category, walk === undefined ? typed : "");
             });
-            searchParts = trials.stepped(searchParts, { began, made, pushed: made,
-                opened: made, ended: Date.now() });
+            searchParts = trials.stepped(searchParts, { began, made: at.made,
+                pushed: at.pushed, opened: at.pushed, ended: Date.now() });
             if (timed)
                 keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true,
                     thread);
@@ -6236,12 +6237,12 @@ Scope {
             // by clearing the name.
             const began = Date.now();
             searchParts = null;
-            let made = began;
+            let at = { made: began, pushed: began };
             listedAsStep(() => {
-                made = intoCategory(named, chipped[1]);
+                at = intoCategory(named, chipped[1]);
             });
-            searchParts = trials.stepped(searchParts, { began, made, pushed: made,
-                opened: made, ended: Date.now() });
+            searchParts = trials.stepped(searchParts, { began, made: at.made,
+                pushed: at.pushed, opened: at.pushed, ended: Date.now() });
             steppedByKey = named.name;
             return;
         }
