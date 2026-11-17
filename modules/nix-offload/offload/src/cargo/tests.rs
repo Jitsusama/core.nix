@@ -31,33 +31,51 @@ fn an_offline_run_goes_to_a_lent_builder_online_and_locked() {
     // At 17:45 on 16 November an agent's cargo test --offline went to a lent
     // builder, which has no crates but what it fetches, and failed finding
     // one.
-    for (line, sent) in [
-        ("test --offline", "test --locked"),
+    for (line, sent, offline) in [
+        ("test --offline", "test --locked", true),
         (
             "--offline test -p disk-guard",
             "test -p disk-guard --locked",
+            true,
         ),
         (
             "clippy --frozen --all-targets",
             "clippy --all-targets --locked",
+            true,
         ),
-        ("test --locked --frozen", "test --locked"),
-        ("test --config net.offline=true", "test --locked"),
-        ("test --config=net.offline=true -p a", "test -p a --locked"),
-        ("test --config net.retry=4", "test --config net.retry=4"),
+        ("test --locked --frozen", "test --locked", true),
+        ("test --frozen --locked", "test --locked", true),
+        ("test --config net.offline=true", "test --locked", true),
+        (
+            "test --config=net.offline=true -p a",
+            "test -p a --locked",
+            true,
+        ),
+        (
+            "test --config net.retry=4",
+            "test --config net.retry=4",
+            false,
+        ),
         (
             "test --offline -- --nocapture --offline",
             "test --locked -- --nocapture --offline",
+            true,
         ),
-        ("test --locked", "test --locked"),
-        ("test", "test"),
+        ("test --locked --locked", "test --locked", false),
+        ("test", "test", false),
     ] {
         assert_eq!(
-            for_a_lender(&words(line)),
-            words(sent),
-            "cargo {line} wasn't sent as cargo {sent}"
+            for_a_lender(&words(line), false),
+            (words(sent), offline),
+            "cargo {line} wasn't sent as cargo {sent}, asked offline {offline}"
         );
     }
+    // CARGO_NET_OFFLINE here doesn't go there, so its run goes locked too.
+    assert_eq!(
+        for_a_lender(&words("test -p a"), true),
+        (words("test -p a --locked"), true),
+        "a run asked offline by the environment went unlocked"
+    );
 }
 
 #[test]
