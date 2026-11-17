@@ -235,5 +235,29 @@
     "owner_session": "orchestrator",
     "reason": "has been broken since #5110, but fails with it reverted too, so a later merge breaks it as well; whoever finds that merge fixes it forward and takes it off this list",
     "test": "a-macs-checks-since-39fb6de4dee4bb8e346322df7343151404c2eda7"
+  },
+  {
+    "at": 1794915304,
+    "commit": "12a1360de502d37c18a3bf5e24c054fbf31b5d1e",
+    "due": "2026-11-19",
+    "owner_pr": 5270,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 12a1360de502",
+    "subtests": [
+      "test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_by_what",
+      "test_a_usb_cameras_stream_shows_in_the_margin_too_and_leaves_with_the_camera",
+      "test_caps_lock_shows_in_the_margin_while_its_on",
+      "test_caps_lock_still_shows_after_its_watcher_restarts",
+      "test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin",
+      "test_keep_awake_shows_in_the_margin_and_now_says_it_and_lets_it_sleep",
+      "test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps",
+      "test_now_shows_the_notices_and_a_critical_one_unread_lights_for_yous_tray",
+      "test_the_copilot_key_starts_dictation",
+      "test_the_microphone_muted_shows_in_the_margin_and_return_unmutes_it",
+      "test_tokens_running_out_are_one_card_that_counts_down_and_rises_as_they_near",
+      "test_waiting_that_lasts_a_minute_shows_in_the_margin_quietly",
+      "test_whats_playing_shows_in_the_margin_and_a_media_key_shows_what_it_is"
+    ],
+    "test": "vm-desktop-minds-the-margin"
   }
 ]
