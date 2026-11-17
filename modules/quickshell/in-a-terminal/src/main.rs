@@ -39,7 +39,8 @@
 //! or a place the launcher didn't get into, as Passwords refuses a walk
 //! from outside, or an act the shell refused as it ran it, as a yes to a
 //! secret ask without Joel's own key press, 77; an act whose daemon had
-//! no answer to give 69 too; an act the shell failed at 1.
+//! no answer to give 69 too; an act the shell failed at 1; an answer it
+//! doesn't know, never done, 70.
 
 mod asking;
 mod layout;
@@ -131,9 +132,12 @@ fn help() -> Help {
                 .exit(Exit::NotFound, "a step named nothing")
                 .exit(
                     Exit::Unavailable,
-                    "the shell, or the act's daemon, isn't answering",
+                    "the shell isn't answering, or the act's daemon had no answer",
                 )
-                .exit(Exit::Bug, "the shell asked again once told yes")
+                .exit(
+                    Exit::Bug,
+                    "the shell asked again once told yes, or answered oddly",
+                )
                 .exit(
                     Exit::Refused,
                     "answered no, no one to ask, or the shell refused it",
@@ -344,23 +348,30 @@ fn done(qs: &str, steps: &[String], said: &str, yes: bool, words: &Words) -> Res
             let name = names.last().map_or("", String::as_str);
             return Err(Failure::new(Exit::Refused, words.unopened(name)));
         }
-        // An act the shell refused as it ran it, or whose daemon had no
-        // answer to give, which an agent may ask again (5GLTPH, 2026-11-16).
-        for (key, exit) in [
-            ("refused", Exit::Refused),
-            ("unavailable", Exit::Unavailable),
-        ] {
-            if let Some(why) = text(key) {
-                let names = asking::strings(answer.get("in"));
-                let name = names.last().map_or("", String::as_str);
-                return Err(Failure::new(exit, words.refused(name, &why)));
-            }
+        // An act the shell refused as it ran it, as a yes to a secret ask
+        // it withholds, refused again however often it's asked; or one whose
+        // daemon had no answer to give, which an agent may ask again. Each
+        // names the whole path walked, since the act is often a verb, as
+        // Yes, said alone (5GLTPH, 2026-11-16).
+        let walked = || asking::strings(answer.get("in")).join(layout::CRUMB);
+        if let Some(why) = text("refused") {
+            return Err(Failure::new(Exit::Refused, words.refused(&walked(), &why)));
+        }
+        if let Some(why) = text("unavailable") {
+            let said = words.unanswered(&walked(), &why);
+            return Err(Failure::new(Exit::Unavailable, said));
         }
         if answer.get("failed").and_then(Value::as_bool) == Some(true) {
             let name = steps.last().map_or("", String::as_str);
             return Err(Failure::new(Exit::Failed, words.failed(name)));
         }
-        return Ok(());
+        // Only an answer saying done is done: one this program doesn't know,
+        // as a refusal the shell learnt to give before this did, exited 0
+        // as done, which is how a withheld walk was said done.
+        if answer.get("done").and_then(Value::as_bool) == Some(true) {
+            return Ok(());
+        }
+        return Err(Failure::new(Exit::Bug, words.strange()).because(answer.to_string()));
     }
 }
 
@@ -459,9 +470,10 @@ mod tests {
     fn an_act_the_shell_withheld_exits_refused_saying_why() {
         let said = Words::from_value(&serde_json::json!({"terminal": {
             "refused": "{name} not done \u{b7} {why}"}}));
+        // Typed as an agent types them, so the path said is the shell's.
         let failure = done(
             &asking::stand_in::qs("refused"),
-            &words(&["Asks", "Kiln"]),
+            &words(&["asks", "kil", "y"]),
             "",
             true,
             &said,
@@ -470,24 +482,59 @@ mod tests {
         assert_eq!(failure.exit, Exit::Refused);
         assert_eq!(
             failure.what,
-            "Kiln not done \u{b7} not without your own key press"
+            "Asks \u{203a} Kiln \u{203a} Yes not done \u{b7} not without your own key press"
         );
     }
 
     #[test]
-    fn an_act_whose_daemon_had_no_answer_exits_unavailable() {
+    fn an_act_whose_daemon_had_no_answer_exits_unavailable_saying_ask_again() {
         let said = Words::from_value(&serde_json::json!({"terminal": {
-            "refused": "{name} not done \u{b7} {why}"}}));
+            "refused": "{name} not done \u{b7} {why}",
+            "unanswered": "{name} not done \u{b7} {why} \u{b7} ask again"}}));
         let failure = done(
             &asking::stand_in::qs("unavailable"),
-            &words(&["Network", "Whimbrel"]),
+            &words(&["net", "whim", "join"]),
             "",
             true,
             &said,
         )
         .expect_err("an act nothing answered isn't done");
         assert_eq!(failure.exit, Exit::Unavailable);
-        assert_eq!(failure.what, "Whimbrel not done \u{b7} no answer");
+        assert_eq!(
+            failure.what,
+            "Network \u{203a} Whimbrel \u{203a} Join not done \u{b7} no answer \u{b7} ask again"
+        );
+    }
+
+    #[test]
+    fn only_an_answer_saying_done_is_done() {
+        let said = Words::from_value(&serde_json::json!({"terminal": {
+            "strange": "an answer launcher doesn't know"}}));
+        assert_eq!(
+            done(
+                &asking::stand_in::qs("done"),
+                &words(&["programs", "godwit"]),
+                "",
+                true,
+                &said
+            )
+            .map_err(|failure| failure.exit),
+            Ok(())
+        );
+        let failure = done(
+            &asking::stand_in::qs("strange"),
+            &words(&["asks"]),
+            "",
+            true,
+            &said,
+        )
+        .expect_err("an answer it doesn't know is never done");
+        assert_eq!(failure.exit, Exit::Bug);
+        assert_eq!(failure.what, "an answer launcher doesn't know");
+        assert!(
+            failure.why.is_some_and(|why| why.contains("withheld")),
+            "the answer itself should be said, for whoever reads why"
+        );
     }
 
     #[test]

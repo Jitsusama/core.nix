@@ -344,7 +344,7 @@ OPTIONS
 
 EXIT
   0 done · 64 asked wrongly · 66 no such row · 69 the shell isn't answering
-  77 answered no, or no one to ask
+  77 answered no, no one to ask, or the shell refused it
 ```
 
 - **The first line** is the command's name, then what it's for in its own

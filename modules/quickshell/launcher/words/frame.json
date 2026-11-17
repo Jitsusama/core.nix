@@ -747,6 +747,8 @@
     "failed": "{name} not done \u00b7 the shell failed \u00b7 journalctl --user -u quickshell says why",
     "unopened": "{name} won't open from a terminal",
     "refused": "{name} not done \u00b7 {why}",
+    "unanswered": "{name} not done \u00b7 {why} \u00b7 it may answer if asked again",
+    "strange": "the shell answered in a way launcher doesn't know, so it isn't done",
     "unknown": "launcher doesn't take {what}",
     "waiting": "\u2026",
     "unsure": "{question} \u00b7 nothing to answer on, so --yes does it",
