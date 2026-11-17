@@ -685,6 +685,12 @@ ShellRoot {
     // What Now said moved, the last time it said so (Provider.qml's
     // changedWhy).
     property string nowMoved: ""
+    // What it said moved each time, in order, since the case set it
+    // going cleared them.
+    property var nowSaid: []
+    // The minute heldHears' change was made in, so a turn of the real clock
+    // before it's heard is told from a second change of For You's.
+    property real heldMinute: -1
     // And whether it said none of what moved is shown (changedUnseen).
     property bool nowUnseen: false
 
@@ -693,6 +699,7 @@ ShellRoot {
 
         function onChanged() {
             root.nowChanged += 1;
+            root.nowSaid.push(now.changedWhy);
             root.nowMoved = now.changedWhy;
             root.nowUnseen = now.changedUnseen;
         }
@@ -1435,14 +1442,29 @@ ShellRoot {
             { row: { key: "on:waitingOnYou" } }];
         now.changedTo(now.everything());
         root.nowChanged = 0;
+        root.nowSaid = [];
+        root.heldMinute = now.minuteNow();
         WaitingOnYou.now = [toDo("Sign In Again")];
         expect("a to-do said otherwise, its count the same, keeps For You's own row",
             now.waiting === waitingRow && root.nowChanged === 0, root.nowChanged);
     }
 
     function heldHears() {
-        expect("and For You held hears it once the change is done", root.nowChanged === 1,
-            root.nowChanged);
+        // Told once by what Now compares, which says what moved. Now says
+        // the notices' rows changed outright, naming nothing, so their
+        // daemon answering late is no second telling of For You: counting
+        // every change read 2 on loaded builders (train run 23a23e5d and
+        // three more, 16 and 17 November), as it does with the notices'
+        // rows changed just after the case. A minute turning while the
+        // cases held the thread remakes the location row, which reads the
+        // clock, before For You is asked, and that change tells it as Now's
+        // own rows.
+        const moved = root.nowSaid;
+        const told = moved.filter(why => why !== "");
+        const turned = now.minuteNow() !== root.heldMinute;
+        expect("and For You held hears it once the change is done", told.length === 1
+            && (told[0] === "the rows it holds" || turned && told[0] === "its own rows"),
+            JSON.stringify([moved, turned]));
         // Said last with nothing held, Now stepped into For You since
         // compares what For You shows, as the launcher made it stepping
         // in: Joel's journal timed For You drawn again as Return's act
