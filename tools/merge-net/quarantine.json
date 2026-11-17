@@ -211,6 +211,19 @@
     "test": "an-agents-return-does-its-harmless-act-on-niri"
   },
   {
+    "at": 1794933256,
+    "commit": "e32b0a210b1db75bafd56b93fa6c67d35001a252",
+    "due": "2026-11-18",
+    "due_why": "Its owner, the launcher's, asks which words broke out only once the drawer and the rows have settled, or finds the drawer word that really overlaps, and takes it off by 2026-11-18 17:00 UTC",
+    "owner_pr": 4923,
+    "owner_session": "Y2YBTS",
+    "reason": "failed RCTRF8's gate at fd9af9217 and two merge-net reruns on 16 Nov, each at a different step (the session found, its talk selected), with the drawer's '1 more' read as lying over its neighbours ('over', with the dot and Ctrl), from changes that touch neither the drawer nor its words",
+    "subtests": [
+      "test_no_words_however_long_leave_their_room_or_lie_on_anothers"
+    ],
+    "test": "an-agents-return-does-its-harmless-act-on-niri"
+  },
+  {
     "at": 1794854023,
     "commit": "aeac109e3fb236c6bf47ad7f580969d3e547c5e3",
     "due": "2026-11-18",
