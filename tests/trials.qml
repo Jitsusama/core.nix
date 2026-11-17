@@ -294,17 +294,42 @@ QtObject {
         const still = Trials.begun(0, "today");
         expect("nothing moved", Trials.paced(still, Trials.unpaced()) === still, "framed");
 
-        // The frames before a key's own, heard at 1000: two began after it
-        // was heard, its own work too late for them; three in the 100 ms
-        // before, as a sliding name draws; one long before is at rest.
-        const inFlight = Trials.framesBefore([1012, 1000, 996, 950, 901, 899, 400], 1000);
+        // The frames before a key's own, newest first, heard at 1000: two
+        // began after it was heard, its own work too late for them; four in
+        // the 100 ms before, 900 among them, as a sliding name draws; two
+        // before that are at rest.
+        const inFlight = Trials.framesBefore([1012, 1000, 996, 950, 901, 900, 899, 400], 1000);
         expect("frames since a key and just before it", inFlight !== null
-            && inFlight.since === 2 && inFlight.still === 3, JSON.stringify(inFlight));
+            && inFlight.since === 2 && inFlight.still === 4, JSON.stringify(inFlight));
         expect("said in its line", Trials.framesBeforeSaid(inFlight)
-            === ", after 2 other frames since it was heard and 3 in the 100 ms before",
+            === ", after 2 other frames since it was heard and 4 in the 100 ms before",
             Trials.framesBeforeSaid(inFlight));
+        // Where the oldest kept is inside the 100 ms, frames before it went
+        // unread, so the count is a floor; one frame is one.
+        const shortKept = Trials.framesBeforeSaid(Trials.framesBefore([1004, 950], 1000));
+        expect("a short history is a floor", shortKept
+            === ", after 1 other frame since it was heard and at least 1 in the 100 ms before",
+            shortKept);
+        const allSince = Trials.framesBeforeSaid(Trials.framesBefore([1010, 1004], 1000));
+        expect("all since is a floor of both", allSince
+            === ", after at least 2 other frames since it was heard and at least 0 in the 100 ms"
+            + " before", allSince);
         expect("none read, none said", Trials.framesBefore([], 1000) === null
             && Trials.framesBeforeSaid(null) === "", "said");
+        expect("no time heard, none said", Trials.framesBefore([1012], undefined) === null,
+            "counted");
+        // Read back from the key's frame 20, never its own, and past the
+        // slot a newer frame took (17's), to the oldest the ring keeps.
+        function timesOf(frame) {
+            return frame === 17 || frame === 20 ? {} : { rendering: 1000 + frame };
+        }
+        const begunAt = Trials.begunBefore(20, timesOf);
+        expect("begun before, newest first", JSON.stringify(begunAt)
+            === JSON.stringify([1019, 1018, 1016, 1015, 1014, 1013, 1012, 1011, 1010, 1009,
+                1008, 1007, 1006, 1005]), JSON.stringify(begunAt));
+        const early = Trials.begunBefore(3, timesOf);
+        expect("begun before the first frames", JSON.stringify(early)
+            === JSON.stringify([1002, 1001]), JSON.stringify(early));
 
         // Each key's time from its press to the screen is kept with the
         // opening, and how many were never presented, so health can pool a

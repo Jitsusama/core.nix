@@ -91,8 +91,7 @@ Scope {
                         : ""})` : "")
                 + (frame ? `, then ${frame.waiting} waiting for its frame and ${frame.drawing}`
                     + " drawing it" + drawingApart(frame) + collecting(frame, drawn)
-                    + Trials.framesBeforeSaid(Trials.framesBefore(frame.framesBegun,
-                        frame.keyHeard))
+                    + framesBeforeSaid(frame)
                     + Thread.said(searched, frame.thread, "its searching") : ""));
     }
 
@@ -118,6 +117,15 @@ Scope {
     // said as the swap heard, never the key, since a key's presented line
     // says "before the shell heard it" of the key, and Joel's "wi", 64 ms
     // here, was read as a key heard late (2026-11-12).
+    // The frames begun before a key's own, read only for a key slow enough
+    // to be said, and only where its frame's number held (drawingApart's
+    // split), since they're counted back from it.
+    function framesBeforeSaid(frame) {
+        return frame.syncing === undefined || !frame.timesOf ? ""
+            : Trials.framesBeforeSaid(Trials.framesBefore(
+                Trials.begunBefore(frame.keyFrame, frame.timesOf), frame.keyHeard));
+    }
+
     function drawingApart(frame) {
         return frame.syncing === undefined ? "" : ` (${frame.syncing} syncing,`
             + ` ${frame.rendering} rendering, ${frame.heard} before the shell heard it swapped)`;
