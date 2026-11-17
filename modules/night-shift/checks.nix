@@ -23,6 +23,7 @@ onLinux {
   );
 
   # A declared job is tried only at night, never caught up on by day, runs
+  # only within its hours however it was started,
   # behind everything the account runs, with the limits it names on its own
   # cgroup rather than its watcher's, and stops by the slices' bars; it
   # waits for the turn only when told to, and a wait it was let isn't a
@@ -60,7 +61,7 @@ onLinux {
       waits = declared.systemd.user.services.night-shift-waits.Service;
     in
     holds "night-shift-runs-only-at-night"
-      "A night job is tried by day or caught up on after a night slept through, runs outside background.slice or ahead of the account's work, drops a limit it names or puts it on its watcher too, is restarted by a switch, doesn't stop for the apps', the desktop's or agents' slices, passes its command's % to systemd unescaped, waits for the turn unasked, fails its unit for a wait it was let, or an account declaring no job gets one."
+      "A night job is tried by day or caught up on after a night slept through, runs by day when a switch starts it, runs outside background.slice or ahead of the account's work, drops a limit it names or puts it on its watcher too, is restarted by a switch, doesn't stop for the apps', the desktop's or agents' slices, passes its command's % to systemd unescaped, waits for the turn unasked, fails its unit for a wait it was let, or an account declaring no job gets one."
       (
         timer.OnCalendar == [
           "*-*-* 01:30/15"
@@ -77,6 +78,7 @@ onLinux {
         && says "--memory-high 12G"
         && says "--reads-at-most /dev/nvme0n1=50M"
         && unit.X-RestartIfChanged == false
+        && says "--hours 01:30-05:15"
         && says "--start-under 3"
         && says "--stop app.slice=1"
         && says "--stop session.slice=1"

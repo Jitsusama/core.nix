@@ -9,7 +9,7 @@ use std::fs::{self, File};
 use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 const MANAGER: &str = "user.slice/user-1000.slice/user@1000.service";
 
@@ -71,6 +71,9 @@ impl Machine {
             .env("NIGHT_SHIFT_CGROUPS", self.path("cgroups"))
             .env("XDG_STATE_HOME", self.path("state"))
             .env("XDG_RUNTIME_DIR", self.path("runtime"))
+            // Its hours are read by the local clock, which is UTC's here,
+            // so a test's hours are worked out on the same clock.
+            .env("TZ", "UTC")
             .current_dir(&self.root)
             .stdout(Stdio::piped());
         command
@@ -140,6 +143,57 @@ fn a_done_job_runs_again_once_it_has_rested() {
     assert_eq!(
         fs::read_to_string(machine.path("ran")).unwrap(),
         "ran\nran\n"
+    );
+}
+
+/// The minute `minutes` from now, as UTC's clock reads it, `HH:MM`.
+fn clock_in(minutes: i64) -> String {
+    let since = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("a clock after 1970");
+    let now = i64::try_from(since.as_secs() / 60).expect("minutes that fit");
+    let minute = (now + minutes).rem_euclid(24 * 60);
+    format!("{:02}:{:02}", minute / 60, minute % 60)
+}
+
+#[test]
+fn a_start_within_its_hours_runs_the_job() {
+    let machine = Machine::new();
+    let hours = format!("--hours {}-{}", clock_in(-5), clock_in(5));
+    let ran = machine.run(&hours, "echo ran >> ran");
+    assert!(ran.status.success(), "{}", said(&ran));
+    assert_eq!(
+        fs::read_to_string(machine.path("ran")).ok().as_deref(),
+        Some("ran\n"),
+        "a start within its hours didn't run the job: {}",
+        said(&ran)
+    );
+}
+
+#[test]
+fn a_start_outside_its_hours_runs_nothing_and_isnt_a_failure() {
+    // A switch can start a night job's timer, and with it the job, by day.
+    let machine = Machine::new();
+    let hours = format!("--hours {}-{}", clock_in(60), clock_in(120));
+    let ran = machine.run(&hours, "echo ran >> ran");
+    assert!(
+        ran.status.success(),
+        "a start outside its hours failed its unit: {}",
+        said(&ran)
+    );
+    assert!(
+        !machine.path("ran").exists(),
+        "a start outside its hours ran the job"
+    );
+    assert!(
+        said(&ran).contains("outside its hours"),
+        "a start outside its hours didn't say why it ran nothing: {}",
+        said(&ran)
+    );
+    assert!(
+        !said(&ran).contains('\u{2715}'),
+        "a start outside its hours was said as a failure: {}",
+        said(&ran)
     );
 }
 

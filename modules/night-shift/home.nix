@@ -10,7 +10,8 @@
 #
 # and it is tried every quarter hour from 01:30 to 05:00, starting only
 # while the machine's full memory pressure over the last minute is under
-# 3%, and never beside another night job. It is stopped if the apps' or the
+# 3%, never beside another night job, and never outside its hours, which a
+# start by a switch can be. It is stopped if the apps' or the
 # desktop's slice passes 1% over ten seconds, agents' sessions' 10%, or the
 # machine's 25%. A job's log is its unit's journal; each sample it took is
 # in ~/.local/state/night-shift/NAME.samples, and NAME.done is written when
@@ -57,6 +58,8 @@ let
         (lib.getExe package)
         "run"
         name
+        "--hours"
+        job.hours
         "--start-under"
         (number job.startUnder)
       ]
@@ -119,6 +122,16 @@ let
           "*-*-* 02..04:00/15"
           "*-*-* 05:00"
         ];
+      };
+      hours = lib.mkOption {
+        description = ''
+          When a start may run the job, by the local clock, as FROM-UNTIL;
+          a start outside them runs nothing and isn't a failure. A switch
+          can start the timer, and the timer the job, at any hour, so keep
+          every try within them.
+        '';
+        type = lib.types.strMatching "([01][0-9]|2[0-3]):[0-5][0-9]-([01][0-9]|2[0-3]):[0-5][0-9]";
+        default = "01:30-05:15";
       };
       startUnder = lib.mkOption {
         description = "The machine's full memory pressure over the last minute, in percent, it starts only under.";

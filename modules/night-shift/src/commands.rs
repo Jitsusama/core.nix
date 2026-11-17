@@ -32,6 +32,10 @@ fn run() -> Help {
         )
         .argument("NAME", "the job's name, for its marks")
         .argument("COMMAND...", "the job, after --")
+        .option(
+            "--hours FROM-UNTIL",
+            "starts only within them, as 01:30-05:15",
+        )
         .option("--start-under PCT", "starts under this pressure; 3")
         .option("--stop SLICE=PCT", "stops past a slice's pressure")
         .option("--stop-machine PCT", "stops past the machine's; 25")
@@ -112,7 +116,7 @@ mod tests {
 
     #[test]
     fn a_units_words_reach_the_job_as_written() {
-        let unit = "run repack --start-under 3 --stop app.slice=1 --stop-machine 25 \
+        let unit = "run repack --hours 01:30-05:15 --start-under 3 --stop app.slice=1 --stop-machine 25 \
                     --rests 12 --wait-at-most 1800 --memory-high 12G --reads-at-most /dev/nvme0n1=50M \
                     -- git -C /srv maintenance run --help";
         let (exit, said, command) = parsed(unit);
@@ -137,6 +141,11 @@ mod tests {
             ("run repack", "night-shift run --help"),
             ("run repack --rests lots -- true", "night-shift run --help"),
             ("run repack --what 1 -- true", "night-shift run --help"),
+            (
+                "run repack --hours 25:00-05:00 -- true",
+                "night-shift run --help",
+            ),
+            ("run repack --hours 01:30 -- true", "night-shift run --help"),
             ("turn eval --", "night-shift turn --help"),
             ("turn", "night-shift turn --help"),
             ("walk repack -- true", "night-shift --help"),
