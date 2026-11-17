@@ -179,9 +179,12 @@ let
         # seconds. Its journal says where it held: the host's watcher writes
         # "the loop has held N s so far" every few seconds while the loop is
         # stuck, naming the kernel waits and files its thread is in. The hard
-        # limit stays open, so a command a conversation runs can still ask
-        # for its core with ulimit -c.
-        LimitCORE = "0:infinity";
+        # limit is 0 too: with it open, any command a conversation runs, as
+        # the same user, could raise the host's own soft limit with prlimit
+        # and have its next crash write every conversation's keys to disk.
+        # So the commands it runs keep no core either; coredumpctl still
+        # records each of their crashes.
+        LimitCORE = "0";
         # The host exits 78 when what it was given is refused (its kind, its
         # realm, a pi missing a host patch), which another start would only
         # refuse again, so it waits for a fix rather than retrying forever.
