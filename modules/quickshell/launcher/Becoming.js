@@ -15,7 +15,8 @@
 
 // The rows as they'll be: each held row laid over the one with its key, the
 // fields the launcher added to it kept, and one that goes left out. A row
-// that already reads as it was to become is agreed, its hold done with.
+// that already reads as it was to become is agreed, its hold done with, as
+// `agrees` says, so one already drawn over agrees with nothing here either.
 // `reads(held, row)` says how a row reads, as its source compares them.
 function laid(rows, holds, reads) {
     const agreed = [];
@@ -25,13 +26,11 @@ function laid(rows, holds, reads) {
         if (!one) {
             shown.push(row);
         } else if (one.row !== null) {
-            const becomes = Object.assign({}, row, one.row);
-            if (typeof one.done === "function" ? one.done(row)
-                : reads(one, becomes) === reads(one, row)) {
+            if (agrees(one, row, reads)) {
                 agreed.push(one.key);
                 shown.push(row);
             } else {
-                shown.push(Object.assign(becomes, { becoming: true }));
+                shown.push(Object.assign({}, row, one.row, { becoming: true }));
             }
         }
     }
@@ -39,8 +38,12 @@ function laid(rows, holds, reads) {
 }
 
 // Whether the row its source makes now, or null where it makes none, is what
-// a hold was to become.
+// a hold was to become. A row drawn as it will be is the hold's own, never
+// its source's, so it agrees with nothing.
 function agrees(one, now, reads) {
+    if (now !== null && now.becoming === true) {
+        return false;
+    }
     if (typeof one.done === "function") {
         return one.done(now);
     }
@@ -48,6 +51,16 @@ function agrees(one, now, reads) {
         return one.row === now;
     }
     return reads(one, Object.assign({}, now, one.row)) === reads(one, now);
+}
+
+// The row its source made with `key`, of `rows` the launcher holds, which
+// may be drawn through the holds, as a step's are: null where none is, and
+// undefined where the only one is drawn as it will be, which can't say what
+// its source made.
+function made(rows, key) {
+    const found = rows.filter(row => row.key === key && !row.gone);
+    const own = found.find(row => row.becoming !== true);
+    return own ?? (found.length > 0 ? undefined : null);
 }
 
 // The holds with these keys let go of.
