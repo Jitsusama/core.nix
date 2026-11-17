@@ -459,22 +459,49 @@ fn notify(shared: &Arc<Shared>, words: &Words, told: &Receiver<Tell>) {
 
 /// The session bus, with threads hearing what Joel does with each notice
 /// and whether another notifications server takes the place of the last.
+/// Both are listening before it's returned, since its first notice is
+/// said at once: a rule added in its own thread came after the notice
+/// under load, and Joel's press on it went unheard (Y9XISP's flaky case,
+/// 2026-11-17).
 fn connect(shared: &Arc<Shared>) -> Option<Connection> {
     let bus = zbus::blocking::connection::Builder::session()
         .and_then(|builder| builder.method_timeout(PATIENCE).build())
         .map_err(|why| eprintln!("<4>couldn't reach the session bus: {why}"))
         .ok()?;
-    {
-        let heard = bus.clone();
+    let listening = |rule: zbus::Result<MatchRule<'static>>| {
+        rule.and_then(|rule| MessageIterator::for_match_rule(rule, &bus, None))
+            .map_err(|why| eprintln!("<4>couldn't listen on the session bus: {why}"))
+            .ok()
+    };
+    if let Some(messages) = listening(acts()) {
         let shared = Arc::clone(shared);
-        std::thread::spawn(move || hear(&shared, &heard));
+        std::thread::spawn(move || hear(&shared, messages));
     }
-    {
-        let heard = bus.clone();
+    if let Some(messages) = listening(servers()) {
         let shared = Arc::clone(shared);
-        std::thread::spawn(move || follow(&shared, &heard));
+        std::thread::spawn(move || follow(&shared, messages));
     }
     Some(bus)
+}
+
+/// The notifications server changing hands.
+fn servers() -> zbus::Result<MatchRule<'static>> {
+    Ok(MatchRule::builder()
+        .msg_type(message::Type::Signal)
+        .sender(BUS)?
+        .interface(BUS)?
+        .member("NameOwnerChanged")?
+        .add_arg(NOTIFICATIONS)?
+        .build())
+}
+
+/// What any notifications server says of its notices.
+fn acts() -> zbus::Result<MatchRule<'static>> {
+    Ok(MatchRule::builder()
+        .msg_type(message::Type::Signal)
+        .interface(NOTIFICATIONS)?
+        .path(NOTIFICATIONS_PATH)?
+        .build())
 }
 
 /// The keys of every rung timer.
@@ -570,22 +597,7 @@ fn ring(shared: &Shared, bus: &Connection, words: &Words, key: &str) -> zbus::Re
 /// Hears the notifications server change hands until the bus goes: one
 /// that takes its place has none of the last one's cards, so every rung
 /// timer is said to it.
-fn follow(shared: &Shared, bus: &Connection) {
-    let rule = || -> zbus::Result<MatchRule<'static>> {
-        Ok(MatchRule::builder()
-            .msg_type(message::Type::Signal)
-            .sender(BUS)?
-            .interface(BUS)?
-            .member("NameOwnerChanged")?
-            .add_arg(NOTIFICATIONS)?
-            .build())
-    };
-    let Ok(rule) = rule() else {
-        return;
-    };
-    let Ok(messages) = MessageIterator::for_match_rule(rule, bus, None) else {
-        return;
-    };
+fn follow(shared: &Shared, messages: MessageIterator) {
     for message in messages {
         let Ok(message) = message else { break };
         let Ok((_, _, owner)) = message.body().deserialize::<(String, String, String)>() else {
@@ -607,20 +619,7 @@ fn follow(shared: &Shared, bus: &Connection) {
 
 /// Hears each notice's act and its closing until the bus goes: Again sets
 /// its timer going afresh, and putting it away ends a timer still rung.
-fn hear(shared: &Shared, bus: &Connection) {
-    let rule = || -> zbus::Result<MatchRule<'static>> {
-        Ok(MatchRule::builder()
-            .msg_type(message::Type::Signal)
-            .interface(NOTIFICATIONS)?
-            .path(NOTIFICATIONS_PATH)?
-            .build())
-    };
-    let Ok(rule) = rule() else {
-        return;
-    };
-    let Ok(messages) = MessageIterator::for_match_rule(rule, bus, None) else {
-        return;
-    };
+fn hear(shared: &Shared, messages: MessageIterator) {
     for message in messages {
         let Ok(message) = message else { break };
         let header = message.header();
