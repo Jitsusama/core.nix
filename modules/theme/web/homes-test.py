@@ -1,8 +1,8 @@
 """The web-design skill's homes probe (skill/homes.js), held to its cases in headless Chromium.
 
-Each case writes a small sites folder, a sites.json, any homes.json and a page,
-serves it, runs the probe in the page as checks.md runs it, and reads what it
-names. The rules a row and a record are held to are the system reader's
+Each case writes a small sites folder, a sites.json, any rows.json and
+homes.json, and a page, serves it, runs the probe in the page as checks.md
+runs it, and reads what it names. The rules a row and a record are held to are the system reader's
 (modules/system/src/homes.rs), so a case here is one the reader decides too.
 The probe's path comes from WEB_SKILL, as the check running this sets it.
 """
@@ -50,9 +50,18 @@ def browser() -> Iterator[Browser]:
         opened.close()
 
 
-def probed(browser: Browser, root: Path, sites: list[object], page: str, **homes: object) -> object:
-    """Run the probe on `page`, served beside `sites` and each site's homes.json."""
+def probed(
+    browser: Browser,
+    root: Path,
+    sites: list[object],
+    page: str,
+    rows: object = None,
+    **homes: object,
+) -> object:
+    """Run the probe on `page`, served beside `sites`, any `rows` and each site's homes.json."""
     (root / "sites.json").write_text(json.dumps({"sites": sites}))
+    if rows is not None:
+        (root / "rows.json").write_text(json.dumps(rows))
     for site, things in homes.items():
         (root / site).mkdir()
         (root / site / "homes.json").write_text(json.dumps({"things": things}))
@@ -152,6 +161,36 @@ def test_no_row_home_to_anything_is_a_fault(browser: Browser, tmp_path: Path) ->
     """A check that finds nothing to test fails rather than passing."""
     assert probed(browser, tmp_path, [{"path": "notes/", "homes": []}], NOTHING) == [
         "a row in sites.json home to a kind, for any mention to be measured",
+    ]
+
+
+def test_the_homes_rows_are_read_before_the_record(browser: Browser, tmp_path: Path) -> None:
+    """rows.json, every row the home lists, is read in place of sites.json when it's there."""
+    rows = {"sites": [CODE, {"path": "../up/", "homes": ["thing"]}]}
+    unread = [{"path": "../unread/", "homes": ["thing"]}]
+    page = "<p>See <code>notebook</code>.</p>"
+    assert probed(browser, tmp_path, unread, page, rows, code=[NOTEBOOK]) == [
+        (
+            '"../up/" in rows.json homes things on no plain path: '
+            "steps of letters, digits and -._~, none starting with a dot"
+        ),
+        unlinked("notebook", "See notebook.", "repository", "code/#repo=example%2Fnotebook"),
+    ]
+
+
+def test_rows_that_list_no_sites_are_a_fault(browser: Browser, tmp_path: Path) -> None:
+    """A rows.json there but not the home's rows is named, never passed over for sites.json."""
+    assert probed(browser, tmp_path, [CODE], NOTHING, {"rows": []}, code=[NOTEBOOK]) == [
+        "rows.json at the sites' root, the home's rows as {\"sites\": [...]}, for the homes",
+    ]
+
+
+def test_a_leading_dot_step_is_named_for_the_system(browser: Browser, tmp_path: Path) -> None:
+    """The home lists a row written ./code/, which the system's homes refuse, so it's named."""
+    rows = {"sites": [{"path": "./code/", "homes": ["repository"]}]}
+    assert probed(browser, tmp_path, [], NOTHING, rows, code=[NOTEBOOK]) == [
+        '"./code/" in rows.json homes things, which the system\'s homes refuse: drop its ./',
+        "a row in rows.json home to a kind, for any mention to be measured",
     ]
 
 
