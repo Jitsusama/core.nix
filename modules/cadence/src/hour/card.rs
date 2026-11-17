@@ -122,7 +122,8 @@ pub fn compose(
         }
     }
     // An hour that couldn't judge the misses can't say which are gone, so
-    // it tells Joel nothing and carries last hour's open misses whole.
+    // it tells Joel nothing and carries last hour's open misses whole, with
+    // any it saw open since, so one that closes later is still told fixed.
     let judged = measures
         .iter()
         .all(|m| m.class != Class::Miss || m.target.is_some());
@@ -130,7 +131,9 @@ pub fn compose(
         let told = tell_fixed(&mut card, kept, &open, said);
         (open, told)
     } else {
-        (kept.open.clone(), kept.told.clone())
+        let mut carried = kept.open.clone();
+        carried.extend(open.into_iter().filter(|miss| !kept.open.contains(miss)));
+        (carried, kept.told.clone())
     };
     let next = Kept {
         drag: chosen.map(|m| Held {
@@ -573,7 +576,8 @@ mod tests {
     /// which are gone, so it tells Joel nothing and keeps last hour's open.
     #[test]
     fn an_hour_the_ledger_wasnt_read_whole_tells_nothing_and_keeps_what_was_open() {
-        let unread = measure("misses", Class::Miss, 0.0, None);
+        let mut unread = measure("misses", Class::Miss, 1.0, None);
+        unread.behind = vec!["the launcher hid in a share · D46U6P".to_owned()];
         let kept = Kept {
             drag: None,
             open: vec!["the map drew cells alone · WCJQSG".to_owned()],
@@ -582,8 +586,18 @@ mod tests {
         };
         let (card, next) = compose("06:10", &[unread], &kept, &BTreeMap::new(), "");
         assert!(
-            !card.contains("For Joel") && next.open == kept.open && next.told == kept.told,
-            "an unread ledger told a miss fixed or dropped what was open: {card} {next:?}"
+            !card.contains("For Joel") && next.told == kept.told,
+            "an unread ledger told a miss fixed: {card} {next:?}"
+        );
+        // One seen open since last hour is carried too, so it's told fixed
+        // when it closes.
+        assert_eq!(
+            next.open,
+            [
+                "the map drew cells alone · WCJQSG",
+                "the launcher hid in a share · D46U6P"
+            ],
+            "an unread ledger dropped a miss open last hour or since: {next:?}"
         );
     }
 

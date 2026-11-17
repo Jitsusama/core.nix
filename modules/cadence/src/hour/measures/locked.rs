@@ -206,7 +206,9 @@ pub fn read(
         .is_ok();
     let mine = took_at.clone();
     if took {
-        took_at.push(now);
+        // Stamped once it's done, never before the reflog entry it wrote,
+        // or the next hour would date a merge from the fetch that took it.
+        took_at.push(crate::now_ms() / 1000);
         let cut = took_at.len().saturating_sub(FETCHES_KEPT);
         took_at.drain(..cut);
     }
@@ -387,7 +389,9 @@ mod tests {
             NOW - 70 * 60
         );
         let seen = format!("origin/main@{{{}}} aaa\n", NOW - 15 * 60);
-        let m = unlocked(&waiting, &seen, &[NOW - 80 * 60], NOW, "0FX11G");
+        // The hour fetched between its commit and the fetch that held it,
+        // which would date a train's merge from 20 minutes.
+        let m = unlocked(&waiting, &seen, &[NOW - 20 * 60], NOW, "0FX11G");
         assert_eq!(
             m.now, 70.0,
             "an ordinary merge was dated by the fetch that held it: {m:?}"

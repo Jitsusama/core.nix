@@ -157,7 +157,6 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let mut ledger = findings::read(&ledger_at);
     let told = file(&mut ledger, &measures, &today(now), now);
     findings::keep(&ledger_at, &ledger)?;
-    write_whole(&kept_at, &serde_json::to_string(&next)?)?;
     let mesh = Mesh {
         root: state_home.join("pi/agentic-harness.pi"),
     };
@@ -165,6 +164,9 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         mesh.send(&message(&owner, "finding", text))?;
     }
     mesh.send(&message(to, "fyi", card))?;
+    // Kept once the card has gone, so a send that fails tells its "fixed"
+    // lines again next hour rather than never.
+    write_whole(&kept_at, &serde_json::to_string(&next)?)?;
     Ok(())
 }
 

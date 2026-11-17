@@ -123,6 +123,39 @@ fn a_miss_gone_from_the_ledger_leaves_one_hour_unjudged() {
     );
 }
 
+/// A ledger torn mid-write names no miss gone, so the hour carries every
+/// one open last hour, and the one that closes later is still told fixed.
+#[test]
+fn a_torn_ledger_leaves_the_misses_unjudged_and_carried() {
+    let account = account();
+    let kept = account.path().join("state/cadence");
+    fs::create_dir_all(&kept).expect("cadence's folder");
+    fs::write(
+        kept.join("hour.json"),
+        r#"{"open": ["the notice stayed up, as first written · 88LQC0"]}"#,
+    )
+    .expect("last hour");
+    fs::write(
+        account.path().join("state/mission/misses.jsonl"),
+        format!("{MISS}\n{{\"what\": \"the notice st"),
+    )
+    .expect("a torn ledger");
+
+    let ran = hour(account.path(), &["--to", "WCJQSG"]);
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(ran.status.success(), "cadence failed: {said}");
+    let card = String::from_utf8_lossy(&ran.stdout);
+    assert!(
+        card.contains("wasn't read whole") && !card.contains("For Joel"),
+        "a torn ledger was judged: {card}"
+    );
+    let carried = fs::read_to_string(kept.join("hour.json")).expect("the hour kept");
+    assert!(
+        carried.contains("as first written"),
+        "a torn ledger dropped a miss open last hour: {carried}"
+    );
+}
+
 #[test]
 fn the_run_sending_the_card_keeps_the_hour_and_owes_its_drag() {
     let account = account();
