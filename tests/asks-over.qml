@@ -103,6 +103,7 @@ ShellRoot {
         readonly property var sources: [passwords]
         property var awaiting: []
         property var toldNots: []
+        property var toldWhys: []
 
         function presentedAwait(at, then) {
             awaiting = awaiting.concat([then]);
@@ -161,6 +162,7 @@ ShellRoot {
 
         function toldNot(name, act, why) {
             toldNots = toldNots.concat([`${act} ${why}`]);
+            toldWhys = toldWhys.concat([why ?? ""]);
         }
     }
 
@@ -336,6 +338,9 @@ ShellRoot {
         stage.cataloguing = false;
         same("a yes walked from outside the launcher is never sent", link.sent.length, before);
         same("and is told as not done", stage.toldNots.length, 1);
+        // A walk answers done where nothing told says why not (Reached.js), so the agent that
+        // asked would wait out its ask were the launcher's word for it ever empty.
+        same("saying why, in the launcher's words", stage.toldWhys[0] !== "", true);
     }
 
     function refused() {
