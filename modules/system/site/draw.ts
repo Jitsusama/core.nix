@@ -1,5 +1,5 @@
-// The system page's markup: how everything Joel runs stands. Each part is a
-// station on one horizon, and how it stands is its health in the system's
+// The system page's markup: how everything Joel runs stands. Each part
+// stands on one horizon, and how it stands is its health in the system's
 // own words, good, watch, bad or not read, each with its own mark so none
 // is told by colour. The outlook draws the four stations large under the
 // headline; each part below hangs its mark in the gutter, then what in it
@@ -68,8 +68,8 @@ function mark(health: Health, size = "small"): string {
 /** How `health` is said to a screen reader, after a name. */
 function spoken(health: Health): string {
   // In parentheses, since a reader takes the hidden span out of flow as a
-  // block and puts a space before it: "Machines (worth a look)" reads
-  // right where "Machines , worth a look" would not.
+  // block and puts a space before it: "Machines (watch)" reads right
+  // where "Machines , watch" would not.
   return `<span class="sr"> (${WORDS[health].toLowerCase()})</span>`;
 }
 
@@ -94,7 +94,7 @@ function headlineOf(heading: Headline): string {
 }
 
 /**
- * What one part's station says under its name, as markup: how many looks,
+ * What one part says under its name on the outlook, as markup: how many looks,
  * or its health's word.
  */
 function forecast(part: Part): string {
@@ -212,13 +212,15 @@ function partsOf(system: System): string {
   return system.parts.map((part) => partOf(part)).join("\n");
 }
 
-/** The legend: each health's mark beside its word, said once. */
+/**
+ * The legend: each health's mark beside its word, said once, an item each
+ * so a screen reader hears the words apart, the marks being hidden from it.
+ */
 function legend(): string {
   const healths: readonly Health[] = ["good", "watch", "bad", "unread"];
   return healths
     .map(
-      (health) =>
-        `<span class="key">${mark(health)}<span class="word">${WORDS[health]}</span></span>`,
+      (health) => `<li class="key">${mark(health)}<span class="word">${WORDS[health]}</span></li>`,
     )
     .join("");
 }

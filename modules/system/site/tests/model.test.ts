@@ -2,9 +2,10 @@
 // daemon tells them: the summary, a part record each, a record per thing.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
-import { escaped, legend, outlookOf } from "../draw.ts";
+import { escaped, legend, outlookOf, partsOf } from "../draw.ts";
 import { headline, lede, looksIn, sentence, systemOf } from "../model.ts";
 
 /** The three watches, told `these` whole, each to its kind's. */
@@ -222,29 +223,75 @@ function read(markup: string): string {
 /** The weather words the page once wore, which the glossary keeps for real weather. */
 const WEATHER = /\b(?:clear|cloud|storm|fog|sky)\b/iu;
 
-it("the legend says each health in the system's own word, once, beside its mark", () => {
-  const said = read(legend());
-  assert.equal(said, "Good Watch Bad Not read");
-  assert.doesNotMatch(said, WEATHER);
-  assert.equal(legend().match(/<svg /gu)?.length, 4, "each word has its mark");
+/** A legend item: its mark's health, then its word. */
+const KEY =
+  /<li class="key"><svg class="sky (?<health>\w+) [^"]*"[\s\S]*?<\/svg><span class="word">(?<word>[^<]*)<\/span><\/li>/gu;
+
+/** A part on the outlook: its name, then what it says. */
+const ON_THE_OUTLOOK =
+  /<span class="place">(?<place>[^<]*)<\/span><span class="forecast">(?<says>[^<]*)<\/span>/gu;
+
+/** What a part heading and a machine's row say to a screen reader for watch. */
+const HEADING_WATCH = /Machines<span class="sr"> \(watch\)<\/span>/u;
+const MACHINE_WATCH = /osprey<\/span><span class="sr"> \(watch\)<\/span>/u;
+
+it("the legend gives each health its own item: its own mark, then its word", () => {
+  const keys = [...legend().matchAll(KEY)].map((key) => [
+    key.groups?.["health"],
+    key.groups?.["word"],
+  ]);
+  assert.deepEqual(keys, [
+    ["good", "Good"],
+    ["watch", "Watch"],
+    ["bad", "Bad"],
+    ["unread", "Not read"],
+  ]);
 });
 
-it("a station with nothing worth a look says its health in the system's word", () => {
+it("each part on the outlook says how many are worth a look, or else its health's word", () => {
   const { summary, part, machine } = told(records);
   const system = systemOf(summary, part, machine);
   assert.ok(system);
   const [first, second] = system.parts;
   assert.ok(first && second);
-  const quiet = {
+  const four = {
     ...system,
     parts: [
       { ...first, health: "good" as const, side: [] },
       { ...second, health: "unread" as const, side: [] },
+      { ...second, health: "watch" as const, side: [] },
+      { ...second, health: "bad" as const, side: ["a", "b"] },
     ],
   };
-  const said = read(outlookOf(quiet));
-  assert.equal(said, "Machines good Code not read");
-  assert.doesNotMatch(said, WEATHER);
+  const said = [...outlookOf(four).matchAll(ON_THE_OUTLOOK)].map((each) => [
+    each.groups?.["place"],
+    each.groups?.["says"],
+  ]);
+  assert.deepEqual(said, [
+    ["Machines", "good"],
+    ["Code", "not read"],
+    ["Code", "watch"],
+    ["Code", "2 worth a look"],
+  ]);
+});
+
+it("a screen reader hears each part's and machine's health in the system's word", () => {
+  const { summary, part, machine } = told(records);
+  const system = systemOf(summary, part, machine);
+  assert.ok(system);
+  const drawn = partsOf(system);
+  assert.match(drawn, HEADING_WATCH);
+  assert.match(drawn, MACHINE_WATCH);
+  assert.doesNotMatch(read(drawn), WEATHER);
+});
+
+it("the page and its words for a model wear no weather words", () => {
+  // index.md is left out: it describes each mark's shape, and a cloud is
+  // what two of them are drawn as.
+  for (const file of ["index.html", "llms.txt"]) {
+    const text = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+    assert.doesNotMatch(read(text), WEATHER, file);
+  }
 });
 
 it("a record's words reach the page as text, never as markup", () => {

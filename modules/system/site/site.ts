@@ -1,11 +1,12 @@
 // Your system, now: how everything Joel runs stands. The four parts of the
 // system as the system daemon holds them, under a headline that counts
 // what is worth a look, a lede that names the worst of it, and the outlook,
-// each part a station on one horizon with its health's mark. It watches
-// the daemon's summary, parts and things over the sites' server, so a part redraws the moment its owner's answer
-// moves, and the line over the headline says whether what it shows is live
-// and since when. The cursor is focus: j and k move it through every row,
-// and Return follows the link it is on.
+// each part on one horizon with its health's mark. It watches the
+// daemon's summary, parts and things over the sites' server, so a part
+// redraws the moment its owner's answer moves, and the line over the
+// headline says whether what it shows is live and since when. The cursor
+// is focus: j and k move it through every row, and Return follows the
+// link it is on.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { hasOwnKeys, listen, toggle } from "../../local-sites/kit/keys.ts";
@@ -264,7 +265,7 @@ list.addEventListener("focusin", (event) => {
   markPlace();
 });
 
-// A station or a place goes to its part's heading, putting the cursor there.
+// A part on the outlook or a place goes to its part's heading, putting the cursor there.
 for (const into of [outlook, places]) {
   into.addEventListener("click", (event) => {
     const link = event.target instanceof Element ? event.target.closest("a[href^='#part-']") : null;
@@ -303,6 +304,6 @@ title.addEventListener("click", (event) => {
 });
 
 element("#help", HTMLButtonElement).addEventListener("click", () => toggle(keys));
-element("#legend", HTMLParagraphElement).innerHTML = legend();
+element("#legend", HTMLUListElement).innerHTML = legend();
 
 themeSwitch();

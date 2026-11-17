@@ -71,7 +71,7 @@ const NAMES: { readonly [part: string]: string } = {
 
 /**
  * How each health is said, in the system's own words as the `system`
- * command says them: in the legend, at a station and to a screen reader.
+ * command says them: in the legend, on the outlook and to a screen reader.
  */
 const WORDS: { readonly [health in Health]: string } = {
   good: "Good",

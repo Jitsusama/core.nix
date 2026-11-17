@@ -10,8 +10,8 @@ anything.
 ## How to Read It
 
 The page is how everything Joel runs stands, in the system's own
-words: each part is a station on one horizon, and how it stands is
-good, watch, bad or not read, each with its own mark.
+words: each part stands on one horizon, and how it stands is good,
+watch, bad or not read, each with its own mark.
 
 - **The places at the top:** Machines, Mycelium, Network and Code, each
   with how many things in it are worth a look. The part the cursor is
@@ -28,9 +28,8 @@ good, watch, bad or not read, each with its own mark.
   what it shows is live. When the daemon or the sites' server can't be
   reached, it says since when and why, and keeps showing how things
   stood then.
-- **The outlook:** the four parts as stations on one horizon, each
-  with its mark, its name and how many things are worth a look, or its
-  health's word. Each goes to its part.
+- **The outlook:** the four parts on one horizon, each with its mark,
+  its name and how many things are worth a look, or its health's word. Each goes to its part.
 - **The four parts, in one column:** each has its mark in the gutter,
   its name (a link to its site), what it holds at the right ("21
   devices"), what in it is worth a look under it, and last the command
@@ -42,8 +41,9 @@ good, watch, bad or not read, each with its own mark.
     when there are more.
 - **A legend at the foot:** each mark beside its word: Good (the sun
   half risen), Watch (a cloud on the horizon), Bad (a cloud with a
-  bolt) and Not read (broken lines). A screen reader hears the word
-  after each name.
+  bolt) and Not read (broken lines). The marks are hidden from a screen
+  reader, which hears each part's and each machine's health after its
+  name instead, as "Machines (watch)".
 - **How each part is judged:**
   - Machines: one out of reach or with a nearly or critically full disk
     is bad; one with a filling disk, or on battery at 20% or less, is
