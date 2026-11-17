@@ -143,10 +143,14 @@ pub struct Chooser {
     badly_on: Option<String>,
     trial: Option<Trial>,
     spurned: HashMap<String, Instant>,
+    /// The access point a move on trial never reached, kept off from the
+    /// last choice, for the journal to say so.
+    unreached: Option<String>,
 }
 
 struct Trial {
     from: String,
+    to: String,
     before: Measured,
     /// Whether the move was for a wider band, kept unless it carries badly
     /// rather than unless it carries worse than the narrower one left.
@@ -175,24 +179,8 @@ impl Chooser {
         if calling && !failing {
             return Choice::Stay;
         }
-        if let Some(trial) = self.trial.take() {
-            let over = self
-                .moved
-                .is_none_or(|moved| now.duration_since(moved) >= TRIAL);
-            if !over && !failing {
-                self.trial = Some(trial);
-                return Choice::Stay;
-            }
-            let back = if trial.banded {
-                badly(measured)
-            } else {
-                worse(measured, &trial.before)
-            };
-            if back {
-                self.spurned.insert(point.to_owned(), now);
-                self.moved = Some(now);
-                return Choice::Back(trial.from);
-            }
+        if let Some(judged) = self.judge(now, (point, measured), failing) {
+            return judged;
         }
         let settled = self
             .moved
@@ -254,10 +242,52 @@ impl Chooser {
         self.moved = Some(now);
         self.trial = Some(Trial {
             from: point.to_owned(),
+            to: chosen.point.clone(),
             before: measured.clone(),
             banded: banded.is_some(),
         });
         Choice::Try(chosen.point.clone())
+    }
+
+    /// The access point the last choice kept off as a move never reached,
+    /// if it did, said once.
+    pub fn unreached(&mut self) -> Option<String> {
+        self.unreached.take()
+    }
+
+    /// Judges the move on trial, if any, from what the card's point carried:
+    /// `Stay` while it's on trial, `Back` where it carried worse, or nothing
+    /// once it's over and choosing goes on. A card not on the point it tried
+    /// never reached it, and that point is kept off as one carrying worse is.
+    fn judge(&mut self, now: Instant, on: (&str, &Measured), failing: bool) -> Option<Choice> {
+        let (point, measured) = on;
+        let trial = self.trial.take()?;
+        // What the card's on now isn't what was tried, as when the move
+        // found it gone (NotNearby on 15 and 16 Nov 2026), so its figures
+        // judge nothing: the tried point is kept off rather than tried again
+        // each settle, and the card isn't sent back to where it may be.
+        if point != trial.to {
+            self.spurned.insert(trial.to.clone(), now);
+            self.unreached = Some(trial.to);
+            return None;
+        }
+        let over = self
+            .moved
+            .is_none_or(|moved| now.duration_since(moved) >= TRIAL);
+        if !over && !failing {
+            self.trial = Some(trial);
+            return Some(Choice::Stay);
+        }
+        let back = if trial.banded {
+            badly(measured)
+        } else {
+            worse(measured, &trial.before)
+        };
+        back.then(|| {
+            self.spurned.insert(point.to_owned(), now);
+            self.moved = Some(now);
+            Choice::Back(trial.from)
+        })
     }
 
     /// Has a card look for what it doesn't hear, once a settle at most, so
@@ -732,6 +762,125 @@ pub(crate) mod tests {
             Choice::Stay,
             "the hall carried worse from here an hour ago"
         );
+    }
+
+    #[test]
+    fn a_move_never_made_keeps_off_the_point_it_was_for_an_hour() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let near = [hall(-53, Some(20), None)];
+        let badly = carried(119, 0.5);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+
+        let minute = start + Duration::from_secs(60);
+        chooser.choose(minute, (DESK, &badly, -50, CH52), &near, false);
+        let (said, again) = (chooser.unreached(), chooser.unreached());
+        let later = start + SETTLE + Duration::from_secs(1);
+        let settled = chooser.choose(later, (DESK, &badly, -50, CH52), &near, false);
+        let spent = minute + SPURNED;
+        let nearly = spent - Duration::from_secs(1);
+        let short = chooser.choose(nearly, (DESK, &badly, -50, CH52), &near, false);
+        let hour = chooser.choose(spent, (DESK, &badly, -50, CH52), &near, false);
+
+        assert_eq!(said, Some(HALL.into()), "the hall's kept off, and said so");
+        assert_eq!(again, None, "it's said once");
+        assert_eq!(settled, Choice::Stay, "the hall wasn't reached from here");
+        assert_eq!(short, Choice::Stay, "an hour from its judgement");
+        assert_eq!(hour, Choice::Try(HALL.into()), "tried again after an hour");
+    }
+
+    /// The far access point's 5 GHz radio on channel 52, heard more faintly
+    /// than the hall's but within reach, so it's chosen only where the
+    /// hall is kept off.
+    fn elsewhere() -> Other {
+        Other {
+            point: "6c:ae:f6:ba:85:86".into(),
+            ..hall(-55, Some(20), None)
+        }
+    }
+
+    #[test]
+    fn a_move_never_made_on_a_failing_link_tries_another_at_once() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let near = [hall(-53, Some(20), None), elsewhere()];
+        let badly = carried(119, 0.5);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near[..1], false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+
+        let failing = carried(400, 15.0);
+        let minute = start + Duration::from_secs(60);
+        let next = chooser.choose(minute, (DESK, &failing, -50, CH52), &near, false);
+
+        assert_eq!(next, Choice::Try(elsewhere().point), "the hall's kept off");
+    }
+
+    #[test]
+    fn a_card_on_neither_point_of_its_move_is_judged_on_neither() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let near = [hall(-53, Some(20), None)];
+        let badly = carried(119, 0.5);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+
+        let worse = carried(200, 1.0);
+        let point = elsewhere().point;
+        let on = (point.as_str(), &worse, -55, CH52);
+        let judged = chooser.choose(start + TRIAL, on, &near, false);
+
+        assert_eq!(judged, Choice::Stay, "a third's figures judge nothing");
+        assert_eq!(chooser.unreached(), Some(HALL.into()), "unreached");
+    }
+
+    #[test]
+    fn a_move_on_trial_waits_out_its_trial_to_be_judged() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let near = [hall(-53, Some(20), None)];
+        let badly = carried(119, 0.5);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+
+        let worse = carried(200, 1.0);
+        let minute = start + Duration::from_secs(60);
+        let early = chooser.choose(minute, (HALL, &worse, -53, CH52), &[], false);
+        let judged = chooser.choose(start + TRIAL, (HALL, &worse, -53, CH52), &[], false);
+
+        assert_eq!(early, Choice::Stay, "a minute is no trial");
+        assert_eq!(judged, Choice::Back(DESK.into()), "worse once tried");
+    }
+
+    #[test]
+    fn a_move_on_trial_failing_is_judged_at_once() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let near = [hall(-53, Some(20), None)];
+        let badly = carried(119, 0.5);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+
+        let failing = carried(400, 15.0);
+        let minute = start + Duration::from_secs(60);
+        let judged = chooser.choose(minute, (HALL, &failing, -53, CH52), &[], false);
+
+        assert_eq!(judged, Choice::Back(DESK.into()), "15% lost is judged");
+    }
+
+    #[test]
+    fn a_move_never_made_sends_the_card_back_nowhere() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let near = [hall(-53, Some(20), None)];
+        let badly = carried(119, 0.5);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+
+        let worse = carried(200, 1.0);
+        let judged = chooser.choose(start + TRIAL, (DESK, &worse, -50, CH52), &near, false);
+
+        assert_eq!(judged, Choice::Stay, "the card never left to go back");
     }
 
     /// The desk's 5 GHz radio, heard this loud.
