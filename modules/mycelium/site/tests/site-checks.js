@@ -18,6 +18,8 @@
 //   machine's says "machine" and a cell's says "cell";
 // - layer: the whole map draws no machine until "m" shows them, and "m"
 //   then draws at least one;
+// - reach: until the map folds, every cell the sentence counts has a
+//   mark, and no group of cells working alone lists a receptor;
 // - names: on the whole map, no more names than networks, branches
 //   included, past the one the keys rest on; once something is open, no faded name at all and at
 //   most NAMES_OPEN names;
@@ -29,6 +31,8 @@
   const NETS_TRIED = 10;
   const NAMES_OPEN = 12;
   const SETTLE_MS = 900;
+  // The map folds networks past this many cells, as view.js's FOLD_OVER.
+  const FOLD_OVER = 400;
   const EDGE_PX = 1;
   // Less map beside the drawer than one target: the drawer stands in for it.
   const NO_ROOM_PX = 44;
@@ -145,6 +149,23 @@
       faults.push(`names: the whole map shows ${whole} names, past one per network (${hubs})`);
     }
   };
+  // Every cell he can reach: each one the sentence counts has its mark,
+  // until the map folds; and a receptor stands at the edge, never among
+  // the cells working alone.
+  const reach = async () => {
+    const counted = Number((document.querySelector('[data-count="cells"]')?.textContent || "").replace(/\D/g, ""));
+    const sessions = marks('[data-key^="c:"]').filter((el) => el.dataset.level !== "#outside").length;
+    if (counted <= FOLD_OVER && sessions !== counted) {
+      faults.push(`reach: the sentence counts ${counted} cells and the map marks ${sessions}`);
+    }
+    for (const hub of marks('[data-key^="h:#loose"]')) {
+      await open(`#net=${encodeURIComponent(hub.dataset.key.slice(2))}`);
+      if (document.querySelector("#panel .rows .m-receptor")) {
+        faults.push("reach: a receptor is listed among the cells working alone");
+      }
+    }
+    await open("");
+  };
   // The machines' layer: "m" draws them, and each drawer reads as a
   // machine's and opens as every drawer does; then they go away again.
   const machineLayer = async () => {
@@ -171,6 +192,7 @@
     return ["nothing to check: the map drew no networks"];
   }
   wholeMap();
+  await reach();
 
   // Now: parity with the rest.
   const nowControl = document.getElementById("now-control");
