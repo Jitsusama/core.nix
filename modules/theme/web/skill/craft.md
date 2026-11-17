@@ -219,13 +219,16 @@ markup, never a script or styles of its own for it: the styles are
 `/local-sites/kit/switch.css`, and `theme.ts` checks the kept choice and
 keeps what Joel turns it to, loaded by a document through
 `/local-sites/kit/document.js` (`sites.md`, Where a Site Lives) and by
-a live site through its own build. Copy the three marks from
-`modules/mycelium/murmurs/index.html`. Choosing "Match System" removes the
-stored key and `data-theme`. The thumb slides between them on the theme's spring, and
-the change may sweep in with a View Transition, both still when less motion is
-asked for. The last one Joel kept: auto in the middle, the thumb on
-`cubic-bezier(0.3, 1.4, 0.5, 1)`, applied before paint, a sweep on change:
-"nope, this is good, thanks!" (2026-10-02).
+a live site through its own build. Copy the three marks from the home's
+own switch, core's `modules/local-sites/home/index.html`. Choosing "Match
+System" removes the stored key and `data-theme`. The kit's switch keeps
+still: the chosen mark takes the strong ink and a rule, and focus rings
+the mark. The one Joel kept before it slid a thumb and swept the change
+in (auto in the middle, the thumb on `cubic-bezier(0.3, 1.4, 0.5, 1)`,
+applied before paint, a sweep on change: "nope, this is good, thanks!",
+2026-10-02); motion like that belongs in the kit, never in one page. A
+page off the local sites, with no kit to load, carries the switch's
+styles and script itself.
 
 ## The Key Line and the Keys List
 
@@ -250,8 +253,8 @@ work, and focus goes back where it was. A native `<dialog>`, opened with
   <dl>
     <div><dt><kbd>j</kbd></dt><dd>Next part</dd></div>
     <div><dt><kbd>k</kbd></dt><dd>Previous part</dd></div>
-    <div><dt><kbd>g</kbd></dt><dd>First part</dd></div>
-    <div><dt><kbd>G</kbd></dt><dd>Last part</dd></div>
+    <div><dt><kbd>g</kbd> <kbd>g</kbd></dt><dd>Top</dd></div>
+    <div><dt><kbd>G</kbd></dt><dd>End</dd></div>
     <div><dt><kbd>?</kbd></dt><dd>Show or hide this list; Escape closes it</dd></div>
   </dl>
 </dialog>
@@ -261,7 +264,10 @@ A part is each numbered section the head lists; j and k scroll its heading
 to the top and move focus to it, so a screen reader follows. Without script
 the keys do nothing, so the line shows only once the head's script has set
 `class="js"` on `<html>`, before the first paint, and never promises a key
-that won't answer.
+that won't answer. On a local site the kit's `document.js` answers these
+keys, g only when pressed twice, and a tap on j, k or ? where the header
+shows them (`sites.md`, A document on the kit); a page writes the line and
+the list, never the keys' script.
 
 ## Disclosure That Looks Like a Door
 
