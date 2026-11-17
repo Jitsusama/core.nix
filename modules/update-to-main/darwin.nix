@@ -4,8 +4,10 @@
 # says its repository, its system and whose signatures count.
 #
 # The daemon's definition names only the running system's path and a fixed
-# config path, so it's the same in every system and activate never reloads
-# it mid-switch; it starts itself again once a switch is done.
+# config path, so activate reloads it mid-switch only when the definition
+# itself changes, as it did on 17 November for its open-files limit. The
+# switch outlives it then, writing to a file rather than to the daemon, and
+# the daemon starts itself again once the switch is done.
 #
 # launchd loads it before that path names a system holding it: at boot, and
 # in the switch that first brings it. launchd never tries a missing program
@@ -118,7 +120,8 @@ in
       KeepAlive = true;
       ThrottleInterval = 10;
       # A switch it runs is its child, and launchd leaves it be if the
-      # daemon itself stops.
+      # daemon itself stops; it says what it says to a file, which outlives
+      # the daemon as a pipe to it wouldn't.
       AbandonProcessGroup = true;
       # launchd's 256 open files are too few for git reading a checkout of
       # hundreds of packs, which fails saying it "Could not read" an object.

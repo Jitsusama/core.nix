@@ -19,7 +19,6 @@
   "modules/pi-packages/tests/inuse.rs" = 1;
   "modules/swayimg/tests/swayimg-moves-by-its-keys.sh" = 2;
   "modules/tuple/call/tests/daemon.rs" = 1;
-  "modules/update-to-main/tests/update/main.rs" = 1;
   "tests/desktop/desktop-keeps-pace-vm-test.py" = 1;
   "tests/desktop/desktop-launcher-waits-on-joel-vm-test.py" = 1;
   "tests/desktop/desktop-shows-then-rests-vm-test.py" = 1;

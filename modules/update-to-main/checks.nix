@@ -62,17 +62,22 @@ in
   );
   # A switch restarts what changed, and update-to-main is what's switching,
   # so neither system may restart it mid-switch: NixOS never restarts its
-  # service, and the Mac's daemon names no store path, so its definition is
-  # the same in every system and activate never reloads it. Both start it
+  # service, and the Mac's daemon names no store path, so activate reloads
+  # it only when its definition itself changes, and the switch outlives it
+  # then, since it writes to a file rather than to the daemon. Both start it
   # from the running system's path, the Mac's once that path holds it, and
   # its askers are its group's members. The commands it refuses while are
   # read too, each word a string: on 8 November one given as a derivation
   # broke every NixOS machine following main, and nothing here read them.
+  # Neither config names the running system's path, which a binary from
+  # before it would refuse, and a reloaded Mac daemon runs that binary.
   update-to-main-outlives-its-switch =
     holds "update-to-main-outlives-its-switch"
-      "A switch could restart update-to-main while it switches, the Mac's daemon doesn't wait for its program, its askers aren't its group's, or a command it refuses while isn't strings."
+      "A switch could restart update-to-main while it switches, the Mac's daemon doesn't wait for its program, its askers aren't its group's, a command it refuses while isn't strings, or its config names a field an older update-to-main refuses."
       (
-        !service.restartIfChanged
+        !(nixos.jitsusama.update-to-main.system ? current)
+        && !(darwin.jitsusama.update-to-main.system ? current)
+        && !service.restartIfChanged
         && !service.stopIfChanged
         && lib.hasPrefix "/run/current-system/sw/bin/update-to-main " service.serviceConfig.ExecStart
         && !(lib.hasInfix "/nix/store" (builtins.toJSON daemon))
