@@ -53,8 +53,7 @@ fn scopes(name: &str) -> usize {
         .arg(format!("shaper-proof-{name}-{}.scope", std::process::id()))
         .stderr(Stdio::null())
         .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).lines().count())
-        .unwrap_or(0)
+        .map_or(0, |o| String::from_utf8_lossy(&o.stdout).lines().count())
 }
 
 /// Stops every scope this proof started.
