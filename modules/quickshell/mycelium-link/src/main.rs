@@ -39,9 +39,9 @@ use terminal_kit::{Exit, Failure, Help};
 /// second one by hand.
 const GAP: Duration = Duration::from_secs(3);
 
-/// The longest name a link carries: an address is eight letters at most and
-/// a network's name or a machine's a few dozen, so anything past this is no
-/// name.
+/// The longest name a link carries: a network's name or a machine's runs to
+/// a few dozen letters, so anything past this is no name. An address has a
+/// bound of its own, `LONGEST_ADDRESS`.
 const LONGEST: usize = 64;
 
 /// The most letters a mesh address runs to, as the notices daemon reads a
@@ -103,8 +103,10 @@ fn addressed(address: &str) -> bool {
 /// is misshaped. The machine is only checked: the address names one session
 /// across the realm, and the launcher finds it wherever it runs.
 fn address_of(name: &str) -> Option<&str> {
-    let (address, machine) = name.split_once('@').unwrap_or((name, ""));
-    let placed = !name.contains('@') || named(machine);
+    let (address, placed) = match name.split_once('@') {
+        Some((address, machine)) => (address, named(machine)),
+        None => (name, true),
+    };
     (addressed(address) && placed).then_some(address)
 }
 
@@ -306,6 +308,21 @@ mod tests {
 
     #[test]
     fn a_cell_link_names_its_address_wherever_it_says_the_cell_runs() {
+        // The forms the notices daemon writes (notice.rs), digits and the
+        // longest address included, as each session's link names it.
+        for (link, address) in [
+            ("mycelium:cell/1C8A2F0E@mac-2#todo:7", "1C8A2F0E"),
+            ("mycelium:cell/1C8A2F0E@joel_box#notice:12", "1C8A2F0E"),
+            ("mycelium:cell/ABCDEF123456@here#look:a1.b", "ABCDEF123456"),
+            ("mycelium:cell/1C8A2F0E#notice:12", "1C8A2F0E"),
+        ] {
+            assert_eq!(named_by(link), Ok(cell(address)), "{link} named another");
+        }
+        let longest_machine = "k".repeat(LONGEST);
+        assert_eq!(
+            named_by(&format!("mycelium:cell/DAHTNJ@{longest_machine}")),
+            Ok(cell("DAHTNJ"))
+        );
         for link in [
             "mycelium:cell/DAHTNJ@kestrel",
             "mycelium:cell/DAHTNJ@kestrel#notice:42",
