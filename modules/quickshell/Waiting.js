@@ -150,6 +150,25 @@ function before(one, other) {
     return quicker !== 0 && !Number.isNaN(quicker) ? quicker : one.listed - other.listed;
 }
 
+// The order sessions wanting Joel stand in: the oldest ask first, and
+// those asking since the same moment by address. Sessions elsewhere are
+// listed with the one that changed last first, so ordered by when they
+// asked alone, ties keep that listing, and a turn of one would move it
+// ahead of another asking since the same moment: For You would draw its
+// rows again, swapped.
+function askedBefore(one, other) {
+    const since = session => String(session.presence?.wants?.since ?? "");
+    const asked = since(one).localeCompare(since(other));
+    if (asked !== 0) {
+        return asked;
+    }
+    const address = session => String(session.address ?? "");
+    if (address(one) === address(other)) {
+        return 0;
+    }
+    return address(one) < address(other) ? -1 : 1;
+}
+
 // Who an item is, across every file: its quest and its id.
 function identity(item) {
     return `${item.quest}:${item.id ?? item.title}`;

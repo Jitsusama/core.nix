@@ -3127,7 +3127,11 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
             shell.launcher_until(lambda shown: shown["held"] == ["now", "For You"])
             said = told_quietly(shell, since)
             shown = [report for report in said if report.startswith("act shown in on")]
-            assert not shown, f"a turn {lead} s before Return was drawn as its act: {shown}"
+            # What the shell said of each act and change it heard, the act's "act moved in on"
+            # with it, so a failure says what was drawn: the one on 16 November said only that
+            # something was. The launcher's whole state is left out.
+            heard = [report for report in said if report.startswith(("act ", "heard "))]
+            assert not shown, f"a turn {lead} s before Return was drawn as its act: {heard}"
             shell.send_chars("-")
             shell.launcher_until(lambda shown: shown["held"] == ["now"])
     finally:
