@@ -45,7 +45,8 @@
 //! their windows apart, as it tells (agents.rs). The tab in front of one
 //! of Chrome's windows is made as a get names niri's window (fronts.rs).
 //! Each command runs on a thread of its own, without a shell, so a slow one never holds an
-//! answer back, and is stopped past ten seconds (command.rs). A source is
+//! answer back, and is stopped past ten seconds (command.rs), its record
+//! kept as it answers (read.rs). A source is
 //! read once at a time, a get's own read too, and once more after it
 //! where a change came meanwhile, so the newest read ends last (runs.rs).
 //!
@@ -62,6 +63,7 @@ mod follow;
 mod fronts;
 mod heard;
 mod named;
+mod read;
 mod rows;
 mod runs;
 mod search;
@@ -73,7 +75,7 @@ use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, Weak};
-use std::time::{Instant, SystemTime};
+use std::time::SystemTime;
 
 use daemon_serve::asks::place_of;
 use daemon_serve::serve::{Shared as Served, Wanted, accept, listen};
@@ -82,8 +84,8 @@ use programs::interface::{DOMAIN, Own, Settings, kind_of, own_of};
 use programs::mime::Mime;
 use programs::notify::Notify;
 use programs::preview::Previewer;
-use programs::source::{self, Source};
-use programs::{command, entry, xdg};
+use programs::source::Source;
+use programs::{entry, xdg};
 use programs::{tab_rows, taken_rows};
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
@@ -91,6 +93,7 @@ use terminal_kit::{Exit, Failure, Help};
 
 use heard::hear;
 use named::read_named;
+use read::{due, read_source, sources_of};
 use runs::{claim, read_claimed, start};
 
 /// How many of the last answers' times health says.
@@ -479,143 +482,6 @@ fn entries_changed(shared: &Shared) {
         rows::make(shared, &mut daemon);
     }
     tabs::renamed(shared, &mut daemon);
-}
-
-/// The sources whose `recent`, `listed` or `opened` key is one of these,
-/// or every source with such a list when `keys` is none and its kind is
-/// wanted.
-fn sources_of(shared: &Shared, run: Run, kinds: &[String], keys: Option<&[String]>) -> Vec<usize> {
-    shared
-        .sources
-        .iter()
-        .enumerate()
-        .filter(|(_, source)| match run {
-            Run::List => source.lists(),
-            Run::Opened => source.opened_key().is_some(),
-        })
-        .filter(|(_, source)| {
-            let (key, kind) = match run {
-                Run::List => (Some(source.list_key()), source.list_kind()),
-                Run::Opened => (source.opened_key(), "opened"),
-            };
-            let app = source.app.as_deref().unwrap_or_default();
-            let fronts = |keys: &[String]| run == Run::Opened && fronts::names(app, keys);
-            match keys {
-                Some(keys) => key.is_some_and(|key| keys.contains(&key)) || fronts(keys),
-                None => kinds.iter().any(|k| k == kind),
-            }
-        })
-        .map(|(at, _)| at)
-        .collect()
-}
-
-/// Runs a source's command now, on this thread, and keeps its record. A
-/// command that fails keeps the record from before, and says why.
-fn read_source(shared: &Shared, at: usize, what: Run) {
-    let source = &shared.sources[at];
-    let (argv, key) = match what {
-        Run::List => (&source.list, source.list_key()),
-        Run::Opened => (&source.opened, source.opened_key().unwrap_or_default()),
-    };
-    if what == Run::List {
-        let mut daemon = lock(&shared.daemon);
-        daemon.stale[at] = false;
-        daemon.read_as_of[at] = changed_at(source);
-    }
-    let started = Instant::now();
-    let read = (what == Run::Opened).then(|| source::open_now(source));
-    let printed = if what == Run::List && source.list.is_empty() {
-        Ok(source::files_in(&source.folders))
-    } else if let Some(Some(read)) = read {
-        read
-    } else {
-        command::run(argv)
-    };
-    let took = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
-    let mut daemon = lock(&shared.daemon);
-    daemon.took.push_back(took);
-    while daemon.took.len() > TIMES {
-        daemon.took.pop_front();
-    }
-    match printed {
-        Ok(printed) => {
-            let taking = key == taken::LIST;
-            let answering = json!({"state": "answering"});
-            let was = daemon.commands.insert(key, answering.clone());
-            if what == Run::List && source.told {
-                daemon.listers[at] = source::listers(&printed);
-            }
-            let record = match what {
-                Run::List => Some(agents::listed(&mut daemon, at, source, &printed)),
-                Run::Opened => source::opened(source, &printed),
-            };
-            keep(&mut daemon, record.into_iter().collect(), &[]);
-            // Keeping told only what moved, so a command answering again
-            // after it refused is said as it now stands.
-            if was != Some(answering) {
-                hand_over(&daemon);
-            }
-            if taking {
-                taken::changed(shared, &mut daemon);
-            }
-            tabs::heard(shared, &mut daemon, at, what);
-            // A page opened or shut leaves its bookmark's row or brings it
-            // back, so home never lists one page twice.
-            if what == Run::Opened && source.session.is_some() {
-                bookmarks::changed(shared, &mut daemon);
-            }
-        }
-        Err(why) => {
-            // A list never read says it's empty and why, so a watch
-            // waiting to hear every list once hears this one too and lets
-            // go as the launcher closes; one read before keeps what it
-            // last said, as the old reader kept its lines.
-            if what == Run::List && !daemon.held.contains_key(&key) {
-                let mut record = source::recent(source, "");
-                record["refused"] = json!(why);
-                keep(&mut daemon, vec![record], &[]);
-            }
-            daemon
-                .commands
-                .insert(key, json!({"state": "refused", "reason": why}));
-            hand_over(&daemon);
-            tabs::heard(shared, &mut daemon, at, what);
-        }
-    }
-}
-
-/// When a source's file last changed, or the latest of its folders, as a
-/// file made, moved or removed in one changes it; none where it has none.
-fn changed_at(source: &Source) -> Option<SystemTime> {
-    let modified = |path: &str| {
-        std::fs::metadata(path)
-            .and_then(|file| file.modified())
-            .ok()
-    };
-    match source.watch.as_deref() {
-        Some(file) => modified(file),
-        None => source
-            .folders
-            .iter()
-            .filter_map(|folder| modified(folder))
-            .max(),
-    }
-}
-
-/// Whether a source's list is to be read again: it's asked and not told,
-/// or told but naming a process that hasn't told yet, or its file changed
-/// since it was last read, as inotify said or its time says, or it was told
-/// it changed.
-fn due(shared: &Shared, daemon: &Daemon, at: usize) -> bool {
-    let source = &shared.sources[at];
-    let untold = || {
-        daemon.listers[at]
-            .iter()
-            .any(|pid| !daemon.tellers.contains(pid))
-    };
-    (source.asked && (!source.told || untold()))
-        || daemon.stale[at]
-        || changed_at(source) != daemon.read_as_of[at]
 }
 
 /// Whether these kinds or keys name any entry.
