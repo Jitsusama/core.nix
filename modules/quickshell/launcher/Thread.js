@@ -3,7 +3,11 @@
 // What the shell's thread did over a span of the launcher's work, from its
 // clocks, `{ ran, waited }` (KeyTimes.ran and waited), read at either end:
 // what it ran, what it waited for a CPU behind the machine's other work,
-// and the rest, what it slept, on the render thread, the disk or a page.
+// and the rest, what it slept: blocked on the render thread, the disk or a
+// page, or idle in its event loop, as a key held for its answers is for
+// up to its bound (Launcher.qml's answersWaitedFor), so a held key's
+// sleep past that is the blocking alone. What it ran of a held key's
+// searching includes the other work it did while the key waited.
 // An opening's longest stall is said so (Pacing.feltTicked), and a slow
 // key's searching: Joel's "\u2193" in Agents took 121 ms searching, mid key
 // repeat with every move around it under 6, and his "ca" waited 62 ms
@@ -11,10 +15,12 @@
 // (2026-11-16).
 
 // The thread's clocks across a span, from `from` to `to`; null where
-// either end wasn't read, or the clocks went back, as they would read on
-// another thread than the one they were begun on.
+// either end wasn't read, or its wait read 0, as KeyTimes.waited gives a
+// failed read and one taken from it would be the thread's whole life's,
+// or the clocks went back, which the thread's own never do.
 function spent(from, to) {
-    if (!from || !to || to.ran < from.ran || to.waited < from.waited) {
+    if (!from || !to || !(from.waited > 0) || !(to.waited > 0) || to.ran < from.ran
+        || to.waited < from.waited) {
         return null;
     }
     return { ran: to.ran - from.ran, waited: to.waited - from.waited };

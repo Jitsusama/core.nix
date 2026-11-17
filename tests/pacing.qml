@@ -274,10 +274,16 @@ QtObject {
             "; its thread ran 3 ms of its searching, waited 8 for a CPU and slept 110");
         check(failures, "a key read without clocks says nothing of them",
             Thread.said(121, null, "its searching"), "");
-        check(failures, "nor does one whose clocks went back, as a key timed on another thread",
-            Thread.spent({ ran: 9, waited: 0 }, { ran: 5, waited: 0 }), null);
+        check(failures, "nor does one whose run clock went back",
+            Thread.spent({ ran: 9, waited: 4 }, { ran: 5, waited: 4 }), null);
+        check(failures, "nor one whose wait went back",
+            Thread.spent({ ran: 5, waited: 9 }, { ran: 9, waited: 4 }), null);
         check(failures, "a key without a reading at its start has none",
-            Thread.spent(null, { ran: 5, waited: 0 }), null);
+            Thread.spent(null, { ran: 5, waited: 4 }), null);
+        check(failures, "a wait that failed to read at the start isn't taken as none waited",
+            Thread.spent({ ran: 5, waited: 0 }, { ran: 9, waited: 5000 }), null);
+        check(failures, "nor one that failed at the end",
+            Thread.spent({ ran: 5, waited: 40 }, { ran: 9, waited: 0 }), null);
     }
 
     // What held an opening's longest stall, by the work it ran into: Joel's
