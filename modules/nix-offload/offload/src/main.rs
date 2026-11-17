@@ -689,7 +689,8 @@ fn foreign(asked: &there::Asked, dir: &Path) -> Option<ExitCode> {
 /// first status that failed. What a machine that can't fetch the flake,
 /// or that ssh can't reach, takes goes with the rest in `left`, to the
 /// builders, rather than failing there, when a lent builder in `dir`
-/// builds for it; the rest waits, ending the run unsent.
+/// builds for it; the rest waits, ending the run unsent. A Mac with no
+/// room is sent nothing, as one ssh can't reach ([`held_nearby`]).
 fn built_nearby(
     near: &[(&there::Nearby, there::Asked)],
     mut left: Option<there::Asked>,
@@ -700,7 +701,7 @@ fn built_nearby(
     let mut status = 0;
     for (machine, part) in near {
         let began = now();
-        let ran = there::fetches(machine, part, scratch, "ssh")
+        let ran = (!held_nearby(machine, scratch) && there::fetches(machine, part, scratch, "ssh"))
             .then(|| there::nearby_run(machine, part, scratch, ["ssh", "tar", "nix"]))
             .flatten();
         let Some(ran) = ran else {
@@ -731,12 +732,42 @@ fn built_nearby(
             part,
             &ran,
         );
+        if ran.status != 0 {
+            eprintln!(
+                "nix-offload: {}'s part, {}, ended {}",
+                machine.host,
+                part.attributes().join(" "),
+                ran.status
+            );
+        }
         // The first that failed says how the whole did.
         if status == 0 {
             status = ran.status;
         }
     }
     (status, left)
+}
+
+/// Whether `machine`, a Mac, has no room for more, saying the load it
+/// goes or waits at, by the rule a run for its system keeps
+/// (`held_for_a_mac`). A run whose caller asked already isn't asked again,
+/// nor is a machine that builds for no Mac.
+fn held_nearby(machine: &there::Nearby, scratch: &Path) -> bool {
+    use changed::mac;
+    let asked_already = env::var_os(ROOM_ASKED.0).is_some_and(|value| value == ROOM_ASKED.1);
+    if asked_already || !machine.systems.iter().any(|system| system == mac::SYSTEM) {
+        return false;
+    }
+    match mac::room(&machine.host, there::load_of(machine, scratch, "ssh")) {
+        Ok(room) => {
+            eprintln!("nix-offload: {room}, so what it was to take goes to it");
+            false
+        }
+        Err(why) => {
+            eprintln!("nix-offload: {why}, so it's sent none of what it was to take");
+            true
+        }
+    }
 }
 
 /// Refuses `--here` and `--here-when-idle` under `--lent-only`, which
