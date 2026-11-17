@@ -563,7 +563,7 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
             // A page opened or shut leaves its bookmark's row or brings it
             // back, so home never lists one page twice.
             if what == Run::Opened && source.session.is_some() {
-                bookmarks::opened(shared, &mut daemon);
+                bookmarks::changed(shared, &mut daemon);
             }
         }
         Err(why) => {

@@ -18,11 +18,11 @@ pub fn watched(daemon: &Daemon) -> bool {
     daemon.served.watches("row", PLACE)
 }
 
-/// What Chrome has open was read again: the rows are made again while
-/// watched, and otherwise marked for the next watch to make (tabs.rs).
-/// Watched is asked once, so a watch held as this runs gets one or the
-/// other.
-pub fn opened(shared: &Shared, daemon: &mut Daemon) {
+/// A bookmark file or what Chrome has open changed: the rows are made
+/// again while watched, and otherwise marked for the next watch to make
+/// (tabs.rs). Watched is asked once, so a watch held as this runs gets one
+/// or the other.
+pub fn changed(shared: &Shared, daemon: &mut Daemon) {
     if watched(daemon) {
         make(shared, daemon);
     } else {

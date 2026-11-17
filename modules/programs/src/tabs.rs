@@ -21,9 +21,9 @@ use serde_json::{Value, json};
 
 use super::{Daemon, Run, Shared, agents, bookmarks, due, keep, lock, programs, start};
 
-/// Which places' rows a read of what's open left unmade, since nothing
-/// watched them as it ended, for the next watch of each to make (`read`);
-/// each is cleared as its rows are made, wherever that is.
+/// Which places' rows changed while nothing watched them (`changed`, and
+/// bookmarks.rs), for the next watch of each to make (`read`); each is
+/// cleared as its rows are made, wherever that is.
 #[derive(Default)]
 pub struct Unmade {
     pub tabs: bool,
@@ -89,9 +89,9 @@ pub fn read(shared: &Arc<Shared>) {
     if let Some(at) = listed {
         start(shared, at, Run::List);
     }
-    // A read that ended as this watch was asked, before it was held, made
-    // no rows for it, and what it read is held, so it starts no read above.
-    // Only then are they made here: the launcher asks its watch again at
+    // What changed as this watch was asked, before it was held, made no
+    // rows for it, and a read of it is held, so it starts no read above.
+    // Only marked rows are made here: the launcher asks its watch again at
     // each opening, and the bookmarks are files read under the lock.
     // Each place is made only once it's watched, so a watch of the other
     // leaves its mark for the watch still to be held.
@@ -128,7 +128,7 @@ pub fn changed(shared: &Shared, daemon: &mut Daemon) {
 }
 
 /// A folder of entries changed, so a program may be named anew: the tabs
-/// are made again while a watch wants them, each said in its new name.
+/// are made again in its new name, or marked while nothing watches them.
 pub fn renamed(shared: &Shared, daemon: &mut Daemon) {
     changed(shared, daemon);
 }
