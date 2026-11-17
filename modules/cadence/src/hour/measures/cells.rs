@@ -57,9 +57,10 @@ fn short_id(id: &str) -> &str {
 struct Cell<'a> {
     address: &'a str,
     quest: Option<&'a str>,
-    live: bool,
-    parked: bool,
-    idle: bool,
+    /// The session's own state: busy, idle or ended.
+    state: &'a str,
+    /// Its presence's state: busy, listening or parked.
+    presence: Option<&'a str>,
     at: Option<i64>,
     next: Option<&'a str>,
     wanting: bool,
@@ -73,9 +74,8 @@ fn read(session: &Value) -> Option<Cell<'_>> {
     Some(Cell {
         address: session["address"].as_str()?,
         quest: session["quest"].as_str(),
-        live: state != "ended",
-        parked: presence["state"].as_str() == Some("parked"),
-        idle: state == "idle",
+        state,
+        presence: presence["state"].as_str(),
         at: seconds(&session["at"]),
         next: session["doing"]["next"]
             .as_str()
@@ -146,7 +146,9 @@ pub fn cells(
     // A step that names Joel waits on him, which no orchestrator can move.
     let idle = all
         .iter()
-        .filter(|c| c.idle && !c.wanting && c.at.is_some_and(|at| now - at >= IDLE_AT_MOST))
+        .filter(|c| {
+            c.state == "idle" && !c.wanting && c.at.is_some_and(|at| now - at >= IDLE_AT_MOST)
+        })
         .filter_map(|c| {
             let next = c.next.filter(|next| !next.contains("Joel"))?;
             let minutes = (now - c.at?) / 60;
@@ -160,7 +162,7 @@ pub fn cells(
         .collect();
     let parked_done = all
         .iter()
-        .filter(|c| c.parked && !c.live)
+        .filter(|c| c.presence == Some("parked") && c.state == "ended")
         .filter_map(|c| {
             let status = c
                 .quest_status
@@ -174,6 +176,44 @@ pub fn cells(
             })
         })
         .collect();
+    let (never, ended) = unrun(quests, &all, &realms, &|q| owner(Some(q), None));
+    let read = !parsed.is_empty();
+    [
+        (
+            "cells-idle",
+            "cells idle 20 minutes or more with a next step no one else holds",
+            idle,
+        ),
+        (
+            "cells-parked-done",
+            "cells parked on a quest already concluded or retired",
+            parked_done,
+        ),
+        (
+            "quests-without-cells",
+            "driving and active quests no cell has taken up",
+            never,
+        ),
+        (
+            "quests-cells-ended",
+            "driving and active quests whose every cell has ended",
+            ended,
+        ),
+    ]
+    .into_iter()
+    .map(|(key, says, behind)| judged(key, says, behind, read, fallback))
+    .collect()
+}
+
+/// The quests meant to be moving, in a realm whose node answered, that no
+/// live cell runs: those no cell ever took up, and those whose every cell
+/// ended, each with its owner.
+fn unrun(
+    quests: &[Quest],
+    all: &[Cell],
+    realms: &BTreeSet<&str>,
+    owner: &dyn Fn(&str) -> String,
+) -> (Vec<String>, Vec<String>) {
     let (mut never, mut ended) = (Vec::new(), Vec::new());
     for q in quests.iter().filter(|q| {
         q.status == "active"
@@ -184,48 +224,18 @@ pub fn cells(
             .iter()
             .filter(|c| c.quest == Some(q.id.as_str()))
             .collect();
-        if of_quest.iter().any(|c| c.live) {
+        if of_quest.iter().any(|c| c.state != "ended") {
             continue;
         }
         let named = short_id(&q.id);
-        let to = owner(Some(q.id.as_str()), None);
+        let to = owner(&q.id);
         if of_quest.is_empty() {
             never.push(format!("{named} {}, no cell yet · {to}", q.priority));
         } else {
             ended.push(format!("{named} {}, every cell ended · {to}", q.priority));
         }
     }
-    let read = !parsed.is_empty();
-    vec![
-        judged(
-            "cells-idle",
-            "cells idle 20 minutes or more with a next step no one else holds",
-            idle,
-            read,
-            fallback,
-        ),
-        judged(
-            "cells-parked-done",
-            "cells parked on a quest already concluded or retired",
-            parked_done,
-            read,
-            fallback,
-        ),
-        judged(
-            "quests-without-cells",
-            "driving and active quests no cell has taken up",
-            never,
-            read,
-            fallback,
-        ),
-        judged(
-            "quests-cells-ended",
-            "driving and active quests whose every cell has ended",
-            ended,
-            read,
-            fallback,
-        ),
-    ]
+    (never, ended)
 }
 
 /// A report or review a quest wrote, as its frontmatter says it, and when
@@ -297,8 +307,8 @@ pub fn unasked(
             let about = look["quest"].as_str() == Some(r.quest.as_str())
                 || look["target"].as_str().is_some_and(|t| t.contains(&r.id));
             let after = seconds(&look["at"]).is_some_and(|at| at >= r.written - LOOK_BEFORE);
-            let puts = look["asks"].as_bool() == Some(true)
-                || look["state"].as_str() == Some("waiting");
+            let puts =
+                look["asks"].as_bool() == Some(true) || look["state"].as_str() == Some("waiting");
             about && after && puts
         })
     };
@@ -445,7 +455,11 @@ mod tests {
             }),
             "a session's status was read as the quest's, or a field was lost"
         );
-        assert_eq!(quest("no frontmatter"), None, "a README with no id said a quest");
+        assert_eq!(
+            quest("no frontmatter"),
+            None,
+            "a README with no id said a quest"
+        );
     }
 
     #[test]
@@ -542,10 +556,16 @@ mod tests {
 
     #[test]
     fn with_no_realm_answering_the_cells_are_unjudged() {
-        let all = cells(&[], &[quest_of("AAAAAA", "active", "driving", None)], NOW, "F");
+        let all = cells(
+            &[],
+            &[quest_of("AAAAAA", "active", "driving", None)],
+            NOW,
+            "F",
+        );
         assert_eq!(all.len(), 4, "a measure went unsaid: {all:?}");
         assert!(
-            all.iter().all(|m| m.target.is_none() && m.class == Class::Cells),
+            all.iter()
+                .all(|m| m.target.is_none() && m.class == Class::Cells),
             "an hour with no node read judged its cells: {all:?}"
         );
     }
@@ -654,7 +674,11 @@ mod tests {
         );
         let none = json!({"at": "", "cells": 40, "count": 0, "failures": []}).to_string();
         assert_eq!(mapped(Some(0), &none, "F").now, 0.0, "a clean map counted");
-        assert_eq!(mapped(Some(0), &none, "F").target, Some(0.0), "a clean map unjudged");
+        assert_eq!(
+            mapped(Some(0), &none, "F").target,
+            Some(0.0),
+            "a clean map unjudged"
+        );
         for (exit, out) in [(Some(2), out.as_str()), (None, ""), (Some(1), "not json")] {
             assert_eq!(
                 mapped(exit, out, "F").target,

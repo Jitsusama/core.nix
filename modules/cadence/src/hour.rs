@@ -233,8 +233,14 @@ fn reports() -> Vec<measures::Report> {
         .filter_map(|entry| {
             let path = entry.ok()?.path();
             let written = fs::metadata(&path).ok()?.modified().ok()?;
-            let written = written.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
-            measures::report(&fs::read_to_string(&path).ok()?, i64::try_from(written).ok()?)
+            let written = written
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()?
+                .as_secs();
+            measures::report(
+                &fs::read_to_string(&path).ok()?,
+                i64::try_from(written).ok()?,
+            )
         })
         .collect()
 }
@@ -256,7 +262,12 @@ fn looks(folder: &Path) -> Option<Vec<serde_json::Value>> {
 fn exit_and_out(program: &str, args: &[&str]) -> (Option<i32>, String) {
     Command::new(program).args(args).output().map_or_else(
         |_| (None, String::new()),
-        |out| (out.status.code(), String::from_utf8_lossy(&out.stdout).into_owned()),
+        |out| {
+            (
+                out.status.code(),
+                String::from_utf8_lossy(&out.stdout).into_owned(),
+            )
+        },
     )
 }
 

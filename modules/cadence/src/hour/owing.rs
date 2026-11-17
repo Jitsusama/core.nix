@@ -243,7 +243,9 @@ mod tests {
         let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
         assert_eq!(owners, ["ORCH", "PARENT"], "each cell's owner is told");
         assert!(
-            told[0].1.contains("these of its cells are yours: AAAAAA idle 30 min: write it")
+            told[0]
+                .1
+                .contains("these of its cells are yours: AAAAAA idle 30 min: write it")
                 && !told[0].1.contains("BBBBBB"),
             "each hears only of its own cells: {}",
             told[0].1
