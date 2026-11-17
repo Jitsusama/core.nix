@@ -1572,12 +1572,7 @@ impl<'a, 's, F: Fn(&str) -> bool> Breaking<'a, 's, F> {
         let Ok(mut tried) = self.tried.try_lock() else {
             return;
         };
-        let Some(test) = self
-            .state
-            .hold()
-            .filter(|hold| !hold["revert_commit"].is_string())
-            .and_then(|hold| hold["test"].as_str().map(str::to_owned))
-        else {
+        let Some(test) = forwardable(self.state) else {
             return;
         };
         let Ok(newest) = self.world.head() else {
@@ -1593,6 +1588,15 @@ impl<'a, 's, F: Fn(&str) -> bool> Breaking<'a, 's, F> {
             test,
         });
     }
+}
+
+/// The test of a hold with no revert on main, which a run at main's newest
+/// head may clear.
+fn forwardable(state: &State) -> Option<String> {
+    state
+        .hold()
+        .filter(|hold| !hold["revert_commit"].is_string())
+        .and_then(|hold| hold["test"].as_str().map(str::to_owned))
 }
 
 /// Clear the hold if it still names `test`, which `passes` says how. A
@@ -4680,6 +4684,28 @@ mod tests {
             state.hold(),
             None,
             "a kept job let go left its unsettled revert's hold"
+        );
+    }
+
+    #[test]
+    fn a_hold_whose_revert_is_under_way_is_left_to_its_own_job() {
+        // A forward run's job would take the place of the kept job that
+        // settles the hold, there being one for each test, and a forward
+        // run that fails then lets go of the hold with nothing to revert.
+        let state = state("forward-reverting");
+        state.set_hold(&reverting("vm-a")).unwrap();
+        assert_eq!(
+            forwardable(&state),
+            None,
+            "a hold whose revert is under way was handed a forward run"
+        );
+        let mut hold = reverting("vm-a");
+        hold.as_object_mut().unwrap().remove("reverting");
+        state.set_hold(&hold).unwrap();
+        assert_eq!(
+            forwardable(&state).as_deref(),
+            Some("vm-a"),
+            "a hold with no revert on main wasn't handed a forward run"
         );
     }
 
