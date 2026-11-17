@@ -715,6 +715,22 @@
       "glyph": "windows"
     },
     {
+      "id": "verb:on:waiting:explain",
+      "command": "explain",
+      "in": "on",
+      "name": "Explain It",
+      "verb": "explain",
+      "glyph": "ask",
+      "said": {
+        "asks": "In one or two short, plain sentences, tell the person whose work this is what this agent session is working on, why, and where it stands now. Say it as they would know the work. Name no ids, pull request numbers, addresses or folders, and use no markdown.\n\n{facts}",
+        "reading": "finding what it is",
+        "asking": "asking",
+        "answered": "Explained",
+        "unknown": "The session behind this isn't running anywhere the node knows",
+        "failed": "It couldn't be explained just now"
+      }
+    },
+    {
       "id": "verb:on:waiting:deal",
       "command": "talk",
       "in": "on",

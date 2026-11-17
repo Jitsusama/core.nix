@@ -2131,6 +2131,11 @@
     serves the notifications name besides; it reads the shell's levels, Quiet's file, its socket,
     the launcher's words and each program's mark
   '';
+  explain-it-asks-only-what-a-cell-is = ''
+    Explain It asks the realm's node only what one session is, by an address of capitals and
+    digits, as JSON, and tells the quick model only its title, repository, machine, standing and
+    plan, never its ids, quest, folders, trees, spend or networks, a $ in them kept as written
+  '';
   now-lists-by-group = ''
     Now lists what wants Joel first, then what reaches other people, what's playing and the modes
     left on, by name within each, and a group it doesn't know last

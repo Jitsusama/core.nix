@@ -1044,16 +1044,18 @@ Provider {
     // shows to engaging with the thing working on it"): Talk, Agents' own,
     // whose words go to that cell, and Go To its window, which a terminal's
     // Open already is, offered as Agents offers it: where it has a window,
-    // or is parked and wakes into one. None while no cell is held for it,
-    // or Agents isn't there to talk through.
+    // or is parked and wakes into one; then Explain It, which says what the
+    // cell works on in a sentence or two (explainAct). None while no cell
+    // is held for it, or Agents isn't there to talk through.
     function cellActs(one) {
         const cell = lookCell(one);
         const agents = provider.source("agents");
         if (cell === null || !agents)
             return [];
         const talk = agents.sessionAct(cell, "talk");
+        const explain = explainAct(`verb:on:waiting:explain:on:look:${one.id}`, cell);
         const reachable = agents.windowedOf(cell) || !!Sessions.parkedAs(cell.address);
-        return one.kind === "terminal" || !reachable ? [talk] : [talk, thing({
+        return one.kind === "terminal" || !reachable ? [talk, explain] : [talk, thing({
             // Under Go To's own word, so the : line names it as a want's is.
             key: `verb:on:waiting:go:on:look:${one.id}`,
             verb: Words.verb("verb:on:waiting:go"),
@@ -1063,7 +1065,41 @@ Provider {
             side: cell.title,
             later: true,
             run: () => provider.goToCell(one)
-        })];
+        }), explain];
+    }
+
+    // Explain It on `cell`, under `key`: the machine's quick model asked
+    // what the session works on, why and how it stands, its answer then
+    // standing in the act's place (Explainer.qml), so Joel needn't open a
+    // session to know what a short line is about (WCJQSG, 2026-11-17).
+    function explainAct(key, cell) {
+        const shown = explainer.shown(key);
+        return thing(Object.assign({
+            key: key,
+            verb: Words.verb("verb:on:waiting:explain"),
+            name: Words.name("verb:on:waiting:explain"),
+            glyph: Words.glyph("verb:on:waiting:explain"),
+            hue: "action",
+            side: cell.title,
+            stays: true,
+            changes: false,
+            run: () => explainer.explain(key, cell.address)
+        }, shown === null ? {} : {
+            name: shown.name,
+            reads: shown.reads,
+            note: shown.note,
+            hue: shown.hue
+        }));
+    }
+
+    // Explain It's asking and answering, for every row with it.
+    Explainer {
+        id: explainer
+
+        realm: Sessions.realm
+        asker: provider.source("ask")
+        said: Words.of("verb:on:waiting:explain").said ?? {}
+        onChanged: provider.changed()
     }
 
     // The answers Joel gave looks, `{ [look id]: { label, at, taken } }`,

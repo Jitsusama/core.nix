@@ -161,6 +161,24 @@
       touch $out
     '';
 
+  # Explain It asks the realm's node only what one session is, by its address
+  # alone, and tells the quick model only what Joel knows the work by, as
+  # tests/explain-it.qml holds launcher/Explaining.js to it in Qt's own engine.
+  explain-it-asks-only-what-a-cell-is =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "explain-it-asks-only-what-a-cell-is" { } ''
+      cp ${../../../tests/explain-it.qml} explain-it.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "launcher/Explaining.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml explain-it.qml
+      touch $out
+    '';
+
   # For You's to-dos hold only what Joel can do, now or later, in the order he
   # does them, and a session's want is his only while it's true, as
   # tests/waiting-on-you.qml holds Waiting.js to the agents' own files, as
