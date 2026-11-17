@@ -91,6 +91,7 @@ Scope {
                         : ""})` : "")
                 + (frame ? `, then ${frame.waiting} waiting for its frame and ${frame.drawing}`
                     + " drawing it" + drawingApart(frame) + collecting(frame, drawn)
+                    + Trials.framesBeforeSaid(Trials.framesBefore(frame.framesBegun, frame.keyHeard))
                     + Thread.said(searched, frame.thread, "its searching") : ""));
     }
 

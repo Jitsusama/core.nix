@@ -322,6 +322,38 @@ function drew(pace, at, hz) {
     return pace;
 }
 
+// Of the frames begun before a key's own, `begunAt` when each began on the
+// monotonic clock, how many began after the key was `heard`, frames its
+// own work came too late for, and how many in the STILL_MS before it,
+// drawing already under way as a sliding name's is. Either leaves a frame
+// in flight as the key's is ready, and Qt Wayland holds the key's frame
+// until the compositor says it showed that one: up to a refresh, twice as
+// long at 60 Hz as at 120 (16 Nov: 10.7 ms to the swap on the 4K screen,
+// 3.5 on the laptop's). Null where none were read.
+function framesBefore(begunAt, heard) {
+    if (!Array.isArray(begunAt) || begunAt.length === 0) {
+        return null;
+    }
+    let since = 0;
+    let still = 0;
+    for (const at of begunAt) {
+        if (at >= heard) {
+            since += 1;
+        } else if (at >= heard - STILL_MS) {
+            still += 1;
+        }
+    }
+    return { since, still };
+}
+
+// What a key's line says of those frames, or nothing where none were read.
+function framesBeforeSaid(frames) {
+    return frames
+        ? `, after ${frames.since} other frames since it was heard and ${frames.still}`
+            + ` in the ${STILL_MS} ms before`
+        : "";
+}
+
 // The trial with its frames, when any were drawn while it moved.
 function paced(trial, pace) {
     if (!trial || !pace || pace.drawn === 0) {

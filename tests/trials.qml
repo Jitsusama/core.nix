@@ -294,6 +294,18 @@ QtObject {
         const still = Trials.begun(0, "today");
         expect("nothing moved", Trials.paced(still, Trials.unpaced()) === still, "framed");
 
+        // The frames before a key's own, heard at 1000: two began after it
+        // was heard, its own work too late for them; three in the 100 ms
+        // before, as a sliding name draws; one long before is at rest.
+        const inFlight = Trials.framesBefore([1012, 1000, 996, 950, 901, 899, 400], 1000);
+        expect("frames since a key and just before it", inFlight !== null
+            && inFlight.since === 2 && inFlight.still === 3, JSON.stringify(inFlight));
+        expect("said in its line", Trials.framesBeforeSaid(inFlight)
+            === ", after 2 other frames since it was heard and 3 in the 100 ms before",
+            Trials.framesBeforeSaid(inFlight));
+        expect("none read, none said", Trials.framesBefore([], 1000) === null
+            && Trials.framesBeforeSaid(null) === "", "said");
+
         // Each key's time from its press to the screen is kept with the
         // opening, and how many were never presented, so health can pool a
         // day's keys (1JQPPC, 2026-11-12 [e1f448f2]).

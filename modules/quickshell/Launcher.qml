@@ -6641,6 +6641,21 @@ Scope {
         return split.syncing >= 0 && split.heard >= 0 ? split : null;
     }
 
+    // When each of the frames before `frame` began, as far back as
+    // FramePresentation keeps them (16 frames), so a slow key's line says
+    // whether a frame was in flight as its own was ready (Trials.js's
+    // framesBefore). Read once the key's frame is swapped, only for the
+    // newest key it drew.
+    function framesBegunBefore(frame) {
+        const begun = [];
+        for (let back = 1; back < 16 && frame - back > 0; back++) {
+            const rendering = surface.FramePresentation.timesOf(frame - back).rendering;
+            if (rendering)
+                begun.push(rendering);
+        }
+        return begun;
+    }
+
     function keyDrawn(drawnKeys) {
         const drawn = Date.now();
         const shown = KeyTimes.now();
@@ -6655,7 +6670,9 @@ Scope {
                 waiting: Math.round(newest.begun - newest.done),
                 drawing: Math.round(shown - newest.begun),
                 collecting: Math.round(Heap.collected() - newest.collected),
-                thread: newest.thread
+                thread: newest.thread,
+                framesBegun: framesBegunBefore(newest.frame ?? 0),
+                keyHeard: newest.heard
             }, frameSplit(newest, shown)));
         // Every key the frame drew keeps it as its own, and the list holds
         // one time a key.
