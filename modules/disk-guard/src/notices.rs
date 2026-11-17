@@ -42,7 +42,7 @@ pub enum Change {
 /// frozen, else a finished pass on a nearly full disk, else a pass on a
 /// filling one that failed where the last didn't, else the worse band
 /// a nearly full disk entered, else the notice withdrawn once no disk
-/// is nearly full.
+/// is nearly full, or once a pass works after one that failed.
 pub fn change(before: &Status, after: &Status) -> Option<Change> {
     // A writer frozen stops somebody's work, so it's told before anything.
     if let Some(frozen) = after
@@ -67,6 +67,21 @@ pub fn change(before: &Status, after: &Status) -> Option<Change> {
         && before.last.as_ref().is_none_or(|was| was.failing.is_none())
     {
         return Some(Change::Show(passed(last, after)));
+    }
+    // A notice says how the guard stands now: on 16 November Joel read that
+    // clearing was failing eight minutes after two passes had freed 33 GiB.
+    // So the first pass that works takes it away, unless a frozen writer's
+    // notice may stand in its place.
+    if let Some(last) = &after.last
+        && after.last != before.last
+        && last.failing.is_none()
+        && before
+            .last
+            .as_ref()
+            .is_some_and(|was| was.failing.is_some())
+        && after.frozen.is_empty()
+    {
+        return Some(Change::Withdraw);
     }
     let was = |filesystem: &FilesystemStatus| {
         before

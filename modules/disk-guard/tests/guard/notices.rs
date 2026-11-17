@@ -93,6 +93,26 @@ fn a_filling_disk_whose_clearing_fails_is_told_once_with_why() {
     );
 }
 
+// On 16 November a pass at 21:36 told Joel clearing was failing, and he
+// read it at 21:44 though the passes at 21:36 and 21:38 had freed 33 GiB:
+// a notice says how the guard stands now, so the next pass that works
+// takes it away.
+#[test]
+fn a_pass_that_works_after_failing_takes_the_failing_notice_away() {
+    let failing = status(&[("/", Band::Filling, 140)], Some(refused(2.0)));
+    let cleared = status(
+        &[("/", Band::Filling, 173)],
+        Some(pass(3.0, Band::Filling, "reached", 33)),
+    );
+    assert_eq!(change(&failing, &cleared), Some(Change::Withdraw));
+    assert_eq!(standing(&cleared), None, "and nothing stands");
+    let calm = status(
+        &[("/", Band::Filling, 174)],
+        Some(pass(4.0, Band::Filling, "exhausted", 1)),
+    );
+    assert_eq!(change(&cleared, &calm), None, "taken away once");
+}
+
 fn shown(change: Option<Change>) -> Notice {
     match change {
         Some(Change::Show(notice)) => notice,
