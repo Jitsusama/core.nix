@@ -4710,7 +4710,10 @@
   vm-a-pis-busy-work-goes-to-jobs = ''
     a busy command a pi host's unit in agents.slice started goes to a scope of its own in
     jobs-work.slice, with what it started in a session of its own, first for the OOM killer, while
-    the host stays in its unit and a session beside it in agents.slice wakes within 100 ms
+    the host stays in its unit and a session beside it in agents.slice wakes within 100 ms; and
+    while a call program records in the account's PipeWire, build.slice and jobs.slice hold a
+    quarter of the processors, each is braked again when its quota is cleared mid-call, and the
+    sorter lets go of both once the call ends
   '';
   vm-a-measured-disk-shares-by-its-model = ''
     with a disk named with a model, io.cost holds its model and qos, no slice holds a latency

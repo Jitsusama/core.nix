@@ -44,4 +44,5 @@ a folder.
   floors to agents' work shared by quest and by tier (`default.nix`, with
   its foreground program timing how late it wakes), a disk named with a
   model shared by it (`measured-disk.nix`), and a pi host's busy command
-  sent to jobs while a session beside it wakes on time (`hosts.nix`).
+  sent to jobs while a session beside it wakes on time, and builds and jobs
+  braked through a call PipeWire hears (`hosts.nix`).
