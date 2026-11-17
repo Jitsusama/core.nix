@@ -1180,7 +1180,7 @@ fn revert_again(world: &dyn World, state: &State) -> Result<(), String> {
         log: state.log(&commit, &test, 2).display().to_string(),
     };
     let failed_at = hold["failed_at"].as_str().map(str::to_owned);
-    let wanted = revert_wanted(world, state, &found, failed_at.as_deref(), true);
+    let wanted = revert_wanted(world, state, &found, failed_at.as_deref(), false);
     let reverted = world.revert(&found, &wanted);
     keep_revert(state, &mut hold, &reverted)?;
     if dropped(state, &found, &reverted)? {
@@ -1604,25 +1604,28 @@ fn cuts_before(was: Option<&Value>, test: &str, bad: &str) -> u64 {
         .map_or(0, |was| was["cuts"].as_u64().unwrap_or(0) + 1)
 }
 
-/// Whether the round tries `hold`'s revert again now.
+/// Whether the round tries `hold`'s revert again now: one asked to, or
+/// one under way whose kept job is gone, as after a rollback to a build
+/// that didn't know the hold's word, or a lost file. Nothing else would
+/// revert it, and a forward run can't, so it would stand for good. The
+/// round's thread isn't cut by a leaving net, so its comparison runs whole.
 fn tried_again_now(state: &State, hold: &Value) -> bool {
-    let _ = state;
     hold["revert_again"] == true
+        || (hold["reverting"] == true
+            && hold["test"]
+                .as_str()
+                .is_some_and(|test| !state.keeps_settling(test)))
 }
 
 /// The test of a hold with no revert on main, which a run at main's newest
 /// head may clear. One whose revert is under way is left to the job kept
 /// for it, whose place a forward run's job would take, there being one for
-/// each test, and then let go of with nothing reverted; with no job kept,
-/// as after a build that didn't know the hold's word, nothing else would.
+/// each test; with no job kept, the round tries its revert again.
 fn forwardable(state: &State) -> Option<String> {
     state
         .hold()
-        .filter(|hold| !hold["revert_commit"].is_string())
-        .and_then(|hold| {
-            let test = hold["test"].as_str()?;
-            (hold["reverting"] != true || !state.keeps_settling(test)).then(|| test.to_owned())
-        })
+        .filter(|hold| !hold["revert_commit"].is_string() && hold["reverting"] != true)
+        .and_then(|hold| hold["test"].as_str().map(str::to_owned))
 }
 
 /// Clear the hold if it still names `test`, which `passes` says how. A

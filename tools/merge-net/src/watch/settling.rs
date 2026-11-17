@@ -140,6 +140,12 @@ const UNRUN: u64 = 24 * 60 * 60;
 /// builds or has ended.
 const LOOK_AGAIN: Duration = Duration::from_millis(200);
 
+/// How long a net leaving looks again before it waits on the write as a
+/// lock, as it did before it looked at all: the stall guard tells a hung
+/// net only by every thread waiting on a lock, and a leave that looked
+/// forever would hide a write that never ends.
+const LOOK_FOR: Duration = Duration::from_mins(2);
+
 /// How many searches waiting for room may ask main's newest head at once
 /// whether it fixed their test.
 const ASKS: usize = 1;
@@ -275,7 +281,14 @@ impl<'a> Settler<'a> {
     /// until the guard goes; the watch's own `end` exits.
     pub fn leave<R>(&self, end: impl FnOnce() -> R) -> R {
         let mut said = false;
+        let began = std::time::Instant::now();
         loop {
+            if began.elapsed() >= LOOK_FOR {
+                let _writing = lock(&self.writing);
+                self.state
+                    .say("the write to the hold has ended, so this leaves");
+                return end();
+            }
             let _writing = match self.writing.try_lock() {
                 Ok(writing) => writing,
                 Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
