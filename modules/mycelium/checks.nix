@@ -1,5 +1,7 @@
 # The checks of mycelium, which checks.nix gathers with every other folder's;
-# its opening comment says what each kind of check proves.
+# its opening comment says what each kind of check proves. Long because each
+# check reads the same few machines built below, which a split would have to
+# pass from file to file.
 {
   account,
   bareDarwin,
@@ -57,6 +59,13 @@ let
     in
     builtins.deepSeq words words;
   macNode = (mac links).launchd.agents.mycelium.config.ProgramArguments;
+  # A node's words before its realm's kit, which every node is given last.
+  unkitted =
+    words:
+    let
+      at = lib.lists.findFirstIndex (word: word == "--kit") null words;
+    in
+    if at == null then words else lib.take at words;
   # A Mac workstation signs its commits from the Secure Enclave, so its node
   # signs its links in with the same key, each option after its own flag.
   enclaveOptions = lib.concatMap (option: [
@@ -273,7 +282,7 @@ in
           (linux (links // { signsInWith = "personal-link"; }))
           .systemd.user.services.mycelium.Service.Environment == [ "SSH_AUTH_SOCK=%t/personal-link.sock" ]
         &&
-          lib.drop 1 macNode == [
+          lib.drop 1 (unkitted macNode) == [
             "--realm"
             "personal"
             "node"
@@ -552,7 +561,7 @@ in
             };
             talk.talks = "${state}/pi/agentic-harness.pi/realms/other/steer";
           }
-        && lib.hasSuffix "--serves /home/someone/.config/mycelium/serves-other.json --health-socket %t/daemons/system.sock" otherNode
+        && lib.hasInfix "--serves /home/someone/.config/mycelium/serves-other.json --health-socket %t/daemons/system.sock" otherNode
         && !(apart.xdg.configFile ? "mycelium/serves-home.json")
         # The node reads its serves file only as it starts, so a switch
         # changing what it serves restarts it.
@@ -593,9 +602,9 @@ in
           macSocket = "${(mac links).xdg.stateHome}/daemons/system.sock";
         in
         lib.hasInfix (lib.concatStringsSep " " health) linuxNode
-        && lib.hasSuffix (lib.concatStringsSep " " health) otherNode
+        && lib.hasInfix (lib.concatStringsSep " " health) otherNode
         && lib.hasInfix "--health-socket ${macSocket}" (toString macNode)
-        && lib.hasSuffix "--health-socket ${macSocket}" (
+        && lib.hasInfix "--health-socket ${macSocket}" (
           toString (mac both).launchd.agents.mycelium-other.config.ProgramArguments
         )
         && !(lib.elem "--health-socket" (
@@ -606,6 +615,58 @@ in
             (linux (links // { healthSocket = "/run/elsewhere.sock"; }))
             .systemd.user.services.mycelium.Service.ExecStart
         )
+      );
+
+  # Each of a machine's nodes is given its realm's kit, the tools every
+  # session and run it starts finds first on its path: the shared ones, and
+  # whatever the machine adds, as one folder in the store, since its tools go
+  # first for agents too and nothing an agent writes may change them.
+  mycelium-carries-the-realms-kit =
+    holds "mycelium-carries-the-realms-kit"
+      "A machine's node, in its home realm or a further one, isn't given its realm's kit in the store last among its words, the kit lacks the shared tools or what the machine adds, it takes git or gh from an account that may wrap its own, or a machine emptying its kit gives one anyway."
+      (
+        let
+          kitted =
+            realm: words:
+            builtins.match ".* --kit ${builtins.storeDir}/[a-z0-9]{32}-mycelium-kit-${realm}" words != null;
+          shares =
+            kit:
+            lib.all (tool: lib.elem tool kit) [
+              pkgs.jq
+              pkgs.ripgrep
+              pkgs.websocat
+              self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default
+            ]
+            && !(lib.any (tool: lib.elem tool kit) [
+              pkgs.gh
+              pkgs.git
+              pkgs.git-lfs
+            ]);
+          adding = linux (
+            both
+            // {
+              kit = [ pkgs.hello ];
+              alsoJoins.other = {
+                links = [ "two" ];
+                kit = [ pkgs.cowsay ];
+              };
+            }
+          );
+        in
+        kitted "personal" linuxNode
+        && kitted "other" otherNode
+        && kitted "personal" (toString macNode)
+        && kitted "other" (toString (mac both).launchd.agents.mycelium-other.config.ProgramArguments)
+        && shares (linux links).jitsusama.mycelium.kit
+        && shares (linux both).jitsusama.mycelium.alsoJoins.other.kit
+        && shares adding.jitsusama.mycelium.kit
+        && lib.elem pkgs.hello adding.jitsusama.mycelium.kit
+        && lib.elem pkgs.cowsay adding.jitsusama.mycelium.alsoJoins.other.kit
+        && !(lib.elem pkgs.cowsay adding.jitsusama.mycelium.kit)
+        && !(lib.hasInfix "--kit" (
+          toString
+            (linux (links // { kit = lib.mkForce [ ]; })).systemd.user.services.mycelium.Service.ExecStart
+        ))
       );
 
   # A machine that declares what its node can't measure has it written where
