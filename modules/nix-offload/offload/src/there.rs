@@ -2558,17 +2558,19 @@ pub fn in_turn_nearby(command: &str) -> String {
          else holders=\"${{holders:+$holders, }}$pid\"; fi; \
          n=$((n + 1)); done; \
          if [ -n \"$turn\" ]; then sleep \"${{NIX_OFFLOAD_TURN_LOOK:-1}}\"; \
-         if [ \"$(readlink \"$turn\" 2>/dev/null)\" = \"$mine\" ]; then break; fi; turn=; fi; \
+         if [ \"$(readlink \"$turn\" 2>/dev/null)\" = \"$mine\" ]; then break; fi; \
+         turn=; continue; fi; \
          if [ \"$unmade\" -ge {NEARBY_AT_ONCE} ]; then \
          if [ -n \"$unmadebefore\" ]; then turn=none; break; fi; \
          unmadebefore=1; sleep 1; continue; fi; \
          unmadebefore=; \
-         if [ $((waited % ${{NIX_OFFLOAD_TURN_EVERY:-300}})) -eq 0 ]; then echo \"nix-offload: \
-         $here already runs as many builds sent to it as it takes at once, so this waits there \
-         for its turn, held in $turns by shells $holders\" >&2; fi; \
+         if [ $((waited % ${{NIX_OFFLOAD_TURN_EVERY:-300}})) -eq 0 ]; then also=; \
+         if [ \"$unmade\" -gt 0 ]; then also=\", with $unmade more it can't make\"; fi; \
+         echo \"nix-offload: $here already runs as many builds sent to it as it takes at once, \
+         so this waits there for its turn, held in $turns by shells $holders$also\" >&2; fi; \
          sleep 1; waited=$((waited + 1)); done; \
-         if [ -z \"$boot\" ]; then echo \"nix-offload: the boot of $here can't be read, so \
-         this builds without a turn\" >&2; \
+         if [ -z \"$boot\" ]; then echo \"nix-offload: the boot of $here can't be read from \
+         its boot_id or kern.bootsessionuuid, so this builds without a turn\" >&2; \
          elif [ \"$turn\" = none ]; then echo \"nix-offload: $turns on $here can't hold its turns, \
          so this builds without one\" >&2; fi; {command}"
     )
@@ -4997,7 +4999,8 @@ mod tests {
     /// What a run says when it can't read its boot to name a turn by.
     fn unbooted() -> String {
         format!(
-            "nix-offload: the boot of {} can't be read, so this builds without a turn\n",
+            "nix-offload: the boot of {} can't be read from its boot_id or \
+             kern.bootsessionuuid, so this builds without a turn\n",
             this_machine()
         )
     }
@@ -5373,8 +5376,10 @@ mod tests {
             let heard = told
                 .recv_timeout(Duration::from_secs(30))
                 .unwrap_or_else(|_| panic!("{shell} didn't wait again"));
+            let pid = std::process::id();
             assert!(
-                heard.contains("waits there for its turn"),
+                heard.contains("waits there for its turn")
+                    && heard.ends_with(&format!("by shells {pid}, {pid}")),
                 "{shell}: {heard}"
             );
             assert_eq!(
@@ -5540,7 +5545,10 @@ mod tests {
                 "{shell} built without the turn freed on its fourth look: {ran:?}"
             );
             let said = String::from_utf8_lossy(&ran.stderr);
-            assert!(!said.contains("without"), "{shell}: {said}");
+            assert!(
+                said.contains("waits there for its turn") && !said.contains("without"),
+                "{shell} didn't wait on its second look, or built without a turn: {said}"
+            );
         }
     }
 
@@ -5572,16 +5580,22 @@ mod tests {
             });
             told.recv_timeout(Duration::from_secs(30))
                 .unwrap_or_else(|_| panic!("{shell} never said it waited"));
-            let again = told.recv_timeout(Duration::from_millis(2500));
-            Command::new("kill")
+            let early = told.recv_timeout(Duration::from_millis(2500));
+            let later = told.recv_timeout(Duration::from_secs(30));
+            let killed = Command::new("kill")
                 .args(["-KILL", "--", &format!("-{}", waiting.id())])
                 .status()
                 .unwrap();
+            assert!(killed.success(), "{shell}'s run couldn't be ended");
             waiting.wait().unwrap();
             reading.join().unwrap();
             assert!(
-                again.is_err(),
-                "{shell} said it waited again within 3 s: {again:?}"
+                early.is_err(),
+                "{shell} said it waited again within 2.5 s: {early:?}"
+            );
+            assert!(
+                later.is_ok_and(|said| said.contains("waits there for its turn")),
+                "{shell} never said it waited again"
             );
         }
     }
@@ -5602,7 +5616,15 @@ mod tests {
                 r = running.display(),
                 s = seen.display()
             );
-            let runs: Vec<_> = (0..6).map(|_| taking_turn(shell, &build, &turns)).collect();
+            // Its look after taking a turn is widened, as a stall past it
+            // on a loaded builder can let an extra build in.
+            let sent = format!(
+                "NIX_OFFLOAD_TURN_LOOK=3; export NIX_OFFLOAD_TURN_LOOK; {}",
+                in_turn_nearby(&build)
+            );
+            let runs: Vec<_> = (0..6)
+                .map(|_| sent_with_turns(shell, &sent, &turns))
+                .collect();
             for run in runs {
                 let ran = ended(run);
                 assert_eq!(ran.status.code(), Some(0), "{shell}: {ran:?}");
@@ -5615,6 +5637,40 @@ mod tests {
             assert!(
                 at_once.iter().all(|n| *n <= NEARBY_AT_ONCE),
                 "{shell} built {at_once:?} at once"
+            );
+            for n in 1..=NEARBY_AT_ONCE {
+                assert_eq!(turn_holder(&turns, n), None, "{shell} left turn {n} held");
+            }
+        }
+    }
+
+    #[test]
+    fn a_run_waiting_beside_a_turn_it_cant_make_counts_it_apart_from_the_shells() {
+        let pid = std::process::id();
+        for shell in ["dash", "zsh"] {
+            let turns = tempfile::tempdir().unwrap();
+            fs::create_dir(turns.path().join("1")).unwrap();
+            held_turn(turns.path(), 2, &format!("{pid} {}", this_boot()));
+            let mut waiting = Command::new(shell)
+                .args(["-c", &in_turn_nearby("true")])
+                .env("NIX_OFFLOAD_TURNS", turns.path())
+                .process_group(0)
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let mut said = BufReader::new(waiting.stderr.take().unwrap());
+            let mut heard = String::new();
+            said.read_line(&mut heard).unwrap();
+            let killed = Command::new("kill")
+                .args(["-KILL", "--", &format!("-{}", waiting.id())])
+                .status()
+                .unwrap();
+            assert!(killed.success(), "{shell}'s run couldn't be ended");
+            waiting.wait().unwrap();
+            assert!(
+                heard.ends_with(&format!("by shells {pid}, with 1 more it can't make\n")),
+                "{shell}: {heard}"
             );
         }
     }
