@@ -392,7 +392,7 @@ fn run(how: &Run) -> Result<(), Failure> {
     }
 }
 
-/// Joel's GitHub sign-in, as the program `SIGN_IN_KEYRING` names prints
+/// Joel's sign-in to the site, as the program `SIGN_IN_KEYRING` names prints
 /// it, read each round so one renewed while it runs is read without a
 /// restart. None when it can't be run, fails or prints nothing; what it
 /// says otherwise is let go, so no part of a sign-in reaches the journal.
@@ -408,12 +408,12 @@ fn token() -> Option<String> {
     (out.status.success() && !token.is_empty()).then(|| token.to_owned())
 }
 
-/// Why GitHub didn't answer, as far as a round cares.
+/// Why the site didn't answer, as far as a round cares.
 enum Unread {
     /// What was asked for is gone, or not Joel's to read: the round goes
     /// on without it.
     Gone(String),
-    /// GitHub couldn't be asked now, its rate limit included: the round
+    /// The site couldn't be asked now, its rate limit included: the round
     /// is tried again whole.
     Failed(String),
 }
@@ -434,9 +434,9 @@ impl GitHub<'_> {
         self.ask(&url, query).map(|(said, _)| said)
     }
 
-    /// A whole list, page after page as GitHub's `Link` header names them,
-    /// so a long one isn't cut at its first hundred. A next page anywhere
-    /// but GitHub's own origin isn't asked, so Joel's sign-in goes nowhere
+    /// A whole list, page after page as the `Link` header names them, so a
+    /// long one isn't cut at its first hundred. A next page anywhere but
+    /// the site's own origin isn't asked, so Joel's sign-in goes nowhere
     /// else, and the round is tried again.
     fn all(&self, path: &str, query: &[(&str, &str)]) -> Result<Value, Unread> {
         let (mut list, mut next) = self.ask(&format!("{}{path}", self.origin), query)?;
@@ -448,7 +448,8 @@ impl GitHub<'_> {
                 return Err(Unread::Failed(why));
             }
             if pages == PAGES {
-                eprintln!("<4>{path} runs past {PAGES} pages, and the rest isn't read");
+                let name = self.name;
+                eprintln!("<4>{name}'s {path} runs past {PAGES} pages, and the rest isn't read");
                 break;
             }
             let (more, after) = self.ask(&url, &[])?;
@@ -459,7 +460,7 @@ impl GitHub<'_> {
         Ok(list)
     }
 
-    /// One GET of a URL on GitHub's origin: its answer, and the next page
+    /// One GET of a URL on the site's origin: its answer, and the next page
     /// when it's one of a list.
     fn ask(&self, url: &str, query: &[(&str, &str)]) -> Result<(Value, Option<String>), Unread> {
         let path = url.strip_prefix(self.origin).unwrap_or(url);
@@ -502,7 +503,7 @@ impl GitHub<'_> {
     }
 }
 
-/// Who Joel is on the site: as `--login` says, else as GitHub answers.
+/// Who Joel is on the site: as `--login` says, else as the site answers.
 fn who(github: &GitHub<'_>, how: &Run) -> Option<String> {
     if let Some(login) = &how.login {
         return Some(login.clone());

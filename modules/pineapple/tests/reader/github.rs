@@ -8,7 +8,8 @@
 //! list's later pages are read too. A site with no notifications is read
 //! by searching for what Joel opened, its keys its own, from far enough
 //! back that a search's lagging index misses nothing, and never for more
-//! repositories than its searches allow. A site of a company's own weighs
+//! repositories than its searches allow, and its journal names it, not
+//! GitHub, when it can't be read. A site of a company's own weighs
 //! no writer's standing; who may stop Joel on GitHub itself, where any
 //! account may comment, is in standing.rs.
 
@@ -428,13 +429,9 @@ fn github_a_site_is_searched_from_ten_minutes_before_its_last_round() {
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
-#[test]
-fn github_a_site_that_fails_is_named_in_the_journal_as_itself() {
-    let (origin, _) = answering_whole(|_, _| Answered {
-        status: 500,
-        headers: Vec::new(),
-        body: json!({"message": "Server Error"}),
-    });
+/// What the reader of the site "code" at `origin` says to its journal
+/// once it has said `failed`, or gives up waiting for it.
+fn journal_of_code_once(origin: &str, failed: &str) -> String {
     let home = home();
     let site = [
         "--site",
@@ -446,22 +443,53 @@ fn github_a_site_that_fails_is_named_in_the_journal_as_itself() {
         "--repo",
         "example/shop",
     ];
-    let failed = "<4>couldn't ask Code what changed: Code answered 500 for /search/issues";
-    let mut reading = github_reader(&home, &origin, &site);
+    let mut reading = github_reader(&home, origin, &site);
     let began = Instant::now();
     while !journal(&home).contains(failed) && began.elapsed() < PATIENCE {
         thread::sleep(Duration::from_millis(50));
     }
     reading.kill().expect("the reader stops");
     reading.wait().expect("the reader is gone");
-
     let said = journal(&home);
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+    said
+}
+
+#[test]
+fn github_a_site_that_answers_with_an_error_is_named_as_itself() {
+    let (origin, _) = answering_whole(|_, _| Answered {
+        status: 500,
+        headers: Vec::new(),
+        body: json!({"message": "Server Error"}),
+    });
+    let failed = "<4>couldn't ask Code what changed: Code answered 500 for /search/issues";
+    let said = journal_of_code_once(&origin, failed);
     assert!(
         said.contains(failed),
         "the site that failed is named: {said}"
     );
-    assert!(!said.contains("GitHub"), "no other site is blamed: {said}");
-    std::fs::remove_dir_all(&home).expect("the case's home goes");
+    assert!(
+        !said.contains("GitHub"),
+        "GitHub isn't named on this path: {said}"
+    );
+}
+
+#[test]
+fn github_a_site_that_cant_be_reached_is_named_as_itself() {
+    // A port taken and let go: nothing answers there, so it can't be reached.
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+    let origin = format!("http://{}", closed.local_addr().expect("its address"));
+    drop(closed);
+    let failed = "<4>couldn't ask Code what changed: couldn't reach Code:";
+    let said = journal_of_code_once(&origin, failed);
+    assert!(
+        said.contains(failed),
+        "the site that failed is named: {said}"
+    );
+    assert!(
+        !said.contains("GitHub"),
+        "GitHub isn't named on this path: {said}"
+    );
 }
 
 #[test]
