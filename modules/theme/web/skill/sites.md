@@ -34,6 +34,27 @@ that is awesome" (2026-11-11).
   it over, so the builder never reads it half written; a record it can't
   read keeps the last build. A turned-down or settled site moves to the
   home's Kept for Reference, below the rest.
+- **A live site's row is declared with it.** For a live site (system,
+  network, forage, mycelium, web or code, on a machine that serves it),
+  what the home says of it comes from `jitsusama.local-sites.rows` in
+  core's `modules/local-sites/home.nix`, beside its mount, and stands in
+  for its row in `sites.json`. Its words change there, as a change to
+  core, and reach the home at the next switch; an edit to its
+  `sites.json` row no longer reaches the home. That row stays for now,
+  since the homes' readers still read `sites.json`, so a change to a live
+  site's homes is made in both. A document's row in `sites.json` is still
+  the whole job.
+- **A document on the kit.** A document takes its keys and its theme
+  switch from the kit, never a script file of its own (the lines in its
+  head that set the kept look before the first paint stay): it loads
+  `<link rel="stylesheet" href="/local-sites/kit/switch.css">` and
+  `<script type="module" src="/local-sites/kit/document.js"></script>`,
+  and no `site.js`. Its parts are `.part` sections, each opening with an
+  h2; its list of keys is the dialog `#keys`; j, k and ? where its header
+  shows them, `header .keys kbd`, can be pressed as well as typed; and its
+  switch is the kit's radios (`craft.md`, Dark, Light and the Switch). So
+  every document learns what the kit does next, and the home names each
+  one still loading a script of its own as it builds.
 - **Every page has a way home.** Each page opens with one quiet strip,
   `<nav class="sites-strip">` from `base.css`: All your sites, linking the
   home, then the page's kind, as of when, and what it asks of him. Built

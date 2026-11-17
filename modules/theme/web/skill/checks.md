@@ -266,8 +266,14 @@ On a throttled middling phone (4 times slower CPU, a fast 4G network):
   back and compare it; open the live page and look, never trusting the
   publish's own report.
 - **A local site is on its home** (`sites.md`, Where a Site Lives): its row
-  is in `sites.json`, the home was rebuilt from it, and every page opens
-  with the strip whose first link goes home and whose ask is the row's.
+  is in `sites.json`, or a live site's in `home.nix`, the home was rebuilt
+  from it, and every page opens with the strip whose first link goes home;
+  a document's strip asks what its row asks, and a live site's strip is
+  its own build's. A document's head links the kit's `switch.css` and
+  loads its `document.js`, and no script file of its own. Read the head
+  for the kit's two, since the home's build names only a document loading
+  a script of its own, in the line its service prints (`journalctl --user
+  -u local-sites-home`), never one missing the kit.
 
 ## Looking
 
