@@ -33,7 +33,8 @@
 # entry takes its place, hidden, since there's no window to open, and opens
 # Tuple's links. From v2026_11_16.0 the daemon writes its own over this one,
 # so the service keeps it from the folder, and should a daemon started
-# elsewhere write it all the same, tuple-entry puts this one back. xdg-open finds the entry by what it says it opens, but gio,
+# elsewhere write it all the same, tuple-entry puts this one back.
+# xdg-open finds the entry by what it says it opens, but gio,
 # and the desktop's portal that programs hand links to, find an app in a
 # folder only through the folder's index or a list of defaults, and this
 # folder has neither. So the entry is named the default in niri's own list,
@@ -117,14 +118,28 @@ let
     mv -f log.txt log.1.txt
   '';
 
-  # Puts our entry back when it no longer reads as ours, as after a daemon
-  # started outside tuple.service writes its own; a link already ours is
-  # left alone, so its own putting back doesn't set it off again.
+  # Puts our entry back when it no longer reads as ours, hidden and opening
+  # tuple: links, as after a daemon started outside tuple.service writes
+  # its own. Any generation's entry reads as ours, so an old one's unit
+  # never takes back a new one home-manager has just linked, and its own
+  # putting back doesn't set it off again. It links into home-manager's
+  # generation, as home-manager does, so it's home-manager's to replace or
+  # clean up; this generation's entry only while there's none.
   ours = config.home.file."${entries}/tuple.desktop".source;
+  generation = "${config.xdg.stateHome}/home-manager/gcroots/current-home/home-files";
+  inGeneration = "${lib.removePrefix config.home.homeDirectory entries}/tuple.desktop";
   putsBack = pkgs.writeShellScript "tuple-puts-its-entry-back" ''
     entry=${lib.escapeShellArg "${entries}/tuple.desktop"}
-    ${lib.getExe' pkgs.diffutils "cmp"} -s "$entry" ${ours} && exit 0
-    ${pkgs.coreutils}/bin/ln -sfn ${ours} "$entry"
+    grep=${lib.getExe pkgs.gnugrep}
+    if "$grep" -qx NoDisplay=true "$entry" \
+      && "$grep" -qx 'MimeType=x-scheme-handler/tuple;' "$entry"; then
+      exit 0
+    fi
+    files=$(${pkgs.coreutils}/bin/readlink -f ${lib.escapeShellArg generation})
+    linked=$files${lib.escapeShellArg inGeneration}
+    [ -f "$linked" ] || linked=${ours}
+    ${pkgs.coreutils}/bin/ln -sfn "$linked" "$entry"
+    echo "Tuple's own desktop entry was in the place of ours; ours is back"
   '';
 in
 {
@@ -227,10 +242,15 @@ in
   systemd.user.paths.tuple-entry = {
     Unit.Description = "Watches that Tuple's desktop entry stays ours";
     Path.PathChanged = entries;
-    Install.WantedBy = [ "default.target" ];
+    Install.WantedBy = [ "paths.target" ];
   };
   systemd.user.services.tuple-entry = {
-    Unit.Description = "Puts our Tuple desktop entry back";
+    Unit = {
+      Description = "Puts our Tuple desktop entry back";
+      # However often the folder changes, the watch is never stopped for
+      # starting it too often.
+      StartLimitIntervalSec = 0;
+    };
     Service = {
       Type = "oneshot";
       ExecStart = "${putsBack}";
