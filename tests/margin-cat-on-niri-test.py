@@ -1166,22 +1166,32 @@ def test_a_pointer_resting_on_the_cat_leans_it_in(shell: Shell) -> None:
 def test_a_click_beside_the_cat_reaches_the_window(shell: Shell) -> None:
     """The cat's layer spans the screen, yet only its cells take the pointer.
 
-    So a click on the window beside its column focuses that window: the cat never takes a
-    click Joel meant for his work.
+    So a click on the window beside it focuses that window: the cat never takes a click Joel
+    meant for his work. It sits on a floating window, where its layer is over the windows:
+    on a tiled one it's under them, where the window would take the click with no mask at
+    all, and niri's focus following the pointer would pass the case on the pointer's move.
     """
-    since = shell.mark()
     beside = shell.opened("a column clicked into past the cat")
-    sat_on = shell.opened("a column the cat sits on as the pointer passes")
-    seat(shell, sat_on, since)
-    # Where the window beside is now, since niri scrolled the view as the cat's column opened.
+    since = shell.mark()
+    floated = shell.opened("a floating window the cat sits on as the pointer passes")
+    shell.as_account(f"niri msg action toggle-window-floating --id {floated['id']}")
     now = next(window for window in shell.windows() if window["id"] == beside["id"])
     place = now["layout"]["tile_pos_in_workspace_view"]
+    # Clear of the column's top left corner, which the pointer goes to.
+    shell.as_account(
+        f"niri msg action move-floating-window --id {floated['id']}"
+        f" -x {round(place[0] + 4 * NEAR)} -y {round(place[1] + 120)}"
+    )
+    sits_over(shell, floated, since)
+    on_layer(shell, "Top")
     point(shell, place[0] + NEAR, place[1] + NEAR)
     shell.as_account(f"{os.environ['WLRCTL']} pointer click left")
     deadline = time.monotonic() + LAYERED
     while json.loads(shell.as_account("niri msg --json focused-window"))["id"] != beside["id"]:
         assert time.monotonic() < deadline, "a click beside the cat never reached the window"
         time.sleep(POLL)
+    for window in (floated, beside):
+        shell.close(window)
 
 
 def lying(said: str) -> Json | None:
