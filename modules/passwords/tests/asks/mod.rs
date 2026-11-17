@@ -15,6 +15,7 @@ use std::time::Duration;
 use crate::common::{Client, RELEASED_VALUE, Running, stored_folder, until};
 use serde_json::{Value, json};
 
+mod docker;
 mod grants;
 mod history;
 mod watch;
@@ -578,7 +579,7 @@ fn a_released_command_is_kept_from_what_the_fence_hides() {
             && !copied.contains("npm-made-up-token"),
         "the copy of ~/.npmrc: {copied}"
     );
-    holds(&args, &[ro, null, &home.join(".docker/config.json")]);
+    let docker = holds(&args, &[ro, null, &home.join(".docker/config.json")]);
     assert!(
         !args
             .iter()
@@ -587,7 +588,7 @@ fn a_released_command_is_kept_from_what_the_fence_hides() {
     );
     let tree = &running.folder;
     assert!(
-        holds(&args, &[Path::new("--bind"), tree, tree]) < first,
+        holds(&args, &[Path::new("--bind"), tree, tree]) < first.min(docker),
         "what the fence hides was hidden before the tree was bound writable: {args:?}"
     );
 }
