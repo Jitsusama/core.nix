@@ -120,12 +120,14 @@ untooled() {
 has "started pi"
 follows --mode rpc
 untooled
-[ "$(loaded)" = 3 ] || fail "with no launcher, it loaded more than the machine named and the digest"
+extensions=$(loaded)
+[ "$extensions" = 3 ] || fail "with no launcher, it loaded more than the machine named and the digest"
 : > "$said"
 "$on_claude" --no-launcher
 has "started pi-claude"
 untooled
-[ "$(loaded)" = 1 ] || fail "with no launcher, it loaded more than the digest"
+extensions=$(loaded)
+[ "$extensions" = 1 ] || fail "with no launcher, it loaded more than the digest"
 
 : > "$said"
 env -i PATH="$work/bin" SAID="$said" "$on_pi"

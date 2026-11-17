@@ -62,10 +62,11 @@ EOF
 *) ;;
 esac
 
-launcher=$LAUNCHER_TOOL
+launcher=
 if [ "${1:-}" = --no-launcher ]; then
-  launcher=
   shift
+elif [ -n "$LAUNCHER_TOOL" ]; then
+  launcher=$LAUNCHER_TOOL
 fi
 
 ahead=
