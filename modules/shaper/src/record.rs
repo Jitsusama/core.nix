@@ -263,14 +263,27 @@ impl Asking {
     /// The pool chosen from those heard, or none to keep `current`: a
     /// choice too few answer, when the pool there is has more, says the
     /// network went quiet while it was asked, not that its pool went.
+    /// Once `kept` already, the answer is taken, since the network
+    /// answering the same five minutes on is the network as it is.
     fn chosen(
         &self,
         current: &[(&'static str, Ipv4Addr)],
+        kept: bool,
     ) -> Option<Vec<(&'static str, Ipv4Addr)>> {
         let chosen = pool(&self.heard);
-        let few = operators(&chosen) < ENOUGH && operators(&chosen) < operators(current);
+        let few = !kept && operators(&chosen) < ENOUGH && operators(&chosen) < operators(current);
         (!few).then_some(chosen)
     }
+}
+
+/// Whether to ask for a new pool, `since` the last was chosen or kept:
+/// when one of it keeps missing, `failing`, or when it's due, an hour on,
+/// or five minutes on for a pool `empty` or `kept`.
+fn asks_again(empty: bool, kept: bool, failing: bool, since: Duration) -> bool {
+    let due = if empty || kept { EMPTY_REPOOL } else { REPOOL };
+    // A kept pool's misses don't ask again before then, or a network
+    // that stays dark would be asked every few seconds.
+    (failing && !kept) || since > due
 }
 
 /// The pool's line in the journal.
@@ -449,13 +462,24 @@ impl Recorder<'_> {
         }
     }
 
+    /// Writes the pool in use, naming its link, so a shaper started
+    /// mid-stay (src/live.rs) learns within the hour which link it holds,
+    /// a kept pool's choice included.
+    fn write_pool(&mut self) {
+        let mut line = pool_line(&self.reflectors);
+        line["link"] = json!(self.link);
+        self.journal.write(&line);
+    }
+
     /// Choose the pool again when one of it keeps missing or an hour has
     /// passed; an empty pool asks again only every five minutes, so a
     /// network that answers no timestamps isn't flooded with them. The old
-    /// pool is probed until the new is chosen.
+    /// pool is probed until the new is chosen. A choice too few answer
+    /// keeps the old pool, which then asks again in five minutes rather
+    /// than on its misses, and takes that second answer whatever it is.
     fn repool(&mut self, now: Instant) {
         if let Some(asking) = self.asking.take_if(|asking| asking.done(now)) {
-            let Some(chosen) = asking.chosen(&self.reflectors) else {
+            let Some(chosen) = asking.chosen(&self.reflectors, self.kept) else {
                 if !self.kept {
                     eprintln!(
                         "recording {} with the {} reflectors it had, since too few answered \
@@ -467,12 +491,12 @@ impl Recorder<'_> {
                 self.kept = true;
                 self.pooled = now;
                 self.misses.clear();
+                self.write_pool();
                 return;
             };
-            self.kept = false;
             // Said as it changes, not every five minutes on a network
-            // that answers no timestamps.
-            if chosen != self.reflectors || !self.chosen {
+            // that answers no timestamps, and as a keep ends.
+            if chosen != self.reflectors || !self.chosen || self.kept {
                 eprintln!(
                     "recording {} with {} reflectors from {} operators",
                     self.link,
@@ -480,27 +504,17 @@ impl Recorder<'_> {
                     operators(&chosen)
                 );
             }
+            self.kept = false;
             self.reflectors = chosen;
             self.chosen = true;
             self.pooled = now;
             self.misses.clear();
-            // Each pool names its link, so a shaper started mid-stay
-            // (src/live.rs) learns within the hour which link it holds.
-            let mut line = pool_line(&self.reflectors);
-            line["link"] = json!(self.link);
-            self.journal.write(&line);
+            self.write_pool();
             return;
         }
         let failing = self.misses.values().any(|m| *m >= MISSES);
-        let due = if self.reflectors.is_empty() || self.kept {
-            EMPTY_REPOOL
-        } else {
-            REPOOL
-        };
-        // A kept pool's misses don't ask again before then, or a network
-        // that stays dark would be asked every few seconds.
-        let failing = failing && !self.kept;
-        if self.asking.is_none() && (failing || self.pooled.elapsed() > due) {
+        let empty = self.reflectors.is_empty();
+        if self.asking.is_none() && asks_again(empty, self.kept, failing, self.pooled.elapsed()) {
             self.ask(now);
         }
     }
@@ -713,14 +727,71 @@ mod tests {
         );
     }
 
-    // On 17 November the network went dark for 3 s at 08:55:10, a choice
-    // asked inside it heard nobody, and six reflectors that answered again
-    // a moment later were replaced by none for five minutes.
+    // On 17 November the network went dark for half a minute from 08:55:05,
+    // a choice asked inside it heard nobody, and six reflectors that
+    // answered again once it was back were replaced by none until 09:00.
     #[test]
     fn a_choice_nobody_answers_keeps_the_pool() {
         let current = vec![("Quad9", at(9)), ("AdGuard", at(1)), ("Google", at(8))];
         let asked = asking(Instant::now());
-        assert_eq!(asked.chosen(&current), None);
+        assert_eq!(asked.chosen(&current, false), None);
+    }
+
+    // A pool that really lost its operators would otherwise be kept for
+    // the rest of the stay, its dead reflectors never replaced.
+    #[test]
+    fn a_second_short_choice_in_a_row_is_taken() {
+        let current = vec![("Quad9", at(9)), ("AdGuard", at(1)), ("Google", at(8))];
+        let mut asked = asking(Instant::now());
+        asked.answered(1, Some(at(9)), true);
+        assert_eq!(asked.chosen(&current, true), Some(vec![("Quad9", at(9))]));
+    }
+
+    // Fewer operators than the pool had, but enough to vote with, is a
+    // pool that changed, not a network gone quiet.
+    #[test]
+    fn a_choice_enough_answer_replaces_a_larger_pool() {
+        let current = vec![
+            ("Quad9", at(9)),
+            ("AdGuard", at(1)),
+            ("Google", at(8)),
+            ("Cloud", at(66)),
+        ];
+        let mut asked = asking(Instant::now());
+        asked.heard = vec![("Quad9", at(9)), ("AdGuard", at(1)), ("Google", at(8))];
+        assert_eq!(
+            asked.chosen(&current, false),
+            Some(vec![
+                ("Quad9", at(9)),
+                ("AdGuard", at(1)),
+                ("Google", at(8))
+            ])
+        );
+    }
+
+    #[test]
+    fn a_kept_pool_is_asked_again_in_five_minutes_not_on_its_misses() {
+        let minute = Duration::from_secs(60);
+        assert!(
+            !asks_again(false, true, true, minute),
+            "a kept pool's misses asked again within the minute"
+        );
+        assert!(
+            asks_again(false, true, false, EMPTY_REPOOL + minute),
+            "a kept pool waited past five minutes"
+        );
+        assert!(
+            asks_again(false, false, true, minute),
+            "a chosen pool's misses didn't ask again"
+        );
+        assert!(
+            !asks_again(false, false, false, EMPTY_REPOOL + minute),
+            "a chosen pool was asked again before the hour"
+        );
+        assert!(
+            asks_again(true, false, false, EMPTY_REPOOL + minute),
+            "an empty pool waited past five minutes"
+        );
     }
 
     #[test]
@@ -728,7 +799,7 @@ mod tests {
         let current = vec![("Quad9", at(9)), ("AdGuard", at(1)), ("Google", at(8))];
         let mut asked = asking(Instant::now());
         asked.answered(1, Some(at(9)), true);
-        assert_eq!(asked.chosen(&current), None);
+        assert_eq!(asked.chosen(&current, false), None);
     }
 
     #[test]
@@ -737,7 +808,7 @@ mod tests {
         let mut asked = asking(Instant::now());
         asked.heard = vec![("Quad9", at(9)), ("AdGuard", at(1)), ("Cloud", at(66))];
         assert_eq!(
-            asked.chosen(&current),
+            asked.chosen(&current, false),
             Some(vec![
                 ("Quad9", at(9)),
                 ("AdGuard", at(1)),
@@ -751,9 +822,9 @@ mod tests {
     #[test]
     fn a_choice_with_no_pool_takes_whoever_answered() {
         let mut asked = asking(Instant::now());
-        assert_eq!(asked.chosen(&[]), Some(vec![]));
+        assert_eq!(asked.chosen(&[], false), Some(vec![]));
         asked.answered(1, Some(at(9)), true);
-        assert_eq!(asked.chosen(&[]), Some(vec![("Quad9", at(9))]));
+        assert_eq!(asked.chosen(&[], false), Some(vec![("Quad9", at(9))]));
     }
 
     #[test]
