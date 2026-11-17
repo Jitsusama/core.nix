@@ -650,6 +650,13 @@ holds each lock to the manifests it reaches by path, as cargo locks them:
 an optional dependency of a crate outside the workspace may be locked or
 not, since it follows features the rule doesn't read.
 
+A ruff rule switched off for some files only waves the next finding
+through once nothing there breaks it. `every-ruff-exception-hides-a-finding`
+runs ruff over core with each per-file exception in ruff.toml taken off in
+turn, and fails one whose code raises nothing more without it, keeping one
+of two that hide the same finding. It reads core's tree alone, though
+repositories built on core lint with the same config.
+
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and
 enrolled, the disk is bound to the TPM and a PIN, the passphrase is wiped,

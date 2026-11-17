@@ -15,10 +15,12 @@ with its pattern and code. Two that hide the same findings each raise nothing
 when taken off alone, so the failing ones are taken off in turn, each on top of
 those before, and one whose removal then raises findings stays: taking off all
 that fail leaves every finding hidden that was. A config keeping exceptions in
-a table this doesn't read fails too, rather than passing on what it skipped.
-Every failure is printed before the check exits 1.
-The config's own ignore list isn't read: its rules are off everywhere, most
-because they contradict another rule or the formatter.
+a table this doesn't read, or extending another config, fails too, rather than
+passing on what it skipped, and so does ruff failing to check. Every failure is
+printed before the check exits 1. The config's own ignore list isn't judged,
+since its rules are off everywhere, most because they contradict another rule
+or the formatter; it stays ignored in every run, as --select alone would
+switch them back on, so an exception for one of them hides nothing.
 """
 
 import json
@@ -40,11 +42,26 @@ class RuffFailedError(Exception):
     """Ruff couldn't read the tree or the config, saying why."""
 
 
-def findings(tree: Path, config: Path, code: str, ignores: dict[str, list[str]]) -> int:
+class Rules:
+    """A config's per-file exceptions, and the rules it ignores everywhere."""
+
+    def __init__(self, read: dict[str, Any]) -> None:
+        """Take them from a config as read."""
+        lint = read.get("lint", {})
+        self.ignores: dict[str, list[str]] = lint.get("per-file-ignores", {})
+        self.ignored: list[str] = [*read.get("ignore", []), *lint.get("ignore", [])]
+
+
+def findings(
+    tree: Path, config: Path, code: str, rules: Rules, ignores: dict[str, list[str]]
+) -> int:
     """Count what the ruff on the PATH finds of one code over the tree, with these exceptions."""
     table = ", ".join(
         f"{json.dumps(pattern)} = {json.dumps(codes)}" for pattern, codes in ignores.items()
     )
+    # --select replaces the config's selection, its ignore list with it, so
+    # that list is given again beside it.
+    ignored = ["--ignore", ",".join(rules.ignored)] if rules.ignored else []
     ran = subprocess.run(
         [
             "ruff",
@@ -59,6 +76,7 @@ def findings(tree: Path, config: Path, code: str, ignores: dict[str, list[str]])
             f"lint.per-file-ignores = {{{table}}}",
             "--select",
             code,
+            *ignored,
             ".",
         ],
         cwd=tree,
@@ -93,13 +111,16 @@ def unread(read: dict[str, Any]) -> list[str]:
     return named
 
 
-def stale(tree: Path, config: Path, ignores: dict[str, list[str]]) -> list[tuple[str, str]]:
+def stale(tree: Path, config: Path, rules: Rules) -> list[tuple[str, str]]:
     """Give each exception that can go, as no finding it hides is left unhidden without it."""
+    ignores = rules.ignores
+    # Taken once for every code, so a prefix and one of its rules on one
+    # pattern can't both go.
     taken: set[tuple[str, str]] = set()
     for code in sorted({code for codes in ignores.values() for code in codes}):
-        held = findings(tree, config, code, ignores)
+        held = findings(tree, config, code, rules, without(ignores, taken))
         for entry in ((pattern, code) for pattern, codes in ignores.items() if code in codes):
-            if findings(tree, config, code, without(ignores, taken | {entry})) == held:
+            if findings(tree, config, code, rules, without(ignores, taken | {entry})) == held:
                 taken.add(entry)
     return [entry for entry in ((p, c) for p, cs in ignores.items() for c in cs) if entry in taken]
 
@@ -111,24 +132,25 @@ def main() -> None:
     except ValueError:
         sys.exit("usage: every-ruff-exception-hides-a-finding TREE CONFIG")
     read = tomllib.loads(config.read_text())
-    ignores: dict[str, list[str]] = read.get("lint", {}).get("per-file-ignores", {})
-    said = [
-        f"{table} holds exceptions this doesn't read: move them to lint.per-file-ignores."
-        for table in unread(read)
-    ]
-    try:
-        idle = stale(tree, config, ignores)
-    except RuffFailedError as failed:
-        sys.exit(f"ruff couldn't check {tree} with {config.name}:\n{failed}")
-    said += [
-        f"{code} in {pattern} hides no finding another exception doesn't: take it off."
-        for pattern, code in idle
-    ]
+    rules = Rules(read)
+    said = [f"{table} isn't read: move it to lint.per-file-ignores." for table in unread(read)]
+    if "extend" in read:
+        said.append("extend isn't read: fold the config it names in.")
     for failure in said:
         print(f"{config.name}: {failure}", file=sys.stderr)
-    total = sum(len(codes) for codes in ignores.values())
+    try:
+        idle = stale(tree, config, rules)
+    except RuffFailedError as failed:
+        sys.exit(f"ruff couldn't check {tree} with {config.name}:\n{failed}")
+    for pattern, code in idle:
+        print(
+            f"{config.name}: {code} in {pattern} hides no finding another exception doesn't:"
+            " take it off.",
+            file=sys.stderr,
+        )
+    total = sum(len(codes) for codes in rules.ignores.values())
     print(f"{total - len(idle)} of {total} per-file exceptions hide a finding.")
-    sys.exit(1 if said else 0)
+    sys.exit(1 if said or idle else 0)
 
 
 if __name__ == "__main__":

@@ -8,8 +8,9 @@ it off, and nothing new goes on. `every-lock-agrees-with-its-manifests` and
 `every-ruff-exception-hides-a-finding` have no list, since nothing broke them
 when they came in. `checks.nix` runs all twelve on core itself.
 `every-ruff-exception-hides-a-finding` keeps its planted tree's config in
-`every-ruff-exception-hides-a-finding-planted.toml`, and first sees itself fail
-there.
+`every-ruff-exception-hides-a-finding-planted.toml` and a config it must refuse
+in `every-ruff-exception-hides-a-finding-refused.toml`, and first sees itself
+fail on both.
 `daemons-agree` reads an evaluated account's units rather than the files
 alone, so it's given a graphical machine's account too, and runs on Linux.
 `commands-agree` runs each command on the terminal kit for its help, so it's
@@ -18,6 +19,9 @@ reads the scripts Nix wrappers build as well as the crates' programs.
 Every rule but `every-ruff-exception-hides-a-finding` is also given to other
 repositories built on core, through `core.lib` in `flake.nix`, with a waiting
 list of their own; they lint with core's ruff.toml, which that one reads.
+It reads core's tree alone, so an exception it tells you to take off may still
+hide a finding in theirs, as `*-test.py` and `*-vm-test.py` match files
+anywhere: such a removal shows in their treefmt check once they take core.
 
 | Rule                                             | Holds                                                         |
 | ------------------------------------------------ | ------------------------------------------------------------- |

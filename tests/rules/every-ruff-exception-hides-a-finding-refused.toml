@@ -1,0 +1,14 @@
+# A ruff config every-ruff-exception-hides-a-finding.nix plants for the rule to
+# refuse rather than judge: it must say the table it doesn't read and the config
+# it extends, then that ruff couldn't check, as the check's expected lines say.
+extend = "base.toml"
+
+[lint]
+select = ["F"]
+
+[lint.extend-per-file-ignores]
+"a.py" = ["F401"]
+
+[lint.per-file-ignores]
+# No rule has this code, so ruff refuses the config.
+"b.py" = ["NOPE1"]
