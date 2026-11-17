@@ -945,7 +945,31 @@ mod tests {
     }
 
     #[test]
-    fn a_search_lists_the_listed_first_then_names_then_addresses() {
+    fn a_search_ranks_as_the_shell_does_the_better_first_heard_when_or_not() {
+        let mut book = Book::of(&["tuple".to_owned()]);
+        // Fuzzy.js scores "ada" 84 in "McAda Ray", at a capital inside a
+        // word, 88 in "Adams", which runs on past it, and 96 in "Ada".
+        book.take("tuple", tuple("mc@example.com", 1, "McAda Ray", false));
+        book.take("tuple", tuple("adams@example.com", 2, "Adams", true));
+        book.take("tuple", tuple("ada@example.com", 3, "Ada", false));
+        let keys: Vec<_> = book
+            .search("ada", 10)
+            .iter()
+            .map(|record| record.key.clone())
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "person:adams@example.com",
+                "person:ada@example.com",
+                "person:mc@example.com"
+            ]
+        );
+        assert!(book.search("  ", 10).is_empty());
+    }
+
+    #[test]
+    fn a_search_lists_the_listed_first_then_the_best_found_by_any_text() {
         let mut book = Book::of(&["tuple".to_owned()]);
         book.take("tuple", tuple("dale@example.com", 1, "Ada's Friend", false));
         book.take("tuple", tuple("ada.k@example.com", 2, "Kim", false));
@@ -960,11 +984,13 @@ mod tests {
         };
         assert_eq!(
             keys(10),
+            // Kim's address finds them as well as the others' names do
+            // (96 each), so they're in the order heard.
             [
                 "person:x@example.com",
                 "person:dale@example.com",
-                "person:eli@example.com",
-                "person:ada.k@example.com"
+                "person:ada.k@example.com",
+                "person:eli@example.com"
             ]
         );
         assert_eq!(keys(2).len(), 2);
