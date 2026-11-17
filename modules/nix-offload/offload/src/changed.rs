@@ -770,7 +770,7 @@ fn left_after(pid: u32, longest: Duration) -> Clock {
 /// `there` builds anything: this same program, so it waits for a builder,
 /// sends the tree and journals as any `there` does.
 pub fn building(folder: &Path, system: &str, checks: &[String]) -> Command {
-    let mut command = Command::new("/proc/self/exe");
+    let mut command = crate::again();
     command
         .args(["there", "-L", "--keep-going"])
         .arg(folder)
