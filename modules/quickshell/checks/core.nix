@@ -488,8 +488,8 @@ in
   # and a daemon's changes are said presented by place, and they and keys
   # with where their time went, and a closing makes again only the spots of
   # things whose stamp moved, as tests/pacing.qml
-  # holds launcher/Pacing.js, launcher/Presented.js, launcher/Spots.js and
-  # launcher/Wanted.js to it in Qt's own engine.
+  # holds launcher/Pacing.js, launcher/Presented.js, launcher/Spots.js,
+  # launcher/Thread.js and launcher/Wanted.js to it in Qt's own engine.
   the-launcher-paces-its-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -502,6 +502,7 @@ in
       cp ${../launcher/Pacing.js} Pacing.js
       cp ${../launcher/Presented.js} Presented.js
       cp ${../launcher/Spots.js} Spots.js
+      cp ${../launcher/Thread.js} Thread.js
       cp ${../launcher/Wanted.js} Wanted.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

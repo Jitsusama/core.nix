@@ -8,6 +8,7 @@
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "launcher/Thread.js" as Thread
 import "launcher/Trials.js" as Trials
 
 Scope {
@@ -72,7 +73,8 @@ Scope {
 
     // One key's search and the time to the frame that drew it, and what the
     // search spent its time on, and then `frame`, how long it waited for the
-    // frame that drew it and how long drawing it took. A key slow enough to
+    // frame that drew it and how long drawing it took, and last what the
+    // shell's thread did while it searched. A key slow enough to
     // feel is said in the journal too, with what was typed, so what's slow
     // can be read as Joel types. Nothing asked for, such as a password, is
     // ever timed.
@@ -88,7 +90,8 @@ Scope {
                     + `${parts.waited ? `, waiting ${parts.waited} on answers${behind(parts)}`
                         : ""})` : "")
                 + (frame ? `, then ${frame.waiting} waiting for its frame and ${frame.drawing}`
-                    + " drawing it" + drawingApart(frame) + collecting(frame, drawn) : ""));
+                    + " drawing it" + drawingApart(frame) + collecting(frame, drawn)
+                    + Thread.said(searched, frame.thread, "its searching") : ""));
     }
 
     // How much of the key, from its being heard to its frame, Qt's

@@ -408,21 +408,6 @@ function feltTicked(felt, now, pace, clocks = {}) {
             : felt.stallThread };
 }
 
-// What the shell's thread did in an opening's longest stall, said last:
-// what it ran, what it waited for a CPU behind the machine's other work,
-// and what it slept, on the render thread, the disk or a page; or nothing
-// when there was no stall.
-function threadSaid(stall, inStall) {
-    const all = Math.round(stall);
-    if (all < 1) {
-        return "";
-    }
-    const ran = Math.round(inStall.ran);
-    const waited = Math.round(inStall.waited);
-    return `; its thread ran ${ran} ms of the stall, waited ${waited} for a CPU and slept`
-        + ` ${Math.max(0, all - ran - waited)}`;
-}
-
 // What the collector took of an opening, in its longest stall and in all,
 // said after the stall's parts, or nothing when it took under a
 // millisecond.
