@@ -4602,8 +4602,8 @@ mod tests {
         });
         let (kept, hold) = kept;
         assert!(
-            hold["revert_again"] == true && hold["revert_commit"].is_null(),
-            "a hold left mid-comparison doesn't say to revert again: {hold}"
+            hold["cut"] == true && hold.get("revert_again").is_none(),
+            "a hold left mid-comparison doesn't say it was cut, for its kept job: {hold}"
         );
         assert!(
             took < Duration::from_secs(5),
@@ -4616,42 +4616,39 @@ mod tests {
     }
 
     #[test]
-    fn a_macs_job_whose_test_is_held_reverts_nothing_again() {
-        // A net leaving mid-comparison keeps the Mac's job, and its hold
-        // says to revert again, which the next round does; the job itself
-        // reverting too would land a second revert over the first.
-        let state = state("mac-held");
-        let check = crate::macs::check("s");
+    fn a_search_whose_revert_a_leave_cut_settles_again() {
+        // A net leaving mid-comparison keeps the search's job, with a hold
+        // on its test whose revert never landed; dropping the job as held
+        // would leave switches held with no revert and nobody told.
+        let state = state("search-cut");
         state
             .set_hold(&json!({
-                "test": check, "bad": "m", "bad_pr": 1, "revert_pr": null,
-                "revert_commit": null, "revert_again": true, "failed_at": "m", "at": now(),
+                "test": "vm-a", "bad": "h", "bad_pr": 1, "revert_pr": null,
+                "revert_commit": null, "cut": true, "failed_at": "h", "at": now(),
             }))
             .unwrap();
         let world = Stand {
-            head: "m".into(),
-            merges: names("m"),
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
             ..Stand::default()
         }
-        .exits("m", &check, &[1, 1]);
+        .exits("h", "vm-a", &[1, 1]);
         let settler = Settler::new(&world, &state);
-        settler.hand(Job::Mac {
-            merge: "m".into(),
-            check: check.clone(),
-            since: now(),
-        });
+        settler.hand(search_for("vm-a"));
         std::thread::scope(|scope| {
             settler.start(scope);
             settler.close();
         });
-        assert!(
-            world.reverted.lock().unwrap().is_empty(),
-            "a Mac job whose test is held reverted again: {:?}",
-            world.reverted.lock().unwrap()
+        assert_eq!(
+            *world.reverted.lock().unwrap(),
+            names("h"),
+            "a search whose revert a leave cut was dropped as held"
         );
+        let hold = state.hold().unwrap_or_default();
         assert!(
-            state.settling().is_empty(),
-            "a Mac job whose test is held was kept"
+            hold["cut"] != true,
+            "the search settled again kept the cut hold: {hold}"
         );
     }
 
