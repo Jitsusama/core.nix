@@ -154,7 +154,7 @@ mod tests {
         let clear = written(
             "clear",
             r#"[{"heard": {"up_limit": 10800,
-               "why": "Upload 10.8 Mbit/s of 12.0 Mbit/s, the line's rate: clear for 3 min."}}]"#,
+               "why": "Upload 10.8 Mb/s of 12.0 Mb/s, the line's rate: clear for 3 min."}}]"#,
         );
         assert_eq!(
             limit(&clear),
