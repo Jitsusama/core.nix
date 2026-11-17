@@ -422,7 +422,7 @@
         reader = ./modules/reader/nixos.nix;
         shaper = ./modules/shaper/nixos.nix;
         shure-mv7 = ./modules/shure-mv7/nixos.nix;
-        slices = ./modules/slices/nixos.nix;
+        slices = moduleFrom ./modules/slices/nixos.nix { inherit mycelium; };
         speakersafetyd = ./modules/speakersafetyd/nixos.nix;
         swayimg = ./modules/swayimg/nixos.nix;
         switch-system = ./modules/switch-system/nixos.nix;

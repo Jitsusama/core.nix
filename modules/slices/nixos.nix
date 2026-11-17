@@ -72,6 +72,7 @@
 # none, so what it starts afterwards can't take it either. Joel's own
 # terminal work in jobs-awaited.slice keeps it: a player he runs there is
 # something he listens to.
+{ mycelium }:
 {
   config,
   lib,
@@ -80,6 +81,7 @@
 }:
 let
   sorter = pkgs.callPackage ./jobs-sorter/package.nix { };
+  myceliumProgram = lib.getExe mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
   asks = pkgs.callPackage ./agents-ask.nix { inherit (config.jitsusama.slices) agentsMayRepeat; };
   limits = {
     LimitRTPRIO = "10";
@@ -790,6 +792,14 @@ in
             "jobs.slice"
             "--calls"
             (lib.getExe' pkgs.pipewire "pw-dump")
+            # A call on another of Joel's machines, a meeting carried over
+            # to the laptop beside this one, brakes them too: each node
+            # says whether a call is on there (modules/mycelium), and the
+            # sorter asks its own node, realm by realm, for what its peers
+            # said. One that can't be asked, or says nothing lately, is no
+            # call, so nothing elsewhere brakes builds here for ever.
+            "--calls-elsewhere"
+            "%t/mycelium=${myceliumProgram}"
             # A window holding a session others report to, as the harness's
             # mesh says, keeps a memory floor and is the last systemd-oomd
             # ends, and every other pi gives way first to the OOM killer.

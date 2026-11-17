@@ -1755,15 +1755,15 @@
     one system lacks fails on that system's checks before a machine of it switches
   '';
   mycelium-declares-what-a-machine-says = ''
-    a machine declaring what mycelium's node can't measure (its reach, what a held session
-    outlives, whether work costs money, its taints, its agents by realm, the fences its agent
-    sessions run in) has it written where mycelium reads it, in mycelium's words; a fence it
-    doesn't say is left out, a fenced or strict one says the fence's launcher for an agent's run
-    (a Mac's fenced one, its only fence, launching pi's strict profile) and an unfenced one
-    none, no fence says a launcher when
-    agents' runs are turned off, a Mac declaring only what it may evaluates while one declaring
-    a strict fence is refused, one declaring nothing has no file, and agents in a realm it
-    doesn't join are refused
+    a machine declaring what mycelium's node can't measure (its reach, a probe saying whether a
+    call is on there through a-call-is-on alone, what a held session outlives, whether work
+    costs money, its taints, its agents by realm, the fences its agent sessions run in) has it
+    written where mycelium reads it, in mycelium's words; a fence it doesn't say is left out, a
+    fenced or strict one says the fence's launcher for an agent's run (a Mac's fenced one, its
+    only fence, launching pi's strict profile) and an unfenced one none, no fence says a
+    launcher when agents' runs are turned off, a Mac declaring only what it may evaluates while
+    one declaring a strict fence is refused, one declaring nothing has no file, and agents in a
+    realm it doesn't join are refused
   '';
   mycelium-node-reads-its-declaration-from-the-store = ''
     each realm's mycelium node, on NixOS and nix-darwin, is given what its machine declares as a

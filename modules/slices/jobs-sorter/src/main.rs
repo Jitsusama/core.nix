@@ -55,7 +55,9 @@
 //! memory is short, and through a call `--calls`' pw-dump hears, as
 //! `src/door.rs` and `src/calls.rs` say why and how. Through such a call,
 //! build.slice and jobs.slice are held to a quarter of the processors, as
-//! `src/brake.rs` says why and how.
+//! `src/brake.rs` says why and how, and through a call on another of the
+//! person's machines too, which `--calls-elsewhere`' mycelium hears, as
+//! `src/elsewhere.rs` says.
 //!
 //! With `--revive`, a cgroup gives memory back when the kernel's reclaim
 //! thread gives up, as `src/revive.rs` says why and how.
@@ -94,6 +96,7 @@ mod brake;
 mod calls;
 mod cli;
 mod door;
+mod elsewhere;
 mod focus;
 mod holds;
 mod hosts;
@@ -146,6 +149,8 @@ struct Settings {
     orchestrators: Option<PathBuf>,
     door: Option<String>,
     calls: Option<PathBuf>,
+    /// The folder of mycelium nodes' sockets, and the mycelium to ask them.
+    calls_elsewhere: Option<(PathBuf, PathBuf)>,
     niri: Option<PathBuf>,
     hosts: Option<String>,
     /// The slice a session found in jobs goes back to.
@@ -1559,6 +1564,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
         orchestrators: None,
         door: None,
         calls: None,
+        calls_elsewhere: None,
         niri: None,
         hosts: None,
         sessions: None,
@@ -1596,6 +1602,13 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
             "--revive" => settings.revive = Some(value()?),
             "--door" => settings.door = Some(value()?),
             "--calls" => settings.calls = Some(PathBuf::from(value()?)),
+            "--calls-elsewhere" => {
+                let given = value()?;
+                let (sockets, mycelium) = given.split_once('=').ok_or_else(|| {
+                    wrongly("--calls-elsewhere is the sockets' folder, =, then mycelium")
+                })?;
+                settings.calls_elsewhere = Some((PathBuf::from(sockets), PathBuf::from(mycelium)));
+            }
             "--niri" => settings.niri = Some(PathBuf::from(value()?)),
             "--hosts" => settings.hosts = Some(value()?),
             "--sessions" => settings.sessions = Some(value()?),
@@ -1910,6 +1923,10 @@ fn run(settings: &Settings) -> Result<(), String> {
         ..Ranks::default()
     };
     let mut doorway = Doorway::new(settings.calls.as_deref());
+    doorway.elsewhere = settings
+        .calls_elsewhere
+        .as_ref()
+        .map(|(sockets, mycelium)| elsewhere::Elsewhere::follow(sockets, mycelium));
     let processors = thread::available_parallelism().map_or(1, usize::from);
     doorway.brake = brake::Brake::found(
         |place| braked_cpu_max(place, &root),
@@ -1980,6 +1997,9 @@ fn run(settings: &Settings) -> Result<(), String> {
 struct Doorway {
     door: door::Door,
     calls: Option<calls::Calls>,
+    /// The calls on the person's other machines, which brake builds and
+    /// jobs here too, though the door keeps no room for them.
+    elsewhere: Option<elsewhere::Elsewhere>,
     /// Where builds and jobs stand braked for a call (src/brake.rs).
     brake: brake::Brake,
 }
@@ -1990,18 +2010,25 @@ impl Doorway {
         Doorway {
             door: door::Door::default(),
             calls: pw_dump.map(calls::Calls::follow),
+            elsewhere: None,
             brake: brake::Brake::default(),
         }
     }
 }
 
 /// Holds builds and jobs to a quarter of the processors while a call is
-/// on, and lets them go once it ends, as src/brake.rs says. A slice that
+/// on, here or on another of the person's machines (src/elsewhere.rs), and
+/// lets them go once it ends, as src/brake.rs says. A slice that
 /// couldn't be set is tried again once it has waited, and one found let go
 /// mid-call is set again; `account` is the account's manager's cgroup.
 fn brake_for_calls(doorway: &mut Doorway, account: &Path) {
     let now = std::time::Instant::now();
-    let calling = doorway.calls.as_mut().is_some_and(|calls| calls.on(now));
+    let here = doorway.calls.as_mut().is_some_and(|calls| calls.on(now));
+    let there = doorway
+        .elsewhere
+        .as_ref()
+        .is_some_and(|elsewhere| elsewhere.on(now));
+    let calling = here || there;
     let processors = std::thread::available_parallelism().map_or(1, usize::from);
     let lost = if calling {
         let read = |place| braked_cpu_max(place, account);
@@ -2050,8 +2077,10 @@ fn brake_for_calls(doorway: &mut Doorway, account: &Path) {
     if doorway.brake.stands(calling) {
         eprintln!(
             "{}.",
-            if calling {
+            if here {
                 "Braked builds and jobs, a call on"
+            } else if there {
+                "Braked builds and jobs, a call on another machine"
             } else {
                 "Let go of builds and jobs, no call on"
             }
@@ -2185,6 +2214,7 @@ mod tests {
             orchestrators: None,
             door: None,
             calls: None,
+            calls_elsewhere: None,
             niri: None,
             hosts: None,
             sessions: None,

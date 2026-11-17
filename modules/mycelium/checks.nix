@@ -760,12 +760,13 @@ in
   # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, a held session's outlives isn't each system's, a fence it doesn't say is written, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a Mac may declare strict or can't declare fence, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on alone, a held session's outlives isn't each system's, a fence it doesn't say is written, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a Mac may declare strict or can't declare fence, or a machine declaring nothing gets a file anyway."
       (
         declared linux == {
           reach = [ "internet" ];
           probes.home.connect = "192.0.2.1:53";
           probes.office.run = declaring.probes.office;
+          probes.call.run = (declared linux).probes.call.run;
           outlives = [
             "window_close"
             "node_restart"
@@ -774,6 +775,8 @@ in
           costs_money = false;
           inherit (declaring) taints;
         }
+        && map baseNameOf (declared linux).probes.call.run == [ "a-call-is-on" ]
+        && map baseNameOf (declared mac).probes.call.run == [ "a-call-is-on" ]
         && (declared mac).outlives == [ ]
         && !((declared linux) ? within)
         && !((declared linux) ? hosts)
@@ -816,8 +819,7 @@ in
         )
         && !(apart.xdg.configFile ? "mycelium/declared.json")
         &&
-          (builtins.fromJSON (saying { home = "an-agent"; }).xdg.configFile."mycelium/declared.json".text)
-          .agents == {
+          (read (saying { home = "an-agent"; }).xdg.configFile."mycelium/declared.json".text).agents == {
             home = "an-agent";
           }
         && !refusesAgents (saying {
