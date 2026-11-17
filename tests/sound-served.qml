@@ -282,6 +282,7 @@ ShellRoot {
             root.thingStamp);
         asking.wanting = false;
         root.before = sound.tally.rows;
+        root.relisted = 0;
         tell(served(deskSpeakers.name, "Desk Speakers", 1024, true, 0.3));
         when("the shut row heard", () => sound.served.served(
             `row:sound:${deskSpeakers.name}`)?.note === "volume 30%", shut);
@@ -289,6 +290,29 @@ ShellRoot {
 
     property string stamp: ""
     property int before: 0
+    // How many times Sound's lists of devices were made again since
+    // `listed` began counting, each remaking what's worked out from them.
+    property int relisted: 0
+
+    Connections {
+        target: sound
+
+        function onListingChanged() {
+            root.relisted += 1;
+        }
+
+        function onDevicesChanged() {
+            root.relisted += 1;
+        }
+
+        function onInputsChanged() {
+            root.relisted += 1;
+        }
+
+        function onOutputsChanged() {
+            root.relisted += 1;
+        }
+    }
     // The speakers' row as first listed, and what its spots were made of.
     property var first: null
     property string thingStamp: ""
@@ -296,6 +320,12 @@ ShellRoot {
     function shut() {
         expect("shut, a row served anew makes none of its rows",
             sound.tally.rows === root.before, `${sound.tally.rows - root.before} made`);
+        // Each record the daemon told made its list of devices again, and
+        // all that's worked out from it, while the launcher was shut: in
+        // Joel's shell that and Choose by Ear's words over it made 31,473
+        // closures in 5 s on 2026-11-17 at 18:19.
+        expect("a row served anew, no device coming or going, remakes no list of devices",
+            root.relisted === 0, `${root.relisted} remade`);
         const now = sound.rowNow("sound:usb-desk-speakers");
         expect("a device's row borrowed elsewhere is made as it's served",
             now?.note === "volume 30%" && sound.rowNow("sound:gone") === undefined, now?.note);
@@ -677,6 +707,7 @@ ShellRoot {
             expect("each stream is sent, an ask of the daemon each",
                 sends === JSON.stringify(meant), sends);
             // The drawers first, as the case runs once the rows are heard.
+            root.relisted = 0;
             for (const record of [spotifyDrawn, speakersDrawn].concat(programsServed()))
                 tell(record);
             when("the programs served", () => partOf("programs")?.targets().length === 1,
@@ -744,6 +775,14 @@ ShellRoot {
     }
 
     function programmed() {
+        // Each part the daemon serves names its device's node too, so a
+        // program starting to play came to the list of devices again as
+        // its device, three times over.
+        const choices = sound.sendable(deskSpeakers).map(node => node.name).join(", ");
+        expect("each device is a choice once, though its parts name it too",
+            choices === deskSpeakers.name, choices);
+        expect("and a program served inside its device remakes no list of devices",
+            root.relisted === 0, `${root.relisted} remade`);
         const playing = partOf("programs");
         expect("the programs playing through it are its Playing, as served",
             playing.side === "Spotify", playing.side);
