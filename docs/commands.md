@@ -142,8 +142,8 @@ without a rebuild:
 
 - **Colours, never values.** A command names a colour (text, strong, muted,
   alert, warning, success, and the mark kinds action, program, machine,
-  person and voice), never a colour's value or an ANSI number, as jj
-  names labels.
+  person and voice), never a colour's value or an ANSI number, as jj names
+  labels.
   It's drawn in 24-bit colour where `COLORTERM` says the terminal draws
   it, kitty among them, and otherwise in the one of the terminal's sixteen
   colours holding the colour's pigment or near it, as the console and the
@@ -171,7 +171,7 @@ without a rebuild:
 ## How It Reads
 
 A terminal has one size and one face, so the [levels][levels] move onto
-the cues a cell has: weight, the colours, case, italic, and space
+the cues a cell has: weight, the theme's colours, case, italic, and space
 counted in cells and lines. The launcher in a terminal (`launcher show`)
 was the first command set this way, and this generalises it.
 

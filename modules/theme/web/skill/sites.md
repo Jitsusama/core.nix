@@ -3,7 +3,7 @@
 The operational side of a site: where it is served, the record that lists
 it, how one site links to another's things, and the kit of theme CSS and
 fonts. Load this when making, moving or publishing a site, or wiring its
-links home. None of it is design: the kit gives a site its roles and faces
+links home. None of it is design: the kit gives a site its colours and faces
 so it never retypes a value, and the site still makes its own world on top
 (`language.md`, A World of Its Own).
 
@@ -133,7 +133,7 @@ Preload the faces the first screen draws: the heading's italic turn and a
 label put all three on most of them.
 
 - `theme.css` is written from the theme, so it's never edited: every colour
-  role (`--background`, `--text`, `--muted`, `--strong`, `--accent`, the glyph
+  (`--background`, `--text`, `--muted`, `--strong`, `--accent`, the glyph
   hues `--action`, `--program`, `--machine`, `--person`, `--voice`, the
   states) for both looks, dark and light; the faces (`--serif`, `--mono`,
   `--mono-features`) with stand-ins metric-matched so nothing moves when the
@@ -151,7 +151,7 @@ label put all three on most of them.
   what a page in English uses: about 125, 150 and 60 KB.
 
 A site names properties, never a value. Where it needs one the kit lacks,
-derive it from the roles (`color-mix()` of two roles) and say why in a
+derive it from the colours (`color-mix()` of two) and say why in a
 comment; if every site would need it, it belongs in the kit, in core.nix's
 `modules/theme/web/`.
 

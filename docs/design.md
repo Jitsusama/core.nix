@@ -621,9 +621,9 @@ The rest follows from the ladder:
   and its hairline falls where the text centres, the same room under it.
 - **A mark's column is its cell and the mark rung.** A mark sits in a
   square cell one line pitch wide, its text the mark rung after it, so a
-  list's names
-  start at `Theme.level.name.pitch + Theme.space.rung.mark` from its marks,
-  an indent is the same again, and the column follows the type.
+  list's names start at `Theme.level.name.pitch + Theme.space.rung.mark`
+  from its marks, an indent is the same again, and the column follows the
+  type.
 - **A stroke isn't a space.** A meter's bar, a wave's bars and the room in a
   texture are counted in hairlines, `4 * Theme.border`, never named by a rung,
   and each says in a comment that it's a stroke or a texture.
@@ -975,7 +975,7 @@ row is centred on the screen, as far from either side, on the launcher's
 line, and about half as far from where Joel looks as a corner; with two
 windows side by side it sits where the gap between them meets the gap
 above. One coming or going slides the rest along to stay centred. A mark is
-the theme's drawing of it (a mark's `drawn`, a path on a twelve by twelve
+drawn by the theme (its `drawn`, a path on a twelve by twelve
 grid), made simple enough to read at six pixels, since a font's glyph is
 drawn for text and goes to mush that small; six is also whole pixels at
 both of Joel's screens' scales. Every drawing touches its grid's top and
@@ -2814,7 +2814,7 @@ line's notice is the same card, on the same columns and inset.
   the rows' mark cell and its Title over their names, home's too ("⌂ Home",
   "Notices", "Time › Servers"). The mark is its path's first place's,
   however deep it goes, so "Now › For You › Slack" wears Now's mark.
-  The mode's mark takes the place's cell while the mode lasts, centred by
+  The mode's mark takes the place's mark's cell while the mode lasts, centred by
   its ink: the accent's `/` on the find,
   `:` on the command line (Joel, 2026-11-06: "we have an extra space in
   front of the launcher heading when in command mode that we don't have in
@@ -3153,9 +3153,9 @@ Code has nine colours, each falling back to one of the theme's: `comment`
 Structure goes by brightness and meaning by a few hues, so most of a file
 reads as text, and the accent stays where the keys go. Neovim's colour scheme
 is drawn from them, and the legibility check holds each to 4.5:1 on the
-background and the sunken shade. Colours may carry alpha (`#rrggbbaa`). A colour always names a
-pigment, never a value, so changing one pigment recolours everything that
-means it. A pigment's name says what it looks like (jade, parchment, night),
+background and the sunken shade. A pigment may carry alpha (`#rrggbbaa`). A
+colour always names a pigment, never a value, so changing one pigment
+recolours everything that means it. A pigment's name says what it looks like (jade, parchment, night),
 never what it's for, which is the colour's job.
 
 **Bringing a theme in from elsewhere** is a translation into this format, done
@@ -3173,8 +3173,8 @@ the result beside the source before calling it done.
   list][surfaces]: the boot splash and the disk unlock prompt, the console's
   colours and font, the greeter, the compositor, the desktop, the apps, the
   terminal, the editors and pi.
-- **Nothing names its own.** No surface names a colour or a font; it names a
-  colour or a face. A check holds that across every module, listing each
+- **Nothing names its own.** No surface names a colour's value or a font; it
+  names a colour or a face. A check holds that across every module, listing each
   remaining exception with the reason until it's gone.
 - **Legibility is a check.** Each theme's text pairs are measured for WCAG
   contrast as the machine is evaluated: 4.5:1 for every pair a surface draws
@@ -3807,7 +3807,7 @@ What each studio round settled, newest first, with the reason.
   wide and semi-wide widths, but lacks 1,579 characters the patched one has,
   among them every Braille pattern, which btop draws its graphs with, and
   those would fall back to another face. The variable font has neither the
-  marks nor anything the static faces lack but its width axis.
+  symbol glyphs nor anything the static faces lack but its width axis.
 - **Muted text is sage, not Osaka Jade's own muted** (2026-10-10). Omarchy's
   muted measures 2.90:1 on the background, too faint to read, so muted text
   is its hue made just light enough to pass (4.52:1), and the original
