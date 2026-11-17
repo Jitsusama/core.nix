@@ -31,7 +31,9 @@
 # Tuple writes a desktop entry each time its daemon starts, one that runs
 # tuple with nothing after it, which only prints the command's help. This
 # entry takes its place, hidden, since there's no window to open, and opens
-# Tuple's links. xdg-open finds the entry by what it says it opens, but gio,
+# Tuple's links. From v2026_11_16.0 the daemon writes its own over this one,
+# so the service keeps it from the folder, and should a daemon started
+# elsewhere write it all the same, tuple-entry puts this one back. xdg-open finds the entry by what it says it opens, but gio,
 # and the desktop's portal that programs hand links to, find an app in a
 # folder only through the folder's index or a list of defaults, and this
 # folder has neither. So the entry is named the default in niri's own list,
@@ -113,6 +115,16 @@ let
       if [ -e log.$n.txt ]; then mv -f log.$n.txt log.$((n + 1)).txt; fi
     done
     mv -f log.txt log.1.txt
+  '';
+
+  # Puts our entry back when it no longer reads as ours, as after a daemon
+  # started outside tuple.service writes its own; a link already ours is
+  # left alone, so its own putting back doesn't set it off again.
+  ours = config.home.file."${entries}/tuple.desktop".source;
+  putsBack = pkgs.writeShellScript "tuple-puts-its-entry-back" ''
+    entry=${lib.escapeShellArg "${entries}/tuple.desktop"}
+    ${lib.getExe' pkgs.diffutils "cmp"} -s "$entry" ${ours} && exit 0
+    ${pkgs.coreutils}/bin/ln -sfn ${ours} "$entry"
   '';
 in
 {
@@ -200,10 +212,27 @@ in
       # opens tuple:// links, so the launcher would start Tuple rather than
       # step into its call, and a link would open Tuple's window rather
       # than join. Kept from writing there, it says so in its log and runs
-      # on; its icons, which our entry names, it still installs.
+      # on; its icons, which our entry names, it still installs. Only a
+      # starting daemon writes it: Tuple's commands ask the one running.
       ReadOnlyPaths = [ entries ];
     };
     Install.WantedBy = [ "graphical-session.target" ];
+  };
+
+  # Tuple's commands start a daemon of their own when tuple.service's isn't
+  # running, outside it, and that one writes its entry over ours. Whatever
+  # writes there, ours is put back the moment it changes.
+  systemd.user.paths.tuple-entry = {
+    Unit.Description = "Watches that Tuple's desktop entry stays ours";
+    Path.PathChanged = "${entries}/tuple.desktop";
+    Install.WantedBy = [ "default.target" ];
+  };
+  systemd.user.services.tuple-entry = {
+    Unit.Description = "Puts our Tuple desktop entry back";
+    Service = {
+      Type = "oneshot";
+      ExecStart = "${putsBack}";
+    };
   };
 
   # The call, held for the shell. It isn't in background.slice: a ring is
@@ -222,9 +251,6 @@ in
       # Shown in ps by its name, not its store path (docs/daemons.md).
       ExecStart = "@${lib.getExe calls} tuple-call %t/daemons/tuple-call.sock ${tuple}";
       Restart = "on-failure";
-      # A command it runs starts Tuple's daemon when none is running, and
-      # that daemon is kept from our entry as tuple.service's is.
-      ReadOnlyPaths = [ entries ];
       RestartSec = 5;
     };
     Install.WantedBy = [ "default.target" ];
