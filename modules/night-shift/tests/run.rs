@@ -6,10 +6,11 @@ mod common;
 
 use common::Folder;
 use std::fs::{self, File};
-use std::path::PathBuf;
+use std::io::{BufRead, BufReader, Read};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 const MANAGER: &str = "user.slice/user-1000.slice/user@1000.service";
 
@@ -71,6 +72,10 @@ impl Machine {
             .env("NIGHT_SHIFT_CGROUPS", self.path("cgroups"))
             .env("XDG_STATE_HOME", self.path("state"))
             .env("XDG_RUNTIME_DIR", self.path("runtime"))
+            // Its hours are read by the local clock, five and a half hours
+            // ahead of UTC here, so hours read by UTC's clock by mistake
+            // fall outside a test's.
+            .env("TZ", "XST-5:30")
             .current_dir(&self.root)
             .stdout(Stdio::piped());
         command
@@ -140,6 +145,174 @@ fn a_done_job_runs_again_once_it_has_rested() {
     assert_eq!(
         fs::read_to_string(machine.path("ran")).unwrap(),
         "ran\nran\n"
+    );
+}
+
+/// How far the tests' local clock is ahead of UTC's, in minutes.
+const AHEAD_OF_UTC: i64 = 5 * 60 + 30;
+
+/// The minute `minutes` from now, as the tests' local clock reads it,
+/// `HH:MM`.
+fn clock_in(minutes: i64) -> String {
+    let since = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("a clock after 1970");
+    let now = i64::try_from(since.as_secs() / 60).expect("minutes that fit");
+    let minute = (now + AHEAD_OF_UTC + minutes).rem_euclid(24 * 60);
+    format!("{:02}:{:02}", minute / 60, minute % 60)
+}
+
+#[test]
+fn a_start_within_its_hours_runs_the_job() {
+    let machine = Machine::new();
+    let hours = format!("--hours {}-{}", clock_in(-5), clock_in(5));
+    let ran = machine.run(&hours, "echo ran >> ran");
+    assert!(ran.status.success(), "{}", said(&ran));
+    assert_eq!(
+        fs::read_to_string(machine.path("ran")).ok().as_deref(),
+        Some("ran\n"),
+        "a start within its hours didn't run the job: {}",
+        said(&ran)
+    );
+}
+
+#[test]
+fn a_start_outside_its_hours_runs_nothing_and_isnt_a_failure() {
+    // A switch can start a night job's timer, and with it the job, by day.
+    let machine = Machine::new();
+    fs::create_dir_all(machine.state("")).unwrap();
+    fs::write(machine.state("test-job.samples"), "last night's\n").unwrap();
+    let hours = format!("--hours {}-{}", clock_in(60), clock_in(120));
+    let ran = machine.run(&hours, "echo ran >> ran");
+    assert!(
+        ran.status.success(),
+        "a start outside its hours failed its unit: {}",
+        said(&ran)
+    );
+    assert!(
+        !machine.path("ran").exists(),
+        "a start outside its hours ran the job"
+    );
+    assert!(
+        said(&ran).contains("outside its hours"),
+        "a start outside its hours didn't say why it ran nothing: {}",
+        said(&ran)
+    );
+    assert!(
+        ran.stderr.is_empty(),
+        "a start outside its hours said a failure: {}",
+        said(&ran)
+    );
+    assert_eq!(
+        fs::read_to_string(machine.state("test-job.samples"))
+            .ok()
+            .as_deref(),
+        Some("last night's\n"),
+        "a start outside its hours wrote over last night's samples"
+    );
+    assert!(
+        !machine.path("runtime/night-shift/lock").exists(),
+        "a start outside its hours took the turn"
+    );
+}
+
+/// Moves the stand-in clock in one step, by a rename, so the job never
+/// reads it half written.
+fn set_the_clock(clock: &Path, time: &str) {
+    let next = clock.with_extension("next");
+    fs::write(&next, format!("{time}\n")).unwrap();
+    fs::rename(&next, clock).unwrap();
+}
+
+/// A job within its hours by a stand-in clock at 03:00, waiting for a
+/// turn the test holds, with the hours over by the time the test gives
+/// the clock 06:00 and `then` has run. Gives what it said in all, and
+/// whether it ended as a success.
+fn wait_past_its_hours(machine: &Machine, then: impl FnOnce()) -> (String, bool) {
+    let clock = machine.path("clock");
+    set_the_clock(&clock, "03:00");
+    let mut waiting = machine
+        .command("--hours 01:30-05:15 --wait-at-most 10", "echo ran > ran")
+        .env("NIGHT_SHIFT_CLOCK", &clock)
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdout = BufReader::new(waiting.stdout.take().expect("a piped stdout"));
+    // Its own line comes after its look at the hours in the wait, so the
+    // clock moves, and `then` runs, a whole look before the next one.
+    let mut said = String::new();
+    while !said.contains("waiting for the turn") {
+        let read = stdout.read_line(&mut said).expect("a readable stdout");
+        assert!(
+            read > 0,
+            "the job ended without waiting for the turn: {said}"
+        );
+    }
+    set_the_clock(&clock, "06:00");
+    then();
+    stdout.read_to_string(&mut said).expect("a readable stdout");
+    let output = waiting.wait_with_output().unwrap();
+    said.push_str(&String::from_utf8_lossy(&output.stderr));
+    (said, output.status.success())
+}
+
+#[test]
+fn a_turn_had_once_its_hours_are_over_runs_nothing() {
+    let machine = Machine::new();
+    let held = machine.hold_the_turn();
+    // The turn is free at the wait's next look, which takes it before it
+    // reads the clock, so only the look after the turn can stop it.
+    let (said, success) = wait_past_its_hours(&machine, || drop(held));
+    assert!(success, "a turn had past its hours failed its unit: {said}");
+    assert!(
+        !machine.path("ran").exists(),
+        "a turn had past its hours ran the job by day"
+    );
+    assert!(
+        said.contains("06:00 is outside its hours, 01:30-05:15") && !said.contains("has the turn"),
+        "a turn had past its hours didn't say why it ran nothing: {said}"
+    );
+}
+
+#[test]
+fn hours_closing_while_it_waits_end_the_wait() {
+    let machine = Machine::new();
+    let held = machine.hold_the_turn();
+    let began = Instant::now();
+    let (said, success) = wait_past_its_hours(&machine, || {});
+    drop(held);
+    assert!(success, "a wait its hours ended failed its unit: {said}");
+    assert!(
+        began.elapsed() < Duration::from_secs(8),
+        "a wait its hours ended ran on to its most: {said}"
+    );
+    assert!(
+        said.contains("06:00 is outside its hours, 01:30-05:15")
+            && !said.contains("a later try goes on"),
+        "a wait its hours ended didn't say why it ran nothing: {said}"
+    );
+}
+
+#[test]
+fn a_clock_it_cant_read_runs_nothing() {
+    let machine = Machine::new();
+    let clock = machine.path("clock");
+    fs::write(&clock, "noon\n").unwrap();
+    let ran = machine
+        .command("--hours 01:30-05:15", "echo ran > ran")
+        .env("NIGHT_SHIFT_CLOCK", &clock)
+        .output()
+        .unwrap();
+    assert!(
+        ran.status.success(),
+        "an unread clock failed its unit: {}",
+        said(&ran)
+    );
+    assert!(!machine.path("ran").exists(), "an unread clock ran the job");
+    assert!(
+        said(&ran).contains("an unread clock is outside its hours"),
+        "an unread clock didn't say why it ran nothing: {}",
+        said(&ran)
     );
 }
 

@@ -10,7 +10,8 @@
 #
 # and it is tried every quarter hour from 01:30 to 05:00, starting only
 # while the machine's full memory pressure over the last minute is under
-# 3%, and never beside another night job. It is stopped if the apps' or the
+# 3%, never beside another night job, and never outside its hours, which a
+# start by a switch can be. It is stopped if the apps' or the
 # desktop's slice passes 1% over ten seconds, agents' sessions' 10%, or the
 # machine's 25%. A job's log is its unit's journal; each sample it took is
 # in ~/.local/state/night-shift/NAME.samples, and NAME.done is written when
@@ -48,6 +49,28 @@ let
 
   number = toString;
 
+  # The tries a job has unless it names its own, and the hours they keep
+  # within.
+  nightTries = [
+    "*-*-* 01:30/15"
+    "*-*-* 02..04:00/15"
+    "*-*-* 05:00"
+  ];
+  nightHours = "01:30-05:15";
+
+  # A job naming its own tries gets no hours it didn't name: core can't
+  # see when those tries fall, so hours of its own would quietly stop it.
+  hoursOf =
+    job:
+    if job.hours != null then
+      job.hours
+    else if job.tries == nightTries then
+      nightHours
+    else
+      null;
+
+  clockTime = "([01][0-9]|2[0-3]):[0-5][0-9]";
+
   environment = job: lib.mapAttrsToList (variable: value: "${variable}=${value}") job.environment;
 
   execStart =
@@ -57,6 +80,12 @@ let
         (lib.getExe package)
         "run"
         name
+      ]
+      ++ lib.optionals (hoursOf job != null) [
+        "--hours"
+        (hoursOf job)
+      ]
+      ++ [
         "--start-under"
         (number job.startUnder)
       ]
@@ -114,11 +143,35 @@ let
           the job succeeded that night does nothing.
         '';
         type = lib.types.nonEmptyListOf lib.types.str;
-        default = [
-          "*-*-* 01:30/15"
-          "*-*-* 02..04:00/15"
-          "*-*-* 05:00"
-        ];
+        default = nightTries;
+      };
+      hours = lib.mkOption {
+        description = ''
+          When a start may run the job, by the local clock, as FROM-UNTIL,
+          running past midnight when UNTIL comes first; a start outside
+          them runs nothing and isn't a failure. A switch can start the
+          timer, and the timer the job, at any hour, so keep every try
+          within them. Null gives a job on the default tries
+          ${nightHours}, and a job naming its own tries no hours at all,
+          as before hours were kept; the nearest a job on the default
+          tries comes to none is 00:00-23:59.
+        '';
+        type = lib.types.nullOr (
+          lib.types.addCheck (lib.types.strMatching "${clockTime}-${clockTime}") (
+            hours:
+            let
+              ends = lib.splitString "-" hours;
+            in
+            # Hours ending as they begin would hold no minute, so the job
+            # would never run.
+            lib.elemAt ends 0 != lib.elemAt ends 1
+          )
+          // {
+            description = "two clock times, HH:MM-HH:MM, that differ";
+          }
+        );
+        default = null;
+        example = "22:00-02:00";
       };
       startUnder = lib.mkOption {
         description = "The machine's full memory pressure over the last minute, in percent, it starts only under.";

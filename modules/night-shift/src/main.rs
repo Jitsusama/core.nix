@@ -43,15 +43,21 @@
 //! night. A run that waited as long as it was let ends 75, as `turn`
 //! does, so its unit can say a later try goes on.
 //!
+//! With `--hours`, a start outside them runs nothing and succeeds, as one
+//! on a busy machine does, since a switch can start a night job's timer,
+//! and the timer its job, by day (src/hours.rs says when it did).
+//!
 //! Its help, its failures and its exits take the terminal kit's shape
 //! (src/commands.rs); a failed job's run ends with the job's own code.
 
 mod cgroup;
 mod commands;
+mod hours;
 mod pressure;
 mod turn;
 
 use cgroup::Limits;
+use hours::Hours;
 use pressure::Places;
 use std::fmt::Write as _;
 use std::fs::{self, File, TryLockError};
@@ -68,6 +74,7 @@ use terminal_kit::{Exit, Failure};
 #[derive(Debug, PartialEq)]
 struct Job {
     name: String,
+    hours: Option<Hours>,
     start_under: f64,
     stops: Vec<(String, f64)>,
     stop_machine: f64,
@@ -104,6 +111,7 @@ fn parse(args: &[String]) -> Result<Job, String> {
     }
     let mut job = Job {
         name: name.clone(),
+        hours: None,
         start_under: 3.0,
         stops: Vec::new(),
         stop_machine: 25.0,
@@ -126,6 +134,7 @@ fn parse(args: &[String]) -> Result<Job, String> {
                 .ok_or_else(|| format!("{option} takes a number, not {text}"))
         };
         match option.as_str() {
+            "--hours" => job.hours = Some(Hours::read(value)?),
             "--start-under" => job.start_under = number(value)?,
             "--stop-machine" => job.stop_machine = number(value)?,
             "--rests" => job.rests = Duration::from_secs_f64(number(value)? * 3600.0),
@@ -156,6 +165,25 @@ fn parse(args: &[String]) -> Result<Job, String> {
         }
     }
     Ok(job)
+}
+
+/// Whether the job's hours, when it has them, leave it out now, saying so.
+/// A clock it can't read leaves it out too, rather than risk the day.
+fn outside_its_hours(job: &Job) -> bool {
+    let Some(hours) = job.hours else {
+        return false;
+    };
+    match hours::now() {
+        Some(now) if hours.hold(now) => false,
+        now => {
+            let at = now.map_or_else(|| "an unread clock".to_owned(), hours::clock);
+            say(
+                job,
+                &format!("{at} is outside its hours, {hours}, so it runs nothing"),
+            );
+            true
+        }
+    }
 }
 
 /// What a line of the job's log says, with its name.
@@ -196,6 +224,11 @@ fn run(job: &Job) -> Result<(), Failure> {
         state,
         runtime: runtime_dir(),
     };
+    // Before anything is made, locked or written, so a start by day leaves
+    // last night's samples and the turn as they were.
+    if outside_its_hours(job) {
+        return Ok(());
+    }
     let Some((_lock, at)) = may_start(job, &places)? else {
         return Ok(());
     };
@@ -325,6 +358,13 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
                     );
                     return Ok(None);
                 };
+                // Hours that close while it waits end the wait, rather than
+                // one that runs on to say a later try goes on when none will.
+                // It looks before saying it waits, so the line means this
+                // look is over and the next is a whole LOOK_EVERY away.
+                if outside_its_hours(job) {
+                    return Ok(None);
+                }
                 if told.as_ref() != Some(&who) {
                     say(job, &format!("waiting for the turn, which {who} has"));
                     told = Some(who);
@@ -345,6 +385,11 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
                 return Err(failed(job, "can't take the lock").because(error.to_string()));
             }
         }
+    }
+    // The hours can close between the wait's last look and the turn, so
+    // they're read again once it's had; the lock goes as this returns.
+    if told.is_some() && outside_its_hours(job) {
+        return Ok(None);
     }
     turn::note(&places.runtime, &job.name);
     if told.is_some() {
