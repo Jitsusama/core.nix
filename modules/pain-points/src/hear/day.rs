@@ -110,7 +110,9 @@ pub fn count(
     // A run that took UTC for want of his zone would split his days at
     // the wrong hour, so it waits for one that knows.
     let Some(offset_s) = offset_s else {
-        return Ok(Some("his time zone couldn't be read, so no day was counted".into()));
+        return Ok(Some(
+            "his time zone couldn't be read, so no day was counted".into(),
+        ));
     };
     let path = state.join("day.json");
     let (today, began) = crate::local_day(at, offset_s);
@@ -128,7 +130,11 @@ pub fn count(
             .ok()
             .and_then(|c| day_number(&c.day).map(|n| (n, c))),
         Err(e) if e.kind() == ErrorKind::NotFound => {
-            keep(&Counting { day: today, from: heard_back, tries: 0 })?;
+            keep(&Counting {
+                day: today,
+                from: heard_back,
+                tries: 0,
+            })?;
             return Ok(None);
         }
         Err(_) => None,
@@ -136,8 +142,14 @@ pub fn count(
     // An unreadable file starts the count again now: a lost day's count
     // costs less than a listener that stops routing over it.
     let Some((held_n, mut held)) = held else {
-        keep(&Counting { day: today, from: heard_back, tries: 0 })?;
-        return Ok(Some("day.json couldn't be read, so the day's count began again".into()));
+        keep(&Counting {
+            day: today,
+            from: heard_back,
+            tries: 0,
+        })?;
+        return Ok(Some(
+            "day.json couldn't be read, so the day's count began again".into(),
+        ));
     };
     if held.day == today {
         return Ok(None);
@@ -147,7 +159,11 @@ pub fn count(
         // clock set back; either way, today is counted from where it's
         // heard: its start, a day back, or now.
         let from = if held_n < today_n { began } else { at };
-        keep(&Counting { day: today, from, tries: 0 })?;
+        keep(&Counting {
+            day: today,
+            from,
+            tries: 0,
+        })?;
         return Ok(None);
     }
     let start = began - super::DAY_MS;
@@ -155,7 +171,11 @@ pub fn count(
     let clock = (from > start).then(|| super::route::clock(from, offset_s));
     let text = note(&held.day, clock.as_deref(), &of(kept, from, began));
     if send(&text) {
-        keep(&Counting { day: today, from: began, tries: 0 })?;
+        keep(&Counting {
+            day: today,
+            from: began,
+            tries: 0,
+        })?;
         return Ok(None);
     }
     held.tries += 1;
@@ -163,7 +183,11 @@ pub fn count(
         keep(&held)?;
         return Ok(None);
     }
-    keep(&Counting { day: today, from: began, tries: 0 })?;
+    keep(&Counting {
+        day: today,
+        from: began,
+        tries: 0,
+    })?;
     Ok(Some(format!(
         "gave up on {}'s count after {} sends",
         held.day,
@@ -207,7 +231,14 @@ mod tests {
         assert_eq!(day_number("1970-01-01"), Some(0));
         assert_eq!(day_number("2026-11-16"), Some(20_773));
         assert_eq!(day_number("2024-02-29"), Some(19_782));
-        for not_a_day in ["2026-02-31", "2026-13-01", "26-11-16", "2026-11-16x", "", "a-b-c"] {
+        for not_a_day in [
+            "2026-02-31",
+            "2026-13-01",
+            "26-11-16",
+            "2026-11-16x",
+            "",
+            "a-b-c",
+        ] {
             assert_eq!(day_number(not_a_day), None, "{not_a_day:?} is no day");
         }
     }

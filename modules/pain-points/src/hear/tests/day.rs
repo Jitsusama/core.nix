@@ -138,7 +138,10 @@ fn a_count_the_node_never_takes_is_sent_three_times_then_given_up() {
             );
         }
     }
-    assert_eq!(sent, 3, "a count read as failed isn't sent every five minutes");
+    assert_eq!(
+        sent, 3,
+        "a count read as failed isn't sent every five minutes"
+    );
     assert!(!hour_says(&last, "count"), "given up once: {last:?}");
 }
 

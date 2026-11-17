@@ -73,7 +73,10 @@ fn a_pain_too_late_for_its_owner_waits_on_no_mycelium() {
     ears.at = AT + 3 * 3_600_000;
     let hour = hear(&ears, "", &mut |_, _| true).expect("a run");
     assert!(
-        !hour.troubles.iter().any(|t| t.contains("named no sessions")),
+        !hour
+            .troubles
+            .iter()
+            .any(|t| t.contains("named no sessions")),
         "a pain that goes to no one waits on no one: {hour:?}"
     );
 }

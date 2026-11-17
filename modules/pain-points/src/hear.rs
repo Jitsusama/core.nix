@@ -422,8 +422,7 @@ fn unsent(kept: &[Heard], at: i64) -> (bool, usize) {
         kept.iter()
             .filter(move |h| h.routed_at.is_none() && h.at >= at - DAY_MS)
     };
-    let waiting =
-        unsent().any(|h| !h.carried && h.tries < SEND_TRIES && h.at >= at - FRESH_MS);
+    let waiting = unsent().any(|h| !h.carried && h.tries < SEND_TRIES && h.at >= at - FRESH_MS);
     let given_up = unsent().filter(|h| h.tries >= SEND_TRIES).count();
     (waiting, given_up)
 }
