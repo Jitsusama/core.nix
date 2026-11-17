@@ -41,8 +41,10 @@ const LOW: i64 = 20;
 /// to run at, and warns from where it's too warm to charge well.
 const HOTTEST: f64 = 60.0;
 const WARM: f64 = 45.0;
-/// Below this a lithium battery is too cold to charge, which its row's
-/// note says, since its bar lights no dot there for a warn to colour.
+/// A lithium battery is made to charge from freezing up, which its row's
+/// note says below it, since its bar lights no dot there for a warn to
+/// colour. The note says what it's made for rather than that it can't
+/// charge, so it stays true beside a Status row that says Charging.
 const FREEZING: f64 = 0.0;
 /// A battery holding under four fifths of its design is worn, as makers
 /// count it, so its bar warns.
@@ -1767,9 +1769,7 @@ mod tests {
     }
 
     /// A battery below freezing keeps its temperature row: its bar is
-    /// empty and doesn't warn, since a bar draws heat against the most
-    /// and has no dot below none to colour, so its note says it's too
-    /// cold to charge, as a lithium battery below 0 °C is;
+    /// empty and doesn't warn, since a bar draws heat against the most,
     /// and its drawer's fact says the count as the kernel writes it, the
     /// plain number's hyphen and all. The row's figure is the measure
     /// Words' cases hold, the real minus among them.
@@ -1786,7 +1786,6 @@ mod tests {
         );
         assert_eq!(temperature["graph"]["values"], json!([0.0]));
         assert_eq!(temperature["graph"]["warn"], json!(false));
-        assert_eq!(temperature["note"], "too cold to charge, below 0 \u{b0}C");
         let facts: Vec<String> = temperature["drawer"]["facts"]
             .as_array()
             .unwrap()
@@ -1799,14 +1798,16 @@ mod tests {
         );
     }
 
-    /// A lithium battery charges from 0 °C, so at freezing itself the
-    /// note still says the most it's made to run at, and only colder
-    /// says it's too cold to charge.
+    /// A lithium battery is made to charge from 0 °C, so at freezing
+    /// itself the note still says the most it's made to run at, and
+    /// only colder says the least it's made to charge from, whether or
+    /// not it's charging.
     #[test]
-    fn a_battery_says_too_cold_to_charge_only_below_freezing() {
+    fn a_battery_says_what_it_charges_from_only_below_freezing() {
         let notes = [0.0, -0.1].map(|degrees| {
             let mut b = battery();
             b["temperature_c"] = json!(degrees);
+            b["status"] = json!("Discharging");
             let ready = Power::default().read(&[b, port(true)], 0, &words());
             row(&ready, "row:power:temperature")["note"].clone()
         });
@@ -1814,7 +1815,7 @@ mod tests {
             notes,
             [
                 json!("of the 60 \u{b0}C it's made to run at"),
-                json!("too cold to charge, below 0 \u{b0}C")
+                json!("below the 0 \u{b0}C it's made to charge from")
             ]
         );
     }
