@@ -49,6 +49,28 @@ let
 
   number = toString;
 
+  # The tries a job has unless it names its own, and the hours they keep
+  # within.
+  nightTries = [
+    "*-*-* 01:30/15"
+    "*-*-* 02..04:00/15"
+    "*-*-* 05:00"
+  ];
+  nightHours = "01:30-05:15";
+
+  # A job naming its own tries gets no hours it didn't name: core can't
+  # see when those tries fall, so hours of its own would quietly stop it.
+  hoursOf =
+    job:
+    if job.hours != null then
+      job.hours
+    else if job.tries == nightTries then
+      nightHours
+    else
+      null;
+
+  clockTime = "([01][0-9]|2[0-3]):[0-5][0-9]";
+
   environment = job: lib.mapAttrsToList (variable: value: "${variable}=${value}") job.environment;
 
   execStart =
@@ -58,8 +80,12 @@ let
         (lib.getExe package)
         "run"
         name
+      ]
+      ++ lib.optionals (hoursOf job != null) [
         "--hours"
-        job.hours
+        (hoursOf job)
+      ]
+      ++ [
         "--start-under"
         (number job.startUnder)
       ]
@@ -117,21 +143,31 @@ let
           the job succeeded that night does nothing.
         '';
         type = lib.types.nonEmptyListOf lib.types.str;
-        default = [
-          "*-*-* 01:30/15"
-          "*-*-* 02..04:00/15"
-          "*-*-* 05:00"
-        ];
+        default = nightTries;
       };
       hours = lib.mkOption {
         description = ''
-          When a start may run the job, by the local clock, as FROM-UNTIL;
-          a start outside them runs nothing and isn't a failure. A switch
-          can start the timer, and the timer the job, at any hour, so keep
-          every try within them.
+          When a start may run the job, by the local clock, as FROM-UNTIL,
+          running past midnight when UNTIL comes first; a start outside
+          them runs nothing and isn't a failure. A switch can start the
+          timer, and the timer the job, at any hour, so keep every try
+          within them. Null gives a job on the default tries
+          ${nightHours}, and a job naming its own tries no hours at all,
+          as before hours were kept.
         '';
-        type = lib.types.strMatching "([01][0-9]|2[0-3]):[0-5][0-9]-([01][0-9]|2[0-3]):[0-5][0-9]";
-        default = "01:30-05:15";
+        type = lib.types.nullOr (
+          lib.types.addCheck (lib.types.strMatching "${clockTime}-${clockTime}") (
+            hours:
+            let
+              ends = lib.splitString "-" hours;
+            in
+            # Hours ending as they begin would hold no minute, so the job
+            # would never run.
+            lib.elemAt ends 0 != lib.elemAt ends 1
+          )
+        );
+        default = null;
+        example = "22:00-02:00";
       };
       startUnder = lib.mkOption {
         description = "The machine's full memory pressure over the last minute, in percent, it starts only under.";

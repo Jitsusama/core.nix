@@ -71,9 +71,10 @@ impl Machine {
             .env("NIGHT_SHIFT_CGROUPS", self.path("cgroups"))
             .env("XDG_STATE_HOME", self.path("state"))
             .env("XDG_RUNTIME_DIR", self.path("runtime"))
-            // Its hours are read by the local clock, which is UTC's here,
-            // so a test's hours are worked out on the same clock.
-            .env("TZ", "UTC")
+            // Its hours are read by the local clock, five and a half hours
+            // ahead of UTC here, so hours read by UTC's clock by mistake
+            // fall outside a test's.
+            .env("TZ", "XST-5:30")
             .current_dir(&self.root)
             .stdout(Stdio::piped());
         command
@@ -146,13 +147,17 @@ fn a_done_job_runs_again_once_it_has_rested() {
     );
 }
 
-/// The minute `minutes` from now, as UTC's clock reads it, `HH:MM`.
+/// How far the tests' local clock is ahead of UTC's, in minutes.
+const AHEAD_OF_UTC: i64 = 5 * 60 + 30;
+
+/// The minute `minutes` from now, as the tests' local clock reads it,
+/// `HH:MM`.
 fn clock_in(minutes: i64) -> String {
     let since = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .expect("a clock after 1970");
     let now = i64::try_from(since.as_secs() / 60).expect("minutes that fit");
-    let minute = (now + minutes).rem_euclid(24 * 60);
+    let minute = (now + AHEAD_OF_UTC + minutes).rem_euclid(24 * 60);
     format!("{:02}:{:02}", minute / 60, minute % 60)
 }
 
@@ -174,6 +179,8 @@ fn a_start_within_its_hours_runs_the_job() {
 fn a_start_outside_its_hours_runs_nothing_and_isnt_a_failure() {
     // A switch can start a night job's timer, and with it the job, by day.
     let machine = Machine::new();
+    fs::create_dir_all(machine.state("")).unwrap();
+    fs::write(machine.state("test-job.samples"), "last night's\n").unwrap();
     let hours = format!("--hours {}-{}", clock_in(60), clock_in(120));
     let ran = machine.run(&hours, "echo ran >> ran");
     assert!(
@@ -191,9 +198,53 @@ fn a_start_outside_its_hours_runs_nothing_and_isnt_a_failure() {
         said(&ran)
     );
     assert!(
-        !said(&ran).contains('\u{2715}'),
-        "a start outside its hours was said as a failure: {}",
+        ran.stderr.is_empty(),
+        "a start outside its hours said a failure: {}",
         said(&ran)
+    );
+    assert_eq!(
+        fs::read_to_string(machine.state("test-job.samples"))
+            .ok()
+            .as_deref(),
+        Some("last night's\n"),
+        "a start outside its hours wrote over last night's samples"
+    );
+    assert!(
+        !machine.path("runtime/night-shift/lock").exists(),
+        "a start outside its hours took the turn"
+    );
+}
+
+#[test]
+fn a_wait_for_the_turn_that_outlasts_its_hours_runs_nothing() {
+    let machine = Machine::new();
+    let clock = machine.path("clock");
+    fs::write(&clock, "03:00\n").unwrap();
+    let held = machine.hold_the_turn();
+    let waiting = machine
+        .command("--hours 01:30-05:15 --wait-at-most 10", "echo ran > ran")
+        .env("NIGHT_SHIFT_CLOCK", &clock)
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    // Long enough for the job to be waiting for the turn.
+    thread::sleep(Duration::from_millis(300));
+    fs::write(&clock, "06:00\n").unwrap();
+    drop(held);
+    let output = waiting.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "a wait that outlasted its hours failed its unit: {}",
+        said(&output)
+    );
+    assert!(
+        !machine.path("ran").exists(),
+        "a wait that outlasted its hours ran the job by day"
+    );
+    assert!(
+        said(&output).contains("06:00 is outside its hours, 01:30-05:15"),
+        "a wait that outlasted its hours didn't say why it ran nothing: {}",
+        said(&output)
     );
 }
 

@@ -23,8 +23,8 @@ onLinux {
   );
 
   # A declared job is tried only at night, never caught up on by day, runs
-  # only within its hours however it was started,
-  # behind everything the account runs, with the limits it names on its own
+  # only within its hours however it was started (a job naming its own
+  # tries keeps only hours it names), behind everything the account runs, with the limits it names on its own
   # cgroup rather than its watcher's, and stops by the slices' bars; it
   # waits for the turn only when told to, and a wait it was let isn't a
   # failed unit; an
@@ -51,6 +51,17 @@ onLinux {
             command = [ "true" ];
             waitsAtMost = 1800;
           };
+          home-manager.users.someone.jitsusama.night-shift.jobs.noon = {
+            description = "Runs at noon, on tries of its own";
+            command = [ "true" ];
+            tries = [ "*-*-* 12:00" ];
+          };
+          home-manager.users.someone.jitsusama.night-shift.jobs.late = {
+            description = "Runs late, in hours of its own";
+            command = [ "true" ];
+            tries = [ "*-*-* 23:00" ];
+            hours = "22:00-02:00";
+          };
         }
       ]);
       none = account (bareNixos [ self.nixosModules.workstation ]);
@@ -59,9 +70,14 @@ onLinux {
       timer = declared.systemd.user.timers.night-shift-repack.Timer;
       says = text: pkgs.lib.hasInfix text (toString service.ExecStart);
       waits = declared.systemd.user.services.night-shift-waits.Service;
+      saysOf =
+        job: text:
+        pkgs.lib.hasInfix text (
+          toString declared.systemd.user.services."night-shift-${job}".Service.ExecStart
+        );
     in
     holds "night-shift-runs-only-at-night"
-      "A night job is tried by day or caught up on after a night slept through, runs by day when a switch starts it, runs outside background.slice or ahead of the account's work, drops a limit it names or puts it on its watcher too, is restarted by a switch, doesn't stop for the apps', the desktop's or agents' slices, passes its command's % to systemd unescaped, waits for the turn unasked, fails its unit for a wait it was let, or an account declaring no job gets one."
+      "A night job is tried by day or caught up on after a night slept through, runs by day when a switch starts it, keeps hours its own tries didn't name, drops hours it named, runs outside background.slice or ahead of the account's work, drops a limit it names or puts it on its watcher too, is restarted by a switch, doesn't stop for the apps', the desktop's or agents' slices, passes its command's % to systemd unescaped, waits for the turn unasked, fails its unit for a wait it was let, or an account declaring no job gets one."
       (
         timer.OnCalendar == [
           "*-*-* 01:30/15"
@@ -79,6 +95,9 @@ onLinux {
         && says "--reads-at-most /dev/nvme0n1=50M"
         && unit.X-RestartIfChanged == false
         && says "--hours 01:30-05:15"
+        && saysOf "waits" "--hours 01:30-05:15"
+        && !(saysOf "noon" "--hours")
+        && saysOf "late" "--hours 22:00-02:00"
         && says "--start-under 3"
         && says "--stop app.slice=1"
         && says "--stop session.slice=1"

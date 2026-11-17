@@ -167,6 +167,25 @@ fn parse(args: &[String]) -> Result<Job, String> {
     Ok(job)
 }
 
+/// Whether the job's hours, when it has them, leave it out now, saying so.
+/// A clock it can't read leaves it out too, rather than risk the day.
+fn outside_its_hours(job: &Job) -> bool {
+    let Some(hours) = job.hours else {
+        return false;
+    };
+    match hours::now() {
+        Some(now) if hours.hold(now) => false,
+        now => {
+            let at = now.map_or_else(|| "an unread clock".to_owned(), hours::clock);
+            say(
+                job,
+                &format!("{at} is outside its hours, {hours}, so it runs nothing"),
+            );
+            true
+        }
+    }
+}
+
 /// What a line of the job's log says, with its name.
 fn say(job: &Job, what: &str) {
     println!("night-shift {}: {what}", job.name);
@@ -205,19 +224,10 @@ fn run(job: &Job) -> Result<(), Failure> {
         state,
         runtime: runtime_dir(),
     };
-    if let Some(hours) = job.hours {
-        match hours::now() {
-            Some(now) if hours.hold(now) => {}
-            // A clock it can't read runs nothing, rather than risk the day.
-            now => {
-                let at = now.map_or_else(|| "an unread clock".to_owned(), hours::clock);
-                say(
-                    job,
-                    &format!("{at} is outside its hours, {hours}, so it runs nothing"),
-                );
-                return Ok(());
-            }
-        }
+    // Before anything is made, locked or written, so a start by day leaves
+    // last night's samples and the turn as they were.
+    if outside_its_hours(job) {
+        return Ok(());
     }
     let Some((_lock, at)) = may_start(job, &places)? else {
         return Ok(());
@@ -368,6 +378,11 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
                 return Err(failed(job, "can't take the lock").because(error.to_string()));
             }
         }
+    }
+    // A wait for the turn can outlast the hours, so they're read again
+    // once it's had; the lock goes as this returns.
+    if told.is_some() && outside_its_hours(job) {
+        return Ok(None);
     }
     turn::note(&places.runtime, &job.name);
     if told.is_some() {

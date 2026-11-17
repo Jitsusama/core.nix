@@ -91,8 +91,13 @@ unsafe extern "C" {
 }
 
 /// The minute of the day now, by the local clock; None when the clock or
-/// its zone can't be read.
+/// its zone can't be read. A test's machine can stand a file holding
+/// `HH:MM` in for the clock, named by `NIGHT_SHIFT_CLOCK` and read at each
+/// look, as `NIGHT_SHIFT_PROC` stands in for its pressures.
 pub fn now() -> Option<u16> {
+    if let Some(file) = std::env::var_os("NIGHT_SHIFT_CLOCK") {
+        return minute(std::fs::read_to_string(file).ok()?.trim());
+    }
     let seconds =
         i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs()).ok()?;
     let mut tm = Tm::default();
