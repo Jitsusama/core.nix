@@ -1,10 +1,13 @@
 // What the system page makes of the system daemon's records, told as the
 // daemon tells them: the summary, a part record each, a record per thing.
+// Then what it draws of them in the system's words, and that its own files
+// keep to those words.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
-import { escaped } from "../draw.ts";
+import { escaped, legend, outlookOf, partsOf } from "../draw.ts";
 import { headline, lede, looksIn, sentence, systemOf } from "../model.ts";
 
 /** The three watches, told `these` whole, each to its kind's. */
@@ -156,7 +159,7 @@ it("the headline counts the parts, what is worth a look and what wasn't read", (
   };
   assert.equal(sentence(headline(many)), "Two parts, 12 worth a look and one not read.");
   const good = { ...system, parts: [{ ...first, health: "good" as const, side: [] }] };
-  assert.equal(sentence(headline(good)), "One part, all clear.");
+  assert.equal(sentence(headline(good)), "One part, all good.");
 });
 
 it("the lede names the worst part's first look, then why a part wasn't read", () => {
@@ -209,6 +212,138 @@ it("the lede names the worst part's first look, then why a part wasn't read", ()
     lede({ ...system, parts: [{ ...first, health: "good" as const, side: [] }] }),
     undefined,
   );
+});
+
+/** What `markup` reads as, its tags gone and its spaces run together. */
+function read(markup: string): string {
+  return markup
+    .replace(/<[^>]*>/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+/**
+ * The weather words the page once wore, which the glossary keeps for real
+ * weather, and the same without cloud, which two marks are drawn as.
+ */
+const WEATHER =
+  /\b(?:weather|forecasts?|clear|clouds?|cloudy|storms?|stormy|fog|foggy|sky|skies)\b/iu;
+const WEATHER_BUT_CLOUD =
+  /\b(?:weather|forecasts?|clear|cloudy|storms?|stormy|fog|foggy|sky|skies)\b/iu;
+
+/** The attributes a person or a preview reads: descriptions, labels, titles. */
+const READ_ATTRIBUTE = /\b(?:content|aria-label|title|alt)="(?<said>[^"]*)"/gu;
+
+/** What `markup` says to a person: its text, and the attributes read aloud. */
+function said(markup: string): string {
+  const attributes = [...markup.matchAll(READ_ATTRIBUTE)].map((each) => each.groups?.["said"]);
+  return [read(markup), ...attributes].join(" ");
+}
+
+/** A legend item: its mark's health, then its word. */
+const KEY =
+  /<li class="key"><svg class="sky (?<health>\w+) [^"]*"[\s\S]*?<\/svg><span class="word">(?<word>[^<]*)<\/span><\/li>/gu;
+
+/** A part on the outlook: its name, then what it says. */
+const ON_THE_OUTLOOK =
+  /aria-label="(?<heard>[^"]*)">[\s\S]*?<span class="place">(?<place>[^<]*)<\/span><span class="forecast">(?<says>[^<]*)<\/span><\/a>/gu;
+
+/**
+ * Where index.html leaves room for the legend: a list of its own, which
+ * says its role outright, since Safari drops it from an unbulleted list.
+ */
+const LEGEND_LIST = /<ul(?=[^>]*\bid="legend")(?=[^>]*\brole="list")[^>]*><\/ul>/u;
+
+/** A drawn mark's shape: what is inside its svg. */
+const SHAPE = /<svg [^>]*>(?<shape>[\s\S]*?)<\/svg>/gu;
+
+it("the legend gives each health its own item: its own mark, then its word", () => {
+  const keys = [...legend().matchAll(KEY)].map((key) => [
+    key.groups?.["health"],
+    key.groups?.["word"],
+  ]);
+  assert.deepEqual(keys, [
+    ["good", "Good"],
+    ["watch", "Watch"],
+    ["bad", "Bad"],
+    ["unread", "Not read"],
+  ]);
+  const shapes = new Set([...legend().matchAll(SHAPE)].map((each) => each.groups?.["shape"]));
+  assert.equal(shapes.size, 4, "each health is drawn in a shape of its own");
+});
+
+it("each part on the outlook says how many are worth a look, or else its health's word", () => {
+  const { summary, part, machine } = told(records);
+  const system = systemOf(summary, part, machine);
+  assert.ok(system);
+  const [first, second] = system.parts;
+  assert.ok(first && second);
+  const four = {
+    ...system,
+    parts: [
+      { ...first, health: "good" as const, side: [] },
+      { ...second, health: "unread" as const, side: [] },
+      { ...second, health: "watch" as const, side: [] },
+      { ...second, health: "watch" as const, side: ["a"] },
+      { ...second, health: "bad" as const, side: ["a", "b"] },
+    ],
+  };
+  const spoke = [...outlookOf(four).matchAll(ON_THE_OUTLOOK)].map((each) => [
+    each.groups?.["place"],
+    each.groups?.["says"],
+    each.groups?.["heard"],
+  ]);
+  // What is shown, then what a screen reader hears: with looks, the health
+  // too, as the link's name, so watch and bad don't sound alike while the
+  // text stays what is shown.
+  assert.deepEqual(spoke, [
+    ["Machines", "good", "Machines good"],
+    ["Code", "not read", "Code not read"],
+    ["Code", "watch", "Code watch"],
+    ["Code", "1 worth a look", "Code 1 worth a look (watch)"],
+    ["Code", "2 worth a look", "Code 2 worth a look (bad)"],
+  ]);
+});
+
+// The daemon's word for each health, then what a screen reader hears.
+for (const [daemonSays, word] of [
+  ["good", "good"],
+  ["watch", "watch"],
+  ["bad", "bad"],
+  ["not read", "not read"],
+] as const) {
+  it(`a screen reader hears a part and a machine told ${daemonSays} as "${word}"`, () => {
+    const these = records.map((record) =>
+      record.key === "part:machines" || record.key === "machine:osprey"
+        ? { ...record, health: daemonSays }
+        : record,
+    );
+    const { summary, part, machine } = told(these);
+    const system = systemOf(summary, part, machine);
+    assert.ok(system);
+    const drawn = partsOf(system);
+    assert.ok(drawn.includes(`Machines<span class="sr"> (${word})</span>`), "the part's heading");
+    assert.ok(
+      drawn.includes(`osprey</span><span class="sr"> (${word})</span>`),
+      "the machine's row",
+    );
+  });
+}
+
+it("the page and its words for a model wear no weather words, nor in what is read aloud", () => {
+  for (const [file, words] of [
+    ["index.html", WEATHER],
+    ["llms.txt", WEATHER],
+    ["index.md", WEATHER_BUT_CLOUD],
+  ] as const) {
+    const text = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+    assert.doesNotMatch(said(text), words, file);
+  }
+});
+
+it("the legend is a list in every browser, so a screen reader hears its words apart", () => {
+  const page = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(page, LEGEND_LIST);
 });
 
 it("a record's words reach the page as text, never as markup", () => {

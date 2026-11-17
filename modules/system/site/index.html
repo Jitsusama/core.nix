@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Your system, now</title>
-<meta name="description" content="The weather over everything you run: every machine on your mycelium, the mycelium itself, your home network and your code, each judged from its own owner's answer, with the way deeper into each.">
+<meta name="description" content="How everything you run stands: every machine on your mycelium, the mycelium itself, your home network and your code, each judged from its own owner's answer, with the way deeper into each.">
 <meta property="og:title" content="Your system, now">
-<meta property="og:description" content="The weather over everything you run: every machine on your mycelium, the mycelium itself, your home network and your code, each judged from its own owner's answer, with the way deeper into each.">
+<meta property="og:description" content="How everything you run stands: every machine on your mycelium, the mycelium itself, your home network and your code, each judged from its own owner's answer, with the way deeper into each.">
 <meta property="og:type" content="website">
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="@dark-ground@">
@@ -62,8 +62,8 @@
 
 <main id="main" class="stage" tabindex="-1">
   <header class="hero">
-    <p class="eyebrow">the weather over everything you run</p>
-    <h1 class="headline" id="headline">Reading the <em>sky.</em></h1>
+    <p class="eyebrow">how everything you run stands</p>
+    <h1 class="headline" id="headline">Reading the <em>system.</em></h1>
     <p class="lede" id="lede"></p>
     <p class="standing" id="standing" data-state="connecting"><span class="glyph" aria-hidden="true"></span><span id="standing-words">Reaching the system daemon.</span></p>
     <div class="switch" role="radiogroup" aria-label="Theme">
@@ -81,7 +81,7 @@
 
   <figure class="outlook">
     <ol class="stations" id="outlook" aria-label="The outlook"></ol>
-    <figcaption>Each part's sky, from its owner's own answer.</figcaption>
+    <figcaption>Each part as its owner judges it.</figcaption>
   </figure>
 
   <div class="parts" id="parts"></div>
@@ -89,7 +89,8 @@
   <noscript><p class="note">The parts are drawn in the browser, live from the system daemon; without scripts, read <a href="index.md">the page as text</a>, or type <code>system</code> in a terminal.</p></noscript>
 
   <footer class="foot">
-    <p class="legend" id="legend"></p>
+    <!-- biome-ignore lint/a11y/noRedundantRoles: the legend has no bullets, and Safari drops an unbulleted list's role and with it the list's name, so VoiceOver would hear neither the list nor its words apart. -->
+    <ul class="legend" id="legend" role="list" aria-label="What each mark says"></ul>
   </footer>
 </main>
 
