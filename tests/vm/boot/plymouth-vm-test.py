@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from test_driver.errors import RequestedAssertionFailed
 from test_driver.machine import retry
 from test_driver.machine.ocr import perform_ocr_variants_on_screenshot
 
@@ -42,6 +43,8 @@ READING = timedelta(seconds=300)
 TYPING = timedelta(milliseconds=100)
 # How many times login has said it refused a password, this boot.
 REFUSALS = "journalctl -b -q -t login -o cat | grep -c 'FAILED LOGIN' || true"
+# The newest login a console's kmscon started, which asks for its password.
+ASKING = 'pgrep -n -x login -P "$(pgrep -d, -x kmscon)"'
 # The entry the boot starts, named as lanzaboote names generation 7's.
 CHOSEN = "nixos-generation-7-fixture"
 # The frame is two panels' widths and two heights of hairline, so a
@@ -389,22 +392,41 @@ def greeted_afresh(machine: QemuMachine) -> None:
 
 
 def signs_in(boot: Boot) -> None:
-    """Sign in at kmscon's console, on a fresh one again if login refused what arrived."""
+    """Sign in at kmscon's console, on a fresh one again if login gave up without a shell."""
     machine, account = boot.machine, boot.account
+    ended: list[str] = []
     for _ in range(3):
         refused = machine.succeed(REFUSALS).strip()
         machine.wait_for_text("Hello", timeout=READING)
         machine.send_chars(f"{account}\n", delay=TYPING)
         machine.wait_for_text("Password", timeout=READING)
+        status, asking = machine.execute(ASKING)
         machine.send_chars(f"{boot.password}\n", delay=TYPING)
-        machine.wait_until_succeeds(
-            f'pgrep -u {account} -x zsh || [ "$({REFUSALS})" != {refused} ]', timeout=READING
-        )
+        # Login gives up either by refusing what arrived, which it
+        # counts, or by leaving with no shell, which it doesn't: its
+        # time runs out, or the last key is lost and it waits until it
+        # does. Either is tried again on a fresh console. A login not
+        # found asking is waited on as a refusal alone, rather than
+        # taken for gone and a good sign-in cut short.
+        gave_up = [f'[ "$({REFUSALS})" != {refused} ]']
+        if status == 0:
+            gave_up.append(f"! kill -0 {asking.strip()}")
+        try:
+            machine.wait_until_succeeds(
+                f"pgrep -u {account} -x zsh || {' || '.join(gave_up)}", timeout=READING
+            )
+        except RequestedAssertionFailed:
+            tried = ", ".join(ended) or "none"
+            pytest.fail(
+                f"login gave neither a shell nor an answer on try {len(ended) + 1}, after: {tried}"
+            )
         if machine.execute(f"pgrep -u {account} -x zsh")[0] == 0:
             return
+        counted = machine.succeed(REFUSALS).strip() != refused
+        ended.append("refused" if counted else "left with no shell")
         machine.succeed("systemctl restart kmsconvt@tty3.service")
         greeted_afresh(machine)
-    pytest.fail("login refused the console's password three times")
+    pytest.fail(f"login gave up on the console's password three times: {', '.join(ended)}")
 
 
 def test_the_keys_the_greeting_gives_go_back_to_the_desktop(opened: Boot) -> None:
