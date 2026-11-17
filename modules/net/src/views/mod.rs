@@ -524,8 +524,10 @@ mod tests {
             let mut last = up;
             for said in [
                 "What the line carried over the last day:",
-                "down 167 GB, averaging 14.9 Mbit/s, 4% of its speed; 28.1 in its busiest hour",
-                "up 72.7 GB, averaging 6.5 Mbit/s, 54% of its speed; 10.8 in its busiest hour",
+                "down 167 GB, averaging 14.9 Mb/s, 4% of its speed; 28.1 Mb/s in its busiest \
+                 hour",
+                "up 72.7 GB, averaging 6.46 Mb/s, 54% of its speed; 10.8 Mb/s in its busiest \
+                 hour",
             ] {
                 let at = words
                     .find(said)

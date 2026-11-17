@@ -6,7 +6,7 @@ import { type Child, facts, glyph, h } from "./elements.ts";
 import type { Concern, Device, Network, Source } from "./model.ts";
 import type { Mycelium } from "./mycelium.ts";
 import type { Shape } from "./shape.ts";
-import { ago, gigabytes, listed, mbps, plural, roleWords, v4 } from "./words.ts";
+import { ago, gigabytes, listed, plural, rate, roleWords, v4 } from "./words.ts";
 
 /** What the panel draws from, and what its rows do. */
 interface Context {
@@ -121,7 +121,7 @@ function carriedWay(name: string, each: readonly number[], line?: number): [stri
   const share = line ? `, ${Math.round((average / line) * PERCENT)}% of its speed` : "";
   return [
     name,
-    `averaging ${mbps(average)} Mbit/s${share}; ${mbps(Math.max(...each))} in its busiest hour`,
+    `averaging ${rate(average)}${share}; ${rate(Math.max(...each))} in its busiest hour`,
   ];
 }
 
@@ -162,7 +162,7 @@ function theInternet(context: Context): Child[] {
   if (internet === undefined) {
     return [];
   }
-  const speed = (n?: number): string => (n === undefined ? "not measured" : `${mbps(n)} Mbit/s`);
+  const speed = (n?: number): string => (n === undefined ? "not measured" : rate(n));
   const tested =
     internet.measuredAt === undefined
       ? null

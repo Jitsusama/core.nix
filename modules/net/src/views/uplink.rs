@@ -5,6 +5,7 @@
 use terminal_kit::Pen;
 use terminal_kit::layout::{self, Align, Room};
 
+use crate::figures;
 use crate::uplink::{Purpose, Report, Side};
 
 /// How many processes and destinations the page lists; the answer holds them all.
@@ -30,13 +31,10 @@ fn side_words(side: Side) -> &'static str {
     }
 }
 
-/// A rate as a person reads it: Mbit/s from one, kbit/s below.
+/// A rate the report holds in kbit/s, as a person reads it: in three figures, in the unit
+/// that keeps it under a thousand.
 fn rate(kbit: f64) -> String {
-    if kbit >= 1000.0 {
-        format!("{:.2} Mbit/s", kbit / 1000.0)
-    } else {
-        format!("{kbit:.0} kbit/s")
-    }
+    figures::rate(kbit / 1000.0)
 }
 
 /// The page: the uplink's whole rate and the shares first, then what it
@@ -136,3 +134,7 @@ pub fn uplink(report: &Report, pen: &Pen, room: Room) -> String {
         ),
     ])
 }
+
+#[cfg(test)]
+#[path = "uplink_tests.rs"]
+mod tests;

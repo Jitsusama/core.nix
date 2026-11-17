@@ -6,6 +6,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
+use crate::figures;
 use crate::model::{
     Chokepoint, Concern, ConcernKind, Device, Internet, Link, Medium, Network, Path, Role,
 };
@@ -215,10 +216,7 @@ fn concerns(network: &Network) -> Vec<Concern> {
             (Medium::Ethernet, _, Some(speed)) if speed < GIGABIT => Some((
                 ConcernKind::Slow,
                 link.a.port.clone(),
-                format!(
-                    "{} cable to {far} runs at {speed} Mbit/s.",
-                    possessive(near)
-                ),
+                format!("{} cable to {far} runs at {speed} Mb/s.", possessive(near)),
             )),
             _ => None,
         };
@@ -347,10 +345,10 @@ fn fills(network: &Network, internet: &Internet) -> Vec<Concern> {
                     on: Some(way.into()),
                     other: None,
                     says: format!(
-                        "{} is using {share:.0}% of the internet's speed {way}: {:.1} of its \
-                         {line:.1} Mbit/s.",
+                        "{} is using {share:.0}% of the internet's speed {way}: {} of its {}.",
                         device.name,
-                        tenths(using)
+                        figures::rate(using),
+                        figures::rate(line)
                     ),
                 });
             }
@@ -403,8 +401,9 @@ fn ceiling(
         on: Some(way.into()),
         other: None,
         says: format!(
-            "The internet is the narrowest point {way} for {whom}: {mbps:.1} Mbit/s, as eero \
-             last measured it."
+            "The internet is the narrowest point {way} for {whom}: {}, as eero last measured \
+             it.",
+            figures::rate(mbps)
         ),
     })
 }

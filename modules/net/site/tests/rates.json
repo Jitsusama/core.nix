@@ -1,0 +1,22 @@
+[
+  { "mbps": 369.86, "says": "370 Mb/s" },
+  { "mbps": 11.9, "says": "11.9 Mb/s" },
+  { "mbps": 9.9, "says": "9.90 Mb/s" },
+  { "mbps": 7.42, "says": "7.42 Mb/s" },
+  { "mbps": 1200, "says": "1.20 Gb/s" },
+  { "mbps": 0.145, "says": "145 kb/s" },
+  { "mbps": 0.0000982, "says": "98.2 b/s" },
+  { "mbps": 999.96, "says": "1.00 Gb/s" },
+  { "mbps": 0.99996, "says": "1.00 Mb/s" },
+  { "mbps": 10.35, "says": "10.3 Mb/s" },
+  { "mbps": 12.35, "says": "12.3 Mb/s" },
+  { "mbps": 2.675, "says": "2.67 Mb/s" },
+  { "mbps": 1.125, "says": "1.13 Mb/s" },
+  { "mbps": 2.375, "says": "2.38 Mb/s" },
+  { "mbps": 999500, "says": "1000 Gb/s" },
+  { "mbps": 12345678, "says": "12300 Gb/s" },
+  { "mbps": 0.0000009996, "says": "1.00 b/s" },
+  { "mbps": 0.0000004, "says": "0 b/s" },
+  { "mbps": 0, "says": "0 b/s" },
+  { "mbps": -3, "says": "0 b/s" }
+]

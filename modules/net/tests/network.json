@@ -7090,7 +7090,7 @@
       "kind": "fills",
       "device": "mac:02:00:00:00:00:08",
       "on": "up",
-      "says": "unknown computer 1 is using 83% of the internet's speed up: 9.9 of its 11.9 Mbit/s."
+      "says": "unknown computer 1 is using 83% of the internet's speed up: 9.86 Mb/s of its 11.9 Mb/s."
     },
     {
       "kind": "weak",
@@ -7103,13 +7103,13 @@
       "kind": "ceiling",
       "device": "modem",
       "on": "down",
-      "says": "The internet is the narrowest point down for 7 of the 18 devices on the eeros: 369.9 Mbit/s, as eero last measured it."
+      "says": "The internet is the narrowest point down for 7 of the 18 devices on the eeros: 370 Mb/s, as eero last measured it."
     },
     {
       "kind": "ceiling",
       "device": "modem",
       "on": "up",
-      "says": "The internet is the narrowest point up for every device on the eeros: 11.9 Mbit/s, as eero last measured it."
+      "says": "The internet is the narrowest point up for every device on the eeros: 11.9 Mb/s, as eero last measured it."
     }
   ]
 }
