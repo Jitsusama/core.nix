@@ -213,16 +213,18 @@ const LISTING_RETRY_PRESSED: f64 = 300.0;
 /// ends, either way, since that needs no listing.
 const ROOT_LEFT_GAP: f64 = 30.0;
 const HELD_ENDED_GAP: f64 = 120.0;
-/// How long the garbage's own passes rest after one frees under
-/// `COLLECT_WORTH`, doubling from the first to the longest until one frees
-/// more. From 21:59 to 22:07 on 16 November a machine's guard ran 16 such
+/// How long the garbage's own passes rest after one that left every path
+/// it was offered, doubling from the first to the longest until one takes
+/// some. From 21:59 to 22:07 on 16 November a machine's guard ran 16 such
 /// passes, one each time a process holding the store ended, each deleting
 /// the same 14,448 bytes that an evaluation registered again and freeing
-/// nothing, for 9 to 49 s of waiting on the disk's commits apiece. A pass a
-/// band brings takes the garbage too, so resting these leaves none behind.
+/// nothing, for 9 to 49 s of waiting on the disk's commits apiece. What's
+/// left is judged by the paths still there, not by the room measured,
+/// which other writers move. Garbage that pass wasn't offered still goes at
+/// once, as a build's result deleted on a filling disk, and a pass a band
+/// brings takes the garbage too.
 const COLLECT_FIRST_REST: f64 = 120.0;
 const COLLECT_LONGEST_REST: f64 = 1800.0;
-const COLLECT_WORTH: u64 = 1 << 20;
 /// How many times its own length a listing rests after it ends before a
 /// relist brings another on a healthy disk, so listing takes at most a
 /// tenth of the guard's time, kept with the listing so a restart rests
@@ -404,8 +406,10 @@ pub struct Guard {
     /// own, something having let some of it go.
     collect: bool,
     /// Until when, in wall seconds, the garbage's own passes rest, and how
-    /// long the rest was, after one that freed next to nothing.
+    /// long the rest was, after one that left all it was offered.
     collect_rest: Option<(f64, f64)>,
+    /// The paths such a pass left, which bring no pass while it rests.
+    left_by_collect: BTreeSet<String>,
     /// A run linking the store's identical files: when it began, what
     /// stops it, and where it tells how it ended.
     dedupe_out: Option<DedupeOut>,
@@ -747,6 +751,7 @@ impl Guard {
             held_ended: false,
             collect: false,
             collect_rest: None,
+            left_by_collect: BTreeSet::new(),
             dedupe_out: None,
             dedupe_failed: None,
             uses: Arc::new(Mutex::new(uses)),
@@ -1552,10 +1557,6 @@ impl Guard {
         if !self.collect {
             return;
         }
-        // What let go meanwhile waits for the rest's end, or a band's pass.
-        if self.collect_rest.is_some_and(|(until, _)| now < until) {
-            return;
-        }
         self.collect = false;
         let Some((_, device)) = self.store() else {
             return;
@@ -1578,10 +1579,53 @@ impl Guard {
         let Some(listing) = &self.listing else {
             return;
         };
-        if self.batches(listing, now).iter().any(|batch| !batch.kept) {
+        let resting = self.collect_rest.is_some_and(|(until, _)| now < until);
+        let offered = |batch: &crate::garbage::Batch| {
+            !batch.kept
+                && (!resting
+                    || batch
+                        .paths
+                        .iter()
+                        .any(|path| !self.left_by_collect.contains(path)))
+        };
+        if self.batches(listing, now).iter().any(offered) {
             let thresholds = Thresholds::new(&self.config.bands, space.total);
             due.push((device, Decision::Collect, thresholds));
+        } else if resting {
+            // What let go meanwhile waits for the rest's end.
+            self.collect = true;
         }
+    }
+
+    /// The paths the garbage's own pass is offered, as it begins.
+    fn collect_offers(&self, now: f64) -> Vec<String> {
+        self.listing.as_ref().map_or_else(Vec::new, |listing| {
+            self.batches(listing, now)
+                .into_iter()
+                .filter(|batch| !batch.kept)
+                .flat_map(|batch| batch.paths)
+                .collect()
+        })
+    }
+
+    /// Rests the garbage's own passes once one left every path it was
+    /// offered, and ends the rest once one takes some.
+    fn rest_collect(&mut self, now: f64, offered: &[String]) {
+        let left: BTreeSet<String> = offered
+            .iter()
+            .filter(|path| Path::new(path).symlink_metadata().is_ok())
+            .cloned()
+            .collect();
+        if left.len() < offered.len() {
+            self.collect_rest = None;
+            self.left_by_collect.clear();
+            return;
+        }
+        let seconds = self.collect_rest.map_or(COLLECT_FIRST_REST, |(_, was)| {
+            (was * 2.0).min(COLLECT_LONGEST_REST)
+        });
+        self.collect_rest = Some((now + seconds, seconds));
+        self.left_by_collect = left;
     }
 
     /// Begins listing Nix's garbage on its own thread when it's due, once
@@ -2092,15 +2136,14 @@ impl Guard {
                 .filter(|offer| !self.taken(offer))
                 .cloned()
                 .collect();
+            let offered = if decision == Decision::Collect {
+                self.collect_offers(tick.wall)
+            } else {
+                Vec::new()
+            };
             let end = self.pass_on(tick, device, &here, aim(decision), thresholds, &mut scan)?;
             if decision == Decision::Collect {
-                let freed = self.last.as_ref().map_or(0, |last| last.freed);
-                self.collect_rest = (freed < COLLECT_WORTH).then(|| {
-                    let seconds = self.collect_rest.map_or(COLLECT_FIRST_REST, |(_, was)| {
-                        (was * 2.0).min(COLLECT_LONGEST_REST)
-                    });
-                    (tick.wall + seconds, seconds)
-                });
+                self.rest_collect(tick.wall, &offered);
             }
             let Decision::Reach(band) = decision else {
                 continue;
@@ -2330,6 +2373,7 @@ impl Guard {
                 .map(|offer| (offer.candidate.path.clone(), offer.action.root().to_owned()))
                 .collect(),
             at: tick.wall,
+            since: started,
             band,
         };
         // A pass that can wait waits for the filesystem's own commits; one

@@ -141,8 +141,19 @@ pub struct Journaled<'a, R> {
     pub journal: &'a mut Journal,
     /// The root each candidate's delete is anchored to.
     pub roots: HashMap<PathBuf, PathBuf>,
+    /// When the pass began, in wall seconds, and the same moment on the
+    /// monotonic clock. Each line is stamped that far on from it: a pass on
+    /// 16 November ran from 20:44 to 23:34, and its lines all saying 20:44
+    /// hid what it took at 22:46 from the one reading that hour.
     pub at: f64,
+    pub since: std::time::Instant,
     pub band: Band,
+}
+
+impl<R> Journaled<'_, R> {
+    fn now(&self) -> f64 {
+        self.at + self.since.elapsed().as_secs_f64()
+    }
 }
 
 impl<R: Reclaimer> Reclaimer for Journaled<'_, R> {
@@ -150,7 +161,7 @@ impl<R: Reclaimer> Reclaimer for Journaled<'_, R> {
         let directory = fs::symlink_metadata(&candidate.path).is_ok_and(|meta| meta.is_dir());
         if directory && let Some(root) = self.roots.get(&candidate.path) {
             let begun = self.journal.write(&Line::Begin {
-                at: self.at,
+                at: self.now(),
                 path: candidate.path.clone(),
                 root: root.clone(),
             });
@@ -163,7 +174,7 @@ impl<R: Reclaimer> Reclaimer for Journaled<'_, R> {
         }
         let outcome = self.inner.reclaim(candidate);
         let done = self.journal.write(&Line::Action {
-            at: self.at,
+            at: self.now(),
             band: self.band,
             path: candidate.path.clone(),
             kind: candidate.class.kind().to_owned(),

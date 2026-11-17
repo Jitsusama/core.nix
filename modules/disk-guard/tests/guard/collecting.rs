@@ -1447,18 +1447,42 @@ fn a_collect_that_frees_nothing_rests_before_the_next() {
         fs::remove_file(&process).unwrap();
         step_later(&mut guard, f64::from(half) * 30.0 + 15.0, &BUSY);
     }
-    let deletes = store
-        .log()
-        .iter()
-        .filter(|line| line.starts_with("delete"))
-        .count();
-    // Two, four and eight minutes apart: tried at once, at 2 and at 6.
+    // Resting two minutes, then four: tried at once, at 2 and at 6, so
+    // the rest ends rather than collecting stopping for good.
+    let deletes = deletes(&store);
     assert!(
-        deletes <= 3,
+        (2..=3).contains(&deletes),
         "{deletes} deletes in ten minutes: {:?}",
         store.log()
     );
-    assert!(deletes >= 1, "tried once at least");
+}
+
+#[test]
+fn garbage_a_root_left_goes_while_a_collect_that_freed_nothing_rests() {
+    let store = Store::new();
+    let lingering = store.dead("aaa-again.drv", 2.0 * 3600.0, 14448);
+    fs::write(lingering.join("lingers"), "").unwrap();
+    let kept = rooted(&store);
+    let mut guard = store.guard(store.config_as_given("100%", "0%"));
+    listed_later(&store, &mut guard, 0.0, &CALM);
+    let process = store.root.join("temproots/5000");
+    fs::write(&process, "").unwrap();
+    step_later(&mut guard, 1.0, &BUSY);
+    fs::remove_file(&process).unwrap();
+    step_later_until(&store, &mut guard, 15.0, &BUSY, |store, _| {
+        deletes(store) >= 1
+    });
+    unroot(&store, &kept);
+    step_later_until(&store, &mut guard, 60.0, &BUSY, |_, _| !kept.exists());
+}
+
+/// How many deletes Nix was asked for.
+fn deletes(store: &Store) -> usize {
+    store
+        .log()
+        .iter()
+        .filter(|line| line.starts_with("delete"))
+        .count()
 }
 
 #[test]
