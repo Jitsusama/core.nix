@@ -116,13 +116,34 @@ Provider {
             if (provider.following !== null)
                 provider.arrived();
         }
+
+        function onPlacingsChanged() {
+            provider.relist();
+        }
     }
 
     // The devices the daemon lists, by their node's name, in its order:
-    // outputs, then inputs, each A to Z by the name it gives them.
-    readonly property var listing: {
-        void ready.placings;
-        return ready.keys.map(key => ready.served(key)?.held?.node ?? "");
+    // outputs, then inputs, each A to Z by the name it gives them. Each
+    // part the daemon serves inside a device names its node too, so each
+    // is listed once, where it's first named, which is its own row. Kept
+    // while the names hold, so it's a new list only as a device comes,
+    // goes or moves: made again from every key at each record the daemon
+    // told, it made `devices`, `outputs` and `inputs` again, and all that's
+    // worked out from them, while the launcher was shut, which made most
+    // of the closures Joel's shell threw away after a closing on
+    // 2026-11-17 (tests/sound-served.qml).
+    property var listing: []
+
+    function relist() {
+        const named = new Set();
+        for (const key of ready.keys) {
+            const node = ready.served(key)?.held?.node ?? "";
+            if (node !== "")
+                named.add(node);
+        }
+        const now = Array.from(named);
+        if (now.length !== listing.length || now.some((name, at) => name !== listing[at]))
+            listing = now;
     }
 
     // Whether a device is listed, as the daemon decides from what its card
@@ -1264,8 +1285,19 @@ Provider {
     // where it stands, so choosing one never moves it
     // (RSCH-20261030-GB56HX: choices keep their natural order).
     function ordered(among) {
-        return listing.map(name => among.find(node => node.name === name))
-            .filter(node => node !== undefined);
+        // Each found by its name once, rather than a search of `among` for
+        // each name listed, which made a function for each.
+        const byName = new Map();
+        for (const node of among) {
+            if (!byName.has(node.name))
+                byName.set(node.name, node);
+        }
+        const out = [];
+        for (const name of listing) {
+            if (byName.has(name))
+                out.push(byName.get(name));
+        }
+        return out;
     }
 
     // The daemon's rows, as it serves them, made only while they're wanted
