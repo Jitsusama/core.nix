@@ -18,6 +18,8 @@ stdenv.mkDerivation {
       ./keytimes.h
       ./keytimes.cpp
       ./keytimes_test.cpp
+      ./walltimer.h
+      ./walltimer.cpp
     ];
   };
   nativeBuildInputs = [
