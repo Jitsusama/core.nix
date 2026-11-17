@@ -147,7 +147,15 @@ pub fn read(core: &Path, checkouts: &[String], now: i64, owner: &str) -> Option<
         Ok(waiting) => {
             let seen = command(
                 "git",
-                &["-C", path, "reflog", "show", "--date=unix", "--format=%gd %H", main],
+                &[
+                    "-C",
+                    path,
+                    "reflog",
+                    "show",
+                    "--date=unix",
+                    "--format=%gd %H",
+                    main,
+                ],
             )
             .unwrap_or_default();
             Some(unlocked(&waiting, &seen, now, owner))
