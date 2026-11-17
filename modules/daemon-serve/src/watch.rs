@@ -21,8 +21,9 @@ use serde_json::{Map, Value, json};
 #[derive(Debug, Default)]
 pub struct Held {
     records: BTreeMap<String, Value>,
-    /// How many answers moved what's held, so a daemon making something
-    /// of it knows by one number whether it's to be made again.
+    /// How many answers named a record or took one away, so a daemon
+    /// making something of what's held knows by one number whether it may
+    /// need making again.
     taken: u64,
 }
 
@@ -52,10 +53,10 @@ impl Held {
             .map(|(key, record)| (key.as_str(), record))
     }
 
-    /// How many answers have named a record that changed or went: the
-    /// same while none does, and more once one does. An answer giving
-    /// records as they already read counts too, so a reader keyed on it
-    /// may make something again for nothing, never keep it stale.
+    /// How many answers have named a record, or taken one away: the same
+    /// while none does, and more once one does, even one restating records
+    /// as they already read. So a reader keyed on it may make something
+    /// again for nothing, but never keeps it stale.
     pub fn taken(&self) -> u64 {
         self.taken
     }
