@@ -644,55 +644,13 @@ mod tests {
         assert_eq!(kept, json!(41.5), "kept past SLOW_KEPT");
     }
 
-    /// A battery below freezing, as one left in a car in a Canadian
-    /// winter is, says its temperature: the kernel's `temp` is signed,
-    /// in tenths of a degree, so -55 is -5.5 °C, not no temperature.
-    #[test]
-    fn a_battery_below_freezing_says_its_temperature() {
-        let root = std::env::temp_dir().join(format!("machine-cold-{}", std::process::id()));
-        let at = root.join("sys/class/power_supply/BAT0");
-        std::fs::create_dir_all(&at).unwrap();
-        std::fs::write(at.join("temp"), "-55\n").unwrap();
-        let held = Root::new(&root);
-        let said = record(
-            &held,
-            "BAT0",
-            &Value::Null,
-            &mut Settings::default(),
-            Instant::now(),
-        )["temperature_c"]
-            .clone();
-        std::fs::remove_dir_all(&root).unwrap();
-        assert_eq!(said, json!(-5.5));
-    }
-
-    /// A gauge with no temperature to give says absolute zero, -2731
-    /// tenths, as a placeholder; a battery can't be that cold, so it
-    /// says no temperature, as a hwmon reading out of Heat's range does.
-    #[test]
-    fn a_battery_said_colder_than_any_can_be_says_no_temperature() {
-        let root = std::env::temp_dir().join(format!("machine-zero-{}", std::process::id()));
-        let at = root.join("sys/class/power_supply/BAT0");
-        std::fs::create_dir_all(&at).unwrap();
-        std::fs::write(at.join("temp"), "-2731\n").unwrap();
-        let held = Root::new(&root);
-        let said = record(
-            &held,
-            "BAT0",
-            &Value::Null,
-            &mut Settings::default(),
-            Instant::now(),
-        )["temperature_c"]
-            .clone();
-        std::fs::remove_dir_all(&root).unwrap();
-        assert_eq!(said, Value::Null);
-    }
-
-    /// A battery's temperature is kept as far as Heat keeps a chip's
-    /// reading, -100 to 200 °C, so a battery in a car through a northern
-    /// winter's -40 °C still says it; only Heat's parts narrow further.
-    /// Past either edge, or too far for the reach to be worked out, it
-    /// says none.
+    /// The kernel's `temp` is signed, in tenths of a degree, so a battery
+    /// below freezing, as one left in a car in a Canadian winter is, says
+    /// its temperature: -55 is -5.5 °C. It is kept as far as Heat keeps a
+    /// chip's reading, -100 to 200 °C, so -40 °C still says it; only
+    /// Heat's parts narrow further. Past either edge it says none, as a
+    /// gauge's absolute-zero placeholder (-2731) does, and so does a count
+    /// too far for the reach to be worked out.
     #[test]
     fn a_battery_within_heats_reach_says_its_temperature() {
         let root = std::env::temp_dir().join(format!("machine-forty-{}", std::process::id()));
@@ -711,9 +669,11 @@ mod tests {
                 .clone()
         };
         let read = [
+            "-55",
             "-400",
             "-1000",
             "-1001",
+            "-2731",
             "2000",
             "2001",
             &i64::MAX.to_string(),
@@ -723,8 +683,10 @@ mod tests {
         assert_eq!(
             read,
             [
+                json!(-5.5),
                 json!(-40.0),
                 json!(-100.0),
+                Value::Null,
                 Value::Null,
                 json!(200.0),
                 Value::Null,
