@@ -113,6 +113,52 @@ fn a_pass_that_works_after_failing_takes_the_failing_notice_away() {
     assert_eq!(change(&cleared, &calm), None, "taken away once");
 }
 
+// The notice says the failing disk is failing, so only that disk's pass
+// can say it isn't: one on another disk, or one on it that freed nothing,
+// leaves it standing; and with a writer frozen, its notice goes back in
+// the failing one's place rather than nothing.
+#[test]
+fn only_a_pass_that_frees_room_on_the_failing_disk_takes_its_notice_away() {
+    let failing = status(&[("/", Band::Filling, 140)], Some(refused(2.0)));
+    let elsewhere = status(
+        &[("/", Band::Filling, 140)],
+        Some(LastPass {
+            path: PathBuf::from("/var/cache/builds"),
+            ..pass(3.0, Band::Filling, "reached", 33)
+        }),
+    );
+    assert_eq!(change(&failing, &elsewhere), None, "a pass on another disk");
+    let fruitless = status(
+        &[("/", Band::Filling, 140)],
+        Some(pass(3.0, Band::Filling, "exhausted", 0)),
+    );
+    assert_eq!(
+        change(&failing, &fruitless),
+        None,
+        "a pass that freed nothing"
+    );
+    let mut frozen = status(
+        &[("/", Band::Filling, 173)],
+        Some(pass(3.0, Band::Filling, "reached", 33)),
+    );
+    let mut was_frozen = failing.clone();
+    let writer = disk_guard::writers::Frozen {
+        unit: "disk-guard-freeze-700.scope".to_owned(),
+        pid: 700,
+        start: 500,
+        name: "dd".to_owned(),
+        path: PathBuf::from("/"),
+        at: 1.0,
+    };
+    was_frozen.frozen.push(writer.clone());
+    frozen.frozen.push(writer);
+    assert_eq!(
+        shown(change(&was_frozen, &frozen)).summary,
+        "Froze dd, which was filling the disk",
+        "the frozen writer's notice goes back in its place"
+    );
+}
+
 fn shown(change: Option<Change>) -> Notice {
     match change {
         Some(Change::Show(notice)) => notice,
