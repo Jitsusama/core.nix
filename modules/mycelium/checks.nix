@@ -553,6 +553,7 @@ in
             folder = "${state}/mission/waiting";
             records = "items";
             key = "id";
+            or = "title";
             by = "quest";
           };
           verdict = {

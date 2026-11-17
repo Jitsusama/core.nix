@@ -55,7 +55,9 @@ in
   waiting = {
     folder = "${state}/mission/waiting";
     records = "items";
+    # A wait with no id is known by its title, as the launcher knows it.
     key = "id";
+    or = "title";
     by = "quest";
   };
   verdict = {
