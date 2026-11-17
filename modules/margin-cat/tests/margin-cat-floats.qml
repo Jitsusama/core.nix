@@ -151,13 +151,16 @@ QtObject {
         // tiled windows there: a leap on from beside its edge that moves
         // across as it rises cut its corner for 230 ms (2026-11-16). Each
         // way's frames every 4 ms, as where its box lies over the face; a
-        // closed one has none.
+        // closed one has none. The cat is 8 cells square, at its way's
+        // cell.
         const overFace = (way, it) => {
             const hits = [];
+            const wide = 8 * way.cell;
+            const tall = wide;
             for (let t = 0; t <= way.ends; t += 4) {
                 const at = Paths.frame(way, t);
-                if (at.x + 8 > it.left + 0.5 && at.x < it.right - 0.5
-                    && at.y + 8 > it.top + 0.5 && at.y < it.bottom - 0.5)
+                if (at.x + wide > it.left + 0.5 && at.x < it.right - 0.5
+                    && at.y + tall > it.top + 0.5 && at.y < it.bottom - 0.5)
                     hits.push(`${Math.round(t)} ms at ${at.x.toFixed(1)},${at.y.toFixed(1)}`);
             }
             return hits.slice(0, 3);
@@ -317,6 +320,170 @@ QtObject {
             Paths.columns(tiles, 0), world({ floats: [inGap] }));
         expect("from a gap's ledge, never a leap up into the window over it",
             fromGap.filter(one => one.stop.how === "leapsOn").length, 0);
+
+        // Onto and off one whose top is 2 above the tiles', at the
+        // screen's top: no arc to show, so it steps up and down within
+        // its walk, paws moving, rather than glide at the edge in a
+        // leap's pose (VKCF3Z 299fb911).
+        const flush = float(700, 14, 200, 100);
+        const stepsOn = Paths.walk({ x: 100, y: 7 }, { x: 800, y: 5 },
+            world({ floats: [flush] }));
+        const stepsOff = Paths.walk({ x: 800, y: 5 }, { x: 100, y: 7 },
+            world({ floats: [flush] }));
+        // Its beats from beside a floating window's edge to beside its far
+        // one, not the gap's leap between columns. By it, it only walks:
+        // never a crouch, a leap or a landing's crouch, and never up or
+        // down more than `most` pixels in one leg, 2 unless it's said.
+        const by = (way, it, wide) => way.beats.filter(beat =>
+            Math.max(beat.from.x, beat.to.x) >= it.left - (wide ?? 8)
+                && Math.min(beat.from.x, beat.to.x) <= it.right);
+        const walks = (way, it, most, wide) => by(way, it, wide).length > 0
+            && by(way, it, wide).every(beat =>
+                ["goes", "turns", "settles"].includes(beat.name)
+                    && Math.abs(beat.to.y - beat.from.y) <= (most ?? 2));
+        expect("onto and off one 2 above the tops, it steps within its walk, never leaping",
+            [walks(stepsOn, flush), walks(stepsOff, flush)], [true, true]);
+        expect("and gets where it's going",
+            [ends(stepsOn.beats[stepsOn.beats.length - 1]).slice(2),
+                ends(stepsOff.beats[stepsOff.beats.length - 1]).slice(2)], [[800, 5], [100, 7]]);
+        expect("stepping on and off one 2 above, never over its face",
+            [overFace(stepsOn, flush), overFace(stepsOff, flush)], [[], []]);
+        // And over it on its way, as a route goes, to a seat clear of it.
+        const stepsOver = Paths.walk({ x: 100, y: 7 }, { x: 1000, y: 7 },
+            world({ floats: [flush] }));
+        expect("over one 2 above the tops on its way, it steps on and off within its walk",
+            [walks(stepsOver, flush), endsAt(stepsOver), overFace(stepsOver, flush)],
+            [true, [1000, 7], []]);
+        // One cell more, with room over it for an arc: a leap on, a hop
+        // off.
+        const three = float(700, 13, 200, 100);
+        const leapsBy = (way, it, wide) => by(way, it, wide).map(beat => beat.name)
+            .filter(name => ["crouches", "leaps", "over", "hops", "falls"].includes(name));
+        expect("3 above, with room for its arc, it leaps on and hops off",
+            [leapsBy(Paths.walk({ x: 100, y: 7 }, { x: 800, y: 4 }, world({ floats: [three] })),
+                three),
+                leapsBy(Paths.walk({ x: 800, y: 4 }, { x: 100, y: 7 }, world({ floats: [three] })),
+                    three)],
+            [["crouches", "leaps", "over"], ["hops", "falls"]]);
+
+        // A cell of 2 and a cat 16 square: 2 cells up is a step, 3 a leap.
+        const bigTiles = [
+            { left: 16, top: 48, width: 600, height: 736, column: 0 },
+            { left: 632, top: 48, width: 600, height: 736, column: 1 }
+        ];
+        const big = it => world({ cell: 2, wide: 16, tall: 16, air: 2,
+            cols: Paths.columns(bigTiles, 0), floats: [it] });
+        const twoUp = float(700, 44, 200, 100);
+        const threeUp = float(700, 42, 200, 100);
+        const bigOn = Paths.walk({ x: 100, y: 30 }, { x: 800, y: 26 }, big(twoUp));
+        const bigOff = Paths.walk({ x: 800, y: 26 }, { x: 100, y: 30 }, big(twoUp));
+        expect("at a cell of 2, 2 cells up it steps on and off, getting where it's going",
+            [walks(bigOn, twoUp, 4, 16), walks(bigOff, twoUp, 4, 16), endsAt(bigOn),
+                endsAt(bigOff),
+                overFace(bigOn, twoUp), overFace(bigOff, twoUp)],
+            [true, true, [800, 26], [100, 30], [], []]);
+        expect("and 3 cells up it leaps on and hops off",
+            [leapsBy(Paths.walk({ x: 100, y: 30 }, { x: 800, y: 24 }, big(threeUp)), threeUp,
+                16),
+                leapsBy(Paths.walk({ x: 800, y: 24 }, { x: 100, y: 30 }, big(threeUp)),
+                    threeUp, 16)],
+            [["crouches", "leaps", "over"], ["hops", "falls"]]);
+
+        // At the screen's top, as on the GPU rig: the tops stand 3 down
+        // and a floating window across the gap stands 3 above the screen,
+        // where a leap's arc would be off it, drawn held at the edge. It
+        // walks up beside its edge, along its top and down off its far
+        // end, never through its face (VKCF3Z 299fb911).
+        const rigTiles = [
+            { left: 16, top: 12, width: 600, height: 772, column: 0 },
+            { left: 632, top: 12, width: 600, height: 772, column: 1 }
+        ];
+        const rig = it => world({ cols: Paths.columns(rigTiles, 0), floats: [it] });
+        const atEdge = float(500, 6, 250, 200);
+        const rigOver = Paths.walk({ x: 100, y: 3 }, { x: 900, y: 3 }, rig(atEdge));
+        const rigBack = Paths.walk({ x: 900, y: 3 }, { x: 100, y: 3 }, rig(atEdge));
+        expect("at the screen's top, a float with no room for an arc is walked over both ways",
+            [walks(rigOver, atEdge, 8), walks(rigBack, atEdge, 8), endsAt(rigOver),
+                endsAt(rigBack), overFace(rigOver, atEdge), overFace(rigBack, atEdge)],
+            [true, true, [900, 3], [100, 3], [], []]);
+        expect("up beside its edge and down beside its far one",
+            by(rigOver, atEdge).map(ends).slice(1),
+            [[492, 3, 492, -3], [492, -3, 500, -3], [500, -3, 742, -3],
+                [742, -3, 750, -3], [750, -3, 750, 3], [750, 3, 900, 3]]);
+        expect("over the tiled windows from its step up to its step down, under them either side",
+            by(rigOver, atEdge).map(beat =>
+                Paths.frame(rigOver, (beat.begins + beat.ends) / 2).aboard === true),
+            [false, true, true, true, true, true, false]);
+        // And onto a seat on it and off it again, as lands() and off() go.
+        const seatOn = Paths.walk({ x: 100, y: 3 }, { x: 600, y: -3 }, rig(atEdge));
+        const seatOff = Paths.walk({ x: 600, y: -3 }, { x: 100, y: 3 }, rig(atEdge));
+        expect("at the screen's top, it walks onto a seat on it and off it again",
+            [walks(seatOn, atEdge, 8), walks(seatOff, atEdge, 8), endsAt(seatOn),
+                endsAt(seatOff), overFace(seatOn, atEdge), overFace(seatOff, atEdge)],
+            [true, true, [600, -3], [100, 3], [], []]);
+        // Up to its own height it walks; a cell taller and it keeps its
+        // leap, held at the edge, rather than walk up a wall.
+        const capped = float(500, 4, 250, 200);
+        const pastCap = float(500, 3, 250, 200);
+        expect("its own height up at the screen's top, it walks; a cell more, it leaps",
+            [walks(Paths.walk({ x: 100, y: 3 }, { x: 900, y: 3 }, rig(capped)), capped, 8),
+                leapsBy(Paths.walk({ x: 100, y: 3 }, { x: 900, y: 3 }, rig(pastCap)), pastCap)],
+            [true, ["crouches", "leaps", "over", "crouches", "hops", "falls"]]);
+        // Its apex is its first leap's, to a cell under its landing: on
+        // the screen there, it leaps, though its landing stands at its top.
+        const toTheTop = float(500, 9, 250, 200);
+        expect("onto one standing at the screen's top, its arc still on it, it leaps",
+            leapsBy(Paths.walk({ x: 100, y: 7 }, { x: 900, y: 7 }, world({ floats: [toTheTop] })),
+                toTheTop).slice(0, 3),
+            ["crouches", "leaps", "over"]);
+        expect("onto a seat on one at the screen's top, its arc still on it, it leaps",
+            leapsBy(Paths.walk({ x: 100, y: 7 }, { x: 600, y: 0 }, world({ floats: [toTheTop] })),
+                toTheTop).slice(0, 3),
+            ["crouches", "leaps", "over"]);
+        // Straight up off one onto a ledge standing above the screen.
+        const highTiles = [
+            { left: 16, top: 6, width: 600, height: 778, column: 0 },
+            { left: 632, top: 6, width: 600, height: 778, column: 1 }
+        ];
+        const underHigh = float(700, 12, 200, 100);
+        const upHigh = Paths.walk({ x: 800, y: 3 }, { x: 1000, y: -3 },
+            world({ cols: Paths.columns(highTiles, 0), floats: [underHigh] }));
+        expect("up off one onto a ledge above the screen's top, it walks",
+            [walks(upHigh, underHigh, 8), ends(upHigh.beats[0])], [true, [800, 3, 800, -3]]);
+        // At a cell of 2 its apex is 2 pixels over its first leap's end,
+        // so 1 over the screen's top it walks, and 1 under it, it leaps.
+        const highBig = [
+            { left: 16, top: 24, width: 600, height: 760, column: 0 },
+            { left: 632, top: 24, width: 600, height: 760, column: 1 }
+        ];
+        const bigHigh = it => world({ cell: 2, wide: 16, tall: 16, air: 2,
+            cols: Paths.columns(highBig, 0), floats: [it] });
+        const nearTop = float(500, 17, 250, 200);
+        const roomTop = float(500, 19, 250, 200);
+        // Its hop off rises half a cell, so its apex there is 1 pixel
+        // over where it stands, at the screen's top: on it, so it hops.
+        expect("at a cell of 2, its apex over the screen's top it walks, under it it leaps",
+            [walks(Paths.walk({ x: 100, y: 6 }, { x: 1000, y: 6 }, bigHigh(nearTop)),
+                nearTop, 16, 16),
+                leapsBy(Paths.walk({ x: 100, y: 6 }, { x: 1000, y: 6 }, bigHigh(roomTop)),
+                    roomTop, 16)],
+            [true, ["crouches", "leaps", "over", "crouches", "hops", "falls"]]);
+
+        // Straight up off one 2 under the tops onto them, and straight
+        // down onto it from them: steps, never a leap or a fall.
+        const sunk = float(700, 18, 200, 100);
+        const upOff = Paths.walk({ x: 800, y: 9 }, { x: 1000, y: 7 }, world({ floats: [sunk] }));
+        const downOn = Paths.walk({ x: 1000, y: 7 }, { x: 800, y: 9 }, world({ floats: [sunk] }));
+        expect("2 under the tops, it steps straight up off it and down onto it",
+            [walks(upOff, sunk), walks(downOn, sunk), ends(upOff.beats[0]),
+                ends(downOn.beats[downOn.beats.length - 1])],
+            [true, true, [800, 9, 800, 7], [800, 7, 800, 9]]);
+        // Closed from under it there, nothing holds it to walk up: it
+        // pushes off at once.
+        const sunkClosed = Paths.walk({ x: 800, y: 9 }, { x: 1000, y: 7 },
+            world({ floated: [sunk], hurried: true }));
+        expect("2 under the tops and closed from under it, it leaps up at once",
+            names(sunkClosed).slice(0, 3), ["crouches", "leaps", "lands"]);
 
         // One off its way changes nothing, along the tops nor by a route.
         const aside = float(300, 600, 100, 100);
