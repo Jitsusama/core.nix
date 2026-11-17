@@ -13,6 +13,10 @@ import { pathToFileURL } from "node:url";
 const SETTLE_TIMEOUT_MS = 5000;
 const RESIDENT_SECTION = /<resident>/u;
 const CARRIED_NOTE = "noted on the carry";
+const BEFORE_RESTART = /before the restart/u;
+const AFTER_RESTART = /after the restart/u;
+const FAILED_START = /the start failed/u;
+const HELD_TEXT = /sent as the run started/u;
 const root = resolve(process.argv[2]);
 const codeDirectory = process.argv[3] ?? "dist";
 assert.ok(
@@ -41,7 +45,7 @@ const { SettingsManager } = await load(`${core}/settings-manager.${extension}`);
 const { DefaultResourceLoader } = await load(`${core}/resource-loader.${extension}`);
 const { Agent } = await load(`${root}/node_modules/@earendil-works/pi-agent-core/dist/index.js`);
 const compat = await load(`${root}/node_modules/@earendil-works/pi-ai/dist/compat.js`);
-const { fauxAssistantMessage, getCurrentTools } = await load(
+const { fauxAssistantMessage, fauxToolCall, getCurrentTools } = await load(
   `${root}/node_modules/@earendil-works/pi-ai/dist/index.js`,
 );
 
@@ -213,13 +217,16 @@ it("a run the host's agent starts itself is prepared and settled as a prompt's r
     ]);
     await promptRun(session, "typed words");
     let busyInWork;
+    let handed;
     await deadline(
-      session.runForHost(async () => {
+      session.runForHost(async (prepared) => {
         busyInWork = session.isStreaming;
+        handed = prepared;
         await session.agent.prompt(userMessage("asked again"));
       }),
     );
     assert.equal(busyInWork, true, "the session is busy through the host's work");
+    assert.deepEqual(handed, [], "an unchanged prompt hands the work nothing to place");
     assert.equal(session.isStreaming, false, "and idle once it ends");
     assert.deepEqual(heard.starts, ["custom", "continue"], "each run is prepared once");
     assert.deepEqual(heard.busy, [true, true], "each is busy from before it is prepared");
@@ -335,19 +342,156 @@ it("a carried run, as a prompt's, leaves a restored tool that registers after it
   }
 });
 
+// An extension whose section says what it is given, as one an upgrade changes.
+const addsSection = (changing) => ({
+  name: "changes-section",
+  factory: (pi) => {
+    pi.on("before_agent_start", (event) => {
+      event.systemPromptOptions.sections = { ...event.systemPromptOptions.sections, changing };
+    });
+  },
+});
+
+// Sends a context-only message as a run starts, while pi holds it, then starts or fails.
+const sendsAsItStarts = (session, { fails = false } = {}) => {
+  const start = session._extensionRunner.emitBeforeAgentStart.bind(session._extensionRunner);
+  session._extensionRunner.emitBeforeAgentStart = async (...args) => {
+    session._extensionRunner.emitBeforeAgentStart = start;
+    await session.sendCustomMessage(
+      { customType: "held", content: "sent as the run started", display: false },
+      { triggerTurn: false },
+    );
+    // No handler's error escapes pi's runner, so a start is failed from inside it.
+    if (fails) {
+      throw new Error("the start failed");
+    }
+    return start(...args);
+  };
+};
+
+// A host's carried run, placing what it is handed ahead of its first new message.
+const carry = (session) =>
+  deadline(
+    session.runForHost((prepared) =>
+      session.agent.prompt([...(prepared ?? []), userMessage("carried on")]),
+    ),
+  );
+
+// A carried run that takes a tool round, as a turn a restart cut off does, then answers.
+const carryThroughToolRound = (session, faux) => {
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall("read", { path: "absent" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("answered as carried"),
+  ]);
+  return carry(session);
+};
+
+const isHeld = (message) => message.customType === "held";
+
+// Whether the held message sits after a tool result, so it splits no call from its result.
+const heldAfterToolResult = ({ messages }) => {
+  const result = messages.findIndex((message) => message.role === "toolResult");
+  return result > 0 && messages.findIndex(isHeld) > result;
+};
+
+// How many of a request's system messages hold the text.
+const systemMessagesHolding = (request, text) =>
+  systemMessages(request).filter((message) => text.test(JSON.stringify(message))).length;
+
+it("a carried run's first request holds the sections as they stand after a restart", async () => {
+  const before = await openPreparedSession({
+    tools: ["read"],
+    extensions: [addsSection("before the restart")],
+  });
+  try {
+    before.faux.setResponses([fauxAssistantMessage("answered as typed")]);
+    await promptRun(before.session, "typed words");
+    assert.match(JSON.stringify(systemMessages(before.requests[0])), BEFORE_RESTART);
+  } finally {
+    before.close();
+  }
+  // The restart reopens the transcript under an upgrade that changed what the extension adds.
+  const { session, faux, requests, close } = await openPreparedSession({
+    tools: ["read"],
+    sessionManager: before.session.sessionManager,
+    extensions: [addsSection("after the restart")],
+  });
+  try {
+    await carryThroughToolRound(session, faux);
+    assert.equal(requests.length, 2, "the carried run takes a tool round and a second turn");
+    // The work is handed the update and places it, and the next turn's refresh finds it.
+    assert.equal(systemMessagesHolding(requests[0], AFTER_RESTART), 1, "current from the first");
+    assert.equal(systemMessagesHolding(requests[1], AFTER_RESTART), 1, "and sent only once");
+  } finally {
+    close();
+  }
+});
+
+it("a message sent as a carried run starts lands after its first turn's tool result", async () => {
+  const { session, faux, requests, close } = await openPreparedSession({ tools: ["read"] });
+  try {
+    sendsAsItStarts(session);
+    await carryThroughToolRound(session, faux);
+    // It waits for the first turn to end, so it never splits a tool call from its result.
+    const holdsHeld = requests.map((request) => HELD_TEXT.test(JSON.stringify(request)));
+    assert.deepEqual(holdsHeld, [false, true]);
+    assert.ok(heldAfterToolResult(session));
+  } finally {
+    close();
+  }
+});
+
+it("a carried run that fails to start keeps what it held for the next turn", async () => {
+  const { session, faux, close } = await openPreparedSession({ tools: ["read"] });
+  try {
+    sendsAsItStarts(session, { fails: true });
+    await assert.rejects(deadline(session.runForHost(() => Promise.resolve())), FAILED_START);
+    assert.equal(session.isStreaming, false);
+    // The transcript it would carry on may owe a tool result, so nothing goes after it yet.
+    assert.ok(!session.messages.some(isHeld));
+    await carryThroughToolRound(session, faux);
+    // The next run's turn places it once its tool result is in.
+    assert.ok(heldAfterToolResult(session));
+  } finally {
+    close();
+  }
+});
+
+it("a handler's setActiveTools() holds for a carried run", async () => {
+  // It keeps one of two tools, so neither the base loadout nor none at all passes.
+  const narrows = (pi) =>
+    pi.on("before_agent_start", () => {
+      pi.setActiveTools([LATE_TOOL.name]);
+    });
+  const late = registersLate({ atLoad: true }).extension;
+  const tools = ["read", LATE_TOOL.name];
+  const opened = { tools, extensions: [late, { name: "narrows", factory: narrows }] };
+  const { session, faux, requests, close } = await openPreparedSession(opened);
+  try {
+    faux.setResponses([fauxAssistantMessage("answered as carried")]);
+    await carry(session);
+    assert.deepEqual(requests[0].tools, [LATE_TOOL.name]);
+  } finally {
+    close();
+  }
+});
+
 it("a host's work inside a run of pi's own joins that run", async () => {
   const { session, heard, close } = await openPreparedSession();
   try {
     let joined = false;
+    let handedInside;
     await deadline(
       session.runForHost(() =>
-        session.runForHost(() => {
+        session.runForHost((prepared) => {
           joined = session.isStreaming;
+          handedInside = prepared;
           return Promise.resolve();
         }),
       ),
     );
     assert.equal(joined, true, "the inner work ran inside the run");
+    assert.deepEqual(handedInside, [], "and is handed nothing, since pi's run placed it");
     assert.deepEqual(heard.starts, ["continue"], "the inner work prepares no run of its own");
     assert.deepEqual(heard.settles, [false], "and the run settles once");
   } finally {
