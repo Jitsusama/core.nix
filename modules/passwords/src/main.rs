@@ -172,13 +172,6 @@ impl Watch {
 fn hears(of: &Of, key: &str) -> bool {
     match of {
         Of::Entries => false,
-        Of::EntriesAndAsks => {
-            key == secret_asks::row::SUMMARY
-                || key
-                    .strip_prefix("row:")
-                    .and_then(|key| key.strip_prefix(secret_asks::row::PLACE))
-                    .is_some_and(|key| key.starts_with(':'))
-        }
         Of::Rows => key.starts_with("row:"),
         Of::Drawers(keys) => keys.iter().any(|each| each == key),
     }
@@ -520,11 +513,6 @@ fn made_of(daemon: &mut Daemon, of: &Of) -> Vec<Value> {
         return daemon.held.records();
     }
     tell_rows(daemon, Some(of));
-    let entries = if *of == Of::EntriesAndAsks {
-        daemon.held.records()
-    } else {
-        Vec::new()
-    };
     let mut made: Vec<Value> = daemon
         .rows
         .kept
@@ -534,9 +522,9 @@ fn made_of(daemon: &mut Daemon, of: &Of) -> Vec<Value> {
         .cloned()
         .collect();
     // Kept by key, rows are answered in their order, so a limit keeps the
-    // first shown, and the entries a mixed watch is told come first.
+    // first shown.
     made.sort_by_key(|record| record["row"]["order"].as_i64());
-    entries.into_iter().chain(made).collect()
+    made
 }
 
 /// Tells each row or drawer watch what it watches that changed since it
@@ -552,9 +540,6 @@ fn tell_rows(daemon: &mut Daemon, also: Option<&Of>) {
         .chain(also)
         .collect();
     let rowing = wanted.iter().any(|of| **of == Of::Rows);
-    // The asks' rows are made for a watch of rows and for the entries
-    // watched with the asks; the entries' own rows only for rows.
-    let asking = rowing || wanted.iter().any(|of| **of == Of::EntriesAndAsks);
     let drawing: Vec<String> = wanted
         .iter()
         .filter_map(|of| match of {
@@ -563,7 +548,7 @@ fn tell_rows(daemon: &mut Daemon, also: Option<&Of>) {
         })
         .flatten()
         .collect();
-    if !asking && drawing.is_empty() {
+    if !rowing && drawing.is_empty() {
         // Nobody is told against it, so the next watch starts it afresh.
         daemon.rows.kept.let_go();
         daemon.rows.asks.let_go();
@@ -572,15 +557,11 @@ fn tell_rows(daemon: &mut Daemon, also: Option<&Of>) {
     let made = if rowing { rows_of(daemon) } else { Vec::new() };
     let beside = drawers_of(daemon, &drawing);
     let mut moved = daemon.rows.kept.take(made, beside);
-    // The asks' summary comes beside their rows, saying how many wait.
-    let (asked, summary) = match (&daemon.asks, asking) {
-        (Some(engine), true) => {
-            let (rows, summary) = engine.rows();
-            (rows, vec![summary])
-        }
-        _ => (Vec::new(), Vec::new()),
+    let asked = match (&daemon.asks, rowing) {
+        (Some(engine), true) => engine.rows().0,
+        _ => Vec::new(),
     };
-    let asks_moved = daemon.rows.asks.take(asked, summary);
+    let asks_moved = daemon.rows.asks.take(asked, Vec::new());
     moved.changed.extend(asks_moved.changed);
     moved.gone.extend(asks_moved.gone);
     for watch in &daemon.watches {
@@ -604,10 +585,7 @@ fn wordless(shared: &Shared, asked: &Ask) -> Option<Value> {
     let (Ask::List { id, of, .. } | Ask::Watch { id, of }) = asked else {
         return None;
     };
-    // The asks' rows are made in their own words, so entries watched
-    // with them need none of these.
-    let worded = matches!(of, Of::Rows | Of::Drawers(_));
-    (worded && lock(shared).rows.words.is_none()).then(|| {
+    (*of != Of::Entries && lock(shared).rows.words.is_none()).then(|| {
         error(
             id,
             "no-words",
@@ -813,7 +791,11 @@ fn took_in(shared: &Shared, manager: &str, line: &str) {
                     .iter()
                     .filter_map(|key| daemon.held.record(key))
                     .collect();
-                for watch in daemon.watches.iter().filter(|watch| watch.of.has_entries()) {
+                for watch in daemon
+                    .watches
+                    .iter()
+                    .filter(|watch| watch.of == Of::Entries)
+                {
                     let line = json!({"id": watch.id, "changed": records, "gone": changes.gone});
                     let _ = watch.told.send(line.to_string());
                 }
@@ -1432,7 +1414,11 @@ fn audit_read(shared: &Shared, id: &Value) -> Value {
         .filter_map(|key| daemon.held.record(key))
         .collect();
     if !records.is_empty() {
-        for watch in daemon.watches.iter().filter(|watch| watch.of.has_entries()) {
+        for watch in daemon
+            .watches
+            .iter()
+            .filter(|watch| watch.of == Of::Entries)
+        {
             let line = json!({"id": watch.id, "changed": records, "gone": []});
             let _ = watch.told.send(line.to_string());
         }
