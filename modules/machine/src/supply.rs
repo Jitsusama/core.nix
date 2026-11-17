@@ -686,6 +686,34 @@ mod tests {
         assert_eq!(said, Value::Null);
     }
 
+    /// A battery's temperature is kept as far as Heat keeps a chip's
+    /// reading, -100 to 200 °C, so a battery in a car through a northern
+    /// winter's -40 °C still says it; only Heat's parts narrow further.
+    #[test]
+    fn a_battery_at_forty_below_says_its_temperature() {
+        let root = std::env::temp_dir().join(format!("machine-forty-{}", std::process::id()));
+        let at = root.join("sys/class/power_supply/BAT0");
+        std::fs::create_dir_all(&at).unwrap();
+        let held = Root::new(&root);
+        let said = |tenths: &str| {
+            std::fs::write(at.join("temp"), format!("{tenths}\n")).unwrap();
+            record(
+                &held,
+                "BAT0",
+                &Value::Null,
+                &mut Settings::default(),
+                Instant::now(),
+            )["temperature_c"]
+                .clone()
+        };
+        let read = [said("-400"), said("-1000"), said("-1001"), said("2000")];
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            read,
+            [json!(-40.0), json!(-100.0), Value::Null, json!(200.0)]
+        );
+    }
+
     // A Dell's firmware read fails when the kernel finds no 64 KiB buffer
     // for it ("page allocation failure: order:4", six times on Joel's
     // laptop overnight, 2026-11-13). The file is still there; it just
