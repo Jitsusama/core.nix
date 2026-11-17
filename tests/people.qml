@@ -381,6 +381,24 @@ ShellRoot {
             expect("in order", names(all) === "Ada Brook, Ben Carrow, Cal Dunmore, Dee Ellery, "
                 + "Eli Fenwick, Gus, Zo\u00eb \"Zed\" Quill", names(all));
         }),
+        {
+            // The daemon's answer comes ranked as the shell ranks, so it's
+            // shown as it comes: merged and ranked here, everyone was
+            // merged again at each answer, 13 ms of Joel's shell at p90
+            // and 62 at most (his journal, 2026-11-14 to 17).
+            what: "an answer is shown in its order, merging no one",
+            run: () => {
+                root.mergedBefore = people.merging.merges;
+                people.search("cal");
+            },
+            holds: () => answered("cal"),
+            check: () => {
+                const cal = found("cal");
+                expect("found", names(cal) === "Cal Dunmore", names(cal));
+                expect("merging no one", people.merging.merges === root.mergedBefore,
+                    `${people.merging.merges - root.mergedBefore} merges`);
+            }
+        },
         seeking("ben", "the shell holds only those listed and those found", () => {
             expect("only those", people.persons().length === 4, names(people.persons()));
             expect("found", names(found("ben")) === "Ben Carrow", names(found("ben")));
