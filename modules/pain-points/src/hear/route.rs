@@ -8,6 +8,7 @@
 //! heard at, so whoever reads it opens the rest.
 
 use crate::hear::heard::Heard;
+use crate::hear::stalled;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
@@ -139,13 +140,22 @@ pub fn cells(printed: &str) -> BTreeMap<String, Cell> {
         .collect()
 }
 
-/// The address `pain` goes to, or none for now.
+/// The address `pain` goes to, or none for now: a turn the model provider
+/// failed in goes to the provider's owner when the routes name one, and
+/// everything else to its session's owner.
 pub fn owner_of(
     pain: &Heard,
     cells: &BTreeMap<String, Cell>,
     routes: &Routes,
 ) -> Option<String> {
-    owner(&pain.session, pain.void, cells, routes)
+    let provider = routes
+        .provider
+        .as_ref()
+        .filter(|to| !routes.refuses(to))
+        .filter(|_| stalled::is(pain) && pain.kinds.iter().any(|k| k == stalled::PROVIDER));
+    provider
+        .cloned()
+        .or_else(|| owner(&pain.session, pain.void, cells, routes))
 }
 
 /// The address a pain said in `session` goes to, or none for now: its own
@@ -311,7 +321,6 @@ pub fn ledger_note(pains: &[&Heard], cells: &BTreeMap<String, Cell>, offset_s: i
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hear::stalled;
 
     const SESSIONS: &str = r#"{"Ok":{"Sessions":[
         {"id":"s-live","address":"ABC123","state":"busy","quest":"Q1"},

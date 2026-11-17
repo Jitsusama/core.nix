@@ -68,7 +68,11 @@ pub fn stalls(log: &Log, session: &str, void: bool, since: i64, until: i64) -> V
                     "a turn of {:.0} s lost him {:.0} s, {why}",
                     p.seconds, p.lost_seconds
                 ),
-                kinds: vec![KIND.to_string()],
+                kinds: if p.slowed == "an error" {
+                    vec![KIND.to_string(), PROVIDER.to_string()]
+                } else {
+                    vec![KIND.to_string()]
+                },
                 looking_at: None,
                 tools: Vec::new(),
                 failed: Vec::new(),

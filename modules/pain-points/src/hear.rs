@@ -516,7 +516,7 @@ fn route_waiting(
         {
             continue;
         }
-        if let Some(owner) = route::owner(&pain.session, pain.void, cells, routes) {
+        if let Some(owner) = route::owner_of(pain, cells, routes) {
             by_owner.entry(owner).or_default().push(n);
         }
     }

@@ -137,7 +137,8 @@ pub fn alike(a: &str, b: &str) -> f64 {
 /// harness, a peer, the launcher's steering or a compaction's carry-on.
 pub fn automated(text: &str) -> bool {
     let text = text.trim_start();
-    [
+    peers_note(text)
+        || [
         "[",
         "<",
         "Mesh message",
@@ -151,6 +152,25 @@ pub fn automated(text: &str) -> bool {
     ]
     .iter()
     .any(|opening| text.starts_with(opening))
+}
+
+/// Whether a message is a peer's note in the user's place, as one starting,
+/// restarting or waking a session writes: "Woken by 1JQPPC on ...", a
+/// capitalised word, "by", and a cell's six-character address.
+fn peers_note(text: &str) -> bool {
+    let mut words = text.splitn(4, ' ');
+    let (Some(verb), Some("by"), Some(address)) = (words.next(), words.next(), words.next())
+    else {
+        return false;
+    };
+    let address = address.trim_end_matches([',', ':', '.', ';']);
+    verb.chars().next().is_some_and(char::is_uppercase)
+        && verb.chars().skip(1).all(|c| c.is_ascii_lowercase())
+        && address.len() == 6
+        && address
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+        && address.chars().any(|c| c.is_ascii_digit())
 }
 
 fn lowered(text: &str) -> String {
