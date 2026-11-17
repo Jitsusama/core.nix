@@ -26,7 +26,7 @@
 //! is dropped, and it waits for his next idle stretch. SIGTERM, SIGINT
 //! and SIGHUP end it the same way, writing what it measured to `--out`
 //! and exiting 130. A proof killed outright can put nothing back, but its
-//! load ends within two minutes, and the next proof puts the shaper back
+//! load ends within about two seconds, and the next proof puts the shaper back
 //! as the killed one found it. It waits `--wait` seconds from its start
 //! in all, and exits 75 if they run out before every pair is measured,
 //! writing what it measured to `--out`. It exits 69 if it couldn't put

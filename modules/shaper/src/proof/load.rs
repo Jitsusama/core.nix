@@ -10,20 +10,30 @@ use std::time::{Duration, Instant};
 /// One upload's loop, posting 400 MB to the server, its first argument,
 /// again as each ends, while the process `pid` that began at `began` (its
 /// start in `/proc/<pid>/stat`) lives. A proof killed outright can't stop
-/// its scopes, which outlive it, so the loop asks after it before each,
-/// by its start too, since its pid may be given to another process.
+/// its scopes, which outlive it, so the loop asks after it by its start
+/// too, since its pid may be given to another process. It asks before
+/// each upload, and a watcher asks every second during one, ending it, so
+/// the load leaves the link within about two seconds of its proof.
 fn script(pid: u32, began: &str) -> String {
     format!(
-        "while [ \"$(sed 's/.*) //' /proc/{pid}/stat 2>/dev/null | cut -d' ' -f20)\" \
-         = '{began}' ]; do head -c 400000000 /dev/zero \
-         | curl -s -o /dev/null -X POST -T - --max-time 120 \"$1/__up\"; done"
+        "alive() {{ [ \"$(sed 's/.*) //' /proc/{pid}/stat 2>/dev/null | cut -d' ' -f20)\" \
+         = '{began}' ]; }}; \
+         while alive; do head -c 400000000 /dev/zero \
+         | curl -s -o /dev/null -X POST -T - --max-time 120 \"$1/__up\" & up=$!; \
+         (while alive; do sleep 1; done; kill $up 2>/dev/null) & watch=$!; \
+         wait $up; kill $watch 2>/dev/null; done"
     )
 }
 
 /// When this process began, as `/proc/self/stat` says, in clock ticks
 /// since boot: the field after the command's name and eighteen more.
 fn began() -> String {
-    fs::read_to_string("/proc/self/stat")
+    began_of("self")
+}
+
+/// When the process `pid` began, as [`began`] reads it.
+fn began_of(pid: &str) -> String {
+    fs::read_to_string(format!("/proc/{pid}/stat"))
         .ok()
         .and_then(|s| Some(s.rsplit_once(") ")?.1.split(' ').nth(19)?.to_string()))
         .unwrap_or_default()
@@ -75,8 +85,14 @@ mod tests {
     /// Whether `script`, given a server nothing answers on, ends by itself
     /// within `within`; it's killed if not.
     fn ends_within(script: &str, within: Duration) -> bool {
+        ends_within_on(script, "http://127.0.0.1:1", within)
+    }
+
+    /// Whether `script`, uploading to `server`, ends by itself within
+    /// `within`; it's killed if not.
+    fn ends_within_on(script: &str, server: &str, within: Duration) -> bool {
         let mut sh = Command::new("sh")
-            .args(["-c", script, "sh", "http://127.0.0.1:1"])
+            .args(["-c", script, "sh", server])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -112,5 +128,22 @@ mod tests {
             !ends_within(&script(me, &began), Duration::from_secs(1)),
             "ended while its proof runs"
         );
+    }
+
+    #[test]
+    fn an_upload_under_way_ends_soon_after_its_proof() {
+        // A server that takes the connection and never answers holds
+        // curl until its own limit, as a slow link would.
+        let held = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+        let server = format!("http://{}", held.local_addr().expect("its address"));
+        let mut proof = Command::new("sleep").arg("1").spawn().expect("sleep");
+        let (pid, began) = (proof.id(), began_of(&proof.id().to_string()));
+        // Reaped once it ends, since a zombie keeps its stat.
+        let reaper = thread::spawn(move || proof.wait());
+        assert!(
+            ends_within_on(&script(pid, &began), &server, Duration::from_secs(4)),
+            "its upload ran on after its proof ended"
+        );
+        let _ = reaper.join();
     }
 }
