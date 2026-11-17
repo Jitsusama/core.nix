@@ -82,6 +82,11 @@ impl State {
         }
     }
 
+    /// Run `runs`, a write's builds before anything it decided lands.
+    pub fn building<R>(&self, runs: impl FnOnce() -> R) -> R {
+        runs()
+    }
+
     /// The lock whoever runs `check` at `commit` holds while it does.
     pub fn turn(&self, commit: &str, check: &str) -> Turn {
         self.turns

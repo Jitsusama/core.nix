@@ -4564,6 +4564,90 @@ mod tests {
     }
 
     #[test]
+    fn a_net_leaving_ends_while_a_macs_revert_compares_in_its_write() {
+        // 17 November: a watcher told at 00:45 that another build was
+        // installed waited to 01:37 on a Mac revert's comparison at main's
+        // newest head, run inside its write, and one told at 03:08 waited
+        // on the next from 03:02 until it was restarted at 03:29.
+        let state = state("leaves-mid-compare");
+        let check = crate::macs::check("s");
+        let world = Stand {
+            head: "n".into(),
+            merges: names("m n"),
+            slow: names("n"),
+            ..Stand::default()
+        }
+        .exits("m", &check, &[1, 1])
+        .exits("n", &check, &[1, 1]);
+        let settler = Settler::new(&world, &state);
+        settler.hand(Job::Mac {
+            merge: "m".into(),
+            check: check.clone(),
+            since: now(),
+        });
+        let at_newest = ("n".to_owned(), check.clone());
+        let (kept, took) = std::thread::scope(|scope| {
+            settler.start(scope);
+            world.wait_while(
+                |built| !built.contains(&at_newest),
+                "the revert's comparison at main's newest head",
+            );
+            let began = std::time::Instant::now();
+            let kept = settler.leave(|| state.settling().len());
+            let took = began.elapsed();
+            settler.close();
+            (kept, took)
+        });
+        assert!(
+            took < Duration::from_secs(5),
+            "a net leaving waited {took:?} on a revert's comparison, which lands nothing"
+        );
+        assert_eq!(
+            kept, 1,
+            "the Mac's job a net left mid-comparison wasn't kept for the next build"
+        );
+    }
+
+    #[test]
+    fn a_build_outside_a_write_lets_no_leaving_net_past_one() {
+        let state = state("leaves-after-landing");
+        let world = Stand::default();
+        let settler = Settler::new(&world, &state);
+        let (held, holding) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let (building, built) = std::sync::mpsc::channel();
+        let (finish, finished) = std::sync::mpsc::channel::<()>();
+        let (writer, builder) = (&settler, &state);
+        let left_early = std::thread::scope(|scope| {
+            scope.spawn(move || {
+                writer.write(|| {
+                    held.send(()).unwrap();
+                    let _ = released.recv();
+                });
+            });
+            scope.spawn(move || {
+                builder.building(|| {
+                    building.send(()).unwrap();
+                    let _ = finished.recv();
+                });
+            });
+            holding.recv().unwrap();
+            built.recv().unwrap();
+            let leaving = scope.spawn(|| settler.leave(|| ()));
+            std::thread::sleep(Duration::from_millis(500));
+            let left_early = leaving.is_finished();
+            release.send(()).unwrap();
+            finish.send(()).unwrap();
+            leaving.join().unwrap();
+            left_early
+        });
+        assert!(
+            !left_early,
+            "a net left mid-write, which may land, since a build outside any write went"
+        );
+    }
+
+    #[test]
     fn a_net_leaving_as_a_settle_ends_keeps_nothing_it_settled() {
         // 14 November: a watcher told at 02:55 that another build was
         // installed left the moment its settle listed shows-then-rests in
