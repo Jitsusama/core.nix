@@ -14,6 +14,7 @@ use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -115,10 +116,16 @@ impl StandIn {
     }
 }
 
-/// The harness's file, in a folder of the test's own, with pi's access
-/// token ending at `expires`.
+/// How many sign-ins this process has handed out, so each is its own.
+static HANDED: AtomicUsize = AtomicUsize::new(0);
+
+/// The harness's file, in a folder of its own, with pi's access token
+/// ending at `expires`. The folder is this call's alone, whatever `test`
+/// names it, since looks run beside each other in one process.
 fn credentials(test: &str, expires: i64) -> PathBuf {
-    let folder = std::env::temp_dir().join(format!("google-{test}-{}", std::process::id()));
+    let handed = HANDED.fetch_add(1, Ordering::SeqCst);
+    let folder =
+        std::env::temp_dir().join(format!("google-{test}-{}-{handed}", std::process::id()));
     fs::create_dir_all(&folder).unwrap();
     let path = folder.join("credentials.json");
     fs::write(
@@ -132,6 +139,18 @@ fn credentials(test: &str, expires: i64) -> PathBuf {
     )
     .unwrap();
     path
+}
+
+#[test]
+fn every_look_has_a_sign_in_of_its_own_whatever_its_name() {
+    // Tests run beside each other in one process, so two that chose the
+    // same name shared one file, and one's expired token could land in
+    // the other's look between its asks.
+    assert_ne!(
+        credentials("shared", 0),
+        credentials("shared", 0),
+        "two looks of one name were handed the same sign-in"
+    );
 }
 
 fn now() -> Zoned {
