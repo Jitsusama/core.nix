@@ -288,6 +288,30 @@ fn a_tree_is_held_while_a_hosts_roster_holds_its_session() {
 }
 
 #[test]
+fn a_snapshot_is_known_by_its_record_being_shareable() {
+    // The broker pins a snapshot at a commit and lets readers share it; a
+    // worktree is one session's own, on a branch it edits.
+    let root = tempfile::tempdir().unwrap();
+    let records = root.path().join("cut");
+    fs::create_dir_all(&records).unwrap();
+    let record = |key: &str, identity: &str| {
+        let body =
+            format!(r#"{{{identity}"path":"/t/{key}","owners":[{{"pid":1,"startedAt":1}}]}}"#);
+        fs::write(records.join(format!("{key}.json")), body).unwrap();
+    };
+    record("snapshot", r#""identity":{"key":"s","shareable":true},"#);
+    record("worktree", r#""identity":{"key":"w","shareable":false},"#);
+    record("unsaid", r#""identity":{"key":"u"},"#);
+    record("bare", "");
+    fs::write(records.join("torn.json"), "{\"path\":").unwrap();
+    assert_eq!(
+        disk_guard::workspaces::pinned_trees(&records),
+        [PathBuf::from("/t/snapshot")],
+        "only a record that says it's shareable is a snapshot"
+    );
+}
+
+#[test]
 fn a_parked_quests_tree_is_over_once_its_holders_have_ended() {
     // A quest put on the bench or left for someday isn't being worked on,
     // so its trees' builds are a cache nobody is using: they go once its

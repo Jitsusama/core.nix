@@ -31,6 +31,7 @@ fn seen(used: Use) -> Seen {
     Seen {
         used,
         finished: false,
+        pinned: false,
         size: 4096,
         last_used: 0.0,
     }
@@ -98,6 +99,52 @@ fn a_tree_someone_sits_in_is_occupied() {
     let made = candidate(&install, &seen(Use::Occupied(7)), &Awake::default(), 10.0).unwrap();
     assert!(made.occupied);
     assert_eq!(made.class, Class::Install);
+}
+
+#[test]
+fn a_pinned_snapshots_build_is_spent_once_nobody_has_used_it_for_an_hour() {
+    // On 17 November a gate's snapshot kept a 51 GiB build for two hours
+    // after the gate ended, and would have for six, while the disk filled:
+    // its holder was the session that cut it, which went on working.
+    let target = found(
+        "/home/u/world/trees/s-d1f2/src/delta/target",
+        Kind::Target,
+        Checkout::At("/home/u/world/trees/s-d1f2/src".into()),
+    );
+    let snapshot = |last_used| Seen {
+        pinned: true,
+        last_used,
+        ..seen(Use::Free)
+    };
+    let spent = |seen: &Seen| {
+        candidate(&target, seen, &Awake::default(), 10_000.0)
+            .unwrap()
+            .spent
+    };
+    assert!(spent(&snapshot(10_000.0 - 3_600.0)), "an hour unused");
+    assert!(
+        !spent(&snapshot(10_000.0 - 3_500.0)),
+        "used within the hour"
+    );
+    let person = Seen {
+        last_used: 0.0,
+        ..seen(Use::Free)
+    };
+    assert!(
+        !spent(&person),
+        "a tree a person edits isn't spent by idling"
+    );
+    let sat_in = candidate(
+        &target,
+        &Seen {
+            used: Use::Occupied(7),
+            ..snapshot(0.0)
+        },
+        &Awake::default(),
+        10_000.0,
+    )
+    .unwrap();
+    assert!(sat_in.occupied, "a gate sitting in it still keeps it");
 }
 
 #[test]

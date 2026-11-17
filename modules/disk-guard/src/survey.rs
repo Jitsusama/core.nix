@@ -122,6 +122,8 @@ pub struct World<'a> {
     pub now: f64,
     /// Whether a checkout's work is finished, as its predicate says.
     pub finished: &'a mut dyn FnMut(&Path) -> bool,
+    /// Whether a checkout is a snapshot a broker pinned at a commit.
+    pub pinned: &'a dyn Fn(&Path) -> bool,
     /// When each source's command last ran, in wall seconds, by name.
     pub ran: &'a BTreeMap<String, f64>,
     /// What each producer's watch said when it last ran, by name.
@@ -835,6 +837,7 @@ fn trees_under(
         let seen = trees::Seen {
             used,
             finished,
+            pinned: checkout.is_some_and(|dir| (world.pinned)(dir)),
             size: frees,
             last_used: trees::last_used(tree),
         };

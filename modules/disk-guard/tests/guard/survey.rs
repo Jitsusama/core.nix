@@ -111,6 +111,7 @@ fn surveyed(
         awake: &awake,
         now: at,
         finished: &mut finished,
+        pinned: &|_| false,
         ran,
         said: &said,
         uses,

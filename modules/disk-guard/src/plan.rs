@@ -140,7 +140,8 @@ pub struct Candidate {
     pub size: u64,
     /// A shell or agent sits in its tree.
     pub occupied: bool,
-    /// Its tree is finished or gone.
+    /// Its tree is finished or gone, or it's a pinned snapshot's build
+    /// nobody has used for an hour.
     pub spent: bool,
     /// The checkout it was built for, when known.
     pub checkout: Option<PathBuf>,

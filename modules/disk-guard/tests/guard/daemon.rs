@@ -1480,6 +1480,39 @@ fn a_checkout_with_work_not_committed_is_never_finished() {
 }
 
 #[test]
+fn a_held_snapshots_build_goes_an_hour_after_its_last_use() {
+    // A gate's snapshot is held by the session that cut it, which goes on
+    // working long after the gate: on 17 November 34 such snapshots held
+    // 86 GiB of builds on a filling disk. A worktree held as long keeps its
+    // build, since a person may come back to edit it.
+    for shareable in [true, false] {
+        let home = Home::new();
+        let built = held_tree(&home, 400);
+        let record = home.root.join("cut/app.json");
+        let body = fs::read_to_string(&record).unwrap().replacen(
+            '{',
+            &format!(r#"{{"identity":{{"key":"app","shareable":{shareable}}},"#),
+            1,
+        );
+        fs::write(&record, body).unwrap();
+        let mut guard = home.guard(owned_trees(&home));
+        guard.step(&tick(), &CALM).unwrap();
+        assert!(built.exists(), "a held tree's build stays while it's fresh");
+        let later = Tick {
+            wall: tick().wall + 3_700.0,
+            monotonic: 3_600.0 + 3_700.0,
+            ..tick()
+        };
+        guard.step(&later, &CALM).unwrap();
+        assert_eq!(
+            built.exists(),
+            !shareable,
+            "a snapshot's build goes after an idle hour; a worktree's stays"
+        );
+    }
+}
+
+#[test]
 fn a_held_trees_build_stays_though_its_branch_merged() {
     // On 12 November a session merged its branch and went on in the tree
     // its broker recorded it holding, and twice the guard took the tree's

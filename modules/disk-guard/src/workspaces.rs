@@ -238,6 +238,15 @@ struct Record {
     owners: Vec<Owner>,
     #[serde(default)]
     sessions: Vec<String>,
+    identity: Option<Identity>,
+}
+
+/// What a tree broker's record says a tree is: a snapshot, pinned at a
+/// commit, is shareable between readers; a worktree is one holder's own.
+#[derive(Deserialize)]
+struct Identity {
+    #[serde(default)]
+    shareable: bool,
 }
 
 /// The trees a tree broker's records in `records` name that nobody holds:
@@ -283,6 +292,16 @@ pub fn held_trees(
     read_records(records)
         .into_iter()
         .filter(|record| record.held(&running, &hosted))
+        .map(|record| record.path)
+        .collect()
+}
+
+/// The trees a tree broker's records in `records` name as snapshots,
+/// pinned at a commit and shareable between readers, held or not.
+pub fn pinned_trees(records: &Path) -> Vec<PathBuf> {
+    read_records(records)
+        .into_iter()
+        .filter(|record| record.identity.as_ref().is_some_and(|id| id.shareable))
         .map(|record| record.path)
         .collect()
 }
