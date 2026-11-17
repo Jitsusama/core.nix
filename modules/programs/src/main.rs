@@ -288,9 +288,8 @@ fn serve(given: &[String]) -> Result<(), Failure> {
             }
         }
     }));
-    // What a watch reads after its answer begins once the watch is held,
-    // so each read asking whether it's watched finds it; begun as asked,
-    // an open page's bookmark stayed listed now and then (RCTRF8, 11-17).
+    // What a watch reads after its answer begins once it's held, so a read asking whether
+    // it's watched finds it; begun as asked, an open page's bookmark stayed listed (11-17).
     shared.served().begun(Box::new({
         let shared = Arc::downgrade(&shared);
         move |wanted| {
