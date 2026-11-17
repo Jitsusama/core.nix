@@ -233,6 +233,10 @@ in
       Type = "oneshot";
       ExecStart = "${putsBack}";
     };
+    # Once as the account starts too, for an entry written while nothing
+    # watched, as by a daemon a Tuple command started while a switch
+    # stopped tuple.service.
+    Install.WantedBy = [ "default.target" ];
   };
 
   # The call, held for the shell. It isn't in background.slice: a ring is
