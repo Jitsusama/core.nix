@@ -1445,9 +1445,12 @@ pub fn quick(world: &dyn World, state: &State, settler: &Settler, done: &AtomicB
     }
 }
 
-/// Whether the quick look goes on: until the rounds are done.
-fn looks_on(done: &AtomicBool, _settler: &Settler) -> bool {
-    !done.load(Ordering::Relaxed)
+/// Whether the quick look goes on: until the rounds are done, or the net
+/// leaves. It rests in a sleep, so while it went on through a leave the
+/// stall guard never read every thread waiting on a lock, and a leave
+/// hung on its write was never aborted.
+fn looks_on(done: &AtomicBool, settler: &Settler) -> bool {
+    !done.load(Ordering::Relaxed) && !settler.leaving()
 }
 
 /// One quick look: run the checks other than VM tests that main's head

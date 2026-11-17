@@ -16,6 +16,7 @@
 //! round takes it up.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, Mutex};
 use std::thread::Scope;
 use std::time::Duration;
@@ -140,12 +141,13 @@ const UNRUN: u64 = 24 * 60 * 60;
 /// builds or has ended.
 const LOOK_AGAIN: Duration = Duration::from_millis(200);
 
-/// Wait `LOOK_AGAIN` before a leaving net looks again, parked rather than
-/// asleep. A timed park is a futex wait, so the stall guard, which tells a
-/// hung net by every thread waiting on a lock, reads a leave looking at a
-/// write that never ends as it read one blocked on it. A leave that only
-/// slept would hide that write, and one that blocked after a while would
-/// wait out a revert's Mac comparison whole, the stall it exists to end.
+/// Wait `LOOK_AGAIN` before a leaving net, or a write behind it, looks
+/// again, parked rather than asleep. A timed park is a futex wait, so the
+/// stall guard, which tells a hung net by every thread waiting on a lock,
+/// reads a leave looking at a write that never ends as it read one blocked
+/// on it, the quick look having ended. A leave that only slept would hide
+/// that write, and one that blocked after a while would wait out a
+/// revert's Mac comparison whole, the stall it exists to end.
 fn look_again() {
     std::thread::park_timeout(LOOK_AGAIN);
 }
@@ -234,6 +236,8 @@ pub struct Settler<'a> {
     moved: Condvar,
     /// Taken by everything that writes the hold, one at a time.
     writing: Mutex<()>,
+    /// Whether a net leaves, so a write not yet begun waits behind it.
+    leaving: AtomicBool,
     first_error: Mutex<Option<String>>,
 }
 
@@ -245,6 +249,7 @@ impl<'a> Settler<'a> {
             queue: Mutex::default(),
             moved: Condvar::new(),
             writing: Mutex::new(()),
+            leaving: AtomicBool::new(false),
             first_error: Mutex::new(None),
         }
     }
@@ -283,7 +288,25 @@ impl<'a> Settler<'a> {
     /// guard on the write is held while `end` runs, so an `end` that
     /// returns, as a test's does, leaves the write stopped at its build only
     /// until the guard goes; the watch's own `end` exits.
+    ///
+    /// A write asked for once the leave waits goes behind it, as a worker's
+    /// ending its job would otherwise take the hold each time the write it
+    /// waits on lets go, and the leave, looking again only every
+    /// `LOOK_AGAIN`, never would.
     pub fn leave<R>(&self, end: impl FnOnce() -> R) -> R {
+        self.leaving.store(true, Ordering::SeqCst);
+        let ended = self.leave_once_free(end);
+        self.leaving.store(false, Ordering::SeqCst);
+        ended
+    }
+
+    /// Whether a net leaves.
+    pub fn leaving(&self) -> bool {
+        self.leaving.load(Ordering::SeqCst)
+    }
+
+    /// End once nothing but a build writes the hold, as `leave` says.
+    fn leave_once_free<R>(&self, end: impl FnOnce() -> R) -> R {
         let mut said = false;
         loop {
             let _writing = match self.writing.try_lock() {
@@ -332,6 +355,9 @@ impl<'a> Settler<'a> {
 
     /// Run `write` while nothing else writes the hold.
     pub fn write<R>(&self, write: impl FnOnce() -> R) -> R {
+        while self.leaving() {
+            look_again();
+        }
         let _writing = lock(&self.writing);
         self.state.writing(write)
     }
@@ -344,6 +370,9 @@ impl<'a> Settler<'a> {
     /// test of the round that ended meanwhile waited on it before the next
     /// could start, so a merge at 05:26 was found only at 07:56.
     pub fn write_unless_busy<R>(&self, write: impl FnOnce() -> R) -> Option<R> {
+        if self.leaving() {
+            return None;
+        }
         let _writing = match self.writing.try_lock() {
             Ok(writing) => writing,
             Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
