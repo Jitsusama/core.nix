@@ -3,7 +3,7 @@
 # rule must name clean.py's exception, twice.py's (the first of the pair),
 # pair.py's F4 and printed.py's T201, as the check's expected lines say.
 [lint]
-select = ["F"]
+select = ["ALL"]
 # Off everywhere, so an exception for it hides nothing.
 ignore = ["T201"]
 

@@ -1,0 +1,8 @@
+# A ruff config every-ruff-exception-hides-a-finding.nix plants that ruff
+# can't read, for the rule to fail on, saying ruff couldn't check.
+[lint]
+select = ["ALL"]
+
+[lint.per-file-ignores]
+# No rule has this code, so ruff refuses the config.
+"b.py" = ["NOPE1"]

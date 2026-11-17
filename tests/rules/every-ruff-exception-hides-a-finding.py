@@ -14,13 +14,13 @@ exception whose removal raises no more findings hides none, and fails, named
 with its pattern and code. Two that hide the same findings each raise nothing
 when taken off alone, so the failing ones are taken off in turn, each on top of
 those before, and one whose removal then raises findings stays: taking off all
-that fail leaves every finding hidden that was. A config keeping exceptions in
-a table this doesn't read, or extending another config, fails too, rather than
-passing on what it skipped, and so does ruff failing to check. Every failure is
-printed before the check exits 1. The config's own ignore list isn't judged,
-since its rules are off everywhere, most because they contradict another rule
-or the formatter; it stays ignored in every run, as --select alone would
-switch them back on, so an exception for one of them hides nothing.
+that fail leaves every finding hidden that was.
+
+Selecting one code replaces the config's selection, so its lint.ignore is given
+again beside it, and that alone stands in for the config's selection only when
+it selects ALL and ignores no prefix broader than an exception's code. A config
+this can't judge so, or that keeps lint settings where this doesn't read them,
+is refused, each reason said, before ruff runs; ruff failing to check fails too.
 """
 
 import json
@@ -30,12 +30,20 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-# The tables ruff takes per-file exceptions from that this doesn't read.
-UNREAD = (
-    ("extend-per-file-ignores",),
-    ("per-file-ignores",),
-    ("lint", "extend-per-file-ignores"),
-)
+# Where ruff takes lint settings from that this doesn't read, and where to move
+# each instead.
+UNREAD = {
+    ("extend",): "fold the config it names in",
+    ("ignore",): "move it to lint.ignore",
+    ("select",): "move it to lint.select",
+    ("extend-ignore",): "move it to lint.ignore",
+    ("extend-select",): "move it to lint.select",
+    ("per-file-ignores",): "move it to lint.per-file-ignores",
+    ("extend-per-file-ignores",): "move it to lint.per-file-ignores",
+    ("lint", "extend-ignore"): "move it to lint.ignore",
+    ("lint", "extend-select"): "move it to lint.select",
+    ("lint", "extend-per-file-ignores"): "move it to lint.per-file-ignores",
+}
 
 
 class RuffFailedError(Exception):
@@ -48,8 +56,30 @@ class Rules:
     def __init__(self, read: dict[str, Any]) -> None:
         """Take them from a config as read."""
         lint = read.get("lint", {})
+        self.selected: list[str] = lint.get("select", [])
         self.ignores: dict[str, list[str]] = lint.get("per-file-ignores", {})
-        self.ignored: list[str] = [*read.get("ignore", []), *lint.get("ignore", [])]
+        self.ignored: list[str] = lint.get("ignore", [])
+
+
+def refused(read: dict[str, Any], rules: Rules) -> list[str]:
+    """Say each reason this can't judge the config's exceptions as ruff would."""
+    said = []
+    for path, instead in UNREAD.items():
+        setting: Any = read
+        for key in path:
+            setting = setting.get(key) if isinstance(setting, dict) else None
+        if setting:
+            said.append(f"{'.'.join(path)} isn't read: {instead}.")
+    if rules.selected != ["ALL"]:
+        said.append("lint.select isn't ALL, the one selection this judges under.")
+    codes = sorted({code for codes in rules.ignores.values() for code in codes})
+    said += [
+        f"lint.ignore's {ignored} is broader than exception code {code}: name its rules."
+        for ignored in rules.ignored
+        for code in codes
+        if code != ignored and code.startswith(ignored)
+    ]
+    return said
 
 
 def findings(
@@ -99,18 +129,6 @@ def without(ignores: dict[str, list[str]], taken: set[tuple[str, str]]) -> dict[
     }
 
 
-def unread(read: dict[str, Any]) -> list[str]:
-    """Name each table of per-file exceptions the config holds that this doesn't read."""
-    named = []
-    for path in UNREAD:
-        table: Any = read
-        for key in path:
-            table = table.get(key) if isinstance(table, dict) else None
-        if table:
-            named.append(".".join(path))
-    return named
-
-
 def stale(tree: Path, config: Path, rules: Rules) -> list[tuple[str, str]]:
     """Give each exception that can go, as no finding it hides is left unhidden without it."""
     ignores = rules.ignores
@@ -133,11 +151,10 @@ def main() -> None:
         sys.exit("usage: every-ruff-exception-hides-a-finding TREE CONFIG")
     read = tomllib.loads(config.read_text())
     rules = Rules(read)
-    said = [f"{table} isn't read: move it to lint.per-file-ignores." for table in unread(read)]
-    if "extend" in read:
-        said.append("extend isn't read: fold the config it names in.")
-    for failure in said:
-        print(f"{config.name}: {failure}", file=sys.stderr)
+    if said := refused(read, rules):
+        for reason in said:
+            print(f"{config.name}: {reason}", file=sys.stderr)
+        sys.exit(f"{config.name} is refused, so none of its exceptions is judged.")
     try:
         idle = stale(tree, config, rules)
     except RuffFailedError as failed:
@@ -150,7 +167,7 @@ def main() -> None:
         )
     total = sum(len(codes) for codes in rules.ignores.values())
     print(f"{total - len(idle)} of {total} per-file exceptions hide a finding.")
-    sys.exit(1 if said or idle else 0)
+    sys.exit(1 if idle else 0)
 
 
 if __name__ == "__main__":
