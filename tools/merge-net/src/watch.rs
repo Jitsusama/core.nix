@@ -1118,7 +1118,9 @@ fn to_search(
 }
 
 /// Keeps in the hold how its revert went: the PR and commit that landed,
-/// or that it's to be tried again because no builder took its checks.
+/// or that it's to be tried again because no builder took its checks. The
+/// hold no longer says its revert is under way, which until now let a job
+/// kept by a net stopped mid-revert settle it again.
 fn keep_revert(
     state: &State,
     hold: &mut Value,
@@ -1132,6 +1134,9 @@ fn keep_revert(
         }
         Err(why) if tried_again(why) => hold["revert_again"] = json!(true),
         Err(_) => hold["revert_again"] = json!(false),
+    }
+    if let Some(hold) = hold.as_object_mut() {
+        hold.remove("reverting");
     }
     state.set_hold(hold)
 }
@@ -2207,7 +2212,7 @@ fn revert_and_tell(
     let mut hold = json!({
         "test": test, "bad": commit, "bad_pr": found.pr, "revert_pr": Value::Null,
         "revert_commit": Value::Null, "failed_at": head, "at": now(),
-        "already_runs": already_runs,
+        "already_runs": already_runs, "reverting": true,
     });
     state.set_hold(&hold)?;
     if already_runs {

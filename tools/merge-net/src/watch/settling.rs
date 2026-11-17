@@ -267,9 +267,9 @@ impl<'a> Settler<'a> {
     ///
     /// A write that only builds, before anything it decided lands, isn't
     /// waited on: its job is kept on disk, and the next build takes it up.
-    /// A hold whose revert it cuts is marked cut, so that job settles again
-    /// in full, telling the owner, rather than being dropped as held; when
-    /// the mark can't be written, the leave waits as for any write. The
+    /// A revert's hold says it's under way until its outcome is kept, so a
+    /// job kept mid-revert settles again in full, telling the owner, rather
+    /// than being dropped as held, as it does after a net is stopped. The
     /// guard on the write is held while `end` runs, so an `end` that
     /// returns, as a test's does, leaves the write stopped at its build only
     /// until the guard goes; the watch's own `end` exits.
@@ -280,9 +280,7 @@ impl<'a> Settler<'a> {
                 Ok(writing) => writing,
                 Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
                 Err(std::sync::TryLockError::WouldBlock) => {
-                    if let Some(_building) = self.state.only_building()
-                        && mark_a_cut_revert(self.state)
-                    {
+                    if let Some(_building) = self.state.only_building() {
                         self.state.say(
                             "the write to the hold only builds, and nothing it decided has \
                              landed, so this leaves, and the next build takes its job up again",
@@ -487,7 +485,20 @@ impl<'a> Settler<'a> {
     /// a net left the moment its settle listed shows-then-rests, before
     /// letting the search go, and the next build searched the test again,
     /// ten VM runs. A job whose write fails is kept, to be taken up again.
+    /// A hold on `test` its revert left under way goes with the job, which
+    /// was the one to settle it, as one kept mid-revert and then let go for
+    /// a test main fixed or listed since is.
     fn end(&self, test: &str, write: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
+        self.let_go(test, || {
+            write()?;
+            clear_an_unsettled_revert(self.state, test)
+        })
+    }
+
+    /// Write what `test`'s job settled and let the job go, as `end` does,
+    /// leaving the hold to what the write decided: a fixed-forward run
+    /// that fails leaves a revert's hold to its own job.
+    fn let_go(&self, test: &str, write: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
         self.write(|| {
             write()?;
             self.state.settled(test)
@@ -506,10 +517,10 @@ impl<'a> Settler<'a> {
             || same_drv(world, newest, head, test)
             || attempt(world, state, newest, test) != Outcome::Passed
         {
-            return self.end(test, || Ok(()));
+            return self.let_go(test, || Ok(()));
         }
         let passes = format!("passes at main's newest head {}", short(newest));
-        self.end(test, || clear_hold_of(state, test, &passes))
+        self.let_go(test, || clear_hold_of(state, test, &passes))
     }
 
     /// Compare a Mac's checks at `merge` as `check`, and revert the merge
@@ -561,13 +572,13 @@ impl<'a> Settler<'a> {
         fixed_forward(self.world, self.state, head, test, None) == Ok(true)
     }
 
-    /// Whether the hold names `test` already.
     /// Whether the hold is on `test` already, so its job has nothing left
-    /// to settle; a hold a leave cut short of its revert isn't.
+    /// to settle; one whose revert is still under way, as a net stopped
+    /// mid-revert leaves it, isn't.
     fn held_for(&self, test: &str) -> bool {
         self.state
             .hold()
-            .is_some_and(|hold| hold["test"] == test && hold["cut"] != true)
+            .is_some_and(|hold| hold["test"] == test && hold["reverting"] != true)
     }
 
     fn failed(&self, why: String) {
@@ -576,27 +587,20 @@ impl<'a> Settler<'a> {
     }
 }
 
-/// Mark the hold cut when a leave cuts its revert short, before its outcome
-/// is kept, so the job kept for it settles again in full at the next build,
-/// telling the owner or quarantining as a first revert does. Whether the
-/// leave may end: not while a mark it needs can't be written.
-fn mark_a_cut_revert(state: &State) -> bool {
-    let Some(mut hold) = state.hold() else {
-        return true;
-    };
-    if !hold["revert_commit"].is_null() || hold.get("revert_again").is_some() {
-        return true;
+/// Clear the hold on `test` when its revert was begun and its outcome never
+/// kept: nothing else clears it, and it holds switches with no revert.
+fn clear_an_unsettled_revert(state: &State, test: &str) -> Result<(), String> {
+    let unsettled = state
+        .hold()
+        .is_some_and(|hold| hold["test"] == test && hold["reverting"] == true);
+    if unsettled {
+        state.clear_hold()?;
+        state.say(&format!(
+            "{test}'s hold was left mid-revert, and its job ends with nothing to revert, \
+             so the hold is cleared"
+        ));
     }
-    hold["cut"] = json!(true);
-    match state.set_hold(&hold) {
-        Ok(()) => true,
-        Err(why) => {
-            state.say(&format!(
-                "the cut revert's hold isn't marked, so this waits: {why}"
-            ));
-            false
-        }
-    }
+    Ok(())
 }
 
 #[cfg(test)]
