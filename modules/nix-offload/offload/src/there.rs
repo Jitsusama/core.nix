@@ -2527,10 +2527,12 @@ const BOOT_READ: &str = "cat /proc/sys/kernel/random/boot_id 2>/dev/null || \
 /// dead turn back is a look, then a remove, so a run can remove a turn
 /// another took between the two: each run looks a second after taking its
 /// turn, or `NIX_OFFLOAD_TURN_LOOK` seconds (a second where `sleep`
-/// refuses that), and if it no longer holds it looks for a turn again a
-/// second later, so two runs that each read the other's turn as dead, as
-/// two boots sharing the folder do, can't take one turn from each other
-/// for ever. Only a run stalled longer than that between its look
+/// refuses that), and if it no longer holds it looks for a turn again as
+/// long after, so the run that took it from it has looked first. Two runs
+/// that each read the other's turn as dead, as two boots sharing the
+/// folder do, so both build rather than take one turn from each other for
+/// ever: the turns bound runs in one boot only. Only a run stalled longer
+/// than that between its look
 /// and its remove lets an extra build in, until the one whose link it replaced
 /// ends; it never leaves a run waiting for a turn nobody holds. It bounds
 /// only runs that reach the machine as one account.
@@ -2562,7 +2564,8 @@ pub fn in_turn_nearby(command: &str) -> String {
          n=$((n + 1)); done; \
          if [ -n \"$turn\" ]; then sleep \"${{NIX_OFFLOAD_TURN_LOOK:-1}}\" 2>/dev/null || sleep 1; \
          if [ \"$(readlink \"$turn\" 2>/dev/null)\" = \"$mine\" ]; then break; fi; \
-         turn=; unmadebefore=; sleep 1; continue; fi; \
+         turn=; unmadebefore=; sleep \"${{NIX_OFFLOAD_TURN_LOOK:-1}}\" 2>/dev/null || sleep 1; \
+         continue; fi; \
          if [ \"$unmade\" -ge {NEARBY_AT_ONCE} ]; then \
          if [ -n \"$unmadebefore\" ]; then turn=none; break; fi; \
          unmadebefore=1; sleep 1; continue; fi; \
@@ -5427,18 +5430,67 @@ mod tests {
         for shell in ["dash", "zsh"] {
             let folder = tempfile::tempdir().unwrap();
             let turns = folder.path().join("turns");
-            let ran = Command::new(shell)
-                .args(["-c", &first_on_path(bin.path(), &in_turn_nearby("true"))])
-                .env("NIX_OFFLOAD_TURNS", &turns)
-                .env("NIX_OFFLOAD_TURN_LOOK", "never")
-                .output()
-                .unwrap();
+            let ran = ended(
+                Command::new(shell)
+                    .args(["-c", &first_on_path(bin.path(), &in_turn_nearby("true"))])
+                    .env("NIX_OFFLOAD_TURNS", &turns)
+                    .env("NIX_OFFLOAD_TURN_LOOK", "never")
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .unwrap(),
+            );
             assert_eq!(ran.status.code(), Some(0), "{shell}: {ran:?}");
+            assert_eq!(String::from_utf8_lossy(&ran.stderr), "", "{shell}");
             assert_eq!(
                 fs::read_to_string(folder.path().join("slept")).unwrap(),
                 "never\n1\n",
                 "{shell} didn't look a second after a refused look"
             );
+        }
+    }
+
+    #[test]
+    fn runs_in_two_boots_sharing_the_turns_both_end_whatever_their_look() {
+        // Each reads the other's turn as an earlier boot's and takes it.
+        // A run that lost its turn looked again a second later, so with
+        // a look of 3 s two such runs took turn 1 from each other for ever.
+        let bin = tempfile::tempdir().unwrap();
+        crate::testing::executable(
+            &bin.path().join("cat"),
+            &format!(
+                "#!/bin/sh\ncase $1 in /proc/sys/kernel/random/boot_id) \
+                 echo \"$TURN_BOOT\"; exit ;; esac\nexec {cat} \"$@\"\n",
+                cat = which("cat")
+            ),
+        );
+        let started = |shell: &str, turns: &Path, boot: &str| {
+            Command::new(shell)
+                .args(["-c", &first_on_path(bin.path(), &in_turn_nearby("true"))])
+                .env("NIX_OFFLOAD_TURNS", turns)
+                .env("NIX_OFFLOAD_TURN_LOOK", "3")
+                .env("TURN_BOOT", boot)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap()
+        };
+        for shell in ["dash", "zsh"] {
+            let folder = tempfile::tempdir().unwrap();
+            let turns = folder.path().join("turns");
+            let first = started(shell, &turns, "one");
+            // Two seconds into the first's look, past the second a run
+            // that lost its turn used to wait, and short of its look.
+            thread::sleep(Duration::from_secs(2));
+            let second = started(shell, &turns, "two");
+            for (boot, run) in [("one", ended(first)), ("two", ended(second))] {
+                assert_eq!(run.status.code(), Some(0), "{shell}, boot {boot}: {run:?}");
+                assert_eq!(
+                    String::from_utf8_lossy(&run.stderr),
+                    "",
+                    "{shell}, boot {boot}"
+                );
+            }
         }
     }
 
