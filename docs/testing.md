@@ -512,7 +512,11 @@ step's showing is profiled apart as `search-step`, from when it lives its
 rows on, and said by whole time too, so what calls the dear functions is
 named. Into Programs with 21, about half its showing was the selection
 asked whether its acts lie on its row, each time making its whole step
-(2026-11-15). `LAB_NAMED`, desktop ids and names such as
+(2026-11-15). Given `LAB_WITHIN`, names of the launcher's functions such as
+`keep`, what ran inside their calls is profiled apart as `within-<name>`,
+by own and whole time: inside `keep`, the 8 rows "c" reused cost about
+1 ms each, spread over the row's bindings, Qt laying out its name again the
+largest (2026-11-17). `LAB_NAMED`, desktop ids and names such as
 `google-chrome=Google Chrome`, installs those programs too, each with two
 actions, so a page a provider keys by its id is there, and
 `LAB_STEP_KEY = "tab"` steps in as Joel goes into a program's page, where

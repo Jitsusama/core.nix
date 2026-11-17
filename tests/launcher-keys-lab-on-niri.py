@@ -14,6 +14,7 @@ first, so a step into Programs is profiled over as many rows as Joel's. Given LA
 ids and names as `google-chrome=Google Chrome`, comma between, it installs those too, each with
 two actions, so a program's own page, whose provider keys it by its id, is there to step into,
 by Tab as Joel goes into one given LAB_STEP_KEY=tab (Return, the default, starts a program).
+Given LAB_WITHIN, names of the launcher's functions, it says what ran inside their calls too.
 Given LAB_CHANGES, it
 leaves the first word typed at home each round while a window holding it in its title takes that
 many new titles, and prints what the shell says of those changes, as Joel's daemons change rows
@@ -290,6 +291,9 @@ def profiled(trace: Path) -> dict[str, dict[str, Spent]]:
     root = ET.parse(trace).getroot()  # noqa: S314, the trace this run wrote
     places: dict[str, str] = {}
     parts = Parts()
+    # The functions whose calls are spans of their own, `within-<name>`, holding what ran inside.
+    asked = set(os.environ.get("LAB_WITHIN", "").split())
+    within: dict[str, str] = {}
     for event in root.iter("event"):
         where = Path(event.findtext("filename") or "").name
         kind = event.findtext("type") or ""
@@ -297,9 +301,12 @@ def profiled(trace: Path) -> dict[str, dict[str, Spent]]:
         places[event.get("index", "")] = f"{kind} {where}:{event.findtext('line')} {details}"
         if where == "Launcher.qml" and details in parts.functions:
             parts.functions[details].add(event.get("index", ""))
+        if where == "Launcher.qml" and details in asked:
+            within[event.get("index", "")] = details
     spans: dict[str, dict[str, Spent]] = defaultdict(lambda: defaultdict(Spent))
-    # The ranges still open where the next starts: when each ends, and its places' tallies.
-    held: list[tuple[int, list[Spent]]] = []
+    # The ranges still open where the next starts: when each ends, its places' tallies, and the
+    # functions asked for that it runs within.
+    held: list[tuple[int, list[Spent], frozenset[str]]] = []
     for each in sorted(root.iter("range"), key=lambda one: int(one.get("startTime", "0"))):
         start = int(each.get("startTime", "0"))
         index = each.get("eventIndex", "")
@@ -309,12 +316,14 @@ def profiled(trace: Path) -> dict[str, dict[str, Spent]]:
             held.pop()
         for parent in held[-1][1] if held else []:
             parent.own -= took
-        tallies = [spans[name][places.get(index, "?")] for name in parts.at(index, start, ends)]
+        inside = held[-1][2] if held else frozenset()
+        names = parts.at(index, start, ends) + [f"within-{name}" for name in sorted(inside)]
+        tallies = [spans[name][places.get(index, "?")] for name in names]
         for tally in tallies:
             tally.count += 1
             tally.own += took
             tally.whole += took
-        held.append((ends, tallies))
+        held.append((ends, tallies, inside | ({within[index]} if index in within else set())))
     return spans
 
 
@@ -408,7 +417,7 @@ def say_profiled(trace: Path, said: list[str], capsys: pytest.CaptureFixture[str
                 )
             # A step's showing is said by its whole too, so what holds the rest is named, as
             # keep holds laying the rows out and each row's acts made within it.
-            if span == "search-step":
+            if span == "search-step" or span.startswith("within-"):
                 wholes = sorted(places.items(), key=lambda one: one[1].whole, reverse=True)
                 for place, spent in wholes[:COSTLIEST]:
                     print(
