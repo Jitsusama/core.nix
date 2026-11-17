@@ -47,20 +47,28 @@ printf '%s\r' ". $work/ask.zsh" exit > keys
 # its prompt and what's typed go to the terminal instead. An engine left
 # from the case before is waited out first, so the one read is this
 # shell's.
-engines() {
-  local process count=0
+count_engines() {
+  local process name
+  engines=0
   for process in /proc/[0-9]*; do
-    [ "$(cat "$process/comm" 2> /dev/null)" = git-engine ] && count=$((count + 1))
+    name=
+    read -r name < "$process/comm" 2> /dev/null || true
+    if [ "$name" = git-engine ]; then
+      engines=$((engines + 1))
+    fi
   done
-  echo "$count"
 }
 given() {
   rm -f "$SEEN" errors
-  for _ in $(seq 100); do
-    [ "$(engines)" = 0 ] && break
+  local _
+  for _ in {1..100}; do
+    count_engines
+    if [ "$engines" = 0 ]; then
+      break
+    fi
     sleep 0.05
   done
-  if [ "$(engines)" != 0 ]; then
+  if [ "$engines" != 0 ]; then
     echo "The case before's git-engine was still running" > errors
     echo "stale"
     return
