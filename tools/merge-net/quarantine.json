@@ -283,18 +283,5 @@
       "test_whats_playing_shows_in_the_margin_and_a_media_key_shows_what_it_is"
     ],
     "test": "vm-desktop-minds-the-margin"
-  },
-  {
-    "at": 1794937719,
-    "commit": "1e3057ba404dd792b0392cf349e335685878be6c",
-    "due": "2026-11-18",
-    "due_why": "Its owner, the Code page's, fixes it by 2026-11-18 23:59 UTC: its teardown reads the console errors of the page whose server the case itself stops, and a load cut off mid-answer logs ERR_CONTENT_LENGTH_MISMATCH",
-    "owner_pr": 5225,
-    "owner_session": "D46U6P",
-    "reason": "failed at teardown in two merge-train runs on 17 Nov, at 1e3057ba404d (11:54) and for #5316 (12:2x), each time for the rider ahead too, touching nothing the page reads",
-    "subtests": [
-      "test_a_sites_server_that_goes_is_said_stale"
-    ],
-    "test": "code-site-reads-live"
   }
 ]
