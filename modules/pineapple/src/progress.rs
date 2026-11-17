@@ -42,6 +42,26 @@ pub fn read(state: &Path, site: &str) -> Option<Judged> {
     Some(Judged { since, keys })
 }
 
+/// Each site kept in `state`, by name, and when it was last read whole, in
+/// milliseconds, sorted by name; a file that can't be read is left out.
+#[must_use]
+pub fn sites(state: &Path) -> Vec<(String, u64)> {
+    let mut sites: Vec<(String, u64)> = std::fs::read_dir(state)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            let site = name.strip_prefix("judged-")?.strip_suffix(".json")?;
+            let text = std::fs::read_to_string(entry.path()).ok()?;
+            let kept: Value = serde_json::from_str(&text).ok()?;
+            Some((site.to_owned(), kept.get("read_at")?.as_u64()?))
+        })
+        .collect();
+    sites.sort();
+    sites
+}
+
 /// Keeps how far a site has been read, and that it was read whole at
 /// `read_at`, in milliseconds, through a file renamed into place, so a
 /// reader stopped mid-write leaves the last whole one.
@@ -61,14 +81,47 @@ pub fn write(state: &Path, site: &str, judged: &Judged, read_at: u64) {
 mod tests {
     use super::*;
 
-    #[test]
-    fn what_is_kept_is_read_back_and_nothing_kept_is_none() {
+    /// A state folder of the case's own, named `what`, made by no one yet.
+    fn fresh(what: &str) -> std::path::PathBuf {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("the clock is past 1970")
             .as_nanos();
         let id = std::process::id();
-        let state = std::env::temp_dir().join(format!("pineapple-progress-{id}-{now}"));
+        std::env::temp_dir().join(format!("pineapple-progress-{what}-{id}-{now}"))
+    }
+
+    #[test]
+    fn each_site_kept_says_when_it_was_read_and_nothing_else_counts() {
+        let state = fresh("sites");
+        assert_eq!(sites(&state), Vec::new(), "nothing kept yet");
+        let judged = Judged {
+            since: 1_700_000_000,
+            keys: Vec::new(),
+        };
+        write(&state, "github", &judged, 2_000);
+        write(&state, "code", &judged, 1_000);
+        write(&state, "delta", &judged, 3_000);
+        std::fs::write(state.join(file("broken")), "not json").expect("a broken file");
+        std::fs::write(state.join(file("unread")), r#"{"since": 1, "keys": []}"#)
+            .expect("a file never read whole");
+        std::fs::write(state.join("decisions.jsonl"), "{}").expect("another file");
+        assert_eq!(
+            sites(&state),
+            vec![
+                ("code".to_owned(), 1_000),
+                ("delta".to_owned(), 3_000),
+                ("github".to_owned(), 2_000)
+            ],
+            "each site by name, sorted, with when it was read; one never read whole, \
+             a broken one and the rest left out"
+        );
+        std::fs::remove_dir_all(&state).expect("the case's state goes");
+    }
+
+    #[test]
+    fn what_is_kept_is_read_back_and_nothing_kept_is_none() {
+        let state = fresh("kept");
         assert_eq!(read(&state, "code"), None, "nothing kept yet");
         let judged = Judged {
             since: 1_700_000_000,
