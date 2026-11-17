@@ -21,6 +21,7 @@ interface Document {
 
 /** One thing a cell's quest waits on its person for, as the launcher keeps it. */
 interface Wait {
+  /** What tells it apart in its quest: its id, or its title when it has none, as the launcher counts it. */
   readonly id: string;
   /** What the person is asked to do, in a line. */
   readonly title: string;
@@ -32,8 +33,6 @@ interface Wait {
   readonly when: string | undefined;
   /** Whether it can be done now. */
   readonly ready: boolean;
-  /** When it was raised, as the node says it. */
-  readonly raised: string | undefined;
 }
 
 /** One cell's forage, as the page draws its row and its panel. */
@@ -109,24 +108,34 @@ function documentsOf(record: Fields, cell: string, unread: string[]): readonly D
   return [...read].sort((one, other) => rank(one.kind) - rank(other.kind));
 }
 
-/** The wait `value` describes, or none without an id and a title. */
+/**
+ * Whether a wait can be done now, as the launcher reads it: as its owner
+ * says, or, in a file older than `ready`, when its when is "now".
+ */
+function readyOf(value: Fields): boolean {
+  const ready = value["ready"];
+  if (typeof ready === "boolean") {
+    return ready;
+  }
+  return text(value, "when")?.trim().toLowerCase() === "now";
+}
+
+/** The wait `value` describes, or none without a title. */
 function waitOf(value: unknown): Wait | undefined {
   if (!isObject(value)) {
     return undefined;
   }
-  const id = text(value, "id");
   const title = text(value, "title");
-  if (id === undefined || title === undefined) {
+  if (title === undefined) {
     return undefined;
   }
   return {
-    id,
+    id: text(value, "id") ?? title,
     title,
     why: text(value, "why") ?? "",
     minutes: number(value, "minutes"),
     when: text(value, "when"),
-    ready: value["ready"] === true,
-    raised: text(value, "raised"),
+    ready: readyOf(value),
   };
 }
 
@@ -138,9 +147,11 @@ function waitsOf(record: Fields, cell: string, unread: string[]): readonly Wait[
   }
   const read = listed.map(waitOf).filter((each) => each !== undefined);
   if (read.length < listed.length) {
-    unread.push(`${listed.length - read.length} of ${cell}'s waits had no id or title`);
+    unread.push(`${listed.length - read.length} of ${cell}'s waits had no title`);
   }
-  return read;
+  // The launcher counts a wait once however often its file repeats it.
+  const seen = new Set<string>();
+  return read.filter((each) => !seen.has(each.id) && seen.add(each.id));
 }
 
 /** The forage in `record`, without its depth, or none when it names no cell. */

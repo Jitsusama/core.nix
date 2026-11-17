@@ -201,14 +201,17 @@ const sitting = {
   minutes: 30,
   when: "Wednesday or later",
   ready: false,
-  raised: "2026-11-10T22:14:48.007Z",
 };
 
 it("reads what a quest waits on its person for, keeping what it can of each", () => {
   const { forages, unread } = foragesOf(
     told([
       forage("KESTRL", {
-        waits: [sitting, { id: "look", title: "Look at the field", minutes: "soon" }, { id: "x" }],
+        waits: [
+          { ...sitting, raisedAt: "2026-11-10T22:14:48.007Z" },
+          { id: "look", title: "Look at the field", minutes: "soon" },
+          { id: "x" },
+        ],
       }),
       forage("OSPREY"),
     ]),
@@ -223,11 +226,39 @@ it("reads what a quest waits on its person for, keeping what it can of each", ()
       minutes: undefined,
       when: undefined,
       ready: false,
-      raised: undefined,
     },
   ]);
   assert.deepEqual(osprey?.waits, []);
-  assert.deepEqual(unread, ["1 of KESTRL's waits had no id or title"]);
+  assert.deepEqual(unread, ["1 of KESTRL's waits had no title"]);
+});
+
+it("reads a wait as the launcher does: ready as it says, else when it's now", () => {
+  const readyOf = (wait: object): boolean | undefined =>
+    foragesOf(told([forage("KESTRL", { waits: [{ title: "Look", ...wait }] })])).forages[0]
+      ?.waits[0]?.ready;
+  assert.equal(readyOf({ ready: true }), true);
+  assert.equal(readyOf({ ready: true, when: "Friday" }), true);
+  assert.equal(readyOf({ ready: false, when: "now" }), false, "its owner's word first");
+  assert.equal(readyOf({ when: " Now " }), true, "a file older than ready");
+  assert.equal(readyOf({ when: "tomorrow" }), false);
+  assert.equal(readyOf({ ready: "yes" }), false);
+});
+
+it("tells a wait by its id, else its title, and counts each once", () => {
+  const { forages } = foragesOf(
+    told([
+      forage("KESTRL", {
+        waits: [{ title: "Look" }, sitting, { title: "Look" }, { ...sitting, title: "Again" }],
+      }),
+    ]),
+  );
+  assert.deepEqual(
+    forages[0]?.waits.map((wait) => [wait.id, wait.title]),
+    [
+      ["Look", "Look"],
+      ["field-sitting", "Watch the kestrel hover"],
+    ],
+  );
 });
 
 it("the lede first says what waits on its person, and from which cells", () => {

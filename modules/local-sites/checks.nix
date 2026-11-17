@@ -83,6 +83,49 @@ in
     };
   };
 
+  # The node's feed passes every field the forage page reads off a forage
+  # record (modules/mycelium/forage/model.ts), as a machine in a realm
+  # declares it, so nothing the page draws goes missing live. The page's
+  # own tests hand it records whole, so they can't see a field the feed
+  # drops. A record's key is always passed.
+  forage-feed-passes-what-its-page-reads =
+    let
+      inRealm = account (bareNixos [
+        self.nixosModules.workstation
+        {
+          home-manager.users.someone = {
+            imports = [ self.homeModules.local-sites ];
+            jitsusama.mycelium.realm = "harbour";
+          };
+        }
+      ]);
+      passed = [ "key" ] ++ inRealm.jitsusama.local-sites.feeds.node.kinds.forage.fields;
+      read = lib.unique (
+        lib.concatMap (lib.filter builtins.isString) (
+          lib.filter builtins.isList (
+            builtins.split ''\(record, "([a-z_]+)"\)|record\["([a-z_]+)"]'' (
+              builtins.readFile ../mycelium/forage/model.ts
+            )
+          )
+        )
+      );
+      dropped = lib.subtractLists passed read;
+    in
+    pkgs.runCommandLocal "forage-feed-passes-what-its-page-reads" { } (
+      if read == [ ] then
+        ''
+          echo "no field read off a forage record was found in model.ts"
+          exit 1
+        ''
+      else if dropped != [ ] then
+        ''
+          echo "the forage page reads ${lib.concatStringsSep ", " dropped}, which its feed drops"
+          exit 1
+        ''
+      else
+        "touch $out"
+    );
+
   # The murmurs page typechecks on the kit and builds, its tests passing
   # (modules/mycelium/murmurs/tests), on the same plain looks.
   murmurs-site-holds = sites.localSite {

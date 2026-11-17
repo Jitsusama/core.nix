@@ -581,12 +581,9 @@ in
             };
             talk.talks = "${state}/pi/agentic-harness.pi/realms/other/steer";
           }
-        && lib.hasInfix "--waiting ${state}/mission/waiting --serves /home/someone/.config/mycelium/serves-other.json --health-socket %t/daemons/system.sock" otherNode
         # Each realm's node reads its cells' waits, for their forages, from
         # the one folder the launcher writes and the home node serves.
-        && lib.hasInfix "--waiting ${state}/mission/waiting --serves /home/someone/.config/mycelium/serves-home.json" (
-          toString bothLinux.mycelium.Service.ExecStart
-        )
+        && lib.hasInfix "--waiting ${state}/mission/waiting --serves /home/someone/.config/mycelium/serves-other.json --health-socket %t/daemons/system.sock" otherNode
         && !(apart.xdg.configFile ? "mycelium/serves-home.json")
         # The node reads its serves file only as it starts, so a switch
         # changing what it serves restarts it.

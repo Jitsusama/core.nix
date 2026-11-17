@@ -133,12 +133,13 @@ function waitsCounted(forage: Forage): string {
   return `\n    <span class="waits">Waits on you for ${things}</span>`;
 }
 
-/** About how long a wait takes, said, or nothing when it doesn't say. */
+/** About how long a wait takes, in whole minutes, or nothing when it doesn't say so. */
 function takes(minutes: number | undefined): string | undefined {
-  if (minutes === undefined) {
+  const whole = minutes === undefined ? 0 : Math.round(minutes);
+  if (whole < 1) {
     return undefined;
   }
-  return minutes === 1 ? "About a minute" : `About ${minutes} minutes`;
+  return whole === 1 ? "About a minute" : `About ${whole} minutes`;
 }
 
 /**

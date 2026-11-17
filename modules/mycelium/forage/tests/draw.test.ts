@@ -160,7 +160,6 @@ function wait(more: Partial<Forage["waits"][number]> = {}): Forage["waits"][numb
     minutes: 30,
     when: "Wednesday or later",
     ready: false,
-    raised: undefined,
     ...more,
   };
 }
@@ -200,12 +199,31 @@ it("says in the panel what a cell's quest waits on you for, first, in its own wo
 
 it("escapes what a wait says before drawing it", () => {
   const panel = panelOf(
-    forage({ waits: [wait({ title: '<b a="1">&', why: "<i>" })] }),
+    forage({
+      quest: 'QEST-"><s>',
+      waits: [wait({ title: '<b a="1">&', why: "<i>", when: "<u>" })],
+    }),
     new Set(),
     [],
   );
-  assert.ok(!(panel.includes("<b ") || panel.includes("<i>")), panel);
+  for (const tag of ["<b ", "<i>", "<u>", "<s>"]) {
+    assert.ok(!panel.includes(tag), `${tag} in ${panel}`);
+  }
   assert.ok(panel.includes("&lt;b a=&quot;1&quot;&gt;&amp;"), panel);
+  assert.ok(panel.includes("&lt;u&gt;"), panel);
+});
+
+it("says how long a wait takes only in whole minutes, and only when it takes some", () => {
+  const takes = (minutes: number | undefined): string | undefined =>
+    waitsSaid(
+      panelOf(forage({ waits: [wait({ minutes, when: undefined })] }), new Set(), []),
+    )?.split("can see it. ")[1];
+  assert.equal(takes(30), "About 30 minutes · Not ready yet");
+  assert.equal(takes(2.4), "About 2 minutes · Not ready yet");
+  assert.equal(takes(1), "About a minute · Not ready yet");
+  for (const none of [0, -5, 0.2, undefined]) {
+    assert.equal(takes(none), "Not ready yet", String(none));
+  }
 });
 
 it("says in a cell's row how many things its quest waits on you for", () => {
