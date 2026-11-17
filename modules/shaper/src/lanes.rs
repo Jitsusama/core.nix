@@ -20,10 +20,17 @@
 //! what's inside the tunnel alike. But
 //! while any agent has something waiting, a quarter of the rate is theirs
 //! whatever Joel wants: agents are always usable. Agents get what Joel
-//! leaves, split between the two lanes by how many flows each has waiting,
-//! so a push straight to a builder is a peer of the sessions inside the
-//! VPN rather than the sixteenth CAKE's bulk tin gave it, which on 16
-//! November was 346 kbit/s of 5.5 Mbit/s.
+//! leaves, split evenly between the lanes on which some wait, so a push
+//! straight to a builder gets half rather than the sixteenth CAKE's bulk
+//! tin gave it, which on 16 November was 346 kbit/s of 5.5 Mb/s. The
+//! split isn't by flows: on 16 November at 20:25 agents held 117 flows to
+//! the model inside the VPN and a few straight to the builders, so a
+//! split by flows gave the builders' copies 8 kbit/s and they failed.
+//!
+//! A lane's agents wait while they hold a few packets, or while its CAKE
+//! dropped or marked one in the last second: a copy starved to a window
+//! of two packets holds too little to count, yet CAKE drops what waits
+//! past its target, so a drop says the lane wants more than it gets.
 //!
 //! The VPN's share rises at once, and falls by at most a fifth a second,
 //! so a copy's queue emptying between bursts doesn't swing it; a move
@@ -65,18 +72,27 @@ pub struct Agents {
     pub backlog: u64,
     /// Flows with something held.
     pub flows: u32,
+    /// The packets the agents' CAKE has dropped or marked since it was
+    /// made, past its target: not those its ACK filter took.
+    pub dropped: u64,
 }
 
 impl Agents {
-    fn waiting(self) -> bool {
-        self.backlog > WAITING_BYTES
+    /// Whether the lane's agents wait, given whether their CAKE dropped
+    /// or marked one in the last second, `pressed`.
+    fn waiting(self, pressed: bool) -> bool {
+        pressed || self.backlog > WAITING_BYTES
     }
 
-    /// The flows a lane's agents are waiting on: none while they hold
-    /// too little to count as waiting, and at least one while they do,
-    /// since CAKE may read none at the moment it holds a backlog.
-    fn waiting_flows(self) -> u32 {
-        if self.waiting() { self.flows.max(1) } else { 0 }
+    /// The flows a lane's agents are waiting on: none while they don't
+    /// wait, and at least one while they do, since CAKE may read none at
+    /// the moment it holds a backlog.
+    fn waiting_flows(self, pressed: bool) -> u32 {
+        if self.waiting(pressed) {
+            self.flows.max(1)
+        } else {
+            0
+        }
     }
 }
 
@@ -130,6 +146,11 @@ pub struct Said {
 pub struct Lanes {
     share: Option<f64>,
     last: Seen,
+    /// Whether each lane's CAKE, straight and inside the VPN, dropped
+    /// or marked one between the last two seconds read.
+    pressed: (bool, bool),
+    /// What each had dropped and marked when last read, once read.
+    dropped: Option<(u64, u64)>,
 }
 
 impl Lanes {
@@ -143,8 +164,8 @@ impl Lanes {
             joel: whole(split.joel),
             vpn: whole(split.vpn),
             agents: whole(split.agents),
-            waiting_vpn: self.last.agents_vpn.waiting_flows(),
-            waiting_direct: self.last.agents_straight.waiting_flows(),
+            waiting_vpn: self.last.agents_vpn.waiting_flows(self.pressed.1),
+            waiting_direct: self.last.agents_straight.waiting_flows(self.pressed.0),
         })
     }
 
@@ -159,13 +180,27 @@ impl Lanes {
     /// the last.
     pub fn split(&mut self, seen: &Seen, dt: f64) -> Split {
         self.last = *seen;
+        let (straight, inside) = (seen.agents_straight, seen.agents_vpn);
+        // A new rate between seconds reads nothing new, so what was
+        // pressed stays. A CAKE made again counts from nothing, which
+        // reads as no drop.
+        if dt > 0.0 {
+            let now = (straight.dropped, inside.dropped);
+            self.pressed = self
+                .dropped
+                .map_or((false, false), |was| (now.0 > was.0, now.1 > was.1));
+            self.dropped = Some(now);
+        }
         let rate = seen.rate;
         if rate <= 0.0 {
             self.share = None;
             return Split::default();
         }
-        let (straight, inside) = (seen.agents_straight, seen.agents_vpn);
-        let floor = if straight.waiting() || inside.waiting() {
+        let (beside, within) = (
+            straight.waiting(self.pressed.0),
+            inside.waiting(self.pressed.1),
+        );
+        let floor = if beside || within {
             rate * AGENTS_FLOOR
         } else {
             0.0
@@ -176,16 +211,14 @@ impl Lanes {
         let wants = (need(seen.joel_straight), need(seen.joel_vpn));
         let scale = ((rate - floor) / (wants.0 + wants.1)).min(1.0);
         let (joel, joel_vpn) = (wants.0 * scale, wants.1 * scale);
-        // What's left is the agents', by their flows waiting on each lane.
-        // With none waiting it goes to the VPN, whose own CAKE is held to
-        // V: the classes beside it borrow what it leaves.
+        // What's left is the agents', evenly between the lanes they wait
+        // on. With none waiting it goes to the VPN, whose own CAKE is
+        // held to V: the classes beside it borrow what it leaves.
         let left = rate - joel - joel_vpn;
-        let flows = |agents: Agents| f64::from(agents.waiting_flows());
-        let (beside, within) = (flows(straight), flows(inside));
-        let to_vpn = if beside + within > 0.0 {
-            left * within / (beside + within)
-        } else {
-            left
+        let to_vpn = match (beside, within) {
+            (true, true) => left / 2.0,
+            (true, false) => 0.0,
+            (false, _) => left,
         };
         let vpn = self
             .hold(joel_vpn + to_vpn, joel_vpn, rate, dt)
@@ -330,6 +363,18 @@ mod tests {
         Agents {
             backlog: 30_000,
             flows,
+            dropped: 0,
+        }
+    }
+
+    /// A copy starved to a window of two packets: it holds too little to
+    /// count as waiting, two segments of 1,448 bytes, and its CAKE has
+    /// dropped `dropped` so far.
+    fn starved(dropped: u64) -> Agents {
+        Agents {
+            backlog: 2 * 1_448,
+            flows: 2,
+            dropped,
         }
     }
 
@@ -378,6 +423,7 @@ mod tests {
         let few = Agents {
             backlog: WAITING_BYTES,
             flows: 4,
+            dropped: 0,
         };
         let split = lanes.split(&seen((0.0, 0.0), (few, few)), 1.0);
         let said = lanes.said(&split).expect("a split was said");
@@ -452,22 +498,98 @@ mod tests {
     }
 
     #[test]
-    fn agents_waiting_on_both_lanes_share_by_their_flows() {
-        let split = Lanes::default().split(&seen((0.0, 0.0), (waiting(10), waiting(30))), 1.0);
+    fn agents_waiting_on_both_lanes_share_them_evenly_whatever_their_flows() {
+        // As on 16 November at 20:25: 117 flows to the model inside the
+        // VPN, and two copies straight to the builders.
+        let split = Lanes::default().split(&seen((0.0, 0.0), (waiting(2), waiting(117))), 1.0);
         let agents = RATE - 2.0 * JOEL_LEAST;
         assert!(
             adds_up(split, RATE),
             "the classes don't add up to the rate: {split:?}"
         );
         assert!(
-            near(split.agents, agents * 0.25),
-            "straight agents with a quarter of the flows held {}",
+            near(split.agents, agents / 2.0),
+            "straight agents with 2 flows of 119 held {}",
             split.agents
         );
         assert!(
-            near(split.vpn, JOEL_LEAST + agents * 0.75),
+            near(split.vpn, JOEL_LEAST + agents / 2.0),
             "the VPN held {}",
             split.vpn
+        );
+    }
+
+    #[test]
+    fn a_starved_copy_whose_cake_drops_waits_though_it_holds_little() {
+        let mut lanes = Lanes::default();
+        let inside = waiting(117);
+        lanes.split(&seen((0.0, 0.0), (starved(100), inside)), 1.0);
+        let split = lanes.split(&seen((0.0, 0.0), (starved(103), inside)), 1.0);
+        let agents = RATE - 2.0 * JOEL_LEAST;
+        assert!(
+            adds_up(split, RATE),
+            "the classes don't add up to the rate: {split:?}"
+        );
+        // The VPN's share falls a fifth a second, so its half comes later;
+        // agents straight get at least what it gives up at once.
+        assert!(
+            split.agents >= (RATE - JOEL_LEAST) * FALL - 1.0,
+            "a dropping copy held {} of {agents}",
+            split.agents
+        );
+        for dropped in 104..120 {
+            lanes.split(&seen((0.0, 0.0), (starved(dropped), inside)), 1.0);
+        }
+        let settled = lanes.split(&seen((0.0, 0.0), (starved(121), inside)), 1.0);
+        assert!(
+            near(settled.agents, agents / 2.0),
+            "a dropping copy settled at {} of {agents}",
+            settled.agents
+        );
+        assert_eq!(
+            lanes.said(&settled).map(|s| s.waiting_direct),
+            Some(2),
+            "the dropping copy's flows weren't said to wait"
+        );
+    }
+
+    #[test]
+    fn a_copy_holding_little_whose_cake_drops_nothing_doesn_t_wait() {
+        let mut lanes = Lanes::default();
+        lanes.split(&seen((0.0, 0.0), (starved(100), waiting(30))), 1.0);
+        let split = lanes.split(&seen((0.0, 0.0), (starved(100), waiting(30))), 1.0);
+        assert!(
+            near(split.agents, 0.0),
+            "an easy copy held {}",
+            split.agents
+        );
+    }
+
+    #[test]
+    fn the_first_count_of_drops_is_no_drop() {
+        let split = Lanes::default().split(&seen((0.0, 0.0), (starved(70_000), waiting(30))), 1.0);
+        assert!(
+            near(split.agents, 0.0),
+            "drops before the shaper read any held {}",
+            split.agents
+        );
+    }
+
+    #[test]
+    fn a_new_rate_between_seconds_keeps_what_was_pressed() {
+        let mut lanes = Lanes::default();
+        let inside = waiting(30);
+        lanes.split(&seen((0.0, 0.0), (starved(100), inside)), 1.0);
+        lanes.split(&seen((0.0, 0.0), (starved(105), inside)), 1.0);
+        let half = lanes.at(RATE / 2.0);
+        assert_eq!(
+            lanes.said(&half).map(|s| s.waiting_direct),
+            Some(2),
+            "a new rate forgot the dropping copy: {half:?}"
+        );
+        assert!(
+            half.agents > 0.0,
+            "a new rate gave a dropping copy nothing: {half:?}"
         );
     }
 
@@ -541,7 +663,7 @@ mod tests {
         for _ in 0..10 {
             vpn = lanes.split(&both, 1.0).vpn;
         }
-        let settled = JOEL_LEAST + (RATE - 2.0 * JOEL_LEAST) * 0.25;
+        let settled = JOEL_LEAST + (RATE - 2.0 * JOEL_LEAST) / 2.0;
         assert!(near(vpn, settled), "settled at {vpn}, not {settled}");
         assert!(
             near(lanes.split(&alone, 1.0).vpn, first),
@@ -555,7 +677,7 @@ mod tests {
         let first = lanes
             .split(&seen((0.0, 0.0), (waiting(30), waiting(30))), 1.0)
             .vpn;
-        let next = lanes.split(&seen((0.0, 0.0), (waiting(31), waiting(30))), 1.0);
+        let next = lanes.split(&seen((0.0, 100.0), (waiting(30), waiting(30))), 1.0);
         assert!(
             adds_up(next, RATE),
             "the classes don't add up to the rate: {next:?}"

@@ -318,6 +318,7 @@ impl Shaped {
             .map_or_else(lanes::Agents::default, |tin| lanes::Agents {
                 backlog: tin.backlog,
                 flows: tin.flows,
+                dropped: tin.drops + tin.marks,
             });
         let rate = float(self.applied.0);
         let seen = lanes::Seen {
@@ -1054,6 +1055,7 @@ fn follow_vpns(
         |all, tin| lanes::Agents {
             backlog: all.backlog + tin.backlog,
             flows: all.flows + tin.flows,
+            dropped: all.dropped + tin.drops + tin.marks,
         },
     );
     let joel = inside.map_or(0.0, |k| float(k.best + k.video + k.voice));
