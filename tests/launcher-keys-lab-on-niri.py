@@ -133,17 +133,31 @@ def typed_from_home(shell: Shell, word: str) -> dict[str, str]:
     return said
 
 
-def named(given: str) -> None:
+def named(given: str, step: str, key: str) -> None:
     """Install each program given as `id=Name`, comma between, with two actions, as Chrome has.
 
-    Joel's "\u2192 Google Chrome" took a median 80 ms over 10 steps since 2026-11-10, its showing 12
+    An entry that isn't an id and a name fails at once, rather than as a step that never comes,
+    and so does an id the lab's own programs have, or a `step` into one of these by Return,
+    which starts a program, closing the launcher, rather than going into its page. Joel's
+    "\u2192 Google Chrome" took a median 80 ms over 10 steps since 2026-11-10, its showing 12
     to 24 of it, so its page is stepped into here under the profiler, as his is.
     """
     data = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
     applications = data / "applications"
     applications.mkdir(parents=True, exist_ok=True)
-    for one in filter(None, given.split(",")):
-        desktop, name = one.split("=", 1)
+    for one in filter(None, (each.strip() for each in given.split(","))):
+        desktop, _, name = (part.strip() for part in one.partition("="))
+        refused = (
+            f"LAB_NAMED wants id=Name: {one!r}"
+            if not re.fullmatch(r"[\w.-]+", desktop) or not name
+            else f"LAB_PROGRAMS has {desktop}"
+            if desktop.startswith("lab-program-")
+            else f"{name} is stepped into by LAB_STEP_KEY=tab"
+            if name == step and key != "tab"
+            else None
+        )
+        if refused:
+            raise AssertionError(refused)
         (applications / f"{desktop}.desktop").write_text(
             f"[Desktop Entry]\nType=Application\nName={name}\nExec=true\n"
             "Actions=new-window;new-private-window;\n\n"
@@ -155,7 +169,7 @@ def named(given: str) -> None:
 
 
 def stepped_from_home(shell: Shell, name: str, key: str = "ret") -> str | None:
-    """Open home, find the place by its name, step in with Return, and give the step's line.
+    """Open home, find the place by its name, step in by `key`, and give the step's line.
 
     The step's line is a key's, typed as an arrow and the place's name, said only for a step
     Joel could feel (launcher/Trials.js's felt); one quicker gives none.
@@ -453,7 +467,7 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
     step = os.environ.get("LAB_STEP", "")
     step_key = os.environ.get("LAB_STEP_KEY", "ret")
     launcher_on_niri.installed(int(os.environ.get("LAB_PROGRAMS", "0")))
-    named(os.environ.get("LAB_NAMED", ""))
+    named(os.environ.get("LAB_NAMED", ""), step, step_key)
     with launcher_on_niri.running() as shell:
         shell.launcher_until(lambda shown: shown.get("kept"))
         if os.environ.get("LAB_PROFILE"):
