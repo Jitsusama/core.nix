@@ -57,7 +57,11 @@ pub fn choose(
     (on, measured): (&Joined, &Measured),
     around: &[Heard],
     (lately, learned): (&Measures, &Learned),
-    (asks, air): (&mpsc::Sender<Ask>, &watch::Receiver<State>),
+    (asks, air, looked): (
+        &mpsc::Sender<Ask>,
+        &watch::Receiver<State>,
+        &mpsc::Sender<String>,
+    ),
     call: bool,
 ) {
     let known = known(lately, learned, now, hour);
@@ -66,7 +70,8 @@ pub fn choose(
             tokio::spawn(roam(asks.clone(), air.clone(), on.card.clone(), to));
         }
         Some(Next::Look) => {
-            tokio::spawn(look(asks.clone(), on.card.clone()));
+            let card = on.card.clone();
+            tokio::spawn(look(asks.clone(), air.clone(), card, looked.clone()));
         }
         None => {}
     }
@@ -166,14 +171,29 @@ fn chosen(
     }
 }
 
-/// Has every card look, for the chooser to choose from what it hears on
-/// the minute after. wpa_supplicant forgets an access point it hasn't
-/// heard for 3 minutes, and nothing else looks while a card is on its
-/// network, so on 15 Nov 2026 a card on one carrying 44 to 52 ms at p95
-/// heard no other, though one 15 minutes before had carried 15.
-async fn look(asks: mpsc::Sender<Ask>, card: String) {
-    if let Err(refused) = acts::look(&asks).await {
-        eprintln!("<4>{card} couldn't look for another access point: {refused:?}");
+/// Has every card look, and hands this one back to be chosen for as soon
+/// as the look ends: on 16 Nov 2026 a card on a point carrying 77 to 106
+/// ms at p95 heard another within 12 s of looking, and waited out the
+/// rest of the minute there. wpa_supplicant forgets an access point it
+/// hasn't heard for 3 minutes, and nothing else looks while a card is on
+/// its network, so on 15 Nov 2026 a card on one carrying 44 to 52 ms at
+/// p95 heard no other, though one 15 minutes before had carried 15.
+async fn look(
+    asks: mpsc::Sender<Ask>,
+    air: watch::Receiver<State>,
+    card: String,
+    looked: mpsc::Sender<String>,
+) {
+    match acts::look(&asks, air).await {
+        // Wifid stopping is the only way the channel closes, so a card
+        // not handed back then has nothing to be chosen for.
+        Ok(true) => {
+            let _ = looked.send(card).await;
+        }
+        Ok(false) => println!("<6>{card}'s look didn't end in time to choose again at once"),
+        Err(refused) => {
+            eprintln!("<4>{card} couldn't look for another access point: {refused:?}");
+        }
     }
 }
 
@@ -301,6 +321,42 @@ mod tests {
             learned.carried(&here, &carried(p95)).unwrap();
         }
         learned
+    }
+
+    /// Has a card look, the main loop answering that it's looking and
+    /// ending the look or not, and says which card was handed back to be
+    /// chosen for again before the look's end, and which after, if any.
+    async fn looked_with(ending: bool) -> (Option<String>, Option<String>) {
+        let (asks, mut taken) = mpsc::channel(1);
+        let (looked, mut ended) = mpsc::channel(1);
+        let (state, air) = watch::channel(State::default());
+        let looking = tokio::spawn(look(asks, air, "wlan0".into(), looked));
+        let Some(Ask::Scan { done }) = taken.recv().await else {
+            panic!("asked for something other than a look");
+        };
+        done.send(Ok(())).expect("answered");
+        tokio::task::yield_now().await;
+        let before = ended.try_recv().ok();
+        if ending {
+            state.send_modify(State::look_ended);
+        }
+        looking.await.expect("looked");
+        (before, ended.try_recv().ok())
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_card_is_chosen_for_again_once_its_look_ends() {
+        let (before, after) = looked_with(true).await;
+
+        assert_eq!(before, None, "not as the look began");
+        assert_eq!(after.as_deref(), Some("wlan0"), "once it ended");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_card_whose_look_never_ends_waits_for_its_next_minute() {
+        let (_, again) = looked_with(false).await;
+
+        assert_eq!(again, None, "its look never ended");
     }
 
     #[test]
