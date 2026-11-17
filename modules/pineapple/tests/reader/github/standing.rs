@@ -435,7 +435,7 @@ fn github_a_stop_too_old_to_judge_never_asks_about_its_repository() {
 }
 
 #[test]
-fn github_a_stop_said_only_in_a_review_still_asks_about_its_repository() {
+fn github_an_ask_to_stop_said_only_in_a_review_is_heard() {
     let (origin, asked) = answering(|line, now| {
         answer_with(
             line,
@@ -523,28 +523,69 @@ fn github_what_a_round_learns_of_one_repository_never_vouches_for_another() {
     reader.wait().expect("the reader is gone");
 
     let said = decisions(&home);
-    let by_repository: Vec<(&str, &str)> = said
+    let mut by_repository: Vec<(String, String)> = said
         .iter()
         .map(|one| {
             let key = one["key"].as_str().unwrap_or_default();
+            let repository = ["example/shop", "stranger/trap"]
+                .into_iter()
+                .find(|name| key.contains(&format!("{name}#")) || key.contains(&format!("{name}:")))
+                .unwrap_or(key);
             let verdict = one["verdict"].as_str().unwrap_or_default();
-            (
-                if key.contains("stranger/trap") {
-                    "stranger/trap"
-                } else {
-                    "example/shop"
-                },
-                verdict,
-            )
+            (repository.to_owned(), verdict.to_owned())
         })
         .collect();
-    assert!(
-        by_repository.contains(&("example/shop", "stop")),
-        "the collaborator's stop where Joel works stands: {by_repository:?}"
+    by_repository.sort();
+    assert_eq!(
+        by_repository,
+        [
+            ("example/shop".to_owned(), "stop".to_owned()),
+            ("stranger/trap".to_owned(), "waved:outsider".to_owned()),
+        ],
+        "the collaborator's stop where Joel works stands; the owner's where he can't push is only logged"
     );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_repository_joel_is_let_into_is_heard_the_round_after() {
+    let let_in = Arc::new(AtomicBool::new(false));
+    let once = Arc::clone(&let_in);
+    let (origin, _) = answering_whole(move |line, now| {
+        if line.contains(" /notifications?") {
+            return Answered::ok(json!([{"subject": {"type": "Issue",
+                "url": "https://api.example.com/repos/example/shop/issues/1"},
+                "repository": {"full_name": "example/shop"}}]));
+        }
+        if line.contains(" /repos/example/shop ") {
+            // The first round finds him only reading; by the next, he may push.
+            let push = once.swap(true, Ordering::SeqCst);
+            return Answered::ok(json!({"permissions": {"pull": true, "push": push}}));
+        }
+        if line.contains(" /repos/example/shop/issues/1/comments?") {
+            let stop = format!("@{LOGIN} pineapple override");
+            let mut said = vec![comment(1, "colleague", &stop, now, 90)];
+            if once.load(Ordering::SeqCst) {
+                said.push(comment(2, "colleague", &stop, now, 5));
+            }
+            return Answered::ok(Value::Array(said));
+        }
+        two_stops_in_one_repository(line, now)
+    });
+    let home = home();
+    let mut reader = github_reader(&home, &origin, &["--live"]);
+    until_decided(&home, 2);
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+
     assert!(
-        by_repository.contains(&("stranger/trap", "waved:outsider")),
-        "the owner's where he can't push is only logged: {by_repository:?}"
+        let_in.load(Ordering::SeqCst),
+        "its repository was asked about"
+    );
+    assert_eq!(
+        each(&decisions(&home), "verdict"),
+        ["waved:outsider", "stop"],
+        "a round asks afresh, so what he may do there now is what counts"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

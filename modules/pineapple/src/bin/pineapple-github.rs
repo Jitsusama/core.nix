@@ -597,9 +597,9 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged) {
     let keeps = |said: &Said| {
         said.at >= from && !judged.keys.contains(&said.key) && worth_judging(&said.text, &login)
     };
-    let (mut heard, mut asked) = (Vec::new(), HashMap::new());
+    let (mut heard, mut learned) = (Vec::new(), HashMap::new());
     for thread in &threads {
-        match said_on(github, thread, &since, (open, &login), &keeps, &mut asked) {
+        match said_on(github, thread, &since, (open, &login), &keeps, &mut learned) {
             Ok(found) => heard.extend(found),
             Err(Unread::Gone(why)) => eprintln!("<4>{} can't be read: {why}", thread.key()),
             Err(Unread::Failed(why)) => {
@@ -641,7 +641,7 @@ fn said_on(
     since: &str,
     who: (bool, &str),
     keeps: &dyn Fn(&Said) -> bool,
-    asked: &mut HashMap<String, bool>,
+    learned: &mut HashMap<String, bool>,
 ) -> Result<Sayings, Unread> {
     let (open, login) = who;
     let base = format!("/repos/{}", thread.repo);
@@ -667,7 +667,7 @@ fn said_on(
         found.extend(github::said(&reviews, thread, Kind::Review));
     }
     let works_in =
-        !open || joel_opened || (found.iter().any(keeps) && joel_works_in(github, &base, asked)?);
+        !open || joel_opened || (found.iter().any(keeps) && joel_works_in(github, &base, learned)?);
     let trusted = !open || joel_opened || (works_in && opened_by_own);
     let opening = if trusted {
         format!(
@@ -689,13 +689,14 @@ fn said_on(
 }
 
 /// Whether Joel works in the repository at `base`, asked of GitHub only
-/// the first time a round wants to know.
+/// the first time a round wants to know, and asked again the next round,
+/// so a change to what he may do there is heard within a minute.
 fn joel_works_in(
     github: &GitHub<'_>,
     base: &str,
-    asked: &mut HashMap<String, bool>,
+    learned: &mut HashMap<String, bool>,
 ) -> Result<bool, Unread> {
-    if let Some(&known) = asked.get(base) {
+    if let Some(&known) = learned.get(base) {
         return Ok(known);
     }
     let known = match github.get(base, &[]) {
@@ -704,7 +705,7 @@ fn joel_works_in(
         Err(Unread::Gone(_)) => false,
         Err(failed) => return Err(failed),
     };
-    asked.insert(base.to_owned(), known);
+    learned.insert(base.to_owned(), known);
     Ok(known)
 }
 
