@@ -388,8 +388,9 @@ fn asked_of(answered: impl Fn(&str, u64) -> Answered + Send + 'static) -> Vec<St
     asked.lock().expect("what was asked").clone()
 }
 
-/// Whether its repository was ever asked about, once its thread was read.
-fn asked_about_repository(asked: &[String]) -> bool {
+/// Whether its repository was ever asked about, failing the case unless
+/// its thread was read at all.
+fn read_and_asked_about_repository(asked: &[String]) -> bool {
     assert!(
         asked
             .iter()
@@ -411,7 +412,7 @@ fn github_a_thread_with_nothing_worth_judging_never_asks_about_its_repository() 
     };
     let asked = asked_of(move |line, now| issue.answer(line, now));
     assert!(
-        !asked_about_repository(&asked),
+        !read_and_asked_about_repository(&asked),
         "its repository was never asked about: {asked:?}"
     );
 }
@@ -425,9 +426,10 @@ fn github_a_stop_too_old_to_judge_never_asks_about_its_repository() {
         repo_answer: Some(json!({"permissions": {"pull": true, "push": true}})),
         said: |now| vec![comment(1, "colleague", "lunch at noon?", now, 90)],
     };
+    assert_eq!(LOGIN, "joel.example", "the opening tags Joel by his login");
     let asked = asked_of(move |line, now| issue.answer(line, now));
     assert!(
-        !asked_about_repository(&asked),
+        !read_and_asked_about_repository(&asked),
         "a stop no round judges spends nothing: {asked:?}"
     );
 }
@@ -489,6 +491,62 @@ fn two_stops_in_one_repository(line: &str, now: u64) -> Answered {
         }
     }
     Answered::ok(answer_with(line, now, &[]))
+}
+
+/// GitHub's answer when a collaborator stops Joel in example/shop, where
+/// he works, and its owner in stranger/trap, where he doesn't, both in
+/// one round.
+fn stops_in_two_repositories(line: &str, now: u64) -> Answered {
+    if line.contains(" /notifications?") {
+        return Answered::ok(json!([
+            {"subject": {"type": "Issue",
+                "url": "https://api.example.com/repos/example/shop/issues/1"},
+                "repository": {"full_name": "example/shop"}},
+            {"subject": {"type": "Issue",
+                "url": "https://api.example.com/repos/stranger/trap/issues/1"},
+                "repository": {"full_name": "stranger/trap"}},
+        ]));
+    }
+    if line.contains(" /repos/stranger/") {
+        return Answered::ok(in_a_strangers_own(line, now));
+    }
+    two_stops_in_one_repository(line, now)
+}
+
+#[test]
+fn github_what_a_round_learns_of_one_repository_never_vouches_for_another() {
+    let (origin, _) = answering_whole(stops_in_two_repositories);
+    let home = home();
+    let mut reader = github_reader(&home, &origin, &["--live"]);
+    until_decided(&home, 2);
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+
+    let said = decisions(&home);
+    let by_repository: Vec<(&str, &str)> = said
+        .iter()
+        .map(|one| {
+            let key = one["key"].as_str().unwrap_or_default();
+            let verdict = one["verdict"].as_str().unwrap_or_default();
+            (
+                if key.contains("stranger/trap") {
+                    "stranger/trap"
+                } else {
+                    "example/shop"
+                },
+                verdict,
+            )
+        })
+        .collect();
+    assert!(
+        by_repository.contains(&("example/shop", "stop")),
+        "the collaborator's stop where Joel works stands: {by_repository:?}"
+    );
+    assert!(
+        by_repository.contains(&("stranger/trap", "waved:outsider")),
+        "the owner's where he can't push is only logged: {by_repository:?}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
 #[test]

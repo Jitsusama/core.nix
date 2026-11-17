@@ -667,7 +667,7 @@ fn said_on(
         found.extend(github::said(&reviews, thread, Kind::Review));
     }
     let works_in =
-        !open || joel_opened || (found.iter().any(keeps) && works_in(github, &base, asked)?);
+        !open || joel_opened || (found.iter().any(keeps) && joel_works_in(github, &base, asked)?);
     let trusted = !open || joel_opened || (works_in && opened_by_own);
     let opening = if trusted {
         format!(
@@ -690,7 +690,7 @@ fn said_on(
 
 /// Whether Joel works in the repository at `base`, asked of GitHub only
 /// the first time a round wants to know.
-fn works_in(
+fn joel_works_in(
     github: &GitHub<'_>,
     base: &str,
     asked: &mut HashMap<String, bool>,
