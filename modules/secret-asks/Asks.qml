@@ -69,6 +69,58 @@ Provider {
     // asked for before the move notes nothing: it drew a line since left.
     property int noting: 0
 
+    // Whether the place the asks are drawn in was stepped into by one of
+    // Joel's keys, as Passwords by his Return on its row, so the line he
+    // walked to is timed from its first frame; and the line, by its row's
+    // key, that one of his keys moving through what's shown armed, so it's
+    // timed from its next frame. Neither holds in a launcher opened, or
+    // stepped into Asks, from outside, as any process running as him may
+    // do while his own keys land there, typed into another window: its
+    // lines are timed only from a move of his (Shown.js's keyed; ISXEG8,
+    // 2026-11-17). The cost is one key more on an ask he lands on straight
+    // from an opening, by his chord or a notice.
+    property bool walkedIn: false
+    property string armed: ""
+    // Whether a key of his is being taken now, so a place it steps into is
+    // his walk; the place the asks were last drawn in; and how many keys
+    // the line had taken when the last ask from outside came, so a step
+    // that ask made isn't taken for one of his.
+    property bool keyTaking: false
+    property string placed: ""
+    property int keysAtOutside: 0
+
+    // The place the launcher holds, stepped into by his key or not.
+    function placeMoved() {
+        const place = launcher?.placeOf(launcher.held ?? []) ?? "";
+        if (place === provider.placed)
+            return;
+        provider.placed = place;
+        provider.walkedIn = provider.keyTaking && !(launcher?.cataloguing ?? true)
+            && (launcher?.keysTaken ?? 0) !== provider.keysAtOutside;
+        if (!provider.walkedIn)
+            provider.armed = "";
+    }
+
+    // A key of his, once the launcher has done what it does: a move arms
+    // the line selected after it, Return leaves every line as it was, and
+    // any other starts every line's time again.
+    function keyed() {
+        provider.keyTaking = false;
+        const does = Shown.keyed(launcher?.keyTaken ?? "", launcher?.keyMoved ?? false);
+        if (does === "passes")
+            return;
+        if (does === "resets") {
+            provider.walkedIn = false;
+            provider.armed = "";
+            provider.seen = {};
+            return;
+        }
+        const stepped = launcher?.held?.[launcher.held.length - 1]?.row?.shownKey;
+        const key = launcher?.selected?.shownKey ?? stepped;
+        provider.armed = typeof key === "string" ? key : "";
+        provider.noteSelected();
+    }
+
     // The selected row, if it's an ask's, noted from the next frame niri
     // presents, the first that draws it selected; again when its line
     // changes. Nothing is noted where frames can't be timed, so no yes
@@ -80,6 +132,7 @@ Provider {
         const asked = provider.noting;
         if (!(launcher?.open ?? false))
             return;
+        provider.placeMoved();
         const selected = launcher?.selected ?? null;
         // One of an ask's verbs, listed by the right arrow, keeps its ask's
         // line counted from when it was shown, since Release It there is
@@ -93,6 +146,10 @@ Provider {
         provider.seen = Shown.kept(provider.seen, key);
         if (typeof key !== "string")
             return;
+        if (!provider.walkedIn && provider.armed !== key) {
+            provider.seen = {};
+            return;
+        }
         // The digest of the row as it's drawn, which a frame presents, not
         // of the ask as served since, before the row is made again.
         const digest = selected.digest;
@@ -126,13 +183,29 @@ Provider {
         // An ask still selected as the launcher opens again changes no
         // selection, so its first frame is noted here or its yes would
         // go with no time shown.
+        // Every opening is asked from outside, so none is a walk of his.
         function onOpenChanged() {
+            provider.walkedIn = false;
+            provider.armed = "";
+            provider.placed = provider.launcher.placeOf(provider.launcher.held ?? []);
             if (!provider.launcher.open) {
                 provider.noting += 1;
                 provider.seen = {};
             } else {
                 provider.noteSelected();
             }
+        }
+        function onHeldChanged() {
+            provider.noteSelected();
+        }
+        // Read once the key's done what it does, as its name comes before
+        // its count and whether it moved after (Prompt.qml's modalKey).
+        function onKeysTakenChanged() {
+            provider.keyTaking = true;
+            Qt.callLater(provider.keyed);
+        }
+        function onToldFromOutsideChanged() {
+            provider.keysAtOutside = provider.launcher.keysTaken;
         }
     }
 

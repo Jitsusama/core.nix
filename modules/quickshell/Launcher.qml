@@ -1204,6 +1204,16 @@ Scope {
     // told, since only a key niri delivered is surely his.
     property string toldInto: ""
 
+    // The keys the line has taken, the last by name and whether it only
+    // moved through the rows (Prompt.qml's), and how many asks to open came
+    // from outside it, by its IPC, its socket or the shell, so Asks times a
+    // secret ask's line only from one of Joel's own keys: any process of
+    // the account's can open it, as niri's chord does.
+    readonly property int keysTaken: prompt.keysTaken
+    readonly property string keyTaken: prompt.keyTaken
+    readonly property bool keyMoved: prompt.keyMoved
+    property int toldFromOutside: 0
+
     // The rows a terminal's `launcher show` last walked through (`walked`)
     // and listed (`listed`), held a few seconds after it asks, so a
     // provider that reads only while its rows are seen, as Machine reads
@@ -10209,6 +10219,7 @@ Scope {
     property var openingsTimed: []
     property int openingsDrawn: 0
     function askedToOpen() {
+        toldFromOutside += 1;
         if (!open && !opening) {
             Heap.leaveRoom(openingRoom);
             openAsked = KeyTimes.now();

@@ -13,6 +13,29 @@
 // What a yes says of its line, which only the launcher may say.
 const stampedFields = ["shown", "opening"];
 
+// Keys that only move through what's shown, as the launcher's table names
+// them, wherever they're pressed; j, k and the rest of normal's moves arm
+// only where they move rather than type.
+const navigating = ["Up", "Down", "Left", "Right", "Tab", "Shift+Tab", "Escape"];
+
+// Return, which answers a line rather than reads it.
+const answering = /^(.*\+)?(Return|Enter)$/;
+
+// What a key Joel pressed, by its name, does to the selected ask's line:
+// "arms" for a key that only moves through what's shown (`moved` says the
+// launcher took it as a move), so the line is timed from its next frame;
+// "passes" for Return, which leaves it as it was; and "resets" for any
+// other, typing above all, so its time starts again only from a move after
+// it. A line is timed only from his own key, since a launcher opened from
+// outside, as any process running as him may, could have its next Returns
+// be his, typed into another window (ISXEG8, 2026-11-17).
+function keyed(name, moved) {
+    if (answering.test(name)) {
+        return "passes";
+    }
+    return navigating.includes(name) || moved ? "arms" : "resets";
+}
+
 // The frames seen, by the row's key, each the line's digest and when the
 // first frame with it selected reached the screen; a new digest starts the
 // count again. Returns the same object when nothing changed, so a binding
