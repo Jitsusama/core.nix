@@ -183,7 +183,10 @@ impl Watch {
     }
 
     /// Waits for the next answer to the watch, as it was said, passing
-    /// over the hello's, for whoever holds the records elsewhere.
+    /// over the hello's, for whoever holds the records elsewhere. An
+    /// answer with no id at all is a daemon outside the interface, as a
+    /// node from before it answers, and ends the watch in its own words,
+    /// since waiting on would leave whoever follows it waiting for ever.
     pub fn answer(&mut self) -> io::Result<Value> {
         loop {
             let mut line = String::new();
@@ -193,18 +196,74 @@ impl Watch {
                     "the daemon hung up",
                 ));
             }
-            let Ok(answer) = serde_json::from_str::<Value>(&line) else {
+            let Some(answer) = spoken(&line)? else {
                 continue;
             };
             if answer.get("id") != Some(&json!(2)) {
                 continue;
             }
             if let Some(error) = answer.get("error") {
-                return Err(io::Error::other(format!("the watch was refused: {error}")));
+                return Err(io::Error::other(format!(
+                    "the watch was refused: {}",
+                    reason(error)
+                )));
             }
             return Ok(answer);
         }
     }
+}
+
+/// The most characters of a daemon's own words said on: a page shows
+/// them on one status line, and a daemon outside the interface may say
+/// anything, of any length.
+const WORDS: usize = 200;
+
+/// What a line a daemon said is, as the interface reads it: an answer,
+/// nothing (a blank line), or the end of the conversation, since every
+/// answer on the interface is an object carrying its ask's id and a line
+/// that isn't comes from a daemon outside it, as a node from before the
+/// interface. Its words are said only where that node gives them, as
+/// `{"Err": "<words>"}`, and never whole, so nothing past the fields a
+/// reader asked for reaches a person.
+///
+/// # Errors
+///
+/// A line outside the interface.
+pub fn spoken(line: &str) -> io::Result<Option<Value>> {
+    if line.trim().is_empty() {
+        return Ok(None);
+    }
+    let answer = serde_json::from_str::<Value>(line).ok();
+    if let Some(answer) = answer.filter(|answer| answer.get("id").is_some()) {
+        return Ok(Some(answer));
+    }
+    let said = serde_json::from_str::<Value>(line)
+        .ok()
+        .and_then(|answer| answer.get("Err").and_then(Value::as_str).map(bounded));
+    Err(io::Error::other(said.map_or_else(
+        || "the daemon doesn't speak the daemon interface".to_owned(),
+        |words| format!("the daemon doesn't speak the daemon interface: {words}"),
+    )))
+}
+
+/// Why a daemon refused, in words a person reads: its message, or an
+/// error that is only words, else its code, and the error's JSON never.
+fn reason(error: &Value) -> String {
+    error
+        .get("message")
+        .and_then(Value::as_str)
+        .or_else(|| error.as_str())
+        .or_else(|| error.get("code").and_then(Value::as_str))
+        .map_or_else(|| "it gave no reason".to_owned(), bounded)
+}
+
+/// `words` cut to [`WORDS`] characters, never inside one.
+fn bounded(words: &str) -> String {
+    let mut cut: String = words.trim().chars().take(WORDS).collect();
+    if words.trim().chars().nth(WORDS).is_some() {
+        cut.push_str("...");
+    }
+    cut
 }
 
 /// How long to wait before opening a watch again once its daemon has gone,
@@ -233,12 +292,25 @@ pub fn follow_asking<Heard: Send + 'static>(
     to: Sender<Heard>,
 ) {
     thread::spawn(move || {
+        let mut said: Option<String> = None;
         loop {
             if let Ok(mut watch) = Watch::asking(&socket, &asked) {
-                while let Ok(answer) = watch.answer() {
-                    if to.send(heard(answer)).is_err() {
-                        return;
+                let ended = loop {
+                    match watch.answer() {
+                        Ok(answer) => {
+                            if to.send(heard(answer)).is_err() {
+                                return;
+                            }
+                        }
+                        Err(ended) => break ended.to_string(),
                     }
+                };
+                // A daemon outside the interface ends every watch in
+                // the same words, every two seconds, so the journal
+                // hears them once until they change.
+                if said.as_deref() != Some(ended.as_str()) {
+                    eprintln!("the watch at {} ended: {ended}", socket.display());
+                    said = Some(ended);
                 }
             }
             thread::sleep(AGAIN);
@@ -372,6 +444,140 @@ mod tests {
             "the daemon hanging up ends the watch"
         );
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn an_answer_outside_the_interface_ends_the_watch_in_its_words() {
+        let folder =
+            std::env::temp_dir().join(format!("daemon-serve-foreign-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a folder for the socket");
+        let socket = folder.join("node.sock");
+        let _ = std::fs::remove_file(&socket);
+        let listener = UnixListener::bind(&socket).expect("the stand-in daemon listens");
+        // A node from before the interface answers each line in its own
+        // shape, with no id, and keeps the connection open.
+        let daemon = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("the watch connects");
+            let mut asks = BufReader::new(stream.try_clone().expect("its stream"));
+            let mut stream = stream;
+            for _ in 0..2 {
+                let mut line = String::new();
+                asks.read_line(&mut line).expect("an ask");
+                let refused = json!({"Err": "not a request: unknown variant `id`"});
+                writeln!(stream, "{refused}").expect("an answer");
+            }
+            stream
+        });
+        let mut watch = Watch::open(&socket, "cell").expect("the watch opens");
+        // A watch that waits on regardless fails here in seconds rather
+        // than holding the build, as it held the sites' page at connecting.
+        watch
+            .lines
+            .get_ref()
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("a bound on the wait");
+        let ended = watch
+            .heard()
+            .expect_err("an answer with no id ends the watch");
+        assert!(
+            ended.to_string().contains("not a request"),
+            "it ends in the daemon's words: {ended}"
+        );
+        drop(daemon.join().expect("the stand-in daemon ends"));
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_refused_watch_ends_in_the_refusals_own_message() {
+        let folder =
+            std::env::temp_dir().join(format!("daemon-serve-refused-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a folder for the socket");
+        let socket = folder.join("node.sock");
+        let _ = std::fs::remove_file(&socket);
+        let listener = UnixListener::bind(&socket).expect("the stand-in daemon listens");
+        let daemon = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("the watch connects");
+            let mut asks = BufReader::new(stream.try_clone().expect("its stream"));
+            let mut stream = stream;
+            for id in 1..=2 {
+                let mut line = String::new();
+                asks.read_line(&mut line).expect("an ask");
+                let answer = if id == 1 {
+                    json!({"id": 1, "version": 1})
+                } else {
+                    json!({"id": 2, "error": {
+                        "code": "unknown-kind",
+                        "message": "this node holds no \"forage\"",
+                    }})
+                };
+                writeln!(stream, "{answer}").expect("an answer");
+            }
+            stream
+        });
+        let mut watch = Watch::open(&socket, "forage").expect("the watch opens");
+        watch
+            .lines
+            .get_ref()
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("a bound on the wait");
+        let ended = watch.heard().expect_err("a refusal ends the watch");
+        assert_eq!(
+            ended.to_string(),
+            "the watch was refused: this node holds no \"forage\"",
+            "a person reads the daemon's message, not its JSON"
+        );
+        drop(daemon.join().expect("the stand-in daemon ends"));
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_line_outside_the_interface_ends_with_its_words_bounded_or_none() {
+        assert_eq!(
+            spoken("\n").expect("a blank line is nothing"),
+            None,
+            "a blank line is passed over"
+        );
+        assert_eq!(
+            spoken(r#"{"id": 2, "records": []}"#).expect("an answer"),
+            Some(json!({"id": 2, "records": []})),
+            "an answer with an id is an answer"
+        );
+        for (line, said) in [
+            (
+                "plain text, not JSON",
+                "the daemon doesn't speak the daemon interface",
+            ),
+            ("[1, 2]", "the daemon doesn't speak the daemon interface"),
+            (
+                r#"{"Sessions": [{"title": "private"}]}"#,
+                "the daemon doesn't speak the daemon interface",
+            ),
+        ] {
+            let ended = spoken(line).expect_err("a line outside the interface ends it");
+            assert_eq!(ended.to_string(), said, "no words but an Err's: {line}");
+        }
+        let long = format!(r#"{{"Err": "{}"}}"#, "é".repeat(WORDS + 5));
+        let ended = spoken(&long).expect_err("an old node's refusal ends it");
+        assert_eq!(
+            ended.to_string(),
+            format!(
+                "the daemon doesn't speak the daemon interface: {}...",
+                "é".repeat(WORDS)
+            ),
+            "its words are cut at the most, between characters"
+        );
+    }
+
+    #[test]
+    fn a_refusal_without_a_message_says_its_words_or_code_never_its_json() {
+        for (error, said) in [
+            (json!("the node is starting"), "the node is starting"),
+            (json!({"code": "unknown-kind"}), "unknown-kind"),
+            (json!({"detail": [1, 2]}), "it gave no reason"),
+            (json!({"code": 4, "message": 5}), "it gave no reason"),
+        ] {
+            assert_eq!(reason(&error), said, "the reason for {error}");
+        }
     }
 
     #[test]
