@@ -5184,6 +5184,14 @@
     a Litra plugged back in while a camera streams is told to light again, and the camera stopping
     puts it out; a Pebble X Plus plugged back in still has its lighting put out at a lock
   '';
+  vm-the-code-page-reads-its-daemon = ''
+    an account's sites' server, as its home module renders it, serves the code page with the strip
+    its build writes, and the page's feed, asked from the page's origin as its kit asks, starts the
+    stopped repos daemon through the socket systemd holds for it and says live with the repository
+    it read on the disk under the root the account gives it; three commits git makes while one
+    watch is open are each told on it as changed, with the checkout's new head, unasked; and the
+    homes the code site's timer writes, answered beside the page, say where the repository is home
+  '';
   vm-the-system-page-reads-its-daemon = ''
     an account's sites' server, as its home module renders it, serves the system page with the strip
     its build writes and the kit it imports, and the page's feed, asked from the page's origin as its
