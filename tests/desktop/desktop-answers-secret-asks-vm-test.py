@@ -120,15 +120,41 @@ def selects(shown: dict[str, object], why: str) -> bool:
 
 
 def asks_open_on(desktop: Desktop, ask: str, why: str) -> None:
-    """Open the launcher on Asks, the ask's line selected, or say what became of the ask."""
+    """Open the launcher on Asks from outside, the ask's line selected, or say what became of it.
+
+    Any process running as Joel may open it so, which times no line until a key of his moves.
+    """
     desktop.as_account("qs ipc call launcher collection asks")
     desktop.launcher_ready()
+    selected_or_told(desktop, ask, why)
+
+
+def selected_or_told(desktop: Desktop, ask: str, why: str) -> None:
+    """Wait for the ask's line to be selected, or say what became of the ask."""
     try:
         desktop.launcher_until(lambda shown: selects(shown, why))
     except AssertionError as unselected:
         answer = desktop.as_account(f"cat {ASKS}/{ask}.answer.json 2>/dev/null || true")
         message = f"the ask's line was never selected; its answer: {answer or 'none'}"
         raise AssertionError(message) from unselected
+
+
+def say_yes(desktop: Desktop) -> None:
+    """Press Return twice on the selected line, as Joel says yes: the first arms it."""
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["returned"].get("act") == "armed")
+    time.sleep(PAST_THE_READING)
+    desktop.machine.send_key("ret")
+
+
+def refused_unread(desktop: Desktop, ask: str) -> None:
+    """Assert the ask's yes went with no time shown, so the daemon refused it and ran nothing."""
+    answer = answered(desktop, ask)
+    assert (answer["state"], answer["why"]) == (
+        "refused",
+        "the line wasn't shown long enough",
+    ), answer
+    desktop.as_account(f"! test -e {TREE}/released")
 
 
 def refuse_on(desktop: Desktop, why: str) -> None:
@@ -157,11 +183,10 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     why = "To fire the kiln."
     put_up(desktop, ask, why)
     asks_open_on(desktop, ask, why)
-    machine = desktop.machine
-    machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["returned"].get("act") == "armed")
-    time.sleep(PAST_THE_READING)
-    machine.send_key("ret")
+    # A move of his times the line, though there's nowhere to move to.
+    desktop.machine.send_key("down")
+    desktop.launcher_until(lambda shown: selects(shown, why))
+    say_yes(desktop)
     answer = answered(desktop, ask)
     assert (answer["state"], answer["exit"]) == ("ran", 0), answer
     given = desktop.as_account(f"cat {TREE}/released").split()[0]
@@ -169,6 +194,47 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     assert answer["output"], f"the command's output isn't in its answer: {answer}"
     assert STAND_IN not in json.dumps(answer), answer
     read_nowhere(desktop)
+
+
+def test_an_asks_opened_from_outside_takes_no_yes_without_a_move(desktop: Desktop) -> None:
+    """Asks opened from outside, its line shown past a yes's least time, refuses two Returns.
+
+    His Returns might be meant for a window it took the keys from, so only a move of his times
+    the line.
+    """
+    ask = "3123456789abcdef0123456789abcdef"
+    why = "To wind the clock."
+    put_up(desktop, ask, why)
+    asks_open_on(desktop, ask, why)
+    time.sleep(PAST_THE_READING)
+    say_yes(desktop)
+    refused_unread(desktop, ask)
+
+
+def test_letters_typed_into_an_asks_opened_from_outside_time_nothing(desktop: Desktop) -> None:
+    """Letters typed into Asks opened from outside, as a terminal's command, arm nothing."""
+    ask = "4123456789abcdef0123456789abcdef"
+    why = "To ring the bell."
+    put_up(desktop, ask, why)
+    asks_open_on(desktop, ask, why)
+    desktop.machine.send_chars("ls")
+    selected_or_told(desktop, ask, why)
+    time.sleep(PAST_THE_READING)
+    say_yes(desktop)
+    refused_unread(desktop, ask)
+
+
+def test_a_step_into_asks_from_outside_is_no_walk_of_joels(desktop: Desktop) -> None:
+    """The launcher opened on home and then stepped into Asks, both from outside, times nothing."""
+    ask = "5123456789abcdef0123456789abcdef"
+    why = "To raise the sail."
+    put_up(desktop, ask, why)
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    asks_open_on(desktop, ask, why)
+    time.sleep(PAST_THE_READING)
+    say_yes(desktop)
+    refused_unread(desktop, ask)
 
 
 def test_r_refuses_an_ask(desktop: Desktop) -> None:
