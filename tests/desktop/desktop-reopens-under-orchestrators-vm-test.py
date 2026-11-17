@@ -874,8 +874,9 @@ def test_new_work_from_a_link_starts_its_session_in_no_window(desktop: Desktop) 
         desktop.close_launcher()
     finally:
         desktop.launcher_left_closed()
+        # A pattern its own shell's words don't match, so pkill ends only the stand-in.
         desktop.as_account(
-            f"rm -f $XDG_RUNTIME_DIR/pi-stays {opened} {first}; pkill -f 'sleep 600'; true"
+            f"rm -f $XDG_RUNTIME_DIR/pi-stays {opened} {first}; pkill -f 'sleep 60[0-5]'; true"
         )
         desktop.as_account("rm -rf ~/src/github.com/harbour")
 
