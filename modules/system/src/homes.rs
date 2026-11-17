@@ -274,6 +274,19 @@ mod tests {
     }
 
     #[test]
+    fn a_thing_with_an_empty_name_is_found_by_its_others_and_never_by_none() {
+        let homes = Homes::from_sites(
+            &sites(&json!([{"path": "code/", "homes": ["repository"]}])),
+            |_| Some(home("repository", "", "core", &[], "code/#repo=core")),
+        );
+        assert_eq!(homes.address("repository", ""), None);
+        assert_eq!(
+            homes.address("repository", "core"),
+            Some("code/#repo=core".into())
+        );
+    }
+
+    #[test]
     fn only_a_site_that_says_it_is_a_home_is_read() {
         let asked = std::cell::RefCell::new(Vec::new());
         let homes = Homes::from_sites(
@@ -616,35 +629,6 @@ mod tests {
     }
 
     #[test]
-    fn a_row_that_isnt_read_takes_nothing_from_a_kind_already_named() {
-        for middle in [
-            json!({"path": "/bad/", "homes": ["machine"]}),
-            json!({"path": "bad/", "homes": [{"kind": "machine", "address": "bad"}]}),
-        ] {
-            let homes = Homes::from_sites(
-                &sites(&json!([
-                    {"path": "mycelium/", "homes": ["machine"]},
-                    middle,
-                    {"path": "health/", "homes": ["machine"]},
-                ])),
-                |site| {
-                    let name = if site == "mycelium/" {
-                        "laptop"
-                    } else {
-                        "studio"
-                    };
-                    Some(home("machine", name, name, &[], &format!("{site}#{name}")))
-                },
-            );
-            assert_eq!(
-                homes.address("machine", "studio"),
-                Some("health/#studio".into()),
-                "{middle}"
-            );
-        }
-    }
-
-    #[test]
     fn a_pattern_may_be_written_from_the_root_like_a_record() {
         let homes = Homes::from_sites(
             &sites(&json!([{"path": "mycelium/", "homes": [
@@ -705,12 +689,15 @@ mod tests {
                 {"Kind": "machine", "address": "#machine={name}"},
             ]}),
         ] {
-            let homes = Homes::from_sites(
-                &sites(&json!([
-                    first,
-                    {"path": "health/", "homes": ["machine"]},
-                ])),
-                |site| {
+            // The next row serves by its record, and by a pattern, which an
+            // earlier claim on the kind would stop.
+            for next in [
+                json!({"path": "health/", "homes": ["machine"]}),
+                json!({"path": "health/", "homes": [
+                    {"kind": "machine", "address": "#m={name}"},
+                ]}),
+            ] {
+                let homes = Homes::from_sites(&sites(&json!([first, next])), |site| {
                     Some(home(
                         "machine",
                         "osprey",
@@ -718,13 +705,13 @@ mod tests {
                         &[],
                         &format!("{site}#m=osprey"),
                     ))
-                },
-            );
-            assert_eq!(
-                homes.address("machine", "osprey"),
-                Some("health/#m=osprey".into()),
-                "{first}"
-            );
+                });
+                assert_eq!(
+                    homes.address("machine", "osprey"),
+                    Some("health/#m=osprey".into()),
+                    "{first} then {next}"
+                );
+            }
         }
     }
 
