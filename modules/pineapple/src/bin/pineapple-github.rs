@@ -25,8 +25,9 @@
 //! names no place, so it can't steer a stop elsewhere.
 //!
 //! A round spends Joel's rate limit, which gh and his agents share: two
-//! requests, and three to five more for each pull request or issue that
-//! changed, a page more for each hundred of a long list. One his limit
+//! requests, two to four more for each pull request or issue that changed,
+//! one more for its repository where something on it is worth judging,
+//! and a page more for each hundred of a long list. One his limit
 //! refuses is tried again whole, so nothing it couldn't read is skipped.
 //!
 //! Unless `run` is given `--live`, it is in shadow: every stop's record
@@ -642,7 +643,9 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged) {
 /// the place it's about and whether an outsider said it: where anyone may
 /// comment (`open`), a writer not the repository's own, or anyone on a
 /// repository Joel doesn't work in. Reviews can't be asked for by time,
-/// so all are read and the round keeps those since.
+/// so all are read and the round keeps those since. Whether he works in
+/// it is asked only when something there is worth judging, which most
+/// threads hold nothing of, so his rate limit isn't spent on the rest.
 fn said_on(
     github: &GitHub<'_>,
     thread: &Thread,
@@ -657,26 +660,9 @@ fn said_on(
     let joel_opened = opened["user"]["login"]
         .as_str()
         .is_some_and(|by| by.eq_ignore_ascii_case(login));
-    let works_in = !open
-        || joel_opened
-        || match github.get(&base, &[]) {
-            Ok(repo) => github::works_in(&repo),
-            // Unreadable, it's one he doesn't work in; his own words still count.
-            Err(Unread::Gone(_)) => false,
-            Err(failed) => return Err(failed),
-        };
     let mut found = github::said(&opened, thread, Kind::Opening);
-    let trusted = !open || joel_opened || (works_in && found.first().is_some_and(|it| it.own));
-    let opening = if trusted {
-        format!(
-            "{}\n\n{}",
-            opened["title"].as_str().unwrap_or_default(),
-            opened["body"].as_str().unwrap_or_default()
-        )
-    } else {
-        String::new()
-    };
-    let context = thread.context(&opening);
+    // Its writer's standing alone, before anything said after it joins it.
+    let opened_by_own = found.first().is_some_and(|it| it.own);
     let recent = [("since", since), ("per_page", PAGE)];
     let comments = github.all(&format!("{base}/issues/{number}/comments"), &recent)?;
     found.extend(github::said(&comments, thread, Kind::Comment));
@@ -689,6 +675,27 @@ fn said_on(
         )?;
         found.extend(github::said(&reviews, thread, Kind::Review));
     }
+    let worth = found.iter().any(|said| worth_judging(&said.text, login));
+    let works_in = !open
+        || joel_opened
+        || (worth
+            && match github.get(&base, &[]) {
+                Ok(repo) => github::works_in(&repo),
+                // Unreadable, it's one he doesn't work in; his own words still count.
+                Err(Unread::Gone(_)) => false,
+                Err(failed) => return Err(failed),
+            });
+    let trusted = !open || joel_opened || (works_in && opened_by_own);
+    let opening = if trusted {
+        format!(
+            "{}\n\n{}",
+            opened["title"].as_str().unwrap_or_default(),
+            opened["body"].as_str().unwrap_or_default()
+        )
+    } else {
+        String::new()
+    };
+    let context = thread.context(&opening);
     Ok(found
         .into_iter()
         .map(|said| {
