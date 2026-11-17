@@ -100,10 +100,18 @@ Provider {
     // read they last took.
     property var series: ({ moved: [], in: [], out: [], at: [] })
     property var sparked: null
-    // What each interface is, asked of sysfs once a name while it stays:
-    // forgotten once it's gone from the counters, or after a gap between
-    // reads, since an interface can go and come again, as a VPN's tunnel
-    // does, as something else.
+    // What each interface is, asked of sysfs once a name while it stays,
+    // { kind, uevent, sure }, kept with the uevent it was read from:
+    // forgotten once it's gone from the counters. After a gap between
+    // reads it's no longer sure, since an interface can go and come again,
+    // as a VPN's tunnel does, as something else; its uevent alone is read
+    // again then, which names its index. The kernel gives each interface
+    // made a new index unless whoever makes it asks for one, which none of
+    // the tunnels here do, so the same uevent is the same interface; one
+    // that can't be read proves nothing and has all four read again. A
+    // step into Network asks
+    // after a gap each time, and four files for each interface, each a
+    // blocking read, took a median 6 ms and up to 49 ms of it (2026-11-17).
     property var interfaceKinds: ({})
     readonly property int second: 1000
     readonly property int soonest: 200
@@ -123,8 +131,9 @@ Provider {
             const all = Traffic.counters(read(netdev));
             const known = {};
             for (const name of Object.keys(all)) {
-                if (age <= stale && interfaceKinds[name] !== undefined)
-                    known[name] = interfaceKinds[name];
+                const kept = interfaceKinds[name];
+                if (kept !== undefined)
+                    known[name] = age <= stale ? kept : Object.assign({}, kept, { sure: false });
             }
             interfaceKinds = known;
             reads = {
@@ -137,23 +146,45 @@ Provider {
         return reads;
     }
 
+    // Where sysfs keeps each interface's folder; its case gives a folder
+    // of its own, since a build has no sysfs (tests/traffic-reads.qml).
+    property string interfaces: "/sys/class/net"
+    // How many sysfs files it has read of each interface, each a blocking
+    // read, so its case holds a step to reading few.
+    property var probed: ({})
+
     // What a file in an interface's sysfs folder says, or "".
     function sysSaid(name, file) {
-        probe.path = `/sys/class/net/${name}/${file}`;
+        probed[name] = (probed[name] ?? 0) + 1;
+        const path = `${interfaces}/${name}/${file}`;
+        // Asked again for the path it holds, the probe gives back the text
+        // it read before, though the file has changed, as an interface made
+        // again with one other interface probed has; let go of it first.
+        if (probe.path === path)
+            probe.path = "";
+        probe.path = path;
         return read(probe).trim();
     }
 
     // What an interface is, as the addresses name it (Interfaces.js), so a
     // cable is Wired here as there, and a tunnel a VPN.
     function interfaceKind(name) {
-        if (interfaceKinds[name] === undefined)
-            interfaceKinds[name] = Interfaces.sysKind(name, {
-                uevent: sysSaid(name, "uevent"),
+        const kept = interfaceKinds[name];
+        if (kept?.sure)
+            return kept.kind;
+        const uevent = sysSaid(name, "uevent");
+        const same = uevent !== "" && kept?.uevent === uevent;
+        interfaceKinds[name] = same ? Object.assign({}, kept, { sure: true }) : {
+            kind: Interfaces.sysKind(name, {
+                uevent: uevent,
                 type: sysSaid(name, "type"),
                 tun: sysSaid(name, "tun_flags") !== "",
                 card: sysSaid(name, "device/uevent") !== ""
-            });
-        return interfaceKinds[name];
+            }),
+            uevent: uevent,
+            sure: true
+        };
+        return interfaceKinds[name].kind;
     }
 
     // What each interface is, beside its counters, leaving out the

@@ -131,6 +131,32 @@ in
     touch $out
   '';
 
+  # Traffic, asked after a gap as each step into Network asks it, reads one
+  # sysfs file for an interface it already knows rather than all four again
+  # (tests/traffic-reads.qml), since each is a blocking read. A build has no
+  # sysfs, so the case writes lo's folder in sys/lo, made here.
+  traffic-reads-a-known-interface-once-after-a-gap =
+    pkgs.runCommandLocal "traffic-reads-a-known-interface-once-after-a-gap" { }
+      ''
+        mkdir -p launcher runtime sys/lo && chmod 700 runtime
+        ${copied [
+          "Daemon.qml"
+          "Words.qml"
+          "launcher/Interfaces.js"
+          "launcher/Provider.qml"
+          "launcher/Traffic.qml"
+          "launcher/words.json"
+        ]}
+        cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+        cp ${../../../tests/traffic-reads.qml} shell.qml
+        cp ${../../../tests/lib/Expect.js} Expect.js
+        export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+        export FONTCONFIG_FILE=${noFonts}
+        ${shellFolderLint}
+        timeout 60 ${qs} -p shell.qml
+        touch $out
+      '';
+
   # Wi-Fi joins a network by the acts wifid serves on its row, asking each
   # word a join needs in the field before it's sent (tests/wifi-acts.qml),
   # with the launcher's asking stood in.
