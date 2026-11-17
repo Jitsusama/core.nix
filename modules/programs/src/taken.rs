@@ -60,11 +60,12 @@ pub fn begun(shared: &Shared) -> Vec<usize> {
     sources_of(shared, Run::List, &[], Some(&[LIST.to_owned()]))
 }
 
-/// What was taken was read again: the rows are made while watched, and
-/// otherwise marked for the next watch to make (`begun`). A read ending
-/// after a watch's answer made the rows but before the watch was held
-/// would otherwise leave them as they were until the next shot. Watched
-/// is asked once, so a watch held as this runs gets one or the other.
+/// What was taken was read again, or the folders it's shown from changed:
+/// the rows are made while watched, and otherwise marked for the next
+/// watch to make (`begun`). A read ending after a watch's answer made the
+/// rows but before the watch was held would otherwise leave them as they
+/// were until the next shot. Watched is asked once, so a watch held as
+/// this runs gets one or the other.
 pub fn changed(shared: &Shared, daemon: &mut Daemon) {
     if watched(daemon) {
         make(shared, daemon);

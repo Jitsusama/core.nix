@@ -762,7 +762,8 @@ fn health(shared: &Shared) -> Value {
 }
 
 /// Holds what the rows are made of, each field the ask names replacing
-/// what the one before said, and makes the rows again with it.
+/// what the one before said, and makes the rows again with it, or marks
+/// Capture's for the next watch to make.
 fn settle(shared: &Shared, settings: Settings) -> Value {
     let mut daemon = lock(&shared.daemon);
     if let Some(shown) = settings.shown {
@@ -777,9 +778,7 @@ fn settle(shared: &Shared, settings: Settings) -> Value {
     if rows::watched(&daemon) {
         rows::make(shared, &mut daemon);
     }
-    if taken::watched(&daemon) {
-        taken::make(shared, &mut daemon);
-    }
+    taken::changed(shared, &mut daemon);
     json!({"settings": {"shown": daemon.shown, "folders": daemon.folders, "also": daemon.also}})
 }
 
