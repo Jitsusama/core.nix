@@ -4,17 +4,20 @@ The home is the one home.py builds from a record of three sites and the
 theme's web kit, served by the real local-sites server with the kit's
 scripts mounted where every site reads them. In headless Chromium j and k,
 and the arrows, step its cursor from site to site and hold it at the ends,
-g twice and G go to the first and the last, Return opens the site the
-cursor is on, ? and F1 open its list of keys and Escape closes it, the
-arrows on the theme switch choose a look and leave the cursor where it was,
-and the look chosen holds through a reload. It passes the web-design
-skill's page checks at a phone's width and a desk's in both looks, and
-anything it logs fails it. The server, the browser and the tab are
-modules/local-sites/tests/live_page.py's.
+g twice (and not once) and G go to the first and the last, Return opens the
+site the cursor is on, ? and F1 open its list of keys and Escape closes it,
+the keys its head shows answer a tap, the arrows on the theme switch choose
+a look and leave the cursor where it was, and the look chosen holds on the
+next visit. Its mark is drawn in each look's own tint from the kit. It
+passes the web-design skill's page checks at a phone's width and a desk's in
+both looks, and anything it logs fails it. A document whose head is a hero
+rather than a head answers a tap on its shown keys too. The server, the
+browser and the tab are modules/local-sites/tests/live_page.py's.
 """
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -36,8 +39,38 @@ SITES = [
     {"path": "osprey/", "name": "Osprey", "what": "How it went.", "kind": "record"},
 ]
 NAMES = [site["name"] for site in SITES]
+# A document on the kit's script whose header is a hero, as one-kit's is. The
+# build sandbox has no font a key's letter can be drawn in, and the kit's own
+# faces don't load there, so each key is given a box of its own to be tapped.
+DOCUMENT = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Heron</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="../kit/theme.css">
+<link rel="stylesheet" href="../kit/base.css">
+<link rel="stylesheet" href="/local-sites/kit/switch.css">
+<style>.keys kbd { display: inline-block; min-inline-size: 1em; min-block-size: 1em; }</style>
+<script type="module" src="/local-sites/kit/document.js"></script>
+</head>
+<body>
+<header class="hero"><p class="keys"><kbd>j</kbd> and <kbd>k</kbd> step</p></header>
+<main>
+<section class="part"><h2>First</h2></section>
+<section class="part"><h2>Second</h2></section>
+</main>
+</body>
+</html>
+"""
 # The name of the site whose link says it's the cursor.
 CURSOR = '.sites a[aria-current="true"] .name'
+# Longer than the kit's 600 ms for a second g to count as the pair.
+PAST_TWICE_MS = 1000
+# Where the kit's theme.css starts its light look, and the mark its dark one.
+LIGHT = "@media (prefers-color-scheme: light)"
+DARK_STROKE = re.compile(r"dark\) \{ g \{ stroke: ([^;]+); \}")
+LIGHT_STROKE = re.compile(r"^    g \{ stroke: ([^;]+); \}", re.MULTILINE)
 
 
 @pytest.fixture
@@ -55,6 +88,8 @@ def home(tmp_path: Path) -> Iterator[str]:
             (documents / site["path"] / "index.html").write_text(
                 f"<!doctype html>\n<title>{site['name']}</title>\n"
             )
+        (documents / "heron").mkdir()
+        (documents / "heron" / "index.html").write_text(DOCUMENT)
         sources = Path(os.environ["HOME_SOURCES"])
         subprocess.run([sys.executable, sources / "home.py", sources, documents], check=True)
         yield address
@@ -77,7 +112,7 @@ def pressing(page: Page, keys: str, then: str) -> None:
 
 def test_the_home_steps_from_site_to_site_and_holds_at_the_ends(tab: Page) -> None:
     """j, k and the arrows step the cursor; neither end is passed."""
-    expect(tab.locator(CURSOR), "the cursor didn't start on the newest").to_have_text(NAMES[0])
+    expect(tab.locator(CURSOR), "the cursor didn't start on the first").to_have_text(NAMES[0])
     pressing(tab, "j", NAMES[1])
     pressing(tab, "j j", NAMES[2])
     pressing(tab, "k", NAMES[1])
@@ -88,7 +123,41 @@ def test_the_home_steps_from_site_to_site_and_holds_at_the_ends(tab: Page) -> No
 def test_g_twice_and_capital_g_go_to_the_first_and_the_last(tab: Page) -> None:
     """G goes to the last site, and g pressed twice back to the first."""
     pressing(tab, "G", NAMES[-1])
+    tab.keyboard.press("g")
+    # Past the pair's window, so a lone g has had its chance to move the cursor.
+    tab.wait_for_timeout(PAST_TWICE_MS)
+    expect(tab.locator(CURSOR), "a single g moved the cursor").to_have_text(NAMES[-1])
     pressing(tab, "g g", NAMES[0])
+
+
+def test_the_keys_the_head_shows_answer_a_tap(tab: Page) -> None:
+    """A tap on the head's j steps the cursor as the key does."""
+    tab.locator(".threshold .keys kbd", has_text="j").click()
+    expect(tab.locator(CURSOR), "a tap on j left the cursor").to_have_text(NAMES[1])
+
+
+def test_a_documents_keys_answer_a_tap_under_a_hero(browser: Browser, home: str) -> None:
+    """A tap on j in a document's hero steps to a part, whose heading takes focus."""
+    opened = Opened(browser, f"{home}heron/", SIZES[-1], "dark")
+    try:
+        opened.page.locator("header .keys kbd", has_text="j").click()
+        reached = opened.page.locator(".part h2:focus")
+        expect(reached, "a tap on j under a hero didn't step").to_have_count(1)
+    finally:
+        opened.close()
+
+
+def test_the_mark_is_drawn_in_each_looks_tint(home: str, tmp_path: Path) -> None:
+    """The real kit names a tint for each look, and each look's mark takes its own."""
+    assert home, "the home wasn't served"
+    mark = (tmp_path / "documents" / "favicon.svg").read_text()
+    dark, light = DARK_STROKE.search(mark), LIGHT_STROKE.search(mark)
+    assert dark, f"the mark strokes no dark look: {mark}"
+    assert light, f"the mark strokes no light look: {mark}"
+    theme = (Path(os.environ["WEB_KIT"]) / "theme.css").read_text()
+    dark_side, _, light_side = theme.partition(LIGHT)
+    assert f"--action: {dark[1]};" in dark_side, f"the dark mark isn't the kit's: {dark[1]}"
+    assert f"--action: {light[1]};" in light_side, f"the light mark isn't the kit's: {light[1]}"
 
 
 def test_return_opens_the_site_the_cursor_is_on(tab: Page, home: str) -> None:
@@ -109,7 +178,7 @@ def test_question_mark_and_f1_open_the_keys_and_escape_closes_them(tab: Page) ->
 
 
 def test_the_arrows_on_the_switch_choose_a_look_and_leave_the_cursor(tab: Page) -> None:
-    """On the theme switch the arrows are its own, a look kept through a reload."""
+    """On the theme switch the arrows are its own, a look kept to the next visit."""
     pressing(tab, "j", NAMES[1])
     # Down is the cursor's key too, so only the switch's taking it keeps the cursor.
     tab.locator('.switch input[value="system"]').focus()
@@ -118,10 +187,14 @@ def test_the_arrows_on_the_switch_choose_a_look_and_leave_the_cursor(tab: Page) 
     expect(root, "the arrow didn't choose the dark look").to_have_attribute("data-theme", "dark")
     expect(tab.locator(CURSOR), "the arrow on the switch moved the cursor").to_have_text(NAMES[1])
     pressing(tab, "j", NAMES[2])
-    tab.reload()
-    expect(root, "the look chosen didn't hold through a reload").to_have_attribute(
+    # Visited afresh rather than reloaded, since a reload lets Chromium put the
+    # radios back itself.
+    tab.goto(tab.url)
+    expect(root, "the look chosen didn't hold to the next visit").to_have_attribute(
         "data-theme", "dark"
     )
+    dark = tab.locator('.switch input[value="dark"]')
+    expect(dark, "the switch forgot its look by the next visit").to_be_checked()
 
 
 @pytest.mark.parametrize("look", LOOKS)

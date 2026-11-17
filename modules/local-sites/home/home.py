@@ -6,7 +6,7 @@ place beside them; its keys and theme switch are the kit's
 /local-sites/kit/home.js. A row may name pages of its site that say their
 own kind in the strip, as "pages": {"tree.html": "test"}. The home's
 theme-color takes each look's ground from the kit's theme.css, and its
-favicon each look's accent, so both turn with the theme. A document, any
+favicon each look's tint, so both turn with the theme. A document, any
 row but an app, takes its keys and theme switch from the kit's
 /local-sites/kit/document.js, so what it says names every document loading
 a script file of its own, which is a copy that won't learn what the kit
@@ -47,7 +47,13 @@ FILES = ("home.css", "strip.css")
 GONE = ("home.js", "theme.js")
 OPEN, CLOSE = "<!-- sites strip: home.py writes this -->", "<!-- /sites strip -->"
 GROUND = re.compile(r"--background:\s*([^;]+);")
-ACCENT = re.compile(r"--accent:\s*([^;]+);")
+# What a site marks its emphasis in, unless it takes another hue: the
+# action's, which the home's own styles call --tint.
+TINT = re.compile(r"--action:\s*([^;]+);")
+# A colour as a stylesheet writes one, slash alpha included, and nothing that
+# could close the mark's <style>, start another rule or open a comment. A var()
+# is left out too: a favicon can't read the page's properties.
+COLOUR = re.compile(r"(?!.*(?:var\(|/\*))[#\w(). ,%/-]+")
 # A script file a page loads, by its address however it's quoted.
 SCRIPT_SRC = re.compile(r"<script\b[^>]*?\bsrc\s*=\s*([\"']?)([^\"'\s>]+)\1", re.IGNORECASE)
 # Where the kit's own scripts are served from, the only ones a document loads.
@@ -181,20 +187,26 @@ def home(page: str, sites: list[Site]) -> str:
 
 
 def looks(root: Path) -> dict[str, str]:
-    """Each look's ground and accent in the kit's theme.css, by the placeholder each fills.
+    """Each look's ground and tint in the kit's theme.css, by the placeholder each fills.
 
     The kit writes the dark look first and the light one under its media query,
     so the first of each on either side of that query is the look's own. What
-    the kit doesn't name, or a root with no kit, is left out.
+    the kit doesn't name, or doesn't write as a colour, or a root with no kit,
+    is left out, and a value refused as no colour is said on stderr.
     """
     theme = root / "kit" / "theme.css"
     css = theme.read_text(encoding="utf-8") if theme.exists() else ""
     dark_side, _, light_side = css.partition(LIGHT)
     found = {}
     for look, side in (("dark", dark_side), ("light", light_side)):
-        for role, pattern in (("ground", GROUND), ("accent", ACCENT)):
-            if named := pattern.search(side):
-                found[f"@{look}-{role}@"] = named[1].strip()
+        for role, pattern in (("ground", GROUND), ("tint", TINT)):
+            named = pattern.search(side)
+            if not named:
+                continue
+            if COLOUR.fullmatch(value := named[1].strip()):
+                found[f"@{look}-{role}@"] = value
+            else:
+                print(f"home: the {look} look's {role}, {value!r}, is no colour", file=sys.stderr)
     return found
 
 
@@ -213,15 +225,16 @@ def grounds(page: str, root: Path) -> str:
 
 
 def marked(mark: str, root: Path) -> str:
-    """Draw the home's mark, its favicon, in each look's accent from the kit's theme.css.
+    """Draw the home's mark, its favicon, in each look's tint from the kit's theme.css.
 
     A favicon can't read the page's properties, so the colours are written in.
-    A look the kit names no accent for draws in the browser's own ink.
+    A look the kit names no tint for takes the other look's, and where it names
+    neither the mark draws in currentColor, which a favicon draws black.
     """
     kit = looks(root)
-    for look in ("dark", "light"):
-        mark = mark.replace(f"@{look}-accent@", kit.get(f"@{look}-accent@", "currentColor"))
-    return mark
+    dark, light = kit.get("@dark-tint@"), kit.get("@light-tint@")
+    mark = mark.replace("@dark-tint@", dark or light or "currentColor")
+    return mark.replace("@light-tint@", light or dark or "currentColor")
 
 
 def llms(root: Path, sites: list[Site]) -> str:

@@ -7,11 +7,14 @@
 # them; llms.txt
 # and the twin list all three; each stripped page gets its strip after the
 # skip link, linking home from its depth; the home's own files are put
-# beside it, its mark drawn in each look's accent, and its old scripts
-# taken away, while its page loads the kit's script and switch; its theme-color takes each look's ground from the kit, and
-# names none without one; a second run changes no file; a broken record
-# keeps the last build; a root with no sites.json is left alone; and a
-# row Nix declares stands in for the record's, or goes first; and a
+# beside it, its mark drawn in each look's tint, and its old scripts
+# taken away, while its page loads the kit's script and switch; its
+# theme-color takes each look's ground from the kit, and names none without
+# one; a look with no tint takes the other's, and a tint or ground that
+# isn't a colour is left out and said, never written in; a second
+# run changes no file; a broken record keeps the last build; a root with no
+# sites.json is left alone; and a row Nix declares stands in for the
+# record's, or goes first; and a
 # document loading a script file of its own is named, on any of its pages,
 # however its tag is spelled and even past a byte that isn't UTF-8, while one
 # loading only the kit's, and an app loading its own, are not.
@@ -40,11 +43,12 @@ mkdir -p "$root/map" "$root/notes" "$root/old" "$root/kit"
 cat > "$root/kit/theme.css" << 'EOF'
 :root,
 :root[data-theme="dark"] {
-  --accent: jade;
+  --action: amber;
   --background: forest;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
+  --action: ochre;
   --background: paper;
   }
 }
@@ -118,11 +122,50 @@ grep -q 'media="(prefers-color-scheme: dark)" content="forest"' "$index" ||
   fail "the dark theme-color isn't the kit's dark ground"
 grep -q 'media="(prefers-color-scheme: light)" content="paper"' "$index" ||
   fail "the light theme-color isn't the kit's light ground"
-# The mark takes the dark look's accent, and draws in the browser's ink in
-# the light look, which this kit names no accent for.
+# The mark takes each look's tint.
 mark=$root/favicon.svg
-grep -q 'dark) { g { stroke: jade; }' "$mark" || fail "the dark mark isn't the kit's accent"
-grep -q '^    g { stroke: currentColor; }' "$mark" || fail "the light mark has no ink of its own"
+grep -q 'dark) { g { stroke: amber; }' "$mark" || fail "the dark mark isn't the kit's tint"
+grep -q '^    g { stroke: ochre; }' "$mark" || fail "the light mark isn't the kit's tint"
+# Builds the home beside a kit whose theme.css is $2, in $work/$1, keeping
+# what it said on stderr in $work/$1.said.
+kit_of() {
+  mkdir -p "$work/$1/kit"
+  cp "$root/sites.json" "$work/$1/"
+  printf '%s\n' "$2" > "$work/$1/kit/theme.css"
+  "$python" "$sources/home.py" "$sources" "$work/$1" > /dev/null 2> "$work/$1.said"
+}
+# Whether the mark built in $work/$1 strokes $2 in the dark look and $3 in the
+# light one, failing with $4 otherwise.
+strokes() {
+  if ! grep -q "dark) { g { stroke: $2; }" "$work/$1/favicon.svg" ||
+    ! grep -q "^    g { stroke: $3; }" "$work/$1/favicon.svg"; then
+    fail "$4"
+  fi
+}
+light="@media (prefers-color-scheme: light) { :root { --action: ochre; } }"
+# A look the kit names no tint for takes the other look's.
+kit_of dark-only ':root { --action: amber; }'
+strokes dark-only amber amber "the light mark didn't take the dark look's tint"
+kit_of light-only "$light"
+strokes light-only ochre ochre "the dark mark didn't take the light look's tint"
+# A colour with slash alpha, under a stand-in function's name, is a colour.
+kit_of alpha ':root { --action: tide(1 2 3 / 50%); }'
+strokes alpha 'tide(1 2 3 / 50%)' 'tide(1 2 3 / 50%)' "the mark refused a slash alpha"
+# What would close the mark's style, start another rule, open a comment or
+# read a property a favicon can't is left out, and said; with no other tint
+# the mark draws in currentColor.
+for odd in 'red}</style><script>x()</script>' 'red } g { stroke: blue' 'red /* x' 'var(--gold)'; do
+  kit_of odd ":root { --action: $odd; }"
+  ! grep -q '<script\|blue\|/\*\|var(' "$work/odd/favicon.svg" ||
+    fail "the mark took $odd for a tint"
+  strokes odd currentColor currentColor "the mark without a tint has no ink"
+  told=$(< "$work/odd.said")
+  [[ $told == *"the dark look's tint, '$odd', is no colour"* ]] ||
+    fail "a tint left out wasn't said: $told"
+done
+# A ground that would break out of the page's theme-color is left out of it.
+kit_of ground ':root { --background: red"><script>y()</script>; }'
+! grep -q '<script>y' "$work/ground/index.html" || fail "the home took markup for a ground"
 
 listed=$(grep -c '^- \[' "$root/llms.txt")
 [ "$listed" = 3 ] || fail "llms.txt doesn't list all three"

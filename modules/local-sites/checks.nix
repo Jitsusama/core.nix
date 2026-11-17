@@ -205,7 +205,8 @@ in
   # The home's builder lists each site from its row, settled ones apart,
   # puts each row Nix declares in its recorded row's place, strips each page
   # that asks, names documents with scripts of their own, draws its mark in
-  # each look's accent, and changes nothing on a second run
+  # each look's tint or the other's where one is missing, leaves out and says
+  # a tint or ground that isn't a colour, and changes nothing on a second run
   # (tests/home-builds-from-its-rows.sh).
   home-builds-from-its-rows = pkgs.runCommandLocal "home-builds-from-its-rows" { } ''
     ${lib.getExe pkgs.bash} ${./tests/home-builds-from-its-rows.sh} ${
@@ -282,12 +283,14 @@ in
       '';
   # The home, built by its own builder from three recorded sites and served
   # with the kit, read in headless Chromium (tests/home-answers-its-keys-test.py):
-  # j, k and the arrows step its cursor and hold at the ends, g twice and G
-  # reach the first and the last, Return opens the site under the cursor, ?
-  # and F1 show its keys and Escape hides them, an arrow on the theme switch
-  # chooses a look and leaves the cursor, the look outlasts a reload, and the
-  # web-design skill's page checks pass at two widths in both looks with
-  # nothing logged. Chromium builds only on Linux.
+  # j, k and the arrows step its cursor and hold at the ends, g twice but not
+  # once and G reach the first and the last, Return opens the site under the
+  # cursor, ? and F1 show its keys and Escape hides them, its shown keys
+  # answer a tap, an arrow on the theme switch chooses a look and leaves the
+  # cursor, the look holds to the next visit, its mark takes each look's tint, a
+  # document under a hero answers a tap on its keys, and the web-design
+  # skill's page checks pass at two widths in both looks with nothing logged.
+  # Chromium builds only on Linux.
   home-answers-its-keys =
     let
       python = pkgs.python3.withPackages (python: [
