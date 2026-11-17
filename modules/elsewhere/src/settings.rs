@@ -128,14 +128,13 @@ fn kind(name: &str, value: &Value) -> Result<Kind, String> {
     if programs.is_empty() {
         return Err(format!("{name} names no program a job of it may start"));
     }
-    let brings_back = list("brings_back")?;
     Ok(Kind {
         description: text("description").to_owned(),
         programs,
         setup: text("setup").to_owned(),
         copies,
         excludes: list("excludes")?,
-        brings_back,
+        brings_back: list("brings_back")?,
         needs: list("needs")?,
         lasts: Some(text("lasts"))
             .filter(|it| !it.is_empty())
@@ -146,8 +145,10 @@ fn kind(name: &str, value: &Value) -> Result<Kind, String> {
 impl Kind {
     /// The first path this kind brings back that names nothing that could
     /// come home, since the far side passes over hidden files and the near
-    /// side lands nothing outside the folder. Asked as the kind runs, so
-    /// one kind set wrongly leaves the others to run.
+    /// side lands nothing outside the folder; or one the far side's `find`
+    /// would read as part of its expression. Asked as a job goes far, so
+    /// one kind set wrongly leaves the others, and its own jobs here, to
+    /// run.
     pub fn odd_brings_back(&self) -> Option<&str> {
         self.brings_back
             .iter()
@@ -157,10 +158,12 @@ impl Kind {
 }
 
 /// Whether `path`, with its slashes at either end taken off, names some
-/// place within a folder by plain names alone.
+/// place within a folder by plain names alone, which `find` reads as a
+/// path.
 fn plain(path: &str) -> bool {
     let path = path.trim_matches('/');
-    !path.is_empty()
+    !path.starts_with(['-', '!', '(', ')', ','])
+        && !path.is_empty()
         && path
             .split('/')
             .all(|part| !part.is_empty() && !part.starts_with('.'))
@@ -234,6 +237,8 @@ mod tests {
             r#"{"kinds": {
                 "hidden": {"programs": ["x"], "brings_back": ["out", "out/.cache"]},
                 "up": {"programs": ["x"], "brings_back": ["../up"]},
+                "option": {"programs": ["x"], "brings_back": ["-delete"]},
+                "not": {"programs": ["x"], "brings_back": ["!"]},
                 "fine": {"programs": ["x"], "brings_back": ["/out/", "a/b"]}
             }}"#,
         )
@@ -241,6 +246,8 @@ mod tests {
         for (name, odd) in [
             ("hidden", Some("out/.cache")),
             ("up", Some("../up")),
+            ("option", Some("-delete")),
+            ("not", Some("!")),
             ("fine", None),
         ] {
             assert_eq!(

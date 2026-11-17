@@ -26,7 +26,7 @@ use crate::settings::{Copies, Kind};
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -58,6 +58,21 @@ const LARGEST_FILE: u64 = 64 << 20;
 /// How long each side waits for the other's files to cross, in seconds:
 /// a minute's worth of a busy link's looks, five times over.
 pub const CROSSES_WITHIN: u64 = 300;
+
+/// The mode bits a file brought back may land with: its own read, write
+/// and run bits, but never setuid, setgid, sticky or a write for anyone.
+const LANDS_WITH: u32 = 0o775;
+
+/// `O_NONBLOCK`, so opening a pipe that took a file's place returns at
+/// once rather than waiting for a writer.
+#[cfg(target_os = "linux")]
+const OPEN_NONBLOCKING: i32 = 0o4000;
+#[cfg(target_os = "macos")]
+const OPEN_NONBLOCKING: i32 = 0x4;
+
+/// The number the next landing name takes, so no two in this process
+/// share one.
+static NEXT_LANDING: AtomicU32 = AtomicU32::new(0);
 
 /// Whether `quest` is a quest's id as the harness mints it, so it names a
 /// folder and nothing more.
@@ -361,12 +376,19 @@ fn bringing(kind: &Kind) -> String {
         r#"for path in {paths}; do
   [ -e "$path" ] || continue
   find "$path" -type l ! -path '*/.*' ! -name '.*' \
-    -exec printf "elsewhere: %s is a link, so it stays here\n" {{}} \; >&2
+    -exec printf "elsewhere: %s is a link, so it isn't brought back\n" {{}} \; >&2
   find "$path" -type f ! -path '*/.*' ! -name '.*'
 done | {{
   n=0
   while IFS= read -r file; do
-    cp "$file" "$job/{BACK}/$n" || {{ printf "elsewhere: %s didn't come back\n" "$file" >&2; continue; }}
+    # One that won't copy keeps its number, listed with no size, so the
+    # near side lands the rest and says it's missing.
+    cp "$file" "$job/{BACK}/$n" || {{
+      printf "elsewhere: %s didn't come back\n" "$file" >&2
+      printf '%s\t%s\n' - "$file"
+      n=$((n + 1))
+      continue
+    }}
     printf '%s\t%s\n' "$(($(wc -c < "$job/{BACK}/$n")))" "$file"
     n=$((n + 1))
   done
@@ -470,10 +492,8 @@ pub fn bring_back(
         })
     };
     for _ in 0..=within {
-        let heard = fs::read_to_string(job.join(BROUGHT))
-            .ok()
-            .and_then(|text| listed(&text, brings_back));
-        if let Some(files) = heard.filter(|files| arrived(files)) {
+        let text = fs::read_to_string(job.join(BROUGHT)).unwrap_or_default();
+        if let Some(files) = listed(&text, brings_back).filter(|files| arrived(files)) {
             let through = files
                 .iter()
                 .find_map(|brought| linked(folder, &brought.path).map(|link| (brought, link)));
@@ -488,6 +508,17 @@ pub fn bring_back(
                 land(&numbered(brought), &folder.join(&brought.path))
                     .map_err(|error| format!("{} didn't land: {error}", brought.path))?;
             }
+            let lost: Vec<&str> = text
+                .lines()
+                .filter_map(|line| line.strip_prefix("-\t"))
+                .filter(|path| brought_back(path, brings_back))
+                .collect();
+            if !lost.is_empty() {
+                return Err(format!(
+                    "{} didn't come back from the far side",
+                    lost.join(", ")
+                ));
+            }
             return Ok(files.len());
         }
         // Each end of a shared quest looks once a second, so looking more
@@ -501,7 +532,6 @@ pub fn bring_back(
 /// there, so whatever is already at `into`, a hard link to a file
 /// elsewhere or a symbolic link, is replaced rather than written through.
 fn land(from: &Path, into: &Path) -> io::Result<()> {
-    static NEXT: AtomicU32 = AtomicU32::new(0);
     let parent = into.parent().unwrap_or(Path::new("."));
     fs::create_dir_all(parent)?;
     // Made new, so nothing already at the name, a link perhaps, is opened,
@@ -509,15 +539,27 @@ fn land(from: &Path, into: &Path) -> io::Result<()> {
     let landing = parent.join(format!(
         "{MARK}-{}-{}",
         std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
+        NEXT_LANDING.fetch_add(1, Ordering::Relaxed)
     ));
-    let mut to = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&landing)?;
+    let opened = || {
+        fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&landing)
+    };
+    let mut to = match opened() {
+        // Left by a run killed as it landed, under this process's id, so
+        // that run is over; removing the name follows nothing at it.
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            fs::remove_file(&landing)?;
+            opened()?
+        }
+        opened => opened?,
+    };
     let landed = opened_plain(from).and_then(|mut source| {
         io::copy(&mut source, &mut to)?;
-        to.set_permissions(source.metadata()?.permissions())?;
+        let bits = source.metadata()?.permissions().mode() & LANDS_WITH;
+        to.set_permissions(fs::Permissions::from_mode(bits))?;
         fs::rename(&landing, into)
     });
     landed.inspect_err(|_| {
@@ -533,32 +575,17 @@ fn opened_plain(path: &Path) -> io::Result<fs::File> {
     if !looked.is_file() {
         return Err(io::Error::other("it isn't a plain file"));
     }
-    let file = fs::File::open(path)?;
+    // Without blocking, so a pipe put there after the look can't hold the
+    // run; it is then refused as not the file looked at.
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(OPEN_NONBLOCKING)
+        .open(path)?;
     let opened = file.metadata()?;
     if opened.dev() != looked.dev() || opened.ino() != looked.ino() {
         return Err(io::Error::other("it changed as it was opened"));
     }
     Ok(file)
-}
-
-/// Moves the handover `job` aside once what it brought back can't land,
-/// with the job's own tree and list taken out, so the handover's removal
-/// leaves only what the job made, for the person to take by hand.
-pub fn keep(job: &Path) -> io::Result<PathBuf> {
-    for (gone, removed) in [
-        (TREE, fs::remove_dir_all(job.join(TREE))),
-        (LEFT, fs::remove_file(job.join(LEFT))),
-    ] {
-        if let Some(error) = removed
-            .err()
-            .filter(|error| error.kind() != io::ErrorKind::NotFound)
-        {
-            return Err(io::Error::other(format!("its {gone} stayed: {error}")));
-        }
-    }
-    let kept = job.with_extension("kept");
-    fs::rename(job, &kept)?;
-    Ok(kept)
 }
 
 /// The first folder on the way to `path` under `folder` that is a symbolic

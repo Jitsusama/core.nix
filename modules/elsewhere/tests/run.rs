@@ -95,6 +95,12 @@ impl Realm {
 
     /// Settings sending to `machine`, opting in `sh` as the kind `check`.
     fn settings(&self, machine: &str) {
+        self.bringing(machine, &["out"]);
+    }
+
+    /// Settings as `settings` writes them, with `check` bringing back
+    /// `brings_back`.
+    fn bringing(&self, machine: &str, brings_back: &[&str]) {
         let settings = serde_json::json!({
             "machines": [machine],
             "scratch": ".cache/elsewhere",
@@ -104,7 +110,7 @@ impl Realm {
                 "programs": ["sh"],
                 "setup": "FROM_SETUP=set; export FROM_SETUP",
                 "excludes": ["build"],
-                "brings_back": ["out"],
+                "brings_back": brings_back,
                 "needs": ["reach=home"],
                 "lasts": "5m",
             }},
@@ -451,6 +457,62 @@ fn a_job_its_kind_doesnt_allow_is_refused_before_anything_runs() {
         realm.asked(),
         "",
         "a refused job asked mycelium for something"
+    );
+}
+
+#[test]
+fn a_far_job_whose_output_can_t_land_fails_and_writes_nothing_outside() {
+    for (job, ends) in [
+        ("mkdir out; echo 7 > out/n", 75),
+        ("mkdir out; echo 7 > out/n; exit 3", 3),
+    ] {
+        // A realm each, since the stand-in share never removes the far
+        // copy of a handover the way a real one does.
+        let realm = Realm::new(true);
+        let outside = realm.root.join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, realm.folder().join("out")).unwrap();
+        let output = realm.check(&[], job);
+        let (_, err) = said(&output);
+        assert_eq!(
+            output.status.code(),
+            Some(ends),
+            "a job whose output couldn't land didn't end {ends}: {err}"
+        );
+        assert!(
+            err.contains("out") && err.contains("link"),
+            "it didn't say the output was refused for a link: {err}"
+        );
+        assert!(emptied(&outside), "what came back was written outside");
+        assert!(
+            emptied(&realm.handover()),
+            "what couldn't land was left in the handover"
+        );
+    }
+}
+
+#[test]
+fn a_kind_bringing_back_what_can_t_come_home_is_refused_only_far() {
+    let realm = Realm::new(true);
+    realm.bringing("far", &["out/.cache"]);
+    let here = realm.check(&["--here"], "pwd");
+    assert!(
+        here.status.success(),
+        "a job run here was refused for what it would bring back: {:?}",
+        said(&here)
+    );
+    let far = realm.check(&[], "pwd");
+    let (_, err) = said(&far);
+    assert_eq!(
+        far.status.code(),
+        Some(78),
+        "a far job bringing back a hidden path wasn't refused: {err}"
+    );
+    assert!(err.contains("out/.cache"), "it didn't name the path: {err}");
+    assert!(
+        !realm.asked().contains("run "),
+        "a refused job ran far: {}",
+        realm.asked()
     );
 }
 

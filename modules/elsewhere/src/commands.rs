@@ -55,7 +55,14 @@ fn run() -> Help {
         Exit::Refused,
         "the job's program isn't one its kind may start",
     )
-    .exit(Exit::Config, "its settings can't be read")
+    .exit(
+        Exit::TryAgain,
+        "the job's files didn't cross, or what it made didn't come home",
+    )
+    .exit(
+        Exit::Config,
+        "its settings can't be read, or its kind brings back what can't come home",
+    )
     .passes("the job's own code, when it fails, here or there")
 }
 

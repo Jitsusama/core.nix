@@ -1,4 +1,4 @@
-use super::{bring_back, crossing, keep, listed, plain_quest, quoted, script, started, travels};
+use super::{bring_back, crossing, listed, plain_quest, quoted, script, started, travels};
 use crate::settings::{Copies, Kind};
 use std::path::{Path, PathBuf};
 
@@ -342,7 +342,7 @@ fn what_comes_back_comes_back_under_its_own_name_past_one_that_failed() {
         )],
     );
     assert!(
-        err.contains("elsewhere: out/l is a link, so it stays here"),
+        err.contains("elsewhere: out/l is a link, so it isn't brought back"),
         "a link the job made was left without a word: {err}"
     );
     assert_eq!(code, Some(0), "the job didn't run: {err}");
@@ -353,8 +353,8 @@ fn what_comes_back_comes_back_under_its_own_name_past_one_that_failed() {
     let into = home.join("near");
     assert_eq!(
         bring_back(&handover(&home), &into, &kind.brings_back, WAITS),
-        Ok(2),
-        "the near side didn't bring back the two that crossed"
+        Err("early/b didn't come back from the far side".to_owned()),
+        "the near side didn't say what never crossed"
     );
     for (name, text) in [
         ("early/b", None),
@@ -368,6 +368,115 @@ fn what_comes_back_comes_back_under_its_own_name_past_one_that_failed() {
         );
     }
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// A folder of the test's own, named for `what`, emptied.
+fn scratch(what: &str) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("elsewhere-{what}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    root
+}
+
+#[test]
+fn only_a_plain_file_is_opened_to_land_and_a_pipe_never_waits() {
+    let root = scratch("opened");
+    std::fs::write(root.join("file"), "a").unwrap();
+    std::os::unix::fs::symlink(root.join("file"), root.join("link")).unwrap();
+    let made = std::process::Command::new("mkfifo")
+        .arg(root.join("pipe"))
+        .status()
+        .unwrap();
+    assert!(made.success(), "mkfifo failed");
+    assert!(
+        super::opened_plain(&root.join("file")).is_ok(),
+        "a plain file wasn't opened"
+    );
+    assert!(
+        super::opened_plain(&root.join("link")).is_err(),
+        "a link was opened"
+    );
+    // Refused at the look, before any open; one put there after the look
+    // is opened without waiting, which no test here can time.
+    assert!(
+        super::opened_plain(&root.join("pipe")).is_err(),
+        "a pipe was opened"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The names in `folder`, sorted.
+fn names(folder: &Path) -> Vec<String> {
+    let mut names: Vec<_> = std::fs::read_dir(folder)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn a_file_that_can_t_land_leaves_its_place_as_it_was() {
+    let root = scratch("unlanded");
+    std::fs::write(root.join("there"), "mine").unwrap();
+    std::os::unix::fs::symlink("nowhere", root.join("from")).unwrap();
+    assert!(
+        super::land(&root.join("from"), &root.join("there")).is_err(),
+        "a link landed"
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join("there")).unwrap(),
+        "mine",
+        "a landing that failed touched what was there"
+    );
+    assert_eq!(
+        names(&root),
+        ["from", "there"],
+        "a landing that failed left a name of its own behind"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_file_lands_under_a_long_name_without_its_special_bits() {
+    let root = scratch("long");
+    std::fs::write(root.join("from"), "a").unwrap();
+    std::fs::set_permissions(
+        root.join("from"),
+        std::os::unix::fs::PermissionsExt::from_mode(0o4777),
+    )
+    .unwrap();
+    let long = "n".repeat(250);
+    super::land(&root.join("from"), &root.join(&long)).expect("a long name didn't land");
+    let mode = std::os::unix::fs::PermissionsExt::mode(
+        &std::fs::metadata(root.join(&long)).unwrap().permissions(),
+    );
+    assert_eq!(
+        mode & 0o7777,
+        0o775,
+        "it landed with setuid or a write for anyone"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_landing_name_a_killed_run_left_is_cleared() {
+    let root = scratch("stale");
+    std::fs::write(root.join("from"), "new").unwrap();
+    // Every landing name this process could take next, as a run killed
+    // under the same process id would have left one.
+    let next = super::NEXT_LANDING.load(std::sync::atomic::Ordering::Relaxed);
+    for n in next..next + 64 {
+        let stale = root.join(format!("{}-{}-{n}", super::MARK, std::process::id()));
+        std::fs::write(stale, "old").unwrap();
+    }
+    super::land(&root.join("from"), &root.join("into")).expect("a stale name stopped it");
+    assert_eq!(
+        std::fs::read_to_string(root.join("into")).unwrap(),
+        "new",
+        "what landed wasn't what came back"
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]
@@ -511,43 +620,6 @@ fn what_comes_back_never_lands_through_a_link_out_of_its_folder() {
         .collect();
     names.sort();
     assert_eq!(names, ["a", "b"], "landing left a file of its own behind");
-    let _ = std::fs::remove_dir_all(&home);
-}
-
-#[test]
-fn what_couldn_t_land_is_kept_without_the_tree_it_was_made_from() {
-    let home = std::env::temp_dir().join(format!("elsewhere-keep-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&home);
-    let job = handover(&home);
-    for (path, text) in [
-        (format!("{}/src/x", super::TREE), "x"),
-        (super::LEFT.to_owned(), "1\tsrc/x\nend\n"),
-        (format!("{}/0", super::BACK), "a"),
-        (super::BROUGHT.to_owned(), "1\tout/a\nend\n"),
-    ] {
-        std::fs::create_dir_all(job.join(&path).parent().unwrap()).unwrap();
-        std::fs::write(job.join(&path), text).unwrap();
-    }
-    let kept = keep(&job).expect("what the job made wasn't kept");
-    assert!(
-        !job.exists(),
-        "the handover stayed where its removal finds it"
-    );
-    assert_eq!(
-        std::fs::read_to_string(kept.join(super::BACK).join("0"))
-            .ok()
-            .as_deref(),
-        Some("a"),
-        "what the job made wasn't kept"
-    );
-    assert!(
-        kept.join(super::BROUGHT).exists(),
-        "the list naming what it made wasn't kept"
-    );
-    assert!(
-        !kept.join(super::TREE).exists() && !kept.join(super::LEFT).exists(),
-        "the tree the job was made from was kept with it"
-    );
     let _ = std::fs::remove_dir_all(&home);
 }
 
