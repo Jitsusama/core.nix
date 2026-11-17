@@ -3526,6 +3526,34 @@ fn the_grant_switches_what_waited_for_it_though_main_moved_on() {
 }
 
 #[test]
+fn a_system_that_waited_for_a_hold_tells_its_boot_check_its_flake() {
+    // The grant's switch builds nothing, so the flake is kept with what
+    // waited.
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "old");
+    let head = world.signed("one");
+    let told = world.root.join("told");
+    let check = format!("printf '%s' \"$UPDATE_TO_MAIN_FLAKE\" > {}", told.display());
+    let system = a_new_initrd(&mut world, &head, &check);
+    daemon_unit(&system, "new");
+    assert!(
+        matches!(world.update().1, Line::Refused { .. }),
+        "a switch restarting a held daemon didn't wait for a hold"
+    );
+    fs::write(world.root.join("given"), "").unwrap();
+    let (_, ending) = world.update();
+    assert!(
+        matches!(ending, Line::Done { boots: None, .. }),
+        "the granted switch should pass its boot check: {ending:?}"
+    );
+    let flake = fs::read_to_string(&told).unwrap_or_default();
+    assert!(
+        flake.ends_with(&format!("rev={head}")) && !flake.contains('#'),
+        "the granted switch's boot check wasn't told its flake: {flake}"
+    );
+}
+
+#[test]
 fn a_held_daemons_drop_in_changing_waits_for_a_hold_too() {
     let mut world = World::new();
     hold_the_daemon(&mut world, "same");

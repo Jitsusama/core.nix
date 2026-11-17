@@ -185,7 +185,7 @@ fn run(
         return Line::Refused { commit: last, why };
     }
     if let Some(why) = held(config, &built, granted) {
-        keep_waiting(config, &head, &followed, &built);
+        keep_waiting(config, &head, &followed, &built, &flake);
         return Line::Refused { commit: last, why };
     }
     // Heads that moved without moving the system, such as a merge of
@@ -242,6 +242,10 @@ struct Waiting {
     commit: String,
     followed: follows::Followed,
     system: std::path::PathBuf,
+    /// The flake it was built from, for its boot check; none in what an
+    /// update-to-main before it kept.
+    #[serde(default)]
+    flake: String,
 }
 
 fn waiting_file(config: &Config) -> std::path::PathBuf {
@@ -255,11 +259,13 @@ fn keep_waiting(
     head: &str,
     followed: &follows::Followed,
     built: &std::path::Path,
+    flake: &str,
 ) {
     let waiting = Waiting {
         commit: head.to_owned(),
         followed: followed.clone(),
         system: built.to_path_buf(),
+        flake: flake.to_owned(),
     };
     if let Ok(text) = serde_json::to_string(&waiting) {
         let _ = fs::write(waiting_file(config), text);
@@ -286,13 +292,20 @@ fn switch_waiting(
     if run::stopping() {
         return failed(last, Failure::new("the update was stopped"));
     }
-    switch(
-        config,
-        &waiting.system,
-        last,
-        waiting.commit,
-        waiting.followed,
-    )
+    // A kept system from before the flake was kept is told root's copy at
+    // its commit, which is what it was built from unless it was hosted.
+    let flake = if waiting.flake.is_empty() && config.hosted.is_none() {
+        git::flake(config, &waiting.commit)
+    } else {
+        waiting.flake.clone()
+    };
+    let overrides = follows::overrides(config, &waiting.followed);
+    let built = system::Built {
+        system: &waiting.system,
+        flake: &flake,
+        overrides: &overrides,
+    };
+    switch(config, &built, last, waiting.commit, waiting.followed)
 }
 
 /// Why main at `head` mustn't be built, if it mustn't: it doesn't descend
