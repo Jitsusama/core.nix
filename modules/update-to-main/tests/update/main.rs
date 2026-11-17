@@ -1552,6 +1552,95 @@ fn a_hosted_main_is_fetched_into_a_ref_of_its_own() {
     );
 }
 
+/// A checkout whose git writes a commit graph after each fetch walks every
+/// ref for it, so a side branch missing an old commit failed every fetch of
+/// main, though main needs nothing of it: a machine went unupdated for a day.
+#[test]
+fn a_hosted_main_is_fetched_past_a_side_branch_missing_a_commit() {
+    let world = World::hosted_from(World::new(), counted_token);
+    let checkout = world.config.hosted.as_ref().unwrap().checkout.clone();
+    git(&checkout, &["config", "fetch.writeCommitGraph", "true"]);
+    let first = world.hosted_commit("one", None);
+    world.system(&first);
+    assert_eq!(world.update().1, done(&first));
+    let tree = git(&checkout, &["rev-parse", &format!("{first}^{{tree}}")]);
+    let lost = git(
+        &checkout,
+        &["commit-tree", &tree, "-p", &first, "-m", "side one"],
+    );
+    let kept = git(
+        &checkout,
+        &["commit-tree", &tree, "-p", &lost, "-m", "side two"],
+    );
+    git(
+        &checkout,
+        &["update-ref", "refs/remotes/origin/side", &kept],
+    );
+    fs::remove_file(
+        checkout
+            .join(".git/objects")
+            .join(&lost[..2])
+            .join(&lost[2..]),
+    )
+    .unwrap();
+    let head = world.hosted_commit("two", None);
+    // Each on a copy, since a fetch failing at its graph has landed main
+    // first: the same fetch fails with the graph's write and passes
+    // without it, so the write alone is what fails it.
+    let fetched_on_a_copy = |name: &str, before: &[&str]| {
+        let copy = world.root.join(name);
+        let copied = Command::new("cp")
+            .arg("-R")
+            .arg(&checkout)
+            .arg(&copy)
+            .status()
+            .unwrap();
+        assert!(copied.success(), "the checkout couldn't be copied");
+        Command::new(program("git"))
+            .arg("-C")
+            .arg(&copy)
+            .args(before)
+            .args([
+                "fetch",
+                "--quiet",
+                "origin",
+                "+refs/heads/main:refs/plain/main",
+            ])
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("LC_ALL", "C")
+            .output()
+            .unwrap()
+    };
+    let plain = fetched_on_a_copy("plain", &[]);
+    assert!(
+        !plain.status.success()
+            && String::from_utf8_lossy(&plain.stderr).contains(&format!("Could not read {lost}")),
+        "a plain fetch got past the lost commit, so this proves nothing: {plain:?}"
+    );
+    let unwritten = fetched_on_a_copy("unwritten", &["-c", "fetch.writeCommitGraph=false"]);
+    assert!(
+        unwritten.status.success(),
+        "the fetch failed without writing the graph too, so the write isn't what fails it: \
+         {unwritten:?}"
+    );
+    assert!(
+        !world.checkout_has(&head),
+        "main was in the checkout before the update fetched it"
+    );
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    assert!(
+        world.checkout_has(&head),
+        "main wasn't fetched into the checkout"
+    );
+    assert_eq!(
+        git(&checkout, &["config", "fetch.writeCommitGraph"]),
+        "true",
+        "the checkout's own config changed"
+    );
+}
+
 /// A hosted world whose host has a REST API, its answers files under the
 /// world's own folder that curl reads as it would the host's over HTTPS.
 /// `World::answer` writes them for everything main holds.
