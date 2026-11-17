@@ -4,8 +4,8 @@
 // it passes the application's filters, and read while it's handled, as
 // the launcher reads it. And how long the thread ran and waited for a
 // CPU, read while it spins alone and then beside another thread held to
-// the same CPU. And that a WallTimer ends on its time rather than on the
-// animation timer's next step, and not at all once stopped. It exits 0
+// the same CPU. And that a WallTimer ends on its time, once a start, from
+// its latest start, and not at all once stopped. It exits 0
 // once all hold, and otherwise 1, saying which didn't.
 #include "keytimes.h"
 #include "walltimer.h"
@@ -14,7 +14,6 @@
 #include <QGuiApplication>
 #include <QKeyEvent>
 #include <QTimer>
-#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
@@ -115,8 +114,10 @@ constexpr int HELD_FOR_MS = 8;
 constexpr double ON_TIME_MS = 4;
 // Tries at the bound, the soonest of which is held to it, so a builder's
 // load delaying one isn't taken for the timer's own lateness: the test runs
-// as the package builds, where a flake would fail the machine's build.
-constexpr int TRIES = 5;
+// as the package builds, where a flake would fail the machine's build. They
+// are spaced apart, so one burst of load can't delay them all.
+constexpr int TRIES = 10;
+constexpr int TRIED_APART_MS = 20;
 
 bool expectTimer(const char *what, bool holds, const char *said) {
     if (!holds)
@@ -156,6 +157,7 @@ bool endsOnTime(WallTimer &timer) {
         early = early || (ended >= 0 && ended < HELD_FOR_MS - 1);
         if (ended >= 0 && (soonest < 0 || ended < soonest))
             soonest = ended;
+        turnFor(TRIED_APART_MS);
     }
     char said[96];
     if (soonest < 0)
@@ -168,20 +170,53 @@ bool endsOnTime(WallTimer &timer) {
                        said);
 }
 
-// Started again before it ends, it ends its interval from then.
-bool restartedEndsLater(WallTimer &timer) {
-    const double began = monotonicNow();
+// How one try of a start, and a start again before it ends, went: how many
+// times it ended, and how long after the second start it first did. A try
+// whose second start came too late to be before the end is no try at all,
+// since the builder's load, not the timer, decided it.
+struct Restarted {
+    bool tried;
+    int ends;
+    double ended;
+};
+
+Restarted restartedOnce(WallTimer &timer) {
+    double again = -1;
     double ended = -1;
-    const auto heard = QObject::connect(&timer, &WallTimer::triggered,
-                                        [&ended, began] { ended = monotonicNow() - began; });
+    int ends = 0;
+    const auto heard = QObject::connect(&timer, &WallTimer::triggered, [&] {
+        if (++ends == 1)
+            ended = monotonicNow();
+    });
     timer.restart();
-    QTimer::singleShot(HELD_FOR_MS / 2, &timer, &WallTimer::restart);
+    QTimer::singleShot(HELD_FOR_MS / 2, &timer, [&] {
+        if (ends == 0) {
+            again = monotonicNow();
+            timer.restart();
+        }
+    });
     turnFor(HELD_FOR_MS * 6);
     QObject::disconnect(heard);
-    char said[64];
-    std::snprintf(said, sizeof said, "ended %.1f ms after its first start", ended);
+    return {again >= 0, ends, again >= 0 && ended >= 0 ? ended - again : -1};
+}
+
+// Started again before it ends, it ends its interval from then, and once.
+bool restartedEndsLater(WallTimer &timer) {
+    Restarted last{false, 0, -1};
+    for (int tried = 0; tried < TRIES && !last.tried; ++tried) {
+        last = restartedOnce(timer);
+        turnFor(TRIED_APART_MS);
+    }
+    char said[96];
+    if (!last.tried)
+        std::snprintf(said, sizeof said, "never started again before it ended in %d tries",
+                      TRIES);
+    else if (last.ends != 1)
+        std::snprintf(said, sizeof said, "it ended %d times", last.ends);
+    else
+        std::snprintf(said, sizeof said, "ended %.1f ms after its second start", last.ended);
     return expectTimer("started again ends its interval from then",
-                       ended >= HELD_FOR_MS + HELD_FOR_MS / 2 - 1, said);
+                       last.tried && last.ends == 1 && last.ended >= HELD_FOR_MS - 1, said);
 }
 
 // It ends once a start, and not at all once stopped.
@@ -192,11 +227,12 @@ bool endsOnceAndStops(WallTimer &timer) {
     turnFor(HELD_FOR_MS * 6);
     const bool once = expectTimer("ends once a start", ends == 1,
                                   ends == 0 ? "it never ended" : "it ended again");
+    const int endedOnce = ends;
     timer.restart();
     timer.stop();
     turnFor(HELD_FOR_MS * 4);
     QObject::disconnect(heard);
-    const bool stopped = expectTimer("stopped never ends", ends == 1, "it ended");
+    const bool stopped = expectTimer("stopped never ends", ends == endedOnce, "it ended");
     return once && stopped;
 }
 

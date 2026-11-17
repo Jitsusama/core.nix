@@ -12,7 +12,8 @@ WallTimer::WallTimer(QObject *parent) : QObject(parent) {
 
 int WallTimer::interval() const { return timer.interval(); }
 
-void WallTimer::setInterval(int interval) {
+void WallTimer::setInterval(int given) {
+    const int interval = given < 0 ? 0 : given;
     if (interval == timer.interval())
         return;
     timer.setInterval(interval);

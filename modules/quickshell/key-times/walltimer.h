@@ -6,7 +6,8 @@
 // Joel's journal, a median 47, and 237 behind a held swap (2026-11-12 to
 // 2026-11-16). This one is a Qt timer on the monotonic clock, which ends
 // as soon as the event loop turns past its time. It goes once per start,
-// as the hold needs, with the start and stop QML's Timer has.
+// as the hold needs, with the restart() and stop() the hold calls on
+// QML's Timer, and no start() or running of its own.
 #pragma once
 
 #include <QObject>
@@ -21,7 +22,8 @@ class WallTimer : public QObject {
 public:
     explicit WallTimer(QObject *parent = nullptr);
 
-    // How many milliseconds from its start it ends.
+    // How many milliseconds from its start it ends; one below 0 is taken
+    // as 0, since Qt's timer would never end on it and hold a key for good.
     int interval() const;
     void setInterval(int interval);
 
