@@ -1,6 +1,7 @@
 # When keys were pressed, as a QML module, KeyTimes, holding the singleton
-# KeyTimes and WallTimer, a timer kept to the clock: a plugin, its qmldir and its type file, installed where Qt looks
-# for QML modules, so Quickshell imports it and qmllint reads its types.
+# KeyTimes and WallTimer, a timer kept to the clock: a plugin, its qmldir
+# and its type file, installed where Qt looks for QML modules, so
+# Quickshell imports it and qmllint reads its types.
 cmake_minimum_required(VERSION 3.21)
 project(keytimes LANGUAGES CXX)
 

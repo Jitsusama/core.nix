@@ -1,5 +1,6 @@
-// A precise timer is kept to the millisecond, where a coarse one may end
-// up to 5% late, and goes once, as walltimer.h says.
+// A Qt timer goes once per start, as walltimer.h says. It's set precise,
+// kept to the millisecond, though Qt makes one this short precise anyway,
+// so a longer interval given it later isn't let run 5% late.
 
 #include "walltimer.h"
 

@@ -7192,10 +7192,13 @@ Scope {
     }
     function searchedNow(due, waited) {
         searchParts = null;
+        // The wait ends as the search begins, so the search's own time
+        // isn't said as time behind the shell's other work.
+        const listed = Date.now();
         search(prompt.text);
         // Its key's time holds the wait, said apart in the journal.
         if (waited && searchParts)
-            Object.assign(searchParts, Awaited.waitedOf(waited, Date.now(), answersWaitedFor,
+            Object.assign(searchParts, Awaited.waitedOf(waited, listed, answersWaitedFor,
                 waited.timedOut === true));
         if (!asking)
             due.forEach(key => keyTimed(key.step || key.text, key.began, key.heard, key.pressed,

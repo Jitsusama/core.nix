@@ -107,13 +107,29 @@ bool threadTimed(const KeyTimes &times) {
 }
 
 // The launcher's bound on a key's hold for its answers (Launcher.qml's
-// answersWaitedFor), and how far past it a WallTimer may end: QML's own
-// Timer, on the animation timer, steps every 16 ms, so it can't pass.
+// answersWaitedFor), and how far past it a WallTimer may end. There's no
+// render loop here to hold QML's own Timer back, so this holds the type to
+// its word rather than telling it from that one, which walltimer.h's
+// sources and the keys lab do.
 constexpr int HELD_FOR_MS = 8;
 constexpr double ON_TIME_MS = 4;
 // Tries at the bound, the soonest of which is held to it, so a builder's
-// load delaying one isn't taken for the timer's own lateness.
+// load delaying one isn't taken for the timer's own lateness: the test runs
+// as the package builds, where a flake would fail the machine's build.
 constexpr int TRIES = 5;
+
+bool expectTimer(const char *what, bool holds, const char *said) {
+    if (!holds)
+        std::fprintf(stderr, "FAIL a wall timer %s: %s\n", what, said);
+    return holds;
+}
+
+// Turns the event loop for `ms`.
+void turnFor(int ms) {
+    QEventLoop loop;
+    QTimer::singleShot(ms, &loop, &QEventLoop::quit);
+    loop.exec();
+}
 
 // How long after it's started `timer` says it's triggered, or -1 when it
 // doesn't within `within` ms.
@@ -132,31 +148,65 @@ double endedAfter(WallTimer &timer, int within) {
     return ended;
 }
 
-bool wallTimed() {
-    WallTimer timer;
-    timer.setInterval(HELD_FOR_MS);
-    double soonest = 1e9;
+bool endsOnTime(WallTimer &timer) {
+    double soonest = -1;
     bool early = false;
     for (int tried = 0; tried < TRIES; ++tried) {
         const double ended = endedAfter(timer, 200);
         early = early || (ended >= 0 && ended < HELD_FOR_MS - 1);
-        if (ended >= 0)
-            soonest = std::min(soonest, ended);
+        if (ended >= 0 && (soonest < 0 || ended < soonest))
+            soonest = ended;
     }
-    const bool onTime = soonest <= HELD_FOR_MS + ON_TIME_MS && !early;
-    if (!onTime)
-        std::fprintf(stderr, "FAIL a wall timer of %d ms ends on its time: soonest %.1f ms%s\n",
-                     HELD_FOR_MS, soonest, early ? ", one before it" : "");
-    bool fired = false;
-    QObject::connect(&timer, &WallTimer::triggered, [&fired] { fired = true; });
+    char said[96];
+    if (soonest < 0)
+        std::snprintf(said, sizeof said, "never ended in %d tries", TRIES);
+    else
+        std::snprintf(said, sizeof said, "soonest %.1f ms of %d%s", soonest, HELD_FOR_MS,
+                      early ? ", one before its time" : "");
+    return expectTimer("ends on its time", soonest >= 0 && !early &&
+                                               soonest <= HELD_FOR_MS + ON_TIME_MS,
+                       said);
+}
+
+// Started again before it ends, it ends its interval from then.
+bool restartedEndsLater(WallTimer &timer) {
+    const double began = monotonicNow();
+    double ended = -1;
+    const auto heard = QObject::connect(&timer, &WallTimer::triggered,
+                                        [&ended, began] { ended = monotonicNow() - began; });
+    timer.restart();
+    QTimer::singleShot(HELD_FOR_MS / 2, &timer, &WallTimer::restart);
+    turnFor(HELD_FOR_MS * 6);
+    QObject::disconnect(heard);
+    char said[64];
+    std::snprintf(said, sizeof said, "ended %.1f ms after its first start", ended);
+    return expectTimer("started again ends its interval from then",
+                       ended >= HELD_FOR_MS + HELD_FOR_MS / 2 - 1, said);
+}
+
+// It ends once a start, and not at all once stopped.
+bool endsOnceAndStops(WallTimer &timer) {
+    int ends = 0;
+    const auto heard = QObject::connect(&timer, &WallTimer::triggered, [&ends] { ++ends; });
+    timer.restart();
+    turnFor(HELD_FOR_MS * 6);
+    const bool once = expectTimer("ends once a start", ends == 1,
+                                  ends == 0 ? "it never ended" : "it ended again");
     timer.restart();
     timer.stop();
-    QEventLoop loop;
-    QTimer::singleShot(HELD_FOR_MS * 5, &loop, &QEventLoop::quit);
-    loop.exec();
-    if (fired)
-        std::fprintf(stderr, "FAIL a wall timer stopped never ends\n");
-    return onTime && !fired;
+    turnFor(HELD_FOR_MS * 4);
+    QObject::disconnect(heard);
+    const bool stopped = expectTimer("stopped never ends", ends == 1, "it ended");
+    return once && stopped;
+}
+
+bool wallTimed() {
+    WallTimer timer;
+    timer.setInterval(HELD_FOR_MS);
+    const bool onTime = endsOnTime(timer);
+    const bool restarted = restartedEndsLater(timer);
+    const bool once = endsOnceAndStops(timer);
+    return onTime && restarted && once;
 }
 
 } // namespace
@@ -173,7 +223,8 @@ int main(int argc, char **argv) {
     const bool fromRepeat =
         expect("a held key's repeat is timed from when Qt made it, not its first press",
                repeated >= 0 && repeated < SLACK_MS, repeated);
-    const bool timed = threadTimed(times);
+    // Before the thread's clocks, which hold it to one CPU.
     const bool walled = wallTimed();
+    const bool timed = threadTimed(times);
     return fromPress && fromRepeat && timed && walled ? 0 : 1;
 }
