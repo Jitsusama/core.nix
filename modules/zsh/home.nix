@@ -40,7 +40,9 @@ in
         typeset -g _zsh_selected='${sgr "48" colours.selection};${sgr "38" colours.strong}'
         ${builtins.readFile ./init.zsh}
       '')
-      (builtins.readFile ./limits.zsh)
+      # Before the prompt (500), so the git-engine it starts has as many
+      # files as the commands typed.
+      (lib.mkOrder 400 (builtins.readFile ./limits.zsh))
       (builtins.readFile ./terminal.zsh)
     ];
   };
