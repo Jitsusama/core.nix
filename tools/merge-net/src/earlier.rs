@@ -2,6 +2,7 @@
 //! has no run of its own: `ready` merges a rebased head on one, and
 //! `needs` reads what one named moved rather than evaluating again.
 
+use std::cell::LazyCell;
 use std::path::Path;
 use std::process::Command;
 
@@ -72,9 +73,12 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
     // file, as a rebased head's own files are: its own lack main's moves,
     // so on 16 November 42 heads behind main were sent to build a check
     // for each description main added beside theirs.
-    let merged = behind
-        .then(|| merged_tree(Path::new("."), main, commit))
-        .flatten();
+    // It merges only once a shared file is judged.
+    let merged = LazyCell::new(|| {
+        behind
+            .then(|| merged_tree(Path::new("."), main, commit))
+            .flatten()
+    });
     let at_merged = |file: &str| {
         merged
             .as_deref()
@@ -145,7 +149,14 @@ fn merged_tree(folder: &Path, main: &str, commit: &str) -> Option<String> {
         .output()
         .ok()?;
     // A conflict exits 1 and writes a tree with its markers in, which no
-    // file of the change would land as.
+    // file of the change would land as. Any other failure reads the same,
+    // the head's own copy, and is said, since it looks like a clash.
+    if !matches!(merged.status.code(), Some(0 | 1)) {
+        eprintln!(
+            "merge-net: merging {commit} into {main} to judge it apart failed: {}",
+            String::from_utf8_lossy(&merged.stderr).trim()
+        );
+    }
     let said = String::from_utf8_lossy(&merged.stdout);
     let tree = said.lines().next().unwrap_or_default();
     (merged.status.success() && !tree.is_empty()).then(|| tree.to_owned())
@@ -157,6 +168,50 @@ mod tests {
 
     use super::*;
     use crate::tests::git_in;
+
+    /// A descriptions file of an entry for each name, each saying "proves".
+    fn descriptions(names: &[&str]) -> String {
+        let body: String = names
+            .iter()
+            .map(|name| format!("  {name} = ''\n    proves\n  '';\n"))
+            .collect();
+        format!("{{\n{body}}}\n")
+    }
+
+    #[test]
+    fn a_description_beside_mains_stands_apart_as_merged_not_as_its_own() {
+        // 16 November: 42 heads behind main whose only shared file was
+        // check-descriptions.nix were sent to build a list's check again.
+        let file = "check-descriptions.nix".to_owned();
+        let (files, none) = (vec![file.clone()], Vec::new());
+        let base = |_: &str| descriptions(&["b", "d", "f"]);
+        let own = |_: &str| descriptions(&["b", "d", "e", "f"]);
+        let merged = |_: &str| descriptions(&["a", "b", "d", "e", "f"]);
+        let main_text = |_: &str| descriptions(&["a", "b", "d", "f"]);
+        let main = ready::Side {
+            changed: &files,
+            gone: &none,
+            text: &main_text,
+        };
+        let as_merged = ready::Side {
+            changed: &files,
+            gone: &none,
+            text: &merged,
+        };
+        let as_its_own = ready::Side {
+            changed: &files,
+            gone: &none,
+            text: &own,
+        };
+        assert!(
+            ready::stands_apart(&file, &as_merged, &main, &base, &own),
+            "a description merged beside main's didn't stand apart from it"
+        );
+        assert!(
+            !ready::stands_apart(&file, &as_its_own, &main, &base, &own),
+            "a head's own copy, lacking main's entry, stood apart from it"
+        );
+    }
 
     #[test]
     fn a_head_behind_main_is_read_as_merged_into_it() {
