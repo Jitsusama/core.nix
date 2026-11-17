@@ -4,6 +4,7 @@
 //! since a look by hand, missing the timer's checkouts, reads differently.
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::{Command, Output};
 
@@ -154,6 +155,28 @@ fn a_torn_ledger_leaves_the_misses_unjudged_and_carried() {
         carried.contains("as first written"),
         "a torn ledger dropped a miss open last hour: {carried}"
     );
+}
+
+/// A card that can't be sent leaves last hour kept as it was, so the
+/// "fixed" lines it held are told again next hour rather than never.
+#[test]
+fn a_card_that_cant_be_sent_keeps_last_hour_as_it_was() {
+    let account = account();
+    let kept = account.path().join("state/cadence");
+    fs::create_dir_all(&kept).expect("cadence's folder");
+    let last = r#"{"open": ["the backup ran twice · 88LQC0"]}"#;
+    fs::write(kept.join("hour.json"), last).expect("last hour");
+    let messages = account
+        .path()
+        .join("state/pi/agentic-harness.pi/mesh-workflow/messages");
+    fs::create_dir_all(&messages).expect("the mesh's folder");
+    fs::set_permissions(&messages, fs::Permissions::from_mode(0o555))
+        .expect("a mesh nothing can be sent into");
+
+    let ran = hour(account.path(), &["--to", "WCJQSG"]);
+    assert!(!ran.status.success(), "a send that couldn't go was said to");
+    let after = fs::read_to_string(kept.join("hour.json")).expect("the hour kept");
+    assert_eq!(after, last, "an unsent card's hour was kept as told");
 }
 
 #[test]

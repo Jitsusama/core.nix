@@ -131,9 +131,10 @@ pub fn compose(
         let told = tell_fixed(&mut card, kept, &open, said);
         (open, told)
     } else {
+        let told = still_told(kept, &open);
         let mut carried = kept.open.clone();
         carried.extend(open.into_iter().filter(|miss| !kept.open.contains(miss)));
-        (carried, kept.told.clone())
+        (carried, told)
     };
     let next = Kept {
         drag: chosen.map(|m| Held {
@@ -176,23 +177,7 @@ fn tell_fixed(
     said: &BTreeMap<String, String>,
 ) -> Vec<String> {
     let still: Vec<&str> = open.iter().map(|miss| miss_words(miss)).collect();
-    let reopened: Vec<&str> = open
-        .iter()
-        // Only the part after the owner's mark says it's held, since a
-        // miss's own words might hold the same phrase.
-        .filter(|miss| {
-            !miss
-                .rsplit_once(" · ")
-                .is_some_and(|(_, by)| by.contains(HELD))
-        })
-        .map(|miss| miss_words(miss))
-        .collect();
-    let mut told: Vec<String> = kept
-        .told
-        .iter()
-        .filter(|what| !reopened.contains(&what.as_str()))
-        .cloned()
-        .collect();
+    let mut told = still_told(kept, open);
     for miss in &kept.open {
         let what = miss_words(miss);
         if still.contains(&what) || told.iter().any(|t| t == what) {
@@ -212,6 +197,27 @@ fn tell_fixed(
         );
     }
     told
+}
+
+/// The misses already told fixed that stay told: one seen open again, and
+/// not held, is forgotten, so its next fix is told too.
+fn still_told(kept: &Kept, open: &[String]) -> Vec<String> {
+    let reopened: Vec<&str> = open
+        .iter()
+        // Only the part after the owner's mark says it's held, since a
+        // miss's own words might hold the same phrase.
+        .filter(|miss| {
+            !miss
+                .rsplit_once(" · ")
+                .is_some_and(|(_, by)| by.contains(HELD))
+        })
+        .map(|miss| miss_words(miss))
+        .collect();
+    kept.told
+        .iter()
+        .filter(|what| !reopened.contains(&what.as_str()))
+        .cloned()
+        .collect()
 }
 
 /// What became of last hour's drag, and how many hours it has now gone
@@ -598,6 +604,22 @@ mod tests {
                 "the launcher hid in a share · D46U6P"
             ],
             "an unread ledger dropped a miss open last hour or since: {next:?}"
+        );
+    }
+
+    #[test]
+    fn an_unread_hour_forgets_telling_of_a_miss_seen_open_again() {
+        let mut unread = measure("misses", Class::Miss, 1.0, None);
+        unread.behind = vec!["the launcher hid in a share · D46U6P".to_owned()];
+        let kept = Kept {
+            drag: None,
+            told: vec!["the launcher hid in a share".to_owned()],
+            ..Kept::default()
+        };
+        let (_, next) = compose("06:10", &[unread], &kept, &BTreeMap::new(), "");
+        assert!(
+            next.told.is_empty(),
+            "a miss open again kept its telling, so its next fix goes untold: {next:?}"
         );
     }
 

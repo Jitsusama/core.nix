@@ -184,7 +184,8 @@ pub fn read(
     let main = if remote { "origin/main" } else { "main" };
     // Nothing else fetches the checkout on a clock, so the hour takes main
     // itself, leaving FETCH_HEAD to whoever works there. A link that
-    // stalls gives up in half a minute rather than holding the card.
+    // stalls gives up in half a minute rather than holding the card, and
+    // git's own upkeep, which a fetch can start, is left to Joel's checkout.
     let took = remote
         && command(
             "git",
@@ -195,6 +196,10 @@ pub fn read(
                 "http.lowSpeedLimit=1000",
                 "-c",
                 "http.lowSpeedTime=30",
+                "-c",
+                "maintenance.auto=false",
+                "-c",
+                "gc.auto=0",
                 "fetch",
                 "--quiet",
                 "--no-write-fetch-head",
