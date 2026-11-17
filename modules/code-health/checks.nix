@@ -30,6 +30,24 @@
   # tools, each error and each warning tofu validate finds, each variable or output with
   # no description, and each workspace with no README or no tofu test.
   code-health-counts-what-got-messier = pkgs.callPackage ./package.nix { };
+  # code-health and core's every-long-file-says-why name the same planted
+  # folders crowded, each one's note giving its reason in another way or
+  # failing to (crowds-as-core-does.sh), so a folder that rule passes is
+  # never counted crowded in the hourly figures, nor one it fails let by.
+  code-health-crowds-as-core-does =
+    pkgs.runCommandLocal "code-health-crowds-as-core-does"
+      {
+        nativeBuildInputs = [
+          (pkgs.callPackage ./package.nix { })
+          pkgs.git
+          pkgs.python3
+        ];
+      }
+      ''
+        HOME=$TMPDIR bash ${./crowds-as-core-does.sh} \
+          ${../../tests/rules/every-long-file-says-why.py}
+        touch $out
+      '';
   # A repository can be several folders of a larger one, such as one
   # team's Terraform kept in a few places of a monorepo; each is handed
   # to code-health, so none goes unread.

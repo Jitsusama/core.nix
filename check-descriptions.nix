@@ -600,6 +600,12 @@
     what no tofu test tests, from a ref's files, and writes the day's figures as cadence reads
     them, and the hour's against each target, the hour before and the owner
   '';
+  code-health-crowds-as-core-does = ''
+    code-health and core's rule that every crowded folder says why name the same planted folders
+    crowded, and the ones expected: a reason past a note's opening, wrapped, or in AGENTS.md
+    is read, one joined to a word isn't, and a folder at the limit, past it, nested or of
+    folders is counted alike
+  '';
   code-health-finds-a-machines-programs-first = ''
     code-health finds a machine's own programs first on its PATH, such as a git that reads a
     repository stock git refuses, with core's git and coreutils after them
