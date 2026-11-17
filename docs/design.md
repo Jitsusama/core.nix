@@ -3514,6 +3514,11 @@ What each studio round settled, newest first, with the reason.
   legible and quiet while typing. It used to blink for as long as a window
   had focus, motion on a screen nobody's touching and an animation kitty
   draws all the while; it now rests, solid, 15 seconds after the last key.
+- **The launcher's caret rests while typing** (2026-11-17, judged against
+  the taste without a round). It faded from the moment a key landed, so
+  the shell drew every frame while Joel typed and each key waited for its
+  turn to be drawn. It now holds lit for one fade after each key, as GTK's
+  and macOS's fields do, and blinks as kitty's cursor does once he pauses.
 - **octo's keys speak the language** (2026-10-16, judged against the taste
   without a round). octo's buffers held 117 keys of its own in words like
   "Buffer close (close issue)" and emoji, with its defaults still bound

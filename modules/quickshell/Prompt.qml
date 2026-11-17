@@ -878,8 +878,9 @@ Item {
     // typed kept the shell drawing every frame, and a key then waited for
     // niri's frame callback, a median 7.5 ms against 2 on a still shell
     // (Joel's keys on his 60 Hz screen, 17 Nov). A Timer starts the blink
-    // rather than a pause in it, since a running animation asks for
-    // frames.
+    // rather than a pause leading it: Qt times a Timer alone apart from
+    // frames, while a pause inside the blink's animation keeps it ticking
+    // on every frame.
     property int fade: 800
     property int stopsAfter: 15000
     // Only a caret drawn blinks, so normal asks for no frames.

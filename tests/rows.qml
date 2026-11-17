@@ -436,6 +436,15 @@ ShellRoot {
                 fade: 300
                 stopsAfter: 5000
             }
+            // A modal line that stops blinking, as the launcher's does in
+            // normal, while its caret rests.
+            Prompt {
+                id: hider
+                width: root.panel
+                modal: true
+                fade: 300
+                stopsAfter: 5000
+            }
             // A list's gutter beside three rows in view, the cursor on the
             // second, as normal draws it, with a slot to spare.
             Gutter {
@@ -1717,27 +1726,42 @@ ShellRoot {
         }
     }
 
-    // Halfway through its rest, the just-typed line's caret is lit and asks
-    // for no frames; past it, it blinks.
+    // Watches the resting line through a key in its rest: halfway through,
+    // its caret is lit and asks for no frames, and a key there, as the
+    // field's keys wake it, holds it a whole fade from that key; past
+    // that, it blinks. The line that stops blinking in its rest never
+    // blinks. Each step waits through part of the rester's 300 ms fade.
+    property bool rested: false
     Timer {
-        interval: 150
+        id: restWatch
+        property int step: 0
+        readonly property var waits: [150, 250, 350]
+        interval: waits[step]
         running: true
         onTriggered: {
-            if (rester.blinkingNow || rester.caretLight !== 1) {
-                console.warn(`FAIL the caret blinked within a fade of its key: blinking `
-                    + `${rester.blinkingNow}, lit ${rester.caretLight}`);
+            let failed = "";
+            if (step < 2 && (rester.blinkingNow || rester.caretLight !== 1))
+                failed = `the caret blinked within a fade of its key, at step ${step}: blinking `
+                    + `${rester.blinkingNow}, lit ${rester.caretLight}`;
+            else if (step === 2 && !rester.blinkingNow)
+                failed = "the caret never blinked once its rest was over";
+            else if (step === 2 && hider.blinkingNow)
+                failed = "a caret that stopped blinking in its rest blinked once it was over";
+            if (failed !== "") {
+                console.warn(`FAIL ${failed}`);
                 Qt.callLater(() => Qt.exit(1));
+                return;
             }
-        }
-    }
-    Timer {
-        interval: 600
-        running: true
-        onTriggered: {
-            if (!rester.blinkingNow) {
-                console.warn("FAIL the caret never blinked once its rest was over");
-                Qt.callLater(() => Qt.exit(1));
+            if (step === 0) {
+                rester.woken();
+                hider.modal = false;
             }
+            if (step === 2) {
+                root.rested = true;
+                return;
+            }
+            step += 1;
+            restart();
         }
     }
 
@@ -1825,7 +1849,8 @@ ShellRoot {
                 console.warn(`FAIL ${failed}: ${JSON.stringify(now)} from ${from}`);
                 turns.stop();
                 Qt.callLater(() => Qt.exit(1));
-            } else if (turns.named && turns.sided && turns.cleared && root.blinkHeld) {
+            } else if (turns.named && turns.sided && turns.cleared && root.blinkHeld
+                && root.rested) {
                 turns.stop();
                 Qt.callLater(() => Qt.exit(0));
             }
