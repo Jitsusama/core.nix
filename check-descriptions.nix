@@ -1722,8 +1722,13 @@
     each of a machine's mycelium nodes, in its home realm or a further one, is given its realm's
     kit last among its words, one folder in the store holding the tools every machine shares and
     whatever the machine adds for that realm alone, which each session and run the node starts
-    finds first on its path, leaving git and gh to the account, which may wrap its own; a machine
-    emptying its kit gives none
+    finds first on its path, a curl speaking wss:// among them, leaving git and gh to the account,
+    which may wrap its own; a machine emptying its kit gives none
+  '';
+  mycelium-kit-builds-here = ''
+    the tools of the kit a machine of the system running the checks is given build there and hold
+    curl, fd, jq, mycelium, rg and websocat, its curl speaking wss:// over OpenSSL 3, so a tool
+    one system lacks fails on that system's checks before a machine of it switches
   '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session

@@ -103,8 +103,14 @@ let
   # options need. git, git-lfs and gh stay the account's own, since the kit
   # goes first and an account may wrap them, as one whose repositories
   # need their own git or gh does; a realm that wants them adds them.
+  # curl speaks WebSockets, since a Mac's websocat reaches TLS only through
+  # Secure Transport, which stops at 1.2, and a front taking 1.3 alone needs
+  # a wss:// client over OpenSSL there. Going first changes nothing else:
+  # the account's curl is core's own, the same build without WebSockets,
+  # trusting the same certificates.
   shared = [
     package
+    (pkgs.curl.override { websocketSupport = true; })
     pkgs.fd
     pkgs.jq
     pkgs.ripgrep

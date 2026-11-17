@@ -641,24 +641,33 @@ in
   # first for agents too and nothing an agent writes may change them.
   mycelium-carries-the-realms-kit =
     holds "mycelium-carries-the-realms-kit"
-      "A machine's node, in its home realm or a further one, isn't given its realm's kit in the store last among its words, the kit lacks the shared tools or what the machine adds, it takes git or gh from an account that may wrap its own, or a machine emptying its kit gives one anyway."
+      "A machine's node, in its home realm or a further one, isn't given its realm's kit in the store last among its words, the kit lacks the shared tools (a curl speaking wss:// among them) or what the machine adds, it takes git or gh from an account that may wrap its own, or a machine emptying its kit gives one anyway."
       (
         let
           kitted =
             realm: words:
             builtins.match ".* --kit ${builtins.storeDir}/[a-z0-9]{32}-mycelium-kit-${realm}" words != null;
+          # Tools by name, since the machines here are Linux ones whatever
+          # system runs the checks, so a Mac's own packages never match.
+          names = map lib.getName;
+          # mycelium itself by what it is, since nixpkgs holds another program
+          # of that name.
           shares =
-            kit:
-            lib.all (tool: lib.elem tool kit) [
-              pkgs.jq
-              pkgs.ripgrep
-              pkgs.websocat
-              self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default
+            system: kit:
+            lib.elem self.inputs.mycelium.packages.${system}.default kit
+            && lib.all (tool: lib.elem tool (names kit)) [
+              "jq"
+              "ripgrep"
+              "websocat"
             ]
-            && !(lib.any (tool: lib.elem tool kit) [
-              pkgs.gh
-              pkgs.git
-              pkgs.git-lfs
+            # A curl speaking wss://, which a Mac's websocat can't over TLS 1.3.
+            && lib.any (
+              tool: lib.getName tool == "curl" && lib.elem "--enable-websockets" (tool.configureFlags or [ ])
+            ) kit
+            && !(lib.any (tool: lib.elem tool (names kit)) [
+              "gh"
+              "git"
+              "git-lfs"
             ]);
           adding = linux (
             both
@@ -675,17 +684,40 @@ in
         && kitted "other" otherNode
         && kitted "personal" (toString macNode)
         && kitted "other" (toString (mac both).launchd.agents.mycelium-other.config.ProgramArguments)
-        && shares (linux links).jitsusama.mycelium.kit
-        && shares (linux both).jitsusama.mycelium.alsoJoins.other.kit
-        && shares adding.jitsusama.mycelium.kit
-        && lib.elem pkgs.hello adding.jitsusama.mycelium.kit
-        && lib.elem pkgs.cowsay adding.jitsusama.mycelium.alsoJoins.other.kit
-        && !(lib.elem pkgs.cowsay adding.jitsusama.mycelium.kit)
+        && shares "x86_64-linux" (linux links).jitsusama.mycelium.kit
+        && shares "aarch64-darwin" (mac links).jitsusama.mycelium.kit
+        && shares "x86_64-linux" (linux both).jitsusama.mycelium.alsoJoins.other.kit
+        && shares "x86_64-linux" adding.jitsusama.mycelium.kit
+        && lib.elem "hello" (names adding.jitsusama.mycelium.kit)
+        && lib.elem "cowsay" (names adding.jitsusama.mycelium.alsoJoins.other.kit)
+        && !(lib.elem "cowsay" (names adding.jitsusama.mycelium.kit))
         && !(lib.hasInfix "--kit" (
           toString
             (linux (links // { kit = lib.mkForce [ ]; })).systemd.user.services.mycelium.Service.ExecStart
         ))
       );
+
+  # The tools of the kit a machine of this system is given build here and
+  # hold what its sessions reach for, so a tool one system lacks fails on
+  # that system's checks, the Mac's included, before a machine of it
+  # switches. Core's checks run on these two systems alone. mycelium is
+  # built without its tests, as for its flags above: its own gate runs them,
+  # and their timing bars fail on a busy builder for nothing this proves.
+  mycelium-kit-builds-here =
+    let
+      machine = if pkgs.stdenv.hostPlatform.isDarwin then mac else linux;
+      untested =
+        tool: if lib.getName tool == "mycelium" then tool.overrideAttrs { doCheck = false; } else tool;
+      kit = pkgs.buildEnv {
+        name = "mycelium-kit-here";
+        paths = map untested (machine links).jitsusama.mycelium.kit;
+        pathsToLink = [ "/bin" ];
+      };
+    in
+    pkgs.runCommandLocal "mycelium-kit-builds-here" { } ''
+      bash ${./tests/kit-builds-here.sh} ${kit}
+      touch "$out"
+    '';
 
   # A machine that declares what its node can't measure has it written where
   # mycelium reads it, in mycelium's words; Linux's held sessions outlive
