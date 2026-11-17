@@ -69,7 +69,13 @@ opening() {
 }
 opening 'mycelium:cell/DAHTNJ' 'ipc call launcher talkTo DAHTNJ'
 opening 'MYCELIUM://cell/DAHTNJ/talk?say=hi#now' 'ipc call launcher talkTo DAHTNJ'
+# A notice's whole cell link, naming where its session runs and what in it
+# the notice is about, reaches the same session by its address alone.
+opening 'mycelium:cell/DAHTNJ@kestrel#notice:12' 'ipc call launcher talkTo DAHTNJ'
+opening 'mycelium:cell/DAHTNJ@kestrel/go#notice:12' 'ipc call launcher goTo DAHTNJ'
 opening 'mycelium:network/repo.core-nix' 'ipc call launcher network repo.core-nix'
+opening 'mycelium:cell/dahtnj' ''
+opening 'mycelium:cell/DAHTNJ@kes;trel' ''
 opening 'mycelium:cell/-h' ''
 opening 'mycelium:cell/DAH%20TNJ' ''
 opening 'mycelium:cell/DAHTNJ;reboot' ''

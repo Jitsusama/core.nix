@@ -3094,8 +3094,9 @@
   '';
   mycelium-links-open-in-the-launcher = ''
     xdg-open and gio send mycelium: links to mycelium-link's entry, which asks the launcher to talk
-    to the cell or show the network a link names, by its name alone, and asks nothing for a link
-    naming neither, a name qs could take for a flag, or a second link within a few seconds
+    to the cell or show the network a link names, by its name alone, a notice's whole cell link
+    by its address wherever it says the cell runs, and asks nothing for a link naming neither, an
+    address not in capitals, a name qs could take for a flag, or a second link within a few seconds
   '';
   mycelium-link-passes-clippy = ''
     clippy finds nothing in mycelium-link, which opens a mycelium: link in the launcher, or its

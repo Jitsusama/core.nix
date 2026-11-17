@@ -92,8 +92,10 @@ machine, one path through each connection.
   the rows Return would take.
 - [`mycelium-link/`][mycelium-link]: the Rust program a `mycelium:` link
   runs, through the desktop entry home.nix declares: `mycelium:cell/<ADDRESS>`
-  asks `talkTo`, and `mycelium:network/<name>` asks `network`, carrying the
-  name alone, and nothing for a second link within a few seconds.
+  asks `talkTo` and its `/go` asks `goTo`, a notice's whole
+  `<ADDRESS>@<machine>#<anchor>` by its address alone, and
+  `mycelium:network/<name>` asks `network`, carrying the name alone, and
+  nothing for a second link within a few seconds.
 - [`in-a-terminal/`][terminal]: `launcher`, a Rust program printing any
   place, row or drawer the launcher holds, as text or as JSON, from the
   shell's `show`, so every integration has a command line at once; zsh
