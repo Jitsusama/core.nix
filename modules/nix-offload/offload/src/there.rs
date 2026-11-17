@@ -2501,8 +2501,7 @@ pub const NEARBY_AT_ONCE: u32 = 2;
 /// Mac's boot session's. Both are fixed for the whole boot, where a Mac's
 /// boot time moves when its clock is stepped.
 const BOOT_READ: &str = "cat /proc/sys/kernel/random/boot_id 2>/dev/null || \
-     sysctl -n kern.bootsessionuuid 2>/dev/null || \
-     /usr/sbin/sysctl -n kern.bootsessionuuid 2>/dev/null";
+     PATH=\"$PATH:/usr/sbin\" sysctl -n kern.bootsessionuuid 2>/dev/null";
 
 /// `command`, run once it holds one of [`NEARBY_AT_ONCE`] turns on the
 /// machine it's sent to, however many runs from however many machines
@@ -4973,6 +4972,14 @@ mod tests {
         String::from_utf8_lossy(&read.stdout).trim_end().to_owned()
     }
 
+    /// A pid under any system's highest that no process holds: a shell's
+    /// that has ended, as one killed outright leaves in its turn.
+    fn gone_pid() -> u32 {
+        let mut gone = Command::new("true").spawn().unwrap();
+        gone.wait().unwrap();
+        gone.id()
+    }
+
     /// The name this machine's shells say for it.
     fn this_machine() -> String {
         let read = Command::new("uname").arg("-n").output().unwrap();
@@ -5132,7 +5139,7 @@ mod tests {
         let boot = this_boot();
         let live = format!("{} {boot}", std::process::id());
         let gone = [
-            (format!("999999999 {boot}"), "killed outright"),
+            (format!("{} {boot}", gone_pid()), "killed outright"),
             (
                 format!("{} an earlier boot", std::process::id()),
                 "of an earlier boot",
@@ -5541,7 +5548,7 @@ mod tests {
             ("dead turns in a folder that can't be written", |turns| {
                 fs::create_dir(turns).unwrap();
                 for n in 1..=NEARBY_AT_ONCE {
-                    held_turn(turns, n, &format!("999999999 {}", this_boot()));
+                    held_turn(turns, n, &format!("{} {}", gone_pid(), this_boot()));
                 }
                 fs::set_permissions(turns, fs::Permissions::from_mode(0o555)).unwrap();
             }),
