@@ -133,15 +133,16 @@ in
 
   # Traffic, asked after a gap as each step into Network asks it, reads one
   # sysfs file for an interface it already knows rather than all four again
-  # (tests/traffic-reads.qml), since each is a blocking read. Kept in Nix for
-  # the same reasons as the drawers' check above.
+  # (tests/traffic-reads.qml), since each is a blocking read. A build has no
+  # sysfs, so the case writes lo's folder in sys/lo, made here.
   traffic-reads-a-known-interface-once-after-a-gap =
     pkgs.runCommandLocal "traffic-reads-a-known-interface-once-after-a-gap" { }
       ''
-        mkdir -p launcher runtime && chmod 700 runtime
+        mkdir -p launcher runtime sys/lo && chmod 700 runtime
         ${copied [
           "Daemon.qml"
           "Words.qml"
+          "launcher/Interfaces.js"
           "launcher/Provider.qml"
           "launcher/Traffic.qml"
           "launcher/words.json"

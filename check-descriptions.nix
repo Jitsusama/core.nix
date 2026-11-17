@@ -939,8 +939,10 @@
   '';
   traffic-reads-a-known-interface-once-after-a-gap = ''
     Traffic, asked after a gap as each step into Network asks it, reads one sysfs file for an
-    interface it already knows, its uevent, rather than all four again, reads an interface
-    first seen whole, and reads nothing again when asked straight after
+    interface it already knows, its uevent, rather than all four again; reads an interface
+    first seen whole, and nothing again when asked straight after; and reads all four again,
+    taking the kind they say now, for one made again under its name or whose uevent can't be
+    read
   '';
   every-place-is-on-where-its-source-is = ''
     on a machine holding every module and all each reads, every launcher place is on, so a

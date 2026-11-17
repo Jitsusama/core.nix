@@ -105,8 +105,11 @@ Provider {
     // forgotten once it's gone from the counters. After a gap between
     // reads it's no longer sure, since an interface can go and come again,
     // as a VPN's tunnel does, as something else; its uevent alone is read
-    // again then, which names its index, new for each interface made, so
-    // the same uevent is the same interface. A step into Network asks
+    // again then, which names its index. The kernel gives each interface
+    // made a new index unless whoever makes it asks for one, which none of
+    // the tunnels here do, so the same uevent is the same interface; one
+    // that can't be read proves nothing and has all four read again. A
+    // step into Network asks
     // after a gap each time, and four files for each interface, each a
     // blocking read, took a median 6 ms and up to 49 ms of it (2026-11-17).
     property var interfaceKinds: ({})
@@ -143,14 +146,17 @@ Provider {
         return reads;
     }
 
-    // How many sysfs files it has read, each a blocking read, so its case
-    // holds a step to reading few (tests/traffic-reads.qml).
-    property int probes: 0
+    // Where sysfs keeps each interface's folder; its case gives a folder
+    // of its own, since a build has no sysfs (tests/traffic-reads.qml).
+    property string interfaces: "/sys/class/net"
+    // How many sysfs files it has read of each interface, each a blocking
+    // read, so its case holds a step to reading few.
+    property var probed: ({})
 
     // What a file in an interface's sysfs folder says, or "".
     function sysSaid(name, file) {
-        probes += 1;
-        probe.path = `/sys/class/net/${name}/${file}`;
+        probed[name] = (probed[name] ?? 0) + 1;
+        probe.path = `${interfaces}/${name}/${file}`;
         return read(probe).trim();
     }
 
@@ -161,7 +167,8 @@ Provider {
         if (kept?.sure)
             return kept.kind;
         const uevent = sysSaid(name, "uevent");
-        interfaceKinds[name] = kept?.uevent === uevent ? Object.assign({}, kept, { sure: true }) : {
+        const same = uevent !== "" && kept?.uevent === uevent;
+        interfaceKinds[name] = same ? Object.assign({}, kept, { sure: true }) : {
             kind: Interfaces.sysKind(name, {
                 uevent: uevent,
                 type: sysSaid(name, "type"),

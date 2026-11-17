@@ -1,22 +1,35 @@
 // Drives Traffic's answer through Quickshell itself, over the sandbox's own
-// /proc/net/dev, counting the sysfs files it reads to tell what each
-// interface is. Each is a blocking read, and a step into Network asks
-// Traffic after a gap every time, so an answer after a gap reads one file
-// for an interface it already knows, its uevent, rather than all four
-// again: four interfaces' sixteen reads took a median 6 ms and up to 49 ms
-// on Joel's laptop (2026-11-17), of a step that has 50 ms for all of it.
+// /proc/net/dev and a sysfs folder of its own for lo, counting the files it
+// reads of lo to tell what it is. Each is a blocking read, and a step into
+// Network asks Traffic after a gap every time, so an answer after a gap
+// reads one file for an interface it already knows, its uevent, rather
+// than all four again: four interfaces' sixteen reads took a median 6 ms
+// and up to 49 ms on Joel's laptop (2026-11-17), of a step that has 50 ms
+// for all of it. A build has no sysfs, so the folder is written here, in
+// sys/lo beside the case, which whoever runs it makes first.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
+import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
+import "launcher/Interfaces.js" as Interfaces
 import "Expect.js" as Expect
 
 ShellRoot {
     id: root
 
+    readonly property string sys: `${Quickshell.shellDir}/sys`
+
     Launcher.Traffic {
         id: traffic
+        interfaces: root.sys
+    }
+
+    FileView {
+        id: written
+        blockWrites: true
+        printErrors: false
     }
 
     Component.onCompleted: Qt.callLater(root.begun)
@@ -27,6 +40,14 @@ ShellRoot {
             Qt.exit(0);
         } catch (error) {
             Expect.fail(error.message ?? error);
+        }
+    }
+
+    // lo's sysfs folder, as the kernel would write it for the facts given.
+    function made(uevent, type) {
+        for (const [file, text] of [["uevent", uevent], ["type", type]]) {
+            written.path = `${sys}/lo/${file}`;
+            written.setText(text);
         }
     }
 
@@ -41,46 +62,53 @@ ShellRoot {
         };
     }
 
-    function asked() {
-        const names = Object.keys(traffic.sample().last.all);
-        Expect.expect("the sandbox has an interface to count", names.length > 0,
-            JSON.stringify(names));
-        const first = traffic.probes;
+    // How many of lo's files an answer read.
+    function reads() {
+        const before = traffic.probed.lo ?? 0;
         Expect.expect("speed answers", traffic.answer("speed") !== null, "null");
-        // The shaper's mirrors are never asked what they are, so the count
-        // is of those asked: four files each.
-        const whole = traffic.probes - first;
-        const known = whole / 4;
-        Expect.expect("an interface first seen is read whole, four files each",
-            whole > 0 && Number.isInteger(known), `${whole} for ${names.length} named`);
-        aged(60000);
-        const before = traffic.probes;
-        Expect.expect("speed answers after a gap", traffic.answer("speed") !== null, "null");
-        const again = traffic.probes - before;
-        Expect.expect("after a gap, an interface already known is read once, its uevent",
-            again === known, `${again} for ${known}`);
-        const soon = traffic.probes;
-        traffic.answer("speed");
-        Expect.expect("straight after, nothing is read again", traffic.probes === soon,
-            `${traffic.probes - soon}`);
-        remade();
+        return (traffic.probed.lo ?? 0) - before;
     }
 
-    // One kept from an interface since gone, the same name made again as
-    // something else, as WARP's tunnel is: its uevent names another index,
-    // so it's read whole again and its kind is what sysfs says now.
-    function remade() {
-        const name = Object.keys(traffic.interfaceKinds)[0];
-        const truly = traffic.interfaceKinds[name];
-        const kinds = Object.assign({}, traffic.interfaceKinds);
-        kinds[name] = { kind: "not this", uevent: `INTERFACE=${name}\nIFINDEX=0`, sure: false };
-        traffic.interfaceKinds = kinds;
-        const before = traffic.probes;
-        traffic.answer("speed");
+    // What lo is, as Traffic last told it.
+    function kind() {
+        return traffic.interfaceKinds.lo?.kind;
+    }
+
+    function asked() {
+        const names = Object.keys(traffic.sample().last.all);
+        Expect.expect("the sandbox counts lo", names.includes("lo"), JSON.stringify(names));
+        made("INTERFACE=lo\nIFINDEX=1\n", "772\n");
+        Expect.expect("an interface first seen is read whole, four files", reads() === 4,
+            `${traffic.probed.lo}`);
+        const loopback = Interfaces.sysKind("lo", { uevent: "IFINDEX=1", type: "772" });
+        Expect.expect("it's what its files say", kind() === loopback, `${kind()}`);
+
+        aged(60000);
+        let read = reads();
+        Expect.expect("after a gap, an interface already known is read once, its uevent",
+            read === 1, `${read}`);
+        read = reads();
+        Expect.expect("straight after, nothing is read again", read === 0, `${read}`);
+
+        // The same name made again as something else, as WARP's tunnel
+        // is: its uevent names another index.
+        made("INTERFACE=lo\nIFINDEX=99\n", "65534\n");
+        aged(60000);
+        read = reads();
         Expect.expect("an interface made again under its name is read whole again",
-            traffic.probes - before === 4, `${traffic.probes - before}`);
-        Expect.expect("an interface made again is what sysfs says it is now",
-            traffic.interfaceKinds[name].kind === truly.kind,
-            `${traffic.interfaceKinds[name].kind} for ${truly.kind}`);
+            read === 4, `${read}`);
+        const bare = Interfaces.sysKind("lo", { uevent: "IFINDEX=99", type: "65534" });
+        Expect.expect("the case makes it something else", bare !== loopback, `${bare}`);
+        Expect.expect("an interface made again is what its files say now", kind() === bare,
+            `${kind()} for ${bare}`);
+
+        // A uevent that can't be read proves nothing, gap after gap.
+        made("", "65534\n");
+        for (const gap of [1, 2]) {
+            aged(60000);
+            read = reads();
+            Expect.expect(`an unreadable uevent has all four read again, gap ${gap}`,
+                read === 4, `${read}`);
+        }
     }
 }
