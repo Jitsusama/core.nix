@@ -42,6 +42,7 @@ use serde_json::json;
 
 use crate::{Shared, ask_of, asking};
 
+mod emptied;
 mod sweep;
 
 use sweep::Gits;
@@ -113,6 +114,10 @@ struct FenceList {
     ssh_kept: Vec<String>,
     /// npm's settings, from home.
     npmrc: Option<String>,
+    /// Files emptied only where they hold a credential, such as
+    /// Docker's settings; a list from before them names none.
+    #[serde(default)]
+    emptied: Vec<emptied::Emptied>,
 }
 
 /// The fence's list, read and its patterns made.
@@ -120,6 +125,7 @@ struct Fence {
     home: Vec<String>,
     ssh_kept: Vec<Regex>,
     npmrc: Option<String>,
+    emptied: Vec<emptied::Emptied>,
 }
 
 impl Fence {
@@ -140,6 +146,7 @@ impl Fence {
             home: list.home,
             ssh_kept,
             npmrc: list.npmrc,
+            emptied: list.emptied,
         })
     }
 }
@@ -295,6 +302,28 @@ impl Passwords {
         }
         args.extend(self.ssh(fence));
         args.extend(self.npmrc(fence));
+        args.extend(self.emptied(fence));
+        args
+    }
+
+    /// bubblewrap's arguments emptying each file the list empties where
+    /// it holds a credential and this one does, or where it can't be
+    /// read to tell, a link's target rather than the link.
+    fn emptied(&self, fence: &Fence) -> Vec<OsString> {
+        let mut args: Vec<OsString> = Vec::new();
+        for listed in &fence.emptied {
+            let Some(over) = real(&self.home.join(&listed.path)) else {
+                continue;
+            };
+            if !is_file(&over) {
+                continue;
+            }
+            let holds = std::fs::read_to_string(&over)
+                .map_or(true, |text| emptied::empties(&text, &listed.when));
+            if holds {
+                args.extend(["--ro-bind".into(), "/dev/null".into(), over.into()]);
+            }
+        }
         args
     }
 
