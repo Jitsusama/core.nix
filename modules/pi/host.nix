@@ -192,9 +192,13 @@ let
         # Parking ends each turn in flight, the tools it runs with it; what is
         # still running after that is ended with it. At 03:30 on 17 November
         # a host with a 2.5 GB heap was still parking 13 conversations when
-        # a 60 s stop killed it, its loop busy 35 s of the first 50, and the
-        # parks it hadn't written were lost; 150 s leaves a whole roster's
-        # parks time while a stuck stop still ends.
+        # a 60 s stop killed it, its loop busy 35 s of the first 50, so its own
+        # 45 s limit on parking came late and never wrote down what it hadn't
+        # parked. 150 s lets a busy host reach its own limit and record what
+        # was left, leaving room for the harness to give parking longer, while
+        # a stuck stop still ends. It covers a restart or a switch: at logout,
+        # reboot or poweroff the account's manager is given 5 s to stop
+        # (modules/systemd), on purpose, so a shutdown stays quick.
         KillMode = "mixed";
         TimeoutStopSec = "150s";
         # Its conversations are agents' sessions, so they run among the
