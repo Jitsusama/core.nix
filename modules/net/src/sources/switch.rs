@@ -148,9 +148,19 @@ fn cable_state(code: i64) -> &'static str {
     }
 }
 
+/// Whether the System Info page holds the switch's status. Signed out, the
+/// switch serves its sign-in form in its place, and may hang up on the other
+/// pages rather than serve the form for them, so this page alone says
+/// whether the session has ended.
+pub fn signed_in(system: &str) -> bool {
+    array(system, "macStr").is_some_and(|said| !said.is_empty())
+}
+
 /// The switch's status from its pages, or why they don't read as one. A
 /// page that comes back as the sign-in form, as it does once the switch's
-/// session has ended, holds none of its arrays and is refused.
+/// session has ended, holds none of its arrays and is refused. System Info
+/// is judged first, so a read that stopped at a signed-out System Info is
+/// refused as signed out rather than for the pages it didn't ask for.
 pub fn parse(pages: &Pages) -> Result<Status, String> {
     let page = |name: &str| {
         pages
@@ -158,20 +168,20 @@ pub fn parse(pages: &Pages) -> Result<Status, String> {
             .map(String::as_str)
             .ok_or_else(|| format!("its {} page is missing", plainly(name)))
     };
-    let system = page("SystemInfoRpm")?;
-    let setting = page("PortSettingRpm")?;
-    let statistics = page("PortStatisticsRpm")?;
-    let cables = page("CableDiagRpm")?;
     let refused = |name: &str| {
         format!(
             "its {} page holds no status, as if signed out",
             plainly(name)
         )
     };
-    let first = |key| array(system, key).and_then(|said| said.into_iter().next());
-    if first("macStr").is_none() {
+    let system = page("SystemInfoRpm")?;
+    if !signed_in(system) {
         return Err(refused("SystemInfoRpm"));
     }
+    let setting = page("PortSettingRpm")?;
+    let statistics = page("PortStatisticsRpm")?;
+    let cables = page("CableDiagRpm")?;
+    let first = |key| array(system, key).and_then(|said| said.into_iter().next());
     let state = array(setting, "state").ok_or_else(|| refused("PortSettingRpm"))?;
     let link_status =
         array(statistics, "link_status").ok_or_else(|| refused("PortStatisticsRpm"))?;

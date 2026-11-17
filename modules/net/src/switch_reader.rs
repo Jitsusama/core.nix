@@ -36,7 +36,10 @@ const SIGN_IN: Duration = Duration::from_secs(20);
 /// unreachable, and the pause between them. The switch's web server closes
 /// about one connection in four without a reply, at times twice running
 /// (5 of 20 asks on 15 Nov), so a round of nine requests asked twice each
-/// mostly lost one; five tries leave each about a 1 in 1000 chance.
+/// mostly lost one; five tries leave each about a 1 in 1000 chance. The
+/// pause doubles after each, since its drops come in bursts: on 17 Nov it
+/// hung up on all five tries of one page, 300 ms apart, twice in 40
+/// minutes, and answered the next round each time.
 const TRIES: usize = 5;
 const PAUSE: Duration = Duration::from_millis(300);
 
@@ -55,8 +58,27 @@ pub fn run(address: &str) -> Result<(), String> {
     );
     let report = folder.join("report.json");
     let agent = agent();
+    let mut told = None;
     loop {
         let said = round(&agent, address, password().as_deref(), time::now());
+        // Each change of state goes to the journal, so a spell that has
+        // passed can still be told apart by its reason. The reason never
+        // holds the password: `kind` keeps only the failure's kind.
+        let now = (said.state, said.reason.clone());
+        if told.as_ref() != Some(&now) {
+            eprintln!(
+                "the switch reads {}{}",
+                serde_json::to_value(said.state)
+                    .ok()
+                    .and_then(|state| state.as_str().map(str::to_owned))
+                    .unwrap_or_default(),
+                said.reason
+                    .as_deref()
+                    .map(|why| format!(": {why}"))
+                    .unwrap_or_default()
+            );
+            told = Some(now);
+        }
         let written = serde_json::to_string_pretty(&said).map_err(|error| error.to_string())?;
         write(&report, &(written + "\n"))
             .map_err(|error| format!("can't write the report: {error}"))?;
@@ -135,28 +157,34 @@ fn round(agent: &Agent, address: &str, password: Option<&str>, now: u64) -> Repo
 }
 
 /// Each status page, one at a time, since the switch drops a reply when
-/// asked for two at once.
+/// asked for two at once. A System Info page that holds no status ends the
+/// read there: signed out, the switch may hang up on every other page
+/// rather than serve its sign-in form, as it did for 16 rounds on 17 Nov,
+/// and a read that waited on them would never reach the sign-in.
 fn pages(agent: &Agent, address: &str) -> Result<Pages, String> {
-    switch::PAGES
-        .iter()
-        .map(|page| {
-            let url = format!("http://{address}/{page}.htm");
-            again(|| {
-                let text = agent
-                    .get(&url)
-                    .call()
-                    .and_then(|mut answer| answer.body_mut().read_to_string())
-                    .map_err(|error| kind(&error))?;
-                if text.is_empty() {
-                    Err("it sent an empty page")
-                } else {
-                    Ok(text)
-                }
-            })
-            .map(|text| ((*page).to_owned(), text))
-            .map_err(|why| format!("its {} page didn't answer: {why}", switch::plainly(page)))
+    let mut pages = Pages::new();
+    for page in switch::PAGES {
+        let url = format!("http://{address}/{page}.htm");
+        let text = again(|| {
+            let text = agent
+                .get(&url)
+                .call()
+                .and_then(|mut answer| answer.body_mut().read_to_string())
+                .map_err(|error| kind(&error))?;
+            if text.is_empty() {
+                Err("it sent an empty page")
+            } else {
+                Ok(text)
+            }
         })
-        .collect()
+        .map_err(|why| format!("its {} page didn't answer: {why}", switch::plainly(page)))?;
+        let signed_out = page == "SystemInfoRpm" && !switch::signed_in(&text);
+        pages.insert(page.to_owned(), text);
+        if signed_out {
+            break;
+        }
+    }
+    Ok(pages)
 }
 
 /// Signs in, once. The switch ties the session to the address asking, and
@@ -246,13 +274,16 @@ fn io_kind(error: &io::Error) -> &'static str {
     }
 }
 
-/// Makes one request until the switch answers it, at most `TRIES` times.
+/// Makes one request until the switch answers it, at most `TRIES` times,
+/// the pause between them doubling: 4.5 s of pauses in all.
 fn again<T>(mut ask: impl FnMut() -> Result<T, &'static str>) -> Result<T, &'static str> {
+    let mut pause = PAUSE;
     for _ in 1..TRIES {
         if let Ok(answer) = ask() {
             return Ok(answer);
         }
-        thread::sleep(PAUSE);
+        thread::sleep(pause);
+        pause *= 2;
     }
     ask()
 }
@@ -299,6 +330,10 @@ mod tests {
         /// It starts the session, then closes the sign-in's connection
         /// without a reply.
         SilentlyOverTheSignIn,
+        /// Signed out, it serves System Info as its sign-in form but closes
+        /// every other page's connection without a reply, as the real switch
+        /// was read doing for 16 rounds from 03:10 on 17 Nov.
+        HangsUpSignedOut,
     }
 
     fn stand_in(signed_in: bool, behaves: Behaves) -> (String, Arc<Mutex<Vec<String>>>) {
@@ -338,6 +373,16 @@ mod tests {
                     continue;
                 }
                 let path = request.split_whitespace().nth(1).unwrap_or("/").to_owned();
+                if behaves == Behaves::HangsUpSignedOut
+                    && !session
+                    && path.ends_with("Rpm.htm")
+                    && path != "/SystemInfoRpm.htm"
+                {
+                    kept.lock()
+                        .expect("the log")
+                        .push(format!("hung up {request}"));
+                    continue;
+                }
                 kept.lock().expect("the log").push(request);
                 if path == "/logon.cgi" {
                     session = body.contains("password=a+test+password+%26+more");
@@ -453,6 +498,27 @@ mod tests {
             1,
             "it signed in again over a session it had"
         );
+    }
+
+    #[test]
+    fn a_signed_out_switch_that_hangs_up_on_its_other_pages_is_signed_in_to() {
+        let (address, heard) = stand_in(false, Behaves::HangsUpSignedOut);
+        let report = round(&agent(), &address, Some(PASSWORD), 10);
+        assert_eq!(report.state, SourceState::Answering, "{:?}", report.reason);
+        assert_eq!(report.status.map(|status| status.ports.len()), Some(8));
+        assert_eq!(signed_in(&heard), 1);
+    }
+
+    #[test]
+    fn a_refused_password_on_a_switch_that_hangs_up_reads_as_signed_out() {
+        let (address, heard) = stand_in(false, Behaves::HangsUpSignedOut);
+        let report = round(&agent(), &address, Some("not it"), 10);
+        assert_eq!(report.state, SourceState::SignedOut, "{:?}", report.reason);
+        assert_eq!(
+            report.reason.as_deref(),
+            Some("its sign-in was refused: its System Info page holds no status, as if signed out")
+        );
+        assert_eq!(signed_in(&heard), 1, "a refused password was sent again");
     }
 
     #[test]
