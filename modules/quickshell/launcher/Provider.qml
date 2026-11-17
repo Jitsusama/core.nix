@@ -157,6 +157,21 @@ Scope {
     // `changed` is said, so a key's act the launcher times says what was
     // drawn: a turn timed as Return's act said nothing more (2026-11-16).
     property string changedWhy: ""
+    // Whether only its rows other than the one held moved, while the
+    // launcher holds a step below one of them, kept only while `changed`
+    // is said: then the launcher shows the step's rows and none of the
+    // others, so the change is no key's act on screen. A session's work
+    // turning just after Return into For You moved another of Now's rows,
+    // and was timed as Return's act (the niri case, 16 November: "its own
+    // rows"). A held row that isn't among the rows is never unseen, since
+    // what the launcher draws for it can't be read here, as Windows'
+    // agents' fold isn't among its things.
+    property bool changedUnseen: false
+    // What the held row and what it holds said last, and each row's own
+    // line then by its key, so a step compares the held row's own line
+    // with what it read before the step, its crumb drawn from it.
+    property string lastHeldRow: ""
+    property var lastOwnBy: ({})
 
     // Since the launcher stepped in or out, what it holds below this
     // provider's rows is what it made as it stepped, not what was said
@@ -167,20 +182,42 @@ Scope {
     function changedTo(rows) {
         const keys = heldKeys();
         const held = keys.join("\u241f");
-        const now = says(rows, keys, true);
-        const own = keys.length === 0 ? now : says(rows, [], true);
+        // Each row said once, so no held row is asked its verbs twice.
+        const each = saysEach(rows, keys, true);
+        const ownEach = keys.length === 0 ? each : saysEach(rows, [], true);
+        const now = each.join("\u241e");
+        const own = ownEach.join("\u241e");
         const stepped = held !== lastHeld;
+        const shown = stepped ? saysEach(rows, keys, true, heldRows()) : [];
         const same = !stepped ? now === lastSaid
-            : own === lastOwn && now === says(rows, keys, true, heldRows());
+            : own === lastOwn && now === shown.join("\u241e");
         const which = own !== lastOwn ? "its own rows" : "the rows it holds";
         const why = stepped ? `${which} as it stepped` : which;
+        // The row held and what it holds, the one of its own rows drawn.
+        const at = keys.length > 0 ? rows.findIndex(row => row.key === keys[0]) : -1;
+        const heldRow = at < 0 ? null : each[at];
+        const unseen = heldRow !== null && (stepped
+            ? heldRow === shown[at] && ownEach[at] === lastOwnBy[keys[0]]
+            : heldRow === lastHeldRow);
+        // The first row by each key, as `at` finds it, and no key read as
+        // one of an object's own names.
+        const ownBy = Object.create(null);
+        rows.forEach((row, index) => {
+            const key = row.key ?? "";
+            if (!(key in ownBy))
+                ownBy[key] = ownEach[index];
+        });
         lastSaid = now;
         lastOwn = own;
         lastHeld = held;
+        lastHeldRow = heldRow ?? "";
+        lastOwnBy = ownBy;
         if (!same) {
             changedWhy = why;
+            changedUnseen = unseen;
             changed();
             changedWhy = "";
+            changedUnseen = false;
         }
     }
 
@@ -210,6 +247,11 @@ Scope {
     // Given `shown`, the rows each held step shows, those are what each
     // holds rather than what it would be asked for now.
     function says(rows, held, things, shown) {
+        return saysEach(rows, held, things, shown).join("\u241e");
+    }
+
+    // What each row shows, as `says` joins them.
+    function saysEach(rows, held, things, shown) {
         let open = held.length > 0;
         return rows.map(row => {
             const side = typeof row.counts === "function" ? row.sideWidest ?? "" : row.side ?? "";
@@ -225,7 +267,7 @@ Scope {
                 : typeof asked === "function" ? asked() ?? [] : [];
             const within = says(inside, held.slice(1), !!row.nested, shown?.slice(1));
             return `${own}\u241d${within}\u241c`;
-        }).join("\u241e");
+        });
     }
 
     // A row of its own, by its key, drawn as `row` from now until it makes

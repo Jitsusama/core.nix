@@ -19,6 +19,72 @@ fn rider(head: &str, at: u64) -> Rider {
 }
 
 #[test]
+fn a_gate_no_builder_took_says_nothing_of_its_riders() {
+    assert_eq!(gated(Some(0), ""), Gated::Passed, "a gate that passed");
+    assert_eq!(gated(Some(1), ""), Gated::Red, "a check that failed");
+    assert_eq!(gated(None, ""), Gated::Red, "a gate a signal ended");
+    let lost = "error: failed to start SSH master connection to 'nix-offload-more'\n";
+    for code in [75, 69] {
+        assert_eq!(
+            gated(Some(code), lost),
+            Gated::Unsent,
+            "nix-offload's {code} says no builder took it, not that a rider broke it"
+        );
+    }
+}
+
+/// nix-offload ends with the first part that failed, and a VM part no
+/// builder took comes first: a rider that broke another part's check
+/// still reads 75 or 69.
+#[test]
+fn an_untaken_gate_whose_words_name_a_failed_check_is_red() {
+    for words in [
+        "error: Cannot build '/nix/store/x-a-check.drv'.\n       Reason: builder failed with \
+         exit code 1.\n",
+        "\u{2715} a check the change touched failed\n",
+    ] {
+        for code in [75, 69] {
+            assert_eq!(
+                gated(Some(code), words),
+                Gated::Red,
+                "a check that failed read as untaken with {code}: {words}"
+            );
+        }
+    }
+}
+
+/// A builder's words can hold any byte, and nix-offload sets aside a
+/// replay onto a newer main that failed, running the change again on its
+/// own base: the gate is read by what its last run said.
+#[test]
+fn a_gate_is_read_by_what_its_last_run_said() {
+    let root = root("words");
+    fs::create_dir_all(&root).unwrap();
+    let log = root.join("candidate.log");
+    let failed = "error: Cannot build '/nix/store/x-a-check.drv'.\n       Reason: builder \
+                  failed with exit code 1.\n";
+    let mut odd = b"a builder said \xff\n".to_vec();
+    odd.extend_from_slice(failed.as_bytes());
+    fs::write(&log, odd).unwrap();
+    assert_eq!(
+        gated(Some(75), &words_of(&log)),
+        Gated::Red,
+        "a failed check beside a byte that isn't UTF-8 read as untaken"
+    );
+    let replayed = format!(
+        "{failed}nix-offload: 1234567 over main failed, so the change runs again on its \
+         own base\nnix-offload: no builder took it\n"
+    );
+    fs::write(&log, replayed).unwrap();
+    assert_eq!(
+        gated(Some(75), &words_of(&log)),
+        Gated::Unsent,
+        "a replay nix-offload set aside made an untaken run read as red"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
 fn riders_are_read_back_in_the_order_they_boarded() {
     let root = root("order");
     board(&root, &rider("b2", 20)).unwrap();
@@ -91,6 +157,87 @@ fn a_train_that_gives_up_makes_every_rider_fall_saying_why() {
         "a rider that never rode alone wasn't told the train gave up, and where: {why}"
     );
     fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_candidate_no_builder_took_keeps_its_riders_and_search_until_it_gives_up() {
+    let root = root("untaken");
+    for (head, at) in [("a1", 10), ("b2", 20), ("c3", 30), ("d4", 40)] {
+        board(&root, &rider(head, at)).unwrap();
+    }
+    let mut splitting = Splitting::default();
+    assert_eq!(
+        splitting.red(4),
+        After::Narrows,
+        "a red of four didn't narrow"
+    );
+    let log = Path::new("/state/train/u.log");
+    let riding = ["a1".to_owned(), "b2".to_owned()];
+    // A gate that exits at once comes back every few seconds, so the
+    // train gives up by time, not by how many it ran.
+    let mut now = 1000;
+    while now < 1000 + UNTAKEN_FOR {
+        assert!(
+            unsent(&root, "u1", log, &riding, &mut splitting, now),
+            "the train gave up {} s into candidates no builder took",
+            now - 1000
+        );
+        assert_eq!(
+            riders(&root).len(),
+            4,
+            "a rider fell from a run no builder took"
+        );
+        assert_eq!(
+            splitting.take(),
+            2,
+            "a run no builder took lost the train's search"
+        );
+        now += 5;
+    }
+    assert!(
+        !unsent(&root, "u1", log, &riding, &mut splitting, now),
+        "the train never gave up on candidates no builder took"
+    );
+    let left: Vec<String> = riders(&root).into_iter().map(|rider| rider.head).collect();
+    assert_eq!(
+        left,
+        ["c3", "d4"],
+        "riders that didn't ride the last candidate fell, or its riders didn't"
+    );
+    assert_eq!(
+        splitting.take(),
+        usize::MAX,
+        "the riders left aboard didn't start a search afresh"
+    );
+    let why = fell(&root, "b2").unwrap_or_default();
+    assert!(
+        why.starts_with("no builder or evaluator took") && why.contains("u.log"),
+        "a rider wasn't told no builder took the train, and where: {why}"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_run_a_builder_took_counts_the_untaken_afresh() {
+    let mut splitting = Splitting::default();
+    assert!(splitting.untaken(0), "the train gave up at once");
+    assert!(
+        splitting.untaken(UNTAKEN_FOR - 1),
+        "the train gave up too soon"
+    );
+    splitting.taken();
+    assert!(
+        splitting.untaken(UNTAKEN_FOR),
+        "untaken time before a run a builder took still counted"
+    );
+    assert!(
+        splitting.untaken(2 * UNTAKEN_FOR - 1),
+        "untaken time before a run a builder took still counted"
+    );
+    assert!(
+        !splitting.untaken(2 * UNTAKEN_FOR),
+        "the train never gave up"
+    );
 }
 
 #[test]

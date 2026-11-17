@@ -685,6 +685,8 @@ ShellRoot {
     // What Now said moved, the last time it said so (Provider.qml's
     // changedWhy).
     property string nowMoved: ""
+    // And whether it said none of what moved is shown (changedUnseen).
+    property bool nowUnseen: false
 
     Connections {
         target: now
@@ -692,6 +694,7 @@ ShellRoot {
         function onChanged() {
             root.nowChanged += 1;
             root.nowMoved = now.changedWhy;
+            root.nowUnseen = now.changedUnseen;
         }
     }
 
@@ -1411,6 +1414,86 @@ ShellRoot {
         now.changedTo([]);
         expect("and stepped in, one moving its own rows says so",
             root.nowMoved === "its own rows as it stepped", root.nowMoved);
+        // For You held, one of Now's other rows moving is drawn nowhere,
+        // so it's no key's act: a session's work turning just after Return
+        // was timed as Return's (the niri case, 16 November).
+        const another = { key: "on:another", name: "Another" };
+        const said = (name, changes, unseen) => expect(name,
+            root.nowChanged === changes && root.nowUnseen === unseen,
+            JSON.stringify([root.nowChanged, root.nowUnseen]));
+        const forYouAs = made => now.everything().map(row => row.key === "on:waitingOnYou"
+            ? Object.assign({}, row, made) : row);
+        theLauncher.held = into(now.waiting.verbs());
+        now.changedTo(now.everything());
+        root.nowChanged = 0;
+        now.changedTo(now.everything().concat([another]));
+        said("For You held, another of Now's rows moving says none of it is shown", 1, true);
+        expect("and not unseen once said", !now.changedUnseen, "it stayed unseen");
+        now.changedTo(forYouAs({ name: "For You Renamed" }));
+        said("but For You's own line moving is shown", 2, false);
+        now.changedTo(now.everything());
+        said("as is For You put back", 3, false);
+        now.changedTo(forYouAs({ verbs: () => [] }));
+        said("and what For You holds moving, its own line the same", 4, false);
+        now.changedTo(now.everything());
+        // A held row gone from the rows is never unseen, since what the
+        // launcher draws for it can't be read: Windows' agents' fold isn't
+        // among its things, and its keys' acts went untimed.
+        now.changedTo(now.everything().filter(row => row.key !== "on:waitingOnYou"));
+        said("For You gone from Now's rows is shown", 6, false);
+        // This one pins the guard: the change before left nothing held to
+        // compare with, so a gone row read as "" would match it.
+        now.changedTo(now.everything().filter(row => row.key !== "on:waitingOnYou")
+            .concat([another]));
+        said("and so is a change after, while it's still gone", 7, false);
+        // Stepping, what For You holds is compared with what the launcher
+        // made as it stepped, and its own line with what it read before.
+        theLauncher.held = [];
+        now.changedTo(now.everything());
+        root.nowChanged = 0;
+        theLauncher.held = into(now.waiting.verbs());
+        now.changedTo(now.everything().concat([another]));
+        said("stepped into For You, another row moving says none of it is shown", 1, true);
+        theLauncher.held = [];
+        now.changedTo(now.everything());
+        root.nowChanged = 0;
+        theLauncher.held = into(now.waiting.verbs());
+        now.changedTo(forYouAs({ name: "For You Renamed" }).concat([another]));
+        said("but For You's own line moving as it's stepped into is shown", 1, false);
+        theLauncher.held = [];
+        now.changedTo(now.everything());
+        root.nowChanged = 0;
+        theLauncher.held = into([]);
+        now.changedTo(now.everything().concat([another]));
+        said("as is what it holds differing from what the launcher made", 1, false);
+        theLauncher.held = [];
+        now.changedTo(now.everything());
+        root.nowChanged = 0;
+        now.changedTo(now.everything().concat([another]));
+        said("with nothing held, any row moving is shown", 1, false);
+        const gone = () => now.everything().filter(row => row.key !== "on:waitingOnYou");
+        now.changedTo(gone());
+        root.nowChanged = 0;
+        theLauncher.held = into(now.waiting.verbs());
+        now.changedTo(gone().concat([another]));
+        said("stepped into For You while it's gone, another row moving is shown", 1, false);
+        // For You's rows are asked once a change, held or stepped into:
+        // waitingRows() is costly, and two asks could read across a turn.
+        let asks = 0;
+        const counted = forYouAs({ verbs: () => {
+            asks += 1;
+            return now.waiting.verbs();
+        } });
+        now.changedTo(now.everything());
+        asks = 0;
+        now.changedTo(counted);
+        expect("For You held, a change asks what it holds once", asks === 1, asks);
+        theLauncher.held = [];
+        now.changedTo(now.everything());
+        theLauncher.held = into(now.waiting.verbs());
+        asks = 0;
+        now.changedTo(counted);
+        expect("and stepped into, once too", asks === 1, asks);
         theLauncher.held = [];
         Facts.all = [];
         Notices.history = [];

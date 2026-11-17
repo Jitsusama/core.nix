@@ -25,7 +25,11 @@
 //! riders to board, and halves again while they fail, so the riders that
 //! broke nothing land together and the one that breaks it is found alone,
 //! five riders in five runs at most (`Splitting`). A train red for more
-//! than its riders gives up, and every rider runs again alone.
+//! than its riders gives up, and every rider runs again alone. A candidate
+//! no builder or evaluator took says nothing of its riders, unless its
+//! words name a failed check: the train cuts again a minute on, keeping
+//! its riders and its search, and only once its candidates have gone
+//! untaken for half an hour do the last one's riders fall.
 //! A rider that conflicts, or that rode a failed candidate alone, falls:
 //! `train/fell/<head>` says why, and `ready` runs that head again alone, as
 //! before the train. A rider whose pull request moved on, or closed, steps
@@ -36,12 +40,18 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
 use crate::state::short;
 use right_of_way::Ended;
 pub use right_of_way::gives_way;
+
+mod gated;
+mod splitting;
+use gated::{Gated, gated, words_of};
+use splitting::{After, Splitting, UNTAKEN_FOR};
 
 /// A change waiting on the train.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -361,68 +371,9 @@ fn systemctl(arguments: &[&str]) -> String {
 /// before it goes back to run again.
 const RECUTS: usize = 5;
 
-/// What follows a red candidate.
-#[derive(Debug, PartialEq, Eq)]
-enum After {
-    /// The next candidate takes fewer riders.
-    Narrows,
-    /// The one rider that rode it alone falls.
-    Falls,
-    /// Every rider falls, since the train is red for more than one of them.
-    AllFall,
-}
-
-/// What the train knows of its riders from the candidates it ran, so it
-/// finds the rider that breaks a candidate by halves. A front half that
-/// lands leaves the break among the riders after it, so the next takes
-/// half of those rather than all of them again: forgetting that took
-/// seven runs to find the fourth or fifth of five riders. A second rider
-/// falling alone with nothing landed between says the train is red for
-/// more than its riders, as for a main that broke or a gate that failed
-/// to run, so every rider falls back to running again alone rather than
-/// the train halving through each of them: about twice their number in
-/// runs, where falling costs one each. Two riders that each break it,
-/// boarded one after the other, read the same, and the riders behind
-/// them fall back too: telling the two apart takes a run of main alone,
-/// and falling back costs only what each paid before the train.
-#[derive(Debug, Default, PartialEq, Eq)]
-struct Splitting {
-    /// How many riders, the first to board, a red candidate is known to
-    /// lie among; none while no red is being searched.
-    suspects: usize,
-    /// Whether a rider fell riding alone since the train last landed.
-    fell_alone: bool,
-}
-
-impl Splitting {
-    /// How many riders, the first to board, the next candidate takes.
-    fn take(&self) -> usize {
-        match self.suspects {
-            0 => usize::MAX,
-            suspects => (suspects / 2).max(1),
-        }
-    }
-
-    /// A candidate of `riding` riders failed.
-    fn red(&mut self, riding: usize) -> After {
-        if riding > 1 {
-            self.suspects = riding;
-            return After::Narrows;
-        }
-        let twice = self.fell_alone;
-        *self = Self {
-            suspects: 0,
-            fell_alone: !twice,
-        };
-        if twice { After::AllFall } else { After::Falls }
-    }
-
-    /// A candidate of `riding` riders landed.
-    fn landed(&mut self, riding: usize) {
-        self.suspects = self.suspects.saturating_sub(riding);
-        self.fell_alone = false;
-    }
-}
+/// How long the train waits after a candidate no builder took before it
+/// cuts the next.
+const UNTAKEN_PAUSE: Duration = Duration::from_mins(1);
 
 /// Ride the train until no one waits on it: `merge-net ride`, as its unit
 /// runs it.
@@ -492,10 +443,23 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        if !gate(&checkout, &log) {
-            way(&root, &Ended::Otherwise);
-            red(&root, &candidate, &log, &done.merged, &mut splitting);
-            continue;
+        match gate(&checkout, &log) {
+            Gated::Passed => splitting.taken(),
+            Gated::Red => {
+                splitting.taken();
+                way(&root, &Ended::Otherwise);
+                red(&root, &candidate, &log, &done.merged, &mut splitting);
+                continue;
+            }
+            Gated::Unsent => {
+                // The train stays in its ride rather than waiting for a
+                // ready, since a rider is told it needn't ask again.
+                let now = crate::state::now();
+                if unsent(&root, &candidate, &log, &done.merged, &mut splitting, now) {
+                    std::thread::sleep(UNTAKEN_PAUSE);
+                }
+                continue;
+            }
         }
         match land(&checkout, &git, &candidate, &mergings, &done.merged) {
             Landing::Landed(landed) => {
@@ -522,6 +486,42 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             }
         }
     }
+}
+
+/// After no builder took the candidate `candidate` of `merged` riders,
+/// its words in `log`, `now`: whether the train tries again, its riders
+/// aboard, or the riders of that candidate fall back to running again
+/// alone, as `splitting` says. Riders that boarded since rode none of the
+/// untaken candidates, so they stay aboard and start afresh.
+fn unsent(
+    root: &Path,
+    candidate: &str,
+    log: &Path,
+    merged: &[String],
+    splitting: &mut Splitting,
+    now: u64,
+) -> bool {
+    if splitting.untaken(now) {
+        println!(
+            "merge-net: no builder took the candidate {}, its words in {}, so the train tries \
+             again with its riders aboard",
+            short(candidate),
+            log.display()
+        );
+        return true;
+    }
+    let why = format!(
+        "no builder or evaluator took the train's candidates for {} minutes, the last {}; \
+         its words are in {}",
+        UNTAKEN_FOR / 60,
+        short(candidate),
+        log.display()
+    );
+    println!("merge-net: {why}, so the riders of that candidate fall");
+    for head in merged {
+        let _ = fall(root, head, &why);
+    }
+    false
 }
 
 /// After the candidate `candidate` of `merged` riders failed, its words in
@@ -623,22 +623,22 @@ fn pull_of(slug: &str, branch: &str) -> Option<(u64, String, String)> {
     ))
 }
 
-/// Run the gate in `checkout`, its words going to `log`: whether it passed.
-fn gate(checkout: &Path, log: &Path) -> bool {
+/// Run the gate in `checkout`, its words going to `log`: how it ended.
+fn gate(checkout: &Path, log: &Path) -> Gated {
     let Ok(words) = fs::File::create(log) else {
-        return false;
+        return Gated::Red;
     };
     let Ok(errors) = words.try_clone() else {
-        return false;
+        return Gated::Red;
     };
-    Command::new("nix-offload")
+    let ran = Command::new("nix-offload")
         .args(["there", "--lent-only", "--changed"])
         .current_dir(checkout)
         .env_remove("SSH_AUTH_SOCK")
         .stdout(words)
         .stderr(errors)
-        .status()
-        .is_ok_and(|status| status.success())
+        .status();
+    ran.map_or(Gated::Red, |status| gated(status.code(), &words_of(log)))
 }
 
 /// How a passed candidate's push to main went.

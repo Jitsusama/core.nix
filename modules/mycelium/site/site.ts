@@ -21,6 +21,7 @@ import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
 import { clockTime, said } from "../../local-sites/kit/status.ts";
 import { BALANCE_FRESH_MS, type Heard, nowOf } from "./model.ts";
+import { asked, sayReach } from "./reach.ts";
 
 /** The least time between two readings handed to the drawing. */
 const FLOOR_MS = 2000;
@@ -193,3 +194,7 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 sayHow();
+// Opened to be checked, the page says whether it reaches every cell.
+if (asked(location.search)) {
+  sayReach(document.documentElement, document);
+}

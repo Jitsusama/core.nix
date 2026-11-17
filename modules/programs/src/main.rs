@@ -782,6 +782,7 @@ fn own(shared: &Arc<Shared>, said: &Value) -> Option<Value> {
         Own::Tab(tab) => tabs::act(&id, tab),
         Own::Terminal(folder) => code::terminal(&id, &folder),
         Own::Pull(folder) => code::pull(shared, &id, &folder),
+        Own::Edit(folder) => code::edit(&id, &folder),
         Own::Settings(settings) => settle(shared, settings),
     })
 }

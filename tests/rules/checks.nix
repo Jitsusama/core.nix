@@ -213,6 +213,7 @@
         lock-screen = script "lock-screen" ../../modules/swayidle/lock-screen.sh { };
         mpv-command = script "mpv-command" ../../modules/mpv/command.sh { };
         mpv-stopped = script "mpv-stopped" ../../modules/mpv/stopped.sh { };
+        mycelium-map-check = script "mycelium-map-check" ../../modules/mycelium/site/map-check.sh { };
         # Only its help is asked, which needs no libraries beside mypy.
         mypy = pkgs.callPackage ../../modules/treefmt/mypy.nix {
           python = pkgs.python3.withPackages (python: [ python.mypy ]);

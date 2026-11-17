@@ -64,6 +64,9 @@ pub enum Own {
     /// the branch it follows by fast-forward alone, by the checkout's
     /// absolute path.
     Pull(String),
+    /// Edit Here on a repository's row (`code_rows.rs`): Neovim started
+    /// on its checkout, by the folder's absolute path.
+    Edit(String),
     /// What the rows are made of, held until the next (docs/daemons.md,
     /// Settings).
     Settings(Settings),
@@ -170,6 +173,10 @@ pub fn own_of(said: &Value) -> Option<Own> {
             let folder = text_of(said, "path");
             folder.starts_with('/').then_some(Own::Pull(folder))
         }
+        "code:edit" => {
+            let folder = text_of(said, "path");
+            folder.starts_with('/').then_some(Own::Edit(folder))
+        }
         asked @ ("tab:go" | "tab:close") => {
             let act = if asked == "tab:go" {
                 TabAct::Go
@@ -234,7 +241,7 @@ mod tests {
     }
 
     #[test]
-    fn a_repositorys_terminal_names_the_folder_it_opens_in() {
+    fn a_repositorys_terminal_and_editor_name_the_folder_they_open_in() {
         assert_eq!(
             own_of(&json!({"ask": "code:terminal", "path": "/home/j/src/core.nix"})),
             Some(Own::Terminal("/home/j/src/core.nix".into()))
@@ -248,6 +255,20 @@ mod tests {
             own_of(&json!({"ask": "code:terminal", "path": "src/core.nix"})),
             None,
             "a terminal in a folder relative to nothing was taken"
+        );
+        assert_eq!(
+            own_of(&json!({"ask": "code:edit", "path": "/home/j/src/core.nix"})),
+            Some(Own::Edit("/home/j/src/core.nix".into()))
+        );
+        assert_eq!(
+            own_of(&json!({"ask": "code:edit"})),
+            None,
+            "an editor naming no folder was taken"
+        );
+        assert_eq!(
+            own_of(&json!({"ask": "code:edit", "path": "src/core.nix"})),
+            None,
+            "an editor in a folder relative to nothing was taken"
         );
     }
 
