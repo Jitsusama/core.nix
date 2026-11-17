@@ -268,6 +268,8 @@ in
       # names in its shaper/first, the work put ahead of the rest. That
       # folder is the account's alone, so reading it takes searching past
       # its mode, and it's the only part of the accounts' folders shown.
+      # What's there is the account's, so a link isn't followed, at most
+      # 16 names are read, and a name nft could misread is left out.
       CapabilityBoundingSet = [
         "CAP_NET_ADMIN"
         "CAP_NET_RAW"

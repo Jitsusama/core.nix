@@ -25,6 +25,7 @@ mod commands;
 mod cost;
 mod cpu;
 mod day;
+mod first;
 mod icmp;
 mod lanes;
 mod links;
@@ -710,6 +711,22 @@ impl Call {
     }
 }
 
+/// Each set's members at this step: the slices as they stand, the sessions
+/// running a turn, whether a call is on and the work put first.
+fn sorted(
+    options: &Options,
+    sessions: &[classes::Session],
+    call: &mut Call,
+    first: &mut first::Heed,
+    now: Instant,
+) -> classes::Sets {
+    let mut sets = classes::read(&options.cgroups);
+    (sets.bulk5, sets.typed5) = classes::by_typing(&options.cgroups, sessions);
+    sets.calling = call.heed(now, &options.users);
+    sets.first = first.heed(&options.cgroups, &options.users);
+    sets
+}
+
 fn refill(text: &str) {
     let child = Command::new("nft")
         .args(["-f", "-"])
@@ -756,6 +773,7 @@ fn run(options: &Options) -> Result<(), Failure> {
     let mut last_look: Option<Instant> = None;
     let mut last_fill: Option<Instant> = None;
     let mut filled = String::new();
+    let mut first = first::Heed::default();
     let mut reach = classes::Local::default();
     let mut vpns = Vpns::default();
     let mut last_kept = Instant::now();
@@ -809,10 +827,7 @@ fn run(options: &Options) -> Result<(), Failure> {
         // A slice or unit made a moment ago reaches its set at the next
         // step. nixos-rebuild loads the table afresh on a switch, empty, so
         // the sets are also written every few seconds, changed or not.
-        let mut sets = classes::read(&options.cgroups);
-        (sets.bulk5, sets.typed5) = classes::by_typing(&options.cgroups, &sessions);
-        sets.calling = call.heed(now, &options.users);
-        sets.first = classes::first(&options.cgroups, &options.users, SystemTime::now());
+        let sets = sorted(options, &sessions, &mut call, &mut first, now);
         let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
         read_vpns(&vpns.0, (&mut heard, &mut up_tins), rides, t);
         let text = classes::transaction(TABLE, &sets, &reach);

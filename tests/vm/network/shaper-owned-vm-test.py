@@ -190,23 +190,33 @@ def test_an_app_outruns_the_jobs(loaded: Rig) -> None:
     )
 
 
-def test_work_put_first_outruns_the_jobs(loaded: Rig) -> None:
+@pytest.mark.parametrize(
+    ("slice_name", "name"),
+    [
+        # A unit directly in jobs, at depth 5, as the deploy's scope was.
+        ("jobs.slice", "app-upload.service"),
+        # A quest's cell, at depth 7, with the upload a unit in it.
+        ("jobs-work-delta-qest20261116abcdef.slice", "QEST-20261116-ABCDEF"),
+    ],
+)
+def test_work_put_first_outruns_the_jobs(loaded: Rig, slice_name: str, name: str) -> None:
     """An upload in jobs that its account has put first gets most of the connection.
 
     Without it, the one upload is one of 33 in jobs, as a production deploy was on 16 November
     beside offload's copies and agents' turns.
     """
     folder = "/run/user/1000/shaper/first"
-    loaded.client.succeed(
-        f"su alice -c 'mkdir -p {folder} && touch {folder}/app-upload.service'",
-    )
+    loaded.client.succeed(f"su alice -c 'mkdir -p {folder} && touch {folder}/{name}'")
     try:
-        share = loaded.app_share("jobs.slice")
+        share = loaded.app_share(slice_name)
     finally:
+        loaded.client.execute("systemctl -M alice@ --user stop app-upload.service")
         loaded.client.succeed(f"rm -rf {folder}")
     assert share > SHAPED_SHARE, (
         f"work put first got {share:.2f} of the line at {loaded.up()} kbit/s:\n{loaded.trace()}"
     )
+    said = loaded.client.succeed("journalctl -u shaper -o cat --no-pager")
+    assert "putting first, ahead of offload and agents" in said, f"nothing said so:\n{said}"
 
 
 def test_unshaped(loaded: Rig) -> None:
