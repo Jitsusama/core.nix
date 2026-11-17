@@ -16,6 +16,7 @@ const CARRIED_NOTE = "noted on the carry";
 const BEFORE_RESTART = /before the restart/u;
 const AFTER_RESTART = /after the restart/u;
 const FAILED_START = /the start failed/u;
+const HELD_TEXT = /sent as the run started/u;
 const root = resolve(process.argv[2]);
 const codeDirectory = process.argv[3] ?? "dist";
 assert.ok(
@@ -351,6 +352,44 @@ const addsSection = (changing) => ({
   },
 });
 
+// Sends a context-only message as a run starts, while pi holds it, then starts or fails.
+const sendsAsItStarts = (session, { fails = false } = {}) => {
+  const start = session._extensionRunner.emitBeforeAgentStart.bind(session._extensionRunner);
+  session._extensionRunner.emitBeforeAgentStart = async (...args) => {
+    session._extensionRunner.emitBeforeAgentStart = start;
+    await session.sendCustomMessage(
+      { customType: "held", content: "sent as the run started", display: false },
+      { triggerTurn: false },
+    );
+    // No handler's error escapes pi's runner, so a start is failed from inside it.
+    if (fails) {
+      throw new Error("the start failed");
+    }
+    return start(...args);
+  };
+};
+
+// A host's carried run, placing what it is handed ahead of its first new message.
+const carry = (session) =>
+  deadline(
+    session.runForHost((prepared) =>
+      session.agent.prompt([...(prepared ?? []), userMessage("carried on")]),
+    ),
+  );
+
+// A carried run that takes a tool round, as a turn a restart cut off does, then answers.
+const carryThroughToolRound = (session, faux) => {
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall("read", { path: "absent" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("answered as carried"),
+  ]);
+  return carry(session);
+};
+
+const indexOf = (session, matches) => session.messages.findIndex(matches);
+const isHeld = (message) => message.customType === "held";
+const isToolResult = (message) => message.role === "toolResult";
+
 // How many of a request's system messages hold the text.
 const systemMessagesHolding = (request, text) =>
   systemMessages(request).filter((message) => text.test(JSON.stringify(message))).length;
@@ -374,16 +413,7 @@ it("a carried run's first request holds the sections as they stand after a resta
     extensions: [addsSection("after the restart")],
   });
   try {
-    faux.setResponses([
-      fauxAssistantMessage(fauxToolCall("read", { path: "absent" }), { stopReason: "toolUse" }),
-      fauxAssistantMessage("answered as carried"),
-    ]);
-    // As a host carrying on, the work places what it is handed ahead of its first new message.
-    await deadline(
-      session.runForHost((prepared) =>
-        session.agent.prompt([...(prepared ?? []), userMessage("carried on")]),
-      ),
-    );
+    await carryThroughToolRound(session, faux);
     assert.equal(requests.length, 2, "the carried run takes a tool round and a second turn");
     assert.equal(
       systemMessagesHolding(requests[0], AFTER_RESTART),
@@ -400,27 +430,46 @@ it("a carried run's first request holds the sections as they stand after a resta
   }
 });
 
-it("a carried run that fails to start passes on the messages it held", async () => {
-  const { session, close } = await openPreparedSession();
+it("a message sent as a carried run starts lands after its first turn's tool result", async () => {
+  const { session, faux, requests, close } = await openPreparedSession({ tools: ["read"] });
   try {
-    // No handler's error escapes pi's runner, so the start is failed from inside it, with a
-    // message sent while the run was busy, which pi holds until the run ends.
-    session._extensionRunner.emitBeforeAgentStart = async () => {
-      await session.sendCustomMessage(
-        { customType: "held", content: "sent as the run started", display: false },
-        { triggerTurn: false },
-      );
-      throw new Error("the start failed");
-    };
-    await assert.rejects(
-      session.runForHost(() => Promise.resolve()),
-      FAILED_START,
-    );
+    sendsAsItStarts(session);
+    await carryThroughToolRound(session, faux);
+    assert.doesNotMatch(JSON.stringify(requests[0].messages), HELD_TEXT);
+    // It waits for the turn to end, so it never splits a tool call from its result.
+    assert.ok(indexOf(session, isHeld) > indexOf(session, isToolResult));
+  } finally {
+    close();
+  }
+});
+
+it("a carried run that fails to start keeps what it held for the next turn", async () => {
+  const { session, faux, close } = await openPreparedSession({ tools: ["read"] });
+  try {
+    sendsAsItStarts(session, { fails: true });
+    await assert.rejects(deadline(session.runForHost(() => Promise.resolve())), FAILED_START);
     assert.equal(session.isStreaming, false);
-    assert.ok(
-      session.messages.some((message) => message.customType === "held"),
-      "the held message is in the conversation, as a prompt's failed start leaves it",
-    );
+    // The transcript it would carry on may owe a tool result, so nothing goes after it yet.
+    assert.equal(indexOf(session, isHeld), -1);
+    await carryThroughToolRound(session, faux);
+    // The next run's turn places it once its tool result is in.
+    assert.ok(indexOf(session, isHeld) > indexOf(session, isToolResult));
+  } finally {
+    close();
+  }
+});
+
+it("a handler's setActiveTools() holds for a carried run", async () => {
+  const narrows = (pi) =>
+    pi.on("before_agent_start", () => {
+      pi.setActiveTools([]);
+    });
+  const opened = { tools: ["read"], extensions: [{ name: "narrows", factory: narrows }] };
+  const { session, faux, requests, close } = await openPreparedSession(opened);
+  try {
+    faux.setResponses([fauxAssistantMessage("answered as carried")]);
+    await carry(session);
+    assert.deepEqual(requests[0].tools, [], "the live loadout the handler set is what is offered");
   } finally {
     close();
   }
