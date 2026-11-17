@@ -11072,10 +11072,17 @@ Scope {
     // and only his own shell says which of what it keeps holds it. The
     // count walks the whole heap, about 17 ms in the lab and so about 60
     // in his, so it waits 5 s past a closing and isn't run once an opening
-    // has begun; what's made since the closing's collection counts too,
-    // which is little with the launcher shut (heap.cpp). A key pressed in
-    // those milliseconds waits for it, once an hour; the line's time says
-    // when. Mid-collection it counts nothing, and the next closing tries.
+    // has begun. It counts twice: once as it finds the heap, and once after
+    // a collection, since in Joel's shell the 5 s after a closing's
+    // collection made 60 to 110 MB more than was live (146 MB counted
+    // against 85 live at 09:00 on 17 Nov, in lines that called it all
+    // live), so the first says what was made since the last sweep, and only
+    // the second what's live (heap.cpp). The collection between them leaves
+    // the opening's room again, as the closing's does, and says how long it
+    // took, since a key pressed in those 200 or so milliseconds waits for
+    // them, once an hour; no opening can begin between the three, which run
+    // in one turn of the shell's thread. Mid-collection it counts nothing,
+    // and the next closing tries.
     property real censusDue: KeyTimes.now() + 10 * 60 * 1000
     Timer {
         id: censusLater
@@ -11083,11 +11090,19 @@ Scope {
         onTriggered: {
             if (root.open || root.opening || root.parting !== "")
                 return;
-            const census = Heap.census(8);
-            if (census.busy)
+            const found = Heap.census(12);
+            if (found.busy)
                 return;
             root.censusDue = KeyTimes.now() + 60 * 60 * 1000;
-            console.info(`launcher: what's live, ${census.said}`);
+            const began = KeyTimes.now();
+            gc();
+            Heap.leaveRoom(root.openingRoom);
+            const took = Math.round(KeyTimes.now() - began);
+            const live = Heap.census(12);
+            console.info(`launcher: what's there before collecting, 5 s after a closing's`
+                + ` collection, ${found.said}`);
+            console.info(`launcher: what's live once collected in ${took} ms, `
+                + (live.busy ? "not counted, a collection under way" : live.said));
         }
     }
 
