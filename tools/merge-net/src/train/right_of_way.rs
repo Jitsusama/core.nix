@@ -24,18 +24,23 @@ fn file(root: &Path) -> PathBuf {
 
 /// Give the train under `root` the right of way at `now`, keeping when it
 /// began while it still holds one.
-pub fn give(_root: &Path, _now: u64) {}
+pub fn give(root: &Path, now: u64) {
+    if holds(root, now).is_none() {
+        let _ = fs::write(file(root), format!("{now}\n"));
+    }
+}
 
 /// Take the right of way back from the train under `root`.
 pub fn take_back(root: &Path) {
-    let _ = file(root);
+    let _ = fs::remove_file(file(root));
 }
 
 /// Since when the train under `root` has held the right of way, at `now`,
 /// if it still does.
 #[must_use]
-pub fn holds(_root: &Path, _now: u64) -> Option<u64> {
-    None
+pub fn holds(root: &Path, now: u64) -> Option<u64> {
+    let since: u64 = fs::read_to_string(file(root)).ok()?.trim().parse().ok()?;
+    (now.saturating_sub(since) < RIGHT_OF_WAY).then_some(since)
 }
 
 #[cfg(test)]
