@@ -4,6 +4,7 @@
 use terminal_kit::Pen;
 use terminal_kit::layout::{self, Room};
 
+use crate::figures;
 use crate::model::{Hour, Network};
 
 /// What the line carried over the last day, each way: its bytes, the
@@ -31,8 +32,10 @@ pub(super) fn carried(network: &Network, pen: &Pen, room: Room) -> Vec<String> {
             .map(|line| format!(", {:.0}% of its speed", average / line * 100.0))
             .unwrap_or_default();
         format!(
-            "{}, averaging {average:.1} Mbit/s{share}; {busiest:.1} in its busiest hour",
-            gigabytes(bytes)
+            "{}, averaging {}{share}; {} in its busiest hour",
+            gigabytes(bytes),
+            figures::rate(average),
+            figures::rate(busiest)
         )
     };
     let down = way(carried.down_bytes, internet.down_mbps, |hour| {

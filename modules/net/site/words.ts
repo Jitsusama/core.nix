@@ -6,6 +6,7 @@ import type { Device } from "./model.ts";
 /** The minus sign, rather than a hyphen, before a figure below zero. */
 const MINUS = "\u2212";
 
+const KILO = 1e3;
 const MEGA = 1e6;
 const GIGA = 1e9;
 /** From a hundred gigabytes on, a tenth of one says nothing more. */
@@ -43,9 +44,41 @@ function gigabytes(bytes: number): string {
   return bytes >= GIGA ? `${(bytes / GIGA).toFixed(1)} GB` : `${Math.round(bytes / MEGA)} MB`;
 }
 
-/** A rate to a tenth, as net and eero give them, without a trailing zero. */
-function mbps(n: number): string {
-  return (n >= 10 ? n.toFixed(1) : n.toFixed(2)).replace(TRAILING_ZEROS, "$<kept>");
+/** How many significant digits a measured rate keeps, as the design asks. */
+const DIGITS = 3;
+/** The smallest unit a rate given in Mb/s is said in, whatever its size. */
+const BITS: readonly [number, string] = [1 / MEGA, "b/s"];
+/** Each unit a rate given in Mb/s may be said in, the largest first. */
+const RATES: readonly (readonly [number, string])[] = [
+  [KILO, "Gb/s"],
+  [1, "Mb/s"],
+  [1 / KILO, "kb/s"],
+  BITS,
+];
+
+/**
+ * A measured rate given in Mb/s, in three figures, in the largest unit it
+ * is at least one of once rounded: 370 Mb/s, 1.20 Gb/s, 400 kb/s, and
+ * 0 b/s for none. net's figures.rs says them the same way.
+ */
+function rate(mbps: number): string {
+  if (!(mbps > 0 && Number.isFinite(mbps))) {
+    return "0 b/s";
+  }
+  const rounded = (value: number): number => Number(value.toPrecision(DIGITS));
+  const [scale, unit] = RATES.find(([s]) => rounded(mbps / s) >= 1) ?? BITS;
+  const n = mbps / scale;
+  // Past a thousand of the largest unit, toPrecision would write an exponent.
+  return `${n >= KILO ? Math.round(n) : n.toPrecision(DIGITS)} ${unit}`;
+}
+
+/**
+ * A link's speed given in Mb/s, which names the link rather than measures
+ * it, so it keeps only the digits it has: 1 Gb/s, 2.5 Gb/s, 866 Mb/s.
+ */
+function linkSpeed(mbps: number): string {
+  const trim = (n: number): string => n.toFixed(2).replace(TRAILING_ZEROS, "$<kept>");
+  return mbps >= KILO ? `${trim(mbps / KILO)} Gb/s` : `${trim(mbps)} Mb/s`;
 }
 
 /** How long `s` seconds is, in the largest unit or two that say it. */
@@ -149,11 +182,12 @@ export {
   gigabytes,
   lasted,
   listed,
+  linkSpeed,
   MINUS,
-  mbps,
   plural,
   possessive,
   rank,
+  rate,
   roleWords,
   slug,
   v4,

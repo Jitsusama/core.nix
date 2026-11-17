@@ -6,7 +6,7 @@
 import type { Link, Network } from "./model.ts";
 import { endAt, type Shape } from "./shape.ts";
 import { el, lookMark, MARK, text } from "./svg.ts";
-import { mbps } from "./words.ts";
+import { linkSpeed } from "./words.ts";
 
 /** A link between boxes, drawn after every box is placed. */
 interface Wire {
@@ -54,7 +54,6 @@ const WIRE = {
   laneStep: 10,
   meet: 40,
   meetStep: 8,
-  kilo: 1000,
 } as const;
 
 function looksOf(network: Network): Looks {
@@ -114,7 +113,7 @@ function isBusy(looks: Looks, link: Link): boolean {
 function cable(wiring: Wiring, wire: Wire, a: Reached, b: Reached): string {
   const x = a.x + WIRE.cable;
   const { port } = endAt(wire.link, wire.from);
-  const speed = wire.link.speedMbps ? `${mbps(wire.link.speedMbps / WIRE.kilo)} Gbit/s` : undefined;
+  const speed = wire.link.speedMbps ? linkSpeed(wire.link.speedMbps) : undefined;
   const words = [port === undefined ? undefined : `port ${port}`, speed].filter(Boolean);
   const at = { x: x + WIRE.label.x, y: (a.y + a.h + b.y) / 2 + WIRE.label.y };
   text(wiring.links, words.join(" \u00b7 "), { ...at, kind: "n-fact n-small" });

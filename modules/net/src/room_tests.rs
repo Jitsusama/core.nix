@@ -58,8 +58,8 @@ fn the_modem_and_a_device_no_link_reaches_have_no_path() {
 
 #[test]
 fn a_wifi_hop_has_its_speed_less_the_time_its_radio_is_busy() {
-    // The tablet joins Den's 5 GHz low radio at 48 Mbit/s, busy 5%,
-    // so 45.6 Mbit/s is left, less than the internet's 369.86 down.
+    // The tablet joins Den's 5 GHz low radio at 48 Mb/s, busy 5%,
+    // so 45.6 Mb/s is left, less than the internet's 369.86 down.
     let mut network = network();
     work_out(&mut network);
     let path = device(&network, "mac:02:00:00:00:00:01")
@@ -146,7 +146,7 @@ pub(crate) fn busy(network: &mut Network, node: &str, pct: u32) {
     radio.busy_pct = Some(pct);
 }
 
-/// Cables Hall's port 2 to Closet at 100 Mbit/s.
+/// Cables Hall's port 2 to Closet at 100 Mb/s.
 fn slow_cable(network: &mut Network) {
     network.links.push(Link {
         a: End {
@@ -190,7 +190,8 @@ fn a_device_using_most_of_the_internet_one_way_fills_it() {
         fills,
         [(
             Some("up"),
-            "unknown computer 1 is using 83% of the internet's speed up: 9.9 of its 11.9 Mbit/s."
+            "unknown computer 1 is using 83% of the internet's speed up: 9.86 Mb/s of its 11.9 \
+             Mb/s."
         )],
         "78% of the way down is under the line, and 83% up is over it"
     );
@@ -336,7 +337,7 @@ fn a_cable_under_a_gigabit_is_a_concern() {
         .collect();
     assert_eq!(slow.len(), 1, "one slow cable: {slow:?}");
     assert_eq!(slow[0].on.as_deref(), Some("2"));
-    assert_eq!(slow[0].says, "Hall's cable to Closet runs at 100 Mbit/s.");
+    assert_eq!(slow[0].says, "Hall's cable to Closet runs at 100 Mb/s.");
 }
 
 #[test]
@@ -353,9 +354,9 @@ fn the_internet_as_the_chokepoint_is_one_concern_each_way() {
         ceilings,
         [
             "The internet is the narrowest point down for 7 of the 18 devices on the eeros: \
-             369.9 Mbit/s, as eero last measured it.",
+             370 Mb/s, as eero last measured it.",
             "The internet is the narrowest point up for every device on the eeros: 11.9 \
-             Mbit/s, as eero last measured it.",
+             Mb/s, as eero last measured it.",
         ]
     );
 }
@@ -399,7 +400,7 @@ fn is_one_sentence(says: &str) -> bool {
 #[test]
 fn one_sentence_ends_once_and_holds_only_decimal_points() {
     let told: Vec<(&str, bool)> = [
-        "Up 11.9 Mbit/s.",
+        "Up 11.9 Mb/s.",
         "No stop",
         ".",
         "Ends twice..",
@@ -414,7 +415,7 @@ fn one_sentence_ends_once_and_holds_only_decimal_points() {
     assert_eq!(
         told,
         [
-            ("Up 11.9 Mbit/s.", true),
+            ("Up 11.9 Mb/s.", true),
             ("No stop", false),
             (".", false),
             ("Ends twice..", false),

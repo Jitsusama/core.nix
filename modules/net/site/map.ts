@@ -7,7 +7,7 @@ import type { Channel, Device, Link, Network } from "./model.ts";
 import { endAt, type Floor, linkBetween, type Shape } from "./shape.ts";
 import { el, fitText, lookMark, text } from "./svg.ts";
 import { drawWires, type Looks, looksOf, type Wire } from "./wires.ts";
-import { ago, dbm, lasted, mbps, plural, roleWords, v4 } from "./words.ts";
+import { ago, dbm, lasted, linkSpeed, plural, rate, roleWords, v4 } from "./words.ts";
 
 /**
  * The drawing's grid, in pixels at zoom 1: a column for the floors' names,
@@ -99,11 +99,9 @@ interface Drawn {
   readonly marks: SVGGElement;
 }
 
-const KILO = 1000;
-
-/** A link's speed in Gbit/s, said to a tenth. */
-const gigabits = (link: Link): string | undefined =>
-  link.speedMbps ? `${mbps(link.speedMbps / KILO)} Gbit/s` : undefined;
+/** A link's speed, when its source gives one. */
+const speedOf = (link: Link): string | undefined =>
+  link.speedMbps ? linkSpeed(link.speedMbps) : undefined;
 
 /** One sweep of the modem's channels in columns: its kinds, power and noise. */
 function sweep(channels: readonly Channel[], word: string): string[] {
@@ -241,7 +239,7 @@ class Pen {
       const mine = endAt(toUp, device.id);
       const theirs = this.shape.byId.get(endAt(toUp, up).device)?.name ?? up;
       const port = mine.port === undefined ? undefined : `port ${mine.port} to ${theirs}`;
-      const words = [port, gigabits(toUp)].filter(Boolean).join(" \u00b7 ");
+      const words = [port, speedOf(toUp)].filter(Boolean).join(" \u00b7 ");
       text(g, words, { x: x + BOX.pad, y: y + SWITCH.linkLine, kind: "n-fact n-small" });
       this.wires.push({ from: device.id, to: up, link: toUp });
     }
@@ -341,7 +339,7 @@ class Pen {
         lookMark(g, G.left + INTERNET.mark, ry);
       }
       const at = { x: G.left + (look ? INTERNET.markRoom : 0), y: ry };
-      text(g, `${way} ${mbps(value)} Mbit/s`, { ...at, kind: look ? "n-fact n-look" : "n-fact" });
+      text(g, `${way} ${rate(value)}`, { ...at, kind: look ? "n-fact n-look" : "n-fact" });
     });
     if (internet.measuredAt !== undefined) {
       const when = ago(internet.measuredAt, this.now);

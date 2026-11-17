@@ -123,7 +123,7 @@ fn carried(block: &Value) -> Option<Carried> {
     })
 }
 
-/// An hour's bytes as the average speed that carries them, in Mbit/s to
+/// An hour's bytes as the average speed that carries them, in Mb/s to
 /// the hundredth, so the record stays readable.
 #[expect(
     clippy::cast_precision_loss,

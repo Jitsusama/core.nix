@@ -9,7 +9,7 @@ import { type Device, type Link, type Narrowest, type Radio, worthALook } from "
 import { type Context, concernRows } from "./panel.ts";
 import { busier, endAt, linkBetween, medium } from "./shape.ts";
 import { el } from "./svg.ts";
-import { ago, clock, dbm, lasted, mbps, plural, roleWords, v4 } from "./words.ts";
+import { ago, clock, dbm, lasted, linkSpeed, plural, rate, roleWords, v4 } from "./words.ts";
 
 /** From this signal down, net names a link weak and its rate falls. */
 const WEAK_DBM = -70;
@@ -37,7 +37,7 @@ function narrowestLine(context: Context, narrow: Narrowest | undefined, way: str
     why = `the internet itself, as eero last measured it${since}`;
   } else if (link?.speedMbps !== undefined && busy !== undefined) {
     const less = `less the ${busy}% of the time its radio is busy`;
-    why = `between ${name(narrow.a)} and ${name(narrow.b)}: their ${mbps(link.speedMbps)} Mbit/s link, ${less}`;
+    why = `between ${name(narrow.a)} and ${name(narrow.b)}: their ${linkSpeed(link.speedMbps)} link, ${less}`;
   } else {
     why = `between ${name(narrow.a)} and ${name(narrow.b)}`;
   }
@@ -47,14 +47,14 @@ function narrowestLine(context: Context, narrow: Narrowest | undefined, way: str
     narrow.unmeasured > 0
       ? `. ${links} on the way ${one ? "has" : "have"} no speed given, so it could be narrower`
       : "";
-  const most = `${way}: at most ${mbps(narrow.roomMbps)} Mbit/s`;
+  const most = `${way}: at most ${rate(narrow.roomMbps)}`;
   return h("p", {}, h("span", { class: "narrowest" }, most), `, ${why}${blind}.`);
 }
 
 /** How one hop reaches the next: the link's medium, speed and signal. */
 function hopWords(link: Link): string {
   const speed = link.speedMbps
-    ? `${mbps(link.speedMbps)} Mbit/s`
+    ? linkSpeed(link.speedMbps)
     : `${link.source ?? "net"} gives no speed for it`;
   const signal = link.signalDbm === undefined ? undefined : `${dbm(link.signalDbm)} dBm`;
   return [medium(link), speed, signal].filter(Boolean).join(", ");
@@ -131,11 +131,7 @@ function ownLink(context: Context, device: Device): Child[] {
       ["to", `${shape.byId.get(up)?.name ?? up}${at === undefined ? "" : `, ${at}`}`],
       ["from", near.port === undefined ? null : `its port ${near.port}`],
       ["over", wifi ? `Wi-Fi${channel}` : medium(link)],
-      [
-        wifi ? "link rate" : "speed",
-        link.speedMbps ? `${mbps(link.speedMbps)} Mbit/s` : null,
-        true,
-      ],
+      [wifi ? "link rate" : "speed", link.speedMbps ? linkSpeed(link.speedMbps) : null, true],
       ["signal", link.signalDbm === undefined ? null : `${dbm(link.signalDbm)} dBm`, true],
     ]),
   ];
@@ -168,13 +164,13 @@ function speedOf(context: Context, device: Device): Child[] {
     if (n === undefined) {
       return "";
     }
-    return fills(way) ? { text: mbps(n), look: true } : mbps(n);
+    return fills(way) ? { text: rate(n), look: true } : rate(n);
   };
   const most = (n: number | undefined, at: number | undefined): Cell => {
     if (n === undefined) {
       return "";
     }
-    return at === undefined ? mbps(n) : `${mbps(n)} at ${clock(at)}`;
+    return at === undefined ? rate(n) : `${rate(n)} at ${clock(at)}`;
   };
   const rows = [
     ["now", now(speed.downMbps, "down"), now(speed.upMbps, "up")],
@@ -186,7 +182,7 @@ function speedOf(context: Context, device: Device): Child[] {
   ];
   return [
     h("h3", {}, "Its Speed"),
-    table(["Mbit/s", "down", "up"], rows, [1, 2]),
+    table(["when", "down", "up"], rows, [1, 2]),
     h(
       "p",
       { class: "hint" },
