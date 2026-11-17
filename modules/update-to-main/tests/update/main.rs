@@ -3554,6 +3554,38 @@ fn a_system_that_waited_for_a_hold_tells_its_boot_check_its_flake() {
 }
 
 #[test]
+fn a_hosted_system_that_waited_tells_its_boot_check_a_folder_holding_its_commit() {
+    // A hosted flake is a folder each unpack wipes, so the folder the
+    // system was built from may be gone by the grant.
+    let mut world = World::hosted_from(World::new(), counted_token);
+    hold_the_daemon(&mut world, "old");
+    let head = world.hosted_commit("one", None);
+    let told = world.root.join("told");
+    let check = format!(
+        "printf '%s' \"$(< \"${{UPDATE_TO_MAIN_FLAKE#path:}}/file\")\" > {}",
+        told.display()
+    );
+    let system = a_new_initrd(&mut world, &head, &check);
+    daemon_unit(&system, "new");
+    assert!(
+        matches!(world.update().1, Line::Refused { .. }),
+        "a switch restarting a held daemon didn't wait for a hold"
+    );
+    let _ = fs::remove_dir_all(world.config.source());
+    fs::write(world.root.join("given"), "").unwrap();
+    let (_, ending) = world.update();
+    assert!(
+        matches!(ending, Line::Done { boots: None, .. }),
+        "the granted switch should pass its boot check: {ending:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(&told).unwrap_or_default(),
+        "one",
+        "the granted switch's boot check wasn't told a folder holding its commit"
+    );
+}
+
+#[test]
 fn a_held_daemons_drop_in_changing_waits_for_a_hold_too() {
     let mut world = World::new();
     hold_the_daemon(&mut world, "same");
