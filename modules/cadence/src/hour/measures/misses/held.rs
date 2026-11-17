@@ -78,7 +78,12 @@ pub fn held(text: &str, measures: &mut [Measure], was_open: &[String]) {
         let already = open.behind.iter().any(|line| words(line) == what)
             || !was_open.iter().any(|w| w == what);
         let check = check.to_lowercase();
-        let found = judging.iter().find(|(key, _)| names_whole(&check, key));
+        // A key that still finds the fault outranks one the hour couldn't
+        // read, so a blind key named first doesn't mask the real hold.
+        let found = judging
+            .iter()
+            .filter(|(key, _)| names_whole(&check, key))
+            .min_by_key(|(_, why)| BLIND.contains(why));
         let (false, Some((key, why))) = (already, found) else {
             continue;
         };
@@ -243,6 +248,30 @@ mod tests {
             hour[0].behind,
             [held_line],
             "a miss held last hour wasn't held again"
+        );
+    }
+
+    /// A check naming a measure the hour couldn't read and one that still
+    /// finds the fault is held by the one that finds it, counted and owned.
+    #[test]
+    fn a_key_that_still_finds_the_fault_outranks_a_blind_one() {
+        let text = miss("core #5252 cells-idle and map-cells");
+        let merged = BTreeSet::from([change("core", 5252)]);
+        let mut hour = vec![
+            misses(&text, &repos(), &merged, &BTreeSet::new()),
+            judged("cells-idle", 0.0, None),
+            judged("map-cells", 2.0, Some(0.0)),
+        ];
+        held(&text, &mut hour, &was_open());
+        assert_eq!(
+            (hour[0].behind.clone(), hour[0].now),
+            (
+                vec![
+                    "the cat waits · XY9H5C, though its check map-cells still finds it".to_owned()
+                ],
+                1.0
+            ),
+            "a blind key masked the one that still finds the fault"
         );
     }
 

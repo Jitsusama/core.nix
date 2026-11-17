@@ -69,17 +69,18 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
 fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result<()> {
     let (_, state_home, folder) = folders()?;
     let now = now_ms() / 1000;
+    let kept_at = folder.join("hour.json");
+    let kept: Kept = fs::read_to_string(&kept_at)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default();
     // Read once, so the misses measured and the words told for them come
-    // from the same ledger.
-    let read = fs::read_to_string(state_home.join("mission/misses.jsonl"));
-    // A ledger not yet written has no misses; one that can't be read says
-    // nothing of which are gone, so the misses go unjudged.
-    let unread = matches!(&read, Err(e) if e.kind() != io::ErrorKind::NotFound);
-    let misses = read.unwrap_or_default();
+    // from the same ledger; one not read whole leaves the misses unjudged.
+    let (misses, whole) = measures::ledger(&state_home.join("mission/misses.jsonl"), &kept.open);
     let mut measures = gather(&folder, &state_home, &misses, now, checkouts)?;
     for m in measures
         .iter_mut()
-        .filter(|m| unread && m.class == Class::Miss)
+        .filter(|m| !whole && m.class == Class::Miss)
     {
         m.target = None;
         m.says.push_str(measures::UNREAD);
@@ -119,11 +120,6 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
             fallback,
         ));
     }
-    let kept_at = folder.join("hour.json");
-    let kept: Kept = fs::read_to_string(&kept_at)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default();
     // Once every measure is read, a miss whose check names one stays open
     // until it judges, so Joel isn't told it's fixed before it is; one
     // closed before last hour stays so.

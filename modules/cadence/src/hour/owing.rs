@@ -153,6 +153,13 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
     let asked = key.strip_prefix("miss:").map(|what| (what, false));
     if let Some((what, held)) = asked.or_else(|| key.strip_prefix("miss-held:").map(|w| (w, true)))
     {
+        // A ledger not read whole says nothing of which misses are gone.
+        if measures
+            .iter()
+            .any(|m| m.class == Class::Miss && m.target.is_none())
+        {
+            return false;
+        }
         let open = format!("{what} · ");
         return !measures
             .iter()
@@ -419,6 +426,26 @@ mod tests {
             owners,
             ["WCJQSG", "88LQC0"],
             "a miss's note was taken as part of its owner's address"
+        );
+    }
+
+    /// An hour that couldn't read the misses ledger whole says nothing of
+    /// which misses are gone, so it settles none of their findings.
+    #[test]
+    fn an_unread_misses_ledger_settles_no_miss_finding() {
+        let mut misses = measure("misses", Class::Miss, 1.0, Some(0.0));
+        misses.behind = vec![
+            "the map drew cells alone · WCJQSG".to_owned(),
+            "History paused · H2VYOB, though its check map-cells still finds it".to_owned(),
+        ];
+        let mut ledger = Vec::new();
+        file(&mut ledger, &[misses], "2026-11-17", 1000);
+        let unread = measure("misses", Class::Miss, 0.0, None);
+        file(&mut ledger, &[unread], "2026-11-17", 2000);
+        let open = ledger.iter().filter(|e| e.open).count();
+        assert_eq!(
+            open, 2,
+            "an unread ledger settled its misses' findings: {ledger:?}"
         );
     }
 

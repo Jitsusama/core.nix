@@ -18,7 +18,7 @@ pub use balanced::balanced;
 pub use broken::{Main, broken, failed_in};
 pub use cells::{Quest, cells, mapped, quest};
 pub use locked::read as unlocked;
-pub use misses::{BLIND, HELD, UNREAD, checked, held, said};
+pub use misses::{BLIND, HELD, UNREAD, checked, held, ledger, said};
 pub use reports::{REPORTS_SINCE, Report, report, unasked};
 
 const DAY: i64 = 86_400;

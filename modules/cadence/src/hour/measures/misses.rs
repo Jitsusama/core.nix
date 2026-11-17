@@ -244,6 +244,21 @@ fn named_as(miss: &Value) -> &str {
 /// what keeps it open: at 12:10 on 15 November the card asked the
 /// orchestrator to steer a miss whose check had merged in a main stock git
 /// couldn't open.
+/// Reads the misses ledger at `path`, and whether it was read whole. One
+/// not yet written has no misses; one that can't be read, or reads empty
+/// while last hour had misses open, `was_open`, says nothing of which are
+/// gone, since a miss closes on its check and never leaves the ledger.
+pub fn ledger(path: &Path, was_open: &[String]) -> (String, bool) {
+    match std::fs::read_to_string(path) {
+        Ok(text) => {
+            let whole = !text.trim().is_empty() || was_open.is_empty();
+            (text, whole)
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => (String::new(), was_open.is_empty()),
+        Err(_) => (String::new(), false),
+    }
+}
+
 fn misses(
     text: &str,
     repos: &Checkouts,
@@ -491,6 +506,51 @@ mod tests {
         assert!(
             m.target.is_none() && m.says.contains("wasn't read whole"),
             "a ledger with a broken line was judged: {m:?}"
+        );
+        let spaced = format!("{}\n\n  \n", miss("core #9"));
+        let m = misses(&spaced, &repos(), &BTreeSet::new(), &BTreeSet::new());
+        assert!(
+            m.target.is_some(),
+            "a ledger with blank lines was read as torn: {m:?}"
+        );
+    }
+
+    /// A ledger that can't be read, or reads empty while last hour had
+    /// misses open, says nothing of which are gone: misses never leave it,
+    /// they close on their checks.
+    #[test]
+    fn a_ledger_unread_or_gone_empty_under_open_misses_is_not_read_whole() {
+        let root = tempfile::tempdir().expect("a scratch folder");
+        let open = ["the cat waits · XY9H5C".to_owned()];
+        let file = root.path().join("misses.jsonl");
+        let cases = [
+            (root.path().to_path_buf(), &[][..], false, "a folder"),
+            (
+                file.clone(),
+                &open[..],
+                false,
+                "a missing ledger under open misses",
+            ),
+            (file.clone(), &[][..], true, "a ledger not yet written"),
+        ];
+        for (path, was_open, whole, what) in cases {
+            assert_eq!(
+                ledger(&path, was_open).1,
+                whole,
+                "{what} read whole: {}",
+                !whole
+            );
+        }
+        std::fs::write(&file, "\n").expect("the ledger written");
+        assert!(
+            !ledger(&file, &open).1,
+            "a ledger gone empty under open misses was read whole"
+        );
+        std::fs::write(&file, miss("core #9")).expect("the ledger written");
+        assert_eq!(
+            ledger(&file, &open),
+            (miss("core #9"), true),
+            "a whole ledger wasn't read as it is"
         );
     }
 
