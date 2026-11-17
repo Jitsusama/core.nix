@@ -14,6 +14,7 @@ import json
 import os
 import threading
 from functools import partial
+from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -22,7 +23,9 @@ import pytest
 from playwright.sync_api import Browser, sync_playwright
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    import socket
+    from collections.abc import Collection, Iterator, Sequence
+    from socketserver import BaseServer
 
 PROBE = Path(os.environ["WEB_SKILL"]) / "homes.js"
 CODE = {"path": "code/", "homes": ["repository"]}
@@ -38,7 +41,26 @@ NOTHING = "<p>Nothing named.</p>"
 
 
 class Quiet(SimpleHTTPRequestHandler):
-    """Serves a folder, saying nothing of each request."""
+    """Serves a folder, saying nothing of each request, and failing the files named failing."""
+
+    def __init__(
+        self,
+        request: socket.socket,
+        client_address: tuple[str, int],
+        server: BaseServer,
+        *,
+        directory: str,
+        failing: Collection[str],
+    ) -> None:
+        self.failing = failing
+        super().__init__(request, client_address, server, directory=directory)
+
+    def do_GET(self) -> None:
+        """Answer a failing file with a server error, and the rest from the folder."""
+        if self.path.removeprefix("/") in self.failing:
+            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+        super().do_GET()
 
     def log_message(self, *_: object) -> None:
         """Say nothing, so the test's output is what it finds."""
@@ -56,13 +78,21 @@ def browser() -> Iterator[Browser]:
 def probed(
     browser: Browser,
     root: Path,
-    sites: Sequence[object] | None,
+    sites: Sequence[object] | str | None,
     page: str,
     rows: str | None = None,
+    *,
+    failing: Collection[str] = (),
     **homes: object,
 ) -> object:
-    """Run the probe on `page`, served beside any `sites`, `rows` as written, and homes.json."""
-    if sites is not None:
+    """Run the probe on `page`, served beside any `sites`, `rows` as written, and homes.json.
+
+    `sites` written as a string is served as written, and each file named in
+    `failing` answers a server error.
+    """
+    if isinstance(sites, str):
+        (root / "sites.json").write_text(sites)
+    elif sites is not None:
         (root / "sites.json").write_text(json.dumps({"sites": sites}))
     if rows is not None:
         (root / "rows.json").write_text(rows)
@@ -73,7 +103,8 @@ def probed(
         f'<!doctype html><html><head><meta charset="utf-8"></head><body>{page}</body></html>',
         encoding="utf-8",
     )
-    server = ThreadingHTTPServer(("127.0.0.1", 0), partial(Quiet, directory=str(root)))
+    handler = partial(Quiet, directory=str(root), failing=failing)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         tab = browser.new_page()
@@ -170,7 +201,7 @@ def test_no_row_home_to_anything_is_a_fault(browser: Browser, tmp_path: Path) ->
 
 def test_a_live_rows_declared_homes_are_read(browser: Browser, tmp_path: Path) -> None:
     """A live row as Nix declares it, in rows.json, stands over its stale sites.json twin."""
-    stale = [{"path": "code/", "homes": []}, {"path": "../unread/", "homes": ["thing"]}]
+    stale = [{"path": "code/", "homes": []}]
     rows = json.dumps({"sites": [CODE]})
     page = "<p>See <code>notebook</code>.</p>"
     assert probed(browser, tmp_path, stale, page, rows, code=[NOTEBOOK]) == [
@@ -187,13 +218,60 @@ def test_rows_with_no_record_beside_them_are_read(browser: Browser, tmp_path: Pa
     ]
 
 
+def rows_fault(fault: str) -> str:
+    """Say what the probe says of a rows.json it can't read, for `fault`."""
+    return (
+        f"rows.json at the sites' root {fault}: read the home that writes it and the server "
+        "that serves it, `journalctl --user -u local-sites-home -u local-sites`"
+    )
+
+
 @pytest.mark.parametrize("rows", ['{"rows": []}', "null", '{"sites": ['])
 def test_rows_that_wont_read_are_a_fault(browser: Browser, tmp_path: Path, rows: str) -> None:
     """A rows.json there but of another shape, or broken, is named, never passed over."""
     assert probed(browser, tmp_path, [CODE], NOTHING, rows, code=[NOTEBOOK]) == [
+        rows_fault('won\'t read as rows, {"sites": [...]}'),
+    ]
+
+
+def test_rows_the_server_fails_are_a_fault(browser: Browser, tmp_path: Path) -> None:
+    """Only a rows.json that isn't there falls back; one the server fails is named."""
+    rows = json.dumps({"sites": [CODE]})
+    found = probed(browser, tmp_path, [CODE], NOTHING, rows, failing={"rows.json"})
+    assert found == [rows_fault("answered 500 from the sites' server")]
+
+
+def test_a_record_that_wont_read_beside_rows_is_named(browser: Browser, tmp_path: Path) -> None:
+    """A broken sites.json leaves the last build's rows serving, so it's named over them."""
+    rows = json.dumps({"sites": [CODE]})
+    assert probed(browser, tmp_path, '{"sites": [', NOTHING, rows, code=[NOTEBOOK]) == [
         (
-            "rows.json at the sites' root won't read as the home's rows, {\"sites\": [...]}: "
-            "the home writes it, so read `journalctl --user -u local-sites-home`"
+            'sites.json at the sites\' root won\'t read as rows, {"sites": [...]}, so the home '
+            "kept its last rows.json: fix sites.json"
+        ),
+    ]
+
+
+def test_a_row_the_home_left_out_is_named(browser: Browser, tmp_path: Path) -> None:
+    """A record's row on no plain path, which the home leaves out of its rows, is named."""
+    stray = {"path": "../up/", "homes": ["thing"]}
+    rows = json.dumps({"sites": [CODE]})
+    assert probed(browser, tmp_path, [CODE, stray], NOTHING, rows, code=[NOTEBOOK]) == [
+        (
+            '"../up/" in sites.json homes things on no plain path, so the home leaves it out: '
+            "steps of letters, digits and -._~, none starting with a dot"
+        ),
+    ]
+
+
+def test_a_row_the_home_has_not_built_is_named(browser: Browser, tmp_path: Path) -> None:
+    """A record's row missing from rows.json, which the home hasn't built yet, is named."""
+    notes = {"path": "notes/", "homes": ["note"]}
+    rows = json.dumps({"sites": [CODE]})
+    assert probed(browser, tmp_path, [CODE, notes], NOTHING, rows, code=[NOTEBOOK]) == [
+        (
+            '"notes/" in sites.json isn\'t in rows.json, so the home hasn\'t built since it '
+            "was written: read `journalctl --user -u local-sites-home`"
         ),
     ]
 
@@ -207,11 +285,12 @@ def test_no_record_at_all_is_a_fault(browser: Browser, tmp_path: Path) -> None:
 
 def test_a_leading_dot_step_is_named_for_the_system(browser: Browser, tmp_path: Path) -> None:
     """The home lists a row written ./code/, which the system's homes refuse, so it's named."""
-    rows = json.dumps({"sites": [{"path": "./code/", "homes": ["repository"]}]})
-    assert probed(browser, tmp_path, [], NOTHING, rows, code=[NOTEBOOK]) == [
+    dotted = [{"path": "./code/", "homes": ["repository"]}]
+    rows = json.dumps({"sites": dotted})
+    assert probed(browser, tmp_path, dotted, NOTHING, rows, code=[NOTEBOOK]) == [
         (
             '"./code/" in rows.json homes things, which the system\'s homes refuse: '
-            "drop its ./ in sites.json, or home.nix for a live site"
+            "drop its ./ in sites.json"
         ),
         "a row in rows.json home to a kind, for any mention to be measured",
     ]

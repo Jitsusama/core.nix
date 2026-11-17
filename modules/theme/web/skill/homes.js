@@ -71,33 +71,52 @@
   const skipped = "script, style, pre, title, [aria-hidden='true'], [data-map], [data-said-by], "
     + "nav.sites-strip";
 
-  // The home's rows, undefined where the sites serve no rows.json at all,
-  // and null where they serve one that won't read.
+  // A list of rows the sites serve at the root: {absent} where they serve
+  // none (a 404), {rows} where it reads as {"sites": [...]}, and otherwise
+  // {fault}, saying what went wrong in words that end a fault line.
   const notFound = 404;
-  const readRows = async () => {
+  const served = async (address) => {
+    let answer;
     try {
-      const answer = await fetch(new URL("rows.json", root), { cache: "no-store" });
-      if (answer.status === notFound) {
-        return undefined;
-      }
-      return answer.ok ? await answer.json() : null;
+      answer = await fetch(new URL(address, root), { cache: "no-store" });
     } catch {
-      return null;
+      return { fault: "couldn't be fetched from the sites' server" };
     }
+    if (answer.status === notFound) {
+      return { absent: true };
+    }
+    if (!answer.ok) {
+      return { fault: `answered ${answer.status} from the sites' server` };
+    }
+    try {
+      const body = await answer.json();
+      if (body !== null && Array.isArray(body.sites)) {
+        return { rows: body.sites };
+      }
+    } catch {
+      // Not JSON at all, which is the same fault as JSON of another shape.
+    }
+    return { fault: "won't read as rows, {\"sites\": [...]}" };
   };
-  const rows = await readRows();
-  const fromRows = rows !== undefined;
+  const listed = await served("rows.json");
+  const fromRows = listed.absent !== true;
   const record = fromRows ? "rows.json" : "sites.json";
   const fixIn = fromRows ? "sites.json, or home.nix for a live site" : "sites.json";
-  const sites = fromRows ? rows : await read("sites.json");
-  if (sites === null || !Array.isArray(sites.sites)) {
-    return fromRows
-      ? [
-        "rows.json at the sites' root won't read as the home's rows, {\"sites\": [...]}: "
-          + "the home writes it, so read `journalctl --user -u local-sites-home`",
-      ]
-      : ["sites.json at the sites' root, for the homes to be read from"];
+  const recorded = await served("sites.json");
+  if (fromRows && listed.fault !== undefined) {
+    return [
+      `rows.json at the sites' root ${listed.fault}: read the home that writes it and the `
+        + "server that serves it, `journalctl --user -u local-sites-home -u local-sites`",
+    ];
   }
+  if (!fromRows && recorded.rows === undefined) {
+    return [
+      recorded.absent
+        ? "sites.json at the sites' root, for the homes to be read from"
+        : `sites.json at the sites' root ${recorded.fault}`,
+    ];
+  }
+  const sites = { sites: fromRows ? listed.rows : recorded.rows };
   // A row's homes are kinds, each read from its homes.json, or patterns,
   // {"kind", "address"}, giving every thing of a kind a home at the address
   // with its name, percent-encoded, for {name}. Both are held to what the
@@ -151,6 +170,40 @@
     claimed.set(kind, path);
     return true;
   };
+  // rows.json is what the home last built, so sites.json, which it builds
+  // from, is read beside it. A sites.json that won't read leaves the last
+  // build serving; a row whose path the home won't link it leaves out; and
+  // a row missing from rows.json for no such reason is one the home hasn't
+  // built yet. Each is named, since rows.json alone would pass it quietly.
+  if (fromRows && recorded.fault !== undefined) {
+    missing.push(
+      `sites.json at the sites' root ${recorded.fault}, so the home kept its last rows.json: `
+        + "fix sites.json",
+    );
+  }
+  const folderOf = (path) =>
+    `${path.split("/").filter((step) => step !== "" && step !== ".").join("/")}/`;
+  const built = new Set(
+    sites.sites.map((site) => site.path).filter((path) => typeof path === "string").map(folderOf),
+  );
+  for (const site of fromRows ? (recorded.rows ?? []) : []) {
+    const path = site.path;
+    if (!Array.isArray(site.homes) || site.homes.length === 0) {
+      continue;
+    }
+    const bare = typeof path === "string" && path.startsWith("./") ? path.slice(2) : path;
+    if (!plainPath(bare)) {
+      missing.push(
+        `${JSON.stringify(path)} in sites.json homes things on no plain path, so the home `
+          + "leaves it out: steps of letters, digits and -._~, none starting with a dot",
+      );
+    } else if (!built.has(folderOf(path))) {
+      missing.push(
+        `${JSON.stringify(path)} in sites.json isn't in rows.json, so the home hasn't built `
+          + "since it was written: read `journalctl --user -u local-sites-home`",
+      );
+    }
+  }
   for (const site of sites.sites) {
     const path = site.path;
     const claims = site.homes ?? [];
@@ -169,7 +222,7 @@
     if (typeof path === "string" && path.startsWith("./") && plainPath(path.slice(2))) {
       missing.push(
         `${JSON.stringify(path)} in ${record} homes things, which the system's homes refuse: `
-          + `drop its ./ in ${fixIn}`,
+          + "drop its ./ in sites.json",
       );
       continue;
     }
