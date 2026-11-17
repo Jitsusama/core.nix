@@ -699,6 +699,8 @@ def restart_keeps_the_queues(on_eth2: Connection) -> None:
     # A switch restarts it only while the unit says so; otherwise it stops the old and starts
     # the new, and the stop takes every queue away.
     client.succeed("grep -q X-StopIfChanged=false /etc/systemd/system/shaper.service")
+    # The recorder too, or a switch stops it early and its record misses the restart.
+    client.succeed("grep -q X-StopIfChanged=false /etc/systemd/system/shaper-record.service")
     client.succeed(on_eth2.upload)
     # An IFB the new shaper won't take up, as a VPN gone from its list leaves.
     client.succeed("ip link add shaperfff type ifb")
