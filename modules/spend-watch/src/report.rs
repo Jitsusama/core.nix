@@ -249,6 +249,37 @@ pub fn agent_name(piece: &Piece) -> String {
     }
 }
 
+/// The fields of a piece its name under a cut is made of, as [`key`]
+/// reads them: pieces alike in these have the same name.
+type Fields<'a> = ([&'a str; 4], i64);
+
+/// The fields [`key`] reads of `piece` under `cut`, borrowed, with a
+/// number for what isn't text: whether it has a quest, or its hour for a
+/// day's name.
+fn fields(cut: Cut, piece: &Piece) -> Fields<'_> {
+    let quest = piece.quest.as_deref();
+    let has_quest = i64::from(quest.is_some());
+    match cut {
+        Cut::Quest => ([quest.unwrap_or(""), &piece.tool, "", ""], has_quest),
+        Cut::Model => ([&piece.model, &piece.kind, "", ""], 0),
+        Cut::Agent => ([&piece.kind, &piece.persona, "", ""], 0),
+        Cut::Repo => ([&piece.repo, &piece.tool, "", ""], 0),
+        Cut::Session => (
+            [
+                &piece.session,
+                quest.unwrap_or(""),
+                &piece.repo,
+                &piece.tool,
+            ],
+            has_quest,
+        ),
+        Cut::Tool => ([&piece.tool, "", "", ""], 0),
+        Cut::Day => ([""; 4], piece.hour),
+        Cut::Source => ([piece.source.name(), "", "", ""], 0),
+        Cut::Budget => ([&piece.budget, "", "", ""], 0),
+    }
+}
+
 fn key(picture: &Picture, cut: Cut, piece: &Piece) -> String {
     let title = |id: &str| picture.title(id);
     match cut {
@@ -308,15 +339,32 @@ pub fn cut(picture: &Picture, period: Period, cut: Cut, top: usize) -> Report {
     let (from, to) = period.days(&picture.zone, picture.now);
     let pieces = picture.between(from, to);
     let total = series::total(pieces);
-    // Each name's dollars, whether any are estimated, and its first hour.
-    let mut grouped: HashMap<String, (f64, bool, i64)> = HashMap::new();
+    // Each name's dollars, whether any are estimated, and its first hour,
+    // gathered first by the fields its name is made of, so a name is made
+    // once a group rather than once a piece: made for each of a month's
+    // pieces under every cut, names were most of what a pass spent on its
+    // reports on 16 November. Groups are kept in the order of their first
+    // piece, so a name's dollars are summed in the same order every pass.
+    let mut at: HashMap<Fields, usize> = HashMap::new();
+    let mut groups: Vec<(f64, bool, i64, &Piece)> = Vec::new();
     for piece in pieces {
-        let entry = grouped
-            .entry(key(picture, cut, piece))
-            .or_insert((0.0, false, piece.hour));
+        let group = *at.entry(fields(cut, piece)).or_insert_with(|| {
+            groups.push((0.0, false, piece.hour, piece));
+            groups.len() - 1
+        });
+        let entry = &mut groups[group];
         entry.0 += piece.dollars;
         entry.1 |= piece.source.estimated() && piece.dollars > 0.005;
         entry.2 = entry.2.min(piece.hour);
+    }
+    let mut grouped: HashMap<String, (f64, bool, i64)> = HashMap::new();
+    for (spent, estimated, first, piece) in groups {
+        let entry = grouped
+            .entry(key(picture, cut, piece))
+            .or_insert((0.0, false, first));
+        entry.0 += spent;
+        entry.1 |= estimated;
+        entry.2 = entry.2.min(first);
     }
     let mut rows: Vec<(i64, Row)> = grouped
         .into_iter()
@@ -1307,6 +1355,80 @@ fn sentences(report: &Report, pen: &Pen, room: Room) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const NOW: f64 = 1_791_988_200.0; // 2026-10-14T14:30:00Z
+
+    fn turn(history: &crate::history::History, session: &str, quest: Option<&str>, at: f64) {
+        use crate::logs::{Cost, Event, Kind, Tokens, Turn};
+        history
+            .add_event(&Event::Turn(Turn {
+                session: session.into(),
+                at,
+                model: "m".into(),
+                provider: "anthropic".into(),
+                kind: Kind::Agent,
+                tokens: Tokens::default(),
+                cost: Cost {
+                    total: 1.0,
+                    ..Cost::default()
+                },
+                quest: quest.map(str::to_owned),
+                budget: None,
+                gap: None,
+                rebuilt: 0.0,
+                rebuilt_cost: 0.0,
+                cause: None,
+            }))
+            .unwrap();
+    }
+
+    // Names are made once for each group of pieces alike, so pieces alike
+    // in different hours must still come out as one row, and pieces unlike
+    // as rows apart.
+    #[test]
+    fn pieces_alike_under_a_cut_are_one_row_whatever_their_hours() {
+        let history = crate::history::History::memory();
+        let config: crate::config::Config = serde_json::from_value(serde_json::json!({
+            "sessions": "/none", "runs": "/none", "registry": "/none", "quests": "/none",
+            "state": "/none", "zone": "UTC",
+        }))
+        .unwrap();
+        turn(&history, "one", Some("QEST-A"), NOW - 3.0 * 3600.0);
+        turn(&history, "two", Some("QEST-A"), NOW - 3600.0);
+        turn(&history, "three", None, NOW - 2.0 * 3600.0);
+        let picture = crate::picture::Picture::read(&history, &config, NOW).unwrap();
+        let rows = |by: Cut| -> Vec<(String, f64)> {
+            cut(&picture, Period::Today, by, 10)
+                .rows
+                .into_iter()
+                .map(|row| (row.name, (row.dollars * 100.0).round() / 100.0))
+                .collect()
+        };
+        assert_eq!(
+            rows(Cut::Quest),
+            [("QEST-A".to_owned(), 2.0), ("no quest".to_owned(), 1.0)],
+            "a quest's pieces weren't one row, or no quest's joined it"
+        );
+        assert_eq!(
+            rows(Cut::Session).len(),
+            3,
+            "sessions alike in their quest were taken as one"
+        );
+        assert_eq!(
+            rows(Cut::Tool),
+            [("pi".to_owned(), 3.0)],
+            "one tool's pieces were split"
+        );
+        // A day's hours are groups of their own that meet under its name.
+        assert_eq!(
+            rows(Cut::Day)
+                .iter()
+                .map(|(_, spent)| *spent)
+                .collect::<Vec<_>>(),
+            [3.0],
+            "a day's hours weren't one row"
+        );
+    }
 
     #[test]
     fn periods_and_cuts_are_found_by_their_words() {
