@@ -3029,6 +3029,16 @@ Singleton {
         if (session?.address)
             steer(session.address, { act: "wake" });
     }
+    // Go To on `session`, waking `resting` first, its parked record, when
+    // it's parked. One only viewing wakes is left to goTo's own viewer,
+    // which opens where Joel is and takes focus: wake's would open where it
+    // slept, unfocused, and hold goTo's off while it came. Agents' Go To
+    // and For You's Deal With It both go through here.
+    function wakeToGo(resting, session) {
+        if (resting && !wokenByViewing(resting))
+            wake(resting);
+        goTo(session);
+    }
     // Whether `session` sleeps in pi's host with no window, which only
     // viewing it wakes.
     function wokenByViewing(session) {

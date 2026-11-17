@@ -265,12 +265,7 @@ Singleton {
             unfound(item);
             return;
         }
-        // One hosted that only viewing wakes is woken by goTo's own
-        // viewer, focused, since waking it first opens one unfocused
-        // where it slept and leaves goTo's waiting behind it.
-        if (deal.wake && !Sessions.wokenByViewing(deal.session))
-            Sessions.wake(deal.session);
-        Sessions.goTo(deal.session);
+        Sessions.wakeToGo(deal.wake ? deal.session : null, deal.session);
     }
 
     // Those said as a notice, by identity, kept so a restart says none

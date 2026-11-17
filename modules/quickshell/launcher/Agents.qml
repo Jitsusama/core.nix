@@ -1109,10 +1109,8 @@ Provider {
             return null;
         const session = heldAt(address);
         heard(session.address);
-        const resting = Sessions.parkedAs(session.address);
-        if (resting)
-            Sessions.wake(resting);
-        Sessions.goTo(sessionAt(session.address) ?? session);
+        Sessions.wakeToGo(Sessions.parkedAs(session.address),
+            sessionAt(session.address) ?? session);
         return session;
     }
 

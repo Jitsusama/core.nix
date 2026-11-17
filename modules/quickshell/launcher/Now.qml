@@ -1036,10 +1036,7 @@ Provider {
         const cell = lookCell(one);
         if (cell === null)
             return;
-        const resting = Sessions.parkedAs(cell.address);
-        if (resting)
-            Sessions.wake(resting);
-        Sessions.goTo(cell);
+        Sessions.wakeToGo(Sessions.parkedAs(cell.address), cell);
     }
 
     // What a look's row does with the cell behind it (Joel, 2026-11-16:
@@ -1701,11 +1698,7 @@ Provider {
             })),
             thing(Object.assign(named("go"), {
                 key: `verb:on:waiting:go:${key}`,
-                run: () => {
-                    if (resting)
-                        Sessions.wake(resting);
-                    Sessions.goTo(session());
-                }
+                run: () => Sessions.wakeToGo(resting, session())
             })),
             putOffWant(address, key, known)
         ];

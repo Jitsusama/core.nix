@@ -433,6 +433,28 @@ ShellRoot {
             JSON.stringify(steers.slice(steered)));
         expect("and letting its place go", Sessions.keptPlaces["s-sleeper"] === undefined,
             JSON.stringify(Sessions.keptPlaces));
+
+        // Go To on one (Agents' and For You's Deal With It alike) leaves
+        // the waking to goTo's viewer, which opens where Joel is, focused,
+        // rather than where it slept, holding goTo's off while it came.
+        const dreamer = Object.assign({}, sleeper, {
+            address: "DREAMER",
+            attach: sleeper.attach.slice(0, -1).concat(["s-dreamer"]),
+            presence: Object.assign({}, sleeper.presence, {
+                hosted: { host: "harbour-attended", conversation: "s-dreamer" },
+                session: "s-dreamer", addresses: ["DREAMER"] })
+        });
+        Sessions.keepPlaces({ "s-dreamer": { workspace: 5, column: 2, at: 0, slept: true,
+            asleep: true } });
+        const goneAt = Niri.spawns.length;
+        Niri.acted = null;
+        Sessions.wakeToGo(dreamer, dreamer);
+        const opened = Niri.spawns.slice(goneAt);
+        expect("Go To on one asleep in pi's host opens one viewer where Joel is",
+            opened.length === 1 && asked(opened[0])?.classed === "pi-hosted.s-dreamer"
+            && !JSON.stringify(Niri.acted).includes('"reference":{"Id":5}'),
+            `${opened.join(" | ")} ${JSON.stringify(Niri.acted)}`);
+        Sessions.keepPlaces({});
     }
 
     // Whether the node was asked to wake the one parked, and then to steer
@@ -549,7 +571,7 @@ ShellRoot {
         const socket = `${Quickshell.env("XDG_RUNTIME_DIR")}/pi-sessions/kitty.sock`;
         expect("each window is asked of the sessions' socket with an app id of its own",
             asks.every(one => one.socket === socket
-                && /^pi-((session|spawned)\.\d+|hosted\.s-(hosted|sleeper))$/.test(one.classed))
+                && /^pi-((session|spawned)\.\d+|hosted\.s-(hosted|sleeper|dreamer))$/.test(one.classed))
             && new Set(named.map(([told]) => told)).size === named.length,
             JSON.stringify(asks.map(one => [one.socket, one.classed])));
         // What the script does with them is its own case's
