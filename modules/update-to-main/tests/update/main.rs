@@ -3527,8 +3527,8 @@ fn the_grant_switches_what_waited_for_it_though_main_moved_on() {
 
 #[test]
 fn a_system_that_waited_for_a_hold_tells_its_boot_check_its_flake() {
-    // The grant's switch builds nothing, so the flake is kept with what
-    // waited.
+    // The grant's switch builds nothing, so the flake is worked out again
+    // from the commit that waited.
     let mut world = World::new();
     hold_the_daemon(&mut world, "old");
     let head = world.signed("one");

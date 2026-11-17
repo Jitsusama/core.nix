@@ -509,9 +509,13 @@ in
         did, and a failure is said in the update's ending. None to make it
         the boot default at once. It is told what the system was built
         from in its environment: UPDATE_TO_MAIN_COMMIT, main's commit;
-        UPDATE_TO_MAIN_FLAKE, the flake reference, locked at it, without
-        its output; and UPDATE_TO_MAIN_OVERRIDES, the override-input words
-        for the followed inputs, a line each, to pass to any build of it.
+        UPDATE_TO_MAIN_FLAKE, the flake reference without its output,
+        root's copy locked at the commit, or on a hosted machine a path:
+        folder holding it that the next update replaces, and empty when
+        that folder can't be had again; and UPDATE_TO_MAIN_OVERRIDES, the
+        override-input words for the followed inputs, a line each, to pass
+        to any build of it. Its PATH is update-to-main's own, and a nix it
+        runs passes its own experimental features.
       '';
     };
     batteryFloor = mkOption {
