@@ -1198,12 +1198,21 @@
   hibernate-unlock-passes-clippy = ''
     clippy finds nothing in hibernate-unlock or its tests
   '';
+  home-answers-its-keys = ''
+    the local sites' home, built from three recorded sites and served with the kit, answers its keys
+    in headless Chromium: j, k and the arrows step its cursor and hold at the ends, g twice and G
+    reach the first and the last, Return opens the site under the cursor, ? and F1 show its keys and
+    Escape hides them, an arrow on the theme switch chooses a look and leaves the cursor, the look
+    outlasts a reload, and the web-design skill's page checks pass at a phone's width and a desk's
+    in both looks, with nothing logged
+  '';
   home-builds-from-its-rows = ''
     the local sites' home lists each site from its row in sites.json, the settled apart and every
     name escaped, with a row Nix declares for a live site standing in for the record's at its path
     or going first, strips each page that asks after its skip link, names each document loading a
     script file of its own rather than the kit's, loads the kit's keys and switch and takes away
-    the scripts it used to copy, and changes nothing on a second run
+    the scripts it used to copy, draws its mark in each look's accent, and changes nothing on a
+    second run
   '';
   idle-pi-windows-yield = ''
     the sorter is given the folder where the harness marks pi sessions nobody is at, and weighs pi

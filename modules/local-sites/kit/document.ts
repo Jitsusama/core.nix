@@ -67,13 +67,16 @@ function wire(): void {
   const { step } = parts([...document.querySelectorAll<HTMLElement>(".part")]);
   const top = onTwice(() => scrollTo(0, 0));
   const actions = { j: () => step(1), k: () => step(-1), g: top, G: bottom };
+  // A document's head is its header, whatever the page calls it (head, hero,
+  // threshold), and the keys it shows there can be tapped.
+  const shown = "header .keys kbd";
   // A document without its list of keys still steps; only ? has nothing to open.
   if (help instanceof HTMLDialogElement) {
     listen({ help, actions, answersAt });
-    pressable(".head .keys kbd", { j: actions.j, k: actions.k, "?": () => toggle(help) });
+    pressable(shown, { j: actions.j, k: actions.k, "?": () => toggle(help) });
   } else {
     listen({ actions, answersAt });
-    pressable(".head .keys kbd", { j: actions.j, k: actions.k });
+    pressable(shown, { j: actions.j, k: actions.k });
   }
   themeSwitch();
 }

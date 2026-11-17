@@ -5,11 +5,12 @@ of every page whose row asks for one, and puts the home's own styles in
 place beside them; its keys and theme switch are the kit's
 /local-sites/kit/home.js. A row may name pages of its site that say their
 own kind in the strip, as "pages": {"tree.html": "test"}. The home's
-theme-color takes each look's ground from the kit's theme.css, so it turns
-with the theme. A document, any row but an app, takes its keys and theme
-switch from the kit's /local-sites/kit/document.js, so what it says names
-every document loading a script file of its own, which is a copy that
-won't learn what the kit does next.
+theme-color takes each look's ground from the kit's theme.css, and its
+favicon each look's accent, so both turn with the theme. A document, any
+row but an app, takes its keys and theme switch from the kit's
+/local-sites/kit/document.js, so what it says names every document loading
+a script file of its own, which is a copy that won't learn what the kit
+does next.
 
 A live site's row comes from its declaration in Nix rather than the record,
 so what the home says of it changes as the site does. The rows the Nix
@@ -46,6 +47,7 @@ FILES = ("home.css", "strip.css")
 GONE = ("home.js", "theme.js")
 OPEN, CLOSE = "<!-- sites strip: home.py writes this -->", "<!-- /sites strip -->"
 GROUND = re.compile(r"--background:\s*([^;]+);")
+ACCENT = re.compile(r"--accent:\s*([^;]+);")
 # A script file a page loads, by its address however it's quoted.
 SCRIPT_SRC = re.compile(r"<script\b[^>]*?\bsrc\s*=\s*([\"']?)([^\"'\s>]+)\1", re.IGNORECASE)
 # Where the kit's own scripts are served from, the only ones a document loads.
@@ -178,22 +180,48 @@ def home(page: str, sites: list[Site]) -> str:
     return page.replace("@contents@", contents).replace("@standing@", standing(sites))
 
 
-def grounds(page: str, root: Path) -> str:
-    """Fill the page's theme-color with each look's ground from the kit's theme.css.
+def looks(root: Path) -> dict[str, str]:
+    """Each look's ground and accent in the kit's theme.css, by the placeholder each fills.
 
     The kit writes the dark look first and the light one under its media query,
-    so the first ground on each side of that query is the look's own. With no
-    kit, the page names no ground rather than one that would drift from it.
+    so the first of each on either side of that query is the look's own. What
+    the kit doesn't name, or a root with no kit, is left out.
     """
     theme = root / "kit" / "theme.css"
     css = theme.read_text(encoding="utf-8") if theme.exists() else ""
     dark_side, _, light_side = css.partition(LIGHT)
-    dark, light = GROUND.search(dark_side), GROUND.search(light_side)
-    if not (dark and light):
+    found = {}
+    for look, side in (("dark", dark_side), ("light", light_side)):
+        for role, pattern in (("ground", GROUND), ("accent", ACCENT)):
+            if named := pattern.search(side):
+                found[f"@{look}-{role}@"] = named[1].strip()
+    return found
+
+
+def grounds(page: str, root: Path) -> str:
+    """Fill the page's theme-color with each look's ground from the kit's theme.css.
+
+    Without both, the page names no ground rather than one that would drift
+    from the kit's.
+    """
+    kit = looks(root)
+    if not {"@dark-ground@", "@light-ground@"} <= kit.keys():
         return "".join(line for line in page.splitlines(keepends=True) if "-ground@" not in line)
-    return page.replace("@dark-ground@", dark[1].strip()).replace(
-        "@light-ground@", light[1].strip()
+    return page.replace("@dark-ground@", kit["@dark-ground@"]).replace(
+        "@light-ground@", kit["@light-ground@"]
     )
+
+
+def marked(mark: str, root: Path) -> str:
+    """Draw the home's mark, its favicon, in each look's accent from the kit's theme.css.
+
+    A favicon can't read the page's properties, so the colours are written in.
+    A look the kit names no accent for draws in the browser's own ink.
+    """
+    kit = looks(root)
+    for look in ("dark", "light"):
+        mark = mark.replace(f"@{look}-accent@", kit.get(f"@{look}-accent@", "currentColor"))
+    return mark
 
 
 def llms(root: Path, sites: list[Site]) -> str:
@@ -359,6 +387,7 @@ def build(sources: Path, root: Path, declared: Path | None = None) -> str:
         sites = declaring(sites, live)
     for name in FILES:
         write(root / name, (sources / name).read_text(encoding="utf-8"))
+    write(root / "favicon.svg", marked((sources / "favicon.svg").read_text(encoding="utf-8"), root))
     shell = (sources / "index.html").read_text(encoding="utf-8")
     write(root / "index.html", grounds(home(shell, sites), root))
     # Only once the page that no longer loads them is in place.

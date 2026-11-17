@@ -161,8 +161,9 @@ in
 
   # The home's builder lists each site from its row, settled ones apart,
   # puts each row Nix declares in its recorded row's place, strips each page
-  # that asks, names documents with scripts of their own, and changes nothing
-  # on a second run (tests/home-builds-from-its-rows.sh).
+  # that asks, names documents with scripts of their own, draws its mark in
+  # each look's accent, and changes nothing on a second run
+  # (tests/home-builds-from-its-rows.sh).
   home-builds-from-its-rows = pkgs.runCommandLocal "home-builds-from-its-rows" { } ''
     ${lib.getExe pkgs.bash} ${./tests/home-builds-from-its-rows.sh} ${
       lib.escapeShellArgs [
@@ -234,6 +235,40 @@ in
       ''
         HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider -p live_page \
           --import-mode=importlib --basetemp="$TMPDIR/pytest" ${../system/site/tests}/reads-live-test.py
+        touch $out
+      '';
+  # The home, built by its own builder from three recorded sites and served
+  # with the kit, read in headless Chromium (tests/home-answers-its-keys-test.py):
+  # j, k and the arrows step its cursor and hold at the ends, g twice and G
+  # reach the first and the last, Return opens the site under the cursor, ?
+  # and F1 show its keys and Escape hides them, an arrow on the theme switch
+  # chooses a look and leaves the cursor, the look outlasts a reload, and the
+  # web-design skill's page checks pass at two widths in both looks with
+  # nothing logged. Chromium builds only on Linux.
+  home-answers-its-keys =
+    let
+      python = pkgs.python3.withPackages (python: [
+        python.playwright
+        python.pytest
+      ]);
+    in
+    pkgs.runCommandLocal "home-answers-its-keys"
+      {
+        env = {
+          LOCAL_SITES = lib.getExe' (pkgs.callPackage ./package.nix { }) "local-sites";
+          LOCAL_SITES_KIT = "${sites.kit}";
+          STRIP = "${./home/strip.css}";
+          WEB_SKILL = "${../theme/web/skill}";
+          WEB_KIT = "${(account workstation).xdg.dataFile."jitsusama/web".source}";
+          HOME_SOURCES = "${./home}";
+          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+          PYTHONPATH = "${./tests}";
+          PYTHONDONTWRITEBYTECODE = "1";
+        };
+      }
+      ''
+        HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider -p live_page \
+          --import-mode=importlib --basetemp="$TMPDIR/pytest" ${./tests}/home-answers-its-keys-test.py
         touch $out
       '';
   # The map, built on the theme's own web kit as a machine builds it, read in
