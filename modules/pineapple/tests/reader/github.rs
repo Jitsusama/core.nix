@@ -429,6 +429,42 @@ fn github_a_site_is_searched_from_ten_minutes_before_its_last_round() {
 }
 
 #[test]
+fn github_a_site_that_fails_is_named_in_the_journal_as_itself() {
+    let (origin, _) = answering_whole(|_, _| Answered {
+        status: 500,
+        headers: Vec::new(),
+        body: json!({"message": "Server Error"}),
+    });
+    let home = home();
+    let site = [
+        "--site",
+        "code",
+        "--authored-by",
+        "joel@example.com",
+        "--login",
+        LOGIN,
+        "--repo",
+        "example/shop",
+    ];
+    let failed = "<4>couldn't ask Code what changed: Code answered 500 for /search/issues";
+    let mut reading = github_reader(&home, &origin, &site);
+    let began = Instant::now();
+    while !journal(&home).contains(failed) && began.elapsed() < PATIENCE {
+        thread::sleep(Duration::from_millis(50));
+    }
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    let said = journal(&home);
+    assert!(
+        said.contains(failed),
+        "the site that failed is named: {said}"
+    );
+    assert!(!said.contains("GitHub"), "no other site is blamed: {said}");
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
 fn github_more_repositories_than_a_sites_searches_allow_are_refused() {
     let (origin, _) = answering(by_address);
     let home = home();

@@ -374,17 +374,19 @@ fn run(how: &Run) -> Result<(), Failure> {
         .http_status_as_error(false)
         .build()
         .into();
+    let name = shown(&how.site);
     loop {
         match token() {
             Some(token) => {
                 let github = GitHub {
                     origin: &how.origin,
+                    name: &name,
                     token: &token,
                     agent: &agent,
                 };
                 round(&github, how, &state, &mut judged);
             }
-            None => eprintln!("<4>no GitHub sign-in yet, so nothing is read"),
+            None => eprintln!("<4>no {name} sign-in yet, so nothing is read"),
         }
         std::thread::sleep(how.every);
     }
@@ -416,9 +418,11 @@ enum Unread {
     Failed(String),
 }
 
-/// GitHub, asked as Joel.
+/// GitHub, or a site speaking its API, asked as Joel.
 struct GitHub<'a> {
     origin: &'a str,
+    /// The site's name as Joel reads it, so the journal names what failed.
+    name: &'a str,
     token: &'a str,
     agent: &'a Agent,
 }
@@ -440,7 +444,7 @@ impl GitHub<'_> {
         let mut pages = 1;
         while let Some(url) = next {
             if !url.starts_with(&own) {
-                let why = format!("GitHub named a next page elsewhere: {url}");
+                let why = format!("{} named a next page elsewhere: {url}", self.name);
                 return Err(Unread::Failed(why));
             }
             if pages == PAGES {
@@ -469,7 +473,7 @@ impl GitHub<'_> {
             .header("X-GitHub-Api-Version", "2022-11-28")
             .header("User-Agent", "pineapple-github")
             .call()
-            .map_err(|error| Unread::Failed(format!("couldn't reach GitHub: {error}")))?;
+            .map_err(|error| Unread::Failed(format!("couldn't reach {}: {error}", self.name)))?;
         let status = answer.status().as_u16();
         let header = |name: &str| {
             let value = answer.headers().get(name)?;
@@ -481,13 +485,14 @@ impl GitHub<'_> {
             .map(str::to_owned);
         let remaining = header("x-ratelimit-remaining");
         let retry_after = header("retry-after").is_some();
+        let name = self.name;
         let said: Value = answer
             .body_mut()
             .read_json()
-            .map_err(|error| Unread::Failed(format!("GitHub answered {status}: {error}")))?;
+            .map_err(|error| Unread::Failed(format!("{name} answered {status}: {error}")))?;
         let message = said["message"].as_str().unwrap_or("no reason");
         let limited = github::rate_limited(status, remaining.as_deref(), retry_after, message);
-        let why = || format!("GitHub answered {status} for {path}: {message}");
+        let why = || format!("{name} answered {status} for {path}: {message}");
         match status {
             200 => Ok((said, next)),
             _ if limited => Err(Unread::Failed(format!("{}, its rate limit", why()))),
@@ -506,12 +511,12 @@ fn who(github: &GitHub<'_>, how: &Run) -> Option<String> {
         Ok(user) => {
             let login = user["login"].as_str().map(str::to_owned);
             if login.is_none() {
-                eprintln!("<4>GitHub didn't say who Joel is");
+                eprintln!("<4>{} didn't say who Joel is", github.name);
             }
             login
         }
         Err(Unread::Gone(why) | Unread::Failed(why)) => {
-            eprintln!("<4>couldn't ask GitHub who Joel is: {why}");
+            eprintln!("<4>couldn't ask {} who Joel is: {why}", github.name);
             None
         }
     }
@@ -565,7 +570,7 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged) {
     let threads = match changed(github, how, &since) {
         Ok(threads) => threads,
         Err(Unread::Gone(why) | Unread::Failed(why)) => {
-            eprintln!("<4>couldn't ask GitHub what changed: {why}");
+            eprintln!("<4>couldn't ask {} what changed: {why}", github.name);
             return;
         }
     };
