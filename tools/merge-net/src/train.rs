@@ -13,13 +13,17 @@
 //! merges every rider still its pull request's head into it in the order
 //! they boarded, as GitHub's merge button words a merge, and runs the gate
 //! once there, `nix-offload there --lent-only --changed`, which builds what
-//! any of them moved. When it passes, the candidate goes to main as a fast
-//! forward, never forced, and GitHub marks each pull request merged. When
-//! main moved meanwhile, the candidate is cut again on it, and goes when
-//! its pass still speaks for it as one for a rebased change would
-//! (`earlier.rs`); otherwise it runs again with whoever has boarded since,
-//! holding the right of way meanwhile, so changes that would merge alone
-//! board it rather than move main again (`right_of_way.rs`).
+//! any of them moved. When it passes, GitHub merges each rider's pull
+//! request in the same order through its API, at the head that passed,
+//! and signs each merge with the key machines trust main by, which no
+//! agent holds; the train pushes nothing to main. Main's tree after those
+//! merges must be the candidate's, or the train reverts them on GitHub,
+//! the newest first. When main moved before the merges, the candidate is
+//! cut again on it, and goes when its pass still speaks for it as one for
+//! a rebased change would (`earlier.rs`); otherwise it runs again with
+//! whoever has boarded since, holding the right of way meanwhile, so
+//! changes that would merge alone board it rather than move main again
+//! (`right_of_way.rs`).
 //!
 //! A candidate that fails splits: the train takes the first half of its
 //! riders to board, and halves again while they fail, so the riders that
@@ -178,6 +182,7 @@ pub fn subject(number: u64, owner: &str, branch: &str) -> String {
 
 /// A rider as the candidate merges it: its pull request's number, its
 /// head, the merge's subject and its pull request's title.
+#[derive(Clone)]
 pub struct Merging {
     pub number: u64,
     pub head: String,
@@ -463,7 +468,7 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             }
         }
         let hub = GitHub { slug: slug.clone() };
-        match land(
+        let landing = land(
             &checkout,
             &git,
             &hub,
@@ -471,59 +476,65 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             &candidate,
             &mergings,
             &done.merged,
-        ) {
-            Landing::Landed(landed) => {
-                splitting.landed(done.merged.len());
-                for head in &done.merged {
-                    alight(&root, head);
-                }
-                keep_landed(&root, &landed, &done.merged, crate::state::now() - began);
-                println!("merge-net: the train landed {} on main", short(&landed));
-                let left = !riders(&root).is_empty();
-                way(&root, &Ended::Landed { left });
+        );
+        after_landing(&root, landing, &done.merged, began, &mut splitting);
+    }
+}
+
+/// After `landing` the `merged` riders of a run begun at `began`: those
+/// that landed alight and are kept, the rest fall saying why, and the
+/// right of way and `splitting` go on from there.
+fn after_landing(
+    root: &Path,
+    landing: Landing,
+    merged: &[String],
+    began: u64,
+    splitting: &mut Splitting,
+) {
+    let falls = |why: &str| {
+        for head in merged {
+            let _ = fall(root, head, why);
+        }
+    };
+    match landing {
+        Landing::Landed(landed) => {
+            splitting.landed(merged.len());
+            for head in merged {
+                alight(root, head);
             }
-            Landing::Partly { landed, heads, why } => {
-                way(&root, &Ended::Otherwise);
-                splitting = Splitting::default();
-                for head in &heads {
-                    alight(&root, head);
-                }
-                keep_landed(&root, &landed, &heads, crate::state::now() - began);
-                println!(
-                    "merge-net: the train landed {} of {} riders on main at {}",
-                    heads.len(),
-                    done.merged.len(),
-                    short(&landed)
-                );
-                for head in done.merged.iter().filter(|head| !heads.contains(head)) {
-                    let _ = fall(&root, head, &format!("GitHub didn't merge it: {why}"));
-                }
+            keep_landed(root, &landed, merged, crate::state::now() - began);
+            println!("merge-net: the train landed {} on main", short(&landed));
+            let left = !riders(root).is_empty();
+            way(root, &Ended::Landed { left });
+            return;
+        }
+        Landing::Moved => {
+            way(root, &Ended::Moved);
+            return;
+        }
+        Landing::Partly { landed, heads, why } => {
+            for head in &heads {
+                alight(root, head);
             }
-            Landing::Reverted(why) => {
-                way(&root, &Ended::Otherwise);
-                splitting = Splitting::default();
-                for head in &done.merged {
-                    let _ = fall(
-                        &root,
-                        head,
-                        &format!("the train's merges were reverted: {why}"),
-                    );
-                }
-            }
-            Landing::Moved => way(&root, &Ended::Moved),
-            Landing::Refused(why) => {
-                way(&root, &Ended::Otherwise);
-                splitting = Splitting::default();
-                for head in &done.merged {
-                    let _ = fall(
-                        &root,
-                        head,
-                        &format!("the train couldn't reach main: {why}"),
-                    );
-                }
+            keep_landed(root, &landed, &heads, crate::state::now() - began);
+            println!(
+                "merge-net: the train landed {} of {} riders on main at {}",
+                heads.len(),
+                merged.len(),
+                short(&landed)
+            );
+            for head in merged.iter().filter(|head| !heads.contains(head)) {
+                let _ = fall(root, head, &format!("GitHub didn't merge it: {why}"));
             }
         }
+        Landing::Reverted(why) => falls(&format!(
+            "the train's merges were reverted: {why}; its pull request reads merged, so it \
+             goes to main again only proposed again"
+        )),
+        Landing::Refused(why) => falls(&format!("the train couldn't reach main: {why}")),
     }
+    way(root, &Ended::Otherwise);
+    *splitting = Splitting::default();
 }
 
 /// After no builder took the candidate `candidate` of `merged` riders,
@@ -809,54 +820,37 @@ enum Landing {
     Refused(String),
 }
 
-/// Push the passed `candidate` to main as a fast forward, never forced,
-/// cutting it again on a main that moved while its pass still speaks for
-/// it, as many as `RECUTS` times.
+/// Land the passed `candidate`, cut on `base`, through `hub`'s merges of
+/// its riders once main is still its base, cutting it again on a main
+/// that moved while its pass still speaks for it, as many as `RECUTS`
+/// times.
 fn land(
     checkout: &Path,
     git: &dyn Fn(&[&str]) -> Result<String, String>,
-    _hub: &dyn Hub,
-    _base: &str,
+    hub: &dyn Hub,
+    base: &str,
     candidate: &str,
     mergings: &[Merging],
     merged: &[String],
 ) -> Landing {
-    let mut going = candidate.to_owned();
+    let riding: Vec<Merging> = mergings
+        .iter()
+        .filter(|merging| merged.contains(&merging.head))
+        .cloned()
+        .collect();
+    let (mut going, mut base) = (candidate.to_owned(), base.to_owned());
     for _ in 0..RECUTS {
-        let before = git(&["rev-parse", "refs/remotes/origin/main"]).unwrap_or_default();
-        let pushed = git(&[
-            "push",
-            "--quiet",
-            "origin",
-            &format!("{going}:refs/heads/main"),
-        ]);
-        let Err(why) = pushed else {
-            return Landing::Landed(going);
+        let Some(main) = main_of(git) else {
+            return Landing::Refused("origin's main couldn't be read".to_owned());
         };
-        if git(&["fetch", "--quiet", "origin", "main"]).is_err() {
-            return Landing::Refused(why);
+        if main == base {
+            return through(git, hub, &going, &riding);
         }
-        let Ok(main) = git(&["rev-parse", "refs/remotes/origin/main"]) else {
-            return Landing::Refused(why);
-        };
-        if main == before {
-            return Landing::Refused(why);
-        }
-        let riding: Vec<Merging> = mergings
-            .iter()
-            .filter(|merging| merged.contains(&merging.head))
-            .map(|merging| Merging {
-                number: merging.number,
-                head: merging.head.clone(),
-                subject: merging.subject.clone(),
-                title: merging.title.clone(),
-            })
-            .collect();
         let whole = cut(git, &main, &riding).is_ok_and(|again| again.merged.len() == merged.len());
         let Ok(head) = git(&["rev-parse", "HEAD"]) else {
             return Landing::Moved;
         };
-        going = head;
+        (going, base) = (head, main.clone());
         if !whole || !still_passes(checkout, &going, &main) {
             println!(
                 "merge-net: main moved beside the train at {}, so it runs again",
@@ -866,6 +860,99 @@ fn land(
         }
     }
     Landing::Moved
+}
+
+/// Origin's main as it stands, fetched afresh, trying three times, as a
+/// fetch beside another can't lock its ref.
+fn main_of(git: &dyn Fn(&[&str]) -> Result<String, String>) -> Option<String> {
+    (0..3).find_map(|_| {
+        git(&["fetch", "--quiet", "origin", "main"]).ok()?;
+        git(&["rev-parse", "refs/remotes/origin/main"]).ok()
+    })
+}
+
+/// Origin's main once it holds `head`, as GitHub may answer a merge a
+/// moment before a fetch sees it, which would read as main holding a tree
+/// no gate ran and revert merges that were right; main as it stands after
+/// `SHOWS_WITHIN`.
+fn main_holding(git: &dyn Fn(&[&str]) -> Result<String, String>, head: &str) -> Option<String> {
+    let began = std::time::Instant::now();
+    loop {
+        let main = main_of(git)?;
+        let holds = git(&["merge-base", "--is-ancestor", head, &main]).is_ok();
+        if holds || began.elapsed() > SHOWS_WITHIN {
+            return Some(main);
+        }
+        std::thread::sleep(Duration::from_secs(2));
+    }
+}
+
+/// How long a merge GitHub answered may take to show in a fetch of main.
+const SHOWS_WITHIN: Duration = Duration::from_secs(30);
+
+/// Merge each of `riding` through `hub`, in the order `candidate` merged
+/// them on main as it stands, until one is refused, then hold main's tree
+/// to the candidate's after as many merges. GitHub merges each on main as
+/// it is when asked, so one that landed meanwhile, or a merge GitHub
+/// works out otherwise than git, gives main a tree no gate ran; then each
+/// merge made is reverted, the newest first.
+fn through(
+    git: &dyn Fn(&[&str]) -> Result<String, String>,
+    hub: &dyn Hub,
+    candidate: &str,
+    riding: &[Merging],
+) -> Landing {
+    let mut made: Vec<&Merging> = Vec::new();
+    let mut refused = None;
+    for merging in riding {
+        match hub.merge(merging) {
+            Ok(()) => made.push(merging),
+            Err(why) => {
+                refused = Some(why);
+                break;
+            }
+        }
+    }
+    if made.is_empty() {
+        return Landing::Refused(refused.unwrap_or_default());
+    }
+    let tested = format!("{candidate}~{}^{{tree}}", riding.len() - made.len());
+    let main = main_holding(git, made.last().map_or("", |merging| &merging.head));
+    let tree_of = |commit: &str| git(&["rev-parse", commit]).ok();
+    let same = main.as_ref().is_some_and(|main| {
+        let (now, then) = (tree_of(&format!("{main}^{{tree}}")), tree_of(&tested));
+        now.is_some() && now == then
+    });
+    match (main, refused) {
+        (Some(main), None) if same => Landing::Landed(main),
+        (Some(landed), Some(why)) if same => Landing::Partly {
+            landed,
+            heads: made.iter().map(|merging| merging.head.clone()).collect(),
+            why,
+        },
+        (main, _) => {
+            let mut why = main.map_or_else(
+                || "origin's main couldn't be read after GitHub's merges".to_owned(),
+                |main| {
+                    format!(
+                        "main's tree at {} after GitHub's merges isn't the one the train tested \
+                         at {}",
+                        short(&main),
+                        short(candidate)
+                    )
+                },
+            );
+            for merging in made.iter().rev() {
+                if let Err(error) = hub.revert(merging.number) {
+                    why = format!("{why}, and reverting #{} failed: {error}", merging.number);
+                    eprintln!("merge-net: {why}");
+                    break;
+                }
+            }
+            println!("merge-net: {why}, so the train reverted its merges");
+            Landing::Reverted(why)
+        }
+    }
 }
 
 /// Whether the pass of an earlier candidate of the same changes speaks for

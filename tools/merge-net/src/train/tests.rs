@@ -474,6 +474,10 @@ impl Hub for Fake {
                 &merging.subject,
                 "-m",
                 &merging.title,
+                // GitHub's merge is a commit of its own, not the
+                // candidate's, though its tree is the same.
+                "-m",
+                "Merged by GitHub",
                 &merging.head,
             ],
         )?;
