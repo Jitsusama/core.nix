@@ -35,7 +35,7 @@ fn turn() -> MutexGuard<'static, ()> {
 
 /// A folder of the case's own.
 fn folder(case: &str) -> PathBuf {
-    let at = std::env::temp_dir().join(format!("pineapple-sign-in-{case}-{}", std::process::id()));
+    let at = std::env::temp_dir().join(format!("sign-in-program-{case}-{}", std::process::id()));
     std::fs::create_dir_all(&at).expect("the case's folder is made");
     at
 }

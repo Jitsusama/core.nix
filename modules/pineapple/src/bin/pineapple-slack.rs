@@ -65,8 +65,9 @@ use terminal_kit::{Exit, Failure, Format, Help, flags};
 const EVERY: Duration = Duration::from_secs(30);
 
 /// How many rounds the keyring's sign-in may take, and the rest after one
-/// that ran over may last, at most: at the service's pace, 30 seconds and
-/// ten minutes, so a test's quicker pace waits less.
+/// that ran over may last, at most: at the service's pace, ten minutes,
+/// past both, so it's the 30 seconds and four minutes they are, and a
+/// test's quicker pace waits less.
 const SIGN_IN_ROUNDS: u32 = 20;
 
 /// How far back a first start looks, in seconds.
@@ -361,7 +362,7 @@ fn run(how: &Run) -> Result<(), Failure> {
             Signed::In(_) => eprintln!("<4>the Slack sign-in doesn't say who Joel is"),
             Signed::Out => eprintln!("<4>no Slack sign-in yet, so nothing is read"),
             // A locked keyring prompts each time it's asked, so it rests.
-            Signed::RanOver => eprintln!("<4>{}", ran_over("Slack", "slack", rest)),
+            Signed::RanOver => eprintln!("<4>{}", ran_over("Slack", "slack", patience, rest)),
             // Said as it began.
             Signed::Resting => {}
         }

@@ -1,7 +1,7 @@
 # sign-in-program: runs the program a reader is given for Joel's sign-in
 # to a site, and never waits on it for good, nor holds more than a
-# sign-in prints: a library pineapple's readers and Slack's module name
-# by path, so a safe word's reader can't stall on a keyring or a sign-in
+# sign-in prints: a library Slack's module, beside it, and pineapple's
+# readers name by path, so a safe word's reader can't stall on a keyring or a sign-in
 # tool that hangs (src/lib.rs says how).
 [package]
 name = "sign-in-program"

@@ -494,8 +494,8 @@ fn a_keyring_that_never_answers_holds_the_stops_back_only_its_patience_and_rest(
         "userId": JOEL,
     }});
     let script = format!(
-        "#!/bin/sh\nif [ -e {asked} ]; then printf '%s\\n' '{sign_in}'; \
-         else : > {asked}; exec sleep 600; fi\n",
+        "#!/bin/sh\nif [ -e '{asked}' ]; then printf '%s\\n' '{sign_in}'; \
+         else : > '{asked}'; exec sleep 600; fi\n",
         asked = asked.display()
     );
     std::fs::write(&keyring, script).expect("the keyring written");

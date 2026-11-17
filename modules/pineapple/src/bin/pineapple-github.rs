@@ -396,7 +396,10 @@ fn run(how: &Run) -> Result<(), Failure> {
             SignIn::RanOver => {
                 // A locked keyring prompts each time it's asked (RAN_OVER_REST).
                 let rest = RAN_OVER_REST + how.every;
-                eprintln!("<4>{}", sign_in::ran_over(&name, &how.site, rest));
+                eprintln!(
+                    "<4>{}",
+                    sign_in::ran_over(&name, &how.site, sign_in::PATIENCE, rest)
+                );
                 std::thread::sleep(RAN_OVER_REST);
             }
         }

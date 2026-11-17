@@ -1,6 +1,6 @@
 //! Joel's sign-in to a site, as the program a reader is given prints it,
-//! for every reader of one: pineapple's for GitHub and Delta, and Slack's
-//! own (../slack), which pineapple's Slack reader reads through.
+//! for every reader of one: Slack's own (..), which pineapple's Slack
+//! reader reads through, and pineapple's for GitHub and Delta.
 //!
 //! A reader runs the program each round, so a sign-in renewed while it
 //! runs is read without a restart. It waits on the program only so long:

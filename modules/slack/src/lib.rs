@@ -58,15 +58,15 @@ struct File {
 
 /// How long a program rests from the keyring once its sign-in ran over:
 /// long enough that a keyring's unlock prompt isn't raised again each
-/// round, short against a stop going unheard.
-pub const REST: Duration = Duration::from_mins(10);
+/// round, and with the 30 seconds it ran and pineapple's Slack reader's
+/// round, inside the five minutes a stop said in Slack is to land in.
+pub const REST: Duration = Duration::from_mins(4);
 
 /// When this program's keyring sign-in last ran over, shared by every
 /// read of it, so no caller asks again during the rest.
 static RAN_OVER_AT: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
 
 /// What the harness's sign-in came to.
-#[derive(Debug)]
 pub enum Signed {
     /// Joel's sign-in.
     In(Account),
@@ -79,12 +79,36 @@ pub enum Signed {
     Resting,
 }
 
+/// Which it came to, never the sign-in itself, so no part of one reaches
+/// a journal or a failing case's words.
+impl std::fmt::Debug for Signed {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str(match self {
+            Signed::In(_) => "In(..)",
+            Signed::Out => "Out",
+            Signed::RanOver => "RanOver",
+            Signed::Resting => "Resting",
+        })
+    }
+}
+
 impl Account {
-    /// The harness's sign-in, as `signed` reads it, or none.
+    /// The harness's sign-in, as `signed` reads it, or none. A keyring that
+    /// ran over is said in the journal, so none for the rest after it isn't
+    /// taken for Joel signed out.
     pub fn read(path: &Path) -> Option<Account> {
         match Account::signed(path, sign_in_program::PATIENCE, REST) {
             Signed::In(account) => Some(account),
-            Signed::Out | Signed::RanOver | Signed::Resting => None,
+            Signed::RanOver => {
+                eprintln!(
+                    "<4>the keyring's Slack sign-in ran past {} seconds and was stopped, so \
+                     it isn't asked again for {} minutes",
+                    sign_in_program::PATIENCE.as_secs(),
+                    REST.as_secs() / 60
+                );
+                None
+            }
+            Signed::Out | Signed::Resting => None,
         }
     }
 
@@ -129,18 +153,20 @@ impl Account {
 }
 
 /// What `ask` gives, unless its last answer under `at` ran over less than
-/// `rest` ago; one that runs over now starts the rest.
+/// `rest` ago; one that runs over now starts the rest. `at` is held only to
+/// look and mark, never across the ask, so callers on other threads don't
+/// queue behind a keyring that's slow.
 fn rested(
     at: &std::sync::Mutex<Option<Instant>>,
     rest: Duration,
     ask: impl FnOnce() -> Signed,
 ) -> Signed {
-    let mut at = at.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    if at.is_some_and(|when| when.elapsed() < rest) {
+    let held = || at.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if held().is_some_and(|when| when.elapsed() < rest) {
         return Signed::Resting;
     }
     let signed = ask();
-    *at = matches!(signed, Signed::RanOver).then(Instant::now);
+    *held() = matches!(signed, Signed::RanOver).then(Instant::now);
     signed
 }
 
@@ -1271,5 +1297,36 @@ mod tests {
             "an answer ends the rest, not {again:?}"
         );
         assert_eq!(asked.get(), 3, "asked once its rest was up, and after");
+    }
+
+    #[test]
+    fn a_slow_keyring_doesnt_hold_another_caller_back() {
+        static AT: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+        let (asking, asked) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let slow = std::thread::spawn(move || {
+            rested(&AT, REST, || {
+                // The case may have given up, and then nobody listens.
+                let _ = asking.send(());
+                // Held until the other caller has its answer, or a minute.
+                let _ = released.recv_timeout(Duration::from_mins(1));
+                Signed::Out
+            })
+        });
+        asked
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the slow caller started asking");
+        let (said, heard) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            // The case may have given up, and then nobody listens.
+            let _ = said.send(rested(&AT, REST, || Signed::Out));
+        });
+        let other = heard.recv_timeout(Duration::from_secs(5));
+        let _ = release.send(());
+        let _ = slow.join();
+        assert!(
+            matches!(other, Ok(Signed::Out)),
+            "another caller waited on a slow keyring, not answered: {other:?}"
+        );
     }
 }
