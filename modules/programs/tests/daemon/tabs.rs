@@ -161,6 +161,49 @@ fn a_program_with_no_window_open_leaves_its_tabs_out() {
     );
 }
 
+#[test]
+fn a_page_opened_while_nobody_watches_the_tabs_is_there_at_the_next_watch() {
+    let running = Running::new("tabs-unwatched");
+    sessioned(&running);
+    listed(&running);
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "tabs"}));
+    let windows = windows(&running);
+    tell(&windows, &open());
+    served(&mut client, &[LATER, KITTY, NOTES, EARLIER]);
+    client.ask(&json!({"id": 1, "ask": "unwatch"}));
+    // Chrome writes its session again, a page more, while nothing watches
+    // the tabs, as it does with the launcher shut. A list's file changes
+    // after it, and the daemon hears its changes in order, so once that
+    // one is told the session's was heard unwatched.
+    let mut commands = tab(1, 10, 0, "https://later.example.org/", 4_000_000_000_000);
+    commands.extend(tab(1, 11, 1, "https://earlier.example.org/", 1_000));
+    commands.extend(tab(
+        1,
+        12,
+        2,
+        "https://newer.example.org/",
+        5_000_000_000_000,
+    ));
+    std::fs::write(
+        running.path("chrome/Sessions/Session_1"),
+        session(&commands),
+    )
+    .unwrap();
+    let mut after = running.client();
+    after.ask(&json!({"id": 1, "ask": "watch", "keys": ["recent:kitty"]}));
+    after.changed("recent:kitty");
+    std::fs::write(running.path("lists/folders"), "/a\n").unwrap();
+    after.changed("recent:kitty");
+    client.ask(&json!({"id": 2, "ask": "watch", "kind": "row", "place": "tabs"}));
+    let newer = "row:tabs:https://newer.example.org/";
+    let rows = served(&mut client, &[newer, LATER, KITTY, NOTES, EARLIER]);
+    assert_eq!(
+        rows[0]["key"], newer,
+        "the page opened unwatched isn't first: {rows:?}"
+    );
+}
+
 /// What Tabs' head says of a kitty whose entry names it Terminal.
 const SILENT: &str = "Terminal isn't answering; its tabs come back when it does.";
 
