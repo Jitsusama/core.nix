@@ -37,7 +37,7 @@ pub const SETTINGS_AGAIN: Duration = Duration::from_secs(5);
 /// slow to read, and when, is kept here too.
 pub struct Settings {
     read: HashMap<String, Read>,
-    temperatures: HashMap<String, (Instant, Option<u64>)>,
+    temperatures: HashMap<String, (Instant, Option<i64>)>,
     temperature_slow_from: Duration,
 }
 
@@ -136,14 +136,15 @@ impl Settings {
     /// The temperature of the battery in `folder`, in tenths of a degree:
     /// as last read while that's within `SLOW_KEPT` of `now` where a read
     /// of it was slow, as a slow zone's is, and read again otherwise.
-    fn temperature(&mut self, root: &Root, folder: &str, now: Instant) -> Option<u64> {
+    fn temperature(&mut self, root: &Root, folder: &str, now: Instant) -> Option<i64> {
         if let Some((at, said)) = self.temperatures.get(folder)
             && now.saturating_duration_since(*at) < heat::SLOW_KEPT
         {
             return *said;
         }
         let began = Instant::now();
-        let said = root.number(&format!("{folder}/temp"));
+        // Signed, as a battery below freezing reads.
+        let said = root.signed(&format!("{folder}/temp"));
         if began.elapsed() >= self.temperature_slow_from || self.temperatures.contains_key(folder) {
             self.temperatures.insert(folder.to_owned(), (now, said));
         }
@@ -329,7 +330,7 @@ pub fn record(
     // The kernel counts a battery's temperature in tenths of a degree.
     let temperature = settings
         .temperature(root, &folder, now)
-        .and_then(|t| u32::try_from(t).ok())
+        .and_then(|t| i32::try_from(t).ok())
         .map(|t| rounded(f64::from(t) / 10.0, 1));
     json!({
         "key": format!("supply:{name}"),
