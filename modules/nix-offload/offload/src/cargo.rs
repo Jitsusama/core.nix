@@ -164,19 +164,19 @@ fn plain(word: &str) -> bool {
 
 /// The words a lent builder's cargo is given for `words`, and whether the
 /// run was asked offline: by `--offline`, `--frozen`, `net.offline=true`,
-/// or the environment here, `offline_here`, which doesn't go there. Such a
+/// or `CARGO_NET_OFFLINE` here, `offline_here`, which doesn't go there. Such a
 /// run goes `--locked` instead, since a lent builder has no crates but
 /// what it fetches, and the lockfile holds every version it fetches to
 /// what the run would have read here. A test harness's words, past `--`,
 /// are its own and go as they are.
-pub fn for_a_lender(words: &[String], offline_here: bool) -> (Vec<String>, bool) {
+pub fn for_a_lender(words: &[String], offline_here: Option<&str>) -> (Vec<String>, bool) {
     let own = words
         .iter()
         .position(|word| word == "--")
         .unwrap_or(words.len());
     let (cargos, harness) = words.split_at(own);
     let mut sent = Vec::new();
-    let mut offline = offline_here;
+    let mut offline = offline_here == Some("true");
     let mut locked = false;
     let mut cargos = cargos.iter();
     while let Some(word) = cargos.next() {
@@ -248,8 +248,8 @@ pub fn cargo(arguments: &[String], lenders: [&Path; 2]) -> ExitCode {
                 "nix-offload: cargo {what} of the whole tree goes to a lent builder, as \
                  there --run sends it; NIX_OFFLOAD_CARGO=here runs it here"
             );
-            let offline_here = env::var("CARGO_NET_OFFLINE").is_ok_and(|value| value == "true");
-            let (sent, offline) = for_a_lender(words, offline_here);
+            let offline_here = env::var("CARGO_NET_OFFLINE").ok();
+            let (sent, offline) = for_a_lender(words, offline_here.as_deref());
             if offline {
                 eprintln!(
                     "nix-offload: asked offline, it goes online there, held to the lockfile, \

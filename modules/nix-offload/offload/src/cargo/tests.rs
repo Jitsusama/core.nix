@@ -61,20 +61,33 @@ fn an_offline_run_goes_to_a_lent_builder_online_and_locked() {
             "test --locked -- --nocapture --offline",
             true,
         ),
+        ("test --locked", "test --locked", false),
         ("test --locked --locked", "test --locked", false),
         ("test", "test", false),
     ] {
         assert_eq!(
-            for_a_lender(&words(line), false),
+            for_a_lender(&words(line), None),
             (words(sent), offline),
             "cargo {line} wasn't sent as cargo {sent}, asked offline {offline}"
         );
     }
     // CARGO_NET_OFFLINE here doesn't go there, so its run goes locked too.
+    for (value, sent, offline) in [
+        (Some("true"), "test -p a --locked", true),
+        (Some("false"), "test -p a", false),
+        (Some(""), "test -p a", false),
+        (None, "test -p a", false),
+    ] {
+        assert_eq!(
+            for_a_lender(&words("test -p a"), value),
+            (words(sent), offline),
+            "a run with CARGO_NET_OFFLINE {value:?} went as cargo {sent}, asked offline {offline}"
+        );
+    }
     assert_eq!(
-        for_a_lender(&words("test -p a"), true),
-        (words("test -p a --locked"), true),
-        "a run asked offline by the environment went unlocked"
+        for_a_lender(&words("test --locked"), Some("true")),
+        (words("test --locked"), true),
+        "a locked run asked offline by the environment wasn't sent locked once"
     );
 }
 
