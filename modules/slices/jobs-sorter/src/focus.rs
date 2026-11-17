@@ -1385,14 +1385,12 @@ mod tests {
             2 => Some("window-2"),
             _ => None,
         };
-        let pis = |id: u64| match id {
-            1 => Some("pi-1"),
-            3 => Some("pi-3"),
-            _ => None,
-        };
+        // A pi is only looked for beside a window's own scope, so none
+        // has a pi without its own.
+        let its_pi = |id: u64| (id == 1).then_some("pi-1");
         assert_eq!(
-            spared(&[pi(1), pi(2), pi(3), pi(4)], own, pis),
-            ["window-1", "pi-1", "window-2", "pi-3"],
+            spared(&[pi(1), pi(2), pi(3)], own, its_pi),
+            ["window-1", "pi-1", "window-2"],
             "each window's own scope and its pi's, whichever is found"
         );
     }
@@ -1405,11 +1403,16 @@ mod tests {
                 [
                     "app-kitty-2684.scope",
                     "mycelium-pi-41.scope",
-                    "app-niri-kitty-9.scope"
+                    "app-niri-kitty-9.scope",
+                    "app-kitty-mycelium-pi-7.scope"
                 ],
                 &pis
             ),
-            ["app-kitty-2684.scope", "app-niri-kitty-9.scope"],
+            [
+                "app-kitty-2684.scope",
+                "app-niri-kitty-9.scope",
+                "app-kitty-mycelium-pi-7.scope"
+            ],
             "a held pi's scope is left out, whatever its agents' commands say"
         );
     }
