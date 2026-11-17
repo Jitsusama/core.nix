@@ -1625,7 +1625,7 @@ pub(crate) mod tests {
     #[test]
     fn a_card_moving_half_a_faint_link_on_2_4_ghz_takes_5_ghz() {
         let (mut half, mut less) = (Chooser::default(), Chooser::default());
-        let (busy, short) = (faint_link(45), faint_link(44));
+        let (busy, short) = (on_a_link(45, 90), on_a_link(44, 90));
         let untried = [desk_at(-62, None)];
         let now = Instant::now();
 
@@ -1636,11 +1636,40 @@ pub(crate) mod tests {
         assert_eq!(kept, Choice::Stay, "44 isn't");
     }
 
-    /// What a card on a link sending at 90 Mbit/s carried, moving this much.
-    fn faint_link(moving: u32) -> Measured {
+    #[test]
+    fn a_card_on_a_fast_2_4_ghz_link_takes_5_ghz_once_it_moves_100_mbit_s() {
+        let (mut more, mut less) = (Chooser::default(), Chooser::default());
+        let (busy, short) = (on_a_link(100, 286), on_a_link(99, 286));
+        let untried = [desk_at(-45, None)];
+        let now = Instant::now();
+
+        let took = more.choose(now, (NEAR, &busy, -36, CH6), &untried, false);
+        let kept = less.choose(now, (NEAR, &short, -36, CH6), &untried, false);
+
+        assert_eq!(took, Choice::Try(DESK.into()), "100 is enough");
+        assert_eq!(kept, Choice::Stay, "99 isn't");
+    }
+
+    #[test]
+    fn a_card_on_a_link_said_to_send_slowly_still_moves_25_mbit_s_to_use_it() {
+        let (mut more, mut less) = (Chooser::default(), Chooser::default());
+        let (busy, short) = (on_a_link(25, 2), on_a_link(24, 2));
+        let untried = [desk_at(-62, None)];
+        let now = Instant::now();
+
+        let took = more.choose(now, (NEAR, &busy, -60, CH6), &untried, false);
+        let kept = less.choose(now, (NEAR, &short, -60, CH6), &untried, false);
+
+        assert_eq!(took, Choice::Try(DESK.into()), "25 Mbit/s is used");
+        assert_eq!(kept, Choice::Stay, "24 isn't, whatever the link says");
+    }
+
+    /// What a card on a link sending at `room` Mbit/s carried, moving this
+    /// much.
+    fn on_a_link(moving: u32, room: u32) -> Measured {
         Measured {
             moving: Some(moving),
-            room: Some(90),
+            room: Some(room),
             ..carried(15, 0.0)
         }
     }

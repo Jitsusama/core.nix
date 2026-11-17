@@ -512,8 +512,10 @@ pub(crate) mod tests {
     fn what_a_card_moves_counts_only_the_time_it_was_counted() {
         let start = Instant::now();
         let mut kept = Measures::default();
+        // Its counts carry on past the gap, so only the gap's length keeps
+        // the 1.75 GB said to have moved over it from counting.
         let mut readings = steadily(0..=20, 0);
-        readings.extend(steadily(80..=110, 0));
+        readings.extend(steadily(80..=110, 2_000_000_000));
         moved(&mut kept, DESK, start, &readings);
         let measured = kept.of(DESK, start + Duration::from_secs(110));
         let measured = measured.expect("a station counted on is measured");
@@ -524,10 +526,10 @@ pub(crate) mod tests {
     fn a_few_seconds_counted_say_nothing_of_what_a_card_moves() {
         let start = Instant::now();
         let mut kept = Measures::default();
-        moved(&mut kept, DESK, start, &steadily(0..=10, 0));
-        let measured = kept.of(DESK, start + Duration::from_secs(10));
+        moved(&mut kept, DESK, start, &steadily(0..=29, 0));
+        let measured = kept.of(DESK, start + Duration::from_secs(29));
         let measured = measured.expect("a station counted on is measured");
-        assert_eq!(measured.moving, None, "ten seconds is a burst");
+        assert_eq!(measured.moving, None, "29 s is short of 30");
     }
 
     #[test]
@@ -548,31 +550,37 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn what_a_link_has_room_for_is_what_it_last_sent_at() {
+    fn what_a_link_has_room_for_is_the_most_it_sent_at_in_the_span() {
         let start = Instant::now();
         let mut kept = Measures::default();
-        for (second, link) in [(0, 286_700), (1, 144_400)] {
+        for (second, link) in [(0, 6_500), (1, 144_400), (2, 6_500)] {
             let counts = Counts {
                 link: Some(link),
                 ..counts(0, 0, 0)
             };
             kept.counted(DESK, start + Duration::from_secs(second), counts);
         }
-        let measured = kept.of(DESK, start + Duration::from_secs(1));
+        let measured = kept.of(DESK, start + Duration::from_secs(2));
         let measured = measured.expect("a station counted on is measured");
-        assert_eq!(measured.room, Some(144), "144.4 Mbit/s, last");
+        assert_eq!(measured.room, Some(144), "144.4 Mbit/s, the most");
     }
 
     #[test]
     fn a_station_s_bytes_are_counted_both_ways_or_not_at_all() {
-        use crate::nl80211::Traffic;
+        use crate::nl80211::{Rate, Traffic};
         let traffic = |bytes| Traffic {
             bytes,
             packets: Some(1),
         };
+        let rate = |kbps| Rate {
+            kbps: Some(kbps),
+            ..Rate::default()
+        };
         let station = |sent| Station {
             received: traffic(Some(5)),
             sent: traffic(sent),
+            receive: rate(6_500),
+            send: rate(286_700),
             retries: Some(0),
             failed: Some(0),
             ..Station::default()
@@ -581,6 +589,7 @@ pub(crate) mod tests {
         let one = counted(&station(None)).expect("all its counts are said");
         assert_eq!(both.moved, Some(12), "5 in and 7 out");
         assert_eq!(one.moved, None, "one way unsaid");
+        assert_eq!(both.link, Some(286_700), "the link is what it sends at");
     }
 
     #[test]
@@ -594,13 +603,20 @@ pub(crate) mod tests {
             failed: 0.0,
             signal: None,
             moving: Some(12),
-            room: None,
+            room: Some(286),
         };
         let line = said(&joined(DESK), &measured, true);
         assert!(
-            line.ends_with("unread; moving 12 Mbit/s, during a call"),
-            "what it moved is why it keeps to a band: {line}"
+            line.ends_with("unread; moving 12 of 286 Mbit/s, during a call"),
+            "what it moved, and of what, is why it keeps to a band: {line}"
         );
+        let unsaid = Measured {
+            room: None,
+            ..measured
+        };
+        let line = said(&joined(DESK), &unsaid, false);
+        let alone = "unread; moving 12 Mbit/s";
+        assert!(line.ends_with(alone), "no room: {line}");
     }
 
     /// One echo a second for the times given, in milliseconds, starting
