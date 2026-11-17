@@ -11,6 +11,21 @@ pub mod run;
 pub mod terminal;
 pub mod view;
 
+use std::sync::OnceLock;
+
+use terminal_kit::ink::{Colours, Ink, Pen};
+
+/// The colours the kit decided for stdout, where the screen is drawn,
+/// from `--color`, `NO_COLOR`, `FORCE_COLOR` and whether it's a terminal.
+/// main says it once, before any command runs; until then, as in a test,
+/// the screen draws plainly.
+static DECIDED: OnceLock<Colours> = OnceLock::new();
+
+/// Says once which colours the screen draws in, as the kit decided them.
+pub fn decide_colours(colours: Colours) {
+    let _ = DECIDED.set(colours);
+}
+
 /// A row or a column as a terminal takes one: the low 16 bits of where it
 /// is, all a screen has, so one past them wraps round as it always has.
 fn cell(at: usize) -> u16 {
@@ -75,17 +90,38 @@ pub const MARKS: &[&str] = &[
 /// The theme as the screen draws it.
 #[derive(Clone, Debug)]
 pub struct Theme {
-    /// Each role's SGR number; none draws everything in the terminal's own.
+    /// Each role's SGR number, once each; none draws everything in the
+    /// terminal's own. The pen is given the same list, so what `missing`
+    /// checks is what the screen draws.
     roles: Vec<(Role, String)>,
     /// Each mark by name, as drawn here: the mark, or on a console its
     /// stand-in.
     marks: Vec<(String, String)>,
+    /// What draws each role: the terminal kit's pen, given the roles'
+    /// codes, so the guide spells no escape of its own.
+    pen: Pen,
 }
 
 impl Theme {
-    /// From the roles and marks as theme.nix writes them.
+    /// From the roles and marks as theme.nix writes them, in the sixteen
+    /// colours, as a test reads them.
     pub fn from(roles: &str, marks: &str, console: bool) -> Theme {
-        let roles = roles
+        Theme::inked(
+            roles,
+            marks,
+            Ink {
+                colours: Colours::Sixteen,
+                console,
+            },
+        )
+    }
+
+    /// From the roles and marks as theme.nix writes them, drawn in this
+    /// ink; a role given twice keeps its first code.
+    pub fn inked(roles: &str, marks: &str, ink: Ink) -> Theme {
+        let console = ink.console;
+        let mut kept: Vec<(Role, String)> = Vec::new();
+        let given = roles
             .split_whitespace()
             .filter_map(|pair| pair.split_once('='))
             .filter_map(|(name, code)| {
@@ -93,8 +129,13 @@ impl Theme {
                     .iter()
                     .find(|role| role.name() == name)
                     .map(|role| (*role, code.to_string()))
-            })
-            .collect();
+            });
+        for (role, code) in given {
+            if !kept.iter().any(|(found, _)| *found == role) {
+                kept.push((role, code));
+            }
+        }
+        let roles = kept;
         let marks = marks
             .lines()
             .filter_map(|line| {
@@ -106,15 +147,24 @@ impl Theme {
                 ))
             })
             .collect();
-        Theme { roles, marks }
+        let pen = Pen::coded(ink, roles_coded(&roles));
+        Theme { roles, marks, pen }
     }
 
-    /// The theme this build was given.
+    /// A span's words as the terminal draws them, in its role's colour.
+    pub fn drawn(&self, span: &Span) -> String {
+        self.pen.role(span.role.name(), &span.text)
+    }
+
+    /// The theme this build was given, in the colours the kit decided.
     pub fn built(console: bool) -> Theme {
-        Theme::from(
+        Theme::inked(
             option_env!("GUIDE_ROLES").unwrap_or_default(),
             option_env!("GUIDE_GLYPHS").unwrap_or_default(),
-            console,
+            Ink {
+                colours: DECIDED.get().copied().unwrap_or(Colours::None),
+                console,
+            },
         )
     }
 
@@ -189,6 +239,13 @@ pub fn span(role: Role, text: impl Into<String>) -> Span {
         role,
         text: text.into(),
     }
+}
+
+fn roles_coded(roles: &[(Role, String)]) -> Vec<(&'static str, &str)> {
+    roles
+        .iter()
+        .map(|(role, code)| (role.name(), code.as_str()))
+        .collect()
 }
 
 /// A line's text without its roles, as a test reads it.

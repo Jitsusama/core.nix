@@ -255,7 +255,7 @@ impl Paint for Painter {
         println!(
             "Stopped. Start the guide again the way you started it, and it carries on from the steps already done."
         );
-        std::process::exit(130);
+        terminal_kit::Exit::Interrupted.end_now();
     }
 }
 
@@ -272,11 +272,7 @@ fn paint(out: &mut Stdout, drawn: &Drawn, theme: &Theme) -> Result<(), Fault> {
         )
         .map_err(broken)?;
         for span in line {
-            match theme.sgr(span.role) {
-                Some(code) => write!(out, "\x1b[{code}m{}\x1b[0m", span.text),
-                None => write!(out, "{}", span.text),
-            }
-            .map_err(broken)?;
+            write!(out, "{}", theme.drawn(span)).map_err(broken)?;
         }
     }
     queue!(

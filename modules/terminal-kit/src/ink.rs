@@ -276,6 +276,31 @@ impl Pen {
         Self::new(Ink::plain(), None)
     }
 
+    /// A pen whose roles are SGR codes already worked out from the theme,
+    /// `role=code` as theme.nix writes them, for a program built where
+    /// no account's theme can be read, as the guide is on the installer.
+    /// A role it isn't given draws in the terminal's own colour, as does
+    /// one whose code is more than numbers and semicolons, so no code can
+    /// carry other control bytes to the terminal.
+    pub fn coded<'a>(ink: Ink, roles: impl IntoIterator<Item = (&'a str, &'a str)>) -> Self {
+        let mut pen = Self::new(ink, None);
+        pen.roles = roles
+            .into_iter()
+            .filter(|(_, code)| {
+                code.bytes()
+                    .all(|byte| byte.is_ascii_digit() || byte == b';')
+            })
+            .map(|(role, code)| {
+                let escapes = Escapes {
+                    truecolour: code.to_owned(),
+                    sixteen: code.to_owned(),
+                };
+                (role.to_owned(), escapes)
+            })
+            .collect();
+        pen
+    }
+
     /// The ink this pen draws with.
     pub fn ink(&self) -> Ink {
         self.ink
@@ -450,6 +475,44 @@ mod tests {
         assert_eq!(pen.label("Examples"), "EXAMPLES");
         assert_eq!(pen.marked("done", "success"), "\u{2713} ");
         assert_eq!(pen.link("https://example.com", "page"), "page");
+    }
+
+    #[test]
+    fn a_coded_pen_draws_each_role_in_the_code_it_was_given_and_no_other() {
+        // Muted's code differs from the agreed one, so a pen that kept the
+        // agreed colours under the given ones would be seen.
+        let roles = [("strong", "1;37"), ("muted", "2;35")];
+        for colours in [Colours::Sixteen, Colours::Truecolour] {
+            let pen = Pen::coded(
+                Ink {
+                    colours,
+                    console: false,
+                },
+                roles,
+            );
+            assert_eq!(
+                [
+                    pen.role("strong", "a"),
+                    pen.role("muted", "b"),
+                    pen.role("alert", "c")
+                ],
+                ["\u{1b}[1;37ma\u{1b}[0m", "\u{1b}[2;35mb\u{1b}[0m", "c"],
+                "in {colours:?}, a role isn't drawn in the code it was given, or one it wasn't \
+                 given is inked"
+            );
+        }
+        let plain = Pen::coded(Ink::plain(), [("strong", "1")]);
+        assert_eq!(plain.role("strong", "a"), "a", "a pen with no ink inked");
+    }
+
+    #[test]
+    fn a_coded_pen_draws_plainly_a_code_that_is_more_than_numbers() {
+        let pen = Pen::coded(Ink::sixteen(), [("strong", "1m\u{1b}]0;x\u{7}")]);
+        assert_eq!(
+            pen.role("strong", "a"),
+            "a",
+            "a code carrying other control bytes reached the terminal"
+        );
     }
 
     #[test]
