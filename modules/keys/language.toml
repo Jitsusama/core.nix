@@ -1051,6 +1051,16 @@ short = "pul"
 kinds = ["list"]
 changes = true
 
+# A checkout put on another of its branches, as git's switch puts it:
+# Code's Switch to It. It refuses rather than carry changes across, and it
+# changes what the checkout holds, so Return from the find line lands on
+# it first rather than switching at once.
+[acts.switch]
+command = "switch"
+short = "swi"
+kinds = ["list"]
+changes = true
+
 # A new window, as Vim's :new opens one: New Window, Start a Session and
 # Wherever It Fits, and New Window Here as :new . for the folder; beside
 # kitty's New Window, New Window in a Repository is :new repository and
