@@ -22,6 +22,12 @@ function placeOf(window, at) {
 // deadline or refusing it (2QZBX9, [906a6c10]).
 const KEPT_FOR = 24 * 60 * 60 * 1000;
 
+// How long after Joel asks Reopen Them All a sleeper it wakes still opens
+// its window: long enough for the wakes it paces out to land, so an ask
+// never opens a window hours later, when something else wakes it (four
+// restarted at 19:48 on 16 November opened windows kept from earlier).
+const ASKED_FOR = 15 * 60 * 1000;
+
 // Of the places `kept`, by pi's session id, the viewers to open `now`
 // among `sessions` as Sessions.qml lists them, each with where it goes
 // (`into`, viewerPlace among niri's `workspaces` by id, in `screen`), and the places
@@ -45,13 +51,22 @@ function viewersDue(kept, sessions, now, screen) {
         const viewable = session !== undefined && Array.isArray(session.attach)
             && session.attach.length > 0;
         if (place.slept === true) {
-            // A sleeper is any session of its id, held or hosted.
+            // A sleeper is any session of its id, held or hosted. Only
+            // Reopen Them All's opens a window as it wakes, and only
+            // within ASKED_FOR of the ask; one kept as it went to sleep,
+            // which nobody asked to see, is let go once it wakes, with no
+            // window (Joel, 16 November: a window opens only when asked
+            // for).
             const sleeper = sessions.find(one => one.presence?.session === id);
-            const woke = sleeperDue(place, sleeper, now, workspaces ?? {});
-            if (woke.into !== null && (sleeper.held || viewable)) {
+            const asked = place.asked === true;
+            const woke = asked && now - place.at > ASKED_FOR ? { kept: null, into: null }
+                : sleeperDue(place, sleeper, now, workspaces ?? {});
+            if (woke.into !== null && asked && (sleeper.held || viewable)) {
                 open.push({ session: sleeper, into: woke.into });
-            } else if (woke.kept !== null || woke.into !== null) {
-                still[id] = woke.kept ?? place;
+            } else if (woke.into !== null && asked) {
+                still[id] = place;
+            } else if (woke.into === null && woke.kept !== null) {
+                still[id] = woke.kept;
             }
         } else if (now - place.at > KEPT_FOR) {
             // Lapsed, its session most likely never moved.
@@ -73,14 +88,15 @@ function viewersDue(kept, sessions, now, screen) {
 
 // Of a place kept as its session went to sleep, in pi's host or in its
 // mycelium holder (`slept`, as Sessions.qml's keepPlaceAsleep keeps it),
-// what's still to keep and where its window opens now, if anywhere. Its
-// window closed so a sleeper costs next to nothing, and anything that
+// what's still to keep and where its window would open now, if anywhere,
+// which viewersDue opens only for a place Reopen Them All kept (`asked`).
+// Its window closed so a sleeper costs next to nothing, and anything that
 // needs it wakes it where it sleeps (Joel,
 // 14 November: sessions put to sleep have no windows, and are resumed
-// whenever needed, at once). So its viewer opens once it has been seen
+// whenever needed, at once). So its place is due once it has been seen
 // asleep and is awake again, while Joel is here too and from a place kept
-// before this shell started, since it's waking that opens it and never a
-// switch; but never on the workspace he's on (viewerPlace), and never
+// before this shell started, since it's waking that makes it due and never
+// a switch; but never on the workspace he's on (viewerPlace), and never
 // while it sleeps. Until it has been seen asleep it waits, its window
 // still open as its place is kept just before it closes, or gone before
 // the host has parked it, and lapses as any place does; once seen it's

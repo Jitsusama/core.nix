@@ -1835,19 +1835,25 @@ Singleton {
     // wakes rather than begins again: told to carry on as it wakes when
     // `next` is told that and the uplink has room, else woken and told
     // once it runs (carryOnLater). Its place is kept as a sleeper's
-    // (keepPlaceAsleep), so its window opens there as it wakes
-    // (Viewers.sleeperDue), unless one was kept as it went to sleep. Left
+    // (keepPlaceAsleep), marked asked, since Joel asked for its window, so
+    // it opens there as it wakes (Viewers.viewersDue, within ASKED_FOR);
+    // where one was kept as it went to sleep, that one is marked asked. Left
     // asleep, 2RCBOJ's parked hold stayed shut after the drill of 15
     // November until it was woken by hand (OSPHT4, [58d7fa8e]).
     function wakeReopened(session, next) {
         const id = next.one.id;
         const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
             column: next.at.column, tile: next.at.tile ?? 1 } : null;
-        const into = keptPlaces[id]?.slept === true ? null
+        const slept = keptPlaces[id]?.slept === true ? keptPlaces[id] : null;
+        const into = slept ? null
             : root.opensOn(next.one, at, root.besideOf(reopening.placed));
-        if (into !== null)
+        if (slept)
+            keepPlaces(Object.assign({}, keptPlaces, { [id]: Object.assign({}, slept,
+                { at: Date.now(), asleep: true, asked: true }) }));
+        else if (into !== null)
             keepPlaces(Object.assign({}, keptPlaces, { [id]: { workspace: into.workspace,
-                column: into.column, at: Date.now(), slept: true, asleep: true } }));
+                column: into.column, at: Date.now(), slept: true, asleep: true,
+                asked: true } }));
         console.info(`sessions: waking ${id}, parked here, kept at ${root.keptSaid(at)}`);
         const telling = next.told === root.carryOn;
         if (telling && !wokenByViewing(session) && carryOnNow(next.one, next.kept)) {

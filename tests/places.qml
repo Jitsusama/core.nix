@@ -454,16 +454,19 @@ QtObject {
             { open: [], kept: place(3, 1) });
         expect("no workspaces known, it waits", opened(place(4, 3), {}).kept, place(4, 3));
 
-        // A session put to sleep has no window, and its window opens where
-        // it was once anything wakes it, in pi's host or in its holder: with
-        // Joel there too, and from a place kept before this shell started,
-        // but never on his workspace, and never while it sleeps (Joel, 14
-        // November: sessions put to sleep have no windows, and are resumed
-        // whenever needed). Kept just before its window closes, it waits to
-        // be seen asleep, and lapses in a day if it never is; once seen,
-        // it's kept however long it sleeps.
+        // A session put to sleep has no window, and waking it opens none:
+        // a window opens only when Joel asks for one (Joel, 16 November:
+        // "i would love for any mycelial node to not require a live
+        // window"). Only Reopen Them All asks, so a sleeper it wakes opens
+        // where it was, in pi's host or in its holder, with Joel there too,
+        // but never on his workspace, never while it sleeps, and only
+        // within ASKED_FOR of his asking. Kept just before its window
+        // closes, it waits to be seen asleep, and lapses in a day if it
+        // never is; once seen, it's kept however long it sleeps.
         const slept = { napper: { workspace: 4, column: 3, at: 0, slept: true } };
         const asleep = { napper: { workspace: 4, column: 3, at: 0, slept: true, asleep: true } };
+        const reopened = { napper: { workspace: 4, column: 3, at: 0, slept: true, asleep: true,
+            asked: true } };
         // Joel at the machine, with the shell started after the place was kept.
         const there = gone(screens, { away: false, since: 5 });
         const napping = (session, extra) => Object.assign(session, { presence: Object.assign(
@@ -479,20 +482,29 @@ QtObject {
             [hostedNapping], 10, there), { open: [], kept: asleep });
         expect("asleep in its holder, the same", Viewers.viewersDue(slept,
             [held(null, "parked")], 10, there), { open: [], kept: asleep });
-        expect("woken in its host with Joel there, it opens where it was",
-            Viewers.viewersDue(asleep, [hosted("napper")], 10, there).open
+        expect("woken in its host, unasked, it opens no window and is let go",
+            Viewers.viewersDue(asleep, [hosted("napper")], 10, there), { open: [], kept: {} });
+        expect("woken in its holder, unasked, the same", Viewers.viewersDue(asleep,
+            [held(null, "listening")], 10, there), { open: [], kept: {} });
+        expect("woken by Reopen Them All in its host, it opens where it was",
+            Viewers.viewersDue(reopened, [hosted("napper")], 10, there).open
                 .map(one => [one.session.presence.session, one.into]),
             [["napper", { workspace: 4, column: 3 }]]);
-        expect("woken in its holder, the same", Viewers.viewersDue(asleep,
+        expect("woken by Reopen Them All in its holder, the same", Viewers.viewersDue(reopened,
             [held(null, "listening")], 10, there).open.map(one => [one.session.held, one.into]),
             [["h1", { workspace: 4, column: 3 }]]);
-        expect("woken while Joel is on its workspace, it waits", Viewers.viewersDue(asleep,
+        expect("woken past ASKED_FOR of the ask, it opens none and is let go",
+            Viewers.viewersDue(reopened, [held(null, "listening")], Viewers.ASKED_FOR + 1, there),
+            { open: [], kept: {} });
+        expect("asked and still asleep past ASKED_FOR, it's let go", Viewers.viewersDue(reopened,
+            [hostedNapping], Viewers.ASKED_FOR + 1, there), { open: [], kept: {} });
+        expect("woken while Joel is on its workspace, it waits", Viewers.viewersDue(reopened,
             [hosted("napper")], 10, gone(on(4, screens), { away: false })),
-            { open: [], kept: asleep });
-        expect("woken with no words to view it by yet, it waits", Viewers.viewersDue(asleep,
+            { open: [], kept: reopened });
+        expect("woken with no words to view it by yet, it waits", Viewers.viewersDue(reopened,
             [Object.assign(hosted("napper"), { attach: [] })], 10, there),
-            { open: [], kept: asleep });
-        expect("woken and opened already, as by Go To, it's let go", Viewers.viewersDue(asleep,
+            { open: [], kept: reopened });
+        expect("woken and opened already, as by Go To, it's let go", Viewers.viewersDue(reopened,
             [hosted("napper", laid(5, 1))], 10, there), { open: [], kept: {} });
         expect("asleep two days, it's still kept", Viewers.viewersDue(asleep,
             [hostedNapping], 2 * day, there).kept, asleep);
