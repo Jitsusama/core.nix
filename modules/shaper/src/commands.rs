@@ -139,6 +139,7 @@ fn proof() -> Help {
         .exit(Exit::Unavailable, "no default route, or no swayidle")
         .exit(Exit::TryAgain, "Joel wasn't away long enough to judge")
         .exit(Exit::Config, "what it waits on isn't a list of commands")
+        .exit(Exit::Interrupted, "stopped, the shaper back as it was")
 }
 
 fn proof_call() -> Help {

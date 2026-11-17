@@ -8,7 +8,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// Set once a signal asks the proof to stop.
 pub static STOPPED: AtomicBool = AtomicBool::new(false);
 
-extern "C" fn heard(_: libc::c_int) {}
+extern "C" fn heard(_: libc::c_int) {
+    STOPPED.store(true, Ordering::Relaxed);
+}
 
 /// Hears SIGTERM, SIGINT and SIGHUP as a stop, so the proof puts the
 /// shaper back as it was and ends its load before it exits, where it
@@ -23,11 +25,13 @@ pub fn hear_stops() {
     }
 }
 
-/// One upload's loop, posting 400 MB to `server` again as each ends.
-fn script(server: &str, _pid: u32) -> String {
+/// One upload's loop, posting 400 MB to `server` again as each ends,
+/// while the proof `pid` lives. A proof killed outright can't stop its
+/// scopes, which outlive it, so the loop asks after it before each.
+fn script(server: &str, pid: u32) -> String {
     format!(
-        "while :; do head -c 400000000 /dev/zero | curl -s -o /dev/null -X POST -T - \
-         --max-time 120 '{server}/__up'; done"
+        "while kill -0 {pid} 2>/dev/null; do head -c 400000000 /dev/zero \
+         | curl -s -o /dev/null -X POST -T - --max-time 120 '{server}/__up'; done"
     )
 }
 
