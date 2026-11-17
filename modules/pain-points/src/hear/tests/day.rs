@@ -172,7 +172,10 @@ fn a_count_the_node_never_takes_is_sent_three_times_then_given_up() {
             );
         }
     }
-    assert_eq!(sent, 3, "a count read as failed isn't sent every five minutes");
+    assert_eq!(
+        sent, 3,
+        "a count read as failed isn't sent every five minutes"
+    );
     assert!(!hour_says(&last, "count"), "given up once: {last:?}");
 }
 
@@ -219,10 +222,7 @@ fn a_day_heard_in_part_says_from_when() {
     a_day(&place);
     let counted = counts(&place, &[AT + 11 * HOUR + 1_800_000]);
     assert_eq!(counted.len(), 1, "{counted:?}");
-    assert!(
-        counted[0].contains("2026-11-16, from 02:30"),
-        "{counted:?}"
-    );
+    assert!(counted[0].contains("2026-11-16, from 02:30"), "{counted:?}");
 }
 
 #[test]
