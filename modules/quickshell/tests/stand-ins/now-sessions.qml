@@ -44,4 +44,9 @@ Singleton {
     function parkedAs(address) {
         return null;
     }
+
+    // Nothing here is parked, so going is all there is to it.
+    function wakeToGo(resting, session) {
+        goTo(session);
+    }
 }

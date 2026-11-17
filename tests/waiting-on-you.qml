@@ -412,7 +412,7 @@ QtObject {
         const pressed = { address: "WJATIN", window: null, held: "held-3",
             presence: { session: "s-wjatin", addresses: ["WJATIN"] } };
         const asked = { quest: "QEST-20261112-WJATIN", owner: { address: "WJATIN" },
-            where: { window: "\u03c0 - Deploy V3: Reimagine How Aquifer And Worldtree Ship - aquifer" } };
+            where: { window: "\u03c0 - Sail Every Ship From One Harbour - harbour" } };
         expect("a parked one whose named window isn't open is woken and gone to",
             Waiting.dealsIn(asked, Object.assign({}, known, { parked: [resting, pressed] })),
             { to: "session", session: pressed, wake: true });
