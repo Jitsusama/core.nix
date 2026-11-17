@@ -512,7 +512,14 @@ step's showing is profiled apart as `search-step`, from when it lives its
 rows on, and said by whole time too, so what calls the dear functions is
 named. Into Programs with 21, about half its showing was the selection
 asked whether its acts lie on its row, each time making its whole step
-(2026-11-15). The profiler stretches what it times, so a cut's figures
+(2026-11-15). `LAB_NAMED`, desktop ids and names such as
+`google-chrome=Google Chrome`, installs those programs too, each with two
+actions, so a page a provider keys by its id is there, and
+`LAB_STEP_KEY = "tab"` steps in as Joel goes into a program's page, where
+Return would start it: Chrome's page stepped in at 11 to 20 ms with its
+three rows (2026-11-16). A named program joins home's rows for the words
+typed, so those keys' medians aren't comparable with a run without it.
+The profiler stretches what it times, so a cut's figures
 come from runs without it. The home it types into
 holds this niri's few windows and programs, where Joel's holds about a
 thousand rows, so its rows part runs smaller than his. The lab's shell says
