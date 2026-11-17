@@ -1758,4 +1758,34 @@ mod tests {
             "9.5 \u{b0}C"
         );
     }
+
+    /// A battery below freezing keeps its temperature row: its bar is
+    /// empty and doesn't warn, since a bar draws heat against the most,
+    /// and its drawer's fact says the count as the kernel writes it, the
+    /// plain number's hyphen and all. The row's figure is the measure
+    /// Words' cases hold, the real minus among them.
+    #[test]
+    fn a_battery_below_freezing_keeps_its_temperature_row() {
+        let mut b = battery();
+        b["temperature_c"] = json!(-5.5);
+        let ready = Power::default().read(&[b, port(true)], 0, &words());
+        let temperature = row(&ready, "row:power:temperature");
+        let figure = text(&temperature["side"][0]["said"]);
+        assert!(
+            figure.starts_with("\u{2212}5.5") && figure.ends_with(" \u{b0}C"),
+            "the figure under freezing with the real minus: {figure}"
+        );
+        assert_eq!(temperature["graph"]["values"], json!([0.0]));
+        assert_eq!(temperature["graph"]["warn"], json!(false));
+        let facts: Vec<String> = temperature["drawer"]["facts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|fact| format!("{}={}", text(&fact["name"]), text(&fact["said"])))
+            .collect();
+        assert_eq!(
+            facts,
+            ["temp=-55", "Read From=/sys/class/power_supply/BAT0"]
+        );
+    }
 }

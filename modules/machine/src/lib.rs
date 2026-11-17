@@ -133,6 +133,12 @@ impl Root {
         self.said(path)?.parse().ok()
     }
 
+    /// The number a file says, where it may be below zero, as a
+    /// battery's temperature is.
+    pub fn signed(&self, path: &str) -> Option<i64> {
+        self.said(path)?.parse().ok()
+    }
+
     /// The names in a folder, sorted, or none where there's no folder.
     pub fn names(&self, path: &str) -> Vec<String> {
         let mut names: Vec<String> = std::fs::read_dir(self.path(path))

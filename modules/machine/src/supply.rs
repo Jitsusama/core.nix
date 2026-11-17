@@ -37,7 +37,7 @@ pub const SETTINGS_AGAIN: Duration = Duration::from_secs(5);
 /// slow to read, and when, is kept here too.
 pub struct Settings {
     read: HashMap<String, Read>,
-    temperatures: HashMap<String, (Instant, Option<u64>)>,
+    temperatures: HashMap<String, (Instant, Option<i64>)>,
     temperature_slow_from: Duration,
 }
 
@@ -136,14 +136,15 @@ impl Settings {
     /// The temperature of the battery in `folder`, in tenths of a degree:
     /// as last read while that's within `SLOW_KEPT` of `now` where a read
     /// of it was slow, as a slow zone's is, and read again otherwise.
-    fn temperature(&mut self, root: &Root, folder: &str, now: Instant) -> Option<u64> {
+    fn temperature(&mut self, root: &Root, folder: &str, now: Instant) -> Option<i64> {
         if let Some((at, said)) = self.temperatures.get(folder)
             && now.saturating_duration_since(*at) < heat::SLOW_KEPT
         {
             return *said;
         }
         let began = Instant::now();
-        let said = root.number(&format!("{folder}/temp"));
+        // Signed, as a battery below freezing reads.
+        let said = root.signed(&format!("{folder}/temp"));
         if began.elapsed() >= self.temperature_slow_from || self.temperatures.contains_key(folder) {
             self.temperatures.insert(folder.to_owned(), (now, said));
         }
@@ -326,10 +327,16 @@ pub fn record(
     });
     let (charge_type, charge_types) = chosen(set.types);
     let (usb_type, usb_types) = chosen(at("usb_type"));
-    // The kernel counts a battery's temperature in tenths of a degree.
+    // The kernel counts a battery's temperature in tenths of a degree,
+    // and a gauge with none to give may say absolute zero, so it's held
+    // to the reach Heat holds a chip's reading to.
     let temperature = settings
         .temperature(root, &folder, now)
-        .and_then(|t| u32::try_from(t).ok())
+        .filter(|t| {
+            t.checked_mul(100)
+                .is_some_and(|m| heat::DEGREES.contains(&m))
+        })
+        .and_then(|t| i32::try_from(t).ok())
         .map(|t| rounded(f64::from(t) / 10.0, 1));
     json!({
         "key": format!("supply:{name}"),
@@ -635,6 +642,57 @@ mod tests {
             "the slow one kept, the quick read"
         );
         assert_eq!(kept, json!(41.5), "kept past SLOW_KEPT");
+    }
+
+    /// The kernel's `temp` is signed, in tenths of a degree, so a battery
+    /// below freezing, as one left in a car in a Canadian winter is, says
+    /// its temperature: -55 is -5.5 °C. It is kept as far as Heat keeps a
+    /// chip's reading, -100 to 200 °C, so -40 °C still says it; only
+    /// Heat's parts narrow further. Past either edge it says none, as a
+    /// gauge's absolute-zero placeholder (-2731) does, and so does a count
+    /// too far for the reach to be worked out.
+    #[test]
+    fn a_battery_within_heats_reach_says_its_temperature() {
+        let root = std::env::temp_dir().join(format!("machine-forty-{}", std::process::id()));
+        let at = root.join("sys/class/power_supply/BAT0");
+        std::fs::create_dir_all(&at).unwrap();
+        let held = Root::new(&root);
+        let said = |tenths: &str| {
+            std::fs::write(at.join("temp"), format!("{tenths}\n")).unwrap();
+            record(
+                &held,
+                "BAT0",
+                &Value::Null,
+                &mut Settings::default(),
+                Instant::now(),
+            )["temperature_c"]
+                .clone()
+        };
+        let read = [
+            "-55",
+            "-400",
+            "-1000",
+            "-1001",
+            "-2731",
+            "2000",
+            "2001",
+            &i64::MAX.to_string(),
+        ]
+        .map(said);
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            read,
+            [
+                json!(-5.5),
+                json!(-40.0),
+                json!(-100.0),
+                Value::Null,
+                Value::Null,
+                json!(200.0),
+                Value::Null,
+                Value::Null
+            ]
+        );
     }
 
     // A Dell's firmware read fails when the kernel finds no 64 KiB buffer

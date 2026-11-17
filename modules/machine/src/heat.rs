@@ -162,7 +162,10 @@ fn thousandths(text: Option<String>, reach: std::ops::RangeInclusive<i64>) -> Op
     i32::try_from(milli).ok().map(|m| f64::from(m) / 1000.0)
 }
 
-const DEGREES: std::ops::RangeInclusive<i64> = -100_000..=200_000;
+/// The reach of a temperature any reading could truly be, in thousandths
+/// of a degree, past which a chip's figure is a placeholder, as absolute
+/// zero is; a battery's is held to it too.
+pub const DEGREES: std::ops::RangeInclusive<i64> = -100_000..=200_000;
 
 /// Each sensor of a kind a chip's folder lists, by its number.
 fn numbered(files: &[String], kind: &str) -> Vec<u32> {
