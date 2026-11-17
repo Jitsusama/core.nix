@@ -619,6 +619,14 @@
     repository's trees by season then branch, a cursor stepping within the rows, and an address
     landing on a place, a repository or a tree in its season
   '';
+  code-site-reads-live = ''
+    the code page, served by the local sites' server beside a stand-in repos daemon and node,
+    reads live in headless Chromium: every repository drawn, one growing once a tree is written
+    and one going, a cell at work drawn and linked to its home on the map, broken while the daemon
+    is away and live with its repositories again once it's back, stale once the server goes, the
+    web-design skill's page checks and its homes check passing at a phone's width and a desk's in
+    both looks, and nothing logged
+  '';
   code-site-keeps-its-last-homes = ''
     the code site's writer, while repos fails, ends well in one line and leaves the last homes as
     they were, and once repos answers replaces them whole with every repository and present tree at

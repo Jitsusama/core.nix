@@ -15,10 +15,17 @@ import threading
 from typing import TYPE_CHECKING, Self
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable, Iterator, Mapping
     from pathlib import Path
 
 type Record = dict[str, object]
+
+
+def standing_in(path: Path, domain: str, reading: Path) -> Iterator[StandIn]:
+    """Stand in on `path` with the records by kind `reading` holds, then leave, as a fixture."""
+    stand_in = StandIn(path, domain, json.loads(reading.read_text())["kinds"]).start()
+    yield stand_in
+    stand_in.leave()
 
 
 class StandIn:

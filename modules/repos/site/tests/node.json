@@ -1,0 +1,15 @@
+{
+  "domain": "node",
+  "kinds": {
+    "cell": [
+      {
+        "key": "cell:E2ZIAQ",
+        "name": "E2ZIAQ",
+        "cwd": "/home/ada/trees/grove/modules",
+        "title": "Draw the grove",
+        "standing": "moving",
+        "networks": ["repo.core"]
+      }
+    ]
+  }
+}
