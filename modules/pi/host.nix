@@ -168,15 +168,20 @@ let
         # of work in 96 s, and two minutes leaves the loop that slowdown five
         # times over.
         WatchdogSec = "2min";
-        # A host dumps no core. Its heap runs to 4 GB, and no core of one was
-        # ever kept: the watchdog kills on 15 November and V8's out-of-memory
-        # abort on 16 November all show missing in coredumpctl. On 16 November
-        # the host couldn't exit while the kernel streamed 4.4 GB into
-        # systemd-coredump, so the watchdog's SIGABRT and then its SIGKILL
-        # came three minutes late, and coredump wrote 12.5 GB to disk before
-        # it gave up. Without one, a host that dies restarts in seconds. Its
-        # journal says why it held: its loop's stall lines name the call.
-        LimitCORE = "0";
+        # A host keeps no core. Its heap runs to 4 GB and holds every hosted
+        # conversation's keys and tokens. On 16 November V8 aborted it out of
+        # memory at 20:44:47, and it couldn't exit while the kernel streamed
+        # 4.4 GB into systemd-coredump: the watchdog killed it at 20:47:38,
+        # three minutes on, and coredump wrote 12.5 GB before its own limit
+        # ended it, keeping nothing. core_pattern pipes to systemd-coredump,
+        # which reads the soft limit of 0, records the crash in coredumpctl
+        # with no core, and closes the pipe, so a host that dies restarts in
+        # seconds. Its journal says where it held: the host's watcher writes
+        # "the loop has held N s so far" every few seconds while the loop is
+        # stuck, naming the kernel waits and files its thread is in. The hard
+        # limit stays open, so a command a conversation runs can still ask
+        # for its core with ulimit -c.
+        LimitCORE = "0:infinity";
         # The host exits 78 when what it was given is refused (its kind, its
         # realm, a pi missing a host patch), which another start would only
         # refuse again, so it waits for a fix rather than retrying forever.
