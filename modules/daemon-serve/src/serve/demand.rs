@@ -30,7 +30,8 @@ pub type Fresh = Box<dyn Fn(&Wanted<'_>) + Send + Sync>;
 
 /// What a daemon reads once a watch has begun: handed what the watch
 /// names on its connection's thread, once the watch is held and its
-/// answer queued, so what it reads is told to the watch as a change, and
+/// answer queued, if it has one (a watch kept on may not), so what it
+/// reads is told to the watch as a change, and
 /// what asks whether the watch is there finds it.
 pub type Begun = Box<dyn Fn(&Wanted<'_>) + Send + Sync>;
 

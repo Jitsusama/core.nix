@@ -448,8 +448,9 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
             Ask::Watch { id, .. } => Some(id.clone()),
             _ => None,
         };
-        // What a watch names, said again once it's held and answered.
-        let begins = watch.is_some().then(|| asked.clone());
+        // What a watch names, said again once it's held and answered, to
+        // a daemon that asked to hear it.
+        let begins = (watch.is_some() && shared.begun.get().is_some()).then(|| asked.clone());
         let mut held = lock(shared);
         let mut answer = match own {
             Some(own) => Some(own),

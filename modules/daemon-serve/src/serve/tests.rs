@@ -659,7 +659,16 @@ fn a_daemon_hears_a_watch_begun_once_it_is_held() {
         Ok((r#"["row"] None Some(["people"]) true"#.to_string(), true)),
         "a watch asked again under its id is said begun again"
     );
+    // Kept on, a watch asked again for the same records is answered with
+    // nothing, so health, answered after it, says it was heard.
+    client.send(&json!({"id": 3, "ask": "watch", "kind": "row", "place": "people"}));
     client.ask(&json!({"id": 4, "ask": "health"}));
+    assert_eq!(
+        told.try_recv(),
+        Ok((r#"["row"] None Some(["people"]) true"#.to_string(), true)),
+        "a watch kept on is said begun again"
+    );
+    client.ask(&json!({"id": 5, "ask": "health"}));
     assert!(told.try_recv().is_err(), "each watch begun is said once");
 }
 

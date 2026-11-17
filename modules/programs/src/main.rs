@@ -628,9 +628,9 @@ fn names_programs(kinds: &[String], keys: Option<&[String]>) -> bool {
 
 /// What a watch beginning reads after its answer: each list whose file
 /// changed since it was read, and, for a watch naming its program's key,
-/// a list that's asked and what the program has open. A watch of a whole
-/// kind, as the launcher holds while it's open, runs neither, so Chrome's
-/// history is read only as Chrome is stepped into.
+/// a list that's asked and what the program has open; then the tabs, and
+/// the tabs' and bookmarks' rows made again (`tabs::read`). A whole kind
+/// runs no program's reads, so Chrome's history is read as it's stepped into.
 fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>, places: &[String]) {
     let lists = sources_of(shared, Run::List, kinds, keys);
     for at in lists.into_iter().chain(taken::lists(shared)) {
