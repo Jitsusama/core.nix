@@ -3200,8 +3200,15 @@ def test_a_marks_click_draws_now_from_what_was_kept_on_its_row(shell: Shell) -> 
 
     It opened Now whole, as nothing but a chord's place was drawn from what was kept: Joel's
     clicks took 51 and 89 ms to the screen, 19 and 34 of it making Now again (2026-11-17, 10:07
-    and 10:21). The Work Network's mark, alone in the margin, is centred along the top.
+    and 10:21). Now is kept before the mark lights, so its first frame holds the mark's row only
+    if Now's rows are listed as they stand rather than as last made. The Work Network's mark,
+    alone in the margin, is centred along the top.
     """
+    # Now opened once by its chord and closed, so it's kept whatever the binds warm.
+    shell.as_account(shell.ipc("collection", "on"))
+    shell.launcher_ready()
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     said = Path(os.environ["HOME"]) / "warp-cli"
     contract = Path(os.environ["WARP_CONTRACT"])
     said.mkdir()
@@ -3216,29 +3223,27 @@ def test_a_marks_click_draws_now_from_what_was_kept_on_its_row(shell: Shell) -> 
             return [glyph["mark"] for glyph in drawn] == ["tunnel"]
 
         shell.reported("sets margin ", alone, lit)
-        # Now opened once by its chord, so it's kept whatever the binds warm.
-        shell.as_account(shell.ipc("collection", "on"))
-        shell.launcher_ready()
-        shell.close_launcher()
-        shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
         timed = json.loads(shell.as_account(shell.ipc("openings")))
-        before = timed[-1].get("nth", len(timed)) if timed else 0
+        before = max((one["nth"] for one in timed), default=0)
         output = json.loads(shell.as_account("niri msg --json focused-output"))["logical"]
-        wlrctl = os.environ["WLRCTL"]
-        shell.as_account(f"{wlrctl} pointer move {TO_THE_CORNER} {TO_THE_CORNER}")
-        shell.as_account(f"{wlrctl} pointer move {output['width'] // 2} {cells[0] // 2}")
-        shell.as_account(f"{wlrctl} pointer click left")
-        shell.launcher_ready()
+        shell.click(output["width"] // 2, cells[0] // 2)
         opened: list[Json] = []
 
         def came(_: Json) -> bool:
             each = json.loads(shell.as_account(shell.ipc("openings")))
-            opened[:] = [one for one in each if one.get("nth", 0) > before]
+            opened[:] = [one for one in each if one["nth"] > before]
             return bool(opened)
 
-        shell.launcher_until(came)
+        try:
+            shell.launcher_until(came)
+        except AssertionError as missed:
+            failed = f"the click on the mark at its cell {cells[0]} opened nothing"
+            raise AssertionError(failed) from missed
         assert opened[0]["into"] == "on", f"the click didn't open Now: {opened[0]}"
         assert opened[0].get("kept"), f"the click opened Now whole: {opened[0]}"
+        first = opened[0].get("shown") or {"keys": [], "at": -1}
+        landed = first["keys"][first["at"]] if 0 <= first["at"] < len(first["keys"]) else None
+        assert landed == "on:tunnel", f"the first frame didn't land on the mark's row: {first}"
         shell.launcher_until(
             lambda shown: (
                 shown["path"][-1:] == ["Now"]
@@ -3355,8 +3360,6 @@ def test_a_switch_the_organisation_holds_is_left_and_says_who_holds_it(shell: Sh
         warp_forgotten(said)
 
 
-# Far enough to take the pointer to the screen's top left corner from anywhere on it.
-TO_THE_CORNER = -10000
 # How often a person might ask a terminal again: more often than WARP is read afresh while
 # shown (Warp.qml's fresh), so a read kept from outside is said before it's asked again.
 ASKED_AGAIN = 0.5

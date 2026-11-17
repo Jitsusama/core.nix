@@ -9613,11 +9613,12 @@ Scope {
         // for, since what it holds comes and goes, and one kept as the
         // shell started (warmLed) holds no rows. A collection asked to list
         // now that no source leads anywhere, as a margin mark opens Now, is
-        // listed whole as it stands (keptListing), unless it steps deeper
-        // as it opens (`leading`, as Keyboard's does).
+        // listed whole with its rows made as they stand (asItStands), since
+        // shut they're as last made and a mark lit since would have no row;
+        // unless it steps deeper as it opens (`leading`, as Keyboard's does).
         const listed = source?.keptListed === true ? keptListing(source)
             : listedNow === true && source !== null && !source.leading
-                && leadingTo(name) === null ? keptListing(source)
+                && leadingTo(name) === null ? source.asItStands(() => keptListing(source))
             : listedNow === true || kept.led === true ? ledListing(name) : kept.matches;
         if (listed === null)
             return false;

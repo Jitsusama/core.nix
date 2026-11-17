@@ -41,6 +41,8 @@ WAITING = timedelta(seconds=30)
 # pause between two keys typed, as the desktop test's keys are.
 POLL = 0.05
 KEY_PACE_MS = 50
+# Far enough to take the pointer to the screen's top left corner from anywhere on it.
+TO_THE_CORNER = -10000
 # The modes the launcher's line types in: the find, and insert while a row asks for words.
 TYPING = ("find", "insert")
 
@@ -264,6 +266,17 @@ class Shell:
         status, said = self.execute(command)
         assert status == 0, f"{command!r} exited {status}: {said}"
         return said
+
+    def click(self, x: int, y: int) -> None:
+        """Click the left button at a point on the screen, through a virtual pointer (WLRCTL).
+
+        It's taken to the top left corner first, so the point is the same from wherever the
+        last click left it.
+        """
+        wlrctl = os.environ["WLRCTL"]
+        self.as_account(f"{wlrctl} pointer move {TO_THE_CORNER} {TO_THE_CORNER}")
+        self.as_account(f"{wlrctl} pointer move {x} {y}")
+        self.as_account(f"{wlrctl} pointer click left")
 
     def showing(self) -> Json:
         """Give what the launcher shows, from its showing call."""
