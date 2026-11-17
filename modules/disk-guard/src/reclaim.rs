@@ -408,9 +408,17 @@ pub fn entry(
     if let Err(error) = left {
         return left_unemptied(&error);
     }
+    // What's in it now was written since it moved aside: its owner is back,
+    // as pnpm was on 16 November, installing a worktree's node_modules
+    // again while the guard emptied the old one. That's the owner's, not
+    // the guard failing, so it's kept and raises no failing notice.
+    let written = dir.written_again();
     drop(dir);
     match parent.remove_if_empty(name) {
         Ok(true) => Outcome::Reclaimed,
+        Ok(false) if matches!(written, Ok(true)) => {
+            Outcome::Kept("written again while it was cleared, so what's new stays".to_owned())
+        }
         Ok(false) => Outcome::Failed("something was left in it".to_owned()),
         Err(error) => failed("removing it", error),
     }
