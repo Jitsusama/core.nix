@@ -53,7 +53,9 @@
 //!
 //! With `--door`, a new Nix evaluation or build under a cgroup waits while
 //! memory is short, and through a call `--calls`' pw-dump hears, as
-//! `src/door.rs` and `src/calls.rs` say why and how.
+//! `src/door.rs` and `src/calls.rs` say why and how. Through such a call,
+//! build.slice and jobs.slice are held to a quarter of the processors, as
+//! `src/brake.rs` says why and how.
 //!
 //! With `--revive`, a cgroup gives memory back when the kernel's reclaim
 //! thread gives up, as `src/revive.rs` says why and how.
@@ -88,6 +90,7 @@
 //! --help` names every flag (src/cli.rs): asked wrongly ends 64, and a
 //! sorter that can't read or sort the cgroups 1.
 
+mod brake;
 mod calls;
 mod cli;
 mod door;
@@ -1789,6 +1792,11 @@ fn run(settings: &Settings) -> Result<(), String> {
         ..Ranks::default()
     };
     let mut doorway = Doorway::new(settings.calls.as_deref());
+    let processors = thread::available_parallelism().map_or(1, usize::from);
+    doorway.brake = brake::Brake::found(
+        |place| braked_cpu_max(place, &root),
+        brake::quota(processors),
+    );
     loop {
         match (&watch, &settings.background) {
             (Some(watch), Some(dir)) => {
@@ -1843,6 +1851,7 @@ fn run(settings: &Settings) -> Result<(), String> {
             rank_for_memory(&looking, &mut ranks, &mut warned);
         }
         watch_door(&mut doorway, &root, settings.door.as_deref(), now);
+        brake_for_calls(&mut doorway, &root);
         pass = pass.wrapping_add(1);
         sorter.finish(&alive, now);
     }
@@ -1852,6 +1861,8 @@ fn run(settings: &Settings) -> Result<(), String> {
 struct Doorway {
     door: door::Door,
     calls: Option<calls::Calls>,
+    /// Where builds and jobs stand braked for a call (src/brake.rs).
+    brake: brake::Brake,
 }
 
 impl Doorway {
@@ -1860,8 +1871,79 @@ impl Doorway {
         Doorway {
             door: door::Door::default(),
             calls: pw_dump.map(calls::Calls::follow),
+            brake: brake::Brake::default(),
         }
     }
+}
+
+/// Holds builds and jobs to a quarter of the processors while a call is
+/// on, and lets them go once it ends, as src/brake.rs says. A slice that
+/// couldn't be set is tried again once it has waited, and one found let go
+/// mid-call is set again; `account` is the account's manager's cgroup.
+fn brake_for_calls(doorway: &mut Doorway, account: &Path) {
+    let now = std::time::Instant::now();
+    let calling = doorway.calls.as_mut().is_some_and(|calls| calls.on(now));
+    let processors = std::thread::available_parallelism().map_or(1, usize::from);
+    let lost = if calling {
+        let read = |place| braked_cpu_max(place, account);
+        doorway.brake.check(read, brake::quota(processors), now)
+    } else {
+        Vec::new()
+    };
+    let due = doorway.brake.due(calling, now);
+    for place in lost.iter().filter(|place| !due.contains(place)) {
+        eprintln!(
+            "Found {} let go again mid-call, so it's braked again once {} s have passed.",
+            brake::BRAKED[*place].1,
+            brake::AGAIN.as_secs()
+        );
+    }
+    if due.is_empty() {
+        return;
+    }
+    let quota = brake::quota_for(calling, processors);
+    for place in due {
+        let (manager, slice) = brake::BRAKED[place];
+        let set = Command::new("busctl")
+            .args(brake::quota_call(manager, slice, quota))
+            .stdout(Stdio::null())
+            .output();
+        match set {
+            Ok(output) if output.status.success() => {
+                doorway.brake.set(place, calling);
+                if lost.contains(&place) {
+                    eprintln!("Found {slice} let go mid-call, and braked it again.");
+                }
+            }
+            Ok(output) => {
+                doorway.brake.failed(place, calling, now);
+                eprintln!(
+                    "Couldn't set {slice}'s quota for a call: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                );
+            }
+            Err(error) => {
+                doorway.brake.failed(place, calling, now);
+                eprintln!("Couldn't run busctl to set {slice}'s quota for a call: {error}");
+            }
+        }
+    }
+    if doorway.brake.stands(calling) {
+        eprintln!(
+            "{}.",
+            if calling {
+                "Braked builds and jobs, a call on"
+            } else {
+                "Let go of builds and jobs, no call on"
+            }
+        );
+    }
+}
+
+/// What the cpu.max of the slice at `place` in brake.rs's `BRAKED` reads,
+/// `account` being the account's manager's cgroup.
+fn braked_cpu_max(place: usize, account: &Path) -> Option<String> {
+    fs::read_to_string(brake::cgroup(place, Path::new(CGROUPS), account).join("cpu.max")).ok()
 }
 
 /// Ranks new heavy starts under `cgroup` in `root` behind other work, when
