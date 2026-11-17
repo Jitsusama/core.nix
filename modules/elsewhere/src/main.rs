@@ -416,7 +416,8 @@ fn send(
     job: &Job,
 ) -> Result<Sent, Failure> {
     let (quest, id) = (job.quest.as_str(), job.id.as_str());
-    far::left(&job.root, &job.files, &job.handover).map_err(|error| {
+    let paths = job.files.iter().map(|(path, _)| path.as_str());
+    far::left(&job.root, paths, &job.handover).map_err(|error| {
         Failure::new(
             Exit::Failed,
             "couldn't leave the job in the quest's handover",
@@ -475,6 +476,12 @@ fn send(
     );
     if let Err(why) = brought {
         eprintln!("couldn't bring back what it made on {machine}: {why}");
+        // Moved aside, so the handover's removal once the job ends leaves
+        // what it made for the person to take by hand.
+        let kept = job.handover.with_extension("kept");
+        if fs::rename(&job.handover, &kept).is_ok() {
+            eprintln!("what it made is kept in {}", kept.display());
+        }
     }
     Ok(Sent::Ended(code))
 }

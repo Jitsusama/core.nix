@@ -128,18 +128,37 @@ fn kind(name: &str, value: &Value) -> Result<Kind, String> {
     if programs.is_empty() {
         return Err(format!("{name} names no program a job of it may start"));
     }
+    let brings_back = list("brings_back")?;
+    // The far side passes over hidden files and the near side lands
+    // nothing outside the folder, so such a path could only cross for
+    // nothing or never come home.
+    if let Some(odd) = brings_back.iter().find(|path| !plain(path)) {
+        return Err(format!(
+            "{name}'s brings_back names {odd}, which is hidden or outside the job's folder"
+        ));
+    }
     Ok(Kind {
         description: text("description").to_owned(),
         programs,
         setup: text("setup").to_owned(),
         copies,
         excludes: list("excludes")?,
-        brings_back: list("brings_back")?,
+        brings_back,
         needs: list("needs")?,
         lasts: Some(text("lasts"))
             .filter(|it| !it.is_empty())
             .map(str::to_owned),
     })
+}
+
+/// Whether `path`, with its slashes at either end taken off, names some
+/// place within a folder by plain names alone.
+fn plain(path: &str) -> bool {
+    let path = path.trim_matches('/');
+    !path.is_empty()
+        && path
+            .split('/')
+            .all(|part| !part.is_empty() && !part.starts_with('.'))
 }
 
 fn strings(value: &Value, what: &str) -> Result<Vec<String>, String> {
@@ -194,6 +213,14 @@ mod tests {
                 "not disk",
             ),
             (r#"{"machines": "far"}"#, "machines is a list"),
+            (
+                r#"{"kinds": {"check": {"programs": ["x"], "brings_back": ["out/.cache"]}}}"#,
+                "names out/.cache, which is hidden",
+            ),
+            (
+                r#"{"kinds": {"check": {"programs": ["x"], "brings_back": ["../up"]}}}"#,
+                "names ../up",
+            ),
             ("{", "EOF"),
         ] {
             let problem = read(text).expect_err(&format!("{text} was taken"));

@@ -205,11 +205,15 @@ pub fn crossing(path: &str) -> String {
 /// handover, each under the name it crosses by, and lists them last so
 /// the list is never ahead of its files. Each is listed at the size its
 /// copy came to, which a file rewritten since it was gathered changes.
-pub fn left(root: &Path, files: &[(String, u64)], job: &Path) -> io::Result<()> {
+pub fn left<'a>(
+    root: &Path,
+    paths: impl IntoIterator<Item = &'a str>,
+    job: &Path,
+) -> io::Result<()> {
     let tree = job.join(TREE);
     fs::create_dir_all(&tree)?;
     let mut list = String::new();
-    for (path, _) in files {
+    for path in paths {
         let crossed = crossing(path);
         let into = tree.join(&crossed);
         if let Some(parent) = into.parent() {
@@ -271,10 +275,12 @@ pub fn script(
 work={work}
 tab=$(printf '\t')
 arrived() {{
+  waiting='its list of them'
   [ "$(tail -n 1 "$job/{LEFT}" 2>/dev/null)" = {END} ] || return 1
   while IFS="$tab" read -r size path; do
     [ "$size" = {END} ] && return 0
     case "/$path/" in //*|*/../*|*/./*) continue ;; esac
+    waiting=$path
     [ -f "$job/{TREE}/$path" ] || return 1
     [ "$(($(wc -c < "$job/{TREE}/$path")))" -eq "$size" ] || return 1
   done < "$job/{LEFT}"
@@ -308,7 +314,7 @@ copied() {{
 waited=0
 until arrived; do
   if [ "$waited" -ge {CROSSES_WITHIN} ]; then
-    echo "elsewhere: the job's files didn't reach $(uname -n) within {CROSSES_WITHIN}s" >&2
+    printf "elsewhere: the job's files didn't reach %s within {CROSSES_WITHIN}s, waiting on %s\n" "$(uname -n)" "$waiting" >&2
     exit 75
   fi
   sleep 1
@@ -452,8 +458,10 @@ pub fn bring_back(
     }
     let numbered = |brought: &Brought| job.join(BACK).join(brought.number.to_string());
     let arrived = |files: &[Brought]| {
+        // Only a plain file, since a link crossing would be followed.
         files.iter().all(|brought| {
-            fs::metadata(numbered(brought)).is_ok_and(|meta| meta.len() == brought.size)
+            fs::symlink_metadata(numbered(brought))
+                .is_ok_and(|meta| meta.is_file() && meta.len() == brought.size)
         })
     };
     for _ in 0..=within {
@@ -464,19 +472,15 @@ pub fn bring_back(
             let through = files
                 .iter()
                 .find_map(|brought| linked(folder, &brought.path).map(|link| (brought, link)));
-            if let Some((brought, link)) = through {
+            if let Some((brought, (link, leads))) = through {
                 return Err(format!(
-                    "{} would land through the link {}, which leads out of its folder",
+                    "{} would land through the link {}, which {leads}",
                     brought.path,
                     link.display()
                 ));
             }
             for brought in &files {
-                let into = folder.join(&brought.path);
-                if let Some(parent) = into.parent() {
-                    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-                }
-                fs::copy(numbered(brought), &into)
+                land(&numbered(brought), &folder.join(&brought.path))
                     .map_err(|error| format!("{} didn't land: {error}", brought.path))?;
             }
             return Ok(files.len());
@@ -488,18 +492,44 @@ pub fn bring_back(
     Err(format!("it didn't cross home within {within}s"))
 }
 
-/// The first part of `path` under `folder` that is a symbolic link leading
-/// out of `folder`, which a file brought back would be written through to
-/// wherever it points. A link within the folder is the person's own, and
-/// one that leads nowhere would make what it names, so it counts as out.
-fn linked(folder: &Path, path: &str) -> Option<PathBuf> {
+/// Puts `from` at `into` under a name of its own first and then moves it
+/// there, so a file already at `into`, a hard link to one elsewhere
+/// perhaps, is replaced rather than written through.
+fn land(from: &Path, into: &Path) -> io::Result<()> {
+    let parent = into.parent().unwrap_or(Path::new("."));
+    fs::create_dir_all(parent)?;
+    let name = into.file_name().unwrap_or_default().to_string_lossy();
+    let landing = parent.join(format!(".{name}{MARK}-landing"));
+    fs::copy(from, &landing)?;
+    fs::rename(&landing, into).inspect_err(|_| {
+        // What's left would be in the person's folder; it's spent anyway.
+        let _ = fs::remove_file(&landing);
+    })
+}
+
+/// The first part of `path` under `folder` that is a symbolic link a file
+/// brought back mustn't be written through, and where it leads: out of
+/// `folder`, nowhere, which would make what it names, or into a hidden
+/// folder, where nothing brought back may go. Any other link within the
+/// folder is the person's own.
+fn linked(folder: &Path, path: &str) -> Option<(PathBuf, &'static str)> {
     let home = fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
     let mut at = folder.to_path_buf();
     Path::new(path).components().find_map(|part| {
         at.push(part);
-        let link = fs::symlink_metadata(&at).is_ok_and(|meta| meta.file_type().is_symlink());
-        let out = || fs::canonicalize(&at).map_or(true, |to| !to.starts_with(&home));
-        (link && out()).then(|| at.clone())
+        if !fs::symlink_metadata(&at).is_ok_and(|meta| meta.file_type().is_symlink()) {
+            return None;
+        }
+        let Ok(to) = fs::canonicalize(&at) else {
+            return Some((at.clone(), "leads nowhere"));
+        };
+        let Ok(within) = to.strip_prefix(&home) else {
+            return Some((at.clone(), "leads out of its folder"));
+        };
+        within
+            .components()
+            .any(|part| part.as_os_str().to_string_lossy().starts_with('.'))
+            .then(|| (at.clone(), "leads into a hidden folder"))
     })
 }
 

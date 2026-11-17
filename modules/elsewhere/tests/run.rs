@@ -317,7 +317,7 @@ fn tracked_files_in_folders_a_build_would_fill_still_travel() {
     let (out, err) = said(&output);
     assert!(output.status.success(), "the far job failed: {err}");
     assert!(
-        err.contains("check runs on far"),
+        err.contains("check runs on far") && !err.contains("runs here"),
         "the job didn't run far: {err}"
     );
     assert_eq!(
