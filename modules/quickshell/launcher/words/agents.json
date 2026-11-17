@@ -224,7 +224,7 @@
       }
     },
     {
-      "id": "agents:start-cell",
+      "id": "agents:start-new-work",
       "in": "agents",
       "name": "Start New Work",
       "verb": "more",
@@ -238,24 +238,28 @@
         "started": "started on {machine}; it shows in Agents once it's up",
         "unanswered": "its node didn't answer",
         "unread": "its node's answer couldn't be read",
-        "unrealmed": "no realm to start it in"
+        "unrealmed": "no realm to start it in",
+        "unrun": "mycelium couldn't be run here",
+        "empty": "say what the work is: a link or a few words",
+        "unplaced": "that folder isn't a whole path",
+        "busy": "still starting the last one; say it again once that's done"
       }
     },
     {
-      "id": "verb:agents:start-cell:link",
+      "id": "verb:agents:start-new-work:link",
       "command": "new",
       "argument": "link",
-      "in": "agents:start-cell",
+      "in": "agents:start-new-work",
       "name": "From a Link",
       "verb": "start",
       "glyph": "link",
       "ask": "a link to the work, in a repository you have"
     },
     {
-      "id": "verb:agents:start-cell:in",
+      "id": "verb:agents:start-new-work:in",
       "command": "new",
       "argument": "here",
-      "in": "agents:start-cell",
+      "in": "agents:start-new-work",
       "name": "In {folder}",
       "verb": "start",
       "glyph": "agent",
