@@ -330,7 +330,7 @@ fn state() -> PathBuf {
 /// When each site was last read whole, so a quiet reader is told from one
 /// that isn't reading at all.
 fn last_read(context: &terminal_kit::Context) -> Result<(), Failure> {
-    let sites = read_sites();
+    let sites = progress::sites(&state());
     let github = sites
         .iter()
         .find(|(site, _)| site == SITE)
@@ -360,24 +360,6 @@ fn last_read(context: &terminal_kit::Context) -> Result<(), Failure> {
     written.map_err(|error| {
         Failure::new(Exit::Failed, "couldn't write the answer").because(error.to_string())
     })
-}
-
-/// Each site read, by name, and when it was last read, in milliseconds.
-fn read_sites() -> Vec<(String, u64)> {
-    let mut sites: Vec<(String, u64)> = std::fs::read_dir(state())
-        .into_iter()
-        .flatten()
-        .filter_map(Result::ok)
-        .filter_map(|entry| {
-            let name = entry.file_name().into_string().ok()?;
-            let site = name.strip_prefix("judged-")?.strip_suffix(".json")?;
-            let text = std::fs::read_to_string(entry.path()).ok()?;
-            let kept: Value = serde_json::from_str(&text).ok()?;
-            Some((site.to_owned(), kept.get("read_at")?.as_u64()?))
-        })
-        .collect();
-    sites.sort();
-    sites
 }
 
 /// The reader, which runs until its service stops it.
@@ -702,7 +684,11 @@ fn joel_works_in(
     let known = match github.get(base, &[]) {
         Ok(repo) => github::works_in(&repo),
         // Unreadable, it's one he doesn't work in; his own words still count.
-        Err(Unread::Gone(_)) => false,
+        Err(Unread::Gone(why)) => {
+            let repo = base.trim_start_matches("/repos/");
+            eprintln!("<4>{repo} can't be read, so only Joel counts there this round: {why}");
+            false
+        }
         Err(failed) => return Err(failed),
     };
     learned.insert(base.to_owned(), known);

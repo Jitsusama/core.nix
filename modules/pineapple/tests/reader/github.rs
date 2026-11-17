@@ -114,8 +114,9 @@ fn joel_resumes(line: &str, now: u64) -> Value {
 }
 
 /// The GitHub reader, signed in with a stand-in token, in shadow unless
-/// `more` says otherwise.
+/// `more` says otherwise, its journal kept in `home` for [`journal`].
 fn github_reader(home: &Path, origin: &str, more: &[&str]) -> Child {
+    let journal = std::fs::File::create(home.join(JOURNAL)).expect("its journal is made");
     Command::new(env!("CARGO_BIN_EXE_pineapple-github"))
         .args(["run", "--origin", origin, "--every", PACE])
         .args(more)
@@ -123,9 +124,17 @@ fn github_reader(home: &Path, origin: &str, more: &[&str]) -> Child {
         .env("XDG_STATE_HOME", home.join("state"))
         .env("SIGN_IN_KEYRING", keyring(home))
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(journal)
         .spawn()
         .expect("the reader starts")
+}
+
+/// Where in its home a reader's journal is kept.
+const JOURNAL: &str = "journal";
+
+/// What the reader started in `home` has said to its journal so far.
+fn journal(home: &Path) -> String {
+    std::fs::read_to_string(home.join(JOURNAL)).expect("its journal is read")
 }
 
 /// A keyring program printing a stand-in token, as gh's would print his.

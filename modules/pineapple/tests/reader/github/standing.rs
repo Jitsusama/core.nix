@@ -3,7 +3,8 @@
 //! owner's is only logged in a repository Joel can't push to unless he
 //! opened what it's said on. An opening names where a stop reaches only
 //! when the repository's own wrote it in one he works in; a repository
-//! that can't be read still hears Joel; and one its rate limit refuses
+//! that can't be read still hears Joel, and is asked about and said to
+//! the journal once a round; and one its rate limit refuses
 //! is asked again rather than taken as gone. A thread with nothing the
 //! round judges never asks about its repository, and a round asks about
 //! each repository once, sparing Joel's rate limit.
@@ -15,7 +16,9 @@ use std::sync::{Arc, Mutex};
 use pineapple::github::stamp;
 use serde_json::{Value, json};
 
-use super::{LOGIN, answer_with, comment, commented, github_reader, only_stop, until_asked};
+use super::{
+    LOGIN, answer_with, comment, commented, github_reader, journal, only_stop, until_asked,
+};
 use crate::{Answered, answering, answering_whole, decisions, each, home, until_decided};
 
 #[test]
@@ -491,6 +494,48 @@ fn two_stops_in_one_repository(line: &str, now: u64) -> Answered {
         }
     }
     Answered::ok(answer_with(line, now, &[]))
+}
+
+/// GitHub's answer for two collaborators' stops in example/shop, on two
+/// issues, with the repository's own details refused.
+fn two_stops_in_an_unreadable_repository(line: &str, now: u64) -> Answered {
+    if line.contains(" /repos/example/shop ") {
+        return Answered {
+            status: 404,
+            headers: Vec::new(),
+            body: json!({"message": "Not Found"}),
+        };
+    }
+    two_stops_in_one_repository(line, now)
+}
+
+#[test]
+fn github_a_repository_that_cant_be_read_is_asked_and_told_of_once_a_round() {
+    let (origin, asked) = answering_whole(two_stops_in_an_unreadable_repository);
+    let home = home();
+    let mut reader = github_reader(&home, &origin, &["--live"]);
+    until_decided(&home, 2);
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+
+    assert_eq!(
+        each(&decisions(&home), "verdict"),
+        ["waved:outsider", "waved:outsider"],
+        "only Joel counts where the repository can't be read"
+    );
+    let asked: &Mutex<Vec<String>> = &asked;
+    let asked = asked.lock().expect("what was asked").clone();
+    let times = asked
+        .iter()
+        .filter(|line| line.contains(" /repos/example/shop "))
+        .count();
+    assert_eq!(times, 1, "its repository was asked about once: {asked:?}");
+    let said = journal(&home);
+    let told = said
+        .matches("example/shop can't be read, so only Joel counts there this round")
+        .count();
+    assert_eq!(told, 1, "its journal says so once: {said}");
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
 /// GitHub's answer when a collaborator stops Joel in example/shop, where
