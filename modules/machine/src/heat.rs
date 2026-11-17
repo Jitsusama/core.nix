@@ -300,9 +300,9 @@ fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Va
             // chip sets it itself, 0 where it's at full. On a Dell the
             // chip is its firmware: dell_smm says 2 where the firmware is
             // in its automatic state, and 1 where the fan sits at one of
-            // its levels, which the firmware picks as often as a program
-            // does (writing 1, or a cooling device's state), and the
-            // driver can't tell which (dell_smm_read in the kernel).
+            // its levels, which the firmware may have picked or a program
+            // (writing 1, or a cooling device's state), and the driver
+            // can't tell which (dell_smm_read in the kernel).
             let dell = name.starts_with("dell_smm");
             let mode = moving.enable.as_deref().map(|m| match m {
                 "0" => "full",
@@ -617,7 +617,8 @@ mod tests {
     /// state and 1 at one of its levels, which the firmware or a program
     /// may have picked; another chip's 1 is a speed set by hand and its 2
     /// the chip's own. On 16 November Heat said Joel's fans were set by
-    /// hand at full power under load, though nothing in core sets them.
+    /// hand at full power under load, though nothing in core writes their
+    /// `pwm_enable`.
     #[test]
     fn a_dell_fan_is_set_by_its_firmware_or_a_program_another_by_its_chip_or_hand() {
         let folder = std::env::temp_dir().join(format!("machine-control-{}", std::process::id()));

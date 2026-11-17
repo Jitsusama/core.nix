@@ -1202,7 +1202,7 @@ mod tests {
             json!({ "key": "sensor:dell_smm", "part": "fans",
                 "folder": "/sys/class/hwmon/hwmon6", "temperatures": [], "fans": [
                 { "n": 1, "label": null, "rpm": 2400, "max_rpm": 4800, "power_ratio": 0.5,
-                    "mode": "automatic", "files": [["fan1_input", "2400"],
+                    "mode": "firmware", "files": [["fan1_input", "2400"],
                         ["fan1_max", "4800"], ["pwm1", "128"], ["pwm1_enable", "2"]] },
                 { "n": 2, "label": null, "rpm": 0, "max_rpm": 4800,
                     "files": [["fan2_input", "0"], ["fan2_max", "4800"]] }] }),
@@ -1281,7 +1281,7 @@ mod tests {
             (
                 "firmware-or-program",
                 "the firmware or a program",
-                "the machine's firmware or a program; Linux can't say which",
+                "the machine's firmware or a program sets its speed; Linux can't say which",
             ),
         ];
         for (mode, control, driven) in cases {
@@ -1476,7 +1476,7 @@ mod tests {
         let coretemp = "Read From=/sys/class/hwmon/hwmon4";
         let degrees = |n: &str| format!("{n} \u{b0}C");
         let speed = "Speed=2,400 of 4,800 rpm";
-        let driven = "Driven By=its chip sets its speed";
+        let driven = "Driven By=the machine's firmware sets its speed";
         let since = "Counted=since the machine started";
         let cases: [(&str, Vec<String>, &[&str]); 11] = [
             (

@@ -353,7 +353,7 @@
         "automatic": "its chip sets its speed",
         "manual": "a program sets its speed, through Linux",
         "firmware": "the machine's firmware sets its speed",
-        "firmware-or-program": "the machine's firmware or a program; Linux can't say which",
+        "firmware-or-program": "the machine's firmware or a program sets its speed; Linux can't say which",
         "full": "nothing slows it: it turns at full speed"
       }
     }
