@@ -120,9 +120,6 @@
     Quickshell's FileView, told not to print errors, says nothing of a file that opens and refuses
     every read, as one not told still warns
   '';
-  a-quiet-socket-receives-into-2-mib = ''
-    a machine with a screen gives a socket that asks for no receive buffer 2 MiB to receive into
-  '';
   a-realms-link-key-in-a-file-stays-apart = ''
     where there's no TPM, a realm's link key is a file in a private folder outside the one the
     account's own agent loads, served on its own socket by an agent holding only it, and an account
@@ -184,6 +181,10 @@
   a-silent-hub-is-driven-as-one-stream = ''
     the XPS 14's kernel drives an MST hub whose first branch didn't answer its link address as a
     single stream until the sink goes away, so the monitor behind it still lights
+  '';
+  a-socket-asking-for-nothing-holds-a-burst = ''
+    a machine with a screen gives a socket that asks for no receive buffer 2 MiB to receive into,
+    under a 4 MiB most that one asking can reach
   '';
   a-spawn-kept-in-the-background-opens-no-window = ''
     a fresh session handed over is asked of the harness's spawn decider first: one it keeps in the
