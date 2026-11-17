@@ -7,13 +7,11 @@
 // dialog `#keys`.
 
 import { listen, toggle } from "./keys.ts";
+import { answersAt, onTwice, pressable, stepped } from "./steps.ts";
 import { themeSwitch } from "./theme.ts";
 
 /** How far below the top of the window a part counts as the one being read, past the head. */
 const READING_LINE_PX = 80;
-
-/** How soon a second g must follow the first to go to the top, as in less and vim. */
-const TWICE_MS = 600;
 
 /**
  * Which part is being read, given each part's top in the page in order and
@@ -33,16 +31,6 @@ function partAt(tops: readonly number[], line: number): number {
 function partFrom(last: number, tops: readonly number[], height: number): number {
   const top = tops[last];
   return top !== undefined && top >= 0 && top < height ? last : partAt(tops, READING_LINE_PX);
-}
-
-/** The part `by` on from `at`, held to the `count` parts there are. */
-function stepped(at: number, by: number, count: number): number {
-  return Math.max(0, Math.min(count - 1, at + by));
-}
-
-/** Whether a press at `now` follows one at `before` closely enough to count as twice. */
-function twice(before: number, now: number): boolean {
-  return now - before < TWICE_MS;
 }
 
 /** The part a document's reader is in and the way to the others. */
@@ -68,60 +56,24 @@ function parts(sections: readonly HTMLElement[]): Parts {
   return { step };
 }
 
-/** Makes each key the head names pressable, as a button doing what typing it does. */
-function pressable(taps: Readonly<Record<string, () => void>>): void {
-  for (const kbd of document.querySelectorAll<HTMLElement>(".head .keys kbd")) {
-    const act = Object.hasOwn(taps, kbd.textContent) ? taps[kbd.textContent] : undefined;
-    if (act) {
-      kbd.setAttribute("role", "button");
-      kbd.tabIndex = 0;
-      kbd.addEventListener("click", act);
-      kbd.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          act();
-        }
-      });
-    }
-  }
-}
-
 /** Goes to the document's end. */
 function bottom(): void {
   scrollTo(0, document.body.scrollHeight);
-}
-
-/**
- * Whether a document's keys answer at `target`: anywhere but a select or a
- * summary, whose own keys come first. A link or a button takes no letters,
- * and a document is mostly links, so its keys answer there.
- */
-function answersAt(target: Element): boolean {
-  return target.closest("select, summary") === null;
 }
 
 /** Wires the document this runs in: its parts, its keys and its theme switch. */
 function wire(): void {
   const help = document.getElementById("keys");
   const { step } = parts([...document.querySelectorAll<HTMLElement>(".part")]);
-  let lastG = Number.NEGATIVE_INFINITY;
-  const top = (): void => {
-    const now = Date.now();
-    if (twice(lastG, now)) {
-      scrollTo(0, 0);
-      lastG = Number.NEGATIVE_INFINITY;
-    } else {
-      lastG = now;
-    }
-  };
+  const top = onTwice(() => scrollTo(0, 0));
   const actions = { j: () => step(1), k: () => step(-1), g: top, G: bottom };
   // A document without its list of keys still steps; only ? has nothing to open.
   if (help instanceof HTMLDialogElement) {
     listen({ help, actions, answersAt });
-    pressable({ j: actions.j, k: actions.k, "?": () => toggle(help) });
+    pressable(".head .keys kbd", { j: actions.j, k: actions.k, "?": () => toggle(help) });
   } else {
     listen({ actions, answersAt });
-    pressable({ j: actions.j, k: actions.k });
+    pressable(".head .keys kbd", { j: actions.j, k: actions.k });
   }
   themeSwitch();
 }
@@ -131,4 +83,4 @@ if (typeof document !== "undefined") {
   wire();
 }
 
-export { partAt, partFrom, stepped, twice };
+export { partAt, partFrom };

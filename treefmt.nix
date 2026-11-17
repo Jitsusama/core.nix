@@ -159,12 +159,10 @@ in
     excludes = [
       "modules/quickshell/Fuzzy.js"
       "modules/chrome/open-tabs/extension/*.js"
-      "modules/local-sites/home/*.js"
     ];
   };
 
-  # Chrome's open-tabs extension and the local sites' home, read by biome as
-  # the browser runs them.
+  # Chrome's open-tabs extension, read by biome as the browser runs it.
   settings.formatter.browser-javascript-lint = {
     command = pkgs.lib.getExe pkgs.biome;
     options = [
@@ -173,10 +171,7 @@ in
       "--max-diagnostics=none"
       "--config-path=biome.jsonc"
     ];
-    includes = [
-      "modules/chrome/open-tabs/extension/*.js"
-      "modules/local-sites/home/*.js"
-    ];
+    includes = [ "modules/chrome/open-tabs/extension/*.js" ];
   };
 
   # Each local site's page, its markup and the script in its head, read by

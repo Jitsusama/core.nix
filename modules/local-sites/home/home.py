@@ -1,8 +1,9 @@
 """Builds the home of Joel's local sites from the sites.json beside it.
 
 It writes the list, its llms.txt and Markdown twin, and the strip at the top
-of every page whose row asks for one, and puts the home's own scripts and
-styles in place beside them. A row may name pages of its site that say their
+of every page whose row asks for one, and puts the home's own styles in
+place beside them; its keys and theme switch are the kit's
+/local-sites/kit/home.js. A row may name pages of its site that say their
 own kind in the strip, as "pages": {"tree.html": "test"}. The home's
 theme-color takes each look's ground from the kit's theme.css, so it turns
 with the theme. A document, any row but an app, takes its keys and theme
@@ -39,7 +40,10 @@ BEDS = "  <!-- the sites: home.py writes these -->"
 STATUS = {"withdrawn": "turned down, kept", "settled": "settled", "growing": ""}
 # What the home serves of its own, copied in since the server follows no
 # link out of its root.
-FILES = ("home.js", "home.css", "theme.js", "strip.css")
+FILES = ("home.css", "strip.css")
+# What the home served of its own before its keys and switch were the kit's,
+# taken away so no page can go on loading a copy that won't learn.
+GONE = ("home.js", "theme.js")
 OPEN, CLOSE = "<!-- sites strip: home.py writes this -->", "<!-- /sites strip -->"
 GROUND = re.compile(r"--background:\s*([^;]+);")
 # A script file a page loads, by its address however it's quoted.
@@ -197,7 +201,7 @@ def llms(root: Path, sites: list[Site]) -> str:
     lines = [
         "# Joel's local sites",
         "",
-        "> Every site made for Joel on this laptop, newest first, each saying what it is",
+        "> Every site made for Joel on this machine, newest first, each saying what it is",
         "> and what it asks of him. Built from sites.json.",
         "",
     ]
@@ -217,7 +221,7 @@ def twin(sites: list[Site]) -> str:
     lines = [
         "# Your Sites",
         "",
-        "Everything made just for you lives here, on this laptop, newest first.",
+        "Everything made just for you lives here, on this machine, newest first.",
         "",
     ]
     for site in sites:
@@ -357,6 +361,9 @@ def build(sources: Path, root: Path, declared: Path | None = None) -> str:
         write(root / name, (sources / name).read_text(encoding="utf-8"))
     shell = (sources / "index.html").read_text(encoding="utf-8")
     write(root / "index.html", grounds(home(shell, sites), root))
+    # Only once the page that no longer loads them is in place.
+    for name in GONE:
+        (root / name).unlink(missing_ok=True)
     write(root / "llms.txt", llms(root, sites))
     write(root / "index.md", twin(sites))
 

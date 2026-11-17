@@ -7,7 +7,8 @@
 # them; llms.txt
 # and the twin list all three; each stripped page gets its strip after the
 # skip link, linking home from its depth; the home's own files are put
-# beside it; its theme-color takes each look's ground from the kit, and
+# beside it, and its old scripts taken away, while its page loads the kit's
+# script and switch; its theme-color takes each look's ground from the kit, and
 # names none without one; a second run changes no file; a broken record
 # keeps the last build; a root with no sites.json is left alone; and a
 # row Nix declares stands in for the record's, or goes first; and a
@@ -73,15 +74,26 @@ printf '\xff\n' >> "$root/notes/more.html"
 script "type=module SRC='/local-sites/kit/../x.js'" notes/more.html
 script "src=/local-sites/kit/../x.js" notes/index.html
 
+# What an older builder copied in beside the home, which this one takes away.
+touch "$root/home.js" "$root/theme.js"
+
 said=$("$python" "$sources/home.py" "$sources" "$root")
 owning="scripts of their own in notes/ (/local-sites/kit/../x.js), old/ (site.js, ways.js)"
 [ "$said" = "home: 2 sites, 1 kept; strips on 3 pages; $owning" ] || fail "it said: $said"
 
-for file in home.js home.css theme.js strip.css; do
+for file in home.css strip.css; do
   cmp -s "$sources/$file" "$root/$file" || fail "$file wasn't put beside the home"
+done
+for file in home.js theme.js; do
+  [ ! -e "$root/$file" ] || fail "the old $file was left beside the home"
 done
 
 index=$root/index.html
+grep -q '<script type="module" src="/local-sites/kit/home.js"></script>' "$index" ||
+  fail "the home doesn't load the kit's home.js"
+grep -q '<link rel="stylesheet" href="/local-sites/kit/switch.css">' "$index" ||
+  fail "the home doesn't load the kit's switch.css"
+! grep -qE 'src="(home|theme)\.js"' "$index" || fail "the home still loads a script of its own"
 grep -q '<span class="name">The map</span>' "$index" || fail "the home lacks The map"
 grep -q '<span class="name">Notes &amp; such</span>' "$index" || fail "a name wasn't escaped"
 map_at=$(grep -n 'The map' "$index" | cut -d: -f1)

@@ -187,7 +187,8 @@ body {
   letter-spacing: 0.1em;
 }
 
-/* The keys and the switch, small and set under the way through. */
+/* The keys and the switch, small and set under the way through. The switch is
+   the kit's (switch.css), drawn as on every other site. */
 .keys {
   margin-block-start: var(--items);
   color: var(--muted);
@@ -202,38 +203,6 @@ body {
 
 html:not(.js) :is(.keys, .switch) {
   display: none;
-}
-
-.switch {
-  display: flex;
-  gap: var(--tie);
-}
-
-.switch button {
-  display: grid;
-  place-items: center;
-  inline-size: var(--target);
-  block-size: var(--target);
-  padding: 0;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 50%;
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.switch button:hover {
-  color: var(--strong);
-}
-
-.switch button[aria-checked="true"] {
-  color: var(--tint);
-  border-color: var(--rule);
-}
-
-.switch svg {
-  inline-size: 18px;
-  block-size: 18px;
 }
 
 /* The beds. */

@@ -60,7 +60,7 @@ builds, each document still loading a script file of its own.
 | [`src/`][src]            | the server: config, door, files, gate, feeds, pages     |
 | [`tests/`][tests]        | the server run beside a stand-in daemon, and scripts'   |
 | [`kit/`][kit]            | what every live site shares: feeds, records, the switch |
-| [`home/`][home]          | the home page's builder and its scripts and styles      |
+| [`home/`][home]          | the home page's builder and its styles                  |
 
 A live page's own test reads it in headless Chromium as Joel's browser
 would, through the real server beside a stand-in for its daemon. What

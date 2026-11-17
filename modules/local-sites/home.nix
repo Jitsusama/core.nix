@@ -16,12 +16,13 @@
 #
 # The home is built from sites.json, a row per site, which sessions write:
 # home/home.py writes the list, its llms.txt and Markdown twin, and each
-# page's strip, and copies the home's own scripts and styles in beside
-# them. It runs whenever sites.json changes and at every switch, so a
-# changed builder reaches the home without anyone running it. A live
-# site's row is declared here beside its mount instead (rows), so what the
-# home says of it is built with it; it stands in for any row sites.json
-# still has at its path.
+# page's strip, and copies the home's own styles in beside them; its
+# keys and switch come from the kit, as every site's do. It runs whenever
+# sites.json changes and at every switch, so a changed builder reaches
+# the home without anyone running it. A live site's row is declared
+# here beside its mount instead (rows), so what the home says of it is
+# built with it; it stands in for any row sites.json still has at its
+# path.
 #
 # A live site is built by Nix from its TypeScript on the kit (site.nix
 # says how) and mounted here with the feed it watches. system/ is the
