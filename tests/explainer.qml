@@ -185,7 +185,7 @@ ShellRoot {
                     explainer.shown("e")?.note === "asking", explainer.shown("e"));
                 explainer.explain("f", "HANG");
                 until("a node that never answers is given up on",
-                    () => explainer.shown("f")?.name === "Couldn't be explained", () => {
+                    () => explainer.shown("f")?.name === "couldn't be explained", () => {
                         Qt.exit(0);
                     });
             });

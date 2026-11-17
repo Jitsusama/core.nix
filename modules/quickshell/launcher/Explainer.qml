@@ -116,6 +116,10 @@ Scope {
             // asked meanwhile waits its turn too.
             const command = next;
             next = null;
+            // What the last read said is let go now, as Quickshell may tell
+            // its ending again before the next starts, and it isn't the
+            // waiting row's.
+            reader.heard = {};
             Qt.callLater(() => explainer.read(command));
             return;
         }
