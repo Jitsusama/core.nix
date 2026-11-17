@@ -1924,6 +1924,10 @@
     the session's niri lets smithay say which GPU priority niri got, keeping the rest of niri's own
     log filter
   '';
+  niri-shares-the-launcher-but-no-password = ''
+    no layer rule in the account's niri keeps the launcher out of a shared screen, and polkit and
+    the notices are each kept out by one
+  '';
   niri-starts-able-to-go-first = ''
     the session's niri starts through its wrapper, which holds CAP_SYS_NICE
   '';

@@ -2026,8 +2026,9 @@ works the same way everywhere.
   records the screen as it stands, the launcher included, and stops on the
   same chord; the margin's recording mark shows the moment it's pressed,
   and the recording begins once the mark is drawn, so every frame holds
-  it. The launcher is kept out of a call's share and the notices out
-  of screenshots, never the launcher out of his own pictures.
+  it. A call's share shows the launcher too, since Joel shows people his
+  desktop through it; only polkit's password is kept out of a share, and
+  the notices out of screenshots.
 - **Return pastes where the launcher opened.** On a copy in Super+V or an
   emoji in Super+E, Return puts it on the clipboard and pastes it into the
   window the launcher opened over, Ctrl+Shift+V in a terminal and Ctrl+V

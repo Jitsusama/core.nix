@@ -128,12 +128,14 @@ layer-rule {
     }
 }
 
-// A shared screen never shows a secret or a message: the launcher holds the
-// clipboard's history, and polkit asks for a password. Notices are kept out
-// of the screenshots niri takes by itself as well, so one never lands in the
-// next shot; picking a region still sees them.
+// A shared screen never shows a password or a message: polkit asks for one.
+// The launcher shows, since Joel shows people his desktop through it on a
+// call (Joel, 2026-11-17: "i don't care about hiding any of this shit at
+// this point, maybe notification popups"). Notices are kept out of the
+// screenshots niri takes by itself as well, so one never lands in the next
+// shot; picking a region still sees them.
 layer-rule {
-    match namespace="^(launcher|polkit)$"
+    match namespace="^polkit$"
     block-out-from "screencast"
 }
 
