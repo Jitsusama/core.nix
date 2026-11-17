@@ -2207,9 +2207,12 @@ fn revert_and_tell(
     // Revert again until keep_revert says how this one went, since a net
     // leaving while the revert's comparison builds ends here, and the next
     // build's search drops a job whose test is already held.
+    // Revert again until keep_revert says how this one went, since a net
+    // leaving while the revert's comparison builds ends here, and the next
+    // build's search drops a job whose test is already held.
     let mut hold = json!({
         "test": test, "bad": commit, "bad_pr": found.pr, "revert_pr": Value::Null,
-        "revert_commit": Value::Null, "failed_at": head, "at": now(),
+        "revert_commit": Value::Null, "revert_again": true, "failed_at": head, "at": now(),
         "already_runs": already_runs,
     });
     state.set_hold(&hold)?;
