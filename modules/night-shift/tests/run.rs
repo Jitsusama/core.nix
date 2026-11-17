@@ -7,7 +7,7 @@ mod common;
 use common::Folder;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
@@ -216,13 +216,21 @@ fn a_start_outside_its_hours_runs_nothing_and_isnt_a_failure() {
     );
 }
 
+/// Moves the stand-in clock in one step, by a rename, so the job never
+/// reads it half written.
+fn set_the_clock(clock: &Path, time: &str) {
+    let next = clock.with_extension("next");
+    fs::write(&next, format!("{time}\n")).unwrap();
+    fs::rename(&next, clock).unwrap();
+}
+
 /// A job within its hours by a stand-in clock at 03:00, waiting for a
 /// turn the test holds, with the hours over by the time the test gives
 /// the clock 06:00 and `then` has run. Gives what it said in all, and
 /// whether it ended as a success.
 fn wait_past_its_hours(machine: &Machine, then: impl FnOnce()) -> (String, bool) {
     let clock = machine.path("clock");
-    fs::write(&clock, "03:00\n").unwrap();
+    set_the_clock(&clock, "03:00");
     let mut waiting = machine
         .command("--hours 01:30-05:15 --wait-at-most 10", "echo ran > ran")
         .env("NIGHT_SHIFT_CLOCK", &clock)
@@ -230,8 +238,8 @@ fn wait_past_its_hours(machine: &Machine, then: impl FnOnce()) -> (String, bool)
         .spawn()
         .unwrap();
     let mut stdout = BufReader::new(waiting.stdout.take().expect("a piped stdout"));
-    // Its own line says it's past the first look at the hours and
-    // waiting, so the clock moves only once it is.
+    // Its own line comes after its look at the hours in the wait, so the
+    // clock moves, and `then` runs, a whole look before the next one.
     let mut said = String::new();
     while !said.contains("waiting for the turn") {
         let read = stdout.read_line(&mut said).expect("a readable stdout");
@@ -240,7 +248,7 @@ fn wait_past_its_hours(machine: &Machine, then: impl FnOnce()) -> (String, bool)
             "the job ended without waiting for the turn: {said}"
         );
     }
-    fs::write(&clock, "06:00\n").unwrap();
+    set_the_clock(&clock, "06:00");
     then();
     stdout.read_to_string(&mut said).expect("a readable stdout");
     let output = waiting.wait_with_output().unwrap();
@@ -253,7 +261,7 @@ fn a_turn_had_once_its_hours_are_over_runs_nothing() {
     let machine = Machine::new();
     let held = machine.hold_the_turn();
     // The turn is free at the wait's next look, which takes it before it
-    // reads the clock.
+    // reads the clock, so only the look after the turn can stop it.
     let (said, success) = wait_past_its_hours(&machine, || drop(held));
     assert!(success, "a turn had past its hours failed its unit: {said}");
     assert!(

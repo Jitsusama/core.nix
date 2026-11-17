@@ -358,14 +358,16 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
                     );
                     return Ok(None);
                 };
+                // Hours that close while it waits end the wait, rather than
+                // one that runs on to say a later try goes on when none will.
+                // It looks before saying it waits, so the line means this
+                // look is over and the next is a whole LOOK_EVERY away.
+                if outside_its_hours(job) {
+                    return Ok(None);
+                }
                 if told.as_ref() != Some(&who) {
                     say(job, &format!("waiting for the turn, which {who} has"));
                     told = Some(who);
-                }
-                // Hours that close while it waits end the wait, rather than
-                // one that runs on to say a later try goes on when none will.
-                if outside_its_hours(job) {
-                    return Ok(None);
                 }
                 if began.elapsed() >= most {
                     return Err(Failure::new(
