@@ -422,3 +422,31 @@ fn branches(shared: &Shared, path: &str) -> Option<Vec<Value>> {
         .collect();
     Some(listed)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    /// A checkout already held is refused, the first hold kept, and let
+    /// go once it ends. Asked on a thread of its own, so a hold that
+    /// locks itself fails the case rather than hanging it.
+    #[test]
+    fn a_checkout_held_refuses_another_and_keeps_its_hold() {
+        let (told, heard) = mpsc::channel();
+        std::thread::spawn(move || {
+            let code = Code::new("", &Value::Null);
+            let first = Holding::take(&code, "/src/alpha");
+            let second = Holding::take(&code, "/src/alpha").is_some();
+            let kept = lock(&code.busy).contains("/src/alpha");
+            drop(first);
+            let freed = Holding::take(&code, "/src/alpha").is_some();
+            told.send((second, kept, freed)).unwrap();
+        });
+        let said = heard
+            .recv_timeout(Duration::from_secs(5))
+            .expect("a second hold on a held checkout never came back");
+        assert_eq!(said, (false, true, true));
+    }
+}
