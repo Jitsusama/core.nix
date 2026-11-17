@@ -67,6 +67,9 @@ HOLDING = dt.timedelta(seconds=10)
 # How long the client may take to boot to its first queues, or a tunnel or a
 # plugged-in link to come up.
 COMING_UP = dt.timedelta(seconds=30)
+# How soon a restarted recorder has the gateway's round trip, in ms: choosing
+# reflectors takes 1.5 s, and it mustn't keep the gateway unsampled meanwhile.
+SAMPLED_WITHIN_MS = 1_000
 # How long a device's queue may take to go still after a transfer.
 STILLING = dt.timedelta(seconds=30)
 # The least share of the connection agents' bulk beside a tunnel gets while bulk inside it
@@ -580,7 +583,9 @@ def test_each_direction_is_recorded(connection: Connection) -> None:
     after = [h for h in heard() if h["at"] > since]
     assert "network" in after[0], f"a recording didn't open by naming its network: {after[0]}"
     first = next(h["at"] for h in after if isinstance(h.get("gateway"), float))
-    assert first - since < 1_000, f"the gateway went unsampled {first - since} ms after a restart"
+    assert first - since < SAMPLED_WITHIN_MS, (
+        f"the gateway went unsampled {first - since} ms after a restart"
+    )
 
 
 def test_slice_made_again(connection: Connection) -> None:
