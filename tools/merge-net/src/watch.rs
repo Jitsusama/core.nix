@@ -4602,8 +4602,8 @@ mod tests {
         });
         let (kept, hold) = kept;
         assert!(
-            hold["cut"] == true && hold.get("revert_again").is_none(),
-            "a hold left mid-comparison doesn't say it was cut, for its kept job: {hold}"
+            hold["reverting"] == true && hold.get("revert_again").is_none(),
+            "a hold left mid-comparison doesn't say its revert is unsettled: {hold}"
         );
         assert!(
             took < Duration::from_secs(5),
@@ -4617,16 +4617,12 @@ mod tests {
 
     #[test]
     fn a_search_whose_revert_a_leave_cut_settles_again() {
-        // A net leaving mid-comparison keeps the search's job, with a hold
-        // on its test whose revert never landed; dropping the job as held
-        // would leave switches held with no revert and nobody told.
+        // A net leaving mid-comparison, or stopped there, keeps the
+        // search's job, with a hold on its test whose revert never landed;
+        // dropping the job as held would leave switches held with no
+        // revert and nobody told.
         let state = state("search-cut");
-        state
-            .set_hold(&json!({
-                "test": "vm-a", "bad": "h", "bad_pr": 1, "revert_pr": null,
-                "revert_commit": null, "cut": true, "failed_at": "h", "at": now(),
-            }))
-            .unwrap();
+        state.set_hold(&reverting("vm-a")).unwrap();
         let world = Stand {
             head: "h".into(),
             merges: names("h"),
@@ -4647,9 +4643,47 @@ mod tests {
         );
         let hold = state.hold().unwrap_or_default();
         assert!(
-            hold["cut"] != true,
-            "the search settled again kept the cut hold: {hold}"
+            hold.get("reverting").is_none() && !hold["revert_pr"].is_null(),
+            "the search settled again didn't keep its revert's outcome: {hold}"
         );
+    }
+
+    #[test]
+    fn a_kept_job_let_go_clears_the_hold_its_revert_left_unsettled() {
+        // A kept search whose test main has listed since is let go
+        // without settling, and the hold its cut revert left would hold
+        // switches with no revert to clear it.
+        let state = state("cut-let-go");
+        state.set_hold(&reverting("vm-a")).unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("h n"),
+            quarantined: names("vm-a"),
+            ..Stand::default()
+        };
+        let settler = Settler::new(&world, &state);
+        settler.hand(search_for("vm-a"));
+        std::thread::scope(|scope| {
+            settler.start(scope);
+            settler.close();
+        });
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "a search main lists as quarantined reverted"
+        );
+        assert_eq!(
+            state.hold(),
+            None,
+            "a kept job let go left its unsettled revert's hold"
+        );
+    }
+
+    /// A hold on `test` whose revert was begun and never kept.
+    fn reverting(test: &str) -> Value {
+        json!({
+            "test": test, "bad": "h", "bad_pr": 1, "revert_pr": null,
+            "revert_commit": null, "reverting": true, "failed_at": "h", "at": now(),
+        })
     }
 
     #[test]
