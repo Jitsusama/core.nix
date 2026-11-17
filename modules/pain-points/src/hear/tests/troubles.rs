@@ -47,6 +47,23 @@ fn a_finding_the_node_never_takes_is_tried_three_times_then_said_as_a_trouble() 
 }
 
 #[test]
+fn a_pain_given_up_on_waits_on_no_mycelium() {
+    let place = Place::new("tries-no-cells");
+    place.routes();
+    a_day(&place);
+    for _ in 0..3 {
+        hear(&place.ears(), CELLS, &mut |_, _| false).expect("a run");
+    }
+    let mut ears = place.ears();
+    ears.at = AT + 300_000;
+    let hour = hear(&ears, r#"{"Ok":{"Sessions":[]}}"#, &mut |_, _| true).expect("a run");
+    assert!(
+        !hour.troubles.iter().any(|t| t.contains("named no sessions")),
+        "one outage, said once as given up: {hour:?}"
+    );
+}
+
+#[test]
 fn a_pain_given_up_on_is_a_trouble_while_fresh_and_then_in_its_days_count() {
     let place = Place::new("tries-later");
     place.routes();
@@ -55,6 +72,12 @@ fn a_pain_given_up_on_is_a_trouble_while_fresh_and_then_in_its_days_count() {
         hear(&place.ears(), CELLS, &mut |_, _| false).expect("a run");
     }
     let mut ears = place.ears();
+    ears.at = AT + 3_600_000;
+    let hour = hear(&ears, CELLS, &mut |_, _| true).expect("a run");
+    assert!(
+        hour.troubles.iter().any(|t| t.contains("gave up")),
+        "while fresh: {hour:?}"
+    );
     // Past the two hours its owner had: a short outage of the node fails
     // the listener no longer than that.
     ears.at = AT + 3 * 3_600_000;
