@@ -13,6 +13,7 @@ import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
 import { said } from "../../local-sites/kit/status.ts";
+import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { escaped, murmurRow, skyOf } from "./draw.ts";
 import { headline, lede, type Murmur, murmursOf } from "./model.ts";
@@ -234,12 +235,16 @@ setInterval(() => {
 
 themeSwitch();
 
-for (const key of document.querySelectorAll<HTMLElement>(".hero .keys kbd[data-key]")) {
-  key.addEventListener("click", () => {
-    if (key.getAttribute("data-key") === "?") {
-      toggle(keys);
-    } else {
-      list.focus();
-    }
-  });
-}
+// A tap on a key the head shows does what typing it does, for a reader with
+// no keyboard, and leaves the list holding the keys as a typed one does.
+pressable(".hero .keys kbd", {
+  j: () => {
+    move(1);
+    list.focus();
+  },
+  k: () => {
+    move(-1);
+    list.focus();
+  },
+  "?": () => toggle(keys),
+});

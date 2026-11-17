@@ -3095,6 +3095,16 @@
     newest first under their quests' titles, ties without the writer's own, how one settled, the
     sentence's turns, the quote cut on a word, and a record it can't read said, not dropped
   '';
+  murmurs-site-reads-live = ''
+    the murmurs page, served by the local sites' server beside a stand-in node through the node
+    feed as home.nix declares it for a machine in a realm, reads live in headless Chromium: every
+    murmur drawn newest first and counted, one said, settled or gone, one it can't read said while
+    the rest draw, broken while the node is away with the murmurs kept and live once it's back,
+    stale once the server goes with them kept, a murmur's words drawn as words and never as markup,
+    j, k, g, G and ? answering, a tap on a key its head shows doing what typing it does, the
+    web-design skill's page checks passing at a phone's width and a desk's in both looks, and
+    nothing logged
+  '';
   start-new-work-asks-only-a-sprout = ''
     Start New Work asks the realm's node only a sprout of the trimmed words or link, after --,
     with -o json and never --join, in a whole folder from the open quests' repositories, home in

@@ -328,6 +328,59 @@ in
           ${../mycelium/site/tests}/map-reads-live-test.py
         touch $out
       '';
+  # The murmurs page, built on the theme's own web kit as a machine builds it,
+  # read in headless Chromium through the server beside a stand-in node
+  # (modules/mycelium/murmurs/tests/murmurs-reads-live-test.py): live with
+  # every murmur drawn newest first and counted, one said, settled or gone,
+  # one it can't read said, broken while the node is away with the murmurs
+  # kept and live once it's back, stale once the server goes with them kept,
+  # words drawn as words and never as markup, its keys and a tap on those its
+  # head shows stepping the cursor, and the web-design skill's page checks
+  # passing at two widths in both looks with nothing logged. Chromium builds
+  # only on Linux. The node's feed is the one home.nix declares for a machine
+  # in a realm, so the server under test passes the page what a machine's does.
+  murmurs-site-reads-live =
+    let
+      inRealm = account (bareNixos [
+        self.nixosModules.workstation
+        {
+          home-manager.users.someone = {
+            imports = [ self.homeModules.local-sites ];
+            jitsusama.mycelium.realm = "harbour";
+          };
+        }
+      ]);
+      python = pkgs.python3.withPackages (python: [
+        python.playwright
+        python.pytest
+      ]);
+      murmurs = sites.localSite {
+        name = "web";
+        src = ../mycelium/murmurs;
+        webKit = (account workstation).xdg.dataFile."jitsusama/web".source;
+        tint = "program";
+      };
+    in
+    pkgs.runCommandLocal "murmurs-site-reads-live"
+      {
+        env = {
+          LOCAL_SITES = lib.getExe' (pkgs.callPackage ./package.nix { }) "local-sites";
+          MURMURS_SITE = "${murmurs}";
+          NODE_KINDS = builtins.toJSON inRealm.jitsusama.local-sites.feeds.node.kinds;
+          LOCAL_SITES_KIT = "${sites.kit}";
+          STRIP = "${./home/strip.css}";
+          WEB_SKILL = "${../theme/web/skill}";
+          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.callPackage ./headless-browsers.nix { }}";
+          PYTHONPATH = "${./tests}";
+          PYTHONDONTWRITEBYTECODE = "1";
+        };
+      }
+      ''
+        HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider -p live_page \
+          --import-mode=importlib --basetemp="$TMPDIR/pytest" \
+          ${../mycelium/murmurs/tests}/murmurs-reads-live-test.py
+        touch $out
+      '';
   # Code, built on the theme's own web kit as a machine builds it, read in
   # headless Chromium through the server beside a stand-in repos daemon and a
   # stand-in node (modules/repos/site/tests/code-reads-live-test.py): live
