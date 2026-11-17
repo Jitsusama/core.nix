@@ -48,8 +48,10 @@ pub fn kitty(shared: &Shared) -> Option<usize> {
 /// every change of the session while they were watched, so a watch
 /// beginning reads nothing more. kitty's list is read as it's due, or
 /// never read yet, while the tabs are watched. The tabs' and the
-/// bookmarks' rows are made again where the watch names their place.
-pub fn read(shared: &Arc<Shared>, places: &[String]) {
+/// bookmarks' rows are made again, once each, for a watch of rows that
+/// names their place or none; one naming keys alone is left, as the
+/// launcher holds one for each step, and the bookmarks are files.
+pub fn read(shared: &Arc<Shared>, places: Option<&[String]>) {
     let (unread, listed) = {
         let daemon = lock(&shared.daemon);
         if !wanted(&daemon) {
@@ -83,13 +85,16 @@ pub fn read(shared: &Arc<Shared>, places: &[String]) {
     // A session read that ended between this watch's answer and its
     // being held made neither place's rows, as neither was watched then,
     // and what it read is held, so it starts no read above.
+    let Some(places) = places else {
+        return;
+    };
+    let names = |place: &str| places.is_empty() || places.iter().any(|named| named == place);
     let mut daemon = lock(&shared.daemon);
-    for place in places {
-        if place == PLACE {
-            make(shared, &mut daemon);
-        } else if place == programs::bookmark_rows::PLACE {
-            bookmarks::make(shared, &mut daemon);
-        }
+    if names(PLACE) {
+        make(shared, &mut daemon);
+    }
+    if names(programs::bookmark_rows::PLACE) {
+        bookmarks::make(shared, &mut daemon);
     }
 }
 

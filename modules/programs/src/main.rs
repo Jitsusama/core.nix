@@ -652,7 +652,8 @@ fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>, places
         read_named(shared, keys);
         taken::ahead(shared, keys);
     }
-    tabs::read(shared, places);
+    let rows = keys.is_none() && names_rows(kinds, None);
+    tabs::read(shared, rows.then_some(places));
 }
 
 /// What a get or a list reads first, on this thread: the entries not yet
