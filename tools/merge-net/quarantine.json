@@ -196,6 +196,21 @@
     "test": "an-agents-return-does-its-harmless-act-on-niri"
   },
   {
+    "at": 1794926937,
+    "commit": "db045cca94b862b78ba388fb3f36b073509139e7",
+    "due": "2026-11-18",
+    "due_why": "Its owner, the launcher's, times the case's keys from the link rather than from when it sees the line, clears what it leaves typed, and takes it off by 2026-11-18 17:00 UTC",
+    "owner_pr": 4831,
+    "owner_session": "Y2YBTS",
+    "reason": "failed RCTRF8's gate and 2 of 32 other reruns: a line a link opens drops keys for 700 ms by the wall clock, but the case sends its keys only once its polls see the line up, so under load its second key lands past the 700 ms and stays typed ('i' == ''); its finally closes the line without clearing it, so the two Super+S line cases after it read 'iand the reply?'",
+    "subtests": [
+      "test_a_link_to_the_void_opens_nothing_over_the_launcher_and_its_line_drops_keys_at_first",
+      "test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply",
+      "test_super_s_line_shows_a_reply_the_void_wrote_once_in_its_thread_and_not_as_a_line"
+    ],
+    "test": "an-agents-return-does-its-harmless-act-on-niri"
+  },
+  {
     "at": 1794854023,
     "commit": "aeac109e3fb236c6bf47ad7f580969d3e547c5e3",
     "due": "2026-11-18",
