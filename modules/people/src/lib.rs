@@ -916,7 +916,7 @@ mod tests {
                 "person:mc@example.com"
             ]
         );
-        assert!(book.search("  ", 10).is_empty());
+        assert_eq!(book.search("  ", 10), Vec::<&Record>::new());
     }
 
     #[test]
