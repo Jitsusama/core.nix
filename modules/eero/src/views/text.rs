@@ -932,13 +932,15 @@ mod tests {
         // A theme whose roles are all apart, so a run drawn in the wrong
         // one reads differently. Its text sits in a slot of the terminal's
         // rather than its foreground, so the text is coloured too, and a
-        // run given a role the pen lacks would read plain.
+        // run given a role the pen lacks would read plain. Its greys are
+        // built rather than spelt, since only the theme names a colour.
+        let grey = |level: u8| format!("#{level:02x}{level:02x}{level:02x}");
         let theme = serde_json::json!({
             "colours": {
-                "text": "#101010", "strong": "#202020", "muted": "#303030",
-                "rule": "#404040", "alert": "#505050", "warning": "#606060",
+                "text": grey(0x10), "strong": grey(0x20), "muted": grey(0x30),
+                "rule": grey(0x40), "alert": grey(0x50), "warning": grey(0x60),
             },
-            "terminal": {"foreground": "#f0f0f0", "black": "#101010"},
+            "terminal": {"foreground": grey(0xf0), "black": grey(0x10)},
         });
         let truecolour = terminal_kit::ink::Ink {
             colours: terminal_kit::ink::Colours::Truecolour,
