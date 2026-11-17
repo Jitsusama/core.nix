@@ -685,8 +685,10 @@ fn joel_works_in(
         Ok(repo) => github::works_in(&repo),
         // Unreadable, it's one he doesn't work in; his own words still count.
         Err(Unread::Gone(why)) => {
-            let repo = base.trim_start_matches("/repos/");
-            eprintln!("<4>{repo} can't be read, so only Joel counts there this round: {why}");
+            eprintln!(
+                "<4>{why}, so a stop there by anyone but Joel, on what he didn't open, \
+                 is only logged and never judged again"
+            );
             false
         }
         Err(failed) => return Err(failed),

@@ -101,12 +101,20 @@ mod tests {
         };
         write(&state, "github", &judged, 2_000);
         write(&state, "code", &judged, 1_000);
+        write(&state, "delta", &judged, 3_000);
         std::fs::write(state.join(file("broken")), "not json").expect("a broken file");
+        std::fs::write(state.join(file("unread")), r#"{"since": 1, "keys": []}"#)
+            .expect("a file never read whole");
         std::fs::write(state.join("decisions.jsonl"), "{}").expect("another file");
         assert_eq!(
             sites(&state),
-            vec![("code".to_owned(), 1_000), ("github".to_owned(), 2_000)],
-            "each site by name, sorted, with when it was read; the rest left out"
+            vec![
+                ("code".to_owned(), 1_000),
+                ("delta".to_owned(), 3_000),
+                ("github".to_owned(), 2_000)
+            ],
+            "each site by name, sorted, with when it was read; one never read whole, \
+             a broken one and the rest left out"
         );
         std::fs::remove_dir_all(&state).expect("the case's state goes");
     }

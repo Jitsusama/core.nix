@@ -510,7 +510,7 @@ fn two_stops_in_an_unreadable_repository(line: &str, now: u64) -> Answered {
 }
 
 #[test]
-fn github_a_repository_that_cant_be_read_is_asked_and_told_of_once_a_round() {
+fn github_a_repository_that_cant_be_read_is_asked_and_told_of_once_in_a_round() {
     let (origin, asked) = answering_whole(two_stops_in_an_unreadable_repository);
     let home = home();
     let mut reader = github_reader(&home, &origin, &["--live"]);
@@ -531,10 +531,14 @@ fn github_a_repository_that_cant_be_read_is_asked_and_told_of_once_a_round() {
         .count();
     assert_eq!(times, 1, "its repository was asked about once: {asked:?}");
     let said = journal(&home);
-    let told = said
-        .matches("example/shop can't be read, so only Joel counts there this round")
-        .count();
-    assert_eq!(told, 1, "its journal says so once: {said}");
+    let warning = "<4>GitHub answered 404 for /repos/example/shop: Not Found, \
+                   so a stop there by anyone but Joel, on what he didn't open, \
+                   is only logged and never judged again";
+    let told = said.lines().filter(|line| *line == warning).count();
+    assert_eq!(
+        told, 1,
+        "its journal warns of it once, with GitHub's reason: {said}"
+    );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
@@ -587,7 +591,8 @@ fn github_what_a_round_learns_of_one_repository_never_vouches_for_another() {
             ("example/shop".to_owned(), "stop".to_owned()),
             ("stranger/trap".to_owned(), "waved:outsider".to_owned()),
         ],
-        "the collaborator's stop where Joel works stands; the owner's where he can't push is only logged"
+        "the collaborator's stop where Joel works stands; \
+         the owner's where he can't push is only logged"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

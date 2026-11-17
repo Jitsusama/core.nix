@@ -116,7 +116,13 @@ fn joel_resumes(line: &str, now: u64) -> Value {
 /// The GitHub reader, signed in with a stand-in token, in shadow unless
 /// `more` says otherwise, its journal kept in `home` for [`journal`].
 fn github_reader(home: &Path, origin: &str, more: &[&str]) -> Child {
-    let journal = std::fs::File::create(home.join(JOURNAL)).expect("its journal is made");
+    // Added to, so a reader started again in the same home keeps what the
+    // one before it said.
+    let journal = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(home.join(JOURNAL))
+        .expect("its journal is opened");
     Command::new(env!("CARGO_BIN_EXE_pineapple-github"))
         .args(["run", "--origin", origin, "--every", PACE])
         .args(more)
