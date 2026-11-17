@@ -68,8 +68,25 @@ impl Client {
     /// A client of the daemon serving `socket`, for a test that starts
     /// and stops the daemon itself, as one restarting it over the same
     /// folder does, which a `Daemon` would take away.
+    ///
+    /// A socket on the disk may not be listened on yet, since a daemon
+    /// binds it a moment before it listens, so one refusing, or gone as
+    /// it's made again, is asked again within the test's patience.
     pub fn connect(socket: &Path) -> Client {
-        let stream = UnixStream::connect(socket).expect("the socket answers");
+        let deadline = Instant::now() + PATIENCE;
+        let stream = loop {
+            match UnixStream::connect(socket) {
+                Err(why)
+                    if matches!(
+                        why.kind(),
+                        std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound
+                    ) && Instant::now() < deadline =>
+                {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                answered => break answered.expect("the socket answers"),
+            }
+        };
         stream
             .set_read_timeout(Some(PATIENCE))
             .expect("the socket takes a timeout");

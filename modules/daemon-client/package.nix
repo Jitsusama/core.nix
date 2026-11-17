@@ -1,5 +1,6 @@
 # daemon-client, built from this directory's crate, a library with no
-# program and no tests of its own: the daemons' tests that name it run it.
+# program; its own test runs as it builds, and the daemons' tests that
+# name it run it too.
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage {
   pname = "daemon-client";
