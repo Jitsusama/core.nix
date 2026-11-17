@@ -46,29 +46,18 @@ pub struct Judged {
 #[must_use]
 pub fn judge(day: &Day, before: &[Day]) -> Judged {
     let mut judged = Judged::default();
-    for (measure, key, whose, now) in measures().flat_map(|measure| {
+    for (measure, key, now) in measures().flat_map(|measure| {
         measure
             .read(&day.figures)
             .into_iter()
-            .map(move |(key, whose, now)| (measure, key, whose, now))
+            .map(move |(key, _, now)| (measure, key, now))
     }) {
         judged.read += 1;
         let past: Vec<f64> = before
             .iter()
             .filter_map(|d| d.figures.get(key).copied())
             .collect();
-        // A disk is whose by its mount, which reads as where, not whose.
-        let says = match whose {
-            None => measure.says.to_owned(),
-            Some(mount) if mount.starts_with('/') => format!("{} at {mount}", measure.says),
-            // A screen is whose by its output and rate, `DP-4@60Hz`.
-            Some(screen) if screen.ends_with("Hz") && screen.contains('@') => {
-                let (output, hertz) = screen.split_once('@').unwrap_or((screen, ""));
-                let hertz = hertz.trim_end_matches("Hz");
-                format!("{} on {output} at {hertz} Hz", measure.says)
-            }
-            Some(whose) => format!("{whose}'s {}", measure.says),
-        };
+        let says = measure.said(key);
         let worse = measure.worse();
         let middle = (past.len() >= ENOUGH).then(|| median(&past)).flatten();
         if middle.is_some() {
@@ -265,27 +254,25 @@ mod tests {
 
     #[test]
     fn a_screens_late_keys_are_judged_against_that_screens_days() {
+        // Three panel days at 10% and three monitor days at 40%: pooled,
+        // their median of 25% would make a monitor day at 45% a regression.
         let monitor = "launcher.keys.late.on.DP-4@60Hz";
+        let panel = "launcher.keys.late.on.eDP-1@120Hz";
         let before: Vec<Day> = [
-            [
-                ("launcher.keys.late", 10.0),
-                ("launcher.keys.late.on.eDP-1@120Hz", 10.0),
-            ],
-            [
-                ("launcher.keys.late", 10.0),
-                ("launcher.keys.late.on.eDP-1@120Hz", 10.0),
-            ],
-            [("launcher.keys.late", 40.0), (monitor, 40.0)],
-            [("launcher.keys.late", 40.0), (monitor, 40.0)],
-            [("launcher.keys.late", 40.0), (monitor, 40.0)],
+            (panel, 10.0),
+            (panel, 10.0),
+            (panel, 10.0),
+            (monitor, 40.0),
+            (monitor, 40.0),
+            (monitor, 40.0),
         ]
         .iter()
-        .map(|figures| day(figures, &[]))
+        .map(|figure| day(&[*figure], &[]))
         .collect();
-        let as_usual = judge(&day(&[(monitor, 40.0)], &[]), &before);
+        let as_usual = judge(&day(&[(monitor, 45.0)], &[]), &before);
         assert!(
             as_usual.worse.is_empty(),
-            "a monitor day as late as monitor days was a regression: {as_usual:?}"
+            "a monitor day about as late as monitor days was a regression: {as_usual:?}"
         );
         let later = judge(&day(&[(monitor, 60.0)], &[]), &before);
         assert_eq!(

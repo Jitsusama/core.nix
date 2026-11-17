@@ -187,25 +187,39 @@ the p99 76 ms, 1 within 50 ms: a median 1 ms before the shell heard it; on DP-4 
 the p99 30 ms, 4 within 50 ms; on eDP-1 at 120 Hz
   INFO qml: launcher: 2 keys presented a median 20 ms from the key, the slowest 30 ms, \
 2 within 50 ms
+  INFO qml: launcher: 2 keys presented a median 60 ms from the key, the slowest 70 ms, \
+0 within 50 ms; on eDP-1 at 120 Hz and DP-4 at 60 Hz
+  INFO qml: launcher: 1 keys presented a median 60 ms from the key, the slowest 60 ms, \
+0 within 50 ms; on DP-4
+  INFO qml: launcher: 1 keys presented a median 60 ms from the key, the slowest 60 ms, \
+0 within 50 ms; on DP 4 at sixty Hz
 ";
         let figures = launcher(journal);
         let late = |key: &str| figures.get(key).copied();
         assert_eq!(
             (
-                late("launcher.keys.late"),
                 late("launcher.keys.late.on.DP-4@60Hz"),
                 late("launcher.keys.late.on.eDP-1@120Hz"),
+                late("launcher.keys.late.on.DP-4@60Hz+eDP-1@120Hz"),
+                late("launcher.keys.late.on.DP-4"),
             ),
-            (Some(30.0), Some(75.0), Some(0.0)),
-            "a screen's keys weren't counted on their own, or the day's lost them: {figures:?}"
+            (Some(75.0), Some(0.0), Some(100.0), Some(100.0)),
+            "a screen's keys, or a pair's, weren't counted on their own: {figures:?}"
+        );
+        // A day across screens has no one figure to judge: pooled, a
+        // monitor day still read as the launcher slowing.
+        assert_eq!(
+            late("launcher.keys.late"),
+            None,
+            "a day naming screens kept a share pooled across them: {figures:?}"
         );
         assert_eq!(
             figures
                 .keys()
                 .filter(|key| key.starts_with("launcher.keys.late.on."))
                 .count(),
-            2,
-            "a line naming no screen was given one: {figures:?}"
+            4,
+            "a line naming no screen, or a tail misread, was given one: {figures:?}"
         );
     }
 

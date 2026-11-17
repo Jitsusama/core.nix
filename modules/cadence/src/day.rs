@@ -80,6 +80,23 @@ impl Measure {
         }
     }
 
+    /// What a figure of this measure is, as a note says it.
+    #[must_use]
+    pub fn said(&self, key: &str) -> String {
+        match self.whose(key) {
+            None => self.says.to_owned(),
+            // A disk is whose by its mount, which reads as where, not whose.
+            Some(mount) if mount.starts_with('/') => format!("{} at {mount}", self.says),
+            // A screen is whose by its output and rate, `DP-4@60Hz`.
+            Some(screen) if screen.ends_with("Hz") && screen.contains('@') => {
+                let (output, hertz) = screen.split_once('@').unwrap_or((screen, ""));
+                let hertz = hertz.trim_end_matches("Hz");
+                format!("{} on {output} at {hertz} Hz", self.says)
+            }
+            Some(whose) => format!("{whose}'s {}", self.says),
+        }
+    }
+
     /// Whose a figure is, when this measure is each repository's.
     fn whose<'k>(&self, key: &'k str) -> Option<&'k str> {
         let (before, after) = self.key.split_once('*')?;
@@ -497,6 +514,31 @@ mod tests {
             about("code..long-files"),
             None,
             "a figure naming no repository was taken for one"
+        );
+    }
+
+    #[test]
+    fn a_figure_is_said_by_what_it_is_of() {
+        // On 17 November a screen's finding read "DP-4@60Hz's the launcher's
+        // keys" in the week's review, and a pair of screens had no words.
+        let said = |key: &str| measures().find(|m| m.holds(key)).map(|m| m.said(key));
+        let keys = "the launcher's keys past 50 ms";
+        assert_eq!(
+            [
+                said("launcher.keys.late.on.DP-4@60Hz"),
+                said("launcher.keys.late.on.DP-4@60Hz+eDP-1@120Hz"),
+                said("launcher.keys.late.on.DP-4"),
+                said("health.disk./var.most-used-percent"),
+                said("code.core.long-files"),
+            ],
+            [
+                Some(format!("{keys} on DP-4 at 60 Hz")),
+                Some(format!("{keys} on DP-4 at 60 Hz and eDP-1 at 120 Hz")),
+                Some(format!("{keys} on DP-4")),
+                Some("the most in use of the disk at /var".to_owned()),
+                Some("core's long files that don't say why".to_owned()),
+            ],
+            "a screen, a disk or a repository wasn't said as what its figure is of"
         );
     }
 
