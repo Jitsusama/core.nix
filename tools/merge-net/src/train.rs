@@ -176,9 +176,10 @@ pub fn subject(number: u64, owner: &str, branch: &str) -> String {
     format!("Merge pull request #{number} from {owner}/{branch}")
 }
 
-/// A rider as the candidate merges it: its head, the merge's subject and
-/// its pull request's title.
+/// A rider as the candidate merges it: its pull request's number, its
+/// head, the merge's subject and its pull request's title.
 pub struct Merging {
+    pub number: u64,
     pub head: String,
     pub subject: String,
     pub title: String,
@@ -461,7 +462,16 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 continue;
             }
         }
-        match land(&checkout, &git, &candidate, &mergings, &done.merged) {
+        let hub = GitHub { slug: slug.clone() };
+        match land(
+            &checkout,
+            &git,
+            &hub,
+            &base,
+            &candidate,
+            &mergings,
+            &done.merged,
+        ) {
             Landing::Landed(landed) => {
                 splitting.landed(done.merged.len());
                 for head in &done.merged {
@@ -471,6 +481,34 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 println!("merge-net: the train landed {} on main", short(&landed));
                 let left = !riders(&root).is_empty();
                 way(&root, &Ended::Landed { left });
+            }
+            Landing::Partly { landed, heads, why } => {
+                way(&root, &Ended::Otherwise);
+                splitting = Splitting::default();
+                for head in &heads {
+                    alight(&root, head);
+                }
+                keep_landed(&root, &landed, &heads, crate::state::now() - began);
+                println!(
+                    "merge-net: the train landed {} of {} riders on main at {}",
+                    heads.len(),
+                    done.merged.len(),
+                    short(&landed)
+                );
+                for head in done.merged.iter().filter(|head| !heads.contains(head)) {
+                    let _ = fall(&root, head, &format!("GitHub didn't merge it: {why}"));
+                }
+            }
+            Landing::Reverted(why) => {
+                way(&root, &Ended::Otherwise);
+                splitting = Splitting::default();
+                for head in &done.merged {
+                    let _ = fall(
+                        &root,
+                        head,
+                        &format!("the train's merges were reverted: {why}"),
+                    );
+                }
             }
             Landing::Moved => way(&root, &Ended::Moved),
             Landing::Refused(why) => {
@@ -581,6 +619,7 @@ fn aboard(
         let fetched = still && git(&["fetch", "--quiet", "origin", &rider.head]).is_ok();
         match open {
             Some((number, title, _)) if fetched => mergings.push(Merging {
+                number,
                 head: rider.head.clone(),
                 subject: subject(number, owner, &rider.branch),
                 title,
@@ -641,11 +680,129 @@ fn gate(checkout: &Path, log: &Path) -> Gated {
     ran.map_or(Gated::Red, |status| gated(status.code(), &words_of(log)))
 }
 
-/// How a passed candidate's push to main went.
+/// Where a passed candidate's riders merge: GitHub, whose merges main
+/// trusts by its own key, or a test's stand-in.
+pub trait Hub {
+    /// Merge `merging`'s pull request at its head, worded as it says.
+    ///
+    /// # Errors
+    ///
+    /// Why the merge was refused.
+    fn merge(&self, merging: &Merging) -> Result<(), String>;
+
+    /// Revert pull request `number`'s merge on main.
+    ///
+    /// # Errors
+    ///
+    /// Why the revert didn't land.
+    fn revert(&self, number: u64) -> Result<(), String>;
+}
+
+/// GitHub, for the repository `slug`, through `gh` and its own login.
+pub struct GitHub {
+    pub slug: String,
+}
+
+impl Hub for GitHub {
+    fn merge(&self, merging: &Merging) -> Result<(), String> {
+        merge_at(
+            &self.slug,
+            merging.number,
+            &merging.head,
+            &merging.subject,
+            &merging.title,
+        )
+    }
+
+    fn revert(&self, number: u64) -> Result<(), String> {
+        let node = gh(&[
+            "api",
+            &format!("repos/{}/pulls/{number}", self.slug),
+            "--jq",
+            ".node_id",
+        ])?;
+        let opened = gh(&[
+            "api",
+            "graphql",
+            "-f",
+            "query=mutation($id: ID!) { revertPullRequest(input: {pullRequestId: $id}) \
+             { revertPullRequest { number headRefOid title } } }",
+            "-f",
+            &format!("id={node}"),
+            "--jq",
+            ".data.revertPullRequest.revertPullRequest",
+        ])?;
+        let opened: Value = serde_json::from_str(&opened)
+            .map_err(|error| format!("GitHub's revert of #{number} read as {error}"))?;
+        let (Some(reverting), Some(head), Some(title)) = (
+            opened["number"].as_u64(),
+            opened["headRefOid"].as_str(),
+            opened["title"].as_str(),
+        ) else {
+            return Err(format!("GitHub opened no revert of #{number}: {opened}"));
+        };
+        merge_at(
+            &self.slug,
+            reverting,
+            head,
+            &format!("Revert #{number}, whose merge the train didn't test"),
+            title,
+        )
+    }
+}
+
+/// Merge pull request `number` of `slug` at `head` through GitHub's merge,
+/// as `subject` and `title` word it.
+fn merge_at(slug: &str, number: u64, head: &str, subject: &str, title: &str) -> Result<(), String> {
+    gh(&[
+        "api",
+        "-X",
+        "PUT",
+        &format!("repos/{slug}/pulls/{number}/merge"),
+        "-f",
+        &format!("sha={head}"),
+        "-f",
+        "merge_method=merge",
+        "-f",
+        &format!("commit_title={subject}"),
+        "-f",
+        &format!("commit_message={title}"),
+    ])
+    .map(|_| ())
+}
+
+/// What `gh` says, or why it failed.
+fn gh(arguments: &[&str]) -> Result<String, String> {
+    let ran = Command::new("gh")
+        .args(arguments)
+        .output()
+        .map_err(|error| format!("running gh: {error}"))?;
+    if ran.status.success() {
+        Ok(String::from_utf8_lossy(&ran.stdout).trim().to_owned())
+    } else {
+        Err(format!(
+            "gh {}: {}",
+            arguments.first().copied().unwrap_or_default(),
+            String::from_utf8_lossy(&ran.stderr).trim()
+        ))
+    }
+}
+
+/// How a passed candidate's landing went.
 #[derive(Debug, PartialEq, Eq)]
 enum Landing {
     /// It landed as this commit.
     Landed(String),
+    /// Its first riders, `heads`, landed as `landed`; GitHub refused the
+    /// next for `why`.
+    Partly {
+        landed: String,
+        heads: Vec<String>,
+        why: String,
+    },
+    /// What GitHub merged wasn't what the train tested, for this reason,
+    /// so it reverted every merge it made.
+    Reverted(String),
     /// Main moved beside it, so its riders ride the next run.
     Moved,
     /// Main refused it for this reason, though main stood still.
@@ -658,6 +815,8 @@ enum Landing {
 fn land(
     checkout: &Path,
     git: &dyn Fn(&[&str]) -> Result<String, String>,
+    _hub: &dyn Hub,
+    _base: &str,
     candidate: &str,
     mergings: &[Merging],
     merged: &[String],
@@ -687,6 +846,7 @@ fn land(
             .iter()
             .filter(|merging| merged.contains(&merging.head))
             .map(|merging| Merging {
+                number: merging.number,
                 head: merging.head.clone(),
                 subject: merging.subject.clone(),
                 title: merging.title.clone(),
