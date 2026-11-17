@@ -481,6 +481,9 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
             .all(|line| told.try_send(line.to_string()).is_ok());
         drop(held);
         if !queued {
+            // Shut, not just left, since the writer holds the socket open
+            // for as long as its write waits on one that never reads.
+            let _ = hangup.shutdown(Shutdown::Both);
             break;
         }
         if let Some(begins) = &begins {
@@ -503,8 +506,14 @@ fn apart(
     let (shared, told) = (Arc::clone(shared), told.clone());
     let (id, said, stream) = (id.clone(), said.clone(), Arc::clone(stream));
     std::thread::spawn(move || {
-        // One no longer read is hung up on by the next line it's told.
-        let _ = told.try_send(owned(&shared, &id, &said, &stream).to_string());
+        // One whose answer can't be queued is hung up on here, since the
+        // next line it might be told may never come.
+        if told
+            .try_send(owned(&shared, &id, &said, &stream).to_string())
+            .is_err()
+        {
+            let _ = stream.shutdown(Shutdown::Both);
+        }
     });
 }
 

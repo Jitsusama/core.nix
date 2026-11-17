@@ -11,6 +11,9 @@ onLinux {
   # only the records that moved and the keys that went; a watch of one
   # place hears only that place's rows; a paced watch hears all that moved
   # in one line a pace, and asked again at once hears what it held back;
+  # a connection that stops reading is hung up on once its queue fills,
+  # while the rest are still told; one that asks without reading, slowly
+  # or not, or whose pace finds its queue full, is shut and its writer ended;
   # an ask of the daemon's own is the daemon's to answer, one it doesn't
   # know refused; and a record read on get is read as asked, never held.
   daemon-serve-tells-each-watch-what-moved = pkgs.callPackage ./package.nix { };

@@ -2,9 +2,11 @@
 //! daemon hears of them, its own asks and how its sources stand, each
 //! asked over a socket as the shell asks.
 
+mod hang_ups;
+
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{Receiver, channel};
 
 use daemon_client::Client;
 
@@ -35,6 +37,13 @@ fn served(name: &str, own: Own) -> (Arc<Shared>, Client, Folder) {
         listen(&socket).expect("the socket is bound"),
     );
     (shared, Client::connect(&socket), Folder(folder))
+}
+
+/// What `told` hears within the client's own patience, so a heed that
+/// never comes fails the case rather than hanging it: its sender lives in
+/// the daemon for as long as the test runs, so a bare `recv` never ends.
+fn in_time<T>(told: &Receiver<T>) -> Option<T> {
+    told.recv_timeout(Duration::from_secs(10)).ok()
 }
 
 fn row(place: &str, id: &str, name: &str) -> Value {
@@ -388,17 +397,17 @@ fn a_daemon_hears_each_watch_begin_and_end() {
     assert!(!shared.watches("row", "agents"), "nothing watches yet");
     let watch = json!({"id": 1, "ask": "watch", "kind": "row", "place": "agents"});
     client.ask(&watch);
-    assert!(told.recv().is_ok(), "told as it begins");
+    assert!(in_time(&told).is_some(), "told as it begins");
     assert!(shared.watches("row", "agents"), "its place is watched");
     assert!(!shared.watches("row", "mail"), "another isn't");
     client.ask(&json!({"id": 1, "ask": "unwatch"}));
-    assert!(told.recv().is_ok(), "told as it's unwatched");
+    assert!(in_time(&told).is_some(), "told as it's unwatched");
     assert!(!shared.watches("row", "agents"), "unwatched, it isn't");
     let mut another = Client::connect(&folder.0.join("daemon.sock"));
     another.ask(&watch);
-    assert!(told.recv().is_ok(), "told as the other begins");
+    assert!(in_time(&told).is_some(), "told as the other begins");
     drop(another);
-    assert!(told.recv().is_ok(), "told as its connection ends");
+    assert!(in_time(&told).is_some(), "told as its connection ends");
     assert!(!shared.watches("row", "agents"), "its watch went with it");
 }
 
@@ -418,7 +427,7 @@ fn the_daemons_own_asks_are_its_to_answer() {
         json!({"id": 1, "sharing": true}),
         "answered by the daemon"
     );
-    assert_eq!(told.recv().ok(), Some(json!(true)), "which heard it");
+    assert_eq!(in_time(&told), Some(json!(true)), "which heard it");
     let refused = client.ask(&json!({"id": 2, "ask": "dance"}));
     assert_eq!(
         refused["error"]["code"], "unknown-ask",
