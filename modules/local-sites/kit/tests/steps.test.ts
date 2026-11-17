@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { onTwice, stepped, twice } from "../steps.ts";
+import { onTwice, pressable, stepped, twice } from "../steps.ts";
 import { Hands } from "./hands.ts";
 
 it("a step goes to the next or the last place and stops at the ends", () => {
@@ -25,6 +25,46 @@ it("g counts as twice only when its second press comes soon after the first", ()
   assert.equal(twice(1000, 1500), true, "half a second on is twice");
   assert.equal(twice(1000, 1700), false, "most of a second on is a fresh first press");
   assert.equal(twice(Number.NEGATIVE_INFINITY, 1000), false, "the first press ever is a first");
+});
+
+/** A head's `kbd` naming `key`, keeping what listens to it. */
+function kbdNaming(key: string) {
+  const heard = new Map<string, (event: unknown) => void>();
+  return {
+    textContent: key,
+    tabIndex: -1,
+    heard,
+    setAttribute: () => undefined,
+    addEventListener: (kind: string, listener: (event: unknown) => void) => {
+      heard.set(kind, listener);
+    },
+  };
+}
+
+it("Return on a pressable key does its act alone, never reaching the page's own Return", () => {
+  const kbd = kbdNaming("j");
+  Object.assign(globalThis, { document: { querySelectorAll: () => [kbd] } });
+  let acted = 0;
+  pressable(".keys kbd", {
+    j: () => {
+      acted += 1;
+    },
+  });
+  let stopped = false;
+  let prevented = false;
+  kbd.heard.get("keydown")?.({
+    key: "Enter",
+    preventDefault: () => {
+      prevented = true;
+    },
+    stopPropagation: () => {
+      stopped = true;
+    },
+  });
+  assert.equal(acted, 1, "Return on the key does what typing j does");
+  assert.equal(prevented, true, "and nothing the browser does by default");
+  assert.equal(stopped, true, "and goes no further, where the page would open its cursor");
+  assert.equal(kbd.tabIndex, 0, "the key is reached by Tab");
 });
 
 it("a key pressed twice in a row acts once, and a third press starts over", () => {

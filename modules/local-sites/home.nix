@@ -161,26 +161,8 @@ let
   # Whether the map reaches every cell of the realm (modules/mycelium/site/
   # map-check.sh): the map's live-page test, pointed at the page this
   # machine serves, for a reader such as the hourly card to count with
-  # --json. It carries only the headless shell it launches.
-  mapCheck = pkgs.writeShellApplication {
-    name = "mycelium-map-check";
-    runtimeInputs = [ pkgs.jq ];
-    runtimeEnv.PLAYWRIGHT_BROWSERS_PATH = "${pkgs.callPackage ./headless-browsers.nix { }}";
-    text =
-      builtins.replaceStrings
-        [ "@python@" "@test@" "@live_page@" ]
-        [
-          (lib.getExe (
-            pkgs.python3.withPackages (python: [
-              python.playwright
-              python.pytest
-            ])
-          ))
-          "${../mycelium/site/tests/live-reach-test.py}"
-          "${./tests}"
-        ]
-        (builtins.readFile ../mycelium/site/map-check.sh);
-  };
+  # --json (map-check.nix).
+  mapCheck = import ./map-check.nix { inherit lib pkgs; };
   build = lib.escapeShellArgs [
     (lib.getExe pkgs.python3)
     "${./home/home.py}"

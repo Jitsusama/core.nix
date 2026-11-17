@@ -46,6 +46,8 @@ function answersAt(target: Element): boolean {
 /**
  * Makes each key the `kbd` elements matching `selector` name pressable, as
  * a button doing what typing it does, for a reader who taps or clicks.
+ * Return or Space on one does its act alone: the press goes no further,
+ * where the page's own Return would open what its cursor is on.
  */
 function pressable(selector: string, taps: Readonly<Record<string, () => void>>): void {
   for (const kbd of document.querySelectorAll<HTMLElement>(selector)) {
@@ -57,6 +59,7 @@ function pressable(selector: string, taps: Readonly<Record<string, () => void>>)
       kbd.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
+          event.stopPropagation();
           act();
         }
       });

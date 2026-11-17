@@ -1689,6 +1689,12 @@
     mycelium's end of a link or an attach, as the realm and machine it names, with a terminal for
     the attach; a machine naming none authorizes nothing of mycelium's
   '';
+  mycelium-map-check-answers-soon = ''
+    mycelium-map-check says what its last reading found and when, with the day if not today, then
+    that it's looking again, before a stand-in for its browser test opens; it keeps each answer
+    whole for the next run, says nothing on the way as JSON or of a kept file it can't read, and
+    hands pytest a test alone in a folder of its own rather than one in the Nix store
+  '';
   mycelium-runs-among-the-sessions = ''
     on Linux, every realm's node runs in the agents' slice, beside Joel's programs rather than among
     them

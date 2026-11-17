@@ -463,6 +463,34 @@ in
           --import-mode=importlib --basetemp="$TMPDIR/pytest" ${../repos/site/tests}/code-reads-live-test.py
         touch $out
       '';
+  # mycelium-map-check says the last reading's answer, and when, then that
+  # it's looking again, before a stand-in for its browser test opens; it
+  # keeps each answer whole for the next run, says nothing on the way as
+  # JSON, and hands pytest a test in a folder of its own, never the Nix
+  # store, which pytest would list whole first
+  # (tests/map-check-answers-soon.sh).
+  mycelium-map-check-answers-soon =
+    let
+      # Stands in for pytest and the browser: says what was beside the test
+      # and what had been said on the way before it was opened, then answers.
+      slowly = pkgs.writeShellScript "slow-map-test" ''
+        test=''${*: -1}
+        ls -A "''${test%/*}" > "$MAP_CHECK_BESIDE"
+        cat "$MAP_CHECK_ERR" > "$MAP_CHECK_BEFORE"
+        printf '%s' '{"at":"2026-01-02T14:09:54.139Z","cells":3,"count":0,"failures":[]}' \
+          > "$MAP_CHECK_SAID"
+      '';
+      check = import ./map-check.nix {
+        inherit lib pkgs;
+        python = "${slowly}";
+        test = "${./tests/live_page.py}";
+        livePage = "${./tests}";
+      };
+    in
+    pkgs.runCommandLocal "mycelium-map-check-answers-soon" { nativeBuildInputs = [ pkgs.jq ]; } ''
+      ${lib.getExe pkgs.bash} ${./tests/map-check-answers-soon.sh} ${lib.getExe check}
+      touch $out
+    '';
   # clippy finds nothing in the server, its tests included.
   local-sites-passes-clippy = passesClippy "local-sites-passes-clippy" (
     pkgs.callPackage ./package.nix { }
