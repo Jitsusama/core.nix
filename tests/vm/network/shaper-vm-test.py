@@ -547,8 +547,9 @@ def test_each_direction_is_recorded(connection: Connection) -> None:
     The days are read as alice, since a controller is replayed over them by the machine's user.
 
     A restart, as a switch makes beside the shaper's own, opens a new recording that names its
-    network first and has the gateway's round trip within a second: choosing reflectors takes
-    1.5 s, and the shaper's restart, the moment the record is kept to show, falls inside it.
+    network first and has the gateway's round trip within a second of starting: choosing
+    reflectors takes 1.5 s, and the shaper's restart, the moment the record is kept to show,
+    falls inside it.
     """
     client = connection.client
 
@@ -569,22 +570,29 @@ def test_each_direction_is_recorded(connection: Connection) -> None:
         return stamped and gateway
 
     retry(recorded, timeout=COMING_UP)
-    # A switch restarts it in its start phase rather than stopping it with the units it stops
-    # first, or the record is blind from before the shaper's restart until after it.
-    client.succeed("grep -q X-StopIfChanged=false /etc/systemd/system/shaper-record.service")
     since = int(client.succeed("date +%s%3N").strip())
     client.succeed("systemctl restart shaper-record.service")
+    # The restart returns once the new recorder runs: what it takes is counted against the
+    # machine rather than the recorder.
+    started = int(client.succeed("date +%s%3N").strip())
+
+    def opened() -> list[Json]:
+        """Give the new recording, from the line that opens it with its network.
+
+        The old recorder writes until it's stopped, which is after `since`.
+        """
+        after = [h for h in heard() if h["at"] > since]
+        first = next((n for n, h in enumerate(after) if "network" in h), len(after))
+        return after[first:]
 
     def sampled(_last_try: bool) -> bool:
         """Say whether the new recording has its gateway's round trip yet."""
-        return any(isinstance(h.get("gateway"), float) for h in heard() if h["at"] > since)
+        return any(isinstance(h.get("gateway"), float) for h in opened())
 
     retry(sampled, timeout=COMING_UP)
-    after = [h for h in heard() if h["at"] > since]
-    assert "network" in after[0], f"a recording didn't open by naming its network: {after[0]}"
-    first = next(h["at"] for h in after if isinstance(h.get("gateway"), float))
-    assert first - since < SAMPLED_WITHIN_MS, (
-        f"the gateway went unsampled {first - since} ms after a restart"
+    first = next(h["at"] for h in opened() if isinstance(h.get("gateway"), float))
+    assert first - started < SAMPLED_WITHIN_MS, (
+        f"the gateway went unsampled {first - started} ms after a restart"
     )
 
 
