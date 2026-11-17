@@ -2335,7 +2335,7 @@ Provider {
     }
     onSpecChanged: lastMade.spec = spec
 
-    things: [toReopen, landed, budgets, spec, recent, start, startNewWork]
+    things: [toReopen, landed, budgets, spec, recent, start]
         .filter(row => row !== null)
 
     // Asked while they aren't wanted, as a step into Agents asks before it's
@@ -2345,7 +2345,7 @@ Provider {
         // made ready from those (Provider.qml's looksThrough).
         const tree = provider.wanted || !opened() ? treeRows() : laidOut();
         const sessions = topServed && opened() && !provider.lookingThrough.now ? top.rows() : tree;
-        return sessions.concat([toReopen, landed, spec, recent, start, startNewWork]
+        return sessions.concat([toReopen, landed, spec, recent, start]
             .filter(row => row !== null));
     }
 
