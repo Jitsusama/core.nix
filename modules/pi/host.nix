@@ -57,6 +57,11 @@ let
     text = builtins.readFile ./host-down.sh;
   };
 
+  # How long systemd gives a host to stop, in seconds. The unit tells the
+  # host the same number (PI_HOST_STOP_USEC), which parks within three
+  # quarters of it, so its own limit always comes first.
+  stopSeconds = 150;
+
   kinds = {
     attended = "the pi conversations Joel watches";
     background = "the pi conversations that run in the background";
@@ -140,6 +145,8 @@ let
             PI_PACKAGE_DIR = host.pi;
             # The host checks it against its pi as it starts.
             PI_HOST_PROOF = "${host.proof}";
+            # The stop limit below, which the host parks within.
+            PI_HOST_STOP_USEC = toString (stopSeconds * 1000000);
           }
           // lib.optionalAttrs (homeRealm != null) { PI_HOME_REALM = homeRealm; }
         );
@@ -195,12 +202,12 @@ let
         # a 60 s stop killed it, its loop busy 35 s of the first 50, so its own
         # 45 s limit on parking came late and never wrote down what it hadn't
         # parked. 150 s lets a busy host reach its own limit and record what
-        # was left, leaving room for the harness to give parking longer, while
-        # a stuck stop still ends. It covers a restart or a switch: at logout,
+        # was left, and the host gives parking three quarters of it, while a
+        # stuck stop still ends. It covers a restart or a switch: at logout,
         # reboot or poweroff the account's manager is given 5 s to stop
         # (modules/systemd), on purpose, so a shutdown stays quick.
         KillMode = "mixed";
-        TimeoutStopSec = "150s";
+        TimeoutStopSec = "${toString stopSeconds}s";
         # Its conversations are agents' sessions, so they run among the
         # sessions rather than among Joel's programs (modules/slices).
         Slice = "agents.slice";
