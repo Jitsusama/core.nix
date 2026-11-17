@@ -142,19 +142,6 @@
     "test": "the-margin-cat-follows-the-keys-on-niri"
   },
   {
-    "at": 1794811244,
-    "commit": "48ff52ee67057f9326598011bc357bdcb3baf7c8",
-    "due": "2026-11-18",
-    "due_why": "Its one failure lost every key after the e of :e ~/chosen-notes/, the shell still drawing; its owner finds where the keys went, or takes it off if 20 net runs hold, by 2026-11-18 23:59 UTC",
-    "owner_pr": 4820,
-    "owner_session": "Y2YBTS",
-    "reason": "failed, then passed, at 48ff52ee6705",
-    "subtests": [
-      "test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal"
-    ],
-    "test": "vm-desktop-opens-files"
-  },
-  {
     "at": 1794838970,
     "commit": "467f7109b3c34c6195996ce4f98c020a3064fe53",
     "due": "2026-11-18",
