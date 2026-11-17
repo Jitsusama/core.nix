@@ -15,6 +15,6 @@ how it was settled. It is built on the local sites' kit by
 | `draw.ts`    | the flock over its wire, and the rows                     |
 | `index.html` | the page, and `site.css` its styles                       |
 | `index.md`   | its Markdown twin, with `llms.txt` for a model            |
-| `tests/`     | the reading of the records, tried                         |
+| `tests/`     | the reading of the records, and the page read live, tried |
 
 [site]: ../../local-sites/site.nix
