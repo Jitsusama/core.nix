@@ -232,7 +232,10 @@ fn unrun(
         if of_quest.is_empty() {
             // The node forgets sessions long ended, so this says only that
             // it knows of none, not that none ever ran.
-            never.push(format!("{named} {}, no cell the node knows · {to}", q.priority));
+            never.push(format!(
+                "{named} {}, no cell the node knows · {to}",
+                q.priority
+            ));
         } else {
             ended.push(format!("{named} {}, every cell ended · {to}", q.priority));
         }
