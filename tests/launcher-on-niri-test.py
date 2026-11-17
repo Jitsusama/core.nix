@@ -387,6 +387,47 @@ def test_a_drawers_prose_shows_five_lines_and_za_opens_the_rest(shell: Shell) ->
     shell.close_launcher()
 
 
+def openings_kept() -> list[Json]:
+    """Give every opening the launcher's trials have kept, oldest first."""
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    lines = [
+        line
+        for path in state.glob("quickshell/by-shell/*/launcher-trials.jsonl")
+        for line in path.read_text().splitlines()
+        if line.strip()
+    ]
+    return [cast("Json", json.loads(line)) for line in lines]
+
+
+def opening_kept_after(before: int) -> Json:
+    """Give the opening kept after the first `before`, once the shell has added its line."""
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    # The shell adds the opening's line through a pipe once it closes, so it's read again until
+    # it's there, a poll's length apart.
+    while len(openings_kept()) <= before:
+        assert time.monotonic() < deadline, "the opening was never kept"
+        time.sleep(launcher_on_niri.POLL)
+    return openings_kept()[-1]
+
+
+def test_a_word_and_a_space_stepping_in_is_kept_as_a_look(shell: Shell) -> None:
+    """An opening that typed a place's word and a space, looked inside and left isn't a miss.
+
+    A step in by Return or Tab was kept as a look, but one by a category's word and a space
+    wasn't, so an opening that typed "network ", read the network and left was kept as a miss,
+    and health counted it as a search that found nothing.
+    """
+    before = len(openings_kept())
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.send_chars("network ")
+    shell.launcher_until(lambda shown: shown["path"] == ["Network"])
+    shell.close_launcher()
+    last = opening_kept_after(before)
+    assert last.get("missed") is False, last
+    assert last.get("looked") == "stepped", last
+
+
 def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None:
     """An opening ended by Return on a sum keeps it as a pick of a sum, not a miss.
 
@@ -397,26 +438,9 @@ def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None
     so what wasn't found can be read: two of Joel's gave up after 51 and 62 s holding only counts
     (1JQPPC, 2026-11-12, 77f84121); a pick keeps none.
     """
-    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
-
-    def kept() -> list[Json]:
-        lines = [
-            line
-            for path in state.glob("quickshell/by-shell/*/launcher-trials.jsonl")
-            for line in path.read_text().splitlines()
-            if line.strip()
-        ]
-        return [cast("Json", json.loads(line)) for line in lines]
-
-    before = len(kept())
+    before = len(openings_kept())
     copied(shell, "6*7", "42")
-    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    # The shell adds the opening's line through a pipe once it closes, so it's read again until
-    # it's there, a poll's length apart.
-    while len(kept()) <= before:
-        assert time.monotonic() < deadline, "the opening was never kept"
-        time.sleep(launcher_on_niri.POLL)
-    last = kept()[-1]
+    last = opening_kept_after(before)
     assert last.get("picked") == "answer:sum", last
     assert last.get("missed") is False, last
     presented = cast("list[int]", last.get("presented", []))
@@ -424,7 +448,7 @@ def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None
     assert presented, last
     assert all(isinstance(ms, int) and ms >= 0 for ms in presented), last
     assert last.get("sought") == [], last
-    before = len(kept())
+    before = len(openings_kept())
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     shell.type_in("zqxjv")
@@ -433,10 +457,7 @@ def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None
     shell.launcher_until(lambda shown: shown["typed"] == "")
     shell.type_in("qqwy")
     shell.close_launcher()
-    while len(kept()) <= before:
-        assert time.monotonic() < deadline, "the miss was never kept"
-        time.sleep(launcher_on_niri.POLL)
-    missed = kept()[-1]
+    missed = opening_kept_after(before)
     assert missed.get("missed") is True, missed
     assert missed.get("sought") == ["zqxjv", "qqwy"], missed
 
