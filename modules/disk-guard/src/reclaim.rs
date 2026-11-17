@@ -411,12 +411,12 @@ pub fn entry(
     // What's in it now was written since it moved aside: its owner is back,
     // as pnpm was on 16 November, installing a worktree's node_modules
     // again while the guard emptied the old one. That's the owner's, not
-    // the guard failing, so it's kept and raises no failing notice.
-    let written = dir.written_again();
-    drop(dir);
+    // the guard failing, so it's kept and raises no failing notice. It's
+    // read once the removal finds the folder full, so a write up to then
+    // counts.
     match parent.remove_if_empty(name) {
         Ok(true) => Outcome::Reclaimed,
-        Ok(false) if matches!(written, Ok(true)) => {
+        Ok(false) if matches!(dir.written_again(), Ok(true)) => {
             Outcome::Kept("written again while it was cleared, so what's new stays".to_owned())
         }
         Ok(false) => Outcome::Failed("something was left in it".to_owned()),
