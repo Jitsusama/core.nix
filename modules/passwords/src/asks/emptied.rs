@@ -3,10 +3,11 @@
 //! whose `credsStore` names the helper answering every registry's from
 //! Joel's keychain (ISXEG8, 16 November). The list names each file and
 //! the settings that make it hold one, so the harness's fence and this
-//! daemon's read the same words and hide the same files; the rules for
-//! each setting are `fence-docker.ts`'s.
+//! daemon's read the same words and hide the same files. The rules for
+//! each setting follow `fence-docker.ts`'s, and go past them where
+//! Docker's reader does: a setting under any spelling, and a proxy's
+//! login with no scheme before it.
 
-use regex_lite::Regex;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
@@ -21,19 +22,16 @@ pub struct Emptied {
 /// What a login in `auths` carries when it carries one.
 const LOGIN_FIELDS: [&str; 4] = ["auth", "identitytoken", "password", "registrytoken"];
 
-/// An address carrying a name and password of its own.
-const USERINFO: &str = r"://[^/@\s]+@";
-
 /// Whether settings reading `text` hold a credential by any setting
-/// `when` names, each matched in any case, as Docker's own reader
-/// matches them. Settings that don't parse, or aren't an object, are
-/// held to hold one, since what they hold can't be told.
+/// `when` names, under any spelling of it, since Docker's own reader
+/// takes every spelling. Settings that don't parse, or aren't an
+/// object, are held to hold one, since what they hold can't be told.
 pub fn empties(text: &str, when: &[String]) -> bool {
     let Ok(Value::Object(settings)) = serde_json::from_str::<Value>(text) else {
         return true;
     };
     when.iter()
-        .any(|name| field(&settings, name).is_some_and(|value| holds(name, value)))
+        .any(|name| spelled(&settings, name).any(|value| holds(name, value)))
 }
 
 /// Whether one setting, by its name, holds a credential: a login in
@@ -45,15 +43,36 @@ fn holds(name: &str, value: &Value) -> bool {
             logins.values().any(|login| {
                 login.as_object().is_some_and(|login| {
                     LOGIN_FIELDS.iter().any(|field_name| {
-                        matches!(field(login, field_name), Some(Value::String(said)) if !said.is_empty())
+                        spelled(login, field_name)
+                            .any(|said| matches!(said, Value::String(said) if !said.is_empty()))
                     })
                 })
             })
         }),
-        "proxies" => Regex::new(USERINFO)
-            .map_or(true, |userinfo| userinfo.is_match(&value.to_string())),
+        "proxies" => addresses(value).any(carries_login),
         _ => !is_empty(value),
     }
+}
+
+/// Every string a setting holds, however deep.
+fn addresses(value: &Value) -> Box<dyn Iterator<Item = &str> + '_> {
+    match value {
+        Value::String(said) => Box::new(std::iter::once(said.as_str())),
+        Value::Array(listed) => Box::new(listed.iter().flat_map(addresses)),
+        Value::Object(named) => Box::new(named.values().flat_map(addresses)),
+        Value::Null | Value::Bool(_) | Value::Number(_) => Box::new(std::iter::empty()),
+    }
+}
+
+/// Whether an address carries a name and password of its own: an `@`
+/// before its path, with or without a scheme, as a proxy's reader takes
+/// `joel:pw@proxy:3128` and `http://joel:pw@proxy:3128` alike.
+fn carries_login(address: &str) -> bool {
+    let past_scheme = address.split_once("://").map_or(address, |(_, rest)| rest);
+    past_scheme
+        .split('/')
+        .next()
+        .is_some_and(|host| host.contains('@'))
 }
 
 /// Whether a setting says nothing: null, or an empty string, list or
@@ -68,11 +87,11 @@ fn is_empty(value: &Value) -> bool {
     }
 }
 
-/// A setting by its name in any case.
-fn field<'a>(settings: &'a Map<String, Value>, name: &str) -> Option<&'a Value> {
+/// A setting under each of its spellings.
+fn spelled<'a>(settings: &'a Map<String, Value>, name: &'a str) -> impl Iterator<Item = &'a Value> {
     settings
         .iter()
-        .find(|(key, _)| key.eq_ignore_ascii_case(name))
+        .filter(move |(key, _)| key.eq_ignore_ascii_case(name))
         .map(|(_, value)| value)
 }
 
