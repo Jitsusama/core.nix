@@ -2,7 +2,8 @@
 //! daemon hears of them, its own asks and how its sources stand, each
 //! asked over a socket as the shell asks.
 
-use std::io::Read;
+mod hang_ups;
+
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, channel};
@@ -408,70 +409,6 @@ fn a_daemon_hears_each_watch_begin_and_end() {
     drop(another);
     assert!(in_time(&told).is_some(), "told as its connection ends");
     assert!(!shared.watches("row", "agents"), "its watch went with it");
-}
-
-#[test]
-fn a_connection_no_longer_reading_is_hung_up_on_and_the_rest_told_on() {
-    let (shared, mut client, folder) = served("stuck", Box::new(|_| None));
-    let (telling, told) = channel();
-    shared.on_watches(Box::new(move || {
-        let _ = telling.send(());
-    }));
-    let watch = json!({"id": 1, "ask": "watch", "kind": "row", "place": "agents"});
-    // Asks for a watch, then never reads a line.
-    let mut stuck = UnixStream::connect(folder.0.join("daemon.sock")).expect("it connects");
-    writeln!(stuck, "{watch}").expect("the watch is asked");
-    assert!(
-        in_time(&told).is_some(),
-        "told as the stuck one's watch begins"
-    );
-    client.ask(&watch);
-    assert!(in_time(&told).is_some(), "told as the reading one's begins");
-    // Lines of some size, so the socket's buffer fills within a few
-    // dozen and the queue behind it within QUEUED more. The ceiling
-    // leaves room for a send buffer of some 60 MB, far past any kernel's
-    // default, and costs time only when the case fails.
-    let long = "x".repeat(4096);
-    let mut hung_up = None;
-    for n in 1..=QUEUED * 16 {
-        let name = format!("{n}{long}");
-        shared.change(vec![row("agents", "O", &name)], json!({}));
-        assert_eq!(
-            client.heard()["changed"][0]["row"]["name"],
-            json!(name),
-            "the reading one heard each change"
-        );
-        if told.try_recv().is_ok() {
-            hung_up = Some(n);
-            break;
-        }
-    }
-    let hung_up = hung_up.expect("the one no longer reading was never hung up on");
-    // Its watch's answer holds one of the queue's places, so with nothing
-    // yet written the queue is full at QUEUED - 1 changes; a hang-up any
-    // sooner came before it was. The socket's buffer isn't counted, so
-    // this shows the hang-up isn't early, not that it's exactly on time.
-    assert!(
-        hung_up >= QUEUED,
-        "hung up on at change {hung_up}, before its queue of {QUEUED} could fill"
-    );
-    stuck
-        .set_read_timeout(Some(Duration::from_secs(10)))
-        .expect("a timeout is set");
-    let mut left = Vec::new();
-    if let Err(why) = stuck.read_to_end(&mut left) {
-        panic!("the stuck connection's reading half wasn't ended: {why}");
-    }
-    assert!(
-        writeln!(stuck, "{watch}").is_err(),
-        "the stuck connection's writing half wasn't ended"
-    );
-    shared.change(vec![row("agents", "O", "kelp")], json!({}));
-    assert_eq!(
-        client.heard()["changed"],
-        json!([row("agents", "O", "kelp")]),
-        "the reading one is told on"
-    );
 }
 
 #[test]

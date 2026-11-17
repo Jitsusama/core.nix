@@ -693,7 +693,8 @@
     key or place; a paced watch is told all that moved in one line once its pace is up, and
     asked again at once it's told at once what it held back, never everything whole; a
     connection that stops reading is hung up on once its queue fills, while the rest are
-    still told; and the daemon answers its own asks
+    still told; one that asks without reading, slowly or not, or whose pace finds its queue
+    full, is shut and its writer ended; and the daemon answers its own asks
   '';
   daemons-agree = ''
     every daemon a graphical machine's account runs keeps docs/daemons.md's convention: its
