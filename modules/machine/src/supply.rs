@@ -637,6 +637,28 @@ mod tests {
         assert_eq!(kept, json!(41.5), "kept past SLOW_KEPT");
     }
 
+    /// A battery below freezing, as one left in a car in a Canadian
+    /// winter is, says its temperature: the kernel's `temp` is signed,
+    /// in tenths of a degree, so -55 is -5.5 °C, not no temperature.
+    #[test]
+    fn a_battery_below_freezing_says_its_temperature() {
+        let root = std::env::temp_dir().join(format!("machine-cold-{}", std::process::id()));
+        let at = root.join("sys/class/power_supply/BAT0");
+        std::fs::create_dir_all(&at).unwrap();
+        std::fs::write(at.join("temp"), "-55\n").unwrap();
+        let held = Root::new(&root);
+        let said = record(
+            &held,
+            "BAT0",
+            &Value::Null,
+            &mut Settings::default(),
+            Instant::now(),
+        )["temperature_c"]
+            .clone();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(said, json!(-5.5));
+    }
+
     // A Dell's firmware read fails when the kernel finds no 64 KiB buffer
     // for it ("page allocation failure: order:4", six times on Joel's
     // laptop overnight, 2026-11-13). The file is still there; it just
