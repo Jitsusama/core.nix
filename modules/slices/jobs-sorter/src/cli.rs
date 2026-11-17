@@ -5,7 +5,7 @@
 use terminal_kit::{Exit, Failure, Help};
 
 /// Every flag the sorter takes, each with a value, as its units give it.
-const FLAGS: [(&str, &str); 24] = [
+const FLAGS: [(&str, &str); 25] = [
     (
         "--under SLICE[=CGROUP]",
         "a slice of terminals it watches, and where their busy work goes; app.slice",
@@ -72,6 +72,10 @@ const FLAGS: [(&str, &str); 24] = [
     (
         "--calls PW-DUMP",
         "the pw-dump that hears a call, which the door keeps room for",
+    ),
+    (
+        "--calls-elsewhere SOCKETS=MYCELIUM",
+        "the mycelium nodes' sockets, and mycelium, that hear a call on another machine",
     ),
     (
         "--niri NIRI",

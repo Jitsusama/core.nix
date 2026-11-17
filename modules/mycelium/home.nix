@@ -89,7 +89,10 @@ let
   linking = cfg.links != [ ] || cfg.vias != [ ] || cfg.providers != [ ];
   serving = cfg.realm != null;
   agentsKey = config.systemd.user.sockets ? agent-signing;
-  declaration = import ./declaration.nix { inherit lib; } cfg;
+  declaration = import ./declaration.nix {
+    inherit lib;
+    callIsOn = lib.getExe (pkgs.callPackage ../calls/package.nix { });
+  } cfg;
   # The node reads the declaration from the store, where only root writes,
   # never from the account's config folder: anything running as the account
   # could repoint that link and widen how agents' commands run.

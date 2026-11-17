@@ -1,7 +1,7 @@
 # What a machine declares of itself, in mycelium's words, as the JSON the
 # node and the machine's commands read (home.nix writes it twice: in the
 # store for the node, and in the account's config folder for the rest).
-{ lib }:
+{ lib, callIsOn }:
 cfg:
 let
   # Only the fences a machine says run here, in mycelium's shape. An
@@ -20,9 +20,19 @@ in
 builtins.toJSON (
   {
     inherit (cfg.declares) reach outlives taints;
-    probes = lib.mapAttrs (
-      _: probe: if builtins.isList probe then { run = probe; } else { connect = probe; }
-    ) cfg.declares.probes;
+    # Beside the networks it names, the node of every machine that declares
+    # itself says whether a call is on there, as `reached.call`: a-call-is-on only asks the sound
+    # server whether a program records (Core Audio's process list on a
+    # Mac), opens no device and needs no microphone grant, and the node
+    # publishes its yes or no alone. Another of the person's machines
+    # brakes its builds by it (modules/slices, jobs-sorter's elsewhere.rs).
+    probes =
+      lib.mapAttrs (
+        _: probe: if builtins.isList probe then { run = probe; } else { connect = probe; }
+      ) cfg.declares.probes
+      // {
+        call.run = [ callIsOn ];
+      };
     costs_money = cfg.declares.costsMoney;
   }
   // lib.optionalAttrs (cfg.agents != { }) { inherit (cfg) agents; }
