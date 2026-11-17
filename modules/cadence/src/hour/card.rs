@@ -117,7 +117,17 @@ pub fn compose(
             let _ = writeln!(card, "  - {miss}");
         }
     }
-    let mut told = tell_fixed(&mut card, kept, &open, said);
+    // An hour that couldn't judge the misses can't say which are gone, so
+    // it tells Joel nothing and carries last hour's open misses whole.
+    let judged = measures
+        .iter()
+        .all(|m| m.class != Class::Miss || m.target.is_some());
+    let (open, mut told) = if judged {
+        let told = tell_fixed(&mut card, kept, &open, said);
+        (open, told)
+    } else {
+        (kept.open.clone(), kept.told.clone())
+    };
     let next = Kept {
         drag: chosen.map(|m| Held {
             key: m.key.clone(),
@@ -552,6 +562,23 @@ mod tests {
         assert!(
             !fourth.contains("For Joel"),
             "a miss held an hour by its measure was told fixed a second time: {fourth}"
+        );
+    }
+
+    /// An hour that couldn't read the misses ledger whole says nothing of
+    /// which are gone, so it tells Joel nothing and keeps last hour's open.
+    #[test]
+    fn an_hour_the_ledger_wasnt_read_whole_tells_nothing_and_keeps_what_was_open() {
+        let unread = measure("misses", Class::Miss, 0.0, None);
+        let kept = Kept {
+            drag: None,
+            open: vec!["the map drew cells alone · WCJQSG".to_owned()],
+            told: vec!["History paused".to_owned()],
+        };
+        let (card, next) = compose("06:10", &[unread], &kept, &BTreeMap::new(), "");
+        assert!(
+            !card.contains("For Joel") && next.open == kept.open && next.told == kept.told,
+            "an unread ledger told a miss fixed or dropped what was open: {card} {next:?}"
         );
     }
 

@@ -71,8 +71,19 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let now = now_ms() / 1000;
     // Read once, so the misses measured and the words told for them come
     // from the same ledger.
-    let misses = fs::read_to_string(state_home.join("mission/misses.jsonl")).unwrap_or_default();
+    let read = fs::read_to_string(state_home.join("mission/misses.jsonl"));
+    // A ledger not yet written has no misses; one that can't be read says
+    // nothing of which are gone, so the misses go unjudged.
+    let unread = matches!(&read, Err(e) if e.kind() != io::ErrorKind::NotFound);
+    let misses = read.unwrap_or_default();
     let mut measures = gather(&folder, &state_home, &misses, now, checkouts)?;
+    for m in measures
+        .iter_mut()
+        .filter(|m| unread && m.class == Class::Miss)
+    {
+        m.target = None;
+        m.says.push_str(measures::UNREAD);
+    }
     // A realm whose node doesn't answer says nothing of its machines.
     if !realms.is_empty() {
         let answers: Vec<String> = realms
@@ -114,9 +125,9 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_default();
     // Once every measure is read, a miss whose check names one stays open
-    // until it judges, so Joel isn't told it's fixed before it is; one he
-    // was told is fixed stays so.
-    measures::held(&misses, &mut measures, &kept.told);
+    // until it judges, so Joel isn't told it's fixed before it is; one
+    // closed before last hour stays so.
+    measures::held(&misses, &mut measures, &kept.open);
     let said = measures::said(&misses, &TimeZone::system());
     let (card, next) = compose(
         &clock(now),

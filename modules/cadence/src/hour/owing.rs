@@ -9,7 +9,7 @@ use crate::findings::Entry;
 use crate::owe::{self, Owed};
 
 use super::lines::figure;
-use super::measures::{Class, HELD, Measure, drag};
+use super::measures::{BLIND, Class, HELD, Measure, drag};
 
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
@@ -29,6 +29,13 @@ fn filed(m: &Measure) -> Vec<Filed> {
             .behind
             .iter()
             .filter_map(|line| line.rsplit_once(" · "))
+            // A miss held only because the hour couldn't look is the hour's
+            // to fix, not its owner's, so it isn't put to them.
+            .filter(|(_, owner)| {
+                owner
+                    .split_once(HELD)
+                    .is_none_or(|(_, why)| !BLIND.iter().any(|b| why.ends_with(b)))
+            })
             .map(|(what, owner)| {
                 // A note after the owner, ", though its check ...", is no
                 // address: it says the check merged and a measure still
@@ -400,7 +407,7 @@ mod tests {
     fn a_miss_noted_after_its_owner_still_goes_to_that_owner() {
         let mut misses = measure("misses", Class::Miss, 2.0, Some(0.0));
         misses.behind = vec![
-            "the map drew cells alone · WCJQSG, though its check map-cells can't judge it yet"
+            "the map drew cells alone · WCJQSG, though its check map-cells still finds it"
                 .to_owned(),
             "the notice stayed up · 88LQC0, though cadence couldn't read world's main to see \
              its check"
@@ -412,6 +419,26 @@ mod tests {
             owners,
             ["WCJQSG", "88LQC0"],
             "a miss's note was taken as part of its owner's address"
+        );
+    }
+
+    /// A measure the hour couldn't read holds a miss on the card, but the
+    /// miss's owner can't move the hour's blindness, so isn't asked to.
+    #[test]
+    fn a_miss_held_by_a_blind_measure_is_not_put_to_its_owner() {
+        let mut misses = measure("misses", Class::Miss, 1.0, Some(0.0));
+        misses.behind = vec![
+            "a miss with no check · H2VYOB".to_owned(),
+            "the map drew cells alone · WCJQSG, though its check map-cells can't judge it yet"
+                .to_owned(),
+        ];
+        let mut ledger = Vec::new();
+        let told = file(&mut ledger, &[misses], "2026-11-17", 1000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(
+            owners,
+            ["H2VYOB"],
+            "a miss held only because the hour couldn't look was put to its owner"
         );
     }
 
@@ -428,7 +455,12 @@ mod tests {
         let mut asked = misses.clone();
         asked.behind = vec!["the map drew cells alone · WCJQSG".to_owned()];
         file(&mut ledger, &[asked], "2026-11-16", 0);
-        let told = file(&mut ledger, &[misses], "2026-11-17", 1000);
+        let told = file(
+            &mut ledger,
+            std::slice::from_ref(&misses),
+            "2026-11-17",
+            1000,
+        );
         let text = told.first().map_or("nothing", |(_, text)| text.as_str());
         assert!(
             !text.contains("Which check would have caught it") && text.contains("map-cells"),
@@ -443,6 +475,16 @@ mod tests {
             open,
             ["hour:miss-held:the map drew cells alone"],
             "the ask for a check stayed open once it merged, or the hold wasn't filed"
+        );
+        let again = file(&mut ledger, &[misses], "2026-11-17", 1500);
+        let still: Vec<&str> = ledger
+            .iter()
+            .filter(|e| e.open)
+            .map(|e| e.key.as_str())
+            .collect();
+        assert!(
+            again.is_empty() && still == ["hour:miss-held:the map drew cells alone"],
+            "a hold a second hour running was closed or told again: {again:?}, open {still:?}"
         );
         let mut gone = measure("misses", Class::Miss, 1.0, Some(0.0));
         gone.behind = vec!["another miss · WCJQSG".to_owned()];
