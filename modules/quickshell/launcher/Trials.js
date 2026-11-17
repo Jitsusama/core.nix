@@ -23,6 +23,9 @@ const STILL_MS = 100;
 // A frame later than this many of the screen's refreshes after the one
 // before it missed at least one, which is what Joel sees as a stutter.
 const LATE_REFRESHES = 1.5;
+// How many frames FramePresentation keeps the times of, the newest among
+// them (frame-presentation.patch's ring).
+const FRAMES_KEPT = 16;
 // A drawer out this long on a row the arrows chose was read, not passed
 // over on the way: long enough to read its title and a fact.
 const READ_MS = 1000;
@@ -320,6 +323,77 @@ function drew(pace, at, hz) {
         pace.longest = Math.max(pace.longest, gap);
     }
     return pace;
+}
+
+// Of the frames begun before a key's own, `begunAt` when each began on the
+// monotonic clock, how many began after the key was `heard`, frames its
+// own work came too late for, and how many in the STILL_MS before it,
+// drawing already under way as a sliding name's is. Either leaves a frame
+// in flight as the key's is ready, and Qt Wayland holds the key's frame
+// until the compositor says it showed that one: up to a refresh, twice as
+// long at 60 Hz as at 120 (16 Nov: 10.7 ms to the swap on the 4K screen,
+// 3.5 on the laptop's). `begunAt` runs newest first, so where its oldest
+// is still inside a count, the frames before it are past what's kept and
+// that count is only a floor. Null where none were read, or where the key
+// has no time it was heard, so nothing unmeasured reads as none.
+function framesBefore(begunAt, heard) {
+    if (!Array.isArray(begunAt) || begunAt.length === 0 || !Number.isFinite(heard)) {
+        return null;
+    }
+    let since = 0;
+    let still = 0;
+    for (const at of begunAt) {
+        if (at >= heard) {
+            since += 1;
+        } else if (at >= heard - STILL_MS) {
+            still += 1;
+        }
+    }
+    const oldest = begunAt[begunAt.length - 1];
+    return {
+        since,
+        still,
+        sinceAtLeast: oldest >= heard,
+        stillAtLeast: oldest >= heard - STILL_MS,
+    };
+}
+
+// When each of the frames before `frame` began, newest first, as far back
+// as `timesOf` (FramePresentation's) keeps them. A slot a newer frame took
+// comes back empty, and the read ends there, so what's read runs unbroken
+// from the key's own frame back and framesBefore's floor holds: a newer
+// frame takes the oldest slots first.
+function begunBefore(frame, timesOf) {
+    const begunAt = [];
+    for (let back = 1; back < FRAMES_KEPT && frame - back > 0; back++) {
+        const rendering = timesOf(frame - back).rendering;
+        if (!rendering) {
+            break;
+        }
+        begunAt.push(rendering);
+    }
+    return begunAt;
+}
+
+// A count of frames as a line says it: "1 other frame", "at least 3 other
+// frames" where it's only a floor.
+function framesCounted(count, atLeast, kind) {
+    return `${atLeast ? "at least " : ""}${count} ${kind}${count === 1 ? "" : "s"}`;
+}
+
+// What a key's line says of those frames, or nothing where none were read.
+// Where every frame read began after the key was heard, none of the 100 ms
+// before it was read, so that half goes unsaid rather than said as none.
+function framesBeforeSaid(frames) {
+    if (!frames) {
+        return "";
+    }
+    const since = `, after ${framesCounted(frames.since, frames.sinceAtLeast, "other frame")}`
+        + " since it was heard";
+    return frames.sinceAtLeast
+        ? since
+        : `${since} and ${frames.stillAtLeast ? "at least " : ""}${frames.still}`
+            + ` in the ${STILL_MS} ms before`;
 }
 
 // The trial with its frames, when any were drawn while it moved.

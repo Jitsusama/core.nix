@@ -6655,7 +6655,12 @@ Scope {
                 waiting: Math.round(newest.begun - newest.done),
                 drawing: Math.round(shown - newest.begun),
                 collecting: Math.round(Heap.collected() - newest.collected),
-                thread: newest.thread
+                thread: newest.thread,
+                // The frames before its own, which a slow key's line counts
+                // (Trials.js's framesBefore), read only for a key said.
+                keyFrame: newest.frame ?? 0,
+                keyHeard: newest.heard,
+                timesOf: frame => surface.FramePresentation.timesOf(frame)
             }, frameSplit(newest, shown)));
         // Every key the frame drew keeps it as its own, and the list holds
         // one time a key.
