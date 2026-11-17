@@ -9611,8 +9611,13 @@ Scope {
         const source = collections.find(one => one.settings.name === name) ?? null;
         // One Super+N is led to is listed as it stands however it's asked
         // for, since what it holds comes and goes, and one kept as the
-        // shell started (warmLed) holds no rows.
+        // shell started (warmLed) holds no rows. A collection asked to list
+        // now that no source leads anywhere, as a margin mark opens Now, is
+        // listed whole as it stands (keptListing), unless it steps deeper
+        // as it opens (`leading`, as Keyboard's does).
         const listed = source?.keptListed === true ? keptListing(source)
+            : listedNow === true && source !== null && !source.leading
+                && leadingTo(name) === null ? keptListing(source)
             : listedNow === true || kept.led === true ? ledListing(name) : kept.matches;
         if (listed === null)
             return false;

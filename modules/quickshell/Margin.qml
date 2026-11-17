@@ -146,18 +146,19 @@ Scope {
         onTriggered: root.settle()
     }
 
-    // Opens Now with this thing's row selected.
-    // One standing for a place of its own, as For You's tray does, opens
-    // that place instead (Piece.qml's opens).
+    // Opens Now with this thing's row selected, drawn from what the closed
+    // launcher kept as its chord's is and landing on the row as it comes
+    // (intoOn): opened whole, Joel's clicks took 51 and 89 ms to the
+    // screen, 19 and 34 of it making Now again (2026-11-17, 10:07 and
+    // 10:21). One standing for a place of its own, as For You's tray does,
+    // opens that place instead (Piece.qml's opens).
     function show(thing) {
         if (thing.piece.opens !== "") {
-            root.launcher.into(thing.piece.opens);
+            root.launcher.intoOn(thing.piece.opens, null);
             return;
         }
-        root.launcher.into("on");
-        const row = root.launcher.matches.findIndex(row => row.key === `on:${thing.entry.mark}`);
-        if (row >= 0)
-            root.launcher.current = row;
+        const key = `on:${thing.entry.mark}`;
+        root.launcher.intoOn("on", row => row.key === key);
     }
 
     Variants {

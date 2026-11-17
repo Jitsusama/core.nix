@@ -3195,6 +3195,61 @@ def test_now_says_while_the_work_network_isnt_answering_and_forgets_it_once_it_i
         warp_forgotten(said)
 
 
+def test_a_marks_click_draws_now_from_what_was_kept_on_its_row(shell: Shell) -> None:
+    """A click on a margin mark draws Now as the closed launcher kept it, landing on its row.
+
+    It opened Now whole, as nothing but a chord's place was drawn from what was kept: Joel's
+    clicks took 51 and 89 ms to the screen, 19 and 34 of it making Now again (2026-11-17, 10:07
+    and 10:21). The Work Network's mark, alone in the margin, is centred along the top.
+    """
+    said = Path(os.environ["HOME"]) / "warp-cli"
+    contract = Path(os.environ["WARP_CONTRACT"])
+    said.mkdir()
+    lit = shell.mark()
+    shutil.copyfile(contract / "daemon-down.json", said / "status.error.json")
+    try:
+        cells: list[int] = []
+
+        def alone(rest: str) -> bool:
+            drawn = json.loads(rest)
+            cells[:] = [glyph["cell"] for glyph in drawn]
+            return [glyph["mark"] for glyph in drawn] == ["tunnel"]
+
+        shell.reported("sets margin ", alone, lit)
+        # Now opened once by its chord, so it's kept whatever the binds warm.
+        shell.as_account(shell.ipc("collection", "on"))
+        shell.launcher_ready()
+        shell.close_launcher()
+        shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+        timed = json.loads(shell.as_account(shell.ipc("openings")))
+        before = timed[-1].get("nth", len(timed)) if timed else 0
+        output = json.loads(shell.as_account("niri msg --json focused-output"))["logical"]
+        wlrctl = os.environ["WLRCTL"]
+        shell.as_account(f"{wlrctl} pointer move {TO_THE_CORNER} {TO_THE_CORNER}")
+        shell.as_account(f"{wlrctl} pointer move {output['width'] // 2} {cells[0] // 2}")
+        shell.as_account(f"{wlrctl} pointer click left")
+        shell.launcher_ready()
+        opened: list[Json] = []
+
+        def came(_: Json) -> bool:
+            each = json.loads(shell.as_account(shell.ipc("openings")))
+            opened[:] = [one for one in each if one.get("nth", 0) > before]
+            return bool(opened)
+
+        shell.launcher_until(came)
+        assert opened[0]["into"] == "on", f"the click didn't open Now: {opened[0]}"
+        assert opened[0].get("kept"), f"the click opened Now whole: {opened[0]}"
+        shell.launcher_until(
+            lambda shown: (
+                shown["path"][-1:] == ["Now"]
+                and (shown["selected"] or {}).get("name") == "Work Network"
+            )
+        )
+        shell.close_launcher()
+    finally:
+        warp_forgotten(said)
+
+
 def healed_in(reports: list[str]) -> bool:
     """Whether the shell said the Work Network well again, and then a margin without it."""
     if "work network ails false" not in reports:
@@ -3300,6 +3355,8 @@ def test_a_switch_the_organisation_holds_is_left_and_says_who_holds_it(shell: Sh
         warp_forgotten(said)
 
 
+# Far enough to take the pointer to the screen's top left corner from anywhere on it.
+TO_THE_CORNER = -10000
 # How often a person might ask a terminal again: more often than WARP is read afresh while
 # shown (Warp.qml's fresh), so a read kept from outside is said before it's asked again.
 ASKED_AGAIN = 0.5
