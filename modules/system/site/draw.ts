@@ -94,17 +94,26 @@ function headlineOf(heading: Headline): string {
 }
 
 /**
- * What one part says under its name on the outlook, as markup: how many looks,
- * or its health's word. With looks, its health is said to a screen reader
- * too, since its mark is hidden and watch and bad would otherwise sound
- * the same.
+ * What one part says under its name on the outlook: how many looks, or its
+ * health's word.
  */
 function forecast(part: Part): string {
   const looks = looksIn(part);
   if (looks > 0) {
-    return `${looks} worth a look${spoken(part.health)}`;
+    return `${looks} worth a look`;
   }
   return WORDS[part.health].toLowerCase();
+}
+
+/**
+ * What one part on the outlook says to a screen reader: its name, what it
+ * shows, and with looks its health too, since its mark is hidden and watch
+ * and bad would otherwise sound the same. It is the link's name rather than
+ * hidden text, so the outlook's text stays what is shown.
+ */
+function heard(part: Part): string {
+  const said = `${named(part.part)} ${forecast(part)}`;
+  return looksIn(part) > 0 ? `${said} (${WORDS[part.health].toLowerCase()})` : said;
 }
 
 /** The outlook: the four parts on one horizon, each with its mark. */
@@ -112,7 +121,7 @@ function outlookOf(system: System): string {
   return system.parts
     .map((part, at) => {
       const name = escaped(named(part.part));
-      return `<li><a class="station ${part.health}" href="#part-${escaped(part.part)}" data-station="${at + 1}">${mark(part.health, "large")}<span class="place">${name}</span><span class="forecast">${forecast(part)}</span></a></li>`;
+      return `<li><a class="station ${part.health}" href="#part-${escaped(part.part)}" data-station="${at + 1}" aria-label="${escaped(heard(part))}">${mark(part.health, "large")}<span class="place">${name}</span><span class="forecast">${forecast(part)}</span></a></li>`;
     })
     .join("");
 }

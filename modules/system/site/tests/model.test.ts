@@ -1,5 +1,7 @@
 // What the system page makes of the system daemon's records, told as the
 // daemon tells them: the summary, a part record each, a record per thing.
+// Then what it draws of them in the system's words, and that its own files
+// keep to those words.
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -244,7 +246,10 @@ const KEY =
 
 /** A part on the outlook: its name, then what it says. */
 const ON_THE_OUTLOOK =
-  /<span class="place">(?<place>[^<]*)<\/span><span class="forecast">(?<says>[\s\S]*?)<\/span><\/a>/gu;
+  /aria-label="(?<heard>[^"]*)">[\s\S]*?<span class="place">(?<place>[^<]*)<\/span><span class="forecast">(?<says>[^<]*)<\/span><\/a>/gu;
+
+/** Where index.html leaves room for the legend: a list of its own. */
+const LEGEND_LIST = /<ul class="legend" id="legend"[^>]*><\/ul>/u;
 
 /** A drawn mark's shape: what is inside its svg. */
 const SHAPE = /<svg [^>]*>(?<shape>[\s\S]*?)<\/svg>/gu;
@@ -282,28 +287,32 @@ it("each part on the outlook says how many are worth a look, or else its health'
   };
   const spoke = [...outlookOf(four).matchAll(ON_THE_OUTLOOK)].map((each) => [
     each.groups?.["place"],
-    read(each.groups?.["says"] ?? ""),
+    each.groups?.["says"],
+    each.groups?.["heard"],
   ]);
+  // What is shown, then what a screen reader hears: with looks, the health
+  // too, as the link's name, so watch and bad don't sound alike while the
+  // text stays what is shown.
   assert.deepEqual(spoke, [
-    ["Machines", "good"],
-    ["Code", "not read"],
-    ["Code", "watch"],
-    ["Code", "1 worth a look (watch)"],
-    ["Code", "2 worth a look (bad)"],
+    ["Machines", "good", "Machines good"],
+    ["Code", "not read", "Code not read"],
+    ["Code", "watch", "Code watch"],
+    ["Code", "1 worth a look", "Code 1 worth a look (watch)"],
+    ["Code", "2 worth a look", "Code 2 worth a look (bad)"],
   ]);
-  assert.doesNotMatch(read(outlookOf(four)), WEATHER);
 });
 
-for (const [health, word] of [
+// The daemon's word for each health, then what a screen reader hears.
+for (const [daemonSays, word] of [
   ["good", "good"],
   ["watch", "watch"],
   ["bad", "bad"],
-  ["unread", "not read"],
+  ["not read", "not read"],
 ] as const) {
-  it(`a screen reader hears a part and a machine that are ${health} as "${word}"`, () => {
+  it(`a screen reader hears a part and a machine told ${daemonSays} as "${word}"`, () => {
     const these = records.map((record) =>
       record.key === "part:machines" || record.key === "machine:osprey"
-        ? { ...record, health }
+        ? { ...record, health: daemonSays }
         : record,
     );
     const { summary, part, machine } = told(these);
@@ -327,6 +336,11 @@ it("the page and its words for a model wear no weather words, nor in what is rea
     const text = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
     assert.doesNotMatch(said(text), words, file);
   }
+});
+
+it("the legend is a list, so a screen reader hears its words apart", () => {
+  const page = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(page, LEGEND_LIST);
 });
 
 it("a record's words reach the page as text, never as markup", () => {
