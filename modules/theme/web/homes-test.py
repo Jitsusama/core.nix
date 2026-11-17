@@ -2,8 +2,11 @@
 
 Each case writes a small sites folder, a sites.json, any rows.json and
 homes.json, and a page, serves it, runs the probe in the page as checks.md
-runs it, and reads what it names. The rules a row and a record are held to are the system reader's
-(modules/system/src/homes.rs), so a case here is one the reader decides too.
+runs it, and reads what it names. The rules a row and a record are held to
+are the system reader's (modules/system/src/homes.rs), so a row or a record
+the reader would drop is named here. Where the rows come from is the
+probe's own: rows.json, which the home writes (modules/local-sites/home),
+or sites.json where the sites serve none.
 The probe's path comes from WEB_SKILL, as the check running this sets it.
 """
 
@@ -19,7 +22,7 @@ import pytest
 from playwright.sync_api import Browser, sync_playwright
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
 
 PROBE = Path(os.environ["WEB_SKILL"]) / "homes.js"
 CODE = {"path": "code/", "homes": ["repository"]}
@@ -53,15 +56,16 @@ def browser() -> Iterator[Browser]:
 def probed(
     browser: Browser,
     root: Path,
-    sites: list[object],
+    sites: Sequence[object] | None,
     page: str,
-    rows: object = None,
+    rows: str | None = None,
     **homes: object,
 ) -> object:
-    """Run the probe on `page`, served beside `sites`, any `rows` and each site's homes.json."""
-    (root / "sites.json").write_text(json.dumps({"sites": sites}))
+    """Run the probe on `page`, served beside any `sites`, `rows` as written, and homes.json."""
+    if sites is not None:
+        (root / "sites.json").write_text(json.dumps({"sites": sites}))
     if rows is not None:
-        (root / "rows.json").write_text(json.dumps(rows))
+        (root / "rows.json").write_text(rows)
     for site, things in homes.items():
         (root / site).mkdir()
         (root / site / "homes.json").write_text(json.dumps({"things": things}))
@@ -164,32 +168,51 @@ def test_no_row_home_to_anything_is_a_fault(browser: Browser, tmp_path: Path) ->
     ]
 
 
-def test_the_homes_rows_are_read_before_the_record(browser: Browser, tmp_path: Path) -> None:
-    """rows.json, every row the home lists, is read in place of sites.json when it's there."""
-    rows = {"sites": [CODE, {"path": "../up/", "homes": ["thing"]}]}
-    unread = [{"path": "../unread/", "homes": ["thing"]}]
+def test_a_live_rows_declared_homes_are_read(browser: Browser, tmp_path: Path) -> None:
+    """A live row as Nix declares it, in rows.json, stands over its stale sites.json twin."""
+    stale = [{"path": "code/", "homes": []}, {"path": "../unread/", "homes": ["thing"]}]
+    rows = json.dumps({"sites": [CODE]})
     page = "<p>See <code>notebook</code>.</p>"
-    assert probed(browser, tmp_path, unread, page, rows, code=[NOTEBOOK]) == [
-        (
-            '"../up/" in rows.json homes things on no plain path: '
-            "steps of letters, digits and -._~, none starting with a dot"
-        ),
+    assert probed(browser, tmp_path, stale, page, rows, code=[NOTEBOOK]) == [
         unlinked("notebook", "See notebook.", "repository", "code/#repo=example%2Fnotebook"),
     ]
 
 
-def test_rows_that_list_no_sites_are_a_fault(browser: Browser, tmp_path: Path) -> None:
-    """A rows.json there but not the home's rows is named, never passed over for sites.json."""
-    assert probed(browser, tmp_path, [CODE], NOTHING, {"rows": []}, code=[NOTEBOOK]) == [
-        "rows.json at the sites' root, the home's rows as {\"sites\": [...]}, for the homes",
+def test_rows_with_no_record_beside_them_are_read(browser: Browser, tmp_path: Path) -> None:
+    """A home with declared rows and no sites.json yet still has rows to read."""
+    rows = json.dumps({"sites": [CODE]})
+    page = "<p>See <code>notebook</code>.</p>"
+    assert probed(browser, tmp_path, None, page, rows, code=[NOTEBOOK]) == [
+        unlinked("notebook", "See notebook.", "repository", "code/#repo=example%2Fnotebook"),
+    ]
+
+
+@pytest.mark.parametrize("rows", ['{"rows": []}', "null", '{"sites": ['])
+def test_rows_that_wont_read_are_a_fault(browser: Browser, tmp_path: Path, rows: str) -> None:
+    """A rows.json there but of another shape, or broken, is named, never passed over."""
+    assert probed(browser, tmp_path, [CODE], NOTHING, rows, code=[NOTEBOOK]) == [
+        (
+            "rows.json at the sites' root won't read as the home's rows, {\"sites\": [...]}: "
+            "the home writes it, so read `journalctl --user -u local-sites-home`"
+        ),
+    ]
+
+
+def test_no_record_at_all_is_a_fault(browser: Browser, tmp_path: Path) -> None:
+    """Sites serving neither rows.json nor sites.json have no homes to read."""
+    assert probed(browser, tmp_path, None, NOTHING) == [
+        "sites.json at the sites' root, for the homes to be read from",
     ]
 
 
 def test_a_leading_dot_step_is_named_for_the_system(browser: Browser, tmp_path: Path) -> None:
     """The home lists a row written ./code/, which the system's homes refuse, so it's named."""
-    rows = {"sites": [{"path": "./code/", "homes": ["repository"]}]}
+    rows = json.dumps({"sites": [{"path": "./code/", "homes": ["repository"]}]})
     assert probed(browser, tmp_path, [], NOTHING, rows, code=[NOTEBOOK]) == [
-        '"./code/" in rows.json homes things, which the system\'s homes refuse: drop its ./',
+        (
+            '"./code/" in rows.json homes things, which the system\'s homes refuse: '
+            "drop its ./ in sites.json, or home.nix for a live site"
+        ),
         "a row in rows.json home to a kind, for any mention to be measured",
     ]
 

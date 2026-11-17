@@ -21,9 +21,11 @@
 //
 // The home's rows are rows.json, every row the home lists with a live
 // site's as Nix declares it, which the home writes beside sites.json
-// (2026-11-17). Until every home has one, a sites root without it is read
-// through sites.json. One that is there but isn't rows is a fault rather
-// than a reason to read the other, which may be older.
+// (2026-11-17). Until every home has one, a sites root that serves none (a
+// 404) is read through sites.json. One that is there but won't read as rows
+// is a fault rather than a reason to read the other, which may be older.
+// The home rewrites rows.json at each build, so a fault in a row is fixed
+// where the row is written: sites.json, or home.nix for a live site.
 //
 // A check that finds nothing to test fails rather than passing, so rows no
 // home site answers, or a homes.json that lists nothing, is a fault, never
@@ -69,13 +71,32 @@
   const skipped = "script, style, pre, title, [aria-hidden='true'], [data-map], [data-said-by], "
     + "nav.sites-strip";
 
-  const rows = await read("rows.json");
-  const record = rows === null ? "sites.json" : "rows.json";
-  const sites = rows ?? (await read("sites.json"));
+  // The home's rows, undefined where the sites serve no rows.json at all,
+  // and null where they serve one that won't read.
+  const notFound = 404;
+  const readRows = async () => {
+    try {
+      const answer = await fetch(new URL("rows.json", root), { cache: "no-store" });
+      if (answer.status === notFound) {
+        return undefined;
+      }
+      return answer.ok ? await answer.json() : null;
+    } catch {
+      return null;
+    }
+  };
+  const rows = await readRows();
+  const fromRows = rows !== undefined;
+  const record = fromRows ? "rows.json" : "sites.json";
+  const fixIn = fromRows ? "sites.json, or home.nix for a live site" : "sites.json";
+  const sites = fromRows ? rows : await read("sites.json");
   if (sites === null || !Array.isArray(sites.sites)) {
-    return rows === null
-      ? ["sites.json at the sites' root, for the homes to be read from"]
-      : ["rows.json at the sites' root, the home's rows as {\"sites\": [...]}, for the homes"];
+    return fromRows
+      ? [
+        "rows.json at the sites' root won't read as the home's rows, {\"sites\": [...]}: "
+          + "the home writes it, so read `journalctl --user -u local-sites-home`",
+      ]
+      : ["sites.json at the sites' root, for the homes to be read from"];
   }
   // A row's homes are kinds, each read from its homes.json, or patterns,
   // {"kind", "address"}, giving every thing of a kind a home at the address
@@ -123,7 +144,7 @@
   const claim = (kind, path) => {
     if (claimed.has(kind)) {
       missing.push(
-        `${kind} has two homes, ${claimed.get(kind)} and ${path}: keep one in ${record}`,
+        `${kind} has two homes, ${claimed.get(kind)} and ${path}: keep one in ${fixIn}`,
       );
       return false;
     }
@@ -148,7 +169,7 @@
     if (typeof path === "string" && path.startsWith("./") && plainPath(path.slice(2))) {
       missing.push(
         `${JSON.stringify(path)} in ${record} homes things, which the system's homes refuse: `
-          + "drop its ./",
+          + `drop its ./ in ${fixIn}`,
       );
       continue;
     }
