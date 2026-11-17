@@ -161,10 +161,11 @@ Provider {
     // open. Its drawer says why it's off, which its name alone doesn't, and
     // with nothing to open, why and what would. The entries are read as a
     // binding, so one read before they're loaded is read again once they
-    // are, which DesktopEntries.byId isn't.
+    // are, and from the list itself, as offBrowser is, so the row and its
+    // drawer always name the same browser; DesktopEntries.byId is neither.
     readonly property var offRow: {
-        const ids = DesktopEntries.applications.values.map(entry => entry.id);
-        const listed = id => (id ?? "") !== "" && ids.includes(id) ? DesktopEntries.byId(id) : null;
+        const entries = DesktopEntries.applications.values;
+        const listed = id => (id ?? "") !== "" ? entries.find(entry => entry.id === id) ?? null : null;
         const opens = Managers.offOpens(managers, one => listed(one.fills),
             one => listed(one.program));
         const name = Words.name("passwords:off");
