@@ -629,20 +629,36 @@ pub fn seen_file(home: Option<&Path>) -> Option<PathBuf> {
 /// The record with what a refresh kept at `file` merged in (`merge`), as
 /// every reader of the record takes it. No file means no refresh has run
 /// here, as on a machine with no GitHub broker, and the record is the
-/// disk's alone; a file no refresh wrote is said unread.
+/// disk's alone; a file no refresh wrote, or one that can't be read, is
+/// said unread, with GitHub never having answered.
 pub fn merge_kept(record: &mut Record, file: &Path) {
-    let Ok(text) = std::fs::read_to_string(file) else {
-        return;
+    let text = match std::fs::read_to_string(file) {
+        Ok(text) => text,
+        Err(why) if why.kind() == std::io::ErrorKind::NotFound => return,
+        Err(why) => {
+            return unread(
+                record,
+                format!("{} couldn't be read: {why}", file.display()),
+            );
+        }
     };
     match serde_json::from_str::<Seen>(&text) {
         Ok(seen) if seen.schema == SCHEMA => merge(record, &seen),
-        _ => record.sources.push(Source {
-            name: "github".to_owned(),
-            what: "each repository's open changes and their checks".to_owned(),
-            read_at: None,
-            unread: vec![format!("{} isn't a refresh's record", file.display())],
-        }),
+        _ => unread(
+            record,
+            format!("{} isn't a refresh's record", file.display()),
+        ),
     }
+}
+
+/// GitHub as a source no refresh's answer reached, for `why`.
+fn unread(record: &mut Record, why: String) {
+    record.sources.push(Source {
+        name: "github".to_owned(),
+        what: "each repository's open changes and their checks".to_owned(),
+        read_at: None,
+        unread: vec![why],
+    });
 }
 
 #[cfg(test)]

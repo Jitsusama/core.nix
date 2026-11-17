@@ -7,11 +7,12 @@
 //! no tree's own files are watched, only what its checkout keeps of it.
 //!
 //! Of what's written in them, only the names a reading reads are heeded:
-//! HEAD, packed-refs, config, the refs and the reftable's list, and each
-//! tree coming or going. The index is left out, since git rewrites it at
-//! every status an agent asks for; when a tree was last written moves with
-//! the daemon's pace instead. A lock file is git's own on the way to the
-//! name it renames to, which is heard as it lands.
+//! HEAD, packed-refs, config, the refs and the reftable's list, each tree
+//! coming or going, and each tree's `gitdir`, which says where it is. The
+//! index is left out, since git rewrites it at every status an agent asks
+//! for; when a tree was last written moves with the daemon's pace instead.
+//! A lock file is git's own on the way to the name it renames to, which is
+//! heard as it lands.
 //!
 //! Each watch knows whose it is, a checkout's or the timers', so what's
 //! told is which checkouts moved, and the daemon reads only those again.
@@ -102,9 +103,11 @@ impl Folder {
             return false;
         }
         match self {
+            // A tree's own folder is a git folder too, whose `gitdir` git
+            // writes again as `git worktree move` or `repair` moves it.
             Folder::Git => matches!(
                 name,
-                "HEAD" | "packed-refs" | "config" | "refs" | "reftable" | "worktrees"
+                "HEAD" | "packed-refs" | "config" | "refs" | "reftable" | "worktrees" | "gitdir"
             ),
             Folder::Refs | Folder::Trees => true,
             Folder::Reftable => name == "tables.list",
@@ -200,6 +203,28 @@ fn refs(folder: &Path, folders: &mut BTreeMap<PathBuf, Folder>) {
 /// What each watch is, shared with the thread that hears them.
 type Held = Arc<Mutex<HashMap<WatchDescriptor, Watch>>>;
 
+/// What health says when the account's inotify watches are all spent.
+const SPENT: &str = "the account's inotify watches are spent (fs.inotify.max_user_watches)";
+
+/// Why `folder` couldn't be watched, as health says it. inotify says its
+/// watches are spent as a full disk would, so that's said for what it is.
+fn unwatchable(folder: &Path, why: &io::Error) -> String {
+    let folder = folder.display();
+    if why.kind() == io::ErrorKind::StorageFull {
+        format!("{folder}: {SPENT}")
+    } else {
+        format!("{folder}: {why}")
+    }
+}
+
+/// Of the reasons folders went unwatched, the one health says.
+fn because<'a>(mut reasons: impl Iterator<Item = &'a str> + Clone) -> Option<&'a str> {
+    reasons
+        .clone()
+        .find(|why| why.ends_with(SPENT))
+        .or_else(|| reasons.next())
+}
+
 fn lock(held: &Held) -> MutexGuard<'_, HashMap<WatchDescriptor, Watch>> {
     held.lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -221,6 +246,10 @@ pub struct Heard {
     watches: Watches,
     held: Held,
     by_path: HashMap<PathBuf, (WatchDescriptor, Of)>,
+    /// Each folder named that couldn't be watched, with what inotify said,
+    /// so health says what's unheard: one gone since it was read, or the
+    /// account's watches all spent, which every daemon of Joel's shares.
+    unwatched: BTreeMap<PathBuf, String>,
 }
 
 impl Heard {
@@ -264,6 +293,7 @@ impl Heard {
             watches,
             held,
             by_path: HashMap::new(),
+            unwatched: BTreeMap::new(),
         })
     }
 
@@ -273,8 +303,10 @@ impl Heard {
     /// and each they no longer name is given back. Everyone else's are
     /// left as they are, so a round costs what the checkouts read do. A
     /// folder that can't be watched, as one gone since it was read, is
-    /// passed over; the next reading names what's there.
+    /// counted as unwatched until it's watched or no longer named; the
+    /// next reading names what's there.
     pub fn follow(&mut self, folders: &Folders, renewed: impl Fn(&Of) -> bool) {
+        self.unwatched.retain(|path, _| folders.contains_key(path));
         let gone: Vec<PathBuf> = self
             .by_path
             .iter()
@@ -291,25 +323,58 @@ impl Heard {
             if self.by_path.contains_key(path) && !renewed(&watch.of) {
                 continue;
             }
-            if let Ok(held) = self.watches.add(path, HEARD) {
-                // A folder made again in a place has a watch of its own,
-                // so the old one is given back.
-                if let Some((old, _)) = self
-                    .by_path
-                    .insert(path.clone(), (held.clone(), watch.of.clone()))
-                    && old != held
-                {
-                    lock(&self.held).remove(&old);
-                    let _ = self.watches.remove(old);
+            let held = match self.watches.add(path, HEARD) {
+                Ok(held) => held,
+                Err(why) => {
+                    // A folder renewed is one made again, so the watch it
+                    // held hears nothing now and is given back, leaving it
+                    // counted once, as unwatched, and tried again next round.
+                    if let Some((old, _)) = self.by_path.remove(path) {
+                        lock(&self.held).remove(&old);
+                        let _ = self.watches.remove(old);
+                    }
+                    // The timers' folder is made by their first write, so
+                    // until then there's nothing unheard, and it's tried
+                    // again next round like any other.
+                    if watch.of == Of::Kept && why.kind() == io::ErrorKind::NotFound {
+                        self.unwatched.remove(path);
+                    } else {
+                        self.unwatched.insert(path.clone(), unwatchable(path, &why));
+                    }
+                    continue;
                 }
-                lock(&self.held).insert(held, watch.clone());
+            };
+            self.unwatched.remove(path);
+            // A folder made again in a place has a watch of its own, so the
+            // old one is given back.
+            if let Some((old, _)) = self
+                .by_path
+                .insert(path.clone(), (held.clone(), watch.of.clone()))
+                && old != held
+            {
+                lock(&self.held).remove(&old);
+                let _ = self.watches.remove(old);
             }
+            lock(&self.held).insert(held, watch.clone());
         }
     }
 
     /// How many folders are watched, which health says (serve.rs).
     pub fn watched(&self) -> usize {
         self.by_path.len()
+    }
+
+    /// How many folders named couldn't be watched, which health says too.
+    /// Held only for folders still named, so it never outgrows them.
+    pub fn unwatched(&self) -> usize {
+        self.unwatched.len()
+    }
+
+    /// Why one folder couldn't be watched, naming it, so health says why
+    /// without naming hundreds: one whose watches were spent, since that's
+    /// the cause a person can act on, else the first by path.
+    pub fn unwatched_because(&self) -> Option<&str> {
+        because(self.unwatched.values().map(String::as_str))
     }
 }
 

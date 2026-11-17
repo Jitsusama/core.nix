@@ -17,16 +17,16 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use daemon_serve::serve::{self, Shared};
 use repos::model::Record;
 use repos::read::{self, Found, Reading};
 use repos::{github, upstreams};
-use serde_json::json;
+use serde_json::{Value, json};
 use terminal_kit::{Exit, Failure};
 
 use crate::feed;
@@ -49,21 +49,37 @@ const LONGEST: Duration = Duration::from_secs(2);
 /// still within a breath of the disk.
 const SPACED: Duration = Duration::from_secs(2);
 
+/// What health says beside daemon-serve's own: how many folders are
+/// watched, how many couldn't be and, when any couldn't, why the first
+/// couldn't, and how long the last reading took.
+fn health(watched: usize, (unwatched, because): (usize, Option<String>), read_ms: u64) -> Value {
+    let mut said = json!({"watched": watched, "unwatched": unwatched, "read_ms": read_ms});
+    if let Some(because) = because {
+        said["unwatched_because"] = json!(because);
+    }
+    said
+}
+
 /// Holds the record, read again as the disk moves, for as long as it
 /// runs.
 pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     let socket = socket()?;
     let shared = Shared::new(feed::DOMAIN, Box::new(|_| None));
-    // What health says beside daemon-serve's own: how many folders are
-    // watched, and how long the last reading took.
     let watched = Arc::new(AtomicUsize::new(0));
+    let unwatched = Arc::new(Mutex::new((0, None::<String>)));
     let took = Arc::new(AtomicU64::new(0));
-    let (watching, taking) = (Arc::clone(&watched), Arc::clone(&took));
+    let (watching, unheard, taking) = (
+        Arc::clone(&watched),
+        Arc::clone(&unwatched),
+        Arc::clone(&took),
+    );
     shared.health_too(Box::new(move || {
-        json!({
-            "watched": watching.load(Ordering::Relaxed),
-            "read_ms": taking.load(Ordering::Relaxed),
-        })
+        let unwatched = unheard.lock().map_or((0, None), |held| held.clone());
+        health(
+            watching.load(Ordering::Relaxed),
+            unwatched,
+            taking.load(Ordering::Relaxed),
+        )
     }));
     let mut disk = Disk {
         home,
@@ -96,6 +112,12 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     let mut whole = Instant::now();
     loop {
         watched.store(heard.watched(), Ordering::Relaxed);
+        if let Ok(mut held) = unwatched.lock() {
+            *held = (
+                heard.unwatched(),
+                heard.unwatched_because().map(str::to_owned),
+            );
+        }
         record = match told.recv_timeout(PACE.saturating_sub(whole.elapsed())) {
             Ok(moved) if whole.elapsed() < PACE => {
                 let moved = settle(&told, moved, began)?;
@@ -237,3 +259,6 @@ fn socket() -> Result<PathBuf, Failure> {
                 .because("XDG_RUNTIME_DIR isn't set")
         })
 }
+
+#[cfg(test)]
+mod tests;

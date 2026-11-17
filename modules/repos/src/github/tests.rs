@@ -310,6 +310,23 @@ fn what_a_refresh_kept_is_merged_from_its_file_and_no_file_adds_nothing() {
 }
 
 #[test]
+fn a_kept_file_that_cant_be_read_is_said_unread_not_taken_for_none() {
+    let kept = Kept::new("unreadable");
+    let file = kept.file();
+    // A folder where the file goes can't be read as one, as a file whose
+    // mode keeps Joel out can't, and neither is no refresh having run.
+    std::fs::create_dir_all(&file).expect("it makes");
+    let mut record = record_of(&["github:Jitsusama/core.nix"]);
+    merge_kept(&mut record, &file);
+    let github = record.sources.last().expect("GitHub as a source");
+    assert_eq!(github.name, "github");
+    assert_eq!(github.read_at, None);
+    let said = github.unread.join("; ");
+    let wanted = format!("{} couldn't be read: ", file.display());
+    assert!(said.starts_with(&wanted), "{said:?}");
+}
+
+#[test]
 fn a_file_no_refresh_wrote_is_said_unread_and_merges_nothing() {
     let kept = Kept::new("foreign");
     let file = kept.file();

@@ -124,6 +124,12 @@ def test_the_feed_starts_the_daemon_through_the_socket_systemd_holds(served: Bas
     """
     as_account(served, "systemctl --user stop repos.service", account="alice")
     as_account(served, "systemctl --user is-active repos.socket", account="alice")
+    # The record names every repository and tree, so the socket and its
+    # folder are its account's alone, whatever the folders above allow.
+    modes = served.succeed(
+        "stat -c '%a %U' /run/user/1000/daemons /run/user/1000/daemons/repos.sock"
+    )
+    assert modes.split() == ["700", "alice", "600", "alice"], f"the socket is open: {modes}"
     heard = stands(served, "live")
     names = [record.get("name") for record in told(heard)]
     assert "kestrel" in names, f"the repository on the disk wasn't told: {heard}"

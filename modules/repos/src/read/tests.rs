@@ -361,6 +361,171 @@ fn remotes_are_read_in_their_order_with_their_first_address() {
 }
 
 #[test]
+fn a_credential_in_a_web_remote_is_never_said_and_a_logins_name_stays() {
+    let config = "[remote \"origin\"]\n\turl = https://joel:ghp_secret@github.com/a/x.git\n\
+                  [remote \"token\"]\n\turl = https://ghp_secret@github.com/a/y\n\
+                  [remote \"ssh\"]\n\turl = ssh://git@github.com:22/a/z\n\
+                  [remote \"scp\"]\n\turl = git@github.com:a/w.git\n\
+                  [remote \"upper\"]\n\turl = HTTPS://ghp_secret@github.com/a/v\n\
+                  [remote \"six\"]\n\turl = https://u:t@[::1]:8443/a\n\
+                  [remote \"query\"]\n\turl = https://t@host?x@y\n\
+                  [remote \"path\"]\n\turl = https://host/a@b\n\
+                  [remote \"ftp\"]\n\turl = ftp://u:p@host/a\n\
+                  [remote \"ssh-pass\"]\n\turl = ssh://joel:pw@host/a\n";
+    let urls: Vec<String> = remotes(config)
+        .into_iter()
+        .map(|remote| remote.url)
+        .collect();
+    assert_eq!(
+        urls,
+        [
+            "https://github.com/a/x.git",
+            "https://github.com/a/y",
+            "ssh://git@github.com:22/a/z",
+            "git@github.com:a/w.git",
+            "HTTPS://github.com/a/v",
+            "https://[::1]:8443/a",
+            "https://host?x@y",
+            "https://host/a@b",
+            "ftp://host/a",
+            "ssh://joel@host/a",
+        ],
+        "a remote said with its credential, or with more than it taken away"
+    );
+}
+
+#[test]
+fn a_tree_two_checkouts_name_is_listed_by_the_one_it_names() {
+    let src = place("copied");
+    let far = place("copied-far");
+    let url = Some("https://github.com/Jitsusama/core.nix");
+    let first = src.join("core.nix");
+    checkout_at(&first, url, 100);
+    tree_at(
+        &first.join(".git"),
+        "t",
+        &far.join("t"),
+        "ref: refs/heads/main",
+        200,
+    );
+    // A copy made whole, its worktrees/ with it: its entry names the same
+    // tree, whose .git file still names the first's entry.
+    let copy = src.join("core.nix-copy");
+    checkout_at(&copy, url, 300);
+    let own = copy.join(".git/worktrees/t");
+    write(
+        &own.join("gitdir"),
+        &format!("{}\n", far.join("t/.git").display()),
+    );
+    write(&own.join("commondir"), "../..\n");
+    write(&own.join("HEAD"), "ref: refs/heads/main\n");
+    let record = reading(std::slice::from_ref(&src), None);
+    let trees: Vec<(String, usize)> = record.repositories[0]
+        .checkouts
+        .iter()
+        .map(|checkout| (checkout.path.clone(), checkout.trees.len()))
+        .collect();
+    let (first, copy) = (first.display().to_string(), copy.display().to_string());
+    assert_eq!(
+        trees,
+        [(copy, 0), (first, 1)],
+        "a tree listed by a checkout it doesn't name"
+    );
+}
+
+/// A checkout's entry for a tree at `folder`, written without the tree.
+fn entry_at(common: &Path, folder: &Path) {
+    let own = common.join("worktrees/t");
+    write(
+        &own.join("gitdir"),
+        &format!("{}\n", folder.join(".git").display()),
+    );
+    write(&own.join("commondir"), "../..\n");
+    write(&own.join("HEAD"), "ref: refs/heads/main\n");
+}
+
+#[test]
+fn a_gone_tree_two_checkouts_name_is_listed_once_by_the_path_sorting_first() {
+    // Whichever checkout was written last, the owner holds.
+    for (first_at, copy_at) in [(100, 300), (300, 100)] {
+        let src = place(&format!("gone-twice-{first_at}"));
+        let url = Some("https://github.com/Jitsusama/core.nix");
+        let gone = src.join("far/t");
+        let first = src.join("core.nix");
+        let copy = src.join("core.nix-copy");
+        checkout_at(&first, url, first_at);
+        checkout_at(&copy, url, copy_at);
+        entry_at(&first.join(".git"), &gone);
+        entry_at(&copy.join(".git"), &gone);
+        let record = reading(std::slice::from_ref(&src), None);
+        let listing: Vec<String> = record.repositories[0]
+            .checkouts
+            .iter()
+            .filter(|checkout| !checkout.trees.is_empty())
+            .map(|checkout| checkout.path.clone())
+            .collect();
+        assert_eq!(
+            listing,
+            [first.display().to_string()],
+            "a gone tree's owner, with the copy written at {copy_at}"
+        );
+    }
+}
+
+#[test]
+fn a_tree_naming_a_checkout_outside_the_roots_stays_the_copys() {
+    let src = place("copied-in");
+    let outside = place("copied-from");
+    let url = Some("https://github.com/Jitsusama/core.nix");
+    let original = outside.join("core.nix");
+    checkout_at(&original, url, 100);
+    tree_at(
+        &original.join(".git"),
+        "t",
+        &outside.join("t"),
+        "ref: refs/heads/main",
+        200,
+    );
+    let copy = src.join("core.nix");
+    checkout_at(&copy, url, 300);
+    entry_at(&copy.join(".git"), &outside.join("t"));
+    let record = reading(std::slice::from_ref(&src), None);
+    let trees = &record.repositories[0].checkouts[0].trees;
+    assert_eq!(
+        trees.len(),
+        1,
+        "a tree whose checkout isn't read listed by none: {record:#?}"
+    );
+}
+
+#[test]
+fn a_branch_following_an_address_is_said_without_its_credential() {
+    let src = place("follows-address");
+    let checkout = src.join("core.nix");
+    checkout_at(&checkout, None, 100);
+    write(
+        &checkout.join(".git/config"),
+        "[core]\n\tbare = false\n\
+         [branch \"main\"]\n\tremote = https://joel:ghp_secret@github.com/owl/core\n\
+         \tmerge = refs/heads/main\n",
+    );
+    let record = reading(&[src], None);
+    let head = record.repositories[0].checkouts[0]
+        .head
+        .as_ref()
+        .expect("a head");
+    let follows = head
+        .upstream
+        .as_ref()
+        .map(|upstream| upstream.branch.as_str());
+    assert_eq!(
+        follows,
+        Some("https://github.com/owl/core/main"),
+        "a branch's address said with its credential"
+    );
+}
+
+#[test]
 fn each_head_knows_the_branch_it_follows_and_where_that_is() {
     let src = place("upstream");
     let checkout = src.join("core.nix");
