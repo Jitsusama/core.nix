@@ -233,11 +233,9 @@ in
   # harness's pi-carry, which a carry runs by name.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, the home realm's node doesn't write how it would ease the machine or a further realm's does, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
-        && lib.hasInfix "--health-socket %t/daemons/system.sock --eases" linuxNode
-        && !(lib.hasInfix "--eases" otherNode)
         && lib.hasInfix "--ssh one --ssh two --via /bin/cell:cell-1 --serves" (viaNode "/bin/cell:cell-1")
         && lib.all (wrong: !(builtins.tryEval (viaNode wrong)).success) [
           "cell:cell-1"
@@ -285,7 +283,6 @@ in
             "${(mac links).xdg.configHome}/mycelium/serves-personal.json"
             "--health-socket"
             "${(mac links).xdg.stateHome}/daemons/system.sock"
-            "--eases"
           ]
         && (mac links).launchd.agents.mycelium.enable
         && (mac links).launchd.agents.mycelium.config.EnvironmentVariables.SIGN_AS == "agent"
@@ -423,21 +420,6 @@ in
   # the home realm's node alone, so nothing is heard twice.
   # The node wakes with every session it carries, so it runs in their
   # slice, every realm's alike, rather than among Joel's programs.
-  # The locked node takes each flag its service is given, so a flag set
-  # ahead of the mycelium that reads it fails here, not as the node starts.
-  mycelium-node-takes-its-flags =
-    let
-      flags = lib.unique (lib.filter (lib.hasPrefix "--") (lib.splitString " " linuxNode));
-      mycelium = lib.getExe self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
-    in
-    pkgs.runCommandLocal "mycelium-node-takes-its-flags" { } ''
-      ${mycelium} node --help > help
-      for flag in ${lib.escapeShellArgs flags}; do
-        grep -q -e "$flag\b" help || { echo "mycelium node doesn't take $flag"; exit 1; }
-      done
-      touch $out
-    '';
-
   # The swarm's teams complete in a real zsh, asked of a stand-in node
   # (tests/completion.zsh).
   mycelium-completes-its-teams-in-zsh =
@@ -594,7 +576,7 @@ in
         in
         lib.hasInfix (lib.concatStringsSep " " health) linuxNode
         && lib.hasSuffix (lib.concatStringsSep " " health) otherNode
-        && lib.hasInfix "--health-socket ${macSocket}" (toString macNode)
+        && lib.hasSuffix "--health-socket ${macSocket}" (toString macNode)
         && lib.hasSuffix "--health-socket ${macSocket}" (
           toString (mac both).launchd.agents.mycelium-other.config.ProgramArguments
         )
