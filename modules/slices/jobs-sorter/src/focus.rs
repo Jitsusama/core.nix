@@ -551,6 +551,48 @@ pub fn runs_a_pi(unit: &str, pis: &[String]) -> bool {
     pis.iter().any(|prefix| unit.starts_with(prefix.as_str()))
 }
 
+/// The scopes held and those kept in memory, from each window looked at:
+/// whether it's held, its own scope and its pi's, either unfound. A held
+/// window's pi is held with it, and every window's scopes are kept, a
+/// held one's too, so keeping never undoes holding.
+pub fn held_and_kept<S: Clone>(
+    looked: impl IntoIterator<Item = (bool, Option<S>, Option<S>)>,
+) -> (Vec<S>, Vec<S>) {
+    let mut held = Vec::new();
+    let mut kept = Vec::new();
+    for (holds, own, pi) in looked {
+        if holds {
+            held.extend(own.clone());
+            held.extend(pi.clone());
+        }
+        kept.extend(own);
+        kept.extend(pi);
+    }
+    (held, kept)
+}
+
+/// The scopes spared, as each window's own scope and its pi's are found:
+/// both are Joel's, so each window gives up to two.
+pub fn spared<'a, S: ?Sized>(
+    windows: &[Window],
+    own: impl Fn(u64) -> Option<&'a S>,
+    pi: impl Fn(u64) -> Option<&'a S>,
+) -> Vec<&'a S> {
+    windows
+        .iter()
+        .flat_map(|window| own(window.id).into_iter().chain(pi(window.id)))
+        .collect()
+}
+
+/// Which of the `held` units are windows' own scopes, the only ones whose
+/// command lines say which host Joel views: a pi's holds its agents'
+/// commands, which may spell themselves as anything.
+pub fn viewing<'a>(held: impl IntoIterator<Item = &'a str>, pis: &[String]) -> Vec<&'a str> {
+    held.into_iter()
+        .filter(|unit| !runs_a_pi(unit, pis))
+        .collect()
+}
+
 /// The app id a process was started with, from its environment's bytes.
 pub fn app_id(environ: &[u8]) -> Option<String> {
     environ
@@ -1314,6 +1356,65 @@ mod tests {
         );
         recent.seed(&windows.stamped(), Duration::from_secs(10_100), now);
         assert_eq!(ids(recent.kept(now)), [5, 1], "taken up once");
+    }
+
+    #[test]
+    fn a_held_windows_pi_is_held_and_every_windows_scopes_are_kept() {
+        let (held, kept) = held_and_kept([
+            (true, Some("at-window"), Some("at-pi")),
+            (true, Some("alone"), None),
+            (false, Some("left-window"), Some("left-pi")),
+            (false, None, None),
+        ]);
+        assert_eq!(
+            held,
+            ["at-window", "at-pi", "alone"],
+            "the windows he's at, their pis with them, and no other"
+        );
+        assert_eq!(
+            kept,
+            ["at-window", "at-pi", "alone", "left-window", "left-pi"],
+            "every window's scopes, a held one's too, and nothing for one unfound"
+        );
+    }
+
+    #[test]
+    fn a_spared_windows_pi_is_spared_with_it() {
+        let own = |id: u64| match id {
+            1 => Some("window-1"),
+            2 => Some("window-2"),
+            _ => None,
+        };
+        // A pi is only looked for beside a window's own scope, so none
+        // has a pi without its own.
+        let its_pi = |id: u64| (id == 1).then_some("pi-1");
+        assert_eq!(
+            spared(&[pi(1), pi(2), pi(3)], own, its_pi),
+            ["window-1", "pi-1", "window-2"],
+            "each window's own scope and its pi's, whichever is found"
+        );
+    }
+
+    #[test]
+    fn only_a_held_windows_own_scope_says_which_host_he_views() {
+        let pis = ["mycelium-pi-".to_owned()];
+        assert_eq!(
+            viewing(
+                [
+                    "app-kitty-2684.scope",
+                    "mycelium-pi-41.scope",
+                    "app-niri-kitty-9.scope",
+                    "app-kitty-mycelium-pi-7.scope"
+                ],
+                &pis
+            ),
+            [
+                "app-kitty-2684.scope",
+                "app-niri-kitty-9.scope",
+                "app-kitty-mycelium-pi-7.scope"
+            ],
+            "a held pi's scope is left out, whatever its agents' commands say"
+        );
     }
 
     #[test]

@@ -718,9 +718,7 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
     // shows, asked once a look, as its answer runs to megabytes.
     let mut kitties: HashMap<u32, Vec<kitty::Shown>> = HashMap::new();
     let at = following.at().map(|window| window.id);
-    let mut held = Vec::new();
-    // A held window is kept in memory too, so keeping never undoes it.
-    let mut kept = Vec::new();
+    let mut looked = Vec::new();
     let each = wanted
         .iter()
         .map(|window| (window, true))
@@ -758,28 +756,21 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
             }
         };
         let pi = pi_of(window, known.as_deref(), windows, &mut ranks.pis, now);
-        if holds {
-            held.extend(known.clone());
-            held.extend(pi.clone());
-        }
-        // A window's pi ran in its window's own scope when keeping was
-        // measured, on 11 November, so keeping its pi keeps what was.
-        kept.extend(known);
-        kept.extend(pi);
+        looked.push((holds, known, pi));
     }
-    ranks.spared = following
-        .within(now, keep::SPARED_FOR)
-        .iter()
-        .flat_map(|window| {
-            let own = match ranks.found.get(&window.id) {
-                Some(Ok(scope)) => Some(scope),
-                _ => None,
-            };
-            let pi = ranks.pis.get(&window.id).and_then(|(pi, _, _)| pi.as_ref());
-            own.into_iter().chain(pi)
-        })
+    // A window's pi ran in its window's own scope when keeping was
+    // measured, on 11 November, so keeping its pi keeps what was.
+    let (held, kept) = focus::held_and_kept(looked);
+    let own = |id: u64| match ranks.found.get(&id) {
+        Some(Ok(scope)) => Some(scope.as_path()),
+        _ => None,
+    };
+    let pi = |id: u64| ranks.pis.get(&id).and_then(|(pi, _, _)| pi.as_deref());
+    let spared = focus::spared(&following.within(now, keep::SPARED_FOR), own, pi)
+        .into_iter()
         .filter_map(|scope| unit_of(scope).map(str::to_owned))
         .collect();
+    ranks.spared = spared;
     set_holds(&held, &kept, ranks);
     set_in_memory(&kept, ranks);
     read_back(following.at(), ranks);
@@ -1112,16 +1103,11 @@ fn weigh_windows(windows: &Windows, ranks: &mut Ranks) {
 /// orchestrators last counted. A failure is said once, and tried again on
 /// the next look.
 fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &mut Ranks) {
-    // Only a window's own scope says which host Joel views: a pi's holds
-    // its agents' commands, which may spell themselves as anything.
+    let viewing = focus::viewing(held.iter().map(String::as_str), windows.pis);
     let viewers: Vec<String> = windows
         .under
         .iter()
-        .flat_map(|slice| {
-            held.iter()
-                .filter(|unit| !focus::runs_a_pi(unit, windows.pis))
-                .map(|unit| slice.join(unit))
-        })
+        .flat_map(|slice| viewing.iter().map(|unit| slice.join(unit)))
         .flat_map(|scope| samples(&scope))
         .filter_map(|proc| {
             let words = fs::read(format!("/proc/{}/cmdline", proc.pid)).ok()?;
