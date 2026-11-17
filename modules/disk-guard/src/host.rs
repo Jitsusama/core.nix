@@ -518,6 +518,9 @@ impl Reclaimer for Reclaim<'_> {
             }
         };
         let pacer = self.pacer.clone();
+        if let Some(pacer) = &pacer {
+            pacer.borrow_mut().begin();
+        }
         let mut unlinked = move || {
             if let Some(pacer) = &pacer {
                 pacer.borrow_mut().unlinked();

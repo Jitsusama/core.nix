@@ -13,7 +13,9 @@
 //! rests, the kind of sync an editor or git makes. It never gives up, so a
 //! machine that's always busy still gets cleaned, but it stops resting
 //! once the disk is nearly full, where room matters more than pace, or
-//! once the guard is asked to stop, which a pass can't keep waiting.
+//! once the guard is asked to stop, which a pass can't keep waiting. Each
+//! item waits on strain only so long in all, since strain others make
+//! never ends for the guard's waiting.
 
 use crate::config::Pacing;
 use std::collections::VecDeque;
@@ -32,6 +34,14 @@ const SLOW: Duration = Duration::from_millis(100);
 /// stays strained until `WINDOW` passes with none.
 const SLOW_SYNCS: usize = 3;
 const WINDOW: f64 = 120.0;
+/// The longest one item waits on a strained disk, over all its rests,
+/// before it rests only its pacing's rest. On 16 November builds kept the
+/// disk strained for two hours, and one install of 40,000 files rested
+/// about 370 s after each of its twenty batches, so a pass on a filling
+/// disk spent 7,432 s on 424 MiB. Four minutes is two of the strain's own
+/// windows: a delete's own commit has settled by then, so what strains the
+/// disk after is someone else's.
+const STRAIN_PER_ITEM: f64 = 240.0;
 
 /// How the disk has felt to the guard's own syncs lately.
 #[derive(Debug, Default)]
@@ -110,6 +120,8 @@ pub struct Pacer {
     pressed: Box<dyn FnMut() -> bool>,
     beaten: f64,
     rested: f64,
+    /// How long the item being reclaimed has waited on strain.
+    strained_for: f64,
 }
 
 impl Pacer {
@@ -133,6 +145,7 @@ impl Pacer {
             pressed,
             beaten,
             rested: 0.0,
+            strained_for: 0.0,
         }
     }
 
@@ -141,6 +154,11 @@ impl Pacer {
         let mut pacer = Pacer::paced(Pacing::default(), clock, None, beat, Box::new(|| true));
         pacer.hurried = true;
         pacer
+    }
+
+    /// A new item begins, with its own time to wait on strain.
+    pub fn begin(&mut self) {
+        self.strained_for = 0.0;
     }
 
     /// One entry was just unlinked.
@@ -154,7 +172,8 @@ impl Pacer {
     }
 
     /// Rests after a batch: for the pacing's rest, then for as long as
-    /// the disk is strained, unless the disk becomes nearly full or a stop
+    /// the disk is strained, until the item has waited `STRAIN_PER_ITEM` on
+    /// strain, unless the disk becomes nearly full or a stop
     /// comes meanwhile, after which the pacer never rests again. A stop
     /// waits, blocked, for the guard to take it once the pass ends, and
     /// systemd kills a guard that keeps it waiting past its stop timeout:
@@ -168,7 +187,11 @@ impl Pacer {
         let rest = self.pacing.rest.0.as_secs_f64();
         loop {
             let at = self.clock.now();
-            if at - began >= rest && !self.strain.strained(at) {
+            let waited = at - began - rest;
+            if waited >= 0.0
+                && (!self.strain.strained(at) || self.strained_for + waited >= STRAIN_PER_ITEM)
+            {
+                self.strained_for += waited;
                 break;
             }
             if (self.pressed)() || crate::commands::stop_waiting() {
