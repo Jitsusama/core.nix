@@ -326,6 +326,7 @@
         meaning = dictation;
         merge-net = pkgs.callPackage ../../tools/merge-net/package.nix { };
         memory-modules = pkgs.callPackage ../../modules/memory-modules/package.nix { };
+        model-relay = pkgs.callPackage ../../modules/model-relay/package.nix { };
         mycelium-link = pkgs.callPackage ../../modules/quickshell/mycelium-link/package.nix { };
         net = pkgs.callPackage ../../modules/net/package.nix { };
         network-revive = pkgs.callPackage ../../modules/network-revive/package.nix { };

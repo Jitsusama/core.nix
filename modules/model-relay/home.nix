@@ -1,0 +1,107 @@
+# model-relay carries the agents' model requests to their one origin over a
+# few long-lived HTTP/2 connections, rather than one connection for each
+# request in flight (src/lib.rs says why: on a ten-megabit uplink, ninety
+# flows each lose about a segment in five).
+#
+# The origin is a machine's to name, in jitsusama.model-relay.origin; until
+# one is named nothing is installed, and pi reaches its origin directly.
+#
+# pi finds the relay through PI_PROXY_RELAY, a folder in the runtime folder
+# holding agents.sock. A pi sends a request there only while no turn a
+# person typed is under way in it, which pi says in $XDG_RUNTIME_DIR/pi/typed
+# for the shaper: a typed turn goes directly, so the shaper still lifts it
+# ahead of the agents, which it couldn't once the request was among the
+# relay's. A pi that finds no socket there, or one nothing answers, or a 421
+# from a relay still naming an origin the machine no longer does, connects
+# directly, as before. Those rules are pi's own, held where its fetch is
+# wrapped for the proxy; nothing here can make a pi keep them.
+#
+# The relay trusts the public roots built into it, so an origin whose
+# certificate chains to a private root isn't reached: each request is
+# answered as a 502, and the journal says why.
+#
+# The relay runs in background.slice, which the shaper sends in the agents'
+# lane, and its connections are the account's own, so they ride the work VPN
+# as pi's did. It holds no credential: each request's own goes as it came.
+# A fence keeps the runtime folder from what it runs, so a fenced command
+# can't reach the socket, and the folder mustn't be bound into one: it is a
+# way to the origin with whatever key the asker holds.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  cfg = config.jitsusama.model-relay;
+  package = pkgs.callPackage ./package.nix { };
+  folder = "model-relay";
+in
+{
+  options.jitsusama.model-relay.origin = lib.mkOption {
+    # A host and maybe a port alone, as the relay itself reads an origin;
+    # none of systemd's % or $ expansions can be in one.
+    type = lib.types.nullOr (lib.types.strMatching "https://[A-Za-z0-9.-]+(:[0-9]{1,5})?/?");
+    default = null;
+    example = "https://models.example";
+    description = ''
+      The https origin pi's model requests go to, which the relay forwards
+      to and nothing else: a request naming any other host is refused.
+    '';
+  };
+
+  config = lib.mkIf (cfg.origin != null && pkgs.stdenv.hostPlatform.isLinux) {
+    # Every unit and every pi takes this from the user manager, as it
+    # starts; a pi already running keeps reaching its origin directly.
+    systemd.user.sessionVariables.PI_PROXY_RELAY = "\${XDG_RUNTIME_DIR}/${folder}";
+
+    systemd.user.sockets.model-relay-agents = {
+      Unit.Description = "Where the agents' model requests are relayed from";
+      # Only the account may ask.
+      Socket = {
+        ListenStream = "%t/${folder}/agents.sock";
+        SocketMode = "0600";
+        DirectoryMode = "0700";
+        # A socket left with nothing behind it would be asked and refuse;
+        # one removed is passed by, and pi connects directly.
+        RemoveOnStop = true;
+      };
+      Install.WantedBy = [ "sockets.target" ];
+    };
+
+    systemd.user.services.model-relay-agents = {
+      Unit = {
+        Description = "Relays the agents' model requests over a few shared connections";
+        Requires = [ "model-relay-agents.socket" ];
+        After = [ "model-relay-agents.socket" ];
+        # A restart ends every answer the relay is streaming, each a turn
+        # some agent is taking, so a switch leaves a running relay be. It
+        # leaves on its own once it has forwarded nothing for two minutes,
+        # and its socket starts the new build and origin at the next
+        # request. Agents busy enough never to leave it two quiet minutes
+        # keep the old one until they do, or until it's restarted by hand
+        # with systemctl --user restart model-relay-agents.
+        X-SwitchMethod = "keep-old";
+      };
+      Service = {
+        ExecStart = lib.escapeShellArgs [
+          (lib.getExe package)
+          "--origin"
+          cfg.origin
+        ];
+        # The agents' lane, never app.slice, where it would ride Joel's.
+        Slice = "background.slice";
+        Restart = "on-failure";
+        NoNewPrivileges = true;
+        LockPersonality = true;
+        MemoryDenyWriteExecute = true;
+        RestrictAddressFamilies = [
+          "AF_UNIX"
+          "AF_INET"
+          "AF_INET6"
+        ];
+        SystemCallArchitectures = "native";
+      };
+    };
+  };
+}

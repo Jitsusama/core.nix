@@ -1573,6 +1573,23 @@
   merge-net-passes-clippy = ''
     clippy finds nothing in merge-net or its tests
   '';
+  model-relay-carries-requests-whole = ''
+    model-relay, against an HTTP/2 origin of its tests' own, forwards a request's method, path,
+    headers and body as they came, refuses any other host, carries many requests at once on a few
+    connections, streams an answer as it comes, opens again a connection the origin lets go, says
+    an origin out of reach as a 502 or a 504 without queueing, doesn't ask for a connection that
+    won't open on every request, forgets a failure once the origin is back, leaves once idle but
+    never mid-answer, even while refusing other hosts, keeps its socket to its account and from a
+    second relay, and logs nothing of a header or a body, a failure included
+  '';
+  model-relay-passes-clippy = ''
+    clippy finds nothing in model-relay or its tests
+  '';
+  model-relay-runs-in-background-slice = ''
+    model-relay is installed only where a machine names an origin, listens where only its account
+    may ask, removes its socket when stopped, runs with its socket in background.slice, forwards
+    to the origin named alone, outlasts a switch, and tells every pi where to find it
+  '';
   mona-sans-vf-is-the-whole-face = ''
     the graphical role's fontconfig, asked for Mona Sans VF by name as GitHub asks, gives the variable
     file with every axis and lists no other file under that name
