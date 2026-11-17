@@ -338,16 +338,17 @@ pub fn hear(
     keep(&heard_at, &kept)?;
     // A run that took UTC for want of his zone would split his days at
     // the wrong hour, so it counts none and waits for one that knows.
-    let mut counted = None;
+    let mut counted = Vec::new();
     if !ears.zone_known {
-        counted = Some(
-            "his time zone couldn't be read, so his day was split at UTC midnight and not counted"
+        counted.push(
+            "his time zone couldn't be read, so status asks are counted from UTC midnight and \
+             no day was counted"
                 .into(),
         );
     } else if let Some(keeper) = routes.ledgers.clone().filter(|_| routes.sends()) {
         counted = day::count(&ears.state, &kept, ears.at, ears.offset_s, &mut |text| {
             guarded(&keeper, text)
-        })?;
+        });
     }
     let mut hour = hour_of(&kept, ears.at);
     hour.status_asks = day::asked_since(&kept, crate::local_day(ears.at, ears.offset_s).1);

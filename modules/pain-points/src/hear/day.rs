@@ -4,10 +4,10 @@
 //! stalled him: one line a day, in place of a note for every pain heard
 //! too late for its owner, which the keeper already knew of.
 //!
-//! Only the day just ended is counted, and only once. A run reads at most
-//! a day back, so after the listener was off longer, the days it missed
-//! weren't heard whole, and a count of them would read as quiet days that
-//! never were. A day it heard only part of says from when.
+//! Each day the listener heard is counted once, after it ends. A run
+//! reads at most a day back, so a day's count says when the listener was
+//! off longer than that within it, and days it never ran in aren't
+//! counted, since they'd read as quiet days that never were.
 
 use super::heard::Heard;
 use super::stalled;
@@ -18,9 +18,7 @@ use std::path::Path;
 /// The kind sore.rs gives a status ask.
 pub const ASKED: &str = "asked how it stands";
 
-/// How long the listener may have been away from a day's start and still
-/// trust the start day.json held for it: a clock change moves it an hour.
-const START_DRIFT_MS: i64 = 3 * 3_600_000;
+const HOUR_MS: i64 = 3_600_000;
 
 /// How a day stood. Each pain he said is in one of routed, carried, given
 /// up and unsent.
@@ -36,19 +34,25 @@ pub struct Day {
 }
 
 /// The day being counted, kept in day.json between runs: its name, when
-/// it began where he was, when the listener began hearing it, when it
-/// last ran, and how many times its count was sent without the node
-/// taking it.
-#[derive(Serialize, Deserialize)]
+/// it began where he was, when the listener last ran, when within it the
+/// listener was off, how many times its count was sent without the node
+/// taking it and when it last was, and whether a clock gone back before
+/// it was said.
+#[derive(Default, Serialize, Deserialize)]
 struct Counting {
     day: String,
     #[serde(default)]
     began: i64,
-    from: i64,
     #[serde(default)]
     last: i64,
     #[serde(default)]
+    off: Option<(i64, i64)>,
+    #[serde(default)]
     tries: u32,
+    #[serde(default)]
+    tried: i64,
+    #[serde(default)]
+    back: bool,
 }
 
 /// The status asks he said since `since`.
@@ -83,15 +87,15 @@ pub fn of(kept: &[Heard], began: i64, ended: i64) -> Day {
     day
 }
 
-/// The keeper's line for `name`, a day as YYYY-MM-DD, heard `from` a time
-/// of his when the listener began partway through it.
-pub fn note(name: &str, from: Option<&str>, day: &Day) -> String {
+/// The keeper's line for `name`, a day as YYYY-MM-DD, saying when within
+/// it the listener was `off`, such as "from 23:00 on".
+pub fn note(name: &str, off: Option<&str>, day: &Day) -> String {
     let s = |n: usize| if n == 1 { "" } else { "s" };
     format!(
         "Joel's day, {name}{}, as pain-points hear counted it: {} pain{} heard, {} asking how \
          something stands (aimed at none); {} sent to their owners, {} the ledgers already \
          carried, {} given up after failed sends and {} sent to no one; {} turn{} stalled him.",
-        from.map_or(String::new(), |from| format!(", from {from}")),
+        off.map_or(String::new(), |off| format!(", the listener off {off}")),
         day.heard,
         s(day.heard),
         day.asked,
@@ -104,101 +108,137 @@ pub fn note(name: &str, from: Option<&str>, day: &Day) -> String {
     )
 }
 
-/// Sends the keeper the count of yesterday once, two hours into today, so
-/// pains still on their way are routed and turns still running have ended.
-/// A count the node didn't take is sent again next run, at most
-/// `SEND_TRIES` times; a send that timed out after the node took it can't
-/// be told from one it never took, so the keeper may hear a day twice. A
-/// day already counted is never counted again: a clock or zone stepped
-/// back waits until the day after it.
+/// Sends the keeper the count of each day the listener heard, once, two
+/// hours after it ends, so pains still on their way are routed and turns
+/// still running have ended; or when the listener next runs, after the
+/// laptop slept past it. A count the node didn't take is sent again an
+/// hour on, at most `SEND_TRIES` times; a send that timed out after the
+/// node took it can't be told from one it never took, so the keeper may
+/// hear a day twice. A day counted is never counted again: a zone moved
+/// west waits for the day after it, and a clock gone back before the day
+/// held is said once and waits too.
 ///
-/// # Errors
-///
-/// When day.json can't be written. What it says back is a trouble for the
-/// hour: an unreadable day.json, or a count given up on.
+/// What it says back are troubles for the hour: day.json unreadable,
+/// unwritable or far ahead of the clock, a clock gone back, or a count
+/// given up on. None of them stops a run, since a lost day's count costs
+/// less than a listener that stops routing over it.
 pub fn count(
     state: &Path,
     kept: &[Heard],
     at: i64,
     offset_s: i64,
     send: &mut dyn FnMut(&str) -> bool,
-) -> Result<Option<String>, String> {
+) -> Vec<String> {
     let path = state.join("day.json");
+    let (keep, said) = step(std::fs::read_to_string(&path), kept, at, offset_s, send);
+    let written = serde_json::to_string(&keep)
+        .map_err(|e| e.to_string())
+        .and_then(|text| crate::write_whole(&path, &text));
+    let mut troubles: Vec<String> = said.into_iter().collect();
+    if let Err(e) = written {
+        troubles.push(format!(
+            "day.json couldn't be written ({e}), so a day may go uncounted or be counted twice"
+        ));
+    }
+    troubles
+}
+
+/// From what day.json held, what it keeps now, and the trouble to say.
+fn step(
+    read: std::io::Result<String>,
+    kept: &[Heard],
+    at: i64,
+    offset_s: i64,
+    send: &mut dyn FnMut(&str) -> bool,
+) -> (Counting, Option<String>) {
     let (today, began) = crate::local_day(at, offset_s);
     let today_n = (began + offset_s * 1000).div_euclid(super::DAY_MS);
     let afresh = Counting {
-        day: today.clone(),
+        day: today,
         began,
-        from: began,
         last: at,
-        tries: 0,
+        ..Counting::default()
     };
-    let keep = |counting: &Counting| {
-        crate::write_whole(
-            &path,
-            &serde_json::to_string(counting).map_err(|e| e.to_string())?,
-        )
-    };
-    let held = match std::fs::read_to_string(&path) {
+    let held = match read {
         Ok(text) => held(&text, offset_s),
-        Err(e) if e.kind() == ErrorKind::NotFound => {
-            keep(&afresh)?;
-            return Ok(None);
-        }
+        Err(e) if e.kind() == ErrorKind::NotFound => return (afresh, None),
         Err(_) => None,
     };
-    // An unreadable file starts the count again now: a lost day's count
-    // costs less than a listener that stops routing over it.
     let Some((held_n, mut held)) = held else {
-        keep(&afresh)?;
-        return Ok(Some(
-            "day.json couldn't be read, so the day's count began again".into(),
-        ));
+        let said = "day.json couldn't be read, so the day's count began again";
+        return (afresh, Some(said.into()));
     };
-    // A run reads a day back, so after a longer gap the day is heard only
-    // from a day back.
+    if held.began > at + super::DAY_MS || held_n > today_n + 1 {
+        // No zone puts a day this far ahead: a clock that was, or a file
+        // set by hand.
+        let said = format!(
+            "day.json named {}, ahead of the clock, so the day's count began again",
+            held.day
+        );
+        return (afresh, Some(said));
+    }
+    if at < held.began {
+        let said = (!held.back).then(|| {
+            format!(
+                "the clock went back before {} began, so that day waits to be counted",
+                held.day
+            )
+        });
+        held.back = true;
+        return (held, said);
+    }
+    let end = if held_n + 1 == today_n {
+        began
+    } else {
+        held.began + super::DAY_MS
+    };
+    // A run reads a day back, so what was said longer than that before it
+    // and after the run before went unheard.
     if held.last < at - super::DAY_MS {
-        held.from = held.from.max(at - super::DAY_MS);
+        let gap = (held.last.max(held.began), (at - super::DAY_MS).min(end));
+        if gap.0 < gap.1 {
+            held.off = Some(held.off.map_or(gap, |(s, e)| (s.min(gap.0), e.max(gap.1))));
+        }
     }
-    held.last = at;
-    if held_n >= today_n || (held_n == today_n - 1 && at < began + super::FRESH_MS) {
-        keep(&held)?;
-        return Ok(None);
+    held.last = held.last.clamp(at, at + super::DAY_MS);
+    let waiting = held_n >= today_n
+        || (held_n + 1 == today_n && at < began + super::FRESH_MS)
+        || (held.tries > 0 && held.tried <= at && held.tried > at - HOUR_MS);
+    if waiting {
+        return (held, None);
     }
-    if held_n < today_n - 1 {
-        // Days missed weren't heard whole, so today is counted from its
-        // start, and a count still being tried is said as given up.
-        keep(&afresh)?;
-        return Ok((held.tries > 0).then(|| given_up(&held)));
-    }
-    let clock = (held.from > held.began).then(|| super::route::clock(held.from, offset_s));
-    let text = note(&held.day, clock.as_deref(), &of(kept, held.from, began));
+    let off = held.off.map(|(s, e)| {
+        let clock = |t| super::route::clock(t, offset_s);
+        if e >= end {
+            format!("from {} on", clock(s))
+        } else {
+            format!("from {} to {}", clock(s), clock(e))
+        }
+    });
+    let text = note(&held.day, off.as_deref(), &of(kept, held.began, end));
     if send(&text) {
-        keep(&afresh)?;
-        return Ok(None);
+        return (afresh, None);
     }
     held.tries += 1;
+    held.tried = at;
     if held.tries < super::SEND_TRIES {
-        keep(&held)?;
-        return Ok(None);
+        return (held, None);
     }
-    keep(&afresh)?;
-    Ok(Some(given_up(&held)))
+    (afresh, Some(given_up(&held)))
 }
 
-/// What day.json holds, numbered, with the day's start set right: one
-/// kept from another zone, or never kept, is taken as its start where he
-/// is now. Days that aren't days are none, as though unreadable.
+/// What day.json holds, numbered, with the day's start set right when no
+/// zone could have given it: every zone's midnight falls from fourteen
+/// hours before UTC's to twelve after. Days that aren't days are none, as
+/// though unreadable.
 fn held(text: &str, offset_s: i64) -> Option<(i64, Counting)> {
     let mut held = serde_json::from_str::<Counting>(text).ok()?;
     let n = day_number(&held.day)?;
-    let start = n * super::DAY_MS - offset_s * 1000;
-    if (held.began - start).abs() > START_DRIFT_MS {
-        held.began = start;
+    let midnight = n * super::DAY_MS;
+    if !(midnight - 14 * HOUR_MS..=midnight + 12 * HOUR_MS).contains(&held.began) {
+        held.began = midnight - offset_s * 1000;
     }
-    held.from = held
-        .from
-        .clamp(held.began, held.began + super::DAY_MS + super::FRESH_MS);
+    held.off = held.off.filter(|(s, e)| s < e);
     Some((n, held))
 }
 
