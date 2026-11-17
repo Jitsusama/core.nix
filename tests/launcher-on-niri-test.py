@@ -4656,6 +4656,32 @@ def test_a_return_sent_as_it_shuts_takes_no_step(shell: Shell) -> None:
     assert stepped == [], f"the shut launcher took a step: {stepped}"
 
 
+def test_a_step_out_is_timed_to_its_frame_as_a_step_in_is(shell: Shell) -> None:
+    """- out of a place is timed to its frame, named by the arrow and the place it left.
+
+    Joel's - out of Agents and For You took 61 to 67 ms to their frames, 40 to 48 of it the key's
+    own work, and only a source's change beside it said so: no line timed the step itself, so
+    none said where its time went (his journal, 2026-11-16 18:11:04 and 19:40:19).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("network", selecting="network")
+    shell.step_in()
+    shell.normal()
+    since = shell.mark()
+    shell.send_chars("-")
+    shell.launcher_until(lambda shown: shown["held"] == [] and bool(shown["rows"]))
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    out: list[str] = []
+    while not out and time.monotonic() < deadline:
+        said = shell.log.read_bytes()[since:].decode(errors="replace")
+        out = [line for line in said.splitlines() if 'launcher: "\u2190 Network" took ' in line]
+        time.sleep(launcher_on_niri.POLL)
+    assert out, f"- out of Network was never timed:\n{said}"
+    assert " ms searching" in out[0], f"the step out says nothing of where it went: {out[0]}"
+    shell.close_launcher()
+
+
 def moved_presented(shell: Shell, written: float, deadline: float) -> list[Json]:
     """Give Power's changes said presented from no sooner than `written`, once there are any."""
     while time.monotonic() < deadline:

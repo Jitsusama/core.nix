@@ -5917,16 +5917,31 @@ Scope {
         // collection it was found in.
         const steps = held[held.length - 1].through && held.length > 1 ? 2 : 1;
         traces.began("back", { from: held[held.length - 1].key ?? "", depth: held.length });
+        // Timed to its frame as a step in is, named by the arrow and the
+        // place left: Joel's - out of Agents and For You took 61 to 67 ms
+        // to their frames, 40 to 48 of it its own work, with no line timing
+        // the step (his journal, 2026-11-16 18:11:04 and 19:40:19).
+        const began = Date.now();
+        const heard = KeyTimes.now();
+        const pressed = KeyTimes.pressed();
+        const collected = Heap.collected();
+        const leaving = held[held.length - 1].row;
         const left = held[held.length - steps];
         // A talk's words put away are kept at once, not a moment later.
         if (left.row.draft)
             drafts.flush();
         held = held.slice(0, -steps);
+        const pushed = Date.now();
         // A step back onto one whose line holds its words puts them back.
         const onto = held.length > 0 ? held[held.length - 1].row : null;
+        searchParts = null;
         restart(onto?.words?.() ?? left.typed);
         placeCaret(onto);
         reselect(left);
+        searchParts = trials.stepped(searchParts, { began, made: began, pushed,
+            opened: pushed, ended: Date.now(), making: {} });
+        if (openAsked < 0 && !fillingPlace)
+            keyTimed(`\u2190 ${leaving.name}`, began, heard, pressed, collected);
     }
 
     // A step whose line holds its words, as a save's name, says where the
@@ -10072,7 +10087,9 @@ Scope {
     // couldn't be held again (2026-11-14).
     function homeRescued() {
         if (homeKept.length === 0) {
-            if (openingsDrawn > 0)
+            // The first since a start too, once the pass has ended, which
+            // keeps home for it: one it left unheld opened whole unsaid.
+            if (openingsDrawn > 0 || warmingDone)
                 console.warn("launcher: home wasn't held as its chord came, and none was"
                     + ` kept: ${homeUnheld}`);
             return false;
@@ -10147,6 +10164,9 @@ Scope {
     // configuration loads, rather than six: his chord 3 s after one found
     // nothing kept (10:16).
     property int warmed: -1
+    // Whether the pass has reached its last turn, which keeps home.
+    readonly property bool warmingDone: warmed >= sources.length + chordPlaces.length
+        + ledPlaces.length
     property real warmedTook: 0
     // Where the pass's time went between its turns, said as it ends: at a
     // switch its 83 turns made rows for 350 ms but ended 10 s after the
@@ -10239,6 +10259,12 @@ Scope {
             keeping = false;
         }
         keepHome();
+        // Home not held as the pass ends says why, since its first chord
+        // is then made whole with nothing saying so: Joel's first after
+        // the 20:19 switch took 193 ms to its frame, though this pass had
+        // said home was kept (2026-11-16).
+        if (!homeHeld)
+            console.warn(`launcher: home wasn't held as the shell started: ${homeUnheld}`);
         warmedTook += KeyTimes.now() - began;
         const rows = Object.values(tallies()).reduce((sum, each) => sum + each, 0);
         console.info(`launcher: home and ${Object.keys(placesKept).length} places kept as the`
