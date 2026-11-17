@@ -1133,12 +1133,13 @@ fn a_yes_after_an_ask_s_ten_minutes_reads_nothing() {
     let mut client = setting.watching();
     let drawn = row(&mut client, &id);
     assert_eq!(drawn["state"], "waiting", "the ask didn't wait: {drawn}");
-    // Just past its end, whether or not the daemon has ended it yet.
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("the clock is past 1970")
         .as_millis();
     let left = ends.get() + 500 - i64::try_from(now).expect("the time fits");
+    // The ask's own end passes while this sleeps, to half a second past it,
+    // whether or not the daemon has ended it yet.
     std::thread::sleep(std::time::Duration::from_millis(
         u64::try_from(left).unwrap_or(0),
     ));

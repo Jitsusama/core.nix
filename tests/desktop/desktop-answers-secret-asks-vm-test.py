@@ -115,7 +115,7 @@ def answered(desktop: Desktop, ask: str) -> dict[str, object]:
 def selects(shown: dict[str, object], why: str) -> bool:
     """Say whether the launcher's selected line is the ask with this why."""
     selected = shown["selected"] or {}
-    assert isinstance(selected, dict)
+    assert isinstance(selected, dict), f"the selected line isn't a row: {selected!r}"
     return bool(selected.get("drawer", {}).get("body") == why)
 
 
