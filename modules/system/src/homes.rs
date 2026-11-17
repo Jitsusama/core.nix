@@ -10,8 +10,13 @@
 //! that already knows them. A pattern holds its whole kind, so a row can't
 //! give a kind a pattern once an earlier row has claimed it by name, and no
 //! row's record is read for a kind a pattern holds. Which row holds a kind
-//! is decided by `sites.json` alone, never by whether a record read. A thing whose home
-//! site says nothing of it has no address, and none is guessed.
+//! is decided by `sites.json` alone, never by whether a record read. A
+//! thing whose home site says nothing of it has no address, and none is
+//! guessed.
+//!
+//! Long because its tests stay beside it: every rule here keeps a link
+//! from leaving the sites or from being taken by the wrong row, and each
+//! is pinned by the case that would break it.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -54,17 +59,16 @@ impl Homes {
     /// row's address stands, as the record orders them. A pattern holds its
     /// kind against every later row, and against its own row's record, but
     /// not against an earlier row that claimed that kind by name, whether
-    /// or not its record could be read. A row this can't read, its path or
-    /// its pattern, holds against every later row, with no link, each kind
-    /// no earlier row and no record of its own row already serves, so a
-    /// mistyped row is neither overtaken nor takes what worked. A record
+    /// or not its record could be read. A row or a pattern this can't read
+    /// claims nothing, so the next row that serves its kind does: the
+    /// record is kept newest first, and a row just added above the site
+    /// already serving a kind mustn't take that site's links. A record
     /// gives only the kinds its row claims by name, and only addresses that
     /// are a fragment on its row's own page, their bytes plain.
     pub fn from_sites(sites: &Value, homes: impl Fn(&str) -> Option<Value>) -> Self {
         let mut addresses = HashMap::new();
         let mut patterns: HashMap<String, String> = HashMap::new();
         let mut named = HashSet::new();
-        let mut held = HashSet::new();
         let rows = sites.get("sites").and_then(Value::as_array);
         for row in rows.into_iter().flatten() {
             let claims = row.get("homes").and_then(Value::as_array);
@@ -76,38 +80,25 @@ impl Homes {
                 .and_then(Value::as_str)
                 .filter(|path| inside(path))
             else {
-                let unread = claims.iter().filter_map(claimed);
-                let free: Vec<_> = unread
-                    .filter(|kind| !patterns.contains_key(*kind) && !named.contains(*kind))
-                    .map(str::to_owned)
-                    .collect();
-                held.extend(free);
                 continue;
             };
-            let mut broken = Vec::new();
             for claim in claims.iter().filter(|claim| claim.is_object()) {
                 let Some(kind) = claim.get("kind").and_then(Value::as_str) else {
                     continue;
                 };
-                let taken = patterns.contains_key(kind) || named.contains(kind);
-                match pattern(claim) {
-                    _ if taken || held.contains(kind) => {}
-                    Some(address) => {
-                        patterns.insert(kind.to_owned(), format!("{path}{address}"));
-                    }
-                    None => broken.push(kind),
+                if patterns.contains_key(kind) || named.contains(kind) {
+                    continue;
+                }
+                if let Some(address) = pattern(claim, path) {
+                    patterns.insert(kind.to_owned(), format!("{path}{address}"));
                 }
             }
             let recorded: HashSet<&str> = claims
                 .iter()
                 .filter_map(Value::as_str)
-                .filter(|kind| !patterns.contains_key(*kind) && !held.contains(*kind))
+                .filter(|kind| !patterns.contains_key(*kind))
                 .collect();
             named.extend(recorded.iter().map(|kind| (*kind).to_owned()));
-            // A broken pattern holds only what its own row's record doesn't
-            // already serve, so a typo can't take links that worked.
-            let unserved = broken.into_iter().filter(|kind| !named.contains(*kind));
-            held.extend(unserved.map(str::to_owned));
             if recorded.is_empty() {
                 continue;
             }
@@ -182,20 +173,15 @@ fn names(thing: &Value) -> impl Iterator<Item = &str> {
     key.into_iter().chain(name).chain(others)
 }
 
-/// The kind a claim names, by name or as a pattern's.
-fn claimed(claim: &Value) -> Option<&str> {
-    claim
-        .as_str()
-        .or_else(|| claim.get("kind").and_then(Value::as_str))
-}
-
-/// A claim's address when it is a pattern whose address names the thing and
-/// is a fragment on the row's own page, written from the row's path, its
-/// bytes plain. A fragment never reaches a server and can't change which
-/// page a browser opens, so neither the pattern nor a name put in it can
-/// step off the site.
-fn pattern(claim: &Value) -> Option<&str> {
+/// A claim's address, from its row's path on, when it is a pattern whose
+/// address names the thing and is a fragment on the row's own page, its
+/// bytes plain. It may be written from the row's page, `#machine={name}`,
+/// or from the sites' root as a record's is, `mycelium/#machine={name}`. A
+/// fragment never reaches a server and can't change which page a browser
+/// opens, so neither the pattern nor a name put in it can step off the site.
+fn pattern<'a>(claim: &'a Value, path: &str) -> Option<&'a str> {
     let address = claim.get("address").and_then(Value::as_str)?;
+    let address = address.strip_prefix(path).unwrap_or(address);
     (address.starts_with('#') && plain(address) && address.contains(NAME)).then_some(address)
 }
 
@@ -227,19 +213,19 @@ fn encoded(name: &str) -> String {
 
 /// Whether a site's path stays under the sites' root, so a row can only
 /// name a site's own record and an address it starts stays there: steps of
-/// letters, digits and `-._~` only, none starting with a dot, so no scheme,
-/// host, backslash, encoded or dotted step can ride in on it, and none the
-/// sites' server refuses to serve.
+/// letters, digits and `-._~` only, none empty but the last and none
+/// starting with a dot, so no scheme, host, backslash, encoded or dotted
+/// step can ride in on it, and none the sites' server refuses to serve.
 fn inside(path: &str) -> bool {
     let plain = |step: &str| {
         step.bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"-._~".contains(&byte))
     };
-    !path.is_empty()
-        && !path.starts_with('/')
-        && path
+    let steps = path.strip_suffix('/').unwrap_or(path);
+    !steps.is_empty()
+        && steps
             .split('/')
-            .all(|step| !step.starts_with('.') && plain(step))
+            .all(|step| !step.is_empty() && !step.starts_with('.') && plain(step))
 }
 
 #[cfg(test)]
@@ -386,6 +372,8 @@ mod tests {
             "%2e%2e/",
             ".drafts/",
             "a/.b/",
+            "a//b/",
+            "code//",
         ] {
             let homes = Homes::from_sites(
                 &sites(&json!([{"path": path, "homes": ["machine"]}])),
@@ -613,6 +601,9 @@ mod tests {
             "#machine=`{name}`",
             "#machine={name}\u{202e}",
             "#machine={name} x",
+            "code/#machine={name}",
+            "mycelium/x#machine={name}",
+            "mycelium/#machine",
         ] {
             let homes = Homes::from_sites(
                 &sites(&json!([{"path": "mycelium/", "homes": [
@@ -654,52 +645,70 @@ mod tests {
     }
 
     #[test]
-    fn a_broken_pattern_leaves_its_own_rows_record_serving() {
+    fn a_pattern_may_be_written_from_the_root_like_a_record() {
         let homes = Homes::from_sites(
-            &sites(&json!([
-                {"path": "mycelium/", "homes": [
-                    "machine",
-                    {"kind": "machine", "address": "mycelium/#machine={name}"},
-                ]},
-                {"path": "later/", "homes": [
-                    {"kind": "machine", "address": "#m={name}"},
-                ]},
-            ])),
-            |site| {
-                Some(home(
-                    "machine",
-                    "laptop",
-                    "laptop",
-                    &[],
-                    &format!("{site}#laptop"),
-                ))
-            },
+            &sites(&json!([{"path": "mycelium/", "homes": [
+                {"kind": "machine", "address": "mycelium/#machine={name}"},
+            ]}])),
+            |_| None,
         );
         assert_eq!(
-            homes.address("machine", "laptop"),
-            Some("mycelium/#laptop".into())
+            homes.address("machine", "osprey"),
+            Some("mycelium/#machine=osprey".into())
         );
-        assert_eq!(homes.address("machine", "osprey"), None);
     }
 
     #[test]
-    fn a_row_that_isnt_read_holds_its_kind_against_a_later_rows_record() {
+    fn a_broken_pattern_leaves_its_own_rows_record_serving() {
+        let broken = json!({"kind": "machine", "address": "#machine"});
+        for claims in [json!(["machine", broken]), json!([broken, "machine"])] {
+            let homes = Homes::from_sites(
+                &sites(&json!([
+                    {"path": "mycelium/", "homes": claims},
+                    {"path": "later/", "homes": [
+                        {"kind": "machine", "address": "#m={name}"},
+                    ]},
+                ])),
+                |site| {
+                    Some(home(
+                        "machine",
+                        "laptop",
+                        "laptop",
+                        &[],
+                        &format!("{site}#laptop"),
+                    ))
+                },
+            );
+            assert_eq!(
+                homes.address("machine", "laptop"),
+                Some("mycelium/#laptop".into()),
+                "{claims}"
+            );
+            assert_eq!(homes.address("machine", "osprey"), None, "{claims}");
+        }
+    }
+
+    #[test]
+    fn a_row_that_isnt_read_leaves_its_kind_to_the_next_row_that_serves_it() {
+        // sites.json is kept newest first, so a row this can't read is most
+        // often one just added above the site that already serves the kind.
         for first in [
             json!({"path": "mycelium/", "homes": [
-                {"kind": "machine", "address": "mycelium/#machine={name}"},
+                {"kind": "machine", "address": "#machine"},
             ]}),
             json!({"path": "/mycelium/", "homes": ["machine"]}),
             json!({"path": "/mycelium/", "homes": [
                 {"kind": "machine", "address": "#machine={name}"},
+            ]}),
+            json!({"path": "mycelium/", "homes": "machine"}),
+            json!({"path": "mycelium/", "homes": [
+                {"Kind": "machine", "address": "#machine={name}"},
             ]}),
         ] {
             let homes = Homes::from_sites(
                 &sites(&json!([
                     first,
                     {"path": "health/", "homes": ["machine"]},
-                    {"path": "later/", "homes": [
-                        {"kind": "machine", "address": "#m={name}"},
-                    ]},
                 ])),
                 |site| {
                     Some(home(
@@ -711,7 +720,11 @@ mod tests {
                     ))
                 },
             );
-            assert_eq!(homes, Homes::default(), "{first}");
+            assert_eq!(
+                homes.address("machine", "osprey"),
+                Some("health/#m=osprey".into()),
+                "{first}"
+            );
         }
     }
 
