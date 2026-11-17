@@ -4,6 +4,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
+
+use super::super::card::HELD;
 use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
@@ -311,12 +313,21 @@ const JUDGES: &[&str] = &[
 /// check that can't judge yet, or still finds the fault, hasn't fixed it.
 /// At 02:10 on 17 November the card told Joel his 20:37 miss was fixed on
 /// core #5252's merge, while its map-cells read unjudged until the map's own
-/// check merged. A key is one of `JUDGES`, named whole in any case; one the
-/// hour didn't make, as on a look by hand with no realm, holds it too.
+/// check merged. A key is one of `JUDGES`, or any hyphenated key the hour
+/// made, so a new measure holds its miss before the list names it, named
+/// whole in any case; one of `JUDGES` the hour didn't make, as on a look by
+/// hand with no realm, holds it too.
 pub fn held(text: &str, measures: &mut [Measure]) {
-    let judging: Vec<(&str, &str)> = JUDGES
+    let mut keys: Vec<String> = JUDGES.iter().map(|&key| key.to_owned()).collect();
+    for m in measures.iter() {
+        if m.key.contains('-') && !keys.contains(&m.key) {
+            keys.push(m.key.clone());
+        }
+    }
+    let judging: Vec<(&str, &str)> = keys
         .iter()
-        .filter_map(|&key| {
+        .map(String::as_str)
+        .filter_map(|key| {
             let why = match measures.iter().find(|m| m.key == key) {
                 None => "wasn't read this hour",
                 Some(m) => match m.target {
@@ -347,7 +358,7 @@ pub fn held(text: &str, measures: &mut [Measure]) {
         };
         let owner = first_owner(miss["owner"].as_str().unwrap_or_default());
         open.behind
-            .push(format!("{what} · {owner}, though its check {key} {why}"));
+            .push(format!("{what} · {owner}{HELD}{key} {why}"));
         open.now += 1.0;
         if open.owner.is_empty() {
             open.owner = owner;
@@ -623,6 +634,22 @@ mod tests {
     }
 
     #[test]
+    fn a_measure_the_hour_makes_but_the_list_lacks_still_holds_its_miss() {
+        let text = miss("core #5252 pains-untaken: a pain no owner took is a line");
+        let merged = BTreeSet::from([change("core", 5252)]);
+        let mut hour = vec![
+            misses(&text, &repos(), &merged, &BTreeSet::new()),
+            judged("pains-untaken", 2.0, Some(0.0)),
+        ];
+        held(&text, &mut hour);
+        assert_eq!(
+            hour[0].behind,
+            ["the cat waits · XY9H5C, though its check pains-untaken still finds it"],
+            "a new measure's key, missing from the list, let its miss close on merge"
+        );
+    }
+
+    #[test]
     fn every_key_the_cell_measures_make_is_one_a_check_can_name() {
         let made: Vec<Measure> = super::super::cells(&[], None, 0, "")
             .into_iter()
@@ -643,7 +670,7 @@ mod tests {
     #[test]
     fn only_a_key_with_a_hyphen_named_whole_holds_a_miss_and_an_open_one_once() {
         let words = miss(
-            "core #5252 fixes what broken cells did; map-cellsx; xmap-cells; map_cells_; \
+            "core #5252 fixes what broken cells did; map-cellsx; xmap-cells; map-cells_; \
              reports-unasked:",
         );
         let merged = BTreeSet::from([change("core", 5252)]);

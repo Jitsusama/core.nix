@@ -147,7 +147,10 @@ pub fn compose(
 /// back every miss told so far. A miss is its words: one handed to a new
 /// owner, or noted as unread, is still open, so only words gone from the
 /// open misses are fixed. One already told isn't told again, though an
-/// hour the node didn't answer held it open between.
+/// hour the node didn't answer held it open between, nor twice in an hour
+/// when two owners held the same words. One the ledger reopens, open with
+/// no measure's hold on it, leaves what was told, so it's told again once
+/// it closes anew.
 fn tell_fixed(
     card: &mut String,
     kept: &Kept,
@@ -155,13 +158,22 @@ fn tell_fixed(
     said: &BTreeMap<String, String>,
 ) -> Vec<String> {
     let still: Vec<&str> = open.iter().map(|miss| miss_words(miss)).collect();
-    let mut told = kept.told.clone();
-    for what in kept
-        .open
+    let reopened: Vec<&str> = open
         .iter()
+        .filter(|miss| !miss.contains(HELD))
         .map(|miss| miss_words(miss))
-        .filter(|what| !still.contains(what) && !kept.told.iter().any(|t| t == what))
-    {
+        .collect();
+    let mut told: Vec<String> = kept
+        .told
+        .iter()
+        .filter(|what| !reopened.contains(&what.as_str()))
+        .cloned()
+        .collect();
+    for miss in &kept.open {
+        let what = miss_words(miss);
+        if still.contains(&what) || told.iter().any(|t| t == what) {
+            continue;
+        }
         told.push(what.to_owned());
         // Joel works on many things at once, so the line says which thing
         // of his it was, that it's fixed, and that nothing is asked of him.
@@ -253,6 +265,10 @@ fn capitalised(words: &str) -> String {
 
 /// A miss's own words, as its card line holds them: only its owner, and a
 /// note after it, follow the last mark, since a miss's words may hold one.
+/// What a miss's line carries once its check merged and a measure still
+/// holds it, as misses.rs writes it.
+pub const HELD: &str = ", though its check ";
+
 fn miss_words(line: &str) -> &str {
     line.rsplit_once(" · ").map_or(line, |(what, _)| what)
 }
@@ -482,6 +498,41 @@ mod tests {
             after.told,
             ["the map drew cells alone"],
             "what was told wasn't kept"
+        );
+    }
+
+    /// Two misses in the same words are told fixed once; one the ledger
+    /// reopens, open with no hold on it, is told again once it closes anew.
+    #[test]
+    fn a_miss_is_told_fixed_once_an_hour_and_again_after_it_reopens() {
+        let none = measure("misses", Class::Miss, 0.0, Some(0.0));
+        let kept = Kept {
+            drag: None,
+            open: vec![
+                "the map drew cells alone · WCJQSG".to_owned(),
+                "the map drew cells alone · H2VYOB".to_owned(),
+            ],
+            told: Vec::new(),
+        };
+        let (first, next) = compose(
+            "03:10",
+            std::slice::from_ref(&none),
+            &kept,
+            &BTreeMap::new(),
+            "",
+        );
+        assert_eq!(
+            (first.matches("For Joel").count(), next.told.len()),
+            (1, 1),
+            "two misses in the same words were told fixed twice: {first}"
+        );
+        let mut reopened = measure("misses", Class::Miss, 1.0, Some(0.0));
+        reopened.behind = vec!["the map drew cells alone · WCJQSG".to_owned()];
+        let (_, open) = compose("04:10", &[reopened], &next, &BTreeMap::new(), "");
+        let (third, _) = compose("05:10", &[none], &open, &BTreeMap::new(), "");
+        assert!(
+            third.contains("For Joel"),
+            "a miss the ledger reopened was never told fixed again: {third}"
         );
     }
 

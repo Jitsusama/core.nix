@@ -8,6 +8,7 @@ use crate::DAY;
 use crate::findings::Entry;
 use crate::owe::{self, Owed};
 
+use super::card::HELD;
 use super::lines::figure;
 use super::measures::{Class, Measure, drag};
 
@@ -29,21 +30,35 @@ fn filed(m: &Measure) -> Vec<Filed> {
             .behind
             .iter()
             .filter_map(|line| line.rsplit_once(" · "))
-            .map(|(what, owner)| Filed {
-                key: format!("hour:miss:{what}"),
-                // A note after the owner, ", though ...", is no address.
-                owner: owner
-                    .split(',')
-                    .next()
-                    .unwrap_or_default()
-                    .trim()
-                    .to_owned(),
-                says: format!("a miss Joel found himself: {what}"),
-                text: format!(
-                    "cadence hour: a miss Joel found himself is yours: {what}. Which check \
-                     would have caught it? It stays open until that check merges; tell the \
-                     orchestrator its PR, for the misses ledger's check field."
-                ),
+            .map(|(what, owner)| {
+                // A note after the owner, ", though its check ...", is no
+                // address: it says the check merged and a measure still
+                // holds the miss, so the owner isn't asked for a check again.
+                let (owner, held) = owner.split_once(HELD).unwrap_or((owner, ""));
+                let text = if held.is_empty() {
+                    format!(
+                        "cadence hour: a miss Joel found himself is yours: {what}. Which \
+                         check would have caught it? It stays open until that check merges; \
+                         tell the orchestrator its PR, for the misses ledger's check field."
+                    )
+                } else {
+                    format!(
+                        "cadence hour: a miss Joel found himself is yours: {what}. Its check \
+                         merged, but the measure {held}, so it stays open until that measure \
+                         is judged within its target. Please reply with what keeps it there."
+                    )
+                };
+                Filed {
+                    key: format!("hour:miss:{what}"),
+                    owner: owner
+                        .split(',')
+                        .next()
+                        .unwrap_or_default()
+                        .trim()
+                        .to_owned(),
+                    says: format!("a miss Joel found himself: {what}"),
+                    text,
+                }
             })
             .collect();
     }
@@ -386,6 +401,21 @@ mod tests {
             owners,
             ["WCJQSG", "88LQC0"],
             "a miss's note was taken as part of its owner's address"
+        );
+    }
+
+    #[test]
+    fn a_miss_held_by_its_merged_check_asks_its_owner_for_no_new_check() {
+        let mut misses = measure("misses", Class::Miss, 1.0, Some(0.0));
+        misses.behind = vec![
+            "the map drew cells alone · WCJQSG, though its check map-cells still finds it"
+                .to_owned(),
+        ];
+        let told = file(&mut Vec::new(), &[misses], "2026-11-17", 1000);
+        let text = &told[0].1;
+        assert!(
+            !text.contains("Which check would have caught it") && text.contains("map-cells"),
+            "a miss whose check merged asked its owner for a check again: {text}"
         );
     }
 }
