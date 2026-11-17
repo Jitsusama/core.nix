@@ -289,6 +289,7 @@ fn serve(given: &[String]) -> Result<(), Failure> {
         let shared = Arc::downgrade(&shared);
         move || shared.upgrade().map_or(json!({}), |shared| health(&shared))
     }));
+    shared.served().slow(&["code:pull"]);
     hear(&shared, &socket);
     accept(shared.served(), listener);
     loop {
@@ -780,6 +781,7 @@ fn own(shared: &Arc<Shared>, said: &Value) -> Option<Value> {
         Own::Search(asked) => search::answer(shared, &lock(&shared.daemon), &id, &asked),
         Own::Tab(tab) => tabs::act(&id, tab),
         Own::Terminal(folder) => code::terminal(&id, &folder),
+        Own::Pull(folder) => code::pull(shared, &id, &folder),
         Own::Settings(settings) => settle(shared, settings),
     })
 }

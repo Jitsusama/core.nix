@@ -194,6 +194,17 @@ const WORDS: &str = r#"{"things": [
   {"id": "code:repository", "said": {"change": "1 change", "changes": "{count} changes",
     "behind": "{count} behind"}},
   {"id": "verb:code:find", "name": "Open a File by Name", "glyph": "folder"},
+  {"id": "verb:code:pull", "said": {"even": "already up to date",
+    "took": "pulled 1 commit", "tookMany": "pulled {count} commits",
+    "tree": "not pulled: it isn't a checkout's own folder",
+    "busy": "not pulled: it's being pulled already",
+    "detached": "not pulled: it's on no branch",
+    "unfollowed": "not pulled: its branch follows no other",
+    "unread": "not pulled: git couldn't read it",
+    "changed": "not pulled: it has changes of its own",
+    "unfetched": "not pulled: the fetch failed",
+    "diverged": "not pulled: it has commits of its own, so only a merge would do",
+    "failed": "not pulled: git refused to fast-forward"}},
   {"id": "code:file", "glyph": "path"},
   {"id": "path:file", "glyph": "file"}
 ]}"#;

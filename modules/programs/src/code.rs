@@ -19,12 +19,12 @@
 //! lock, and served inside the row. Once no watch names the row, its
 //! files go.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 
-use programs::{code_rows, command, repositories};
+use programs::{code_rows, command, pull, repositories};
 use repos::read::{Reading, read};
 use repos::{github, upstreams};
 use serde_json::Value;
@@ -55,12 +55,19 @@ pub struct Code {
     home: Option<PathBuf>,
     machine: String,
     words: code_rows::Words,
+    /// What Pull's answer says.
+    pulled: pull::Words,
     /// Whether the disk has been read once, so a watch knows whether rows
     /// are held to answer with.
     read_once: AtomicBool,
     /// Whether a read is under way on a thread of its own, so watches
     /// beginning together read the disk once.
     reading: AtomicBool,
+    /// Whether the disk is to be read again, asked while a read was under
+    /// way, which may have read it before what moved it.
+    wanted: AtomicBool,
+    /// The checkouts a Pull is under way in, so a second waits for none.
+    pulling: Mutex<BTreeSet<String>>,
     /// The rows the last read made: each repository's and those inside it.
     made: Mutex<Vec<Value>>,
     /// The files listed of each Open a File by Name row ahead, by its key.
@@ -87,8 +94,11 @@ impl Code {
             home,
             machine: machine(),
             words: code_rows::Words::read(vocabulary),
+            pulled: pull::Words::read(vocabulary),
             read_once: AtomicBool::new(false),
             reading: AtomicBool::new(false),
+            wanted: AtomicBool::new(false),
+            pulling: Mutex::new(BTreeSet::new()),
             made: Mutex::new(Vec::new()),
             listed: Mutex::new(BTreeMap::new()),
         }
@@ -126,16 +136,31 @@ pub fn begin(shared: &Arc<Shared>) {
     take(shared, &mut lock(&shared.daemon), rows);
 }
 
-/// Reads the disk again on a thread of its own, unless a read is under way.
+/// Reads the disk again on a thread of its own. Asked while a read is
+/// under way, which may have read the disk before what moved it, that
+/// read reads it once more as it ends, so no ask is lost. Each flag is
+/// set and then the other read, on both sides, so their order is one
+/// order everywhere (`SeqCst`), or each could miss the other's.
 fn again(shared: &Arc<Shared>) {
-    if shared.code.reading.swap(true, Ordering::AcqRel) {
+    let code = &shared.code;
+    code.wanted.store(true, Ordering::SeqCst);
+    if code.reading.swap(true, Ordering::SeqCst) {
         return;
     }
     let shared = Arc::clone(shared);
     std::thread::spawn(move || {
-        let rows = shared.code.rows();
-        take(&shared, &mut lock(&shared.daemon), rows);
-        shared.code.reading.store(false, Ordering::Release);
+        let code = &shared.code;
+        loop {
+            while code.wanted.swap(false, Ordering::SeqCst) {
+                let rows = code.rows();
+                take(&shared, &mut lock(&shared.daemon), rows);
+            }
+            code.reading.store(false, Ordering::SeqCst);
+            // An ask between the last read and letting go is read here.
+            if !code.wanted.load(Ordering::SeqCst) || code.reading.swap(true, Ordering::SeqCst) {
+                return;
+            }
+        }
     });
 }
 
@@ -221,6 +246,25 @@ pub fn terminal(id: &Value, folder: &str) -> Value {
         }
     });
     serde_json::json!({"id": id, "asked": "terminal"})
+}
+
+/// Pull on a repository's row, answered on a thread of its own (main.rs
+/// says it's slow), since a fetch waits on the network. A second Pull of
+/// a checkout while one is under way says so rather than racing it. A
+/// fetch moves the branch followed and a pull the head, so the disk is
+/// read again behind any that reached git, and the row says how far
+/// apart they are now.
+pub fn pull(shared: &Arc<Shared>, id: &Value, folder: &str) -> Value {
+    if !lock(&shared.code.pulling).insert(folder.to_owned()) {
+        return shared.code.pulled.answer(id, Err(pull::Refused::Busy));
+    }
+    let git = std::env::var("PROGRAMS_GIT").unwrap_or_else(|_| "git".to_owned());
+    let pulled = pull::pull(&git, Path::new(folder), pull::FETCH);
+    lock(&shared.code.pulling).remove(folder);
+    if !matches!(pulled, Err(pull::Refused::Tree)) {
+        again(shared);
+    }
+    shared.code.pulled.answer(id, pulled)
 }
 
 /// The machine's name as it calls itself, which the record carries.

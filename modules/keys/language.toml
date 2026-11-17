@@ -1042,6 +1042,15 @@ kinds = ["list"]
 changes = true
 undoable = true
 
+# A checkout's branch brought up to the branch it follows, by fast-forward
+# alone, as git's pull --ff-only does: Code's Pull. It refuses rather than
+# merge or rebase, and nothing takes it back. :pu is Neovim's :put.
+[acts.pull]
+command = "pull"
+short = "pul"
+kinds = ["list"]
+changes = true
+
 # A new window, as Vim's :new opens one: New Window, Start a Session and
 # Wherever It Fits, and New Window Here as :new . for the folder; beside
 # kitty's New Window, New Window in a Repository is :new repository and
