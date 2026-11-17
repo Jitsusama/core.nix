@@ -198,8 +198,14 @@ def test_a_yes_walked_through_the_ipc_releases_nothing(desktop: Desktop) -> None
     since = desktop.mark()
     walked = json.dumps({"steps": ["Passwords", "Asks", RELEASED, "Release It"], "sure": True})
     said = desktop.as_account(f"qs ipc call launcher doing {shlex.quote(walked)}")
-    assert "missing" not in json.loads(said), f"the walk found no Release It: {said}"
-    # Journalled as the shell's info, not reported, so it's read from the journal.
+    answer = json.loads(said)
+    assert "missing" not in answer, f"the walk found no Release It: {said}"
+    # The agent that walked is told no, so it doesn't wait out the ask.
+    assert "done" not in answer, f"the walk was answered done: {said}"
+    assert answer.get("refused") == "not without your own key press", (
+        f"the walk wasn't told why: {said}"
+    )
+    # The shell's own line, so the withholding was the shell's, not the daemon's.
     desktop.machine.wait_until_succeeds(
         desktop.in_session(
             f"journalctl --user -u quickshell --no-pager -o cat --after-cursor={shlex.quote(since)}"
