@@ -8,8 +8,12 @@
 //! (RSCH-20261029-0E8050, "Daemons: One Interface"): JSON lines, each ask
 //! with an `id` echoed in its answers.
 
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt;
+use std::sync::Arc;
 
+use ready_rows::fuzzy::{Item, Typed};
 use serde_json::{Value, json};
 
 pub mod between;
@@ -354,108 +358,48 @@ impl Record {
         self.listed
     }
 
-    /// How well the words find them: by a name, by their address, or not.
-    fn found(&self, words: &[Vec<char>]) -> Option<Found> {
-        if self.names.iter().any(|name| name.finds(words)) {
-            return Some(Found::ByName);
-        }
-        self.mailed
-            .as_ref()
-            .filter(|address| address.finds(words))
-            .map(|_| Found::ByAddress)
+    /// How well what's typed finds them, as the shell's Fuzzy.js scores
+    /// it: the best of any name a source gives them and their address,
+    /// or nothing when none is found. Each word has to start a word of
+    /// one text, its letters unbroken, in any order and any case.
+    fn score(&self, typed: &Typed) -> Option<i32> {
+        self.names
+            .iter()
+            .chain(&self.mailed)
+            .filter_map(|text| text.ready.score(typed))
+            .max()
     }
 }
 
-/// A text made ready to search: its characters in lower case, and where
-/// each of its words starts.
-#[derive(Clone, Debug, PartialEq)]
+/// A text made ready to match as the shell's Fuzzy.js matches it (the
+/// ready rows' fuzzy.rs, held to its cases), kept with the text itself,
+/// by which a record reads and compares. Shared, since a record is cloned
+/// as it's served and the text is made ready once, as it's heard.
+#[derive(Clone)]
 struct Text {
-    lower: Vec<char>,
-    starts: Vec<usize>,
-    /// The letters its words start with, a bit each, as Fuzzy.js's
-    /// `starts`, so someone no word typed could start is passed over at
-    /// once.
-    begins: u32,
-}
-
-/// A character's bit: one for each of a to z, one for any digit, and one
-/// shared by everything else.
-fn bit(c: char) -> u32 {
-    match c {
-        'a'..='z' => 1 << (c as u32 - 'a' as u32),
-        '0'..='9' => 1 << 26,
-        _ => 1 << 27,
-    }
+    text: String,
+    ready: Arc<Item>,
 }
 
 impl Text {
     fn of(text: &str) -> Text {
-        let chars: Vec<char> = text.chars().collect();
-        let starts: Vec<usize> = (0..chars.len())
-            .filter(|&at| starts_a_word(at.checked_sub(1).map(|before| chars[before]), chars[at]))
-            .collect();
-        let lower: Vec<char> = chars
-            .iter()
-            .map(|c| c.to_lowercase().next().unwrap_or(*c))
-            .collect();
-        let begins = starts.iter().fold(0, |mask, &at| mask | bit(lower[at]));
         Text {
-            lower,
-            starts,
-            begins,
+            text: text.to_owned(),
+            ready: Arc::new(Item::of(text)),
         }
     }
+}
 
-    fn finds(&self, words: &[Vec<char>]) -> bool {
-        !words.is_empty()
-            && words
-                .iter()
-                .all(|word| word.first().is_some_and(|&c| self.begins & bit(c) != 0))
-            && words.iter().all(|word| {
-                self.starts
-                    .iter()
-                    .any(|&at| self.lower.get(at..at + word.len()) == Some(word.as_slice()))
-            })
+impl PartialEq for Text {
+    fn eq(&self, other: &Text) -> bool {
+        self.text == other.text
     }
 }
 
-/// How a search found someone, the better first.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum Found {
-    ByName,
-    ByAddress,
-}
-
-/// The words of a search, lowercased, each its characters.
-pub fn words(typed: &str) -> Vec<Vec<char>> {
-    typed
-        .split_whitespace()
-        .map(|word| word.chars().flat_map(char::to_lowercase).collect())
-        .collect()
-}
-
-/// Whether each word starts a word of the text, its letters unbroken, in
-/// any order and any case. A word starts where the shell's Fuzzy.js says
-/// one does, as fzf does: at the text's start, after anything that isn't
-/// a letter or a digit, at a capital after a small letter or a digit, and
-/// at a digit after a letter. So what's found here is never fewer than
-/// the shell would find among everyone, and the shell ranks it.
-pub fn finds(text: &str, words: &[Vec<char>]) -> bool {
-    Text::of(text).finds(words)
-}
-
-fn starts_a_word(before: Option<char>, c: char) -> bool {
-    let Some(before) = before else {
-        return true;
-    };
-    if !c.is_alphanumeric() {
-        // Punctuation is its own start, as Fuzzy.js gives it a bonus.
-        return !c.is_whitespace();
+impl fmt::Debug for Text {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.text, f)
     }
-    !before.is_alphanumeric()
-        || (before.is_lowercase() && c.is_uppercase())
-        || (before.is_ascii_digit() && c.is_uppercase())
-        || (!before.is_ascii_digit() && c.is_ascii_digit())
 }
 
 /// Everyone heard of, and how each source stands.
@@ -593,21 +537,28 @@ impl Book {
         self.order.iter().filter_map(|key| self.records.get(key))
     }
 
-    /// Those the words find, at most `limit`: those a source lists first,
-    /// then those found by name before those found only by address, and
-    /// among equals in the order heard.
+    /// Those what's typed finds, at most `limit`, in the order the shell
+    /// shows them (People.qml): those a source lists first, then the best
+    /// found by Fuzzy.js's score, and among equals in the order heard. So
+    /// the shell shows the answer as it comes, merging and ranking no
+    /// one: ranked there, everyone was merged again at each answer, 13 ms
+    /// of Joel's shell at p90 and 62 at most (his journal, 2026-11-14 to
+    /// 17).
     pub fn search(&self, typed: &str, limit: usize) -> Vec<&Record> {
-        let words = words(typed);
-        let mut found: Vec<(bool, Found, usize, &Record)> = self
+        let typed = Typed::of(typed);
+        if typed.is_empty() {
+            return Vec::new();
+        }
+        let mut found: Vec<(bool, Reverse<i32>, usize, &Record)> = self
             .everyone()
             .enumerate()
             .filter_map(|(at, record)| {
                 record
-                    .found(&words)
-                    .map(|how| (!record.listed(), how, at, record))
+                    .score(&typed)
+                    .map(|score| (!record.listed(), Reverse(score), at, record))
             })
             .collect();
-        found.sort_unstable_by_key(|&(unlisted, how, at, _)| (unlisted, how, at));
+        found.sort_unstable_by_key(|&(unlisted, score, at, _)| (unlisted, score, at));
         found
             .into_iter()
             .take(limit)
@@ -931,7 +882,8 @@ mod tests {
 
     #[test]
     fn words_start_words_as_the_shells_fuzzy_says() {
-        let find = |text: &str, typed: &str| finds(text, &words(typed));
+        let find =
+            |text: &str, typed: &str| Text::of(text).ready.score(&Typed::of(typed)).is_some();
         assert!(find("Ada Brightwater", "bri ad"));
         assert!(find("Ada Brightwater", "ADA"));
         assert!(!find("Ada Brightwater", "water"));
@@ -940,7 +892,6 @@ mod tests {
         assert!(find("McKenzie", "ken"));
         assert!(find("agent007", "007"));
         assert!(find("Zoë Ångström", "ång"));
-        assert!(!find("Ada", ""));
         assert!(!find("Ada", "adam"));
     }
 
