@@ -4736,7 +4736,7 @@ def test_a_step_in_through_the_place_holding_it_is_timed_once_as_the_step(shell:
 
 
 def test_a_step_in_by_a_word_and_a_space_is_timed_once_as_the_step(shell: Shell) -> None:
-    """ "network " steps into Network, and the space's key is timed once, as the step into it.
+    """Typing network and a space steps into Network, the space timed once as the step.
 
     The space's key was timed as the words it typed, and the field the step emptied as a key of
     its own, so one step counted twice and named no place (a council, 2026-11-17).
@@ -4751,6 +4751,24 @@ def test_a_step_in_by_a_word_and_a_space_is_timed_once_as_the_step(shell: Shell)
     shell.close_launcher()
     steps = [one.get("step") for one in presented]
     assert steps == ["\u2192 Network"], f"the space into Network wasn't timed once: {presented}"
+
+
+def test_a_word_and_a_space_typed_at_once_time_only_the_last_key_as_the_step(shell: Shell) -> None:
+    """Network and a space typed in one go is searched once, only the space timed as the step.
+
+    Every key of a burst is timed by the one search that took the step, so naming each of them
+    the step would count one step as many.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    before = len(keys_presented_settled(shell))
+    typed_at_once(shell, "'network '")
+    shell.launcher_until(lambda shown: shown["path"][-1:] == ["Network"])
+    presented = keys_presented_settled(shell)[before:]
+    shell.close_launcher()
+    steps = [one.get("step") for one in presented]
+    assert steps.count("\u2192 Network") == 1, f"the step was timed other than once: {presented}"
+    assert steps[-1] == "\u2192 Network", f"a key after the step was timed: {presented}"
 
 
 def minus_presented(shell: Shell, out: Callable[[Json], object]) -> list[Json]:

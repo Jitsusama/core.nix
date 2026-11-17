@@ -2414,7 +2414,11 @@ Scope {
                 : steadyId(rows[inner]), scroll: 0 };
         });
         held = steps;
+        // When its places were made, so a step's line says them apart
+        // from the search that drew them.
+        const made = Date.now();
         restart("");
+        return made;
     }
 
     // Puts a command's start in the field, out at the top, where it's
@@ -5043,12 +5047,13 @@ Scope {
         if (held.length === 0 && row.category && placesAbove(row.category).length > 0) {
             if (meant)
                 learnAfterFrame(typed, row.key);
-            const through = Date.now();
             searchParts = null;
-            listedAsStep(timed, () => intoCategory(row.category,
-                walk === undefined ? typed : ""));
-            searchParts = trials.stepped(searchParts, { began, made: through,
-                pushed: through, opened: through, ended: Date.now() });
+            let made = began;
+            listedAsStep(() => {
+                made = intoCategory(row.category, walk === undefined ? typed : "");
+            });
+            searchParts = trials.stepped(searchParts, { began, made, pushed: made,
+                opened: made, ended: Date.now() });
             if (timed)
                 keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true,
                     thread);
@@ -5092,7 +5097,7 @@ Scope {
         // whose line holds its words, as a save's name, puts them back.
         searchParts = null;
         if (!passing)
-            listedAsStep(timed, () => listStepped(row));
+            listedAsStep(() => listStepped(row));
         // Said as a key's are: making the step's lists, what each part of
         // stepping took, and the search that drew its rows, whose parts
         // restart() left.
@@ -5104,11 +5109,12 @@ Scope {
     }
 
     // Lists a step's rows, the field emptied or given the row's words as
-    // a key's change is searched; one timed as its own step isn't timed
-    // again as that change: one Return from what was typed counted twice
-    // (a council, 2026-11-17).
-    function listedAsStep(timed, list) {
-        steppingIn = timed;
+    // a key's change is searched, but never timed as a key: no key made
+    // it, and the step is timed as its own, or as its opening's. Timed,
+    // one Return from what was typed counted twice (a council,
+    // 2026-11-17).
+    function listedAsStep(list) {
+        steppingIn = true;
         try {
             list();
         } finally {
@@ -6224,8 +6230,18 @@ Scope {
             ? categoryFor(chipped[1]) : null;
         if (named) {
             // The key that typed the space is timed as the step it took,
-            // and the field it empties not at all (searchedNow).
-            listedAsStep(true, () => intoCategory(named, chipped[1]));
+            // its line saying the places it made beside the search that
+            // drew them, and the field it empties not at all (searchedNow).
+            // Named once the step is done, since a search under it starts
+            // by clearing the name.
+            const began = Date.now();
+            searchParts = null;
+            let made = began;
+            listedAsStep(() => {
+                made = intoCategory(named, chipped[1]);
+            });
+            searchParts = trials.stepped(searchParts, { began, made, pushed: made,
+                opened: made, ended: Date.now() });
             steppedByKey = named.name;
             return;
         }
