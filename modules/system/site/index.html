@@ -89,7 +89,8 @@
   <noscript><p class="note">The parts are drawn in the browser, live from the system daemon; without scripts, read <a href="index.md">the page as text</a>, or type <code>system</code> in a terminal.</p></noscript>
 
   <footer class="foot">
-    <ul class="legend" id="legend" aria-label="What each mark says"></ul>
+    <!-- biome-ignore lint/a11y/noRedundantRoles: the legend has no bullets, and Safari drops an unbulleted list's role and with it the list's name, so VoiceOver would hear neither the list nor its words apart. -->
+    <ul class="legend" id="legend" role="list" aria-label="What each mark says"></ul>
   </footer>
 </main>
 

@@ -248,8 +248,11 @@ const KEY =
 const ON_THE_OUTLOOK =
   /aria-label="(?<heard>[^"]*)">[\s\S]*?<span class="place">(?<place>[^<]*)<\/span><span class="forecast">(?<says>[^<]*)<\/span><\/a>/gu;
 
-/** Where index.html leaves room for the legend: a list of its own. */
-const LEGEND_LIST = /<ul class="legend" id="legend"[^>]*><\/ul>/u;
+/**
+ * Where index.html leaves room for the legend: a list of its own, which
+ * says its role outright, since Safari drops it from an unbulleted list.
+ */
+const LEGEND_LIST = /<ul(?=[^>]*\bid="legend")(?=[^>]*\brole="list")[^>]*><\/ul>/u;
 
 /** A drawn mark's shape: what is inside its svg. */
 const SHAPE = /<svg [^>]*>(?<shape>[\s\S]*?)<\/svg>/gu;
@@ -338,7 +341,7 @@ it("the page and its words for a model wear no weather words, nor in what is rea
   }
 });
 
-it("the legend is a list, so a screen reader hears its words apart", () => {
+it("the legend is a list in every browser, so a screen reader hears its words apart", () => {
   const page = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   assert.match(page, LEGEND_LIST);
 });
