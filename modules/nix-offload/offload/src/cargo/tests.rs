@@ -27,6 +27,73 @@ fn a_whole_suite_or_clippy_goes_there() {
 }
 
 #[test]
+fn an_offline_run_goes_to_a_lent_builder_online_and_locked() {
+    // At 17:45 on 16 November an agent's cargo test --offline went to a lent
+    // builder, which has no crates but what it fetches, and failed finding
+    // one.
+    for (line, sent, offline) in [
+        ("test --offline", "test --locked", true),
+        (
+            "--offline test -p disk-guard",
+            "test -p disk-guard --locked",
+            true,
+        ),
+        (
+            "clippy --frozen --all-targets",
+            "clippy --all-targets --locked",
+            true,
+        ),
+        ("test --locked --frozen", "test --locked", true),
+        ("test --frozen --locked", "test --locked", true),
+        ("test --config net.offline=true", "test --locked", true),
+        (
+            "test --config=net.offline=true -p a",
+            "test -p a --locked",
+            true,
+        ),
+        (
+            "test --config net.retry=4",
+            "test --config net.retry=4",
+            false,
+        ),
+        (
+            "test --offline -- --nocapture --offline",
+            "test --locked -- --nocapture --offline",
+            true,
+        ),
+        ("test --locked", "test --locked", false),
+        ("test --locked --locked", "test --locked", false),
+        ("test", "test", false),
+    ] {
+        assert_eq!(
+            for_a_lender(&words(line), None),
+            (words(sent), offline),
+            "cargo {line} wasn't sent as cargo {sent}, asked offline {offline}"
+        );
+    }
+    // CARGO_NET_OFFLINE here doesn't go there, so a run it sets to true
+    // goes locked too. Any other value leaves the run's words as they are.
+    for (value, sent, offline) in [
+        (Some("true"), "test -p a --locked", true),
+        (Some("false"), "test -p a", false),
+        (Some("yes"), "test -p a", false),
+        (Some(""), "test -p a", false),
+        (None, "test -p a", false),
+    ] {
+        assert_eq!(
+            for_a_lender(&words("test -p a"), value),
+            (words(sent), offline),
+            "a run with CARGO_NET_OFFLINE {value:?} went as cargo {sent}, asked offline {offline}"
+        );
+    }
+    assert_eq!(
+        for_a_lender(&words("test --locked"), Some("true")),
+        (words("test --locked"), true),
+        "a locked run asked offline by the environment wasn't sent locked once"
+    );
+}
+
+#[test]
 fn a_named_test_runs_here_at_once() {
     for line in [
         "test --manifest-path m/Cargo.toml --test guard -- survey:: quest_temp::",
