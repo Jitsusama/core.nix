@@ -7,10 +7,10 @@
   ...
 }:
 onLinux {
-  # A machine with a screen gives a UDP socket that asks for no buffer of its
-  # own 4 MiB to receive into, so a VPN's burst waits rather than drops.
-  a-burst-waits-rather-than-drops =
-    holds "a-burst-waits-rather-than-drops"
-      "A machine with a screen gives a socket that asks for no receive buffer the kernel's 208 KiB, so a VPN over QUIC drops a burst."
-      ((graphical.config.boot.kernel.sysctl."net.core.rmem_default" or null) == 4194304);
+  # A machine with a screen gives a socket that asks for no buffer of its own
+  # 2 MiB to receive into, as the role is where a VPN over QUIC runs.
+  a-quiet-socket-receives-into-2-mib =
+    holds "a-quiet-socket-receives-into-2-mib"
+      "A machine with a screen doesn't give a socket that asks for no receive buffer 2 MiB, so a VPN over QUIC may drop a burst."
+      ((graphical.config.boot.kernel.sysctl."net.core.rmem_default" or null) == 2097152);
 }
