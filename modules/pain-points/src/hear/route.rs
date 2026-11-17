@@ -322,7 +322,10 @@ mod tests {
             !said.contains(&"x".repeat(300)),
             "long words are cut: {said}"
         );
-        assert!(said.find("e1").unwrap_or(usize::MAX) < said.find("e2").unwrap_or(0));
+        assert!(
+            said.find("e1").unwrap_or(usize::MAX) < said.find("e2").unwrap_or(0),
+            "the most hit first: {said}"
+        );
     }
 
     #[test]

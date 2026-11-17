@@ -136,16 +136,22 @@ mod tests {
                 .to_string(),
             false,
         )];
-        assert!(carried(
-            "so i had sent a number of things to the void earlier, and now going in shows \
+        assert!(
+            carried(
+                "so i had sent a number of things to the void earlier, and now going in shows \
              me nothing at all",
-            &ledgers
-        ));
+                &ledgers
+            ),
+            "the whole of a ledger's words"
+        );
         assert!(
             carried("I had sent a number of things to the void", &ledgers),
             "a part"
         );
-        assert!(!carried("the launcher is slow to open", &ledgers));
+        assert!(
+            !carried("the launcher is slow to open", &ledgers),
+            "another pain"
+        );
         let short = vec![("no".to_string(), false)];
         assert!(!carried("no, the other one", &short), "too short to find");
     }

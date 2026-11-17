@@ -30,6 +30,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::time::UNIX_EPOCH;
 
 /// How far back a first run hears, and how long a pain stays open.
@@ -73,6 +74,58 @@ pub struct Hour {
     pub open: usize,
     pub worst: Option<String>,
     pub worst_hits: usize,
+}
+
+/// Hears what's new since the last run, sends each new pain to its owner
+/// through the mycelium, and says the hour in a line for the journal.
+///
+/// # Errors
+///
+/// When its state can't be written.
+pub fn listen(home: &Path, given: &mut BTreeMap<&'static str, String>) -> Result<String, String> {
+    let mut take = |flag: &str| given.remove(flag);
+    let state = crate::state_home();
+    let mission = take("--ledgers").map_or_else(|| state.join("mission"), PathBuf::from);
+    let mycelium = take("--mycelium").map_or_else(|| "mycelium".into(), PathBuf::from);
+    let date = take("--date").map_or_else(|| "date".into(), PathBuf::from);
+    let ears = Ears {
+        sessions: take("--sessions").map_or_else(|| home.join(".pi/agent/sessions"), PathBuf::from),
+        state: state.join("pain-points"),
+        ledgers: vec![mission.join("asks.jsonl"), mission.join("misses.jsonl")],
+        void: take("--void").map_or_else(|| state.join("void"), PathBuf::from),
+        at: take("--at")
+            .and_then(|at| at.parse().ok())
+            .unwrap_or_else(crate::millis_now),
+        offset_s: crate::output(Command::new(&date).arg("+%z"))
+            .as_deref()
+            .and_then(crate::offset_of)
+            .unwrap_or(0),
+    };
+    let cells = crate::output(Command::new(&mycelium).arg("sessions")).unwrap_or_default();
+    let from = Routes::read(&ears.state).from;
+    let hour = hear(&ears, &cells, &mut |to, text| {
+        let Some(from) = &from else { return false };
+        Command::new(&mycelium)
+            .args([
+                "send", "--from", from, "--intent", "finding", "--text", text,
+            ])
+            .arg(format!("peer.{}", to.to_lowercase()))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+    })?;
+    Ok(format!(
+        "pain-points: {} pains heard and {} routed in the hour, {} open in the day{}",
+        hour.heard,
+        hour.routed,
+        hour.open,
+        hour.worst.as_ref().map_or(String::new(), |_| format!(
+            "; the most hit, {} times",
+            hour.worst_hits
+        ))
+    ))
 }
 
 /// Hears what's new, sends what no one has, and says the hour. `send`

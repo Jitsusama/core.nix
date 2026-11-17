@@ -163,7 +163,7 @@ fn main() -> ExitCode {
         };
         let home = PathBuf::from(env::var_os("HOME").unwrap_or_default());
         if verb == "hear" {
-            let said = listen(&home, &mut given).map_err(|error| {
+            let said = hear::listen(&home, &mut given).map_err(|error| {
                 Failure::new(Exit::Failed, "pain-points couldn't keep what it heard").because(error)
             })?;
             println!("{said}");
@@ -191,54 +191,6 @@ fn main() -> ExitCode {
         println!("{said}");
         Ok(())
     })
-}
-
-/// Hears what's new since the last run, sends each new pain to its owner
-/// through the mycelium, and says the hour in a line for the journal.
-fn listen(home: &Path, given: &mut BTreeMap<&'static str, String>) -> Result<String, String> {
-    let mut take = |flag: &str| given.remove(flag);
-    let state = state_home();
-    let mission = take("--ledgers").map_or_else(|| state.join("mission"), PathBuf::from);
-    let mycelium = take("--mycelium").map_or_else(|| "mycelium".into(), PathBuf::from);
-    let date = take("--date").map_or_else(|| "date".into(), PathBuf::from);
-    let ears = hear::Ears {
-        sessions: take("--sessions").map_or_else(|| home.join(".pi/agent/sessions"), PathBuf::from),
-        state: state.join("pain-points"),
-        ledgers: vec![mission.join("asks.jsonl"), mission.join("misses.jsonl")],
-        void: take("--void").map_or_else(|| state.join("void"), PathBuf::from),
-        at: take("--at")
-            .and_then(|at| at.parse().ok())
-            .unwrap_or_else(millis_now),
-        offset_s: output(Command::new(&date).arg("+%z"))
-            .as_deref()
-            .and_then(offset_of)
-            .unwrap_or(0),
-    };
-    let cells = output(Command::new(&mycelium).arg("sessions")).unwrap_or_default();
-    let from = hear::route::Routes::read(&ears.state).from;
-    let hour = hear::hear(&ears, &cells, &mut |to, text| {
-        let Some(from) = &from else { return false };
-        Command::new(&mycelium)
-            .args([
-                "send", "--from", from, "--intent", "finding", "--text", text,
-            ])
-            .arg(format!("peer.{}", to.to_lowercase()))
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|status| status.success())
-    })?;
-    Ok(format!(
-        "pain-points: {} pains heard and {} routed in the hour, {} open in the day{}",
-        hour.heard,
-        hour.routed,
-        hour.open,
-        hour.worst.as_ref().map_or(String::new(), |_| format!(
-            "; the most hit, {} times",
-            hour.worst_hits
-        ))
-    ))
 }
 
 /// Writes the day file and says, in a line for the journal, how the day

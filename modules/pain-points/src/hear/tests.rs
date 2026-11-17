@@ -182,7 +182,10 @@ fn a_first_run_sends_each_new_pain_to_its_owner_once() {
     );
     let heard = place.heard();
     assert_eq!(heard.len(), 4, "{heard:?}");
-    assert!(heard.iter().any(|h| h.carried && h.entry == "e4"));
+    assert!(
+        heard.iter().any(|h| h.carried && h.entry == "e4"),
+        "the ledger carries it: {heard:?}"
+    );
     assert!(
         !heard.iter().any(|h| h.entry == "l1"),
         "a lab's words aren't his"
@@ -236,7 +239,10 @@ fn a_later_run_sends_only_what_is_new() {
         2,
         "the new pain and the ledgers' note: {sent:?}"
     );
-    assert!(sent[0].1.contains("hold up") && sent[1].1.contains("hold up"));
+    assert!(
+        sent[0].1.contains("hold up") && sent[1].1.contains("hold up"),
+        "sent again after a failed send: {sent:?}"
+    );
     assert_eq!(place.heard().len(), 5);
 }
 
