@@ -146,6 +146,11 @@ const LOOK_AGAIN: Duration = Duration::from_millis(200);
 /// forever would hide a write that never ends.
 const LOOK_FOR: Duration = Duration::from_mins(2);
 
+/// Wait `LOOK_AGAIN` before a leaving net looks again.
+fn look_again() {
+    std::thread::sleep(LOOK_AGAIN);
+}
+
 /// How many searches waiting for room may ask main's newest head at once
 /// whether it fixed their test.
 const ASKS: usize = 1;
@@ -305,7 +310,7 @@ impl<'a> Settler<'a> {
                             .say("leaving waits for a write to the hold, a settle's or a round's");
                         said = true;
                     }
-                    std::thread::sleep(LOOK_AGAIN);
+                    look_again();
                     continue;
                 }
             };
@@ -619,6 +624,36 @@ fn clear_an_unsettled_revert(state: &State, test: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_net_leaving_reads_to_the_stall_guard_as_waiting_on_a_lock() {
+        let (tell, told) = std::sync::mpsc::channel();
+        let looking = std::thread::spawn(move || {
+            let own = std::fs::read_link("/proc/thread-self")
+                .ok()
+                .and_then(|link| {
+                    link.file_name()
+                        .map(|tid| tid.to_string_lossy().into_owned())
+                });
+            tell.send(own).unwrap();
+            for _ in 0..10 {
+                look_again();
+            }
+        });
+        let own = told.recv().unwrap().expect("the looking thread has no id");
+        let mut seen = Vec::new();
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(50));
+            seen.extend(std::fs::read_to_string(format!("/proc/self/task/{own}/wchan")).ok());
+        }
+        looking.join().unwrap();
+        assert!(
+            seen.iter().any(|wait| wait == crate::stall::ON_A_LOCK)
+                && !seen.iter().any(|wait| wait.contains("sleep")),
+            "a leave looking again reads as resting, so a net hung on its write \
+             would never be aborted: {seen:?}"
+        );
+    }
 
     #[test]
     fn a_search_with_no_room_is_asked_once_and_then_waits() {

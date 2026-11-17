@@ -28,7 +28,7 @@ const EVERY: Duration = Duration::from_secs(60);
 
 /// What the kernel says a thread blocked on a lock, a join or a channel
 /// waits in.
-const ON_A_LOCK: &str = "__futex_wait";
+pub const ON_A_LOCK: &str = "__futex_wait";
 
 /// Whether a net quiet for `quiet`, running `children` processes, whose
 /// other threads wait in `waits`, is hung.
