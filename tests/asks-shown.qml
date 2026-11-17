@@ -90,21 +90,30 @@ QtObject {
             Shown.stamped(yes("d1"), seen, key, at(9000, true)), null);
     }
 
-    // What each key Joel presses does to the selected ask's line: one that
+    // What the keys Joel presses do to the selected ask's line: one that
     // only moves through what's shown arms it, Return answers and leaves it
     // as it was, and any other, typing above all, starts it again.
     function keys() {
-        for (const name of ["Up", "Down", "Left", "Right", "Tab", "Shift+Tab", "Escape"])
-            Expect.same(`${name} arms the line, moved or not`, Shown.keyed(name, false), "arms");
-        Expect.same("j arms it where it moves", Shown.keyed("j", true), "arms");
-        Expect.same("and so does k", Shown.keyed("k", true), "arms");
-        Expect.same("j typed on the find starts it again", Shown.keyed("j", false), "resets");
-        Expect.same("as any letter typed does", Shown.keyed("l", false), "resets");
-        Expect.same("or a letter that does something else", Shown.keyed("r", false), "resets");
-        Expect.same("as does any move, G's to the last", Shown.keyed("G", true), "arms");
+        for (const name of ["Up", "Down", "Left", "Right"])
+            Expect.same(`${name} arms the line where it moves`, Shown.keyed([name], true), "arms");
+        for (const name of ["Up", "Tab", "Shift+Tab", "Escape"])
+            Expect.same(`${name} starts it again where it's no move`, Shown.keyed([name], false),
+                "resets");
+        Expect.same("j arms it where it moves", Shown.keyed(["j"], true), "arms");
+        Expect.same("and so does k", Shown.keyed(["k"], true), "arms");
+        Expect.same("j typed on the find starts it again", Shown.keyed(["j"], false), "resets");
+        Expect.same("as any letter typed does", Shown.keyed(["l"], false), "resets");
+        Expect.same("or a letter that does something else", Shown.keyed(["r"], false), "resets");
+        Expect.same("as does any move, G's to the last", Shown.keyed(["G"], true), "arms");
         for (const name of ["Return", "Enter", "Shift+Return"])
-            Expect.same(`${name} never arms it`, Shown.keyed(name, false), "passes");
-        Expect.same("a key with no name starts it again", Shown.keyed("", false), "resets");
+            Expect.same(`${name} never arms it`, Shown.keyed([name], false), "passes");
+        Expect.same("a key with no name starts it again", Shown.keyed([""], false), "resets");
+        Expect.same("a letter read with the Return after it starts it again",
+            Shown.keyed(["x", "Return"], false), "resets");
+        Expect.same("as does a move read with a key after it, its move unknown",
+            Shown.keyed(["Down", "j"], true), "resets");
+        Expect.same("but Returns before a move leave the move its own",
+            Shown.keyed(["Return", "Down"], true), "arms");
     }
 
     function refused() {

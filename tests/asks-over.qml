@@ -201,10 +201,12 @@ ShellRoot {
     Component.onCompleted: {
         link.tell("d1");
         steps([arming, untimed, untimedThenAnswered, typedThenAnswered, moving, shown, entryTold,
-            reopened,
-            reopenedThenMoved, left, moved, changed, stepping, stepped, outside, refused, drawn,
-            walkedInto, walkedThenShown, switchedFromOutside, switchedThenAnswered, typing,
-            typedAfter, steppedAside, steppedAsideUntimed, switchedMidKey]);
+            reopened, reopenedThenEscaped, reopenedThenMoved, left, moved, changed, stepping,
+            stepped, outside, refused, drawn, returnedInto, returnedThenShown, steeredOut,
+            walkedInto, walkedThenShown, toldInPlace, typing, typedAfter, movedAgain,
+            typedBeforeItsFrame, typedThenShown, movedOnceMore, typedWithReturn,
+            typedWithReturnShown, movedThenOpened, movedThenOpenedShown, steppedAside,
+            steppedAsideUntimed, switchedMidKey, switchedMidKeyStep, switchedMidKeyShown]);
     }
 
     function arming() {
@@ -273,6 +275,14 @@ ShellRoot {
         same("a line still selected as it opens again from outside isn't timed",
             last().shown, undefined);
         stage.press("Escape", false);
+    }
+
+    // Escape is a terminal's key as much as the launcher's, and moves nothing here.
+    function reopenedThenEscaped() {
+        stage.present(700);
+        row().run();
+        same("nor after an Escape the launcher takes for no move", last().shown, undefined);
+        stage.press("Down", true);
     }
 
     function reopenedThenMoved() {
@@ -359,8 +369,9 @@ ShellRoot {
             [last().digest, last().shown], ["d3", undefined]);
     }
 
-    // Opened from outside on home, then Passwords by his own Return.
-    function walkedInto() {
+    // Opened from outside on home, Passwords selected there, then stepped into by a Return of
+    // his and nothing before it, as his Returns typed for a terminal it took the keys from.
+    function returnedInto() {
         stage.open = false;
         stage.held = [];
         stage.selected = null;
@@ -368,31 +379,38 @@ ShellRoot {
         stage.press("Return", false, stage.intoPasswords);
     }
 
+    function returnedThenShown() {
+        stage.present(600);
+        row().run();
+        same("a place a lone Return steps into times nothing", last().shown, undefined);
+    }
+
+    // Back on home, where a letter of his finds Passwords.
+    function steeredOut() {
+        stage.held = [];
+        stage.selected = null;
+        stage.press("p", false);
+    }
+
+    function walkedInto() {
+        stage.press("Return", false, stage.intoPasswords);
+    }
+
     function walkedThenShown() {
         stage.present(600);
         row().run();
-        same("a place he walks into by his own key times its line from its first frame",
+        same("a place he walks into by his own keys times its line from its first frame",
             last().shown >= 600 && last().shown < 5000, true);
     }
 
-    // Opened from outside on home, a letter of his landing there, then
-    // stepped into Passwords from outside too.
-    function switchedFromOutside() {
-        stage.open = false;
-        stage.held = [];
-        stage.selected = null;
-        stage.opened();
-        stage.press("l", false);
-    }
-
-    function switchedThenAnswered() {
+    // An ask from outside in the place he walked into, which may select another line.
+    function toldInPlace() {
         stage.toldFromOutside += 1;
-        stage.intoPasswords();
+        stage.selected = null;
+        stage.selected = row();
         stage.present(600);
-        stage.press("Return", false);
         row().run();
-        same("a step into Asks from outside is no walk of his, whatever he typed before it",
-            last().shown, undefined);
+        same("a line an ask from outside selects is no walk of his", last().shown, undefined);
         stage.press("k", true);
     }
 
@@ -405,6 +423,51 @@ ShellRoot {
         stage.present(600);
         row().run();
         same("typing after a move starts the line's time again", last().shown, undefined);
+    }
+
+    // A move, then a letter before the frame the move asked for reaches the screen.
+    function movedAgain() {
+        stage.press("j", true);
+    }
+
+    function typedBeforeItsFrame() {
+        stage.press("x", false);
+    }
+
+    function typedThenShown() {
+        stage.present(600);
+        row().run();
+        same("a frame a move asked for before a letter times nothing", last().shown, undefined);
+    }
+
+    // A letter and a Return read at once, as keys typed fast are.
+    function movedOnceMore() {
+        stage.press("j", true);
+    }
+
+    function typedWithReturn() {
+        stage.present(600);
+        stage.press("x", false);
+        stage.press("Return", false);
+    }
+
+    function typedWithReturnShown() {
+        row().run();
+        same("a letter read with the Return after it starts the time again", last().shown,
+            undefined);
+    }
+
+    // A move, and an ask from outside before Asks reads the move.
+    function movedThenOpened() {
+        stage.press("j", true, () => {
+            stage.toldFromOutside += 1;
+        });
+    }
+
+    function movedThenOpenedShown() {
+        stage.present(600);
+        row().run();
+        same("a move an ask from outside follows arms nothing", last().shown, undefined);
     }
 
     // Opened from outside on home, a letter of his landing there, then
@@ -425,17 +488,24 @@ ShellRoot {
             last().shown, undefined);
     }
 
-    // Opened from outside on home, then stepped into Passwords from
-    // outside while a key of his is being taken.
+    // Opened from outside on home, a letter of his landing there, then
+    // stepped into Passwords from outside while a key of his is being taken.
     function switchedMidKey() {
         stage.open = false;
         stage.held = [];
         stage.selected = null;
         stage.opened();
+        stage.press("p", false);
+    }
+
+    function switchedMidKeyStep() {
         stage.press("Return", false, () => {
             stage.toldFromOutside += 1;
             stage.intoPasswords();
         });
+    }
+
+    function switchedMidKeyShown() {
         stage.present(600);
         row().run();
         same("nor is a step from outside that lands while a key of his is taken",

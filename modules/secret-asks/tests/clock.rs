@@ -169,6 +169,12 @@ fn a_yes_a_moment_past_an_ask_s_ten_minutes_is_refused_before_any_tidy() {
         !answered.contains(VALUE),
         "the value reached the answer: {answered}"
     );
+    // The agent that asked reads its answer file, which says the ask ended.
+    let answer: Value = serde_json::from_str(&answered).expect("the ask's answer is JSON");
+    assert_eq!(
+        answer["state"], "ended",
+        "the answer doesn't say the ask ended: {answered}"
+    );
     let told = told(&journal);
     assert!(
         !told.contains(VALUE),
