@@ -98,8 +98,13 @@ fn named(rows: &HashMap<String, &Value>, address: &str) -> Option<String> {
 fn carry(record: &Value, parent: &str, rows: &HashMap<String, &Value>, words: &Words) -> Value {
     let said = &words.carried;
     let id = text(record, "key").trim_start_matches("carry:");
-    let name =
-        named(rows, text(record, "address")).unwrap_or_else(|| said.word("ended").to_owned());
+    // A session between machines has no row anywhere, yet hasn't ended.
+    let gone = if matches!(state_of(record), Some((_, _, "underWayCount", ..))) {
+        "travelling"
+    } else {
+        "ended"
+    };
+    let name = named(rows, text(record, "address")).unwrap_or_else(|| said.word(gone).to_owned());
     // A carry Joel asked himself says so, as the node judged who asked.
     let by = if text(record, "by") == "person" {
         said.word("you").to_owned()
@@ -379,5 +384,21 @@ mod tests {
         let tree = top();
         let rows = networks::sessions(&tree);
         assert_eq!(named(&rows, "harbor").as_deref(), Some("Chart the Harbour"));
+    }
+
+    #[test]
+    fn a_session_on_its_way_with_no_row_yet_is_said_to_travel_not_to_have_ended() {
+        // Between leaving one machine and starting on the other, a carried
+        // session has no row anywhere, yet it hasn't ended.
+        for state in ["ordered", "carrying"] {
+            let under_way = record("AFLOAT", "2026-11-16T01:00:00Z", state);
+            let made = rows(&[&under_way], &top(), &words());
+            assert_eq!(made[1]["name"], "A Session on Its Way", "{state}");
+        }
+        for state in ["arrived", "refused", "back"] {
+            let settled = record("AFLOAT", "2026-11-16T01:00:00Z", state);
+            let made = rows(&[&settled], &top(), &words());
+            assert_eq!(made[1]["name"], "A Session That Ended", "{state}");
+        }
     }
 }
