@@ -158,21 +158,21 @@ let
   # Rows naming a site nothing is mounted at.
   unmounted = lib.attrNames (removeAttrs cfg.rows (lib.attrNames cfg.mounts));
   roots = config.jitsusama.repos.roots or null;
+  # The map check drives Chromium alone, so it carries Chromium and the
+  # headless shell a headless launch opens, not Firefox or WebKit.
+  chromium = pkgs.playwright-driver.passthru.selectBrowsers {
+    withFirefox = false;
+    withWebkit = false;
+    withFfmpeg = false;
+  };
   # Whether the map reaches every cell of the realm (modules/mycelium/site/
   # map-check.sh): the map's live-page test, pointed at the page this
   # machine serves, for a reader such as the hourly card to count with
-  # --json. It drives Chromium alone, so it carries Chromium and the
-  # headless shell a headless launch opens, not Firefox or WebKit.
+  # --json.
   mapCheck = pkgs.writeShellApplication {
     name = "mycelium-map-check";
     runtimeInputs = [ pkgs.jq ];
-    runtimeEnv.PLAYWRIGHT_BROWSERS_PATH = "${
-      pkgs.playwright-driver.passthru.selectBrowsers {
-        withFirefox = false;
-        withWebkit = false;
-        withFfmpeg = false;
-      }
-    }";
+    runtimeEnv.PLAYWRIGHT_BROWSERS_PATH = "${chromium}";
     text =
       builtins.replaceStrings
         [ "@python@" "@test@" "@live_page@" ]
