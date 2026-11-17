@@ -195,17 +195,26 @@ fn a_list_keeps_the_order_given_last_though_no_record_changed() {
         vec![row("agents", "P", "reef"), row("agents", "O", "kelp")],
         json!({}),
     );
-    // The same records, the one used last now first, as windows are
-    // given when focus moves among them.
+    client.ask(&json!({"id": "open", "ask": "watch", "kind": "row"}));
+    // The same records in another order, each unchanged: no daemon here
+    // gives one yet, since windows' order rides a field of their own.
     shared.change(
         vec![row("agents", "O", "kelp"), row("agents", "P", "reef")],
         json!({}),
     );
+    client.send(&json!({"id": "health", "ask": "health"}));
+    let next = client.heard();
+    assert_eq!(next["id"], "health", "the open watch heard nothing: {next}");
+    let given_last = json!([row("agents", "O", "kelp"), row("agents", "P", "reef")]);
     let listed = client.ask(&json!({"id": 1, "ask": "list", "kind": "row"}));
     assert_eq!(
-        listed["records"],
-        json!([row("agents", "O", "kelp"), row("agents", "P", "reef")]),
+        listed["records"], given_last,
         "listed in the order given last"
+    );
+    let watched = client.ask(&json!({"id": 2, "ask": "watch", "kind": "row"}));
+    assert_eq!(
+        watched["records"], given_last,
+        "watched in the order given last"
     );
 }
 
