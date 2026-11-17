@@ -9,6 +9,9 @@
 // interface's; both are put back as the command says them. The machines add
 // what their cells leave out (memory, disk, power, room), and the messages
 // only who sent, to whom and when, which is all the feed passes of them.
+// What waits on the mesh, each question still waiting on a peer and each
+// hold still standing, is the node's own judgement (its `unanswered` kind),
+// read likewise without its words.
 
 import { type Fields, type Held, isObject, text } from "../../local-sites/kit/records.ts";
 
@@ -25,7 +28,9 @@ const BALANCE_FRESH_MS = 180_000;
 /**
  * The node's records, a watch's for each kind the map reads. The balance is
  * the balance service's latest reading, which a node serves only where the
- * service runs, so a map without it draws as before.
+ * service runs, so a map without it draws as before. What waits on the
+ * mesh is there only once its watch has answered, since a node too old to
+ * serve it would otherwise read as one with nothing waiting.
  */
 interface Heard {
   readonly network: Held;
@@ -33,6 +38,23 @@ interface Heard {
   readonly machine: Held;
   readonly message: Held;
   readonly balance?: Held;
+  readonly unanswered?: Held | undefined;
+}
+
+/**
+ * What waits on the mesh as the map draws it: who sent it, a question or a
+ * hold, where it went and since when; for a question, whom it waits on, and
+ * for a hold, until when it stands at most.
+ */
+interface Wait {
+  readonly id: unknown;
+  readonly from: unknown;
+  readonly intent: unknown;
+  readonly groups: unknown;
+  readonly since: string;
+  readonly re: unknown;
+  readonly waiting_on: unknown;
+  readonly until: unknown;
 }
 
 /** The realm's balance as the map says it, from the service's latest reading. */
@@ -59,6 +81,7 @@ interface Now {
   readonly machines: readonly Fields[];
   readonly messages: readonly Message[];
   readonly balance: Balance | null;
+  readonly waits: readonly Wait[] | null;
 }
 
 /**
@@ -135,6 +158,33 @@ function messagesOf(held: Held): Message[] {
 }
 
 /**
+ * What waits on the mesh, the oldest first, without what was said; none
+ * at all when the node serves nothing of it.
+ */
+function waitsOf(held: Held | undefined): Wait[] | null {
+  if (held === undefined) {
+    return null;
+  }
+  const waits: Wait[] = [];
+  for (const record of held.all()) {
+    const since = text(record, "since");
+    if (since !== undefined) {
+      waits.push({
+        id: record["id"],
+        from: record["from"],
+        intent: record["intent"],
+        groups: record["groups"],
+        since,
+        re: record["re"] ?? null,
+        waiting_on: record["waiting_on"] ?? [],
+        until: record["until"] ?? null,
+      });
+    }
+  }
+  return waits.sort((one, other) => one.since.localeCompare(other.since));
+}
+
+/**
  * The newest balance reading held, when it is fresh at `at`: each machine's node
  * serves its own, so the newest wins, and one dated further ahead than a reading
  * may age is a wrong clock, never fresh.
@@ -207,10 +257,11 @@ function nowOf(heard: Heard, at: number): Now {
     })),
     messages: messagesOf(heard.message),
     balance: balanceOf(reading),
+    waits: waitsOf(heard.unanswered),
   };
   // Every field is untyped JSON from the node, and plain keeps its shape.
   return plain(now) as Now;
 }
 
-export type { Balance, Heard, Message, Now };
+export type { Balance, Heard, Message, Now, Wait };
 export { BALANCE_FRESH_MS, LATEST_MESSAGES, nowOf };

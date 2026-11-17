@@ -623,6 +623,14 @@ body {
   vector-effect: non-scaling-stroke;
 }
 
+/* A hold standing: a wall across the cell, in the strongest ink, since it
+   is told by its shape and must read beside any ring. */
+.m-holds {
+  fill: none;
+  stroke: var(--strong);
+  stroke-width: 3;
+}
+
 .m-changed {
   fill: none;
   stroke: var(--rule);

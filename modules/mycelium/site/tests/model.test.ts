@@ -295,6 +295,73 @@ it("a machine the balance doesn't name has no share, and the others keep theirs"
   );
 });
 
+/** What the node judges waits on the mesh, as it serves the `unanswered` kind. */
+function open(id: string, since: string, fields: object) {
+  return {
+    key: `unanswered:${id}`,
+    kind: "unanswered",
+    heard: AT,
+    id,
+    from: "OSPREY",
+    since,
+    text: "what was said",
+    ...fields,
+  };
+}
+
+/** The four watches and the unanswered kind's, told `these` and what waits. */
+function toldWaits(these: Parameters<typeof told>[0], waiting: readonly object[]) {
+  const unanswered = new Held();
+  unanswered.took({ records: waiting });
+  return { ...told(these), unanswered };
+}
+
+it("what waits on the mesh is heard oldest first, as who waits on whom, never what was said", () => {
+  const hold = open("2", "2026-11-16T07:20:00Z", {
+    intent: "hold",
+    groups: ["#machine"],
+    until: "2026-11-16T09:20:00Z",
+  });
+  const question = open("1", "2026-11-16T07:10:00Z", {
+    intent: "question",
+    groups: ["@TERN01"],
+    re: "0",
+    waiting_on: ["TERN01"],
+  });
+  const { waits } = nowOf(toldWaits([], [hold, question]), AT);
+  assert.deepEqual(waits, [
+    {
+      id: "1",
+      from: "OSPREY",
+      intent: "question",
+      groups: ["@TERN01"],
+      since: "2026-11-16T07:10:00Z",
+      re: "0",
+      waiting_on: ["TERN01"],
+      until: null,
+    },
+    {
+      id: "2",
+      from: "OSPREY",
+      intent: "hold",
+      groups: ["#machine"],
+      since: "2026-11-16T07:20:00Z",
+      re: null,
+      waiting_on: [],
+      until: "2026-11-16T09:20:00Z",
+    },
+  ]);
+});
+
+it("a node that serves nothing of what waits is told apart from one with nothing waiting", () => {
+  assert.deepEqual([nowOf(told([]), AT).waits, nowOf(toldWaits([], []), AT).waits], [null, []]);
+});
+
+it("a wait with no time to it is passed over", () => {
+  const { since: _since, ...timeless } = open("1", "", { intent: "question" });
+  assert.deepEqual(nowOf(toldWaits([], [timeless]), AT).waits, []);
+});
+
 it("a cell's change is drawn, and a cell gone is gone from the map", () => {
   const heard = told([session("OSPREY", "the map"), session("TERN01", "the feed")]);
   heard.cell.took({

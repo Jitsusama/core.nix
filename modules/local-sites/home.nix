@@ -226,10 +226,12 @@ in
       # cell's purpose, standing, documents and lineage. The map reads its
       # networks and cells whole, as `mycelium networks` draws them; of
       # each machine only what the map draws; of each message only who
-      # sent it, how and where, never its words; and the balance service's
-      # latest reading whole, for each machine's share of the work. Of each
-      # murmur the murmurs page reads only what it draws, not the machine it
-      # was said on.
+      # sent it, how and where, never its words; the balance service's
+      # latest reading whole, for each machine's share of the work; and of
+      # what waits on the mesh, each question waiting and hold standing,
+      # who sent it, where and since when, and whom or until when it
+      # waits, never its words either. Of each murmur the murmurs page
+      # reads only what it draws, not the machine it was said on.
       node = {
         socket = "mycelium/${realm}.sock";
         kinds = {
@@ -275,6 +277,16 @@ in
             "settled"
           ];
           balance = { };
+          unanswered.fields = [
+            "id"
+            "from"
+            "intent"
+            "groups"
+            "since"
+            "re"
+            "waiting_on"
+            "until"
+          ];
         };
       };
     }

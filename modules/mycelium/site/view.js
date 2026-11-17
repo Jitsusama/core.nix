@@ -263,25 +263,60 @@
 
   const STANDINGS = ["asks", "stuck", "moving", "quiet", "dormant"];
   const STANDING_WORD = { asks: "needs you", stuck: "stuck", moving: "moving", quiet: "quiet", dormant: "dormant" };
-  // A question waits on each cell it named until that cell says anything
-  // later. The node keeps no reply link, so any word since counts as an
-  // answer, and the page says "no word since" rather than "unanswered".
-  // A question younger than WAIT_GRACE_MS is talk under way, not a hold-up.
+  // What waits on the mesh is the node's judgement where it serves one: a
+  // question waits on each peer it went to until that peer answers it or
+  // anything in its thread, and a hold stands until its sender ends it.
+  // A node that judges nothing leaves the page to guess from the latest
+  // messages, where a question waits on each cell it named until that
+  // cell says anything later; with no reply link, any word since counts
+  // as an answer, and the page then says "no word since" rather than
+  // "no answer yet". Either way a question younger than WAIT_GRACE_MS is
+  // talk under way, not a hold-up.
   const WAIT_GRACE_MS = 3 * 60_000;
-  const owing = (messages, cells, byAddress, at) => {
-    for (const s of cells) s.owes = [];
-    const sent = [...messages].sort((a, b) => a.at.localeCompare(b.at));
-    sent.forEach((x, i) => {
-      if (x.intent !== "question" || !(Date.parse(at) - Date.parse(x.at) >= WAIT_GRACE_MS)) return;
-      for (const g of x.groups || []) {
-        const address = g.match(/^peer\.(.+)$/)?.[1].toUpperCase();
-        const s = address && address !== x.from ? byAddress.get(address) : null;
-        if (s && !sent.slice(i + 1).some((y) => y.from === address)) s.owes.push({ from: x.from, at: x.at });
+  const owing = (now, cells, byAddress) => {
+    for (const s of cells) {
+      s.owes = [];
+      s.holds = [];
+    }
+    const grown = (since) => Date.parse(now.at) - Date.parse(since) >= WAIT_GRACE_MS;
+    if (now.waits) {
+      for (const x of now.waits) {
+        if (x.intent === "hold") byAddress.get(x.from)?.holds.push({ to: x.groups || [], at: x.since, until: x.until });
+        else if (x.intent === "question" && grown(x.since)) {
+          for (const address of x.waiting_on || []) if (address !== x.from) byAddress.get(address)?.owes.push({ from: x.from, at: x.since });
+        }
       }
-    });
+    } else {
+      const sent = [...(now.messages || [])].sort((a, b) => a.at.localeCompare(b.at));
+      sent.forEach((x, i) => {
+        if (x.intent !== "question" || !grown(x.at)) return;
+        for (const g of x.groups || []) {
+          const address = g.match(/^peer\.(.+)$/)?.[1].toUpperCase();
+          const s = address && address !== x.from ? byAddress.get(address) : null;
+          if (s && !sent.slice(i + 1).some((y) => y.from === address)) s.owes.push({ from: x.from, at: x.at });
+        }
+      });
+    }
     for (const s of cells) s.owes.sort((a, b) => a.at.localeCompare(b.at));
   };
+  // What the page says of a question waiting, by how it knows: the node's
+  // judgement, or its own guess from the latest messages.
+  const unansweredWords = () => (current?.judged ? "with no answer yet" : "with no word since");
+  // Where a hold went, as the mesh writes it (@PEER, #machine, #quest/x),
+  // said as the page names each: a cell by its short name, a network as
+  // the drawers name it, the machine as every cell on it.
+  const holdTarget = (to) => {
+    const peer = to.match(/^@(.+)$/)?.[1].toUpperCase();
+    if (peer) return current?.byAddress.get(peer)?.short || peer;
+    if (to === "#machine") return "every cell on its machine";
+    const key = to.replace(/^#/, "").replace("/", ".");
+    const hub = current?.hubs.get(key);
+    if (hub) return hub.name;
+    return current?.shared.some((x) => x.key === key) ? sharedWords(key) : key;
+  };
+  const holdWords = (h) => `holding ${h.to.map(holdTarget).join(" and ") || "its peers"} since ${dayClock(h.at)}${h.until ? `, until ${dayClock(h.until)} at most` : ""}`;
   const WAIT_GAP = 3; // between a mark and its waiting ring
+  const HOLD_REACH = 7; // how far a hold's wall stands out past any waiting ring
   const WAIT_FULL_MS = 30 * 60_000; // a question this old swells its ring fully
   const SWELL_BASE = 2;
   const SWELL_PER_QUESTION = 2;
@@ -343,7 +378,7 @@
       networks: (s.groups || []).filter((g) => counted.has(g)),
       leads: now.teams.filter((t) => t.lead === s.id).map((t) => lower(t.key)),
     }));
-    return { at: now.at, networks: [...teams, ...shared], cells, machines: now.machines, messages: now.messages };
+    return { at: now.at, networks: [...teams, ...shared], cells, machines: now.machines, messages: now.messages, waits: now.waits };
   };
 
   const model = (raw) => {
@@ -447,14 +482,14 @@
     }
     const byAddress = new Map(cells.map((s) => [s.address, s]));
     const byId = new Map(cells.map((s) => [s.id, s]));
-    owing(now.messages || [], cells, byAddress, now.at);
+    owing(now, cells, byAddress);
     for (const h of hubs.values()) h.owes = h.cells.flatMap((s) => s.owes);
     const shared = now.networks
       .filter((n) => SHARED_WORD[n.shape])
       .map((n) => ({ key: n.name, shape: n.shape, short: n.short || n.name, title: n.title, cells: n.cells.map((a) => byAddress.get(a)).filter(Boolean) }))
       .filter((n) => n.cells.length >= 2);
     const repositories = new Set(cells.map((s) => s.repo).filter(Boolean)).size || shared.filter((n) => n.shape === "repository").length;
-    return { at: now.at, hubs, cells, byAddress, byId, shared, machines: now.machines, messages: now.messages || [], repositories };
+    return { at: now.at, hubs, cells, byAddress, byId, shared, machines: now.machines, messages: now.messages || [], judged: Array.isArray(now.waits), repositories };
   };
 
   // ---- Places that never move. ----
@@ -771,8 +806,9 @@
         open = null;
       };
       // A layer is all discs or all lines, so the knock-outs clip a line
-      // layer once rather than once per ink.
-      const knocked = knocks.length > 0 && layer[0]?.tag === "path";
+      // layer once rather than once per ink. The cells are discs with the
+      // odd wall among them, which the names never knock out.
+      const knocked = knocks.length > 0 && layer !== cellLayer && layer[0]?.tag === "path";
       if (knocked) {
         g.save();
         clipKnocks(g, w, h);
@@ -963,6 +999,14 @@
     // works, and wider with each question and with the oldest one's age.
     const grow = swell(s.owes);
     if (grow) disc("m-waits", R + WAIT_GAP + grow);
+    // A hold is a wall across the cell's hypha, as a septum closes one:
+    // a bar through it, painted under the membrane, so only its ends show.
+    // It stands upright, since a cell's name sits beside it.
+    if (s.holds.length) {
+      const [x, y] = at;
+      const reach = R + WAIT_GAP + grow + HOLD_REACH;
+      parts.push({ tag: "path", cls: "m-holds", line: [[x, y - reach], [x, y], [x, y + reach]], key, parent });
+    }
     if (s.standing === "dormant") disc("m-dormant", R);
     else {
       const ring = s.standing === "asks" ? " m-asks" : s.standing === "stuck" ? " m-stuck" : "";
@@ -1320,7 +1364,7 @@
       if (!p) continue;
       const key = `c:${address}`;
       const strong = (chosen?.kind === "cell" && chosen.id === address) || (chosen?.kind === "talk" && chosen.id.split("|").includes(key)) || key === pointed;
-      const sub = s.standing === "asks" ? "needs you" : s.standing === "stuck" ? "stuck" : s.owes.length ? waitingWords(s.owes) : "";
+      const sub = s.standing === "asks" ? "needs you" : s.standing === "stuck" ? "stuck" : s.owes.length ? waitingWords(s.owes) : s.holds.length ? "holding" : "";
       const sought = key === `c:${m.byId.get(hover)?.address}` || foundSet.has(key);
       out.push({ key, kind: "cell", rank: strong ? 0 : sought ? 2 : 4, at: p, r: R, out: [1, 0], name: [clipped(s.short)], sub, strong });
     }
@@ -1651,7 +1695,8 @@
   };
   const cellWords = (s) =>
     (s.standing === "asks" ? (s.wants ? `needs you: ${s.wants}` : STANDING_WORD.asks) : s.standing === "moving" ? `moving: ${s.doing || "in a turn"}` : STANDING_WORD[s.standing]) +
-    (s.owes.length ? `; ${waitingWords(s.owes)}` : "");
+    (s.owes.length ? `; ${waitingWords(s.owes)}` : "") +
+    (s.holds.length ? `; ${s.holds.length === 1 ? "a hold" : `${s.holds.length} holds`} standing` : "");
 
   // What a node is, in words: the name a tree item goes by.
   const describe = perReading((key) => {
@@ -2654,7 +2699,7 @@
     const u = s.usage || {};
     const owed = s.owes.map((o) => `${current.byAddress.get(o.from)?.short || o.from}'s question waiting since ${dayClock(o.at)}`);
     const today = [u.turns_today != null ? plural(u.turns_today, "turn") : "", u.cost_today ? money(u.cost_today) : ""].filter(Boolean).join(" and ");
-    const bits = [s.standing === "asks" ? "needs you" : "", s.standing === "stuck" ? "stuck" : "", ...owed, contextWords(s), today ? `${today} today` : ""].filter(Boolean);
+    const bits = [s.standing === "asks" ? "needs you" : "", s.standing === "stuck" ? "stuck" : "", ...owed, ...s.holds.map(holdWords), contextWords(s), today ? `${today} today` : ""].filter(Boolean);
     return `<p class="health-line">${verdictMark(verdictOf([s]))}: ${esc(bits.join("; ") || "nothing said")}.</p>`;
   };
   const leaseShort = (x) => {
@@ -2684,9 +2729,14 @@
     const asker = clipped(current.byAddress.get(o.from)?.short || o.from);
     return (
       `<li><button type="button" class="row" data-go="cell=${esc(s.address)}">${stateGlyph(s)}<span class="what"><span class="name">${esc(s.short)}</span>` +
-      `<span class="fact">${esc(`${waitingWords(s.owes)}; ${s.owes.length === 1 ? "it came" : "the oldest came"} from ${asker} ${minutesWord(ageOf(s.owes))} ago, with no word since`)}</span></span></button></li>`
+      `<span class="fact">${esc(`${waitingWords(s.owes)}; ${s.owes.length === 1 ? "it came" : "the oldest came"} from ${asker} ${minutesWord(ageOf(s.owes))} ago, ${unansweredWords()}`)}</span></span></button></li>`
     );
   };
+  // A hold puts off what others would do, which is a choice and no fault,
+  // so it is said beside what waits, and never counted against health.
+  const holdRow = (s) =>
+    `<li><button type="button" class="row" data-go="cell=${esc(s.address)}">${stateGlyph(s)}<span class="what"><span class="name">${esc(s.short)}</span>` +
+    `<span class="fact">${esc(s.holds.map(holdWords).join("; "))}</span></span></button></li>`;
   // Who was born and who ended in the last ten minutes, newest first. A
   // born cell is a way to it; an ended one is only a fact, since there is
   // nothing left to open.
@@ -2710,7 +2760,11 @@
   };
   const heldUp = (cells) => {
     const held = cells.filter((s) => s.owes.length).sort((a, b) => a.owes[0].at.localeCompare(b.owes[0].at));
-    return held.length ? `<h3>Questions Waiting</h3><ul class="rows">${held.map(heldRow).join("")}</ul>` : "";
+    const holding = cells.filter((s) => s.holds.length).sort((a, b) => a.holds[0].at.localeCompare(b.holds[0].at));
+    return (
+      (held.length ? `<h3>Questions Waiting</h3><ul class="rows">${held.map(heldRow).join("")}</ul>` : "") +
+      (holding.length ? `<h3>Holds Standing</h3><ul class="rows">${holding.map(holdRow).join("")}</ul>` : "")
+    );
   };
 
   // Signal against noise: how much of the talk asked or found something,
@@ -2855,7 +2909,8 @@
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane" r="11"/><circle class="m-quiet" r="5.5"/></svg></dt><dd>Quiet: waiting for its next word</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-dormant" r="11"/></svg></dt><dd>Dormant: parked, its place kept</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane m-asks" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>Needs you, or stuck: its ring says so, and its name shows as you come close</dd></div>` +
-      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-waits" r="13"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>A question waiting: a dashed ring round a cell asked something three minutes or more ago that has said nothing since, wider the more questions and the older the first; a network holding any is ringed round its ground</dd></div>` +
+      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-waits" r="13"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>A question waiting: a dashed ring round a cell asked something three minutes or more ago that ${m.judged ? "hasn't answered it yet" : "has said nothing since"}, wider the more questions and the older the first; a network holding any is ringed round its ground</dd></div>` +
+      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-holds" d="M0,-14V14"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>A hold standing: a wall drawn across a cell that asked the others to put something off until it says it's over</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-hub" r="12"/><path class="m-hub-shape" d="${SHAPES.square(6)}"/></svg></dt><dd>An orchestration's hub, known by its shape; a click on its ground opens it</dd></div>` +
       (m.cells.length > FOLD_OVER
         ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-colony folded" r="12"/><circle class="m-hub" r="7"/></svg></dt><dd>A folded network: drawn too small to read, or off the map, so its cells wait in its ground until you come closer or open it</dd></div>`

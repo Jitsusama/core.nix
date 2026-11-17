@@ -10,9 +10,10 @@
 // hidden: idle means zero, and the latest is handed over as it shows again.
 // Nothing is drawn until every kind has answered once, so the first map is
 // never one with its machines or its messages missing. The balance, each
-// machine's share of the realm's work, is watched apart: a node serves it
-// only where the balance service runs, so the map neither waits for it nor
-// says it as trouble, and draws without it until it comes.
+// machine's share of the realm's work, and what waits on the mesh are
+// watched apart: a node serves the one only where the balance service runs
+// and the other only once it is new enough, so the map neither waits for
+// them nor says them as trouble, and draws without them until they come.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
@@ -114,6 +115,33 @@ function owe(): void {
   }
 }
 
+/** A kind watched apart from those the map waits on, and whether it has answered. */
+interface Apart {
+  readonly held: Held;
+  readonly answered: () => boolean;
+}
+
+/**
+ * Watches a kind the map draws without: a reading moves the map as any
+ * does, but its standing and its trouble are the map's only once it is
+ * served everywhere, and until then the map just draws none of it.
+ */
+function watchApart(kind: string): Apart {
+  let answeredOnce = false;
+  const { held } = follow(
+    { feed: "node", kind },
+    {
+      moved: () => {
+        answeredOnce = true;
+        owe();
+      },
+      stands: () => undefined,
+      problem: () => undefined,
+    },
+  );
+  return { held, answered: () => answeredOnce };
+}
+
 /** Watches one kind, answering with the records its watch holds. */
 function watch(kind: Kind): Held {
   return follow(
@@ -136,23 +164,21 @@ function watch(kind: Kind): Held {
   ).held;
 }
 
+const waits = watchApart("unanswered");
+
 // What each watch holds, filled as its records arrive: the drawing reads these
-// and never a copy, since a copy would stay as it was first told.
+// and never a copy, since a copy would stay as it was first told. What waits
+// is there only once its watch has answered, so a node that doesn't serve it
+// reads as one that says nothing of it rather than one with nothing waiting.
 const heard: Heard = {
   network: watch("network"),
   cell: watch("cell"),
   machine: watch("machine"),
   message: watch("message"),
-  balance: follow(
-    { feed: "node", kind: "balance" },
-    {
-      moved: owe,
-      // Its standing and its trouble are the map's only once it is served
-      // everywhere; until then a machine without it just draws no share.
-      stands: () => undefined,
-      problem: () => undefined,
-    },
-  ).held,
+  balance: watchApart("balance").held,
+  get unanswered() {
+    return waits.answered() ? waits.held : undefined;
+  },
 };
 
 document.addEventListener("visibilitychange", () => {
