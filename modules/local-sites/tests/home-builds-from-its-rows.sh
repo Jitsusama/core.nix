@@ -10,6 +10,7 @@
 # beside it; its theme-color takes each look's ground from the kit, and
 # names none without one; a second run changes no file; a broken record
 # keeps the last build; a root with no sites.json is left alone; and a
+# row Nix declares stands in for the record's, or goes first; and a
 # document loading a script file of its own is named, on any of its pages,
 # however its tag is spelled and even past a byte that isn't UTF-8, while one
 # loading only the kit's, and an app loading its own, are not.
@@ -70,6 +71,7 @@ script 'src="site.js" defer' old/index.html
 script 'type="module" src="ways.js"' old/index.html
 printf '\xff\n' >> "$root/notes/more.html"
 script "type=module SRC='/local-sites/kit/../x.js'" notes/more.html
+script "src=/local-sites/kit/../x.js" notes/index.html
 
 said=$("$python" "$sources/home.py" "$sources" "$root")
 owning="scripts of their own in notes/ (/local-sites/kit/../x.js), old/ (site.js, ways.js)"
@@ -128,6 +130,43 @@ after=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)
 [ "$before" = "$after" ] || fail "a second run changed a file"
 strips=$(grep -c 'sites strip: home.py' "$root/map/index.html")
 [ "$strips" = 1 ] || fail "a strip was doubled"
+
+# The rows Nix declares stand in for the record's at the same path, in its
+# place, and go first when the record has none. llms.txt lists every row in
+# order, whatever its bed, so it shows which.
+cat > "$work/declared.json" << 'EOF'
+{"sites": [
+  {"path": "grove/", "name": "The grove", "what": "Trees.", "kind": "app", "when": "live"},
+  {"path": "old/", "name": "The old one, declared", "what": "Live.", "kind": "app", "when": "live"}
+]}
+EOF
+said=$("$python" "$sources/home.py" "$sources" "$root" "$work/declared.json")
+# Declared, the old one is an app, whose scripts are its own business.
+owning="scripts of their own in notes/ (/local-sites/kit/../x.js)"
+[ "$said" = "home: 4 sites, 0 kept; strips on 2 pages; $owning" ] || fail "declared, it said: $said"
+grep -q '<span class="name">The old one</span>' "$index" &&
+  fail "the record's old row outlived its declaration"
+listed=$(grep -o '^- \[[^]]*\]' "$root/llms.txt" | tr '\n' ' ')
+[ "$listed" = "- [The grove] - [The map] - [Notes & such] - [The old one, declared] " ] ||
+  fail "the declared rows aren't first and in place: $listed"
+before=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)
+"$python" "$sources/home.py" "$sources" "$root" "$work/declared.json" > /dev/null
+after=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)
+[ "$before" = "$after" ] || fail "a second run with declared rows changed a file"
+"$python" "$sources/home.py" "$sources" "$root" > /dev/null
+
+# A path the record holds twice, however spelled, is listed once when
+# declared, and with no record or folder yet the declared rows make both.
+mkdir -p "$work/twice"
+grove=$(sed -n '2s/},$/}/p' "$work/declared.json")
+printf '{"sites": [%s, %s]}\n' "${grove/grove\//grove}" "${grove/grove\//.\/grove\/}" \
+  > "$work/twice/sites.json"
+"$python" "$sources/home.py" "$sources" "$work/twice" "$work/declared.json" > /dev/null
+listed=$(grep -c '^- \[The grove\]' "$work/twice/llms.txt")
+[ "$listed" = 1 ] || fail "a twice-recorded declared site was listed $listed times"
+"$python" "$sources/home.py" "$sources" "$work/fresh/sites" "$work/declared.json" > /dev/null
+grep -q '<span class="name">The grove</span>' "$work/fresh/sites/index.html" ||
+  fail "with no record, the declared rows made no home"
 
 # Without the kit, the home names no ground rather than a made-up one.
 rm "$root/kit/theme.css"

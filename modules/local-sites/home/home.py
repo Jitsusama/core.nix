@@ -10,11 +10,18 @@ switch from the kit's /local-sites/kit/document.js, so what it says names
 every document loading a script file of its own, which is a copy that
 won't learn what the kit does next.
 
-usage: home.py <sources> <root>, where sources holds the home's page and its
-files, and root is the sites' folder. It rewrites index.html, index.md and
+A live site's row comes from its declaration in Nix rather than the record,
+so what the home says of it changes as the site does. The rows the Nix
+config declares, as declared.json writes them, stand in for the record's row
+at the same path, however it is spelled, or go first if it has none.
+
+usage: home.py <sources> <root> [<declared>], where sources holds the home's
+page and its files, root is the sites' folder, and declared is the rows the
+Nix config declares. It rewrites index.html, index.md and
 llms.txt whole, and in each stripped page only what sits between the strip's
-two markers, so a run with nothing changed leaves every file as it was. A
-root with no sites.json yet is left alone.
+two markers, so a run with nothing changed leaves every file as it was.
+Without declared rows, a root with no sites.json yet is left alone; with
+them, they make the home, the root made if need be.
 """
 
 import html
@@ -280,7 +287,8 @@ def own_scripts(root: Path, sites: list[Site]) -> list[str]:
             sources = (source for _, source in SCRIPT_SRC.findall(text))
             scripts += [s for s in sources if not s.startswith(KIT) or ".." in s]
         if scripts:
-            owning.append(f"{site.path} ({', '.join(scripts)})")
+            # Each named once, though several of its pages load it.
+            owning.append(f"{site.path} ({', '.join(dict.fromkeys(scripts))})")
     return owning
 
 
@@ -296,18 +304,55 @@ def write(path: Path, text: str) -> None:
         fresh.replace(path)
 
 
-def build(sources: Path, root: Path) -> str:
-    """Build the home in root from its sources and root's sites.json, saying what it did."""
+def declaring(recorded: list[Site], declared: list[Site]) -> list[Site]:
+    """Put each declared row in its recorded row's place, or first when none is recorded.
+
+    Paths match however a session spelled them ("grove", "./grove/"), and a
+    path the record holds twice keeps only its first place, so a declared
+    site is listed once.
+    """
+    by_path = {folder(site.path): site for site in declared}
+    recorded_paths = {folder(site.path) for site in recorded}
+    placed = [site for site in declared if folder(site.path) not in recorded_paths]
+    taken: set[str] = set()
+    for site in recorded:
+        key = folder(site.path)
+        if key not in by_path:
+            placed.append(site)
+        elif key not in taken:
+            placed.append(by_path[key])
+            taken.add(key)
+    return placed
+
+
+def folder(path: str) -> str:
+    """Say a row's path as one folder name and a slash, however it was spelled."""
+    return "/".join(part for part in path.split("/") if part not in {"", "."}) + "/"
+
+
+def build(sources: Path, root: Path, declared: Path | None = None) -> str:
+    """Build the home in root from its sources, root's sites.json and the declared rows.
+
+    It says what it did.
+    """
     record = root / "sites.json"
+    # With no record yet, the declared rows alone make the home, making the
+    # sites' folder on a machine's first switch, before any document is there.
     if not record.exists():
-        return "home: no sites.json yet, so nothing to build"
+        if not declared:
+            return "home: no sites.json yet, so nothing to build"
+        root.mkdir(parents=True, exist_ok=True)
     # A record caught half written, or broken by a slip, leaves the last good
     # build serving and says why, since the next change to it builds again.
     try:
-        rows = json.loads(record.read_text(encoding="utf-8"))["sites"]
+        rows = json.loads(record.read_text(encoding="utf-8"))["sites"] if record.exists() else []
         sites = [Site.read(row) for row in rows]
     except (ValueError, KeyError, TypeError, AttributeError) as error:
         return f"home: sites.json can't be read ({error}), so the last build stays"
+    # Nix wrote the declared rows, so a fault in them is the build's, and fails it.
+    if declared:
+        live = [Site.read(row) for row in json.loads(declared.read_text(encoding="utf-8"))["sites"]]
+        sites = declaring(sites, live)
     for name in FILES:
         write(root / name, (sources / name).read_text(encoding="utf-8"))
     shell = (sources / "index.html").read_text(encoding="utf-8")
@@ -330,6 +375,9 @@ def build(sources: Path, root: Path) -> str:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:  # noqa: PLR2004 - the program and its two folders
-        sys.exit("usage: home.py <sources> <root>")
-    print(build(Path(sys.argv[1]), Path(sys.argv[2])))
+    # The program and its two folders, then the declared rows when given.
+    folders, with_rows = 3, 4
+    if len(sys.argv) not in {folders, with_rows}:
+        sys.exit("usage: home.py <sources> <root> [<declared>]")
+    rows = Path(sys.argv[folders]) if len(sys.argv) == with_rows else None
+    print(build(Path(sys.argv[1]), Path(sys.argv[2]), rows))

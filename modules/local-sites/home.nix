@@ -18,7 +18,10 @@
 # home/home.py writes the list, its llms.txt and Markdown twin, and each
 # page's strip, and copies the home's own scripts and styles in beside
 # them. It runs whenever sites.json changes and at every switch, so a
-# changed builder reaches the home without anyone running it.
+# changed builder reaches the home without anyone running it. A live
+# site's row is declared here beside its mount instead (rows), so what the
+# home says of it is built with it; it stands in for any row sites.json
+# still has at its path.
 #
 # A live site is built by Nix from its TypeScript on the kit (site.nix
 # says how) and mounted here with the feed it watches. system/ is the
@@ -65,6 +68,51 @@ let
       inherit (cfg) mounts feeds;
     }
   );
+  # What the home says of a live site, as a row of sites.json says it.
+  row = lib.types.submodule {
+    options = {
+      name = lib.mkOption {
+        type = lib.types.str;
+        description = "The site's name, as the home lists it.";
+      };
+      what = lib.mkOption {
+        type = lib.types.str;
+        description = "What the site shows, in a sentence.";
+      };
+      asks = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "What the site asks of Joel, if anything.";
+      };
+      homes = lib.mkOption {
+        type = lib.types.listOf (lib.types.either lib.types.str (lib.types.attrsOf lib.types.str));
+        default = [ ];
+        description = ''
+          The kinds of thing the site is home to, each a kind's name or a kind
+          with its address pattern, as a row of sites.json says them.
+        '';
+      };
+    };
+  };
+  # Each declared row as home.py reads it: an app, growing, and live. Its
+  # strip is the one its build writes, so the home writes none. The homes'
+  # readers (system's, the web-design skill's, Code's) still read sites.json,
+  # so its live rows stay there, and rolling this back stays safe, until
+  # they read these. A session's edit to a live row there no longer reaches
+  # the home, since the declaration stands in for it.
+  declared = pkgs.writeText "local-sites-rows.json" (
+    builtins.toJSON {
+      sites = lib.mapAttrsToList (
+        path: row:
+        row
+        // {
+          path = "${path}/";
+          kind = "app";
+          when = "live";
+        }
+      ) cfg.rows;
+    }
+  );
   kind = lib.types.submodule {
     options = {
       fields = lib.mkOption {
@@ -106,12 +154,15 @@ let
   };
   root = "%h/.local/share/jitsusama/sites";
   realm = config.jitsusama.mycelium.realm or null;
+  # Rows naming a site nothing is mounted at.
+  unmounted = lib.attrNames (removeAttrs cfg.rows (lib.attrNames cfg.mounts));
   roots = config.jitsusama.repos.roots or null;
   build = lib.escapeShellArgs [
     (lib.getExe pkgs.python3)
     "${./home/home.py}"
     "${./home}"
     "${config.xdg.dataHome}/jitsusama/sites"
+    "${declared}"
   ];
 in
 {
@@ -125,6 +176,15 @@ in
       The daemons a page may read live, each at /feed/<name>, with the
       kinds and fields of each it may read. A page reads and never acts:
       the server passes only hello, get, list, watch, unwatch and health.
+    '';
+  };
+
+  options.jitsusama.local-sites.rows = lib.mkOption {
+    type = lib.types.attrsOf row;
+    default = { };
+    description = ''
+      What the home says of each live site, by the name it's mounted at,
+      in place of a row of sites.json at its path.
     '';
   };
 
@@ -193,6 +253,74 @@ in
         src = ../repos/site;
         inherit webKit;
         tint = "success";
+      };
+    };
+    # What the home says of each mount, a row beside it, so a site's row
+    # is there exactly when the site is.
+    rows = {
+      system = {
+        name = "Your system, now";
+        what = lib.concatStrings [
+          "How your whole system stands at once: every machine on your mycelium, the "
+          "mycelium itself, your home network and your code, each judged by its own "
+          "owner, with the way deeper into each."
+        ];
+        asks = lib.concatStrings [
+          "Step through the four parts with j and k; say whether the sentence at the "
+          "top tells you enough at a glance."
+        ];
+      };
+      network = {
+        name = "Your home network, now";
+        what = lib.concatStrings [
+          "A live map of your home network, floor by floor: each eero's radios and "
+          "how busy they are, every device with its address and signal, and each "
+          "one's route to the internet."
+        ];
+        asks = lib.concatStrings [
+          "Press Return on this machine to see its route to the internet; say what "
+          "you'd want it to show."
+        ];
+      };
+    }
+    // lib.optionalAttrs (realm != null) {
+      forage = {
+        name = "What each cell is for";
+        what = lib.concatStrings [
+          "Every agent session on this machine with its forage: what it's for, what "
+          "it found and planned, and which sessions it started."
+        ];
+        asks = "Open the orchestrator's session; say whether its purpose reads at a glance.";
+      };
+      mycelium = {
+        name = "Your mycelium, now";
+        what = lib.concatStrings [
+          "A live map of every session and machine at work for you, each hanging "
+          "from the networks it has joined, moving the moment one changes."
+        ];
+        asks = "Keep it open a while; say what you'd want to see that it doesn't show.";
+      };
+      web = {
+        name = "What your sessions murmur";
+        what = lib.concatStrings [
+          "Small things your sessions notice and tie to what they're about, gathered "
+          "from every machine sharing the quest and the same everywhere within seconds."
+        ];
+      };
+    }
+    // lib.optionalAttrs (roots != null) {
+      code = {
+        name = "Code";
+        what = lib.concatStrings [
+          "Every repository on this machine drawn as a tree, its worktrees as leaves "
+          "coloured by when each was last written, with its open pull requests and "
+          "the agents at work in each, moving the moment git writes."
+        ];
+        asks = "Press ? for its keys; say whether it reads at a glance.";
+        homes = [
+          "repository"
+          "tree"
+        ];
       };
     };
     feeds = {
@@ -318,6 +446,18 @@ in
   # The config the unit serves, where its help's example reads it, so
   # what it serves can be read without finding its path in the store.
   config.xdg.configFile."local-sites/local-sites.json".source = served;
+
+  # A row the home lists with nothing mounted at its path would send Joel
+  # to a page that isn't there.
+  config.assertions = [
+    {
+      assertion = unmounted == [ ];
+      message = lib.concatStrings [
+        "jitsusama.local-sites.rows names sites with no mount: ${toString unmounted}; "
+        "remove them from jitsusama.local-sites.rows too"
+      ];
+    }
+  ];
 
   # A switch builds the home too, since a changed builder or page changes
   # no file the path unit watches. A run that changes nothing writes nothing.

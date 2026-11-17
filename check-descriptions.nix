@@ -1183,7 +1183,8 @@
   '';
   home-builds-from-its-rows = ''
     the local sites' home lists each site from its row in sites.json, the settled apart and every
-    name escaped, strips each page that asks after its skip link, names each document loading a
+    name escaped, with a row Nix declares for a live site standing in for the record's at its path
+    or going first, strips each page that asks after its skip link, names each document loading a
     script file of its own rather than the kit's, and changes nothing on a second run
   '';
   idle-pi-windows-yield = ''

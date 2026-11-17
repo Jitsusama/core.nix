@@ -19,7 +19,13 @@ A live site is TypeScript on the kit, built by Nix: [`site.nix`][site]
 typechecks it at its strictest, runs its tests and compiles it beside its
 page, so a site that doesn't hold never reaches the server. A site's
 source sits at `modules/<name>/site/`, served at `/<name>/`, and
-[`home.nix`][module] mounts it with the feed it watches. The system page
+[`home.nix`][module] mounts it with the feed it watches and declares its
+row in `jitsusama.local-sites.rows`, which the home lists in place of any
+row `sites.json` has at its path, so what the home says of a live site is
+built with it. The readers of a row's `homes` (the system daemon's, the
+web-design skill's and Code's) still read `sites.json`, so its live rows
+stay there until they read the declared ones; until then a session's edit
+to a live row there no longer reaches the home. The system page
 ([`modules/system/site`][system]) is the first, and the mycelium map
 ([`modules/mycelium/site`][map]) is fed live by the node. Code
 ([`modules/repos/site`][code]) draws every repository live from the repos
