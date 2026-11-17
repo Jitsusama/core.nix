@@ -1634,9 +1634,11 @@
     not served
   '';
   mycelium-site-reads-live = ''
-    the mycelium map, served by the local sites' server beside a stand-in node, reads live in
-    headless Chromium: the realm drawn and counted, a cell moving and one going, broken while the
-    node is away and live once it's back, stale once the server goes, the web-design skill's page
+    the mycelium map, served by the local sites' server beside a stand-in node through the node
+    feed as home.nix declares it for a machine in a realm, reads live in headless Chromium: the
+    realm drawn and counted, a cell moving and one going, broken while the node is away with the
+    realm kept drawn and live once it's back, stale once the server goes with the realm kept, a
+    record's words drawn as words and never as markup, the web-design skill's page
     checks and the map's own (each opened thing in view, its drawer saying what it is, no more
     names than it's engaged with) passing at a phone's width and a desk's in both looks, and
     nothing logged

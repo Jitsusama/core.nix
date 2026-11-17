@@ -2,10 +2,12 @@
 # folder's; its opening comment says what each kind of check proves.
 {
   account,
+  bareNixos,
   lib,
   onLinux,
   passesClippy,
   pkgs,
+  self,
   workstation,
   ...
 }:
@@ -237,11 +239,24 @@ in
   # headless Chromium through the server beside a stand-in node
   # (modules/mycelium/site/tests/map-reads-live-test.py): live with the realm
   # drawn, a cell moving and another going, broken while the node is away
-  # and live once it's back, stale once the server goes, the web-design
-  # skill's page checks and the map's own (site-checks.js) passing at two
-  # widths in both looks, and nothing logged. Chromium builds only on Linux.
+  # with the realm kept and live once it's back, stale once the server goes
+  # with the realm kept, a cell's title drawn as words and never as markup,
+  # the web-design skill's page checks and the map's own (site-checks.js)
+  # passing at two widths in both looks, and nothing logged but what a test
+  # causes. Chromium builds only on Linux.
+  # The node's feed is the one home.nix declares for a machine in a realm, so
+  # the server under test passes the page exactly what a machine's does.
   mycelium-site-reads-live =
     let
+      inRealm = account (bareNixos [
+        self.nixosModules.workstation
+        {
+          home-manager.users.someone = {
+            imports = [ self.homeModules.local-sites ];
+            jitsusama.mycelium.realm = "harbour";
+          };
+        }
+      ]);
       python = pkgs.python3.withPackages (python: [
         python.playwright
         python.pytest
@@ -259,6 +274,7 @@ in
         env = {
           LOCAL_SITES = lib.getExe' (pkgs.callPackage ./package.nix { }) "local-sites";
           MYCELIUM_SITE = "${map}";
+          NODE_KINDS = builtins.toJSON inRealm.jitsusama.local-sites.feeds.node.kinds;
           LOCAL_SITES_KIT = "${sites.kit}";
           STRIP = "${./home/strip.css}";
           WEB_SKILL = "${../theme/web/skill}";
@@ -269,7 +285,8 @@ in
       }
       ''
         HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider -p live_page \
-          --import-mode=importlib --basetemp="$TMPDIR/pytest" ${../mycelium/site/tests}/map-reads-live-test.py
+          --import-mode=importlib --basetemp="$TMPDIR/pytest" \
+          ${../mycelium/site/tests}/map-reads-live-test.py
         touch $out
       '';
   # clippy finds nothing in the server, its tests included.
