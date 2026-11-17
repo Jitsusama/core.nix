@@ -2375,6 +2375,28 @@ def test_a_step_into_programs_asks_no_rows_acts_twice_as_it_weighs_their_keys(
     assert read == rows, f"weighing the rows' keys read {read} rows' acts for {rows} rows"
 
 
+def test_a_search_names_each_rows_command_once_as_it_weighs_their_keys(shell: Shell) -> None:
+    """Weighing the keys of a search's rows names each row's command once.
+
+    The foot weighs every listed row's keys, and named each row's command about four times
+    over, reading its words each time: Return's act, whether it lands and whether it ends
+    something each asked, 204 times for 55 rows on "c" (2026-11-17).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    launcher_on_niri.weighed_held_still(shell)
+    shown = shell.showing()
+    read, rows = cast("int", shown["namedRead"]), cast("int", shown["namedRowsAsked"])
+    shell.type_in("c")
+    launcher_on_niri.weighed_held_still(shell)
+    shown = shell.showing()
+    read = cast("int", shown["namedRead"]) - read
+    rows = cast("int", shown["namedRowsAsked"]) - rows
+    shell.close_launcher()
+    assert rows > 0, "weighing the rows' keys named no row's command"
+    assert read == rows, f"weighing the rows' keys named {read} commands for {rows} rows"
+
+
 def test_a_program_selected_in_programs_is_asked_its_acts_alone_once(shell: Shell) -> None:
     """Moving onto a program in Programs asks it once whether its acts lie on its row.
 

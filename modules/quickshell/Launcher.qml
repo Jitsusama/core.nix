@@ -1916,9 +1916,10 @@ Scope {
     // acts alone were found to be, so a row's keys ask it once: keysFor
     // asks three or four times a row, and a program's actsOnly asks its
     // whole step (Applications.qml's startsOnly), 83 ms of a 116 ms step
-    // into Programs under load (vm-desktop-keeps-pace, 2026-11-14). Plain,
+    // into Programs under load (vm-desktop-keeps-pace, 2026-11-14). And
+    // the command each row is named by (commandNamed), the same way. Plain,
     // so setting it wakes no binding.
-    readonly property var actsWeighing: ({ rows: null })
+    readonly property var actsWeighing: ({ rows: null, named: null })
     // Whether a row holds its acts alone, asked of it afresh, and counted
     // (actsAsked) for the check that the selection is asked once.
     function actsAloneAsked(row) {
@@ -1941,6 +1942,10 @@ Scope {
     // they asked of, for the check that each row's is read once a weighing.
     property int actsRead: 0
     property int actsRowsAsked: 0
+    // How many times weighings named a row's command, and how many rows
+    // they named, for the check that each is named once a weighing.
+    property int namedRead: 0
+    property int namedRowsAsked: 0
 
     // A row's parts as they're named inside it: "Theme" in Slack.
     function partsIn(row) {
@@ -2744,10 +2749,21 @@ Scope {
 
     // The command a row is named by (Catalogue.js's named), from its words
     // or its verb, as the command line names its act, and the key
-    // language's flags for it.
+    // language's flags for it. While the foot weighs the rows listed, each
+    // row's is named once: Return's act, whether it lands and whether it
+    // ends something each named it, 204 times for 55 rows on "c" in the
+    // launcher's niri check (2026-11-17), each reading the row's words.
     function commandNamed(row) {
-        return Catalogue.named(commandWords(row).command, Commands.commandOf(row),
+        const weighing = actsWeighing.named;
+        if (weighing !== null && weighing.has(row))
+            return weighing.get(row);
+        const named = Catalogue.named(commandWords(row).command, Commands.commandOf(row),
             Options.commands);
+        if (weighing !== null) {
+            weighing.set(row, named);
+            namedRead += 1;
+        }
+        return named;
     }
 
     // Whether Return steps into a thing whose own act changes something, as
@@ -3378,13 +3394,18 @@ Scope {
         // A weighing can set off another within it, after a change, so
         // each asks afresh and gives the outer one its answers back.
         const outer = actsWeighing.rows;
+        const outerNamed = actsWeighing.named;
         const rows = new Map();
+        const named = new Map();
         actsWeighing.rows = rows;
+        actsWeighing.named = named;
         try {
             weighKeys();
         } finally {
             actsRowsAsked += rows.size;
+            namedRowsAsked += named.size;
             actsWeighing.rows = outer;
+            actsWeighing.named = outerNamed;
         }
     }
     function weighKeys() {
@@ -8957,6 +8978,10 @@ Scope {
             // how many rows they asked of.
             actsRead: root.actsRead,
             actsRowsAsked: root.actsRowsAsked,
+            // How many times weighing them named a row's command, and how
+            // many rows they named.
+            namedRead: root.namedRead,
+            namedRowsAsked: root.namedRowsAsked,
             // How many times a row was asked afresh whether it holds its
             // acts alone (actsAloneAsked).
             actsAsked: root.actsAsked.alone,
