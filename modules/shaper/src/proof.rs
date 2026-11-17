@@ -24,11 +24,13 @@
 //! Wayland's idle notice tells swayidle. The moment any of them changes,
 //! every load stops, the shaper goes back as it was, the pair under way
 //! is dropped, and it waits for his next idle stretch. SIGTERM, SIGINT
-//! and SIGHUP end it the same way, exiting 130. A proof killed outright
-//! can put nothing back, but its load ends within two minutes. It
-//! waits `--wait` seconds from its start in all, and exits 75 if they run
-//! out before every pair is measured, writing what it measured to
-//! `--out`. The call's packets are src/call.rs's.
+//! and SIGHUP end it the same way, writing what it measured to `--out`
+//! and exiting 130. A proof killed outright can put nothing back, but its
+//! load ends within two minutes, and the next proof puts the shaper back
+//! as the killed one found it. It waits `--wait` seconds from its start
+//! in all, and exits 75 if they run out before every pair is measured,
+//! writing what it measured to `--out`. It exits 69 if it couldn't put
+//! the shaper back, saying how to. The call's packets are src/call.rs's.
 //!
 //! It passes when, with the shaper on, the call's 99th percentile is
 //! within `CALL_MARGIN_MS` of its median through the shaper before the
@@ -42,11 +44,12 @@
 
 mod gate;
 mod load;
+mod stop;
 mod verdict;
 
 use crate::qdisc;
 use gate::{Gate, WAITS_ENV, waits_while};
-use load::{STOPPED, stop_scopes};
+use load::stop_scopes;
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -54,6 +57,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
+use stop::{STOPPED, halted, put_back, systemctl, tell};
 use terminal_kit::{Exit, Failure};
 use verdict::{Block, answers, judge, percentile};
 
@@ -142,14 +146,6 @@ fn scoped(slice: &str, name: &str, command: &[&str]) -> Command {
     c
 }
 
-fn systemctl(verb: &str) -> bool {
-    Command::new("systemctl")
-        .args([verb, "shaper.service"])
-        .stdout(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
-}
-
 /// The link the default route leaves by.
 fn uplink() -> Option<String> {
     let out = Command::new("ip")
@@ -234,7 +230,7 @@ fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block
     let sent_then = sent_bytes(link);
     let began = Instant::now();
     let mut owned = false;
-    while began.elapsed() < Duration::from_secs(seconds) && !stop.load(Ordering::Relaxed) {
+    while began.elapsed() < Duration::from_secs(seconds) && !halted(stop) {
         if arm == Arm::On
             && let Ok(out) = Command::new("tc")
                 .args(["-s", "-j", "qdisc", "show", "dev", link])
@@ -256,7 +252,7 @@ fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block
                 .unwrap_or_default()
         })
         .collect();
-    if stop.load(Ordering::Relaxed) {
+    if halted(stop) {
         return None;
     }
     #[expect(clippy::cast_precision_loss, reason = "bytes far under 2^52")]
@@ -299,7 +295,7 @@ fn idle_call(seconds: u64) -> Vec<f64> {
 }
 
 fn say(block: &Block, arm: Arm) {
-    eprintln!("{}", said(block, arm));
+    tell(&said(block, arm));
 }
 
 /// What one block measured, as a line of the run's progress.
@@ -328,6 +324,8 @@ fn said(block: &Block, arm: Arm) -> String {
 
 /// `shaper proof`: the run itself.
 pub fn command(args: &[String]) -> Result<(), Failure> {
+    // Heard from the start, so a stop while swayidle starts still ends it.
+    stop::hear_stops();
     let asked =
         asked(args, std::env::var(SERVER_ENV).ok()).map_err(|e| crate::wrongly("proof", e))?;
     let Some(link) = uplink() else {
@@ -346,32 +344,50 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     };
     let gate = Arc::new(gate);
     let deadline = Instant::now() + Duration::from_secs(asked.wait);
-    let was_on = systemctl("is-active");
-    load::hear_stops();
+    let marker = stop::marker();
+    let was_on = stop::own_state(&marker, systemctl("is-active"));
     let mut idle: Vec<f64> = Vec::new();
     let (pairs, complete) = across_windows(
         asked.pairs,
         || opened(|| gate.open(), deadline, &STOPPED),
         |from| window(&asked, &link, &gate, was_on, from, &mut idle),
     );
-    if STOPPED.load(Ordering::Relaxed) {
-        return Err(Failure::new(Exit::Interrupted, "stopped")
-            .because("a signal asked it to; the shaper is back as it was, its load ended"));
+    let back = put_back(was_on);
+    if back {
+        stop::forget(&marker);
     }
-    if pairs.is_empty() {
-        return Err(Failure::new(Exit::TryAgain, "not loading the link")
-            .because("Joel hasn't been idle two minutes, or a call, audio or a meeting is on"));
-    }
-    let verdict = judge(&idle, &pairs);
-    verdict.say();
-    if let Some(out) = &asked.out {
-        let report = serde_json::json!({
-            "verdict": verdict, "complete": complete, "idle_call_ms": idle, "pairs": pairs
-        });
-        if fs::write(out, report.to_string()).is_err() {
-            eprintln!("couldn't write {}", out.display());
+    let stopped = STOPPED.load(Ordering::Relaxed);
+    let verdict = (!pairs.is_empty()).then(|| judge(&idle, &pairs));
+    if let Some(verdict) = &verdict {
+        tell(&verdict.said());
+        if let Some(out) = &asked.out {
+            let report = serde_json::json!({
+                "verdict": verdict, "complete": complete, "stopped": stopped,
+                "idle_call_ms": idle, "pairs": pairs
+            });
+            if fs::write(out, report.to_string()).is_err() {
+                tell(&format!("couldn't write {}", out.display()));
+            }
         }
     }
+    let state = if was_on { "on" } else { "off" };
+    if !back {
+        return Err(
+            Failure::new(Exit::Unavailable, "couldn't put the shaper back").because(format!(
+                "it should be {state}: systemctl {} shaper.service",
+                if was_on { "start" } else { "stop" }
+            )),
+        );
+    }
+    if stopped {
+        return Err(Failure::new(Exit::Interrupted, "stopped").because(format!(
+            "a signal asked it to; the shaper is back {state}, its load ended"
+        )));
+    }
+    let Some(verdict) = verdict else {
+        return Err(Failure::new(Exit::TryAgain, "not loading the link")
+            .because("Joel hasn't been idle two minutes, or a call, audio or a meeting is on"));
+    };
     if !complete {
         return Err(
             Failure::new(Exit::TryAgain, "not enough to judge").because(format!(
@@ -441,30 +457,34 @@ fn window(
     // idle median was 81 ms, where a loaded call through the shaper took
     // 38. So the call's quiet is heard with the shaper on, and the bar
     // asks what the proof's own load adds to it.
+    let stop = Arc::new(AtomicBool::new(false));
     if idle.is_empty() {
         systemctl("start");
         // The shaper settles before its quiet counts.
-        settle(&STOPPED);
-        eprintln!(
-            "idle: the call's round trips through the shaper, with the proof loading nothing"
-        );
-        *idle = idle_call(asked.seconds.min(15));
+        settle(&stop);
+        if !halted(&stop) {
+            tell("idle: the call's round trips through the shaper, with the proof loading nothing");
+            *idle = idle_call(asked.seconds.min(15));
+        }
     }
-    let stop = Arc::new(AtomicBool::new(false));
+    if halted(&stop) {
+        put_back(was_on);
+        return Vec::new();
+    }
     let watch = {
         let (stop, gate) = (Arc::clone(&stop), Arc::clone(gate));
         thread::spawn(move || {
             while !stop.load(Ordering::Relaxed) {
+                // The load is stopped before anything is said, since
+                // saying it may fail.
                 if STOPPED.load(Ordering::Relaxed) {
-                    eprintln!("asked to stop: ending the load");
                     stop.store(true, Ordering::Relaxed);
                     stop_scopes();
+                    tell("asked to stop: ending the load");
                 } else if !gate.open() {
-                    eprintln!(
-                        "Joel is back, or a call, audio or a meeting started: stopping the load"
-                    );
                     stop.store(true, Ordering::Relaxed);
                     stop_scopes();
+                    tell("Joel is back, or a call, audio or a meeting started: stopping the load");
                 }
                 // The gate is asked once a second while the load runs.
                 thread::sleep(Duration::from_secs(1));
@@ -473,15 +493,17 @@ fn window(
     };
     load::start(asked.uploads, &asked.server);
     let pairs = run_pairs(asked, link, &stop, from);
-    let stopped = stop.swap(true, Ordering::Relaxed);
+    let closed = stop.swap(true, Ordering::Relaxed);
     stop_scopes();
+    // Put back before the watch is joined, since it may be stuck asking
+    // the gate.
+    put_back(was_on);
     let _ = watch.join();
-    systemctl(if was_on { "start" } else { "stop" });
-    if stopped {
-        eprintln!(
+    if closed && !STOPPED.load(Ordering::Relaxed) {
+        tell(&format!(
             "kept {} pairs, the one under way dropped; waiting for Joel's next idle",
             from as usize + pairs.len()
-        );
+        ));
     }
     pairs
 }
@@ -491,15 +513,15 @@ fn window(
 fn run_pairs(asked: &Asked, link: &str, stop: &AtomicBool, from: u32) -> Vec<[Block; 2]> {
     let mut pairs: Vec<[Block; 2]> = Vec::new();
     'pairs: for pair in from..asked.pairs {
-        eprintln!("pair {} of {}", pair + 1, asked.pairs);
+        tell(&format!("pair {} of {}", pair + 1, asked.pairs));
         let mut done: Vec<Block> = Vec::new();
         for arm in arms(pair) {
-            if stop.load(Ordering::Relaxed) {
+            if halted(stop) {
                 break 'pairs;
             }
             systemctl(if arm == Arm::On { "start" } else { "stop" });
             settle(stop);
-            if stop.load(Ordering::Relaxed) {
+            if halted(stop) {
                 break 'pairs;
             }
             let Some(b) = block(arm, link, asked, stop) else {
@@ -515,10 +537,11 @@ fn run_pairs(asked: &Asked, link: &str, stop: &AtomicBool, from: u32) -> Vec<[Bl
     pairs
 }
 
-/// Lets an arm settle before it counts, as SETTLE says, or until a stop.
+/// Lets an arm settle before it counts, as SETTLE says, or until a stop
+/// or a signal.
 fn settle(stop: &AtomicBool) {
     let began = Instant::now();
-    while began.elapsed() < SETTLE && !stop.load(Ordering::Relaxed) {
+    while began.elapsed() < SETTLE && !halted(stop) {
         // A stop is heard within a second of a settle.
         thread::sleep(Duration::from_secs(1));
     }

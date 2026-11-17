@@ -109,8 +109,9 @@ impl Verdict {
         self.calm && self.fair && self.consistent
     }
 
-    pub fn say(&self) {
-        eprintln!(
+    /// The verdict as a line of the run's progress.
+    pub fn said(&self) -> String {
+        format!(
             "the call: idle median {:.1} ms, shaped p99 {:.1} ms ({}); \
              Joel's upload: {:.0}% shaped, {:.0}% unshaped ({}); \
              {} of {} pairs favour the shaper ({}), {} void",
@@ -128,7 +129,7 @@ impl Verdict {
                 "not consistent"
             },
             self.void
-        );
+        )
     }
 }
 

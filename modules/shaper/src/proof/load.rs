@@ -1,48 +1,60 @@
 //! The agents' load a proof puts on the link, and how it ends: at the
-//! proof's word, at a signal asking the proof to stop, or on its own once
-//! the proof is gone, so a proof stopped any way leaves nothing uploading.
+//! proof's word, or on its own once the proof is gone, so a proof stopped
+//! any way leaves nothing uploading.
 
+use std::fs;
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::{Duration, Instant};
 
-/// Set once a signal asks the proof to stop.
-pub static STOPPED: AtomicBool = AtomicBool::new(false);
-
-extern "C" fn heard(_: libc::c_int) {
-    STOPPED.store(true, Ordering::Relaxed);
-}
-
-/// Hears SIGTERM, SIGINT and SIGHUP as a stop, so the proof puts the
-/// shaper back as it was and ends its load before it exits, where it
-/// would otherwise die with the shaper off and the uploads going on.
-pub fn hear_stops() {
-    // SAFETY: the handler only stores to an atomic.
-    unsafe {
-        let handler = heard as *const () as libc::sighandler_t;
-        for signal in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
-            libc::signal(signal, handler);
-        }
-    }
-}
-
-/// One upload's loop, posting 400 MB to `server` again as each ends,
-/// while the proof `pid` lives. A proof killed outright can't stop its
-/// scopes, which outlive it, so the loop asks after it before each.
-fn script(server: &str, pid: u32) -> String {
+/// One upload's loop, posting 400 MB to the server, its first argument,
+/// again as each ends, while the process `pid` that began at `began` (its
+/// start in `/proc/<pid>/stat`) lives. A proof killed outright can't stop
+/// its scopes, which outlive it, so the loop asks after it before each,
+/// by its start too, since its pid may be given to another process.
+fn script(pid: u32, began: &str) -> String {
     format!(
-        "while kill -0 {pid} 2>/dev/null; do head -c 400000000 /dev/zero \
-         | curl -s -o /dev/null -X POST -T - --max-time 120 '{server}/__up'; done"
+        "while [ \"$(sed 's/.*) //' /proc/{pid}/stat 2>/dev/null | cut -d' ' -f20)\" \
+         = '{began}' ]; do head -c 400000000 /dev/zero \
+         | curl -s -o /dev/null -X POST -T - --max-time 120 \"$1/__up\"; done"
     )
 }
 
-/// Starts the agents' uploads, from jobs.slice.
+/// When this process began, as `/proc/self/stat` says, in clock ticks
+/// since boot: the field after the command's name and eighteen more.
+fn began() -> String {
+    fs::read_to_string("/proc/self/stat")
+        .ok()
+        .and_then(|s| Some(s.rsplit_once(") ")?.1.split(' ').nth(19)?.to_string()))
+        .unwrap_or_default()
+}
+
+/// Starts the agents' uploads, from jobs.slice, and waits until systemd
+/// has each one's scope or five seconds pass, since a scope stopped
+/// before systemd has it would upload on.
 pub fn start(uploads: u32, server: &str) {
-    let script = script(server, std::process::id());
+    let script = script(std::process::id(), &began());
     for n in 0..uploads {
-        let _ = super::scoped("jobs.slice", &format!("load{n}"), &["sh", "-c", &script])
+        let command = ["sh", "-c", &script, "sh", server];
+        let _ = super::scoped("jobs.slice", &format!("load{n}"), &command)
             .stdout(Stdio::null())
             .spawn();
     }
+    let asked = Instant::now();
+    while scopes("load*") < uploads as usize && asked.elapsed() < Duration::from_secs(5) {
+        thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// How many of this proof's scopes named `name` systemd has.
+fn scopes(name: &str) -> usize {
+    Command::new("systemctl")
+        .args(["--user", "list-units", "--no-legend", "--plain"])
+        .arg(format!("shaper-proof-{name}-{}.scope", std::process::id()))
+        .stderr(Stdio::null())
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).lines().count())
+        .unwrap_or(0)
 }
 
 /// Stops every scope this proof started.
@@ -53,25 +65,25 @@ pub fn stop_scopes() {
             "stop",
             &format!("shaper-proof-*-{}.scope", std::process::id()),
         ])
+        .stderr(Stdio::null())
         .status();
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread;
-    use std::time::{Duration, Instant};
 
-    /// Whether `script` ends by itself within `within`; it's killed if not.
+    /// Whether `script`, given a server nothing answers on, ends by itself
+    /// within `within`; it's killed if not.
     fn ends_within(script: &str, within: Duration) -> bool {
         let mut sh = Command::new("sh")
-            .args(["-c", script])
+            .args(["-c", script, "sh", "http://127.0.0.1:1"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
             .expect("a shell");
-        let began = Instant::now();
-        while began.elapsed() < within {
+        let asked = Instant::now();
+        while asked.elapsed() < within {
             if sh.try_wait().ok().flatten().is_some() {
                 return true;
             }
@@ -87,24 +99,19 @@ mod tests {
         let mut gone = Command::new("true").spawn().expect("true");
         let pid = gone.id();
         gone.wait().expect("true to end");
-        let nowhere = "http://127.0.0.1:1";
+        let (me, began) = (std::process::id(), began());
+        assert!(!began.is_empty(), "no start read from /proc/self/stat");
         assert!(
-            ends_within(&script(nowhere, pid), Duration::from_secs(3)),
+            ends_within(&script(pid, &began), Duration::from_secs(3)),
             "uploading on after its proof ended"
         );
         assert!(
-            !ends_within(&script(nowhere, std::process::id()), Duration::from_secs(1)),
+            ends_within(&script(me, "1"), Duration::from_secs(3)),
+            "uploading on for another process given its proof's pid"
+        );
+        assert!(
+            !ends_within(&script(me, &began), Duration::from_secs(1)),
             "ended while its proof runs"
         );
-    }
-
-    #[test]
-    fn a_stop_signal_is_heard_as_a_stop() {
-        hear_stops();
-        // SAFETY: raising a signal whose handler was just set.
-        unsafe {
-            libc::raise(libc::SIGHUP);
-        }
-        assert!(STOPPED.load(Ordering::Relaxed), "a SIGHUP went unheard");
     }
 }

@@ -136,7 +136,10 @@ fn proof() -> Help {
         .option("--out FILE", "where the report is written")
         .exit(Exit::Usage, WRONGLY)
         .exit(Exit::Failed, "the shaper didn't beat the router")
-        .exit(Exit::Unavailable, "no default route, or no swayidle")
+        .exit(
+            Exit::Unavailable,
+            "no default route, no swayidle, or the shaper couldn't be put back",
+        )
         .exit(Exit::TryAgain, "Joel wasn't away long enough to judge")
         .exit(Exit::Config, "what it waits on isn't a list of commands")
         .exit(Exit::Interrupted, "stopped, the shaper back as it was")
