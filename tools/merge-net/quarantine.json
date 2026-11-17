@@ -98,16 +98,6 @@
     "test": "vm-a-call-keeps-its-packets"
   },
   {
-    "at": 1794637111,
-    "commit": "4f0387b4623e6e3fee085982c9b469dbb3ddc299",
-    "due": "2026-11-18",
-    "due_why": "Its owner, the boot tests', reruns it three times on an idle builder by 2026-11-18 23:59 UTC and takes it off if all three hold, or fixes it: 4 of its 73 net runs from listing to 17 Nov 11:00 UTC ended nonzero",
-    "owner_pr": 4243,
-    "owner_session": "FEH1HE",
-    "reason": "failed, then passed, at 4f0387b4623e",
-    "test": "vm-boot-asks-in-the-theme"
-  },
-  {
     "at": 1794644284,
     "commit": "fb51cf3f90b06cfa8db754e4275e9faaf6b05190",
     "due": "2026-11-18",

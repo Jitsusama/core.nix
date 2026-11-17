@@ -389,22 +389,29 @@ def greeted_afresh(machine: QemuMachine) -> None:
 
 
 def signs_in(boot: Boot) -> None:
-    """Sign in at kmscon's console, on a fresh one again if login refused what arrived."""
+    """Sign in at kmscon's console, on a fresh one again if login gave up without a shell."""
     machine, account = boot.machine, boot.account
     for _ in range(3):
         refused = machine.succeed(REFUSALS).strip()
         machine.wait_for_text("Hello", timeout=READING)
         machine.send_chars(f"{account}\n", delay=TYPING)
         machine.wait_for_text("Password", timeout=READING)
+        asking = machine.succeed("pgrep -n -x login").strip()
         machine.send_chars(f"{boot.password}\n", delay=TYPING)
+        # Login gives up either by refusing what arrived, which it
+        # counts, or by leaving with no shell, which it doesn't: its
+        # own minute runs out on a host so busy the password prompt
+        # took over a minute to show, or the last key is lost. Either
+        # is tried again on a fresh console.
         machine.wait_until_succeeds(
-            f'pgrep -u {account} -x zsh || [ "$({REFUSALS})" != {refused} ]', timeout=READING
+            f'pgrep -u {account} -x zsh || [ "$({REFUSALS})" != {refused} ] || ! kill -0 {asking}',
+            timeout=READING,
         )
         if machine.execute(f"pgrep -u {account} -x zsh")[0] == 0:
             return
         machine.succeed("systemctl restart kmsconvt@tty3.service")
         greeted_afresh(machine)
-    pytest.fail("login refused the console's password three times")
+    pytest.fail("login gave up on the console's password three times")
 
 
 def test_the_keys_the_greeting_gives_go_back_to_the_desktop(opened: Boot) -> None:
