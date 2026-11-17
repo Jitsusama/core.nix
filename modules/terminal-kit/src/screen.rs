@@ -16,6 +16,8 @@ const BELOW: &str = "\u{1b}[J";
 /// cleared past its end and everything below the page cleared. It doesn't
 /// blank the screen first, so a reader never sees it empty between pages.
 /// Only for a terminal: anywhere else a page follows the last as it is.
+/// A page should fit the terminal's rows: each line ends in a newline, so
+/// one as tall as the screen scrolls its first line away on each draw.
 pub fn over(page: &str) -> String {
     let mut drawn = String::from(HOME);
     for line in page.lines() {
@@ -30,7 +32,9 @@ pub fn over(page: &str) -> String {
 /// The pages a run of [`over`] drew, as they read, for a test of a
 /// watching command to read what it drew. Each line reads back ending in
 /// a newline, as `over` draws it, whether or not the page's last did,
-/// and anything written before the first page isn't a page.
+/// and anything written before the first page isn't a page. It reads
+/// only pages holding no escapes of their own that `over` writes.
+/// Public so a watching command's own tests can read it.
 pub fn pages(drawn: &str) -> Vec<String> {
     drawn
         .split(HOME)

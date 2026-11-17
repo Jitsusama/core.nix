@@ -930,11 +930,16 @@ mod tests {
     #[test]
     fn each_role_is_drawn_in_its_own_colour_and_the_track_faint_in_the_rules() {
         // A theme whose roles are all apart, so a run drawn in the wrong
-        // one reads differently.
-        let theme = serde_json::json!({"colours": {
-            "text": "#101010", "strong": "#202020", "muted": "#303030",
-            "rule": "#404040", "alert": "#505050", "warning": "#606060",
-        }});
+        // one reads differently. Its text sits in a slot of the terminal's
+        // rather than its foreground, so the text is coloured too, and a
+        // run given a role the pen lacks would read plain.
+        let theme = serde_json::json!({
+            "colours": {
+                "text": "#101010", "strong": "#202020", "muted": "#303030",
+                "rule": "#404040", "alert": "#505050", "warning": "#606060",
+            },
+            "terminal": {"foreground": "#f0f0f0", "black": "#101010"},
+        });
         let truecolour = terminal_kit::ink::Ink {
             colours: terminal_kit::ink::Colours::Truecolour,
             console: false,
@@ -960,6 +965,10 @@ mod tests {
         let apart: std::collections::HashSet<&String> =
             roles.iter().map(|(_, drawn)| drawn).collect();
         assert_eq!(apart.len(), roles.len(), "two roles are drawn alike");
+        assert!(
+            roles.iter().all(|(_, drawn)| drawn != "t"),
+            "a role was drawn plain: {roles:?}"
+        );
         assert!(
             roles[3].1.starts_with("\u{1b}[2;38;2;64;64;64m"),
             "the track isn't the rule's colour, faint: {:?}",

@@ -477,6 +477,10 @@ mod tests {
         assert_eq!(pen.role("warning", "w"), "\u{1b}[93mw\u{1b}[0m");
         assert_eq!(pen.role("alert", "a"), "\u{1b}[31ma\u{1b}[0m");
         assert_eq!(pen.title("T"), "\u{1b}[1;97mT\u{1b}[0m");
+        // Its muted is nearest its white, and its rule, a dark green, is
+        // nearest the yellow slot, not the green one its name suggests.
+        assert_eq!(pen.role("muted", "m"), "\u{1b}[37mm\u{1b}[0m");
+        assert_eq!(pen.faint("rule", "r"), "\u{1b}[2;33mr\u{1b}[0m");
         // Its text is the terminal's own foreground, so it's left as it is.
         assert_eq!(pen.role("text", "t"), "t");
     }

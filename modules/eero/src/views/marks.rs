@@ -80,12 +80,28 @@ mod tests {
 
     #[test]
     fn a_terminal_draws_each_marks_glyph() {
+        // Marks unlike the defaults, so a pen whose marks were ignored
+        // would read differently.
+        let mark = |glyph: &str| serde_json::json!({"glyph": glyph, "console": "?"});
+        let theme = serde_json::json!({"marks": {
+            "separator": mark("|"), "failed": mark("!"), "on": mark("+"),
+        }});
+        let marks = Marks::drawn_by(&Pen::new(Ink::plain(), Some(&theme)));
+        assert_eq!(
+            [marks.separator, marks.failed, marks.on],
+            ["|", "!", "+"],
+            "a terminal wasn't given the theme's own glyphs"
+        );
+    }
+
+    #[test]
+    fn a_mark_the_pen_lacks_keeps_its_default() {
         let marks = Marks::drawn_by(&Pen::plain());
         let defaults = Marks::default();
         assert_eq!(
             [marks.separator, marks.failed, marks.on],
             [defaults.separator, defaults.failed, defaults.on],
-            "a terminal wasn't given the marks' own glyphs"
+            "a plain pen's marks aren't the defaults"
         );
     }
 }

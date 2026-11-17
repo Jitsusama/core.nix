@@ -9,7 +9,8 @@ use super::text::Ink;
 /// The ink for standard output, drawn with `pen`: whether it's coloured,
 /// and whether its marks are the console's stand-ins, is the terminal
 /// kit's to decide, from `--color`, `NO_COLOR`, `FORCE_COLOR`, `TERM` and
-/// whether it's a terminal.
+/// whether it's a terminal. The marks are taken from the first pen given,
+/// for the run, so a run asks this once.
 pub fn ink(pen: &Pen) -> Ink {
     super::marks::take(pen);
     Ink::new(pen.clone())

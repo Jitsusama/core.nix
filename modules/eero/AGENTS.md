@@ -184,8 +184,10 @@ names its schema, `eero.<view>/1`, first. The command line is on the
 terminal kit (docs/commands.md): it gives the help, the shared flags,
 whether to ink and the exits, 69 when the daemon isn't keeping the
 record, 77 when eero needs signing in and 66 for a name the network
-hasn't got. The ink is still eero's own (`src/views/theme.rs`), set by
-the kit's choice; drawing it with the kit's pen waits.
+hasn't got. The ink is the kit's pen (`src/views/theme.rs` hands it
+to the views), so each role's colour and each mark are the theme's as
+every command draws them, and a watch draws over its last page through
+the kit's screen.
 Its words are a tree of resources (`src/commands.rs`), walked by the
 kit (docs/commands.md, Subcommands): `eero devices Pixel` is one of a
 collection, the singular an alias, `eero nodes Study devices` and
@@ -226,8 +228,9 @@ as much as tenths, so the units after them start in one place, each
 measure in three significant digits and the unit that reads it
 (`src/views/figures.rs`, as docs/design.md's Set, Not Styled has it), a
 count saying what it counts ("24 known"), and colour
-only on a terminal, in the theme's terminal colour for each role
-(`src/views/theme.rs`): text in the text roles, and alert and warning
+only on a terminal, in the colour the kit's pen gives each role, its
+terminal slot or, under a truecolour terminal, the pigment itself
+(`src/views/text.rs`, `Ink::inked`): text in the text roles, and alert and warning
 only on the marks beside it. The record keeps eero's word, usage, for the
 bytes moved; every page says traffic, the glossary's word.
 
