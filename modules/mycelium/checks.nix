@@ -212,7 +212,7 @@ in
         )
         && !lib.hasInfix "--flow-from" (toString bothFlowing.mycelium-other.Service.ExecStart)
         && !lib.hasInfix "--flow-to" (toString bothFlowing.mycelium.Service.ExecStart)
-        && lib.hasInfix "--realm other node --flow-to home --serves" sendingOnly
+        && lib.hasInfix "--realm other node --flow-to home --waiting" sendingOnly
         && !lib.hasInfix "--flow" (toString bothLinux.mycelium.Service.ExecStart)
         && !lib.hasInfix "--flow" (toString bothLinux.mycelium-other.Service.ExecStart)
         && !refusesFlows [ flowing ]
@@ -251,7 +251,7 @@ in
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
         && lib.hasInfix "--health-socket %t/daemons/system.sock --eases" linuxNode
         && !(lib.hasInfix "--eases" otherNode)
-        && lib.hasInfix "--ssh one --ssh two --via /bin/cell:cell-1 --serves" (viaNode "/bin/cell:cell-1")
+        && lib.hasInfix "--ssh one --ssh two --via /bin/cell:cell-1 --waiting" (viaNode "/bin/cell:cell-1")
         && lib.all (wrong: !(builtins.tryEval (viaNode wrong)).success) [
           "cell:cell-1"
           "/bin/cell:"
@@ -261,14 +261,14 @@ in
           "/bin/cell:cell-%h"
           "/bin/cell:cell-$HOME"
         ]
-        && lib.hasInfix "--ssh one --ssh two --provider /bin/cell --serves" (providerNode "/bin/cell")
+        && lib.hasInfix "--ssh one --ssh two --provider /bin/cell --waiting" (providerNode "/bin/cell")
         && lib.all (wrong: !(builtins.tryEval (providerNode wrong)).success) [
           "cell"
           "/bin/my cell"
           "/bin/cell:make"
           "/bin/cell-%h"
         ]
-        && lib.hasInfix "--ssh two --via /bin/cell:cell-2 --provider /bin/cell --serves" (
+        && lib.hasInfix "--ssh two --via /bin/cell:cell-2 --provider /bin/cell --waiting" (
           toString
             (linux (
               both
@@ -294,6 +294,8 @@ in
           ++ enclaveOptions
           ++ ssh
           ++ [
+            "--waiting"
+            "${(mac links).xdg.stateHome}/mission/waiting"
             "--serves"
             "${(mac links).xdg.configHome}/mycelium/serves-personal.json"
             "--health-socket"
@@ -416,14 +418,14 @@ in
         )) otherNode
         && bothLinux.mycelium-other.Service.Environment == [ "SSH_AUTH_SOCK=%t/other-link.sock" ]
         && bothLinux.mycelium-other.Unit.Wants == [ "other-link.socket" ]
-        && lib.hasInfix "--realm home node --ssh one --serves /home/someone/.config/mycelium/serves-home.json --health-socket %t/daemons/system.sock" (
+        && lib.hasInfix "--realm home node --ssh one --waiting /home/someone/.local/state/mission/waiting --serves /home/someone/.config/mycelium/serves-home.json --health-socket %t/daemons/system.sock" (
           toString bothLinux.mycelium.Service.ExecStart
         )
         && bothLinux.mycelium.Service.Environment == [ "SSH_AUTH_SOCK=%t/agent-signing.sock" ]
         && lib.hasInfix "/.local/state/pi/agentic-harness.pi/realms/other/steer --ssh-option " (
           toString (mac both).launchd.agents.mycelium-other.config.ProgramArguments
         )
-        && lib.hasInfix " --ssh two --serves " (
+        && lib.hasInfix " --ssh two --waiting " (
           toString (mac both).launchd.agents.mycelium-other.config.ProgramArguments
         )
         && (linux both).home.sessionVariables.PI_HOME_REALM == "home"
@@ -487,7 +489,7 @@ in
 
   mycelium-serves-the-harness-files =
     holds "mycelium-serves-the-harness-files"
-      "A realm's node doesn't serve its realm's open and ended quests, restore list, runs, landings and talks from that realm's folders, the machine's waiting, verdicts, queue, the void's answers and the balance's latest reading aren't served by the home realm's node alone, or a node doesn't restart when what it serves changes."
+      "A realm's node doesn't serve its realm's open and ended quests, restore list, runs, landings and talks from that realm's folders, the machine's waiting, verdicts, queue, the void's answers and the balance's latest reading aren't served by the home realm's node alone, a node reads its cells' waits from any folder but the waiting one the home realm's node serves, or a node doesn't restart when what it serves changes."
       (
         let
           state = "/home/someone/.local/state";
@@ -579,7 +581,9 @@ in
             };
             talk.talks = "${state}/pi/agentic-harness.pi/realms/other/steer";
           }
-        && lib.hasInfix "--serves /home/someone/.config/mycelium/serves-other.json --health-socket %t/daemons/system.sock" otherNode
+        # Each realm's node reads its cells' waits, for their forages, from
+        # the one folder the launcher writes and the home node serves.
+        && lib.hasInfix "--waiting ${state}/mission/waiting --serves /home/someone/.config/mycelium/serves-other.json --health-socket %t/daemons/system.sock" otherNode
         && !(apart.xdg.configFile ? "mycelium/serves-home.json")
         # The node reads its serves file only as it starts, so a switch
         # changing what it serves restarts it.

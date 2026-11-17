@@ -264,7 +264,11 @@ let
       "--provider"
       program
     ]) providers
+    # Every realm's node reads its cells' waits from the one folder the
+    # home realm's node serves, so the two can't drift apart.
     ++ [
+      "--waiting"
+      (servesIn cfg.realm).waiting.folder
       "--serves"
       (servesFile realm)
     ]

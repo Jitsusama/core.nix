@@ -4,11 +4,12 @@
 // purpose is written and hollow when it isn't, so a cell without purpose
 // is told by its shape and never by colour alone; a cell started by
 // another branches below it, and a cap rises over a cell whose plans have
-// landed steps, its gills lit as they land. Every word read from a record
+// landed steps, its gills lit as they land. What a cell's quest waits on its
+// person for leads its panel and is counted in its row. Every word read from a record
 // is escaped before it reaches the page, and how far a plan has come is
 // said in words beside its marks.
 
-import { type Document, type Forage, keeps, steps } from "./model.ts";
+import { type Document, type Forage, keeps, steps, type Wait } from "./model.ts";
 
 const ESCAPES: { readonly [character: string]: string } = {
   "&": "&amp;",
@@ -117,9 +118,61 @@ function forageRow(forage: Forage): string {
   <span class="come" aria-label="${escaped(come(ticked, all))}">${escaped(count)}</span>
   <span class="line">
     <span class="purpose${quiet}"${purposeSaid(forage)}>${escaped(purposeOf(forage))}</span>
-    <span class="keeps">${escaped(keeps(forage))}</span>
+    <span class="keeps">${escaped(keeps(forage))}</span>${waitsCounted(forage)}
   </span>
 </div>`;
+}
+
+/** How many things `forage`'s quest waits on its person for, for its row; nothing when none. */
+function waitsCounted(forage: Forage): string {
+  const count = forage.waits.length;
+  if (count === 0) {
+    return "";
+  }
+  const things = count === 1 ? "one thing" : `${count} things`;
+  return `\n    <span class="waits">Waits on you for ${things}</span>`;
+}
+
+/** About how long a wait takes, in whole minutes, or nothing when it doesn't say so. */
+function takes(minutes: number | undefined): string | undefined {
+  const whole = minutes === undefined ? 0 : Math.round(minutes);
+  if (whole < 1) {
+    return undefined;
+  }
+  return whole === 1 ? "About a minute" : `About ${whole} minutes`;
+}
+
+/**
+ * The row of `wait`, of quest `quest`, in the panel: what is asked and why
+ * in the quest's own words, then how long it takes, when it's for and
+ * whether it can be done now.
+ */
+function waitRow(wait: Wait, quest: string): string {
+  const said = [
+    takes(wait.minutes),
+    wait.when === undefined ? undefined : `<span${saidBy(quest)}>${escaped(wait.when)}</span>`,
+    wait.ready ? "Ready now" : "Not ready yet",
+  ].filter((each) => each !== undefined);
+  const why =
+    wait.why === "" ? "" : `\n      <span class="why"${saidBy(quest)}>${escaped(wait.why)}</span>`;
+  return `    <li class="doc">
+      <span class="named"${saidBy(quest)}>${escaped(wait.title)}</span>${why}
+      <span class="said">${said.join(" · ")}</span>
+    </li>`;
+}
+
+/** What `forage`'s quest waits on its person for, or nothing when it waits on nothing. */
+function waitsOf(forage: Forage): string {
+  if (forage.waits.length === 0) {
+    return "";
+  }
+  return `<section aria-labelledby="waits-title" class="waits">
+  <h4 id="waits-title">What It Waits On You For</h4>
+  <ul class="tl">
+${forage.waits.map((wait) => waitRow(wait, forage.quest)).join("\n")}
+  </ul>
+</section>
+`;
 }
 
 /** Where each cell drawn sits on the floor, by its place in the list and its depth. */
@@ -280,7 +333,7 @@ function panelOf(forage: Forage, here: ReadonlySet<string>, started: readonly st
 <p class="eyebrow">the cell open</p>
 <h3><code>${escaped(forage.cell)}</code></h3>
 <p class="lead${quiet}"${purposeSaid(forage)}>${escaped(purposeOf(forage))}</p>
-${documentsOf(forage)}
+${waitsOf(forage)}${documentsOf(forage)}
 <section aria-labelledby="ties-title" class="ties">
   <h4 id="ties-title">Where It Grows</h4>
   <dl class="facts">

@@ -3104,7 +3104,12 @@
   forage-site-holds = ''
     the forage page typechecks on the kit at its strictest and builds, its tests passing: each
     cell's forage under the cell that started it, even in a ring, plans first with their steps
-    added up, how many cells have no purpose written, and a record it can't read said, not dropped
+    added up, how many cells have no purpose written, what each quest waits on its person for, and
+    a record it can't read said, not dropped
+  '';
+  forage-feed-passes-what-its-page-reads = ''
+    the node's feed, as a machine in a realm declares it, passes every field the forage page reads
+    off a forage record, so nothing the page draws goes missing live
   '';
   murmurs-site-holds = ''
     the murmurs page typechecks on the kit at its strictest and builds, its tests passing: murmurs

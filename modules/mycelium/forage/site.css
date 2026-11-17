@@ -394,6 +394,14 @@ rect.hollow {
   font-size: var(--step-small);
 }
 
+/* What a cell's quest waits on its person for is what he acts on, so it
+   reads stronger than what the cell keeps. */
+.cells .waits {
+  color: var(--strong);
+  font-size: var(--step-small);
+  font-weight: 600;
+}
+
 /* A cell with no purpose written says so in its own words, set in the
    voice's italic so it reads as a gap, not a purpose. */
 .quiet {

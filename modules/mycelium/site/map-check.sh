@@ -7,9 +7,10 @@
 # "orchestration","owner","why"}]}, each why "alone", "unnamed network" or
 # "unreachable". It exits 0 when it misses none, 1 when it misses some,
 # 69 when the map never read the node and 70 when the check itself broke.
-# The browser's own words go to standard error, and a name a peer gave is
-# printed as text with its control characters made spaces. Its help and failures take the shape every command of
-# ours does (docs/commands.md), by hand, since a script has no kit.
+# The browser's own words go to standard error only when the check broke,
+# and a name a peer gave is printed as text with its control characters
+# made spaces. Its help and failures take the shape every command of ours
+# does (docs/commands.md), by hand, since a script has no kit.
 #
 # MAP_CHECK_ROOT, the sites' root, defaults to this machine's.
 # Given by Nix: @python@, @test@ and @live_page@.
@@ -82,7 +83,6 @@ MAP_CHECK_ROOT=${root} MAP_CHECK_SAID=${said} \
   PYTHONPATH=@live_page@ PYTHONDONTWRITEBYTECODE=1 \
   @python@ -m pytest -q -p no:cacheprovider -p live_page --import-mode=importlib \
   --basetemp="${work}/pytest" @test@ > "${work}/pytest.log" 2>&1 || true
-cat "${work}/pytest.log" >&2
 
 if [[ ! -s ${said} ]]; then
   if grep -q "the map never read the node" "${work}/pytest.log"; then
@@ -91,6 +91,8 @@ if [[ ! -s ${said} ]]; then
       "  try  systemctl --user status local-sites, then mycelium machines" >&2
     exit 69
   fi
+  # The browser's words are said only when the check broke, to say where.
+  cat "${work}/pytest.log" >&2
   printf '%s\n' "the check broke before the map said its reach" \
     "  the browser's words above say where" \
     "  try  mycelium-map-check again, and tell the map's owner if it repeats" >&2

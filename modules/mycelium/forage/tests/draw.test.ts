@@ -26,6 +26,7 @@ function forage(more: Partial<Forage> = {}): Forage {
         open: 1,
       },
     ],
+    waits: [],
     startedBy: undefined,
     parent: undefined,
     depth: 0,
@@ -65,6 +66,15 @@ it("leaves a title unmarked when the page shows a document's id for want of one"
 
 /** What the panel says beside "Started". */
 const STARTED = /<dt>Started<\/dt><dd><span>(.*?)<\/span><\/dd>/u;
+
+/** The panel's waits section, its markup within. */
+const WAITS_SECTION = /<section aria-labelledby="waits-title"[^>]*>([\s\S]*?)<\/section>/u;
+
+/** Each run of space, folded to one. */
+const SPACES = /\s+/gu;
+
+/** What a row says of its quest's waits. */
+const ROW_WAITS = /<span class="waits">([^<]*)<\/span>/u;
 
 /** What the panel says of `forage` beside "Started", given the cells it started. */
 function startedLine(open: Forage, started: readonly string[]): string {
@@ -139,6 +149,93 @@ it("ties each comma to the address before it, so no line starts with one", () =>
     assert.ok(!line.replace(TIED, "").includes(","), `a comma stands loose in ${line}`);
     assert.equal(line.match(TIED)?.length, ties, line);
   }
+});
+
+/** A wait of kestrel's quest, with `more` over its fields. */
+function wait(more: Partial<Forage["waits"][number]> = {}): Forage["waits"][number] {
+  return {
+    id: "field-sitting",
+    title: "Watch the kestrel hover",
+    why: "Only someone at the field can see it.",
+    minutes: 30,
+    when: "Wednesday or later",
+    ready: false,
+    ...more,
+  };
+}
+
+/** What the panel's waits section says, without its markup, or none without one. */
+function waitsSaid(panel: string): string | undefined {
+  const section = WAITS_SECTION.exec(panel);
+  return section?.[1]?.replace(TAG, " ").replace(SPACES, " ").trim();
+}
+
+it("says in the panel what a cell's quest waits on you for, first, in its own words", () => {
+  const waiting = forage({
+    waits: [
+      wait(),
+      wait({ id: "look", title: "Look", why: "", minutes: 1, when: undefined, ready: true }),
+    ],
+  });
+  const panel = panelOf(waiting, new Set(["KESTRL"]), []);
+  assert.equal(
+    waitsSaid(panel),
+    "What It Waits On You For Watch the kestrel hover Only someone at the field can see it. About 30 minutes · Wednesday or later · Not ready yet Look About a minute · Ready now",
+  );
+  assert.ok(
+    panel.indexOf("waits-title") < panel.indexOf("docs-title"),
+    "its waits come before its documents",
+  );
+  assert.deepEqual(saidBy(panel, "QEST-20261116-KESTRL"), [
+    "Kestrel learns to hover over ~/.fields.",
+    "Watch the kestrel hover",
+    "Only someone at the field can see it.",
+    "Wednesday or later",
+    "Look",
+    "Hover Over the Field",
+  ]);
+  assert.equal(waitsSaid(panelOf(forage(), new Set(), [])), undefined);
+});
+
+it("escapes what a wait says before drawing it", () => {
+  const panel = panelOf(
+    forage({
+      quest: 'QEST-"><s>',
+      waits: [wait({ title: '<b a="1">&', why: "<i>", when: "<u>" })],
+    }),
+    new Set(),
+    [],
+  );
+  for (const tag of ["<b ", "<i>", "<u>", "<s>"]) {
+    assert.ok(!panel.includes(tag), `${tag} in ${panel}`);
+  }
+  assert.ok(panel.includes("&lt;b a=&quot;1&quot;&gt;&amp;"), panel);
+  assert.ok(panel.includes("&lt;u&gt;"), panel);
+});
+
+it("says how long a wait takes only in whole minutes, and only when it takes some", () => {
+  const takes = (minutes: number | undefined): string | undefined =>
+    waitsSaid(
+      panelOf(forage({ waits: [wait({ minutes, when: undefined })] }), new Set(), []),
+    )?.split("can see it. ")[1];
+  assert.equal(takes(30), "About 30 minutes · Not ready yet");
+  assert.equal(takes(2.4), "About 2 minutes · Not ready yet");
+  assert.equal(takes(1), "About a minute · Not ready yet");
+  for (const none of [0, -5, 0.2, undefined]) {
+    assert.equal(takes(none), "Not ready yet", String(none));
+  }
+});
+
+it("says in a cell's row how many things its quest waits on you for", () => {
+  const said = (waits: number): string | undefined =>
+    ROW_WAITS.exec(
+      forageRow(
+        forage({ waits: Array.from({ length: waits }, (_, at) => wait({ id: `w${at}` })) }),
+      ),
+    )?.[1];
+  assert.equal(said(0), undefined);
+  assert.equal(said(1), "Waits on you for one thing");
+  assert.equal(said(2), "Waits on you for 2 things");
 });
 
 it("says the words are a quest's when the record names none", () => {

@@ -95,6 +95,11 @@
   font-style: italic;
 }
 
+/* Why a wait is asked, in its quest's words, under what is asked. */
+.tl .why {
+  color: var(--text);
+}
+
 .tl .steps {
   display: flex;
   align-items: center;

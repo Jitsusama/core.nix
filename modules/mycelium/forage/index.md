@@ -21,15 +21,19 @@ a terminal, `mycelium forage` gathers the realm's.
   list holds every one.
 - **One sentence for the whole:** how many cells here work on a quest,
   and how many have no purpose written yet. Each count opens the cells
-  it counts. The line under it names the cells without purpose and the
+  it counts. The line under it first says how many things wait on you
+  and from which cells, then names the cells without purpose and the
   plan furthest from done. A cell with no purpose is the one worth a
   look, since a cell without one serves no use.
 - **One row per cell,** each set in under the cell that started it: its
   mark, its address, how many of its steps are done, its purpose, and
-  what it keeps, such as "2 plans and one report". A cell started by one
+  what it keeps, such as "2 plans and one report", and how many things
+  its quest waits on you for, when any. A cell started by one
   on another machine stands at the top, since that cell isn't drawn
   here.
-- **Beside the list is the cell the cursor is on:** its purpose, each
+- **Beside the list is the cell the cursor is on:** its purpose, then
+  what its quest waits on you for, each with why, about how long it
+  takes, when it's for and whether it's ready now, then each
   document it keeps with its kind, its stage (Thinking, Drafting,
   Building, Done or Put down) and how many of its steps are done, said
   in words beside gills. Under them, where it grows: its quest, the cell
@@ -47,7 +51,7 @@ a terminal, `mycelium forage` gathers the realm's.
 | j, k      | Step to the next or the last cell                             |
 | g, G      | Go to the first or the last                                   |
 | -, h      | Step up to the cell that started the one you're on            |
-| /         | Find a cell by its name, quest, purpose or a document's title |
+| /         | Find by name, quest, purpose, or a document's or wait's title |
 | Return    | Open the cell on the map                                      |
 | y         | Copy the command that says the cell's forage                  |
 | ?, F1     | The list of keys                                              |
@@ -57,8 +61,10 @@ a terminal, `mycelium forage` gathers the realm's.
 The node serves one `forage` record for each of its live cells that
 works on a quest, keyed `forage:<cell>` and gone with the cell. Each
 has `cell` (its address), `session`, `machine`, `quest` (its id),
-`purpose` (cut at 280 characters), `status`, `documents` and
-`lineage`. Each document has `id`, `kind` (plan, research, brief or
+`purpose` (cut at 280 characters), `status`, `documents`, `waits`
+(only when its quest waits on its person) and `lineage`. Each wait
+has `id` and `title`, and may have `why`, `minutes`, `when`, `ready`
+and `raised`. Each document has `id`, `kind` (plan, research, brief or
 report), `title`, `stage` (think, draft, build, concluded or retired),
 `ticked` and `open`, its steps done and still to do. The `lineage`
 has `started_by`, the cell that started this one, and `parent`, the
