@@ -1,5 +1,5 @@
 # When keys were pressed, as a QML module, KeyTimes, holding the singleton
-# KeyTimes: a plugin, its qmldir and its type file, installed where Qt looks
+# KeyTimes and WallTimer, a timer kept to the clock: a plugin, its qmldir and its type file, installed where Qt looks
 # for QML modules, so Quickshell imports it and qmllint reads its types.
 cmake_minimum_required(VERSION 3.21)
 project(keytimes LANGUAGES CXX)
@@ -17,17 +17,19 @@ qt_add_qml_module(keytimes
     VERSION 1.0
     PLUGIN_TARGET keytimes
     OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/KeyTimes
-    SOURCES keytimes.h keytimes.cpp
+    SOURCES keytimes.h keytimes.cpp walltimer.h walltimer.cpp
 )
 
 # Every warning is an error, as the repository's other code is linted.
 target_compile_options(keytimes PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_link_libraries(keytimes PRIVATE Qt6::Gui Qt6::Qml)
 
-# What it says a press and a held key's repeat were pressed at, run as the
-# module is built (keytimes_test.cpp), and never installed.
+# What it says a press and a held key's repeat were pressed at, and when a
+# wall timer ends, run as the module is built (keytimes_test.cpp), and
+# never installed.
 enable_testing()
-qt_add_executable(keytimes_test keytimes_test.cpp keytimes.h keytimes.cpp)
+qt_add_executable(keytimes_test keytimes_test.cpp keytimes.h keytimes.cpp
+    walltimer.h walltimer.cpp)
 target_compile_options(keytimes_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_link_libraries(keytimes_test PRIVATE Qt6::Gui Qt6::Qml)
 add_test(NAME keytimes_test COMMAND keytimes_test)

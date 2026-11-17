@@ -7218,7 +7218,9 @@ Scope {
     // A key listed past its wait: what was typed, the sources that hadn't
     // answered, and when they were asked, so each says how late it came.
     property var answersLate: null
-    Timer {
+    // Kept to the clock, since QML's Timer steps with the frames and ended
+    // this hold a median 47 ms in (key-times/walltimer.h).
+    WallTimer {
         id: answersWaited
         interval: root.answersWaitedFor
         onTriggered: {
