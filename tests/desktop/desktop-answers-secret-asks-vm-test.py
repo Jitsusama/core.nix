@@ -65,7 +65,9 @@ def asking(desktop: Desktop) -> Iterator[None]:
     yield
     if desktop.showing()["open"]:
         desktop.close_launcher()
-    desktop.as_account(f"rm -f {ASKS}/*.ask.json")
+    # find rather than a glob, since the account's shell is zsh, where a glob matching nothing
+    # is an error, and a test that saw its ask answered leaves none.
+    desktop.as_account(f"find {ASKS} -maxdepth 1 -name '*.ask.json' -delete")
 
 
 pytestmark = pytest.mark.usefixtures("asking")
