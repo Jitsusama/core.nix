@@ -22,16 +22,18 @@ use serde_json::{Value, json};
 
 use super::{Daemon, Run, Shared, agents, bookmarks, due, keep, lock, programs, start};
 
-/// Which places' rows changed while nothing watched them (`changed`, and
-/// bookmarks.rs), for the next watch of each to make (`read`); each is
-/// cleared as its rows are made, wherever that is. With them, the sources
-/// whose session changed while nothing wanted what they have open, as
-/// while the shell is away (heard.rs), for the next watch to read again;
-/// each is taken as that read is started (`read`).
+/// Which places' rows changed while nothing watched them (`changed`,
+/// bookmarks.rs and taken.rs), for the next watch of each to make (`read`,
+/// and `taken::begun`); each is cleared as its rows are made, wherever
+/// that is. With them, the sources whose session changed while nothing
+/// wanted what they have open, as while the shell is away (heard.rs), for
+/// the next watch to read again; each is taken as that read is started
+/// (`read`).
 #[derive(Default)]
 pub struct Unmade {
     pub tabs: bool,
     pub bookmarks: bool,
+    pub taken: bool,
     pub sessions: BTreeSet<usize>,
 }
 

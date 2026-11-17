@@ -110,6 +110,78 @@ fn a_shot_watched_ahead_again_is_answered_whole_from_its_preview_held() {
     );
 }
 
+/// A shot read while nobody watches Capture's rows is told to the next
+/// watch of every row: that watch's answer makes no place's rows by name,
+/// and the list it would read is fresh, so only the read's mark says to
+/// make them.
+#[test]
+fn a_shot_read_while_nobody_watches_is_told_to_the_next_watch_of_every_row() {
+    let running = Running::new("taken-unwatched");
+    let mut client = running.client();
+    let shots = running.path("shots").to_string_lossy().into_owned();
+    let first = format!("row:taken:{shots}/2026-11-10 09-00-00.png");
+    client.ask(&json!({"id": "settings", "ask": "settings", "folders": [shots]}));
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": "row"}));
+    client.changed(&first);
+    client.ask(&json!({"id": 1, "ask": "unwatch"}));
+    std::fs::write(running.path("shots/2026-11-11 01-00-00.png"), "shot").unwrap();
+    // inotify says changes in the order they're made, and the daemon hears
+    // each batch of them whole before the next, so once a list changed
+    // twice after the shot is told, the shot was heard, with nobody
+    // watching, and the get below is the read that finds it. Once would
+    // not do: a batch holding the shot and the list's first change can
+    // start the list's read before it marks the shot's.
+    let mut lists = running.client();
+    lists.ask(&json!({"id": 1, "ask": "watch", "keys": ["recent:kitty"]}));
+    lists.changed("recent:kitty");
+    for folder in ["/a", "/b"] {
+        std::fs::write(running.path("lists/folders"), format!("{folder}\n")).unwrap();
+        let moved = json!([{"path": folder, "used_at_s": null}]);
+        while lists.changed("recent:kitty")["paths"] != moved {}
+    }
+    client.ask(&json!({"id": 2, "ask": "get", "keys": ["listed:shared:taken"]}));
+    let newer = format!("row:taken:{shots}/2026-11-11 01-00-00.png");
+    let mut again = running.client();
+    again.send(&json!({"id": 3, "ask": "watch", "kind": "row"}));
+    // The daemon answers in time or the read fails: a watch told nothing
+    // of the shot is what the rows left unmade look like.
+    loop {
+        let said = again.heard();
+        let told = [&said["records"], &said["changed"]]
+            .iter()
+            .filter_map(|records| records.as_array())
+            .flatten()
+            .any(|record| record["key"] == newer.as_str());
+        if told {
+            break;
+        }
+    }
+}
+
+/// Folders changed while nobody watches Capture's rows are told to the
+/// next watch of every row, for the same reason a shot read then is.
+#[test]
+fn folders_changed_while_nobody_watches_are_told_to_the_next_watch_of_every_row() {
+    let running = Running::new("taken-unwatched-folders");
+    let mut client = running.client();
+    let shots = running.path("shots").to_string_lossy().into_owned();
+    let recordings = running.path("recordings").to_string_lossy().into_owned();
+    let first = format!("row:taken:{shots}/2026-11-10 09-00-00.png");
+    client.ask(&json!({"id": "settings", "ask": "settings", "folders": [shots]}));
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": "row"}));
+    client.changed(&first);
+    client.ask(&json!({"id": 1, "ask": "unwatch"}));
+    client.ask(&json!({"id": "settings", "ask": "settings", "folders": [recordings]}));
+    let mut again = running.client();
+    again.send(&json!({"id": 2, "ask": "watch", "kind": "row"}));
+    // As above, the read failing in time is a watch never told the shot
+    // went with its folder.
+    while !again.heard()["gone"]
+        .as_array()
+        .is_some_and(|gone| gone.iter().any(|key| key == first.as_str()))
+    {}
+}
+
 #[test]
 fn what_was_taken_is_searched_newest_first_past_recents_nine() {
     let running = Running::new("taken-search");

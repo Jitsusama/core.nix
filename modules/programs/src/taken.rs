@@ -44,13 +44,34 @@ pub fn words(vocabulary: &Value) -> Option<taken_rows::Words> {
         .ok()
 }
 
-/// The source of what was taken, which any watch beginning reads too
-/// while Capture's rows are watched, or none while they aren't.
-pub fn lists(shared: &Shared) -> Vec<usize> {
-    if !watched(&lock(&shared.daemon)) {
+/// As a watch begins while Capture's rows are watched: the rows made where
+/// a read of what was taken ended before this watch was held (`changed`),
+/// and the source of what was taken, which the watch reads too; or
+/// nothing while they aren't watched.
+pub fn begun(shared: &Shared) -> Vec<usize> {
+    let mut daemon = lock(&shared.daemon);
+    if !watched(&daemon) {
         return Vec::new();
     }
+    if daemon.unmade.taken {
+        make(shared, &mut daemon);
+    }
+    drop(daemon);
     sources_of(shared, Run::List, &[], Some(&[LIST.to_owned()]))
+}
+
+/// What was taken was read again, or the folders it's shown from changed:
+/// the rows are made while watched, and otherwise marked for the next
+/// watch to make (`begun`). A read ending after a watch's answer made the
+/// rows but before the watch was held would otherwise leave them as they
+/// were until the next shot. Watched is asked once, so a watch held as
+/// this runs gets one or the other.
+pub fn changed(shared: &Shared, daemon: &mut Daemon) {
+    if watched(daemon) {
+        make(shared, daemon);
+    } else {
+        daemon.unmade.taken = true;
+    }
 }
 
 /// The path a row of these names, or none for another place's.
@@ -127,6 +148,7 @@ fn made(shared: &Shared, daemon: &mut Daemon, asked: &[String]) {
     let Some(words) = &shared.taken_words else {
         return;
     };
+    daemon.unmade.taken = false;
     let folders = daemon.folders.clone();
     let taken = listed(daemon);
     let watched = keys_watched(daemon);

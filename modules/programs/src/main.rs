@@ -555,8 +555,8 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
             if was != Some(answering) {
                 hand_over(&daemon);
             }
-            if taking && taken::watched(&daemon) {
-                taken::make(shared, &mut daemon);
+            if taking {
+                taken::changed(shared, &mut daemon);
             }
             tabs::heard(shared, &mut daemon, at, what);
             // A page opened or shut leaves its bookmark's row or brings it
@@ -629,11 +629,11 @@ fn names_programs(kinds: &[String], keys: Option<&[String]>) -> bool {
 /// What a watch beginning reads after its answer: each list whose file
 /// changed since it was read, and, for a watch naming its program's key,
 /// a list that's asked and what the program has open; then the tabs, and
-/// the rows waiting for a watch (`tabs::read`). A whole kind runs no
-/// program's reads, so Chrome's history is read as it's stepped into.
+/// the rows waiting for a watch (`taken::begun`, `tabs::read`). A whole
+/// kind runs no program's reads, so Chrome's history is read as it's stepped into.
 fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
     let lists = sources_of(shared, Run::List, kinds, keys);
-    for at in lists.into_iter().chain(taken::lists(shared)) {
+    for at in lists.into_iter().chain(taken::begun(shared)) {
         if keys.is_none() && shared.sources[at].asked {
             continue;
         }
@@ -762,7 +762,8 @@ fn health(shared: &Shared) -> Value {
 }
 
 /// Holds what the rows are made of, each field the ask names replacing
-/// what the one before said, and makes the rows again with it.
+/// what the one before said, and makes the rows again with it, or marks
+/// Capture's for the next watch to make.
 fn settle(shared: &Shared, settings: Settings) -> Value {
     let mut daemon = lock(&shared.daemon);
     if let Some(shown) = settings.shown {
@@ -777,9 +778,7 @@ fn settle(shared: &Shared, settings: Settings) -> Value {
     if rows::watched(&daemon) {
         rows::make(shared, &mut daemon);
     }
-    if taken::watched(&daemon) {
-        taken::make(shared, &mut daemon);
-    }
+    taken::changed(shared, &mut daemon);
     json!({"settings": {"shown": daemon.shown, "folders": daemon.folders, "also": daemon.also}})
 }
 
