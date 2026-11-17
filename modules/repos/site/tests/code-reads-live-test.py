@@ -159,6 +159,51 @@ def test_code_draws_every_repository_live(code_page: Page) -> None:
     expect(code_page.locator("#n-growing"), "a resting grove was said growing").to_have_text("0")
 
 
+def test_a_key_tapped_at_the_head_does_what_pressing_it_does(code_page: Page) -> None:
+    says_it_stands(code_page, "live")
+    chosen = code_page.locator('#list .row[aria-selected="true"]')
+    expect(chosen, "Code chose no row to start on").to_have_count(1)
+    first = chosen.get_attribute("data-key")
+    head = code_page.locator(".head .keys")
+    head.get_by_text("j", exact=True).click()
+    expect(chosen, "a tapped j didn't step to the next row").not_to_have_attribute(
+        "data-key", first or ""
+    )
+    expect(code_page.locator("#list"), "the list didn't take the keys back").to_be_focused()
+    head.get_by_text("k", exact=True).click()
+    expect(chosen, "a tapped k didn't step back").to_have_attribute("data-key", first or "")
+    head.get_by_text("l", exact=True).click()
+    expect(chosen, "a tapped l didn't walk the grove").not_to_have_attribute(
+        "data-key", first or ""
+    )
+    expect(code_page.locator("#grove"), "a tapped l left the grove without keys").to_be_focused()
+
+
+def test_return_on_a_key_at_the_head_presses_only_that_key(
+    code_page: Page, repos_daemon: StandIn
+) -> None:
+    says_it_stands(code_page, "live")
+    core = "github:owl/core"
+    # Core sorts first, ahead of notes, so k at the head keeps the cursor on it.
+    expect(code_page.locator("#list .row").first).to_have_attribute("data-key", core)
+    # A tree written now is drawn open in core's drawer, for Return to step into.
+    grove_written_now(repos_daemon)
+    trees = code_page.locator("#open .tree")
+    expect(trees.first, "core's drawer drew no tree to step into").to_be_visible(timeout=PACE_MS)
+    head = code_page.locator(".head .keys")
+    stepped_in = code_page.locator('#open .tree[aria-current="true"]')
+    head.get_by_text("k", exact=True).focus()
+    code_page.keyboard.press("Enter")
+    expect(row(code_page, core), "Return on k moved off core").to_have_attribute(
+        "aria-selected", "true"
+    )
+    expect(stepped_in, "Return on k stepped in too").to_have_count(0)
+    head.get_by_text("Return", exact=True).focus()
+    code_page.keyboard.press("Enter")
+    expect(stepped_in, "Return on the head's Return didn't step in").to_have_count(1)
+    expect(stepped_in, "the tree stepped into lost the keys to the list").to_be_focused()
+
+
 def test_a_tree_written_now_grows_its_repository(code_page: Page, repos_daemon: StandIn) -> None:
     says_it_stands(code_page, "live")
     written: dict[str, object] = {"key": "tree:/home/ada/trees/old", "written_at": now()}

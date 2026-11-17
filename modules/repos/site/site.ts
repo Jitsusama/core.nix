@@ -7,8 +7,9 @@
 // it: each repository keeps its place, and the cursor stays where it was.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
-import { listen, toggle } from "../../local-sites/kit/keys.ts";
+import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
 import { Held } from "../../local-sites/kit/records.ts";
+import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { addressed, landing, outward, type Place } from "./address.ts";
 import { drawer, groveOfTrees, rows } from "./draw.ts";
@@ -396,32 +397,34 @@ function openOut(): void {
   }
 }
 
+const actions: Actions = {
+  j: () => step(1),
+  ArrowDown: () => step(1),
+  k: () => step(-1),
+  ArrowUp: () => step(-1),
+  g: () => step(Number.NEGATIVE_INFINITY),
+  Home: () => step(Number.NEGATIVE_INFINITY),
+  G: () => step(Number.POSITIVE_INFINITY),
+  End: () => step(Number.POSITIVE_INFINITY),
+  l: () => walk(1),
+  ArrowRight: () => walk(1),
+  h: () => walk(-1),
+  ArrowLeft: () => walk(-1),
+  Enter: goIn,
+  "-": goOut,
+  z: fold,
+  y: copy,
+  o: openOut,
+  Escape: letGo,
+  "/": () => {
+    find.focus();
+    find.select();
+  },
+};
+
 listen({
   help: keys,
-  actions: {
-    j: () => step(1),
-    ArrowDown: () => step(1),
-    k: () => step(-1),
-    ArrowUp: () => step(-1),
-    g: () => step(Number.NEGATIVE_INFINITY),
-    Home: () => step(Number.NEGATIVE_INFINITY),
-    G: () => step(Number.POSITIVE_INFINITY),
-    End: () => step(Number.POSITIVE_INFINITY),
-    l: () => walk(1),
-    ArrowRight: () => walk(1),
-    h: () => walk(-1),
-    ArrowLeft: () => walk(-1),
-    Enter: goIn,
-    "-": goOut,
-    z: fold,
-    y: copy,
-    o: openOut,
-    Escape: letGo,
-    "/": () => {
-      find.focus();
-      find.select();
-    },
-  },
+  actions,
   // The rows and trees are the cursor, not controls of their own; a link in a tree is.
   answersAt: (target) => {
     const control = target.closest("a, button, select, summary");
@@ -487,14 +490,11 @@ for (const link of document.querySelectorAll<HTMLAnchorElement>(".places [data-p
   link.addEventListener("click", toPlace);
 }
 
-for (const key of document.querySelectorAll<HTMLElement>(".head .keys kbd[data-key]")) {
-  key.addEventListener("click", () => {
-    if (key.dataset["key"] === "?") {
-      toggle(keys);
-    } else {
-      list.focus();
-    }
-  });
-}
+// A tapped key at the head acts as pressed; the list takes the keys unless the act gave them on.
+pressable(".head .keys kbd", { ...actions, Return: goIn, "?": () => toggle(keys) }, () => {
+  if (document.activeElement?.closest(".head .keys")) {
+    list.focus({ preventScroll: true });
+  }
+});
 
 themeSwitch();

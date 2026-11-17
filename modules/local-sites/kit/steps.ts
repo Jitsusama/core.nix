@@ -45,14 +45,23 @@ function answersAt(target: Element): boolean {
 
 /**
  * Makes each key the `kbd` elements matching `selector` name pressable, as
- * a button doing what typing it does, for a reader who taps or clicks.
+ * a button doing what typing it does, for a reader who taps or clicks, then
+ * doing `afterwards`, such as giving the keys back to the list they step.
  * Return or Space on one does its act alone: the press goes no further,
  * where the page's own Return would open what its cursor is on.
  */
-function pressable(selector: string, taps: Readonly<Record<string, () => void>>): void {
+function pressable(
+  selector: string,
+  taps: Readonly<Record<string, () => void>>,
+  afterwards: () => void = () => undefined,
+): void {
   for (const kbd of document.querySelectorAll<HTMLElement>(selector)) {
-    const act = Object.hasOwn(taps, kbd.textContent) ? taps[kbd.textContent] : undefined;
-    if (act) {
+    const tap = Object.hasOwn(taps, kbd.textContent) ? taps[kbd.textContent] : undefined;
+    if (tap) {
+      const act = (): void => {
+        tap();
+        afterwards();
+      };
       kbd.setAttribute("role", "button");
       kbd.tabIndex = 0;
       kbd.addEventListener("click", act);
