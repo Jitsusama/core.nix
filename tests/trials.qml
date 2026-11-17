@@ -310,23 +310,32 @@ QtObject {
         expect("a short history is a floor", shortKept
             === ", after 1 other frame since it was heard and at least 1 in the 100 ms before",
             shortKept);
-        const allSince = Trials.framesBeforeSaid(Trials.framesBefore([1010, 1004], 1000));
-        expect("all since is a floor of both", allSince
-            === ", after at least 2 other frames since it was heard and at least 0 in the 100 ms"
-            + " before", allSince);
+        // Where every frame read came since, none of the 100 ms before was
+        // read, and that half goes unsaid. Each floor holds at its edge.
+        const allSince = Trials.framesBeforeSaid(Trials.framesBefore([1010, 1000], 1000));
+        expect("all since is a floor", allSince
+            === ", after at least 2 other frames since it was heard", allSince);
+        const stillEdge = Trials.framesBeforeSaid(Trials.framesBefore([950, 900], 1000));
+        expect("the oldest at the 100 ms is a floor", stillEdge
+            === ", after 0 other frames since it was heard and at least 2 in the 100 ms before",
+            stillEdge);
         expect("none read, none said", Trials.framesBefore([], 1000) === null
             && Trials.framesBeforeSaid(null) === "", "said");
         expect("no time heard, none said", Trials.framesBefore([1012], undefined) === null,
             "counted");
-        // Read back from the key's frame 20, never its own, and past the
-        // slot a newer frame took (17's), to the oldest the ring keeps.
+        // Read back from the key's frame 20, never its own, to the oldest
+        // the ring keeps; and from 30, up to the slot a newer frame took
+        // (27's), no further, so what's read runs unbroken.
         function timesOf(frame) {
-            return frame === 17 || frame === 20 ? {} : { rendering: 1000 + frame };
+            return frame === 20 || frame === 27 ? {} : { rendering: 1000 + frame };
         }
         const begunAt = Trials.begunBefore(20, timesOf);
         expect("begun before, newest first", JSON.stringify(begunAt)
-            === JSON.stringify([1019, 1018, 1016, 1015, 1014, 1013, 1012, 1011, 1010, 1009,
-                1008, 1007, 1006, 1005]), JSON.stringify(begunAt));
+            === JSON.stringify([1019, 1018, 1017, 1016, 1015, 1014, 1013, 1012, 1011, 1010,
+                1009, 1008, 1007, 1006, 1005]), JSON.stringify(begunAt));
+        const taken = Trials.begunBefore(30, timesOf);
+        expect("begun before, to a slot taken", JSON.stringify(taken)
+            === JSON.stringify([1029, 1028]), JSON.stringify(taken));
         const early = Trials.begunBefore(3, timesOf);
         expect("begun before the first frames", JSON.stringify(early)
             === JSON.stringify([1002, 1001]), JSON.stringify(early));

@@ -73,6 +73,9 @@ DRAWING_SPLIT = re.compile(
     r" (?P<heard>\d+) before the shell heard it swapped\)"
 )
 ROUNDED = 2
+# How a key's line says the frames begun since it was heard (Trials.js's framesBeforeSaid), read
+# back from its own frame's number, which a wrong number or clock leaves unsaid.
+FRAMES_BEFORE = re.compile(r", after (?:at least )?\d+ other frames? since it was heard")
 # The most facts a home network thing's drawer holds, the rest its step in's (modules/eero's
 # drawers.rs GLANCE).
 GLANCE = 6
@@ -4182,6 +4185,9 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
     drew = DRAWING_SPLIT.search(said)
     lines = [line for line in said.splitlines() if 'launcher: "w" took' in line]
     assert drew, f"its line never said its drawing apart: {lines}"
+    assert any(FRAMES_BEFORE.search(line) for line in lines), (
+        f"its line never said the frames begun since it was heard: {lines}"
+    )
     drawing, syncing, rendering, heard = (int(part) for part in drew.groups())
     assert abs(syncing + rendering + heard - drawing) <= ROUNDED, (
         f"{drawing} ms drawing, said as {syncing} syncing, {rendering} rendering"

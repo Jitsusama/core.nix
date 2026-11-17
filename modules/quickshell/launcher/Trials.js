@@ -360,14 +360,17 @@ function framesBefore(begunAt, heard) {
 
 // When each of the frames before `frame` began, newest first, as far back
 // as `timesOf` (FramePresentation's) keeps them. A slot a newer frame took
-// comes back empty and is left out, so no frame is counted as another.
+// comes back empty, and the read ends there, so what's read runs unbroken
+// from the key's own frame back and framesBefore's floor holds: a newer
+// frame takes the oldest slots first.
 function begunBefore(frame, timesOf) {
     const begunAt = [];
     for (let back = 1; back < FRAMES_KEPT && frame - back > 0; back++) {
         const rendering = timesOf(frame - back).rendering;
-        if (rendering) {
-            begunAt.push(rendering);
+        if (!rendering) {
+            break;
         }
+        begunAt.push(rendering);
     }
     return begunAt;
 }
@@ -379,12 +382,18 @@ function framesCounted(count, atLeast, kind) {
 }
 
 // What a key's line says of those frames, or nothing where none were read.
+// Where every frame read began after the key was heard, none of the 100 ms
+// before it was read, so that half goes unsaid rather than said as none.
 function framesBeforeSaid(frames) {
-    return frames
-        ? `, after ${framesCounted(frames.since, frames.sinceAtLeast, "other frame")}`
-            + ` since it was heard and ${frames.stillAtLeast ? "at least " : ""}${frames.still}`
-            + ` in the ${STILL_MS} ms before`
-        : "";
+    if (!frames) {
+        return "";
+    }
+    const since = `, after ${framesCounted(frames.since, frames.sinceAtLeast, "other frame")}`
+        + " since it was heard";
+    return frames.sinceAtLeast
+        ? since
+        : `${since} and ${frames.stillAtLeast ? "at least " : ""}${frames.still}`
+            + ` in the ${STILL_MS} ms before`;
 }
 
 // The trial with its frames, when any were drawn while it moved.
