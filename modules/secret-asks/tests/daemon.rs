@@ -1054,6 +1054,124 @@ fn a_no_refuses_and_reads_nothing() {
     assert_eq!(setting.op_ran(), 0, "op ran for a no");
 }
 
+/// Every reading the journal holds now, waiting for none.
+fn told(setting: &Setting) -> String {
+    let mut said = String::new();
+    let mut line = [0_u8; 4096];
+    setting
+        .journal
+        .set_nonblocking(true)
+        .expect("the journal stand-in reads without waiting");
+    while let Ok(length) = setting.journal.recv(&mut line) {
+        said.push_str(&String::from_utf8_lossy(&line[..length]));
+    }
+    setting
+        .journal
+        .set_nonblocking(false)
+        .expect("the journal stand-in waits again");
+    said
+}
+
+/// Asserts the value op would give was never read, and is in no answer,
+/// reading or file of the tree the ask would have run in.
+fn read_nowhere(setting: &Setting, id: &str, why: &str) {
+    assert_eq!(setting.op_ran(), 0, "op ran for {why}");
+    let answer = setting
+        .folder
+        .join("asks")
+        .join(format!("{id}.answer.json"));
+    let answered = std::fs::read_to_string(answer).unwrap_or_default();
+    assert!(
+        !answered.contains(VALUE),
+        "the value reached {why}'s answer"
+    );
+    let told = told(setting);
+    assert!(
+        !told.contains(VALUE),
+        "the journal was told the value for {why}: {told}"
+    );
+    let mut folders = vec![setting.folder.join("tree")];
+    while let Some(folder) = folders.pop() {
+        for entry in std::fs::read_dir(&folder)
+            .expect("the tree reads")
+            .flatten()
+        {
+            let path = entry.path();
+            if path.is_dir() {
+                folders.push(path);
+            } else if let Ok(bytes) = std::fs::read(&path) {
+                assert!(
+                    !String::from_utf8_lossy(&bytes).contains(VALUE),
+                    "the value reached {} for {why}",
+                    path.display()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn a_yes_after_an_ask_s_ten_minutes_reads_nothing() {
+    // An ask with a few seconds of its ten minutes left as the daemon starts:
+    // enough that a loaded machine still draws it waiting.
+    const LEFT_MS: i64 = 5_000;
+    let id = std::cell::RefCell::new(String::new());
+    let ends = std::cell::Cell::new(0_i64);
+    let setting = Setting::after("timed-out", |folder| {
+        let asked = put_up(folder, ITEM);
+        let file = folder.join("asks").join(format!("{asked}.ask.json"));
+        let mut said: Value =
+            serde_json::from_str(&std::fs::read_to_string(&file).expect("the ask reads"))
+                .expect("the ask is JSON");
+        let now = said["asked_ms"].as_i64().expect("the ask says when");
+        said["asked_ms"] = json!(now - secret_asks::ask::WAITS_MS + LEFT_MS);
+        ends.set(now + LEFT_MS);
+        std::fs::write(&file, said.to_string()).expect("the ask is written back");
+        *id.borrow_mut() = asked;
+    });
+    let id = id.into_inner();
+    let mut client = setting.watching();
+    let drawn = row(&mut client, &id);
+    assert_eq!(drawn["state"], "waiting", "the ask didn't wait: {drawn}");
+    // Just past its end, whether or not the daemon has ended it yet.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("the clock is past 1970")
+        .as_millis();
+    let left = ends.get() + 500 - i64::try_from(now).expect("the time fits");
+    std::thread::sleep(std::time::Duration::from_millis(
+        u64::try_from(left).unwrap_or(0),
+    ));
+    let late = act(&mut client, &drawn, 0);
+    assert_eq!(
+        late["error"]["code"], "refused",
+        "a yes past ten minutes: {late}"
+    );
+    let answer = setting.answer(&id);
+    assert_eq!(
+        (&answer["state"], &answer["why"]),
+        (&json!("ended"), &json!("ended unanswered")),
+        "the ask didn't end unanswered: {answer}"
+    );
+    read_nowhere(&setting, &id, "an ask past its ten minutes");
+}
+
+#[test]
+fn a_yes_after_the_asker_took_its_ask_away_reads_nothing() {
+    let setting = Setting::new("taken-away");
+    let mut client = setting.watching();
+    let id = setting.ask(ITEM);
+    let drawn = row(&mut client, &id);
+    std::fs::remove_file(setting.folder.join("asks").join(format!("{id}.ask.json")))
+        .expect("the ask is taken away");
+    let late = act(&mut client, &drawn, 0);
+    assert_eq!(
+        late["error"]["code"], "refused",
+        "a yes to an ask taken away: {late}"
+    );
+    read_nowhere(&setting, &id, "an ask taken away");
+}
+
 #[test]
 fn a_tree_s_own_settings_start_no_program_as_it_is_read() {
     let setting = Setting::new("planted");
