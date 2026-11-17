@@ -587,6 +587,43 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     )
 
 
+def test_agents_starts_new_work_from_a_link_in_no_window(desktop: Desktop) -> None:
+    """Start New Work starts a session on a link, in its repository, with no window.
+
+    Joel, 2026-11-16: starting a cell from incoming work took a hand-built chain of a quest, a
+    folder and a start. Typed from the find, as his try-line says, From a Link asks for the
+    link, and mycelium sprout has the realm's node start pi held in the link's checkout, told
+    to make the work a quest of its own, and no window opens.
+    """
+    machine = desktop.machine
+    link = "https://github.com/harbour/lighthouse/issues/7"
+    folder = "/home/jitsusama/src/github.com/harbour/lighthouse"
+    opened = "$XDG_RUNTIME_DIR/pi-opened"
+    first = "$XDG_RUNTIME_DIR/pi-first-text"
+    desktop.as_account(f"rm -f {opened} {first} && mkdir -p {folder}")
+    before = {window["id"] for window in desktop.windows()}
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("new work", selecting="Start New Work")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["From a Link"])
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: shown["mode"] == "insert")
+    machine.send_chars(link)
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        desktop.in_session(f"grep -qx '{folder} ' {opened}"), timeout=dt.timedelta(seconds=30)
+    )
+    told = desktop.as_account(f"cat {first}")
+    assert f"sprouted this session from {link}" in told, told
+    assert "quest create with kind quest" in told, told
+    # The row says where it started, and nothing opened a window for it.
+    desktop.launcher_until(lambda shown: "started on" in json.dumps(shown["selected"]))
+    opened_windows = {window["id"] for window in desktop.windows()} - before
+    assert not opened_windows, f"Start New Work opened windows: {desktop.windows()}"
+    desktop.close_launcher()
+
+
 def a_quest_offers_to_orchestrate(desktop: Desktop) -> None:
     """Start a Session lists a quest nothing orchestrates, whose step in offers Orchestrate.
 
