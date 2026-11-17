@@ -54,8 +54,10 @@ impl Homes {
     /// row's address stands, as the record orders them. A pattern holds its
     /// kind against every later row, and against its own row's record, but
     /// not against an earlier row that claimed that kind by name, whether
-    /// or not its record could be read. A record gives only the kinds its
-    /// row claims by name.
+    /// or not its record could be read. A pattern this can't read holds its
+    /// kind the same way, with no link, so a mistyped row isn't overtaken by
+    /// a later one. A record gives only the kinds its row claims by name,
+    /// and only addresses on its row's own site, their bytes plain.
     pub fn from_sites(sites: &Value, homes: impl Fn(&str) -> Option<Value>) -> Self {
         let mut addresses = HashMap::new();
         let mut patterns: HashMap<String, String> = HashMap::new();
@@ -73,9 +75,18 @@ impl Homes {
             else {
                 continue;
             };
-            for (kind, address) in claims.iter().filter_map(pattern) {
-                if !patterns.contains_key(kind) && !named.contains(kind) {
-                    patterns.insert(kind.to_owned(), format!("{path}{address}"));
+            for claim in claims.iter().filter(|claim| claim.is_object()) {
+                let Some(kind) = claim.get("kind").and_then(Value::as_str) else {
+                    continue;
+                };
+                match pattern(claim) {
+                    Some(address) if !patterns.contains_key(kind) && !named.contains(kind) => {
+                        patterns.insert(kind.to_owned(), format!("{path}{address}"));
+                    }
+                    Some(_) => {}
+                    None => {
+                        named.insert(kind.to_owned());
+                    }
                 }
             }
             let recorded: HashSet<&str> = claims
@@ -98,7 +109,7 @@ impl Homes {
                 ) else {
                     continue;
                 };
-                if !recorded.contains(kind) {
+                if !recorded.contains(kind) || !address.starts_with(path) || !plain(address) {
                     continue;
                 }
                 for name in names(thing) {
@@ -155,19 +166,23 @@ fn names(thing: &Value) -> impl Iterator<Item = &str> {
     key.into_iter().chain(name).chain(others)
 }
 
-/// A claim's kind and address when it is a pattern whose address names the
-/// thing and is a fragment on the row's own page, written from the row's
-/// path. A fragment never reaches a server and can't change which page a
-/// browser opens, so neither the pattern nor a name put in it can step off
-/// the site. Its bytes are visible ASCII with no backslash, quote or angle
-/// bracket, so it can't break out of a terminal's link or a page's markup.
-fn pattern(claim: &Value) -> Option<(&str, &str)> {
-    let kind = claim.get("kind").and_then(Value::as_str)?;
+/// A claim's address when it is a pattern whose address names the thing and
+/// is a fragment on the row's own page, written from the row's path, its
+/// bytes plain. A fragment never reaches a server and can't change which
+/// page a browser opens, so neither the pattern nor a name put in it can
+/// step off the site.
+fn pattern(claim: &Value) -> Option<&str> {
     let address = claim.get("address").and_then(Value::as_str)?;
-    let plain = address
+    (address.starts_with('#') && plain(address) && address.contains(NAME)).then_some(address)
+}
+
+/// Whether an address's bytes are visible ASCII with no backslash, quote,
+/// angle bracket or backtick, so it can't break out of a terminal's link or
+/// a page's markup. A record's address and a pattern are held to it alike.
+fn plain(address: &str) -> bool {
+    address
         .bytes()
-        .all(|byte| byte.is_ascii_graphic() && !b"\\\"'<>`".contains(&byte));
-    (address.starts_with('#') && plain && address.contains(NAME)).then_some((kind, address))
+        .all(|byte| byte.is_ascii_graphic() && !b"\\\"'<>`".contains(&byte))
 }
 
 /// A name as it may sit in an address: every byte but the unreserved ones
@@ -564,6 +579,11 @@ mod tests {
             "?machine={name}",
             "#machine={name}\u{1b}]8;;",
             "#machine=\"{name}\"",
+            "#machine='{name}'",
+            "#machine=\\{name}",
+            "#machine=<{name}>",
+            "#machine=`{name}`",
+            "#machine={name}\u{202e}",
             "#machine={name} x",
         ] {
             let homes = Homes::from_sites(
@@ -573,6 +593,46 @@ mod tests {
                 |_| None,
             );
             assert_eq!(homes, Homes::default(), "{address:?} isn't read");
+        }
+    }
+
+    #[test]
+    fn a_pattern_that_isnt_read_still_holds_its_kind_against_a_later_one() {
+        let homes = Homes::from_sites(
+            &sites(&json!([
+                {"path": "mycelium/", "homes": [
+                    {"kind": "machine", "address": "mycelium/#machine={name}"},
+                ]},
+                {"path": "health/", "homes": [
+                    {"kind": "machine", "address": "#m={name}"},
+                ]},
+            ])),
+            |_| None,
+        );
+        assert_eq!(homes.address("machine", "osprey"), None);
+    }
+
+    #[test]
+    fn a_records_address_off_its_site_or_with_bytes_a_link_cant_hold_is_not_read() {
+        let homes = Homes::from_sites(
+            &sites(&json!([{"path": "code/", "homes": ["repository"]}])),
+            |_| {
+                Some(json!({"things": [
+                    {"kind": "repository", "key": "core", "address": "code/#repo=core"},
+                    {"kind": "repository", "key": "off", "address": "health/#r=off"},
+                    {"kind": "repository", "key": "esc",
+                        "address": "code/#x\u{1b}\\\u{1b}]8;;http://elsewhere/"},
+                    {"kind": "repository", "key": "quote", "address": "code/#\"x\""},
+                    {"kind": "repository", "names": [""], "address": "code/#none"},
+                ]}))
+            },
+        );
+        assert_eq!(
+            homes.address("repository", "core"),
+            Some("code/#repo=core".into())
+        );
+        for name in ["off", "esc", "quote", ""] {
+            assert_eq!(homes.address("repository", name), None, "{name:?}");
         }
     }
 
