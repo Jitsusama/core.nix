@@ -1,5 +1,9 @@
 # The shaper, built from this directory, its tests run as it builds.
-{ lib, rustPlatform }:
+{
+  curl,
+  lib,
+  rustPlatform,
+}:
 rustPlatform.buildRustPackage rec {
   pname = "shaper";
   version = "0.1.0";
@@ -15,6 +19,9 @@ rustPlatform.buildRustPackage rec {
   };
   sourceRoot = "${src.name}/shaper";
   cargoLock.lockFile = ./Cargo.lock;
+  # The proof's upload tests hold a real curl open, to show an upload
+  # under way ends with its proof.
+  nativeCheckInputs = [ curl ];
   meta = {
     description = "Keeps the network's queue on this machine, sorted by the slices' classes";
     license = lib.licenses.mit;

@@ -57,8 +57,9 @@ let
   # `shaper proof` loads the link with curl only while swayidle says Joel
   # is away, a-call-is-on says no call is on and pw-dump shows nothing
   # playing, and reads the default route with ip; its uploads ask after
-  # it with sed and cut; systemd-run and systemctl are the system's own. What else it waits on, such as the
-  # calendar, the machine names in proofWaitsWhile.
+  # it with sed and cut; systemd-run and systemctl are the system's own.
+  # What else it waits on, such as the calendar, the machine names in
+  # proofWaitsWhile.
   waitsWhile = config.jitsusama.shaper.proofWaitsWhile;
   waitsFlag = lib.optionalString (waitsWhile != [ ]) (
     "--set-default SHAPER_PROOF_WAITS_WHILE " + lib.escapeShellArg (builtins.toJSON waitsWhile)

@@ -26,7 +26,7 @@
 //! is dropped, and it waits for his next idle stretch. SIGTERM, SIGINT
 //! and SIGHUP end it the same way, writing what it measured to `--out`
 //! and exiting 130. A proof killed outright can put nothing back, but its
-//! load ends within about two seconds, and the next proof puts the shaper back
+//! load and probes end within about two seconds, and the next proof puts the shaper back
 //! as the killed one found it. It waits `--wait` seconds from its start
 //! in all, and exits 75 if they run out before every pair is measured,
 //! writing what it measured to `--out`. It exits 69 if it couldn't put
@@ -49,7 +49,7 @@ mod verdict;
 
 use crate::qdisc;
 use gate::{Gate, WAITS_ENV, waits_while};
-use load::stop_scopes;
+use load::{guarded, stop_scopes};
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -135,7 +135,11 @@ fn asked(args: &[String], named: Option<String>) -> Result<Asked, String> {
 /// Starts `command` in a scope of its own under `slice`, named so the
 /// proof can stop every scope it started at once.
 fn scoped(slice: &str, name: &str, command: &[&str]) -> Command {
+    use std::os::unix::process::CommandExt;
     let mut c = Command::new("systemd-run");
+    // A scope runs its command in this process, which leads a group of
+    // its own, so what it starts can end all of it at once.
+    c.process_group(0);
     c.args(["--user", "--quiet", "--collect", "--scope"])
         .arg(format!("--slice={slice}"))
         .arg(format!("--unit=shaper-proof-{name}-{}", std::process::id()))
@@ -196,7 +200,7 @@ fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block
         &format!(
             "head -c 4000000000 /dev/zero | curl -s -o /dev/null -X POST -T - \
              --max-time $((end - SECONDS + 1)) -w '%{{http_code}} %{{size_upload}}\\n' \
-             '{server}/__up'"
+             \"$1/__up\""
         ),
         "",
     );
@@ -204,7 +208,7 @@ fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block
         &s,
         &format!(
             "curl -s -o /dev/null --max-time $((end - SECONDS + 1)) \
-             -w '%{{http_code}} %{{size_download}}\\n' '{server}/__down?bytes=5000000'"
+             -w '%{{http_code}} %{{size_download}}\\n' \"$1/__down?bytes=5000000\""
         ),
         "",
     );
@@ -212,16 +216,20 @@ fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block
         &s,
         &format!(
             "curl -s -o /dev/null -w '%{{http_code}} %{{time_starttransfer}}\\n' \
-             '{server}/__down?bytes=0'"
+             \"$1/__down?bytes=0\""
         ),
         // A fresh connection a second, as a page's would be.
         "sleep 1;",
     );
+    // Each ends with its proof, however that ends; the server is given as
+    // an argument, never read as shell.
+    let (up, down, first) = (guarded(&up), guarded(&down), guarded(&first));
+    let call = guarded(&format!("\"$1\" proof-call {s}"));
     let probes: Vec<Child> = [
-        scoped("app.slice", "up", &["sh", "-c", &up]),
-        scoped("app.slice", "down", &["sh", "-c", &down]),
-        scoped("app.slice", "first", &["sh", "-c", &first]),
-        scoped("app.slice", "call", &[me, "proof-call", s.as_str()]),
+        scoped("app.slice", "up", &["sh", "-c", &up, "sh", server]),
+        scoped("app.slice", "down", &["sh", "-c", &down, "sh", server]),
+        scoped("app.slice", "first", &["sh", "-c", &first, "sh", server]),
+        scoped("app.slice", "call", &["sh", "-c", &call, "sh", me]),
     ]
     .into_iter()
     .map(|mut c| c.stdout(Stdio::piped()).spawn())
@@ -241,6 +249,10 @@ fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block
         }
         // CAKE's queue is read once a second through the block.
         thread::sleep(Duration::from_secs(1));
+    }
+    // A stop ends the probes here, rather than waiting on the watch to.
+    if halted(stop) {
+        stop_scopes();
     }
     let elapsed = began.elapsed().as_secs_f64();
     let sent = sent_bytes(link).saturating_sub(sent_then);
@@ -282,7 +294,8 @@ fn idle_call(seconds: u64) -> Vec<f64> {
     let Some(me) = me.to_str() else {
         return Vec::new();
     };
-    scoped("app.slice", "idle", &[me, "proof-call", s.as_str()])
+    let call = guarded(&format!("\"$1\" proof-call {s}"));
+    scoped("app.slice", "idle", &["sh", "-c", &call, "sh", me])
         .stdout(Stdio::piped())
         .output()
         .map(|o| {
@@ -345,7 +358,10 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     let gate = Arc::new(gate);
     let deadline = Instant::now() + Duration::from_secs(asked.wait);
     let marker = stop::marker();
-    let was_on = stop::own_state(&marker, systemctl("is-active"));
+    let active = systemctl("is-active");
+    let was_on = marker
+        .as_deref()
+        .map_or(active, |m| stop::own_state(m, active));
     let mut idle: Vec<f64> = Vec::new();
     let (pairs, complete) = across_windows(
         asked.pairs,
@@ -353,8 +369,8 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
         |from| window(&asked, &link, &gate, was_on, from, &mut idle),
     );
     let back = put_back(was_on);
-    if back {
-        stop::forget(&marker);
+    if back && let Some(marker) = &marker {
+        stop::forget(marker);
     }
     let stopped = STOPPED.load(Ordering::Relaxed);
     let verdict = (!pairs.is_empty()).then(|| judge(&idle, &pairs));
@@ -496,9 +512,11 @@ fn window(
     let closed = stop.swap(true, Ordering::Relaxed);
     stop_scopes();
     // Put back before the watch is joined, since it may be stuck asking
-    // the gate.
+    // the gate; once stopped, it isn't waited for, ending with the proof.
     put_back(was_on);
-    let _ = watch.join();
+    if !STOPPED.load(Ordering::Relaxed) {
+        let _ = watch.join();
+    }
     if closed && !STOPPED.load(Ordering::Relaxed) {
         tell(&format!(
             "kept {} pairs, the one under way dropped; waiting for Joel's next idle",
@@ -567,6 +585,30 @@ mod tests {
             "a stop waited {:?} for Joel's idle and the settle",
             began.elapsed()
         );
+        // And a stop that comes while each waits.
+        for waits in [true, false] {
+            let stopped = Arc::new(AtomicBool::new(false));
+            let later = Arc::clone(&stopped);
+            let stopper = thread::spawn(move || {
+                thread::sleep(Duration::from_millis(300));
+                later.store(true, Ordering::Relaxed);
+            });
+            let began = Instant::now();
+            if waits {
+                assert!(
+                    !opened(|| false, began + SETTLE, &stopped),
+                    "opened once stopped"
+                );
+            } else {
+                settle(&stopped);
+            }
+            let _ = stopper.join();
+            assert!(
+                began.elapsed() < Duration::from_secs(2),
+                "a stop on the way waited {:?}",
+                began.elapsed()
+            );
+        }
     }
 
     #[test]

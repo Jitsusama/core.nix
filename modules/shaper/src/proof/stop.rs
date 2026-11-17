@@ -26,13 +26,17 @@ extern "C" fn heard(_: libc::c_int) {
 
 /// Hears SIGTERM, SIGINT and SIGHUP as a stop, so the proof puts the
 /// shaper back as it was and ends its load before it exits, where it
-/// would otherwise die with the shaper off and the uploads going on.
+/// would otherwise die with the shaper off and the uploads going on. A
+/// signal already ignored, as nohup ignores SIGHUP, stays ignored.
 pub fn hear_stops() {
-    // SAFETY: the handler only touches an atomic and calls write(2).
+    // SAFETY: the handler only touches an atomic and calls write(2), and
+    // a disposition put back as it was found is no change.
     unsafe {
         let handler = heard as *const () as libc::sighandler_t;
         for signal in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
-            libc::signal(signal, handler);
+            if libc::signal(signal, handler) == libc::SIG_IGN {
+                libc::signal(signal, libc::SIG_IGN);
+            }
         }
     }
 }
@@ -73,18 +77,23 @@ pub fn put_back(on: bool) -> bool {
 }
 
 /// Where the shaper's own state waits while a proof may have it off:
-/// the runtime folder, since a boot starts the shaper afresh.
-pub fn marker() -> PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR")
-        .map_or_else(std::env::temp_dir, PathBuf::from)
-        .join("shaper-proof-was-on")
+/// the runtime folder, since a boot starts the shaper afresh. With none,
+/// there's nowhere private to keep it, and it isn't kept.
+pub fn marker() -> Option<PathBuf> {
+    std::env::var_os("XDG_RUNTIME_DIR").map(|d| PathBuf::from(d).join("shaper-proof-was-on"))
 }
 
 /// The shaper's own state: what `marker` holds, when a proof killed
 /// outright left it there and maybe left the shaper off, else `active`.
 /// It stays in `marker` until `forget`, once the shaper is back.
 pub fn own_state(marker: &Path, active: bool) -> bool {
-    let earlier = fs::read_to_string(marker).ok().map(|s| s.trim() == "on");
+    let earlier = fs::read_to_string(marker)
+        .ok()
+        .and_then(|s| match s.trim() {
+            "on" => Some(true),
+            "off" => Some(false),
+            _ => None,
+        });
     if let Some(on) = earlier {
         tell(&format!(
             "an earlier proof was killed outright: the shaper goes back {} after this one",
@@ -108,6 +117,21 @@ mod tests {
 
     #[test]
     fn a_stop_signal_is_heard_as_a_stop() {
+        // Under nohup a SIGHUP is ignored, and stays so.
+        // SAFETY: setting a disposition, then raising what it ignores.
+        unsafe {
+            libc::signal(libc::SIGHUP, libc::SIG_IGN);
+            hear_stops();
+            libc::raise(libc::SIGHUP);
+        }
+        assert!(
+            !STOPPED.load(Ordering::Relaxed),
+            "a SIGHUP nohup ignores stopped it"
+        );
+        // SAFETY: back to the default, so the stops below are heard.
+        unsafe {
+            libc::signal(libc::SIGHUP, libc::SIG_DFL);
+        }
         hear_stops();
         for signal in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
             STOPPED.store(false, Ordering::Relaxed);
@@ -151,6 +175,11 @@ mod tests {
             !own_state(&marker, false),
             "remembered a proof that put it back"
         );
+        forget(&marker);
+        // A marker that says neither, as a write cut short leaves, is
+        // nobody's word: the shaper's own state stands.
+        fs::write(&marker, "").expect("an empty marker");
+        assert!(own_state(&marker, true), "took an empty marker for off");
         forget(&marker);
         let _ = fs::remove_dir_all(&dir);
     }
