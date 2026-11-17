@@ -565,7 +565,7 @@ QtObject {
         expect("two refusals say the first", Reached.refused(["", "couldn't", "no answer"]),
             "couldn't");
         // What `launcher do` is answered: done, refused, or unavailable where
-        // the act's daemon had no answer to give, so the terminal exits 69.
+        // the act's daemon had no answer to give, which may be asked again.
         const names = ["Asks", "Whimbrel"];
         expect("a walk nothing refused answers done",
             JSON.stringify(Reached.answered("", names, "no answer")),

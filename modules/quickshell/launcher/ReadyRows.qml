@@ -989,7 +989,7 @@ Scope {
             // Nothing is sent, so a walk from outside isn't answered done
             // (Launcher.qml's walkedRun).
             const becoming = Words.field.becoming ?? {};
-            maker?.launcher?.walkRefused(link ? becoming.couldNot ?? ""
+            maker?.launcher?.walkRefused?.(link ? becoming.couldNot ?? ""
                 : Ready.refusal(null, becoming));
             return;
         }
@@ -1036,7 +1036,7 @@ Scope {
         const words = Words.field.becoming ?? {};
         if (!link) {
             said(key, Ready.refusal(null, words));
-            maker?.launcher?.walkRefused(Ready.refusal(null, words));
+            maker?.launcher?.walkRefused?.(Ready.refusal(null, words));
             return;
         }
         asksMade[key] = (asksMade[key] ?? 0) + 1;

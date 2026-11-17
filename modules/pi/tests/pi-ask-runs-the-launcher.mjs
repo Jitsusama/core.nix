@@ -70,7 +70,7 @@ case "$4" in
     case "$5" in
       app:kitty) echo '{"done":true,"said":"Opened Kitty"}' ;;
       category:computer›category:energy›session:Reboot) echo '{"done":false,"offered":true,"said":"Reboot?"}' ;;
-      ask:Whimbrel›yes) echo '{"done":false,"said":"Yes: not without your own key press"}' ;;
+      ask:Whimbrel›yes) echo '{"done":false,"said":"Whimbrel › Yes: not without your own key press"}' ;;
       *) echo '{"error":"no entry by that id"}' ;;
     esac ;;
   runWith)
@@ -127,7 +127,7 @@ assert.equal(await said({ action: "run", id: "nothing" }), "Not done: no entry b
 // without Joel's own key press, is said not done in its words.
 assert.equal(
   await said({ action: "run", id: "ask:Whimbrel›yes" }),
-  "Not done: Yes: not without your own key press",
+  "Not done: Whimbrel › Yes: not without your own key press",
 );
 assert.equal(await said({ action: "run" }), "Name the id to run, as list gives it.");
 

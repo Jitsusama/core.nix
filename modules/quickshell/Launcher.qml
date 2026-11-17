@@ -1601,7 +1601,7 @@ Scope {
         }
         // What Return does with it, as it does from the rows.
         const act = returnOf(target);
-        // Said done only where nothing it ran refused it (walkedRun).
+        // Said done only where nothing refused it as it ran (walkedRun).
         const ran = why => why === "" ? { done: true, said: said }
             : { done: false, said: `${said}: ${why}` };
         if (act.given) {
@@ -1630,6 +1630,8 @@ Scope {
     // What the launcher was told not done while a walk from outside ran an
     // act (toldNot), so the walk says why rather than that it was done, as
     // a yes to a secret ask walked so is withheld (launcher/Reached.js).
+    // Only what's told as the act runs counts: a daemon's refusal coming
+    // after the walk has answered is told on Joel's next opening instead.
     property var walkTold: null
     function walkRefused(why) {
         if (walkTold !== null)
@@ -1860,8 +1862,8 @@ Scope {
                 path: ids
             };
         }
-        // Said done only where nothing it ran refused it, else why, which
-        // the terminal says as a refusal (walkedRun, Reached.answered).
+        // Said done only where nothing refused it as it ran, else why, kept
+        // apart from a daemon with no answer (walkedRun, Reached.answered).
         const ran = why => Reached.answered(why, names, Words.field.becoming?.noAnswer ?? "");
         if (act.given) {
             if (words === "")
