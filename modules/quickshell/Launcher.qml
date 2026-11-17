@@ -10391,7 +10391,7 @@ Scope {
         if (!priming) {
             return;
         }
-        console.info(`launcher: the card was drawn before its first opening, ${how}`);
+        console.info(`launcher: drawing the card ahead ended ${how}`);
         primeEnding = true;
         try {
             priming = false;
@@ -10407,12 +10407,13 @@ Scope {
             primeEnd("cut short by an opening");
     }
 
-    // Priming ends after a second even with no frame swapped, as when
-    // niri draws none for an output that's off.
+    // Priming ends after three seconds even with no frame swapped, as when
+    // niri draws none for an output that's off: the card unseen costs
+    // nothing meanwhile, and a loaded builder's two frames can take one.
     Timer {
         id: primeOver
-        interval: 1000
-        onTriggered: root.primeEnd(`for a second, ${root.primedFrames} frames swapped`)
+        interval: 3000
+        onTriggered: root.primeEnd(`after 3 s, ${root.primedFrames} frames swapped`)
     }
     property real warmedTook: 0
     // Where the pass's time went between its turns, said as it ends: at a
@@ -10510,7 +10511,8 @@ Scope {
         // Not after a parting word, whose fade would carry the card's
         // rise and fall past primeEnding's guard, and which was drawn as it
         // opened anyway.
-        if (!cardUp && parting === "" && !fading) {
+        // Nor after any opening, which drew the card already.
+        if (!cardUp && parting === "" && !fading && openingsDrawn === 0) {
             primedFrames = 0;
             priming = true;
             primeOver.restart();
@@ -12855,7 +12857,8 @@ Scope {
                                             anchors.fill: parent
                                             groundFrom: commandRows.x
                                             selected: commandRow.at === commandRows.chosen
-                                            shown: card.opacity > 0 && commandRow.visible
+                                            shown: card.opacity > 0 && !root.priming
+                                                && commandRow.visible
                                             glyph: commandRow.modelData?.glyph
                                                 || (commandRow.act?.glyph ?? "")
                                             hue: Theme[commandRow.modelData?.hue
@@ -13525,7 +13528,10 @@ Scope {
                                     // reading a long name on only while the keys
                                     // are on the rows: with them in the drawer,
                                     // only what they move moves.
-                                    shown: card.opacity > 0 && !QueryKeys.paged(prompt.mode)
+                                    // Not while priming, which would read a
+                                    // long name on unseen.
+                                    shown: card.opacity > 0 && !root.priming
+                                        && !QueryKeys.paged(prompt.mode)
                                     fills: false
                                     groundFrom: list.x
                                     glyph: entry.own || entry.sort !== "act"

@@ -133,10 +133,16 @@ WARMED = timedelta(seconds=20)
 
 # What the shell says once it has drawn the card, unseen, as the pass ends (Launcher.qml's
 # primeEnd), and how it says the drawing ended when two frames were swapped. The fixture's
-# shell has kept home by then, and the drawing takes two frames, or a second at most.
-PRIMED_SAID = "launcher: the card was drawn before its first opening"
+# shell has kept home by then, and the drawing takes two frames, or three seconds at most.
+PRIMED_SAID = "launcher: drawing the card ahead ended"
 PRIMED_BY_FRAMES = "in 2 frames"
 PRIMED = timedelta(seconds=10)
+
+# What the shell says once it has collected after a closing (Launcher.qml's collectClosed), and
+# how long past the drawing's end a case watches for one: the card's fall to clear swaps a frame,
+# which a closing's collection follows by a turn, well inside it.
+COLLECTED_SAID = "launcher: collected after closing"
+COLLECTED_AFTER = timedelta(seconds=1)
 
 # How long after a start every source here has first answered: what warming once waited out by
 # beginning at 6 s. The restart case passed waiting 5 s past home kept (2026-11-12), but on a
@@ -299,8 +305,9 @@ def test_the_card_is_drawn_before_its_first_opening(shell: Shell) -> None:
     Clear, Qt Quick skips the card's whole tree, so the first opening since the shell started
     made its shaders, glyphs and batches: Joel's drew in 19 and 24 ms where later ones drew in 1
     to 4 (2026-11-16 and 17), and the lab on OpenGL in 100 and 72 (2026-11-17). It's drawn on
-    two frames swapped, the second asked for, rather than by waiting out its second. First here,
-    since any opening ends the drawing.
+    two frames swapped, the second asked for, rather than by waiting out its cutoff. Its fall to
+    clear isn't a closing, so it collects nothing. First here, since any opening ends the
+    drawing.
     """
     assert openings(shell) == [], "the launcher was opened before the test opened it"
     deadline = time.monotonic() + PRIMED.total_seconds()
@@ -315,8 +322,15 @@ def test_the_card_is_drawn_before_its_first_opening(shell: Shell) -> None:
             f"the card wasn't drawn before its first opening:\n{shell.tail()}"
         )
         time.sleep(launcher_on_niri.POLL)
-    assert len(said) == 1, f"the card was drawn ahead more than once: {said}"
     assert PRIMED_BY_FRAMES in said[0], f"the card's drawing didn't end on its frames: {said}"
+    time.sleep(COLLECTED_AFTER.total_seconds())
+    log = shell.log.read_bytes().decode(errors="replace")
+    collected = [
+        line for line in log[log.index(PRIMED_SAID) :].splitlines() if COLLECTED_SAID in line
+    ]
+    assert not collected, (
+        f"the card's fall to clear collected as a closing: {collected}\n{shell.tail()}"
+    )
 
 
 def test_the_first_opening_after_a_start_is_drawn_from_home_kept_as_it_started(

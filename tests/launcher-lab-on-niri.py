@@ -58,8 +58,8 @@ ROUNDS = 10
 WINDOWS = 4
 
 # How long the first opening waits for the shell to say it drew the card ahead, in seconds:
-# two frames or a second at most once home is kept, with room for a loaded builder.
-PRIMED_S = 5
+# two frames or three seconds at most once home is kept, with room for a loaded builder.
+PRIMED_S = 6
 
 # How many notices are on screen as it runs, when it times Super+N's opening ("notices").
 NOTICES = 3
@@ -167,7 +167,7 @@ def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture
             (
                 line.split("qml: ", 1)[-1]
                 for line in shell.log.read_bytes().decode(errors="replace").splitlines()
-                if "launcher: the card was drawn before" in line
+                if "launcher: drawing the card ahead ended" in line
             ),
             "unsaid",
         )
