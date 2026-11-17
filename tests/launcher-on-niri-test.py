@@ -4771,6 +4771,26 @@ def test_a_word_and_a_space_typed_at_once_time_only_the_last_key_as_the_step(she
     assert steps[-1] == "\u2192 Network", f"a key after the step was timed: {presented}"
 
 
+def test_a_walk_through_a_place_is_timed_once_as_where_it_ends(shell: Shell) -> None:
+    """A walk to a place inside another is timed once, as the place it ends in.
+
+    A spot's Return and a terminal's go to walk the places on the way, as Machine on the way
+    to Power, and each step was timed as its own, so one walk said two steps and the first
+    left out what the last took (a council, 2026-11-17). What the places on the way took is
+    said as passing, which tests/trials.qml holds.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    before = len(keys_presented_settled(shell))
+    asked = shlex.quote(json.dumps({"steps": ["machine", "power"], "words": "", "sure": False}))
+    shell.as_account(f"qs -p {shell.folder} ipc call -- launcher doing {asked}")
+    shell.launcher_until(lambda shown: shown["path"] == ["Machine", "Power"])
+    presented = keys_presented_settled(shell)[before:]
+    shell.close_launcher()
+    steps = [one.get("step") for one in presented]
+    assert steps == ["\u2192 Power"], f"the walk to Power wasn't timed once as it: {presented}"
+
+
 def minus_presented(shell: Shell, out: Callable[[Json], object]) -> list[Json]:
     """Press - from normal, wait until the launcher is `out`, and give every key presented since.
 

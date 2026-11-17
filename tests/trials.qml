@@ -179,6 +179,23 @@ QtObject {
         expect("a step's lists are its own and the place's", step.lists === 12
             && step.each.making === 5 && step.each.finding === 7 && step.each.holding === 1
             && step.rows === 3, JSON.stringify(step));
+        // A walk's last step is timed from the walk's start, and the 20 ms
+        // its places on the way took are said as passing among its lists,
+        // never as its own making; a step of its own passes nothing.
+        const walked = Trials.stepped(inner, { walked: 80, began: 100, made: 105, pushed: 106,
+            opened: 106, ended: 136 });
+        expect("a walk's last step says its places on the way apart",
+            walked.each.passing === 20 && walked.each.making === 5 && walked.lists === 32
+            && step.each.passing === 0, JSON.stringify([walked, step]));
+        // A walk stopped short says what it passed beside the search that
+        // listed where it stopped, and one that passed nothing is as it was.
+        const whereStopped = { before: 1, lists: 4, rows: 3, answers: 0, each: { finding: 4 } };
+        const stopped = Trials.passed(whereStopped, 15);
+        expect("a walk stopped short says what it passed", stopped.lists === 19
+            && stopped.each.passing === 15 && stopped.each.finding === 4
+            && whereStopped.lists === 4 && Trials.passed(whereStopped, 0) === whereStopped
+            && Trials.passed(null, 15) === null,
+            JSON.stringify(stopped));
         // Its search's time before searching is said apart, as a key's is,
         // so its rows are only what stepping in did after the search: 30 ms
         // after opening are 2 finding, 8 answering, 4 before and 16 rows.
