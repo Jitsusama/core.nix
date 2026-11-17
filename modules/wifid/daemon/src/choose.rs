@@ -1162,7 +1162,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_card_on_5_ghz_carrying_well_keeps_off_2_4_ghz_however_quick() {
+    fn a_card_using_5_ghz_carrying_well_keeps_off_2_4_ghz_however_quick() {
         let mut chooser = Chooser::default();
         let middling = carried(30, 0.0);
         let quick = near_at(-34, Some(carried(9, 0.0)));
@@ -1170,11 +1170,43 @@ pub(crate) mod tests {
         let on = (DESK, &middling, -45, CH52);
         let choice = chooser.choose(Instant::now(), on, &[quick], false);
 
-        assert_eq!(
-            choice,
-            Choice::Stay,
-            "30 ms carries well, on the wider band"
-        );
+        assert_eq!(choice, Choice::Stay, "its room is used");
+    }
+
+    #[test]
+    fn an_idle_card_on_5_ghz_takes_a_2_4_ghz_radio_known_far_quicker() {
+        let mut chooser = Chooser::default();
+        let middling = idle(carried(30, 0.0));
+        let quick = near_at(-34, Some(carried(9, 0.0)));
+
+        let on = (DESK, &middling, -45, CH52);
+        let choice = chooser.choose(Instant::now(), on, &[quick], false);
+
+        assert_eq!(choice, Choice::Try(NEAR.into()), "its room goes unused");
+    }
+
+    #[test]
+    fn an_idle_card_on_5_ghz_keeps_off_a_2_4_ghz_radio_a_little_quicker() {
+        let mut chooser = Chooser::default();
+        let middling = idle(carried(30, 0.0));
+        let quick = near_at(-34, Some(carried(22, 0.0)));
+
+        let on = (DESK, &middling, -45, CH52);
+        let choice = chooser.choose(Instant::now(), on, &[quick], false);
+
+        assert_eq!(choice, Choice::Stay, "8 ms quicker isn't far");
+    }
+
+    #[test]
+    fn an_idle_card_on_5_ghz_keeps_off_2_4_ghz_during_a_call() {
+        let mut chooser = Chooser::default();
+        let middling = idle(carried(30, 0.0));
+        let quick = near_at(-34, Some(carried(9, 0.0)));
+
+        let on = (DESK, &middling, -45, CH52);
+        let choice = chooser.choose(Instant::now(), on, &[quick], true);
+
+        assert_eq!(choice, Choice::Stay, "a call isn't moved");
     }
 
     /// The hall's 5 GHz radio as the card on it hears it, saying how busy
