@@ -87,18 +87,23 @@ own links, and none would meet.
   index, every thing it's home to as `{"kind", "key", "name", "names",
   "address"}`, where `names` holds any other name a page may call it by
   (a repository's short name, a device's) and `address` is from the
-  sites' root, starting with the site's own path, in plain visible ASCII
-  with no quote, backslash, angle bracket or backtick. A live site writes
+  sites' root, the site's own path and then a fragment (`#`), in plain
+  visible ASCII with no double quote, backslash, angle bracket or
+  backtick. A record whose address is anything else is dropped. A live site writes
   it with its data, so it's never stale. Its row in `sites.json` names its
   kinds, `"homes": ["machine", "cell", "network"]`. A kind two rows
   claim is a fault in both.
 - **A pattern homes a whole kind.** Where every thing of a kind has its
   page by construction, the row says so instead of listing them:
   `{"kind": "machine", "address": "#machine={name}"}` beside or in place
-  of its kinds. The address is a fragment on the site's own page, joined
-  to its path, with the thing's name, percent-encoded, for `{name}`; the
-  path is plain steps (letters, digits, `-._~`). A pattern reads no
-  `homes.json`, and a record never lists a kind its row gives a pattern.
+  of its kinds. The address is a fragment on the site's own page, written
+  from the page (`#machine={name}`) or from the sites' root
+  (`mycelium/#machine={name}`), with the thing's name, percent-encoded,
+  for `{name}`. It is plain bytes as a record's is, and each `%` begins a
+  whole escape. A row homing anything has a plain path: steps of letters,
+  digits and `-._~`, none empty and none starting with a dot. A pattern
+  reads no `homes.json`, and a record never lists a kind its row gives a
+  pattern.
 - **A mention links home.** Wherever a page names a thing that has a home,
   its first mention in each row, item, paragraph and heading is a link to
   that home, its address taken from `homes.json`, never built by hand.
