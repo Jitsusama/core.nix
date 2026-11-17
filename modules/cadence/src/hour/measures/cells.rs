@@ -191,26 +191,7 @@ pub fn cells(
             ))
         })
         .collect();
-    let parked_done = all
-        .iter()
-        .filter(|c| c.presence == Some("parked") && c.state == "ended")
-        .filter_map(|c| {
-            // The README is written as the quest ends; the cell's word of
-            // its quest dates from when it parked.
-            let status = c
-                .quest
-                .and_then(|q| readme.get(q))
-                .map(|q| q.status.as_str())
-                .or(c.quest_status)?;
-            matches!(status, "concluded" | "retired").then(|| {
-                format!(
-                    "{} parked, its quest {status} · {}",
-                    c.address,
-                    owner(c.quest, c.orchestrator)
-                )
-            })
-        })
-        .collect();
+    let parked_done = parked_done(&all, &readme, &owner);
     let (never, ended) = unrun(quests.unwrap_or_default(), &all, &realms, &|q| {
         owner(Some(q), None)
     });
@@ -247,6 +228,34 @@ pub fn cells(
     .into_iter()
     .map(|(key, says, behind, unread)| judged(key, says, behind, unread, fallback))
     .collect()
+}
+
+/// The ended cells parked on a quest already concluded or retired, each
+/// with its owner.
+fn parked_done(
+    all: &[Cell],
+    readme: &BTreeMap<&str, &Quest>,
+    owner: &dyn Fn(Option<&str>, Option<&str>) -> String,
+) -> Vec<String> {
+    all.iter()
+        .filter(|c| c.presence == Some("parked") && c.state == "ended")
+        .filter_map(|c| {
+            // The README is written as the quest ends; the cell's word of
+            // its quest dates from when it parked.
+            let status = c
+                .quest
+                .and_then(|q| readme.get(q))
+                .map(|q| q.status.as_str())
+                .or(c.quest_status)?;
+            matches!(status, "concluded" | "retired").then(|| {
+                format!(
+                    "{} parked, its quest {status} · {}",
+                    c.address,
+                    owner(c.quest, c.orchestrator)
+                )
+            })
+        })
+        .collect()
 }
 
 /// The quests meant to be moving, in a realm whose node answered, that no

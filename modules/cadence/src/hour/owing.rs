@@ -294,7 +294,9 @@ mod tests {
         idle.now = 0.0;
         file(&mut ledger, &[idle], "2026-11-17", 8200);
         assert!(
-            ledger.iter().any(|e| e.open && e.owner.as_deref() == Some("PARENT")),
+            ledger
+                .iter()
+                .any(|e| e.open && e.owner.as_deref() == Some("PARENT")),
             "an hour that couldn't read the cells closed a drag"
         );
     }
