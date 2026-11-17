@@ -4663,23 +4663,25 @@ def test_a_step_out_is_timed_to_its_frame_as_a_step_in_is(shell: Shell) -> None:
     own work, and only a source's change beside it said so: no line timed the step itself, so
     none said where its time went (his journal, 2026-11-16 18:11:04 and 19:40:19).
     """
-    shell.as_account(shell.ipc("toggle"))
+    shell.take_notices()
     shell.launcher_ready()
-    shell.type_in("network", selecting="network")
-    shell.step_in()
+    shell.launcher_until(lambda shown: bool(shown["held"]))
     shell.normal()
-    since = shell.mark()
-    shell.send_chars("-")
-    shell.launcher_until(lambda shown: shown["held"] == [] and bool(shown["rows"]))
+    # Gone into with nothing typed, so - puts no words back, which the field times as its own.
+    depth = len(shell.showing()["held"])
+    before = len(json.loads(shell.as_account(shell.ipc("keysPresented"))))
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    out: list[str] = []
-    while not out and time.monotonic() < deadline:
-        said = shell.log.read_bytes()[since:].decode(errors="replace")
-        out = [line for line in said.splitlines() if 'launcher: "\u2190 Network" took ' in line]
+    shell.send_chars("-")
+    shell.launcher_until(lambda shown: len(shown["held"]) == depth - 1)
+    presented: list[Json] = []
+    while not presented and time.monotonic() < deadline:
+        presented = json.loads(shell.as_account(shell.ipc("keysPresented")))[before:]
         time.sleep(launcher_on_niri.POLL)
-    assert out, f"- out of Network was never timed:\n{said}"
-    assert " ms searching" in out[0], f"the step out says nothing of where it went: {out[0]}"
     shell.close_launcher()
+    steps = [one.get("step") for one in presented]
+    # One press, timed once: a second key beside it would count the step twice.
+    assert len(steps) == 1, f"- out of the notices wasn't timed once: {presented}"
+    assert str(steps[0]).startswith("\u2190 "), f"- wasn't timed as a step out: {presented}"
 
 
 def moved_presented(shell: Shell, written: float, deadline: float) -> list[Json]:
