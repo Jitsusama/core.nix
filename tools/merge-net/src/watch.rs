@@ -4627,6 +4627,55 @@ mod tests {
     }
 
     #[test]
+    fn a_net_leaving_waits_out_a_comparison_cut_short_twice() {
+        // Each cut starts the comparison over at a new commit, so builds
+        // installed more often than one takes would keep a revert from
+        // ever landing.
+        let state = state("leaves-after-two-cuts");
+        let check = crate::macs::check("s");
+        let mut hold = reverting(&check);
+        hold["bad"] = json!("m");
+        hold["cuts"] = json!(1);
+        state.set_hold(&hold).unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("m n"),
+            slow: names("n"),
+            ..Stand::default()
+        }
+        .exits("m", &check, &[1, 1])
+        .exits("n", &check, &[1, 1]);
+        let settler = Settler::new(&world, &state);
+        settler.hand(Job::Mac {
+            merge: "m".into(),
+            check: check.clone(),
+            since: now(),
+        });
+        let at_newest = ("n".to_owned(), check.clone());
+        let left_early = std::thread::scope(|scope| {
+            settler.start(scope);
+            world.wait_while(
+                |built| !built.contains(&at_newest),
+                "the revert's comparison at main's newest head",
+            );
+            let leaving = scope.spawn(|| settler.leave(|| ()));
+            std::thread::sleep(Duration::from_millis(500));
+            let left_early = leaving.is_finished();
+            settler.close();
+            left_early
+        });
+        assert!(
+            !left_early,
+            "a net leaving cut short a revert's comparison cut twice before"
+        );
+        assert_eq!(
+            state.hold().unwrap_or_default().get("cuts"),
+            None,
+            "a revert's kept outcome left its count of cuts in the hold"
+        );
+    }
+
+    #[test]
     fn a_search_whose_revert_a_leave_cut_settles_again() {
         // A net leaving mid-comparison, or stopped there, keeps the
         // search's job, with a hold on its test whose revert never landed;
@@ -4696,10 +4745,17 @@ mod tests {
         // run that fails then lets go of the hold with nothing to revert.
         let state = state("forward-reverting");
         state.set_hold(&reverting("vm-a")).unwrap();
+        state.keep_settling("vm-a", &json!({})).unwrap();
         assert_eq!(
             forwardable(&state),
             None,
             "a hold whose revert is under way was handed a forward run"
+        );
+        state.settled("vm-a").unwrap();
+        assert_eq!(
+            forwardable(&state).as_deref(),
+            Some("vm-a"),
+            "a hold whose revert's job is gone wasn't handed a forward run"
         );
         let mut hold = reverting("vm-a");
         hold.as_object_mut().unwrap().remove("reverting");
@@ -4755,6 +4811,38 @@ mod tests {
         assert!(
             !left_early,
             "a net left mid-write, which may land, since a build outside any write went"
+        );
+    }
+
+    #[test]
+    fn a_write_past_its_builds_lets_no_leaving_net_end() {
+        // After its comparison a revert's write lands, pushing and merging,
+        // and a net ending then would leave it half landed.
+        let state = state("leaves-while-landing");
+        let world = Stand::default();
+        let settler = Settler::new(&world, &state);
+        let (held, holding) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let (writer, builder) = (&settler, &state);
+        let left_early = std::thread::scope(|scope| {
+            scope.spawn(move || {
+                writer.write(|| {
+                    builder.building(|| ());
+                    held.send(()).unwrap();
+                    let _ = released.recv();
+                });
+            });
+            holding.recv().unwrap();
+            let leaving = scope.spawn(|| settler.leave(|| ()));
+            std::thread::sleep(Duration::from_millis(500));
+            let left_early = leaving.is_finished();
+            release.send(()).unwrap();
+            leaving.join().unwrap();
+            left_early
+        });
+        assert!(
+            !left_early,
+            "a net left a write landing after its builds, which may leave it half landed"
         );
     }
 
