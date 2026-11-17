@@ -578,6 +578,13 @@ fn a_released_command_is_kept_from_what_the_fence_hides() {
             && !copied.contains("npm-made-up-token"),
         "the copy of ~/.npmrc: {copied}"
     );
+    holds(&args, &[ro, null, &home.join(".docker/config.json")]);
+    assert!(
+        !args
+            .iter()
+            .any(|arg| Path::new(arg) == home.join(".kept-settings.json")),
+        "settings holding no credential were emptied: {args:?}"
+    );
     let tree = &running.folder;
     assert!(
         holds(&args, &[Path::new("--bind"), tree, tree]) < first,

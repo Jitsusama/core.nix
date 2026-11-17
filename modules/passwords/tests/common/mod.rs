@@ -85,13 +85,26 @@ done
 
 /// The fence's list as the harness publishes it, naming a file, a folder,
 /// a link to a file outside home and a file that isn't there, keeping
-/// SSH's settings and public keys, and naming npm's settings.
+/// SSH's settings and public keys, naming npm's settings, and emptying
+/// Docker's settings and another's only where they hold a credential.
 pub const FENCE_LIST: &str = r#"{
   "version": 1,
   "home": [".secret-file", ".secret-folder/", ".linked-secret", ".absent-file"],
   "sshKept": ["^(config|known_hosts(\\.old)?|.*\\.pub)$"],
-  "npmrc": ".npmrc"
+  "npmrc": ".npmrc",
+  "emptied": [
+    {"path": ".docker/config.json",
+     "when": ["auths", "credsStore", "credHelpers", "HttpHeaders", "proxies"]},
+    {"path": ".kept-settings.json", "when": ["auths"]}
+  ]
 }"#;
+
+/// Docker's settings with a registry's made-up login.
+pub const DOCKER_CONFIG: &str =
+    r#"{"auths": {"registry.example": {"auth": "ZG9ja2VyLW1hZGUtdXA="}}}"#;
+
+/// Settings naming a registry with no login, which nothing empties.
+pub const KEPT_SETTINGS: &str = r#"{"auths": {"registry.example": {}}}"#;
 
 /// npm's settings with a registry and its made-up token.
 pub const NPMRC: &str = "registry=https://registry.example/\n\
@@ -249,7 +262,7 @@ impl Running {
         std::fs::set_permissions(&bwrap, std::os::unix::fs::PermissionsExt::from_mode(0o755))
             .unwrap();
         std::fs::write(running.fence_list(), FENCE_LIST).unwrap();
-        for folder in [".secret-folder", ".ssh", ".cache"] {
+        for folder in [".secret-folder", ".ssh", ".cache", ".docker"] {
             std::fs::create_dir_all(home.join(folder)).unwrap();
         }
         for (file, held) in [
@@ -259,6 +272,8 @@ impl Running {
             (".ssh/id_ed25519.pub", "a public key"),
             (".ssh/config", "Host *"),
             (".npmrc", NPMRC),
+            (".docker/config.json", DOCKER_CONFIG),
+            (".kept-settings.json", KEPT_SETTINGS),
         ] {
             std::fs::write(home.join(file), held).unwrap();
         }
