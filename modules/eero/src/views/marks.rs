@@ -96,12 +96,15 @@ mod tests {
 
     #[test]
     fn a_mark_the_pen_lacks_keeps_its_default() {
-        let marks = Marks::drawn_by(&Pen::plain());
-        let defaults = Marks::default();
+        // The kit holds all three marks, so only a theme's empty one leaves
+        // the pen without it.
+        let empty = serde_json::json!({"glyph": "", "console": ""});
+        let theme = serde_json::json!({"marks": {"on": empty}});
+        let marks = Marks::drawn_by(&Pen::new(Ink::plain(), Some(&theme)));
         assert_eq!(
-            [marks.separator, marks.failed, marks.on],
-            [defaults.separator, defaults.failed, defaults.on],
-            "a plain pen's marks aren't the defaults"
+            marks.on,
+            Marks::default().on,
+            "a mark the pen draws as nothing didn't keep its default"
         );
     }
 }

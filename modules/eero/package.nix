@@ -24,6 +24,8 @@ rustPlatform.buildRustPackage rec {
       ./tests/words.json
       # The rows the desktop's tests serve, held to those the daemon makes.
       ./tests/rows.json
+      # eero run as the console runs it, for the marks it's given.
+      ./tests/console.rs
       ../ready-rows/Cargo.toml
       ../ready-rows/src
       ../terminal-kit/Cargo.toml
