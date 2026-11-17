@@ -432,7 +432,6 @@ fn github_a_site_is_searched_from_ten_minutes_before_its_last_round() {
 /// What the reader of the site "code" at `origin` says to its journal
 /// once it has said `failed`, or gives up waiting for it.
 fn journal_of_code_once(origin: &str, failed: &str) -> String {
-    let home = home();
     let site = [
         "--site",
         "code",
@@ -443,7 +442,27 @@ fn journal_of_code_once(origin: &str, failed: &str) -> String {
         "--repo",
         "example/shop",
     ];
-    let mut reading = github_reader(&home, origin, &site);
+    journal_once(origin, &site, failed)
+}
+
+/// That `said` names the site "code" as the one that failed, in `failed`,
+/// and never GitHub.
+fn named_as_itself(said: &str, failed: &str) {
+    assert!(
+        said.contains(failed),
+        "the site that failed is named: {said}"
+    );
+    assert!(
+        !said.contains("GitHub"),
+        "GitHub isn't named on this path: {said}"
+    );
+}
+
+/// What a reader at `origin`, with `more` words, says to its journal once
+/// it has said `failed`, or gives up waiting for it.
+fn journal_once(origin: &str, more: &[&str], failed: &str) -> String {
+    let home = home();
+    let mut reading = github_reader(&home, origin, more);
     let began = Instant::now();
     while !journal(&home).contains(failed) && began.elapsed() < PATIENCE {
         thread::sleep(Duration::from_millis(50));
@@ -464,14 +483,7 @@ fn github_a_site_that_answers_with_an_error_is_named_as_itself() {
     });
     let failed = "<4>couldn't ask Code what changed: Code answered 500 for /search/issues";
     let said = journal_of_code_once(&origin, failed);
-    assert!(
-        said.contains(failed),
-        "the site that failed is named: {said}"
-    );
-    assert!(
-        !said.contains("GitHub"),
-        "GitHub isn't named on this path: {said}"
-    );
+    named_as_itself(&said, failed);
 }
 
 #[test]
@@ -479,14 +491,7 @@ fn github_a_site_that_cant_be_reached_is_named_as_itself() {
     // No case's stand-in can take a port below 1024, so nothing answers here.
     let failed = "<4>couldn't ask Code what changed: couldn't reach Code:";
     let said = journal_of_code_once("http://127.0.0.1:1", failed);
-    assert!(
-        said.contains(failed),
-        "the site that failed is named: {said}"
-    );
-    assert!(
-        !said.contains("GitHub"),
-        "GitHub isn't named on this path: {said}"
-    );
+    named_as_itself(&said, failed);
 }
 
 #[test]
@@ -498,16 +503,7 @@ fn github_the_default_site_that_answers_with_an_error_is_named_github() {
     });
     // With no site named, the reader reads GitHub, and says so when it fails.
     let failed = "<4>couldn't ask GitHub who Joel is: GitHub answered 500 for /user";
-    let home = home();
-    let mut reading = github_reader(&home, &origin, &[]);
-    let began = Instant::now();
-    while !journal(&home).contains(failed) && began.elapsed() < PATIENCE {
-        thread::sleep(Duration::from_millis(50));
-    }
-    reading.kill().expect("the reader stops");
-    reading.wait().expect("the reader is gone");
-    let said = journal(&home);
-    std::fs::remove_dir_all(&home).expect("the case's home goes");
+    let said = journal_once(&origin, &[], failed);
     assert!(
         said.contains(failed),
         "GitHub is named as the site that failed: {said}"
@@ -537,14 +533,7 @@ fn github_a_site_naming_a_next_page_elsewhere_is_named_as_itself() {
     let failed = "<4>couldn't ask Code what changed: Code named a next page elsewhere: \
         http://evil.example/search/issues?page=2";
     let said = journal_of_code_once(&origin, failed);
-    assert!(
-        said.contains(failed),
-        "the site that failed is named: {said}"
-    );
-    assert!(
-        !said.contains("GitHub"),
-        "GitHub isn't named on this path: {said}"
-    );
+    named_as_itself(&said, failed);
 }
 
 #[test]
