@@ -156,7 +156,13 @@ Provider {
     // What a file in an interface's sysfs folder says, or "".
     function sysSaid(name, file) {
         probed[name] = (probed[name] ?? 0) + 1;
-        probe.path = `${interfaces}/${name}/${file}`;
+        const path = `${interfaces}/${name}/${file}`;
+        // Asked again for the path it holds, the probe gives back the text
+        // it read before, though the file has changed, as an interface made
+        // again with one other interface probed has; let go of it first.
+        if (probe.path === path)
+            probe.path = "";
+        probe.path = path;
         return read(probe).trim();
     }
 
