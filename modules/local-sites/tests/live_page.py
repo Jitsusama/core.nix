@@ -16,18 +16,30 @@ import os
 import socket
 import subprocess
 import time
+import warnings
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from playwright.sync_api import Browser, ConsoleMessage, Page, sync_playwright
+from playwright.sync_api import (
+    Browser,
+    BrowserContext,
+    ConsoleMessage,
+    Error,
+    Page,
+    sync_playwright,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
 # How long the sites' server has to start listening.
 STARTING_S = 5
+# What Playwright says when a tab's renderer died under it, rather than the page
+# failing. Should a later Playwright word it otherwise, a crash fails the test at
+# once, as it did before Opened retried it.
+CRASHED = "Page crashed"
 # A phone's width and a desk's, the two the skill's checks are held at.
 SIZES = [(390, 844), (1440, 900)]
 LOOKS = ["dark", "light"]
@@ -89,7 +101,8 @@ def browser() -> Iterator[Browser]:
         launched = playwright.chromium.launch(
             # The build sandbox's /dev/shm is small, and a tab that outgrows it
             # crashes mid-load ("Page crashed"), so the browser keeps that memory
-            # in a temporary file instead.
+            # in a temporary file instead. A busy builder still crashes one now
+            # and then, which Opened opens once more.
             args=["--host-resolver-rules=MAP sites.localhost 127.0.0.1", "--disable-dev-shm-usage"]
         )
         yield launched
@@ -99,19 +112,44 @@ def browser() -> Iterator[Browser]:
 class Opened:
     """A tab on a page, keeping every error and warning the page logs."""
 
+    context: BrowserContext
+    page: Page
+
     def __init__(self, browser: Browser, address: str, size: tuple[int, int], look: str) -> None:
         """Open `address` at `size` in `look`, listening before it loads."""
-        width, height = size
         self.size, self.look = size, look
-        self.context = browser.new_context(
-            viewport={"width": width, "height": height},
-            color_scheme="dark" if look == "dark" else "light",
-        )
-        self.page: Page = self.context.new_page()
         self.logged: list[str] = []
         # Words a test expects the page to log from some line on, each with
         # where in the log it began expecting them (see expecting).
         self.expected: list[tuple[str, int]] = []
+        try:
+            self._open(browser, address)
+        except Error as error:
+            # A renderer dies mid-load on a builder short of memory, with no
+            # word from the page, so the tab is opened once more in a fresh
+            # context. A page that crashes its tab itself crashes it again and
+            # fails here. What the dead tab logged is dropped, since the second
+            # load logs again whatever the page says, but the warning keeps it
+            # in pytest's summary, so a page that starts crashing is seen. Only
+            # the load is retried: a tab that dies later fails the test.
+            if CRASHED not in error.message:
+                raise
+            self.context.close()
+            warnings.warn(
+                f"the tab on {address} at {size} in {look} crashed and was opened once more, "
+                f"having logged {self.logged}",
+                stacklevel=2,
+            )
+            self.logged.clear()
+            self._open(browser, address)
+
+    def _open(self, browser: Browser, address: str) -> None:
+        width, height = self.size
+        self.context = browser.new_context(
+            viewport={"width": width, "height": height},
+            color_scheme="dark" if self.look == "dark" else "light",
+        )
+        self.page = self.context.new_page()
         self.page.on("console", self._heard)
         self.page.on("pageerror", lambda error: self.logged.append(f"thrown: {error}"))
         self.page.goto(address)
