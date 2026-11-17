@@ -26,7 +26,7 @@
 // nothing deep is replaced whole. A client of a kind
 // with no records knows it holds none once it's answered, and one whose
 // answer is the whole of its kind, as the node's is, lets go what went in
-// a gap. What each message changed and let go is heard apart, a key let
+// a gap, and one whose answer is whole only of some records lets go only those. What each message changed and let go is heard apart, a key let
 // go never said as changed, and a whole answer says only the keys whose
 // records differ from what was held and those it dropped, so a rewatch
 // answered with the same records hears nothing, and lets go nothing
@@ -146,6 +146,21 @@ ShellRoot {
     }
     property bool heldBoth: false
     property var wholeHeard: null
+
+    // Watching two kinds of record, its answer the whole of one, as the passwords child's is of
+    // its asks' rows and not of its entries, which it lists only once a manager is read.
+    Daemon {
+        id: wholeFor
+
+        socket: `${root.runtime}/daemons/kinds.sock`
+        kind: "lapsing"
+        answersWholeFor: key => key === "lapsing:ask"
+        onRevisionChanged: {
+            if ("lapsing:ask" in held && "lapsing:entry" in held)
+                root.heldLapsing = true;
+        }
+    }
+    property bool heldLapsing: false
 
     // Watched again once it holds its one record, as each opening watches
     // again, and answered with the same record: the keys it hears after,
@@ -340,6 +355,7 @@ ShellRoot {
             + `, held ${JSON.stringify(people.held)}`
             + `, listed ${Object.keys(listed.held).join(" ")}`
             + `, kinds ${JSON.stringify(kinds.held)}`
+            + `, lapsing ${wholeFor.state} ${root.heldLapsing} ${JSON.stringify(wholeFor.held)}`
             + `, answered ${JSON.stringify(root.answered)}`);
         Qt.exit(1);
     }
@@ -563,6 +579,11 @@ ShellRoot {
                 && "waiting:b" in whole.held && !("waiting:a" in whole.held)
                 && JSON.stringify(root.wholeHeard)
                 === '{"changed":[],"gone":["waiting:a"]}'
+        },
+        {
+            what: "a whole answer of some of its records lets go only those that went",
+            holds: () => root.heldLapsing && wholeFor.answeredThisWatch
+                && "lapsing:entry" in wholeFor.held && !("lapsing:ask" in wholeFor.held)
         },
         {
             what: "a rewatch answered with the same records hears nothing",

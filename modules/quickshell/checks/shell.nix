@@ -312,8 +312,9 @@
   # asked (daemon-source.sh) and one saying everyone unasked
   # (daemon-roster.sh), started, stopped and started again by
   # tests/daemon.qml; and over one connection, records of two kinds from a
-  # daemon holding both, and kinds told as the mycelium node tells them
-  # (daemon-kinds.py); and a line's handlers read when it was heard
+  # daemon holding both, kinds told as the mycelium node tells them, and a
+  # watch answered whole of only some keys, as the passwords child answers
+  # its asks' rows (daemon-kinds.py); and a line's handlers read when it was heard
   # (Hearing.js). The stand-ins are in modules/quickshell/tests/stand-ins.
   the-desktop-holds-a-daemons-records =
     let
