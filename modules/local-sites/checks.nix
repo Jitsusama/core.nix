@@ -280,7 +280,9 @@ in
           LOCAL_SITES_KIT = "${sites.kit}";
           STRIP = "${./home/strip.css}";
           WEB_SKILL = "${../theme/web/skill}";
-          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+          # The browsers mycelium-map-check carries, so the map's tests
+          # launch what a machine runs it with.
+          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.callPackage ./headless-browsers.nix { }}";
           PYTHONPATH = "${./tests}";
           PYTHONDONTWRITEBYTECODE = "1";
         };
