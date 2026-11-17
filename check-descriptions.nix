@@ -1001,7 +1001,7 @@
     history, newest first, leaving out any it can't read, offers a look's choices, answered by a
     steer to the session that left it or its quest's and then in History, and gathers what other
     sources give it, as Passwords' one to-do, into what waits, weighed beside the rest, and what's
-    done
+    done, and finds the cell a look leads to: the session that left it, else one on its quest
   '';
   formatting = ''
     everything is formatted and passes the linters

@@ -86,6 +86,27 @@ function answer(one, choice, live, at) {
         from: "joel", at: new Date(at).toISOString() } };
 }
 
+// The cell a look leads to, the session a look's Talk and Go To reach (Joel,
+// 2026-11-16: "i have no way to go from the thing it shows to engaging with
+// the thing working on it"): the one that left it, running or parked, else,
+// once that has ended, the quest's own session, whose address is the
+// quest's last part and where a look's answers go then (`answer`), else any
+// other on its quest, a running one before a parked one. Null where none is
+// held.
+function cellOf(one, running, parked) {
+    const held = (Array.isArray(running) ? running : [])
+        .concat(Array.isArray(parked) ? parked : []);
+    const left = held.find(session => ForYou.leftBy(one, session));
+    const quest = typeof one.quest === "string" ? one.quest : "";
+    if (left !== undefined || quest === "") {
+        return left ?? null;
+    }
+    const own = quest.split("-").pop().toUpperCase();
+    const on = held.filter(session => session.presence?.quest === quest);
+    return on.find(session => String(session.address ?? "").toUpperCase() === own)
+        ?? on[0] ?? null;
+}
+
 // The label of the answer Joel gave a look still waiting, by `answered`'s
 // { [look id]: { label, at } }, while it may yet take, or "".
 function answering(one, answered, now) {

@@ -996,14 +996,57 @@ Provider {
     // gone quiet there, whose file still says it waits.
     function openLook(one) {
         if (one.kind === "terminal") {
-            const session = lookSession(one);
-            if (session !== null)
-                Sessions.goTo(session);
+            goToCell(one);
         } else {
             Niri.spawn(["xdg-open", one.target]);
         }
         if (one.state === "waiting" || one.state === "quiet")
             settleLook(one, "opened", waitingSaid("openedHow", {}));
+    }
+
+    // The cell a look leads to, running or parked, as Looks.js finds it:
+    // the session that left it, else its quest's own, else one on its quest.
+    function lookCell(one) {
+        return Looks.cellOf(one, Sessions.running, Sessions.parked);
+    }
+
+    // Goes to the window of the cell a look leads to, as it stands when
+    // pressed, waking it first where it's parked, as a want's Go To does.
+    function goToCell(one) {
+        const cell = lookCell(one);
+        if (cell === null)
+            return;
+        const resting = Sessions.parkedAs(cell.address);
+        if (resting)
+            Sessions.wake(resting);
+        Sessions.goTo(cell);
+    }
+
+    // What a look's row does with the cell behind it (Joel, 2026-11-16:
+    // "the look list is useless. i have no way to go from the thing it
+    // shows to engaging with the thing working on it"): Talk, Agents' own,
+    // whose words go to that cell, and Go To its window, which a terminal's
+    // Open already is, offered as Agents offers it: where it has a window,
+    // or is parked and wakes into one. None while no cell is held for it,
+    // or Agents isn't there to talk through.
+    function cellActs(one) {
+        const cell = lookCell(one);
+        const agents = provider.source("agents");
+        if (cell === null || !agents)
+            return [];
+        const talk = agents.sessionAct(cell, "talk");
+        const reachable = agents.windowedOf(cell) || !!Sessions.parkedAs(cell.address);
+        return one.kind === "terminal" || !reachable ? [talk] : [talk, thing({
+            // Under Go To's own word, so the : line names it as a want's is.
+            key: `verb:on:waiting:go:on:look:${one.id}`,
+            verb: Words.verb("verb:on:waiting:go"),
+            name: Words.name("verb:on:waiting:go"),
+            glyph: Words.glyph("verb:on:waiting:go"),
+            hue: "action",
+            side: cell.title,
+            later: true,
+            run: () => provider.goToCell(one)
+        })];
     }
 
     // The answers Joel gave looks, `{ [look id]: { label, at, taken } }`,
@@ -1086,7 +1129,8 @@ Provider {
     // side the strongest reason it's there, or, in History, how it went and
     // when. Return opens it, or goes to a terminal's session; the right
     // arrow holds that, then each of its choices while it waits and none
-    // is given, then Clear It, an ending act d does and Return never does.
+    // is given, then Talk and Go To on the cell behind it (cellActs), then
+    // Clear It, an ending act d does and Return never does.
     // A choice is an answer, which ends nothing, so one Return sends it
     // (modules/keys/language.toml's answer).
     function lookRow(one, now) {
@@ -1111,7 +1155,7 @@ Provider {
             hue: "action",
             stays: true,
             run: () => provider.answerLook(one, choice)
-        })), waits ? [thing(Object.assign({
+        })), provider.cellActs(one), waits ? [thing(Object.assign({
             key: `verb:on:look:clear:${one.id}`,
             verb: Words.verb("verb:on:look:clear"),
             name: Words.name("verb:on:look:clear"),

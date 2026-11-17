@@ -609,6 +609,42 @@ QtObject {
             "Read the plan");
         expect("only things to try, none", ForYou.heaviest([], undefined), "");
 
+        // The cell a look leads to, which Talk to It and Open It reach (Joel,
+        // 2026-11-16: "i have no way to go from the thing it shows to engaging
+        // with the thing working on it"): the session that left it, running
+        // or parked, else the quest's own session, else one on its quest,
+        // running first, else none.
+        const leaver = { address: "AAAAAA", presence: { session: "s-1", quest: "Q-1" } };
+        const heir = { address: "BBBBBB", presence: { session: "s-2", quest: "Q-1" } };
+        const resting = { address: "CCCCCC", presence: { session: "s-3", quest: "Q-1" } };
+        const stranger = { address: "DDDDDD", presence: { session: "s-4", quest: "Q-2" } };
+        const lookLeft = { session: "s-1", address: "AAAAAA", quest: "Q-1" };
+        expect("a look leads to the session that left it",
+            Looks.cellOf(lookLeft, [stranger, heir, leaver], []).address, "AAAAAA");
+        expect("parked, that session still",
+            Looks.cellOf(lookLeft, [heir], [leaver]).address, "AAAAAA");
+        expect("gone, a running session on its quest",
+            Looks.cellOf(lookLeft, [stranger, heir], [resting]).address, "BBBBBB");
+        expect("none running there, a parked one on its quest",
+            Looks.cellOf(lookLeft, [stranger], [resting]).address, "CCCCCC");
+        expect("none on its quest, none", Looks.cellOf(lookLeft, [stranger], []), null);
+        expect("a look naming no quest leads only to its own session",
+            Looks.cellOf({ session: "s-9" }, [heir], [resting]), null);
+        expect("and to that session while it's held",
+            Looks.cellOf({ session: "s-2" }, [stranger, heir], []).address, "BBBBBB");
+        expect("its session found by an address it had before",
+            Looks.cellOf({ address: "OLDADR" }, [stranger, { address: "EEEEEE",
+                presence: { session: "s-5", addresses: ["OLDADR"] } }], []).address,
+            "EEEEEE");
+        // The quest's own session, where a look's answers go once the one
+        // that left it has ended, before another listed ahead of it.
+        const own = { address: "ABCDEF", presence: { session: "s-6", quest: "QEST-1-ABCDEF" } };
+        const helper = { address: "FFFFFF", presence: { session: "s-7", quest: "QEST-1-ABCDEF" } };
+        expect("gone, the quest's own session before another on it",
+            Looks.cellOf({ session: "s-0", quest: "QEST-1-ABCDEF" }, [helper], [own]).address,
+            "ABCDEF");
+        expect("nothing held, none", Looks.cellOf(lookLeft, undefined, undefined), null);
+
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);
