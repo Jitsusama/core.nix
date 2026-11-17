@@ -2133,8 +2133,15 @@
   '';
   explain-it-asks-only-what-a-cell-is = ''
     Explain It asks the realm's node only what one session is, by an address of capitals and
-    digits, as JSON, and tells the quick model only its title, repository, machine, standing and
-    plan, never its ids, quest, folders, trees, spend or networks, a $ in them kept as written
+    digits, as JSON lines, and tells the quick model only its title, repository, machine,
+    standing, doing, since and plan's latest and next, each flattened to one short line, never
+    its id fields, quest, folders, trees, spend or networks; it says an unknown session apart
+    from a node that can't say, and shows an answer only while it's the act's, fresh and whole
+  '';
+  explain-it-shows-its-own-answer = ''
+    Explain It reads one session at a time from a stand-in node, a second asked meanwhile waiting
+    its turn and the first the act again, tells an unknown session from a node that can't say,
+    gives up on a node that never answers, and shows its pi's answer only while it's its own
   '';
   now-lists-by-group = ''
     Now lists what wants Joel first, then what reaches other people, what's playing and the modes

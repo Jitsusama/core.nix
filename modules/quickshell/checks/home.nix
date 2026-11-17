@@ -179,6 +179,57 @@
       touch $out
     '';
 
+  # Explain It reads one session at a time from the realm's node, tells a
+  # node that can't say from a session it doesn't know, and shows its pi's
+  # answer in the act's place only while it's the act's own
+  # (tests/explainer.qml), over a stand-in mycelium that knows one session,
+  # answers another late, never answers a third and can't say a fourth.
+  explain-it-shows-its-own-answer =
+    let
+      mycelium = pkgs.writeShellScript "mycelium" ''
+        printf '%s\n' "$*" >>"$MYCELIUM_ASKED"
+        cell() {
+          printf '{"kind":"cell","type":"session","name":"%s","title":"%s",' "$1" "$2"
+          printf '"quest":"QEST-20261116-HARBOR","cwd":"/home/j/src/rows","repo":"rows"}\n'
+        }
+        case "$4" in
+          HARBOR) cell HARBOR "Tidy the Rows" ;;
+          SLOW) sleep 1 && cell SLOW "Slow Work" ;;
+          HANG) exec sleep 30 ;;
+          DOWN) echo "mycelium: the node isn't answering" >&2 && exit 1 ;;
+          *) echo "mycelium: no cell is named $4" >&2 && exit 1 ;;
+        esac
+      '';
+      niri = singleton "Niri.qml" "function spawn(command) {}";
+      sessions = singleton "Sessions.qml" ''
+        readonly property string home: Quickshell.env("HOME")
+        property var running: []
+        function tell(words, folder, program) {}
+      '';
+    in
+    pkgs.runCommandLocal "explain-it-shows-its-own-answer" { } ''
+      mkdir -p launcher bin runtime && chmod 700 runtime
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      ${copied [
+        "Words.qml"
+        "launcher/Ask.qml"
+        "launcher/Explainer.qml"
+        "launcher/Order.js"
+        "launcher/Provider.qml"
+        "launcher/words.json"
+      ]}
+      cp ${niri} Niri.qml
+      cp ${sessions} Sessions.qml
+      cp ${mycelium} bin/mycelium
+      cp ${../../../tests/explainer.qml} shell.qml
+      touch asked
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts} MYCELIUM_ASKED=$PWD/asked PATH=$PWD/bin:$PATH
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # For You's to-dos hold only what Joel can do, now or later, in the order he
   # does them, and a session's want is his only while it's true, as
   # tests/waiting-on-you.qml holds Waiting.js to the agents' own files, as

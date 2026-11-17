@@ -1,34 +1,45 @@
 // Explain It's machinery, for any row a session is behind: it asks the
 // realm's node what the session is (Explaining.js's command), and hands
-// what Joel would know it by to Ask's warm pi on the machine's quick model,
-// whose answer then stands in the act's place, its first sentence as its
-// name and the whole of it read, as On the Selection's answers do. One
-// session is explained at a time; asking another stops the first.
+// what Joel would know it by to a pi of its own on the machine's quick
+// model, whose answer then stands in the act's place, its first sentence
+// as its name and the whole of it read, as On the Selection's answers do
+// (Explaining.js's shown).
+//
+// Its pi is pi-ask with the launcher's tool left out, never Ask's own: a
+// session's title and plan are an agent's words, and Ask's pi can run what
+// the launcher offers. It's started the first time a row is explained, and
+// kept warm from then on as Ask's is. One session is read at a time: one
+// asked while another is read waits for that read to end, and the one it
+// replaced is the act again.
 import Quickshell
 import Quickshell.Io
 import QtQuick
 import "Explaining.js" as Explaining
-import "OnSelection.js" as OnSelection
 
 Scope {
     id: explainer
 
-    // The realm whose node is asked, Ask's place, which answers, and the
-    // act's words: its question, with {facts}, and what each stage says.
+    // The realm whose node is asked, the launcher, whose closing stops an
+    // answer as it stops Ask's, and the act's words: its question, with
+    // {facts}, and what each stage says.
     property string realm: ""
-    property var asker: null
+    property var launcher: null
     property var said: ({})
+    // How long the node has to answer, in milliseconds: it says a cell at
+    // once, so ten seconds without one is no answer.
+    property int patience: 10000
+    // The pi that answers, its own once a row is explained; a test gives
+    // one standing in.
+    property var asker: answerer.item
 
-    // The row explained last, by its act's key, and how it stands:
-    // "reading" while the node is asked, "asking" once Ask is, "unknown"
-    // when the node knows no such session, "failed" when it couldn't say,
-    // with the question Ask was given. Replaced whole, so bindings hear it.
+    // The row explained last, by its act's key, and how it stands, as
+    // Explaining.js's shown reads it: { stage, message, at }, where stage is
+    // "reading" while the node is asked, "asking" once the pi is, and
+    // "unknown" or "failed" when the node can't say. Replaced whole, so
+    // bindings hear it.
     property string explaining: ""
     property var explained: ({})
-    // The words the node is asked with while it answers, and the row asked
-    // for meanwhile, { key, command }. A reader is never stopped for the
-    // next, since what a stopped one ends with would be taken for the
-    // next's answer; the node answers in a moment, so the next waits.
+    // The words the node is asked with next, while a read before them ends.
     property var next: null
 
     // Told whenever what an act shows changes, so its place is said again.
@@ -36,112 +47,128 @@ Scope {
 
     function explain(key, address) {
         const command = Explaining.command(realm, address);
+        const before = explaining;
         explaining = key;
-        if (command === null) {
-            stands(key, { stage: "unknown" });
+        const left = Object.assign({}, explained);
+        // A row whose read is overtaken is the act again, never left
+        // saying it reads.
+        if (before !== key && left[before]?.stage === "reading")
+            delete left[before];
+        left[key] = { stage: command === null ? "unknown" : "reading", at: Date.now() };
+        explained = left;
+        changed();
+        if (command === null)
             return;
-        }
-        stands(key, { stage: "reading" });
-        if (reader.running) {
-            next = { key, command };
+        // Its own pi is started only while nothing stands in for it.
+        if (asker === answerer.item)
+            answerer.active = true;
+        if (reader.running || reader.settling) {
+            next = command;
             return;
         }
         read(command);
     }
 
     function read(command) {
-        next = null;
+        reader.heard = {};
+        reader.settling = true;
         reader.command = command;
         reader.running = true;
-        patience.restart();
+        waiting.interval = patience;
+        waiting.restart();
     }
 
     function stands(key, how) {
-        explained = Object.assign({}, explained, { [key]: how });
+        explained = Object.assign({}, explained,
+            { [key]: Object.assign({ at: Date.now() }, how) });
         changed();
     }
 
-    function heard(text) {
-        patience.stop();
+    // A read is settled once both its streams and its run have ended, in
+    // whichever order Quickshell tells them; the next waiting is read then.
+    function hear(stream, text) {
+        reader.heard = Object.assign({}, reader.heard, { [stream]: text });
+        settle();
+    }
+
+    function settle() {
+        const heard = reader.heard;
+        if (!reader.settling || reader.running || heard.out === undefined
+            || heard.errors === undefined)
+            return;
+        waiting.stop();
         if (next !== null) {
-            read(next.command);
+            // Read a moment later, never from inside the reader's own
+            // telling that it ended; it stays settling until then, so a row
+            // asked meanwhile waits its turn too.
+            const command = next;
+            next = null;
+            Qt.callLater(() => explainer.read(command));
             return;
         }
-        if (explaining === "" || explained[explaining]?.stage !== "reading")
+        reader.settling = false;
+        if (explained[explaining]?.stage !== "reading")
             return;
-        const cell = Explaining.cellOf(text);
-        if (cell === null || asker === null) {
-            stands(explaining, { stage: cell === null ? "unknown" : "failed" });
+        const ended = Explaining.outcome(heard.out, heard.errors);
+        if (ended.cell === undefined || asker === null) {
+            stands(explaining, { stage: ended.stage ?? "failed" });
             return;
         }
-        const message = Explaining.message(cell, said.asks);
+        const message = Explaining.message(ended.cell, said.asks);
         stands(explaining, { stage: "asking", message: message });
         asker.pose(message);
     }
 
-    // What the act at `key` shows now, or null while it was never asked:
-    // its name, the whole answer to read, its note and its hue.
+    // What the act at `key` shows now, or null where it's the act as it was.
     function shown(key) {
-        const one = explained[key] ?? null;
-        if (one === null)
-            return null;
-        const ours = one.stage === "asking" && asker?.posed === one.message;
-        if (!ours) {
-            return one.stage === "asking" ? null : {
-                name: String(said[one.stage] ?? ""),
-                reads: "",
-                note: "",
-                hue: one.stage === "reading" ? "voice" : "alert"
-            };
-        }
-        const whole = String(asker.said ?? "").trim();
-        const first = OnSelection.firstSentence(whole);
-        return {
-            name: whole === "" ? "\u2026" : first,
-            reads: first === whole ? "" : whole,
-            note: asker.stage === "answered" ? String(said.answered ?? "")
-                : asker.stage === "failed" ? String(said.failed ?? "") : String(said.asking ?? ""),
-            hue: asker.stage === "failed" ? "alert" : "voice"
-        };
+        return Explaining.shown(explained[key] ?? null, asker, said, Date.now());
     }
 
-    // Ask's answer, as it streams and once it ends, said again while it's
-    // ours.
+    // The pi's answer, a word a moment as Ask tells it, said again while
+    // it's this act's.
     Connections {
         target: explainer.asker
         ignoreUnknownSignals: true
 
-        function onSaidChanged() {
-            explainer.told();
-        }
-
-        function onStageChanged() {
-            explainer.told();
+        function onAnswered() {
+            const one = explainer.explained[explainer.explaining] ?? null;
+            if (one?.stage === "asking" && explainer.asker?.posed === one.message)
+                explainer.changed();
         }
     }
 
-    function told() {
-        const one = explained[explaining] ?? null;
-        if (one?.stage === "asking" && asker?.posed === one.message)
-            changed();
+    LazyLoader {
+        id: answerer
+
+        Ask {
+            launcher: explainer.launcher
+            settings: ({ name: "explain", command: ["pi-ask", "--exclude-tools", "launcher"] })
+        }
     }
 
     Process {
         id: reader
 
+        property var heard: ({})
+        property bool settling: false
+
         stdout: StdioCollector {
-            onStreamFinished: explainer.heard(text)
+            onStreamFinished: explainer.hear("out", text)
         }
+        stderr: StdioCollector {
+            onStreamFinished: explainer.hear("errors", text)
+        }
+        onRunningChanged: explainer.settle()
     }
 
-    // The node says a cell at once; ten seconds without it is no answer,
-    // as is a reader that couldn't start, which ends no stream.
+    // A node that never answers is given up on, as is a reader that
+    // couldn't start, which ends neither stream.
     Timer {
-        id: patience
+        id: waiting
 
-        interval: 10000
         onTriggered: {
             reader.running = false;
+            reader.settling = false;
             explainer.next = null;
             if (explainer.explained[explainer.explaining]?.stage === "reading")
                 explainer.stands(explainer.explaining, { stage: "failed" });
