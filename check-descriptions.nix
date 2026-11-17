@@ -4217,6 +4217,10 @@
     a shell titles its window with its folder at each prompt and with the command's first line
     while one runs, any control character in it spaced out, so no two terminals read "zsh"
   '';
+  the-shell-opens-enough-files = ''
+    the account's zsh gives its commands a soft open-files limit of 8192, or the hard limit where
+    that's lower, never lowering a higher soft limit or moving the hard one
+  '';
   the-shell-starts-nothing = ''
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone

@@ -64,4 +64,25 @@
         ${lib.getExe pkgs.bash} ${./tests/the-shell-starts-nothing.sh} ${(account machine).home-files}
         touch $out
       '';
+
+  # A git fetch in a large repository holds every worktree's ref tables
+  # open beside its packs, past the 1024 files a desktop session gives
+  # each program, and calls a sound object corrupt when it can't open
+  # one. So the account's whole shell gives its commands 8192, or the hard
+  # limit where that's lower, and never lowers a soft limit or moves the
+  # hard one.
+  the-shell-opens-enough-files =
+    pkgs.runCommandLocal "the-shell-opens-enough-files"
+      {
+        nativeBuildInputs = [
+          pkgs.util-linux
+          pkgs.zsh
+        ];
+      }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/the-shell-opens-enough-files.sh} ${
+          (account (bareNixos [ self.nixosModules.workstation ])).home-files
+        }
+        touch $out
+      '';
 }
