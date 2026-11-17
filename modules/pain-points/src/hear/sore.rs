@@ -120,7 +120,7 @@ pub fn kinds(words: &str, at: i64, earlier: &[(i64, String)]) -> Vec<&'static st
         kinds.push("swore");
     }
     if asking_status(words) {
-        kinds.push("asked how it stands");
+        kinds.push(super::day::ASKED);
     }
     if nudging(words) {
         kinds.push("nudged");
