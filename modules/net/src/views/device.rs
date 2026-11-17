@@ -247,7 +247,7 @@ const LINKS: [(&str, Align); 7] = [
     ("channel", Align::Right),
     ("here", Align::Left),
     ("there", Align::Left),
-    ("mbit/s", Align::Right),
+    ("speed Mb/s", Align::Right),
     ("signal dBm", Align::Right),
 ];
 const LINKS_GIVE_WAY: [usize; 3] = [4, 3, 2];
@@ -294,7 +294,7 @@ fn channels(way: &str, channels: &[Channel], active: &str, pen: &Pen, room: Room
     let columns = [
         (way, Align::Right),
         ("kind", Align::Left),
-        ("mhz", Align::Right),
+        ("centre MHz", Align::Right),
         ("width MHz", Align::Right),
         ("modulation", Align::Left),
         ("power dBmV", Align::Right),
@@ -450,12 +450,24 @@ mod tests {
                 .unwrap_or_else(|| panic!("no table opens with {opening}: {text}"))
                 .to_owned()
         };
-        let down = head("Modem", "DOWN");
-        for label in ["POWER dBmV", "SNR dB"] {
-            assert!(down.contains(label), "{label} isn't in {down:?}");
+        // Every unit sits after its column's name, since a label's first
+        // word always goes up: a bare MHZ or MB/S would misread.
+        let heads = [
+            (
+                "Modem",
+                "DOWN",
+                &["CENTRE MHz", "WIDTH MHz", "POWER dBmV", "SNR dB"][..],
+            ),
+            ("Study", "LINKED TO", &["SPEED Mb/s", "SIGNAL dBm"][..]),
+            ("Hall", "PORT", &["SPEED Mb/s"][..]),
+            ("Hall", "RADIO", &["WIDTH MHz", "POWER dBm"][..]),
+        ];
+        for (name, opening, labels) in heads {
+            let line = head(name, opening);
+            for label in labels {
+                assert!(line.contains(label), "{label} isn't in {name}'s {line:?}");
+            }
         }
-        let links = head("Study", "LINKED TO");
-        assert!(links.contains("SIGNAL dBm"), "{links:?}");
     }
 
     #[test]

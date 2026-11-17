@@ -692,6 +692,8 @@ mod tests {
             // A figure last on its line still sits flush right, under its
             // column's others.
             vec!["4".into(), "up".into(), "10".into(), String::new()],
+            // An empty cell before one that says something keeps its room.
+            vec!["5".into(), String::new(), "100".into(), String::new()],
         ];
         assert_eq!(
             table(&columns, &rows, &Pen::plain()),
@@ -701,6 +703,7 @@ mod tests {
                 "2     down",
                 "3",
                 "4     up       10",
+                "5             100",
             ],
             "a row doesn't end at its last word, or a figure left its column"
         );

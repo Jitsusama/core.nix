@@ -495,28 +495,30 @@ mod tests {
     }
 
     #[test]
+    fn a_label_keeps_a_units_case_after_its_name() {
+        let pen = Pen::new(Ink::plain(), Some(&osaka_jade()));
+        for unit in LOWER_UNITS {
+            assert_eq!(
+                pen.label(&format!("took {unit}")),
+                format!("TOOK {unit}"),
+                "{unit} went up after a label's name"
+            );
+        }
+        assert_eq!(
+            ["power dBm", "speed Mb/s", "linked to"].map(|words| pen.label(words)),
+            ["POWER dBm", "SPEED Mb/s", "LINKED TO"],
+            "a unit holding a capital went up, or a plain word didn't"
+        );
+        // The first word is the label's name, so it goes up even when it
+        // is a unit: a column is named before its unit.
+        assert_eq!(pen.label("ms"), "MS", "a label's first word stayed down");
+    }
+
+    #[test]
     fn a_pen_with_no_ink_draws_plain_words_and_its_marks() {
         let pen = Pen::new(Ink::plain(), Some(&osaka_jade()));
         assert_eq!(pen.title("Disk"), "Disk");
         assert_eq!(pen.label("Examples"), "EXAMPLES");
-        assert_eq!(
-            [
-                "power dBm",
-                "speed Mb/s",
-                "rate kb/s",
-                "took ms",
-                "linked to"
-            ]
-            .map(|words| pen.label(words)),
-            [
-                "POWER dBm",
-                "SPEED Mb/s",
-                "RATE kb/s",
-                "TOOK ms",
-                "LINKED TO"
-            ],
-            "a unit after a label's first word didn't keep its case"
-        );
         assert_eq!(pen.marked("done", "success"), "\u{2713} ");
         assert_eq!(pen.link("https://example.com", "page"), "page");
     }

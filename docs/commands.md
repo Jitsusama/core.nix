@@ -182,7 +182,7 @@ was the first command set this way, and this generalises it.
 | Figure | text, right-aligned in its column | a fact's value, a count, a time                        |
 | Words  | muted, after its name             | what a row holds, what a flag does                     |
 | Note   | muted                             | a row's side, units, a hint, a time beside a line      |
-| Label  | muted capitals, a unit's own case | a heading: USAGE, EXAMPLES; a column's: POWER dBm      |
+| Label  | muted capitals; a unit after them | a heading: USAGE, EXAMPLES; a column's: POWER dBm      |
 | Voice  | italic, muted                     | what the command says of itself: nothing found, a tip  |
 
 - **Only the title is bold.** Weight is a level's alone, so bold never
@@ -194,6 +194,11 @@ was the first command set this way, and this generalises it.
 - **Fewer cues than a page.** Name and Words differ by colour alone, since
   the grid has no second face, so position does the rest: words always
   follow their name, a column apart.
+- **A unit keeps its case.** A column's label gives its name, then its
+  unit as the unit is written: POWER dBm, SPEED Mb/s, TOOK ms. The first
+  word always goes up, so a label of a unit alone would read MHZ or MB/S.
+  The kit keeps a later word that holds a capital, and the lower-case
+  units it names (ms, µs, ns, s, b/s, kb/s, bit/s, kbit/s).
 
 ### Space
 
