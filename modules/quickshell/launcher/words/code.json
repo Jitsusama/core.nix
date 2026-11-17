@@ -78,6 +78,15 @@
       "glyph": "folder"
     },
     {
+      "id": "verb:code:edit",
+      "command": "edit",
+      "argument": ".",
+      "in": "code:repository",
+      "name": "Edit Here",
+      "verb": "open",
+      "glyph": "folder"
+    },
+    {
       "id": "verb:code:pull",
       "command": "pull",
       "in": "code:repository",

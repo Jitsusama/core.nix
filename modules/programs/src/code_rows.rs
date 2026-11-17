@@ -7,10 +7,11 @@
 //! counted), how many trees are cut from it and when git last wrote in it; it's found by its name, its
 //! owner and its key. Return opens its page where a remote keeps it on
 //! GitHub or GitLab, else copies its checkout's path; inside are Open Its
-//! Page, Open Its Open Changes (while any are), Copy Its Path and New
-//! Terminal Here,
-//! which asks this daemon to start kitty in it (code.rs), and shuts the
-//! launcher as it's asked so the new window takes the keys, then, as a row
+//! Page, Open Its Open Changes (while any are), Copy Its Path, New
+//! Terminal Here and Edit Here,
+//! which ask this daemon to start kitty in it, with Neovim on it for Edit
+//! Here (code.rs), and shut the
+//! launcher as they're asked so the new window takes the keys, then, as a row
 //! of its own (`inside`), Open a File by Name, which steps into its
 //! checkout's files (`files`), each found by its name and the folder it's
 //! in and opened by Return in its default program; its drawer names its
@@ -308,6 +309,11 @@ fn row(repository: &Repository, home: Option<&Path>, words: &Words) -> Value {
         acts.push(json!({
             "key": "verb:code:terminal",
             "ask": {"ask": "code:terminal", "path": path},
+            "closes": true,
+        }));
+        acts.push(json!({
+            "key": "verb:code:edit",
+            "ask": {"ask": "code:edit", "path": path},
             "closes": true,
         }));
     }
