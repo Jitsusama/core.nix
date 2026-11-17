@@ -8,7 +8,7 @@ fn words() -> Words {
         {"id": "code:repository", "said": {
             "kind": "repository", "tree": "1 tree", "trees": "{count} trees",
             "local": "no remote", "change": "1 change", "changes": "{count} changes",
-            "behind": "{count} behind",
+            "behind": "{count} behind", "ahead": "{count} ahead",
         }},
         {"id": "code:key", "name": "Key"},
         {"id": "code:trunk", "name": "Trunk"},
@@ -178,7 +178,7 @@ fn apart(count: Option<Count>) -> Repository {
 }
 
 #[test]
-fn a_checkout_behind_its_branch_says_how_far_after_its_open_changes() {
+fn a_checkout_apart_from_its_branch_says_how_far_after_its_open_changes() {
     let mut repository = apart(Some(Count {
         behind: 3,
         ahead: 1,
@@ -190,10 +190,11 @@ fn a_checkout_behind_its_branch_says_how_far_after_its_open_changes() {
         json!([
             {"said": "1 change"},
             {"said": "3 behind"},
+            {"said": "1 ahead"},
             {"said": "3 trees"},
             {"at": 1_700_000_000_000_i64, "as": "came", "keep": 1},
         ]),
-        "how far its checkout is behind wasn't said after its open changes"
+        "how far its checkout is behind and ahead wasn't said after its open changes"
     );
 }
 
@@ -201,7 +202,7 @@ fn a_checkout_behind_its_branch_says_how_far_after_its_open_changes() {
 fn past_the_counts_end_it_says_as_much_and_even_or_uncounted_says_nothing() {
     let far = apart(Some(Count {
         behind: COUNTED_TO,
-        ahead: 0,
+        ahead: COUNTED_TO,
     }));
     let ahead = apart(Some(Count {
         behind: 0,
@@ -209,8 +210,14 @@ fn past_the_counts_end_it_says_as_much_and_even_or_uncounted_says_nothing() {
     }));
     let rows = rows(&record(vec![far, ahead, apart(None)]), None, &words());
     assert_eq!(rows[0]["side"][0], json!({"said": "100+ behind"}));
+    assert_eq!(rows[0]["side"][1], json!({"said": "100+ ahead"}));
     assert_eq!(
         rows[1]["side"][0],
+        json!({"said": "2 ahead"}),
+        "a checkout only ahead didn't say so alone"
+    );
+    assert_eq!(
+        rows[1]["side"][1],
         json!({"said": "3 trees"}),
         "a checkout only ahead said it was behind"
     );
