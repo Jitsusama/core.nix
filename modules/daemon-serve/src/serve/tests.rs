@@ -5,7 +5,7 @@
 use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{Receiver, channel};
 
 use daemon_client::Client;
 
@@ -36,6 +36,13 @@ fn served(name: &str, own: Own) -> (Arc<Shared>, Client, Folder) {
         listen(&socket).expect("the socket is bound"),
     );
     (shared, Client::connect(&socket), Folder(folder))
+}
+
+/// What `told` hears within the client's own patience, so a heed that
+/// never comes fails the case rather than hanging it: its sender lives in
+/// the daemon for as long as the test runs, so a bare `recv` never ends.
+fn in_time<T>(told: &Receiver<T>) -> Option<T> {
+    told.recv_timeout(Duration::from_secs(10)).ok()
 }
 
 fn row(place: &str, id: &str, name: &str) -> Value {
@@ -389,17 +396,17 @@ fn a_daemon_hears_each_watch_begin_and_end() {
     assert!(!shared.watches("row", "agents"), "nothing watches yet");
     let watch = json!({"id": 1, "ask": "watch", "kind": "row", "place": "agents"});
     client.ask(&watch);
-    assert!(told.recv().is_ok(), "told as it begins");
+    assert!(in_time(&told).is_some(), "told as it begins");
     assert!(shared.watches("row", "agents"), "its place is watched");
     assert!(!shared.watches("row", "mail"), "another isn't");
     client.ask(&json!({"id": 1, "ask": "unwatch"}));
-    assert!(told.recv().is_ok(), "told as it's unwatched");
+    assert!(in_time(&told).is_some(), "told as it's unwatched");
     assert!(!shared.watches("row", "agents"), "unwatched, it isn't");
     let mut another = Client::connect(&folder.0.join("daemon.sock"));
     another.ask(&watch);
-    assert!(told.recv().is_ok(), "told as the other begins");
+    assert!(in_time(&told).is_some(), "told as the other begins");
     drop(another);
-    assert!(told.recv().is_ok(), "told as its connection ends");
+    assert!(in_time(&told).is_some(), "told as its connection ends");
     assert!(!shared.watches("row", "agents"), "its watch went with it");
 }
 
@@ -414,14 +421,19 @@ fn a_connection_no_longer_reading_is_hung_up_on_and_the_rest_told_on() {
     // Asks for a watch, then never reads a line.
     let mut stuck = UnixStream::connect(folder.0.join("daemon.sock")).expect("it connects");
     writeln!(stuck, "{watch}").expect("the watch is asked");
-    assert!(told.recv().is_ok(), "told as the stuck one's watch begins");
+    assert!(
+        in_time(&told).is_some(),
+        "told as the stuck one's watch begins"
+    );
     client.ask(&watch);
-    assert!(told.recv().is_ok(), "told as the reading one's begins");
+    assert!(in_time(&told).is_some(), "told as the reading one's begins");
     // Lines of some size, so the socket's buffer fills within a few
-    // dozen and the queue behind it within QUEUED more.
+    // dozen and the queue behind it within QUEUED more. The ceiling
+    // leaves room for a send buffer of some 60 MB, far past any kernel's
+    // default, and costs time only when the case fails.
     let long = "x".repeat(4096);
     let mut hung_up = None;
-    for n in 0..QUEUED * 4 {
+    for n in 1..=QUEUED * 16 {
         let name = format!("{n}{long}");
         shared.change(vec![row("agents", "O", &name)], json!({}));
         assert_eq!(
@@ -435,21 +447,24 @@ fn a_connection_no_longer_reading_is_hung_up_on_and_the_rest_told_on() {
         }
     }
     let hung_up = hung_up.expect("the one no longer reading was never hung up on");
+    // Its watch's answer holds one of the queue's places, so with nothing
+    // yet written the queue is full at QUEUED - 1 changes; a hang-up any
+    // sooner came before it was. The socket's buffer isn't counted, so
+    // this shows the hang-up isn't early, not that it's exactly on time.
     assert!(
         hung_up >= QUEUED,
-        "hung up on after {hung_up} changes, before its queue of {QUEUED} filled"
+        "hung up on at change {hung_up}, before its queue of {QUEUED} could fill"
     );
     stuck
         .set_read_timeout(Some(Duration::from_secs(10)))
         .expect("a timeout is set");
     let mut left = Vec::new();
+    if let Err(why) = stuck.read_to_end(&mut left) {
+        panic!("the stuck connection's reading half wasn't ended: {why}");
+    }
     assert!(
-        stuck.read_to_end(&mut left).is_ok(),
-        "the stuck connection wasn't ended"
-    );
-    assert!(
-        shared.watches("row", "agents"),
-        "the reading one still watches"
+        writeln!(stuck, "{watch}").is_err(),
+        "the stuck connection's writing half wasn't ended"
     );
     shared.change(vec![row("agents", "O", "kelp")], json!({}));
     assert_eq!(
@@ -475,7 +490,7 @@ fn the_daemons_own_asks_are_its_to_answer() {
         json!({"id": 1, "sharing": true}),
         "answered by the daemon"
     );
-    assert_eq!(told.recv().ok(), Some(json!(true)), "which heard it");
+    assert_eq!(in_time(&told), Some(json!(true)), "which heard it");
     let refused = client.ask(&json!({"id": 2, "ask": "dance"}));
     assert_eq!(
         refused["error"]["code"], "unknown-ask",
