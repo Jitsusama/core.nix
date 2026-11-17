@@ -299,13 +299,37 @@ fn nothing_travels_but_the_job_s_tracked_files() {
 fn tracked_files_in_folders_a_build_would_fill_still_travel() {
     let realm = Realm::new(true);
     realm.tracked("lib/target/x.ts", "source\n");
+    realm.tracked("lib/target/y.ts", "more\n");
     realm.tracked("web/node_modules/a.js", "vendored\n");
-    let output = realm.check(&[], "cat lib/target/x.ts web/node_modules/a.js");
+    realm.tracked("a b/c d.txt", "spaced\n");
+    realm.untracked("bin/go", "#!/bin/sh\necho went\n");
+    fs::set_permissions(
+        realm.folder().join("bin/go"),
+        fs::Permissions::from_mode(0o755),
+    )
+    .unwrap();
+    realm.git(&["add", "bin/go"]);
+    let output = realm.check(
+        &[],
+        "cat lib/target/x.ts lib/target/y.ts web/node_modules/a.js 'a b/c d.txt'; bin/go; \
+         mkdir -p out/target; echo 9 > out/target/n",
+    );
     let (out, err) = said(&output);
     assert!(output.status.success(), "the far job failed: {err}");
+    assert!(
+        err.contains("check runs on far"),
+        "the job didn't run far: {err}"
+    );
     assert_eq!(
-        out, "source\nvendored\n",
-        "tracked files under a folder named as a build's never reached the job"
+        out, "source\nmore\nvendored\nspaced\nwent\n",
+        "tracked files under a build's folder, with spaces or runnable, didn't reach the job whole"
+    );
+    assert_eq!(
+        fs::read_to_string(realm.folder().join("out/target/n"))
+            .ok()
+            .as_deref(),
+        Some("9\n"),
+        "what the kind brings back under a build's folder didn't come back"
     );
 }
 

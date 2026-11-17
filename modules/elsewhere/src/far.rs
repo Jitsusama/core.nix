@@ -9,13 +9,16 @@
 //!
 //! Each end of a shared quest looks once a second and files arrive in no
 //! set order, so each side lists what it left, with sizes and an end line
-//! written last, and the other waits until all of it is there.
+//! written last, and the other waits until all of it is there. A share
+//! writes each file it receives whole, by a rename, so a file there is a
+//! file arrived.
 //!
 //! A shared quest keeps home any folder a build fills, `target` and
 //! `node_modules`, wherever it lies, which a tracked file can sit in as
-//! source. So the job's files are left under their numbers in the list,
-//! names a share always carries, and the far side copies each one back
-//! to its path.
+//! source. So such a name crosses with [`MARK`] after it, as does a name
+//! already ending in it, and the far side takes one off each name ending
+//! in it. What comes back is few files, and crosses under its numbers in
+//! the list.
 
 use crate::settings::{Copies, Kind};
 use std::fmt::Write as _;
@@ -33,10 +36,15 @@ const LEFT: &str = "elsewhere-files";
 const BROUGHT: &str = "elsewhere-back";
 const END: &str = "end";
 
-/// The folders the job's files, each named by its line in the list, and
-/// what it brings back lie in.
+/// The folders the job's files, and what it brings back, each named by
+/// its line in the list, lie in.
 const TREE: &str = "tree";
 const BACK: &str = "back";
+
+/// The names a shared quest keeps home wherever they lie, as a build
+/// fills them, and what such a name crosses with after it.
+const BUILT: [&str; 2] = ["target", "node_modules"];
+const MARK: &str = ".elsewhere";
 
 /// What a shared folder carries at most, as mycelium refuses past it.
 const MOST_FILES: usize = 10_000;
@@ -175,17 +183,38 @@ pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<(String, u64)>, String> 
     Ok(files)
 }
 
+/// `path` as it crosses: each name a share keeps home, and each already
+/// ending in [`MARK`], with the mark after it, which the far side takes
+/// off again.
+pub fn crossing(path: &str) -> String {
+    path.split('/')
+        .map(|name| {
+            if BUILT.contains(&name) || name.ends_with(MARK) {
+                format!("{name}{MARK}")
+            } else {
+                name.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// Leaves `files`, from the tree at `root`, in the job's folder of the
-/// handover, each named by its line in the list, which is written last so
-/// it is never ahead of its files.
+/// handover, each under the name it crosses by, and lists them last so
+/// the list is never ahead of its files.
 pub fn left(root: &Path, files: &[(String, u64)], job: &Path) -> io::Result<()> {
     let tree = job.join(TREE);
     fs::create_dir_all(&tree)?;
     let mut list = String::new();
-    for (number, (path, size)) in files.iter().enumerate() {
-        fs::copy(root.join(path), tree.join(number.to_string()))?;
+    for (path, size) in files {
+        let crossed = crossing(path);
+        let into = tree.join(&crossed);
+        if let Some(parent) = into.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(root.join(path), into)?;
         // Writing to a String can't fail.
-        let _ = writeln!(list, "{size}\t{path}");
+        let _ = writeln!(list, "{size}\t{crossed}");
     }
     list.push_str(END);
     list.push('\n');
@@ -199,8 +228,8 @@ pub fn started(id: &str) -> String {
 }
 
 /// What the far machine runs for the job `id`, through `sh -c`: it waits
-/// for the job's files to cross, copies each to its path in the far
-/// `scratch`, refusing one that would climb out of it, runs
+/// for the job's files to cross, copies them to the far `scratch` and
+/// takes the mark off each name a share would have kept home, runs
 /// the kind's setup and then the job, its program found on the far path by
 /// its name, in the job's folder `within` the tree, then leaves what the
 /// kind brings back in the handover and takes its copy away.
@@ -232,8 +261,11 @@ pub fn script(
         .map(|word| quoted(word))
         .collect::<Vec<_>>()
         .join(" ");
+    // What comes back crosses under its number too, since a kind may
+    // bring back what lies under a folder a share keeps home. A hidden
+    // file is left, as this side would pass it over.
     let bringing = if kind.brings_back.is_empty() {
-        String::new()
+        format!(": > \"$job/{BROUGHT}\"\n")
     } else {
         let paths = kind
             .brings_back
@@ -243,10 +275,15 @@ pub fn script(
             .join(" ");
         format!(
             r#"for path in {paths}; do
-  [ -e "$path" ] || continue
-  into="$job/{BACK}/$(dirname "$path")"
-  mkdir -p "$into" && cp -R "$path" "$into/"
-done
+  [ -e "$path" ] && find "$path" -type f ! -path '*/.*' ! -name '.*'
+done | {{
+  n=0
+  while IFS= read -r file; do
+    cp "$file" "$job/{BACK}/$n" || continue
+    printf '%s\t%s\n' "$(($(wc -c < "$job/{BACK}/$n")))" "$file"
+    n=$((n + 1))
+  done
+}} > "$job/{BROUGHT}"
 "#
         )
     };
@@ -257,29 +294,23 @@ work={work}
 tab=$(printf '\t')
 arrived() {{
   [ "$(tail -n 1 "$job/{LEFT}" 2>/dev/null)" = {END} ] || return 1
-  n=0
   while IFS="$tab" read -r size path; do
     [ "$size" = {END} ] && return 0
-    [ -f "$job/{TREE}/$n" ] || return 1
-    [ "$(($(wc -c < "$job/{TREE}/$n")))" -eq "$size" ] || return 1
-    n=$((n + 1))
+    case "/$path/" in //*|*/../*|*/./*) continue ;; esac
+    [ -f "$job/{TREE}/$path" ] || return 1
   done < "$job/{LEFT}"
   return 1
 }}
 copied() {{
-  n=0 made=
   while IFS="$tab" read -r size path; do
-    [ "$size" = {END} ] && return 0
+    [ "$size" = {END} ] && break
     case "/$path/" in
       //*|*/../*|*/./*) echo "the job's list names $path, outside its folder" >&2; return 1 ;;
     esac
-    folder="$work"
-    case "$path" in */*) folder="$work/${{path%/*}}" ;; esac
-    if [ "$folder" != "$made" ]; then mkdir -p "$folder" || return 1; made=$folder; fi
-    cp "$job/{TREE}/$n" "$work/$path" || return 1
-    n=$((n + 1))
   done < "$job/{LEFT}"
-  return 1
+  cp -R "$job/{TREE}/." "$work/" || return 1
+  find "$work" -depth -name '*{MARK}' -exec sh -c \
+    'for name; do mv "$name" "${{name%{MARK}}}" || exit 1; done' sh {{}} +
 }}
 waited=0
 until arrived; do
@@ -290,7 +321,10 @@ until arrived; do
   sleep 1
   waited=$((waited + 1))
 done
-rm -rf "$work" && mkdir -p "$work" && copied || exit 70
+rm -rf "$work" && mkdir -p "$work" && copied || {{
+  cd "$HOME" && rm -rf "$work" "$job/{TREE}"
+  exit 70
+}}
 cd {folder} || exit 70
 echo {started}
 (
@@ -299,10 +333,7 @@ echo {started}
 )
 code=$?
 mkdir -p "$job/{BACK}"
-{bringing}(cd "$job/{BACK}" && find . -type f) | while IFS= read -r file; do
-  printf '%s\t%s\n' "$(($(wc -c < "$job/{BACK}/$file")))" "${{file#./}}"
-done > "$job/{BROUGHT}"
-echo {END} >> "$job/{BROUGHT}"
+{bringing}echo {END} >> "$job/{BROUGHT}"
 cd "$HOME" && rm -rf "$work" "$job/{TREE}"
 exit "$code"
 "#,
@@ -336,11 +367,20 @@ pub fn relay(out: impl Read, id: &str) -> bool {
     true
 }
 
+/// A file brought back: its number in the far list, which names it in
+/// the handover, its path in the job's folder, and its size.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Brought {
+    pub number: usize,
+    pub path: String,
+    pub size: u64,
+}
+
 /// What the far machine says it brought back, once its list has crossed
-/// whole: the paths a kind brings back, and their sizes. A path outside
-/// what the kind brings back, or one climbing out of it, is passed over,
-/// since the far side doesn't choose what lands here.
-pub fn listed(text: &str, brings_back: &[String]) -> Option<Vec<(String, u64)>> {
+/// whole. A path outside what the kind brings back, or one climbing out
+/// of it, is passed over, since the far side doesn't choose what lands
+/// here.
+pub fn listed(text: &str, brings_back: &[String]) -> Option<Vec<Brought>> {
     let lines: Vec<&str> = text.lines().collect();
     let (last, files) = lines.split_last()?;
     if *last != END {
@@ -349,10 +389,15 @@ pub fn listed(text: &str, brings_back: &[String]) -> Option<Vec<(String, u64)>> 
     Some(
         files
             .iter()
-            .filter_map(|line| {
+            .enumerate()
+            .filter_map(|(number, line)| {
                 let (size, path) = line.split_once('\t')?;
                 let size = size.parse().ok()?;
-                brought_back(path, brings_back).then(|| (path.to_owned(), size))
+                brought_back(path, brings_back).then(|| Brought {
+                    number,
+                    path: path.to_owned(),
+                    size,
+                })
             })
             .collect(),
     )
@@ -377,9 +422,10 @@ pub fn bring_back(job: &Path, folder: &Path, brings_back: &[String]) -> Result<u
     if brings_back.is_empty() {
         return Ok(0);
     }
-    let arrived = |files: &[(String, u64)]| {
-        files.iter().all(|(path, size)| {
-            fs::metadata(job.join(BACK).join(path)).is_ok_and(|meta| meta.len() == *size)
+    let numbered = |brought: &Brought| job.join(BACK).join(brought.number.to_string());
+    let arrived = |files: &[Brought]| {
+        files.iter().all(|brought| {
+            fs::metadata(numbered(brought)).is_ok_and(|meta| meta.len() == brought.size)
         })
     };
     for _ in 0..=CROSSES_WITHIN {
@@ -387,13 +433,13 @@ pub fn bring_back(job: &Path, folder: &Path, brings_back: &[String]) -> Result<u
             .ok()
             .and_then(|text| listed(&text, brings_back));
         if let Some(files) = heard.filter(|files| arrived(files)) {
-            for (path, _) in &files {
-                let into = folder.join(path);
+            for brought in &files {
+                let into = folder.join(&brought.path);
                 if let Some(parent) = into.parent() {
                     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
                 }
-                fs::copy(job.join(BACK).join(path), &into)
-                    .map_err(|error| format!("{path} didn't land: {error}"))?;
+                fs::copy(numbered(brought), &into)
+                    .map_err(|error| format!("{} didn't land: {error}", brought.path))?;
             }
             return Ok(files.len());
         }
@@ -418,7 +464,7 @@ pub fn quoted(word: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{listed, plain_quest, quoted, script, started, travels};
+    use super::{crossing, listed, plain_quest, quoted, script, started, travels};
     use crate::settings::{Copies, Kind};
     use std::path::Path;
 
@@ -518,7 +564,11 @@ mod tests {
                 "2\tout/n\n3\tout/../../.bashrc\n4\tsrc/x\n5\toutside\n6\tout/.hidden\nend\n",
                 &back
             ),
-            Some(vec![("out/n".to_owned(), 2)]),
+            Some(vec![super::Brought {
+                number: 0,
+                path: "out/n".to_owned(),
+                size: 2
+            }]),
             "something outside what the kind brings back was taken"
         );
     }
@@ -550,10 +600,40 @@ mod tests {
         );
     }
 
-    /// Runs the far line for a job whose handover lists `list` over the
-    /// numbered files `files`, in a home of its own, and answers how it
-    /// ended and the home.
-    fn far_run(list: &str, files: &[&str]) -> (Option<i32>, std::path::PathBuf) {
+    #[test]
+    fn a_name_a_share_keeps_home_crosses_marked_and_a_marked_one_twice() {
+        assert_eq!(
+            crossing("src/main.rs"),
+            "src/main.rs",
+            "a plain path changed"
+        );
+        assert_eq!(
+            crossing("lib/target/x.ts"),
+            "lib/target.elsewhere/x.ts",
+            "a build-named folder crossed bare"
+        );
+        assert_eq!(
+            crossing("web/node_modules/a.js"),
+            "web/node_modules.elsewhere/a.js",
+            "node_modules crossed bare"
+        );
+        assert_eq!(
+            crossing("notes.elsewhere"),
+            "notes.elsewhere.elsewhere",
+            "a name already marked would lose its own mark far"
+        );
+        assert_eq!(
+            crossing("targets/x"),
+            "targets/x",
+            "a name only like a build's was marked"
+        );
+    }
+
+    /// Runs the far line for a job whose handover lists `list` over
+    /// `files`, each a crossed path in the job's tree and its text, in a
+    /// home of its own, and answers how it ended, what it said on stderr,
+    /// and the home.
+    fn far_run(list: &str, files: &[(&str, &str)]) -> (Option<i32>, String, std::path::PathBuf) {
         static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let home = std::env::temp_dir().join(format!(
             "elsewhere-far-{}-{}",
@@ -566,11 +646,14 @@ mod tests {
             super::HANDOVER
         ));
         std::fs::create_dir_all(job.join(super::TREE)).unwrap();
-        for (number, text) in files.iter().enumerate() {
-            std::fs::write(job.join(super::TREE).join(number.to_string()), text).unwrap();
+        for (path, text) in files {
+            let into = job.join(super::TREE).join(path);
+            std::fs::create_dir_all(into.parent().unwrap()).unwrap();
+            std::fs::write(into, text).unwrap();
         }
         std::fs::write(job.join(super::LEFT), list).unwrap();
-        let command = ["sh", "-c", "cat lib/target/x.ts > ../seen"].map(str::to_owned);
+        let command =
+            ["sh", "-c", "cat lib/target/x.ts notes.elsewhere > ../seen"].map(str::to_owned);
         let line = script(
             "QEST-20261115-ABC123",
             "1",
@@ -579,32 +662,54 @@ mod tests {
             &kind(""),
             &command,
         );
-        let status = std::process::Command::new("sh")
+        let output = std::process::Command::new("sh")
             .args(["-c", &line])
             .env("HOME", &home)
             .env_remove("XDG_CACHE_HOME")
             .output()
-            .unwrap()
-            .status;
-        (status.code(), home)
+            .unwrap();
+        (
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+            home,
+        )
     }
 
     #[test]
-    fn the_far_line_puts_each_numbered_file_at_its_path_and_none_outside() {
-        let (code, home) = far_run("2\tlib/target/x.ts\nend\n", &["ok"]);
-        assert_eq!(code, Some(0), "a job over a file under target didn't run");
+    fn the_far_line_takes_the_marks_off_and_puts_nothing_outside() {
+        let (code, err, home) = far_run(
+            "2\tlib/target.elsewhere/x.ts\n2\tnotes.elsewhere.elsewhere\nend\n",
+            &[
+                ("lib/target.elsewhere/x.ts", "ok"),
+                ("notes.elsewhere.elsewhere", "!"),
+            ],
+        );
+        assert_eq!(
+            code,
+            Some(0),
+            "a job over a file under target didn't run: {err}"
+        );
         assert_eq!(
             std::fs::read_to_string(home.join("s/seen")).ok().as_deref(),
-            Some("ok"),
-            "the numbered file didn't land at its path"
+            Some("ok!"),
+            "a marked file didn't land at its own name"
         );
         let _ = std::fs::remove_dir_all(&home);
-        for list in ["2\t../out\nend\n", "2\t/etc/out\nend\n", "2\ta/./b\nend\n"] {
-            let (code, home) = far_run(list, &["no"]);
-            assert_eq!(code, Some(70), "a list naming {list:?} wasn't refused");
+        for named in ["../out", "/abs/out", "a/./b", "..", "a/..", ""] {
+            let (code, err, home) = far_run(&format!("2\t{named}\nend\n"), &[("out", "no")]);
             assert!(
-                !home.join("s/out").exists() && !home.join("s/1/a/b").exists(),
-                "a file landed outside the job's folder for {list:?}"
+                code == Some(70) && err.contains("outside its folder"),
+                "a list naming {named:?} wasn't refused ({code:?}): {err}"
+            );
+            let job = home.join(format!(
+                ".cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/{}/1",
+                super::HANDOVER
+            ));
+            assert!(
+                !home.join("s/out").exists()
+                    && !home.join("s/1").exists()
+                    && !job.join(super::TREE).exists(),
+                "a refused job left a file outside its folder, or its copies, for {named:?}"
             );
             let _ = std::fs::remove_dir_all(&home);
         }
