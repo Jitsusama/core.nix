@@ -11874,12 +11874,11 @@ Scope {
     // pixel, each opening waited on niri's configure and new buffers before
     // a frame at its size, 100 to 150 ms past its own work on Joel's laptop
     // (2026-11-10). Closed, it sits up and left of the screen but for its
-    // last pixel, since niri draws a surface kept out of screencasts
-    // (config.kdl) as a black box the size of the whole surface, shown or
-    // not, so a screencast shows that pixel as the one-pixel surface did.
-    // Wholly off the screen, niri answered its frames once a second, and Qt,
-    // waiting on each, took the surface for hidden and drew it again as it
-    // was answered, a frame a second for as long as it stayed closed.
+    // last pixel, so niri composites no card-sized surface over every
+    // frame while there's nothing on it. Wholly off the screen, niri
+    // answered its frames once a second, and Qt, waiting on each, took the
+    // surface for hidden and drew it again as it was answered, a frame a
+    // second for as long as it stayed closed.
     PanelWindow {
         id: surface
 

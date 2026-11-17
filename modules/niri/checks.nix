@@ -190,6 +190,38 @@ onLinux {
       "niri's layout block in config.kdl no longer says always-center-single-column, so a window alone sits against the screen's left edge."
       (lib.length after == 2 && lib.elem "    always-center-single-column" (lib.splitString "\n" layout));
 
+  # A shared screen shows the launcher, which Joel shows people his desktop
+  # through on a call, and never polkit's password or a notice: no layer
+  # rule keeping a surface out of a share or a capture names the launcher's
+  # namespace, and some rule names each of the others. niri draws what it
+  # keeps out only into a PipeWire screencast, which no check here can
+  # take, so its rules are what's held.
+  niri-shares-the-launcher-but-no-password =
+    let
+      text = (account graphical).xdg.configFile."niri/config.kdl".text;
+      rules = map (block: lib.head (lib.splitString "\n}\n" block)) (
+        lib.tail (lib.splitString "\nlayer-rule {\n" text)
+      );
+      keepingOut = lib.filter (lib.hasInfix "block-out-from") rules;
+      patterns =
+        rule:
+        lib.concatMap (
+          line:
+          let
+            named = builtins.match " *match namespace=\"([^\"]*)\".*" line;
+          in
+          if named == null then [ ] else named
+        ) (lib.splitString "\n" rule);
+      keptOut =
+        namespace:
+        lib.any (
+          rule: lib.any (pattern: builtins.match pattern namespace != null) (patterns rule)
+        ) keepingOut;
+    in
+    holds "niri-shares-the-launcher-but-no-password"
+      "config.kdl keeps the launcher out of a share, or lets polkit or a notice into one."
+      (!keptOut "launcher" && keptOut "polkit" && keptOut "notifications");
+
   # niri reads back the files an account gets and rejects anything it
   # wouldn't load, from a misspelt action to a colour it can't parse.
   niri-accepts-its-configuration =
