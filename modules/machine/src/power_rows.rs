@@ -1760,7 +1760,9 @@ mod tests {
     }
 
     /// A battery below freezing keeps its temperature row: its bar is
-    /// empty and doesn't warn, since a bar draws heat against the most,
+    /// empty and doesn't warn, since a bar draws heat against the most
+    /// and has no dot below none to colour, so its note says it's too
+    /// cold to charge, as a lithium battery below 0 °C is;
     /// and its drawer's fact says the count as the kernel writes it, the
     /// plain number's hyphen and all. The row's figure is the measure
     /// Words' cases hold, the real minus among them.
@@ -1777,6 +1779,7 @@ mod tests {
         );
         assert_eq!(temperature["graph"]["values"], json!([0.0]));
         assert_eq!(temperature["graph"]["warn"], json!(false));
+        assert_eq!(temperature["note"], "too cold to charge, below 0 \u{b0}C");
         let facts: Vec<String> = temperature["drawer"]["facts"]
             .as_array()
             .unwrap()
@@ -1786,6 +1789,26 @@ mod tests {
         assert_eq!(
             facts,
             ["temp=-55", "Read From=/sys/class/power_supply/BAT0"]
+        );
+    }
+
+    /// A lithium battery charges from 0 °C, so at freezing itself the
+    /// note still says the most it's made to run at, and only colder
+    /// says it's too cold to charge.
+    #[test]
+    fn a_battery_says_too_cold_to_charge_only_below_freezing() {
+        let notes = [0.0, -0.1].map(|degrees| {
+            let mut b = battery();
+            b["temperature_c"] = json!(degrees);
+            let ready = Power::default().read(&[b, port(true)], 0, &words());
+            row(&ready, "row:power:temperature")["note"].clone()
+        });
+        assert_eq!(
+            notes,
+            [
+                json!("of the 60 \u{b0}C it's made to run at"),
+                json!("too cold to charge, below 0 \u{b0}C")
+            ]
         );
     }
 }
