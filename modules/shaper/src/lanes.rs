@@ -37,6 +37,10 @@
 //! under a twentieth isn't made at all. It's held as a share, so a rate the
 //! controller cuts cuts V with it at once. room.rs, which did this for the
 //! two bulk tins alone, flipped its two lines about 2,200 times in two days.
+//!
+//! Long because its tests, over half of it, walk each case of the split:
+//! Joel alone, agents on either lane or both, a starved copy, a cut, and
+//! the VPN's share falling and rising.
 
 use serde::{Deserialize, Serialize};
 
