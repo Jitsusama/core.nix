@@ -247,18 +247,27 @@ Item {
     property real quietUntil: 0
     // Whether Return waits for a key typed first.
     property bool returnWaits: false
+    // How many keys the quiet dropped since the line opened, which the launcher's showing
+    // says, so a check knows which of its keys came inside it however late they landed. A
+    // press repeated because its release came late is the same key, so it isn't counted.
+    property int quietDropped: 0
     function linked() {
         quietUntil = Date.now() + linkQuiet;
+        quietDropped = 0;
         returnWaits = true;
     }
     // A line opened any other way, or put away, holds nothing back.
     function unlinked() {
         quietUntil = 0;
+        quietDropped = 0;
         returnWaits = false;
     }
     function heldForLink(event) {
-        if (Date.now() < quietUntil)
+        if (Date.now() < quietUntil) {
+            if (!event.isAutoRepeat)
+                quietDropped += 1;
             return true;
+        }
         if (!returnWaits)
             return false;
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)

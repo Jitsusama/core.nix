@@ -772,8 +772,8 @@ Scope {
     }
 
     // What the line shows, for the launcher's showing: whether it's up with the keys, what's
-    // typed, its mode and caret, who it names and what it's about, how the talk stands and
-    // what it offers, and how far down the screen its card stands.
+    // typed, its mode and caret, keys a link's quiet dropped, who it names and what it's about,
+    // how the talk stands and what it offers, and how far down the screen its card stands.
     function shown() {
         return { up, keys: up && prompt.Window.active, typed: prompt.text, mode: prompt.mode,
             caret: prompt.caret, hears: root.hears === null ? "" : root.said.hearer ?? "",
@@ -784,7 +784,7 @@ Scope {
             menu: commandMenu.shown.map(one => commandMenu.named(one)),
             menuDrawn: commandMenu.drawn, menuChosen: commandMenu.chosen,
             menuEnds: commandMenu.y + commandMenu.height, footAt: foot.y,
-            top: up ? surface.margins.top + card.reach : -1,
+            top: up ? surface.margins.top + card.reach : -1, quietDropped: prompt.quietDropped,
             bottom: up ? surface.margins.top + card.reach + card.height : -1,
             screen: surface.screen?.height ?? 0, scrolled: spoken.scrolled, picked,
             thread: root.thread, nerdy, threadScrolled: threadView.scrolled,

@@ -2707,18 +2707,44 @@ def test_a_link_to_the_void_opens_nothing_over_the_launcher_and_its_line_drops_k
     assert did == {"done": False, "said": "the launcher is in use, so the link opened nothing"}
     assert not shell.showing()["line"]["up"], shell.showing()
     shell.close_launcher()
-    did = followed(shell, "talkTo", "void", quiet=False)
+    # Typed past the quiet, every key is taken.
+    assert typed_into_the_void(shell, late=True) == (0, "hi")
+    # Under load keys can land past the quiet however soon they're sent, so each try asks how
+    # many it dropped: those are the first, and the rest are typed.
+    for _ in range(3):
+        dropped, typed = typed_into_the_void(shell, late=False)
+        assert typed == "hi"[dropped:], (dropped, typed)
+        if dropped:
+            return
+    pytest.fail("no key landed inside the link's quiet in three tries")
+
+
+def typed_into_the_void(shell: Shell, *, late: bool) -> tuple[int, str]:
+    """Open the void's line by a link and type "hi", late or at once, and empty it again.
+
+    It gives how many keys the line says its quiet dropped, and what it took of them, waiting
+    until one or the other has every key, so a key that lands late is still counted.
+    """
+    did = followed(shell, "talkTo", "void", quiet=late)
     assert did["done"], did
     shell.launcher_until(lambda shown: shown["line"]["up"] and shown["line"]["keys"])
     try:
         was = shell.showing()["line"]["typed"]
-        # Under load the keys land past the quiet however soon they're sent, as they do here.
-        time.sleep(LINK_QUIET)
         shell.send_chars("hi")
-        # Keys taken would show in the line at once; this gives them the time to.
-        time.sleep(0.3)
-        assert shell.showing()["line"]["typed"] == was, shell.showing()
+        shell.launcher_until(
+            lambda shown: (
+                shown["line"]["quietDropped"] + len(shown["line"]["typed"]) - len(was) == 2
+            )
+        )
+        line = shell.showing()["line"]
+        assert line["typed"].startswith(was), (was, line)
+        return line["quietDropped"], line["typed"][len(was) :]
     finally:
+        # Past the quiet, so the key that empties the line isn't dropped as well, and the
+        # cases after this one find it as they would.
+        time.sleep(LINK_QUIET)
+        shell.send_key("ctrl-u")
+        shell.launcher_until(lambda shown: shown["line"]["typed"] == "")
         shell.as_account(shell.ipc("line"))
         shell.launcher_until(lambda shown: not shown["line"]["up"])
 
