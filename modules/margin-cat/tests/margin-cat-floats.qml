@@ -151,13 +151,15 @@ QtObject {
         // tiled windows there: a leap on from beside its edge that moves
         // across as it rises cut its corner for 230 ms (2026-11-16). Each
         // way's frames every 4 ms, as where its box lies over the face; a
-        // closed one has none.
+        // closed one has none. The cat's box is its world's size.
         const overFace = (way, it) => {
             const hits = [];
+            const wide = way.at ? way.at.wide : 8;
+            const tall = way.at ? way.at.tall : 8;
             for (let t = 0; t <= way.ends; t += 4) {
                 const at = Paths.frame(way, t);
-                if (at.x + 8 > it.left + 0.5 && at.x < it.right - 0.5
-                    && at.y + 8 > it.top + 0.5 && at.y < it.bottom - 0.5)
+                if (at.x + wide > it.left + 0.5 && at.x < it.right - 0.5
+                    && at.y + tall > it.top + 0.5 && at.y < it.bottom - 0.5)
                     hits.push(`${Math.round(t)} ms at ${at.x.toFixed(1)},${at.y.toFixed(1)}`);
             }
             return hits.slice(0, 3);
@@ -427,6 +429,10 @@ QtObject {
             leapsBy(Paths.walk({ x: 100, y: 7 }, { x: 900, y: 7 }, world({ floats: [toTheTop] })),
                 toTheTop).slice(0, 3),
             ["crouches", "leaps", "over"]);
+        expect("onto a seat on one at the screen's top, its arc still on it, it leaps",
+            leapsBy(Paths.walk({ x: 100, y: 7 }, { x: 600, y: 0 }, world({ floats: [toTheTop] })),
+                toTheTop).slice(0, 3),
+            ["crouches", "leaps", "over"]);
         // Straight up off one onto a ledge standing above the screen.
         const highTiles = [
             { left: 16, top: 6, width: 600, height: 778, column: 0 },
@@ -447,12 +453,14 @@ QtObject {
             cols: Paths.columns(highBig, 0), floats: [it] });
         const nearTop = float(500, 17, 250, 200);
         const roomTop = float(500, 19, 250, 200);
+        // Its hop off rises half a cell, so its apex there is 1 pixel
+        // over where it stands, at the screen's top: on it, so it hops.
         expect("at a cell of 2, its apex over the screen's top it walks, under it it leaps",
             [walks(Paths.walk({ x: 100, y: 6 }, { x: 1000, y: 6 }, bigHigh(nearTop)),
                 nearTop, 16, 16),
                 leapsBy(Paths.walk({ x: 100, y: 6 }, { x: 1000, y: 6 }, bigHigh(roomTop)),
-                    roomTop, 16).slice(0, 3)],
-            [true, ["crouches", "leaps", "over"]]);
+                    roomTop, 16)],
+            [true, ["crouches", "leaps", "over", "crouches", "hops", "falls"]]);
 
         // Straight up off one 2 under the tops onto them, and straight
         // down onto it from them: steps, never a leap or a fall.
@@ -463,6 +471,12 @@ QtObject {
             [walks(upOff, sunk), walks(downOn, sunk), ends(upOff.beats[0]),
                 ends(downOn.beats[downOn.beats.length - 1])],
             [true, true, [800, 9, 800, 7], [800, 7, 800, 9]]);
+        // Closed from under it there, nothing holds it to walk up: it
+        // pushes off at once.
+        const sunkClosed = Paths.walk({ x: 800, y: 9 }, { x: 1000, y: 7 },
+            world({ floated: [sunk], hurried: true }));
+        expect("2 under the tops and closed from under it, it leaps up at once",
+            names(sunkClosed).slice(0, 3), ["crouches", "leaps", "lands"]);
 
         // One off its way changes nothing, along the tops nor by a route.
         const aside = float(300, 600, 100, 100);
