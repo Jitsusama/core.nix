@@ -67,8 +67,9 @@ def test_super_v_pastes_into_the_window_it_opened_over_a_terminal_or_not(desktop
     # It copies what it pastes itself, so it holds when run alone: run by
     # its name it found no copy to paste, and failed 3 of 3 (16 November).
     # A copy made again moves to the front and is heard again, so each is
-    # waited on in either order. A newer copy above it each time it's
-    # chosen, so only the history putting the chosen one back pastes it.
+    # waited on whether this case runs alone or after the first. A newer
+    # copy goes above the notes before each paste, so only the history
+    # putting the notes back can paste them.
     with desktop.told("heard copy Notes for Tuesday"):
         desktop.as_account("echo -n 'Notes for Tuesday' | wl-copy > /dev/null 2>&1")
 
@@ -104,8 +105,8 @@ def test_super_v_pastes_into_the_window_it_opened_over_a_terminal_or_not(desktop
         desktop.in_session("niri msg windows | grep -q paste-here"), timeout=timedelta(seconds=30)
     )
 
-    # zenity says what its field holds once Return closes it.
     copy_newer()
+    # zenity says what its field holds once Return closes it.
     entry = f"{desktop.values['zenity']}/bin/zenity --entry --title=paste-gtk"
     desktop.as_account(f"systemd-run --user --collect sh -c '{entry} > /tmp/entered'")
     machine.wait_until_succeeds(
