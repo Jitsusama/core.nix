@@ -289,6 +289,15 @@ function looked(trial, how) {
     return Object.assign({}, trial, { looked: String(how) });
 }
 
+// The trial as a place or a thing is stepped into, by the key pressed at
+// `pressed` on KeyTimes's clock, the opening having begun at `openedAt` on it.
+// Only a key pressed since is his look: a step no key made (an opening given
+// its words, a key sent with no press time) says a press of 0, and a key
+// pressed before the opening began wasn't for it.
+function wentIn(trial, openedAt, pressed) {
+    return pressed > openedAt ? looked(trial, "stepped") : trial;
+}
+
 // The trial as a drawer comes out for a row at `at` (`out`), or goes: the
 // one out before it was read if it stayed out READ_MS on a row the arrows
 // chose, since a drawer comes out for the top row of every search too.

@@ -387,6 +387,40 @@ def test_a_drawers_prose_shows_five_lines_and_za_opens_the_rest(shell: Shell) ->
     shell.close_launcher()
 
 
+def openings_kept() -> list[Json]:
+    """Give every opening the launcher's trials have kept, in no order."""
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    lines = [
+        line
+        for path in state.glob("quickshell/by-shell/*/launcher-trials.jsonl")
+        for line in path.read_text().splitlines()
+        if line.strip()
+    ]
+    return [cast("Json", json.loads(line)) for line in lines]
+
+
+def now_ms() -> int:
+    """Give the wall clock in milliseconds, as an opening's start is kept."""
+    return time.time_ns() // 1_000_000
+
+
+def opening_kept_since(since: int) -> Json:
+    """Give the first opening begun at or after `since` (ms), once the shell has kept it.
+
+    An opening is told by when it began rather than by how many lines there are, since the
+    test before's line may still be on its way through the pipe.
+    """
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    # The shell adds the opening's line through a pipe once it closes, so it's read again until
+    # it's there, a poll's length apart.
+    while True:
+        begun = [kept for kept in openings_kept() if cast("int", kept.get("at", 0)) >= since]
+        if begun:
+            return min(begun, key=lambda kept: cast("int", kept.get("at", 0)))
+        assert time.monotonic() < deadline, "the opening was never kept"
+        time.sleep(launcher_on_niri.POLL)
+
+
 def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None:
     """An opening ended by Return on a sum keeps it as a pick of a sum, not a miss.
 
@@ -397,26 +431,9 @@ def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None
     so what wasn't found can be read: two of Joel's gave up after 51 and 62 s holding only counts
     (1JQPPC, 2026-11-12, 77f84121); a pick keeps none.
     """
-    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
-
-    def kept() -> list[Json]:
-        lines = [
-            line
-            for path in state.glob("quickshell/by-shell/*/launcher-trials.jsonl")
-            for line in path.read_text().splitlines()
-            if line.strip()
-        ]
-        return [cast("Json", json.loads(line)) for line in lines]
-
-    before = len(kept())
+    since = now_ms()
     copied(shell, "6*7", "42")
-    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    # The shell adds the opening's line through a pipe once it closes, so it's read again until
-    # it's there, a poll's length apart.
-    while len(kept()) <= before:
-        assert time.monotonic() < deadline, "the opening was never kept"
-        time.sleep(launcher_on_niri.POLL)
-    last = kept()[-1]
+    last = opening_kept_since(since)
     assert last.get("picked") == "answer:sum", last
     assert last.get("missed") is False, last
     presented = cast("list[int]", last.get("presented", []))
@@ -424,7 +441,7 @@ def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None
     assert presented, last
     assert all(isinstance(ms, int) and ms >= 0 for ms in presented), last
     assert last.get("sought") == [], last
-    before = len(kept())
+    since = now_ms()
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     shell.type_in("zqxjv")
@@ -433,10 +450,7 @@ def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None
     shell.launcher_until(lambda shown: shown["typed"] == "")
     shell.type_in("qqwy")
     shell.close_launcher()
-    while len(kept()) <= before:
-        assert time.monotonic() < deadline, "the miss was never kept"
-        time.sleep(launcher_on_niri.POLL)
-    missed = kept()[-1]
+    missed = opening_kept_since(since)
     assert missed.get("missed") is True, missed
     assert missed.get("sought") == ["zqxjv", "qqwy"], missed
 

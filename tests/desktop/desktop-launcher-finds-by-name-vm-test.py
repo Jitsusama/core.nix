@@ -20,7 +20,7 @@ import shlex
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
-from desktop_session import LAUNCHER_OPEN, ROWS_LOOKED_AT, STARTING, charged
+from desktop_session import LAUNCHER_OPEN, ROWS_LOOKED_AT, STARTING, charged, retry
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -491,6 +491,7 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_ctr
     machine = desktop.machine
     # The word and a space become a chip, the field cleared, listing
     # what it holds; what's typed then searches only inside it.
+    since = int(desktop.as_account("date +%s%3N"))
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     machine.send_chars("network ")
@@ -513,6 +514,11 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_ctr
     desktop.step_out()
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "network")
     desktop.close_launcher()
+    # Stepping in by the word and a space was a look, as by Return or Tab, so an opening that
+    # only looked inside and left isn't kept as a miss. QEMU's keys carry the time they were
+    # pressed, which wtype's don't, so this is where a look by a key of Joel's shows.
+    opening = opening_since(desktop, since)
+    assert opening["looked"] == "stepped", opening
     # A question that starts with a category's word is still a question.
     desktop.answer("time in utc")
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["kind"] == "answer")
@@ -531,6 +537,32 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_ctr
     desktop.type_in("10.0.0.0/22")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
     desktop.close_launcher()
+
+
+def opening_since(desktop: Desktop, since: int) -> Json:
+    """Give the first opening the trials kept begun at or after `since`, in the machine's ms.
+
+    It's told by when it began rather than by being the file's last line, since the pipe
+    writes each on its own time. A line still being written is read again on the next try,
+    and find's own -exec reads no file at all while there's none, where `cat $(find ...)`
+    would wait on the driver's input.
+    """
+    kept = "find ~/.local/state/quickshell -name launcher-trials.jsonl -exec cat {} +"
+    found: list[Json] = []
+
+    def begun(_: bool) -> bool:
+        try:
+            lines = [json.loads(line) for line in desktop.as_account(kept).splitlines() if line]
+        except json.JSONDecodeError:
+            return False
+        found[:] = sorted(
+            (line for line in lines if cast("int", line["at"]) >= since),
+            key=lambda line: cast("int", line["at"]),
+        )
+        return bool(found)
+
+    retry(begun, timeout=dt.timedelta(seconds=10))
+    return found[0]
 
 
 def test_every_name_a_thing_had_still_finds_it(desktop: Desktop) -> None:

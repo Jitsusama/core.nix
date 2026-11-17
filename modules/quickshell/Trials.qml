@@ -43,8 +43,7 @@ Scope {
     // look, where it was pressed since the opening began; a place opened
     // straight into steps by no key of his.
     function wentIn(pressed) {
-        if (pressed > openedAt)
-            trial = Trials.looked(trial, "stepped");
+        trial = Trials.wentIn(trial, openedAt, pressed);
     }
 
     // The drawer come out for a row (`out`), or put away.
