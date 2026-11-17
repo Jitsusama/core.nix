@@ -336,6 +336,11 @@ fn done(qs: &str, steps: &[String], said: &str, yes: bool, words: &Words) -> Res
             let name = names.last().map_or("", String::as_str);
             return Err(Failure::new(Exit::Refused, words.unopened(name)));
         }
+        if let Some(why) = text("refused") {
+            let names = asking::strings(answer.get("in"));
+            let name = names.last().map_or("", String::as_str);
+            return Err(Failure::new(Exit::Refused, words.refused(name, &why)));
+        }
         if answer.get("failed").and_then(Value::as_bool) == Some(true) {
             let name = steps.last().map_or("", String::as_str);
             return Err(Failure::new(Exit::Failed, words.failed(name)));
@@ -432,6 +437,25 @@ mod tests {
             )
             .map_err(|failure| failure.exit),
             Err(Exit::Failed)
+        );
+    }
+
+    #[test]
+    fn an_act_the_shell_withheld_exits_refused_saying_why() {
+        let said = Words::from_value(&serde_json::json!({"terminal": {
+            "refused": "{name} not done \u{b7} {why}"}}));
+        let failure = done(
+            &asking::stand_in::qs("refused"),
+            &words(&["Asks", "Kiln"]),
+            "",
+            true,
+            &said,
+        )
+        .expect_err("a withheld act isn't done");
+        assert_eq!(failure.exit, Exit::Refused);
+        assert_eq!(
+            said.refused("Kiln", "not without your own key press"),
+            "Kiln not done \u{b7} not without your own key press"
         );
     }
 

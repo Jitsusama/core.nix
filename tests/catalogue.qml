@@ -554,5 +554,13 @@ QtObject {
         expect("left at home, it isn't", Reached.reached([], passwords), false);
         expect("somewhere else as deep, it isn't",
             Reached.reached(["category:secrets", "collection:keys"], passwords), false);
+        // An act walked from outside is said done only where nothing it ran
+        // refused it, as a yes to a secret ask is withheld rather than sent.
+        expect("an act nothing refused is done", Reached.refused([]), "");
+        expect("one withheld says why", Reached.refused(["not without your own key press"]),
+            "not without your own key press");
+        expect("one told late, and then refused, says the refusal",
+            Reached.refused(["", "the daemon isn't answering"]), "the daemon isn't answering");
+        expect("one only told late isn't refused", Reached.refused([""]), "");
     }
 }

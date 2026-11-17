@@ -1601,31 +1601,44 @@ Scope {
         }
         // What Return does with it, as it does from the rows.
         const act = returnOf(target);
+        // Said done only where nothing it ran refused it (walkedRun).
+        const ran = why => why === "" ? { done: true, said: said }
+            : { done: false, said: `${said} not done: ${why}` };
         if (act.given) {
             if ((words ?? "") === "")
                 return { error: `${said} takes words: ${act.ask ?? ""}` };
-            act.given(words);
-            return { done: true, said: said };
+            return ran(walkedRun(() => act.given(words)));
         }
         // As Return does it, save that what's typed, Ask's question, picks
         // nothing: one whose outcome takes a while keeps the launcher, and
         // the rest close it first.
         trials.picked(target, "", path.length - 1);
-        if (act.stays) {
-            act.run();
-            return { done: true, said: said };
-        }
-        if (act.now)
-            act.run();
+        if (act.stays)
+            return ran(walkedRun(() => act.run()));
+        const now = act.now ? walkedRun(() => act.run()) : "";
         const shown = open;
         open = false;
         if (act.now)
-            return { done: true, said: said };
-        if (act.later)
+            return ran(now);
+        if (act.later) {
             runOnceGone(act, shown);
-        else
-            act.run();
-        return { done: true, said: said };
+            return ran("");
+        }
+        return ran(walkedRun(() => act.run()));
+    }
+
+    // What the launcher was told not done while a walk from outside ran an
+    // act (toldNot), so the walk says why rather than that it was done, as
+    // a yes to a secret ask walked so is withheld (launcher/Reached.js).
+    property var walkTold: null
+    function walkedRun(run) {
+        walkTold = [];
+        try {
+            run();
+            return Reached.refused(walkTold);
+        } finally {
+            walkTold = null;
+        }
     }
 
     // What a place or a row shows, asked from a terminal
@@ -1843,29 +1856,28 @@ Scope {
                 path: ids
             };
         }
+        // Said done only where nothing it ran refused it, else `refused`
+        // and why, which the terminal says as a refusal (walkedRun).
+        const ran = why => why === "" ? { done: true, in: names } : { refused: why, in: names };
         if (act.given) {
             if (words === "")
                 return { takes: act.ask ?? "", in: names };
-            act.given(words);
-            return { done: true, in: names };
+            return ran(walkedRun(() => act.given(words)));
         }
         // As the catalogue's run does it, as Return would.
         trials.picked(target, "", trail.length - 1);
-        if (act.stays) {
-            act.run();
-            return { done: true, in: names };
-        }
-        if (act.now)
-            act.run();
+        if (act.stays)
+            return ran(walkedRun(() => act.run()));
+        const now = act.now ? walkedRun(() => act.run()) : "";
         const shown = open;
         open = false;
         if (act.now)
-            return { done: true, in: names };
-        if (act.later)
+            return ran(now);
+        if (act.later) {
             runOnceGone(act, shown);
-        else
-            act.run();
-        return { done: true, in: names };
+            return ran("");
+        }
+        return ran(walkedRun(() => act.run()));
     }
 
     // Whether a row holds more to show a step into, by what it is rather
@@ -5530,6 +5542,8 @@ Scope {
     // with none, that it hasn't been yet: said now while the launcher is
     // open, else as it next opens, as an act that shut it is told.
     function toldNot(name, act, why) {
+        if (walkTold !== null)
+            walkTold = walkTold.concat([why]);
         const words = Words.field.becoming ?? {};
         const what = (why === "" ? words.late : words.refused) ?? "";
         toldThat(what.replace("{object}", name)

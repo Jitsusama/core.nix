@@ -84,6 +84,13 @@ impl Words {
         self.word("unopened", &[("name", name)])
     }
 
+    /// An act the shell refused while it ran, as a yes to a secret ask
+    /// it withholds without Joel's own key press, said as a refusal
+    /// naming why (5GLTPH, 2026-11-16).
+    pub fn refused(&self, name: &str, why: &str) -> String {
+        self.word("refused", &[("name", name), ("why", why)])
+    }
+
     /// An argument it doesn't take.
     pub fn unknown(&self, what: &str) -> String {
         self.word("unknown", &[("what", what)])
