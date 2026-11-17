@@ -5,6 +5,7 @@
 //! figure the hour read counted only core, the harness and the machine's
 //! repository.
 
+use std::fmt::Write as _;
 use std::path::Path;
 
 use serde_json::Value;
@@ -37,6 +38,27 @@ fn named(subject: &str) -> String {
             || format!("mycelium's \"{subject}\""),
             |number| format!("mycelium #{number}"),
         )
+}
+
+/// The most minutes since mycelium's checkout last fetched for its reflog
+/// to date what waits: code-health fetches it each hour on the hour and the
+/// card reads it ten minutes on, so past this a fetch was missed.
+const FRESH_MIN: i64 = 90;
+
+/// `measure` as judged from a checkout that last fetched main at `fetched`,
+/// at `now`: one fetched too long ago, or never, can't date what waits,
+/// since its reflog dates the fetch, and it lists none it hasn't fetched.
+fn dated(mut measure: Measure, fetched: Option<i64>, now: i64) -> Measure {
+    let why = match fetched {
+        None => "its checkout never fetched main".to_owned(),
+        Some(at) if (now - at) / 60 > FRESH_MIN => {
+            format!("its checkout last fetched {} min ago", (now - at) / 60)
+        }
+        Some(_) => return measure,
+    };
+    measure.target = None;
+    let _ = write!(measure.says, " (unjudged: {why})");
+    measure
 }
 
 /// When each of `merges`, newest first, first reached main, from `seen`,
@@ -87,15 +109,22 @@ pub fn unlocked(waiting: &str, seen: &str, now: i64, owner: &str) -> Measure {
     let waits: Vec<(i64, &str)> = merges
         .iter()
         .zip(arrived(&hashes, seen))
-        .map(|(&(_, at, subject), came)| ((now - came.unwrap_or(at)).max(0) / 60, subject))
+        // Main can't have taken a merge before it was made.
+        .map(|(&(_, at, subject), came)| {
+            (
+                (now - came.map_or(at, |came| came.max(at))).max(0) / 60,
+                subject,
+            )
+        })
         .rev()
         .collect();
-    let oldest = waits.first().map_or(0, |(minutes, _)| *minutes);
+    let longest = waits.iter().map(|(minutes, _)| *minutes).max().unwrap_or(0);
     Measure {
         key: "mycelium-to-lock".to_owned(),
         class: Class::Ship,
-        says: "minutes the oldest mycelium merge has waited outside core's lock".to_owned(),
-        now: count(usize::try_from(oldest).unwrap_or(0)),
+        says: "minutes the longest-waiting mycelium merge has waited outside core's lock"
+            .to_owned(),
+        now: count(usize::try_from(longest).unwrap_or(0)),
         target: Some(AT_MOST_MIN),
         owner: owner.to_owned(),
         behind: waits
@@ -145,7 +174,7 @@ pub fn read(core: &Path, checkouts: &[String], now: i64, owner: &str) -> Option<
     ) {
         // A checkout with no reflog ages every merge from its commit.
         Ok(waiting) => {
-            let seen = command(
+            let seen = match command(
                 "git",
                 &[
                     "-C",
@@ -156,15 +185,44 @@ pub fn read(core: &Path, checkouts: &[String], now: i64, owner: &str) -> Option<
                     "--format=%gd %H",
                     main,
                 ],
-            )
-            .unwrap_or_default();
-            Some(unlocked(&waiting, &seen, now, owner))
+            ) {
+                Ok(seen) => seen,
+                Err(error) => {
+                    eprintln!(
+                        "cadence: couldn't read the reflog of mycelium's {main} at {path}, \
+                         so its waits are dated by their commits: {error}"
+                    );
+                    String::new()
+                }
+            };
+            let measure = unlocked(&waiting, &seen, now, owner);
+            // A main of its own, with no remote, is as fresh as it is.
+            Some(if main == "origin/main" {
+                dated(measure, fetched(path), now)
+            } else {
+                measure
+            })
         }
         Err(error) => {
             eprintln!("cadence: couldn't read mycelium's {main} at {path}: {error}");
             None
         }
     }
+}
+
+/// When the checkout at `path` last fetched, by its `FETCH_HEAD`'s time.
+fn fetched(path: &str) -> Option<i64> {
+    let head = command(
+        "git",
+        &["-C", path, "rev-parse", "--git-path", "FETCH_HEAD"],
+    )
+    .ok()?;
+    let modified = std::fs::metadata(Path::new(path).join(head.trim()))
+        .ok()?
+        .modified()
+        .ok()?;
+    let since = modified.duration_since(std::time::UNIX_EPOCH).ok()?;
+    i64::try_from(since.as_secs()).ok()
 }
 
 #[cfg(test)]
@@ -201,6 +259,50 @@ mod tests {
             "a merge was aged from its commit, not from the fetch that first held it"
         );
         assert_eq!(m.now, 100.0, "the oldest reached main 100 minutes ago");
+    }
+
+    /// A reflog entry no later than the commit, as an index selector would
+    /// parse, can't date a merge before it existed; and the figure is the
+    /// longest wait, which a merge dated by its commit can be however old.
+    #[test]
+    fn a_wait_starts_no_earlier_than_its_commit_and_the_longest_counts() {
+        let waiting = format!(
+            "bbb {} Take the new lint\naaa {} Take the old lint\n",
+            NOW - 50 * 60,
+            NOW - 60 * 60,
+        );
+        let seen = format!(
+            "origin/main@{{{}}} aaa\norigin/main@{{0}} lll\n",
+            NOW - 10 * 60
+        );
+        let m = unlocked(&waiting, &seen, NOW, "0FX11G");
+        assert_eq!(m.now, 50.0, "the longest wait wasn't the figure: {m:?}");
+        let m = unlocked("aaa 1794820000 Take it\n", "main@{0} aaa\n", NOW, "0FX11G");
+        assert_eq!(
+            m.now, 58.0,
+            "an entry before its commit dated the wait: {m:?}"
+        );
+    }
+
+    /// A checkout that missed its fetch lists none of what it hasn't
+    /// fetched and dates the rest late, so its waits go unjudged.
+    #[test]
+    fn a_checkout_that_missed_its_fetch_leaves_the_wait_unjudged() {
+        let fresh = || unlocked("", "", NOW, "0FX11G");
+        assert!(
+            dated(fresh(), Some(NOW - 10 * 60), NOW).target.is_some(),
+            "a checkout fetched ten minutes ago went unjudged"
+        );
+        let stale = dated(fresh(), Some(NOW - 100 * 60), NOW);
+        assert!(
+            stale.target.is_none() && stale.says.contains("last fetched 100 min ago"),
+            "a checkout fetched 100 minutes ago was judged: {stale:?}"
+        );
+        let never = dated(fresh(), None, NOW);
+        assert!(
+            never.target.is_none() && never.says.contains("never fetched"),
+            "a checkout never fetched was judged: {never:?}"
+        );
     }
 
     #[test]

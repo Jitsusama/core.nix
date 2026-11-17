@@ -235,6 +235,36 @@ fn named_as(miss: &Value) -> &str {
         .unwrap_or_default()
 }
 
+/// Reads the misses ledger at `path`, and whether it was read whole: a
+/// miss closes on its check and never leaves the ledger, so one that can't
+/// be read, or no longer holds a miss open last hour, `was_open`, has been
+/// cut or rewritten, and says nothing of which misses are gone. One not yet
+/// written has none. Why it wasn't whole is said on stderr.
+pub fn ledger(path: &Path, was_open: &[String]) -> (String, bool) {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(),
+        Err(e) => {
+            eprintln!("cadence: couldn't read {}: {e}", path.display());
+            return (String::new(), false);
+        }
+    };
+    let held: Vec<String> = lines(&text)
+        .map(|miss| format!("{} · ", named_as(&miss)))
+        .collect();
+    let gone = was_open
+        .iter()
+        .filter(|open| !held.iter().any(|miss| open.starts_with(miss.as_str())))
+        .count();
+    if gone > 0 {
+        eprintln!(
+            "cadence: {} no longer holds {gone} of last hour's open misses",
+            path.display()
+        );
+    }
+    (text, gone == 0)
+}
+
 /// The misses Joel found himself, from the orchestrator's `misses.jsonl`:
 /// one stays open until its owner names the check that would have caught
 /// it and that check has merged, as `merged` holds them. A check naming no
@@ -244,21 +274,6 @@ fn named_as(miss: &Value) -> &str {
 /// what keeps it open: at 12:10 on 15 November the card asked the
 /// orchestrator to steer a miss whose check had merged in a main stock git
 /// couldn't open.
-/// Reads the misses ledger at `path`, and whether it was read whole. One
-/// not yet written has no misses; one that can't be read, or reads empty
-/// while last hour had misses open, `was_open`, says nothing of which are
-/// gone, since a miss closes on its check and never leaves the ledger.
-pub fn ledger(path: &Path, was_open: &[String]) -> (String, bool) {
-    match std::fs::read_to_string(path) {
-        Ok(text) => {
-            let whole = !text.trim().is_empty() || was_open.is_empty();
-            (text, whole)
-        }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => (String::new(), was_open.is_empty()),
-        Err(_) => (String::new(), false),
-    }
-}
-
 fn misses(
     text: &str,
     repos: &Checkouts,
@@ -545,6 +560,16 @@ mod tests {
         assert!(
             !ledger(&file, &open).1,
             "a ledger gone empty under open misses was read whole"
+        );
+        assert!(
+            ledger(&file, &[]).1,
+            "an empty ledger with nothing open wasn't read whole"
+        );
+        let other = r#"{"words":"w","what":"the map drew cells alone","owner":"WCJQSG"}"#;
+        std::fs::write(&file, other).expect("the ledger written");
+        assert!(
+            !ledger(&file, &open).1,
+            "a ledger cut of a miss open last hour was read whole"
         );
         std::fs::write(&file, miss("core #9")).expect("the ledger written");
         assert_eq!(
