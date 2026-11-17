@@ -23,7 +23,9 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.lock
       ./senders.json
       ./src
-      ./tests
+      # Cargo's tests alone: the note beside them is for people, and a
+      # change to it rebuilds nothing the machine runs.
+      (lib.fileset.fileFilter (file: file.hasExt "rs") ./tests)
       ../chrome/session/Cargo.toml
       ../chrome/session/src
       ../daemon-client/Cargo.toml

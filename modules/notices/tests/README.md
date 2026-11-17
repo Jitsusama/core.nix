@@ -7,5 +7,6 @@ daemon builds, in `notices-holds-what-the-bus-says` (../checks.nix).
   the test's own, the daemon serving the notifications name on it, and a
   client asking it over its socket.
 - `asked.rs` asks the daemon in ways its unit never does (for its help, a
-  flag it doesn't know, one it lacks, levels it can't read), and holds that
-  each ends at once in the terminal kit's shape, before it takes the bus.
+  flag it doesn't know, one it needs left out or left bare, levels it can't
+  read), and holds that each ends in the terminal kit's shape, with the
+  code docs/commands.md gives it, before it listens.
