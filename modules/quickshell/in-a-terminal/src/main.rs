@@ -350,9 +350,11 @@ fn done(qs: &str, steps: &[String], said: &str, yes: bool, words: &Words) -> Res
         }
         // An act the shell refused as it ran it, as a yes to a secret ask
         // it withholds, refused again however often it's asked; or one whose
-        // daemon had no answer to give, which an agent may ask again. Each
-        // names the whole path walked, since the act is often a verb, as
-        // Yes, said alone (5GLTPH, 2026-11-16).
+        // daemon had no answer, which may yet have been done, since an ask
+        // sent and never answered is told so as well as one never sent: it
+        // says to see where the row stands before asking again. Each names
+        // the whole path walked, since the act is often a verb, as Yes, said
+        // alone (5GLTPH, 2026-11-16).
         let walked = || asking::strings(answer.get("in")).join(layout::CRUMB);
         if let Some(why) = text("refused") {
             return Err(Failure::new(Exit::Refused, words.refused(&walked(), &why)));
@@ -367,7 +369,9 @@ fn done(qs: &str, steps: &[String], said: &str, yes: bool, words: &Words) -> Res
         }
         // Only an answer saying done is done: one this program doesn't know,
         // as a refusal the shell learnt to give before this did, exited 0
-        // as done, which is how a withheld walk was said done.
+        // as done, which is how a withheld walk was said done. Whether such
+        // an act ran isn't known, so it's said so, as from a shell and a
+        // launcher of different switches.
         if answer.get("done").and_then(Value::as_bool) == Some(true) {
             return Ok(());
         }

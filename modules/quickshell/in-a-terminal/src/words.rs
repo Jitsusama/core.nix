@@ -103,8 +103,8 @@ impl Words {
         self.word("refused", &[("name", name), ("why", why)])
     }
 
-    /// An act whose daemon had no answer to give, said with what to do:
-    /// ask again, as it may answer then.
+    /// An act whose daemon had no answer, which may yet have been done,
+    /// said with what to do: see where it stands before asking again.
     pub fn unanswered(&self, name: &str, why: &str) -> String {
         self.word("unanswered", &[("name", name), ("why", why)])
     }
@@ -277,6 +277,16 @@ mod tests {
         assert_eq!(
             said.refused("Kiln {why}", "{name} said no"),
             "Kiln {why} not done \u{b7} {name} said no"
+        );
+    }
+
+    #[test]
+    fn a_brace_naming_nothing_given_is_said_as_written() {
+        let said = Words::from_value(&serde_json::json!({"terminal": {
+            "refused": "{nam {name} {names} not done \u{b7} {why}"}}));
+        assert_eq!(
+            said.refused("Kiln", "no"),
+            "{nam Kiln {names} not done \u{b7} no"
         );
     }
 
