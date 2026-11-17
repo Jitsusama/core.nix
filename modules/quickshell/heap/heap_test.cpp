@@ -13,7 +13,10 @@
 // And a heap whose free lists lead with runs too small for what's made next,
 // held off collecting, makes it in the free runs that fit rather than in new
 // chunks, as the shell's Qt keeps its large runs by size
-// (qtdeclarative-large-runs-by-size.patch). And what it says of
+// (qtdeclarative-large-runs-by-size.patch); and small stores made next
+// split the small free runs and leave the large runs whole for the large
+// stores after them, reading back as they were made
+// (qtdeclarative-small-runs-split-first.patch). And what it says of
 // jemalloc, which the test is linked with as Quickshell is: what's in use
 // grows by a block kept, and what's freed and kept by one let go, and
 // neither is more than what's resident. It exits 0 once all of it holds,
@@ -245,6 +248,117 @@ bool takesRunsThatFit() {
     return fits;
 }
 
+// How many small runs are freed, each a store of 76 values with room for
+// 100, 36 slots with its array on Qt 6.12, under the 63 of the large bins;
+// how many large, each of 1024 values, 260 slots; and how many small
+// stores of 24 values, 12 slots, are made after, a third of a small run
+// each, filling two thirds of the small runs, before as many large stores
+// as large runs were freed. Each freed array is followed by an object
+// kept, so no two runs join.
+constexpr int SPLIT_RUNS = 3000;
+constexpr int WHOLE_RUNS = 600;
+constexpr int THIRDS = 6000;
+constexpr int SLOT_BYTES = 32;
+constexpr int LARGE_SLOTS = 63;
+
+// How many of the heap's slots a store of so many values takes with its
+// array, weighed over a few thousand of them in a heap of their own; each
+// also takes a value of 8 bytes in the array that keeps them.
+int slotsOf(int values) {
+    constexpr int STORES = 4000;
+    QJSEngine engine;
+    Heap heap(&engine);
+    const Weight before = weighed(engine, heap);
+    const QJSValue made = engine.evaluate(
+        QStringLiteral("(() => { const made = new Array(%1); for (let i = 0; i < %1; i++) "
+                       "made[i] = new Array(%2); return made; })()")
+            .arg(STORES)
+            .arg(values));
+    const Weight after = weighed(engine, heap);
+    if (made.isError())
+        return 0;
+    const double each = (after.live - before.live) * 1024 * 1024 / STORES - 8;
+    return static_cast<int>(each / SLOT_BYTES + 0.5);
+}
+
+// Whether small stores made with the collector held off split the small
+// free runs larger than them, and leave the large runs whole for the large
+// stores made next. A small store that found no run of its own size carved
+// a large run before splitting a small one, so the large stores took new
+// chunks while the small runs sat free. It holds only if the stores are
+// the sizes it's built on, the runs were freed and what was made is live,
+// so a Qt that sized them otherwise fails it rather than passing with
+// nothing tried.
+bool leavesLargeRunsWhole() {
+    const int small = slotsOf(76);
+    const int third = slotsOf(24);
+    const int large = slotsOf(1024);
+    const bool sized = small < LARGE_SLOTS && third > 0 && third * 3 <= small &&
+                       large >= LARGE_SLOTS;
+    if (!sized) {
+        std::fprintf(stderr,
+                     "FAIL the stores leaving large runs whole are sized as it's built on: a "
+                     "small run of %d slots under %d, a third of %d in it, a large run of %d\n",
+                     small, LARGE_SLOTS, third, large);
+        return false;
+    }
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue pins = engine.evaluate(
+        QStringLiteral("(() => { const pins = [new Array(%1), new Array(%2)]; const freed = []; "
+                       "for (let i = 0; i < %1; i++) { freed.push(new Array(1024)); pins[0][i] = "
+                       "{}; } for (let i = 0; i < %2; i++) { freed.push(new Array(76)); "
+                       "pins[1][i] = {}; } return pins; })()")
+            .arg(WHOLE_RUNS)
+            .arg(SPLIT_RUNS));
+    const Weight freed = weighed(engine, heap);
+    heap.leaveRoom(ROOM_MB);
+    const QJSValue made = engine.evaluate(
+        QStringLiteral("(() => { const made = [new Array(%1), new Array(%2)]; for (let i = 0; "
+                       "i < %1; i++) { const each = new Array(24); each[0] = i; made[0][i] = "
+                       "each; } for (let i = 0; i < %2; i++) { const each = new Array(1024); "
+                       "each[0] = i; made[1][i] = each; } return made; })()")
+            .arg(THIRDS)
+            .arg(WHOLE_RUNS));
+    const Weight after = weighed(engine, heap);
+    const QJSValue read =
+        engine
+            .evaluate(QStringLiteral("(made) => made.every((stores) => stores.every((each, i) "
+                                     "=> each[0] === i))"))
+            .call({made});
+    const double mb = SLOT_BYTES / (1024.0 * 1024.0);
+    const double thirdsMB = THIRDS * third * mb;
+    const double madeMB = thirdsMB + WHOLE_RUNS * large * mb;
+    const double freedMB = (SPLIT_RUNS * small + WHOLE_RUNS * large) * mb;
+    const bool tried = !pins.isError() && !made.isError() &&
+                       freed.held - freed.live > freedMB / 2 &&
+                       after.live - freed.live > madeMB / 2;
+    const bool intact = read.toBool();
+    const double grew = after.held - freed.held;
+    const bool whole = grew < thirdsMB / 4;
+    // Said whether it holds or not, so a build's log shows how far it's
+    // within its bound.
+    std::fprintf(stderr,
+                 "heap_test: %.1f MB of small stores and %.1f MB of large ones made in freed "
+                 "runs took %.2f MB of new chunks, within %.2f MB\n",
+                 thirdsMB, madeMB - thirdsMB, grew, thirdsMB / 4);
+    if (!tried)
+        std::fprintf(stderr,
+                     "FAIL the runs leaving large runs whole were freed and what's made is "
+                     "live: live %.1f then %.1f MB, held %.1f then %.1f MB, %.1f MB freed\n",
+                     freed.live, after.live, freed.held, after.held, freedMB);
+    else if (!intact)
+        std::fprintf(stderr, "FAIL the stores made in split runs read back as they were made\n");
+    else if (!whole)
+        std::fprintf(stderr,
+                     "FAIL %.1f MB of small stores split the small free runs and leave the "
+                     "large whole for %.1f MB more: live %.1f then %.1f MB, held %.1f then "
+                     "%.1f MB, free %.1f then %.1f MB\n",
+                     thirdsMB, madeMB - thirdsMB, freed.live, after.live, freed.held, after.held,
+                     freed.free, after.free);
+    return tried && intact && whole;
+}
+
 bool expect(const char *what, bool holds, const Weight &before, const Weight &after) {
     if (!holds)
         std::fprintf(stderr,
@@ -323,8 +437,9 @@ int main(int argc, char **argv) {
     const bool follows = allocatorFollows(heap);
     const bool given = givesBack();
     const bool fits = takesRunsThatFit();
+    const bool whole = leavesLargeRunsWhole();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
-                   roomyOutside && follows && given && fits
+                   roomyOutside && follows && given && fits && whole
                ? 0
                : 1;
 }
