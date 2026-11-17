@@ -3398,6 +3398,7 @@ fn a_changed_run_for_a_system_only_a_machine_nearby_builds_is_named_then_built_t
     )
     .unwrap();
     fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("load-mac"), "{ 1.00 1.00 1.00 }\n12\n").unwrap();
     let (ran, _) = changed.run(&["--build", "--system", "aarch64-darwin"]);
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     let sent = fs::read_to_string(changed.bin.join("ssh-sent")).unwrap();
@@ -3503,6 +3504,62 @@ fn a_change_a_macs_checks_read_waits_while_the_mac_has_no_room_kept_as_skipped()
     assert!(
         kept.iter().any(|line| line["because"] == because),
         "the comparison wasn't kept as skipped and owed: {kept:?}"
+    );
+}
+
+/// What the net asks for, to build a Mac's checks itself.
+const FOR_A_MAC: [&str; 4] = ["--build", "--no-vm", "--system", "aarch64-darwin"];
+
+#[test]
+fn a_build_for_a_busy_macs_system_waits_as_one_nothing_built() {
+    // On 17 November the net's own run for a Mac, which no gate's room
+    // held, woke the Mac's Linux VM at a load over 100 on 12 processors.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("load-mac"), "{ 120.98 88.31 65.93 }\n12\n").unwrap();
+
+    let (ran, _) = changed.run(&FOR_A_MAC);
+    assert_eq!(ran.status.code(), Some(69), "{ran:?}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains(
+            "mac has no room, at load 121 on 12 processors, so a run for its system waits"
+        ),
+        "it never said why it waited: {ran:?}"
+    );
+    let sent = fs::read_to_string(changed.bin.join("ssh-sent")).unwrap_or_default();
+    assert!(
+        !sent.contains("aarch64-darwin"),
+        "something went for a busy Mac: {sent}"
+    );
+}
+
+#[test]
+fn a_gates_own_mac_comparison_isnt_asked_for_room_again() {
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("load-mac"), "{ 120.98 88.31 65.93 }\n12\n").unwrap();
+
+    let (ran, _) = changed.ran(
+        &[],
+        &FOR_A_MAC,
+        Path::new(NO_SECOND),
+        &[("NIX_OFFLOAD_MAC_ROOM_ASKED", "1")],
+    );
+    assert!(
+        !String::from_utf8_lossy(&ran.stderr).contains("has no room"),
+        "a comparison whose gate asked for room was held again: {ran:?}"
+    );
+    let lent = changed.sent_to("nix-offload");
+    assert!(
+        lent.iter()
+            .any(|line| line.contains("--system aarch64-darwin")),
+        "the lent builder wasn't asked about the Mac's checks: {lent:?}"
     );
 }
 

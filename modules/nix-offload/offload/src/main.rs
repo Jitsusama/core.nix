@@ -652,7 +652,7 @@ fn marked(arguments: &[String]) -> Option<ExitCode> {
     {
         return None;
     }
-    let mut again = Command::new("/proc/self/exe");
+    let mut again = again();
     again
         .arg("there")
         .args(arguments.iter().enumerate().filter_map(|(at, word)| {
@@ -755,6 +755,27 @@ fn nearby() -> Vec<there::Nearby> {
         return Vec::new();
     }
     nearby_listed()
+}
+
+/// This same program, to run again (`program`).
+pub fn again() -> Command {
+    Command::new(program(Path::new("/proc/self/exe")))
+}
+
+/// This same program's path: `proc_exe` where it is, as on Linux, which
+/// names the very file that runs even once a switch replaced it; else, as
+/// on a Mac, which has no `/proc/self/exe` and where on 16 November a
+/// `there` ended at once, unable to start itself again, the file it was
+/// started from, past any link a switch would repoint. Should neither be
+/// known, the one named `nix-offload` first in `PATH`.
+fn program(proc_exe: &Path) -> PathBuf {
+    if proc_exe.exists() {
+        return proc_exe.to_owned();
+    }
+    env::current_exe().map_or_else(
+        |_| PathBuf::from("nix-offload"),
+        |path| fs::canonicalize(&path).unwrap_or(path),
+    )
 }
 
 /// The person's machines nearby, as listed, `--lent-only` or not.
@@ -1517,15 +1538,6 @@ fn told(passed: &passed::Passed, at: Option<&passed::At>, system: Option<&str>) 
 fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -> ExitCode {
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
     let scratch = scratch();
-    let not_taken = |why: &str| {
-        // A run kept to the lent builders leaves nothing to run here.
-        if there::lent_only() {
-            eprintln!("nix-offload: {why}, and --lent-only runs nothing here");
-            return ExitCode::from(changed::UNBUILT);
-        }
-        eprintln!("nix-offload: {why}, so changed-checks runs here");
-        ExitCode::from(changed::NOT_TAKEN)
-    };
     let own = match changed::run_by(there::lent_only()) {
         Ok(own) => own,
         Err(why) => return not_taken(&why),
@@ -1563,6 +1575,10 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
     if passed_already(&passed, at.as_ref(), arguments) {
         forget();
         return ExitCode::SUCCESS;
+    }
+    if let Some(held) = held_for_a_mac(arguments) {
+        forget();
+        return held;
     }
     let wanted = changed::wanted(arguments);
     // The same run already going in this tree ends in what this one would
@@ -1641,6 +1657,50 @@ fn with_system(arguments: &[String]) -> Vec<String> {
         arguments.extend(["--system".to_owned(), this_system()]);
     }
     arguments
+}
+
+/// How a changed-checks run that couldn't go ends, saying `why`: as one
+/// no builder took, which its caller runs here, or under `--lent-only`,
+/// which keeps it off this machine, as one nothing built.
+fn not_taken(why: &str) -> ExitCode {
+    if there::lent_only() {
+        eprintln!("nix-offload: {why}, and --lent-only runs nothing here");
+        return ExitCode::from(changed::UNBUILT);
+    }
+    eprintln!("nix-offload: {why}, so changed-checks runs here");
+    ExitCode::from(changed::NOT_TAKEN)
+}
+
+/// Set on a gate's own Mac comparison, whose run asked the Mac for room
+/// already, so it isn't asked twice.
+const ROOM_ASKED: (&str, &str) = ("NIX_OFFLOAD_MAC_ROOM_ASKED", "1");
+
+/// How a changed-checks run with `arguments` ends when it waits rather
+/// than go to a busy Mac nearby, as [`changed::mac::waits`] decides from
+/// the first that answers, or none when it goes. It ends as one nothing
+/// built, which its callers try again later and never run here, where it
+/// would build nothing.
+fn held_for_a_mac(arguments: &[String]) -> Option<ExitCode> {
+    use changed::mac;
+    let wanted = changed::wanted(arguments);
+    let asked_already = env::var_os(ROOM_ASKED.0).is_some_and(|value| value == ROOM_ASKED.1);
+    // `--lent-only` keeps the person's Mac out of it altogether, and the
+    // keeper's `--keep-base` run only evaluates, on a lent builder.
+    let keeps = arguments.iter().any(|word| word == "--keep-base");
+    if asked_already
+        || keeps
+        || there::lent_only()
+        || !mac::asks_for_room(wanted.system.as_deref(), &this_system(), wanted.build)
+    {
+        return None;
+    }
+    let mac = nearby_listed()
+        .into_iter()
+        .filter(|machine| machine.systems.iter().any(|system| system == mac::SYSTEM))
+        .find(|machine| machines::answers(&machine.address))?;
+    let why = mac::waits(&mac.host, there::load_of(&mac, &scratch(), "ssh"))?;
+    eprintln!("nix-offload: {why}, so a run for its system waits, ended as one nothing built");
+    Some(ExitCode::from(changed::UNBUILT))
 }
 
 /// How a Mac's comparison joined a changed-checks run that passed.
@@ -1800,8 +1860,8 @@ fn compared_within(
     waiting: there::Waiting,
     longest: Duration,
 ) -> Option<i32> {
-    let mut comparing = Command::new("/proc/self/exe");
-    comparing.arg("there");
+    let mut comparing = again();
+    comparing.arg("there").env(ROOM_ASKED.0, ROOM_ASKED.1);
     if !waiting.asks {
         comparing.arg("--never-ask");
     }
@@ -3977,6 +4037,28 @@ mod tests {
     /// Held while a test hears a helper, so no stop is told meanwhile.
     fn unstopped() -> RwLockReadGuard<'static, ()> {
         STOPS.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    #[test]
+    fn this_program_runs_again_by_procs_name_for_it_or_by_its_own_file() {
+        let here = tempfile::tempdir().unwrap();
+        let proc_exe = here.path().join("exe");
+        fs::write(&proc_exe, "").unwrap();
+        assert_eq!(
+            program(&proc_exe),
+            proc_exe,
+            "a system naming the running file wasn't taken at its word"
+        );
+        // As on a Mac, which names none.
+        let named = program(&here.path().join("none"));
+        assert_eq!(
+            Some(named.clone()),
+            env::current_exe()
+                .ok()
+                .and_then(|path| fs::canonicalize(path).ok()),
+            "with no /proc this program runs again as {named:?}, not its own file"
+        );
+        assert!(named.is_file(), "{named:?} isn't a file to run");
     }
 
     #[test]

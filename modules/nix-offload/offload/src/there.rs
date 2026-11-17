@@ -6150,6 +6150,12 @@ mod tests {
         assert!(wanted(&dir), "a held want wasn't counted");
         assert!(wanted(&dir), "a held want was taken away");
         drop(held);
+        // As a lender's file is, below, a want's lock can outlive it
+        // briefly in a child another test forked.
+        let since = Instant::now();
+        while wanted(&dir) && since.elapsed() < Duration::from_secs(5) {
+            thread::sleep(Duration::from_millis(20));
+        }
         assert!(!wanted(&dir), "a want let go was still counted");
         assert_eq!(
             fs::read_dir(&wants).unwrap().count(),
@@ -6176,6 +6182,13 @@ mod tests {
             "a lender holding its file was taken for stopped"
         );
         drop(holding);
+        // A lock is the open file's, so a child another test forks in the
+        // moment before it execs holds it a little longer: under load on
+        // 16 November that read as a lender still running.
+        let since = Instant::now();
+        while lends(dir.path()) && since.elapsed() < Duration::from_secs(5) {
+            thread::sleep(Duration::from_millis(20));
+        }
         assert!(!lends(dir.path()), "a lender that let go was taken to run");
     }
 

@@ -256,7 +256,7 @@ pub fn cargo(arguments: &[String], lenders: [&Path; 2]) -> ExitCode {
                      since a lent builder has no crates until it fetches them"
                 );
             }
-            let status = Command::new(env::current_exe().unwrap_or_else(|_| "nix-offload".into()))
+            let status = crate::again()
                 .args(["there", "--run", "--", "nix", "develop", "-c", "cargo"])
                 .args(&sent)
                 .status();

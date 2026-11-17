@@ -21,6 +21,7 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use super::wanted;
+use crate::there::Load;
 
 /// The system a Mac builds for.
 pub const SYSTEM: &str = "aarch64-darwin";
@@ -154,12 +155,96 @@ pub fn for_a_mac(arguments: &[String]) -> Vec<String> {
     mac
 }
 
+/// Whether a run `asked` for a system, from a machine building for `here`,
+/// asks a Mac for room first: one that `builds` for a Mac's system from
+/// elsewhere, which only a Mac can build. A Mac's checks need Linux
+/// builds, which it gives its own Linux VM, so a run sent to a busy Mac
+/// adds the VM's processors to its load: on 17 November the net's run for
+/// a Mac, which no gate's room held, woke its 12-processor VM at a load
+/// over 100 on 12 processors, and the load reached 264. One that only
+/// names what changed is evaluated on a lent builder, and goes.
+pub fn asks_for_room(asked: Option<&str>, here: &str, builds: bool) -> bool {
+    builds && asked == Some(SYSTEM) && here != SYSTEM
+}
+
+/// Why a run for a Mac's system waits rather than go to the Mac `host`,
+/// as `load` found it, or none when it goes. A Mac too busy to say its
+/// load has no room either, and nor has one that said nothing a load
+/// reads from: an ssh that couldn't finish its handshake says nothing,
+/// and a run sent on would only find the same Mac.
+pub fn waits(host: &str, load: Result<Option<Load>, String>) -> Option<String> {
+    match load {
+        Ok(Some(load)) if load.over() => Some(format!(
+            "{host} has no room, at load {:.0} on {} processors",
+            load.minute, load.cores
+        )),
+        Ok(Some(_)) => None,
+        Ok(None) => Some(format!("{host} didn't say its load")),
+        Err(why) => Some(why),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn words(text: &str) -> Vec<String> {
         text.split_whitespace().map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn a_run_for_a_mac_past_three_a_processor_waits_and_one_within_goes() {
+        let at = |minute: f64| Ok(Some(Load { minute, cores: 12 }));
+        assert_eq!(
+            waits("skiff", at(140.0)).as_deref(),
+            Some("skiff has no room, at load 140 on 12 processors"),
+            "a run for a Mac far past its room went"
+        );
+        assert_eq!(
+            waits("skiff", at(36.6)).as_deref(),
+            Some("skiff has no room, at load 37 on 12 processors"),
+            "a run for a Mac just past three a processor went"
+        );
+        assert_eq!(
+            waits("skiff", at(36.0)),
+            None,
+            "a run for a Mac at three a processor waited"
+        );
+        assert_eq!(
+            waits("skiff", Ok(None)).as_deref(),
+            Some("skiff didn't say its load"),
+            "a Mac that said nothing a load reads from was taken to have room"
+        );
+        assert_eq!(
+            waits("skiff", Err("slow".to_owned())).as_deref(),
+            Some("slow"),
+            "a Mac too busy to say its load was taken to have room"
+        );
+    }
+
+    #[test]
+    fn only_a_build_for_a_macs_system_from_elsewhere_asks_for_room() {
+        let linux = "x86_64-linux";
+        assert!(
+            asks_for_room(Some(SYSTEM), linux, true),
+            "the net's build for a Mac went unasked"
+        );
+        assert!(
+            !asks_for_room(Some(SYSTEM), linux, false),
+            "a run naming what changed for a Mac, built nowhere, waited"
+        );
+        assert!(
+            !asks_for_room(Some(linux), linux, true),
+            "a build for Linux waited on a Mac"
+        );
+        assert!(
+            !asks_for_room(None, linux, true),
+            "a build naming no system waited on a Mac"
+        );
+        assert!(
+            !asks_for_room(Some(SYSTEM), SYSTEM, true),
+            "a Mac's own build waited on itself"
+        );
     }
 
     #[test]
