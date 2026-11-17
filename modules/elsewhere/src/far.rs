@@ -9,9 +9,11 @@
 //!
 //! Each end of a shared quest looks once a second and files arrive in no
 //! set order, so each side lists what it left, with sizes and an end line
-//! written last, and the other waits until all of it is there. A share
-//! writes each file it receives to a hidden file renamed over its path
-//! (mycelium's `share/disk.rs`), so a file there is a file arrived.
+//! written last, and the other waits until all of it is there at the size
+//! listed. A share writes what it receives whole, by a hidden file renamed
+//! over its path (mycelium's `share/disk.rs`), but it may have read a file
+//! here while it was being written, so the size is what says the file
+//! arrived as it was left.
 //!
 //! A shared quest keeps home any folder a build fills, `target` and
 //! `node_modules`, wherever it lies, which a tracked file can sit in as
@@ -36,8 +38,8 @@ const LEFT: &str = "elsewhere-files";
 const BROUGHT: &str = "elsewhere-back";
 const END: &str = "end";
 
-/// The folders the job's files, and what it brings back, each named by
-/// its line in the list, lie in.
+/// The folders the job's files lie in, under their paths as crossed, and
+/// what it brings back lies in, each named by its line in the list.
 const TREE: &str = "tree";
 const BACK: &str = "back";
 
@@ -273,6 +275,7 @@ arrived() {{
     [ "$size" = {END} ] && return 0
     case "/$path/" in //*|*/../*|*/./*) continue ;; esac
     [ -f "$job/{TREE}/$path" ] || return 1
+    [ "$(($(wc -c < "$job/{TREE}/$path")))" -eq "$size" ] || return 1
   done < "$job/{LEFT}"
   return 1
 }}
@@ -280,7 +283,7 @@ copied() {{
   while IFS="$tab" read -r size path; do
     [ "$size" = {END} ] && break
     case "/$path/" in
-      //*|*/../*|*/./*) echo "the job's list names $path, outside its folder" >&2; return 1 ;;
+      //*|*/../*|*/./*) echo "elsewhere: the job's list names $path, outside its folder" >&2; return 1 ;;
     esac
   done < "$job/{LEFT}"
   cp -R "$job/{TREE}/." "$work/" || return 1
@@ -289,20 +292,22 @@ copied() {{
   # target.elsewhere.elsewhere takes its name.
   find "$work" -name '*{MARK}' |
     awk -F/ '{{ print NF "\t" length($NF) "\t" $0 }}' |
-    sort -t "$tab" -k1,1nr -k2,2n | cut -f3- |
+    sort -t "$tab" -k1,1nr -k2,2n | cut -f3- | (
+    # A subshell of its own, so its exit ends only the loop in every sh.
     while IFS= read -r name; do
       to=${{name%{MARK}}}
       case "${{to##*/}}" in
-        ''|.|..) echo "the job's tree names $name, outside its folder" >&2; exit 1 ;;
+        ''|.|..) echo "elsewhere: the job's tree names $name, outside its folder" >&2; exit 1 ;;
       esac
-      [ -e "$to" ] && {{ echo "the job's tree names $to twice" >&2; exit 1; }}
+      [ -e "$to" ] && {{ echo "elsewhere: the job's tree names $to twice" >&2; exit 1; }}
       mv "$name" "$to" || exit 1
     done
+  )
 }}
 waited=0
 until arrived; do
   if [ "$waited" -ge {CROSSES_WITHIN} ]; then
-    echo "the job's files didn't reach $(uname -n) within {CROSSES_WITHIN}s" >&2
+    echo "elsewhere: the job's files didn't reach $(uname -n) within {CROSSES_WITHIN}s" >&2
     exit 75
   fi
   sleep 1
@@ -349,7 +354,7 @@ fn bringing(kind: &Kind) -> String {
 done | {{
   n=0
   while IFS= read -r file; do
-    cp "$file" "$job/{BACK}/$n" || {{ echo "elsewhere: $file didn't come back" >&2; continue; }}
+    cp "$file" "$job/{BACK}/$n" || {{ printf "elsewhere: %s didn't come back\n" "$file" >&2; continue; }}
     printf '%s\t%s\n' "$(($(wc -c < "$job/{BACK}/$n")))" "$file"
     n=$((n + 1))
   done
@@ -480,7 +485,7 @@ pub fn quoted(word: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{crossing, listed, plain_quest, quoted, script, started, travels};
+    use super::{bring_back, crossing, listed, plain_quest, quoted, script, started, travels};
     use crate::settings::{Copies, Kind};
     use std::path::Path;
 
@@ -695,11 +700,48 @@ mod tests {
     }
 
     #[test]
+    fn what_comes_back_comes_back_under_its_own_name_past_one_that_failed() {
+        // Three files brought back, the middle one unreadable, so the far
+        // side's numbers skip a copy the near side never hears of.
+        let (code, err, home) = far_run(
+            "1\tx\nend\n",
+            &[("x", "x")],
+            "mkdir out && printf a > out/a && printf bb > out/b && \
+             printf ccc > out/c && chmod 000 out/b",
+        );
+        assert_eq!(code, Some(0), "the job didn't run: {err}");
+        assert!(
+            err.contains("elsewhere: out/b didn't come back"),
+            "a file that failed to come back went unsaid: {err}"
+        );
+        let job = home.join(format!(
+            ".cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/{}/1",
+            super::HANDOVER
+        ));
+        let into = home.join("near");
+        assert_eq!(
+            bring_back(&job, &into, &["out".into()]),
+            Ok(2),
+            "the near side didn't bring back the two that crossed"
+        );
+        for (name, text) in [("a", Some("a")), ("b", None), ("c", Some("ccc"))] {
+            assert_eq!(
+                std::fs::read_to_string(into.join("out").join(name))
+                    .ok()
+                    .as_deref(),
+                text,
+                "out/{name} came back wrong, so the two sides' numbers disagree"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
     fn the_far_line_takes_the_marks_off_and_puts_nothing_outside() {
         // Marks inside marks, and one name marked once beside it marked
         // twice, each landing at its own name.
         let (code, err, home) = far_run(
-            "2\tlib/target.elsewhere/x.ts\n2\tnotes.elsewhere.elsewhere\n\
+            "2\tlib/target.elsewhere/x.ts\n1\tnotes.elsewhere.elsewhere\n\
              1\ta/target.elsewhere/node_modules.elsewhere/y\n\
              1\ttarget.elsewhere.elsewhere/z\n1\ttarget.elsewhere/w\nend\n",
             &[
