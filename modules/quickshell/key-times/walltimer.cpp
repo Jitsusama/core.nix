@@ -18,6 +18,6 @@ void WallTimer::setInterval(int interval) {
     emit intervalChanged();
 }
 
-void WallTimer::restart() {}
+void WallTimer::restart() { timer.start(); }
 
 void WallTimer::stop() { timer.stop(); }
