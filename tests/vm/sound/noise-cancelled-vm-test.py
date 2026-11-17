@@ -46,6 +46,8 @@ TRIAL = f"{RUNTIME}/noise-cancelled.sock"
 REFUSALS = "/etc/noise-cancelled-refusals.json"
 # Where the trial keeps a pick, for the service to clean with from then on.
 PICKED = f"{RUNTIME}/noise-cancelled/cleaner"
+# The socket families the module lets both programs open, so they're run as fenced as there.
+FENCE = "AF_UNIX"
 # Where the service offers Choose by Ear after a call, beside the pick, and keeps what's offered.
 OFFER = f"{RUNTIME}/noise-cancelled/offer"
 KEPT_OFFERED = f"{RUNTIME}/noise-cancelled/offered"
@@ -161,9 +163,10 @@ def joel(machine: BaseMachine, values: dict[str, Any]) -> Iterator[Joel]:
     machine.wait_for_unit("wireplumber.service", "joel")
     plug_in(joel, "microphone")
     # Keeping picks where the trial does, so a pick ranks the twin once it's made again, with
-    # pw-dump on its path as the module gives it, to follow calls.
+    # pw-dump on its path as the module gives it, to follow calls, and behind its fence.
     joel.run(
         "systemd-run --user --unit=noise-cancelled --setenv=PATH=/run/current-system/sw/bin"
+        f" --property=RestrictAddressFamilies={FENCE}"
         f" noise-cancelled serve {values['models']} deepfilternet {PICKED}"
     )
     try:
@@ -235,7 +238,8 @@ def offered(joel: Joel, values: dict[str, Any]) -> Iterator[dict[str, Any]]:
     # Its folder made first, as the unit's StateDirectory makes it, so the offer is heard there.
     joel.run(f"mkdir -p {RUNTIME}/noise-cancelled")
     joel.run(
-        f"systemd-run --user --unit=trial noise-cancelled trial {TRIAL} {values['models']}"
+        f"systemd-run --user --unit=trial --property=RestrictAddressFamilies={FENCE}"
+        f" noise-cancelled trial {TRIAL} {values['models']}"
         f" deepfilternet {REFUSALS} {PICKED}"
     )
     try:
