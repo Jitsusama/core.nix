@@ -25,7 +25,10 @@
 # as pi's did. It holds no credential: each request's own goes as it came.
 # A fence keeps the runtime folder from what it runs, so a fenced command
 # can't reach the socket, and the folder mustn't be bound into one: it is a
-# way to the origin with whatever key the asker holds.
+# way to the origin with whatever key the asker holds. A unit of the account
+# kept off the network with PrivateNetwork still sees the runtime folder,
+# so it can reach the origin through the socket, though with no key of its
+# own the origin answers it nothing.
 {
   config,
   lib,
@@ -92,6 +95,20 @@ in
         # The agents' lane, never app.slice, where it would ride Joel's.
         Slice = "background.slice";
         Restart = "on-failure";
+        # It holds every agent's key while it carries a request, so it sees
+        # no more of the machine than reaching the origin needs: no home,
+        # no shared /tmp, nothing written, no capability, no namespace of
+        # its own making. A user manager takes these by putting it in a
+        # user namespace of its own, which optimus allows; its socket comes
+        # from systemd, so the runtime folder it hides isn't needed.
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+        CapabilityBoundingSet = "";
+        RestrictNamespaces = true;
+        SystemCallFilter = "@system-service";
+        UMask = "0077";
+        RestrictRealtime = true;
         NoNewPrivileges = true;
         LockPersonality = true;
         MemoryDenyWriteExecute = true;

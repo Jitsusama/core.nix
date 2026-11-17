@@ -54,7 +54,7 @@ use std::convert::Infallible;
 use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as Held, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -70,7 +70,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo, TokioTimer};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, ServerName};
 use tokio::net::{TcpStream, UnixListener};
-use tokio::sync::{Mutex, mpsc, watch};
+use tokio::sync::{Mutex, Notify, watch};
 use tokio_rustls::TlsConnector;
 
 /// The port an https origin names when it names none.
@@ -141,7 +141,7 @@ impl Origin {
             .trim_start_matches('[')
             .trim_end_matches(']')
             .to_owned();
-        let port = authority.port_u16().unwrap_or(HTTPS_PORT);
+        let port = port_of(&authority).ok_or("its port isn't one")?;
         Ok(Origin {
             authority,
             host,
@@ -153,9 +153,22 @@ impl Origin {
     fn is_named_by(&self, asked: &str) -> bool {
         asked.parse::<Authority>().is_ok_and(|named| {
             named.host().eq_ignore_ascii_case(self.authority.host())
-                && named.port_u16().unwrap_or(HTTPS_PORT) == self.port
+                && port_of(&named) == Some(self.port)
         })
     }
+}
+
+/// The port `authority` names, or https's when it names none; nothing when
+/// what follows its host isn't a port, as `:84433` isn't, which the http
+/// crate reads as no port at all.
+fn port_of(authority: &Authority) -> Option<u16> {
+    let text = authority.as_str();
+    let host = authority.host();
+    let after = text.rfind(host).map_or("", |at| &text[at + host.len()..]);
+    if after.is_empty() {
+        return Some(HTTPS_PORT);
+    }
+    after.strip_prefix(':')?.parse().ok()
 }
 
 /// The roots a relay trusts the origin's certificate to chain to.
@@ -265,6 +278,71 @@ enum Unreachable {
     Late,
     /// It was refused, or failed on the way.
     Refused,
+    /// It was reached, but not as this relay can carry a request to it:
+    /// its certificate isn't one the relay trusts, or it doesn't speak
+    /// HTTP/2. pi reaches it directly instead, as it would with no relay.
+    Unfit,
+}
+
+impl Unreachable {
+    /// What pi is answered: a 504 or a 502 for its retry, or a 421 that
+    /// sends it direct.
+    fn said(self) -> Response<Body> {
+        match self {
+            Unreachable::Late => said(
+                StatusCode::GATEWAY_TIMEOUT,
+                "this relay couldn't reach its origin in time\n",
+            ),
+            Unreachable::Refused => said(
+                StatusCode::BAD_GATEWAY,
+                "this relay couldn't reach its origin\n",
+            ),
+            Unreachable::Unfit => said(
+                StatusCode::MISDIRECTED_REQUEST,
+                "this relay can't carry a request to its origin, so go directly\n",
+            ),
+        }
+    }
+}
+
+/// How many of pi's connections a relay holds, and a way to hear when it
+/// holds none.
+#[derive(Default)]
+struct Connections {
+    now: AtomicUsize,
+    none: Notify,
+}
+
+impl Connections {
+    /// One more connection, held until what it gives back is dropped.
+    fn one(self: &Arc<Connections>) -> Holding {
+        self.now.fetch_add(1, Ordering::SeqCst);
+        Holding(Arc::clone(self))
+    }
+
+    /// Ends once no connection is held.
+    async fn none_held(&self) {
+        loop {
+            let none = self.none.notified();
+            tokio::pin!(none);
+            none.as_mut().enable();
+            if self.now.load(Ordering::SeqCst) == 0 {
+                return;
+            }
+            none.await;
+        }
+    }
+}
+
+/// A connection a relay holds.
+struct Holding(Arc<Connections>);
+
+impl Drop for Holding {
+    fn drop(&mut self) {
+        if self.0.now.fetch_sub(1, Ordering::SeqCst) == 1 {
+            self.0.none.notify_waiters();
+        }
+    }
 }
 
 /// One of the connections a relay keeps: the sender of the one open, if
@@ -303,6 +381,9 @@ pub struct Relay {
     /// The relay's clock and the wall's when a connection was last asked
     /// for, to tell when the machine slept between.
     asked_at: Held<(Instant, SystemTime)>,
+    /// Whether it has begun to leave, when a request is sent direct.
+    leaving: AtomicBool,
+    connections: Arc<Connections>,
     counts: Arc<Counts>,
     busy: Arc<Busy>,
 }
@@ -342,6 +423,8 @@ impl Relay {
             next: AtomicUsize::new(0),
             failed: Held::new(None),
             asked_at: Held::new((Instant::now(), SystemTime::now())),
+            leaving: AtomicBool::new(false),
+            connections: Arc::new(Connections::default()),
             counts: Arc::new(Counts::default()),
             busy: Arc::new(Busy {
                 now: AtomicUsize::new(0),
@@ -351,8 +434,10 @@ impl Relay {
     }
 
     /// Answers `listener` until the process is stopped, or until it has
-    /// sat idle as long as its clocks say, when it closes each connection
-    /// it holds as its answer ends.
+    /// sat idle as long as its clocks say. Then it leaves: each connection
+    /// it holds is closed as its answer ends, and while any is open, a
+    /// request on a connection taken since is sent direct with a 421, so
+    /// no pi waits on a relay that's going.
     pub async fn serve(self, listener: UnixListener) {
         eprintln!(
             "model-relay: forwarding to {} over at most {} connections",
@@ -362,12 +447,9 @@ impl Relay {
         let relay = Arc::new(self);
         tokio::spawn(say_counts(Arc::clone(&relay.counts)));
         let (leave, leaving) = watch::channel(false);
-        // Each connection holds a sender of these; once the last is gone,
-        // every connection has closed.
-        let (held, mut all_closed) = mpsc::channel::<()>(1);
         loop {
             tokio::select! {
-                () = relay.accept(&listener, &leaving, &held) => {}
+                () = relay.accept(&listener, &leaving) => {}
                 () = relay.idle() => {}
             }
             // Taking no more, it gives a connection it took just now the
@@ -379,37 +461,43 @@ impl Relay {
         }
         let idle_for = relay.clocks.idle_exit.unwrap_or_default().as_secs();
         eprintln!("model-relay: idle for {idle_for} s, so it leaves; its socket starts it again");
+        relay.leaving.store(true, Ordering::SeqCst);
         // Nobody is left to tell when every connection has gone already.
         let _ = leave.send(true);
-        drop(held);
-        let _ = all_closed.recv().await;
+        tokio::select! {
+            () = relay.accept(&listener, &leaving) => {}
+            () = relay.connections.none_held() => {}
+        }
     }
 
-    /// Answers each connection `listener` takes, closing each as its answer
-    /// ends once `leaving` says so.
-    async fn accept(
-        self: &Arc<Relay>,
-        listener: &UnixListener,
-        leaving: &watch::Receiver<bool>,
-        held: &mpsc::Sender<()>,
-    ) {
+    /// Answers each connection `listener` takes. One taken before `leaving`
+    /// says so is closed as its answer ends once it does; one taken after
+    /// answers a request and closes.
+    async fn accept(self: &Arc<Relay>, listener: &UnixListener, leaving: &watch::Receiver<bool>) {
         loop {
             match listener.accept().await {
                 Ok((stream, _)) => {
                     let relay = Arc::clone(self);
-                    let (mut leaving, held) = (leaving.clone(), held.clone());
+                    let mut leaving = leaving.clone();
+                    let holding = self.connections.one();
                     tokio::spawn(async move {
-                        let _held = held;
+                        let _holding = holding;
+                        let late = *leaving.borrow_and_update();
                         let service = hyper::service::service_fn(move |request| {
                             let relay = Arc::clone(&relay);
                             async move { Ok::<_, Infallible>(relay.forward(request).await) }
                         });
                         let connection = hyper::server::conn::http1::Builder::new()
                             .timer(TokioTimer::new())
+                            .keep_alive(!late)
                             .serve_connection(TokioIo::new(stream), service);
                         tokio::pin!(connection);
                         // A pi that hangs up mid-answer ends only its own
                         // connection, and there's nobody left to tell.
+                        if late {
+                            let _ = connection.await;
+                            return;
+                        }
                         tokio::select! {
                             _ = connection.as_mut() => return,
                             _ = leaving.wait_for(|leave| *leave) => {
@@ -471,6 +559,13 @@ impl Relay {
                 "this relay forwards to its own origin alone\n",
             );
         }
+        if self.leaving.load(Ordering::SeqCst) {
+            self.counts.refused.fetch_add(1, Ordering::Relaxed);
+            return said(
+                StatusCode::MISDIRECTED_REQUEST,
+                "this relay is leaving, so go directly\n",
+            );
+        }
         let in_hand = self.busy.one();
         let path = parts
             .uri
@@ -500,16 +595,7 @@ impl Relay {
                 Ok(sender) => sender,
                 Err(why) => {
                     self.counts.failed.fetch_add(1, Ordering::Relaxed);
-                    return match why {
-                        Unreachable::Late => said(
-                            StatusCode::GATEWAY_TIMEOUT,
-                            "this relay couldn't reach its origin in time\n",
-                        ),
-                        Unreachable::Refused => said(
-                            StatusCode::BAD_GATEWAY,
-                            "this relay couldn't reach its origin\n",
-                        ),
-                    };
+                    return why.said();
                 }
             };
             match sender.try_send_request(request).await {
@@ -553,7 +639,7 @@ impl Relay {
 
     /// A connection to send down: the next in turn if it's open, or any
     /// other that is while the next is opened behind it, or, with none
-    /// open, the next once it's opened.
+    /// open, the next not being opened already, once it's opened.
     async fn sender(self: &Arc<Relay>) -> Result<SendRequest<Incoming>, Unreachable> {
         self.retire_after_a_sleep();
         let count = self.slots.len();
@@ -565,7 +651,13 @@ impl Relay {
             self.open_behind(at);
             return Ok(sender);
         }
-        self.open(at).await
+        // One being opened behind may be stuck on an origin that takes
+        // no more connections, and another may open at once.
+        let free = (0..count)
+            .map(|step| (at + step) % count)
+            .find(|&slot| self.slots[slot].opening.try_lock().is_ok())
+            .unwrap_or(at);
+        self.open(free).await
     }
 
     /// Retires every connection when the wall clock ran ahead of the
@@ -575,12 +667,11 @@ impl Relay {
     /// answer already streaming on one carries on.
     fn retire_after_a_sleep(&self) {
         let now = (Instant::now(), SystemTime::now());
-        let (then, then_on_the_wall) = std::mem::replace(
+        let then = std::mem::replace(
             &mut *self.asked_at.lock().unwrap_or_else(PoisonError::into_inner),
             now,
         );
-        let on_the_wall = now.1.duration_since(then_on_the_wall).unwrap_or_default();
-        if on_the_wall <= now.0.duration_since(then) + SLEPT_AT_LEAST {
+        if !slept(then, now) {
             return;
         }
         eprintln!("model-relay: the machine slept, so its connections are opened afresh");
@@ -637,6 +728,8 @@ impl Relay {
         match self.connect(at).await {
             Ok(sender) => {
                 self.slots[at].keep(sender.clone());
+                // The origin is back, so others may be opened behind.
+                *self.failed.lock().unwrap_or_else(PoisonError::into_inner) = None;
                 Ok(sender)
             }
             Err(why) => {
@@ -652,12 +745,37 @@ impl Relay {
     async fn connect(&self, at: usize) -> Result<SendRequest<Incoming>, Unreachable> {
         let within = self.clocks.connect_within;
         let opening = async {
-            let tcp = reach(&self.origin.host, self.origin.port, within).await?;
-            tcp.set_nodelay(true)?;
-            let name = ServerName::try_from(self.origin.host.clone()).map_err(io::Error::other)?;
-            let tls = self.tls.connect(name, tcp).await?;
+            let on_the_way = |why: io::Error| {
+                let unreachable = if why.kind() == io::ErrorKind::TimedOut {
+                    Unreachable::Late
+                } else {
+                    Unreachable::Refused
+                };
+                (why, unreachable)
+            };
+            let tcp = reach(&self.origin.host, self.origin.port, within)
+                .await
+                .map_err(on_the_way)?;
+            tcp.set_nodelay(true).map_err(on_the_way)?;
+            let name = ServerName::try_from(self.origin.host.clone())
+                .map_err(|why| (io::Error::other(why), Unreachable::Unfit))?;
+            let tls = self.tls.connect(name, tcp).await.map_err(|why| {
+                // rustls refusing the origin is the relay's own doing; the
+                // network failing beneath it isn't.
+                if why
+                    .get_ref()
+                    .is_some_and(<dyn std::error::Error + Send + Sync>::is::<rustls::Error>)
+                {
+                    (why, Unreachable::Unfit)
+                } else {
+                    on_the_way(why)
+                }
+            })?;
             if tls.get_ref().1.alpn_protocol() != Some(b"h2") {
-                return Err(io::Error::other("the origin doesn't speak HTTP/2"));
+                return Err((
+                    io::Error::other("the origin doesn't speak HTTP/2"),
+                    Unreachable::Unfit,
+                ));
             }
             hyper::client::conn::http2::Builder::new(TokioExecutor::new())
                 .timer(TokioTimer::new())
@@ -667,17 +785,13 @@ impl Relay {
                 .adaptive_window(true)
                 .handshake(TokioIo::new(tls))
                 .await
-                .map_err(io::Error::other)
+                .map_err(|why| (io::Error::other(why), Unreachable::Refused))
         };
         let (sender, connection) = match tokio::time::timeout(within, opening).await {
             Ok(Ok(opened)) => opened,
-            Ok(Err(why)) => {
+            Ok(Err((why, unreachable))) => {
                 eprintln!("model-relay: connection {at} couldn't be made: {why}");
-                return Err(if why.kind() == io::ErrorKind::TimedOut {
-                    Unreachable::Late
-                } else {
-                    Unreachable::Refused
-                });
+                return Err(unreachable);
             }
             Err(_) => {
                 eprintln!(
@@ -711,27 +825,48 @@ impl Relay {
     }
 }
 
-/// A TCP connection to `host`'s `port`, trying each address the name
-/// resolves to in turn with an even share of what's left of `within`, so
-/// an address that never answers can't hide one that would, and one that
-/// refuses at once leaves its share to the rest. When every address ran
-/// out of time, the error says it timed out.
+/// A TCP connection to `host`'s `port`, from the first address the name
+/// resolves to that answers.
 async fn reach(host: &str, port: u16, within: Duration) -> io::Result<TcpStream> {
-    let started = Instant::now();
     let addresses: Vec<SocketAddr> = tokio::net::lookup_host((host, port)).await?.collect();
-    let mut last = io::Error::other(format!("{host} resolved to no address"));
+    if addresses.is_empty() {
+        return Err(io::Error::other(format!("{host} resolved to no address")));
+    }
+    reach_any(&addresses, within).await
+}
+
+/// A TCP connection to one of `addresses`, trying each in turn with an
+/// even share of what's left of `within`, so an address that never
+/// answers can't hide one that would, and one that refuses at once leaves
+/// its share to the rest. The error says it timed out only when every
+/// address did, and otherwise says the last refusal.
+///
+/// One after another rather than racing them, as a browser does, since an
+/// origin the relay is for resolves to one address family; one with an
+/// address that never answers costs each opening that address's share.
+async fn reach_any(addresses: &[SocketAddr], within: Duration) -> io::Result<TcpStream> {
+    let started = Instant::now();
+    let mut refused = None;
     for (tried, address) in addresses.iter().enumerate() {
         let left = within.saturating_sub(started.elapsed());
         let untried = u32::try_from(addresses.len() - tried).unwrap_or(u32::MAX);
         match tokio::time::timeout(left / untried, TcpStream::connect(address)).await {
             Ok(Ok(tcp)) => return Ok(tcp),
-            Ok(Err(why)) => last = why,
-            Err(_) => {
-                last = io::Error::new(io::ErrorKind::TimedOut, format!("{address} never answered"));
-            }
+            Ok(Err(why)) => refused = Some(why),
+            Err(_) => {}
         }
     }
-    Err(last)
+    Err(refused
+        .unwrap_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "no address answered in time")))
+}
+
+/// Whether the machine slept between `then` and `now`, each the relay's
+/// clock and the wall's: the wall ran more than `SLEPT_AT_LEAST` ahead.
+/// This takes `Instant` to stand still in a suspend, as Linux's monotonic
+/// clock does; a wall clock set back is no sleep.
+fn slept(then: (Instant, SystemTime), now: (Instant, SystemTime)) -> bool {
+    let on_the_wall = now.1.duration_since(then.1).unwrap_or_default();
+    on_the_wall > now.0.duration_since(then.0) + SLEPT_AT_LEAST
 }
 
 /// An answer of the relay's own: a status and a line saying why.
@@ -807,7 +942,9 @@ async fn say_counts(counts: Arc<Counts>) {
 
 #[cfg(test)]
 mod tests {
-    use super::Origin;
+    use std::time::{Duration, Instant, SystemTime};
+
+    use super::{Origin, SLEPT_AT_LEAST, reach_any, slept};
 
     #[test]
     fn an_origin_is_an_https_host_alone() {
@@ -824,6 +961,8 @@ mod tests {
             "https://models.example/?q=1",
             "https://someone:secret@models.example",
             "models.example",
+            "https://models.example:84433",
+            "https://models.example:",
         ] {
             assert!(Origin::parse(not_one).is_err(), "{not_one} isn't an origin");
         }
@@ -836,11 +975,63 @@ mod tests {
             ("models.example", true),
             ("models.example:443", true),
             ("models.example:8443", false),
+            ("models.example:65979", false),
             ("other.example", false),
             ("models.example.other.example", false),
             ("", false),
         ] {
             assert_eq!(origin.is_named_by(asked), names_it, "{asked:?}");
         }
+    }
+
+    #[test]
+    fn a_sleep_is_a_wall_clock_running_ahead() {
+        let then = (Instant::now(), SystemTime::now());
+        let a_second = Duration::from_secs(1);
+        let after = |own: Duration, wall: Duration| (then.0 + own, then.1 + wall);
+        for (now, was_a_sleep) in [
+            (after(a_second, a_second), false),
+            (after(a_second, a_second + SLEPT_AT_LEAST), false),
+            (
+                after(
+                    a_second,
+                    a_second + SLEPT_AT_LEAST + Duration::from_millis(1),
+                ),
+                true,
+            ),
+            ((then.0 + a_second, then.1 - a_second), false),
+        ] {
+            assert_eq!(
+                slept(then, now),
+                was_a_sleep,
+                "{:?} ahead",
+                now.1.duration_since(then.1)
+            );
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn an_address_that_refuses_leaves_the_rest_to_be_tried() {
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+        let refusing = closed.local_addr().expect("its address");
+        drop(closed);
+        let open = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let answering = open.local_addr().expect("its address");
+        let within = Duration::from_secs(2);
+
+        let reached = reach_any(&[refusing, answering], within).await;
+        let none = reach_any(&[refusing], within).await;
+
+        assert_eq!(
+            reached.expect("the one that answers").peer_addr().ok(),
+            Some(answering)
+        );
+        assert_eq!(
+            none.err().map(|why| why.kind()),
+            Some(std::io::ErrorKind::ConnectionRefused),
+            "a refusal isn't said as a timeout"
+        );
     }
 }

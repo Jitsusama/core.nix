@@ -20,6 +20,7 @@
 use std::convert::Infallible;
 use std::io::{self, Read};
 use std::net::SocketAddr;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -45,6 +46,9 @@ const SECRET_BODY: &[u8] = b"{\"prompt\":\"sekrit-body-9a2e\"}";
 
 /// How long the origin waits between the two halves of a streamed answer.
 const STREAM_GAP: Duration = Duration::from_millis(1500);
+/// How long it waits between the halves of `/long`, past a relay's idle
+/// time of a second and the grace it gives before leaving.
+const LONG_GAP: Duration = Duration::from_secs(3);
 /// How long the origin holds each request the sharing test sends.
 const HELD: Duration = Duration::from_millis(300);
 /// How long the tests wait for the relay to listen.
@@ -222,7 +226,8 @@ fn origin_on(listener: TcpListener, answering: Serves, tls: Tls) -> Origin {
 type Answer = http_body_util::combinators::BoxBody<Bytes, Infallible>;
 
 /// The origin's answer: `/echo` hands the body back, `/held` waits a
-/// moment first, `/stream` sends its halves a gap apart, `/bye` answers
+/// moment first, `/stream` sends its halves a gap apart and `/long` a
+/// longer one, `/bye` answers
 /// and lets its connection go, and `/reset` reads the request and resets
 /// its stream rather than answer.
 async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<Answer>, io::Error> {
@@ -246,11 +251,16 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
         body: body.clone(),
     });
     let answer = match path.as_str() {
-        "/stream" => {
+        "/stream" | "/long" => {
+            let gap = if path == "/long" {
+                LONG_GAP
+            } else {
+                STREAM_GAP
+            };
             let (mut sender, body) = Channel::<Bytes, Infallible>::new(2);
             tokio::spawn(async move {
                 let _ = sender.send_data(Bytes::from_static(b"first\n")).await;
-                tokio::time::sleep(STREAM_GAP).await;
+                tokio::time::sleep(gap).await;
                 let _ = sender.send_data(Bytes::from_static(b"second\n")).await;
             });
             Response::builder()
@@ -295,6 +305,22 @@ impl Relay {
     fn start_with(origin: &str, roots: &Path, connections: usize, more: &[&str]) -> Relay {
         let folder = tempfile::tempdir().expect("a folder for the socket");
         let socket = folder.path().join("agents.sock");
+        Relay::start_at(folder, socket, origin, roots, connections, more)
+    }
+
+    /// Starts the relay as `start_with` does, listening at `socket`, in
+    /// `folder`, which may hold something there already.
+    fn start_at(
+        folder: tempfile::TempDir,
+        socket: PathBuf,
+        origin: &str,
+        roots: &Path,
+        connections: usize,
+        more: &[&str],
+    ) -> Relay {
+        let before = std::fs::symlink_metadata(&socket)
+            .ok()
+            .map(|there| there.ino());
         let child = Command::new(env!("CARGO_BIN_EXE_model-relay"))
             .arg("--socket")
             .arg(&socket)
@@ -310,7 +336,12 @@ impl Relay {
             .spawn()
             .expect("the relay starts");
         let started = Instant::now();
-        while !socket.exists() {
+        while std::fs::symlink_metadata(&socket)
+            .ok()
+            .map(|there| there.ino())
+            == before
+            || std::os::unix::net::UnixStream::connect(&socket).is_err()
+        {
             assert!(
                 started.elapsed() < LISTENS_WITHIN,
                 "the relay never listened"
@@ -730,21 +761,33 @@ async fn a_failure_lasts_no_longer_than_the_origin_is_away() {
     drop(away);
     let host = address.to_string();
     let tls = tls();
-    let relay = Relay::start(&format!("https://{host}"), &tls.roots, 1);
+    let relay = Relay::start(&format!("https://{host}"), &tls.roots, 2);
 
     let while_away = ask(&relay.socket, request(&host, "/echo", b"")).await;
-    let _back = origin_on(
+    let back = origin_on(
         TcpListener::bind(address).await.expect("the port again"),
         Serves::All,
         tls,
     );
     let first = ask(&relay.socket, request(&host, "/echo", b"")).await;
+    let second = ask(&relay.socket, request(&host, "/echo", b"")).await;
+    // The second is carried on the first's connection while another is
+    // opened behind it, which a failure still on record would stop.
+    let asked = Instant::now();
+    while back.connections.load(Ordering::SeqCst) < 2 && asked.elapsed() < LISTENS_WITHIN / 5 {
+        tokio::time::sleep(LOOK_EVERY).await;
+    }
 
     assert_eq!(while_away.status, StatusCode::BAD_GATEWAY);
     assert_eq!(
-        first.status,
-        StatusCode::CREATED,
+        (first.status, second.status),
+        (StatusCode::CREATED, StatusCode::CREATED),
         "a failure while the origin was away outlasted it"
+    );
+    assert_eq!(
+        back.connections.load(Ordering::SeqCst),
+        2,
+        "no second connection was opened once the origin was back"
     );
     drop(relay.said());
 }
@@ -839,27 +882,180 @@ async fn its_socket_is_the_accounts_alone_and_kept_while_it_answers() {
         .expect("the folder")
         .map(|entry| entry.expect("an entry").file_name())
         .collect();
-    let second = Command::new(env!("CARGO_BIN_EXE_model-relay"))
-        .arg("--socket")
-        .arg(&relay.socket)
-        .arg("--origin")
-        .arg(format!("https://{host}"))
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
-        .expect("a second relay runs");
+    let second = relay_at(&relay.socket, &host);
     let still = ask(&relay.socket, request(&host, "/echo", b"")).await;
 
     assert_eq!(mode & 0o777, 0o600, "the socket is open to others");
     assert_eq!(held, ["agents.sock"], "its folder holds more than it");
     assert!(
-        !second.status.success(),
-        "a second relay took the socket of one answering it"
+        !second.status.success() && said_of(&second).contains("already answers"),
+        "a second relay took the socket of one answering it: {}",
+        said_of(&second)
     );
     assert_eq!(
         still.status,
         StatusCode::CREATED,
         "the first relay lost its socket"
     );
+    drop(relay.said());
+}
+
+/// A relay run at `socket` for `host`, to its end: it leaves within a
+/// second of quiet, so one that took the socket says so in seconds.
+fn relay_at(socket: &Path, host: &str) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_model-relay"))
+        .arg("--socket")
+        .arg(socket)
+        .arg("--origin")
+        .arg(format!("https://{host}"))
+        .args(["--idle-exit", "1"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("a relay runs")
+}
+
+/// What a relay run to its end said.
+fn said_of(ran: &std::process::Output) -> String {
+    String::from_utf8_lossy(&ran.stderr).into_owned()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_file_at_its_socket_is_left_be_and_a_socket_left_behind_is_taken() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let folder = tempfile::tempdir().expect("a folder");
+    let notes = folder.path().join("notes.txt");
+    std::fs::write(&notes, "kept").expect("a file");
+    let left = folder.path().join("agents.sock");
+    drop(std::os::unix::net::UnixListener::bind(&left).expect("a socket"));
+
+    let on_the_file = relay_at(&notes, &host);
+    let relay = Relay::start_at(
+        folder,
+        left,
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &[],
+    );
+    let got = ask(&relay.socket, request(&host, "/echo", b"")).await;
+
+    assert!(
+        !on_the_file.status.success() && said_of(&on_the_file).contains("isn't a socket"),
+        "a relay took a file that isn't a socket: {}",
+        said_of(&on_the_file)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&notes).expect("the file"),
+        "kept",
+        "the file was touched"
+    );
+    assert_eq!(
+        got.status,
+        StatusCode::CREATED,
+        "a socket left behind wasn't taken"
+    );
+    drop(relay.said());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn an_origin_it_cant_trust_sends_pi_direct() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let elsewhere = tls();
+    let relay = Relay::start(&format!("https://{host}"), &elsewhere.roots, 1);
+
+    let got = ask(&relay.socket, request(&host, "/echo", b"")).await;
+
+    assert_eq!(
+        got.status,
+        StatusCode::MISDIRECTED_REQUEST,
+        "a fault of the relay's own was said as the origin's"
+    );
+    drop(relay.said());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_relay_answers_beside_an_answer_longer_than_its_idle_time() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        2,
+        &["--idle-exit", "1"],
+    );
+    let stream = UnixStream::connect(&relay.socket)
+        .await
+        .expect("the socket answers");
+    let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
+        .await
+        .expect("an HTTP/1.1 connection");
+    tokio::spawn(connection);
+    let long = sender
+        .send_request(request(&host, "/long", b""))
+        .await
+        .expect("an answer");
+
+    // Past the idle time and the grace, with the long answer still going.
+    tokio::time::sleep(LONG_GAP / 2 + LONG_GAP / 4).await;
+    let beside = tokio::time::timeout(
+        LONG_GAP / 4,
+        ask(&relay.socket, request(&host, "/echo", b"")),
+    )
+    .await;
+    let stayed = relay.left().is_none();
+    let body = long
+        .into_body()
+        .collect()
+        .await
+        .expect("the rest")
+        .to_bytes();
+
+    assert_eq!(
+        beside.map(|got| got.status).ok(),
+        Some(StatusCode::CREATED),
+        "a request beside a long answer wasn't answered"
+    );
+    assert!(stayed, "the relay left mid-answer");
+    assert_eq!(&body[..], b"first\nsecond\n");
+    drop(relay.said());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_connection_pi_keeps_open_doesnt_keep_the_relay() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "1"],
+    );
+    let stream = UnixStream::connect(&relay.socket)
+        .await
+        .expect("the socket answers");
+    let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
+        .await
+        .expect("an HTTP/1.1 connection");
+    let kept = tokio::spawn(connection);
+    let first = sender
+        .send_request(request(&host, "/echo", b""))
+        .await
+        .expect("an answer");
+    drop(first.into_body().collect().await);
+
+    // The sender is kept, so the connection stays open as pi's keep-alive
+    // would, until the relay closes it.
+    let left = relay.left_within(Duration::from_secs(5));
+    let closed = tokio::time::timeout(Duration::from_secs(1), kept).await;
+
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "a kept connection kept the relay: {left:?}"
+    );
+    assert!(closed.is_ok(), "the relay left the kept connection open");
+    drop(sender);
     drop(relay.said());
 }

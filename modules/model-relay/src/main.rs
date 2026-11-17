@@ -8,7 +8,7 @@
 //! failures with named exits.
 
 use std::os::fd::FromRawFd;
-use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, FileTypeExt, PermissionsExt};
 use std::path::Path;
 use std::process::ExitCode;
 use std::time::Duration;
@@ -101,8 +101,13 @@ fn handed() -> Option<std::os::unix::net::UnixListener> {
 
 /// Binds `path` itself, answering only the account that runs it. The
 /// socket is made inside a folder of its own that only the account can
-/// enter, kept to the account there, and only then moved to `path`, so
+/// enter, kept to the account there, and only then linked at `path`, so
 /// there's no moment it's open to anyone a loose umask would let in.
+///
+/// Something at `path` that isn't a socket is left be, and so is a socket
+/// a relay answers. One nothing answers, left by a relay that's gone, is
+/// taken. A link, unlike a move, fails on finding something there, so two
+/// relays starting together can't both take it.
 fn bound(path: &Path) -> Result<std::os::unix::net::UnixListener, Failure> {
     let cannot_listen = |why: std::io::Error| {
         Failure::new(Exit::Failed, "it couldn't listen")
@@ -112,10 +117,23 @@ fn bound(path: &Path) -> Result<std::os::unix::net::UnixListener, Failure> {
                 path.display()
             ))
     };
-    // A relay already answering there keeps it, as a plain bind would.
-    if std::os::unix::net::UnixStream::connect(path).is_ok() {
-        return Err(Failure::new(Exit::Failed, "it couldn't listen")
-            .because(format!("another relay already answers {}", path.display())));
+    let taken = |why: String| Failure::new(Exit::Failed, "it couldn't listen").because(why);
+    match std::fs::symlink_metadata(path) {
+        Ok(there) if !there.file_type().is_socket() => {
+            return Err(taken(format!(
+                "{} is there already, and isn't a socket",
+                path.display()
+            )));
+        }
+        Ok(_) if std::os::unix::net::UnixStream::connect(path).is_ok() => {
+            return Err(taken(format!(
+                "another relay already answers {}",
+                path.display()
+            )));
+        }
+        Ok(_) => std::fs::remove_file(path).map_err(cannot_listen)?,
+        Err(why) if why.kind() == std::io::ErrorKind::NotFound => {}
+        Err(why) => return Err(cannot_listen(why)),
     }
     let folder = path.parent().unwrap_or_else(|| Path::new("."));
     let unguessable = std::time::SystemTime::now()
@@ -131,13 +149,19 @@ fn bound(path: &Path) -> Result<std::os::unix::net::UnixListener, Failure> {
     let listened = std::os::unix::net::UnixListener::bind(&made)
         .and_then(|listener| {
             std::fs::set_permissions(&made, std::fs::Permissions::from_mode(0o600))?;
-            std::fs::rename(&made, path)?;
+            std::fs::hard_link(&made, path)?;
             Ok(listener)
         })
-        .map_err(cannot_listen);
-    // The folder held the socket only on its way to `path`, and holds it
-    // still only when the move failed; neither is anything to keep, and
-    // one that can't be removed is the account's own to remove.
+        .map_err(|why| {
+            if why.kind() == std::io::ErrorKind::AlreadyExists {
+                taken(format!("another relay took {} just now", path.display()))
+            } else {
+                cannot_listen(why)
+            }
+        });
+    // The folder held the socket only on its way to `path`, which links it
+    // now if the link was made; neither is anything to keep, and one that
+    // can't be removed is the account's own to remove.
     let _ = std::fs::remove_file(&made);
     let _ = std::fs::remove_dir(&private);
     listened

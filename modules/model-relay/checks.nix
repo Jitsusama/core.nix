@@ -19,10 +19,12 @@ onLinux {
   # connection the origin lets go opened again, an origin out of reach said
   # as a 502 or a 504 without a queue, a connection that won't open not
   # asked for on every request, a failure that ends as the origin comes
-  # back, the relay leaving once idle but never mid-answer, even while
-  # refusing other hosts, a socket the account's alone and never taken from
-  # a relay answering it, and nothing of a header or body logged, a failure
-  # included.
+  # back, an origin it can't trust sending pi direct, a request answered
+  # beside an answer longer than the idle time, the relay leaving once idle
+  # even while refusing other hosts or held open by a kept connection, a
+  # socket the account's alone, never taken from a relay answering it nor
+  # from a file that isn't a socket, and nothing of a header or body
+  # logged, a failure included.
   model-relay-carries-requests-whole = pkgs.callPackage ./package.nix { };
 
   # clippy finds nothing in model-relay, its tests included.
@@ -48,7 +50,7 @@ onLinux {
       service = named.systemd.user.services.model-relay-agents.Service;
     in
     holds "model-relay-runs-in-background-slice"
-      "model-relay is installed where no origin is named, lets other accounts ask, leaves its socket behind, runs without its socket or outside background.slice, forwards somewhere other than the origin named, is restarted by a switch, or doesn't tell pi where it is."
+      "model-relay is installed where no origin is named, lets other accounts ask, leaves its socket behind, runs without its socket or outside background.slice, forwards somewhere other than the origin named, sees more of the machine than its origin needs, is restarted by a switch, or doesn't tell pi where it is."
       (
         !(bare.systemd.user.sockets ? model-relay-agents)
         && !(bare.systemd.user.sessionVariables ? PI_PROXY_RELAY)
@@ -59,7 +61,19 @@ onLinux {
         && unit.Requires == [ "model-relay-agents.socket" ]
         && unit.X-SwitchMethod == "keep-old"
         && service.Slice == "background.slice"
-        && lib.hasSuffix " --origin https://models.example" service.ExecStart
+        && lib.hasSuffix " --origin https://models.example" (
+          lib.concatStringsSep " " (lib.toList service.ExecStart)
+        )
+        # It holds every agent's key while it carries a request, so it
+        # sees no more of the machine than reaching the origin needs.
+        && service.ProtectSystem or null == "strict"
+        && service.ProtectHome or null == true
+        && service.PrivateTmp or null == true
+        && service.CapabilityBoundingSet or null == ""
+        && service.RestrictNamespaces or null == true
+        && service.SystemCallFilter or null == "@system-service"
+        && service.UMask or null == "0077"
+        && service.RestrictRealtime or null == true
         && named.systemd.user.sessionVariables.PI_PROXY_RELAY == "\${XDG_RUNTIME_DIR}/model-relay"
       );
 }
