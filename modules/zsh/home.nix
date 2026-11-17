@@ -1,6 +1,7 @@
 # zsh in each account: its keys, options and completion (init.zsh and
-# completion.zsh), and the terminal's marks for each command and the
-# window's title (terminal.zsh).
+# completion.zsh), how many files its commands may open (limits.zsh), and
+# the terminal's marks for each command and the window's title
+# (terminal.zsh).
 # The prompt is its own module (modules/prompt). It's zsh's own, with no
 # framework: a shell starts no program for any of it.
 {
@@ -39,6 +40,9 @@ in
         typeset -g _zsh_selected='${sgr "48" colours.selection};${sgr "38" colours.strong}'
         ${builtins.readFile ./init.zsh}
       '')
+      # Before the prompt (500), so the git-engine it starts has as many
+      # files as the commands typed.
+      (lib.mkOrder 400 (builtins.readFile ./limits.zsh))
       (builtins.readFile ./terminal.zsh)
     ];
   };

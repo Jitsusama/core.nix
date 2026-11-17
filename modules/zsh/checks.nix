@@ -64,4 +64,30 @@
         ${lib.getExe pkgs.bash} ${./tests/the-shell-starts-nothing.sh} ${(account machine).home-files}
         touch $out
       '';
+
+  # A git fetch in a large repository holds every worktree's ref tables
+  # open beside its packs, past the 1024 files a desktop session gives
+  # each program, and calls a sound object corrupt when it can't open
+  # one. So the account's whole shell gives its commands, and its
+  # prompt's git-engine, 8192, or the hard limit where that's lower, and
+  # never lowers a soft limit or moves the hard one. Its history is kept
+  # in the sandbox's home, as the-shell-starts-nothing's is.
+  the-shell-opens-enough-files =
+    let
+      machine = bareNixos [
+        self.nixosModules.workstation
+        { home-manager.users.someone.programs.zsh.history.path = "$HOME/.zsh_history"; }
+      ];
+    in
+    pkgs.runCommandLocal "the-shell-opens-enough-files"
+      {
+        nativeBuildInputs = [
+          pkgs.util-linux
+          pkgs.zsh
+        ];
+      }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/the-shell-opens-enough-files.sh} ${(account machine).home-files} ${./limits.zsh}
+        touch $out
+      '';
 }
