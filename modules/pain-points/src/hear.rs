@@ -356,20 +356,26 @@ pub fn hear(
     );
     keep(&heard_at, &kept)?;
     let mut hour = hour_of(&kept, ears.at);
-    hour.troubles.extend(Routes::trouble(&ears.state));
-    hour.troubles.extend(refused(&routes));
-    if failed > 0 {
-        hour.troubles.push(format!("{failed} sends failed"));
-    }
-    if routes.sends() && cells.is_empty() {
-        hour.troubles
-            .push("the mycelium named no sessions, so none could be routed".into());
-    }
+    hour.troubles = troubles(&ears.state, &routes, failed, cells.is_empty());
     crate::write_whole(
         &ears.state.join("hour.json"),
         &serde_json::to_string(&hour).map_err(|e| e.to_string())?,
     )?;
     Ok(hour)
+}
+
+/// What kept a run from routing as it should, so a broken listener doesn't
+/// read as a quiet hour.
+fn troubles(state: &Path, routes: &Routes, failed: usize, no_cells: bool) -> Vec<String> {
+    let mut troubles: Vec<String> = Routes::trouble(state).into_iter().collect();
+    troubles.extend(refused(routes));
+    if failed > 0 {
+        troubles.push(format!("{failed} sends failed"));
+    }
+    if routes.sends() && no_cells {
+        troubles.push("the mycelium named no sessions, so none could be routed".into());
+    }
+    troubles
 }
 
 /// What the routes say that keeps a run from sending as it should: no
