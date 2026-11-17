@@ -310,6 +310,11 @@ def watched_while_typing(
     machine.wait_until_succeeds(
         desktop.in_session(f"[ -s ~/typed-{session} ]"), timeout=dt.timedelta(seconds=30)
     )
+    # The first keys land before the typer's first count, and on a busy builder
+    # typed_past reached a bare read of the count before it was written.
+    machine.wait_until_succeeds(
+        desktop.in_session("[ -s ~/typing-count ]"), timeout=dt.timedelta(seconds=30)
+    )
     record_the_screen(desktop)
     return box, sat
 
@@ -446,6 +451,7 @@ def cleaned(desktop: Desktop, session: str) -> None:
 
     The launcher closes too, so a test failing with it open fails alone.
     """
+    machine = desktop.machine
     desktop.launcher_left_closed()
     desktop.as_account(
         f"touch ~/typing-done ~/move-{session} ~/refused-{session} ~/released-{session};"
@@ -455,6 +461,9 @@ def cleaned(desktop: Desktop, session: str) -> None:
         f" pkill -f '[p]i .*{session}'; rm -f $XDG_RUNTIME_DIR/pi-moves-in-place"
         f" {PI_PRESENCE}/{session}.json $XDG_RUNTIME_DIR/moves-{session}; true"
     )
+    # A typer looks for typing-done only between its runs of ten words, so it is
+    # waited out before the file goes; one that missed it typed on into the next test.
+    machine.wait_until_fails("pgrep -f 'typing-don[e]'", timeout=STEP)
     desktop.as_account(
         f"rm -rf ~/{session} ~/typed-{session} ~/move-{session} ~/hosted-{session}"
         f" ~/released-{session} ~/refused-{session} ~/typing-done ~/typing-count ~/focus-events"
