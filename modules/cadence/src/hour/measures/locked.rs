@@ -46,6 +46,9 @@ fn named(subject: &str) -> String {
 /// can have waited past it, `AT_MOST_MIN`.
 const FRESH_MIN: i64 = 60;
 
+/// How many of the hour's own fetches of main it keeps, about a day's.
+const FETCHES_KEPT: usize = 25;
+
 /// `measure` as judged from a checkout that last fetched main at `fetched`,
 /// at `now`: one fetched too long ago, or never, can't date what waits,
 /// since its reflog dates the fetch, and it lists none it hasn't fetched.
@@ -96,13 +99,16 @@ fn on_the_train(subject: &str) -> bool {
 
 /// The measure from `waiting`, mycelium main's first-parent merges that
 /// core's lock doesn't carry, as `%H %ct %s` lines, and `seen`, main's
-/// reflog, at `now`: the longest any has waited since it reached main,
-/// with each one behind it, oldest first. GitHub dates an ordinary merge
-/// as it makes it, so its commit says when; a train's merge waits from the
-/// reflog's first entry holding it, or its commit where none does, since
-/// its commit's date would age it from before it existed there.
+/// reflog, and `fetches`, when the hour itself took main, at `now`: the
+/// longest any has waited since it reached main, with each one behind it,
+/// oldest first. GitHub dates an ordinary merge as it makes it, so its
+/// commit says when; a train's merge waits from the hour's last fetch
+/// before the reflog's first entry holding it, which saw main without it,
+/// or from that entry where no such fetch is known, or its commit where
+/// none holds it, since its commit's date would age it from before it
+/// existed there.
 #[must_use]
-pub fn unlocked(waiting: &str, seen: &str, now: i64, owner: &str) -> Measure {
+pub fn unlocked(waiting: &str, seen: &str, fetches: &[i64], now: i64, owner: &str) -> Measure {
     let merges: Vec<(&str, i64, &str)> = waiting
         .lines()
         .filter_map(|line| {
@@ -118,7 +124,14 @@ pub fn unlocked(waiting: &str, seen: &str, now: i64, owner: &str) -> Measure {
         .zip(arrived(&hashes, seen))
         // Main can't have taken a merge before it was made.
         .map(|(&(_, at, subject), came)| {
-            let came = came.filter(|_| on_the_train(subject)).unwrap_or(at);
+            let came = came.filter(|_| on_the_train(subject)).map_or(at, |came| {
+                fetches
+                    .iter()
+                    .copied()
+                    .filter(|fetch| *fetch < came)
+                    .max()
+                    .unwrap_or(came)
+            });
             ((now - came.max(at)).max(0) / 60, subject)
         })
         .rev()
@@ -142,8 +155,15 @@ pub fn unlocked(waiting: &str, seen: &str, now: i64, owner: &str) -> Measure {
 /// The measure, read from core's mirror at `core` and the `mycelium=PATH`
 /// among `checkouts`, from its `origin/main` where it has one, else its
 /// `main`; none when the machine names no mycelium checkout, or either
-/// can't be read, which is said.
-pub fn read(core: &Path, checkouts: &[String], now: i64, owner: &str) -> Option<Measure> {
+/// can't be read, which is said. `took_at` holds when the hour last took
+/// main itself, oldest first, and gains `now` when this one does.
+pub fn read(
+    core: &Path,
+    checkouts: &[String],
+    now: i64,
+    owner: &str,
+    took_at: &mut Vec<i64>,
+) -> Option<Measure> {
     let path = checkouts
         .iter()
         .find_map(|named| named.strip_prefix("mycelium="))?;
@@ -163,13 +183,18 @@ pub fn read(core: &Path, checkouts: &[String], now: i64, owner: &str) -> Option<
     .is_ok();
     let main = if remote { "origin/main" } else { "main" };
     // Nothing else fetches the checkout on a clock, so the hour takes main
-    // itself, leaving FETCH_HEAD to whoever works there.
+    // itself, leaving FETCH_HEAD to whoever works there. A link that
+    // stalls gives up in half a minute rather than holding the card.
     let took = remote
         && command(
             "git",
             &[
                 "-C",
                 path,
+                "-c",
+                "http.lowSpeedLimit=1000",
+                "-c",
+                "http.lowSpeedTime=30",
                 "fetch",
                 "--quiet",
                 "--no-write-fetch-head",
@@ -179,6 +204,12 @@ pub fn read(core: &Path, checkouts: &[String], now: i64, owner: &str) -> Option<
         )
         .map_err(|error| eprintln!("cadence: couldn't fetch mycelium's main at {path}: {error}"))
         .is_ok();
+    let mine = took_at.clone();
+    if took {
+        took_at.push(now);
+        let cut = took_at.len().saturating_sub(FETCHES_KEPT);
+        took_at.drain(..cut);
+    }
     match command(
         "git",
         &[
@@ -213,7 +244,7 @@ pub fn read(core: &Path, checkouts: &[String], now: i64, owner: &str) -> Option<
                     String::new()
                 }
             };
-            let measure = unlocked(&waiting, &seen, now, owner);
+            let measure = unlocked(&waiting, &seen, &mine, now, owner);
             // A main of its own, with no remote, is as fresh as it is.
             Some(if remote {
                 dated(measure, if took { Some(now) } else { fetched(path) }, now)
@@ -278,7 +309,7 @@ mod tests {
             NOW - 100 * 60,
             NOW - 900 * 60,
         );
-        let m = unlocked(&waiting, &seen, NOW, "0FX11G");
+        let m = unlocked(&waiting, &seen, &[], NOW, "0FX11G");
         assert_eq!(
             m.behind,
             [
@@ -289,6 +320,33 @@ mod tests {
             "a merge was aged from its commit, not from the fetch that first held it"
         );
         assert_eq!(m.now, 100.0, "the oldest reached main 100 minutes ago");
+    }
+
+    /// The hour is main's only fetcher on a clock, so a train's merge first
+    /// shows in the reflog at the hour's own fetch, up to an hour after it
+    /// arrived: it waits from the hour's last fetch that saw main without
+    /// it, which reads at most one fetch long and never short.
+    #[test]
+    fn a_train_merge_waits_from_the_last_fetch_that_saw_main_without_it() {
+        let waiting = format!("aaa {} Merge 1111 on the merge train\n", NOW - 300 * 60);
+        let seen = format!("origin/main@{{{}}} aaa\n", NOW - 10 * 60);
+        let fetches = [NOW - 130 * 60, NOW - 70 * 60, NOW - 10 * 60];
+        let m = unlocked(&waiting, &seen, &fetches, NOW, "0FX11G");
+        assert_eq!(
+            m.now, 70.0,
+            "a train merge was dated by the fetch that first held it: {m:?}"
+        );
+        let m = unlocked(&waiting, &seen, &[NOW - 10 * 60], NOW, "0FX11G");
+        assert_eq!(
+            m.now, 10.0,
+            "with no fetch before it, the first holding entry didn't date it: {m:?}"
+        );
+        let late = format!("aaa {} Merge 1111 on the merge train\n", NOW - 40 * 60);
+        let m = unlocked(&late, &seen, &fetches, NOW, "0FX11G");
+        assert_eq!(
+            m.now, 40.0,
+            "a fetch before its commit dated the wait: {m:?}"
+        );
     }
 
     /// A reflog entry no later than the commit, as an index selector would
@@ -305,11 +363,12 @@ mod tests {
             "origin/main@{{{}}} aaa\norigin/main@{{0}} lll\n",
             NOW - 10 * 60
         );
-        let m = unlocked(&waiting, &seen, NOW, "0FX11G");
+        let m = unlocked(&waiting, &seen, &[], NOW, "0FX11G");
         assert_eq!(m.now, 50.0, "the longest wait wasn't the figure: {m:?}");
         let m = unlocked(
             "aaa 1794820000 Merge 1111 on the merge train\n",
             "main@{0} aaa\n",
+            &[],
             NOW,
             "0FX11G",
         );
@@ -328,7 +387,7 @@ mod tests {
             NOW - 70 * 60
         );
         let seen = format!("origin/main@{{{}}} aaa\n", NOW - 15 * 60);
-        let m = unlocked(&waiting, &seen, NOW, "0FX11G");
+        let m = unlocked(&waiting, &seen, &[NOW - 80 * 60], NOW, "0FX11G");
         assert_eq!(
             m.now, 70.0,
             "an ordinary merge was dated by the fetch that held it: {m:?}"
@@ -356,7 +415,7 @@ mod tests {
     /// fetched and dates the rest late, so its waits go unjudged.
     #[test]
     fn a_checkout_that_missed_its_fetch_leaves_the_wait_unjudged() {
-        let fresh = || unlocked("", "", NOW, "0FX11G");
+        let fresh = || unlocked("", "", &[], NOW, "0FX11G");
         assert!(
             dated(fresh(), Some(NOW - 10 * 60), NOW).target.is_some(),
             "a checkout fetched ten minutes ago went unjudged"
@@ -381,7 +440,7 @@ mod tests {
             NOW - 10 * 60,
             NOW - 170 * 60,
         );
-        let m = unlocked(&waiting, "", NOW, "0FX11G");
+        let m = unlocked(&waiting, "", &[], NOW, "0FX11G");
         assert_eq!(m.now, 170.0, "the oldest waited 170 minutes");
         assert_eq!(
             m.behind,
@@ -396,7 +455,7 @@ mod tests {
 
     #[test]
     fn nothing_outside_the_lock_waits_nought() {
-        let m = unlocked("", "", NOW, "0FX11G");
+        let m = unlocked("", "", &[], NOW, "0FX11G");
         assert_eq!(m.now, 0.0, "an empty wait read as more than nought");
         assert!(m.behind.is_empty(), "nothing waits, so nothing is behind");
     }
@@ -405,7 +464,7 @@ mod tests {
     fn a_merge_subject_without_a_number_is_named_by_its_subject() {
         let waiting = format!("aaa {} Take the new lint\n", NOW - 5 * 60);
         assert_eq!(
-            unlocked(&waiting, "", NOW, "0FX11G").behind,
+            unlocked(&waiting, "", &[], NOW, "0FX11G").behind,
             ["mycelium's \"Take the new lint\" waiting 5 min"],
             "a direct commit on main went unnamed"
         );

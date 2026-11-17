@@ -239,8 +239,8 @@ fn named_as(miss: &Value) -> &str {
 /// hour, `was_open` as the card listed them, it no longer holds: a miss
 /// closes on its check and never leaves the ledger, so one gone was cut or
 /// renamed, and the hour can't say whether it was fixed. None when it
-/// can't be read at all; one not yet written holds none. Why is said on
-/// stderr.
+/// can't be read at all, or is missing, empty or torn while misses were
+/// open; one not yet written holds none. Why is said on stderr.
 pub fn ledger(path: &Path, was_open: &[String]) -> (String, Option<Vec<String>>) {
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
@@ -250,6 +250,19 @@ pub fn ledger(path: &Path, was_open: &[String]) -> (String, Option<Vec<String>>)
             return (String::new(), None);
         }
     };
+    // One missing, emptied or torn under open misses is caught mid-write
+    // or broken, not cut: it names none gone, so the hour carries them all.
+    let torn = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .any(|line| serde_json::from_str::<Value>(line).is_err());
+    if !was_open.is_empty() && (torn || text.trim().is_empty()) {
+        eprintln!(
+            "cadence: {} is missing, empty or torn under open misses",
+            path.display()
+        );
+        return (text, None);
+    }
     let held: BTreeSet<String> = lines(&text)
         .map(|miss| named_as(&miss).to_owned())
         .collect();
@@ -538,9 +551,37 @@ mod tests {
         );
     }
 
+    /// A ledger that can't be read, is missing, reads empty or has a torn
+    /// line while last hour had misses open says nothing of which are
+    /// gone, so the hour carries them all: misses never leave it, they close
+    /// on their checks, and one dropped would never be told fixed.
+    #[test]
+    fn a_ledger_missing_emptied_or_torn_names_no_miss_gone() {
+        let root = tempfile::tempdir().expect("a scratch folder");
+        let open = ["the cat waits · XY9H5C".to_owned()];
+        let file = root.path().join("misses.jsonl");
+        assert_eq!(
+            ledger(&file, &open).1,
+            None,
+            "a missing ledger named misses gone"
+        );
+        std::fs::write(&file, "\n").expect("the ledger written");
+        assert_eq!(
+            ledger(&file, &open).1,
+            None,
+            "an emptied ledger named misses gone"
+        );
+        let torn = format!("{}\n{{\"what\": \"the cat wa", miss("core #9"));
+        std::fs::write(&file, torn).expect("the ledger written");
+        assert_eq!(
+            ledger(&file, &open).1,
+            None,
+            "a torn ledger named misses gone"
+        );
+    }
+
     /// A ledger that can't be read, or reads empty while last hour had
-    /// misses open, says nothing of which are gone: misses never leave it,
-    /// they close on their checks.
+    /// misses open, isn't read whole.
     #[test]
     fn a_ledger_unread_or_gone_empty_under_open_misses_is_not_read_whole() {
         let root = tempfile::tempdir().expect("a scratch folder");

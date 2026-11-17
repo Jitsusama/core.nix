@@ -82,7 +82,14 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let whole = gone.as_ref().is_some_and(Vec::is_empty);
     kept.open
         .retain(|open| !gone.as_ref().is_some_and(|gone| gone.contains(open)));
-    let mut measures = gather(&folder, &state_home, &misses, now, checkouts)?;
+    let mut measures = gather(
+        &folder,
+        &state_home,
+        &misses,
+        now,
+        checkouts,
+        &mut kept.fetched,
+    )?;
     for m in measures
         .iter_mut()
         .filter(|m| !whole && m.class == Class::Miss)
@@ -170,6 +177,7 @@ fn gather(
     misses: &str,
     now: i64,
     checkouts: &[String],
+    fetched: &mut Vec<i64>,
 ) -> io::Result<Vec<Measure>> {
     let text = |path: &Path| fs::read_to_string(path).unwrap_or_default();
     let mission = state_home.join("mission");
@@ -202,7 +210,7 @@ fn gather(
         landed(&core_log, &harness_log, &machine_log, now),
     ];
     all.extend(measures::merge_to_on(&card_text, NET_RULES));
-    all.extend(measures::unlocked(&core, checkouts, now, BUMPS));
+    all.extend(measures::unlocked(&core, checkouts, now, BUMPS, fetched));
     if let Some((median, target)) = measures::card_median(&card_text, "Last commit to merge") {
         all.push(Measure {
             key: "commit-to-merge".to_owned(),

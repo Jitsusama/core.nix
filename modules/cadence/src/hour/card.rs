@@ -27,6 +27,10 @@ pub struct Kept {
     /// held open an hour by a node that didn't answer isn't told twice.
     #[serde(default)]
     pub told: Vec<String>,
+    /// When the hour itself last took mycelium's main, oldest first, so a
+    /// train's merge waits from the fetch that saw main without it.
+    #[serde(default)]
+    pub fetched: Vec<i64>,
 }
 
 /// How many misses told fixed the hour keeps, newest last.
@@ -149,6 +153,7 @@ pub fn compose(
         // The ledger holds some forty misses; the newest few hundred told
         // are kept, so the file can't grow without end.
         told: told.split_off(told.len().saturating_sub(TOLD_KEPT)),
+        fetched: kept.fetched.clone(),
     };
     (card, next)
 }
@@ -304,8 +309,7 @@ mod tests {
                 now,
                 unmoved,
             }),
-            open: Vec::new(),
-            told: Vec::new(),
+            ..Kept::default()
         }
     }
 
@@ -443,7 +447,7 @@ mod tests {
                 "the map had no network · KNURBN".to_owned(),
                 "History · Reader paused · RCTRF8".to_owned(),
             ],
-            told: Vec::new(),
+            ..Kept::default()
         };
         let said = BTreeMap::from([(
             "History · Reader paused".to_owned(),
@@ -489,7 +493,7 @@ mod tests {
         let kept = Kept {
             drag: None,
             open: vec!["the map drew cells alone · WCJQSG".to_owned()],
-            told: Vec::new(),
+            ..Kept::default()
         };
         let said = BTreeMap::from([(
             "the map drew cells alone".to_owned(),
@@ -524,7 +528,7 @@ mod tests {
                 "the map drew cells alone · WCJQSG".to_owned(),
                 "the map drew cells alone · H2VYOB".to_owned(),
             ],
-            told: Vec::new(),
+            ..Kept::default()
         };
         let (first, next) = compose(
             "03:10",
@@ -574,6 +578,7 @@ mod tests {
             drag: None,
             open: vec!["the map drew cells alone · WCJQSG".to_owned()],
             told: vec!["History paused".to_owned()],
+            ..Kept::default()
         };
         let (card, next) = compose("06:10", &[unread], &kept, &BTreeMap::new(), "");
         assert!(
@@ -597,7 +602,7 @@ mod tests {
                 "the map had no network · KNURBN".to_owned(),
                 "the notice stayed up · 88LQC0".to_owned(),
             ],
-            told: Vec::new(),
+            ..Kept::default()
         };
         let (card, _) = compose("12:10", &[open], &kept, &none(), "");
         assert!(

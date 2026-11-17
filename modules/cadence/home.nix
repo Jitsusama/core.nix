@@ -169,7 +169,9 @@ in
         by the name a check calls each by, beside the core and harness
         mirrors cadence keeps itself: a miss naming `mycelium #177` closes
         once that pull request merged on the checkout's `origin/main`, or
-        its `main`. Nothing is fetched; the main is read as it stands.
+        its `main`. Only the hourly card fetches, and only mycelium's
+        `origin/main`, with `--no-write-fetch-head` so the checkout's
+        `FETCH_HEAD` stays its own; every other main is read as it stands.
       '';
     };
     path = lib.mkOption {

@@ -89,7 +89,8 @@ fn a_miss_gone_from_the_ledger_leaves_one_hour_unjudged() {
     fs::create_dir_all(&kept).expect("cadence's folder");
     fs::write(
         kept.join("hour.json"),
-        r#"{"open": ["the notice stayed up, as first written · 88LQC0"]}"#,
+        r#"{"open": ["the notice stayed up, as first written · 88LQC0",
+                     "the backup notice stayed up after later runs succeeded · 88LQC0"]}"#,
     )
     .expect("last hour");
 
@@ -99,6 +100,12 @@ fn a_miss_gone_from_the_ledger_leaves_one_hour_unjudged() {
         let said = String::from_utf8_lossy(&ran.stderr);
         assert!(ran.status.success(), "cadence failed: {said}");
         cards.push(String::from_utf8_lossy(&ran.stdout).into_owned());
+        // Only the gone miss leaves what's carried; one still held stays.
+        let carried = fs::read_to_string(kept.join("hour.json")).expect("the hour kept");
+        assert!(
+            carried.contains("after later runs succeeded"),
+            "a miss the ledger still holds wasn't carried: {carried}"
+        );
     }
     assert!(
         cards[0].contains("wasn't read whole"),
