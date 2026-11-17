@@ -100,10 +100,15 @@ Provider {
     // read they last took.
     property var series: ({ moved: [], in: [], out: [], at: [] })
     property var sparked: null
-    // What each interface is, asked of sysfs once a name while it stays:
-    // forgotten once it's gone from the counters, or after a gap between
-    // reads, since an interface can go and come again, as a VPN's tunnel
-    // does, as something else.
+    // What each interface is, asked of sysfs once a name while it stays,
+    // { kind, uevent, sure }, kept with the uevent it was read from:
+    // forgotten once it's gone from the counters. After a gap between
+    // reads it's no longer sure, since an interface can go and come again,
+    // as a VPN's tunnel does, as something else; its uevent alone is read
+    // again then, which names its index, new for each interface made, so
+    // the same uevent is the same interface. A step into Network asks
+    // after a gap each time, and four files for each interface, each a
+    // blocking read, took a median 6 ms and up to 49 ms of it (2026-11-17).
     property var interfaceKinds: ({})
     readonly property int second: 1000
     readonly property int soonest: 200
@@ -123,8 +128,9 @@ Provider {
             const all = Traffic.counters(read(netdev));
             const known = {};
             for (const name of Object.keys(all)) {
-                if (age <= stale && interfaceKinds[name] !== undefined)
-                    known[name] = interfaceKinds[name];
+                const kept = interfaceKinds[name];
+                if (kept !== undefined)
+                    known[name] = age <= stale ? kept : Object.assign({}, kept, { sure: false });
             }
             interfaceKinds = known;
             reads = {
@@ -137,8 +143,13 @@ Provider {
         return reads;
     }
 
+    // How many sysfs files it has read, each a blocking read, so its case
+    // holds a step to reading few (tests/traffic-reads.qml).
+    property int probes: 0
+
     // What a file in an interface's sysfs folder says, or "".
     function sysSaid(name, file) {
+        probes += 1;
         probe.path = `/sys/class/net/${name}/${file}`;
         return read(probe).trim();
     }
@@ -146,14 +157,21 @@ Provider {
     // What an interface is, as the addresses name it (Interfaces.js), so a
     // cable is Wired here as there, and a tunnel a VPN.
     function interfaceKind(name) {
-        if (interfaceKinds[name] === undefined)
-            interfaceKinds[name] = Interfaces.sysKind(name, {
-                uevent: sysSaid(name, "uevent"),
+        const kept = interfaceKinds[name];
+        if (kept?.sure)
+            return kept.kind;
+        const uevent = sysSaid(name, "uevent");
+        interfaceKinds[name] = kept?.uevent === uevent ? Object.assign({}, kept, { sure: true }) : {
+            kind: Interfaces.sysKind(name, {
+                uevent: uevent,
                 type: sysSaid(name, "type"),
                 tun: sysSaid(name, "tun_flags") !== "",
                 card: sysSaid(name, "device/uevent") !== ""
-            });
-        return interfaceKinds[name];
+            }),
+            uevent: uevent,
+            sure: true
+        };
+        return interfaceKinds[name].kind;
     }
 
     // What each interface is, beside its counters, leaving out the
