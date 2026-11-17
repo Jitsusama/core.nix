@@ -14,7 +14,9 @@
 //! launcher as they're asked so the new window takes the keys, then, as a row
 //! of its own (`inside`), Open a File by Name, which steps into its
 //! checkout's files (`files`), each found by its name and the folder it's
-//! in and opened by Return in its default program; its drawer names its
+//! in and opened by Return in its default program, and Switch Branch,
+//! which steps into its checkout's branches (`branches`), each checked out
+//! by Return (switch.rs); its drawer names its
 //! key, its trunk and the checkout written to last, at its branch.
 
 use repos::model::{COUNTED_TO, Checkout, Head, Record, Repository};
@@ -56,6 +58,15 @@ pub struct Words {
     find_glyph: String,
     /// The glyph a file's row wears.
     file_glyph: String,
+    /// The row inside a repository that steps into its branches, and its
+    /// glyph.
+    branches: String,
+    branches_glyph: String,
+    /// The glyph a branch's row wears, and what its side says of the one
+    /// the checkout is on and of one another tree holds: `in {tree}`.
+    branch_glyph: String,
+    branch_here: String,
+    branch_elsewhere: String,
 }
 
 impl Words {
@@ -80,12 +91,13 @@ impl Words {
                 .unwrap_or(id)
                 .to_owned()
         };
-        let said = |field: &str| {
-            of("code:repository")
+        let said_of = |id: &str, field: &str| {
+            of(id)
                 .and_then(|thing| thing["said"][field].as_str())
-                .unwrap_or("code:repository")
+                .unwrap_or(id)
                 .to_owned()
         };
+        let said = |field: &str| said_of("code:repository", field);
         Words {
             kind: said("kind"),
             tree: said("tree"),
@@ -102,6 +114,11 @@ impl Words {
             find: name("verb:code:find"),
             find_glyph: glyph("verb:code:find"),
             file_glyph: glyph("code:file"),
+            branches: name("verb:code:branches"),
+            branches_glyph: glyph("verb:code:branches"),
+            branch_glyph: glyph("code:branch"),
+            branch_here: said_of("code:branch", "here"),
+            branch_elsewhere: said_of("code:branch", "elsewhere"),
         }
     }
 
@@ -147,30 +164,40 @@ pub fn rows(record: &Record, home: Option<&Path>, words: &Words) -> Vec<Value> {
 }
 
 /// The rows inside the repositories' rows, served beside them: for each
-/// with a checkout, Open a File by Name, which steps into its files.
+/// with a checkout, Open a File by Name, which steps into its files, and
+/// where it has files of its own, Switch Branch, which steps into its
+/// branches.
 #[must_use]
 pub fn inside(record: &Record, words: &Words) -> Vec<Value> {
     record
         .repositories
         .iter()
-        .filter_map(|repository| {
-            let checkout = worked_in(repository)?;
-            let parent = format!("row:{PLACE}:{}", repository.key);
-            Some(json!({
-                "key": format!("{parent}{FILES}"),
-                // Its own, so the shell tells one repository's apart.
-                "thing": format!("repository:{}{FILES}", repository.key),
-                "place": PLACE,
-                "kind": "act",
-                "parent": parent,
-                "depth": 1,
-                "name": words.find,
-                "glyph": words.find_glyph,
-                "hue": "action",
-                "side": [],
-                "held": {"path": checkout.path},
-                "acts": [{"key": "verb:more", "step": "rows"}],
-            }))
+        .flat_map(|repository| {
+            let checkout = worked_in(repository);
+            let find = checkout.map(|checkout| (FILES, &words.find, &words.find_glyph, checkout));
+            let switch = checkout
+                .filter(|checkout| !checkout.bare)
+                .map(|checkout| (BRANCHES, &words.branches, &words.branches_glyph, checkout));
+            find.into_iter()
+                .chain(switch)
+                .map(|(end, name, glyph, checkout)| {
+                    let parent = format!("row:{PLACE}:{}", repository.key);
+                    json!({
+                        "key": format!("{parent}{end}"),
+                        // Its own, so the shell tells one repository's apart.
+                        "thing": format!("repository:{}{end}", repository.key),
+                        "place": PLACE,
+                        "kind": "act",
+                        "parent": parent,
+                        "depth": 1,
+                        "name": name,
+                        "glyph": glyph,
+                        "hue": "action",
+                        "side": [],
+                        "held": {"path": checkout.path},
+                        "acts": [{"key": "verb:more", "step": "rows"}],
+                    })
+                })
         })
         .collect()
 }
@@ -188,8 +215,52 @@ pub const BRANCHES: &str = ":branches";
 /// `{name, at_s, here, elsewhere, path}`, in its order.
 #[must_use]
 pub fn branches(parent: &str, listed: &[Value], words: &Words) -> Vec<Value> {
-    let _ = (parent, listed, words);
-    Vec::new()
+    let repository = parent
+        .strip_prefix(&format!("row:{PLACE}:"))
+        .and_then(|rest| rest.strip_suffix(BRANCHES))
+        .unwrap_or(parent);
+    listed
+        .iter()
+        .filter_map(|one| {
+            let name = one["name"].as_str()?;
+            let path = one["path"].as_str()?;
+            let here = one["here"].as_bool().unwrap_or(false);
+            let mut side = Vec::new();
+            if here {
+                side.push(json!({"said": words.branch_here}));
+            } else if let Some(tree) = one["elsewhere"].as_str() {
+                side.push(json!({"said": words.branch_elsewhere.replace("{tree}", tree)}));
+            }
+            if let Some(at) = one["at_s"].as_u64() {
+                side.push(json!({"at": at.saturating_mul(1000), "as": "came", "keep": 1}));
+            }
+            // The one it's on is no choice. One another tree holds keeps
+            // its act, so pressing it says which tree (switch.rs).
+            let acts = if here {
+                json!([])
+            } else {
+                json!([{
+                    "key": "verb:code:switch",
+                    "ask": {"ask": "code:switch", "path": path, "branch": name},
+                    "streams": true,
+                }])
+            };
+            Some(json!({
+                "key": format!("{parent}:{name}"),
+                "thing": format!("branch:{repository}:{name}"),
+                "place": PLACE,
+                "kind": "branch",
+                "parent": parent,
+                "depth": 2,
+                "name": name,
+                "glyph": words.branch_glyph,
+                "hue": "program",
+                "side": side,
+                "held": {"path": path, "branch": name},
+                "acts": acts,
+            }))
+        })
+        .collect()
 }
 
 /// The rows inside Open a File by Name's row of key `parent`, one for each
