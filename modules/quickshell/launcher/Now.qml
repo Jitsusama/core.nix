@@ -643,15 +643,17 @@ Provider {
     // the item and asking the session to check it still holds before it
     // asks him anything (Joel, 2026-11-08: "it should give me a prompt that
     // gets filled into it stating i'm reayd to deal with it if it is still
-    // valid"). The harness fills a prompt only while it's empty.
+    // valid"). The harness fills a prompt only while it's empty. Going
+    // comes first, so a parked session's wake reaches its inbox before
+    // the fill it then reads.
     function dealWith(each) {
         const session = WaitingOnYou.session(each);
+        WaitingOnYou.go(each);
         if (session)
             Sessions.steer(session.address, {
                 act: "fill",
                 text: readyToDeal(each.title)
             });
-        WaitingOnYou.go(each);
     }
 
     // A fact of For You's drawers, named in the vocabulary.

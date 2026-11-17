@@ -408,10 +408,18 @@ QtObject {
         expect("a window it names that isn't open leaves its session",
             Waiting.dealsIn(Object.assign(fromOwner("HELD01"), { window: "gone" }), known),
             { to: "session", session: heldNoWindow, wake: false });
+        // Joel's own, as he pressed it at 00:12: its window long shut.
+        const wjatin = { address: "WJATIN", window: null, held: "held-3",
+            presence: { session: "s-wjatin", addresses: ["WJATIN"] } };
+        const deploy = { quest: "QEST-20261112-WJATIN", owner: { address: "WJATIN" },
+            where: { window: "\u03c0 - Deploy V3: Reimagine How Aquifer And Worldtree Ship - aquifer" } };
         expect("a parked one whose named window isn't open is woken and gone to",
-            Waiting.dealsIn(Object.assign(fromOwner("REST01"),
-                { where: { window: "Windex: the request" } }), known),
-            { to: "session", session: resting, wake: true });
+            Waiting.dealsIn(deploy, Object.assign({}, known, { parked: [resting, wjatin] })),
+            { to: "session", session: wjatin, wake: true });
+        expect("and one running in no window is gone to as it is",
+            Waiting.dealsIn(deploy, Object.assign({}, known,
+                { running: known.running.concat([wjatin]) })),
+            { to: "session", session: wjatin, wake: false });
         expect("one whose session is gone goes nowhere, so the act isn't offered",
             Waiting.dealsIn(fromOwner("GONE01"), known), { to: "nobody" });
         expect("one from nobody goes nowhere",

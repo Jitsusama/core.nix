@@ -200,6 +200,9 @@
           readonly property string nodePath: Quickshell.env("XDG_RUNTIME_DIR") + "/node.sock"
           property var present: ({})
           property var running: []
+          property var parked: []
+          function wake(session) {}
+          function goTo(session) {}
         '';
         "Words.qml" = singleton "Words.qml" ''
           function of(name) { return { said: {} }; }

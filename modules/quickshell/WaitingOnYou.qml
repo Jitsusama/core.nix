@@ -211,10 +211,16 @@ Singleton {
     }
 
     // What the shell knows of where an item can be dealt with: niri's
-    // windows, the sessions running and parked, and each presence.
+    // windows, the sessions running and parked, and each presence. Bound
+    // once rather than built for each of For You's rows.
+    readonly property var knownNow: ({
+            windows: Object.values(Niri.windows),
+            running: Sessions.running,
+            parked: Sessions.parked ?? [],
+            present: Sessions.present
+        })
     function known() {
-        return { windows: Object.values(Niri.windows), running: Sessions.running,
-            parked: Sessions.parked ?? [], present: Sessions.present };
+        return knownNow;
     }
 
     // What one not ready yet waits for (Waiting.js).
