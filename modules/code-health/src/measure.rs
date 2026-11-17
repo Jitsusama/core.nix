@@ -277,6 +277,19 @@ fn says(file: &File, words: &str) -> bool {
         .any(|line| sentence(line, words))
 }
 
+/// Whether a note says `words` anywhere, its lines joined and each word
+/// whole, as core's every-long-file-says-why reads a folder's reason, so
+/// a folder that rule passes isn't counted crowded here.
+fn mentions(file: &File, words: &str) -> bool {
+    let joined = file.text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    joined.match_indices(words).any(|(at, _)| {
+        let before = joined[..at].chars().next_back();
+        let after = joined[at + words.len()..].chars().next();
+        !before.is_some_and(word) && !after.is_some_and(word)
+    })
+}
+
 /// Whether `words` open a sentence in a line: at its start, after its
 /// comment mark, or after a sentence's end.
 fn sentence(line: &str, words: &str) -> bool {
@@ -354,7 +367,7 @@ fn crowded(paths: &[String], files: &[File]) -> Vec<String> {
     }
     let reasoned: BTreeSet<&str> = files
         .iter()
-        .filter(|file| is_note(&file.path) && says(file, "Many entries because"))
+        .filter(|file| is_note(&file.path) && mentions(file, "Many entries because"))
         .map(|file| file.path.rsplit_once('/').map_or("", |(folder, _)| folder))
         .collect();
     entries
@@ -538,6 +551,33 @@ mod tests {
             health.named["crowded-folders"],
             ["many"],
             "a crowded folder was missed, or one with its reason or few entries was counted"
+        );
+    }
+
+    #[test]
+    fn a_crowded_folders_reason_is_read_anywhere_in_its_note_as_cores_rule_reads_it() {
+        let mut all = Vec::new();
+        for folder in ["late", "wrapped", "within"] {
+            all.extend((0..=CROWDED).map(|n| format!("{folder}/{n}.txt")));
+            all.push(format!("{folder}/README.md"));
+        }
+        let late = format!(
+            "{}Many entries because each is a case.\n",
+            "A line.\n".repeat(OPENING)
+        );
+        let notes = [
+            file("late/README.md", &late),
+            file(
+                "wrapped/README.md",
+                "Here are cases. Many entries\nbecause each is one.\n",
+            ),
+            file("within/README.md", "Too Many entries becausewords.\n"),
+        ];
+        let health = measure(&all, &notes);
+        assert_eq!(
+            health.named["crowded-folders"],
+            ["within"],
+            "a reason past the opening or wrapped was missed, or one inside a word was taken"
         );
     }
 
