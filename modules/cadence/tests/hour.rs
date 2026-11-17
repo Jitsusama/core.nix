@@ -158,7 +158,8 @@ fn a_torn_ledger_leaves_the_misses_unjudged_and_carried() {
 }
 
 /// A card that can't be sent leaves last hour kept as it was, so the
-/// "fixed" lines it held are told again next hour rather than never.
+/// "fixed" lines it held are told again next hour rather than never, and
+/// leaves the findings ledger as it was, so no owner's finding is lost.
 #[test]
 fn a_card_that_cant_be_sent_keeps_last_hour_as_it_was() {
     let account = account();
@@ -177,6 +178,10 @@ fn a_card_that_cant_be_sent_keeps_last_hour_as_it_was() {
     assert!(!ran.status.success(), "a send that couldn't go was said to");
     let after = fs::read_to_string(kept.join("hour.json")).expect("the hour kept");
     assert_eq!(after, last, "an unsent card's hour was kept as told");
+    assert!(
+        !kept.join("findings.jsonl").exists(),
+        "an unsent hour's findings were kept as told"
+    );
 }
 
 #[test]

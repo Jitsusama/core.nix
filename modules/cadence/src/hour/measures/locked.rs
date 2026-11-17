@@ -200,6 +200,10 @@ pub fn read(
                 "maintenance.auto=false",
                 "-c",
                 "gc.auto=0",
+                // Over ssh too, it never asks anyone and gives up as soon.
+                "-c",
+                "core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=30 \
+                 -o ServerAliveInterval=10 -o ServerAliveCountMax=3",
                 "fetch",
                 "--quiet",
                 "--no-write-fetch-head",
