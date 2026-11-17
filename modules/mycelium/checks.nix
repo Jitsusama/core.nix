@@ -438,17 +438,29 @@ in
   # slice, every realm's alike, rather than among Joel's programs.
   # The locked node takes each flag its service is given, so a flag set
   # ahead of the mycelium that reads it fails here, not as the node starts.
+  # It reads only the command's help, so it builds the node without its
+  # tests: mycelium's own gate runs those, and their timing bars fail on a
+  # busy Mac or its Linux builder, which would fail this check for nothing
+  # it proves. The flags are words alone, so the nodes' lines give them
+  # without their store paths, which would bring the Linux node's whole build
+  # into a Mac's check.
   mycelium-node-takes-its-flags =
     let
-      flags = lib.unique (
-        lib.filter (lib.hasPrefix "--") (lib.splitString " " "${linuxNode} ${stimulatingNode}")
-      );
-      mycelium = lib.getExe self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
+      words = lib.splitString " " (builtins.unsafeDiscardStringContext "${linuxNode} ${stimulatingNode}");
+      flags = lib.unique (lib.filter (lib.hasPrefix "--") words);
+      locked = self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
+      untested = locked.overrideAttrs { doCheck = false; };
+      mycelium = lib.getExe untested;
     in
+    # Kept in Nix because its flags and node come from this evaluation,
+    # and a script of its own would only be handed them back as words.
     pkgs.runCommandLocal "mycelium-node-takes-its-flags" { } ''
       ${mycelium} node --help > help
       for flag in ${lib.escapeShellArgs flags}; do
-        grep -q -e "$flag\b" help || { echo "mycelium node doesn't take $flag"; exit 1; }
+        # The whole flag, so one dropped beside a longer one, as --ssh
+        # beside --ssh-option, isn't taken as there.
+        grep -q -E -e "(^|[[:space:]])$flag([[:space:]=,]|\$)" help \
+          || { echo "mycelium node doesn't take $flag"; exit 1; }
       done
       touch $out
     '';
