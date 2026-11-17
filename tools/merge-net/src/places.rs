@@ -8,9 +8,10 @@
 //! that started after its first gate, and behind only those before it.
 //!
 //! Each `ready` keeps the start of every gate going and of its own pass,
-//! in `places.json` in the net's state. Two asking at once may each write
-//! a place the other read without, and the one written last stands; a
-//! place lost so is kept again by the next `ready` that sees its gate.
+//! in `places.json` in the net's state, read, changed and written under
+//! its lock (`whole.rs`), so two asking at once each keep their places.
+//! Where the lock can't be had, the one written last stands, and a place
+//! lost so is kept again by the next `ready` that sees its gate.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -64,13 +65,10 @@ impl Places {
             .retain(|folder, place| now.saturating_sub(*place) < KEPT && stands(folder));
     }
 
-    /// Write them whole to `path`, by a rename, so a reader never sees half.
+    /// Write them whole to `path`, so a reader never sees half.
     pub fn write(&self, path: &Path) -> Result<(), String> {
-        let partial = path.with_extension("partial");
         let text = serde_json::to_string_pretty(&self.0).map_err(|error| error.to_string())?;
-        fs::write(&partial, text + "\n")
-            .and_then(|()| fs::rename(&partial, path))
-            .map_err(|error| format!("writing {}: {error}", path.display()))
+        crate::whole::write(path, &(text + "\n"))
     }
 }
 

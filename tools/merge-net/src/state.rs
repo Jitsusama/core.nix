@@ -449,13 +449,10 @@ fn read_json(path: &Path) -> Option<Value> {
         .and_then(|text| serde_json::from_str(&text).ok())
 }
 
-/// Write a file whole, by a rename, so a reader never sees half of it.
+/// Write a file whole, so a reader never sees half of it.
 fn write_json(path: &Path, value: &Value) -> Result<(), String> {
-    let partial = path.with_extension("partial");
     let text = serde_json::to_string_pretty(value).map_err(|error| error.to_string())?;
-    fs::write(&partial, text + "\n")
-        .and_then(|()| fs::rename(&partial, path))
-        .map_err(|error| format!("writing {}: {error}", path.display()))
+    crate::whole::write(path, &(text + "\n"))
 }
 
 fn append(path: &Path, value: &Value) -> Result<(), String> {
