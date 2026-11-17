@@ -514,7 +514,10 @@ Label is Note told apart by case, so a surface counting its levels counts
 them as one. Label's capitals are for our own words: a name from the world,
 an address, a repository, a folder or a file, is never re-cased, nor is a
 figure's unit ("on 2.4 GHz · network"), so an eyebrow carrying one
-is set in Note as written ("8IDU4E · core.nix · since 21:52"). The
+is set in Note as written ("8IDU4E · core.nix · since 21:52"). A
+terminal table's column, which has no second face for it, puts its unit
+after its name as written instead (POWER dBm), as
+[docs/commands.md](commands.md) says. The
 eyebrows of one place share one shape, where the thing
 is and then its kind ("via Example ISP", "eero Pro 6 · node", "on Study
 · Wi-Fi"), and say no state, which its first fact says. Nothing the

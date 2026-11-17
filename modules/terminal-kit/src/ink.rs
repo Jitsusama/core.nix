@@ -188,6 +188,31 @@ struct Mark {
     console: String,
 }
 
+/// Units written in lower case alone, which capitals would misread:
+/// MS is a different unit from ms, and KB/S reads as kilobytes.
+const LOWER_UNITS: [&str; 8] = ["ms", "µs", "ns", "s", "b/s", "kb/s", "bit/s", "kbit/s"];
+
+/// A label's words in capitals, but for a unit after its first word,
+/// which keeps its case: a word holding a capital (dBm, Mb/s, MHz) is
+/// already written as its unit is, as a name from the world keeps its
+/// own case, and the few lower-case units are named. The first word is always the label's name, so it always goes
+/// up, and a group's heading such as Examples still reads EXAMPLES.
+pub(crate) fn capitals(words: &str) -> String {
+    words
+        .split(' ')
+        .enumerate()
+        .map(|(at, word)| {
+            let a_unit = word.chars().any(char::is_uppercase) || LOWER_UNITS.contains(&word);
+            if at > 0 && a_unit {
+                word.to_owned()
+            } else {
+                word.to_uppercase()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Where the account's theme is: `$XDG_CONFIG_HOME/jitsusama/theme.json`,
 /// else under `~/.config`.
 pub fn theme_file(environment: &Environment) -> Option<PathBuf> {
@@ -343,9 +368,10 @@ impl Pen {
         self.escaped(&["1", self.colour("strong")], words)
     }
 
-    /// A label over a group or a column: muted capitals.
+    /// A label over a group or a column: muted capitals, but for a unit
+    /// after its first word, which keeps its case (`capitals` says why).
     pub fn label(&self, words: &str) -> String {
-        self.role("muted", &words.to_uppercase())
+        self.role("muted", &capitals(words))
     }
 
     /// What the command says of itself: italic, muted.
@@ -466,6 +492,29 @@ mod tests {
             "\u{1b}[38;2;247;232;178ms\u{1b}[0m"
         );
         assert_eq!(pen.role("text", "t"), "t");
+    }
+
+    #[test]
+    fn a_label_keeps_a_units_case_after_its_name() {
+        let pen = Pen::new(Ink::plain(), Some(&osaka_jade()));
+        // Spelled out rather than read from LOWER_UNITS, so a unit dropped
+        // from the list goes up here and fails.
+        let lower = ["ms", "µs", "ns", "s", "b/s", "kb/s", "bit/s", "kbit/s"];
+        for unit in lower {
+            assert_eq!(
+                pen.label(&format!("took {unit}")),
+                format!("TOOK {unit}"),
+                "{unit} went up after a label's name"
+            );
+        }
+        assert_eq!(
+            ["power dBm", "speed Mb/s", "linked to", "from UniFi"].map(|words| pen.label(words)),
+            ["POWER dBm", "SPEED Mb/s", "LINKED TO", "FROM UniFi"],
+            "a word holding a capital went up, or a plain word didn't"
+        );
+        // The first word is the label's name, so it goes up even when it
+        // is a unit: a column is named before its unit.
+        assert_eq!(pen.label("ms"), "MS", "a label's first word stayed down");
     }
 
     #[test]

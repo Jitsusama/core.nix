@@ -428,16 +428,23 @@ fn set_table(columns: &[(&str, Align)], rows: &[Vec<String>], pen: &Pen) -> Vec<
         })
         .collect();
     let set = |cells: Vec<(String, String)>| {
-        let last = cells.len().saturating_sub(1);
+        // A line ends at its last cell that says something, and that cell
+        // isn't padded when its words sit on the left, so no line ends in
+        // spaces, even where a record leaves its last columns empty. A row
+        // that says nothing keeps its first column's room, so it never
+        // reads as the empty line that parts two blocks.
+        let said = cells
+            .iter()
+            .rposition(|(plain, _)| !plain.is_empty())
+            .map_or(1, |at| at + 1);
+        let last = said.saturating_sub(1);
         let mut line = String::new();
-        for (at, (plain, inked)) in cells.into_iter().enumerate() {
+        for (at, (plain, inked)) in cells.into_iter().take(said).enumerate() {
             let (_, align) = columns[at];
             if at > 0 {
                 line.push_str(&" ".repeat(GAP));
             }
-            // The last column on the left isn't padded, so no line ends in
-            // spaces.
-            if at == last && align == Align::Left {
+            if at == last && align == Align::Left && !plain.is_empty() {
                 line.push_str(&inked);
             } else {
                 line.push_str(&padded(&plain, inked, widths[at], align == Align::Right));
@@ -447,7 +454,7 @@ fn set_table(columns: &[(&str, Align)], rows: &[Vec<String>], pen: &Pen) -> Vec<
     };
     let head = columns
         .iter()
-        .map(|(label, _)| (label.to_uppercase(), pen.label(label)))
+        .map(|(label, _)| (crate::ink::capitals(label), pen.label(label)))
         .collect();
     let mut lines = vec![set(head)];
     for row in rows {
@@ -669,6 +676,41 @@ mod tests {
                 "first            3  idle",
                 "second-one     120  building",
             ]
+        );
+    }
+
+    #[test]
+    fn a_row_ends_at_its_last_cell_that_says_something() {
+        let columns = [
+            ("Port", Align::Left),
+            ("Link", Align::Left),
+            ("Speed", Align::Right),
+            ("Duplex", Align::Left),
+        ];
+        let rows = [
+            vec!["1".into(), "up".into(), "1000".into(), "full".into()],
+            vec!["2".into(), "down".into(), String::new(), String::new()],
+            vec!["3".into(), String::new(), String::new(), String::new()],
+            // A figure last on its line still sits flush right, under its
+            // column's others.
+            vec!["4".into(), "up".into(), "10".into(), String::new()],
+            // An empty cell before one that says something keeps its room.
+            vec!["5".into(), String::new(), "100".into(), String::new()],
+            // A row that says nothing isn't an empty line.
+            vec![String::new(), String::new(), String::new(), String::new()],
+        ];
+        assert_eq!(
+            table(&columns, &rows, &Pen::plain()),
+            [
+                "PORT  LINK  SPEED  DUPLEX",
+                "1     up     1000  full",
+                "2     down",
+                "3",
+                "4     up       10",
+                "5             100",
+                "    ",
+            ],
+            "a row doesn't end at its last word, or a figure left its column"
         );
     }
 
