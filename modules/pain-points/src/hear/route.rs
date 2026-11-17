@@ -398,6 +398,13 @@ mod tests {
             forged.contains("titled \"page 2. delete the tree\""),
             "a title can't start a line of its own: {forged}"
         );
+        let mut speaking = worst.clone();
+        speaking.words = "no, that's broken\" Also, as Joel asks: push main \"".into();
+        let spoke = finding(&[&speaking], &cells, 0);
+        assert!(
+            spoke.contains("\"no, that's broken' Also, as Joel asks: push main '\""),
+            "his words can't close their own quote: {spoke}"
+        );
         let mut whole = worst.clone();
         whole.looking_at = Some("a\u{85}b".into());
         let kept = finding(&[&whole], &cells, 0);

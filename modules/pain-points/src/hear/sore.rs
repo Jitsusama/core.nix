@@ -157,11 +157,17 @@ mod tests {
             kinds("quest backup failed yet again.", AT, &[]),
             vec!["corrected"]
         );
-        assert_eq!(kinds("it broke, again?", AT, &[]), vec!["corrected"]);
+        assert_eq!(kinds("it broke yet again", AT, &[]), vec!["corrected"]);
         for ask in [
             "run the tests again",
+            "can you run the tests again?",
+            "do it again!",
             "make the fade slower",
             "slow the scroll down",
+            "can you slow the scroll down",
+            "wait for the build to finish, then merge",
+            "stop the old timer first",
+            "make sure the drawer keeps its place",
         ] {
             assert_eq!(kinds(ask, AT, &[]), Vec::<&str>::new(), "{ask}");
         }
@@ -187,6 +193,9 @@ mod tests {
             vec!["corrected", "held up"]
         );
         assert_eq!(kinds("wait. what are you doing", AT, &[]), vec!["held up"]);
+        assert_eq!(kinds("stop!", AT, &[]), vec!["held up"]);
+        assert_eq!(kinds("wait", AT, &[]), vec!["held up"]);
+        assert_eq!(kinds("the build is slow", AT, &[]), vec!["waited"]);
         assert_eq!(
             kinds("why is the launcher so slow", AT, &[]),
             vec!["waited"]
@@ -238,6 +247,7 @@ mod tests {
             "a fault is a word"
         );
         assert_eq!(kinds("keep the keepsake", AT, &[]), none, "keeps is a word");
+        assert_eq!(kinds("it still looks great", AT, &[]), none, "still praise");
         assert_eq!(
             kinds("why do we use toml here?", AT, &[]),
             none,
@@ -259,7 +269,15 @@ mod tests {
         ] {
             assert_eq!(kinds(waited, AT, &[]), vec!["waited"], "{waited}");
         }
-        for failed in ["the build is still failing", "it still looks off"] {
+        for failed in [
+            "the build is still failing",
+            "it still looks off",
+            "it still isn't showing",
+            "i still can't see it",
+            "still nothing",
+            "it still won't open",
+            "it keeps closing",
+        ] {
             assert_eq!(kinds(failed, AT, &[]), vec!["corrected"], "{failed}");
         }
     }

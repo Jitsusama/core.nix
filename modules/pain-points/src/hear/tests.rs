@@ -47,9 +47,21 @@ impl Place {
     }
 
     fn log(&self, folder: &str, session: &str, cwd: &Path, lines: &[String]) -> PathBuf {
+        self.log_from("10", folder, session, cwd, lines)
+    }
+
+    /// A log begun at `hour` on 16 November, as pi names it by its start.
+    fn log_from(
+        &self,
+        hour: &str,
+        folder: &str,
+        session: &str,
+        cwd: &Path,
+        lines: &[String],
+    ) -> PathBuf {
         let dir = self.root.join("sessions").join(folder);
         fs::create_dir_all(&dir).expect("a folder");
-        let path = dir.join(format!("2026-11-16T10-00-00-000Z_{session}.jsonl"));
+        let path = dir.join(format!("2026-11-16T{hour}-00-00-000Z_{session}.jsonl"));
         let header = json!({"type": "session", "version": 3, "id": session,
                             "timestamp": "2026-11-16T10:00:00.000Z", "cwd": cwd});
         let mut text = header.to_string() + "\n";
@@ -201,42 +213,137 @@ fn a_command_printing_more_than_a_pipe_holds_is_read_whole() {
     assert_eq!(out.map(|o| o.len()), Some(300_000));
 }
 
+/// read's state of several sessions' turns, each `(log, enter, wait_ms)`.
+fn timed_logs(place: &Place, turns: &[(&str, i64, i64)]) {
+    let mut logs = serde_json::Map::new();
+    for (name, enter, wait_ms) in turns {
+        let turns = json!([{"offset": 0, "enter": enter, "delivered": enter,
+            "calls": [{"start": enter + wait_ms, "ms": 4000, "stop": "done"}],
+            "again": false, "correction": false, "status": false}]);
+        logs.insert(
+            (*name).to_string(),
+            json!({"end": 0, "open": false, "turns": turns}),
+        );
+    }
+    let kept = json!({"reader": "r", "logs": logs});
+    fs::write(place.root.join("state/pi-logs.json"), kept.to_string()).expect("written");
+}
+
 #[test]
-fn a_session_carried_into_a_new_log_is_heard_once() {
+fn a_session_carried_into_a_new_log_is_heard_once_and_goes_to_the_live_cell() {
     let place = Place::new("carried-on");
     place.routes();
+    // The old log began first, as pi names it, and its session has ended.
     let cells = r#"{"Ok":{"Sessions":[
-        {"id":"s-old","address":"DEF456","state":"busy"},
-        {"id":"s-live","address":"ABC123","state":"busy"}]}}"#;
+        {"id":"s-old","address":"DEF456","state":"ended"},
+        {"id":"s-new","address":"ABC123","state":"busy"}]}}"#;
     let said = [user(
         "a",
         "2026-11-16T19:50:00.000Z",
         "no, the drawer forgets its place",
     )];
-    place.log("src", "s-old", Path::new("/home/j/src"), &said);
-    place.log("src", "s-live", Path::new("/home/j/src"), &said);
-    timed(&place, "s-old", 1_794_858_600_000, 180_000);
-    let mut more = serde_json::from_str::<serde_json::Value>(
-        &fs::read_to_string(place.root.join("state/pi-logs.json")).expect("timed"),
-    )
-    .expect("json");
-    let old = more["logs"]["2026-11-16T10-00-00-000Z_s-old.jsonl"].clone();
-    more["logs"]["2026-11-16T10-00-00-000Z_s-live.jsonl"] = old;
-    fs::write(place.root.join("state/pi-logs.json"), more.to_string()).expect("written");
-    let mut sent: Vec<String> = Vec::new();
+    place.log_from("09", "src", "s-old", Path::new("/home/j/src"), &said);
+    place.log_from("10", "src", "s-new", Path::new("/home/j/src"), &said);
+    timed_logs(
+        &place,
+        &[
+            ("2026-11-16T09-00-00-000Z_s-old.jsonl", 1_794_858_600_000, 180_000),
+            ("2026-11-16T10-00-00-000Z_s-new.jsonl", 1_794_858_600_000, 180_000),
+        ],
+    );
+    let mut sent: Vec<(String, String)> = Vec::new();
     let hour = hear(&place.ears(), cells, &mut |to, text| {
-        if to != "ORCH01" {
-            sent.push(text.into());
+        // The keeper's note names each pain again; only findings count.
+        if !text.contains("heard from Joel, for you to carry") {
+            sent.push((to.into(), text.into()));
         }
         true
     })
     .expect("a run");
-    let drawer = sent.iter().filter(|t| t.contains("drawer")).count();
+    let to_live = sent.iter().filter(|(to, _)| to == "ABC123").count();
+    let drawer = sent.iter().filter(|(_, t)| t.contains("drawer")).count();
     let stalls = sent
         .iter()
-        .map(|t| t.matches("turn of").count())
+        .map(|(_, t)| t.matches("turn of").count())
         .sum::<usize>();
-    assert_eq!((drawer, stalls, hour.heard), (1, 1, 1), "{sent:?}");
+    assert_eq!(
+        (to_live, drawer, stalls, hour.heard),
+        (1, 1, 1, 1),
+        "the live cell carrying it on owns it: {sent:?}"
+    );
+}
+
+#[test]
+fn two_sessions_stalled_in_the_same_second_are_both_heard() {
+    let place = Place::new("two-stalls");
+    place.routes();
+    place.log("src", "s-live", Path::new("/home/j/src"), &[]);
+    place.log("elsewhere", "s-other", Path::new("/home/j/other"), &[]);
+    timed_logs(
+        &place,
+        &[
+            ("2026-11-16T10-00-00-000Z_s-live.jsonl", 1_794_858_600_000, 180_000),
+            ("2026-11-16T10-00-00-000Z_s-other.jsonl", 1_794_858_600_000, 90_000),
+        ],
+    );
+    let cells = r#"{"Ok":{"Sessions":[
+        {"id":"s-live","address":"ABC123","state":"busy"},
+        {"id":"s-other","address":"GHI789","state":"busy"}]}}"#;
+    let hour = hear(&place.ears(), cells, &mut |_, _| true).expect("a run");
+    assert_eq!(hour.stalled, 2, "{:?}", place.heard());
+}
+
+#[test]
+fn a_finding_the_node_never_takes_is_tried_three_times_then_said_as_a_trouble() {
+    let place = Place::new("tries");
+    place.routes();
+    a_day(&place);
+    let mut to_owner = 0;
+    let mut last = None;
+    for _ in 0..5 {
+        last = Some(
+            hear(&place.ears(), CELLS, &mut |to, _| {
+                to_owner += usize::from(to == "ABC123");
+                false
+            })
+            .expect("a run"),
+        );
+    }
+    assert_eq!(to_owner, 3, "a cell is asked again every five minutes");
+    let hour = last.expect("runs");
+    assert!(
+        hour.troubles.iter().any(|t| t.contains("gave up")),
+        "{hour:?}"
+    );
+}
+
+#[test]
+fn a_mycelium_with_no_sessions_and_nothing_waiting_is_no_trouble() {
+    let place = Place::new("quiet-node");
+    place.routes();
+    let hour = hear(&place.ears(), "", &mut |_, _| true).expect("a run");
+    assert!(hour.troubles.is_empty(), "{hour:?}");
+}
+
+#[test]
+fn routes_that_cant_be_read_or_name_no_sender_are_troubles() {
+    for (name, routes) in [("routes-dir", None), ("routes-no-from", Some(r#"{"never":["V"]}"#))] {
+        let place = Place::new(name);
+        let at = place.root.join("state/routes.json");
+        match routes {
+            Some(text) => fs::write(&at, text).expect("routes"),
+            None => fs::create_dir_all(&at).expect("a folder where routes.json goes"),
+        }
+        a_day(&place);
+        let hour = hear(&place.ears(), CELLS, &mut |to, text| {
+            panic!("sent {to} without routes: {text}")
+        })
+        .expect("a run");
+        assert!(
+            hour.troubles.iter().any(|t| t.contains("routes.json")),
+            "{name}: {hour:?}"
+        );
+    }
 }
 
 #[test]

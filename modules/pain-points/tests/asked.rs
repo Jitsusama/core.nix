@@ -206,3 +206,64 @@ fn hear_over_nothing_hears_nothing_and_says_the_hour() {
         "no hour.json for cadence"
     );
 }
+
+/// pain-points hear over a home of its own, at 20:00 UTC on 16 November.
+fn heard_in(home: &std::path::Path) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_pain-points"))
+        .args([
+            "hear",
+            "--mycelium",
+            "/nowhere/mycelium",
+            "--at",
+            "1794859200000",
+        ])
+        .env("HOME", home)
+        .env("XDG_STATE_HOME", home.join("state"))
+        .env_remove("JOURNAL_STREAM")
+        .stdin(Stdio::null())
+        .output()
+        .expect("pain-points ran")
+}
+
+#[test]
+fn hear_beside_a_run_already_hearing_steps_aside_and_ends_done() {
+    let home = std::env::temp_dir().join(format!("pain-points-aside-{}", std::process::id()));
+    let own = home.join("state/pain-points");
+    std::fs::create_dir_all(&own).expect("a folder");
+    let held = std::fs::File::create(own.join("hear.lock")).expect("a lock file");
+    held.lock().expect("the lock held");
+    let output = heard_in(&home);
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "a run that stepped aside isn't a failed one: {}",
+        said(&output.stderr)
+    );
+    assert!(
+        said(&output.stdout).contains("stepped aside"),
+        "it never said it stepped aside: {}",
+        said(&output.stdout)
+    );
+}
+
+#[test]
+fn hear_that_could_not_route_ends_failed() {
+    let home = std::env::temp_dir().join(format!("pain-points-trouble-{}", std::process::id()));
+    let own = home.join("state/pain-points");
+    std::fs::create_dir_all(&own).expect("a folder");
+    std::fs::write(own.join("routes.json"), r#"{"never":["VOID01"]}"#).expect("routes");
+    let output = heard_in(&home);
+    let _ = std::fs::remove_dir_all(&home);
+    assert_ne!(
+        output.status.code(),
+        Some(0),
+        "routes naming no one to send as ended done: {}",
+        said(&output.stdout)
+    );
+    assert!(
+        said(&output.stderr).contains("couldn't route"),
+        "it never said why: {}",
+        said(&output.stderr)
+    );
+}
