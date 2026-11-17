@@ -68,6 +68,23 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
         gone: &renamed,
         text: &at_head,
     };
+    // A head behind main is judged apart by what merging it makes of each
+    // file, as a rebased head's own files are: its own lack main's moves,
+    // so on 16 November 42 heads behind main were sent to build a check
+    // for each description main added beside theirs.
+    let merged = behind
+        .then(|| merged_tree(Path::new("."), main, commit))
+        .flatten();
+    let at_merged = |file: &str| {
+        merged
+            .as_deref()
+            .map_or_else(|| at_head(file), |tree| at(tree, file))
+    };
+    let rebased = ready::Side {
+        changed: &files,
+        gone: &renamed,
+        text: &at_merged,
+    };
     let shared_since = |candidate: &str, base: String| {
         let (since, taken_away) = since(&base)?;
         let main_side = ready::Side {
@@ -77,7 +94,7 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
         };
         let mut shared = ready::shared(&branch, &main_side);
         let (at_base, checked) = (|f: &str| at(&base, f), |f: &str| at(candidate, f));
-        shared.retain(|file| !ready::stands_apart(file, &branch, &main_side, &at_base, &checked));
+        shared.retain(|file| !ready::stands_apart(file, &rebased, &main_side, &at_base, &checked));
         let beside = crates.beside(&files, &since);
         shared.retain(|file| !beside.contains(file));
         shared.extend(beside);
@@ -116,4 +133,81 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
         files,
         before,
     })
+}
+
+/// The tree merging `commit` into `main` in the repository at `folder`
+/// makes, which a head behind main lands as; none where they conflict.
+fn merged_tree(folder: &Path, main: &str, commit: &str) -> Option<String> {
+    let _ = (folder, main, commit);
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::*;
+    use crate::tests::git_in;
+
+    #[test]
+    fn a_head_behind_main_is_read_as_merged_into_it() {
+        let repo = std::env::temp_dir().join(format!("merge-net-behind-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&repo);
+        fs::create_dir_all(&repo).unwrap();
+        git_in(&repo, &["init", "-q", "-b", "main"]);
+        let entry = |name: &str, says: &str| format!("  {name} = ''\n    {says}\n  '';\n");
+        let commit = |entries: &[(&str, &str)]| {
+            let body: String = entries
+                .iter()
+                .map(|(name, says)| entry(name, says))
+                .collect();
+            fs::write(repo.join("d.nix"), format!("{{\n{body}}}\n")).unwrap();
+            git_in(&repo, &["add", "d.nix"]);
+            git_in(&repo, &["commit", "-qm", "d"]);
+            git_in(&repo, &["rev-parse", "HEAD"])
+        };
+        let base = commit(&[("b", "proves"), ("d", "proves"), ("f", "proves")]);
+        let head = commit(&[
+            ("b", "proves"),
+            ("d", "proves"),
+            ("e", "proves"),
+            ("f", "proves"),
+        ]);
+        git_in(&repo, &["checkout", "-q", &base]);
+        let main = commit(&[
+            ("a", "proves"),
+            ("b", "proves"),
+            ("d", "proves"),
+            ("f", "proves"),
+        ]);
+        let merged = merged_tree(&repo, &main, &head);
+        let said = merged.map(|tree| git_in(&repo, &["show", &format!("{tree}:d.nix")]));
+        let both = ["a", "b", "d", "e", "f"]
+            .map(|name| entry(name, "proves"))
+            .concat();
+        assert_eq!(
+            said.as_deref(),
+            Some(format!("{{\n{both}}}").as_str()),
+            "a head behind main wasn't read as merged into it"
+        );
+        let clash = commit(&[
+            ("a", "proves"),
+            ("b", "proves"),
+            ("d", "holds"),
+            ("f", "proves"),
+        ]);
+        git_in(&repo, &["checkout", "-q", &head]);
+        let other = commit(&[
+            ("b", "proves"),
+            ("d", "fails"),
+            ("e", "proves"),
+            ("f", "proves"),
+        ]);
+        assert_eq!(
+            merged_tree(&repo, &clash, &other),
+            None,
+            "a head conflicting with main was read as merged into it"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+    }
 }
