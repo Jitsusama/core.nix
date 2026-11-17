@@ -12,7 +12,7 @@
 use crate::words::{ALIKE, PRAISE, alike, asking_status, nudging};
 
 /// Phrases that say the last go didn't do it.
-const FAULTS: [&str; 24] = [
+const FAULTS: [&str; 20] = [
     "not that",
     "that's not",
     "doesn't work",
@@ -25,11 +25,7 @@ const FAULTS: [&str; 24] = [
     "keeps",
     "why did",
     "why didn't",
-    "why is",
     "why isn't",
-    "why are",
-    "why does",
-    "why do",
     "still look",
     "still not",
     "still no ",
@@ -62,7 +58,13 @@ pub fn kinds(words: &str, at: i64, earlier: &[(i64, String)]) -> Vec<&'static st
     let opening_no = ["no,", "no.", "no!", "wrong,", "wrong.", "wrong!"]
         .iter()
         .any(|opening| low.trim_start().starts_with(opening));
-    if opening_no || FAULTS.iter().any(|fault| low.contains(fault)) {
+    // Each fault is matched as whole words, so "against" holds no "again".
+    let spaced = format!(" {} ", each.join(" "));
+    if opening_no
+        || FAULTS
+            .iter()
+            .any(|fault| spaced.contains(&format!(" {} ", fault.trim())))
+    {
         kinds.push("corrected");
     }
     let swore = each.iter().enumerate().any(|(at, w)| {
@@ -156,7 +158,7 @@ mod tests {
         assert_eq!(kinds("wait. what are you doing", AT, &[]), vec!["held up"]);
         assert_eq!(
             kinds("why is the launcher so slow", AT, &[]),
-            vec!["corrected", "waited"]
+            vec!["waited"]
         );
         assert_eq!(kinds("it takes forever to open", AT, &[]), vec!["waited"]);
     }
@@ -170,7 +172,7 @@ mod tests {
         );
         assert!(
             kinds("open the notices from the bar!", AT + AGAIN_MS, &earlier).is_empty(),
-            "an hour on, it is a new ask"
+            "half an hour on, it is a new ask"
         );
         let short = vec![(AT - 60_000, "yes".to_string())];
         assert!(
@@ -198,6 +200,17 @@ mod tests {
         assert_eq!(
             kinds("I want it shorter, but still stated well", AT, &[]),
             none
+        );
+        assert_eq!(
+            kinds("lean it against the wall", AT, &[]),
+            none,
+            "a fault is a word"
+        );
+        assert_eq!(kinds("keep the keepsake", AT, &[]), none, "keeps is a word");
+        assert_eq!(
+            kinds("why do we use toml here?", AT, &[]),
+            none,
+            "a plain why"
         );
     }
 }

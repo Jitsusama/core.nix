@@ -70,6 +70,14 @@ impl Place {
     }
 }
 
+impl Drop for Place {
+    // Each run's folders hold made-up words only, but they'd pile up in the
+    // temp folder run after run.
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
 fn user(id: &str, stamp: &str, text: &str) -> String {
     json!({"type": "message", "id": id, "parentId": "p", "timestamp": stamp,
            "message": {"role": "user", "content": [{"type": "text", "text": text}],
@@ -137,6 +145,55 @@ fn a_day(place: &Place) -> PathBuf {
         &[user("l1", "2026-11-16T19:50:00.000Z", "no, wrong")],
     );
     path
+}
+
+#[test]
+fn each_pain_sent_is_kept_before_the_next_send() {
+    let place = Place::new("kept");
+    place.routes();
+    a_day(&place);
+    let mut kept_by_then = Vec::new();
+    let heard_at = place.root.join("state/heard.jsonl");
+    hear(&place.ears(), CELLS, &mut |to, _| {
+        if to == "ORCH01" {
+            kept_by_then.push(fs::read_to_string(&heard_at).unwrap_or_default());
+        }
+        true
+    })
+    .expect("a run");
+    assert!(
+        kept_by_then
+            .first()
+            .is_some_and(|kept| kept.contains(r#""to":"ABC123""#)),
+        "a run stopped before its keeper's note would send the owner's finding again: \
+         {kept_by_then:?}"
+    );
+}
+
+#[test]
+fn a_send_that_hangs_is_stopped() {
+    let started = std::time::Instant::now();
+    let mut sleeping = Command::new("sleep");
+    sleeping.arg("30");
+    assert!(
+        !ran_within(&mut sleeping, std::time::Duration::from_millis(200)),
+        "a hung send counts as failed"
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "and is stopped, not waited on"
+    );
+    assert!(
+        ran_within(&mut Command::new("true"), std::time::Duration::from_secs(5)),
+        "a send that ends well went"
+    );
+    assert!(
+        !ran_within(
+            &mut Command::new("false"),
+            std::time::Duration::from_secs(5)
+        ),
+        "a send that fails didn't"
+    );
 }
 
 #[test]
@@ -323,6 +380,49 @@ fn a_short_reply_said_twice_is_no_pain() {
     );
     let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a run");
     assert_eq!(hour.heard, 0, "{:?}", place.heard());
+}
+
+#[test]
+fn a_finding_names_five_pains_the_most_hit_first() {
+    let place = Place::new("five");
+    place.routes();
+    let pains = [
+        "no, the bar is broken",
+        "the launcher is stuck on its first row",
+        "no, wrong colour for the notices",
+        "why did the kitty drawer close by itself",
+        "the map keeps losing my place when it redraws",
+        "no, the clock shows yesterday",
+    ];
+    let said: Vec<String> = pains
+        .iter()
+        .enumerate()
+        .map(|(n, words)| {
+            let at = format!("2026-11-16T19:{:02}:00.000Z", 10 + n * 5);
+            user(&format!("e{n}"), &at, words)
+        })
+        .chain([user(
+            "e9",
+            "2026-11-16T19:59:00.000Z",
+            "the launcher is stuck on its first row again",
+        )])
+        .collect();
+    place.log("src", "s-live", Path::new("/home/j/src"), &said);
+    let mut sent: Vec<(String, String)> = Vec::new();
+    hear(&place.ears(), CELLS, &mut |to, text| {
+        sent.push((to.into(), text.into()));
+        true
+    })
+    .expect("a run");
+    let finding = &sent.iter().find(|(to, _)| to == "ABC123").expect("sent").1;
+    assert!(
+        finding.contains("\n5. ") && !finding.contains("\n6. "),
+        "{finding}"
+    );
+    assert!(
+        finding.find("stuck").unwrap_or(usize::MAX) < finding.find("the bar").unwrap_or(0),
+        "the one said twice leads: {finding}"
+    );
 }
 
 #[test]

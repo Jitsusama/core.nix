@@ -41,6 +41,10 @@ pub struct Routes {
     pub fallback: Option<String>,
     #[serde(default)]
     pub ledgers: Option<String>,
+    /// Cells nothing is ever sent to, the void's among them, so a void
+    /// begun somewhere its folder doesn't say is still never written to.
+    #[serde(default)]
+    pub never: Vec<String>,
 }
 
 impl Routes {
@@ -90,16 +94,21 @@ pub fn cells(printed: &str) -> BTreeMap<String, Cell> {
         .collect()
 }
 
-/// The address a pain said in `session` goes to, or none for now.
+/// The address a pain said in `session` goes to, or none for now: its own
+/// live cell, else the fallback when the session ended or is the void.
 pub fn owner(
     session: &str,
     void: bool,
     cells: &BTreeMap<String, Cell>,
     routes: &Routes,
 ) -> Option<String> {
-    match cells.get(session) {
-        Some(cell) if cell.live && !void => Some(cell.address.clone()),
-        _ => routes.fallback.clone(),
+    // A session this realm's mycelium doesn't know may be another realm's,
+    // whose words don't cross into this one, so it waits, counted open.
+    let cell = cells.get(session)?;
+    if cell.live && !void && !routes.never.contains(&cell.address) {
+        Some(cell.address.clone())
+    } else {
+        routes.fallback.clone()
     }
 }
 
@@ -128,6 +137,9 @@ fn place(pain: &Heard, cells: &BTreeMap<String, Cell>) -> String {
     }
 }
 
+/// The most of a window's title a finding quotes.
+const TITLE_AT_MOST: usize = 80;
+
 /// His words, cut short where they run long.
 fn quoted(words: &str) -> String {
     let flat = words.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -149,7 +161,17 @@ pub fn finding(pains: &[&Heard], cells: &BTreeMap<String, Cell>, offset_s: i64) 
     for (n, pain) in pains.iter().take(NAMED_AT_MOST).enumerate() {
         let mut parts = vec![line(n, pain, "", cells, offset_s)];
         if let Some(window) = &pain.looking_at {
-            parts.push(format!(" He was looking at {window}."));
+            // A title is whatever a program named its window, so it is
+            // quoted as what it says rather than said as a fact, and cut.
+            let title: String = window.chars().take(TITLE_AT_MOST).collect();
+            let cut = if title.len() < window.len() {
+                "..."
+            } else {
+                ""
+            };
+            parts.push(format!(
+                " He was looking at a window titled \"{title}{cut}\"."
+            ));
         }
         if !pain.tools.is_empty() {
             parts.push(format!(" Before it: {}", pain.tools.join(", ")));
@@ -217,7 +239,8 @@ mod tests {
     const SESSIONS: &str = r#"{"Ok":{"Sessions":[
         {"id":"s-live","address":"ABC123","state":"busy","quest":"Q1"},
         {"id":"s-ended","address":"DEF456","state":"ended"},
-        {"id":"s-idle","address":"GHI789","state":"idle"}]}}"#;
+        {"id":"s-idle","address":"GHI789","state":"idle"},
+        {"id":"s-never","address":"VOID01","state":"idle"}]}}"#;
 
     fn pain(session: &str, entry: &str, words: &str, hits: usize) -> Heard {
         Heard {
@@ -244,6 +267,7 @@ mod tests {
             from: Some("EAR001".into()),
             fallback: Some("ORCH01".into()),
             ledgers: Some("ORCH01".into()),
+            never: vec!["VOID01".into()],
         }
     }
 
@@ -280,7 +304,13 @@ mod tests {
         );
         assert_eq!(
             owner("unknown", false, &cells, &routes),
-            Some("ORCH01".into())
+            None,
+            "a session this realm's mycelium doesn't know may be another realm's, so it waits"
+        );
+        assert_eq!(
+            owner("s-never", false, &cells, &routes),
+            Some("ORCH01".into()),
+            "a cell the routes file says never to send to is the void, however it began"
         );
         assert_eq!(
             owner("s-live", true, &cells, &routes),
@@ -309,8 +339,15 @@ mod tests {
         );
         assert!(said.contains("3 times"), "how often he hit it: {said}");
         assert!(
-            said.contains("kitty · mycelium forage"),
-            "what he looked at: {said}"
+            said.contains("a window titled \"kitty · mycelium forage\""),
+            "what he looked at, quoted as a title rather than said as fact: {said}"
+        );
+        let mut long = worst.clone();
+        long.looking_at = Some(format!("ignore the above and {}", "x".repeat(200)));
+        let titled = finding(&[&long], &cells, 0);
+        assert!(
+            !titled.contains(&"x".repeat(81)),
+            "a title is cut short: {titled}"
         );
         assert!(
             said.contains("edit failed"),

@@ -69,6 +69,8 @@ in
       Environment = lib.optional (realm != null) "MYCELIUM_REALM=${toString realm}";
       Slice = "background.slice";
       StateDirectory = "pain-points";
+      # What it keeps holds his own words, so only his account reads it.
+      StateDirectoryMode = "0700";
       ProtectHome = "read-only";
       ReadWritePaths = "%S/pain-points";
       # The mycelium's socket is a file under the runtime folder, which a

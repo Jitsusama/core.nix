@@ -31,7 +31,7 @@ use std::fs;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
 /// How far back a first run hears, and how long a pain stays open.
 pub const DAY_MS: i64 = 86_400_000;
@@ -41,6 +41,10 @@ const HOUR_MS: i64 = 3_600_000;
 /// ledgers' keeper alone: its cell has moved on, and a first run over a
 /// day of logs would otherwise send every cell a day of old pains.
 pub const FRESH_MS: i64 = 2 * HOUR_MS;
+
+/// The longest a send may take: the node answers in well under a second,
+/// and a run every five minutes must end long before the next begins.
+const SEND_AT_MOST: Duration = Duration::from_secs(20);
 
 /// Where a run listens and what it knows of the time.
 pub struct Ears {
@@ -105,16 +109,16 @@ pub fn listen(home: &Path, given: &mut BTreeMap<&'static str, String>) -> Result
     let from = Routes::read(&ears.state).from;
     let hour = hear(&ears, &cells, &mut |to, text| {
         let Some(from) = &from else { return false };
-        Command::new(&mycelium)
-            .args([
-                "send", "--from", from, "--intent", "finding", "--text", text,
-            ])
-            .arg(format!("peer.{}", to.to_lowercase()))
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|status| status.success())
+        // A node that never answers would hold every later run behind this
+        // one, so a send that hangs is stopped and tried again next run.
+        ran_within(
+            Command::new(&mycelium)
+                .args([
+                    "send", "--from", from, "--intent", "finding", "--text", text,
+                ])
+                .arg(format!("peer.{}", to.to_lowercase())),
+            SEND_AT_MOST,
+        )
     })?;
     Ok(format!(
         "pain-points: {} pains heard and {} routed in the hour, {} open in the day{}",
@@ -126,6 +130,42 @@ pub fn listen(home: &Path, given: &mut BTreeMap<&'static str, String>) -> Result
             hour.worst_hits
         ))
     ))
+}
+
+/// Whether a command ran and ended well within `limit`; one still running
+/// then is killed and counts as failed.
+fn ran_within(command: &mut Command, limit: Duration) -> bool {
+    let Ok(mut child) = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) if started.elapsed() < limit => std::thread::sleep(Duration::from_millis(50)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+        }
+    }
+}
+
+/// Writes what it heard whole, so what was sent stays marked sent however
+/// the run ends.
+fn keep(heard_at: &Path, kept: &[Heard]) -> Result<(), String> {
+    let lines: String = kept
+        .iter()
+        .filter_map(|h| serde_json::to_string(h).ok())
+        .map(|line| line + "\n")
+        .collect();
+    crate::write_whole(heard_at, &lines)
 }
 
 /// Hears what's new, sends what no one has, and says the hour. `send`
@@ -192,19 +232,17 @@ pub fn hear(
     }
     following.retain(|name, _| present.contains(name));
 
-    let owned = route_waiting(ears, &routes, &cells, &mut kept, send);
-    note_for_keeper(ears, &routes, &cells, &mut kept, &owned, send);
-
-    let lines: String = kept
-        .iter()
-        .filter_map(|h| serde_json::to_string(h).ok())
-        .map(|line| line + "\n")
-        .collect();
-    crate::write_whole(&heard_at, &lines)?;
+    // What it heard is kept before anything is sent, and again after each
+    // send, so a run stopped partway sends nothing twice but the one it
+    // was sending.
+    keep(&heard_at, &kept)?;
     crate::write_whole(
         &following_at,
         &serde_json::to_string(&following).map_err(|e| e.to_string())?,
     )?;
+    let owned = route_waiting(ears, &routes, &cells, &mut kept, send, &heard_at);
+    note_for_keeper(ears, &routes, &cells, &mut kept, &owned, send, &heard_at);
+    keep(&heard_at, &kept)?;
     let hour = hour_of(&kept, ears.at);
     crate::write_whole(
         &ears.state.join("hour.json"),
@@ -222,6 +260,7 @@ fn route_waiting(
     cells: &BTreeMap<String, Cell>,
     kept: &mut [Heard],
     send: &mut dyn FnMut(&str, &str) -> bool,
+    heard_at: &Path,
 ) -> Vec<String> {
     // With no one named to send as, nothing is sent: a listener nobody
     // set up hears and counts alone.
@@ -248,6 +287,7 @@ fn route_waiting(
                 kept[n].routed_at = Some(ears.at);
                 owned.push(kept[n].key.clone());
             }
+            let _ = keep(heard_at, kept);
         }
     }
     owned
@@ -263,6 +303,7 @@ fn note_for_keeper(
     kept: &mut [Heard],
     owned: &[String],
     send: &mut dyn FnMut(&str, &str) -> bool,
+    heard_at: &Path,
 ) {
     let (Some(keeper), Some(_)) = (&routes.ledgers, &routes.from) else {
         return;
@@ -293,6 +334,7 @@ fn note_for_keeper(
             kept[n].to = Some(keeper.clone());
             kept[n].routed_at = Some(ears.at);
         }
+        let _ = keep(heard_at, kept);
     }
 }
 
