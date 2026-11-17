@@ -1292,8 +1292,10 @@ ShellRoot {
     // answers, a yes. Joel found a session's yes he could neither answer nor
     // put off on 16 Nov ("i can't get this highlighted notice to go away"),
     // so a row with answers offers each one, and each session's Put It Off
-    // puts off the ask it shows. Agents' sessions to reopen and Sound's offer
-    // are put off their own ways, and only from their own sources.
+    // puts off the ask it showed, though the session asked anew since. Rows
+    // from other sources stay outside it: Agents' sessions to reopen go by
+    // Reopen or Forget and put off only the last boot's, and Sound's offer
+    // by No Thanks.
     function everyAskHasAWayOut(forYou, toDo) {
         const since = "2026-11-17T07:00:00Z";
         const asks = (address, kind, said) => ({ address: address, title: `Session ${address}`,
@@ -1315,14 +1317,12 @@ ShellRoot {
             WANTI: "WANTI question@1" };
         const putOff = act => /^verb:on:waiting:notNow:/.test(act.key)
             && typeof act.run === "function";
-        const answer = act => act.key.startsWith("verb:on:waiting:answer:");
+        const answer = act => act.key.startsWith("verb:on:waiting:answer:")
+            && typeof act.run === "function";
         const does = act => !putOff(act)
             && (typeof act.run === "function" || typeof act.given === "function");
         const served = { "on:waiting:want:WANTH": 2, "on:waiting:want:WANTI": 1 };
-        // A source's row with no kind is For You's to do too; a kind's own
-        // heading is no ask.
-        const doing = forYou().filter(row => (row.forYou?.kind ?? "do") === "do"
-            && !row.key.startsWith("on:waitingOnYou:kind:"));
+        const doing = forYou().filter(row => row.forYou?.kind === "do");
         // What each row lacks, so a red run says which half went missing.
         const lacks = doing.map(row => {
             const inside = typeof row.verbs === "function" ? row.verbs() : [];
@@ -1335,10 +1335,13 @@ ShellRoot {
                 "on:waiting:Sign In", "on:waiting:want:WANTG", "on:waiting:want:WANTH",
                 "on:waiting:want:WANTI"]) && lacks.length === 0,
             JSON.stringify([doing.map(row => row.key), lacks]));
+        // Each session asks anew before Joel presses; he put off what he read.
+        Sessions.knowns = { WANTG: "WANTG question@2", WANTH: "WANTH approval@2",
+            WANTI: "WANTI question@2" };
         for (const row of doing.filter(one => one.key.startsWith("on:waiting:want:"))) {
             row.verbs().find(putOff).run();
         }
-        expect("each session's Put It Off in For You puts off the ask its row shows",
+        expect("each session's Put It Off in For You puts off the ask its row showed",
             JSON.stringify(Sessions.putOffAsked.slice().sort()) === JSON.stringify([
                 "WANTG WANTG question@1", "WANTH WANTH approval@1", "WANTI WANTI question@1"]),
             JSON.stringify(Sessions.putOffAsked));
