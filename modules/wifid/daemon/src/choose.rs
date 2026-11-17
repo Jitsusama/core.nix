@@ -6,10 +6,11 @@
 //! card is on is kept while it carries well, and another is tried only
 //! when it carries badly two minutes running, or fails, or when one
 //! measured lately carried far better.
-//! A wider band, 5 or 6 GHz, is kept to while it carries well, and tried
-//! from 2.4 GHz when one heard well enough is known to answer no slower,
-//! or while the card moves enough to use its room: 2.4 GHz can be quicker
-//! to the gateway but carries far less.
+//! A wider band, 5 or 6 GHz, is kept to while it carries well and the
+//! card moves enough to use its room, and tried from 2.4 GHz then, or when
+//! one heard well enough is known to answer no slower: 2.4 GHz can be
+//! quicker to the gateway but carries far less. An idle card leaves it for
+//! 2.4 GHz known far quicker, as for any other access point.
 //! wpa_supplicant still roams on its own when the signal fades; this
 //! moves the card only between access points it can already hear, and
 //! has it look for what it doesn't, as often as it moves: another of its
@@ -232,12 +233,16 @@ impl Chooser {
         }
         self.spurned
             .retain(|_, spurned| now.duration_since(*spurned) < SPURNED);
-        // A card on a wider band carrying well keeps off a narrower one,
-        // however quick, since quickness isn't room to bring things down.
+        // A card on a wider band carrying well and using its room keeps off
+        // a narrower one, however quick, since quickness isn't room to bring
+        // things down. An idle one may take a narrower one known far quicker:
+        // overnight on 16 to 17 Nov 2026 at a desk, the access point's 2.4
+        // GHz radio answered quicker than its 5 GHz one in four of five hours.
+        let roomless = !used(measured);
         let untried = others.iter().filter(|other| {
             other.point != point
                 && !self.spurned.contains_key(&other.point)
-                && (bad || wide(other.frequency) || !wide(frequency))
+                && (bad || roomless || wide(other.frequency) || !wide(frequency))
         });
         let narrow = frequency != 0 && !wide(frequency);
         let banded = if narrow && !bad {
