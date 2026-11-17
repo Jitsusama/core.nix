@@ -92,7 +92,7 @@
         "answered": "that ask is already answered",
         "locked": "not while the screen is locked",
         "changed": "it changed since it was shown; read it again",
-        "unread": "read it before you release it",
+        "unread": "press Escape, then j or k on it, and read it before you release it",
         "lasts": "a week, from any tree of {repository} on main",
         "granted": "standing yes",
         "grantUntil": "until {time}",

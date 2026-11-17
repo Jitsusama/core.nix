@@ -1205,13 +1205,15 @@ Scope {
     property string toldInto: ""
 
     // The keys the line has taken, the last by name and whether it only
-    // moved through the rows (Prompt.qml's), and how many asks to open came
-    // from outside it, by its IPC, its socket or the shell, so Asks times a
-    // secret ask's line only from one of Joel's own keys: any process of
-    // the account's can open it, as niri's chord does.
+    // moved through the rows (Prompt.qml's), whether keys land on the rows
+    // rather than the find, and how many asks to open came from outside it,
+    // by its IPC, its socket or the shell, so Asks times a secret ask's line
+    // only from one of Joel's own keys: any process of the account's can
+    // open it, as niri's chord does.
     readonly property int keysTaken: prompt.keysTaken
     readonly property string keyTaken: prompt.keyTaken
     readonly property bool keyMoved: prompt.keyMoved
+    readonly property bool keysOverRows: prompt.overRows
     property int toldFromOutside: 0
 
     // The rows a terminal's `launcher show` last walked through (`walked`)

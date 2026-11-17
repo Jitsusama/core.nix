@@ -159,7 +159,9 @@ def refused_unread(desktop: Desktop, ask: str, since: str) -> None:
     says why it didn't become, and no answer is written nor anything run.
     """
     desktop.reported(
-        f"not become ask:{ask}: ", lambda why: why == "read it before you release it", since
+        f"not become ask:{ask}: ",
+        lambda why: why == "press Escape, then j or k on it, and read it before you release it",
+        since,
     )
     desktop.as_account(f"test -e {ASKS}/{ask}.ask.json && ! test -e {ASKS}/{ask}.answer.json")
     desktop.as_account(f"! test -e {TREE}/released")
@@ -191,8 +193,11 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     why = "To fire the kiln."
     put_up(desktop, ask, why)
     asks_open_on(desktop, ask, why)
-    # A move of his times the line, though there's nowhere to move to.
-    desktop.machine.send_key("down")
+    # A move of his over the rows times the line, though there's nowhere to move to; on the
+    # find, where the launcher opens, an arrow could be a terminal's.
+    desktop.machine.send_key("esc")
+    desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
+    desktop.machine.send_chars("j")
     desktop.launcher_until(lambda shown: selects(shown, why))
     say_yes(desktop)
     answer = answered(desktop, ask)
