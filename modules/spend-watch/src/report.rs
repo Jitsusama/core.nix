@@ -343,18 +343,22 @@ pub fn cut(picture: &Picture, period: Period, cut: Cut, top: usize) -> Report {
     // gathered first by the fields its name is made of, so a name is made
     // once a group rather than once a piece: made for each of a month's
     // pieces under every cut, names were most of what a pass spent on its
-    // reports on 16 November.
-    let mut by_fields: HashMap<Fields, (f64, bool, i64, &Piece)> = HashMap::new();
+    // reports on 16 November. Groups are kept in the order of their first
+    // piece, so a name's dollars are summed in the same order every pass.
+    let mut at: HashMap<Fields, usize> = HashMap::new();
+    let mut groups: Vec<(f64, bool, i64, &Piece)> = Vec::new();
     for piece in pieces {
-        let entry = by_fields
-            .entry(fields(cut, piece))
-            .or_insert((0.0, false, piece.hour, piece));
+        let group = *at.entry(fields(cut, piece)).or_insert_with(|| {
+            groups.push((0.0, false, piece.hour, piece));
+            groups.len() - 1
+        });
+        let entry = &mut groups[group];
         entry.0 += piece.dollars;
         entry.1 |= piece.source.estimated() && piece.dollars > 0.005;
         entry.2 = entry.2.min(piece.hour);
     }
     let mut grouped: HashMap<String, (f64, bool, i64)> = HashMap::new();
-    for (spent, estimated, first, piece) in by_fields.into_values() {
+    for (spent, estimated, first, piece) in groups {
         let entry = grouped
             .entry(key(picture, cut, piece))
             .or_insert((0.0, false, first));
@@ -1414,6 +1418,15 @@ mod tests {
             rows(Cut::Tool),
             [("pi".to_owned(), 3.0)],
             "one tool's pieces were split"
+        );
+        // A day's hours are groups of their own that meet under its name.
+        assert_eq!(
+            rows(Cut::Day)
+                .iter()
+                .map(|(_, spent)| *spent)
+                .collect::<Vec<_>>(),
+            [3.0],
+            "a day's hours weren't one row"
         );
     }
 
