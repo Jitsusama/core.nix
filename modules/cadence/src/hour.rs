@@ -70,20 +70,28 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let (_, state_home, folder) = folders()?;
     let now = now_ms() / 1000;
     let kept_at = folder.join("hour.json");
-    let kept: Kept = fs::read_to_string(&kept_at)
+    let mut kept: Kept = fs::read_to_string(&kept_at)
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_default();
     // Read once, so the misses measured and the words told for them come
     // from the same ledger; one not read whole leaves the misses unjudged.
-    let (misses, whole) = measures::ledger(&state_home.join("mission/misses.jsonl"), &kept.open);
+    // A miss gone from it isn't carried, so the hour after judges the
+    // ledger as it then stands rather than finding it gone again for good.
+    let (misses, gone) = measures::ledger(&state_home.join("mission/misses.jsonl"), &kept.open);
+    let whole = gone.as_ref().is_some_and(Vec::is_empty);
+    kept.open
+        .retain(|open| !gone.as_ref().is_some_and(|gone| gone.contains(open)));
     let mut measures = gather(&folder, &state_home, &misses, now, checkouts)?;
     for m in measures
         .iter_mut()
         .filter(|m| !whole && m.class == Class::Miss)
     {
         m.target = None;
-        m.says.push_str(measures::UNREAD);
+        // A torn line has already said so.
+        if !m.says.ends_with(measures::UNREAD) {
+            m.says.push_str(measures::UNREAD);
+        }
     }
     // A realm whose node doesn't answer says nothing of its machines.
     if !realms.is_empty() {

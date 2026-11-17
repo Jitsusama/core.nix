@@ -235,34 +235,42 @@ fn named_as(miss: &Value) -> &str {
         .unwrap_or_default()
 }
 
-/// Reads the misses ledger at `path`, and whether it was read whole: a
-/// miss closes on its check and never leaves the ledger, so one that can't
-/// be read, or no longer holds a miss open last hour, `was_open`, has been
-/// cut or rewritten, and says nothing of which misses are gone. One not yet
-/// written has none. Why it wasn't whole is said on stderr.
-pub fn ledger(path: &Path, was_open: &[String]) -> (String, bool) {
+/// Reads the misses ledger at `path`, with which of the misses open last
+/// hour, `was_open` as the card listed them, it no longer holds: a miss
+/// closes on its check and never leaves the ledger, so one gone was cut or
+/// renamed, and the hour can't say whether it was fixed. None when it
+/// can't be read at all; one not yet written holds none. Why is said on
+/// stderr.
+pub fn ledger(path: &Path, was_open: &[String]) -> (String, Option<Vec<String>>) {
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(),
         Err(e) => {
             eprintln!("cadence: couldn't read {}: {e}", path.display());
-            return (String::new(), false);
+            return (String::new(), None);
         }
     };
-    let held: Vec<String> = lines(&text)
-        .map(|miss| format!("{} · ", named_as(&miss)))
+    let held: BTreeSet<String> = lines(&text)
+        .map(|miss| named_as(&miss).to_owned())
         .collect();
-    let gone = was_open
+    let gone: Vec<String> = was_open
         .iter()
-        .filter(|open| !held.iter().any(|miss| open.starts_with(miss.as_str())))
-        .count();
-    if gone > 0 {
+        .filter(|open| {
+            let what = open
+                .rsplit_once(" · ")
+                .map_or(open.as_str(), |(what, _)| what);
+            !held.contains(what)
+        })
+        .cloned()
+        .collect();
+    if !gone.is_empty() {
         eprintln!(
-            "cadence: {} no longer holds {gone} of last hour's open misses",
-            path.display()
+            "cadence: {} no longer holds {} of last hour's open misses",
+            path.display(),
+            gone.len()
         );
     }
-    (text, gone == 0)
+    (text, Some(gone))
 }
 
 /// The misses Joel found himself, from the orchestrator's `misses.jsonl`:
@@ -538,8 +546,15 @@ mod tests {
         let root = tempfile::tempdir().expect("a scratch folder");
         let open = ["the cat waits · XY9H5C".to_owned()];
         let file = root.path().join("misses.jsonl");
+        let whole = |path: &Path, was_open: &[String]| {
+            ledger(path, was_open).1.is_some_and(|gone| gone.is_empty())
+        };
+        assert_eq!(
+            ledger(root.path(), &open).1,
+            None,
+            "a folder read as a ledger"
+        );
         let cases = [
-            (root.path().to_path_buf(), &[][..], false, "a folder"),
             (
                 file.clone(),
                 &open[..],
@@ -548,33 +563,40 @@ mod tests {
             ),
             (file.clone(), &[][..], true, "a ledger not yet written"),
         ];
-        for (path, was_open, whole, what) in cases {
+        for (path, was_open, read_whole, what) in cases {
             assert_eq!(
-                ledger(&path, was_open).1,
-                whole,
+                whole(&path, was_open),
+                read_whole,
                 "{what} read whole: {}",
-                !whole
+                !read_whole
             );
         }
         std::fs::write(&file, "\n").expect("the ledger written");
         assert!(
-            !ledger(&file, &open).1,
+            !whole(&file, &open),
             "a ledger gone empty under open misses was read whole"
         );
         assert!(
-            ledger(&file, &[]).1,
+            whole(&file, &[]),
             "an empty ledger with nothing open wasn't read whole"
         );
         let other = r#"{"words":"w","what":"the map drew cells alone","owner":"WCJQSG"}"#;
         std::fs::write(&file, other).expect("the ledger written");
-        assert!(
-            !ledger(&file, &open).1,
-            "a ledger cut of a miss open last hour was read whole"
+        assert_eq!(
+            ledger(&file, &open).1,
+            Some(open.to_vec()),
+            "a ledger cut of a miss open last hour didn't name it gone"
         );
+        // Only the miss's whole words hold it, not words it starts with.
+        let longer = ["the cat waits · XY9H5C · KNURBN".to_owned()];
         std::fs::write(&file, miss("core #9")).expect("the ledger written");
+        assert!(
+            !whole(&file, &longer),
+            "a miss whose words only begin another's was read as held"
+        );
         assert_eq!(
             ledger(&file, &open),
-            (miss("core #9"), true),
+            (miss("core #9"), Some(Vec::new())),
             "a whole ledger wasn't read as it is"
         );
     }

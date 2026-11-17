@@ -78,6 +78,44 @@ fn a_look_by_hand_prints_the_card_and_keeps_and_tells_nothing() {
     );
 }
 
+/// A miss renamed in the ledger, or cut from it, leaves the misses unjudged
+/// the hour it goes, since the hour can't say whether it was fixed; the
+/// hour after reads the ledger as it now stands, so one rename doesn't
+/// leave them unjudged for good.
+#[test]
+fn a_miss_gone_from_the_ledger_leaves_one_hour_unjudged() {
+    let account = account();
+    let kept = account.path().join("state/cadence");
+    fs::create_dir_all(&kept).expect("cadence's folder");
+    fs::write(
+        kept.join("hour.json"),
+        r#"{"open": ["the notice stayed up, as first written · 88LQC0"]}"#,
+    )
+    .expect("last hour");
+
+    let mut cards = Vec::new();
+    for _ in 0..2 {
+        let ran = hour(account.path(), &["--to", "WCJQSG"]);
+        let said = String::from_utf8_lossy(&ran.stderr);
+        assert!(ran.status.success(), "cadence failed: {said}");
+        cards.push(String::from_utf8_lossy(&ran.stdout).into_owned());
+    }
+    assert!(
+        cards[0].contains("wasn't read whole"),
+        "the hour a miss left the ledger judged the misses: {}",
+        cards[0]
+    );
+    assert!(
+        !cards[1].contains("wasn't read whole"),
+        "the hour after still couldn't judge the misses: {}",
+        cards[1]
+    );
+    assert!(
+        !cards.concat().contains("as first written"),
+        "the gone miss was told fixed or kept open: {cards:?}"
+    );
+}
+
 #[test]
 fn the_run_sending_the_card_keeps_the_hour_and_owes_its_drag() {
     let account = account();

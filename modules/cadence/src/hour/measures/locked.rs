@@ -40,17 +40,18 @@ fn named(subject: &str) -> String {
         )
 }
 
-/// The most minutes since mycelium's checkout last fetched for its reflog
-/// to date what waits: code-health fetches it each hour on the hour and the
-/// card reads it ten minutes on, so past this a fetch was missed.
-const FRESH_MIN: i64 = 90;
+/// The most minutes since mycelium's checkout last took main for it to
+/// judge what waits: the hour fetches main itself before it reads, and when
+/// that fails, a fetch of main within the bar means no merge it hasn't seen
+/// can have waited past it, `AT_MOST_MIN`.
+const FRESH_MIN: i64 = 60;
 
 /// `measure` as judged from a checkout that last fetched main at `fetched`,
 /// at `now`: one fetched too long ago, or never, can't date what waits,
 /// since its reflog dates the fetch, and it lists none it hasn't fetched.
 fn dated(mut measure: Measure, fetched: Option<i64>, now: i64) -> Measure {
     let why = match fetched {
-        None => "its checkout never fetched main".to_owned(),
+        None => "no fetch of its checkout's main could be dated".to_owned(),
         Some(at) if (now - at) / 60 > FRESH_MIN => {
             format!("its checkout last fetched {} min ago", (now - at) / 60)
         }
@@ -63,9 +64,7 @@ fn dated(mut measure: Measure, fetched: Option<i64>, now: i64) -> Measure {
 
 /// When each of `merges`, newest first, first reached main, from `seen`,
 /// main's reflog as `%gd %H` lines read with `--date=unix`: the oldest
-/// entry at or after it on the first-parent line. A merge train commits
-/// with the date its batch was cut, which can be hours before main took
-/// it, so the commit's own date would age it from before it existed there.
+/// entry at or after it on the first-parent line.
 fn arrived(merges: &[&str], seen: &str) -> Vec<Option<i64>> {
     let mut came: Vec<Option<i64>> = vec![None; merges.len()];
     for line in seen.lines() {
@@ -89,11 +88,19 @@ fn arrived(merges: &[&str], seen: &str) -> Vec<Option<i64>> {
     came
 }
 
+/// Whether `subject` is a merge train's, which commits with the date its
+/// batch was cut, hours before main took it at worst.
+fn on_the_train(subject: &str) -> bool {
+    subject.ends_with("on the merge train")
+}
+
 /// The measure from `waiting`, mycelium main's first-parent merges that
 /// core's lock doesn't carry, as `%H %ct %s` lines, and `seen`, main's
-/// reflog, at `now`: how long the oldest has waited since it reached
-/// main, with each one behind it, oldest first. A merge no reflog entry
-/// holds is aged from its commit's date.
+/// reflog, at `now`: the longest any has waited since it reached main,
+/// with each one behind it, oldest first. GitHub dates an ordinary merge
+/// as it makes it, so its commit says when; a train's merge waits from the
+/// reflog's first entry holding it, or its commit where none does, since
+/// its commit's date would age it from before it existed there.
 #[must_use]
 pub fn unlocked(waiting: &str, seen: &str, now: i64, owner: &str) -> Measure {
     let merges: Vec<(&str, i64, &str)> = waiting
@@ -105,16 +112,14 @@ pub fn unlocked(waiting: &str, seen: &str, now: i64, owner: &str) -> Measure {
         })
         .collect();
     let hashes: Vec<&str> = merges.iter().map(|(hash, _, _)| *hash).collect();
-    // git log gives the newest first; the card names the longest wait first.
+    // git log gives the newest first; the card names the oldest first.
     let waits: Vec<(i64, &str)> = merges
         .iter()
         .zip(arrived(&hashes, seen))
         // Main can't have taken a merge before it was made.
         .map(|(&(_, at, subject), came)| {
-            (
-                (now - came.map_or(at, |came| came.max(at))).max(0) / 60,
-                subject,
-            )
+            let came = came.filter(|_| on_the_train(subject)).unwrap_or(at);
+            ((now - came.max(at)).max(0) / 60, subject)
         })
         .rev()
         .collect();
@@ -151,16 +156,29 @@ pub fn read(core: &Path, checkouts: &[String], now: i64, owner: &str) -> Option<
         eprintln!("cadence: core's flake.lock names no mycelium revision");
         return None;
     };
-    let main = if command(
+    let remote = command(
         "git",
         &["-C", path, "rev-parse", "-q", "--verify", "origin/main"],
     )
-    .is_ok()
-    {
-        "origin/main"
-    } else {
-        "main"
-    };
+    .is_ok();
+    let main = if remote { "origin/main" } else { "main" };
+    // Nothing else fetches the checkout on a clock, so the hour takes main
+    // itself, leaving FETCH_HEAD to whoever works there.
+    let took = remote
+        && command(
+            "git",
+            &[
+                "-C",
+                path,
+                "fetch",
+                "--quiet",
+                "--no-write-fetch-head",
+                "origin",
+                "+refs/heads/main:refs/remotes/origin/main",
+            ],
+        )
+        .map_err(|error| eprintln!("cadence: couldn't fetch mycelium's main at {path}: {error}"))
+        .is_ok();
     match command(
         "git",
         &[
@@ -197,8 +215,8 @@ pub fn read(core: &Path, checkouts: &[String], now: i64, owner: &str) -> Option<
             };
             let measure = unlocked(&waiting, &seen, now, owner);
             // A main of its own, with no remote, is as fresh as it is.
-            Some(if main == "origin/main" {
-                dated(measure, fetched(path), now)
+            Some(if remote {
+                dated(measure, if took { Some(now) } else { fetched(path) }, now)
             } else {
                 measure
             })
@@ -210,17 +228,29 @@ pub fn read(core: &Path, checkouts: &[String], now: i64, owner: &str) -> Option<
     }
 }
 
-/// When the checkout at `path` last fetched, by its `FETCH_HEAD`'s time.
+/// Whether `fetch_head`, a `FETCH_HEAD`'s text, says its fetch took main:
+/// any fetch writes one, of whichever branches it took.
+fn took_main(fetch_head: &str) -> bool {
+    fetch_head.lines().any(|line| {
+        line.split('\t')
+            .nth(2)
+            .is_some_and(|took| took.starts_with("branch 'main' of "))
+    })
+}
+
+/// When the checkout at `path` last fetched main, by its `FETCH_HEAD`'s
+/// time where that fetch took main.
 fn fetched(path: &str) -> Option<i64> {
     let head = command(
         "git",
         &["-C", path, "rev-parse", "--git-path", "FETCH_HEAD"],
     )
     .ok()?;
-    let modified = std::fs::metadata(Path::new(path).join(head.trim()))
-        .ok()?
-        .modified()
-        .ok()?;
+    let head = Path::new(path).join(head.trim());
+    if !took_main(&std::fs::read_to_string(&head).ok()?) {
+        return None;
+    }
+    let modified = std::fs::metadata(head).ok()?.modified().ok()?;
     let since = modified.duration_since(std::time::UNIX_EPOCH).ok()?;
     i64::try_from(since.as_secs()).ok()
 }
@@ -267,7 +297,7 @@ mod tests {
     #[test]
     fn a_wait_starts_no_earlier_than_its_commit_and_the_longest_counts() {
         let waiting = format!(
-            "bbb {} Take the new lint\naaa {} Take the old lint\n",
+            "bbb {} Merge 2222 on the merge train\naaa {} Merge 1111 on the merge train\n",
             NOW - 50 * 60,
             NOW - 60 * 60,
         );
@@ -277,11 +307,49 @@ mod tests {
         );
         let m = unlocked(&waiting, &seen, NOW, "0FX11G");
         assert_eq!(m.now, 50.0, "the longest wait wasn't the figure: {m:?}");
-        let m = unlocked("aaa 1794820000 Take it\n", "main@{0} aaa\n", NOW, "0FX11G");
+        let m = unlocked(
+            "aaa 1794820000 Merge 1111 on the merge train\n",
+            "main@{0} aaa\n",
+            NOW,
+            "0FX11G",
+        );
         assert_eq!(
             m.now, 58.0,
             "an entry before its commit dated the wait: {m:?}"
         );
+    }
+
+    /// GitHub dates an ordinary merge as it makes it, so a fetch that first
+    /// held it an hour on would date it an hour short.
+    #[test]
+    fn an_ordinary_merge_waits_from_its_commit_however_late_it_was_fetched() {
+        let waiting = format!(
+            "aaa {} Merge pull request #208 from Jitsusama/jitsusama/shared-trees\n",
+            NOW - 70 * 60
+        );
+        let seen = format!("origin/main@{{{}}} aaa\n", NOW - 15 * 60);
+        let m = unlocked(&waiting, &seen, NOW, "0FX11G");
+        assert_eq!(
+            m.now, 70.0,
+            "an ordinary merge was dated by the fetch that held it: {m:?}"
+        );
+    }
+
+    /// Any fetch writes `FETCH_HEAD`, so only one that took main says main
+    /// is fresh.
+    #[test]
+    fn only_a_fetch_that_took_main_dates_the_checkout() {
+        let took = "9111802\t\tbranch 'main' of https://github.com/Jitsusama/mycelium\n";
+        let other =
+            "74b5cff\tnot-for-merge\tbranch 'trees' of https://github.com/Jitsusama/mycelium\n";
+        assert!(took_main(took), "a fetch of main wasn't read as one");
+        assert!(
+            took_main(&format!(
+                "{other}9111802\tnot-for-merge\tbranch 'main' of x\n"
+            )),
+            "a fetch of every branch wasn't read as taking main"
+        );
+        assert!(!took_main(other), "a fetch of another branch dated main");
     }
 
     /// A checkout that missed its fetch lists none of what it hasn't
@@ -300,7 +368,7 @@ mod tests {
         );
         let never = dated(fresh(), None, NOW);
         assert!(
-            never.target.is_none() && never.says.contains("never fetched"),
+            never.target.is_none() && never.says.contains("no fetch of its checkout's main"),
             "a checkout never fetched was judged: {never:?}"
         );
     }
