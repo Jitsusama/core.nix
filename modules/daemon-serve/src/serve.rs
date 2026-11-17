@@ -51,7 +51,7 @@ mod change;
 mod demand;
 
 use demand::joined;
-pub use demand::{Fresh, HealthToo, Read, Wanted};
+pub use demand::{Begun, Fresh, HealthToo, Read, Wanted};
 
 /// How many lines a connection may have waiting to be written before
 /// it's taken as no longer reading and hung up on.
@@ -210,6 +210,9 @@ pub struct Shared {
     peered: OnceLock<(&'static [&'static str], Peered)>,
     /// What reads what an ask wants first, once the daemon says.
     fresh: OnceLock<Fresh>,
+    /// What reads what a watch wants once it's begun, once the daemon
+    /// says.
+    begun: OnceLock<Begun>,
     /// What else health says, once the daemon says.
     health_too: OnceLock<HealthToo>,
     /// The kinds read as a get names them, and what reads them.
@@ -249,6 +252,7 @@ impl Shared {
             slow: OnceLock::new(),
             peered: OnceLock::new(),
             fresh: OnceLock::new(),
+            begun: OnceLock::new(),
             health_too: OnceLock::new(),
             read: OnceLock::new(),
         })

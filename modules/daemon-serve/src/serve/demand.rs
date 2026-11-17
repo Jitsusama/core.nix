@@ -28,6 +28,12 @@ pub struct Wanted<'a> {
 /// call `change`; two connections asking at once may both read.
 pub type Fresh = Box<dyn Fn(&Wanted<'_>) + Send + Sync>;
 
+/// What a daemon reads once a watch has begun: handed what the watch
+/// names on its connection's thread, once the watch is held and its
+/// answer queued, so what it reads is told to the watch as a change, and
+/// what asks whether the watch is there finds it.
+pub type Begun = Box<dyn Fn(&Wanted<'_>) + Send + Sync>;
+
 /// What else a daemon counts, as an object whose fields join health's
 /// answer beside daemon-serve's own, which keep their values: the
 /// daemons-agree check reads those alike for every daemon. It's asked
@@ -44,6 +50,13 @@ impl Shared {
     /// included; only the first a daemon gives is kept.
     pub fn fresh(&self, fresh: Fresh) {
         let _ = self.fresh.set(fresh);
+    }
+
+    /// Hands `begun` what each watch names once it has begun, from then
+    /// on, a watch asked again under its id included; only the first a
+    /// daemon gives is kept.
+    pub fn begun(&self, begun: Begun) {
+        let _ = self.begun.set(begun);
     }
 
     /// Says the fields `too` gives on health too, from then on, where
@@ -81,7 +94,26 @@ impl Shared {
         let Some(fresh) = self.fresh.get() else {
             return;
         };
-        let wanted = match asked {
+        if let Some(wanted) = wanted_of(asked) {
+            fresh(&wanted);
+        }
+    }
+
+    /// Has the daemon read what the watch `asked` wants now it's begun.
+    pub(super) fn watch_begun(&self, asked: &Ask) {
+        let _ = asked;
+    }
+
+    /// What else health says for `asked`, when it's health.
+    pub(super) fn said_too(&self, asked: &Ask) -> Option<Value> {
+        let too = self.health_too.get()?;
+        matches!(asked, Ask::Health { .. }).then(too)
+    }
+}
+
+/// What a get, a list or a watch names, or nothing for another ask.
+fn wanted_of(asked: &Ask) -> Option<Wanted<'_>> {
+    let wanted = match asked {
             Ask::Get { keys, .. } => Wanted {
                 kinds: &[],
                 keys: Some(keys),
@@ -105,16 +137,9 @@ impl Shared {
                 places: places.as_deref(),
                 watching: true,
             },
-            _ => return,
+            _ => return None,
         };
-        fresh(&wanted);
-    }
-
-    /// What else health says for `asked`, when it's health.
-    pub(super) fn said_too(&self, asked: &Ask) -> Option<Value> {
-        let too = self.health_too.get()?;
-        matches!(asked, Ask::Health { .. }).then(too)
-    }
+    Some(wanted)
 }
 
 /// `too`'s fields added to `answer`, where it doesn't already say them.

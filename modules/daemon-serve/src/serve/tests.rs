@@ -631,6 +631,28 @@ fn a_daemon_reading_on_demand_reads_before_a_get_a_list_or_a_watch_is_answered()
 }
 
 #[test]
+fn a_daemon_hears_a_watch_begun_once_it_is_held() {
+    let (shared, mut client, _folder) = served("begun", Box::new(|_| None));
+    let (telling, told) = channel();
+    let this = Arc::downgrade(&shared);
+    shared.begun(Box::new(move |wanted| {
+        let held = this
+            .upgrade()
+            .is_some_and(|shared| shared.watches("row", "agents"));
+        let _ = telling.send((asked(wanted), held));
+    }));
+    client.ask(&json!({"id": 1, "ask": "get", "keys": ["row:agents:a"]}));
+    client.ask(&json!({"id": 2, "ask": "list", "kind": "row"}));
+    let watched = client.ask(&json!({"id": 3, "ask": "watch", "kind": "row", "place": "agents"}));
+    assert_eq!(watched["id"], 3, "the watch is answered: {watched}");
+    assert_eq!(
+        told.recv_timeout(Duration::from_secs(10)),
+        Ok((r#"["row"] None Some(["agents"]) true"#.to_string(), true)),
+        "a watch begun is said once it's held, and only a watch is"
+    );
+}
+
+#[test]
 fn health_says_what_else_a_daemon_counts_but_never_in_place_of_its_own() {
     let (shared, mut client, _folder) = served("health-too", Box::new(|_| None));
     shared.health_too(Box::new(|| json!({"took_us": [12, 30], "watches": 99})));
