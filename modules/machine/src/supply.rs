@@ -660,6 +660,28 @@ mod tests {
         assert_eq!(said, json!(-5.5));
     }
 
+    /// A gauge with no temperature to give says absolute zero, -2731
+    /// tenths, as a placeholder; a battery can't be that cold, so it
+    /// says no temperature, as a hwmon reading out of Heat's range does.
+    #[test]
+    fn a_battery_said_colder_than_any_can_be_says_no_temperature() {
+        let root = std::env::temp_dir().join(format!("machine-zero-{}", std::process::id()));
+        let at = root.join("sys/class/power_supply/BAT0");
+        std::fs::create_dir_all(&at).unwrap();
+        std::fs::write(at.join("temp"), "-2731\n").unwrap();
+        let held = Root::new(&root);
+        let said = record(
+            &held,
+            "BAT0",
+            &Value::Null,
+            &mut Settings::default(),
+            Instant::now(),
+        )["temperature_c"]
+            .clone();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(said, Value::Null);
+    }
+
     // A Dell's firmware read fails when the kernel finds no 64 KiB buffer
     // for it ("page allocation failure: order:4", six times on Joel's
     // laptop overnight, 2026-11-13). The file is still there; it just
