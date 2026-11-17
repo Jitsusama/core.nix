@@ -23,13 +23,15 @@ is cut or a change's checks move. Nothing on it changes anything.
   threads under it are the cells at work there.
 - **The list:** each repository as a row, its marks in a gutter (its
   season and its worst change, ringed while it waits on a review), then
-  its name, its size in trees, the cells at work and when it was last
-  written.
+  its name, its size in trees, the cells at work, when it was last
+  written, and what its git stores weigh, with "upkeep due" when git would
+  gather one now.
 - **Beside the list, the repository the cursor is on:** its trunk, its
-  checkouts, its changes with how their checks and reviews stand, and its
-  trees by season: Written Today, This Week, Resting and Gone, the last two
-  folded until asked for. Within a season they go by branch, so a tree keeps
-  its place while it's written in.
+  checkouts with what each store is made of, its changes with how their
+  checks and reviews stand, and its trees by season: Written Today, This
+  Week, Resting and Gone, the last two folded until asked for. Within a
+  season they go by branch, so a tree keeps its place while it's written
+  in.
 - **Under it all,** whether what it shows is live, and since when it isn't.
 
 ## Keys

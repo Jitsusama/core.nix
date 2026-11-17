@@ -13,6 +13,7 @@ import {
   text,
   texts,
 } from "../../local-sites/kit/records.ts";
+import { type Weight, weightOf } from "./weight.ts";
 
 /** When a tree was last written, as the grove draws it: in leaf, budding, bare or a stump. */
 type Season = "today" | "week" | "resting" | "gone";
@@ -60,6 +61,7 @@ interface Checkout {
   readonly branch: string | undefined;
   readonly behind: number | undefined;
   readonly ahead: number | undefined;
+  readonly weight: Weight | undefined;
   readonly cells: readonly Cell[];
 }
 
@@ -272,6 +274,7 @@ function checkoutOf(record: Fields, parts: Parts): Checkout {
     branch: head === undefined ? undefined : text(head, "branch"),
     behind: count === undefined ? undefined : number(count, "behind"),
     ahead: count === undefined ? undefined : number(count, "ahead"),
+    weight: weightOf(record),
     cells: parts.at.get(path) ?? [],
   };
 }

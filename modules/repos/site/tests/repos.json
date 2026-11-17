@@ -34,7 +34,15 @@
         "path": "/home/ada/src/core",
         "bare": false,
         "head": { "branch": "main", "commit": "a1" },
-        "written_at": "2026-01-05T15:00:00Z"
+        "written_at": "2026-01-05T15:00:00Z",
+        "weight": {
+          "loose": 7168,
+          "estimated": true,
+          "loose_bytes": 2000000000,
+          "packs": 11,
+          "packed_bytes": 500000000,
+          "due": true
+        }
       },
       {
         "key": "checkout:/home/ada/src/notes",
