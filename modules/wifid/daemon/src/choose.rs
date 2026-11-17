@@ -241,7 +241,7 @@ impl Chooser {
         // access point's 2.4 GHz radio answered quicker than its 5 GHz one
         // in four of five hours. Between `LEAST` and `used`'s bar the card
         // keeps to whichever band it's on, so use near the bar can't swap it.
-        let resting = measured.moving.is_some_and(|moving| moving < LEAST);
+        let resting = resting(measured);
         let untried = others.iter().filter(|other| {
             other.point != point
                 && !self.spurned.contains_key(&other.point)
@@ -490,6 +490,12 @@ fn used(measured: &Measured) -> bool {
     let half = measured.room.map(|room| room / 2);
     let bar = half.map_or(USED, |half| half.clamp(LEAST, USED));
     measured.moving.is_some_and(|moving| moving >= bar)
+}
+
+/// Whether a card is known to move too little to be using a wider band's
+/// room however slowly its link sends, as one that may leave it.
+pub fn resting(measured: &Measured) -> bool {
+    measured.moving.is_some_and(|moving| moving < LEAST)
 }
 
 /// An access point's p95, where nothing answered as slow as can be.

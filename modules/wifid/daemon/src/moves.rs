@@ -242,7 +242,12 @@ fn tried(
     };
     let room = match (busy, to.busy) {
         _ if choose::wider(to.frequency, frequency) => ", on a wider band".to_owned(),
-        _ if choose::wider(frequency, to.frequency) => ", on a narrower band".to_owned(),
+        _ if choose::wider(frequency, to.frequency)
+            && choose::resting(measured)
+            && !choose::badly(measured) =>
+        {
+            ", on a narrower band, as the card moves little".to_owned()
+        }
         (Some(busy), Some(theirs))
             if busy > choose::BUSIEST
                 && choose::quieter(theirs, busy)
