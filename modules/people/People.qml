@@ -1393,13 +1393,16 @@ Provider {
             && lately.listed === all && lately.sought === sought && lately.among === among.from;
         const fuller = answered
             && (sought.records.length >= soughtMost || sought.listed !== listedRevision);
-        // Those shown already, by each of their addresses, so no one is
-        // shown twice, and none only Vault knows is found again apart.
+        // Those shown already, by each of their addresses and their row's
+        // key, so no one is shown twice, one with no address (kept by a
+        // source's id) included, and none only Vault knows is found again
+        // apart.
         const shown = {};
         const shows = row => {
             const emails = row.person?.emails ?? [];
-            if (emails.some(email => shown[email.toLowerCase()]))
+            if (shown[`row:${row.key}`] || emails.some(email => shown[email.toLowerCase()]))
                 return false;
+            shown[`row:${row.key}`] = true;
             for (const email of emails)
                 shown[email.toLowerCase()] = true;
             return true;
@@ -1419,15 +1422,25 @@ Provider {
                 if (email !== "" && !record.gone && record.sources && knownBy(record))
                     records[email] = record;
             }
+            // One listed is shown as listed, by any of their addresses, so a
+            // record of theirs ranked ahead of their own doesn't stand in
+            // for their listed row.
+            const listedBy = covered();
             for (const record of sought.records) {
                 if (record.gone || !record.sources || !knownBy(record))
                     continue;
-                const row = rows[record.key] ?? servedRow(record, among, servedKept, records);
+                const row = rows[record.key] ?? listedBy[addressOf(record.key).toLowerCase()]
+                    ?? servedRow(record, among, servedKept, records);
                 if (row !== null && shows(row))
                     served.push(row);
             }
             if (trimming)
                 keptOnly(servedKept);
+            // How many people the shell holds, for the desktop test that
+            // bounds it: those listed, those the answers kept rows for, and
+            // those Vault gives, never the crowd the daemon holds.
+            Report.say(`people holds ${all.length + Object.keys(servedKept.rows).length
+                + among.persons.length}`);
         }
         const madeAt = Date.now();
         // Before the answer, those listed, and those only Vault knows, are
@@ -1478,9 +1491,9 @@ Provider {
                 + `${Date.now() - madeAt}, finding ${kept.length}`);
         return { rows: kept, grade: kept.length > 0 ? 0 : 3 };
     }
-    // The addresses of those listed, whom none only Vault knows is found
-    // apart from, since they're merged with them. Kept while those listed
-    // are the same.
+    // The rows of those listed, by each of their addresses, whom none only
+    // Vault knows is found apart from, since they're merged with them.
+    // Kept while those listed are the same.
     readonly property var covering: ({ listed: null, emails: {} })
     function covered() {
         const kept = covering;
@@ -1489,7 +1502,7 @@ Provider {
         kept.emails = {};
         for (const row of all) {
             for (const email of row.person?.emails ?? [])
-                kept.emails[email.toLowerCase()] = true;
+                kept.emails[email.toLowerCase()] = row;
         }
         kept.listed = all;
         return kept.emails;
@@ -1589,11 +1602,16 @@ Provider {
             : listedPersons().map(person => ({ key: `person:${person.key}` }));
     }
 
-    // A search looks through those it shows: those listed and those the last search found, so a
-    // row found by name is known as People's when it's stepped into,
-    // and nobody is merged for it.
+    // A search looks through what it shows: those listed, whether or not
+    // People is wanted, then those the last search found, each once. So a
+    // row found by name is known as People's when it's stepped into, by
+    // the key it was shown with, and the launcher readies listed names'
+    // texts while it's shut, with nobody merged for either. A found row is
+    // as fresh as the answer it came from: a late answer searches again.
     function looksThrough() {
-        return all.concat(lately.found);
+        const listed = provider.wanted ? all : listedNow();
+        const seen = new Set(listed);
+        return listed.concat(lately.found.filter(row => !seen.has(row)));
     }
 
     // A source that only follows what it knows while someone might look,

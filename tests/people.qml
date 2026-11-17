@@ -410,6 +410,13 @@ ShellRoot {
                 + "Dee Ellery, Eli Fenwick, Gus, Zo\u00eb \"Zed\" Quill", names(all));
             expect("making none", people.tally.rows === root.madeBefore,
                 `${people.tally.rows - root.madeBefore} rows made`);
+            // The launcher finds a row stepped into among these, by the key
+            // it was shown with, those not listed (Eli, Gus) included.
+            const through = people.looksThrough();
+            const keys = through.map(row => row.key);
+            expect("looked through", all.every(row => keys.includes(row.key)),
+                names(all.filter(row => !keys.includes(row.key))));
+            expect("each once", new Set(keys).size === keys.length, keys.join(", "));
         }),
         seeking("ad", "a letter more searches only those the letters before found", () => {
             // What they found is hidden here, so a search that walked
