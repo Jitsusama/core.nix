@@ -766,6 +766,7 @@ gather {
     ./modules/touchpad/checks.nix
     ./modules/treefmt/checks.nix
     ./modules/tuple/checks.nix
+    ./modules/udp/checks.nix
     ./modules/unlisted/checks.nix
     ./modules/update-to-main/checks.nix
     ./modules/v4l2loopback/checks.nix

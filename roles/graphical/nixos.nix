@@ -19,7 +19,8 @@
 # says where he's typing. The compositor and sound get the CPU and memory
 # before anything Joel starts, and calls, music and what he waits on get the
 # network before the work he started, and a write a program makes behind an
-# upload goes out soon after; lag-watch keeps a standing watch on whether
+# upload goes out soon after, and a socket that asks for no receive buffer
+# has room for a burst, so a VPN over QUIC waits rather than drops; lag-watch keeps a standing watch on whether
 # they wait, and load-proof proves on demand that they don't under full load;
 # pi-keys samples four times a day what a key typed into pi waits on, and
 # pain-points names the launcher's openings that slowed Joel most each day.
@@ -62,6 +63,7 @@
     nixosModules.slices
     nixosModules.swayimg
     nixosModules.tcp
+    nixosModules.udp
     nixosModules.unlisted
     nixosModules.usb-camera-holders
     nixosModules.zathura

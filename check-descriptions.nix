@@ -182,6 +182,10 @@
     the XPS 14's kernel drives an MST hub whose first branch didn't answer its link address as a
     single stream until the sink goes away, so the monitor behind it still lights
   '';
+  a-socket-asking-for-nothing-holds-a-burst = ''
+    a machine with a screen gives a socket that asks for no receive buffer 2 MiB to receive into,
+    under a 4 MiB most that one asking can reach
+  '';
   a-spawn-kept-in-the-background-opens-no-window = ''
     a fresh session handed over is asked of the harness's spawn decider first: one it keeps in the
     background opens no window, one it keeps out opens told why, one it says nothing of in three seconds is ended and
