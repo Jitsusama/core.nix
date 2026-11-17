@@ -908,7 +908,9 @@ impl Say<'_> {
         }
         rows.extend(self.limit(battery));
         if let Some(degrees) = battery["temperature_c"].as_f64() {
-            let mut row = self.leaf("temperature", format!("{} \u{b0}C", self.measured(degrees)));
+            // The kernel reads it in tenths, so it's said to them at most.
+            let said = self.words.significant_to(degrees, 1);
+            let mut row = self.leaf("temperature", format!("{said} \u{b0}C"));
             row.graph = Some(bar(degrees / HOTTEST, degrees >= WARM));
             row.note = self.says("temperature", "of", &[("most", &HOTTEST.to_string())]);
             rows.push(row);
@@ -1741,6 +1743,19 @@ mod tests {
             facts("row:power:temperature"),
             ["temp=315", "Read From=/sys/class/power_supply/BAT0"],
             "its temperature in tenths of a degree, as the kernel counts it"
+        );
+    }
+
+    /// A cold battery's temperature is said to the tenths the kernel
+    /// reads it to: "9.5 °C", never "9.50 °C".
+    #[test]
+    fn a_cold_batterys_temperature_is_said_to_tenths() {
+        let mut b = battery();
+        b["temperature_c"] = json!(9.5);
+        let ready = Power::default().read(&[b, port(true)], 0, &words());
+        assert_eq!(
+            row(&ready, "row:power:temperature")["side"][0]["said"],
+            "9.5 \u{b0}C"
         );
     }
 }

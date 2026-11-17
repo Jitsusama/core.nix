@@ -1,7 +1,8 @@
 //! The launcher's words and number settings as the daemon is handed them
 //! (launcher/words.json and `group` and `point` by store path), and the
 //! one rule a measure is said by: three significant digits, zeros kept,
-//! grouped and pointed as Joel's settings say, with the real minus. Its
+//! grouped and pointed as Joel's settings say, with the real minus, and
+//! no more places than it's read to, as a temperature's tenths. Its
 //! wording of numbers is Numbers.js's, until the `ready-rows` crate
 //! holds both (Y2YBTS, 2026-11-10), when this takes the crate's.
 
@@ -174,15 +175,17 @@ impl Words {
             reason = "a finite figure's power of ten is within an i32"
         )]
         let magnitude = rounded.abs().log10().floor() as i32;
-        let places = usize::try_from(SIGNIFICANT - 1 - magnitude)
-            .unwrap_or(0)
-            .min(most);
-        let shown: f64 = format!("{rounded:.places$}").parse().unwrap_or(rounded);
+        let digits = usize::try_from(SIGNIFICANT - 1 - magnitude).unwrap_or(0);
+        let places = digits.min(most);
+        // Held to fewer places, the figure is rounded once, from itself,
+        // so 1.349 isn't rounded to 1.35 and then up to 1.4.
+        let figure = if places < digits { value } else { rounded };
+        let shown: f64 = format!("{figure:.places$}").parse().unwrap_or(figure);
         if shown == 0.0 {
             return "0".to_owned();
         }
         let said = self
-            .number(rounded, places)
+            .number(figure, places)
             .replacen('-', &MINUS.to_string(), 1);
         if places == 0 {
             return said;
@@ -263,8 +266,12 @@ mod tests {
     #[test]
     fn three_significant_digits_to_tenths_at_most() {
         let said = words("", "");
-        let figures = [-0.2, 5.2, 0.04, 52.9, 100.0, 0.0].map(|v| said.significant_to(v, 1));
-        assert_eq!(figures, ["\u{2212}0.2", "5.2", "0", "52.9", "100", "0"]);
+        let figures =
+            [-0.2, 5.2, 0.04, -0.04, 1.349, 52.9, 100.0, 0.0].map(|v| said.significant_to(v, 1));
+        assert_eq!(
+            figures,
+            ["\u{2212}0.2", "5.2", "0", "0", "1.3", "52.9", "100", "0"]
+        );
         let set = words(".", ",");
         assert_eq!(set.significant_to(5.2, 1), "5,2");
     }
