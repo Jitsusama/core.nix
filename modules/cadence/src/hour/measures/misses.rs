@@ -288,6 +288,61 @@ fn misses(
     }
 }
 
+/// Holds open each miss whose check names one of the hour's measures by
+/// its key, until that measure is judged and within its target: a merged
+/// check that can't judge yet, or still finds the fault, hasn't fixed it.
+/// At 02:10 on 17 November the card told Joel his 20:37 miss was fixed on
+/// core #5252's merge, while its map-cells read unjudged until the map's own
+/// check merged. Only a key with a hyphen counts, named whole, since a bare
+/// key such as broken is also a word a check's prose uses.
+pub fn held(text: &str, measures: &mut [Measure]) {
+    let judging: Vec<(String, &str)> = measures
+        .iter()
+        .filter(|m| m.class != Class::Miss && m.key.contains('-'))
+        .filter_map(|m| {
+            let why = match m.target {
+                None => "can't judge it yet",
+                Some(target) if m.now > target => "still finds it",
+                Some(_) => return None,
+            };
+            Some((m.key.clone(), why))
+        })
+        .collect();
+    let Some(open) = measures.iter_mut().find(|m| m.class == Class::Miss) else {
+        return;
+    };
+    for miss in lines(text) {
+        let Some(check) = miss["check"].as_str() else {
+            continue;
+        };
+        let what = named_as(&miss);
+        let already = open
+            .behind
+            .iter()
+            .any(|line| line.rsplit_once(" · ").map_or(line.as_str(), |(w, _)| w) == what);
+        let found = judging.iter().find(|(key, _)| names_whole(check, key));
+        let (false, Some((key, why))) = (already, found) else {
+            continue;
+        };
+        let owner = first_owner(miss["owner"].as_str().unwrap_or_default());
+        open.behind
+            .push(format!("{what} · {owner}, though its check {key} {why}"));
+        open.now += 1.0;
+        if open.owner.is_empty() {
+            open.owner = owner;
+        }
+    }
+}
+
+/// Whether `text` names `key` as a whole word, not inside a longer one.
+fn names_whole(text: &str, key: &str) -> bool {
+    let part = |c: char| c.is_alphanumeric() || c == '-' || c == '_';
+    text.match_indices(key).any(|(at, _)| {
+        !text[..at].chars().next_back().is_some_and(part)
+            && !text[at + key.len()..].chars().next().is_some_and(part)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -460,6 +515,89 @@ mod tests {
             open.behind,
             ["the cat waits · XY9H5C, though cadence couldn't read world's main to see its check"],
             "an open miss blamed its owner for a main the hour itself couldn't read"
+        );
+    }
+
+    fn judged(key: &str, now: f64, target: Option<f64>) -> Measure {
+        Measure {
+            key: key.to_owned(),
+            class: Class::Cells,
+            says: "cells the map draws wrongly".to_owned(),
+            now,
+            target,
+            owner: "WCJQSG".to_owned(),
+            behind: Vec::new(),
+        }
+    }
+
+    /// At 02:10 on 17 November the card told Joel his 20:37 miss was fixed
+    /// once core #5252 merged, while map-cells, the measure that would catch
+    /// it, read unjudged until the map's own check merged.
+    #[test]
+    fn a_merged_check_whose_measure_cannot_judge_or_still_finds_it_keeps_its_miss_open() {
+        let text = miss("core #5252 map-cells: each cell the map draws wrongly is a line");
+        let merged = BTreeSet::from([change("core", 5252)]);
+        let cases = [
+            (None, 0.0, "can't judge it yet"),
+            (Some(0.0), 2.0, "still finds it"),
+        ];
+        for (target, now, why) in cases {
+            let mut hour = vec![
+                misses(&text, &repos(), &merged, &BTreeSet::new()),
+                judged("map-cells", now, target),
+            ];
+            held(&text, &mut hour);
+            assert_eq!(
+                hour[0].behind,
+                [format!(
+                    "the cat waits · XY9H5C, though its check map-cells {why}"
+                )],
+                "a miss read fixed while the measure that catches it read {now} of {target:?}"
+            );
+            assert!(
+                (hour[0].now - 1.0).abs() < 0.5,
+                "the held miss wasn't counted: {}",
+                hour[0].now
+            );
+        }
+        let mut hour = vec![
+            misses(&text, &repos(), &merged, &BTreeSet::new()),
+            judged("map-cells", 0.0, Some(0.0)),
+        ];
+        held(&text, &mut hour);
+        assert!(
+            hour[0].behind.is_empty(),
+            "a merged check whose measure judges and reads within target kept its miss: {:?}",
+            hour[0].behind
+        );
+    }
+
+    #[test]
+    fn only_a_key_with_a_hyphen_named_whole_holds_a_miss_and_an_open_one_once() {
+        let words = miss("core #5252 fixes what broken cells did; map-cellsx; reports-unasked:");
+        let merged = BTreeSet::from([change("core", 5252)]);
+        let mut hour = vec![
+            misses(&words, &repos(), &merged, &BTreeSet::new()),
+            judged("broken", 3.0, Some(0.0)),
+            judged("map-cells", 3.0, Some(0.0)),
+            judged("reports-unasked", 0.0, Some(0.0)),
+        ];
+        held(&words, &mut hour);
+        assert!(
+            hour[0].behind.is_empty(),
+            "a plain word, a key inside a longer word, or a judged key held a miss: {:?}",
+            hour[0].behind
+        );
+        let open = miss("core #9 map-cells");
+        let mut hour = vec![
+            misses(&open, &repos(), &BTreeSet::new(), &BTreeSet::new()),
+            judged("map-cells", 0.0, None),
+        ];
+        held(&open, &mut hour);
+        assert_eq!(
+            hour[0].behind,
+            ["the cat waits · XY9H5C"],
+            "a miss already open was held a second time"
         );
     }
 

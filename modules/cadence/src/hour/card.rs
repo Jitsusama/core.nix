@@ -104,7 +104,7 @@ pub fn compose(
         let _ = writeln!(
             card,
             "Why didn't our checks catch these? Each stays open until its owner names the \
-             check that would have, and it merges:"
+             check that would have, it merges, and any measure it names judges it gone:"
         );
         for miss in &open {
             let _ = writeln!(card, "  - {miss}");

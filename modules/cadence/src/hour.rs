@@ -108,6 +108,9 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
             fallback,
         ));
     }
+    // Once every measure is read, a miss whose check names one stays open
+    // until it judges, so Joel isn't told it's fixed before it is.
+    measures::held(&misses, &mut measures);
     let kept_at = folder.join("hour.json");
     let kept: Kept = fs::read_to_string(&kept_at)
         .ok()
