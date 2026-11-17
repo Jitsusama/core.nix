@@ -44,6 +44,15 @@ fn each_call_its_units_and_gates_make_reaches_its_subcommand() {
             64,
             "--rate takes a price",
         ),
+        // A flag the kit's help names for no subcommand, which a walk of
+        // the words would refuse before serve read its rate.
+        (
+            &["serve", "--warm", "x", "-v", "--json", "--rate", "free"][..],
+            64,
+            "--rate takes a price",
+        ),
+        (&["progress"][..], 64, "progress takes one HOST"),
+        (&["progress", "a", "b"][..], 64, "progress takes one HOST"),
         (&["stand"][..], 64, "stand needs --standing or --beside"),
         (&["lines"][..], 64, "lines needs --config"),
         (
@@ -77,10 +86,16 @@ fn each_call_its_units_and_gates_make_reaches_its_subcommand() {
         let (ran, said) = asked(words);
         assert_eq!(ran.status.code(), Some(code), "{words:?}: {said}");
         assert!(said.contains(says), "{words:?} should say {says:?}: {said}");
-        assert!(
-            !said.contains("no flag called"),
-            "{words:?} had a word of its own refused by the kit: {said}"
-        );
+        for refusal in [
+            "no option called",
+            "no command called",
+            "takes no more words",
+        ] {
+            assert!(
+                !said.contains(refusal),
+                "{words:?} had a word of its own refused by the kit: {said}"
+            );
+        }
     }
 }
 
@@ -89,8 +104,8 @@ fn a_mistyped_subcommand_ends_64_and_says_so() {
     let (ran, said) = asked(&["serv", "--rate", "0.68"]);
     assert_eq!(ran.status.code(), Some(64), "{said}");
     assert!(
-        said.contains("no subcommand called serv"),
-        "the word is named: {said}"
+        said.contains("no subcommand called serv") && said.contains("did you mean serve"),
+        "the word and its nearest are named: {said}"
     );
     let (ran, said) = asked(&[]);
     assert_eq!(ran.status.code(), Some(64), "{said}");
@@ -101,17 +116,22 @@ fn a_mistyped_subcommand_ends_64_and_says_so() {
 }
 
 #[test]
-fn every_ending_is_one_of_the_tables_codes() {
-    for words in [
-        &["stand"][..],
-        &["lines", "--config", "/nonexistent"],
-        &["serv"],
-    ] {
-        let (ran, said) = asked(words);
-        let code = ran.status.code().expect("it ended with a code");
-        assert!(
-            [0, 1, 64, 65, 66, 69, 70, 75, 77, 78].contains(&code),
-            "{words:?} ended {code}, which isn't the table's: {said}"
-        );
-    }
+fn a_word_that_isnt_text_is_asked_wrongly_not_a_panic() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+    let home = tempfile::tempdir().expect("a home folder");
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .arg("outside")
+        .arg(OsStr::from_bytes(b"--git-dir=\xff"))
+        .env_clear()
+        .env("PATH", "/nonexistent")
+        .env("HOME", home.path())
+        .output()
+        .expect("nix-offload runs");
+    assert_eq!(
+        ran.status.code(),
+        Some(64),
+        "{}",
+        String::from_utf8_lossy(&ran.stderr)
+    );
 }

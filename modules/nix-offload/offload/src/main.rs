@@ -314,14 +314,6 @@ extern "C" fn leaving(_: libc::c_int) {
     LEAVING.store(true, Ordering::SeqCst);
 }
 
-/// What a lender ends with once it has ended superseded: the table's
-/// try-again, 75, which its unit counts as a success and starts it again
-/// on. It said so as it went, so nothing more is said: a line marked as
-/// an error at every switch would read as one in the day's health.
-fn restarts() -> Failure {
-    Failure::new(Exit::TryAgain, "the lender handed over to its successor").said_already()
-}
-
 /// How often a rest looks to see whether it's been told to end.
 const HEARD_WITHIN: Duration = Duration::from_millis(100);
 
@@ -458,7 +450,13 @@ fn heard_after(helper: impl BufRead, place: &Mutex<Place>) {
 }
 
 fn main() -> ExitCode {
-    let arguments: Vec<String> = env::args().skip(1).collect();
+    // Read lossily only to see whether help is asked: a word that isn't
+    // text reaches the kit whole, which refuses it as asked wrongly (64)
+    // where `env::args` would panic.
+    let arguments: Vec<String> = env::args_os()
+        .skip(1)
+        .map(|argument| argument.to_string_lossy().into_owned())
+        .collect();
     // Help, at any depth, is the kit's, and asks nothing else of it; every
     // other call reads its words below, as its units and gates call it.
     if help::asked(&arguments) {
@@ -501,9 +499,10 @@ fn ran(arguments: &[String]) -> Result<(), Failure> {
         }
         _ => {}
     }
-    if let [command, host] = arguments
-        && command == "progress"
-    {
+    if arguments.first().map(String::as_str) == Some("progress") {
+        let [_, host] = arguments else {
+            return Err(ended::asked_wrongly("progress takes one HOST", "progress"));
+        };
         return progress(host);
     }
     if arguments.first().map(String::as_str) == Some("relay") {
@@ -603,7 +602,7 @@ fn standing_by(standing: Option<String>, beside: Option<String>) -> Result<(), F
         ));
     }
     if stand(standing.map(PathBuf::from), beside.map(PathBuf::from)) {
-        return Err(restarts());
+        return Err(ended::handed_over());
     }
     Ok(())
 }
@@ -2901,7 +2900,7 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Resu
                 freeing: given("--freeing").map(PathBuf::from),
             });
             if superseded {
-                return Err(restarts());
+                return Err(ended::handed_over());
             }
             Ok(())
         }

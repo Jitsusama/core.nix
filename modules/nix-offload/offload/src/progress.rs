@@ -14,7 +14,7 @@
 //! one that prints nothing may still be compiling. The bytes are the whole
 //! machine's, since a builder's daemon has no I/O accounting of its own,
 //! so a session evaluating there counts too. It exits 75 when no lender
-//! lends a builder by that name and 255 when ssh can't reach it.
+//! lends a builder by that name and 69 when ssh can't reach it.
 
 use serde_json::json;
 

@@ -312,10 +312,12 @@ fn failed(context: &Context, environment: &Environment, failure: &Failure) -> En
         .iter()
         .take(context.own)
         .any(|arg| arg == "--verbose" || arg == "-v");
-    let said = if failure.said {
-        String::new()
-    } else if context.shared.format.is_json() {
+    // A failure said already was said in words for people; a reader of
+    // JSON still gets its object, the only form it reads.
+    let said = if context.shared.format.is_json() {
         format!("{}\n", failure.json(verbose))
+    } else if failure.said {
+        String::new()
     } else {
         for_the_journal(
             failure.text(&context.err, context.err_room, verbose),
@@ -629,6 +631,19 @@ mod tests {
                 "a failure the command said as it went was said again"
             );
         }
+        let ending = run(
+            &help(),
+            "1.0",
+            &Environment::of([false; 3], &[]),
+            vec!["--json".to_owned(), "go".to_owned()],
+            |_| Err(Failure::new(Exit::TryAgain, "it handed over").said_already()),
+        );
+        assert_eq!(ending.code(), 75, "its code is kept under --json");
+        assert!(
+            ending.stderr.contains("\"it handed over\""),
+            "a reader of JSON gets the failure's object: {}",
+            ending.stderr
+        );
     }
 
     #[test]

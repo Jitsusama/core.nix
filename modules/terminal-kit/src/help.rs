@@ -105,6 +105,13 @@ impl Help {
     /// runs, as a wrapper of nix or cargo does: the kit takes none of the
     /// shared flags there, only `-h` and `--help` before `--` or any of
     /// `ends`, past which the words are all the program's.
+    ///
+    /// Given to a whole command's root, it hands on every word, its
+    /// subcommands' included, so the kit answers no `--version`, reads no
+    /// `-v` or `--json`, and answers any `-h` among them with the root's
+    /// help. That's for a command whose words its callers already give
+    /// exactly, which answers help per subcommand itself before the kit
+    /// runs, as nix-offload does, and wants only the kit's ending.
     #[must_use]
     pub fn hands_words_on(mut self, ends: &[&str]) -> Self {
         self.hands_on = Some(ends.iter().map(|&end| end.to_owned()).collect());

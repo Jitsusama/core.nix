@@ -95,11 +95,14 @@ let
     # that, which cut 8.1 hours of builds at three switches on 3 November.
     # Told so, it ends at once, exiting 75 (try again), which systemd counts as a
     # success to start the new unit after; a builder a build reaches is
-    # handed over, its way outlasting the unit (`outlasting`).
+    # handed over, its way outlasting the unit (`outlasting`). Before 17
+    # November it exited 100, which is counted too: the switch that brings
+    # 75 in reloads a lender still running the old binary, and a rollback
+    # past it does the same the other way.
     # It waits only while a builder it handed to a successor finishes.
     ExecReload = "${lib.getExe' pkgs.coreutils "kill"} -HUP $MAINPID";
-    SuccessExitStatus = "75";
-    RestartForceExitStatus = "75";
+    SuccessExitStatus = "75 100";
+    RestartForceExitStatus = "75 100";
     # Its builders are reached with keys of their own, never the account's
     # agent, which ssh would ask first: on 8 November an agent waiting on
     # its person stalled the helpers' ssh at login, and every builder was

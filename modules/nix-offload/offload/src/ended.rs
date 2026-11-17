@@ -1,30 +1,43 @@
 //! How a program nix-offload runs as its stand-in ends it: nix, cargo, a
 //! command on a builder. Its own code passes through, as the standard's A
 //! stand-in passes through says (docs/commands.md), and every other ending
-//! is a code from the kit's table.
+//! is a code from the kit's table. A stand-in said why it failed in its
+//! own words, and a gate in its line and log, so their endings are said
+//! already: the kit adds no line of its own, which in a unit's journal
+//! would be marked an error at every refused gate and failed build.
 
 use terminal_kit::{Exit, Failure};
 
-/// Done when `status` is 0; otherwise the stand-in's own code, saying
-/// `what` failed. A status no exit code holds (above 255, or below 0)
-/// ends 1, as it did before the kit.
+/// Done when `status` is 0; otherwise the stand-in's own code, `what`
+/// failing. A status no exit code holds (above 255, or below 0) ends 1,
+/// as it did before the kit.
 pub fn passed(status: i32, what: impl FnOnce() -> String) -> Result<(), Failure> {
     if status == 0 {
         return Ok(());
     }
-    Err(Failure::passed(u8::try_from(status).unwrap_or(1), what()))
+    Err(Failure::passed(u8::try_from(status).unwrap_or(1), what()).said_already())
 }
 
 /// Done when `code` is 0; otherwise the table's exit of that code, or a
-/// stand-in's code passed through where the table holds none, saying
-/// `what` failed. A gate's result ends this way, since its code is a
-/// refusal's or changed-checks' own.
+/// stand-in's code passed through where the table holds none, `what`
+/// failing. A gate's result ends this way, since its code is a refusal's
+/// or changed-checks' own.
 pub fn coded(code: u8, what: impl FnOnce() -> String) -> Result<(), Failure> {
-    match Exit::of(code) {
-        Some(Exit::Done) => Ok(()),
-        Some(exit) => Err(Failure::new(exit, what())),
-        None => Err(Failure::passed(code, what())),
-    }
+    let failure = match Exit::of(code) {
+        Some(Exit::Done) => return Ok(()),
+        Some(exit) => Failure::new(exit, what()),
+        None => Failure::passed(code, what()),
+    };
+    Err(failure.said_already())
+}
+
+/// What a lender ends with once it has ended superseded: the table's
+/// try-again, 75, which its unit counts as a success and starts it again
+/// on (home.nix's `SuccessExitStatus`). Handing over is the unit's sign,
+/// not a failure, so nothing is said: a line marked as an error at every
+/// switch would read as one in the day's health.
+pub fn handed_over() -> Failure {
+    Failure::new(Exit::TryAgain, "the lender handed over to its successor").said_already()
 }
 
 /// As [`coded`], for a status as a child gave it: one no exit code holds
@@ -76,6 +89,44 @@ mod tests {
         for status in [-1, 256, 9000] {
             let ended = passed(status, || "it failed".into()).expect_err("it isn't done");
             assert_eq!(ended.code(), 1, "{status} ended {}", ended.code());
+            let ended = super::status(status, || "it failed".into()).expect_err("not done");
+            assert_eq!(ended.code(), 1, "a build's {status} ended {}", ended.code());
         }
+    }
+
+    #[test]
+    fn a_childs_status_keeps_its_number() {
+        assert_eq!(status(0, || "unsaid".into()), Ok(()));
+        for code in [64, 75, 100, 3] {
+            let ended = status(code, || "nix failed".into()).expect_err("it isn't done");
+            assert_eq!(
+                ended.code(),
+                u8::try_from(code).unwrap_or(0),
+                "{code} moved"
+            );
+        }
+    }
+
+    #[test]
+    fn what_a_stand_in_said_is_never_said_again() {
+        for ended in [
+            passed(101, || "cargo".into()),
+            coded(65, || "refused".into()),
+            coded(3, || "a check".into()),
+            status(100, || "nix".into()),
+        ] {
+            let failure = ended.expect_err("it isn't done");
+            assert!(failure.said, "{} would be said again", failure.what);
+        }
+    }
+
+    #[test]
+    fn a_lender_that_handed_over_ends_as_its_unit_counts_a_success() {
+        let ended = handed_over();
+        assert_eq!(
+            (ended.code(), ended.said),
+            (75, true),
+            "home.nix's SuccessExitStatus counts 75, said by nothing"
+        );
     }
 }

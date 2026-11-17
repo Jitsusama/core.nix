@@ -1,8 +1,8 @@
 //! What nix-offload and each of its subcommands say they are and take, as
 //! `--help` shows it (docs/commands.md), answered by the terminal kit.
-//! Only help goes through the kit: every other call reaches nix-offload's
-//! own reading of its words, which its units, its helpers and every gate
-//! call as they are.
+//! Help is the kit's alone; every other call's words are nix-offload's
+//! own to read, as its units, its helpers and every gate call them, and
+//! only its ending goes through the kit, as a code from its table.
 
 use std::process::ExitCode;
 
