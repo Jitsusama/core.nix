@@ -470,11 +470,13 @@ in
   # of its own, never the Nix store, which pytest would list whole first.
   mycelium-map-check-answers-soon =
     let
+      # Stands in for pytest and the browser: says what was beside the test
+      # and what had been said on the way before it was opened, then answers.
       slowly = pkgs.writeShellScript "slow-map-test" ''
         test=''${*: -1}
         ls -A "''${test%/*}" > "$MAP_CHECK_BESIDE"
-        sleep 3
-        printf '%s' '{"at":"2026-11-17T14:09:54.139Z","cells":3,"count":0,"failures":[]}' \
+        cat "$MAP_CHECK_ERR" > "$MAP_CHECK_BEFORE"
+        printf '%s' '{"at":"2026-01-02T14:09:54.139Z","cells":3,"count":0,"failures":[]}' \
           > "$MAP_CHECK_SAID"
       '';
       check = import ./map-check.nix {
@@ -485,39 +487,55 @@ in
       };
     in
     pkgs.runCommandLocal "mycelium-map-check-answers-soon" { nativeBuildInputs = [ pkgs.jq ]; } ''
-      export TZ=UTC XDG_STATE_HOME=$TMPDIR/state MAP_CHECK_BESIDE=$TMPDIR/beside
+      # Five hours behind, so a time said in UTC rather than here is caught.
+      export TZ=EST5 XDG_STATE_HOME=$TMPDIR/state MAP_CHECK_BESIDE=$TMPDIR/beside
+      export MAP_CHECK_ERR=$PWD/err MAP_CHECK_BEFORE=$TMPDIR/before
       kept=$XDG_STATE_HOME/mycelium/map-check.json
+      looking="Opening the map in a headless browser to look again."
       mkdir -p "''${kept%/*}"
-      printf '%s' '{"at":"2026-11-17T13:05:00Z","cells":5,"count":2,"failures":[]}' > "$kept"
 
-      ${lib.getExe check} > out 2> err &
-      running=$!
-      sleep 1
-      if ! kill -0 "$running" 2> /dev/null; then
-        echo "the stand-in answered within a second, so this times nothing" >&2
-        exit 1
-      fi
-      if [[ $(cat err) != "At 13:05 the map missed 2 of 5 cells."$'\n'"Opening the map in a headless browser to look again." ]]; then
-        echo "a second in, it said neither the last answer nor that it's looking:" >&2
-        cat err >&2
-        exit 1
-      fi
-      wait "$running"
+      # Says, before the browser opens, what the kept reading found and when.
+      opens() {
+        ${lib.getExe check} > out 2> err
+        if [[ $(cat "$MAP_CHECK_BEFORE") != "$1" ]]; then
+          echo "$2; before the browser opened it said:" >&2
+          cat "$MAP_CHECK_BEFORE" >&2
+          exit 1
+        fi
+      }
+
+      printf '%s' '{"at":"2026-01-02T13:05:22.164Z","cells":5,"count":2,"failures":[]}' > "$kept"
+      opens "At 08:05 on 2 January the map missed 2 of 5 cells."$'\n'"$looking" \
+        "it didn't say the last answer, here and with its day, then that it's looking"
       [[ $(cat out) == "The map reaches all 3 cells." ]] || { echo "its answer was: $(cat out)" >&2; exit 1; }
       [[ $(jq .cells "$kept") == 3 ]] || { echo "it didn't keep its answer" >&2; exit 1; }
+      [[ -z $(find "''${kept%/*}" -name '*.json.*') ]] || { echo "it left a half-kept file" >&2; exit 1; }
       if [[ $(cat "$MAP_CHECK_BESIDE") != live-reach-test.py ]]; then
         echo "pytest was handed a test beside $(wc -l < "$MAP_CHECK_BESIDE") entries, not alone" >&2
         exit 1
       fi
+      opens "At 09:09 on 2 January the map reached all 3 cells."$'\n'"$looking" \
+        "it didn't say the answer it kept"
+
+      now=$(date +%s)
+      jq -n --arg at "$(date -u -d "@$now" +%FT%T.5Z)" '{at:$at,cells:4,count:1,failures:[]}' > "$kept"
+      opens "At $(date -d "@$now" +%H:%M) the map missed 1 of 4 cells."$'\n'"$looking" \
+        "a reading from today didn't give just its time"
 
       ${lib.getExe check} --json > out 2> err
       [[ ! -s err ]] || { echo "as JSON it said on the way: $(cat err)" >&2; exit 1; }
       jq -e '.cells == 3' out > /dev/null
 
+      for unread in 'not a reading' '{"at":"2026-01-02T13:05:22Z","cells":"\u001b[2J","count":0}'; do
+        printf '%s' "$unread" > "$kept"
+        opens "$looking" "a kept file no reading writes wasn't left unsaid"
+      done
       rm "$kept"
-      ${lib.getExe check} > out 2> err
-      [[ $(cat err) == "Opening the map in a headless browser to look again." ]] \
-        || { echo "with nothing kept, it said: $(cat err)" >&2; exit 1; }
+      opens "$looking" "with nothing kept, it said more than that it's looking"
+
+      env -u XDG_STATE_HOME -u HOME ${lib.getExe check} > out 2> err \
+        || { echo "with no home, it broke: $(cat err)" >&2; exit 1; }
+      [[ $(cat out) == "The map reaches all 3 cells." ]] || { echo "with no home it said: $(cat out)" >&2; exit 1; }
       touch $out
     '';
   # clippy finds nothing in the server, its tests included.
