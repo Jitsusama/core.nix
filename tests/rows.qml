@@ -222,6 +222,22 @@ ShellRoot {
                 finds: [[0, 5], [2 * root.long.length - 6, 2 * root.long.length]]
             }
             Choice { id: washedNone; name: "Firefox"; side: "program"; glyph: "$" }
+            // Names as the launcher marks them (Launcher.qml's marked): a
+            // matched letter in the wash's ink, and an ampersand escaped.
+            Choice {
+                id: markedName
+                name: `<font color="${Theme.wash.ink}">F</font>irefox`
+                plainName: "Firefox"
+                side: "program"
+                glyph: "$"
+            }
+            Choice {
+                id: escapedName
+                name: "Tom &amp; Jerry"
+                plainName: "Tom & Jerry"
+                side: "program"
+                glyph: "$"
+            }
             Choice { id: plainSaid; quiet: true; glyph: "$"; name: root.voice }
             Choice { id: voicedSaid; quiet: true; voiced: true; glyph: "$"; name: root.voice }
             Prompt { id: typedField; width: root.panel; text: root.voice }
@@ -818,6 +834,33 @@ ShellRoot {
         font.family: Theme.level.note.family
         font.pointSize: Theme.level.note.pointSize * 8
         text: "12"
+    }
+
+    // A name with no markup is laid as plain text, which Qt lays out
+    // without parsing it, and only a name that carries markup, a matched
+    // letter or an escaped ampersand, as styled text, so it reads as it
+    // should (4K step 2, 2026-11-17).
+    function namesLayAsTheyRead() {
+        // The Text laying the words, under ReadsOn, which holds them too.
+        const textItem = (item, words) => {
+            for (const child of item.children) {
+                if (child.visible && child.text === words && child.textFormat !== undefined)
+                    return child;
+                const found = textItem(child, words);
+                if (found)
+                    return found;
+            }
+            return null;
+        };
+        const plain = textItem(washedNone, "Firefox");
+        expect("an unmarked name laid as plain text", plain?.textFormat === Text.PlainText,
+            `textFormat ${plain?.textFormat}`);
+        const marked = textItem(markedName, markedName.name);
+        expect("a name with a matched letter laid as styled text",
+            marked?.textFormat === Text.StyledText, `textFormat ${marked?.textFormat}`);
+        const escaped = textItem(escapedName, escapedName.name);
+        expect("a name with an escaped ampersand laid as styled text",
+            escaped?.textFormat === Text.StyledText, `textFormat ${escaped?.textFormat}`);
     }
 
     function countBeforeChord() {
@@ -1677,6 +1720,7 @@ ShellRoot {
             root.noteHolds();
             root.sideItemsHold();
             root.headMarkHolds();
+            root.namesLayAsTheyRead();
             turns.begin();
         } catch (error) {
             console.warn(`FAIL ${error.message}`);

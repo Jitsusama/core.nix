@@ -81,6 +81,8 @@ Rectangle {
     property string name
     // The name as it reads, when `name` carries the launcher's marks.
     property string plainName: name
+    // Whether the name carries markup to be read as styled text.
+    readonly property bool styledName: /[<&]/.test(name)
     // The runs of the name's letters the find matched, [start, end] each
     // (Fuzzy.runs), which take Search's wash, as his Neovim's hlsearch
     // washes a match: the selected row's too, on a ground a shade past the
@@ -347,7 +349,13 @@ Rectangle {
         // lie on it in the selection's colour and vanish, gives way.
         finds: row.flashed ? [] : row.finds
         washedSelected: row.selected
-        format: row.selected || row.quiet || row.flashed ? Text.PlainText : Text.StyledText
+        // Styled only where the name carries markup, a matched letter's ink
+        // or an escaped ampersand (Launcher.qml's marked), since Qt parses
+        // styled text again each time a reused row's name changes, and the
+        // most a search's rows take is laying their names out (4K step 2,
+        // 2026-11-17).
+        format: row.selected || row.quiet || row.flashed || !row.styledName ? Text.PlainText
+            : Text.StyledText
         color: row.flashed ? row.flashInk : row.quiet ? Theme.muted
             : row.selected ? Theme.strong : Theme.text
         figure: figureFace.advanceWidth
