@@ -63,6 +63,7 @@
   "launcher/Joined.js"
   "launcher/RowsKept.js"
   "launcher/Order.js"
+  "launcher/Shared.js"
   "launcher/PlaceRow.js"
   "launcher/SystemPart.js"
   "launcher/CommandRow.js"

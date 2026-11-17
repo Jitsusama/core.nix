@@ -93,6 +93,10 @@ Singleton {
     // (WlrScreencopy), as wf-recorder does. Replaced whole on each change,
     // since they're few and change seldom.
     property var casts: ({})
+    // Whether niri, or the windows daemon in its place, has said which
+    // casts there are, so what hides itself from a share hides until it
+    // has: until then the shell can't tell that nothing sees the screen.
+    property bool castsHeard: false
 
     // Whether niri's last load of its settings failed, which it says as the
     // stream begins and at every reload. niri then keeps the settings it
@@ -263,8 +267,10 @@ Singleton {
             windows = kept.windows;
         if (workspaces !== kept.workspaces)
             workspaces = kept.workspaces;
-        if (told.casts)
+        if (told.casts) {
             casts = kept.casts;
+            castsHeard = true;
+        }
         overview = kept.overview;
         settingsFailed = kept.settingsFailed;
         if (focused !== kept.focused)
@@ -307,6 +313,12 @@ Singleton {
         kind: ["workspace", "focus", "desktop", "cast", "screenshot"]
         answersWhole: true
         onHeard: (changed, gone) => root.took(placesHeard, changed, gone)
+        // Its whole answer says every cast there is, none when it holds no
+        // cast's record, which no record's coming or going would tell.
+        onAnsweredChanged: {
+            if (answered && !root.standIn)
+                root.castsHeard = true;
+        }
     }
 
     // Each window's tile, only while something draws tiles, and the one
@@ -396,6 +408,7 @@ Singleton {
             for (const cast of event.CastsChanged.casts)
                 all[cast.stream_id] = cast;
             casts = all;
+            castsHeard = true;
         } else if (event.CastStartedOrChanged) {
             const cast = event.CastStartedOrChanged.cast;
             casts = Object.assign({}, casts, { [cast.stream_id]: cast });
