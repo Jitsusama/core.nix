@@ -432,8 +432,11 @@ impl Splitting {
 /// When its checkout can't be made.
 pub fn ride(url: &str) -> Result<ExitCode, String> {
     let root = crate::state::State::from_env().root;
+    // A train that was killed left its right of way behind, so one
+    // starting afresh holds none, and however it stops, changes merge
+    // alone again.
+    way(&root, &Ended::Otherwise);
     let ridden = ride_from(&root, url);
-    // However the train stops, changes merge alone again.
     way(&root, &Ended::Otherwise);
     ridden
 }

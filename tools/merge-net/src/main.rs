@@ -320,6 +320,11 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
 fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: &str) -> ExitCode {
     if needs_heard(commit, main, passes, files) {
         mark_skipped_macs(commit, passes);
+        // A change held for an earlier gate sharing its files stays held,
+        // rather than board the train and land ahead of it.
+        if turn::waiting(commit, passes, files) {
+            return ExitCode::FAILURE;
+        }
         if let Some(said) = train::gives_way(commit) {
             eprintln!("merge-net: {said}");
             return ExitCode::FAILURE;

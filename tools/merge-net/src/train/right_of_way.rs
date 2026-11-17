@@ -6,11 +6,13 @@
 //! holds the right of way, `train/right-of-way` saying since when, and a
 //! change `ready` would merge alone boards it instead, so main stays where
 //! the train's next run is cut. A landing that leaves riders aboard, those
-//! that boarded meanwhile, holds it afresh for their run. It ends when the
-//! train goes red, can't reach main, lands the last of its riders or stops
-//! for any reason, and `RIGHT_OF_WAY` after it began whatever happens: a
-//! train that keeps missing gets it again only once it lands, so one that
-//! can't land never holds main back for long.
+//! that boarded meanwhile, holds on to it for their run, from when it
+//! began. It ends when the train goes red, can't reach main, lands the
+//! last of its riders or stops for any reason, a train starting afresh
+//! holding none, and `RIGHT_OF_WAY` after it began whatever happens: it's
+//! given again only by a miss after a landing, so neither a train that
+//! can't land nor one that lands under steady traffic holds main back for
+//! longer than that at a time.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -39,8 +41,6 @@ pub enum Way {
     /// The train holds it from now, unless it already held one since it
     /// last landed.
     Give,
-    /// The train holds it afresh from now, for the riders still aboard.
-    Renew,
     /// The train holds on to it from when it began, for the riders still
     /// aboard, and it's taken back once its time is up.
     Keep,
@@ -53,7 +53,7 @@ pub enum Way {
 pub fn after(ended: &Ended) -> Way {
     match ended {
         Ended::Moved => Way::Give,
-        Ended::Landed { left: true } => Way::Renew,
+        Ended::Landed { left: true } => Way::Keep,
         Ended::Landed { left: false } | Ended::Otherwise => Way::TakeBack,
     }
 }
@@ -71,17 +71,15 @@ pub fn follow(root: &Path, ended: &Ended, now: u64) -> Option<String> {
                 RIGHT_OF_WAY / 60
             ))
         }
-        Way::Renew | Way::Keep => {
-            take_back(root);
-            give(root, now);
-            Some("the train holds the right of way afresh for the riders still aboard".into())
+        Way::Keep if holds(root, now).is_some() => {
+            Some("the train holds on to the right of way for the riders still aboard".into())
         }
-        Way::TakeBack if held => {
+        Way::TakeBack | Way::Keep if held => {
             take_back(root);
             Some("the train gives back the right of way".into())
         }
         // Given while held, or taken back while not, nothing changes.
-        Way::Give | Way::TakeBack => None,
+        Way::Give | Way::TakeBack | Way::Keep => None,
     }
 }
 
@@ -271,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn a_run_gives_renews_or_takes_back_the_right_of_way_by_how_it_ended() {
+    fn a_run_gives_keeps_or_takes_back_the_right_of_way_by_how_it_ended() {
         for (ended, way) in [
             (Ended::Moved, Way::Give),
             (Ended::Landed { left: true }, Way::Keep),
