@@ -205,6 +205,9 @@ fn signing(args: &Args) -> (Senders, Marks, Words) {
 /// The rows as served: one place's kept, so each row keeps its order.
 #[derive(Default)]
 struct Served {
+    /// The machine it runs on, by its host name, which each notice's cell
+    /// is stamped with when its sender named none (notice.rs's Cell).
+    host: String,
     rows: Rows,
     places: [Kept; 3],
     /// The notices Desktop showed when its rows were last made, kept there
@@ -235,7 +238,7 @@ impl Served {
             .iter()
             .filter(|notice| notice.recent(now))
             .map(|notice| {
-                let mut record = notice.record();
+                let mut record = notice.record(&self.host);
                 if let Some(card) = self.rows.card(notice.id).and_then(Value::as_object) {
                     for (field, value) in card {
                         record[field] = value.clone();
@@ -331,6 +334,19 @@ fn main() -> ExitCode {
     })
 }
 
+/// The machine's host name, as the kernel holds it as the daemon starts,
+/// or "" where it can't be read, which stamps no machine. Said once in
+/// the journal when it stamps none, so links with no machine have a why.
+fn this_host() -> String {
+    let host = std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .map(|name| name.trim().to_owned())
+        .unwrap_or_default();
+    if host.is_empty() {
+        eprintln!("notices: no host name to stamp a notice's cell with");
+    }
+    host
+}
+
 /// Takes the bus and serves the shell for as long as it runs.
 ///
 /// # Errors
@@ -379,7 +395,10 @@ fn serve_notices(args: &Args) -> Result<(), Failure> {
         }));
     }
     let (entries, resigned) = followed(changed.clone());
-    let mut served = Served::default();
+    let mut served = Served {
+        host: this_host(),
+        ..Served::default()
+    };
     // What's served of what `held` holds, handing it the rows a search
     // answers with.
     let mut records = |held: &mut State| {
