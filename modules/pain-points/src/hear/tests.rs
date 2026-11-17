@@ -6,6 +6,8 @@ use serde_json::json;
 use std::fs;
 use std::io::Write;
 
+mod troubles;
+
 /// 20:00 UTC on 16 November 2026.
 const AT: i64 = 1_794_859_200_000;
 
@@ -247,8 +249,16 @@ fn a_session_carried_into_a_new_log_is_heard_once_and_goes_to_the_live_cell() {
     timed_logs(
         &place,
         &[
-            ("2026-11-16T09-00-00-000Z_s-old.jsonl", 1_794_858_600_000, 180_000),
-            ("2026-11-16T10-00-00-000Z_s-new.jsonl", 1_794_858_600_000, 180_000),
+            (
+                "2026-11-16T09-00-00-000Z_s-old.jsonl",
+                1_794_858_600_000,
+                180_000,
+            ),
+            (
+                "2026-11-16T10-00-00-000Z_s-new.jsonl",
+                1_794_858_600_000,
+                180_000,
+            ),
         ],
     );
     let mut sent: Vec<(String, String)> = Vec::new();
@@ -282,8 +292,16 @@ fn two_sessions_stalled_in_the_same_second_are_both_heard() {
     timed_logs(
         &place,
         &[
-            ("2026-11-16T10-00-00-000Z_s-live.jsonl", 1_794_858_600_000, 180_000),
-            ("2026-11-16T10-00-00-000Z_s-other.jsonl", 1_794_858_600_000, 90_000),
+            (
+                "2026-11-16T10-00-00-000Z_s-live.jsonl",
+                1_794_858_600_000,
+                180_000,
+            ),
+            (
+                "2026-11-16T10-00-00-000Z_s-other.jsonl",
+                1_794_858_600_000,
+                90_000,
+            ),
         ],
     );
     let cells = r#"{"Ok":{"Sessions":[
@@ -291,92 +309,6 @@ fn two_sessions_stalled_in_the_same_second_are_both_heard() {
         {"id":"s-other","address":"GHI789","state":"busy"}]}}"#;
     let hour = hear(&place.ears(), cells, &mut |_, _| true).expect("a run");
     assert_eq!(hour.stalled, 2, "{:?}", place.heard());
-}
-
-#[test]
-fn a_finding_the_node_never_takes_is_tried_three_times_then_said_as_a_trouble() {
-    let place = Place::new("tries");
-    place.routes();
-    a_day(&place);
-    let mut to_owner = 0;
-    let mut last = None;
-    for _ in 0..5 {
-        last = Some(
-            hear(&place.ears(), CELLS, &mut |to, _| {
-                to_owner += usize::from(to == "ABC123");
-                false
-            })
-            .expect("a run"),
-        );
-    }
-    assert_eq!(to_owner, 3, "a cell is asked again every five minutes");
-    let hour = last.expect("runs");
-    assert!(
-        hour.troubles.iter().any(|t| t.contains("gave up")),
-        "{hour:?}"
-    );
-}
-
-#[test]
-fn a_mycelium_with_no_sessions_and_nothing_waiting_is_no_trouble() {
-    let place = Place::new("quiet-node");
-    place.routes();
-    let hour = hear(&place.ears(), "", &mut |_, _| true).expect("a run");
-    assert!(hour.troubles.is_empty(), "{hour:?}");
-}
-
-#[test]
-fn routes_that_cant_be_read_or_name_no_sender_are_troubles() {
-    for (name, routes) in [("routes-dir", None), ("routes-no-from", Some(r#"{"never":["V"]}"#))] {
-        let place = Place::new(name);
-        let at = place.root.join("state/routes.json");
-        match routes {
-            Some(text) => fs::write(&at, text).expect("routes"),
-            None => fs::create_dir_all(&at).expect("a folder where routes.json goes"),
-        }
-        a_day(&place);
-        let hour = hear(&place.ears(), CELLS, &mut |to, text| {
-            panic!("sent {to} without routes: {text}")
-        })
-        .expect("a run");
-        assert!(
-            hour.troubles.iter().any(|t| t.contains("routes.json")),
-            "{name}: {hour:?}"
-        );
-    }
-}
-
-#[test]
-fn routes_that_never_name_a_cell_never_to_send_nothing() {
-    let place = Place::new("no-never");
-    fs::write(
-        place.root.join("state/routes.json"),
-        r#"{"from":"EAR001","fallback":"ORCH01","ledgers":"ORCH01"}"#,
-    )
-    .expect("routes");
-    a_day(&place);
-    let hour = hear(&place.ears(), CELLS, &mut |to, text| {
-        panic!("sent {to} with no void guarded: {text}")
-    })
-    .expect("a run");
-    assert!(
-        hour.troubles.iter().any(|t| t.contains("never")),
-        "{hour:?}"
-    );
-}
-
-#[test]
-fn a_mycelium_that_names_no_sessions_is_a_trouble() {
-    let place = Place::new("no-sessions");
-    place.routes();
-    a_day(&place);
-    let hour = hear(&place.ears(), "", &mut |_, _| true).expect("a run");
-    assert!(
-        hour.troubles
-            .iter()
-            .any(|t| t.contains("named no sessions")),
-        "{hour:?}"
-    );
 }
 
 #[test]
@@ -675,24 +607,6 @@ fn nothing_goes_to_a_cell_the_routes_say_never_to_whatever_its_case() {
     assert!(
         hour.troubles.iter().any(|t| t.contains("void01")),
         "a fallback never sent to says so: {hour:?}"
-    );
-}
-
-#[test]
-fn a_run_that_could_not_send_says_so() {
-    let place = Place::new("failing");
-    place.routes();
-    a_day(&place);
-    let hour = hear(&place.ears(), CELLS, &mut |_, _| false).expect("a run");
-    assert!(
-        hour.troubles.iter().any(|t| t.contains("failed")),
-        "{hour:?}"
-    );
-    fs::write(place.root.join("state/routes.json"), "{not json").expect("routes");
-    let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a run");
-    assert!(
-        hour.troubles.iter().any(|t| t.contains("routes.json")),
-        "a broken routes file isn't a quiet hour: {hour:?}"
     );
 }
 

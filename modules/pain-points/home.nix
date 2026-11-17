@@ -11,7 +11,8 @@
 # is the one part that keeps his words: it hears what hurt him in each pi
 # session he typed in, keeps each pain in its own state, and sends it as a
 # finding to the cell that was working on it through the machine's
-# mycelium socket alone (src/hear.rs says how). It reads the asks and
+# mycelium socket alone (src/hear.rs says how), though a send's words sit
+# in mycelium's command line while it runs. It reads the asks and
 # misses ledgers and never writes them, never sends to the void, and
 # sends nothing until routes.json, beside its state, names who it sends
 # as.

@@ -11,7 +11,10 @@
 //! Unlike `read`, which keeps kinds and timings alone, `hear` keeps his
 //! words, since a finding without them can't be acted on. They stay in
 //! its own state (heard.jsonl, a fortnight of it) and go only over the
-//! machine's own mycelium socket to the cell that owns what hurt.
+//! machine's own mycelium socket to the cell that owns what hurt. For the
+//! moment a send runs they are in mycelium's command line too, which any
+//! account here can read, since `mycelium send` takes its text no other
+//! way.
 //!
 //! It writes hour.json each run, for cadence's hourly card: the pains
 //! heard and routed in the last hour, those of the last day still open,
@@ -51,6 +54,12 @@ const SEND_AT_MOST: Duration = Duration::from_secs(20);
 
 /// How long a quick question of the machine, its time zone, may take.
 const ASK_AT_MOST: Duration = Duration::from_secs(5);
+
+/// How many times a pain's finding is sent that the node never took, and
+/// again its keeper's note, before the run gives up on it and says so: a
+/// send that went but read as failed would otherwise ask a cell the same
+/// question every five minutes.
+pub const SEND_TRIES: u32 = 3;
 
 /// Where a run listens and what it knows of the time.
 pub struct Ears {
@@ -119,8 +128,13 @@ pub fn listen(
         .map_err(|e| format!("hear.lock: {e}"))?;
     match lock.try_lock() {
         Ok(()) => {}
+        // Stepping aside is the lock doing its work, so the unit isn't
+        // marked failed for a run typed in a terminal beside it.
         Err(TryLockError::WouldBlock) => {
-            return Err("another run is hearing, so this one stepped aside".into());
+            return Ok((
+                "pain-points: another run is hearing, so this one stepped aside".into(),
+                false,
+            ));
         }
         Err(TryLockError::Error(e)) => return Err(format!("hear.lock: {e}")),
     }
@@ -284,45 +298,7 @@ pub fn hear(
         }
     }
 
-    let mut present = Vec::new();
-    for (name, path) in logs(&ears.sessions, since) {
-        present.push(name.clone());
-        let log = following.entry(name).or_default();
-        for said in follow(&path, &ears.void, log) {
-            let key = format!("{}/{}", log.session, said.entry);
-            let kinds = sore::kinds(&said.words, said.at, &said.before);
-            // A session carried on into a new log repeats what was said
-            // in the old one, at the same time, so it is heard once.
-            if log.lab
-                || said.at < since
-                || kinds.is_empty()
-                || kept
-                    .iter()
-                    .any(|h| h.key == key || (h.at == said.at && h.words == said.words))
-            {
-                continue;
-            }
-            let hits = heard::hits(&said.words, &kept);
-            kept.push(Heard {
-                key,
-                session: log.session.clone(),
-                entry: said.entry,
-                at: said.at,
-                void: log.void,
-                carried: heard::carried(&said.words, &ledgers),
-                words: said.words,
-                kinds: kinds.iter().map(|k| (*k).to_string()).collect(),
-                looking_at: said.looking_at,
-                tools: said.tools,
-                failed: said.failed,
-                hits,
-                to: None,
-                routed_at: None,
-            });
-        }
-    }
-    following.retain(|name, _| present.contains(name));
-
+    hear_logs(ears, &mut following, &mut kept, &ledgers, since);
     keep_stalls(ears, &following, &mut kept, since);
 
     // What it heard is kept before anything is sent, and again after each
@@ -356,7 +332,13 @@ pub fn hear(
     );
     keep(&heard_at, &kept)?;
     let mut hour = hour_of(&kept, ears.at);
-    hour.troubles = troubles(&ears.state, &routes, failed, cells.is_empty());
+    let (waiting, given_up) = unsent(&kept, ears.at);
+    hour.troubles = troubles(
+        &ears.state,
+        &routes,
+        (failed, given_up),
+        cells.is_empty() && waiting,
+    );
     crate::write_whole(
         &ears.state.join("hour.json"),
         &serde_json::to_string(&hour).map_err(|e| e.to_string())?,
@@ -364,13 +346,99 @@ pub fn hear(
     Ok(hour)
 }
 
+/// Hears what's new in each session log written since `since`, keeping
+/// each pain he said, and forgets the logs no longer there.
+fn hear_logs(
+    ears: &Ears,
+    following: &mut BTreeMap<String, Following>,
+    kept: &mut Vec<Heard>,
+    ledgers: &[String],
+    since: i64,
+) {
+    let mut present = Vec::new();
+    for (name, path) in logs(&ears.sessions, since) {
+        present.push(name.clone());
+        let log = following.entry(name).or_default();
+        for said in follow(&path, &ears.void, log) {
+            let key = format!("{}/{}", log.session, said.entry);
+            let kinds = sore::kinds(&said.words, said.at, &said.before);
+            if log.lab || said.at < since || kinds.is_empty() {
+                continue;
+            }
+            // A session carried on into a new log repeats what was said
+            // in the old one, at the same time, so it is heard once, and
+            // owned by the later log's session, which carries it on.
+            if let Some(h) = kept
+                .iter_mut()
+                .find(|h| h.key == key || (h.at == said.at && h.words == said.words))
+            {
+                carry_on(h, &key, log);
+                continue;
+            }
+            let hits = heard::hits(&said.words, kept);
+            kept.push(Heard {
+                key,
+                session: log.session.clone(),
+                entry: said.entry,
+                at: said.at,
+                void: log.void,
+                carried: heard::carried(&said.words, ledgers),
+                words: said.words,
+                kinds: kinds.iter().map(|k| (*k).to_string()).collect(),
+                looking_at: said.looking_at,
+                tools: said.tools,
+                failed: said.failed,
+                hits,
+                to: None,
+                routed_at: None,
+                tries: 0,
+            });
+        }
+    }
+    following.retain(|name, _| present.contains(name));
+}
+
+/// Whether any pain of the day waits to be sent, since a node naming no
+/// sessions is a trouble only then, and how many were given up on: their
+/// owner's tries spent while they were fresh, or the keeper's after them.
+fn unsent(kept: &[Heard], at: i64) -> (bool, usize) {
+    let unsent = || {
+        kept.iter()
+            .filter(move |h| h.routed_at.is_none() && h.at >= at - DAY_MS)
+    };
+    let waiting = unsent().any(|h| !h.carried);
+    let given_up = unsent()
+        .filter(|h| h.tries >= 2 * SEND_TRIES || (h.tries >= SEND_TRIES && h.at >= at - FRESH_MS))
+        .count();
+    (waiting, given_up)
+}
+
+/// Points a pain heard again in a carried-on log at the session carrying
+/// it on, while it hasn't gone, since the old one has ended or moved.
+fn carry_on(h: &mut Heard, key: &str, log: &Following) {
+    if h.key != key && h.routed_at.is_none() {
+        h.session.clone_from(&log.session);
+        h.void = log.void;
+    }
+}
+
 /// What kept a run from routing as it should, so a broken listener doesn't
-/// read as a quiet hour.
-fn troubles(state: &Path, routes: &Routes, failed: usize, no_cells: bool) -> Vec<String> {
+/// read as a quiet hour: sends that failed this run, and pains given up on.
+fn troubles(
+    state: &Path,
+    routes: &Routes,
+    (failed, given_up): (usize, usize),
+    no_cells: bool,
+) -> Vec<String> {
     let mut troubles: Vec<String> = Routes::trouble(state).into_iter().collect();
     troubles.extend(refused(routes));
     if failed > 0 {
         troubles.push(format!("{failed} sends failed"));
+    }
+    if given_up > 0 {
+        troubles.push(format!(
+            "gave up on {given_up} pains the node never took, after {SEND_TRIES} sends each"
+        ));
     }
     if routes.sends() && no_cells {
         troubles.push("the mycelium named no sessions, so none could be routed".into());
@@ -410,11 +478,13 @@ fn keep_stalls(
         };
         for stall in stalled::stalls(turns, &log.session, log.void, since, ears.at) {
             // A stall is the same one when its turn began at the same
-            // moment, though a carried-on log names it again.
-            if !kept
-                .iter()
-                .any(|h| h.key == stall.key || (stalled::is(h) && h.at == stall.at))
-            {
+            // moment and lost him as long, though a carried-on log names
+            // it again; another session's in the same second is its own.
+            if let Some(h) = kept.iter_mut().find(|h| {
+                h.key == stall.key || (stalled::is(h) && h.at == stall.at && h.words == stall.words)
+            }) {
+                carry_on(h, &stall.key, log);
+            } else {
                 kept.push(stall);
             }
         }
@@ -439,7 +509,11 @@ fn route_waiting(
     }
     let mut by_owner: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     for (n, pain) in kept.iter().enumerate() {
-        if pain.carried || pain.routed_at.is_some() || pain.at < ears.at - FRESH_MS {
+        if pain.carried
+            || pain.routed_at.is_some()
+            || pain.tries >= SEND_TRIES
+            || pain.at < ears.at - FRESH_MS
+        {
             continue;
         }
         if let Some(owner) = route::owner(&pain.session, pain.void, cells, routes) {
@@ -457,8 +531,12 @@ fn route_waiting(
                 kept[n].routed_at = Some(ears.at);
                 owned.push(kept[n].key.clone());
             }
-            let _ = keep(heard_at, kept);
+        } else {
+            for n in pains {
+                kept[n].tries += 1;
+            }
         }
+        let _ = keep(heard_at, kept);
     }
     owned
 }
@@ -489,6 +567,7 @@ fn note_for_keeper(
                 && !stalled::is(pain)
                 && route::owner(&pain.session, pain.void, cells, routes).is_some()
                 && pain.routed_at.is_none()
+                && pain.tries < 2 * SEND_TRIES
                 && pain.at >= ears.at - DAY_MS
                 && pain.at < ears.at - FRESH_MS
         })
@@ -511,13 +590,17 @@ fn note_for_keeper(
     // The note of pains already sent is said once: a keeper that misses it
     // still has each from its owner's side, and heard.jsonl. Late ones
     // wait for the next run until the note goes.
-    if send(keeper, &route::ledger_note(&noted, cells, ears.offset_s)) {
-        for n in late {
+    // A late pain has its keeper's own tries, after any its owner had.
+    let went = send(keeper, &route::ledger_note(&noted, cells, ears.offset_s));
+    for n in late {
+        if went {
             kept[n].to = Some(keeper.clone());
             kept[n].routed_at = Some(ears.at);
+        } else {
+            kept[n].tries = kept[n].tries.max(SEND_TRIES) + 1;
         }
-        let _ = keep(heard_at, kept);
     }
+    let _ = keep(heard_at, kept);
 }
 
 /// The hour as cadence's card says it.

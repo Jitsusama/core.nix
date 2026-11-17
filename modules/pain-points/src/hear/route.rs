@@ -59,10 +59,27 @@ impl Routes {
 
     /// Why routes.json can't be used, when it's there but can't be read.
     pub fn trouble(state: &Path) -> Option<String> {
-        let text = fs::read(state.join("routes.json")).ok()?;
-        serde_json::from_slice::<Self>(&text)
-            .err()
-            .map(|e| format!("routes.json can't be read ({e}), so nothing was sent"))
+        // Only a routes file that isn't there is a listener nobody set up;
+        // one there but unreadable, or naming no one to send as, is a
+        // listener set up wrong, which must not read as a quiet hour.
+        let text = match fs::read(state.join("routes.json")) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+            Err(e) => {
+                return Some(format!(
+                    "routes.json can't be read ({e}), so nothing was sent"
+                ));
+            }
+        };
+        match serde_json::from_slice::<Self>(&text) {
+            Err(e) => Some(format!(
+                "routes.json can't be read ({e}), so nothing was sent"
+            )),
+            Ok(routes) if routes.from.is_none() => {
+                Some("routes.json names no one to send as, so nothing was sent".into())
+            }
+            Ok(_) => None,
+        }
     }
 
     /// Whether anything may be sent: only with someone to send as, and
@@ -166,7 +183,13 @@ const TITLE_AT_MOST: usize = 80;
 
 /// His words, cut short where they run long.
 fn quoted(words: &str) -> String {
-    let flat = words.split_whitespace().collect::<Vec<_>>().join(" ");
+    // His words can't close their own quote and speak outside it, as a
+    // window's title can't.
+    let flat = words
+        .replace('"', "'")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     if flat.chars().count() <= WORDS_AT_MOST {
         return format!("\"{flat}\"");
     }
@@ -299,6 +322,7 @@ mod tests {
             carried: false,
             to: None,
             routed_at: None,
+            tries: 0,
         }
     }
 

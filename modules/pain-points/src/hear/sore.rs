@@ -13,9 +13,10 @@ use crate::words::{ALIKE, PRAISE, alike, asking_status, nudging};
 
 /// Phrases that say the last go didn't do it, each matched as whole words;
 /// one ending in `*` takes any ending on its last word, so "still fail*"
-/// hears "still failing" too, and "again?" is heard only ending a
-/// question or a cry.
-const FAULTS: [&str; 21] = [
+/// hears "still failing" too. A bare "again" is no fault, since "can you
+/// run it again?" is a plain ask, and "still looks" is one only when what
+/// follows is.
+const FAULTS: [&str; 31] = [
     "not that",
     "that's not",
     "doesn't work",
@@ -24,19 +25,45 @@ const FAULTS: [&str; 21] = [
     "didn't work",
     "broken",
     "stuck",
-    "again?",
     "yet again",
-    "keeps",
+    "not again",
     "why did",
     "why didn't",
     "why isn't",
-    "still look*",
+    "still look* like",
+    "still look* off",
+    "still look* wrong",
+    "still look* bad",
+    "still look* broken",
     "still not",
-    "still no",
+    "still nothing",
+    "still none",
     "still fail*",
     "still doesn't",
+    "still don't",
+    "still can't",
+    "still isn't",
+    "still won't",
+    "still broken",
     "still slow*",
     "went off the rails",
+    "keeps *ing",
+];
+
+/// The words before a "slow" that make it a wait, as in "so slow" or "the
+/// build is slow"; "can you slow the scroll" is a design ask.
+const SLOW_AFTER: [&str; 11] = [
+    "so",
+    "too",
+    "very",
+    "is",
+    "are",
+    "was",
+    "really",
+    "still",
+    "painfully",
+    "it's",
+    "that's",
 ];
 
 /// The starts of words that are swears.
@@ -49,28 +76,21 @@ pub const AGAIN_MS: i64 = 30 * 60_000;
 const AGAIN_LEAST: usize = 20;
 
 /// Whether `fault` is said among a message's words, as whole words, so
-/// "against" holds no "again".
-fn said(each: &[&str], low: &str, fault: &str) -> bool {
-    if let Some(word) = fault.strip_suffix('?') {
-        let mut ends = low.split(['?', '!']);
-        ends.next_back();
-        return ends.any(|before| {
-            before
-                .trim_end()
-                .rsplit(|c: char| !c.is_alphanumeric())
-                .next()
-                == Some(word)
-        });
-    }
-    let (fault, stem) = fault
-        .strip_suffix('*')
-        .map_or((fault, false), |f| (f, true));
+/// "against" holds no "again". A word of it ending in `*` takes any
+/// ending, and one starting with `*` any start, so "keeps *ing" hears
+/// "keeps closing" but not "keeps its place".
+fn said(each: &[&str], fault: &str) -> bool {
     let words: Vec<&str> = fault.split(' ').collect();
     each.windows(words.len()).any(|run| {
-        run.iter()
-            .zip(&words)
-            .enumerate()
-            .all(|(at, (w, f))| w == f || (stem && at + 1 == words.len() && w.starts_with(f)))
+        run.iter().zip(&words).all(|(w, f)| {
+            if let Some(stem) = f.strip_suffix('*') {
+                w.starts_with(stem)
+            } else if let Some(ending) = f.strip_prefix('*') {
+                w.len() > ending.len() && w.ends_with(ending)
+            } else {
+                w == f
+            }
+        })
     })
 }
 
@@ -89,7 +109,7 @@ pub fn kinds(words: &str, at: i64, earlier: &[(i64, String)]) -> Vec<&'static st
         .iter()
         .any(|opening| low.trim_start().starts_with(opening));
     let spaced = format!(" {} ", each.join(" "));
-    if opening_no || FAULTS.iter().any(|fault| said(&each, &low, fault)) {
+    if opening_no || FAULTS.iter().any(|fault| said(&each, fault)) {
         kinds.push("corrected");
     }
     let swore = each.iter().enumerate().any(|(at, w)| {
@@ -105,9 +125,16 @@ pub fn kinds(words: &str, at: i64, earlier: &[(i64, String)]) -> Vec<&'static st
     if nudging(words) {
         kinds.push("nudged");
     }
-    if each
-        .first()
-        .is_some_and(|first| ["wait", "stop"].contains(first))
+    // A "wait" or "stop" holds him up set off as the opening "no" is, or
+    // said alone; "wait for the build" is an instruction.
+    let opening_hold = ["wait", "stop"].iter().any(|word| {
+        let start = low.trim_start();
+        start.trim_end_matches(['.', '!', ' ']) == *word
+            || [",", ".", "!"]
+                .iter()
+                .any(|mark| start.starts_with(&format!("{word}{mark}")))
+    });
+    if opening_hold
         || ["hold up", "hold on"]
             .iter()
             .any(|opening| low.trim_start().starts_with(opening))
@@ -122,10 +149,11 @@ pub fn kinds(words: &str, at: i64, earlier: &[(i64, String)]) -> Vec<&'static st
         kinds.push("said again");
     }
     // Waits are words too, so "changing" holds no "hanging". A "slow"
-    // after another word, or "slowly", is a wait; "make it slower" or
-    // "slow the scroll down" is a design ask.
+    // after a word that says how it is, or "slowly", is a wait; "make it
+    // slower" or "slow the scroll down" is a design ask.
     if each.iter().enumerate().any(|(at, w)| {
-        (*w == "slow" && at > 0) || ["slowly", "forever", "hanging", "frozen", "hung"].contains(w)
+        (*w == "slow" && at > 0 && SLOW_AFTER.contains(&each[at - 1]))
+            || ["slowly", "forever", "hanging", "frozen", "hung"].contains(w)
     }) || [" so long ", " still waiting "]
         .iter()
         .any(|phrase| spaced.contains(phrase))

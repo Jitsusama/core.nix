@@ -51,6 +51,9 @@ pub struct Heard {
     pub to: Option<String>,
     #[serde(default)]
     pub routed_at: Option<i64>,
+    /// How many sends of it the node never took.
+    #[serde(default)]
+    pub tries: u32,
 }
 
 /// The words of each line of a ledger. A line carries its pain whether or
@@ -105,6 +108,7 @@ mod tests {
             carried: false,
             to: None,
             routed_at: None,
+            tries: 0,
         }
     }
 
