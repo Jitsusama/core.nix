@@ -67,6 +67,15 @@ it("leaves a title unmarked when the page shows a document's id for want of one"
 /** What the panel says beside "Started". */
 const STARTED = /<dt>Started<\/dt><dd><span>(.*?)<\/span><\/dd>/u;
 
+/** The panel's waits section, its markup within. */
+const WAITS_SECTION = /<section aria-labelledby="waits-title"[^>]*>([\s\S]*?)<\/section>/u;
+
+/** Each run of space, folded to one. */
+const SPACES = /\s+/gu;
+
+/** What a row says of its quest's waits. */
+const ROW_WAITS = /<span class="waits">([^<]*)<\/span>/u;
+
 /** What the panel says of `forage` beside "Started", given the cells it started. */
 function startedLine(open: Forage, started: readonly string[]): string {
   const panel = panelOf(open, new Set([open.cell, ...started]), started);
@@ -158,8 +167,8 @@ function wait(more: Partial<Forage["waits"][number]> = {}): Forage["waits"][numb
 
 /** What the panel's waits section says, without its markup, or none without one. */
 function waitsSaid(panel: string): string | undefined {
-  const section = /<section aria-labelledby="waits-title"[^>]*>([\s\S]*?)<\/section>/u.exec(panel);
-  return section?.[1]?.replace(TAG, " ").replace(/\s+/gu, " ").trim();
+  const section = WAITS_SECTION.exec(panel);
+  return section?.[1]?.replace(TAG, " ").replace(SPACES, " ").trim();
 }
 
 it("says in the panel what a cell's quest waits on you for, first, in its own words", () => {
@@ -201,7 +210,7 @@ it("escapes what a wait says before drawing it", () => {
 
 it("says in a cell's row how many things its quest waits on you for", () => {
   const said = (waits: number): string | undefined =>
-    /<span class="waits">([^<]*)<\/span>/u.exec(
+    ROW_WAITS.exec(
       forageRow(
         forage({ waits: Array.from({ length: waits }, (_, at) => wait({ id: `w${at}` })) }),
       ),
