@@ -2931,7 +2931,9 @@ impl Changed {
         git(&self.tree, &self.config, &["rev-parse", "HEAD"])
     }
 
-    /// A Mac nearby at `address`, building for its own system.
+    /// A Mac nearby at `address`, building for its own system, and quiet
+    /// until a test says otherwise, since a Mac that doesn't say its load
+    /// has no room.
     fn mac_at(&self, address: std::net::SocketAddr) {
         fs::create_dir_all(self.folder.path().join("nix-offload")).unwrap();
         fs::write(
@@ -2939,6 +2941,10 @@ impl Changed {
             format!("{address} mac aarch64-darwin\n"),
         )
         .unwrap();
+        let load = self.bin.join("load-mac");
+        if !load.exists() {
+            fs::write(load, "{ 1.00 1.00 1.00 }\n12\n").unwrap();
+        }
     }
 
     /// The lines ssh was sent for `host`.
@@ -3465,7 +3471,8 @@ fn a_change_a_macs_checks_read_is_compared_on_the_mac_too() {
     );
     assert!(
         String::from_utf8_lossy(&ran.stderr).contains(
-            "modules/zsh/home.nix is read by a Mac's checks, so they're compared on mac too"
+            "modules/zsh/home.nix is read by a Mac's checks, so they're compared there too: mac \
+             has room, at load 30.1 over a minute and 28.0 over five on 12 processors"
         ),
         "{ran:?}"
     );
@@ -3495,7 +3502,8 @@ fn a_change_a_macs_checks_read_waits_while_the_mac_has_no_room_kept_as_skipped()
         !sent.contains("aarch64-darwin"),
         "nothing went for a Mac: {sent}"
     );
-    let because = "mac has no room, at load 121 on 12 processors";
+    let because =
+        "mac has no room, at load 121.0 over a minute and 88.3 over five on 12 processors";
     assert!(
         String::from_utf8_lossy(&ran.stderr).contains(because),
         "it never said why it waited: {ran:?}"
@@ -3525,7 +3533,8 @@ fn a_build_for_a_busy_macs_system_waits_as_one_nothing_built() {
     assert_eq!(ran.status.code(), Some(69), "{ran:?}");
     assert!(
         String::from_utf8_lossy(&ran.stderr).contains(
-            "mac has no room, at load 121 on 12 processors, so a run for its system waits"
+            "mac has no room, at load 121.0 over a minute and 88.3 over five on 12 processors, so \
+             a run for its system waits"
         ),
         "it never said why it waited: {ran:?}"
     );
@@ -3533,6 +3542,81 @@ fn a_build_for_a_busy_macs_system_waits_as_one_nothing_built() {
     assert!(
         !sent.contains("aarch64-darwin"),
         "something went for a busy Mac: {sent}"
+    );
+}
+
+#[test]
+fn a_build_for_a_mac_busy_for_five_minutes_waits_though_its_last_minute_was_quiet() {
+    // At 08:58 on 17 November two runs for a Mac went at a five-minute
+    // load of 60 to 80 on 12 processors: a gate that reads the last
+    // minute alone lets a run through each lull.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("load-mac"), "{ 20.00 60.00 80.00 }\n12\n").unwrap();
+
+    let (ran, _) = changed.run(&FOR_A_MAC);
+    assert_eq!(ran.status.code(), Some(69), "{ran:?}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains(
+            "mac has no room, at load 20.0 over a minute and 60.0 over five on 12 processors"
+        ),
+        "it never said the five-minute load it waited on: {ran:?}"
+    );
+}
+
+#[test]
+fn a_build_for_a_mac_with_room_says_the_load_it_went_at() {
+    // A gate that let a run through said nothing of the load it read, so
+    // on 17 November why two runs went to a busy Mac could only be guessed.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("load-mac"), "{ 20.00 30.00 10.00 }\n12\n").unwrap();
+
+    let (ran, _) = changed.run(&FOR_A_MAC);
+    assert_eq!(
+        ran.status.code(),
+        Some(0),
+        "a Mac with room wasn't built on: {ran:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains(
+            "mac has room, at load 20.0 over a minute and 30.0 over five on 12 processors, so a \
+             run for its system goes"
+        ),
+        "it never said the load it went at: {ran:?}"
+    );
+}
+
+#[test]
+fn a_gates_mac_comparison_waits_on_a_mac_that_says_no_load_kept_as_skipped() {
+    // A Mac whose answer holds no load has no more room for a gate's
+    // comparison than for the net's own run, which waits on it.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    let head = changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("load-mac"), "{ 20.00 }\n12\n").unwrap();
+
+    let (ran, _) = changed.run(&GATE);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let skipped = skipped_at(&changed, &head);
+    assert_eq!(
+        skipped["because"], "mac didn't say its load",
+        "a comparison went to a Mac that said no load: {skipped}"
+    );
+    assert!(
+        !changed
+            .sent_to("mac")
+            .iter()
+            .any(|line| line.contains("nix build")),
+        "a build was sent to a Mac that said no load"
     );
 }
 

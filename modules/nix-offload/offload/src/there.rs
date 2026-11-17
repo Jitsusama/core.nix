@@ -4180,11 +4180,17 @@ pub fn fetches(machine: &Nearby, asked: &Asked, scratch: &Path, ssh: &str) -> bo
     fetched
 }
 
-/// How busy a Mac nearby is: its load over the last minute and its
-/// processors, as its `sysctl` says them.
+/// How busy a Mac nearby is: its load over the last minute and the last
+/// five, and its processors, as its `sysctl` says them. The last minute
+/// alone isn't enough, since a Mac's builds come and go in bursts: at
+/// 08:58 on 17 November two runs went to a Mac whose five-minute load was
+/// 60 to 80 on 12 processors, through a gate that read the last minute in
+/// a lull. Nor is five alone, which a build its person has just begun
+/// takes a minute or two to reach.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Load {
     pub minute: f64,
+    pub five: f64,
     pub cores: u32,
 }
 
@@ -4200,34 +4206,64 @@ const LOAD_PATIENCE: Duration = Duration::from_secs(30);
 
 impl Load {
     /// Read from `sysctl -n vm.loadavg hw.ncpu`, as `{ 120.98 88.31 65.93 }`
-    /// then `12`, or none when it says something else.
+    /// then `12`, the first two averages being the last minute's and the
+    /// last five's, or none when it says something else: a figure missing
+    /// or one too many, or one that isn't a load, so it's never read from
+    /// the wrong place.
     pub fn parse(said: &str) -> Option<Load> {
         let mut lines = said.lines();
-        let averages = lines.next()?;
-        let minute = averages
-            .split_whitespace()
-            .find_map(|word| word.parse::<f64>().ok())?;
+        let averages = lines.next()?.trim();
+        let averages = averages.strip_prefix('{')?.strip_suffix('}')?;
+        let mut figures = averages.split_whitespace().map(|word| {
+            word.parse::<f64>()
+                .ok()
+                .filter(|figure| figure.is_finite() && *figure >= 0.0)
+        });
+        let (minute, five, _fifteen) = (figures.next()??, figures.next()??, figures.next()??);
+        if figures.next().is_some() {
+            return None;
+        }
         let cores = lines
             .next()?
             .trim()
             .parse::<u32>()
             .ok()
             .filter(|&cores| cores > 0)?;
-        Some(Load { minute, cores })
+        Some(Load {
+            minute,
+            five,
+            cores,
+        })
     }
 
-    /// Whether the Mac has no room for a comparison.
+    /// Whether the Mac has no room for a comparison: either load past
+    /// three a processor.
     pub fn over(self) -> bool {
-        self.minute > f64::from(self.cores) * ROOM_PER_CORE
+        self.minute.max(self.five) > f64::from(self.cores) * ROOM_PER_CORE
+    }
+
+    /// The load as a person reads it, as `load 121.0 over a minute and
+    /// 88.3 over five on 12 processors`, to a tenth, so a Mac just past its
+    /// room never reads as the load that has room.
+    pub fn said(self) -> String {
+        format!(
+            "load {:.1} over a minute and {:.1} over five on {} processors",
+            self.minute, self.five, self.cores
+        )
     }
 }
 
-/// A Mac nearby's load, `Err` saying why when it took past
-/// [`LOAD_PATIENCE`] to say it, and `Ok(None)` when it said nothing a
-/// load reads from, which leaves the comparison to go as before.
+/// A Mac nearby's load, `Err` saying why when it couldn't be asked here or
+/// took past [`LOAD_PATIENCE`] to say it, and `Ok(None)` when it said
+/// nothing a load reads from, as an ssh that couldn't reach it says
+/// nothing. Every caller waits on either (`changed::mac::room`).
 pub fn load_of(machine: &Nearby, scratch: &Path, ssh: &str) -> Result<Option<Load>, String> {
-    if fs::create_dir_all(scratch).is_err() {
-        return Ok(None);
+    if let Err(error) = fs::create_dir_all(scratch) {
+        return Err(format!(
+            "{}'s load couldn't be asked, since {} couldn't be made: {error}",
+            machine.host,
+            scratch.display()
+        ));
     }
     let said = mine(scratch, "load.log");
     let spawned = reaching(ssh, &said)
@@ -4238,8 +4274,14 @@ pub fn load_of(machine: &Nearby, scratch: &Path, ssh: &str) -> Result<Option<Loa
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn();
-    let Ok(mut asking) = spawned else {
-        return Ok(None);
+    let mut asking = match spawned {
+        Ok(asking) => asking,
+        Err(error) => {
+            return Err(format!(
+                "{}'s load couldn't be asked, since {ssh} wouldn't start: {error}",
+                machine.host
+            ));
+        }
     };
     let began = Instant::now();
     let answered = loop {
@@ -4645,6 +4687,67 @@ mod tests {
     use std::os::unix::process::CommandExt;
     use std::sync::mpsc;
     use std::time::Duration;
+
+    #[test]
+    fn a_macs_load_is_read_from_its_first_two_averages_or_not_at_all() {
+        assert_eq!(
+            Load::parse("{ 120.98 88.31 65.93 }\n12\n"),
+            Some(Load {
+                minute: 120.98,
+                five: 88.31,
+                cores: 12
+            }),
+            "a Mac's sysctl wasn't read as its minute's and five minutes' loads"
+        );
+        assert_eq!(
+            Load::parse("{20.00 60.00 80.00}\n12\n").map(|load| load.five),
+            Some(60.0),
+            "a brace against a figure shifted which figure was read"
+        );
+        assert_eq!(
+            Load::parse("{ 0.00 0.00 0.00 }\n12\n").map(|load| load.minute),
+            Some(0.0),
+            "an idle Mac's load wasn't read"
+        );
+        for unread in [
+            "{ 20.00 }\n12\n",
+            "20.00 60.00 80.00\n12\n",
+            "{ 20.00 NaN 80.00 }\n12\n",
+            "{ 20.00 inf 80.00 }\n12\n",
+            "{ 20.00 -1.00 80.00 }\n12\n",
+            "{ 20.00 60.00 80.00 }\n0\n",
+            "{ 20.00 60.00 80.00 }\n",
+            "{ 20.00 60.00 }\n12\n",
+            "{ 20.00 60.00 80.00 90.00 }\n12\n",
+        ] {
+            assert_eq!(
+                Load::parse(unread),
+                None,
+                "{unread:?} was read as a load, perhaps from the wrong figure"
+            );
+        }
+    }
+
+    #[test]
+    fn a_mac_has_no_room_once_either_load_is_past_three_a_processor() {
+        let at = |minute: f64, five: f64| Load {
+            minute,
+            five,
+            cores: 12,
+        };
+        assert!(
+            at(20.0, 60.0).over(),
+            "a Mac busy over five minutes had room in a lull"
+        );
+        assert!(
+            at(60.0, 20.0).over(),
+            "a Mac whose build has just begun had room"
+        );
+        assert!(
+            !at(36.0, 36.0).over(),
+            "a Mac at three a processor had no room"
+        );
+    }
 
     #[test]
     fn a_runs_own_ssh_options_come_before_the_copys_keepalive() {

@@ -167,20 +167,18 @@ pub fn asks_for_room(asked: Option<&str>, here: &str, builds: bool) -> bool {
     builds && asked == Some(SYSTEM) && here != SYSTEM
 }
 
-/// Why a run for a Mac's system waits rather than go to the Mac `host`,
-/// as `load` found it, or none when it goes. A Mac too busy to say its
-/// load has no room either, and nor has one that said nothing a load
-/// reads from: an ssh that couldn't finish its handshake says nothing,
-/// and a run sent on would only find the same Mac.
-pub fn waits(host: &str, load: Result<Option<Load>, String>) -> Option<String> {
+/// Whether a run for a Mac's system goes to the Mac `host`, as `load`
+/// found it: `Ok` saying the load it goes at, or `Err` saying why it
+/// waits. A Mac too busy to say its load has no room either, and nor has
+/// one that said nothing a load reads from: an ssh that couldn't finish
+/// its handshake says nothing, and a run sent on would only find the same
+/// Mac.
+pub fn room(host: &str, load: Result<Option<Load>, String>) -> Result<String, String> {
     match load {
-        Ok(Some(load)) if load.over() => Some(format!(
-            "{host} has no room, at load {:.0} on {} processors",
-            load.minute, load.cores
-        )),
-        Ok(Some(_)) => None,
-        Ok(None) => Some(format!("{host} didn't say its load")),
-        Err(why) => Some(why),
+        Ok(Some(load)) if load.over() => Err(format!("{host} has no room, at {}", load.said())),
+        Ok(Some(load)) => Ok(format!("{host} has room, at {}", load.said())),
+        Ok(None) => Err(format!("{host} didn't say its load")),
+        Err(why) => Err(why),
     }
 }
 
@@ -194,30 +192,44 @@ mod tests {
 
     #[test]
     fn a_run_for_a_mac_past_three_a_processor_waits_and_one_within_goes() {
-        let at = |minute: f64| Ok(Some(Load { minute, cores: 12 }));
+        let at = |minute: f64, five: f64| {
+            Ok(Some(Load {
+                minute,
+                five,
+                cores: 12,
+            }))
+        };
+        let busy = |why: &str| Err(why.to_owned());
         assert_eq!(
-            waits("skiff", at(140.0)).as_deref(),
-            Some("skiff has no room, at load 140 on 12 processors"),
+            room("skiff", at(140.0, 120.0)),
+            busy(
+                "skiff has no room, at load 140.0 over a minute and 120.0 over five on 12 processors"
+            ),
             "a run for a Mac far past its room went"
         );
         assert_eq!(
-            waits("skiff", at(36.6)).as_deref(),
-            Some("skiff has no room, at load 37 on 12 processors"),
+            room("skiff", at(30.0, 36.6)),
+            busy(
+                "skiff has no room, at load 30.0 over a minute and 36.6 over five on 12 processors"
+            ),
             "a run for a Mac just past three a processor went"
         );
         assert_eq!(
-            waits("skiff", at(36.0)),
-            None,
+            room("skiff", at(36.0, 36.0)),
+            Ok(
+                "skiff has room, at load 36.0 over a minute and 36.0 over five on 12 processors"
+                    .into()
+            ),
             "a run for a Mac at three a processor waited"
         );
         assert_eq!(
-            waits("skiff", Ok(None)).as_deref(),
-            Some("skiff didn't say its load"),
+            room("skiff", Ok(None)),
+            busy("skiff didn't say its load"),
             "a Mac that said nothing a load reads from was taken to have room"
         );
         assert_eq!(
-            waits("skiff", Err("slow".to_owned())).as_deref(),
-            Some("slow"),
+            room("skiff", Err("slow".to_owned())),
+            busy("slow"),
             "a Mac too busy to say its load was taken to have room"
         );
     }
