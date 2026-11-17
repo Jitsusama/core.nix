@@ -106,6 +106,21 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
     }
 }
 
+/// The journal's line when the one-way controller begins to hold `link`:
+/// what each way is held to, in kbit/s, and the controller's reason, as
+/// `say` gave it, where it has one.
+pub fn holding(link: &str, up: u64, down: u64, why: Option<&str>) -> String {
+    let held = format!(
+        "{link}: held to {} up and {} down",
+        mbit(lossless(up)),
+        mbit(lossless(down))
+    );
+    match why {
+        Some(why) => format!("{held}. {why}"),
+        None => format!("{held}, by the one-way controller."),
+    }
+}
+
 fn lossless(kbit: u64) -> f64 {
     // A rate is a few hundred thousand kbit/s at most.
     #[expect(clippy::cast_precision_loss, reason = "a rate far under 2^52")]
@@ -226,6 +241,32 @@ mod tests {
             say(Why::Guarded, Some(10_800), Some(12_000.0), 0.0),
             "Upload 10.8 Mb/s: back to the line's hold after a minute under 9.6 Mb/s with \
              no cut that eased a queue."
+        );
+    }
+
+    #[test]
+    fn a_hold_beginning_says_the_controller_s_reason() {
+        // Since the learned anchor, the controller holds at every start
+        // with a clear line, and the journal said a hidden queue was
+        // taken back each time (16 times on 16 November).
+        let clear = say(Why::Clear, Some(10_800), Some(12_000.0), 5.0);
+        assert_eq!(
+            holding("wlp0s20f3", 10_800, 2_000_000, Some(&clear)),
+            "wlp0s20f3: held to 10.8 Mb/s up and 2000.0 Mb/s down. Upload 10.8 Mb/s of \
+             12.0 Mb/s, the line's rate: clear for 5 s."
+        );
+    }
+
+    #[test]
+    fn a_hold_with_no_reason_claims_no_queue() {
+        let line = holding("wlp0s20f3", 10_800, 2_000_000, None);
+        assert!(
+            !line.contains("queue"),
+            "a hold with no reason named a queue: {line}"
+        );
+        assert!(
+            line.contains("10.8 Mb/s up"),
+            "the hold's rate went unsaid: {line}"
         );
     }
 

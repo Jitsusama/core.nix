@@ -1297,9 +1297,13 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Liv
     // The one-way controller holds the link the recorder follows; any
     // other goes at its whole rate, its traffic still sorted by CAKE.
     let share = live.as_deref().map_or(1.0, live::Live::vpn_share);
-    let held = live.map(|l| match l.poll(SystemTime::now()) {
-        Some((link, rates)) => (Some(link.to_string()), rates),
-        None => (None, replay::Rates::default()),
+    let held = live.map(|l| {
+        let (link, rates) = match l.poll(SystemTime::now()) {
+            Some((link, rates)) => (Some(link.to_string()), rates),
+            None => (None, replay::Rates::default()),
+        };
+        let why = l.heard().and_then(|(_, heard)| heard.why);
+        (link, rates, why)
     });
     for (name, (sent, received)) in links::connection_loads(&carried, &follows) {
         if let Some(s) = shaped.get_mut(&name) {
@@ -1307,7 +1311,7 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Liv
             // silent lets both go, unless a trial's ceiling holds the
             // upload, when the VPN has its whole share of it.
             s.vpn_share = match &held {
-                Some((link, rates))
+                Some((link, rates, _))
                     if link.as_deref() == Some(name.as_str()) && rates.up.is_some() =>
                 {
                     share
@@ -1316,8 +1320,10 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Liv
             };
             match &held {
                 None => step(s, t, sent, received),
-                Some((link, rates)) if link.as_deref() == Some(name.as_str()) => hold(s, *rates),
-                Some(_) => hold(s, replay::Rates::default()),
+                Some((link, rates, why)) if link.as_deref() == Some(name.as_str()) => {
+                    hold(s, *rates, why.as_deref());
+                }
+                Some(_) => hold(s, replay::Rates::default(), None),
             }
         }
     }
@@ -1325,8 +1331,9 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Liv
 
 /// Holds a link to the rates the one-way controller answers, at its
 /// ceiling where it sets none, and tells the journal when a spell of limits
-/// begins and when it ends, rather than of each second's cut.
-fn hold(s: &mut Shaped, rates: replay::Rates) {
+/// begins, with the controller's reason `why`, and when it ends, rather
+/// than of each second's cut.
+fn hold(s: &mut Shaped, rates: replay::Rates, why: Option<&str>) {
     let held =
         |rate: Option<u64>, floor: u64, max: u64| rate.map_or(max, |r| r.max(floor).min(max));
     let (up_max, down_max) = (s.controller.up.bounds.max, s.controller.down.bounds.max);
@@ -1339,11 +1346,7 @@ fn hold(s: &mut Shaped, rates: replay::Rates) {
     let limited = rates.up.is_some() || rates.down.is_some();
     let name = &s.uplink.name;
     if limited && !s.told {
-        eprintln!(
-            "{name}: a queue past CAKE was taken back, so the link is held to {} up and {} down",
-            mbit(up),
-            mbit(down)
-        );
+        eprintln!("{}", why::holding(name, up, down, why));
         s.told = true;
     } else if !limited && s.told {
         eprintln!("{name}: neither direction queues now, so the link's whole rate is kept");
