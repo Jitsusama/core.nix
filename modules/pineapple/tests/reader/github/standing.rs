@@ -4,7 +4,8 @@
 //! opened what it's said on. An opening names where a stop reaches only
 //! when the repository's own wrote it in one he works in; a repository
 //! that can't be read still hears Joel; and one its rate limit refuses
-//! is asked again rather than taken as gone.
+//! is asked again rather than taken as gone. A thread with nothing worth
+//! judging never asks about its repository, sparing Joel's rate limit.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,7 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use pineapple::github::stamp;
 use serde_json::{Value, json};
 
-use super::{LOGIN, answer_with, comment, commented, github_reader, only_stop};
+use super::{LOGIN, answer_with, comment, commented, github_reader, only_stop, until_asked};
 use crate::{Answered, answering, answering_whole, decisions, each, home, until_decided};
 
 #[test]
@@ -294,6 +295,39 @@ fn github_an_owners_opening_where_joel_cant_push_cant_steer_his_own_stop() {
         "not the pull request the owner of a repository he can't push to named"
     );
     assert_eq!(said[0]["fell_back"], true, "and Joel is told it fell back");
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_thread_with_nothing_worth_judging_never_asks_about_its_repository() {
+    let issue = Issue {
+        repo: "example/shop",
+        opened: ("colleague", "MEMBER", ""),
+        repo_answer: Some(json!({"permissions": {"pull": true, "push": true}})),
+        said: |now| vec![comment(1, "colleague", "lunch at noon?", now, 90)],
+    };
+    let (origin, asked) = answering_whole(move |line, now| issue.answer(line, now));
+    let home = home();
+    let mut reader = github_reader(&home, &origin, &["--live"]);
+    // Two rounds, each asking at least for what changed, the issue and its comments.
+    until_asked(&asked, 0, 8);
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+
+    let asked = asked.lock().expect("what was asked");
+    assert!(
+        asked
+            .iter()
+            .any(|line| line.contains(" /repos/example/shop/issues/1/comments?")),
+        "the thread was read: {asked:?}"
+    );
+    assert!(
+        !asked
+            .iter()
+            .any(|line| line.contains(" /repos/example/shop ")),
+        "but its repository was never asked about: {asked:?}"
+    );
+    drop(asked);
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 

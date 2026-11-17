@@ -298,8 +298,9 @@ pub fn next_page(link: &str) -> Option<&str> {
 
 /// Whether GitHub refused for its rate limit rather than because what
 /// was asked is gone: a 429, or a 403 saying none is left, when to ask
-/// again, or in its message that it is a rate limit, since a secondary
-/// limit may come with neither header. Joel's limit is shared with gh and
+/// again, or in its message that it is a rate limit (or, as GitHub once
+/// worded one, abuse detection), since a secondary limit may come with
+/// neither header. Joel's limit is shared with gh and
 /// every agent signed in as him, so it runs out, and a round it stops has
 /// to be tried again whole.
 #[must_use]
@@ -309,7 +310,8 @@ pub fn rate_limited(
     retry_after: bool,
     message: &str,
 ) -> bool {
-    let says_so = message.to_ascii_lowercase().contains("rate limit");
+    let message = message.to_ascii_lowercase();
+    let says_so = message.contains("rate limit") || message.contains("abuse detection");
     status == 429 || (status == 403 && (remaining == Some("0") || retry_after || says_so))
 }
 
@@ -591,6 +593,15 @@ mod tests {
         assert!(
             rate_limited(403, Some("12"), false, secondary),
             "one said only in words"
+        );
+        assert!(
+            rate_limited(403, None, false, "API Rate Limit Exceeded"),
+            "whatever its case"
+        );
+        let abuse = "You have triggered an abuse detection mechanism.";
+        assert!(
+            rate_limited(403, None, false, abuse),
+            "in the words GitHub once used"
         );
         assert!(
             !rate_limited(403, Some("12"), false, "Must have push access"),
