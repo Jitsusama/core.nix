@@ -1708,6 +1708,13 @@
     folder, so a link there can't widen how its agents' commands run; a machine declaring nothing
     names no file
   '';
+  mycelium-node-reads-its-stimuli-from-the-store = ''
+    each realm's mycelium node, on NixOS and nix-darwin, is given the person's table of which
+    receptors say when more is asked of them as a file in the Nix store, which only root writes,
+    since the node refuses a table any other account could change; a machine naming no source
+    names no file, so every source stays silent, and a source mycelium has no receptor for is
+    refused
+  '';
   needs-you-is-true = ''
     over the agents' own files as the node serves them, For You's to-dos hold now only what Joel
     can do now, a timed one first
