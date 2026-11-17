@@ -283,5 +283,17 @@
       "test_whats_playing_shows_in_the_margin_and_a_media_key_shows_what_it_is"
     ],
     "test": "vm-desktop-minds-the-margin"
+  },
+  {
+    "at": 1794956752,
+    "commit": "60f3a312fa2595f2fde857ec31063211ee9cf752",
+    "due": "2026-11-19",
+    "owner_pr": 5369,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 60f3a312fa25",
+    "subtests": [
+      "test_a_service_nothing_named_a_slice_for_is_said_of_and_left"
+    ],
+    "test": "vm-apps-come-first"
   }
 ]
