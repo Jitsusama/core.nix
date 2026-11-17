@@ -1591,11 +1591,13 @@ impl<'a, 's, F: Fn(&str) -> bool> Breaking<'a, 's, F> {
 }
 
 /// The test of a hold with no revert on main, which a run at main's newest
-/// head may clear.
+/// head may clear. One whose revert is under way is left to the job kept
+/// for it, whose place a forward run's job would take, there being one for
+/// each test, and then let go of with nothing reverted.
 fn forwardable(state: &State) -> Option<String> {
     state
         .hold()
-        .filter(|hold| !hold["revert_commit"].is_string())
+        .filter(|hold| !hold["revert_commit"].is_string() && hold["reverting"] != true)
         .and_then(|hold| hold["test"].as_str().map(str::to_owned))
 }
 
