@@ -138,8 +138,17 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
 /// The tree merging `commit` into `main` in the repository at `folder`
 /// makes, which a head behind main lands as; none where they conflict.
 fn merged_tree(folder: &Path, main: &str, commit: &str) -> Option<String> {
-    let _ = (folder, main, commit);
-    None
+    let merged = Command::new("git")
+        .arg("-C")
+        .arg(folder)
+        .args(["merge-tree", "--write-tree", main, commit])
+        .output()
+        .ok()?;
+    // A conflict exits 1 and writes a tree with its markers in, which no
+    // file of the change would land as.
+    let said = String::from_utf8_lossy(&merged.stdout);
+    let tree = said.lines().next().unwrap_or_default();
+    (merged.status.success() && !tree.is_empty()).then(|| tree.to_owned())
 }
 
 #[cfg(test)]
