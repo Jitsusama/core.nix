@@ -14,7 +14,7 @@
 # drops. It's no larger because a reader slower than the line keeps a queue
 # as long as the buffer, which everything inside the tunnel waits behind: 25
 # ms at 370 Mbit/s, longer the slower the line. net.core.rmem_max is set to
-# 4 MiB, as the kernel's own default is today and older ones weren't, so a
+# 4 MiB, the kernel's own default since 7.2 where 6.12 had 208 KiB, so a
 # program that asks for a buffer can always get more than one that doesn't.
 #
 # TCP sizes its own buffers from net.ipv4.tcp_rmem, and a program that asks
