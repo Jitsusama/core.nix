@@ -157,7 +157,11 @@ fn a_yes_a_moment_past_an_ask_s_ten_minutes_is_refused_before_any_tidy() {
         .iter()
         .find(|row| row["thing"] == format!("ask:{id}"))
         .unwrap_or_else(|| panic!("the ended ask isn't drawn, among {rows:?}"));
-    assert_eq!(ended["state"], "ended", "the ask still reads waiting: {ended}");
+    // Only a waiting ask's row says its state, as only it can be answered.
+    assert!(
+        ended["state"].is_null() && ended["acts"].as_array().is_some_and(Vec::is_empty),
+        "the ask still reads waiting: {ended}"
+    );
     assert_eq!(read.load(Ordering::SeqCst), 0, "the value was read");
     let answered = std::fs::read_to_string(folder.join("asks").join(format!("{id}.answer.json")))
         .unwrap_or_default();

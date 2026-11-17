@@ -567,10 +567,22 @@ impl Engine {
         let Some(one) = held.get_mut(&id) else {
             return self.refusal("refused", "no such ask", "gone");
         };
-        // An ask past its ten minutes is ended, though tidy may not have
-        // marked it yet, since it runs only when the daemon next wakes.
-        if one.state != State::Waiting || !one.ask.waits_at(self.now()) {
+        if one.state != State::Waiting {
             return self.refusal("refused", "it's already answered", "answered");
+        }
+        // An ask past its ten minutes is ended here, though tidy may not
+        // have marked it yet: it runs when the daemon next wakes, on a
+        // clock that stands still while the lid is shut.
+        let now_ms = self.now();
+        if !one.ask.waits_at(now_ms) {
+            one.state = State::Ended;
+            one.since_ms = now_ms;
+            let ask = one.ask.clone();
+            drop(held);
+            self.reading(&ask, Outcome::Expired, said);
+            self.answered(&ask.id, "ended", "ended unanswered");
+            self.changed();
+            return self.refusal("refused", "it ended unanswered", "ended");
         }
         if self.releaser.locked() {
             self.reading(&one.ask, Outcome::Locked, said);
