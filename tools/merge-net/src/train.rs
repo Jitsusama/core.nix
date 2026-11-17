@@ -17,7 +17,9 @@
 //! forward, never forced, and GitHub marks each pull request merged. When
 //! main moved meanwhile, the candidate is cut again on it, and goes when
 //! its pass still speaks for it as one for a rebased change would
-//! (`earlier.rs`); otherwise it runs again with whoever has boarded since.
+//! (`earlier.rs`); otherwise it runs again with whoever has boarded since,
+//! holding the right of way meanwhile, so changes that would merge alone
+//! board it rather than move main again (`right_of_way.rs`).
 //!
 //! A candidate that fails splits: the train takes the first half of its
 //! riders to board, and halves again while they fail, so the riders that
@@ -288,6 +290,26 @@ pub fn fell_said(head: &str) -> Option<String> {
     fell(&root, head).map(|why| format!("it fell off the merge train: {why}"))
 }
 
+/// What `ready` says of the change at `head`, which would merge alone,
+/// while the train holds the right of way (`right_of_way.rs`): that it
+/// boards the train instead, so main stays where the train's run is cut;
+/// nothing while the train holds none, or can't take the change.
+#[must_use]
+pub fn gives_way(head: &str) -> Option<String> {
+    let root = crate::state::State::from_env().root;
+    let now = crate::state::now();
+    let since = right_of_way::holds(&root, now)?;
+    let branch = crate::git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).ok()?;
+    let boarded = offer(head, (!branch.is_empty()).then_some(branch)?.as_str())?;
+    Some(format!(
+        "the merge train has held the right of way for {} minutes, since main moved beside \
+         a run of it that passed, so {} rides it rather than merge alone and move main \
+         again: {boarded}",
+        (now - since) / 60,
+        short(head)
+    ))
+}
+
 /// Whether the train's unit goes.
 fn going() -> bool {
     let shown = systemctl(&["show", UNIT, "--property=ActiveState"]);
@@ -434,6 +456,7 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
     loop {
         let waiting = riders(&root);
         if waiting.is_empty() {
+            right_of_way::take_back(&root);
             println!("merge-net: no one waits on the train");
             return Ok(ExitCode::SUCCESS);
         }
@@ -468,11 +491,13 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
                 .join(", ")
         );
         if !gate(&checkout, &log) {
+            right_of_way::take_back(&root);
             red(&root, &candidate, &log, &done.merged, &mut splitting);
             continue;
         }
         match land(&checkout, &git, &candidate, &mergings, &done.merged) {
             Landing::Landed(landed) => {
+                right_of_way::take_back(&root);
                 splitting.landed(done.merged.len());
                 for head in &done.merged {
                     alight(&root, head);
@@ -480,8 +505,9 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
                 keep_landed(&root, &landed, &done.merged, crate::state::now() - began);
                 println!("merge-net: the train landed {} on main", short(&landed));
             }
-            Landing::Moved => {}
+            Landing::Moved => right_of_way::give(&root, crate::state::now()),
             Landing::Refused(why) => {
+                right_of_way::take_back(&root);
                 splitting = Splitting::default();
                 for head in &done.merged {
                     let _ = fall(
@@ -753,6 +779,8 @@ fn run_git(folder: &Path, arguments: &[&str]) -> Result<String, String> {
         ))
     }
 }
+
+mod right_of_way;
 
 #[cfg(test)]
 mod tests;

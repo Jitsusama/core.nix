@@ -319,6 +319,10 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
 /// was asked of it, and refuse it until then.
 fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: &str) -> ExitCode {
     if needs_heard(commit, main, passes, files) {
+        if let Some(said) = train::gives_way(commit) {
+            eprintln!("merge-net: {said}");
+            return ExitCode::FAILURE;
+        }
         mark_skipped_macs(commit, passes);
         return turn::passed(commit, passes, files, said);
     }
