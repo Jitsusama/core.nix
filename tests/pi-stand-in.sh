@@ -3,6 +3,12 @@
 # pi, as the shell opens it, for the VM tests, which have no pi
 # (tests/pi-stand-in.nix): where it started and the quest it was told to
 # load, then what it was told, a line each, written down.
+# A sprouted session's first words, as `mycelium sprout` gives them, go in
+# a file of their own so pi-opened reads as it always has, and first, so a
+# test that sees pi-opened finds them already there.
+if [ -n "${QUEST_WORKFLOW_FIRST_TEXT:-}" ]; then
+  printf '%s\n' "$QUEST_WORKFLOW_FIRST_TEXT" >"$XDG_RUNTIME_DIR/pi-first-text"
+fi
 echo "$PWD ${QUEST_WORKFLOW_AUTOLOAD_ID:-}" >"$XDG_RUNTIME_DIR/pi-opened"
 printf '%s\n' "$@" >>"$XDG_RUNTIME_DIR/pi-opened"
 # While a test leaves pi-moves-in-place, a held session's pi moves into a

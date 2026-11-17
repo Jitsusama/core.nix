@@ -9,7 +9,8 @@ workspace of its own, moving nothing on screen; and a session one starts for ano
 opens with that tree, wherever Joel moved it, in title order after its orchestrator. One pi's host
 brought back comes back as its viewer alone, beside the windows kept with it, and ten the host
 gave back come back as plain pis where their viewers sat this boot, while a shell started again
-opens no viewer kept before it. Joel, after the
+opens no viewer kept before it. New work started from a link starts its session in no window
+at all. Joel, after the
 21:24 reboot on 2026-11-08 left 31 windows on the wrong workspaces: "i'm so confused, i don't
 like my operating system confusing me." The area stays one file. Long because each test lays
 out windows and kept places on the one desktop the area boots, with the helpers that read them
@@ -823,6 +824,61 @@ def test_ten_given_back_by_their_host_come_back_as_plain_pis_where_their_viewers
             f" {PI_PRESENCE}/given*.json; pkill -f 'sleep 60[0-5]'; true"
         )
         desktop.as_account("rm -rf ~/reef")
+
+
+def test_new_work_from_a_link_starts_its_session_in_no_window(desktop: Desktop) -> None:
+    """Start New Work starts a session on a link, in its repository, with no window.
+
+    Joel, 2026-11-16: starting a session on incoming work took a hand-built chain of a quest,
+    a folder and a start. Typed from the find, as his try-line says, From a Link asks for the
+    link, and mycelium sprout has the realm's node start pi held in the link's checkout, told
+    to make the work a quest of its own; no window opens while it runs (pivot of 16 November,
+    18:55: no session needs a window of its own).
+    """
+    machine = desktop.machine
+    link = "https://github.com/harbour/lighthouse/issues/7"
+    folder = "/home/jitsusama/src/github.com/harbour/lighthouse"
+    opened = "$XDG_RUNTIME_DIR/pi-opened"
+    first = "$XDG_RUNTIME_DIR/pi-first-text"
+    # pi stays running, as a real one does, so a window it brought would still be there.
+    desktop.as_account(
+        f"rm -f {opened} {first} && mkdir -p {folder} && touch $XDG_RUNTIME_DIR/pi-stays"
+    )
+    before = {window["id"] for window in desktop.windows()}
+    try:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("new work", selecting="Start New Work")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["From a Link"])
+        desktop.step_in("ret")
+        desktop.launcher_until(lambda shown: shown["mode"] == "insert")
+        machine.send_chars(link)
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            desktop.in_session(f"grep -qx '{folder} ' {opened}"),
+            timeout=dt.timedelta(seconds=120),
+        )
+        # The stand-in writes the first words before pi-opened, so they're there by now.
+        told = desktop.as_account(f"cat {first} 2>/dev/null; true")
+        assert f"sprouted this session from {link}" in told, f"pi wasn't told the link: {told!r}"
+        assert "quest create" in told, f"pi wasn't told to make a quest: {told!r}"
+        desktop.launcher_until(lambda shown: shown["stands"].startswith("started on machine"))
+        # Watched for a while, since a window a start brings maps a beat after pi begins.
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            brought = [one for one in desktop.windows() if one["id"] not in before]
+            assert not brought, f"Start New Work opened windows: {brought}"
+            # Each look at niri is cheap; a fifth of a second apart is enough to see one map.
+            time.sleep(0.2)
+        desktop.close_launcher()
+    finally:
+        desktop.launcher_left_closed()
+        # A pattern its own shell's words don't match, so pkill ends only the stand-in.
+        desktop.as_account(
+            f"rm -f $XDG_RUNTIME_DIR/pi-stays {opened} {first}; pkill -f 'sleep 60[0-5]'; true"
+        )
+        desktop.as_account("rm -rf ~/src/github.com/harbour")
 
 
 def sitting_space(desktop: Desktop, window: dict[str, Any]) -> str:
