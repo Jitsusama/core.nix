@@ -47,11 +47,9 @@ pub fn kitty(shared: &Shared) -> Option<usize> {
 /// of its own: only what isn't held yet, since what is was read again at
 /// every change of the session while they were watched, so a watch
 /// beginning reads nothing more. kitty's list is read as it's due, or
-/// never read yet, while the tabs are watched. The tabs' and the
-/// bookmarks' rows are made again, once each, for a watch of rows that
-/// names their place or none; one naming keys alone is left, as the
-/// launcher holds one for each step, and the bookmarks are files.
-pub fn read(shared: &Arc<Shared>, places: Option<&[String]>) {
+/// never read yet, while the tabs are watched. Their rows and the
+/// bookmarks' are made where a read ended before this watch was held.
+pub fn read(shared: &Arc<Shared>) {
     let (unread, listed) = {
         let daemon = lock(&shared.daemon);
         if !wanted(&daemon) {
@@ -82,19 +80,18 @@ pub fn read(shared: &Arc<Shared>, places: Option<&[String]>) {
     if let Some(at) = listed {
         start(shared, at, Run::List);
     }
-    // A session read that ended between this watch's answer and its
-    // being held made neither place's rows, as neither was watched then,
-    // and what it read is held, so it starts no read above.
-    let Some(places) = places else {
-        return;
-    };
-    let names = |place: &str| places.is_empty() || places.iter().any(|named| named == place);
+    // A read that ended as this watch was asked, before it was held, made
+    // no rows for it, and what it read is held, so it starts no read above.
+    // Only then are they made here: the launcher asks its watch again at
+    // each opening, and the bookmarks are files read under the lock.
     let mut daemon = lock(&shared.daemon);
-    if names(PLACE) {
-        make(shared, &mut daemon);
-    }
-    if names(programs::bookmark_rows::PLACE) {
-        bookmarks::make(shared, &mut daemon);
+    if wanted(&daemon) && std::mem::take(&mut daemon.unmade) {
+        if watched(&daemon) {
+            make(shared, &mut daemon);
+        }
+        if bookmarks::watched(&daemon) {
+            bookmarks::make(shared, &mut daemon);
+        }
     }
 }
 
@@ -108,6 +105,9 @@ pub fn heard(shared: &Shared, daemon: &mut Daemon, at: usize, what: Run) {
     };
     if theirs && watched(daemon) {
         make(shared, daemon);
+    }
+    if theirs && !(watched(daemon) && bookmarks::watched(daemon)) {
+        daemon.unmade = true;
     }
 }
 

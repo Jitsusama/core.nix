@@ -143,6 +143,8 @@ struct Daemon {
     /// What the windows daemon last said of each window, by its key; none
     /// until it's first heard.
     windows: Option<BTreeMap<String, Value>>,
+    /// Whether the tabs' or bookmarks' rows wait for a watch (tabs.rs).
+    unmade: bool,
     /// Every entry's `program` record, as Programs' rows were last made
     /// from, until a folder of them changes.
     catalogue: Option<Vec<Value>>,
@@ -257,6 +259,7 @@ fn serve(given: &[String]) -> Result<(), Failure> {
             took: VecDeque::new(),
             looked: Looked::default(),
             windows: None,
+            unmade: false,
             catalogue: None,
             rows: Kept::default(),
             taken: Kept::default(),
@@ -285,17 +288,15 @@ fn serve(given: &[String]) -> Result<(), Failure> {
             }
         }
     }));
-    // What a watch reads after its answer begins only once the watch is
-    // held, so each read that asks whether it's watched finds it: begun
-    // as it was asked, the session's read was skipped now and then, and an
-    // open page's bookmark stayed listed (RCTRF8, 2026-11-17).
+    // What a watch reads after its answer begins once the watch is held,
+    // so each read asking whether it's watched finds it; begun as asked,
+    // an open page's bookmark stayed listed now and then (RCTRF8, 11-17).
     shared.served().begun(Box::new({
         let shared = Arc::downgrade(&shared);
         move |wanted| {
             if let Some(shared) = shared.upgrade() {
                 let (kinds, keys) = (wanted.kinds.to_vec(), wanted.keys.map(<[String]>::to_vec));
-                let places = wanted.places.unwrap_or_default().to_vec();
-                std::thread::spawn(move || begin(&shared, &kinds, keys.as_deref(), &places));
+                std::thread::spawn(move || begin(&shared, &kinds, keys.as_deref()));
             }
         }
     }));
@@ -629,9 +630,9 @@ fn names_programs(kinds: &[String], keys: Option<&[String]>) -> bool {
 /// What a watch beginning reads after its answer: each list whose file
 /// changed since it was read, and, for a watch naming its program's key,
 /// a list that's asked and what the program has open; then the tabs, and
-/// the tabs' and bookmarks' rows made again (`tabs::read`). A whole kind
-/// runs no program's reads, so Chrome's history is read as it's stepped into.
-fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>, places: &[String]) {
+/// the rows waiting for a watch (`tabs::read`). A whole kind runs no
+/// program's reads, so Chrome's history is read as it's stepped into.
+fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
     let lists = sources_of(shared, Run::List, kinds, keys);
     for at in lists.into_iter().chain(taken::lists(shared)) {
         if keys.is_none() && shared.sources[at].asked {
@@ -652,8 +653,7 @@ fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>, places
         read_named(shared, keys);
         taken::ahead(shared, keys);
     }
-    let rows = keys.is_none() && names_rows(kinds, None);
-    tabs::read(shared, rows.then_some(places));
+    tabs::read(shared);
 }
 
 /// What a get or a list reads first, on this thread: the entries not yet
