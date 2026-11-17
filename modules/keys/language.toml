@@ -1149,6 +1149,15 @@ command = "talk"
 short = "tal"
 kinds = ["list"]
 
+# What the session behind a row works on, why, and how it stands, said in
+# a sentence or two by the machine's quick model: Explain It (WCJQSG,
+# 2026-11-17: every signal stays short, and what it leads to is explained on
+# the spot). It asks, and changes nothing.
+[acts.explain]
+command = "explain"
+short = "exp"
+kinds = ["list"]
+
 # A line filed from the void taken back out of where it was filed, as the
 # void's card offers once it says where the line went: Take It Back. It's
 # not :undo, which brings back the notices put away.

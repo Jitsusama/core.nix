@@ -2131,6 +2131,18 @@
     serves the notifications name besides; it reads the shell's levels, Quiet's file, its socket,
     the launcher's words and each program's mark
   '';
+  explain-it-asks-only-what-a-cell-is = ''
+    Explain It asks the realm's node only what one session is, by an address of capitals and
+    digits, as JSON lines, and tells the quick model only its title, repository, machine,
+    standing, doing, since and plan's latest and next, each flattened to one short line, never
+    its id fields, quest, folders, trees, spend or networks; it says an unknown session apart
+    from a node that can't say, and shows an answer only while it's the act's, fresh and whole
+  '';
+  explain-it-shows-its-own-answer = ''
+    Explain It reads each session it's asked of from a stand-in node on its own, never taking one
+    row's answer for another's, tells an unknown session from a node that can't say, gives up on
+    a node that never answers, and shows its tool-less pi's answer only while it's its own
+  '';
   now-lists-by-group = ''
     Now lists what wants Joel first, then what reaches other people, what's playing and the modes
     left on, by name within each, and a group it doesn't know last
@@ -2311,7 +2323,8 @@
   pi-ask-answers-on-the-machines-plan = ''
     pi-ask starts pi for the launcher's Ask row speaking RPC with nothing loaded but the machine's
     extensions, the digest of what's true on the machine and, on Linux, the launcher's tool as its
-    one tool, on pi's own plan and quick model by default, or through pi-claude on the Claude plan
+    one tool, on pi's own plan and quick model by default, or through pi-claude on the Claude plan,
+    and with no tools at all when started with --no-launcher
   '';
   pi-ask-knows-the-machine = ''
     pi-ask's digest says what's true on the machine as each question starts: the time, its

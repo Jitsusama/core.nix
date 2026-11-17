@@ -147,6 +147,8 @@
     "launcher/Seen.js"
   ];
   "launcher/Emoji.js" = [ "Fuzzy.js" ];
+  "launcher/Explainer.qml" = [ "launcher/Explaining.js" ];
+  "launcher/Explaining.js" = [ "launcher/OnSelection.js" ];
   "launcher/ForYou.js" = [ "launcher/Order.js" ];
   "launcher/ForYouFilter.js" = [ "launcher/Order.js" ];
   "launcher/Headings.js" = [ "Operators.js" ];

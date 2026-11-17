@@ -3,6 +3,8 @@
 [
   "ForYouHolds.qml"
   "Quiet.qml"
+  "launcher/Explainer.qml"
+  "launcher/Explaining.js"
   "launcher/NowGroups.js"
   "launcher/ForYou.js"
   "launcher/ForYouFilter.js"

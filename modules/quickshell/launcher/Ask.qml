@@ -361,7 +361,9 @@ Provider {
 
     Process {
         id: pi
-        command: [provider.settings.command ?? "pi-ask"]
+        // A program, or a program and its words, as Explain It starts
+        // pi-ask without the launcher's tool (Explainer.qml).
+        command: [].concat(provider.settings.command ?? "pi-ask")
         running: true
         stdinEnabled: true
         stdout: SplitParser {
