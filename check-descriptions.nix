@@ -616,8 +616,9 @@
   '';
   code-site-holds = ''
     the code page typechecks on the kit at its strictest and builds, its tests passing: each
-    repository's trees by season then branch, a cursor stepping within the rows, and an address
-    landing on a place, a repository or a tree in its season
+    repository's trees by season then branch, a cursor stepping within the rows, an address
+    landing on a place, a repository or a tree in its season, and another site home to a kind found
+    by the row claiming it, inside the sites' folders, its homes of that kind alone
   '';
   code-site-reads-live = ''
     the code page, served by the local sites' server beside a stand-in repos daemon and node,
