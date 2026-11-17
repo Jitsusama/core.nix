@@ -2526,8 +2526,11 @@ const BOOT_READ: &str = "cat /proc/sys/kernel/random/boot_id 2>/dev/null || \
 /// says so, rather than wait for a turn that can never be had. Taking a
 /// dead turn back is a look, then a remove, so a run can remove a turn
 /// another took between the two: each run looks a second after taking its
-/// turn, or `NIX_OFFLOAD_TURN_LOOK` seconds, and waits again if it no
-/// longer holds it. Only a run stalled longer than that between its look
+/// turn, or `NIX_OFFLOAD_TURN_LOOK` seconds (a second where `sleep`
+/// refuses that), and if it no longer holds it looks for a turn again a
+/// second later, so two runs that each read the other's turn as dead, as
+/// two boots sharing the folder do, can't take one turn from each other
+/// for ever. Only a run stalled longer than that between its look
 /// and its remove lets an extra build in, until the one whose link it replaced
 /// ends; it never leaves a run waiting for a turn nobody holds. It bounds
 /// only runs that reach the machine as one account.
@@ -2559,7 +2562,7 @@ pub fn in_turn_nearby(command: &str) -> String {
          n=$((n + 1)); done; \
          if [ -n \"$turn\" ]; then sleep \"${{NIX_OFFLOAD_TURN_LOOK:-1}}\" 2>/dev/null || sleep 1; \
          if [ \"$(readlink \"$turn\" 2>/dev/null)\" = \"$mine\" ]; then break; fi; \
-         turn=; unmadebefore=; continue; fi; \
+         turn=; unmadebefore=; sleep 1; continue; fi; \
          if [ \"$unmade\" -ge {NEARBY_AT_ONCE} ]; then \
          if [ -n \"$unmadebefore\" ]; then turn=none; break; fi; \
          unmadebefore=1; sleep 1; continue; fi; \
@@ -5363,7 +5366,8 @@ mod tests {
             }
             // Swapped whole, so the run never reads the place empty, and
             // held by another live shell, so the wait line names both.
-            let parent = std::os::unix::process::parent_id();
+            let mut other = Command::new("sleep").arg("60").spawn().unwrap();
+            let parent = other.id();
             held_turn(turns.path(), 0, &format!("{parent} {boot}"));
             fs::rename(turns.path().join("0"), turns.path().join("1")).unwrap();
             let said = BufReader::new(taking.stderr.take().unwrap());
@@ -5398,10 +5402,42 @@ mod tests {
                 format!("{taker}\n"),
                 "{shell} didn't hold the turn freed later"
             );
+            other.kill().unwrap();
+            other.wait().unwrap();
             assert_eq!(
                 turn_holder(turns.path(), 1),
                 Some(format!("{parent} {boot}")),
                 "{shell}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_run_whose_look_sleep_refuses_still_looks_a_second_later() {
+        // A look at once after taking a turn would miss its being taken.
+        let bin = tempfile::tempdir().unwrap();
+        crate::testing::executable(
+            &bin.path().join("sleep"),
+            &format!(
+                "#!/bin/sh\necho \"$1\" >> \"$NIX_OFFLOAD_TURNS/../slept\"\n\
+                 case $1 in never) exit 1 ;; esac\nexec {sleep} \"$@\"\n",
+                sleep = which("sleep")
+            ),
+        );
+        for shell in ["dash", "zsh"] {
+            let folder = tempfile::tempdir().unwrap();
+            let turns = folder.path().join("turns");
+            let ran = Command::new(shell)
+                .args(["-c", &first_on_path(bin.path(), &in_turn_nearby("true"))])
+                .env("NIX_OFFLOAD_TURNS", &turns)
+                .env("NIX_OFFLOAD_TURN_LOOK", "never")
+                .output()
+                .unwrap();
+            assert_eq!(ran.status.code(), Some(0), "{shell}: {ran:?}");
+            assert_eq!(
+                fs::read_to_string(folder.path().join("slept")).unwrap(),
+                "never\n1\n",
+                "{shell} didn't look a second after a refused look"
             );
         }
     }
@@ -5706,7 +5742,9 @@ mod tests {
                  looks=$((${{looks:-0}} + 1)); echo \"$looks\" > \"$t/looks\"\n\
                  case $looks in\n\
                  2) rmdir \"$t/1\" \"$t/2\"; ln -s \"$LIVE\" \"$t/2\"; \
-                 (sleep 1; rm -f \"$t/1\"; ln -s \"$LIVE\" \"$t/1\") & ;;\n\
+                 (w=0; until [ -L \"$t/1\" ] || [ \"$w\" -ge 400 ]; do \
+                 sleep 0.05; w=$((w + 1)); done; \
+                 rm -f \"$t/1\"; ln -s \"$LIVE\" \"$t/1\") & ;;\n\
                  3) rm \"$t/1\" \"$t/2\"; {mkdir} \"$t/1\" \"$t/2\" ;;\n\
                  4) rmdir \"$t/1\" \"$t/2\" ;;\n\
                  esac\nexec {mkdir} \"$@\"\n",
@@ -5744,10 +5782,17 @@ mod tests {
                 format!("{taker} {}\n", this_boot()),
                 "{shell} built without the turn freed on its fourth look: {ran:?}"
             );
-            let said = String::from_utf8_lossy(&ran.stderr);
-            assert!(
-                !said.contains("without"),
-                "{shell} built without a turn: {said}"
+            // A lost turn is looked for again past the wait line, so a run
+            // that waited instead never lost it.
+            assert_eq!(
+                String::from_utf8_lossy(&ran.stderr),
+                "",
+                "{shell} waited rather than lost its turn, or built without one"
+            );
+            assert_eq!(
+                fs::read_to_string(turns.path().join("looks")).unwrap(),
+                "4\n",
+                "{shell}"
             );
         }
     }
