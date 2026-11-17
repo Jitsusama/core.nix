@@ -1432,17 +1432,22 @@ const QUICK_EVERY: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// Look quickly at main's head, again and again, until the rounds are done.
 pub fn quick(world: &dyn World, state: &State, settler: &Settler, done: &AtomicBool) {
-    while !done.load(Ordering::Relaxed) {
+    while looks_on(done, settler) {
         if let Err(why) = quick_beside(world, state, settler) {
             state.say(&format!("a quick look failed: {why}"));
         }
         let rested = std::time::Instant::now();
         // Rested in short steps, so the rounds ending isn't kept waiting
         // for the rest of a look's five minutes.
-        while rested.elapsed() < QUICK_EVERY && !done.load(Ordering::Relaxed) {
+        while rested.elapsed() < QUICK_EVERY && looks_on(done, settler) {
             std::thread::sleep(std::time::Duration::from_secs(5));
         }
     }
+}
+
+/// Whether the quick look goes on: until the rounds are done.
+fn looks_on(done: &AtomicBool, _settler: &Settler) -> bool {
+    !done.load(Ordering::Relaxed)
 }
 
 /// One quick look: run the checks other than VM tests that main's head
@@ -4611,6 +4616,91 @@ mod tests {
             log().contains("nothing writes the hold now, so this leaves"),
             "the net didn't say it left once the write ended: {}",
             log()
+        );
+    }
+
+    /// Run `during` while a write holds the hold and a net leaves, once
+    /// it has said it waits on the write, then let the write go and wait
+    /// for the leave, which runs `left`.
+    fn while_a_leave_waits<'a>(
+        settler: &'a Settler<'a>,
+        state: &State,
+        left: impl FnOnce() + Send + 'a,
+        during: impl for<'s> FnOnce(&'s std::thread::Scope<'s, 'a>),
+    ) {
+        let log = || fs::read_to_string(state.root.join("logs/net.log")).unwrap_or_default();
+        let (held, holding) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                settler.write(|| {
+                    held.send(()).unwrap();
+                    let _ = released.recv();
+                });
+            });
+            holding.recv().unwrap();
+            let leaving = scope.spawn(move || settler.leave(left));
+            let until = std::time::Instant::now() + Duration::from_secs(5);
+            while !log().contains("leaving waits") && std::time::Instant::now() < until {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            during(scope);
+            release.send(()).unwrap();
+            leaving.join().unwrap();
+        });
+    }
+
+    #[test]
+    fn a_write_asked_for_while_a_net_leaves_waits_behind_the_leave() {
+        // A leave looks again every 200 ms, so a write that queued on the
+        // hold behind the one it waited on took it first, and the next,
+        // for as long as the workers kept ending jobs (council 10's F221).
+        let state = state("leaving-first");
+        let world = Stand::default();
+        let settler = Settler::new(&world, &state);
+        let order = Mutex::new(Vec::new());
+        let order = &order;
+        while_a_leave_waits(
+            &settler,
+            &state,
+            move || order.lock().unwrap().push("left"),
+            |scope| {
+                let settler = &settler;
+                scope.spawn(move || settler.write(|| order.lock().unwrap().push("wrote")));
+                std::thread::sleep(Duration::from_millis(50));
+            },
+        );
+        assert_eq!(
+            *order.lock().unwrap(),
+            ["left", "wrote"],
+            "a write asked for while a net left took the hold ahead of the leave"
+        );
+    }
+
+    #[test]
+    fn the_quick_look_ends_once_a_net_leaves() {
+        // The quick look slept between its looks through a leave, so the
+        // stall guard never read every thread waiting on a lock, and a
+        // leave hung on its write was never aborted (council 10's F205).
+        let state = state("leaving-quick");
+        let world = Stand::default();
+        let settler = Settler::new(&world, &state);
+        let done = AtomicBool::new(false);
+        assert!(
+            looks_on(&done, &settler),
+            "the quick look ended with nothing leaving"
+        );
+        let looking = Mutex::new(None);
+        while_a_leave_waits(
+            &settler,
+            &state,
+            || (),
+            |_| *looking.lock().unwrap() = Some(looks_on(&done, &settler)),
+        );
+        assert_eq!(
+            *looking.lock().unwrap(),
+            Some(false),
+            "the quick look went on while the net left"
         );
     }
 

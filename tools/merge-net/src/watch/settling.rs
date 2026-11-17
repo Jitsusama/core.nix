@@ -617,6 +617,8 @@ fn clear_an_unsettled_revert(state: &State, test: &str) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    // `/proc` is Linux's alone, and a Mac's dev shell builds merge-net too.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_net_leaving_reads_to_the_stall_guard_as_waiting_on_a_lock() {
         // What `/proc` says, in 10 reads 50 ms apart, that the thread
@@ -652,6 +654,13 @@ mod tests {
         assert!(
             blocking.iter().any(|wait| crate::stall::on_a_lock(wait)),
             "a thread blocked on a lock isn't read as on one: {blocking:?}"
+        );
+        // The round rests between rounds in a sleep, which must never read
+        // as a lock, or the guard would abort a net at rest.
+        let resting = waits_of(|| std::thread::sleep(Duration::from_millis(600)), || {});
+        assert!(
+            !resting.iter().any(|wait| crate::stall::on_a_lock(wait)),
+            "a net resting between rounds reads as on a lock: {resting:?}"
         );
         let leaving = waits_of(
             || {
