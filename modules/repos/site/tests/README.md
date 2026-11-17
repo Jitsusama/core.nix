@@ -5,6 +5,7 @@ What proves the Code page, each in the cheapest tier that can show it.
 | File                      | Proves                                                 | Run by                 |
 | ------------------------- | ------------------------------------------------------ | ---------------------- |
 | `model.test.ts`           | the grove drawn from the record: seasons, order, cells | `code-site-holds`      |
+| `draw.test.ts`            | every name the record says put in the markup as words  | `code-site-holds`      |
 | `address.test.ts`         | where an address lands, and which site is home to what | `code-site-holds`      |
 | `weight.test.ts`          | a git store's weight in words, and when upkeep is due  | `code-site-holds`      |
 | `code-reads-live-test.py` | the page live in Chromium, beside stand-in daemons     | `code-site-reads-live` |
