@@ -14,6 +14,10 @@ use serde_json::Value;
 use super::{Class, DAY, Measure, count, first_owner, lines, seconds};
 use crate::{axes, command, write_whole};
 
+mod held;
+
+pub use held::{BLIND, HELD, held};
+
 /// How far before the oldest miss naming a repository its main is read: a
 /// check may be one that merged a little before Joel found the miss. Two
 /// days of a busy main is some 9,000 merges, read in about a second.
@@ -231,6 +235,57 @@ fn named_as(miss: &Value) -> &str {
         .unwrap_or_default()
 }
 
+/// Reads the misses ledger at `path`, with which of the misses open last
+/// hour, `was_open` as the card listed them, it no longer holds: a miss
+/// closes on its check and never leaves the ledger, so one gone was cut or
+/// renamed, and the hour can't say whether it was fixed. None when it
+/// can't be read at all, or is missing, empty or torn while misses were
+/// open; one not yet written holds none. Why is said on stderr.
+pub fn ledger(path: &Path, was_open: &[String]) -> (String, Option<Vec<String>>) {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(),
+        Err(e) => {
+            eprintln!("cadence: couldn't read {}: {e}", path.display());
+            return (String::new(), None);
+        }
+    };
+    // One missing, emptied or torn under open misses is caught mid-write
+    // or broken, not cut: it names none gone, so the hour carries them all.
+    let torn = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .any(|line| serde_json::from_str::<Value>(line).is_err());
+    if !was_open.is_empty() && (torn || text.trim().is_empty()) {
+        eprintln!(
+            "cadence: {} is missing, empty or torn under open misses",
+            path.display()
+        );
+        return (text, None);
+    }
+    let held: BTreeSet<String> = lines(&text)
+        .map(|miss| named_as(&miss).to_owned())
+        .collect();
+    let gone: Vec<String> = was_open
+        .iter()
+        .filter(|open| {
+            let what = open
+                .rsplit_once(" · ")
+                .map_or(open.as_str(), |(what, _)| what);
+            !held.contains(what)
+        })
+        .cloned()
+        .collect();
+    if !gone.is_empty() {
+        eprintln!(
+            "cadence: {} no longer holds {} of last hour's open misses",
+            path.display(),
+            gone.len()
+        );
+    }
+    (text, Some(gone))
+}
+
 /// The misses Joel found himself, from the orchestrator's `misses.jsonl`:
 /// one stays open until its owner names the check that would have caught
 /// it and that check has merged, as `merged` holds them. A check naming no
@@ -273,12 +328,23 @@ fn misses(
             Some((what, owner, note))
         })
         .collect();
+    // A line half-written as the hour reads, or broken, would drop its miss
+    // from the open list and tell Joel it's fixed, so the hour judges none.
+    let whole = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .all(|line| serde_json::from_str::<Value>(line).is_ok());
+    let mut says =
+        "misses Joel found himself, with no merged check yet to catch the next".to_owned();
+    if !whole {
+        says.push_str(UNREAD);
+    }
     Measure {
         key: "misses".to_owned(),
         class: Class::Miss,
-        says: "misses Joel found himself, with no merged check yet to catch the next".to_owned(),
+        says,
         now: count(open.len()),
-        target: Some(0.0),
+        target: whole.then_some(0.0),
         // The oldest open miss's owner moves it first.
         owner: open.first().map(|(_, o, _)| o.clone()).unwrap_or_default(),
         behind: open
@@ -288,6 +354,10 @@ fn misses(
     }
 }
 
+/// What the misses measure says after its words when the ledger wasn't
+/// read whole, and so judges nothing.
+pub const UNREAD: &str = " (misses.jsonl wasn't read whole)";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,14 +365,14 @@ mod tests {
     const AT: &str = "2026-11-14T17:34:00-05:00";
     const AT_SECONDS: i64 = 1_794_695_640;
 
-    fn change(repo: &str, number: u64) -> Named {
+    pub(super) fn change(repo: &str, number: u64) -> Named {
         Named {
             repo: repo.to_owned(),
             number,
         }
     }
 
-    fn repos() -> Checkouts {
+    pub(super) fn repos() -> Checkouts {
         ["core", "harness", "world"]
             .into_iter()
             .map(|name| (name.to_owned(), PathBuf::from(format!("/{name}"))))
@@ -367,7 +437,7 @@ mod tests {
         }
     }
 
-    fn miss(check: &str) -> String {
+    pub(super) fn miss(check: &str) -> String {
         serde_json::json!({"at": AT, "words": "w", "what": "the cat waits", "owner": "XY9H5C",
             "check": check})
         .to_string()
@@ -460,6 +530,115 @@ mod tests {
             open.behind,
             ["the cat waits · XY9H5C, though cadence couldn't read world's main to see its check"],
             "an open miss blamed its owner for a main the hour itself couldn't read"
+        );
+    }
+
+    /// A line half-written as the hour reads, or broken, would drop its
+    /// miss from the open list and tell Joel it's fixed.
+    #[test]
+    fn a_ledger_line_that_doesnt_parse_leaves_the_misses_unjudged() {
+        let text = format!("{}\n{{\"what\": \"half writ", miss("core #9"));
+        let m = misses(&text, &repos(), &BTreeSet::new(), &BTreeSet::new());
+        assert!(
+            m.target.is_none() && m.says.contains("wasn't read whole"),
+            "a ledger with a broken line was judged: {m:?}"
+        );
+        let spaced = format!("{}\n\n  \n", miss("core #9"));
+        let m = misses(&spaced, &repos(), &BTreeSet::new(), &BTreeSet::new());
+        assert!(
+            m.target.is_some(),
+            "a ledger with blank lines was read as torn: {m:?}"
+        );
+    }
+
+    /// A ledger that can't be read, is missing, reads empty or has a torn
+    /// line while last hour had misses open says nothing of which are
+    /// gone, so the hour carries them all: misses never leave it, they close
+    /// on their checks, and one dropped would never be told fixed.
+    #[test]
+    fn a_ledger_missing_emptied_or_torn_names_no_miss_gone() {
+        let root = tempfile::tempdir().expect("a scratch folder");
+        let open = ["the cat waits · XY9H5C".to_owned()];
+        let file = root.path().join("misses.jsonl");
+        assert_eq!(
+            ledger(&file, &open).1,
+            None,
+            "a missing ledger named misses gone"
+        );
+        std::fs::write(&file, "\n").expect("the ledger written");
+        assert_eq!(
+            ledger(&file, &open).1,
+            None,
+            "an emptied ledger named misses gone"
+        );
+        let torn = format!("{}\n{{\"what\": \"the cat wa", miss("core #9"));
+        std::fs::write(&file, torn).expect("the ledger written");
+        assert_eq!(
+            ledger(&file, &open).1,
+            None,
+            "a torn ledger named misses gone"
+        );
+    }
+
+    /// A ledger that can't be read, or reads empty while last hour had
+    /// misses open, isn't read whole.
+    #[test]
+    fn a_ledger_unread_or_gone_empty_under_open_misses_is_not_read_whole() {
+        let root = tempfile::tempdir().expect("a scratch folder");
+        let open = ["the cat waits · XY9H5C".to_owned()];
+        let file = root.path().join("misses.jsonl");
+        let whole = |path: &Path, was_open: &[String]| {
+            ledger(path, was_open).1.is_some_and(|gone| gone.is_empty())
+        };
+        assert_eq!(
+            ledger(root.path(), &open).1,
+            None,
+            "a folder read as a ledger"
+        );
+        let cases = [
+            (
+                file.clone(),
+                &open[..],
+                false,
+                "a missing ledger under open misses",
+            ),
+            (file.clone(), &[][..], true, "a ledger not yet written"),
+        ];
+        for (path, was_open, read_whole, what) in cases {
+            assert_eq!(
+                whole(&path, was_open),
+                read_whole,
+                "{what} read whole: {}",
+                !read_whole
+            );
+        }
+        std::fs::write(&file, "\n").expect("the ledger written");
+        assert!(
+            !whole(&file, &open),
+            "a ledger gone empty under open misses was read whole"
+        );
+        assert!(
+            whole(&file, &[]),
+            "an empty ledger with nothing open wasn't read whole"
+        );
+        let other = r#"{"words":"w","what":"the map drew cells alone","owner":"WCJQSG"}"#;
+        std::fs::write(&file, other).expect("the ledger written");
+        assert_eq!(
+            ledger(&file, &open).1,
+            Some(open.to_vec()),
+            "a ledger cut of a miss open last hour didn't name it gone"
+        );
+        // Only the miss's whole words hold it, not words it starts with.
+        let longer = ["the cat waits · XY9H5C · KNURBN".to_owned()];
+        std::fs::write(&file, miss("core #9")).expect("the ledger written");
+        assert!(
+            !whole(&file, &longer),
+            "a miss whose words only begin another's was read as held"
+        );
+        assert_eq!(
+            ledger(&file, &open),
+            (miss("core #9"), Some(Vec::new())),
+            "a whole ledger wasn't read as it is"
         );
     }
 

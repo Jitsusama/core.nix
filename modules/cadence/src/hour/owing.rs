@@ -9,7 +9,7 @@ use crate::findings::Entry;
 use crate::owe::{self, Owed};
 
 use super::lines::figure;
-use super::measures::{Class, Measure, drag};
+use super::measures::{BLIND, Class, HELD, Measure, drag};
 
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
@@ -29,15 +29,49 @@ fn filed(m: &Measure) -> Vec<Filed> {
             .behind
             .iter()
             .filter_map(|line| line.rsplit_once(" · "))
-            .map(|(what, owner)| Filed {
-                key: format!("hour:miss:{what}"),
-                owner: owner.to_owned(),
-                says: format!("a miss Joel found himself: {what}"),
-                text: format!(
-                    "cadence hour: a miss Joel found himself is yours: {what}. Which check \
-                     would have caught it? It stays open until that check merges; tell the \
-                     orchestrator its PR, for the misses ledger's check field."
-                ),
+            // A miss held only because the hour couldn't look is the hour's
+            // to fix, not its owner's, so it isn't put to them.
+            .filter(|(_, owner)| {
+                owner
+                    .split_once(HELD)
+                    .is_none_or(|(_, why)| !BLIND.iter().any(|b| why.ends_with(b)))
+            })
+            .map(|(what, owner)| {
+                // A note after the owner, ", though its check ...", is no
+                // address: it says the check merged and a measure still
+                // holds the miss, so the owner isn't asked for a check again.
+                let (owner, held) = owner.split_once(HELD).unwrap_or((owner, ""));
+                // A held miss is its own finding, so the owner hears of the
+                // hold though the ask for a check is still open.
+                let key = if held.is_empty() {
+                    format!("hour:miss:{what}")
+                } else {
+                    format!("hour:miss-held:{what}")
+                };
+                let text = if held.is_empty() {
+                    format!(
+                        "cadence hour: a miss Joel found himself is yours: {what}. Which \
+                         check would have caught it? It stays open until that check merges; \
+                         tell the orchestrator its PR, for the misses ledger's check field."
+                    )
+                } else {
+                    format!(
+                        "cadence hour: a miss Joel found himself is yours: {what}. Its check \
+                         merged, but the measure {held}, so it stays open until that measure \
+                         is judged within its target. Please reply with what keeps it there."
+                    )
+                };
+                Filed {
+                    key,
+                    owner: owner
+                        .split(',')
+                        .next()
+                        .unwrap_or_default()
+                        .trim()
+                        .to_owned(),
+                    says: format!("a miss Joel found himself: {what}"),
+                    text,
+                }
             })
             .collect();
     }
@@ -114,13 +148,25 @@ fn routed(class: Class) -> bool {
 /// read says nothing, so it closes none.
 fn back_in(key: &str, measures: &[Measure]) -> bool {
     let key = key.strip_prefix("hour:").unwrap_or(key);
-    if let Some(what) = key.strip_prefix("miss:") {
+    // The ask for a check closes once the check merged and only a measure
+    // holds the miss; that hold is its own finding, closing once judged.
+    let asked = key.strip_prefix("miss:").map(|what| (what, false));
+    if let Some((what, held)) = asked.or_else(|| key.strip_prefix("miss-held:").map(|w| (w, true)))
+    {
+        // A ledger not read whole says nothing of which misses are gone.
+        if measures
+            .iter()
+            .any(|m| m.class == Class::Miss && m.target.is_none())
+        {
+            return false;
+        }
         let open = format!("{what} · ");
         return !measures
             .iter()
             .filter(|m| m.class == Class::Miss)
             .flat_map(|m| &m.behind)
-            .any(|line| line.starts_with(&open));
+            .filter_map(|line| line.strip_prefix(&open))
+            .any(|by| by.contains(HELD) == held);
     }
     measures
         .iter()
@@ -361,6 +407,125 @@ mod tests {
             open,
             ["hour:miss:the map had no network"],
             "History's closed"
+        );
+    }
+
+    #[test]
+    fn a_miss_noted_after_its_owner_still_goes_to_that_owner() {
+        let mut misses = measure("misses", Class::Miss, 2.0, Some(0.0));
+        misses.behind = vec![
+            "the map drew cells alone · WCJQSG, though its check map-cells still finds it"
+                .to_owned(),
+            "the notice stayed up · 88LQC0, though cadence couldn't read world's main to see \
+             its check"
+                .to_owned(),
+        ];
+        let told = file(&mut Vec::new(), &[misses], "2026-11-17", 1000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(
+            owners,
+            ["WCJQSG", "88LQC0"],
+            "a miss's note was taken as part of its owner's address"
+        );
+    }
+
+    /// An hour that couldn't read the misses ledger whole says nothing of
+    /// which misses are gone, so it settles none of their findings.
+    #[test]
+    fn an_unread_misses_ledger_settles_no_miss_finding() {
+        let mut misses = measure("misses", Class::Miss, 1.0, Some(0.0));
+        misses.behind = vec![
+            "the map drew cells alone · WCJQSG".to_owned(),
+            "History paused · H2VYOB, though its check map-cells still finds it".to_owned(),
+        ];
+        let mut ledger = Vec::new();
+        file(&mut ledger, &[misses], "2026-11-17", 1000);
+        let unread = measure("misses", Class::Miss, 0.0, None);
+        file(&mut ledger, &[unread], "2026-11-17", 2000);
+        let open = ledger.iter().filter(|e| e.open).count();
+        assert_eq!(
+            open, 2,
+            "an unread ledger settled its misses' findings: {ledger:?}"
+        );
+    }
+
+    /// A measure the hour couldn't read holds a miss on the card, but the
+    /// miss's owner can't move the hour's blindness, so isn't asked to.
+    #[test]
+    fn a_miss_held_by_a_blind_measure_is_not_put_to_its_owner() {
+        let mut misses = measure("misses", Class::Miss, 1.0, Some(0.0));
+        misses.behind = vec![
+            "a miss with no check · H2VYOB".to_owned(),
+            "the map drew cells alone · WCJQSG, though its check map-cells can't judge it yet"
+                .to_owned(),
+        ];
+        let mut ledger = Vec::new();
+        let told = file(&mut ledger, &[misses], "2026-11-17", 1000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(
+            owners,
+            ["H2VYOB"],
+            "a miss held only because the hour couldn't look was put to its owner"
+        );
+    }
+
+    #[test]
+    fn a_miss_held_by_its_merged_check_asks_its_owner_for_no_new_check() {
+        let mut misses = measure("misses", Class::Miss, 1.0, Some(0.0));
+        misses.behind = vec![
+            "the map drew cells alone · WCJQSG, though its check map-cells still finds it"
+                .to_owned(),
+        ];
+        // The owner was asked for a check before it merged, and that
+        // finding is still open; the hold is news to them all the same.
+        let mut ledger = Vec::new();
+        let mut asked = misses.clone();
+        asked.behind = vec!["the map drew cells alone · WCJQSG".to_owned()];
+        file(&mut ledger, &[asked], "2026-11-16", 0);
+        let told = file(
+            &mut ledger,
+            std::slice::from_ref(&misses),
+            "2026-11-17",
+            1000,
+        );
+        let text = told.first().map_or("nothing", |(_, text)| text.as_str());
+        assert!(
+            !text.contains("Which check would have caught it") && text.contains("map-cells"),
+            "a miss whose check merged asked its owner for a check again, or wasn't told: {text}"
+        );
+        let open: Vec<&str> = ledger
+            .iter()
+            .filter(|e| e.open)
+            .map(|e| e.key.as_str())
+            .collect();
+        assert_eq!(
+            open,
+            ["hour:miss-held:the map drew cells alone"],
+            "the ask for a check stayed open once it merged, or the hold wasn't filed"
+        );
+        let again = file(&mut ledger, &[misses], "2026-11-17", 1500);
+        let still: Vec<&str> = ledger
+            .iter()
+            .filter(|e| e.open)
+            .map(|e| e.key.as_str())
+            .collect();
+        assert!(
+            again.is_empty() && still == ["hour:miss-held:the map drew cells alone"],
+            "a hold a second hour running was closed or told again: {again:?}, open {still:?}"
+        );
+        let mut gone = measure("misses", Class::Miss, 1.0, Some(0.0));
+        gone.behind = vec!["another miss · WCJQSG".to_owned()];
+        file(&mut ledger, &[gone], "2026-11-17", 2000);
+        assert!(
+            ledger
+                .iter()
+                .all(|e| !e.open || e.key == "hour:miss:another miss"),
+            "a hold its measure judged gone stayed open: {:?}",
+            ledger
+                .iter()
+                .filter(|e| e.open)
+                .map(|e| &e.key)
+                .collect::<Vec<_>>()
         );
     }
 }
