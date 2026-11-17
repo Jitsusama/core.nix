@@ -2,12 +2,14 @@
 # folder's; its opening comment says what each kind of check proves.
 {
   account,
+  bareNixos,
   graphical,
   holds,
   lib,
   onLinux,
   passesClippy,
   pkgs,
+  self,
   shellFolderLint,
   ...
 }:
@@ -120,6 +122,45 @@ onLinux {
         && lib.any (lib.hasSuffix "/op") home.jitsusama.passwords.managers."1password".command
         && map (manager: manager.program) (provider.managers or [ ]) == [ "com.onepassword.OnePassword" ]
       );
+  # A release listed while the Passwords place is off answers nothing:
+  # the place runs no daemon, Asks isn't in the launcher to draw what it
+  # would serve, and the machine is warned that releases need the place
+  # on, rather than binding Asks to a place with no daemon. Once the place
+  # is on, Asks is drawn over its daemon, with the clock its yes is timed
+  # by beside it, and nothing warns: the half this wiring exists for, and
+  # the one where the place's off is read as false.
+  releases-wait-for-the-passwords-place =
+    let
+      releasing =
+        place:
+        account (bareNixos [
+          self.nixosModules.graphical
+          {
+            home-manager.sharedModules = [
+              { jitsusama.passwords.releases = [ "op://Private/Kiln/password" ]; }
+              place
+            ];
+          }
+        ]);
+      off = releasing { };
+      on = releasing {
+        jitsusama.quickshell.launcher.providers.passwords.off = lib.mkForce false;
+      };
+      offProviders = off.jitsusama.quickshell.launcher.providers;
+      onProviders = on.jitsusama.quickshell.launcher.providers;
+    in
+    holds "releases-wait-for-the-passwords-place"
+      "A release draws Asks with the Passwords place off, warns of nothing, or isn't drawn over the place once it's on."
+      (
+        (offProviders.passwords.off or false)
+        && !(offProviders.asks.enable or false)
+        && lib.any (lib.hasInfix "jitsusama.passwords.releases") off.warnings
+        && (onProviders.asks.enable or false)
+        && (onProviders.asks.over or null) == "passwords"
+        && (onProviders.passwords.answersAsks or false)
+        && on.xdg.configFile ? "quickshell/launcher/Shown.js"
+        && !lib.any (lib.hasInfix "jitsusama.passwords.releases") on.warnings
+      );
   # While the place is off, the shell's own config names no passwords
   # daemon, so an unfenced process that rewrites the off setting finds
   # nothing for the shell to run. It closes that one setting, not Joel's
@@ -135,7 +176,11 @@ onLinux {
   # Nothing of the Passwords place, nor the daemon interface it asks its
   # daemon through, answers the shell's IPC, so no `qs ipc call` another
   # process makes reaches a secret or lets a manager in, now or once
-  # something is added: only Joel's keys in the launcher do.
+  # something is added: only Joel's keys in the launcher do. Nor do Asks,
+  # which draws this daemon's secret asks, how it says a line was shown,
+  # or the ready rows it acts through, so no IPC says yes to an ask; the
+  # launcher's own do and run, walked from outside, say no time shown
+  # (the-asks-say-how-long-each-was-shown), which the daemon refuses.
   the-passwords-answer-no-ipc =
     let
       read = map builtins.readFile [
@@ -143,6 +188,9 @@ onLinux {
         ./Copied.qml
         ./Clearing.qml
         ../quickshell/Daemon.qml
+        ../quickshell/launcher/ReadyRows.qml
+        ../secret-asks/Asks.qml
+        ../secret-asks/Shown.js
       ];
     in
     holds "the-passwords-answer-no-ipc"

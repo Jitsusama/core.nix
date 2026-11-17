@@ -17,6 +17,7 @@ use serde_json::{Value, json};
 
 mod grants;
 mod history;
+mod watch;
 
 /// The one reference listed, and one that isn't.
 const LISTED: &str = "op://Test/Throwaway/password";
