@@ -2515,7 +2515,9 @@ const BOOT_READ: &str = "cat /proc/sys/kernel/random/boot_id 2>/dev/null || \
 /// pid of 8 digits or more, past Linux's highest and a Mac's, which zsh
 /// can read as -1 and so as live, is taken by the next to look. A run
 /// waiting says so at once and about every 5 minutes, or
-/// `NIX_OFFLOAD_TURN_EVERY` seconds, so it isn't read as hung. A turn
+/// `NIX_OFFLOAD_TURN_EVERY` seconds, naming the shells that hold the
+/// turns, so it isn't read as hung and a turn held by a pid reused since
+/// can be found. A turn
 /// that can't be made, as a folder in its place or a dead one in a folder
 /// that can't be written, is passed over for the others;
 /// where none can be on two looks a second apart, since a dead turn
@@ -2524,11 +2526,18 @@ const BOOT_READ: &str = "cat /proc/sys/kernel/random/boot_id 2>/dev/null || \
 /// says so, rather than wait for a turn that can never be had. Taking a
 /// dead turn back is a look, then a remove, so a run can remove a turn
 /// another took between the two: each run looks a second after taking its
-/// turn, or `NIX_OFFLOAD_TURN_LOOK` seconds, and waits again if it no
-/// longer holds it. Only a run stalled longer than that between its look
-/// and its remove lets an extra build in, until the one whose link it replaced
-/// ends; it never leaves a run waiting for a turn nobody holds. It bounds
-/// only runs that reach the machine as one account.
+/// turn, or `NIX_OFFLOAD_TURN_LOOK` seconds (a second where `sleep`
+/// refuses that), and if it no longer holds it looks for a turn again as
+/// long after. Only a run stalled longer than that look between its look
+/// and its remove lets an extra build in, until the one whose link it
+/// replaced ends; it never leaves a run waiting for a turn nobody holds.
+/// A turn taken from it by a run in another boot shows the folder is
+/// shared by two boots, as a home two machines share makes it, where each
+/// reads the other's turns as dead and the turns bound nothing, so the run
+/// builds without one and says so rather than take turns back from the
+/// other boot for ever. It bounds only runs that reach the machine as one
+/// account in one pid namespace: two namespaces of one boot sharing a home
+/// read each other's turns as dead too, and nothing here tells them apart.
 pub fn in_turn_nearby(command: &str) -> String {
     format!(
         "turns=\"${{NIX_OFFLOAD_TURNS:-$HOME/.cache/nix-offload/turns}}\"; \
@@ -2539,7 +2548,7 @@ pub fn in_turn_nearby(command: &str) -> String {
          rm -f \"$turns/$k\"; fi; \
          k=$((k + 1)); done' EXIT; \
          if [ -z \"$boot\" ]; then turn=none; fi; \
-         while [ -z \"$turn\" ]; do mkdir -p \"$turns\" 2>/dev/null; n=1; unmade=0; \
+         while [ -z \"$turn\" ]; do mkdir -p \"$turns\" 2>/dev/null; n=1; unmade=0; holders=; \
          while [ \"$n\" -le {NEARBY_AT_ONCE} ]; do \
          if [ -d \"$turns/$n\" ] && [ ! -L \"$turns/$n\" ]; then \
          unmade=$((unmade + 1)); n=$((n + 1)); continue; fi; \
@@ -2552,20 +2561,32 @@ pub fn in_turn_nearby(command: &str) -> String {
          pid=${{holder%% *}}; case \"$pid\" in ''|*[!0-9]*|0*|????????*) pid=; esac; \
          if [ -z \"$pid\" ] || [ \"${{holder#* }}\" != \"$boot\" ] || [ \"$pid\" = \"$$\" ] || \
          ! kill -0 \"$pid\" 2>/dev/null; then \
-         if rm -f \"$turns/$n\" 2>/dev/null; then continue; fi; unmade=$((unmade + 1)); fi; \
+         if rm -f \"$turns/$n\" 2>/dev/null; then continue; fi; unmade=$((unmade + 1)); \
+         else holders=\"${{holders:+$holders, }}$pid\"; fi; \
          n=$((n + 1)); done; \
-         if [ -n \"$turn\" ]; then sleep \"${{NIX_OFFLOAD_TURN_LOOK:-1}}\"; \
-         if [ \"$(readlink \"$turn\" 2>/dev/null)\" = \"$mine\" ]; then break; fi; turn=; fi; \
+         if [ -n \"$turn\" ]; then sleep \"${{NIX_OFFLOAD_TURN_LOOK:-1}}\" 2>/dev/null || sleep 1; \
+         taker=$(readlink \"$turn\" 2>/dev/null); \
+         if [ \"$taker\" = \"$mine\" ]; then break; fi; \
+         if [ -n \"$taker\" ] && [ \"${{taker#* }}\" != \"$boot\" ]; then turn=shared; break; fi; \
+         turn=; unmadebefore=; sleep \"${{NIX_OFFLOAD_TURN_LOOK:-1}}\" 2>/dev/null || sleep 1; \
+         continue; fi; \
          if [ \"$unmade\" -ge {NEARBY_AT_ONCE} ]; then \
          if [ -n \"$unmadebefore\" ]; then turn=none; break; fi; \
          unmadebefore=1; sleep 1; continue; fi; \
          unmadebefore=; \
-         if [ $((waited % ${{NIX_OFFLOAD_TURN_EVERY:-300}})) -eq 0 ]; then echo \"nix-offload: \
-         $here already runs as many builds sent to it as it takes at once, so this waits there \
-         for its turn, held in $turns\" >&2; fi; \
+         if [ $((waited % ${{NIX_OFFLOAD_TURN_EVERY:-300}})) -eq 0 ]; then also=; \
+         if [ \"$unmade\" -gt 0 ]; then also=\", with $unmade more it can't make\"; fi; \
+         echo \"nix-offload: $here already runs as many builds sent to it as it takes at once, \
+         so this waits there for its turn, held in $turns by shells $holders$also\" >&2; fi; \
          sleep 1; waited=$((waited + 1)); done; \
-         if [ \"$turn\" = none ]; then echo \"nix-offload: $turns on $here can't hold its turns, \
-         so this builds without one\" >&2; fi; {command}"
+         if [ -z \"$boot\" ]; then echo \"nix-offload: the boot of $here can't be read from \
+         its boot_id or kern.bootsessionuuid, so this builds without a turn\" >&2; \
+         elif [ \"$turn\" = none ]; then echo \"nix-offload: $turns on $here can't hold its turns, \
+         so this builds without one\" >&2; \
+         elif [ \"$turn\" = shared ]; then echo \"nix-offload: $turns on $here is shared \
+         with another boot, which took this run's turn, so the turns can't bound its builds \
+         and this builds without one; NIX_OFFLOAD_TURNS naming a folder of each machine's \
+         own bounds them\" >&2; fi; {command}"
     )
 }
 
@@ -4989,6 +5010,15 @@ mod tests {
         String::from_utf8_lossy(&read.stdout).trim_end().to_owned()
     }
 
+    /// What a run says when it can't read its boot to name a turn by.
+    fn unbooted() -> String {
+        format!(
+            "nix-offload: the boot of {} can't be read from its boot_id or \
+             kern.bootsessionuuid, so this builds without a turn\n",
+            this_machine()
+        )
+    }
+
     /// What a run says when no turn can be made in `turns`.
     fn unheld(turns: &Path) -> String {
         format!(
@@ -5017,7 +5047,8 @@ mod tests {
         Command::new(shell)
             .args(["-c", sent])
             .env("NIX_OFFLOAD_TURNS", turns)
-            // Where far keeps its callers' claims, kept out of the real one.
+            // Where far keeps its callers' claims, kept out of the real one
+            // when `turns` is a test folder's own child.
             .env("TMPDIR", turns.parent().unwrap())
             .process_group(0)
             .stdout(Stdio::piped())
@@ -5057,8 +5088,8 @@ mod tests {
         }
     }
 
-    /// A run in `shell` past every turn held waits, saying why every
-    /// second, then takes the one given back.
+    /// A run in `shell` past every turn held waits, saying why and who
+    /// holds them every second, then takes the one given back.
     fn waits_for_a_turn(shell: &str) {
         let turns = tempfile::tempdir().unwrap();
         // This test's own process holds every turn, and lives.
@@ -5089,9 +5120,10 @@ mod tests {
         });
         let why = format!(
             "nix-offload: {} already runs as many builds sent to it as it takes at once, so \
-             this waits there for its turn, held in {}",
+             this waits there for its turn, held in {} by shells {pid}, {pid}",
             this_machine(),
-            turns.path().display()
+            turns.path().display(),
+            pid = std::process::id()
         );
         for said in ["at once", "again a second on"] {
             let heard = told
@@ -5301,7 +5333,7 @@ mod tests {
     }
 
     #[test]
-    fn a_run_gives_back_its_turn_whatever_its_command_leaves_in_its_names() {
+    fn a_run_gives_back_its_turn_even_once_its_command_clears_turn() {
         // A build's command runs in the same shell, so may set anything.
         for shell in ["dash", "zsh"] {
             let turns = tempfile::tempdir().unwrap();
@@ -5343,8 +5375,11 @@ mod tests {
                 assert!(Instant::now() < deadline, "{shell} never took turn 1");
                 thread::sleep(Duration::from_millis(10));
             }
-            // Swapped whole, so the run never reads the place empty.
-            held_turn(turns.path(), 0, &live);
+            // Swapped whole, so the run never reads the place empty, and
+            // held by another live shell, so the wait line names both.
+            let mut other = Command::new("sleep").arg("60").spawn().unwrap();
+            let parent = other.id();
+            held_turn(turns.path(), 0, &format!("{parent} {boot}"));
             fs::rename(turns.path().join("0"), turns.path().join("1")).unwrap();
             let said = BufReader::new(taking.stderr.take().unwrap());
             let (tell, told) = mpsc::channel();
@@ -5358,8 +5393,10 @@ mod tests {
             let heard = told
                 .recv_timeout(Duration::from_secs(30))
                 .unwrap_or_else(|_| panic!("{shell} didn't wait again"));
+            let pid = std::process::id();
             assert!(
-                heard.contains("waits there for its turn"),
+                heard.contains("waits there for its turn")
+                    && heard.ends_with(&format!("by shells {parent}, {pid}")),
                 "{shell}: {heard}"
             );
             assert_eq!(
@@ -5376,8 +5413,202 @@ mod tests {
                 format!("{taker}\n"),
                 "{shell} didn't hold the turn freed later"
             );
-            assert_eq!(turn_holder(turns.path(), 1), Some(live.clone()), "{shell}");
+            other.kill().unwrap();
+            other.wait().unwrap();
+            assert_eq!(
+                turn_holder(turns.path(), 1),
+                Some(format!("{parent} {boot}")),
+                "{shell}"
+            );
         }
+    }
+
+    #[test]
+    fn a_run_whose_look_sleep_refuses_still_looks_a_second_later() {
+        // A look at once after taking a turn would miss its being taken.
+        let bin = tempfile::tempdir().unwrap();
+        crate::testing::executable(
+            &bin.path().join("sleep"),
+            &format!(
+                "#!/bin/sh\necho \"$1\" >> \"$NIX_OFFLOAD_TURNS/../slept\"\n\
+                 case $1 in never) echo \"sleep: invalid time interval\" >&2; exit 1 ;; \
+                 esac\nexec {sleep} \"$@\"\n",
+                sleep = which("sleep")
+            ),
+        );
+        for shell in ["dash", "zsh"] {
+            let folder = tempfile::tempdir().unwrap();
+            let turns = folder.path().join("turns");
+            let ran = ended(
+                Command::new(shell)
+                    .args(["-c", &first_on_path(bin.path(), &in_turn_nearby("true"))])
+                    .env("NIX_OFFLOAD_TURNS", &turns)
+                    .env("NIX_OFFLOAD_TURN_LOOK", "never")
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .unwrap(),
+            );
+            assert_eq!(ran.status.code(), Some(0), "{shell}: {ran:?}");
+            assert_eq!(String::from_utf8_lossy(&ran.stderr), "", "{shell}");
+            assert_eq!(
+                fs::read_to_string(folder.path().join("slept")).unwrap(),
+                "never\n1\n",
+                "{shell} didn't look a second after a refused look"
+            );
+        }
+    }
+
+    #[test]
+    fn a_run_whose_turn_a_run_in_another_boot_takes_builds_without_one_and_says_so() {
+        // Each reads the other's turn as an earlier boot's and takes it.
+        let bin = booted_as_told();
+        let started = |shell: &str, turns: &Path, boot: &str| {
+            Command::new(shell)
+                .args([
+                    "-c",
+                    &first_on_path(bin.path(), &in_turn_nearby("echo built")),
+                ])
+                .env("NIX_OFFLOAD_TURNS", turns)
+                .env("NIX_OFFLOAD_TURN_LOOK", "5")
+                .env("TURN_BOOT", boot)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap()
+        };
+        for shell in ["dash", "zsh"] {
+            let folder = tempfile::tempdir().unwrap();
+            let turns = folder.path().join("turns");
+            let first = started(shell, &turns, "one");
+            // Well inside the first's look, whichever takes turn 1 first.
+            thread::sleep(Duration::from_secs(2));
+            let second = started(shell, &turns, "two");
+            let said: Vec<String> = [ended(first), ended(second)]
+                .into_iter()
+                .map(|run| {
+                    assert_eq!(run.status.code(), Some(0), "{shell}: {run:?}");
+                    assert_eq!(
+                        String::from_utf8_lossy(&run.stdout),
+                        "built\n",
+                        "{shell}: a run never built: {run:?}"
+                    );
+                    String::from_utf8_lossy(&run.stderr).into_owned()
+                })
+                .collect();
+            let shared = format!(
+                "nix-offload: {} on {} is shared with another boot, which took this run's \
+                 turn, so the turns can't bound its builds and this builds without one; \
+                 NIX_OFFLOAD_TURNS naming a folder of each machine's own bounds them\n",
+                turns.display(),
+                this_machine()
+            );
+            assert!(
+                said == [shared.clone(), String::new()] || said == [String::new(), shared],
+                "{shell}: one run, and only one, loses its turn to the other boot: {said:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn runs_in_two_boots_sharing_the_turns_all_end_however_they_interleave() {
+        // Four runs in two boots, each holding its turn a while, took turns
+        // from each other for ever before a turn another boot took ended it.
+        let bin = booted_as_told();
+        for shell in ["dash", "zsh"] {
+            let folder = tempfile::tempdir().unwrap();
+            let turns = folder.path().join("turns");
+            let runs: Vec<_> = ["one", "two", "one", "two"]
+                .into_iter()
+                .map(|boot| {
+                    let run = Command::new(shell)
+                        .args([
+                            "-c",
+                            &first_on_path(bin.path(), &in_turn_nearby("sleep 2; echo built")),
+                        ])
+                        .env("NIX_OFFLOAD_TURNS", &turns)
+                        .env("NIX_OFFLOAD_TURN_LOOK", "2")
+                        .env("TURN_BOOT", boot)
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .spawn()
+                        .unwrap();
+                    thread::sleep(Duration::from_millis(700));
+                    run
+                })
+                .collect();
+            for run in runs {
+                let run = ended(run);
+                assert_eq!(run.status.code(), Some(0), "{shell}: {run:?}");
+                assert_eq!(
+                    String::from_utf8_lossy(&run.stdout),
+                    "built\n",
+                    "{shell}: a run never built: {run:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_run_whose_turn_is_freed_during_its_look_takes_one_again_in_its_own_boot() {
+        // An empty link read is no other boot's: the turn was given back.
+        let bin = tempfile::tempdir().unwrap();
+        crate::testing::executable(
+            &bin.path().join("sleep"),
+            &format!(
+                "#!/bin/sh\ncase $1 in 4) [ -e \"$FREED\" ] || {{ : > \"$FREED\"; \
+                 rm -f \"$NIX_OFFLOAD_TURNS/1\"; }} ;; esac\nexec {sleep} \"$@\"\n",
+                sleep = which("sleep")
+            ),
+        );
+        for shell in ["dash", "zsh"] {
+            let folder = tempfile::tempdir().unwrap();
+            let turns = folder.path().join("turns");
+            let freed = folder.path().join("freed");
+            let run = Command::new(shell)
+                .args([
+                    "-c",
+                    &first_on_path(bin.path(), &in_turn_nearby("echo built")),
+                ])
+                .env("NIX_OFFLOAD_TURNS", &turns)
+                .env("NIX_OFFLOAD_TURN_LOOK", "4")
+                .env("FREED", &freed)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let run = ended(run);
+            assert!(
+                freed.exists(),
+                "{shell}: the turn was never freed during a look"
+            );
+            assert_eq!(run.status.code(), Some(0), "{shell}: {run:?}");
+            assert_eq!(
+                String::from_utf8_lossy(&run.stdout),
+                "built\n",
+                "{shell}: {run:?}"
+            );
+            assert_eq!(
+                String::from_utf8_lossy(&run.stderr),
+                "",
+                "{shell}: a freed turn read as another boot's: {run:?}"
+            );
+        }
+    }
+
+    /// A folder holding a `cat` that gives `$TURN_BOOT` as the boot id, so
+    /// runs on one machine can stand for runs in different boots.
+    fn booted_as_told() -> tempfile::TempDir {
+        let bin = tempfile::tempdir().unwrap();
+        crate::testing::executable(
+            &bin.path().join("cat"),
+            &format!(
+                "#!/bin/sh\ncase $1 in /proc/sys/kernel/random/boot_id) \
+                 echo \"$TURN_BOOT\"; exit ;; esac\nexec {cat} \"$@\"\n",
+                cat = which("cat")
+            ),
+        );
+        bin
     }
 
     #[test]
@@ -5474,11 +5705,277 @@ mod tests {
         }
     }
 
-    /// `script`, with `bin`'s programs first on PATH. Set by the script, not
-    /// the environment, since a Mac's zsh sets PATH again from /etc/zshenv
-    /// before it runs anything.
+    #[test]
+    fn a_run_that_waits_between_two_looks_finding_no_turn_looks_twice_again() {
+        // Only two looks in a row finding no turn it can make send a run to
+        // build with none, so one such look, a wait on live turns, then
+        // another, is still waited out. Its looks find stray folders, live
+        // turns, stray folders again, then none.
+        let bin = tempfile::tempdir().unwrap();
+        crate::testing::executable(
+            &bin.path().join("mkdir"),
+            &format!(
+                "#!/bin/sh\nt=\"$NIX_OFFLOAD_TURNS\"; looks=$(cat \"$t/looks\" 2>/dev/null); \
+                 looks=$((${{looks:-0}} + 1)); echo \"$looks\" > \"$t/looks\"\n\
+                 case $looks in\n\
+                 2) rmdir \"$t/1\" \"$t/2\"; \
+                 ln -s \"$LIVE\" \"$t/1\"; ln -s \"$LIVE\" \"$t/2\" ;;\n\
+                 3) rm \"$t/1\" \"$t/2\"; {mkdir} \"$t/1\" \"$t/2\" ;;\n\
+                 4) rmdir \"$t/1\" \"$t/2\" ;;\n\
+                 esac\nexec {mkdir} \"$@\"\n",
+                mkdir = which("mkdir")
+            ),
+        );
+        assert_eq!(NEARBY_AT_ONCE, 2, "the stand-in mkdir makes two turns");
+        let live = format!("{} {}", std::process::id(), this_boot());
+        for shell in ["dash", "zsh"] {
+            let turns = tempfile::tempdir().unwrap();
+            for n in 1..=NEARBY_AT_ONCE {
+                fs::create_dir(turns.path().join(n.to_string())).unwrap();
+            }
+            let taking = Command::new(shell)
+                .args([
+                    "-c",
+                    &first_on_path(
+                        bin.path(),
+                        &in_turn_nearby("readlink \"$NIX_OFFLOAD_TURNS/1\""),
+                    ),
+                ])
+                .env("NIX_OFFLOAD_TURNS", turns.path())
+                .env("LIVE", &live)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let taker = taking.id();
+            let ran = ended(taking);
+            assert_eq!(ran.status.code(), Some(0), "{shell}: {ran:?}");
+            assert_eq!(
+                String::from_utf8_lossy(&ran.stdout),
+                format!("{taker} {}\n", this_boot()),
+                "{shell} built without the turn freed on its fourth look: {ran:?}"
+            );
+            let said = String::from_utf8_lossy(&ran.stderr);
+            assert!(
+                said.contains("waits there for its turn") && !said.contains("without"),
+                "{shell} didn't wait on its second look, or built without a turn: {said}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_run_waiting_for_a_turn_says_so_again_only_every_turn_every_seconds() {
+        let turns = tempfile::tempdir().unwrap();
+        let live = format!("{} {}", std::process::id(), this_boot());
+        for n in 1..=NEARBY_AT_ONCE {
+            held_turn(turns.path(), n, &live);
+        }
+        for shell in ["dash", "zsh"] {
+            let mut waiting = Command::new(shell)
+                .args(["-c", &in_turn_nearby("true")])
+                .env("NIX_OFFLOAD_TURNS", turns.path())
+                .env("NIX_OFFLOAD_TURN_EVERY", "6")
+                .process_group(0)
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let said = BufReader::new(waiting.stderr.take().unwrap());
+            let (tell, told) = mpsc::channel();
+            let reading = thread::spawn(move || {
+                for line in said.lines().map_while(Result::ok) {
+                    if tell.send(line).is_err() {
+                        break;
+                    }
+                }
+            });
+            told.recv_timeout(Duration::from_secs(30))
+                .unwrap_or_else(|_| panic!("{shell} never said it waited"));
+            let early = told.recv_timeout(Duration::from_secs(3));
+            let later = told.recv_timeout(Duration::from_secs(30));
+            let killed = Command::new("kill")
+                .args(["-KILL", "--", &format!("-{}", waiting.id())])
+                .status()
+                .unwrap();
+            assert!(killed.success(), "{shell}'s run couldn't be ended");
+            waiting.wait().unwrap();
+            reading.join().unwrap();
+            assert!(
+                early.is_err(),
+                "{shell} said it waited again within 3 s: {early:?}"
+            );
+            assert!(
+                later.is_ok_and(|said| said.contains("waits there for its turn")),
+                "{shell} never said it waited again"
+            );
+        }
+    }
+
+    #[test]
+    fn a_burst_of_runs_sent_nearby_never_builds_more_than_its_turns_at_once() {
+        // On 16 November five builds sent by different runs ran at once on
+        // one Mac. A turn left by a shell killed outright is in the way.
+        for shell in ["dash", "zsh"] {
+            let scratch = tempfile::tempdir().unwrap();
+            let (turns, running) = (scratch.path().join("turns"), scratch.path().join("running"));
+            let seen = scratch.path().join("seen");
+            fs::create_dir(&turns).unwrap();
+            fs::create_dir(&running).unwrap();
+            held_turn(&turns, 1, &format!("{} {}", gone_pid(), this_boot()));
+            let build = format!(
+                "mkdir '{r}/'$$; ls '{r}' | wc -l >> '{s}'; sleep 1; rmdir '{r}/'$$",
+                r = running.display(),
+                s = seen.display()
+            );
+            // Its look after taking a turn is widened, as a stall past it
+            // on a loaded builder can let an extra build in.
+            let sent = format!(
+                "NIX_OFFLOAD_TURN_LOOK=3; export NIX_OFFLOAD_TURN_LOOK; {}",
+                in_turn_nearby(&build)
+            );
+            let runs: Vec<_> = (0..6)
+                .map(|_| sent_with_turns(shell, &sent, &turns))
+                .collect();
+            for run in runs {
+                let ran = ended(run);
+                assert_eq!(ran.status.code(), Some(0), "{shell}: {ran:?}");
+                let said = String::from_utf8_lossy(&ran.stderr);
+                assert!(!said.contains("without"), "{shell}: {said}");
+            }
+            let seen = fs::read_to_string(&seen).unwrap();
+            let at_once: Vec<u32> = seen.lines().map(|n| n.trim().parse().unwrap()).collect();
+            assert_eq!(at_once.len(), 6, "{shell}: {seen}");
+            assert!(
+                at_once.iter().all(|n| *n <= NEARBY_AT_ONCE),
+                "{shell} built {at_once:?} at once"
+            );
+            for n in 1..=NEARBY_AT_ONCE {
+                assert_eq!(turn_holder(&turns, n), None, "{shell} left turn {n} held");
+            }
+        }
+    }
+
+    #[test]
+    fn a_run_waiting_beside_a_turn_it_cant_make_counts_it_apart_from_the_shells() {
+        let pid = std::process::id();
+        for shell in ["dash", "zsh"] {
+            let turns = tempfile::tempdir().unwrap();
+            fs::create_dir(turns.path().join("1")).unwrap();
+            held_turn(turns.path(), 2, &format!("{pid} {}", this_boot()));
+            let mut waiting = Command::new(shell)
+                .args(["-c", &in_turn_nearby("true")])
+                .env("NIX_OFFLOAD_TURNS", turns.path())
+                .process_group(0)
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let said = BufReader::new(waiting.stderr.take().unwrap());
+            let (tell, told) = mpsc::channel();
+            let reading = thread::spawn(move || {
+                for line in said.lines().map_while(Result::ok) {
+                    if tell.send(line).is_err() {
+                        break;
+                    }
+                }
+            });
+            let heard = told.recv_timeout(Duration::from_secs(30));
+            let killed = Command::new("kill")
+                .args(["-KILL", "--", &format!("-{}", waiting.id())])
+                .status()
+                .unwrap();
+            assert!(killed.success(), "{shell}'s run couldn't be ended");
+            waiting.wait().unwrap();
+            reading.join().unwrap();
+            assert!(
+                heard
+                    .as_ref()
+                    .is_ok_and(|said| said
+                        .ends_with(&format!("by shells {pid}, with 1 more it can't make"))),
+                "{shell}: {heard:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_run_that_loses_a_turn_between_two_looks_finding_none_looks_twice_again() {
+        // A look that took a turn, even one taken from it after, breaks a
+        // run of looks finding no turn it can make. Its looks find stray
+        // folders, a free turn taken from it within its look, stray folders
+        // again, then none.
+        let bin = tempfile::tempdir().unwrap();
+        crate::testing::executable(
+            &bin.path().join("mkdir"),
+            &format!(
+                "#!/bin/sh\nt=\"$NIX_OFFLOAD_TURNS\"; looks=$(cat \"$t/looks\" 2>/dev/null); \
+                 looks=$((${{looks:-0}} + 1)); echo \"$looks\" > \"$t/looks\"\n\
+                 case $looks in\n\
+                 2) rmdir \"$t/1\" \"$t/2\"; ln -s \"$LIVE\" \"$t/2\"; \
+                 (w=0; until [ -L \"$t/1\" ] || [ \"$w\" -ge 400 ]; do \
+                 sleep 0.05; w=$((w + 1)); done; \
+                 rm -f \"$t/1\"; ln -s \"$LIVE\" \"$t/1\") & ;;\n\
+                 3) rm \"$t/1\" \"$t/2\"; {mkdir} \"$t/1\" \"$t/2\" ;;\n\
+                 4) rmdir \"$t/1\" \"$t/2\" ;;\n\
+                 esac\nexec {mkdir} \"$@\"\n",
+                mkdir = which("mkdir")
+            ),
+        );
+        assert_eq!(NEARBY_AT_ONCE, 2, "the stand-in mkdir makes two turns");
+        let live = format!("{} {}", std::process::id(), this_boot());
+        for shell in ["dash", "zsh"] {
+            let turns = tempfile::tempdir().unwrap();
+            for n in 1..=NEARBY_AT_ONCE {
+                fs::create_dir(turns.path().join(n.to_string())).unwrap();
+            }
+            let taking = Command::new(shell)
+                .args([
+                    "-c",
+                    &first_on_path(
+                        bin.path(),
+                        &in_turn_nearby("readlink \"$NIX_OFFLOAD_TURNS/1\""),
+                    ),
+                ])
+                .env("NIX_OFFLOAD_TURNS", turns.path())
+                .env("LIVE", &live)
+                // Long enough for the stand-in to take the turn within it.
+                .env("NIX_OFFLOAD_TURN_LOOK", "3")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let taker = taking.id();
+            let ran = ended(taking);
+            assert_eq!(ran.status.code(), Some(0), "{shell}: {ran:?}");
+            assert_eq!(
+                String::from_utf8_lossy(&ran.stdout),
+                format!("{taker} {}\n", this_boot()),
+                "{shell} built without the turn freed on its fourth look: {ran:?}"
+            );
+            // A lost turn is looked for again past the wait line, so a run
+            // that waited instead never lost it.
+            assert_eq!(
+                String::from_utf8_lossy(&ran.stderr),
+                "",
+                "{shell} waited rather than lost its turn, or built without one"
+            );
+            assert_eq!(
+                fs::read_to_string(turns.path().join("looks")).unwrap(),
+                "4\n",
+                "{shell}"
+            );
+        }
+    }
+
+    /// `script`, with `bin`'s programs first on this test's PATH. Set by
+    /// the script, not the environment, since nix-darwin's /etc/zshenv sets
+    /// PATH again in every zsh started without its own marker, as a package
+    /// build's is, though not one from a nix-darwin terminal.
     fn first_on_path(bin: &Path, script: &str) -> String {
-        format!("PATH='{}':\"$PATH\"; export PATH; {script}", bin.display())
+        format!(
+            "PATH='{}:{}'; export PATH; {script}",
+            bin.display(),
+            std::env::var("PATH").unwrap()
+        )
     }
 
     /// Where `program` is on this PATH.
@@ -5520,11 +6017,7 @@ mod tests {
             );
             assert_eq!(ran.status.code(), Some(0), "{shell}: {ran:?}");
             assert_eq!(String::from_utf8_lossy(&ran.stdout), "ran\n", "{shell}");
-            assert_eq!(
-                String::from_utf8_lossy(&ran.stderr),
-                unheld(turns.path()),
-                "{shell}"
-            );
+            assert_eq!(String::from_utf8_lossy(&ran.stderr), unbooted(), "{shell}");
             for n in 1..=NEARBY_AT_ONCE {
                 assert_eq!(
                     turn_holder(turns.path(), n),
@@ -5587,10 +6080,11 @@ mod tests {
         // far's watcher ends a run with TERM to its whole group once its
         // callers are gone, as this does.
         for shell in ["dash", "zsh"] {
-            let turns = tempfile::tempdir().unwrap();
-            let running = sent_with_turns(shell, &far(&in_turn_nearby("sleep 30")), turns.path());
+            let scratch = tempfile::tempdir().unwrap();
+            let turns = scratch.path().join("turns");
+            let running = sent_with_turns(shell, &far(&in_turn_nearby("sleep 30")), &turns);
             let deadline = Instant::now() + Duration::from_secs(30);
-            while turn_holder(turns.path(), 1).is_none() {
+            while turn_holder(&turns, 1).is_none() {
                 assert!(Instant::now() < deadline, "{shell} never took its turn");
                 thread::sleep(Duration::from_millis(50));
             }
@@ -5601,7 +6095,7 @@ mod tests {
             let ran = ended(running);
             assert_eq!(ran.status.code(), Some(143), "{shell}: {ran:?}");
             assert_eq!(
-                turn_holder(turns.path(), 1),
+                turn_holder(&turns, 1),
                 None,
                 "{shell} kept its turn once its watcher ended it"
             );
