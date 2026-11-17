@@ -1202,7 +1202,7 @@ mod tests {
             json!({ "key": "sensor:dell_smm", "part": "fans",
                 "folder": "/sys/class/hwmon/hwmon6", "temperatures": [], "fans": [
                 { "n": 1, "label": null, "rpm": 2400, "max_rpm": 4800, "power_ratio": 0.5,
-                    "mode": "automatic", "files": [["fan1_input", "2400"],
+                    "mode": "firmware", "files": [["fan1_input", "2400"],
                         ["fan1_max", "4800"], ["pwm1", "128"], ["pwm1_enable", "2"]] },
                 { "n": 2, "label": null, "rpm": 0, "max_rpm": 4800,
                     "files": [["fan2_input", "0"], ["fan2_max", "4800"]] }] }),
@@ -1254,6 +1254,60 @@ mod tests {
                     .trim_start_matches("row:heat:")
             })
             .collect()
+    }
+
+    /// Each way a fan can be set has its words, in its Control row and
+    /// in its drawer's Driven By: a mode without them would drop the row
+    /// unsaid (VKCF3Z's council on the Dell's fans, 2026-11-16).
+    #[test]
+    fn every_way_a_fan_is_set_says_who_sets_it() {
+        let cases = [
+            (
+                "full",
+                "full speed",
+                "nothing slows it: it turns at full speed",
+            ),
+            (
+                "manual",
+                "set by hand",
+                "a program sets its speed, through Linux",
+            ),
+            ("automatic", "automatic", "its chip sets its speed"),
+            (
+                "firmware",
+                "the firmware",
+                "the machine's firmware sets its speed",
+            ),
+            (
+                "firmware-or-program",
+                "the firmware or a program",
+                "the machine's firmware or a program sets its speed; Linux can't say which",
+            ),
+        ];
+        for (mode, control, driven) in cases {
+            let mut sensors = sensors(71.0, 79.0);
+            sensors[2]["fans"][0]["mode"] = json!(mode);
+            let zones = zones();
+            let held = Held {
+                sensors: &sensors,
+                zones: &zones,
+                ..Held::default()
+            };
+            let ready = Heat::default().read(held, 1000, &words());
+            assert_eq!(
+                row(&ready, "fan:fan:1/control")["side"],
+                json!([{ "said": control }]),
+                "{mode}'s Control row"
+            );
+            let facts = &row(&ready, "fan:fan:1")["drawer"]["facts"];
+            let said = facts
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|fact| text(&fact["name"]) == "Driven By")
+                .map(|fact| text(&fact["said"]));
+            assert_eq!(said.as_deref(), Some(driven), "{mode}'s Driven By");
+        }
     }
 
     /// The parts first, throttling right after the processor, then the
@@ -1422,7 +1476,7 @@ mod tests {
         let coretemp = "Read From=/sys/class/hwmon/hwmon4";
         let degrees = |n: &str| format!("{n} \u{b0}C");
         let speed = "Speed=2,400 of 4,800 rpm";
-        let driven = "Driven By=its chip sets its speed";
+        let driven = "Driven By=the machine's firmware sets its speed";
         let since = "Counted=since the machine started";
         let cases: [(&str, Vec<String>, &[&str]); 11] = [
             (
