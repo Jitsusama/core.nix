@@ -280,13 +280,22 @@ fn switch_waiting(
     if let Some(why) = busy(config) {
         return Line::Refused { commit: last, why };
     }
+    // Only a boot check reads the flake, so it's worked out only for a
+    // system that waits on one, before the switch is told.
+    let flake = if system::waits_on_its_boot_check(config, &waiting.system) {
+        match waiting_flake(config, &waiting.commit) {
+            Ok(flake) => flake,
+            Err(failure) => return failed(last, failure),
+        }
+    } else {
+        String::new()
+    };
     tell(&Line::Switching {
         commit: waiting.commit.clone(),
     });
     if run::stopping() {
         return failed(last, Failure::new("the update was stopped"));
     }
-    let flake = waiting_flake(config, &waiting.commit);
     let overrides = follows::overrides(config, &waiting.followed);
     let built = system::Built {
         system: &waiting.system,
@@ -299,13 +308,18 @@ fn switch_waiting(
 /// The flake a system that waited was built from, for its boot check: root's
 /// copy at its commit, or on a hosted machine its folder unpacked again, since
 /// every unpack wipes the one before and a later ask may have unpacked
-/// another. A hosted machine with no boot check unpacks nothing, and one
-/// whose folder can't be had again is told none.
-fn waiting_flake(config: &Config, commit: &str) -> String {
+/// another. One whose folder can't be had again fails the grant, saying why,
+/// rather than have the check judge a system it can't rebuild.
+fn waiting_flake(config: &Config, commit: &str) -> Result<String, Failure> {
     match &config.hosted {
-        None => git::flake(config, commit),
-        Some(_) if config.boot_check.is_none() => String::new(),
-        Some(hosted) => hosted::prepare(config, hosted, commit).unwrap_or_default(),
+        None => Ok(git::flake(config, commit)),
+        Some(hosted) => hosted::prepare(config, hosted, commit).map_err(|failure| Failure {
+            why: format!(
+                "unpacking main at {commit} again for its boot check: {}",
+                failure.why
+            ),
+            ..failure
+        }),
     }
 }
 

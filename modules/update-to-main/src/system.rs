@@ -82,14 +82,30 @@ pub fn build(config: &Config, flake: &str, overrides: &[String]) -> Result<PathB
 /// it follows are, and the system's own path may hold none.
 pub(crate) fn nix(config: &Config) -> std::process::Command {
     let mut nix = run::command(&config.tools.nix, &config.state);
+    git_first(config, &mut nix);
+    nix.args(["--extra-experimental-features", "nix-command flakes"]);
+    nix
+}
+
+/// Puts root's git first on `command`'s path, ahead of update-to-main's
+/// own.
+fn git_first(config: &Config, command: &mut std::process::Command) {
     if let Some(git) = config.tools.git.parent() {
         let rest = std::env::split_paths(run::PATH);
         let path = std::env::join_paths(std::iter::once(git.to_path_buf()).chain(rest))
             .unwrap_or_else(|_| run::PATH.into());
-        nix.env("PATH", path);
+        command.env("PATH", path);
     }
-    nix.args(["--extra-experimental-features", "nix-command flakes"]);
-    nix
+}
+
+/// Whether switching to `system` leaves it unbooted until a boot check
+/// passes, as `switch` would: on NixOS with a boot check, when its kernel,
+/// initrd or kernel parameters differ from the booted system's.
+pub fn waits_on_its_boot_check(config: &Config, system: &Path) -> bool {
+    config.kind == Kind::Nixos
+        && config.boot_check.is_some()
+        && config.booted.exists()
+        && for_next_boot(&config.booted, system).is_some()
 }
 
 /// Builds every piece of the system that nixpkgs doesn't mark light on the
@@ -1142,6 +1158,9 @@ pub fn boot_once_checked(config: &Config, built: &Built, commit: &str) -> Result
         let output = format!("#{}", config.output);
         let flake = built.flake.strip_suffix(&output).unwrap_or(built.flake);
         let mut command = run::command(Path::new(program), &config.state);
+        // A nix it runs fetches a git+file flake with git, as
+        // update-to-main's own nix does.
+        git_first(config, &mut command);
         command
             .args(args)
             .env("UPDATE_TO_MAIN_COMMIT", commit)
