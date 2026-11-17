@@ -149,7 +149,9 @@ const LONGEST_ANCHOR: usize = 128;
 /// `mycelium:cell/<ADDRESS>[@<machine>][#<anchor>]`, the one form a cell
 /// is linked by wherever a record is made (6LU6ZM's design, item 3,
 /// agreed with 42P0R4 on 2026-11-16). The machine is the one the session
-/// runs on and the anchor what in it the notice is about.
+/// runs on and the anchor what in it the notice is about. Each is its
+/// sender's word, a way to the session and never a proof of where it is,
+/// as an `x-cell` is (Notice's cell).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Cell<'a> {
     pub address: &'a str,
@@ -158,11 +160,11 @@ pub struct Cell<'a> {
 }
 
 impl Cell<'_> {
-    /// Its whole link, stamped where the notice was made: the machine its
-    /// sender named, else `host`, the one the daemon runs on, since a
-    /// notice reaches it only over that machine's own bus; and the anchor
-    /// its sender named, else `key`, the notice's own. A host not shaped as
-    /// a machine's name is left out rather than stamped.
+    /// Its whole link: the machine its sender named, else `host`, the one
+    /// the daemon runs on, since a cell is on the machine that raised its
+    /// notice (6LU6ZM, 2026-11-17); and the anchor its sender named, else
+    /// `key`, the notice's own. A host not shaped as a machine's name is
+    /// left out rather than stamped.
     pub fn link(&self, host: &str, key: &str) -> String {
         let machine = self
             .machine
@@ -183,20 +185,23 @@ fn address_shaped(address: &str) -> bool {
             .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
 }
 
-/// Whether it's shaped as a machine's name: a host name's one label.
+/// Whether it's shaped as a machine's name: a host name's one label, as
+/// NixOS's `networking.hostName` allows it, opening on a letter or digit.
 fn machine_shaped(machine: &str) -> bool {
     (1..=LONGEST_MACHINE).contains(&machine.len())
-        && !machine.starts_with('-')
+        && machine.starts_with(|first: char| first.is_ascii_alphanumeric())
         && machine
             .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte))
 }
 
 /// Whether it's shaped as an anchor: a record's key, such as `notice:12`
-/// or `todo:7`, with nothing a link or a shell would read as its own.
+/// or `todo:7`, opening on a letter or digit, with nothing a link, a
+/// shell or a path would read as its own.
 fn anchor_shaped(anchor: &str) -> bool {
     (1..=LONGEST_ANCHOR).contains(&anchor.len())
-        && !anchor.starts_with('-')
+        && anchor.starts_with(|first: char| first.is_ascii_alphanumeric())
+        && !anchor.contains("..")
         && anchor
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b":._-".contains(&byte))
@@ -403,6 +408,25 @@ mod tests {
             "mycelium:cell/1C8A2F0E#notice:12",
             "nor does one not shaped as a machine's name"
         );
+        assert_eq!(
+            record("mycelium:cell/1C8A2F0E", "joel_box"),
+            "mycelium:cell/1C8A2F0E@joel_box#notice:12",
+            "a host name NixOS allows is stamped"
+        );
+        let machine = "m".repeat(63);
+        let anchor = format!("a:{}", "b".repeat(126));
+        let longest = format!("mycelium:cell/1C8A2F0E@{machine}#{anchor}");
+        assert_eq!(
+            record(&longest, "optimus"),
+            longest.as_str(),
+            "a machine of 63 and an anchor of 128, the longest kept"
+        );
+        for longer in [
+            format!("mycelium:cell/1C8A2F0E@{machine}m"),
+            format!("mycelium:cell/1C8A2F0E#{anchor}b"),
+        ] {
+            assert_eq!(address(&hinted(&longer)), None, "one longer");
+        }
     }
 
     #[test]
@@ -424,6 +448,12 @@ mod tests {
             "mycelium:cell/1C8A#a#b",
             "mycelium:cell/1C8A@a@b",
             "mycelium:cell/1C8A#a@b",
+            "mycelium:cell/1C8A#..",
+            "mycelium:cell/1C8A#.hidden",
+            "mycelium:cell/1C8A#a/../b",
+            "mycelium:cell/1C8A#a..b",
+            "mycelium:cell/1C8A#:a",
+            "mycelium:cell/1C8A@_a",
             "mycelium:network/home",
             "https://x.example/cell/1C8A2F0E",
         ] {

@@ -11,7 +11,6 @@
 
 use std::collections::BTreeSet;
 
-
 use crate::notice::Notice;
 
 /// How far past what Joel would scroll the history keeps: every unread,

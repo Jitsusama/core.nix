@@ -334,12 +334,17 @@ fn main() -> ExitCode {
     })
 }
 
-/// The machine's host name, as the kernel holds it, or "" where it can't
-/// be read, which stamps no machine rather than a wrong one.
+/// The machine's host name, as the kernel holds it as the daemon starts,
+/// or "" where it can't be read, which stamps no machine. Said once in
+/// the journal when it stamps none, so links with no machine have a why.
 fn this_host() -> String {
-    std::fs::read_to_string("/proc/sys/kernel/hostname")
+    let host = std::fs::read_to_string("/proc/sys/kernel/hostname")
         .map(|name| name.trim().to_owned())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if host.is_empty() {
+        eprintln!("notices: no host name to stamp a notice's cell with");
+    }
+    host
 }
 
 /// Takes the bus and serves the shell for as long as it runs.

@@ -1080,6 +1080,17 @@ mod tests {
             ),
             "and its Go To and Talk lead to its session"
         );
+        let whole = json!({ "x-cell": "mycelium:cell/1C8A2F0E@mac-2#todo:7" });
+        let [mixed, ..] = making(&[notice(12, &json!({ "read": true, "hints": whole }))], &[]);
+        let acts = &mixed[0]["acts"];
+        assert_eq!(
+            (&acts[0]["open"], &acts[1]["open"]),
+            (
+                &json!("mycelium:cell/1C8A2F0E/go"),
+                &json!("mycelium:cell/1C8A2F0E")
+            ),
+            "a whole link's Go To and Talk lead by its address alone"
+        );
         let forged = json!({ "x-cell": "mycelium:cell/1C8A;rm" });
         let [mixed, ..] = making(
             &[notice(11, &json!({ "read": true, "hints": forged }))],
