@@ -1030,9 +1030,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:agents")
     # Had Ctrl+Y moved to the first place, the arrow would be past it.
     assert first["is"] == "collection:on", first
-    # Past Programs, People and Passwords.
-    for _step in range(4):
-        desktop.next_row()
+    # Past Code, Programs, People and Passwords, counted by name, so a row home gains (Code
+    # did, on 15 Nov) moves no step this case takes.
+    desktop.down_to("Desktop")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:desktop")
     desktop.step_in("ret")
     desktop.launcher_until(
