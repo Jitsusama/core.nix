@@ -24,8 +24,9 @@
 //! Wayland's idle notice tells swayidle. The moment any of them changes,
 //! every load stops, the shaper goes back as it was, the pair under way
 //! is dropped, and it waits for his next idle stretch. SIGTERM, SIGINT,
-//! SIGHUP and SIGTSTP end it the same way, and so does SIGCONT after a
-//! SIGSTOP, writing what it measured to `--out` and exiting 130. A proof
+//! SIGHUP and SIGTSTP end it the same way, and so does a resume after a
+//! SIGSTOP its keeper took for its end, writing what it measured to
+//! `--out` and exiting 130. A proof
 //! killed outright can put nothing back itself, but its load and probes
 //! end within about two seconds, and a keeper beside it puts the shaper
 //! back as it found it, or, failing that, the next proof does. One proof
@@ -342,9 +343,17 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     let marker = stop::marker();
     // Held to the end, released however the proof ends.
     let _alone = match &marker {
-        Some(m) => Some(stop::alone(m).ok_or_else(|| {
-            Failure::new(Exit::TryAgain, "another proof is running")
-                .because("two at once would load the link twice")
+        Some(m) => Some(stop::alone(m).map_err(|why| {
+            match why {
+                stop::NotAlone::Another(who) => Failure::new(
+                    Exit::TryAgain,
+                    format!("another proof is running, pid {who}"),
+                )
+                .because("two at once would load the link twice"),
+                stop::NotAlone::Unopened(e) => {
+                    Failure::new(Exit::Unavailable, "couldn't open the proof's lock").because(e)
+                }
+            }
         })?),
         None => None,
     };
@@ -356,10 +365,10 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     };
     let gate = Arc::new(gate);
     let deadline = Instant::now() + Duration::from_secs(asked.wait);
-    let active = systemctl("is-active");
+    let active = || systemctl("is-active");
     let was_on = marker
         .as_deref()
-        .map_or(active, |m| stop::own_state(m, active));
+        .map_or_else(active, |m| stop::own_state(m, active));
     if let Some(marker) = &marker {
         stop::keep(marker);
     }

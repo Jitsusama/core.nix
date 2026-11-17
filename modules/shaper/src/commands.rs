@@ -138,9 +138,12 @@ fn proof() -> Help {
         .exit(Exit::Failed, "the shaper didn't beat the router")
         .exit(
             Exit::Unavailable,
-            "no default route, no swayidle, or the shaper couldn't be put back",
+            "no default route, no swayidle, no lock, or the shaper couldn't be put back",
         )
-        .exit(Exit::TryAgain, "Joel wasn't away long enough to judge")
+        .exit(
+            Exit::TryAgain,
+            "Joel wasn't away long enough to judge, or another proof is running",
+        )
         .exit(Exit::Config, "what it waits on isn't a list of commands")
         .exit(Exit::Interrupted, "stopped, the shaper back as it was")
 }

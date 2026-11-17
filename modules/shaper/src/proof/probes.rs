@@ -180,7 +180,18 @@ mod tests {
             .expect("a shell")
     }
 
-    use super::super::load::group_gone as gone;
+    /// Whether nothing of the group `group` runs within a second: a
+    /// member just killed may still be dying on a busy machine.
+    fn gone(group: u32) -> bool {
+        let asked = Instant::now();
+        while !super::super::load::group_gone(group) {
+            if asked.elapsed() > Duration::from_secs(1) {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        true
+    }
 
     #[test]
     fn a_probe_ends_at_a_stop_or_well_past_its_block() {
@@ -191,8 +202,9 @@ mod tests {
         // Stopped once it has had time to say its word.
         let stop = Duration::from_millis(300);
         let said = finish(ended, far, || began.elapsed() > stop);
+        let took = began.elapsed();
         assert!(
-            began.elapsed() < stop + Duration::from_secs(1) && gone(group),
+            took < stop + Duration::from_secs(1) && gone(group),
             "a stop left a probe running {:?}",
             began.elapsed()
         );
@@ -201,8 +213,9 @@ mod tests {
         let group = late.id();
         let began = Instant::now();
         finish(late, began + Duration::from_millis(300), || false);
+        let took = began.elapsed();
         assert!(
-            began.elapsed() < Duration::from_secs(2) && gone(group),
+            took < Duration::from_secs(2) && gone(group),
             "a probe held past its block ran on"
         );
         // One that ends by itself is waited for, and its word kept.

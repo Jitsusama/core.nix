@@ -76,11 +76,6 @@ pub fn once_gone_for(pid: u32, began: &str, body: &str) -> String {
     )
 }
 
-/// Ends the whole of `child`'s process group, which it leads, as
-/// [`scoped`] makes it. An unreaped child's pid can't be given to
-/// another process, so the group is only ever its own.
-///
-/// [`scoped`]: super::scoped
 /// Whether nothing of the group `group` runs, for the tests here and
 /// the probes': a member killed may stay a zombie a while, until
 /// whoever inherits it reaps it.
@@ -99,6 +94,11 @@ pub fn group_gone(group: u32) -> bool {
         })
 }
 
+/// Ends the whole of `child`'s process group, which it leads, as
+/// [`scoped`] makes it. An unreaped child's pid can't be given to
+/// another process, so the group is only ever its own.
+///
+/// [`scoped`]: super::scoped
 pub fn end_group(child: &Child) {
     if let Ok(group) = libc::pid_t::try_from(child.id()) {
         // SAFETY: kill(2) on the group of a child still unreaped.
@@ -327,9 +327,13 @@ mod tests {
 
     #[test]
     fn a_live_proofs_probe_runs_to_its_end() {
+        use std::os::unix::process::CommandExt;
         let probe = guarded_for(std::process::id(), &began(), "sleep 1.5; echo done");
+        // In a group of its own, so a guard that took this proof for gone
+        // fails the test with its `kill 0`, rather than ending cargo.
         let out = Command::new("sh")
             .args(["-c", &probe])
+            .process_group(0)
             .output()
             .expect("a shell");
         assert_eq!(

@@ -18,44 +18,45 @@ const KEEPER_TAKES: Duration = Duration::from_secs(3);
 /// Set once a signal asks the proof to stop.
 pub static STOPPED: AtomicBool = AtomicBool::new(false);
 
+/// Set once a SIGCONT resumes the proof, from a pause or not.
+static RESUMED: AtomicBool = AtomicBool::new(false);
+
 extern "C" fn heard(signal: libc::c_int) {
-    if signal == libc::SIGTSTP {
-        // A Ctrl-Z stops the whole of the terminal's group, and so any
-        // child of the proof's that shares it, which the proof would wait
-        // on for good: each is woken to finish.
-        // SAFETY: kill(2) is async-signal-safe.
-        unsafe {
-            libc::kill(0, libc::SIGCONT);
-        }
-    }
-    if STOPPED.swap(true, Ordering::Relaxed) && signal != libc::SIGCONT {
+    if STOPPED.swap(true, Ordering::Relaxed) {
         const AGAIN: &[u8] = b"already stopping: putting the shaper back, ending the load\n";
         // SAFETY: write(2) is async-signal-safe, and AGAIN outlives it.
         unsafe {
             libc::write(2, AGAIN.as_ptr().cast(), AGAIN.len());
         }
     }
+    if signal == libc::SIGTSTP {
+        // A Ctrl-Z stops the whole of the terminal's group, and so any
+        // child of the proof's that shares it, which the proof would wait
+        // on for good: each is woken to finish. The proof is woken too,
+        // once it's already stopping, which is why this comes last.
+        // SAFETY: kill(2) is async-signal-safe.
+        unsafe {
+            libc::kill(0, libc::SIGCONT);
+        }
+    }
+}
+
+extern "C" fn resumed(_: libc::c_int) {
+    RESUMED.store(true, Ordering::Relaxed);
 }
 
 /// The signals heard as a stop.
-pub const STOPS: [libc::c_int; 5] = [
-    libc::SIGTERM,
-    libc::SIGINT,
-    libc::SIGHUP,
-    libc::SIGTSTP,
-    libc::SIGCONT,
-];
+pub const STOPS: [libc::c_int; 4] = [libc::SIGTERM, libc::SIGINT, libc::SIGHUP, libc::SIGTSTP];
 
 /// Hears SIGTERM, SIGINT, SIGHUP and SIGTSTP as a stop, so the proof puts
 /// the shaper back as it was and ends its load before it exits, where it
 /// would otherwise die with the shaper off and the uploads going on, or,
-/// at a Ctrl-Z, sleep while they go on. SIGCONT is one too: a proof
-/// paused by SIGSTOP counts as gone, so its load has ended and its keeper
-/// has put the shaper back, and resumed it would measure nothing real. A
-/// signal already ignored, as nohup ignores SIGHUP, stays ignored.
+/// at a Ctrl-Z, sleep while they go on. A signal already ignored, as
+/// nohup ignores SIGHUP, stays ignored. A SIGCONT is heard as a resume,
+/// which `halted` weighs.
 pub fn hear_stops() {
-    // SAFETY: the handler only touches an atomic and calls write(2), and
-    // a disposition put back as it was found is no change.
+    // SAFETY: the handlers only touch an atomic and call write(2) and
+    // kill(2), and a disposition put back as it was found is no change.
     unsafe {
         let handler = heard as *const () as libc::sighandler_t;
         for signal in STOPS {
@@ -63,6 +64,7 @@ pub fn hear_stops() {
                 libc::signal(signal, libc::SIG_IGN);
             }
         }
+        libc::signal(libc::SIGCONT, resumed as *const () as libc::sighandler_t);
     }
 }
 
@@ -70,7 +72,18 @@ pub fn hear_stops() {
 /// asks both, since the watch that passes a signal on may be stuck asking
 /// the gate.
 pub fn halted(stop: &AtomicBool) -> bool {
-    stop.load(Ordering::Relaxed) || STOPPED.load(Ordering::Relaxed)
+    stop.load(Ordering::Relaxed)
+        || STOPPED.load(Ordering::Relaxed)
+        || unkept_on(RESUMED.load(Ordering::Relaxed), marker().as_deref())
+}
+
+/// Whether a proof `resumed` finds its keeper has put the shaper back,
+/// forgetting `marker`: paused by SIGSTOP, it counted as gone, so its
+/// load ended too, and on it would measure nothing real. A SIGCONT with
+/// the marker still there, as `fg` or `bg` sends a running proof, is no
+/// stop; with nowhere to keep one, a resume is always taken as one.
+fn unkept_on(resumed: bool, marker: Option<&Path>) -> bool {
+    resumed && marker.is_none_or(|m| !m.exists())
 }
 
 /// Says `line` on stderr, if anything still reads it: after a SIGHUP from
@@ -113,52 +126,78 @@ pub fn marker() -> Option<PathBuf> {
     std::env::var_os("XDG_RUNTIME_DIR").map(|d| PathBuf::from(d).join("shaper-proof-was-on"))
 }
 
-/// The shaper's own state: what `marker` holds, when a proof killed
-/// outright left it there and maybe left the shaper off, else `active`.
-/// It stays in `marker` until `forget`, once the shaper is back.
-pub fn own_state(marker: &Path, active: bool) -> bool {
+/// The shaper's own state: what `marker` holds, when a proof that didn't
+/// put it back left it there and maybe left the shaper off, else what
+/// `active` reads once any keeper is done. It stays in `marker`, with
+/// this proof's pid, so only this proof's keeper acts on it, until
+/// `forget`, once the shaper is back.
+pub fn own_state(marker: &Path, active: impl FnOnce() -> bool) -> bool {
+    state_within(marker, active, KEEPER_TAKES)
+}
+
+/// `own_state`, waiting `takes` for a keeper.
+fn state_within(marker: &Path, active: impl FnOnce() -> bool, takes: Duration) -> bool {
     // A killed proof's keeper puts the shaper back within about a second,
     // and forgets the marker: waited for, so its word isn't taken for the
     // shaper's own once it's back.
     let asked = Instant::now();
-    while marker.exists() && asked.elapsed() < KEEPER_TAKES {
+    while marker.exists() && asked.elapsed() < takes {
         thread::sleep(Duration::from_millis(100));
     }
     let earlier = fs::read_to_string(marker)
         .ok()
-        .and_then(|s| match s.trim() {
-            "on" => Some(true),
-            "off" => Some(false),
+        .and_then(|s| match s.split_whitespace().next() {
+            Some("on") => Some(true),
+            Some("off") => Some(false),
             _ => None,
         });
     if let Some(on) = earlier {
         tell(&format!(
-            "an earlier proof was killed outright: the shaper goes back {} after this one",
+            "an earlier proof didn't put the shaper back: it goes back {} after this one",
             if on { "on" } else { "off" }
         ));
     }
-    let on = earlier.unwrap_or(active);
-    if fs::write(marker, if on { "on" } else { "off" }).is_err() {
+    let on = earlier.unwrap_or_else(active);
+    let word = if on { "on" } else { "off" };
+    if fs::write(marker, format!("{word} {}\n", std::process::id())).is_err() {
         tell(&format!("couldn't write {}", marker.display()));
     }
     on
 }
 
+/// Why a proof can't run alone.
+#[derive(Debug)]
+pub enum NotAlone {
+    /// Another proof holds the lock: its pid, as it wrote it.
+    Another(String),
+    /// The lock couldn't be opened, so it can't be told.
+    Unopened(String),
+}
+
 /// Holds the lock beside `marker` for as long as the file it gives is
-/// open, however the proof ends, or None while another proof holds it:
-/// two at once would load the link twice, and each would take the
-/// other's shaper for its own.
-pub fn alone(marker: &Path) -> Option<fs::File> {
+/// open, however the proof ends, writing this proof's pid in it: two at
+/// once would load the link twice, and each would take the other's
+/// shaper for its own.
+pub fn alone(marker: &Path) -> Result<fs::File, NotAlone> {
+    use std::io::{Seek, Write as _};
     use std::os::fd::AsRawFd;
-    let lock = fs::OpenOptions::new()
+    let at = marker.with_file_name("shaper-proof.lock");
+    let mut lock = fs::OpenOptions::new()
         .create(true)
+        .read(true)
         .write(true)
         .truncate(false)
-        .open(marker.with_file_name("shaper-proof.lock"))
-        .ok()?;
+        .open(&at)
+        .map_err(|e| NotAlone::Unopened(format!("{}: {e}", at.display())))?;
     // SAFETY: flock(2) on a file this holds open.
-    let held = unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0;
-    held.then_some(lock)
+    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        let who = fs::read_to_string(&at).unwrap_or_default();
+        return Err(NotAlone::Another(who.trim().to_string()));
+    }
+    let _ = lock.set_len(0);
+    let _ = lock.rewind();
+    let _ = writeln!(lock, "{}", std::process::id());
+    Ok(lock)
 }
 
 pub fn forget(marker: &Path) {
@@ -199,13 +238,19 @@ pub fn keep(marker: &Path) {
 /// The keeper's shell for the proof `pid` that began at `began`: given
 /// the marker and systemctl as its arguments, it waits for the proof to
 /// go, then starts or stops the shaper as the marker says, and forgets
-/// it once that's done. A marker saying neither is nobody's word.
+/// it once that's done. A marker saying neither is nobody's word, and one
+/// another proof wrote is that proof's, which this one's keeper leaves:
+/// read again before it's forgotten, since the next proof may have
+/// written its own meanwhile.
 fn keeper(pid: u32, began: &str) -> String {
+    let mine = format!("v=; who=; read -r v who 2>/dev/null <\"$1\"; [ \"$who\" = {pid} ]");
     super::load::once_gone_for(
         pid,
         began,
-        "v=; read -r v 2>/dev/null <\"$1\"; case $v in on) v=start;; off) v=stop;; \
-         *) exit 0;; esac; \"$2\" \"$v\" shaper.service && rm -f \"$1\"",
+        &format!(
+            "{mine} || exit 0; case $v in on) v=start;; off) v=stop;; *) exit 0;; esac; \
+             \"$2\" \"$v\" shaper.service && {{ {mine} && rm -f \"$1\"; }}"
+        ),
     )
 }
 
@@ -220,6 +265,18 @@ mod tests {
 
     fn signals() -> MutexGuard<'static, ()> {
         SIGNALS.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Puts every signal `hear_stops` set back to its default, so the
+    /// rest of the tests hear Ctrl-C as ever.
+    fn unheard() {
+        // SAFETY: setting the default disposition.
+        unsafe {
+            for signal in STOPS {
+                libc::signal(signal, libc::SIG_DFL);
+            }
+            libc::signal(libc::SIGCONT, libc::SIG_DFL);
+        }
     }
 
     #[test]
@@ -268,10 +325,8 @@ mod tests {
         // its default, so the rest of the tests hear Ctrl-C as ever.
         unsafe {
             libc::raise(libc::SIGTERM);
-            for signal in STOPS {
-                libc::signal(signal, libc::SIG_DFL);
-            }
         }
+        unheard();
         STOPPED.store(false, Ordering::Relaxed);
     }
 
@@ -297,12 +352,18 @@ mod tests {
             ("on", "start shaper.service\n"),
             ("off", "stop shaper.service\n"),
         ] {
-            fs::write(&marker, was).expect("a marker");
+            fs::write(&marker, format!("{was} {pid}\n")).expect("a marker");
             assert_eq!(kept(pid, &began), asks, "the shaper wasn't put back {was}");
             assert!(!marker.exists(), "the marker outlived putting it back");
         }
+        // The next proof's marker, written once this proof was gone, is
+        // that proof's to put back, with a keeper of its own.
+        let next = pid + 1;
+        fs::write(&marker, format!("off {next}\n")).expect("a marker");
+        assert_eq!(kept(pid, &began), "", "acted on the next proof's marker");
+        assert!(marker.exists(), "forgot the next proof's marker");
         // A shaper that wouldn't go back keeps its marker, for the next.
-        fs::write(&marker, "on").expect("a marker");
+        fs::write(&marker, format!("on {pid}\n")).expect("a marker");
         let failing = Command::new("sh")
             .args(["-c", &keeper(pid, &began), "sh", at, "false"])
             .status()
@@ -343,6 +404,9 @@ mod tests {
         }
         let was = STOPPED.load(Ordering::Relaxed);
         heard(libc::SIGTSTP);
+        // The SIGCONT reaches this process too, maybe on another thread
+        // a moment on: waited out while the lock is held.
+        thread::sleep(Duration::from_millis(100));
         STOPPED.store(was, Ordering::Relaxed);
         let woke = std::time::Instant::now();
         while state_of(pid) == "T" && woke.elapsed() < Duration::from_secs(1) {
@@ -355,10 +419,12 @@ mod tests {
     }
 
     #[test]
-    fn a_proof_resumed_from_a_pause_stops() {
+    fn a_proof_resumed_once_its_keeper_acted_stops() {
         // Paused by SIGSTOP, which nothing hears, the proof counts as gone:
-        // its load ends and its keeper puts the shaper back. Resumed, it
-        // would measure on with no load.
+        // its load ends and its keeper puts the shaper back, forgetting
+        // the marker. Resumed, it would measure on with no load. A
+        // SIGCONT from `fg` or `bg`, with the marker still there, isn't a
+        // stop.
         let _signals = signals();
         hear_stops();
         // SAFETY: sigaction(2) with no new action only reads one.
@@ -367,16 +433,27 @@ mod tests {
             libc::sigaction(libc::SIGCONT, std::ptr::null(), &raw mut was);
             was.sa_sigaction
         };
-        // SAFETY: back to the default, as the other tests expect.
-        unsafe {
-            for signal in STOPS {
-                libc::signal(signal, libc::SIG_DFL);
-            }
-        }
+        unheard();
         assert_eq!(
-            set, heard as *const () as libc::sighandler_t,
-            "a resumed proof measures on"
+            set, resumed as *const () as libc::sighandler_t,
+            "a resume goes unheard"
         );
+        let dir = std::env::temp_dir().join(format!("shaper-resume-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("a folder");
+        let marker = dir.join("was-on");
+        fs::write(&marker, "on 1\n").expect("a marker");
+        assert!(!unkept_on(true, Some(&marker)), "a `bg` stopped the proof");
+        assert!(
+            !unkept_on(false, Some(&dir.join("none"))),
+            "stopped unresumed"
+        );
+        forget(&marker);
+        assert!(
+            unkept_on(true, Some(&marker)),
+            "measured on, its keeper done"
+        );
+        assert!(unkept_on(true, None), "measured on, with no keeper");
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -385,12 +462,18 @@ mod tests {
         fs::create_dir_all(&dir).expect("a folder");
         let marker = dir.join("was-on");
         let first = alone(&marker).expect("the first proof");
-        assert!(
-            alone(&marker).is_none(),
-            "a second proof ran beside the first"
-        );
+        match alone(&marker) {
+            Err(NotAlone::Another(who)) => {
+                assert_eq!(who, std::process::id().to_string(), "the holder unnamed");
+            }
+            other => panic!("a second proof ran beside the first: {other:?}"),
+        }
         drop(first);
-        assert!(alone(&marker).is_some(), "a proof gone still held the next");
+        assert!(alone(&marker).is_ok(), "a proof gone still held the next");
+        assert!(
+            matches!(alone(&dir.join("no/such")), Err(NotAlone::Unopened(_))),
+            "a lock it couldn't open taken for another proof's"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -399,17 +482,25 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("shaper-wait-{}", std::process::id()));
         fs::create_dir_all(&dir).expect("a folder");
         let marker = dir.join("was-on");
-        fs::write(&marker, "off").expect("a marker");
-        // The killed proof's keeper, putting the shaper back off and
-        // forgetting it: the shaper's state then is its own again.
-        let keeping = marker.clone();
+        fs::write(&marker, "on 1\n").expect("a marker");
+        // The killed proof's keeper, putting the shaper back on and
+        // forgetting it: the shaper's state then is its own again, and
+        // read only then.
+        let on = std::sync::Arc::new(AtomicBool::new(false));
+        let (keeping, starting) = (marker.clone(), on.clone());
         let keeper = thread::spawn(move || {
             thread::sleep(Duration::from_millis(300));
+            starting.store(true, Ordering::Relaxed);
             forget(&keeping);
         });
         assert!(
-            own_state(&marker, true),
-            "took a marker its keeper was forgetting"
+            own_state(&marker, || on.load(Ordering::Relaxed)),
+            "read the shaper's state before its keeper was done"
+        );
+        assert_eq!(
+            fs::read_to_string(&marker).expect("its own marker"),
+            format!("on {}\n", std::process::id()),
+            "a marker its keeper can't tell for its proof's"
         );
         keeper.join().expect("the keeper");
         let _ = fs::remove_dir_all(&dir);
@@ -420,25 +511,19 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("shaper-own-{}", std::process::id()));
         fs::create_dir_all(&dir).expect("a folder");
         let marker = dir.join("was-on");
-        assert!(
-            own_state(&marker, true),
-            "the shaper's own state, with no proof before"
-        );
-        // A proof killed in an off arm: the next finds the shaper off.
-        assert!(
-            own_state(&marker, false),
-            "took the killed proof's off as its own"
-        );
+        // With no keeper to wait for, as when one's scope was refused.
+        let state = |active: bool| state_within(&marker, || active, Duration::ZERO);
+        assert!(state(true), "the shaper's own state, with no proof before");
+        // A proof killed in an on arm, the shaper left off: the next
+        // finds it was on.
+        assert!(state(false), "took the killed proof's off as its own");
         forget(&marker);
-        assert!(
-            !own_state(&marker, false),
-            "remembered a proof that put it back"
-        );
+        assert!(!state(false), "remembered a proof that put it back");
         forget(&marker);
         // A marker that says neither, as a write cut short leaves, is
         // nobody's word: the shaper's own state stands.
         fs::write(&marker, "").expect("an empty marker");
-        assert!(own_state(&marker, true), "took an empty marker for off");
+        assert!(state(true), "took an empty marker for off");
         forget(&marker);
         let _ = fs::remove_dir_all(&dir);
     }

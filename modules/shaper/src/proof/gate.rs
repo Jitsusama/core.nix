@@ -67,13 +67,23 @@ pub fn waits_while(named: Option<&str>) -> Result<Vec<Vec<String>>, String> {
 }
 
 /// Whether any of `commands` says the machine is busy: each exits 1
-/// while it isn't, and anything else, a program that won't run
-/// included, counts as busy, since it couldn't tell.
-fn busy(commands: &[Vec<String>]) -> bool {
+/// while it isn't, and anything else, a program that won't run or one
+/// cut off included, counts as busy, since it couldn't tell. One that
+/// hangs is said, since the proof's 75 would otherwise blame a meeting.
+fn busy(commands: &[Vec<String>], halted: impl Fn() -> bool) -> bool {
     commands.iter().any(|command| {
         let mut asked = Command::new(&command[0]);
         asked.args(&command[1..]);
-        exits(asked, ASKED_FOR, signalled) != Some(1)
+        let asked_at = Instant::now();
+        let code = exits(asked, ASKED_FOR, &halted);
+        if code.is_none() && asked_at.elapsed() >= ASKED_FOR {
+            super::stop::tell(&format!(
+                "{} didn't answer within {} s, so it counts as busy",
+                command[0],
+                ASKED_FOR.as_secs()
+            ));
+        }
+        code != Some(1)
     })
 }
 
@@ -109,13 +119,20 @@ impl Gate {
             .args(["resume", &format!("rm -f {shown}")])
             .stdin(Stdio::null())
             .stdout(Stdio::null());
-        // SAFETY: prctl(2) is async-signal-safe, so fit to run between
-        // fork and exec. It ends swayidle once the thread that started
-        // it, the proof's main one, ends, however the proof ends.
+        // SAFETY: prctl(2) and getppid(2) are async-signal-safe, so fit
+        // to run between fork and exec. It ends swayidle once the thread
+        // that started it, the proof's main one, ends, however the proof
+        // ends; a proof gone before the prctl is caught by its parent
+        // being another, and swayidle never starts.
+        let parent = libc::pid_t::try_from(std::process::id()).ok()?;
         unsafe {
-            idle.pre_exec(|| {
+            idle.pre_exec(move || {
                 libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
-                Ok(())
+                if libc::getppid() == parent {
+                    Ok(())
+                } else {
+                    Err(std::io::Error::other("the proof is gone"))
+                }
             });
         }
         let idle = idle.spawn().ok()?;
@@ -144,7 +161,7 @@ impl Gate {
         self.mark.exists()
             && exits(Command::new("a-call-is-on"), ASKED_FOR, signalled) == Some(1)
             && !audio_plays()
-            && !busy(&self.waits)
+            && !busy(&self.waits, signalled)
     }
 }
 
@@ -218,6 +235,8 @@ mod tests {
     #[test]
     fn a_command_waited_on_that_says_busy_holds_the_load() {
         let exits = |code: u8| vec!["sh".to_string(), "-c".into(), format!("exit {code}")];
+        // Not the process-wide stop, which the signal tests set.
+        let busy = |commands: &[Vec<String>]| busy(commands, || false);
         assert!(busy(&[exits(1), exits(0)]), "loaded through a meeting");
         assert!(
             busy(&[exits(2)]),
@@ -233,21 +252,38 @@ mod tests {
 
     #[test]
     fn a_command_asked_is_cut_off_at_a_stop_or_when_it_hangs() {
+        // Its background sleep says its pid, so its group is known.
+        let pids = std::env::temp_dir().join(format!("shaper-gate-{}", std::process::id()));
         let hangs = || {
             let mut c = Command::new("sh");
-            c.args(["-c", "sleep 30 & sleep 30"]);
+            c.args(["-c", "sleep 30 & echo $! >\"$1\"; sleep 30", "sh"])
+                .arg(&pids);
             c
         };
-        let asked = std::time::Instant::now();
+        let asked = Instant::now();
         assert_eq!(exits(hangs(), ASKED_FOR, || true), None, "a stop waited on");
-        assert_eq!(
-            exits(hangs(), std::time::Duration::from_millis(300), || false),
-            None
-        );
+        assert_eq!(exits(hangs(), Duration::from_millis(300), || false), None);
         assert!(
-            asked.elapsed() < std::time::Duration::from_secs(2),
+            asked.elapsed() < Duration::from_secs(2),
             "a hung command held the gate {:?}",
             asked.elapsed()
+        );
+        let child: u32 = fs::read_to_string(&pids)
+            .ok()
+            .and_then(|p| p.trim().parse().ok())
+            .expect("the background sleep's pid");
+        let _ = fs::remove_file(&pids);
+        let dies = Instant::now();
+        while fs::read_to_string(format!("/proc/{child}/stat")).is_ok_and(|s| {
+            s.rsplit_once(") ")
+                .is_some_and(|(_, r)| !r.starts_with('Z'))
+        }) && dies.elapsed() < Duration::from_secs(1)
+        {
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            dies.elapsed() < Duration::from_secs(1),
+            "a cut-off command's own child ran on"
         );
         let mut answers = Command::new("sh");
         answers.args(["-c", "exit 1"]);
