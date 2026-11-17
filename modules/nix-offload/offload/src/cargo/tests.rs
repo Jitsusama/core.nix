@@ -27,22 +27,30 @@ fn a_whole_suite_or_clippy_goes_there() {
 }
 
 #[test]
-fn a_lent_builder_fetches_the_crates_an_offline_run_would_read_here() {
+fn an_offline_run_goes_to_a_lent_builder_online_and_locked() {
     // At 17:45 on 16 November an agent's cargo test --offline went to a lent
     // builder, which has no crates but what it fetches, and failed finding
     // one.
     for (line, sent) in [
-        ("test --offline", "test"),
-        ("--offline test -p disk-guard", "test -p disk-guard"),
+        ("test --offline", "test --locked"),
+        (
+            "--offline test -p disk-guard",
+            "test -p disk-guard --locked",
+        ),
         (
             "clippy --frozen --all-targets",
-            "clippy --locked --all-targets",
+            "clippy --all-targets --locked",
         ),
+        ("test --locked --frozen", "test --locked"),
+        ("test --config net.offline=true", "test --locked"),
+        ("test --config=net.offline=true -p a", "test -p a --locked"),
+        ("test --config net.retry=4", "test --config net.retry=4"),
         (
             "test --offline -- --nocapture --offline",
-            "test -- --nocapture --offline",
+            "test --locked -- --nocapture --offline",
         ),
         ("test --locked", "test --locked"),
+        ("test", "test"),
     ] {
         assert_eq!(
             for_a_lender(&words(line)),

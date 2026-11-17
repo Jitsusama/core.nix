@@ -8,8 +8,8 @@
 //! each agent's word. So a whole `cargo test`, `clippy` or `bench` goes
 //! there by itself while a lent builder stands and the tree is committed,
 //! as `there --run -- nix develop -c cargo ...`, the copy's own dev shell
-//! giving the cargo it runs. An `--offline` run is sent online, held to its
-//! lockfile, since a lent builder holds no crates until it fetches them.
+//! giving the cargo it runs. A run asked offline is sent online, held to
+//! its lockfile, since a lent builder holds no crates until it fetches them.
 //!
 //! What a run there can't stand for stays here: a build or a check, whose
 //! target is wanted here; a named test, which is quick; a run whose output a
@@ -162,29 +162,48 @@ fn plain(word: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || "_./:=@+,%-".contains(c))
 }
 
-/// The words a lent builder's cargo is given for `words`: cargo's own
-/// `--offline` dropped, and `--frozen` read as the `--locked` it holds,
-/// since a lent builder has no crates but what it fetches, and the lockfile
-/// still holds every version to what it says. A test harness's words, past
-/// `--`, are its own and go as they are.
+/// The words a lent builder's cargo is given for `words`: a run asked
+/// offline, by `--offline`, `--frozen` or `net.offline=true`, goes
+/// `--locked` instead, since a lent builder has no crates but what it
+/// fetches, and the lockfile holds every version it fetches to what the
+/// run would have read here. A test harness's words, past `--`, are its
+/// own and go as they are.
 pub fn for_a_lender(words: &[String]) -> Vec<String> {
     let own = words
         .iter()
         .position(|word| word == "--")
         .unwrap_or(words.len());
     let (cargos, harness) = words.split_at(own);
-    cargos
-        .iter()
-        .filter(|word| *word != "--offline")
-        .map(|word| {
-            if word == "--frozen" {
-                "--locked".to_owned()
-            } else {
-                word.clone()
+    let mut sent = Vec::new();
+    let mut offline = false;
+    let mut locked = false;
+    let mut cargos = cargos.iter();
+    while let Some(word) = cargos.next() {
+        match word.as_str() {
+            "--offline" | "--frozen" | "--config=net.offline=true" => offline = true,
+            "--config"
+                if cargos
+                    .as_slice()
+                    .first()
+                    .is_some_and(|v| v == "net.offline=true") =>
+            {
+                cargos.next();
+                offline = true;
             }
-        })
-        .chain(harness.iter().cloned())
-        .collect()
+            "--locked" => {
+                if !locked {
+                    sent.push(word.clone());
+                }
+                locked = true;
+            }
+            _ => sent.push(word.clone()),
+        }
+    }
+    if offline && !locked {
+        sent.push("--locked".to_owned());
+    }
+    sent.extend(harness.iter().cloned());
+    sent
 }
 
 /// What becomes of a suite that would go there: there, or here in its
@@ -228,9 +247,16 @@ pub fn cargo(arguments: &[String], lenders: [&Path; 2]) -> ExitCode {
                 "nix-offload: cargo {what} of the whole tree goes to a lent builder, as \
                  there --run sends it; NIX_OFFLOAD_CARGO=here runs it here"
             );
+            let sent = for_a_lender(words);
+            if sent != words {
+                eprintln!(
+                    "nix-offload: asked offline, it goes online there, held to the lockfile, \
+                     since a lent builder has no crates until it fetches them"
+                );
+            }
             let status = Command::new(env::current_exe().unwrap_or_else(|_| "nix-offload".into()))
                 .args(["there", "--run", "--", "nix", "develop", "-c", "cargo"])
-                .args(for_a_lender(words))
+                .args(&sent)
                 .status();
             match status.ok().and_then(|status| status.code()) {
                 Some(code) if code == i32::from(NOT_TAKEN) => {
