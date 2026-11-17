@@ -2413,8 +2413,13 @@ Scope {
             from = { typed: "", at: Math.max(0, inner), key: inner < 0 ? ""
                 : steadyId(rows[inner]), scroll: 0 };
         });
+        // When its places were made and held, so a step's line says them
+        // apart from the search that drew them.
+        const made = Date.now();
         held = steps;
+        const pushed = Date.now();
         restart("");
+        return { made, pushed };
     }
 
     // Puts a command's start in the field, out at the top, where it's
@@ -5027,12 +5032,32 @@ Scope {
         // step into powering off and back out teaches nothing.
         const meant = walk === undefined && held.length === 0 && typed.trim() !== ""
             && !!row.key && !row.confirm;
+        // A step taken while an opening is still timed is its opening's, as
+        // Super+N steps through For You onto the notices on screen, and
+        // timed in the opening's line: open is already true by then, so only
+        // the ask held until its frame tells them apart. Timed again, each of
+        // Joel's "→ On Screen" took its opening's frame, a median 110 ms,
+        // the slowest place in his journal (2026-11-14). The fill's walk
+        // into a kept place is its opening's too, though its frame is
+        // drawn and the ask let go by then: a kept Super+N timed its fill
+        // as "→ On Screen" (a gate, 2026-11-16).
+        const timed = openAsked < 0 && !fillingPlace;
         // A place found from the top that sits in another is stepped into
-        // through it, so the path says where it lives.
+        // through it, so the path says where it lives. Its line says the
+        // places it made as a step's does, beside the search that drew it.
         if (held.length === 0 && row.category && placesAbove(row.category).length > 0) {
             if (meant)
                 learnAfterFrame(typed, row.key);
-            intoCategory(row.category, walk === undefined ? typed : "");
+            searchParts = null;
+            let at = { made: began, pushed: began };
+            listedAsStep(() => {
+                at = intoCategory(row.category, walk === undefined ? typed : "");
+            });
+            searchParts = trials.stepped(searchParts, { began, made: at.made,
+                pushed: at.pushed, opened: at.pushed, ended: Date.now() });
+            if (timed)
+                keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true,
+                    thread);
             return went();
         }
         if (steppedAsLed(row))
@@ -5073,24 +5098,29 @@ Scope {
         // whose line holds its words, as a save's name, puts them back.
         searchParts = null;
         if (!passing)
-            listStepped(row);
+            listedAsStep(() => listStepped(row));
         // Said as a key's are: making the step's lists, what each part of
         // stepping took, and the search that drew its rows, whose parts
         // restart() left.
         searchParts = trials.stepped(searchParts, { began, made, pushed, opened,
             ended: Date.now(), making: spent });
-        // A step taken while an opening is still timed is its opening's, as
-        // Super+N steps through For You onto the notices on screen, and
-        // timed in the opening's line: open is already true by then, so only
-        // the ask held until its frame tells them apart. Timed again, each of
-        // Joel's "→ On Screen" took its opening's frame, a median 110 ms,
-        // the slowest place in his journal (2026-11-14). The fill's walk
-        // into a kept place is its opening's too, though its frame is
-        // drawn and the ask let go by then: a kept Super+N timed its fill
-        // as "→ On Screen" (a gate, 2026-11-16).
-        if (openAsked < 0 && !fillingPlace)
+        if (timed)
             keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread);
         return went();
+    }
+
+    // Lists a step's rows, the field emptied or given the row's words as
+    // a key's change is searched, but never timed as a key: no key made
+    // it, and the step is timed as its own, or as its opening's. Timed,
+    // one Return from what was typed counted twice (a council,
+    // 2026-11-17).
+    function listedAsStep(list) {
+        steppingIn = true;
+        try {
+            list();
+        } finally {
+            steppingIn = false;
+        }
     }
 
     // Lists what a step into a row holds, the row's words in the line.
@@ -6200,7 +6230,20 @@ Scope {
             && String(row.name ?? "").toLowerCase().startsWith(letters))
             ? categoryFor(chipped[1]) : null;
         if (named) {
-            intoCategory(named, chipped[1]);
+            // The key that typed the space is timed as the step it took,
+            // its line saying the places it made beside the search that
+            // drew them, and the field it empties not at all (searchedNow).
+            // Named once the step is done, since a search under it starts
+            // by clearing the name.
+            const began = Date.now();
+            searchParts = null;
+            let at = { made: began, pushed: began };
+            listedAsStep(() => {
+                at = intoCategory(named, chipped[1]);
+            });
+            searchParts = trials.stepped(searchParts, { began, made: at.made,
+                pushed: at.pushed, opened: at.pushed, ended: Date.now() });
+            steppedByKey = named.name;
             return;
         }
         const whole = category !== null ? askedWhole(letters) : "";
@@ -7163,14 +7206,17 @@ Scope {
     // The step out whose words the field is being given back, timed as
     // the key the field's change makes (back).
     property var stepOut: null
-    function searchSoon(text, began, heard, pressed, out) {
+    // Whether a step in that times itself is listing its rows, so the
+    // field's change it makes is searched untimed.
+    property bool steppingIn: false
+    function searchSoon(text, began, heard, pressed, out, untimed) {
         // Its text stays the field's, which the next key reads as what
         // the field held before it (Awaited.before).
         keysDue = keysDue.concat([out ? { text, began: out.began, heard: out.heard,
             pressed: out.pressed, collected: out.collected, step: out.text,
             thread: out.thread }
             : { text, began, heard, pressed, collected: Heap.collected(), step: "",
-                thread: threadNow() }]);
+                thread: threadNow(), untimed: untimed === true }]);
         if (searchedThisTurn)
             return;
         searchedThisTurn = true;
@@ -7206,15 +7252,28 @@ Scope {
         // The wait ends as the search begins, so the search's own time
         // isn't said as time behind the shell's other work.
         const listed = Date.now();
+        steppedByKey = "";
         search(prompt.text);
+        const into = steppedByKey;
+        steppedByKey = "";
         // Its key's time holds the wait, said apart in the journal.
         if (waited && searchParts)
             Object.assign(searchParts, Awaited.waitedOf(waited, listed, answersWaitedFor,
                 waited.timedOut === true));
-        if (!asking)
-            due.forEach(key => keyTimed(key.step || key.text, key.began, key.heard, key.pressed,
-                key.collected, !!key.step, key.thread));
+        if (asking)
+            return;
+        const timed = due.filter(key => key.untimed !== true);
+        timed.forEach((key, at) => {
+            const step = into !== "" && at === timed.length - 1 ? `\u2192 ${into}` : key.step;
+            keyTimed(step || key.text, key.began, key.heard, key.pressed, key.collected, !!step,
+                key.thread);
+        });
     }
+    // The place a key's word and space stepped into as it was searched,
+    // so that key is timed as the step: timed as its words, and the field
+    // the step emptied as another key, one step counted twice (a council,
+    // 2026-11-17).
+    property string steppedByKey: ""
 
     // How long a key's list waits for the sources whose search awaits a
     // daemon's answer (Provider's awaits), from when they're asked, so a
@@ -12089,7 +12148,7 @@ Scope {
                             root.drafted();
                             root.lettersTyped();
                             root.searchSoon(text, Date.now(), KeyTimes.now(),
-                                KeyTimes.pressed(), root.stepOut);
+                                KeyTimes.pressed(), root.stepOut, root.steppingIn);
                         }
                         // Return, as the vi-paradigm spec's table has it:
                         // words asked for are handed over; a thing whose
