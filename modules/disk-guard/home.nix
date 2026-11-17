@@ -174,18 +174,16 @@ in
           kind = "installs";
           roots = checkouts;
         };
-        workspaces = lib.mkDefault (
-          {
-            kind = "workspaces";
-            path = harness.workspaces;
-            inherit (harness) quests;
-            trees = harness.records;
-            # A session's record names its process by its start ticks on
-            # Linux and by the second it started on a Mac, so on both a
-            # quest a live session works on keeps what it left.
-            inherit (harness) sessions rosters;
-          }
-        );
+        workspaces = lib.mkDefault ({
+          kind = "workspaces";
+          path = harness.workspaces;
+          inherit (harness) quests;
+          trees = harness.records;
+          # A session's record names its process by its start ticks on
+          # Linux and by the second it started on a Mac, so on both a
+          # quest a live session works on keeps what it left.
+          inherit (harness) sessions rosters;
+        });
         # A Mac's /tmp and /var/tmp are links into /private.
         tmp = lib.mkDefault {
           kind = "temp";
