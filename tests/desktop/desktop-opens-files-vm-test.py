@@ -427,9 +427,12 @@ def takes_a_selection(
 def ran(desktop: Desktop, line: str, *, closes: bool = False) -> None:
     """Type a command on the launcher's line from normal, and wait until it's run.
 
-    It's typed as type_in types, paced and KEYS_IN_FLIGHT at a time, each held before the
-    next go: sent at once, `:e ~/chosen-notes/` is past 64 events with its shifted keys, and
-    on a loaded builder lost every key after its e (2026-11-16).
+    Sent at once, `:e ~/chosen-notes/` lost every key after its e on a loaded builder
+    (2026-11-16): whether they came before the line the : opens took the keys, or past the
+    events QEMU's keyboard holds, about 80 here with its shifted keys. So the line is waited
+    for once the : opens it, and the rest typed as type_in types, paced and KEYS_IN_FLIGHT
+    at a time, each held before the next go. A key lost on the way is said as what the line
+    held after what was typed.
     """
     desktop.normal()
     sent = ""
@@ -437,13 +440,21 @@ def ran(desktop: Desktop, line: str, *, closes: bool = False) -> None:
     def holds_sent(shown: Json) -> object:
         return (shown["command"] or {}).get("line") == sent
 
+    def held() -> None:
+        try:
+            desktop.launcher_until(holds_sent)
+        except AssertionError:
+            line_held = (desktop.showing()["command"] or {}).get("line")
+            lost = f"the : line held {line_held!r} after {sent!r} was typed"
+            raise AssertionError(lost) from None
+
     desktop.machine.send_chars(":", delay=KEY_PACE)
-    desktop.launcher_until(holds_sent)
+    held()
     while sent != line:
         keys = line[len(sent) : len(sent) + KEYS_IN_FLIGHT]
         sent += keys
         desktop.machine.send_chars(keys, delay=KEY_PACE)
-        desktop.launcher_until(holds_sent)
+        held()
     desktop.machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
