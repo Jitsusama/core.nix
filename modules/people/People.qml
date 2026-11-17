@@ -1603,15 +1603,16 @@ Provider {
     }
 
     // A search looks through what it shows: those listed, whether or not
-    // People is wanted, then those the last search found, each once. So a
+    // People is wanted, then those the last search found, each once by key,
+    // the listed row as it is now for one remade since. So a
     // row found by name is known as People's when it's stepped into, by
     // the key it was shown with, and the launcher readies listed names'
     // texts while it's shut, with nobody merged for either. A found row is
     // as fresh as the answer it came from: a late answer searches again.
     function looksThrough() {
         const listed = provider.wanted ? all : listedNow();
-        const seen = new Set(listed);
-        return listed.concat(lately.found.filter(row => !seen.has(row)));
+        const seen = new Set(listed.map(row => row.key));
+        return listed.concat(lately.found.filter(row => !seen.has(row.key)));
     }
 
     // A source that only follows what it knows while someone might look,
