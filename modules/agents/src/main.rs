@@ -482,15 +482,19 @@ fn serve(args: Args) -> Result<(), Failure> {
             inputs.keep_places(&paths.arrangement);
         }
         let moved = served.take(inputs.made());
-        if !moved.is_empty() {
-            // The landings are read again only once they were made again,
-            // and only what moved is told: 4,997 of them, read and cloned
-            // at every move, kept the daemon at 49% of a core (perf,
-            // 2026-11-16).
-            if !Rc::ptr_eq(&held_landed, served.landed()) {
-                held_landed = Rc::clone(served.landed());
+        // The landings are read again only once they were made again, and
+        // only what moved is told: 4,997 of them, read and cloned at every
+        // move, kept the daemon at 49% of a core (perf, 2026-11-16). Made
+        // again while no served record moved, feedback holds them as they
+        // were; the newest are kept even so, freeing the older set rather
+        // than holding two of about 3 MB each.
+        if !Rc::ptr_eq(&held_landed, served.landed()) {
+            held_landed = Rc::clone(served.landed());
+            if !moved.is_empty() {
                 landings.hold(held_landed.iter());
             }
+        }
+        if !moved.is_empty() {
             wants.hold(served.all());
             shared.mend(moved.changed, &moved.gone, json!({}));
         }

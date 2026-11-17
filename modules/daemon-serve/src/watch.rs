@@ -21,8 +21,9 @@ use serde_json::{Map, Value, json};
 #[derive(Debug, Default)]
 pub struct Held {
     records: BTreeMap<String, Value>,
-    /// How many answers moved what's held, so a daemon making something
-    /// of it knows by one number whether it's to be made again.
+    /// How many answers named a record or took one away, so a daemon
+    /// making something of what's held knows by one number whether it may
+    /// need making again.
     taken: u64,
 }
 
@@ -52,8 +53,10 @@ impl Held {
             .map(|(key, record)| (key.as_str(), record))
     }
 
-    /// How many answers have moved what's held: the same while every
-    /// record reads as it did, and more once one moved.
+    /// How many answers have named a record, or taken one away: the same
+    /// while none does, and more once one does, even one restating records
+    /// as they already read. So a reader keyed on it may make something
+    /// again for nothing, but never keeps it stale.
     pub fn taken(&self) -> u64 {
         self.taken
     }
@@ -305,6 +308,10 @@ mod tests {
         assert_eq!(held.taken(), 1, "only the records moved it");
         held.took(&json!({"changed": [{"key": "a", "step": 2}]}));
         assert_eq!(held.taken(), 2, "a change moved it again");
+        held.took(&json!({"changed": [{"key": "a", "step": 2}]}));
+        assert_eq!(held.taken(), 3, "a change restating a record counts too");
+        held.took(&json!({"gone": ["a"]}));
+        assert_eq!(held.taken(), 4, "a record taken away counts");
     }
 
     #[test]

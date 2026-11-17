@@ -511,6 +511,14 @@ mod tests {
             (0, vec!["landed:o#2".to_owned()]),
             "made anew, the one no longer landed goes and the same one moves nothing"
         );
+        let reworded = json!({"key": "landed:o#1", "kind": "landed", "what": "Reworded"});
+        let changed = served
+            .take(made(&[row("P", "working")], "").with_landed(Rc::new(vec![reworded.clone()])));
+        assert_eq!(
+            (changed.changed, changed.gone.len()),
+            (vec![reworded], 0),
+            "a landing made anew under the key it had, saying more, is told"
+        );
     }
 
     #[test]

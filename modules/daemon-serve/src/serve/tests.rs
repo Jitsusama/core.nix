@@ -123,6 +123,43 @@ fn a_watch_of_some_fields_hears_them_alone_and_only_as_they_move() {
 }
 
 #[test]
+fn a_mend_tells_a_watch_of_some_fields_only_as_they_move() {
+    let (shared, mut client, _folder) = served("mend-fields", Box::new(|_| None));
+    let kelp = |name: &str, order: u64| json!({"key": "row:agents:O", "row": {"name": name}, "order": order});
+    shared.mend(vec![kelp("kelp", 100)], &[], json!({}));
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "fields": ["order"]}));
+    // Each read against how it was before the mend, not as it's held now.
+    shared.mend(vec![kelp("reef", 100)], &[], json!({}));
+    shared.mend(vec![kelp("reef", 200)], &[], json!({}));
+    assert_eq!(
+        client.heard()["changed"],
+        json!([{"key": "row:agents:O", "order": 200}]),
+        "only the use, and only its field"
+    );
+}
+
+#[test]
+fn a_mend_tells_a_paced_watch_a_record_new_to_it_at_once() {
+    let (shared, mut client, _folder) = served("mend-paced", Box::new(|_| None));
+    shared.mend(vec![row("agents", "O", "kelp")], &[], json!({}));
+    client.ask(&json!({"id": "all", "ask": "watch", "kind": "row", "every": 60_000}));
+    shared.mend(vec![row("agents", "O", "harbour")], &[], json!({}));
+    // Only the new row is given: it's new to the watch by how it was
+    // before the mend, which held none under its key.
+    shared.mend(vec![row("agents", "Q", "tide")], &[], json!({}));
+    client.send(&json!({"id": "health", "ask": "health"}));
+    let told = client.heard();
+    assert_eq!(
+        (&told["id"], &told["changed"]),
+        (
+            &json!("all"),
+            &json!([row("agents", "O", "harbour"), row("agents", "Q", "tide")])
+        ),
+        "the new row at once, with the move held back before it: {told}"
+    );
+}
+
+#[test]
 fn a_list_and_a_whole_answer_keep_the_order_the_daemon_gave() {
     let (shared, mut client, _folder) = served("order", Box::new(|_| None));
     // Given against the order of their keys, as windows are given the

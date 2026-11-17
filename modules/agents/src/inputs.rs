@@ -139,6 +139,9 @@ struct LandedFrom {
     quests: u64,
     /// Read only while Joel's words were sent on a landing, else none.
     talks: u64,
+    /// How many landings were fed back, which stands for them only while
+    /// one is never replaced or taken back: anything that does needs a
+    /// count of its moves, as the sources above have.
     fed_back: usize,
     read: Reading,
     carried: Carried,
@@ -830,6 +833,84 @@ mod tests {
             !Rc::ptr_eq(&renamed, &later),
             "a minute on, To Try's day is weighed again, yet they were kept"
         );
+    }
+
+    #[test]
+    fn landed_is_made_again_once_any_input_it_reads_moves() {
+        let mut inputs = inputs();
+        inputs.landings.took(&json!({"records": [
+            {"key": "landing:s-p:o#1", "session": "s-p", "ref": "o#1",
+             "at": "2026-11-11T01:00:00Z", "what": "One"}]}));
+        let now = 1_763_000_000_000;
+        let mut was = inputs.landed_at(now).0;
+        let remade = |was: &mut Rc<Vec<Value>>, inputs: &Inputs, what: &str| {
+            let made = inputs.landed_at(now).0;
+            assert!(
+                !Rc::ptr_eq(was, &made),
+                "{what} moved, yet the landings were kept"
+            );
+            *was = made;
+        };
+        inputs
+            .quests
+            .took(&json!({"changed": [{"key": "quest:QEST-O", "title": "Kelp"}]}));
+        remade(&mut was, &inputs, "a quest");
+        inputs
+            .read
+            .at
+            .insert("s-p o#1 2026-11-11T01:00:00Z".to_owned(), Some(now));
+        remade(&mut was, &inputs, "what Joel read");
+        assert_eq!(
+            was.iter()
+                .find(|one| one["kind"] == "landed")
+                .map(|one| &one["landed"]["read"]),
+            Some(&json!(now)),
+            "made again, the landing says when Joel read it"
+        );
+        inputs.carried = Carried::of(&[1]);
+        remade(&mut was, &inputs, "what the system carries");
+        // Each step says the whole presence, which a change replaces, so
+        // only the one field it names moves; titled by its quest, the
+        // session's title doesn't follow its address.
+        let present = |address: &str, id: &str, landings: Value| {
+            json!({"changed": [{"key": "session:p", "presence": {
+                "addresses": [address], "session": id, "busy": true,
+                "orchestratedBy": "O", "questInfo": {"title": "Kelp"},
+                "landings": landings}}]})
+        };
+        // Null reads as the landings the presence named none of before.
+        inputs.sessions.took(&present("P", "s-p", Value::Null));
+        remade(&mut was, &inputs, "a live session's title");
+        inputs
+            .sessions
+            .took(&present("P", "s-p", json!([{"ref": "o#3"}])));
+        remade(&mut was, &inputs, "a live session's landings");
+        inputs
+            .sessions
+            .took(&present("P2", "s-p", json!([{"ref": "o#3"}])));
+        remade(&mut was, &inputs, "a live session's address");
+        inputs
+            .sessions
+            .took(&present("P2", "s-p2", json!([{"ref": "o#3"}])));
+        remade(&mut was, &inputs, "a live session's id");
+        inputs
+            .talks
+            .took(&json!({"changed": [{"key": "talk:t-2", "id": "t-2", "stage": "sent"}]}));
+        assert!(
+            Rc::ptr_eq(&was, &inputs.landed_at(now).0),
+            "with nothing fed back no landing reads a talk, yet one moving made them again"
+        );
+        let fed =
+            |sent: &str| json!({"by": "talk", "landing": "landing:s-p:o#1", "sent": sent, "at": 1});
+        inputs.fed_back.push(fed("t-1"));
+        remade(&mut was, &inputs, "the first of Joel's words fed back");
+        // Talks have moved by now, so only how many were fed back differs.
+        inputs.fed_back.push(fed("t-2"));
+        remade(&mut was, &inputs, "more of Joel's words fed back");
+        inputs
+            .talks
+            .took(&json!({"changed": [{"key": "talk:t-1", "id": "t-1", "stage": "read"}]}));
+        remade(&mut was, &inputs, "a talk, with something fed back");
     }
 
     #[test]
