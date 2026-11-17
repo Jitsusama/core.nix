@@ -128,7 +128,8 @@ impl Code {
         if let Some(kept) = upstreams::counted_file(self.home.as_deref()) {
             upstreams::merge_kept(&mut record, &kept);
         }
-        let mut rows = code_rows::rows(&record, self.home.as_deref(), &self.words);
+        let mut rows =
+            code_rows::rows(&record, self.home.as_deref(), &self.words, &BTreeMap::new());
         rows.extend(code_rows::inside(&record, &self.words));
         rows
     }

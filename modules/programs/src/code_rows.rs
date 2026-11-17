@@ -22,6 +22,7 @@
 use repos::model::{COUNTED_TO, Checkout, Head, Record, Repository};
 use repos::read::shown;
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 /// The place these rows are of.
@@ -164,9 +165,16 @@ impl Words {
 }
 
 /// Every repository's row, in the record's order, the one written to
-/// last first; paths are said from `home` as `~`.
+/// last first; paths are said from `home` as `~`, and `changed` says how
+/// many tracked files each checkout counted has changed and not
+/// committed, by its path.
 #[must_use]
-pub fn rows(record: &Record, home: Option<&Path>, words: &Words) -> Vec<Value> {
+pub fn rows(
+    record: &Record,
+    home: Option<&Path>,
+    words: &Words,
+    _changed: &BTreeMap<String, u32>,
+) -> Vec<Value> {
     record
         .repositories
         .iter()

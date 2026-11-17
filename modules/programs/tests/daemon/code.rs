@@ -1,8 +1,8 @@
 //! Code's rows over the socket: every repository under the roots, each
 //! once, in a first watch's own answer; a repository cloned since told to
 //! a later watch, read behind it; the rows searched by owner; the open
-//! changes a refresh kept, and how far a counting kept its checkout
-//! behind, said beside their repository; a checkout's files served
+//! changes a refresh kept, how far a counting kept its checkout behind,
+//! and what it changed and didn't commit, said beside their repository; a checkout's files served
 //! inside Open a File by Name while it's ahead, gone once it isn't, and
 //! found there by name or folder as they're typed; New Terminal Here
 //! and Edit Here started by a stand-in for niri as they're asked; and
@@ -425,6 +425,33 @@ fn how_far_a_counting_kept_a_checkout_behind_is_said_beside_its_repository() {
         json!({"said": "3 behind"}),
         "how far a counting kept its checkout behind isn't said beside it: {alpha}"
     );
+}
+
+#[test]
+fn what_a_checkout_changed_and_didnt_commit_is_counted_behind_a_watch() {
+    let running = Running::new("code-changed");
+    cloned(&running, "alpha", "git@github.com:someone/alpha.git");
+    let here = running.path("src/alpha");
+    std::fs::write(here.join("one"), "one\n").unwrap();
+    // Added and never committed, so git tracks it as changed; a file it
+    // doesn't track is never counted.
+    git_in(&here, &["add", "one"]);
+    std::fs::write(here.join("loose"), "loose\n").unwrap();
+    let key = "row:code:github:someone/alpha";
+    let mut client = running.client();
+    let answer = client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "code"}));
+    let changed = json!({"said": "1 changed"});
+    let says = |row: &Value| row["row"]["side"].as_array().unwrap().contains(&changed);
+    let first = row_of(&answer, key)
+        .unwrap_or_else(|| panic!("a first watch isn't answered with Code's rows: {answer}"));
+    // Counted behind the first answer, which never waits on git.
+    if !says(first) {
+        let told = client.changed(key);
+        assert!(
+            says(&told),
+            "what its checkout changed isn't counted beside it: {told}"
+        );
+    }
 }
 
 #[test]
