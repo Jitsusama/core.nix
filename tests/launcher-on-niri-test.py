@@ -3195,6 +3195,103 @@ def test_now_says_while_the_work_network_isnt_answering_and_forgets_it_once_it_i
         warp_forgotten(said)
 
 
+def test_a_marks_click_draws_now_from_what_was_kept_on_its_row(shell: Shell) -> None:
+    """A click on a margin mark draws Now as the closed launcher kept it, landing on its row.
+
+    It opened Now whole, as nothing but a chord's place was drawn from what was kept: Joel's
+    clicks took 51 and 89 ms to the screen, 19 and 34 of it making Now again (2026-11-17, 10:07
+    and 10:21). Now is kept while a look waits, and the look is cleared and the mark lit before
+    the click, so its first frame lands on the mark's row, with For You's saying nothing waits,
+    only if Now's rows are listed as they stand rather than as last made. The Work Network's mark,
+    alone in the margin once the look's is gone, is centred along the top.
+    """
+    look = now_kept_while_a_look_waits(shell)
+    said = Path(os.environ["HOME"]) / "warp-cli"
+    contract = Path(os.environ["WARP_CONTRACT"])
+    said.mkdir()
+    lit = shell.mark()
+    shutil.copyfile(contract / "daemon-down.json", said / "status.error.json")
+    try:
+        cells: list[int] = []
+
+        def alone(rest: str) -> bool:
+            drawn = json.loads(rest)
+            cells[:] = [glyph["cell"] for glyph in drawn]
+            return [glyph["mark"] for glyph in drawn] == ["tunnel"]
+
+        shell.reported("sets margin ", alone, lit)
+        # Said once its frame is handed to niri, so the click lands on a surface that's there.
+        shell.reported("drawn margin", lambda _: True, lit)
+        timed = json.loads(shell.as_account(shell.ipc("openings")))
+        before = max((one["nth"] for one in timed), default=0)
+        output = json.loads(shell.as_account("niri msg --json focused-output"))["logical"]
+        shell.click(output["width"] // 2, cells[0] // 2)
+        opened: list[Json] = []
+
+        def came(_: Json) -> bool:
+            each = json.loads(shell.as_account(shell.ipc("openings")))
+            opened[:] = [one for one in each if one["nth"] > before]
+            return bool(opened)
+
+        try:
+            shell.launcher_until(came)
+        except AssertionError as missed:
+            failed = f"the click on the mark at its cell {cells[0]} opened nothing"
+            raise AssertionError(failed) from missed
+        assert opened[0]["into"] == "on", f"the click didn't open Now: {opened[0]}"
+        assert opened[0].get("kept"), f"the click opened Now whole: {opened[0]}"
+        first = opened[0].get("shown") or {"keys": [], "at": -1}
+        landed = first["keys"][first["at"]] if 0 <= first["at"] < len(first["keys"]) else None
+        assert landed == "on:tunnel", f"the first frame didn't land on the mark's row: {first}"
+
+        def filled_in(shown: Json) -> bool:
+            return came(shown) and "filled" in opened[0]
+
+        shell.launcher_until(filled_in)
+        told_first, told_filled = (
+            side_of(each, "on:waitingOnYou") for each in (first, opened[0]["filled"])
+        )
+        assert told_first == told_filled, f"For You's row said {told_first!r}, then {told_filled!r}"
+        shell.launcher_until(
+            lambda shown: (
+                shown["path"][-1:] == ["Now"]
+                and (shown["selected"] or {}).get("name") == "Work Network"
+            )
+        )
+        shell.close_launcher()
+    finally:
+        look.unlink()
+        warp_forgotten(said)
+
+
+def now_kept_while_a_look_waits(shell: Shell) -> Path:
+    """Keep Now, by its chord, while a look waits, then clear the look shut; give its file."""
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    looks = state / "pi/agentic-harness.pi/looks"
+    looks.mkdir(parents=True, exist_ok=True)
+    look = looks / "kept-waiting.json"
+    # It came just now, since one three days old goes quiet (launcher/Looks.js).
+    told = {"v": 1, "id": "kept-waiting", "title": "Kept Waiting", "target": "/etc/hostname",
+            "kind": "file", "state": "waiting", "at": now("-u", "+%FT%TZ")}  # fmt: skip
+    launcher_on_niri.laid_whole(look, json.dumps(told))
+    try:
+        assert "Kept Waiting" in looks_listed(shell, "Kept Waiting"), "the look was never heard"
+        shell.as_account(shell.ipc("collection", "on"))
+        shell.launcher_ready()
+        shell.close_launcher()
+        shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    except BaseException:
+        look.unlink()
+        raise
+    launcher_on_niri.laid_whole(look, json.dumps(told | {"state": "cleared"}))
+    return look
+
+
+def side_of(rows: Json, key: str) -> str | None:
+    """Give what a row says at its right in rows said as an opening's are (rowsSaid)."""
+    return dict(zip(rows["keys"], rows["sides"], strict=True)).get(key)
+
+
 def healed_in(reports: list[str]) -> bool:
     """Whether the shell said the Work Network well again, and then a margin without it."""
     if "work network ails false" not in reports:

@@ -31,8 +31,6 @@ if TYPE_CHECKING:
 
     from launcher_on_niri import Json, Shell
 
-# Far enough to take the pointer to the screen's top left corner from anywhere on it.
-TO_THE_CORNER = -10000
 # How far inside a window's bottom left corner it's clicked, clear of the launcher's card.
 INSIDE = 24
 # The program handed to, by the app id its windows carry, as 1Password's say 1Password.
@@ -95,14 +93,6 @@ def focus_reaches(shell: Shell, window: Json) -> None:
         focused = focused_window(shell)
 
 
-def click(shell: Shell, x: int, y: int) -> None:
-    """Click the left button at a point on the screen, through a virtual pointer."""
-    wlrctl = os.environ["WLRCTL"]
-    shell.as_account(f"{wlrctl} pointer move {TO_THE_CORNER} {TO_THE_CORNER}")
-    shell.as_account(f"{wlrctl} pointer move {x} {y}")
-    shell.as_account(f"{wlrctl} pointer click left")
-
-
 def test_a_notice_arriving_leaves_the_open_launcher_the_keys(shell: Shell) -> None:
     """A notice coming while the launcher is open leaves it the keys and what's typed."""
     opened(shell)
@@ -131,7 +121,7 @@ def test_a_click_on_a_window_takes_the_keys_and_closes_the_launcher(shell: Shell
     place = window["layout"]["tile_pos_in_workspace_view"]
     size = window["layout"]["tile_size"]
     opened(shell)
-    click(shell, int(place[0]) + INSIDE, int(place[1] + size[1]) - INSIDE)
+    shell.click(int(place[0]) + INSIDE, int(place[1] + size[1]) - INSIDE)
     shell.launcher_closed()
     focus_reaches(shell, window)
     # A key reaches only the window: foot writes the line, and the launcher's find is empty.

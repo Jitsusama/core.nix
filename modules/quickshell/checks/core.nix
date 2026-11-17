@@ -81,6 +81,8 @@ in
         "WARP=${pkgs.writeShellScript "warp-serve" ''
           WARP_CLI=${warpCli} WARP_SHAPER="$HOME/shaper/status.json" exec ${warp} serve "$@"
         ''}"
+        # A virtual pointer, to click a margin mark.
+        "WLRCTL=${lib.getExe pkgs.wlrctl}"
       ];
       shell.launcher.providers.eero.enable = true;
       # On the Selection without pi, its pi-verbs a case's stand-in.
