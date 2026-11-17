@@ -219,8 +219,8 @@ fn kept_off(on: &Joined, unreached: &str) -> String {
 }
 
 /// Why a card tries another access point: what the one it's on carried,
-/// what was known of the other, and from where, and whether it's for a
-/// wider band or a quieter channel.
+/// what was known of the other, and from where, and whether it's to a
+/// wider or narrower band or a quieter channel.
 fn tried(
     on: &Joined,
     (measured, frequency, busy): (&Measured, u32, Option<u8>),
@@ -242,6 +242,12 @@ fn tried(
     };
     let room = match (busy, to.busy) {
         _ if choose::wider(to.frequency, frequency) => ", on a wider band".to_owned(),
+        _ if choose::wider(frequency, to.frequency)
+            && choose::resting(measured)
+            && !choose::badly(measured) =>
+        {
+            ", on a narrower band, as the card moves little".to_owned()
+        }
         (Some(busy), Some(theirs))
             if busy > choose::BUSIEST
                 && choose::quieter(theirs, busy)
@@ -452,6 +458,27 @@ mod tests {
             why.ends_with("is untried, heard at -50 dBm, on a wider band"),
             "a move from 2.4 GHz to 5 GHz says it's for the band: {why}"
         );
+    }
+
+    #[test]
+    fn a_move_to_a_narrower_band_says_so() {
+        let on = joined(DESK);
+        let narrow = other(HALL, Some(carried(9)));
+        let resting = Measured {
+            moving: Some(24),
+            ..carried(30)
+        };
+        let bad = Measured {
+            moving: Some(24),
+            ..carried(52)
+        };
+
+        let why = tried(&on, (&resting, 5260, None), &narrow, None);
+        let failing = tried(&on, (&bad, 5260, None), &narrow, None);
+
+        let alone = "two minutes, on a narrower band, as the card moves little";
+        assert!(why.ends_with(alone), "says why it left: {why}");
+        assert!(!failing.contains("band"), "it moves as bad: {failing}");
     }
 
     #[test]
