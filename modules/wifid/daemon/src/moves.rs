@@ -57,7 +57,11 @@ pub fn choose(
     (on, measured): (&Joined, &Measured),
     around: &[Heard],
     (lately, learned): (&Measures, &Learned),
-    (asks, air): (&mpsc::Sender<Ask>, &watch::Receiver<State>),
+    (asks, air, looked): (
+        &mpsc::Sender<Ask>,
+        &watch::Receiver<State>,
+        &mpsc::Sender<String>,
+    ),
     call: bool,
 ) {
     let known = known(lately, learned, now, hour);
@@ -66,7 +70,7 @@ pub fn choose(
             tokio::spawn(roam(asks.clone(), air.clone(), on.card.clone(), to));
         }
         Some(Next::Look) => {
-            tokio::spawn(look(asks.clone(), on.card.clone()));
+            tokio::spawn(look(asks.clone(), on.card.clone(), looked.clone()));
         }
         None => {}
     }
@@ -171,7 +175,7 @@ fn chosen(
 /// heard for 3 minutes, and nothing else looks while a card is on its
 /// network, so on 15 Nov 2026 a card on one carrying 44 to 52 ms at p95
 /// heard no other, though one 15 minutes before had carried 15.
-async fn look(asks: mpsc::Sender<Ask>, card: String) {
+async fn look(asks: mpsc::Sender<Ask>, card: String, _looked: mpsc::Sender<String>) {
     if let Err(refused) = acts::look(&asks).await {
         eprintln!("<4>{card} couldn't look for another access point: {refused:?}");
     }
@@ -254,6 +258,7 @@ mod tests {
     use crate::measure::Echo;
     use crate::measure::tests::joined;
     use crate::radio::{Load, Radio};
+    use crate::service::Refused;
     use crate::state::Security;
 
     const DESK: &str = "6c:ae:f6:c1:84:26";
@@ -301,6 +306,34 @@ mod tests {
             learned.carried(&here, &carried(p95)).unwrap();
         }
         learned
+    }
+
+    /// Has a card look, the main loop answering its look as given, and
+    /// says which card it handed back to be chosen for again, if any.
+    async fn looked_with(answer: Result<(), Refused>) -> Option<String> {
+        let (asks, mut taken) = mpsc::channel(1);
+        let (looked, mut ended) = mpsc::channel(1);
+        let looking = tokio::spawn(look(asks, "wlan0".into(), looked));
+        let Some(Ask::Scan { done }) = taken.recv().await else {
+            panic!("asked for something other than a look");
+        };
+        done.send(answer).expect("answered");
+        looking.await.expect("looked");
+        ended.try_recv().ok()
+    }
+
+    #[tokio::test]
+    async fn a_card_that_has_looked_is_chosen_for_again_at_once() {
+        let again = looked_with(Ok(())).await;
+
+        assert_eq!(again.as_deref(), Some("wlan0"), "chosen for again");
+    }
+
+    #[tokio::test]
+    async fn a_card_that_couldnt_look_waits_for_its_next_minute() {
+        let again = looked_with(Err(Refused::NotJoined)).await;
+
+        assert_eq!(again, None, "it heard nothing new");
     }
 
     #[test]

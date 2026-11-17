@@ -142,6 +142,7 @@ pub async fn follow(
     let mut choosers: HashMap<String, Chooser> = HashMap::new();
     let mut kernel: Option<Nl80211> = None;
     let mut measures = Measures::default();
+    let (looked, _ended) = mpsc::channel(1);
     let mut each = interval(EACH);
     each.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut told = interval(TOLD);
@@ -176,7 +177,7 @@ pub async fn follow(
                         (&on, &carried),
                         &around,
                         (&measures, &learned),
-                        (&asks, &state),
+                        (&asks, &state, &looked),
                         call,
                     );
                 }
