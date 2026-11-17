@@ -578,7 +578,9 @@ Provider {
                 return;
             }
             const before = sought.words === words ? keysOf(sought.records) : null;
-            sought = { words: words, records: answer.records ?? [] };
+            // With how those listed were placed as it came, so a search
+            // answered before someone was listed finds them still (gather).
+            sought = { words: words, records: answer.records ?? [], listed: listedRevision };
             if (again !== true || keysOf(sought.records) !== before)
                 foundMore(Date.now() - seekAt < freshFor);
         });
@@ -1263,7 +1265,8 @@ Provider {
     // matches where a word starts and so does all it starts with: walking
     // everyone each key was the launcher's dearest list, 8 ms a key and
     // 553 ms at worst (launcher-trials.json, 2026-10-25 to 27).
-    readonly property var lately: ({ typed: null, found: [] })
+    readonly property var lately: ({ typed: null, found: [], listed: null, sought: null,
+        among: null })
 
     // The people those sources the daemon doesn't hold give, as Vault's
     // does, merged among themselves only as their people change, each by
@@ -1281,10 +1284,16 @@ Provider {
         kept.persons = Person.merged(own.map(source => ({ name: source.settings.name,
             people: source.people })));
         kept.byEmail = {};
+        // Each row kept while its person reads the same, and the rest let
+        // go, so one who's left holds nothing.
+        const before = kept.keeping.rows;
+        kept.keeping.rows = {};
         for (const person of kept.persons) {
             const one = { person: person, text: JSON.stringify(person), said: {} };
             for (const email of person.emails)
                 kept.byEmail[email.toLowerCase()] = one;
+            if (before[person.key]?.from[0] === one.text)
+                kept.keeping.rows[person.key] = before[person.key];
         }
         for (const source of own) {
             for (const known of source.people ?? []) {
@@ -1313,23 +1322,27 @@ Provider {
     // same, which the daemon stamps anew only when a source says anything
     // new of them: made of their record alone, with the ready row it came
     // with, or, for one a source it doesn't hold knows too, merged with
-    // what that source said of them, as everyone() merges them.
-    function servedRow(record, among, keeping) {
+    // what that source said of them and every record the answer holds
+    // under their addresses, `records` by address, as everyone() merges
+    // them.
+    function servedRow(record, among, keeping, records) {
         const one = among.byEmail[addressOf(record.key).toLowerCase()];
         if (one === undefined && record.row)
             return keptAlike(keeping, record.key, [record.key, record.stamp], () => {
-                const person = personMade(record, null);
+                const person = personMade([record], null);
                 return provider.made(person, Person.standing(person, []), record.row,
                     () => record.drawer);
             });
-        const person = personMade(record, one ?? null);
+        const theirs = one === undefined ? [record]
+            : one.person.emails.map(email => records[email.toLowerCase()]).filter(Boolean);
+        const person = personMade(theirs, one ?? null);
         return person === null ? null : keptOr(keeping, person.key, JSON.stringify(person),
             () => provider.made(person, Person.standing(person, [])));
     }
-    // One person of a record and what the sources the daemon doesn't hold
-    // said of them, `one`, merged as Person.js merges everyone.
-    function personMade(record, one) {
-        const daemon = fromDaemon([record]);
+    // One person of their records and what the sources the daemon doesn't
+    // hold said of them, `one`, merged as Person.js merges everyone.
+    function personMade(records, one) {
+        const daemon = fromDaemon(records);
         return Person.merged(sources.map(source => ({
             name: source.settings.name,
             people: source.daemonHolds ? daemon.people[source.settings.name]
@@ -1358,8 +1371,10 @@ Provider {
     // p90 and 62 at most (his journal, 2026-11-14 to 17). Each found is
     // their listed row if they're listed, or one made of their record
     // alone and kept by its stamp. Those only a source the daemon doesn't
-    // hold knows, as Vault's people, are found here and follow. Before the
-    // answer comes, a letter more narrows what the last search showed,
+    // hold knows, as Vault's people, are found here and follow, and so do
+    // those listed the answer couldn't hold, cut at soughtMost or listed
+    // since it came. Before the answer comes, a letter more narrows what
+    // the last search showed while what it showed them from is the same,
     // and other words find among those listed, in their order.
     function gather(typed) {
         const begun = Date.now();
@@ -1374,7 +1389,10 @@ Provider {
         const merges = merging.merges;
         const madeBefore = provider.tally.rows;
         const answered = heldBy.length > 0 && sought.words === lower.trim();
-        const narrowing = !answered && lately.typed !== null && lower.startsWith(lately.typed);
+        const narrowing = !answered && lately.typed !== null && lower.startsWith(lately.typed)
+            && lately.listed === all && lately.sought === sought && lately.among === among.from;
+        const fuller = answered
+            && (sought.records.length >= soughtMost || sought.listed !== listedRevision);
         // Those shown already, by each of their addresses, so no one is
         // shown twice, and none only Vault knows is found again apart.
         const shown = {};
@@ -1395,10 +1413,16 @@ Provider {
         if (answered) {
             if (trimming)
                 keepingBegun(servedKept);
+            const records = {};
+            for (const record of sought.records) {
+                const email = addressOf(record.key).toLowerCase();
+                if (email !== "" && !record.gone && record.sources && knownBy(record))
+                    records[email] = record;
+            }
             for (const record of sought.records) {
                 if (record.gone || !record.sources || !knownBy(record))
                     continue;
-                const row = rows[record.key] ?? servedRow(record, among, servedKept);
+                const row = rows[record.key] ?? servedRow(record, among, servedKept, records);
                 if (row !== null && shows(row))
                     served.push(row);
             }
@@ -1407,8 +1431,9 @@ Provider {
         }
         const madeAt = Date.now();
         // Before the answer, those listed, and those only Vault knows, are
-        // walked; after it, only those only Vault knows.
-        const walked = answered ? [] : narrowing ? lately.found : all;
+        // walked; after it, only those only Vault knows, and those listed
+        // when the answer may not hold them all.
+        const walked = answered ? fuller ? all : [] : narrowing ? lately.found : all;
         const found = [];
         for (const row of walked) {
             if (scoreOf(row, words, need) >= 0 && shows(row))
@@ -1432,6 +1457,9 @@ Provider {
         const kept = served.concat(found);
         lately.typed = lower;
         lately.found = kept;
+        lately.listed = all;
+        lately.sought = sought;
+        lately.among = among.from;
         // A search past a frame's worth says where it went, as the
         // launcher's line says only People's whole: Joel's first two
         // letters cost People 5 to 16 ms on 12 searches, and a letter more
@@ -1445,30 +1473,25 @@ Provider {
                 + `making ${provider.tally.rows - madeBefore} of ${served.length} rows `
                 + `${madeAt - listedAt}, matching ${tried} of `
                 + `${walked.length + (narrowing ? 0 : among.persons.length)}`
-                + `${narrowing ? " narrowed" : answered ? " answered" : ""} `
+                + `${narrowing ? " narrowed" : fuller ? " answered in part"
+                    : answered ? " answered" : ""} `
                 + `${Date.now() - madeAt}, finding ${kept.length}`);
         return { rows: kept, grade: kept.length > 0 ? 0 : 3 };
     }
-    // The addresses of those listed and those the daemon last found, whom
-    // none only Vault knows is found apart from, since they're merged
-    // with them (servedRow). Kept while both are the same.
-    readonly property var covering: ({ listed: null, sought: null, emails: {} })
+    // The addresses of those listed, whom none only Vault knows is found
+    // apart from, since they're merged with them. Kept while those listed
+    // are the same.
+    readonly property var covering: ({ listed: null, emails: {} })
     function covered() {
         const kept = covering;
-        if (kept.listed === all && kept.sought === sought)
+        if (kept.listed === all)
             return kept.emails;
         kept.emails = {};
         for (const row of all) {
             for (const email of row.person?.emails ?? [])
                 kept.emails[email.toLowerCase()] = true;
         }
-        for (const record of sought.records) {
-            const email = addressOf(record.key).toLowerCase();
-            if (email !== "")
-                kept.emails[email] = true;
-        }
         kept.listed = all;
-        kept.sought = sought;
         return kept.emails;
     }
     // A frame at 120 Hz, past which a search says where its time went.
@@ -1566,9 +1589,11 @@ Provider {
             : listedPersons().map(person => ({ key: `person:${person.key}` }));
     }
 
-    // A search looks through everyone, not only those listed.
+    // A search looks through those it shows: those listed and those the last search found, so a
+    // row found by name is known as People's when it's stepped into,
+    // and nobody is merged for it.
     function looksThrough() {
-        return everyone();
+        return all.concat(lately.found);
     }
 
     // A source that only follows what it knows while someone might look,

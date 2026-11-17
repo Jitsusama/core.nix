@@ -374,34 +374,42 @@ ShellRoot {
                     && /^available \u00b7 Kolkata \u00b7 \d\d:\d\d$/u.test(ada[0].side),
                 `${names(ada)} ${ada[0]?.side}`);
         }),
-        // Among equals, the daemon's order: each address finds them as
-        // well as the next, as gus's does, so as Tuple lists them.
-        seeking("example", "those listed first, then the rest, as the daemon finds them", () => {
-            const all = found("example");
-            expect("in order", names(all) === "Ada Brook, Ben Carrow, Cal Dunmore, Dee Ellery, "
-                + "Eli Fenwick, Gus, Zo\u00eb \"Zed\" Quill", names(all));
-        }),
         {
             // The daemon's answer comes ranked as the shell ranks, so it's
             // shown as it comes: merged and ranked here, everyone was
             // merged again at each answer, 13 ms of Joel's shell at p90
-            // and 62 at most (his journal, 2026-11-14 to 17).
-            what: "an answer is shown in its order, merging no one",
+            // and 62 at most (his journal, 2026-11-14 to 17). Among equals,
+            // the daemon's order: each address finds them as well as the
+            // next, as gus's does, so as Tuple lists them. Those listed are
+            // shown as listed, and the rest made of their records.
+            what: "those listed first, then the rest, as the daemon finds them, merging no one",
             run: () => {
                 root.mergedBefore = people.merging.merges;
-                people.search("cal");
+                people.search("example");
             },
-            holds: () => answered("cal"),
+            holds: () => answered("example"),
             check: () => {
-                const cal = found("cal");
-                expect("found", names(cal) === "Cal Dunmore", names(cal));
+                const all = found("example");
+                expect("in order", names(all) === "Ada Brook, Ben Carrow, Cal Dunmore, "
+                    + "Dee Ellery, Eli Fenwick, Gus, Zo\u00eb \"Zed\" Quill", names(all));
                 expect("merging no one", people.merging.merges === root.mergedBefore,
                     `${people.merging.merges - root.mergedBefore} merges`);
+                root.madeBefore = people.tally.rows;
             }
         },
         seeking("ben", "the shell holds only those listed and those found", () => {
             expect("only those", people.persons().length === 4, names(people.persons()));
             expect("found", names(found("ben")) === "Ben Carrow", names(found("ben")));
+        }),
+        // Words typed again, as "c" is all day, remake none of the rows
+        // their answer made: let go at each answer, a first letter's made
+        // 36 of its 50 again each time (a lab over Joel's people).
+        seeking("example", "words asked again make none of their rows again", () => {
+            const all = found("example");
+            expect("found as before", names(all) === "Ada Brook, Ben Carrow, Cal Dunmore, "
+                + "Dee Ellery, Eli Fenwick, Gus, Zo\u00eb \"Zed\" Quill", names(all));
+            expect("making none", people.tally.rows === root.madeBefore,
+                `${people.tally.rows - root.madeBefore} rows made`);
         }),
         seeking("ad", "a letter more searches only those the letters before found", () => {
             // What they found is hidden here, so a search that walked
@@ -936,6 +944,8 @@ ShellRoot {
     // How many merges and changes People had before a change heard while
     // nobody looks.
     property var mergedBefore: null
+    // How many rows People had made once a search was first answered.
+    property int madeBefore: 0
     // Who an unlisted address was the moment it was first asked after.
     property var unlistedFirst: undefined
     property int heardBefore: 0
