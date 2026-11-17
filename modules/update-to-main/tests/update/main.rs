@@ -17,6 +17,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
@@ -421,7 +422,7 @@ impl World {
                     "{head}\nhere=$(cd \"$(dirname \"$0\")\" && pwd)\n\
                      if [ -e \"$here/breaks\" ]; then echo 'activation failed' >&2; exit 1; fi\n\
                      if [ -e \"$here/stops-its-daemon\" ]; then kill -KILL \"$PPID\"; \
-                     sleep 0.5; fi\n\
+                     sleep 1; fi\n\
                      echo 'setting up launchd services...'\n\
                      echo 'reloading service org.jitsusama.update-to-main' >&2\n\
                      ln -sfn \"$here\" {running}\n",
@@ -629,6 +630,29 @@ fn a_system_the_profile_names_but_nothing_activated_is_switched_to() {
     );
 }
 
+#[test]
+fn a_profile_left_behind_what_runs_is_switched_again() {
+    // A machine running another system than its profile names, as one
+    // activated by hand leaves, boots and rolls back by the wrong one, so
+    // the next head, though it builds what runs, switches again.
+    let world = World::new();
+    let one = world.signed("one");
+    let system = world.system(&one);
+    world.update();
+    let first = world.system("first");
+    fs::remove_file(&world.config.profile).unwrap();
+    std::os::unix::fs::symlink(&first, &world.config.profile).unwrap();
+    let two = world.signed("two");
+    std::os::unix::fs::symlink(&system, world.root.join("systems").join(&two)).unwrap();
+    let (_, ending) = world.update();
+    assert_eq!(ending, done(&two));
+    assert_eq!(
+        fs::canonicalize(world.booting()).unwrap(),
+        fs::canonicalize(&system).unwrap(),
+        "the profile was left behind"
+    );
+}
+
 /// Not a test of its own: the daemon of the Mac's world made in
 /// `UPDATE_TO_MAIN_WORLD`, served in a process apart by
 /// `a_macs_switch_outlives_the_daemon_its_activation_stops`, so the
@@ -649,7 +673,7 @@ fn a_macs_switch_outlives_the_daemon_its_activation_stops() {
     // On 17 November a Mac's activation reloaded the daemon running it, for
     // its new open-files limit. The daemon's end closed activation's output,
     // and activation died writing to it, before it moved the running system.
-    let world = World::new();
+    let mut world = World::new();
     let head = world.signed("one");
     let system = world.system(&head);
     fs::write(system.join("stops-its-daemon"), "").unwrap();
@@ -685,8 +709,8 @@ fn a_macs_switch_outlives_the_daemon_its_activation_stops() {
     };
     let told = || format!("{}{}", world.read("apart.out"), world.read("apart.err"));
     assert!(
-        stopped.is_some_and(|status| !status.success()),
-        "the daemon wasn't stopped by its switch, which asked {:?}: {}",
+        stopped.is_some_and(|status| status.signal() == Some(libc::SIGKILL)),
+        "the daemon wasn't stopped by its switch, which ended {stopped:?} and asked {:?}: {}",
         asking.is_finished().then(|| asking.join().unwrap()),
         told()
     );
@@ -699,6 +723,344 @@ fn a_macs_switch_outlives_the_daemon_its_activation_stops() {
         "the switch died with the daemon its activation stopped: {}",
         told()
     );
+    let left: serde_json::Value =
+        serde_json::from_str(&world.read("state/switching.json")).unwrap();
+    assert_eq!(
+        left["previous"].as_str().map(PathBuf::from),
+        fs::canonicalize(world.system("first")).ok(),
+        "the switch left didn't keep what ran before it"
+    );
+    // The daemon launchd starts again finds the switch it began unended,
+    // and makes it again with its checks rather than saying nothing
+    // changed.
+    fs::remove_file(system.join("stops-its-daemon")).unwrap();
+    world.config.kind = Kind::Darwin;
+    let (_, ending) = world.update();
+    assert!(
+        matches!(&ending, Line::Done { commit, .. } if *commit == head),
+        "the switch the daemon left wasn't made again: {ending:?}"
+    );
+    assert!(
+        !world.config.state.join("switching.json").exists(),
+        "the switch made again left its marker"
+    );
+}
+
+#[test]
+fn a_macs_failed_activation_goes_back_keeping_what_it_said() {
+    // A Mac's activation writes to a log, which its switch back writes to
+    // as well, after it.
+    let mut world = World::new();
+    world.config.kind = Kind::Darwin;
+    let one = world.signed("one");
+    let first = world.system(&one);
+    world.update();
+    let two = world.signed("two");
+    let system = world.system(&two);
+    fs::write(system.join("breaks"), "").unwrap();
+    let (_, ending) = world.update();
+    let Line::Failed { why, .. } = ending else {
+        panic!("a broken activation didn't fail: {ending:?}");
+    };
+    assert!(why.contains("went back"), "{why}");
+    assert_eq!(world.running(), first, "it didn't go back: {why}");
+    let log = world.read("state/activation.log");
+    assert!(
+        log.contains("activation failed"),
+        "the switch back cleared what the failed one said: {log}"
+    );
+    assert!(
+        log.rfind("setting up launchd services...") > log.find("activation failed"),
+        "the switch back said nothing after the failed one: {log}"
+    );
+}
+
+#[test]
+fn a_switch_its_daemon_left_goes_back_to_what_ran_before_it() {
+    // A daemon stopped mid-switch to one, whose activation ran on alone,
+    // so one was never checked; a broken switch after goes back past it.
+    let mut world = World::new();
+    world.config.kind = Kind::Darwin;
+    let one = world.signed("one");
+    let left = world.system(&one);
+    world.update();
+    let first = world.system("first");
+    fs::write(
+        world.config.state.join("switching.json"),
+        serde_json::json!({ "system": left, "previous": first }).to_string(),
+    )
+    .unwrap();
+    let two = world.signed("two");
+    fs::write(world.system(&two).join("breaks"), "").unwrap();
+    let (_, ending) = world.update();
+    assert!(
+        matches!(&ending, Line::Failed { why, .. } if why.contains("went back")),
+        "a broken activation didn't go back: {ending:?}"
+    );
+    assert_eq!(
+        world.running(),
+        first,
+        "it went back to the system the left switch never checked"
+    );
+    assert!(
+        !world.config.state.join("switching.json").exists(),
+        "going back left the switch marked unended"
+    );
+}
+
+#[test]
+fn a_macs_activation_waits_for_one_still_holding_its_log() {
+    // An activation a stopped daemon left still runs, so the one its
+    // restarted daemon begins waits for it rather than running beside it.
+    use std::os::fd::AsRawFd;
+    let mut world = World::new();
+    world.config.kind = Kind::Darwin;
+    let one = world.signed("one");
+    let system = world.system(&one);
+    let log = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(world.config.state.join("activation.log"))
+        .unwrap();
+    assert_eq!(
+        unsafe { libc::flock(log.as_raw_fd(), libc::LOCK_EX) },
+        0,
+        "the test couldn't hold the log"
+    );
+    let profile = world.config.profile.clone();
+    let switched_to = fs::canonicalize(&system).ok();
+    let letting_go = thread::spawn(move || {
+        let by = Instant::now() + Duration::from_secs(60);
+        while fs::canonicalize(&profile).ok() != switched_to && Instant::now() < by {
+            thread::sleep(Duration::from_millis(20));
+        }
+        // A Mac's profile moves just before activation begins, which with
+        // nothing waiting writes to the log within this.
+        thread::sleep(ACTIVATION_BEGINS);
+        let written = log.metadata().unwrap().len();
+        drop(log);
+        written
+    });
+    let (_, ending) = world.update();
+    assert_eq!(
+        letting_go.join().unwrap(),
+        0,
+        "the activation wrote to its log while another held it"
+    );
+    assert!(
+        matches!(&ending, Line::Done { commit, .. } if *commit == one),
+        "{ending:?}"
+    );
+    assert_eq!(world.running(), system);
+}
+
+/// How long a switch, marked begun, takes at most to begin activating.
+const ACTIVATION_BEGINS: Duration = Duration::from_secs(2);
+
+#[test]
+fn a_macs_going_back_cut_off_is_finished_not_switched_again() {
+    // Going back from a broken switch reloads a Mac's daemon as surely as
+    // the switch did, and cut off it left its failure unsaid; switching
+    // again would only flip between the two.
+    let mut world = World::new();
+    world.config.kind = Kind::Darwin;
+    let one = world.signed("one");
+    let broken = world.system(&one);
+    fs::write(broken.join("breaks"), "").unwrap();
+    let first = fs::canonicalize(world.system("first")).unwrap();
+    // The broken system's activation may have finished before its daemon
+    // was cut off, so it runs.
+    fs::remove_file(&world.config.current).unwrap();
+    std::os::unix::fs::symlink(&broken, &world.config.current).unwrap();
+    fs::write(
+        world.config.state.join("switching.json"),
+        serde_json::json!({
+            "system": broken,
+            "previous": first,
+            "failed": "its health check failed",
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let (_, ending) = world.update();
+    assert!(
+        matches!(&ending, Line::Failed { why, .. }
+            if why.contains("its health check failed") && why.contains("went back")
+                && why.contains("making again")),
+        "going back cut off wasn't finished and said: {ending:?}"
+    );
+    assert_eq!(world.running(), first, "it didn't go back");
+    assert!(
+        !world
+            .read("state/activation.log")
+            .contains("activation failed"),
+        "the broken system was switched to again"
+    );
+    assert!(
+        world
+            .read("state/activation.log")
+            .contains("setting up launchd services..."),
+        "going back wasn't made again"
+    );
+    assert!(
+        !world.config.state.join("switching.json").exists(),
+        "going back left the switch marked unended"
+    );
+}
+
+#[test]
+fn a_going_back_made_again_that_fails_keeps_why_unchanged() {
+    // Each update makes it again, so the marker's reason would otherwise
+    // grow by what each said.
+    let mut world = World::new();
+    world.config.kind = Kind::Darwin;
+    let one = world.signed("one");
+    let broken = world.system(&one);
+    fs::write(broken.join("breaks"), "").unwrap();
+    let first = world.system("first");
+    fs::write(first.join("breaks"), "").unwrap();
+    fs::write(
+        world.config.state.join("switching.json"),
+        serde_json::json!({
+            "system": broken,
+            "previous": fs::canonicalize(&first).unwrap(),
+            "failed": "its health check failed",
+        })
+        .to_string(),
+    )
+    .unwrap();
+    for _ in 0..2 {
+        let (_, ending) = world.update();
+        assert!(
+            matches!(&ending, Line::Failed { why, .. } if why.contains("going back failed too")),
+            "{ending:?}"
+        );
+    }
+    let left: serde_json::Value =
+        serde_json::from_str(&world.read("state/switching.json")).unwrap();
+    assert_eq!(
+        left["failed"], "its health check failed",
+        "the marker's reason changed as going back was made again"
+    );
+}
+
+#[test]
+fn a_broken_system_left_running_goes_back_to_the_profiles() {
+    // Activated by hand behind its profile, what runs was never checked, so
+    // a switch to it that fails goes back to the system the profile names.
+    let world = World::new();
+    let one = world.signed("one");
+    let system = world.system(&one);
+    world.update();
+    let first = world.system("first");
+    fs::remove_file(&world.config.profile).unwrap();
+    std::os::unix::fs::symlink(&first, &world.config.profile).unwrap();
+    fs::write(system.join("breaks"), "").unwrap();
+    let two = world.signed("two");
+    std::os::unix::fs::symlink(&system, world.root.join("systems").join(&two)).unwrap();
+    let (_, ending) = world.update();
+    assert!(
+        matches!(&ending, Line::Failed { why, .. } if why.contains("went back")),
+        "{ending:?}"
+    );
+    assert_eq!(world.running(), first, "it went back to the broken system");
+}
+
+#[test]
+fn a_failed_going_back_keeps_its_switch_marked() {
+    // The next update finishes going back, so what it goes back to, and
+    // why, outlive this one.
+    let world = World::new();
+    let one = world.signed("one");
+    let system = world.system(&one);
+    world.update();
+    fs::write(system.join("breaks"), "").unwrap();
+    let two = world.signed("two");
+    fs::write(world.system(&two).join("breaks"), "").unwrap();
+    let (_, ending) = world.update();
+    assert!(
+        matches!(&ending, Line::Failed { why, .. } if why.contains("going back failed too")),
+        "{ending:?}"
+    );
+    let left: serde_json::Value =
+        serde_json::from_str(&world.read("state/switching.json")).unwrap();
+    assert_eq!(
+        left["previous"].as_str().map(PathBuf::from),
+        fs::canonicalize(&system).ok(),
+        "a failed going back lost where it went back to"
+    );
+    assert!(
+        left["failed"].is_string(),
+        "it lost why the switch failed: {left}"
+    );
+}
+
+#[test]
+fn a_marker_that_wont_read_still_switches_again() {
+    let world = World::new();
+    let one = world.signed("one");
+    let system = world.system(&one);
+    world.update();
+    fs::write(world.config.state.join("switching.json"), "{").unwrap();
+    let two = world.signed("two");
+    std::os::unix::fs::symlink(&system, world.root.join("systems").join(&two)).unwrap();
+    let (_, ending) = world.update();
+    assert!(
+        matches!(&ending, Line::Done { commit, .. } if *commit == two),
+        "a marker that won't read was taken as none: {ending:?}"
+    );
+    assert!(
+        !world.config.state.join("switching.json").exists(),
+        "the marker that won't read was kept, to switch again every update"
+    );
+}
+
+#[test]
+fn a_specialisation_going_back_leaves_the_profile_at_its_system() {
+    // A specialisation's own system holds none, so a failed switch goes
+    // back to the system it belongs to, which the machine boots.
+    let world = World::new();
+    let one = world.signed("one");
+    let system = world.system(&one);
+    world.update();
+    let docked = system.join("specialisation/docked");
+    fs::create_dir_all(&docked).unwrap();
+    fs::remove_file(world.root.join("running")).unwrap();
+    std::os::unix::fs::symlink(&docked, world.root.join("running")).unwrap();
+    let two = world.signed("two");
+    fs::write(world.system(&two).join("breaks"), "").unwrap();
+    let (_, ending) = world.update();
+    assert!(
+        matches!(&ending, Line::Failed { why, .. } if why.contains("went back")),
+        "{ending:?}"
+    );
+    assert_eq!(
+        fs::canonicalize(world.booting()).unwrap(),
+        fs::canonicalize(&system).unwrap(),
+        "going back pointed the profile at a specialisation"
+    );
+}
+
+#[test]
+fn a_machine_running_a_specialisation_of_main_switches_nothing() {
+    // NixOS runs a specialisation in its system's stead when switched to
+    // one, so the running system is that, not what main builds.
+    let world = World::new();
+    let one = world.signed("one");
+    let system = world.system(&one);
+    world.update();
+    let docked = system.join("specialisation/docked");
+    fs::create_dir_all(&docked).unwrap();
+    fs::remove_file(world.root.join("running")).unwrap();
+    std::os::unix::fs::symlink(&docked, world.root.join("running")).unwrap();
+    let two = world.signed("two");
+    std::os::unix::fs::symlink(&system, world.root.join("systems").join(&two)).unwrap();
+    let (_, ending) = world.update();
+    assert!(
+        matches!(&ending, Line::Unchanged { commit, .. } if *commit == two),
+        "a machine in a specialisation was switched: {ending:?}"
+    );
+    assert_eq!(world.running(), docked, "it left the specialisation");
 }
 
 #[test]
@@ -1229,6 +1591,7 @@ fn asks_while_an_update_runs_join_it() {
             })
         })
         .collect();
+    // Both askers join the update's run within this.
     thread::sleep(std::time::Duration::from_millis(300));
     // While it runs, what it's doing is kept for another program to see.
     let running: Line =
@@ -3748,6 +4111,31 @@ fn the_grant_switches_what_waited_for_it_though_main_moved_on() {
     assert_eq!(world.builds(), builds, "it built nothing again");
     // The next ask takes the newer head as ever.
     assert!(matches!(world.update().1, Line::Refused { .. }));
+}
+
+#[test]
+fn a_grant_whose_system_left_the_store_builds_again() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "old");
+    let one = world.signed("one");
+    let system = world.system(&one);
+    daemon_unit(&system, "new");
+    assert!(
+        matches!(world.update().1, Line::Refused { .. }),
+        "a switch restarting a held daemon didn't wait for a hold"
+    );
+    // Collected while the hold was arranged, the system that waited is
+    // built again rather than switched to where it no longer is.
+    let waiting = world.config.state.join("waiting.json");
+    let mut kept: serde_json::Value =
+        serde_json::from_str(&world.read("state/waiting.json")).unwrap();
+    kept["system"] = world.root.join("collected").display().to_string().into();
+    fs::write(&waiting, kept.to_string()).unwrap();
+    let builds = world.builds();
+    fs::write(world.root.join("given"), "").unwrap();
+    assert_eq!(world.update().1, done(&one));
+    assert_eq!(world.running(), system);
+    assert_eq!(world.builds(), builds + 1, "it didn't build again");
 }
 
 #[test]

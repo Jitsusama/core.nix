@@ -1021,6 +1021,39 @@ pub fn current(config: &Config) -> Option<PathBuf> {
     fs::canonicalize(&config.current).ok()
 }
 
+/// Whether the machine runs `built`, or one of its specialisations, which
+/// NixOS runs in its stead when the machine was switched to one.
+pub fn runs(config: &Config, built: &Path) -> bool {
+    let Some(current) = current(config) else {
+        return false;
+    };
+    fs::canonicalize(built).is_ok_and(|built| built == current)
+        || fs::read_dir(built.join("specialisation")).is_ok_and(|mut specialisations| {
+            specialisations.any(|entry| {
+                entry.is_ok_and(|entry| {
+                    fs::canonicalize(entry.path()).is_ok_and(|special| special == current)
+                })
+            })
+        })
+}
+
+/// The system to go back to from a switch begun now: what runs, or, when
+/// that's a specialisation of what the profile names, the profile's, since
+/// a specialisation's own system holds none and booting it would lose
+/// them.
+pub fn went_from(config: &Config) -> Option<PathBuf> {
+    match profiled(config) {
+        Some(profiled) if runs(config, &profiled) => Some(profiled),
+        _ => current(config),
+    }
+}
+
+/// The system the profile names, which the machine boots and rolls back
+/// by: one a switch that died left elsewhere than what runs.
+pub fn profiled(config: &Config) -> Option<PathBuf> {
+    fs::canonicalize(&config.profile).ok()
+}
+
 /// Points the profile at `system` and switches the machine to it live.
 ///
 /// On NixOS a new kernel, initrd or kernel parameters can only come with a

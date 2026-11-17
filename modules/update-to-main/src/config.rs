@@ -47,6 +47,12 @@ pub struct Config {
     /// The system the machine runs now, which a switch moves only once its
     /// activation is through, after the profile: a switch that dies between
     /// the two leaves the profile naming a system nothing activated.
+    /// `/run/current-system` unless given, so a binary handed a config
+    /// written before it, as a switch's restart may do, still starts. No
+    /// system's module writes it, since a binary from before it refuses a
+    /// config naming it, and a Mac's daemon that a switch reloads runs the
+    /// old binary until activation is through.
+    #[serde(default = "current_system")]
     pub current: PathBuf,
     /// The signatures a commit may carry to be built.
     pub signers: Signers,
@@ -172,6 +178,10 @@ pub struct Batches {
 
 fn meminfo() -> PathBuf {
     PathBuf::from("/proc/meminfo")
+}
+
+fn current_system() -> PathBuf {
+    PathBuf::from("/run/current-system")
 }
 
 /// Daemons whose restart waits for a hold: whoever asks puts the machine's

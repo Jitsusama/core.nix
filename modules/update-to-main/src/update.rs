@@ -191,8 +191,7 @@ fn run(
     // Heads that moved without moving the system, such as a merge of
     // another machine's files, switch nothing, and so restart nothing a
     // switch would.
-    if system::current(config).is_some() && system::current(config) == fs::canonicalize(&built).ok()
-    {
+    if runs_wholly(config, &built) {
         if let Err(e) = remember(config, &head).and_then(|()| follows::remember(config, &followed))
         {
             return failed(Some(head), e);
@@ -368,8 +367,8 @@ fn untrusted(config: &Config, main: &Repo<'_>, last: Option<&str>, head: &str) -
 fn waited(config: &Config) -> Option<Waiting> {
     let text = fs::read_to_string(waiting_file(config)).ok()?;
     let waiting: Waiting = serde_json::from_str(&text).ok()?;
-    let system = fs::canonicalize(&waiting.system).ok()?;
-    (system::current(config) != Some(system)).then_some(waiting)
+    fs::canonicalize(&waiting.system).ok()?;
+    (!system::runs(config, &waiting.system)).then_some(waiting)
 }
 
 /// Switches to `built`, main's `head` with its inputs at `followed`, and
@@ -382,13 +381,132 @@ fn switch(
     head: String,
     followed: follows::Followed,
 ) -> Line {
-    let previous = system::current(config);
+    // After a switch its daemon left, what runs was never checked, so a
+    // switch now goes back, if it must, to what ran before that one
+    // began, whatever main builds since.
+    let previous = match begun(config) {
+        Some(Begun {
+            system: left,
+            previous: Some(previous),
+            failed: Some(why),
+        }) if fs::canonicalize(&left).ok() == fs::canonicalize(built.system).ok() => {
+            // Going back from this very system didn't finish, cut off as
+            // a Mac's is when going back reloads its daemon too, or
+            // failed: it's made again, not the broken switch.
+            let mut failure = going_back(config, built.system, Failure::new(why), Some(previous));
+            failure
+                .why
+                .push_str(", making again a going back that didn't finish");
+            return failed(last, failure);
+        }
+        Some(left) => {
+            eprintln!(
+                "the switch to {} was left unended, so this one goes back, if it must, to what \
+                 ran before it",
+                left.system.display()
+            );
+            left.previous
+        }
+        None => {
+            if begun_file(config).exists() {
+                eprintln!(
+                    "{} won't read, so this switch goes back, if it must, to what runs",
+                    begun_file(config).display()
+                );
+            }
+            system::went_from(config)
+        }
+    };
+    // What runs may be what was built, unchecked, as when the profile was
+    // left behind it; going back there would keep a broken system, so a
+    // switch goes back to what the profile names instead.
+    let other = |system: &std::path::PathBuf| {
+        fs::canonicalize(system).ok() != fs::canonicalize(built.system).ok()
+    };
+    let previous = previous
+        .filter(other)
+        .or_else(|| system::profiled(config).filter(other));
+    let begun = Begun {
+        system: built.system.to_path_buf(),
+        previous: previous.clone(),
+        failed: None,
+    };
+    if let Err(failure) = begin(config, &begun) {
+        return failed(last, failure);
+    }
+    switch_from(config, built, last, head, followed, previous)
+}
+
+/// Whether the machine runs `built` as a switch to it leaves it: running
+/// it, the profile naming it, and no switch left unended. Short of any,
+/// the switch is made again.
+fn runs_wholly(config: &Config, built: &std::path::Path) -> bool {
+    let system = fs::canonicalize(built).ok();
+    system.is_some()
+        && system::runs(config, built)
+        && system::profiled(config) == system
+        && !begun_file(config).exists()
+}
+
+/// A switch begun and not yet ended: what it switches to, for whoever
+/// reads the file, and what ran before it. One left behind is a daemon's
+/// that stopped mid-switch, as a Mac's does when activation reloads it;
+/// its activation runs on and may finish the switch alone, so the next
+/// update makes it again, with its health checks, rather than finding
+/// the system running and done. It's ended once the switch is checked,
+/// or once going back from it worked.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Begun {
+    system: std::path::PathBuf,
+    previous: Option<std::path::PathBuf>,
+    /// Why the switch failed, once going back from it began, so going
+    /// back cut off is finished rather than the switch made again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    failed: Option<String>,
+}
+
+fn begun_file(config: &Config) -> std::path::PathBuf {
+    config.state.join("switching.json")
+}
+
+/// The switch a daemon began and never ended, if one did.
+fn begun(config: &Config) -> Option<Begun> {
+    serde_json::from_str(&fs::read_to_string(begun_file(config)).ok()?).ok()
+}
+
+/// Marks `begun` as begun, written whole or not at all.
+fn begin(config: &Config, begun: &Begun) -> Result<(), Failure> {
+    let file = begun_file(config);
+    let writing = file.with_extension("json.new");
+    let said = |e: std::io::Error| Failure::new(format!("{}: {e}", file.display()));
+    let text = serde_json::to_string(begun).map_err(|e| Failure::new(e.to_string()))?;
+    fs::write(&writing, text).map_err(said)?;
+    fs::rename(&writing, &file).map_err(said)
+}
+
+fn end_switch(config: &Config) {
+    let _ = fs::remove_file(begun_file(config));
+}
+
+/// Switches to `built` as `switch` says, going back to `previous`.
+fn switch_from(
+    config: &Config,
+    built: &system::Built,
+    last: Option<String>,
+    head: String,
+    followed: follows::Followed,
+    previous: Option<std::path::PathBuf>,
+) -> Line {
     // Whatever waited for a hold is older than what switches now.
     let _ = fs::remove_file(waiting_file(config));
     let switched = system::switch(config, built.system)
         .and_then(|switched| system::healthy(config).map(|()| switched));
     match switched {
         Ok(mut switched) => {
+            // Ended before the head is remembered, so a daemon that dies
+            // between the two leaves the head to build again, not a
+            // checked switch marked unended.
+            end_switch(config);
             if let Err(e) =
                 remember(config, &head).and_then(|()| follows::remember(config, &followed))
             {
@@ -417,23 +535,46 @@ fn switch(
                 followed,
             }
         }
-        Err(mut failure) => {
-            match previous {
-                Some(previous) => match system::go_back(config, &previous) {
-                    Ok(()) => failure
-                        .why
-                        .push_str("; the machine went back to what it ran"),
-                    Err(back) => {
-                        failure.why.push_str("; going back failed too: ");
-                        failure.why.push_str(&back.why);
-                        failure.lines.extend(back.lines);
-                    }
-                },
-                None => failure.why.push_str("; there was no system to go back to"),
-            }
-            failed(last, failure)
+        Err(failure) => failed(last, going_back(config, built.system, failure, previous)),
+    }
+}
+
+/// Goes back from `system`, whose switch failed as `failure` says, to
+/// `previous`, saying how that went. Going back is marked begun first,
+/// so one its daemon is cut off in, as a Mac's going back can reload it
+/// as surely as going forward, is finished by the next update.
+fn going_back(
+    config: &Config,
+    system: &std::path::Path,
+    mut failure: Failure,
+    previous: Option<std::path::PathBuf>,
+) -> Failure {
+    let Some(previous) = previous else {
+        failure.why.push_str("; there was no system to go back to");
+        return failure;
+    };
+    let begun = Begun {
+        system: system.to_path_buf(),
+        previous: Some(previous.clone()),
+        failed: Some(failure.why.clone()),
+    };
+    if let Err(unmarked) = begin(config, &begun) {
+        eprintln!("{}", unmarked.why);
+    }
+    match system::go_back(config, &previous) {
+        Ok(()) => {
+            end_switch(config);
+            failure
+                .why
+                .push_str("; the machine went back to what it ran");
+        }
+        Err(back) => {
+            failure.why.push_str("; going back failed too: ");
+            failure.why.push_str(&back.why);
+            failure.lines.extend(back.lines);
         }
     }
+    failure
 }
 
 /// The commit the machine last switched to, when it has.

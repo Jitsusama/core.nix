@@ -81,7 +81,6 @@ in
       ended = "/var/run/update-to-main.last.json";
       running = "/var/run/update-to-main.running.json";
       profile = "/nix/var/nix/profiles/system";
-      current = "/run/current-system";
       # A Mac boots no NixOS system, says its power through pmset, and
       # keeps no CPU pressure, so nothing it builds elsewhere builds here.
       booted = "/var/empty";

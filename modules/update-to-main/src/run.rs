@@ -300,7 +300,12 @@ where
 /// written to `log` rather than to pipes, so it outlives this process: a
 /// Mac's activation reloads the daemon running it when the daemon's own
 /// definition changed, and on 17 November one died writing to the pipes
-/// the stopped daemon had read, before it moved the running system.
+/// the stopped daemon had read, before it moved the running system. The
+/// command holds a lock on the log for as long as it runs, so one a
+/// stopped daemon left is waited for, not run beside; and each adds to
+/// the log rather than clearing it, so a switch back keeps what the
+/// failed switch said, and a log past `LOG_MOST` bytes keeps its last
+/// `LOG_KEPT`.
 pub fn logged<I, S>(command: Command, what: &str, args: I, log: &Path) -> Result<String, Failure>
 where
     I: IntoIterator<Item = S>,
@@ -309,12 +314,76 @@ where
     ran(command, what, args, Streams::Logged(log))
 }
 
+/// How long a log `logged` writes may grow before it's cut back to its
+/// last `LOG_KEPT` bytes, more than a switch and its switch back say.
+const LOG_MOST: u64 = 1 << 20;
+const LOG_KEPT: u64 = 1 << 16;
+
+/// How long a command `logged` runs waits for one an earlier daemon left
+/// holding its log, far longer than a Mac's activation takes: past it,
+/// what holds the log is taken for something activation left running,
+/// which inherited the log as it would its output, and the command runs
+/// without the lock, saying so, rather than every switch failing while
+/// that lives.
+const LOCK_WAITS_AT_MOST: Duration = Duration::from_mins(30);
+
 /// Where a command's streams go: to pipes this process reads, with what
 /// it gives taking the error stream too or not, or both to a file.
 #[derive(Clone, Copy)]
 enum Streams<'a> {
     Piped { errors_too: bool },
     Logged(&'a Path),
+}
+
+/// `log` opened to add to and locked, once no command holds it, with
+/// where this command's part of it begins. A stop while it waits ends
+/// the wait; past `LOCK_WAITS_AT_MOST` it runs on unlocked.
+fn locked(log: &Path, what: &str) -> Result<(fs::File, u64), Failure> {
+    use std::io::{Seek, SeekFrom, Write};
+    use std::os::fd::AsRawFd;
+    let opened = |e: std::io::Error| Failure::new(format!("{what}: {}: {e}", log.display()));
+    let began = Instant::now();
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .read(true)
+        .open(log)
+        .map_err(opened)?;
+    let mut told = false;
+    // SAFETY: flock only reads the descriptor, which `file` keeps open.
+    while unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        let error = std::io::Error::last_os_error();
+        if error.raw_os_error() != Some(libc::EWOULDBLOCK) {
+            return Err(opened(error));
+        }
+        if stopping() {
+            return Err(Failure::new(format!("{what}: the update was stopped")));
+        }
+        if began.elapsed() > LOCK_WAITS_AT_MOST {
+            eprintln!(
+                "{what}: {} has been held for {} minutes, so this runs without waiting for it",
+                log.display(),
+                LOCK_WAITS_AT_MOST.as_secs() / 60
+            );
+            break;
+        }
+        if !told {
+            eprintln!("{what}: waiting for what an earlier one still runs");
+            told = true;
+        }
+        thread::sleep(Duration::from_secs(1));
+    }
+    let mut length = file.metadata().map_err(opened)?.len();
+    if length > LOG_MOST {
+        let mut kept = Vec::new();
+        file.seek(SeekFrom::Start(length - LOG_KEPT))
+            .and_then(|_| file.read_to_end(&mut kept))
+            .and_then(|_| file.set_len(0))
+            .and_then(|()| file.write_all(&kept))
+            .map_err(opened)?;
+        length = kept.len() as u64;
+    }
+    Ok((file, length))
 }
 
 fn ran<I, S>(mut command: Command, what: &str, args: I, streams: Streams) -> Result<String, Failure>
@@ -326,17 +395,20 @@ where
     // started too. Its input is what the caller gave, or the daemon's own,
     // which systemd and launchd make empty.
     command.args(args).process_group(0);
+    let mut began = 0;
     match streams {
         Streams::Piped { .. } => {
             command.stdout(Stdio::piped()).stderr(Stdio::piped());
         }
         Streams::Logged(log) => {
-            let opened =
-                |e: std::io::Error| Failure::new(format!("{what}: {}: {e}", log.display()));
-            let file = fs::File::create(log).map_err(opened)?;
-            command
-                .stdout(file.try_clone().map_err(opened)?)
-                .stderr(file);
+            // The command's copies of the descriptor hold the lock, so it
+            // lasts as long as the command does, even past this process.
+            let (file, at) = locked(log, what)?;
+            let copy = file
+                .try_clone()
+                .map_err(|e| Failure::new(format!("{what}: {}: {e}", log.display())))?;
+            command.stdout(copy).stderr(file);
+            began = at;
         }
     }
     let me = thread::current().id();
@@ -373,7 +445,10 @@ where
         Streams::Logged(log) => (
             fs::read(log).map_or_else(
                 |e| format!("{}: {e}", log.display()),
-                |read| String::from_utf8_lossy(&read).into_owned(),
+                |read| {
+                    let began = usize::try_from(began).map_or(read.len(), |b| b.min(read.len()));
+                    String::from_utf8_lossy(&read[began..]).into_owned()
+                },
             ),
             String::new(),
             true,
@@ -680,6 +755,30 @@ fn is_waiting(line: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_log_past_its_most_keeps_its_last_part() {
+        let folder =
+            std::env::temp_dir().join(format!("update-to-main-log-{}", std::process::id()));
+        fs::create_dir_all(&folder).unwrap();
+        let log = folder.join("activation.log");
+        let mut said = vec![b'a'; usize::try_from(LOG_MOST).unwrap()];
+        said.extend(b"the failed switch said this");
+        fs::write(&log, &said).unwrap();
+        let (file, began) = locked(&log, "activating").unwrap();
+        drop(file);
+        let kept = fs::read(&log).unwrap();
+        let _ = fs::remove_dir_all(&folder);
+        assert_eq!(
+            began, LOG_KEPT,
+            "the part a command adds begins past what was kept"
+        );
+        assert_eq!(
+            kept[..],
+            said[said.len() - usize::try_from(LOG_KEPT).unwrap()..],
+            "the log didn't keep its last part"
+        );
+    }
 
     #[test]
     fn a_build_that_goes_quiet_is_stopped() {
