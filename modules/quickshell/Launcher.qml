@@ -5069,7 +5069,7 @@ Scope {
         // drawn and the ask let go by then: a kept Super+N timed its fill
         // as "→ On Screen" (a gate, 2026-11-16).
         if (openAsked < 0 && !fillingPlace)
-            keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected);
+            keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true);
         return went();
     }
 
@@ -5910,23 +5910,58 @@ Scope {
     readonly property bool canGoUp: held.length > 1
         || (held.length === 1 && held[0].row.from?.collection?.outermost !== true)
 
-    function back() {
+    // `pressedOut` when - asked for it, the one way out that's timed: a
+    // daemon's answer, Escape out of an ask and :q go back too, and were
+    // no key of Joel's or are timed as their own.
+    function back(pressedOut) {
         if (held.length === 0)
             return;
         // A thing landed in from a search goes back to the search, past the
         // collection it was found in.
         const steps = held[held.length - 1].through && held.length > 1 ? 2 : 1;
         traces.began("back", { from: held[held.length - 1].key ?? "", depth: held.length });
+        // Timed to its frame as a step in is, named by the arrow and the
+        // place left: Joel's - out of Agents and For You took 61 to 67 ms
+        // to their frames, 40 to 48 of it its own work, with no line timing
+        // the step (his journal, 2026-11-16 18:11:04 and 19:40:19). Words
+        // asked for are never timed (Trials.qml), so nor is a step out of
+        // an ask.
+        const timed = pressedOut === true && !asking;
+        const began = Date.now();
+        const heard = KeyTimes.now();
+        const pressed = KeyTimes.pressed();
+        const collected = Heap.collected();
+        const leaving = held[held.length - 1].row;
         const left = held[held.length - steps];
         // A talk's words put away are kept at once, not a moment later.
         if (left.row.draft)
             drafts.flush();
         held = held.slice(0, -steps);
+        const pushed = Date.now();
         // A step back onto one whose line holds its words puts them back.
         const onto = held.length > 0 ? held[held.length - 1].row : null;
-        restart(onto?.words?.() ?? left.typed);
+        const words = onto?.words?.() ?? left.typed;
+        const stepTimed = timed && openAsked < 0 && !fillingPlace;
+        const wordsBack = words !== prompt.text;
+        if (stepTimed && !wordsBack)
+            searchParts = null;
+        // Words put back in the field search as a key's do, so the key
+        // the field times for them is this step, named and begun as one,
+        // rather than the words alone and timed only from the field.
+        stepOut = stepTimed && wordsBack
+            ? { text: `\u2190 ${leaving.name}`, began, heard, pressed, collected } : null;
+        try {
+            restart(words);
+        } finally {
+            stepOut = null;
+        }
         placeCaret(onto);
         reselect(left);
+        if (!stepTimed || wordsBack)
+            return;
+        searchParts = trials.stepped(searchParts, { began, made: began, pushed,
+            opened: pushed, ended: Date.now(), making: {} });
+        keyTimed(`\u2190 ${leaving.name}`, began, heard, pressed, collected, true);
     }
 
     // A step whose line holds its words, as a save's name, says where the
@@ -6400,8 +6435,11 @@ Scope {
     // its line says how much of the key was the collector's: Joel's
     // slowest keys waited on it, traced in the lab (2026-11-12), and his
     // own line says which.
-    function keyTimed(typed, began, heard, pressed, collected) {
+    // `stepped` when it's a step in or out, which its line says as it
+    // is presented, rather than typed words that look like one.
+    function keyTimed(typed, began, heard, pressed, collected, stepped) {
         keysDrawing = Pacing.refreshedActs(keysDrawing, [{ text: typed, began, collected,
+            step: stepped === true ? typed : "",
             searched: Date.now() - began, parts: searchParts, begun: null,
             rendered: null, pressed: pressed > 0 ? pressed : heard, heard,
             done: KeyTimes.now() }]);
@@ -7087,8 +7125,15 @@ Scope {
     // timed on its own.
     property var keysDue: []
     property bool searchedThisTurn: false
-    function searchSoon(text, began, heard, pressed) {
-        keysDue = keysDue.concat([{ text, began, heard, pressed, collected: Heap.collected() }]);
+    // The step out whose words the field is being given back, timed as
+    // the key the field's change makes (back).
+    property var stepOut: null
+    function searchSoon(text, began, heard, pressed, out) {
+        // Its text stays the field's, which the next key reads as what
+        // the field held before it (Awaited.before).
+        keysDue = keysDue.concat([out ? { text, began: out.began, heard: out.heard,
+            pressed: out.pressed, collected: out.collected, step: out.text }
+            : { text, began, heard, pressed, collected: Heap.collected(), step: "" }]);
         if (searchedThisTurn)
             return;
         searchedThisTurn = true;
@@ -7127,8 +7172,8 @@ Scope {
             Object.assign(searchParts, Awaited.waitedOf(waited, Date.now(), answersWaitedFor,
                 waited.timedOut === true));
         if (!asking)
-            due.forEach(key => keyTimed(key.text, key.began, key.heard, key.pressed,
-                key.collected));
+            due.forEach(key => keyTimed(key.step || key.text, key.began, key.heard, key.pressed,
+                key.collected, !!key.step));
     }
 
     // How long a key's list waits for the sources whose search awaits a
@@ -10072,7 +10117,9 @@ Scope {
     // couldn't be held again (2026-11-14).
     function homeRescued() {
         if (homeKept.length === 0) {
-            if (openingsDrawn > 0)
+            // The first since a start too, once the pass has ended, which
+            // keeps home for it: one it left unheld opened whole unsaid.
+            if (openingsDrawn > 0 || warmingDone)
                 console.warn("launcher: home wasn't held as its chord came, and none was"
                     + ` kept: ${homeUnheld}`);
             return false;
@@ -10147,6 +10194,8 @@ Scope {
     // configuration loads, rather than six: his chord 3 s after one found
     // nothing kept (10:16).
     property int warmed: -1
+    // Whether the pass has had its last turn, which keeps home.
+    property bool warmingDone: false
     property real warmedTook: 0
     // Where the pass's time went between its turns, said as it ends: at a
     // switch its 83 turns made rows for 350 ms but ended 10 s after the
@@ -10239,6 +10288,13 @@ Scope {
             keeping = false;
         }
         keepHome();
+        warmingDone = true;
+        // Home not held as the pass ends says why, since its first chord
+        // is then made whole with nothing saying so: Joel's first after
+        // the 20:19 switch took 193 ms to its frame, though this pass had
+        // said home was kept (2026-11-16).
+        if (!homeHeld)
+            console.warn(`launcher: home wasn't held as the shell started: ${homeUnheld}`);
         warmedTook += KeyTimes.now() - began;
         const rows = Object.values(tallies()).reduce((sum, each) => sum + each, 0);
         console.info(`launcher: home and ${Object.keys(placesKept).length} places kept as the`
@@ -11066,9 +11122,12 @@ Scope {
         const times = surface.FramePresentation.timesOf(key.frame ?? 0);
         // The screen it was shown on and niri's frame there, so a day
         // docked to a 60 Hz screen reads as that (Presented.screensSaid).
+        // A step in or out says which, by its arrow and place, so a check
+        // finds it however fast it was; typed words are never said here.
         const one = { from, at, heard: key.heard, begun: key.begun, onRow: key.onRow,
             synchronized: times.synchronized ?? null, swapped: times.swapped ?? null,
-            screen: root.screenHere?.name ?? "", refresh: times.refresh ?? 0 };
+            screen: root.screenHere?.name ?? "", refresh: times.refresh ?? 0,
+            step: key.step ?? "" };
         keysPresented = keysPresented.concat([one]).slice(-keysKept);
     }
 
@@ -11974,7 +12033,7 @@ Scope {
                             root.drafted();
                             root.lettersTyped();
                             root.searchSoon(text, Date.now(), KeyTimes.now(),
-                                KeyTimes.pressed());
+                                KeyTimes.pressed(), root.stepOut);
                         }
                         // Return, as the vi-paradigm spec's table has it:
                         // words asked for are handed over; a thing whose
@@ -12089,7 +12148,7 @@ Scope {
                                 root.say([[root.hintKey("out"),
                                     (Words.field.hints ?? {}).notHere ?? ""]]);
                             else
-                                root.back();
+                                root.back(true);
                         }
                         onOperated: (act, count, motion) => root.operated(act, count, motion)
                         onLettered: (act, count, letter) => {

@@ -46,6 +46,9 @@ SEEING_ENDS = timedelta(seconds=4)
 # How long a place's members take to say their first answers once it's stepped into, each of
 # which makes the step again: a change told after it is said only by the row it moves.
 SETTLED = timedelta(seconds=3)
+# How long no key is said presented before every key pressed counts as shown: a key's frame
+# comes within a few, and its record a moment after.
+PRESENTED_STILL = timedelta(milliseconds=500)
 # How long before its line a chord is said to have run, well past any opening's own time here.
 CHORD_AGO = timedelta(seconds=2)
 # How long the shell is held stopped just after a chord, well past any opening's own time here.
@@ -4654,6 +4657,69 @@ def test_a_return_sent_as_it_shuts_takes_no_step(shell: Shell) -> None:
     said = shell.log.read_bytes()[since:].decode(errors="replace")
     stepped = [line for line in said.splitlines() if '"\u2192 ' in line]
     assert stepped == [], f"the shut launcher took a step: {stepped}"
+
+
+def test_a_step_out_is_timed_to_its_frame_as_a_step_in_is(shell: Shell) -> None:
+    """- out of a place is timed to its frame, named by the arrow and the place it left.
+
+    Joel's - out of Agents and For You took 61 to 67 ms to their frames, 40 to 48 of it the key's
+    own work, and only a source's change beside it said so: no line timed the step itself, so
+    none said where its time went (his journal, 2026-11-16 18:11:04 and 19:40:19).
+    """
+    shell.take_notices()
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: bool(shown["held"]))
+    # Gone into with nothing typed, so - puts no words back.
+    depth = len(shell.showing()["held"])
+    presented = minus_presented(shell, lambda shown: len(shown["held"]) == depth - 1)
+    shell.close_launcher()
+    steps = [one.get("step") for one in presented]
+    # One press, timed once: a second key beside it would count the step twice.
+    assert len(steps) == 1, f"- out of the notices wasn't timed once: {presented}"
+    assert str(steps[0]).startswith("\u2190 "), f"- wasn't timed as a step out: {presented}"
+
+
+def test_a_step_out_putting_words_back_is_timed_as_the_step(shell: Shell) -> None:
+    """- back onto what was typed is timed once, as the step out and the place it left.
+
+    The words it puts back search as a key's do, and were timed as those words alone, from the
+    field's change, naming no place and leaving out the step's own work (a council, 2026-11-17).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("programs", selecting="Programs")
+    shell.step_in()
+    presented = minus_presented(shell, lambda shown: shown["held"] == [] and shown["typed"] != "")
+    shell.close_launcher()
+    steps = [one.get("step") for one in presented]
+    assert steps == ["\u2190 Programs"], f"- out of Programs wasn't timed once as it: {presented}"
+
+
+def minus_presented(shell: Shell, out: Callable[[Json], object]) -> list[Json]:
+    """Press - from normal, wait until the launcher is `out`, and give every key presented since.
+
+    It counts from once the keys before it are all presented, a step in's a frame behind its
+    rows, and waits on past the first since, so a second timing a frame later is seen.
+    """
+    shell.normal()
+    before = len(keys_presented_settled(shell))
+    shell.send_chars("-")
+    shell.launcher_until(out)
+    return keys_presented_settled(shell)[before:]
+
+
+def keys_presented_settled(shell: Shell) -> list[Json]:
+    """Give the keys the launcher said presented, once no more have come for PRESENTED_STILL."""
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
+    still = time.monotonic()
+    while time.monotonic() - still < PRESENTED_STILL.total_seconds():
+        assert time.monotonic() < deadline, f"keys kept being presented: {presented}"
+        time.sleep(launcher_on_niri.POLL)
+        now = json.loads(shell.as_account(shell.ipc("keysPresented")))
+        if len(now) != len(presented):
+            presented, still = now, time.monotonic()
+    return cast("list[Json]", presented)
 
 
 def moved_presented(shell: Shell, written: float, deadline: float) -> list[Json]:
