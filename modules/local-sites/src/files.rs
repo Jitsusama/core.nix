@@ -199,6 +199,21 @@ mod tests {
     }
 
     #[test]
+    fn a_mounts_homes_in_the_documents_leading_out_are_refused() {
+        // The mount's homes come from the documents, which sessions write,
+        // so they're held to the documents as any other file there is.
+        let folders = folders("homes-out");
+        let homes = folders.config.documents.join("code/homes.json");
+        fs::remove_file(&homes).expect("its homes gone");
+        std::os::unix::fs::symlink(folders.top.join("secret"), homes).expect("a link");
+        assert_eq!(
+            find(&folders.config, "/code/homes.json"),
+            Found::Refused,
+            "a mount's homes reached outside the documents"
+        );
+    }
+
+    #[test]
     fn a_mount_holding_its_own_homes_answers_with_them() {
         let folders = folders("own-homes");
         fs::write(folders.top.join("code/homes.json"), "built").expect("its own homes");
