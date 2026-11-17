@@ -1261,7 +1261,10 @@ pub(crate) mod tests {
         assert_eq!(tried, Choice::Try(NEAR.into()), "the move is made");
         let slower = [desk_at(-45, Some(middling.clone()))];
         let (quiet, busy) = (resting(carried(9, 0.0)), carried(9, 0.0));
-        let some = idle(carried(9, 0.0));
+        let some = Measured {
+            room: Some(286),
+            ..idle(carried(9, 0.0))
+        };
 
         let kept = chooser.choose(start + TRIAL, (NEAR, &quiet, -34, CH6), &slower, false);
         let held = chooser.choose(start + SETTLE, (NEAR, &some, -34, CH6), &slower, false);

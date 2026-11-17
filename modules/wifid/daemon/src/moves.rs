@@ -468,9 +468,13 @@ mod tests {
             moving: Some(24),
             ..carried(30)
         };
+        let bad = Measured {
+            moving: Some(24),
+            ..carried(52)
+        };
 
         let why = tried(&on, (&resting, 5260, None), &narrow, None);
-        let failing = tried(&on, (&carried(52), 5260, None), &narrow, None);
+        let failing = tried(&on, (&bad, 5260, None), &narrow, None);
 
         let alone = "two minutes, on a narrower band, as the card moves little";
         assert!(why.ends_with(alone), "says why it left: {why}");
