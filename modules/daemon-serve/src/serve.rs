@@ -7,7 +7,8 @@
 //!
 //! Each connection is served on a thread of its own, its lines written by
 //! another, so a client that stops reading holds no other back; one with
-//! more than a few hundred lines unread is hung up on.
+//! more than a few hundred lines unread is hung up on, which is said once
+//! on standard error, for the daemon's journal.
 //!
 //! A watch may be paced, as the shut launcher paces Agents': what moves
 //! is held back by key and told at most once a pace, all of it in one
@@ -51,9 +52,11 @@ use crate::asks::{Ask, Domain, VERSION, error, place_of, trimmed};
 
 mod change;
 mod demand;
+mod hang_up;
 
 use demand::joined;
 pub use demand::{Begun, Fresh, HealthToo, Read, Wanted};
+use hang_up::{Peer, Saying, Unqueued, queue};
 
 /// How many lines a connection may have waiting to be written before
 /// it's taken as no longer reading and hung up on.
@@ -80,7 +83,8 @@ pub type Heed = Box<dyn Fn() + Send + Sync>;
 
 /// One watch a client holds.
 struct Watch {
-    connection: u64,
+    /// Its connection, as a hang-up names it.
+    peer: Arc<Peer>,
     id: Value,
     kinds: Vec<String>,
     keys: Option<Vec<String>>,
@@ -102,7 +106,7 @@ impl Watch {
     /// Whether it's the watch an ask names: on this connection, under
     /// this id, of the same records and fields.
     fn is(&self, connection: u64, asked: &Watch) -> bool {
-        self.connection == connection
+        self.peer.connection == connection
             && self.id == asked.id
             && self.kinds == asked.kinds
             && self.keys == asked.keys
@@ -166,17 +170,6 @@ impl Held {
         standing
     }
 
-    /// Hangs up on these connections, which stopped reading, and drops
-    /// their watches, answering whether any went.
-    fn hang_up(&mut self, stuck: &[u64]) -> bool {
-        for watch in &self.watches {
-            if stuck.contains(&watch.connection) {
-                let _ = watch.stream.shutdown(Shutdown::Both);
-            }
-        }
-        self.drop_watches(|watch| stuck.contains(&watch.connection))
-    }
-
     /// Drops the watches `going` holds of, answering whether any went.
     fn drop_watches(&mut self, going: impl Fn(&Watch) -> bool) -> bool {
         let before = self.watches.len();
@@ -219,6 +212,11 @@ pub struct Shared {
     health_too: OnceLock<HealthToo>,
     /// The kinds read as a get names them, and what reads them.
     read: OnceLock<(&'static [&'static str], Read)>,
+    /// What writes each hang-up's line where a case hears it, when one
+    /// says; `saying` otherwise.
+    said: OnceLock<Saying>,
+    /// What writes each hang-up's line to standard error.
+    saying: Saying,
 }
 
 fn lock(shared: &Shared) -> MutexGuard<'_, Held> {
@@ -239,6 +237,7 @@ fn now_ms() -> u64 {
 impl Shared {
     /// What serves `domain`, its own asks answered by `own`.
     pub fn new(domain: Domain, own: Own) -> Arc<Self> {
+        let saying = Saying::to(domain.name, std::io::stderr());
         Arc::new(Shared {
             domain,
             own,
@@ -257,6 +256,8 @@ impl Shared {
             begun: OnceLock::new(),
             health_too: OnceLock::new(),
             read: OnceLock::new(),
+            said: OnceLock::new(),
+            saying,
         })
     }
 
@@ -326,12 +327,12 @@ impl Shared {
             for watch in &mut held.watches {
                 if watch.due.is_some_and(|due| due <= now)
                     && let Some(line) = watch.held_back(&held.records)
-                    && watch.told.try_send(line.to_string()).is_err()
+                    && let Err(why) = queue(&watch.told, &line)
                 {
-                    stuck.push(watch.connection);
+                    stuck.push((Arc::clone(&watch.peer), why));
                 }
             }
-            self.heeded(held.hang_up(&stuck));
+            self.hang_up(held, &stuck, "a paced watch was told what it held back");
             let next = held.watches.iter().filter_map(|watch| watch.due).min();
             guard = match next {
                 Some(due) => {
@@ -419,13 +420,16 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
     // watch it asks for after is told once they've moved since, when no
     // watch was there to be told.
     let mut greeted: Option<Value> = None;
+    // What its hang-up names it by, shared with its watches and its slow
+    // asks, so whichever finds its queue full first says it, and only it.
+    let peer = Arc::new(Peer::of(connection, &hangup));
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { break };
         let asked = shared.domain.ask(&line);
         if let Ask::Own { id, said } = &asked
             && shared.is_slow(said)
         {
-            apart(shared, id, said, &told, &hangup);
+            apart(shared, (id, said), &told, &hangup, &peer);
             continue;
         }
         // The daemon's own asks are answered before the lock is taken, so
@@ -456,7 +460,7 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
             Some(own) => Some(own),
             None => match asked {
                 Ask::Get { id, keys } => Some(got(&held, &id, &keys, &read)),
-                asked => answer(shared, &mut held, asked, connection, &told, &hangup),
+                asked => answer(shared, &mut held, asked, &peer, &told, &hangup),
             },
         };
         if let (Some(answer), Some(too)) = (answer.as_mut(), too) {
@@ -476,11 +480,10 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
         // the answer it follows; one that can't be queued is hung up on, as
         // a change would hang up on it. A watch kept on has nothing to say
         // when it held nothing back.
-        let queued = lines
-            .iter()
-            .all(|line| told.try_send(line.to_string()).is_ok());
+        let queued = lines.iter().try_for_each(|line| queue(&told, line));
         drop(held);
-        if !queued {
+        if let Err(why) = queued {
+            shared.say_once(&peer, why, "it was answered");
             // Shut, not just left, since the writer holds the socket open
             // for as long as its write waits on one that never reads.
             let _ = hangup.shutdown(Shutdown::Both);
@@ -490,7 +493,7 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
             shared.watch_begun(begins);
         }
     }
-    let went = lock(shared).drop_watches(|watch| watch.connection == connection);
+    let went = lock(shared).drop_watches(|watch| watch.peer.connection == connection);
     shared.heeded(went);
 }
 
@@ -498,20 +501,19 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
 /// it's done, so nothing asked after it waits on it.
 fn apart(
     shared: &Arc<Shared>,
-    id: &Value,
-    said: &Value,
+    (id, said): (&Value, &Value),
     told: &SyncSender<String>,
     stream: &Arc<UnixStream>,
+    peer: &Arc<Peer>,
 ) {
     let (shared, told) = (Arc::clone(shared), told.clone());
     let (id, said, stream) = (id.clone(), said.clone(), Arc::clone(stream));
+    let peer = Arc::clone(peer);
     std::thread::spawn(move || {
         // One whose answer can't be queued is hung up on here, since the
         // next line it might be told may never come.
-        if told
-            .try_send(owned(&shared, &id, &said, &stream).to_string())
-            .is_err()
-        {
+        if let Err(why) = queue(&told, &owned(&shared, &id, &said, &stream)) {
+            shared.say_once(&peer, why, "a slow ask was answered");
             let _ = stream.shutdown(Shutdown::Both);
         }
     });
@@ -612,11 +614,12 @@ fn answer(
     shared: &Shared,
     held: &mut Held,
     asked: Ask,
-    connection: u64,
+    peer: &Arc<Peer>,
     told: &SyncSender<String>,
     hangup: &Arc<UnixStream>,
 ) -> Option<Value> {
     let domain = &shared.domain;
+    let connection = peer.connection;
     if let Ask::Watch {
         id,
         kinds,
@@ -627,7 +630,7 @@ fn answer(
     } = asked
     {
         let watch = Watch {
-            connection,
+            peer: Arc::clone(peer),
             id,
             kinds,
             keys,
@@ -662,7 +665,8 @@ fn answer(
         }
         Ask::Watch { .. } => unreachable!("a watch is answered above"),
         Ask::Unwatch { id } => {
-            let went = held.drop_watches(|watch| watch.connection == connection && watch.id == id);
+            let went =
+                held.drop_watches(|watch| watch.peer.connection == connection && watch.id == id);
             shared.heeded(went);
             json!({"id": id, "unwatched": true})
         }
@@ -683,7 +687,7 @@ fn answer(
 /// again by its id for other records replaces the one before.
 fn watched(domain: &Domain, held: &mut Held, watch: Watch) -> Value {
     held.watches
-        .retain(|was| !(was.connection == watch.connection && was.id == watch.id));
+        .retain(|was| !(was.peer.connection == watch.peer.connection && was.id == watch.id));
     let (kinds, keys, places) = (&watch.kinds, watch.keys.as_deref(), watch.places.as_deref());
     let records: Vec<Value> = records_of(domain, held, kinds, keys, places)
         .iter()

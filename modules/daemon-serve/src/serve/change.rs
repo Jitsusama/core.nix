@@ -3,12 +3,16 @@
 //! (`mend`), both told through `tell`.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::time::Instant;
 
 use serde_json::{Value, json};
 
-use super::{Held, Shared, Watch, lock, moved};
+use super::{Held, Peer, Shared, Unqueued, Watch, lock, moved, queue};
 use crate::asks::{Domain, tells, trimmed};
+
+/// The connections a change found stopped reading or gone, and why.
+type Stuck = Vec<(Arc<Peer>, Unqueued)>;
 
 impl Shared {
     /// Holds `records` as every record there is, and tells each watch
@@ -117,8 +121,8 @@ impl Shared {
 
     /// Hangs up on the connections `told` found stopped reading, and wakes
     /// the pace where a paced watch has something due.
-    fn answered(&self, held: &mut Held, (stuck, pacing): &(Vec<u64>, bool)) {
-        self.heeded(held.hang_up(stuck));
+    fn answered(&self, held: &mut Held, (stuck, pacing): &(Stuck, bool)) {
+        self.hang_up(held, stuck, "a watch was told what moved");
         if *pacing {
             self.paced.notify_all();
         }
@@ -138,7 +142,7 @@ impl Shared {
         before: &dyn Fn(&str) -> Option<&'a Value>,
         now: &BTreeMap<String, Value>,
         standing: Option<&Value>,
-    ) -> Option<(Vec<u64>, bool)> {
+    ) -> Option<(Stuck, bool)> {
         if changed.is_empty() && gone.is_empty() && standing.is_none() {
             return None;
         }
@@ -191,11 +195,8 @@ impl Shared {
             if let Some(sources) = standing {
                 lines.push(json!({"id": watch.id, "sources": sources}));
             }
-            if lines
-                .iter()
-                .any(|line| watch.told.try_send(line.to_string()).is_err())
-            {
-                stuck.push(watch.connection);
+            if let Err(why) = lines.iter().try_for_each(|line| queue(&watch.told, line)) {
+                stuck.push((Arc::clone(&watch.peer), why));
             }
         }
         Some((stuck, pacing))

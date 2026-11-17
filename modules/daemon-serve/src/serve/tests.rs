@@ -487,18 +487,7 @@ fn a_peered_ask_is_answered_knowing_who_asked() {
     // this test's process, which is what asked.
     shared.peered(
         &["who"],
-        Box::new(|_, stream| {
-            let fd = std::os::fd::AsRawFd::as_raw_fd(stream);
-            let mut said = std::mem::MaybeUninit::<[u32; 3]>::zeroed();
-            let mut length = 12u32;
-            // SAFETY: SO_PEERCRED fills three u32s (pid, uid, gid) into a
-            // buffer of that size, which `length` says.
-            let read =
-                unsafe { libc_getsockopt(fd, 1, 17, said.as_mut_ptr().cast(), &raw mut length) };
-            // SAFETY: zeroed, and filled when the call succeeded.
-            let [pid, _, _] = unsafe { said.assume_init() };
-            (read == 0).then(|| json!({"who": pid}))
-        }),
+        Box::new(|_, stream| hang_up::pid_of(stream).map(|pid| json!({"who": pid}))),
     );
     let answer = client.ask(&json!({"id": 1, "ask": "who"}));
     assert_eq!(
@@ -506,17 +495,6 @@ fn a_peered_ask_is_answered_knowing_who_asked() {
         json!({"id": 1, "who": std::process::id()}),
         "answered by what knows its connection, not by the plain own asks"
     );
-}
-
-unsafe extern "C" {
-    #[link_name = "getsockopt"]
-    fn libc_getsockopt(
-        fd: i32,
-        level: i32,
-        name: i32,
-        value: *mut std::ffi::c_void,
-        length: *mut u32,
-    ) -> i32;
 }
 
 #[test]
