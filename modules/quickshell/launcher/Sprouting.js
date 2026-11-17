@@ -13,6 +13,9 @@
 // word after `--`, so nothing in it reads as an option, never `--join`,
 // and a folder only when it's a whole path.
 const REALM = /^[A-Za-z0-9._-]+$/u;
+const ENDING_SLASHES = /\/+$/u;
+const FOLDER_ENDING_SLASHES = /(?<kept>.)\/+$/u;
+const SAID_BY_MYCELIUM = /^mycelium:\s*/u;
 
 // The words that ask `realm`'s node to sprout `text`, trimmed, in `folder`
 // when one is given, or null when nothing is said, no realm can be asked,
@@ -23,7 +26,7 @@ function command(realm, text, folder) {
     if (said === "" || !REALM.test(String(realm ?? "")) || (where !== "" && !where.startsWith("/"))) {
         return null;
     }
-    const within = where !== "" ? ["--in", where] : [];
+    const within = where === "" ? [] : ["--in", where];
     return ["mycelium", "--realm", realm, "sprout", "-o", "json"].concat(within, ["--", said]);
 }
 
@@ -32,18 +35,17 @@ function command(realm, text, folder) {
 // as ~ as a shell says it. Home itself never, since a session begun there
 // has none of a repository's skills, nor one that isn't a whole path.
 function folders(quests, home) {
-    const homeAt = String(home ?? "").replace(/\/+$/u, "");
+    const homeAt = String(home ?? "").replace(ENDING_SLASHES, "");
     const seen = new Set();
     const found = [];
     for (const quest of quests ?? []) {
-        const folder = String(quest?.folder ?? "").replace(/(.)\/+$/u, "$1");
-        if (!folder.startsWith("/") || folder === homeAt || seen.has(folder)) {
-            continue;
+        const folder = String(quest?.folder ?? "").replace(FOLDER_ENDING_SLASHES, "$<kept>");
+        if (folder.startsWith("/") && folder !== homeAt && !seen.has(folder)) {
+            seen.add(folder);
+            const name = homeAt !== "" && folder.startsWith(`${homeAt}/`)
+                ? `~${folder.slice(homeAt.length)}` : folder;
+            found.push({ folder, name });
         }
-        seen.add(folder);
-        const name = homeAt !== "" && folder.startsWith(`${homeAt}/`)
-            ? `~${folder.slice(homeAt.length)}` : folder;
-        found.push({ folder, name });
     }
     return found;
 }
@@ -58,13 +60,13 @@ function ended(text, errors, said) {
     if (printed === "") {
         const lines = String(errors ?? "").split("\n").map(line => line.trim())
             .filter(line => line !== "");
-        const last = lines.length > 0 ? lines[lines.length - 1].replace(/^mycelium:\s*/u, "") : "";
-        return { started: false, why: last !== "" ? last : said.unanswered ?? "" };
+        const last = (lines.at(-1) ?? "").replace(SAID_BY_MYCELIUM, "");
+        return { started: false, why: last === "" ? said.unanswered ?? "" : last };
     }
     let answer;
     try {
         answer = JSON.parse(printed);
-    } catch (error) {
+    } catch (_unreadable) {
         answer = null;
     }
     const begun = answer?.Ok?.Started;

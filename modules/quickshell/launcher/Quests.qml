@@ -189,6 +189,14 @@ Provider {
         });
     }
 
+    // The open quests as `{ folder }`, each the folder the daemon holds
+    // it works in, in their order, for Start New Work's rows to say words
+    // in (Agents.qml, launcher/Sprouting.js's folders).
+    function folders() {
+        return rowsNow().filter(row => row.unfinished)
+            .map(row => ({ folder: String(ready.served(row.key)?.held?.folder ?? "") }));
+    }
+
     // What a row's acts need of its quest, from what the daemon holds
     // under its `held`.
     function questOf(served) {
