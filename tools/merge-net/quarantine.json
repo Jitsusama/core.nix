@@ -155,19 +155,6 @@
     "test": "the-margin-cat-follows-the-keys-on-niri"
   },
   {
-    "at": 1794794571,
-    "commit": "2065994cec0d46523499d9bec8c170791466e1ef",
-    "due": "2026-11-18",
-    "owner_pr": 4874,
-    "owner_session": "ZJ62K2",
-    "reason": "failed, then passed, at 2065994cec0d",
-    "subtests": [
-      "test_a_camera_video_shows_as_recording_and_captures_stop_recording_stops_it",
-      "test_the_camera_takes_a_picture_and_a_video_by_the_keys"
-    ],
-    "test": "vm-desktop-captures"
-  },
-  {
     "at": 1794811244,
     "commit": "48ff52ee67057f9326598011bc357bdcb3baf7c8",
     "due": "2026-11-18",
