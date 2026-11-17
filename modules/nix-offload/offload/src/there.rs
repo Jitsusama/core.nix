@@ -4286,16 +4286,24 @@ pub fn load_of(machine: &Nearby, scratch: &Path, ssh: &str) -> Result<Option<Loa
     let began = Instant::now();
     let answered = loop {
         match asking.try_wait() {
-            Ok(Some(_)) => break true,
+            Ok(Some(ended)) => break Some(ended),
             // Asked each tenth of a second: an idle Mac says it at once.
             Ok(None) if began.elapsed() < LOAD_PATIENCE => {
                 thread::sleep(Duration::from_millis(100));
             }
-            _ => break false,
+            _ => break None,
         }
     };
     let _ = fs::remove_file(&said);
-    if !answered {
+    // ssh ends 255 on its own failure, a refused key or no route, which
+    // is worth telling from a Mac that said nothing a load reads from.
+    if answered.is_some_and(|ended| ended.code() == Some(255)) {
+        return Err(format!(
+            "ssh couldn't reach {} to ask its load",
+            machine.host
+        ));
+    }
+    if answered.is_none() {
         let _ = asking.kill();
         let _ = asking.wait();
         return Err(format!(

@@ -1755,11 +1755,22 @@ while [ "$#" -gt 2 ]; do
   if [ "$1" = -E ]; then log=$2; fi
   shift
 done
+# A Mac's load, asked before it's sent anything: `load` when the test
+# writes one, else a quiet one. Whom it was asked of is kept apart, so
+# what tests count of the rest holds.
+case "$2" in
+  *"sysctl -n vm.loadavg hw.ncpu"*)
+    echo "$1" >> "$here/load-was-asked"
+    cat "$here/load" 2>/dev/null || printf '{ 1.00 1.00 1.00 }\n12\n'
+    exit 0 ;;
+esac
 printf '%s\n%s\n' "$1" "$2" >> "$here/ssh-was-given"
 cat >> "$here/received"
 echo "Transferred: sent 3812, received 9 bytes, in 1.0 seconds" > "$log"
 case "$2" in
-  *"nix build"*) cat "$here/prints" 2>/dev/null ;;
+  *"nix build"*)
+    cat "$here/prints" 2>/dev/null
+    if [ -e "$here/build-fails" ]; then exit 3; fi ;;
 esac
 exit "$(cat "$here/status")"
 "#;
@@ -1812,6 +1823,11 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
         .output()
         .unwrap();
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("mac has room, at load 1.0 over a minute and 1.0 over five on 12 processors"),
+        "a Mac sent its part didn't say the load it went at: {said}"
+    );
 
     let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap();
     let given: Vec<&str> = given.lines().collect();
@@ -1861,12 +1877,300 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
     assert!(lines[1]["on"].is_null());
 }
 
+/// How a run naming a Mac's check and a Linux one is set up: the machine
+/// nearby, as its `nearby` line names it, whose ssh is `NEARBY_SSH`
+/// answering `load`; its builds failing when `fails`; built here when
+/// `here`, else beside a lent builder; and a caller that asked the Mac's
+/// room already when `asked_already`.
+struct Asking {
+    nearby: &'static str,
+    load: &'static str,
+    fails: bool,
+    here: bool,
+    asked_already: bool,
+}
+
+/// A busy Mac's load, as its `sysctl` says it.
+const BUSY: &str = "{ 20.00 60.00 80.00 }\n12\n";
+
+/// A quiet Mac's load.
+const QUIET: &str = "{ 1.00 1.00 1.00 }\n12\n";
+
+impl Default for Asking {
+    fn default() -> Self {
+        Self {
+            nearby: "mac aarch64-darwin",
+            load: QUIET,
+            fails: false,
+            here: false,
+            asked_already: false,
+        }
+    }
+}
+
+/// What a run set up by [`Asking`] did: how it ended, what it said, what
+/// ssh and nix were given, and whom ssh asked a load of.
+struct Named {
+    ran: std::process::Output,
+    said: String,
+    given: String,
+    built: String,
+    asked: String,
+}
+
+impl Named {
+    /// What ssh took to `host`, each its last word.
+    fn to(&self, host: &str) -> Vec<&str> {
+        self.given
+            .lines()
+            .collect::<Vec<_>>()
+            .chunks(2)
+            .filter(|pair| pair[0] == host)
+            .map(|pair| pair[1])
+            .collect()
+    }
+}
+
+fn named_for_a_mac(asking: &Asking) -> Named {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    fs::write(bin.join("status"), "0").unwrap();
+    fs::write(bin.join("load"), asking.load).unwrap();
+    if asking.fails {
+        fs::write(bin.join("build-fails"), "").unwrap();
+    }
+    let zone = folder.path().join("zone");
+    fs::create_dir(&zone).unwrap();
+    fs::write(zone.join("flake.nix"), "{ }").unwrap();
+    let listening = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let config = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(
+        config.join("nearby"),
+        format!("{} {}\n", listening.local_addr().unwrap(), asking.nearby),
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    if !asking.here {
+        fs::write(offload.join("store"), STORE).unwrap();
+    }
+    let flake = format!("path:{}", zone.display());
+    let mut command = there_command(&bin, &offload, folder.path());
+    if asking.here {
+        command.arg("--here");
+    }
+    if asking.asked_already {
+        command.env("NIX_OFFLOAD_MAC_ROOM_ASKED", "1");
+    }
+    let ran = command
+        .args([&flake, "checks.aarch64-darwin.a", "checks.x86_64-linux.b"])
+        .env("XDG_CONFIG_HOME", folder.path().join("config"))
+        .output()
+        .unwrap();
+    let read = |name: &str| fs::read_to_string(bin.join(name)).unwrap_or_default();
+    Named {
+        said: String::from_utf8_lossy(&ran.stderr).into_owned(),
+        ran,
+        given: read("ssh-was-given"),
+        built: read("nix-was-given"),
+        asked: read("load-was-asked"),
+    }
+}
+
+#[test]
+fn a_mac_nearby_busy_for_minutes_is_sent_none_of_what_was_named_for_it() {
+    // On 17 November checks named for a Mac went to it while it had been
+    // past three a processor for minutes, since only a changed run asked
+    // its room; its five-minute load was 36 to 64 on 12 processors.
+    let named = named_for_a_mac(&Asking {
+        load: BUSY,
+        ..Asking::default()
+    });
+    let said = &named.said;
+    assert_eq!(
+        named.ran.status.code(),
+        Some(75),
+        "what waits for the busy Mac wasn't said to: {said}"
+    );
+    assert!(
+        said.contains(
+            "mac has no room, at load 20.0 over a minute and 60.0 over five on 12 processors"
+        ),
+        "it didn't say the load the Mac's part waited at: {said}"
+    );
+    assert_eq!(
+        named.asked, "mac\n",
+        "the Mac's room wasn't asked once: {said}"
+    );
+    assert!(
+        named.to("mac").is_empty(),
+        "the busy Mac was sent something: {:?}",
+        named.to("mac")
+    );
+    assert!(
+        named.given.contains("checks.x86_64-linux.b")
+            && !named.given.contains("checks.aarch64-darwin.a"),
+        "Linux's check didn't go to the lent builder, or the Mac's did: {}",
+        named.given
+    );
+}
+
+#[test]
+fn a_busy_mac_nearby_told_to_build_here_leaves_all_of_it_here() {
+    // Asked to build here, what the Mac was to take builds here with the
+    // rest, as Nix here may have builders of its own.
+    let named = named_for_a_mac(&Asking {
+        load: BUSY,
+        here: true,
+        ..Asking::default()
+    });
+    assert_eq!(named.ran.status.code(), Some(0), "{}", named.said);
+    assert!(
+        named.to("mac").is_empty(),
+        "the busy Mac was sent something: {:?}",
+        named.to("mac")
+    );
+    assert!(
+        named.built.contains("checks.aarch64-darwin.a")
+            && named.built.contains("checks.x86_64-linux.b"),
+        "what was asked wasn't all built here: {}",
+        named.built
+    );
+}
+
+#[test]
+fn a_mac_nearby_whose_room_was_asked_already_isnt_asked_again() {
+    // A gate's own comparison asked the Mac before it began.
+    let named = named_for_a_mac(&Asking {
+        load: BUSY,
+        here: true,
+        asked_already: true,
+        ..Asking::default()
+    });
+    assert_eq!(
+        named.asked, "",
+        "the Mac was asked its room twice: {}",
+        named.said
+    );
+    assert!(
+        named
+            .to("mac")
+            .iter()
+            .any(|said| said.contains("nix build")),
+        "the Mac asked already wasn't sent its part: {}",
+        named.said
+    );
+}
+
+#[test]
+fn a_machine_nearby_that_builds_for_no_mac_isnt_asked_its_room() {
+    let named = named_for_a_mac(&Asking {
+        nearby: "box x86_64-linux",
+        load: BUSY,
+        here: true,
+        ..Asking::default()
+    });
+    assert_eq!(
+        named.asked, "",
+        "a machine that builds no Mac's was asked its room: {}",
+        named.said
+    );
+    assert!(
+        named
+            .to("box")
+            .iter()
+            .any(|said| said.contains("nix build")),
+        "the machine nearby wasn't sent its part: {}",
+        named.said
+    );
+}
+
+#[test]
+fn a_part_a_mac_nearby_fails_says_whose_it_was_and_what_it_held() {
+    // A Mac's checks once failed a run with nothing said of which or why.
+    let named = named_for_a_mac(&Asking {
+        fails: true,
+        here: true,
+        ..Asking::default()
+    });
+    let said = &named.said;
+    assert_eq!(named.ran.status.code(), Some(3), "{said}");
+    assert!(
+        said.contains("mac's part, checks.aarch64-darwin.a, ended 3"),
+        "the failed part wasn't named: {said}"
+    );
+}
+
+/// ssh to a Mac nearby that refuses this machine's key, before any
+/// command runs.
+const REFUSED_SSH: &str = r#"#!/bin/sh
+here=$(dirname "$0")
+while [ "$#" -gt 2 ]; do shift; done
+printf '%s\n%s\n' "$1" "$2" >> "$here/ssh-was-given"
+echo "joel@mac: Permission denied (publickey)." >&2
+exit 255
+"#;
+
+#[test]
+fn a_mac_nearby_that_refuses_ssh_is_said_to_be_out_of_reach_not_quiet() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", REFUSED_SSH), ("nix", NEARBY_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    let zone = folder.path().join("zone");
+    fs::create_dir(&zone).unwrap();
+    fs::write(zone.join("flake.nix"), "{ }").unwrap();
+    let listening = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let config = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(
+        config.join("nearby"),
+        format!("{} mac aarch64-darwin\n", listening.local_addr().unwrap()),
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    let ran = there_command(&bin, &offload, folder.path())
+        .args([
+            "--here",
+            &format!("path:{}", zone.display()),
+            "checks.aarch64-darwin.a",
+        ])
+        .env("XDG_CONFIG_HOME", folder.path().join("config"))
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("ssh couldn't reach mac to ask its load, so it's sent none"),
+        "a refused ssh read as a quiet Mac: {said}"
+    );
+    let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap_or_default();
+    assert!(
+        !given.contains("tar -xzf") && !given.contains("nix build"),
+        "the Mac that refused ssh was sent its part: {given}"
+    );
+}
+
 /// ssh as a nearby machine that can't resolve names answers: it adds
 /// what it was asked to a record and fails any fetch, as one whose
-/// resolver is down does.
+/// resolver is down does. It says a quiet load, kept apart, as a Mac
+/// with no resolver still can.
 const BLIND_SSH: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 while [ "$#" -gt 2 ]; do shift; done
+case "$2" in
+  *"sysctl -n vm.loadavg hw.ncpu"*)
+    echo "$1" >> "$here/load-was-asked"
+    printf '{ 1.00 1.00 1.00 }\n12\n'
+    exit 0 ;;
+esac
 printf '%s\n%s\n' "$1" "$2" >> "$here/ssh-was-given"
 case "$2" in
   *"flake metadata"*)
@@ -1992,7 +2296,8 @@ exit 0
 #[test]
 fn a_folder_ssh_is_refused_names_ssh_rather_than_tar() {
     // On 15 November a Mac refused a gate's key, and what was said was
-    // that tar couldn't pack the tree, since its pipe had closed.
+    // that tar couldn't pack the tree, since its pipe had closed. The
+    // gate had asked its room already, so the send is the first ssh.
     let folder = tempfile::tempdir().unwrap();
     let bin = folder.path().join("bin");
     fs::create_dir(&bin).unwrap();
@@ -2028,6 +2333,7 @@ fn a_folder_ssh_is_refused_names_ssh_rather_than_tar() {
             "checks.aarch64-darwin.a",
         ])
         .env("XDG_CONFIG_HOME", folder.path().join("config"))
+        .env("NIX_OFFLOAD_MAC_ROOM_ASKED", "1")
         .output()
         .unwrap();
     let said = String::from_utf8_lossy(&ran.stderr);
