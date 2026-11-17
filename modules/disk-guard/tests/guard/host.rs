@@ -89,6 +89,9 @@ fn a_scan_is_trusted_from_when_it_ended() {
         // shouldn't come, so a failing one ends rather than hangs. A
         // blocking open here hung the suite when, under load, the test's
         // own reader came and went before it.
+        // A moment first, so the first scan has read to its end and the
+        // spare stat can't join its read.
+        std::thread::sleep(Duration::from_millis(100));
         let deadline = std::time::Instant::now() + Duration::from_secs(1);
         while std::time::Instant::now() < deadline {
             let opened = fs::OpenOptions::new()
@@ -100,6 +103,9 @@ fn a_scan_is_trusted_from_when_it_ended() {
             }
             std::thread::sleep(Duration::from_millis(10));
         }
+        // A second scan later than that finds no stat and fails, rather
+        // than waiting on a fifo nobody writes.
+        let _ = fs::remove_file(&writing);
     });
     let mut scan = Scan::new(
         proc.path(),
