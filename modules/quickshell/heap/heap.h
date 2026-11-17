@@ -61,7 +61,10 @@ public:
     // Qt's classes, each a list of its name, megabytes and count; and
     // `shapes`, the `top` largest shapes, each its class, its first six
     // property names joined by commas, how many names it has, its
-    // megabytes and its count, a name taken from data said as `~`; `total`,
+    // megabytes and its count, a name taken from data said as `~`; `places`,
+    // the `top` largest places in the code closures and calls' contexts
+    // came from, each its file, line and name, as `Launcher.qml:943
+    // spotsFrom`, its megabytes and its count; `total`,
     // the megabytes of every class; `ms`, how long counting took; and
     // `said`, all of it as one line. While a collection is under way it
     // counts nothing and answers only `busy`.
