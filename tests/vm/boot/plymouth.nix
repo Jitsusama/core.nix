@@ -47,10 +47,11 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
 
             # Login gives up a minute after it starts, and on a busy host
             # its password prompt has taken 64 s to show, so the console's
-            # sign-in failed with neither a shell nor a refusal. Three
-            # minutes is past that, and short of the test's five-minute
-            # wait, so a lost key still ends in one wait and is tried again.
-            security.loginDefs.settings.LOGIN_TIMEOUT = 180;
+            # sign-in failed with neither a shell nor a refusal. Its clock
+            # runs through the test's own readings of the screen too, so
+            # four minutes leaves room past that, short of the test's
+            # five-minute wait, so a lost key still ends in one wait.
+            security.loginDefs.settings.LOGIN_TIMEOUT = 240;
             jitsusama.login.account = account;
             users.users.${account} = {
               isNormalUser = true;
