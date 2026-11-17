@@ -74,6 +74,8 @@ pub fn commons(roots: &[PathBuf]) -> BTreeSet<PathBuf> {
 /// The record of checkouts each read by `checkout`, gathered into their
 /// repositories.
 pub fn assemble(reading: &Reading, found: impl IntoIterator<Item = Found>) -> Record {
+    let mut found: Vec<Found> = found.into_iter().collect();
+    owned_once(&mut found);
     let mut repositories: BTreeMap<String, (Key, Vec<Found>)> = BTreeMap::new();
     for found in found {
         repositories
@@ -178,6 +180,38 @@ fn common_dir(folder: &Path) -> Option<PathBuf> {
     fs::canonicalize(&common).ok()
 }
 
+/// A tree two checkouts list, as when one was copied whole with its
+/// `worktrees/`, left to one of them, so every view counts it once: the
+/// checkout its `.git` file names, else, as for a gone tree, the one whose
+/// path sorts first, so its owner holds from reading to reading whatever
+/// each checkout's writing. A tree only one checkout lists stays its own,
+/// though its `.git` names a checkout outside the roots.
+fn owned_once(found: &mut [Found]) {
+    let mut owners: BTreeMap<String, (bool, String)> = BTreeMap::new();
+    for each in found.iter() {
+        for tree in &each.checkout.trees {
+            let claim = (
+                each.elsewhere.contains(&tree.path),
+                each.checkout.path.clone(),
+            );
+            let owner = owners
+                .entry(tree.path.clone())
+                .or_insert_with(|| claim.clone());
+            if claim < *owner {
+                *owner = claim;
+            }
+        }
+    }
+    for each in found.iter_mut() {
+        let path = &each.checkout.path;
+        each.checkout.trees.retain(|tree| {
+            owners
+                .get(&tree.path)
+                .is_some_and(|(_, owner)| owner == path)
+        });
+    }
+}
+
 /// One checkout as it was read, with what its repository takes from it.
 #[derive(Debug, Clone)]
 pub struct Found {
@@ -185,6 +219,8 @@ pub struct Found {
     remotes: Vec<Remote>,
     trunk: Option<String>,
     key: Key,
+    /// The trees it lists whose `.git` file names another checkout's entry.
+    elsewhere: BTreeSet<String>,
 }
 
 /// One checkout, read from its own git folder, as `commons` finds them:
@@ -212,7 +248,7 @@ pub fn checkout(common: &Path, home: Option<&Path>) -> Found {
         keys::of_folder(&shown(&folder, home), &name)
     });
     let trunk = trunk(&refs, remotes.first().map(|remote| remote.name.as_str()));
-    let mut trees = trees(common, &refs);
+    let (mut trees, elsewhere) = trees(common, &refs);
     trees.sort_by(|a, b| newest_first(a.written_at, b.written_at).then(a.path.cmp(&b.path)));
     let checkout = Checkout {
         path: folder.display().to_string(),
@@ -227,6 +263,7 @@ pub fn checkout(common: &Path, home: Option<&Path>) -> Found {
         remotes,
         trunk,
         key,
+        elsewhere,
     }
 }
 
@@ -258,12 +295,14 @@ pub fn shown(path: &Path, home: Option<&Path>) -> String {
 
 /// Every tree cut from a checkout, from its `worktrees/` folder: each
 /// entry's `gitdir` names the tree's `.git` file, in the folder that is
-/// the tree.
-fn trees(common: &Path, refs: &Refs) -> Vec<Tree> {
+/// the tree. Beside them, those whose `.git` file names another checkout's
+/// entry, which `owned_once` leaves to that checkout when it's read too.
+fn trees(common: &Path, refs: &Refs) -> (Vec<Tree>, BTreeSet<String>) {
+    let mut elsewhere = BTreeSet::new();
     let Ok(entries) = fs::read_dir(common.join("worktrees")) else {
-        return Vec::new();
+        return (Vec::new(), elsewhere);
     };
-    entries
+    let trees = entries
         .flatten()
         .filter_map(|entry| {
             let own = entry.path();
@@ -276,6 +315,9 @@ fn trees(common: &Path, refs: &Refs) -> Vec<Tree> {
             };
             let folder = dot_git.parent()?.to_path_buf();
             let head = head(&own, refs)?;
+            if !names_back(&dot_git, &own) {
+                elsewhere.insert(folder.display().to_string());
+            }
             Some(Tree {
                 path: folder.display().to_string(),
                 kind: if head.branch.is_some() {
@@ -288,7 +330,27 @@ fn trees(common: &Path, refs: &Refs) -> Vec<Tree> {
                 written_at: written(&own),
             })
         })
-        .collect()
+        .collect();
+    (trees, elsewhere)
+}
+
+/// Whether a tree's `.git` file names `own` as its entry, or can't be read
+/// to say otherwise, as when the tree is gone, which its entry still says.
+fn names_back(dot_git: &Path, own: &Path) -> bool {
+    let Ok(said) = fs::read_to_string(dot_git) else {
+        return true;
+    };
+    let Some(named) = said.trim().strip_prefix("gitdir:") else {
+        return true;
+    };
+    let named = dot_git.parent().map_or_else(
+        || PathBuf::from(named.trim()),
+        |tree| tree.join(named.trim()),
+    );
+    match (fs::canonicalize(&named), fs::canonicalize(own)) {
+        (Ok(named), Ok(own)) => named == own,
+        _ => true,
+    }
 }
 
 /// What a git folder's HEAD is at: a branch, and its commit where the
@@ -413,7 +475,9 @@ impl Refs {
         let (name, at) = if follows.remote == "." {
             (merged.to_owned(), follows.merge.clone())
         } else {
-            let name = format!("{}/{merged}", follows.remote);
+            // A branch may follow an address rather than a remote's name,
+            // which is said as a remote's is, without its credential.
+            let name = format!("{}/{merged}", without_credential(&follows.remote));
             let at = format!("refs/remotes/{name}");
             (name, at)
         };
@@ -532,7 +596,7 @@ fn limits(config: &str) -> weight::Limits {
 }
 
 /// The remotes a checkout's config names, in its order, each with the
-/// first address it gives.
+/// first address it gives, never a credential its user part holds.
 fn remotes(config: &str) -> Vec<Remote> {
     let mut remotes: Vec<Remote> = Vec::new();
     let urls = settings(config)
@@ -542,11 +606,37 @@ fn remotes(config: &str) -> Vec<Remote> {
         if !remotes.iter().any(|remote| remote.name == set.name) {
             remotes.push(Remote {
                 name: set.name.to_owned(),
-                url: set.value.to_owned(),
+                url: without_credential(set.value),
             });
         }
     }
     remotes
+}
+
+/// A remote's address without the credential its user part may hold,
+/// since a token or password written there would reach every view and
+/// whatever relays it. Of any scheme's address the user part goes whole,
+/// as a token can be all of it, but for ssh's, whose user is a login's
+/// name git needs to reach the host: only a password after it goes. The
+/// authority ends where git's and curl's do, at a `/`, `?` or `#`. The
+/// scp form, `user@host:path`, has no password to hold.
+fn without_credential(url: &str) -> String {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return url.to_owned();
+    };
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let Some((user, _)) = rest[..end].rsplit_once('@') else {
+        return url.to_owned();
+    };
+    let host = &rest[user.len() + 1..];
+    let ssh = ["ssh", "git+ssh", "ssh+git"]
+        .iter()
+        .any(|each| scheme.eq_ignore_ascii_case(each));
+    match user.split_once(':') {
+        _ if !ssh => format!("{scheme}://{host}"),
+        Some((login, _)) => format!("{scheme}://{login}@{host}"),
+        None => url.to_owned(),
+    }
 }
 
 /// What a branch's section in a checkout's config says it follows.

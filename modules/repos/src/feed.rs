@@ -82,13 +82,18 @@ pub fn records(record: &Record) -> Vec<Value> {
 
 /// How the sources stand, as health says them: git always read, since a
 /// reading is the disk's; GitHub answering once a refresh has asked it,
-/// with what it couldn't see as its reason.
+/// with what it couldn't see as its reason, and not answering when what
+/// the refresh kept couldn't be read, since GitHub's answer never came.
 pub fn sources(record: &Record) -> Value {
     let github = record.sources.iter().find(|source| source.name == "github");
     let github = match github {
         None => json!({
             "state": "not answering",
             "reason": "no refresh has asked GitHub yet",
+        }),
+        Some(github) if github.read_at.is_none() => json!({
+            "state": "not answering",
+            "reason": github.unread.join("; "),
         }),
         Some(github) if github.unread.is_empty() => json!("answering"),
         Some(github) => json!({
