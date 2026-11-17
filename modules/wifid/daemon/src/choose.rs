@@ -89,8 +89,10 @@ const ACROSS: i16 = 10;
 /// How loud a radio on a wider band is heard that's within reach however
 /// loud the card's own point: on 16 Nov 2026 a card heard its access
 /// point's 2.4 GHz radio at -29 dBm, and kept off the same one's 5 GHz
-/// radio, 16 to 19 dB fainter, through four looks over 43 minutes. Heard
-/// at -45 at last, it moved and linked at 1080 Mbit/s.
+/// radio, 17 to 19 dB fainter, through four looks over 43 minutes. Heard
+/// at -45 at last, it moved and linked at 1080 Mbit/s. From 15 to 16 Nov
+/// the card's 5 GHz links heard at -50 to -54 dBm ran at a mean 730
+/// Mbit/s, none under 400, against about 287 on 2.4 GHz.
 const STRONG: i16 = -50;
 
 /// How much quicker one measured lately must have been to be moved to:
@@ -372,7 +374,9 @@ fn crowding((point, frequency): (&str, u32), others: &[Other]) -> Option<u8> {
 
 /// Where a card on a narrower band carrying well goes for a wider one:
 /// the quickest within reach known to carry well from here, else the
-/// loudest untried within reach and not too busy.
+/// loudest untried within reach and not too busy. One known wins over a
+/// louder one untried, since what it carried was learnt at this hour heard
+/// about this loud, and a banded trial goes back if it carries badly.
 fn for_the_band<'a>(
     untried: impl Iterator<Item = &'a Other> + Clone,
     (signal, frequency): (i16, u32),
@@ -399,13 +403,13 @@ fn in_band_reach(other: &Other, signal: i16, frequency: u32) -> bool {
 }
 
 /// Whether another access point is heard loud enough, from one heard this
-/// loud on this channel, to be tried: within `FAINTER`, or on a wider band
-/// within `ACROSS` more and no fainter than `FAINTEST`, since the same
-/// access point is heard fainter there, or at `STRONG` or louder.
+/// loud on this channel, to be tried: within `FAINTER`, or on a wider band,
+/// where the same access point is heard fainter, within `ACROSS` more and
+/// no fainter than `FAINTEST`, or at `STRONG` or louder.
 fn within_reach(other: &Other, signal: i16, frequency: u32) -> bool {
     other.signal >= signal - FAINTER
         || (wider(other.frequency, frequency)
-            && other.signal >= FAINTEST.max(signal - FAINTER - ACROSS).min(STRONG))
+            && other.signal >= (signal - FAINTER - ACROSS).clamp(FAINTEST, STRONG))
 }
 
 /// Whether a channel is on 5 or 6 GHz.
@@ -971,6 +975,18 @@ pub(crate) mod tests {
 
         assert_eq!(strong, Choice::Try(DESK.into()), "-50 dBm is strong");
         assert_eq!(weaker, Choice::LookWider, "-51 is past -29's reach");
+    }
+
+    #[test]
+    fn a_card_beside_its_access_point_failing_on_2_4_ghz_tries_5_ghz_at_50_dbm() {
+        let failing = carried(20, 18.0);
+        let on = (NEAR, &failing, -29, CH6);
+
+        let strong = Chooser::default().choose(Instant::now(), on, &[desk_at(-50, None)], false);
+        let weaker = Chooser::default().choose(Instant::now(), on, &[desk_at(-51, None)], false);
+
+        assert_eq!(strong, Choice::Try(DESK.into()), "-50 dBm is strong");
+        assert_eq!(weaker, Choice::Stay, "-51 is past -29's reach");
     }
 
     #[test]
