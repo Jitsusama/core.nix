@@ -39,18 +39,55 @@ fn named(subject: &str) -> String {
         )
 }
 
+/// When each of `merges`, newest first, first reached main, from `seen`,
+/// main's reflog as `%gd %H` lines read with `--date=unix`: the oldest
+/// entry at or after it on the first-parent line. A merge train commits
+/// with the date its batch was cut, which can be hours before main took
+/// it, so the commit's own date would age it from before it existed there.
+fn arrived(merges: &[&str], seen: &str) -> Vec<Option<i64>> {
+    let mut came: Vec<Option<i64>> = vec![None; merges.len()];
+    for line in seen.lines() {
+        let Some((at, hash)) = line
+            .rsplit_once("@{")
+            .and_then(|(_, rest)| rest.split_once("} "))
+        else {
+            continue;
+        };
+        let (Ok(at), Some(place)) = (
+            at.parse::<i64>(),
+            merges.iter().position(|merge| *merge == hash.trim()),
+        ) else {
+            continue;
+        };
+        // An entry at a merge holds every merge older than it as well.
+        for held in &mut came[place..] {
+            *held = Some(held.map_or(at, |was| was.min(at)));
+        }
+    }
+    came
+}
+
 /// The measure from `waiting`, mycelium main's first-parent merges that
-/// core's lock doesn't carry, as `%ct %s` lines, at `now`: how long the
-/// oldest has waited, with each one behind it, oldest first.
+/// core's lock doesn't carry, as `%H %ct %s` lines, and `seen`, main's
+/// reflog, at `now`: how long the oldest has waited since it reached
+/// main, with each one behind it, oldest first. A merge no reflog entry
+/// holds is aged from its commit's date.
 #[must_use]
-pub fn unlocked(waiting: &str, now: i64, owner: &str) -> Measure {
-    // git log gives the newest first; the card names the longest wait first.
-    let waits: Vec<(i64, &str)> = waiting
+pub fn unlocked(waiting: &str, seen: &str, now: i64, owner: &str) -> Measure {
+    let merges: Vec<(&str, i64, &str)> = waiting
         .lines()
         .filter_map(|line| {
-            let (at, subject) = line.split_once(' ')?;
-            Some(((now - at.parse::<i64>().ok()?).max(0) / 60, subject))
+            let (hash, rest) = line.split_once(' ')?;
+            let (at, subject) = rest.split_once(' ')?;
+            Some((hash, at.parse::<i64>().ok()?, subject))
         })
+        .collect();
+    let hashes: Vec<&str> = merges.iter().map(|(hash, _, _)| *hash).collect();
+    // git log gives the newest first; the card names the longest wait first.
+    let waits: Vec<(i64, &str)> = merges
+        .iter()
+        .zip(arrived(&hashes, seen))
+        .map(|(&(_, at, subject), came)| ((now - came.unwrap_or(at)).max(0) / 60, subject))
         .rev()
         .collect();
     let oldest = waits.first().map_or(0, |(minutes, _)| *minutes);
@@ -102,11 +139,19 @@ pub fn read(core: &Path, checkouts: &[String], now: i64, owner: &str) -> Option<
             path,
             "log",
             "--first-parent",
-            "--format=%ct %s",
+            "--format=%H %ct %s",
             &format!("{rev}..{main}"),
         ],
     ) {
-        Ok(waiting) => Some(unlocked(&waiting, now, owner)),
+        // A checkout with no reflog ages every merge from its commit.
+        Ok(waiting) => {
+            let seen = command(
+                "git",
+                &["-C", path, "reflog", "show", "--date=unix", "--format=%gd %H", main],
+            )
+            .unwrap_or_default();
+            Some(unlocked(&waiting, &seen, now, owner))
+        }
         Err(error) => {
             eprintln!("cadence: couldn't read mycelium's {main} at {path}: {error}");
             None
@@ -120,15 +165,45 @@ mod tests {
 
     const NOW: i64 = 1_794_823_500;
 
+    /// On 17 November train 7's merges carried 18:21 the day before as
+    /// their commit date and reached main at 08:06, so the 08:10 card read
+    /// 828 minutes where they had waited about 6.
+    #[test]
+    fn a_merge_waits_from_when_it_reached_main_not_from_its_commit() {
+        let waiting = format!(
+            "ccc {old} Merge 894834b18e83 on the merge train\n\
+             bbb {old} Merge 90697d10fe98 on the merge train\n\
+             aaa {old} Merge 6eec7c185f99 on the merge train\n",
+            old = NOW - 830 * 60,
+        );
+        let seen = format!(
+            "origin/main@{{{}}} ccc\norigin/main@{{{}}} aaa\norigin/main@{{{}}} lll\n",
+            NOW - 6 * 60,
+            NOW - 100 * 60,
+            NOW - 900 * 60,
+        );
+        let m = unlocked(&waiting, &seen, NOW, "0FX11G");
+        assert_eq!(
+            m.behind,
+            [
+                "mycelium's \"Merge 6eec7c185f99 on the merge train\" waiting 100 min",
+                "mycelium's \"Merge 90697d10fe98 on the merge train\" waiting 6 min",
+                "mycelium's \"Merge 894834b18e83 on the merge train\" waiting 6 min",
+            ],
+            "a merge was aged from its commit, not from the fetch that first held it"
+        );
+        assert_eq!(m.now, 100.0, "the oldest reached main 100 minutes ago");
+    }
+
     #[test]
     fn the_oldest_merge_outside_the_lock_is_how_long_it_waits() {
         let waiting = format!(
-            "{} Merge pull request #211 from Jitsusama/jitsusama/run-anywhere\n\
-             {} Merge pull request #208 from Jitsusama/jitsusama/shared-trees\n",
+            "bbb {} Merge pull request #211 from Jitsusama/jitsusama/run-anywhere\n\
+             aaa {} Merge pull request #208 from Jitsusama/jitsusama/shared-trees\n",
             NOW - 10 * 60,
             NOW - 170 * 60,
         );
-        let m = unlocked(&waiting, NOW, "0FX11G");
+        let m = unlocked(&waiting, "", NOW, "0FX11G");
         assert_eq!(m.now, 170.0, "the oldest waited 170 minutes");
         assert_eq!(
             m.behind,
@@ -143,16 +218,16 @@ mod tests {
 
     #[test]
     fn nothing_outside_the_lock_waits_nought() {
-        let m = unlocked("", NOW, "0FX11G");
+        let m = unlocked("", "", NOW, "0FX11G");
         assert_eq!(m.now, 0.0, "an empty wait read as more than nought");
         assert!(m.behind.is_empty(), "nothing waits, so nothing is behind");
     }
 
     #[test]
     fn a_merge_subject_without_a_number_is_named_by_its_subject() {
-        let waiting = format!("{} Take the new lint\n", NOW - 5 * 60);
+        let waiting = format!("aaa {} Take the new lint\n", NOW - 5 * 60);
         assert_eq!(
-            unlocked(&waiting, NOW, "0FX11G").behind,
+            unlocked(&waiting, "", NOW, "0FX11G").behind,
             ["mycelium's \"Take the new lint\" waiting 5 min"],
             "a direct commit on main went unnamed"
         );
