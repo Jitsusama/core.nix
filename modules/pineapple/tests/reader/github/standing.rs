@@ -52,11 +52,7 @@ fn github_a_strangers_stop_is_only_logged_and_a_collaborators_stands() {
             ],
         )
     });
-    let home = home();
-    let mut reader = github_reader(&home, &origin, &["--live"]);
-    until_decided(&home, 4);
-    reader.kill().expect("the reader stops");
-    reader.wait().expect("the reader is gone");
+    let home = decided_live(&origin, 4);
 
     let said = decisions(&home);
     assert_eq!(
@@ -106,11 +102,7 @@ fn in_a_strangers_own(line: &str, now: u64) -> Value {
 #[test]
 fn github_an_owners_stop_in_a_repository_joel_cant_push_to_is_only_logged() {
     let (origin, _) = answering(in_a_strangers_own);
-    let home = home();
-    let mut reader = github_reader(&home, &origin, &["--live"]);
-    until_decided(&home, 1);
-    reader.kill().expect("the reader stops");
-    reader.wait().expect("the reader is gone");
+    let home = decided_live(&origin, 1);
 
     let said = decisions(&home);
     assert_eq!(
@@ -189,24 +181,27 @@ fn github_a_maintainers_stop_where_joel_opened_an_issue_he_cant_push_to_stands()
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
+/// An issue in example/shop, a repository Joel works in, opened by a
+/// stranger naming example/other#3, and a colleague's stop on it.
+fn steered_by_a_stranger() -> Issue {
+    Issue {
+        repo: "example/shop",
+        opened: (
+            "stranger",
+            "NONE",
+            "see https://code.example.com/example/other/pull/3",
+        ),
+        repo_answer: Some(json!({"permissions": {"pull": true, "push": true}})),
+        said: |now| {
+            let stop = format!("@{LOGIN} pineapple override");
+            vec![comment(1, "colleague", &stop, now, 90)]
+        },
+    }
+}
+
 #[test]
 fn github_an_outsiders_opening_cant_steer_a_collaborators_stop() {
-    let (said, home) = judged_on(
-        Issue {
-            repo: "example/shop",
-            opened: (
-                "stranger",
-                "NONE",
-                "see https://code.example.com/example/other/pull/3",
-            ),
-            repo_answer: Some(json!({"permissions": {"pull": true, "push": true}})),
-            said: |now| {
-                let stop = format!("@{LOGIN} pineapple override");
-                vec![comment(1, "colleague", &stop, now, 90)]
-            },
-        },
-        1,
-    );
+    let (said, home) = judged_on(steered_by_a_stranger(), 1);
     assert_eq!(each(&said, "verdict"), ["stop"]);
     assert_eq!(
         said[0]["reaches"],
@@ -296,6 +291,17 @@ fn github_an_owners_opening_where_joel_cant_push_cant_steer_his_own_stop() {
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
+/// The home of a GitHub reader that ran live against `origin` until it had
+/// judged `count`, then was stopped.
+fn decided_live(origin: &str, count: usize) -> PathBuf {
+    let home = home();
+    let mut reader = github_reader(&home, origin, &["--live"]);
+    until_decided(&home, count);
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+    home
+}
+
 /// What the GitHub reader, live, judges on `issue` once it has judged
 /// `count`, its opening answered as `opening` makes it from `issue`'s.
 fn judged_opened_as(
@@ -311,30 +317,14 @@ fn judged_opened_as(
         }
         answered
     });
-    let home = home();
-    let mut reader = github_reader(&home, &origin, &["--live"]);
-    until_decided(&home, count);
-    reader.kill().expect("the reader stops");
-    reader.wait().expect("the reader is gone");
+    let home = decided_live(&origin, count);
     (decisions(&home), home)
 }
 
 #[test]
 fn github_an_opening_that_cant_be_read_is_vouched_for_by_no_one_said_after_it() {
     let (said, home) = judged_opened_as(
-        Issue {
-            repo: "example/shop",
-            opened: (
-                "stranger",
-                "NONE",
-                "see https://code.example.com/example/other/pull/3",
-            ),
-            repo_answer: Some(json!({"permissions": {"pull": true, "push": true}})),
-            said: |now| {
-                let stop = format!("@{LOGIN} pineapple override");
-                vec![comment(1, "colleague", &stop, now, 90)]
-            },
-        },
+        steered_by_a_stranger(),
         // Without its time, the opening makes no saying of its own.
         |opening, _| {
             opening
@@ -446,11 +436,7 @@ fn github_an_ask_to_stop_said_only_in_a_review_is_heard() {
             &[comment(1, "colleague", "lunch at noon?", now, 90)],
         )
     });
-    let home = home();
-    let mut reader = github_reader(&home, &origin, &["--live"]);
-    until_decided(&home, 1);
-    reader.kill().expect("the reader stops");
-    reader.wait().expect("the reader is gone");
+    let home = decided_live(&origin, 1);
 
     let said = decisions(&home);
     assert_eq!(
@@ -512,11 +498,7 @@ fn two_stops_in_an_unreadable_repository(line: &str, now: u64) -> Answered {
 #[test]
 fn github_a_repository_that_cant_be_read_is_asked_and_told_of_once_in_a_round() {
     let (origin, asked) = answering_whole(two_stops_in_an_unreadable_repository);
-    let home = home();
-    let mut reader = github_reader(&home, &origin, &["--live"]);
-    until_decided(&home, 2);
-    reader.kill().expect("the reader stops");
-    reader.wait().expect("the reader is gone");
+    let home = decided_live(&origin, 2);
 
     assert_eq!(
         each(&decisions(&home), "verdict"),
@@ -566,11 +548,7 @@ fn stops_in_two_repositories(line: &str, now: u64) -> Answered {
 #[test]
 fn github_what_a_round_learns_of_one_repository_never_vouches_for_another() {
     let (origin, _) = answering_whole(stops_in_two_repositories);
-    let home = home();
-    let mut reader = github_reader(&home, &origin, &["--live"]);
-    until_decided(&home, 2);
-    reader.kill().expect("the reader stops");
-    reader.wait().expect("the reader is gone");
+    let home = decided_live(&origin, 2);
 
     let said = decisions(&home);
     let mut by_repository: Vec<(String, String)> = said
@@ -623,11 +601,7 @@ fn github_a_repository_joel_is_let_into_is_heard_the_round_after() {
         }
         two_stops_in_one_repository(line, now)
     });
-    let home = home();
-    let mut reader = github_reader(&home, &origin, &["--live"]);
-    until_decided(&home, 2);
-    reader.kill().expect("the reader stops");
-    reader.wait().expect("the reader is gone");
+    let home = decided_live(&origin, 2);
 
     assert!(
         let_in.load(Ordering::SeqCst),
@@ -644,11 +618,7 @@ fn github_a_repository_joel_is_let_into_is_heard_the_round_after() {
 #[test]
 fn github_a_round_asks_about_a_repository_once_however_many_threads_it_holds() {
     let (origin, asked) = answering_whole(two_stops_in_one_repository);
-    let home = home();
-    let mut reader = github_reader(&home, &origin, &["--live"]);
-    until_decided(&home, 2);
-    reader.kill().expect("the reader stops");
-    reader.wait().expect("the reader is gone");
+    let home = decided_live(&origin, 2);
 
     assert_eq!(
         each(&decisions(&home), "verdict"),
@@ -690,11 +660,7 @@ fn github_a_repository_its_rate_limit_refuses_is_asked_again_not_taken_as_gone()
         }
         issue.answer(line, now)
     });
-    let home = home();
-    let mut reader = github_reader(&home, &origin, &["--live"]);
-    until_decided(&home, 1);
-    reader.kill().expect("the reader stops");
-    reader.wait().expect("the reader is gone");
+    let home = decided_live(&origin, 1);
 
     let said = decisions(&home);
     assert!(refused.load(Ordering::SeqCst), "the limit refused it once");
