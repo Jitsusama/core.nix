@@ -26,6 +26,10 @@
   const QUIET_DOT = 5.5; // the ring inside a quiet cell
   const HUB_R = 21; // an orchestration's hub
   const MACHINE_R = 19;
+  const SPOKES = 8; // round a network's hub, which no cell has, so the two never read alike
+  const SPOKE_FROM = 3; // how far out past the hub's ring a spoke starts
+  const SPOKE_LONG = 6;
+  const LENT_CORNER = 0.32; // how much of a lent machine's shorter side each corner keeps
   const SEED = 16.5; // a sunflower's spacing: seeds about 29 apart
   const HOLE = 5; // seeds left empty round a hub, so it has room
   const GAP = 54; // between two neighbouring discs
@@ -139,6 +143,20 @@
     }
     return out;
   };
+
+  // A network's spokes round a ring of radius r, the first straight up.
+  const spokesPath = (r) => {
+    let d = "";
+    for (let i = 0; i < SPOKES; i++) {
+      const a = (2 * Math.PI * i) / SPOKES;
+      const [dx, dy] = [Math.sin(a), -Math.cos(a)];
+      const [a0, a1] = [r + SPOKE_FROM, r + SPOKE_FROM + SPOKE_LONG];
+      d += `M${(dx * a0).toFixed(2)},${(dy * a0).toFixed(2)}L${(dx * a1).toFixed(2)},${(dy * a1).toFixed(2)}`;
+    }
+    return d;
+  };
+  // A receptor's dish of half-width s, open upward, as the canvas paints it.
+  const dishPath = (s) => `M${-s},${(-s * DISH_LIP).toFixed(2)}Q0,${(s * DISH_DEPTH).toFixed(2)} ${s},${(-s * DISH_LIP).toFixed(2)}`;
 
   const glyph = (shape, size = 12) =>
     `<svg class="glyph" viewBox="${-size} ${-size} ${size * 2} ${size * 2}" aria-hidden="true"><path d="${SHAPES[shape](size * 0.9)}" fill="currentColor"/></svg>`;
@@ -1112,11 +1130,16 @@
     if (!isLive(h)) cls.push("quiet");
     return cls.join(" ");
   };
+  // A network's hub is a knot: its ring, spokes out of it where its
+  // hyphae leave, and its own shape solid in the middle. The receptors'
+  // edge holds a dish instead, and a group working alone a bare ring,
+  // since neither is a network.
   const hubMarkup = (h, [x, y]) => {
+    const middle = h.edge ? `<path class="m-hub-dish" d="${dishPath(HUB_R * 0.55)}"/>` : `<path class="m-hub-shape" d="${SHAPES[h.shape](HUB_R * 0.5)}"/>`;
     return (
       `<g class="${hubClass(h)}" data-key="h:${esc(h.key)}" data-level="${TOP_LEVEL}" data-within=""${h.within ? ` data-branch-of="${esc(h.within)}"` : ""} transform="translate(${x.toFixed(1)},${y.toFixed(1)})">` +
-      `<circle class="m-hit" r="${HUB_R + 6}"/><circle class="m-hub" r="${HUB_R}"/>` +
-      `<path class="m-hub-shape" d="${SHAPES[h.shape](HUB_R * 0.5)}"/></g>`
+      `<circle class="m-hit" r="${HUB_R + 6}"/>${h.edge || h.alone ? "" : `<path class="m-spokes" d="${spokesPath(HUB_R)}"/>`}<circle class="m-hub" r="${HUB_R}"/>` +
+      `${middle}</g>`
     );
   };
 
@@ -1425,7 +1448,7 @@
       const far = near && !near.machines.has(x.name) && key !== pointed;
       const off = x.state !== "ready";
       const strong = key === pointed || (chosen?.kind === "machine" && chosen.id === x.name);
-      const mark = { key, kind: "machine", mark: true, off, strong, rank: -1, at: L.machines.get(x.name), r: MACHINE_R, name: [x.name], mono: true };
+      const mark = { key, kind: "machine", mark: true, form: machineForm(x), off, strong, rank: -1, at: L.machines.get(x.name), r: MACHINE_R, name: [x.name], mono: true };
       if (far) {
         out.push({ ...mark, sub: off ? "off" : "" });
         continue;
@@ -1474,7 +1497,7 @@
         const below = (l.name.length - 1) * LINE + (l.mark ? MARK_SUB_Y : NAME_SUB_Y);
         const sub = l.sub ? `<text class="t-sub" y="${below}">${esc(l.sub)}</text>` : "";
         const here = l.mark && l.key === pointed && pointing();
-        const cls = `tag t-${l.kind}${l.mark ? " t-mark" : ""}${here ? " here" : ""}${l.off ? " off" : ""}${l.far ? " far" : ""}${l.strong ? " strong" : ""}${foundSet.has(l.key) ? " match" : ""}`;
+        const cls = `tag t-${l.kind}${l.mark ? " t-mark" : ""}${l.form ? ` t-${l.form}` : ""}${here ? " here" : ""}${l.off ? " off" : ""}${l.far ? " far" : ""}${l.strong ? " strong" : ""}${foundSet.has(l.key) ? " match" : ""}`;
         const words = `<text class="t-name${l.mono ? " mono" : ""}">${name}</text>`;
         if (!l.mark) return `<g class="${cls}" data-name="${esc(l.key)}"><rect class="t-plate" rx="3"/>${words}${sub}</g>`;
         // A mark takes the pointer itself, and its box is drawn round its
@@ -1510,6 +1533,19 @@
       }
       return boxCache.get(key);
     });
+    // A shut machine's box is whole; a lent one keeps only its corners,
+    // open on every side, and a basin's is open at the top. The dashes
+    // follow the box's own size, so they are set where the box is, and
+    // inline, so they hold over the dashes an off machine is drawn in.
+    const outline = (rect, form, [, , w, h]) => {
+      if (form === "lent") {
+        const c = Math.min(w, h) * LENT_CORNER;
+        rect.style.strokeDasharray = `${(2 * c).toFixed(1)} ${(w - 2 * c).toFixed(1)} ${(2 * c).toFixed(1)} ${(h - 2 * c).toFixed(1)}`;
+        rect.style.strokeDashoffset = c.toFixed(1);
+      } else if (form === "basin") {
+        rect.style.strokeDasharray = `0 ${w.toFixed(1)} ${(w + 2 * h).toFixed(1)}`;
+      }
+    };
     const fit = (rect, [x, y, w, h]) => {
       rect.setAttribute("x", x.toFixed(1));
       rect.setAttribute("y", y.toFixed(1));
@@ -1523,7 +1559,9 @@
       if (l.mark) {
         l.markBox = padded(b.name, MARK_PAD);
         l.subBox = b.sub ? padded(b.sub, PLATE_PAD) : null;
-        fit(nodes[i].querySelector(".t-box"), l.markBox);
+        const box = nodes[i].querySelector(".t-box");
+        fit(box, l.markBox);
+        outline(box, l.form, l.markBox);
       }
       fit(nodes[i].querySelector(".t-plate"), l.mark ? l.markBox : l.box);
     });
@@ -2783,6 +2821,10 @@
   // what each machine says of itself, never by its name or its provider's.
   const leavesAt = (x) => x?.leaves_at || x?.declared?.leaves_at || null;
   const isSandbox = (x) => leavesAt(x) !== null;
+  // A box borrowed from a pool of cloud machines says which basin it is
+  // in, in what it declares; never by its name, which the node makes up.
+  const isBasin = (x) => Boolean(x?.declared?.basin);
+  const machineForm = (x) => (isBasin(x) ? "basin" : isSandbox(x) ? "lent" : "shut");
   const leftWords = (iso) => {
     const ms = Date.parse(iso) - Date.parse(current.at);
     if (!(ms > 0)) return "its time is up";
@@ -3140,11 +3182,13 @@
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-waits" r="13"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>A question waiting: a dashed ring round a cell asked something three minutes or more ago that ${m.judged ? "hasn't answered it yet" : "has said nothing since"}, wider the more questions and the older the first; a network holding any is ringed round its ground</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-holds" d="M0,-14V14"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>A hold standing: a wall drawn across a cell that asked the others to put something off until it says it's over</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cord" d="M-14,0H-9M9,0H14" style="--w:2px"/><rect class="m-box" x="-9" y="-6" width="18" height="12"/></svg></dt><dd>A machine: its name in a hairline box, its cords leaving the box's edge; the box is dashed while the machine is off</dd></div>` +
-      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-hub" r="12"/><path class="m-hub-shape" d="${SHAPES.square(6)}"/></svg></dt><dd>An orchestration's hub, known by its shape; a click on its ground opens it</dd></div>` +
+      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><rect class="m-box m-lent" x="-10" y="-7" width="20" height="14" style="stroke-dasharray:9 11 9 5;stroke-dashoffset:4.5"/></svg></dt><dd>A lent machine, here until its lease ends: only its box's corners</dd></div>` +
+      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><rect class="m-box m-lent" x="-10" y="-7" width="20" height="14" style="stroke-dasharray:0 20 48"/></svg></dt><dd>A basin: a machine borrowed from a pool in the cloud, its box open at the top</dd></div>` +
+      `<div><dt><svg viewBox="-17 -17 34 34" aria-hidden="true"><path class="m-spokes" d="${spokesPath(10)}" style="stroke-width:1.75"/><circle class="m-hub" r="10"/><path class="m-hub-shape" d="${SHAPES.square(5)}"/></svg></dt><dd>A network's hub, a knot: spokes round its ring, and its own shape in the middle; a click on its ground opens it</dd></div>` +
       (m.cells.length > FOLD_OVER
         ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-colony folded" r="12"/><circle class="m-hub" r="7"/></svg></dt><dd>A folded network: drawn too small to read, or off the map, so its cells wait in its ground until you come closer or open it</dd></div>`
         : "") +
-      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><g class="hub quiet"><circle class="m-hub" r="12"/><path class="m-hub-shape" d="${SHAPES.square(6)}"/></g></svg></dt><dd>A quiet network: none of its cells at work, so drawn lighter</dd></div>` +
+      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><g class="hub quiet" transform="scale(0.82)"><path class="m-spokes" d="${spokesPath(10)}"/><circle class="m-hub" r="10"/><path class="m-hub-shape" d="${SHAPES.square(5)}"/></g></svg></dt><dd>A quiet network: none of its cells at work, so drawn lighter</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cord" d="M-13,0H13" style="--w:4px"/></svg></dt><dd>A cord: machine to hub, or hub to branch; thicker carries more</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-hypha" d="M-13,4Q0,-8 13,4"/></svg></dt><dd>Hyphae: a hub's cells, branching out from it</dd></div>` +
       (WARMS ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-talk warm3" d="M-12,6Q0,-12 12,6"/></svg></dt><dd>${current?.ties ? "Talk: an arc between two cells that messaged each other today, thicker the more they said lately, and thinner the longer they have been quiet" : "Talk: an arc between two that messaged in the last ten minutes, thicker the more they said"}</dd></div>` : "") +
@@ -3209,9 +3253,11 @@
   // link names it and nothing more, in the letters mycelium-link lets
   // through, so a name it would refuse is never offered as a link that
   // does nothing.
-  const LINK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+  // A cell's address is 1 to 12 capitals and digits; a network's name
+  // takes more.
+  const LINK_NAME = { cell: /^[A-Z0-9]{1,12}$/, network: /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/ };
   const launcherLink = (kind, name, words) =>
-    LINK_NAME.test(name || "") ? `<p class="led"><a class="inline" href="mycelium:${kind}/${name}">${esc(words)}</a></p>` : "";
+    LINK_NAME[kind]?.test(name || "") ? `<p class="led"><a class="inline" href="mycelium:${kind}/${name}">${esc(words)}</a></p>` : "";
 
   const backButton = (label) =>
     `<button type="button" class="back" data-back><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M7 1.5L3 5L7 8.5"/></svg>${esc(label)}</button>`;

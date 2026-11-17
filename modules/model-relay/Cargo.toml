@@ -1,0 +1,33 @@
+# The relay pi's model requests share, so a machine's many sessions reach
+# their model's origin over a few long-lived connections (src/lib.rs says
+# why and how).
+[package]
+name = "model-relay"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# HTTP/1.1 from each pi on the socket, and HTTP/2 to the origin, where one
+# connection carries many requests at once.
+hyper = { version = "1", features = ["client", "server", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+tokio = { version = "1.53", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+# TLS to the origin, trusting the public roots, or only the roots a file
+# names (--roots), as the tests do.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+webpki-roots = "1"
+# The shape every command of ours takes: its flags, help, errors and exits.
+terminal-kit = { path = "../terminal-kit" }
+
+[dev-dependencies]
+# A streamed answer, sent a half at a time.
+http-body-util = { version = "0.1", features = ["channel"] }
+# An origin of the tests' own, with a certificate made as they run.
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "ring"] }
+tempfile = "3"
+tokio = { version = "1.53", features = ["io-util", "macros", "net", "rt", "sync", "time"] }

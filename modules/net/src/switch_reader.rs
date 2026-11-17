@@ -1,9 +1,10 @@
 //! The switch's reader: what the switch's system service runs, apart from
 //! net's daemon, since signing in to the switch takes its admin password,
 //! which lets its holder change the switch. Each minute it reads the four
-//! status pages, and signs in only when they come back holding no status,
-//! as they do once the switch's session has ended: the sign-in is plain
-//! HTTP, so each one puts the password on the home network in the clear.
+//! status pages, System Info first, and signs in only when System Info
+//! holds no status, as once the switch's session has ended: the sign-in is
+//! plain HTTP, so each one puts the password on the home network in the
+//! clear.
 //! It writes only what the pages show, as a report (sources/switch.rs),
 //! for net's daemon to read; never the password or the sign-in.
 
@@ -36,7 +37,10 @@ const SIGN_IN: Duration = Duration::from_secs(20);
 /// unreachable, and the pause between them. The switch's web server closes
 /// about one connection in four without a reply, at times twice running
 /// (5 of 20 asks on 15 Nov), so a round of nine requests asked twice each
-/// mostly lost one; five tries leave each about a 1 in 1000 chance.
+/// mostly lost one; five tries leave each about a 1 in 1000 chance. The
+/// pause doubles after each, since its drops come in bursts: on 17 Nov it
+/// hung up on all five tries of one page, 300 ms apart, twice in 40
+/// minutes, and answered the next round each time.
 const TRIES: usize = 5;
 const PAUSE: Duration = Duration::from_millis(300);
 
@@ -55,12 +59,33 @@ pub fn run(address: &str) -> Result<(), String> {
     );
     let report = folder.join("report.json");
     let agent = agent();
+    let mut told = None;
     loop {
         let said = round(&agent, address, password().as_deref(), time::now());
+        // Each change of state goes to the journal, so a spell that has
+        // passed can still be told apart by its reason. The reason never
+        // holds the password: `kind` keeps only the failure's kind.
+        let now = (said.state, said.reason.clone());
+        if told.as_ref() != Some(&now) {
+            eprintln!("{}", journalled(&said));
+            told = Some(now);
+        }
         let written = serde_json::to_string_pretty(&said).map_err(|error| error.to_string())?;
         write(&report, &(written + "\n"))
             .map_err(|error| format!("can't write the report: {error}"))?;
         thread::sleep(EVERY);
+    }
+}
+
+/// The journal's line for what a round read: its state, and why.
+fn journalled(report: &Report) -> String {
+    let state = serde_json::to_value(report.state)
+        .ok()
+        .and_then(|state| state.as_str().map(str::to_owned))
+        .unwrap_or_default();
+    match report.reason.as_deref() {
+        Some(why) => format!("the switch reads {state}: {why}"),
+        None => format!("the switch reads {state}"),
     }
 }
 
@@ -135,28 +160,34 @@ fn round(agent: &Agent, address: &str, password: Option<&str>, now: u64) -> Repo
 }
 
 /// Each status page, one at a time, since the switch drops a reply when
-/// asked for two at once.
+/// asked for two at once. A System Info page that holds no status ends the
+/// read there: signed out, the switch may hang up on every other page
+/// rather than serve its sign-in form, as it did for 16 rounds on 17 Nov,
+/// and a read that waited on them would never reach the sign-in.
 fn pages(agent: &Agent, address: &str) -> Result<Pages, String> {
-    switch::PAGES
-        .iter()
-        .map(|page| {
-            let url = format!("http://{address}/{page}.htm");
-            again(|| {
-                let text = agent
-                    .get(&url)
-                    .call()
-                    .and_then(|mut answer| answer.body_mut().read_to_string())
-                    .map_err(|error| kind(&error))?;
-                if text.is_empty() {
-                    Err("it sent an empty page")
-                } else {
-                    Ok(text)
-                }
-            })
-            .map(|text| ((*page).to_owned(), text))
-            .map_err(|why| format!("its {} page didn't answer: {why}", switch::plainly(page)))
+    let mut pages = Pages::new();
+    for page in switch::PAGES {
+        let url = format!("http://{address}/{page}.htm");
+        let text = again(|| {
+            let text = agent
+                .get(&url)
+                .call()
+                .and_then(|mut answer| answer.body_mut().read_to_string())
+                .map_err(|error| kind(&error))?;
+            if text.is_empty() {
+                Err("it sent an empty page")
+            } else {
+                Ok(text)
+            }
         })
-        .collect()
+        .map_err(|why| format!("its {} page didn't answer: {why}", switch::plainly(page)))?;
+        let signed_out = page == "SystemInfoRpm" && !switch::holds_status(&text);
+        pages.insert(page.to_owned(), text);
+        if signed_out {
+            break;
+        }
+    }
+    Ok(pages)
 }
 
 /// Signs in, once. The switch ties the session to the address asking, and
@@ -246,15 +277,22 @@ fn io_kind(error: &io::Error) -> &'static str {
     }
 }
 
-/// Makes one request until the switch answers it, at most `TRIES` times.
+/// Makes one request until the switch answers it, at most `TRIES` times,
+/// the pauses between them as `pauses` says.
 fn again<T>(mut ask: impl FnMut() -> Result<T, &'static str>) -> Result<T, &'static str> {
-    for _ in 1..TRIES {
+    for pause in pauses() {
         if let Ok(answer) = ask() {
             return Ok(answer);
         }
-        thread::sleep(PAUSE);
+        thread::sleep(pause);
     }
     ask()
+}
+
+/// The pauses between one request's tries, one fewer than the tries,
+/// each twice the one before.
+fn pauses() -> impl Iterator<Item = Duration> {
+    (0..).take(TRIES - 1).map(|nth: u32| PAUSE * 2_u32.pow(nth))
 }
 
 /// Writes a file whole, so net's daemon never reads half of one.
@@ -299,6 +337,13 @@ mod tests {
         /// It starts the session, then closes the sign-in's connection
         /// without a reply.
         SilentlyOverTheSignIn,
+        /// Signed out, it serves System Info as its sign-in form but closes
+        /// every other page's connection without a reply, as the real switch
+        /// was read doing for 16 rounds from 03:10 on 17 Nov.
+        HangsUpSignedOut,
+        /// Signed in or not, it closes Port Statistics' connection without a
+        /// reply, as the real switch did for one round at 03:51 on 17 Nov.
+        HangsUpOnPortStatistics,
     }
 
     fn stand_in(signed_in: bool, behaves: Behaves) -> (String, Arc<Mutex<Vec<String>>>) {
@@ -338,6 +383,22 @@ mod tests {
                     continue;
                 }
                 let path = request.split_whitespace().nth(1).unwrap_or("/").to_owned();
+                if behaves == Behaves::HangsUpSignedOut
+                    && !session
+                    && path.ends_with("Rpm.htm")
+                    && path != "/SystemInfoRpm.htm"
+                {
+                    kept.lock()
+                        .expect("the log")
+                        .push(format!("hung up {request}"));
+                    continue;
+                }
+                if behaves == Behaves::HangsUpOnPortStatistics && path == "/PortStatisticsRpm.htm" {
+                    kept.lock()
+                        .expect("the log")
+                        .push(format!("hung up {request}"));
+                    continue;
+                }
                 kept.lock().expect("the log").push(request);
                 if path == "/logon.cgi" {
                     session = body.contains("password=a+test+password+%26+more");
@@ -452,6 +513,70 @@ mod tests {
             signed_in(&heard),
             1,
             "it signed in again over a session it had"
+        );
+    }
+
+    #[test]
+    fn a_signed_out_switch_that_hangs_up_on_its_other_pages_is_signed_in_to() {
+        let (address, heard) = stand_in(false, Behaves::HangsUpSignedOut);
+        let report = round(&agent(), &address, Some(PASSWORD), 10);
+        assert_eq!(report.state, SourceState::Answering, "{:?}", report.reason);
+        assert_eq!(report.status.map(|status| status.ports.len()), Some(8));
+        assert_eq!(signed_in(&heard), 1);
+    }
+
+    #[test]
+    fn a_refused_password_on_a_switch_that_hangs_up_reads_as_signed_out() {
+        let (address, heard) = stand_in(false, Behaves::HangsUpSignedOut);
+        let report = round(&agent(), &address, Some("not it"), 10);
+        assert_eq!(report.state, SourceState::SignedOut, "{:?}", report.reason);
+        assert_eq!(
+            report.reason.as_deref(),
+            Some("its sign-in was refused: its System Info page holds no status, as if signed out")
+        );
+        assert_eq!(signed_in(&heard), 1, "a refused password was sent again");
+    }
+
+    #[test]
+    fn a_signed_in_switch_that_hangs_up_on_a_later_page_is_never_signed_in_to() {
+        let (address, heard) = stand_in(true, Behaves::HangsUpOnPortStatistics);
+        let report = round(&agent(), &address, Some(PASSWORD), 10);
+        assert_eq!(
+            report.state,
+            SourceState::Unreachable,
+            "{:?}",
+            report.reason
+        );
+        assert_eq!(
+            report.reason.as_deref(),
+            Some(
+                "its Port Statistics page didn't answer: it closed the connection without a \
+                 reply"
+            )
+        );
+        assert_eq!(signed_in(&heard), 0, "it signed in over a live session");
+    }
+
+    #[test]
+    fn each_pause_between_tries_doubles_from_the_first() {
+        let pauses: Vec<u128> = pauses().map(|pause| pause.as_millis()).collect();
+        assert_eq!(pauses, [300, 600, 1200, 2400]);
+    }
+
+    #[test]
+    fn the_journal_says_the_state_and_why_but_never_the_password() {
+        let (address, _) = switch_on_loopback(false);
+        let refused = journalled(&round(&agent(), &address, Some("not it"), 10));
+        assert_eq!(
+            refused,
+            "the switch reads signed-out: its sign-in was refused: its System Info page holds \
+             no status, as if signed out"
+        );
+        let answered = journalled(&round(&agent(), &address, Some(PASSWORD), 10));
+        assert_eq!(answered, "the switch reads answering");
+        assert!(
+            !refused.contains("not it") && !answered.contains(PASSWORD),
+            "the journal holds a password: {refused} / {answered}"
         );
     }
 

@@ -385,6 +385,12 @@ impl Dir {
         }
     }
 
+    /// Whether anything but a trash is in this directory: what its owner
+    /// wrote since the guard moved the rest aside.
+    pub(crate) fn written_again(&self) -> io::Result<bool> {
+        Ok(self.names()?.iter().any(|name| !name.starts_with(TRASH)))
+    }
+
     /// The names in this directory, without `.` and `..`.
     pub(crate) fn names(&self) -> io::Result<Vec<Vec<u8>>> {
         let mut names = Vec::new();

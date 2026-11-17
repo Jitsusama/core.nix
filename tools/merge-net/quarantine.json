@@ -2,25 +2,24 @@
   {
     "at": 1794337827,
     "commit": "26852ce9a8ec1e828c6d26df64581bccba210135",
-    "due": "2026-11-16",
-    "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
+    "due": "2026-11-18",
+    "due_why": "Its owner, the launcher's, fixes it by 2026-11-18 23:59 UTC: 122 of its 162 net runs from listing to 17 Nov 11:00 UTC ended nonzero, 50 of them naming a listed subtest. capture_recent's wait timed out on its own 4 times, and warned-of-nothing reads every warning the run's earlier cases left, so it stays beside it; the categories case, failing every run since 16 Nov on a step count Code broke, stands again",
     "owner_pr": 2855,
-    "owner_session": "orchestrator",
+    "owner_session": "Y2YBTS",
     "reason": "failed twice at 420e2aa35b28, and at 26852ce9a8ec after it",
     "subtests": [
       "test_capture_recent_finds_past_its_nine_by_name_then_by_what_a_screenshot_says",
-      "test_quickshell_warned_of_nothing_it_drew_all_along",
-      "test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds"
+      "test_quickshell_warned_of_nothing_it_drew_all_along"
     ],
     "test": "vm-desktop-launcher-goes-places"
   },
   {
     "at": 1794409299,
     "commit": "6e396fae765b7bee38c3af3a418e0ff73ad7d294",
-    "due": "2026-11-16",
-    "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
+    "due": "2026-11-18",
+    "due_why": "Its owner, the launcher's, fixes it by 2026-11-18 23:59 UTC: 41 of its 130 net runs from listing to 17 Nov 11:00 UTC ended nonzero, 19 of them naming a listed subtest",
     "owner_pr": 3176,
-    "owner_session": "orchestrator",
+    "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at 6e396fae765b",
     "subtests": [
       "test_every_name_a_thing_had_still_finds_it",
@@ -61,9 +60,10 @@
   {
     "at": 1794620016,
     "commit": "93eeb7412debd50edf5d9bcc77d90d702b7ceee9",
-    "due": "2026-11-16",
+    "due": "2026-11-18",
+    "due_why": "Its owner, the launcher's, fixes it by 2026-11-18 23:59 UTC: 13 of its 107 net runs from listing to 17 Nov 11:00 UTC ended nonzero, 12 of them naming its subtest",
     "owner_pr": 4157,
-    "owner_session": "orchestrator",
+    "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at 93eeb7412deb",
     "subtests": [
       "test_a_session_whose_attach_its_host_refuses_keeps_its_window"
@@ -73,9 +73,10 @@
   {
     "at": 1794624729,
     "commit": "467ec1a20da37f9e7ef094c4b9b7c72d9058c1fe",
-    "due": "2026-11-16",
+    "due": "2026-11-18",
+    "due_why": "Its owner, the disk guard's, reruns it three times on an idle builder by 2026-11-18 23:59 UTC and takes it off if all three hold, or fixes it: 1 of its 23 net runs from listing to 17 Nov 11:00 UTC failed, on 16 Nov",
     "owner_pr": 4155,
-    "owner_session": "orchestrator",
+    "owner_session": "1DZYLJ",
     "reason": "failed, then passed, at 467ec1a20da3",
     "subtests": [
       "test_with_its_store_pressed_the_machine_expires_generations_and_collects_a_dead_build"
@@ -85,9 +86,10 @@
   {
     "at": 1794631096,
     "commit": "580dc8dbd5803c7bea2650e02ecb099ec1408af3",
-    "due": "2026-11-16",
+    "due": "2026-11-18",
+    "due_why": "Its owner, the call shaper's, reruns it three times on an idle builder by 2026-11-18 23:59 UTC and takes it off if all three hold, or fixes it: 3 of its 35 net runs from listing to 17 Nov 11:00 UTC failed, the last on 16 Nov",
     "owner_pr": 4228,
-    "owner_session": "orchestrator",
+    "owner_session": "2DZF5Z",
     "reason": "failed, then passed, at 580dc8dbd580",
     "subtests": [
       "test_a_call_loses_little",
@@ -98,18 +100,20 @@
   {
     "at": 1794637111,
     "commit": "4f0387b4623e6e3fee085982c9b469dbb3ddc299",
-    "due": "2026-11-16",
+    "due": "2026-11-18",
+    "due_why": "Its owner, the boot tests', reruns it three times on an idle builder by 2026-11-18 23:59 UTC and takes it off if all three hold, or fixes it: 4 of its 73 net runs from listing to 17 Nov 11:00 UTC ended nonzero",
     "owner_pr": 4243,
-    "owner_session": "orchestrator",
+    "owner_session": "FEH1HE",
     "reason": "failed, then passed, at 4f0387b4623e",
     "test": "vm-boot-asks-in-the-theme"
   },
   {
     "at": 1794644284,
     "commit": "fb51cf3f90b06cfa8db754e4275e9faaf6b05190",
-    "due": "2026-11-16",
+    "due": "2026-11-18",
+    "due_why": "Its owner, the launcher's, fixes it by 2026-11-18 23:59 UTC: 64 of its 110 net runs from listing to 17 Nov 11:00 UTC ended nonzero, 63 of them naming its subtest",
     "owner_pr": 4266,
-    "owner_session": "orchestrator",
+    "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at fb51cf3f90b0",
     "subtests": [
       "test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_once"
@@ -169,8 +173,9 @@
     "at": 1794849317,
     "commit": "8213d198a802746ea1634186cd295d7b71ca88e7",
     "due": "2026-11-18",
+    "due_why": "Its owner, the launcher's, fixes it with this test's other entry by 2026-11-18 23:59 UTC",
     "owner_pr": 4953,
-    "owner_session": "orchestrator",
+    "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at 8213d198a802",
     "subtests": [
       "test_quickshell_warned_of_nothing_as_the_screens_came_and_went"
@@ -194,8 +199,9 @@
     "at": 1794854023,
     "commit": "aeac109e3fb236c6bf47ad7f580969d3e547c5e3",
     "due": "2026-11-18",
+    "due_why": "Its owner, the launcher's, fixes it with this test's other entry by 2026-11-18 23:59 UTC",
     "owner_pr": 4952,
-    "owner_session": "orchestrator",
+    "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at aeac109e3fb2",
     "subtests": [
       "test_a_session_its_host_releases_carries_on_as_plain_pi_in_its_window"
@@ -235,5 +241,29 @@
     "owner_session": "orchestrator",
     "reason": "has been broken since #5110, but fails with it reverted too, so a later merge breaks it as well; whoever finds that merge fixes it forward and takes it off this list",
     "test": "a-macs-checks-since-39fb6de4dee4bb8e346322df7343151404c2eda7"
+  },
+  {
+    "at": 1794915304,
+    "commit": "12a1360de502d37c18a3bf5e24c054fbf31b5d1e",
+    "due": "2026-11-19",
+    "owner_pr": 5270,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 12a1360de502",
+    "subtests": [
+      "test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_by_what",
+      "test_a_usb_cameras_stream_shows_in_the_margin_too_and_leaves_with_the_camera",
+      "test_caps_lock_shows_in_the_margin_while_its_on",
+      "test_caps_lock_still_shows_after_its_watcher_restarts",
+      "test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin",
+      "test_keep_awake_shows_in_the_margin_and_now_says_it_and_lets_it_sleep",
+      "test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps",
+      "test_now_shows_the_notices_and_a_critical_one_unread_lights_for_yous_tray",
+      "test_the_copilot_key_starts_dictation",
+      "test_the_microphone_muted_shows_in_the_margin_and_return_unmutes_it",
+      "test_tokens_running_out_are_one_card_that_counts_down_and_rises_as_they_near",
+      "test_waiting_that_lasts_a_minute_shows_in_the_margin_quietly",
+      "test_whats_playing_shows_in_the_margin_and_a_media_key_shows_what_it_is"
+    ],
+    "test": "vm-desktop-minds-the-margin"
   }
 ]

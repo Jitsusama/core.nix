@@ -46,10 +46,7 @@ impl Shared {
             .filter(|(key, record)| held.records.get(*key) != Some(record))
             .map(|(_, record)| record)
             .collect();
-        if changed.is_empty() && gone.is_empty() && standing.is_none() {
-            return;
-        }
-        let (stuck, pacing) = Self::tell(
+        let told = Self::tell(
             &self.domain,
             &mut held.watches,
             &changed,
@@ -58,11 +55,12 @@ impl Shared {
             &now,
             standing.as_ref(),
         );
+        // Held whatever was told, so a list keeps the order given last
+        // though no record changed and no watch heard of it.
         held.records = now;
         held.given = given;
-        self.heeded(held.hang_up(&stuck));
-        if pacing {
-            self.paced.notify_all();
+        if let Some(told) = told {
+            self.answered(held, &told);
         }
     }
 
@@ -99,10 +97,7 @@ impl Shared {
                     .filter(|now| was.as_ref() != Some(*now))
             })
             .collect();
-        if changed.is_empty() && gone.is_empty() && standing.is_none() {
-            return;
-        }
-        let (stuck, pacing) = Self::tell(
+        let Some(told) = Self::tell(
             &self.domain,
             &mut held.watches,
             &changed,
@@ -114,9 +109,17 @@ impl Shared {
             },
             &held.records,
             standing.as_ref(),
-        );
-        self.heeded(held.hang_up(&stuck));
-        if pacing {
+        ) else {
+            return;
+        };
+        self.answered(held, &told);
+    }
+
+    /// Hangs up on the connections `told` found stopped reading, and wakes
+    /// the pace where a paced watch has something due.
+    fn answered(&self, held: &mut Held, (stuck, pacing): &(Vec<u64>, bool)) {
+        self.heeded(held.hang_up(stuck));
+        if *pacing {
             self.paced.notify_all();
         }
     }
@@ -125,7 +128,8 @@ impl Shared {
     /// keys that went, each record against how it read `before`, and how
     /// the sources stand where that changed, all of them held `now`.
     /// Answers the connections that stopped reading, and whether a paced
-    /// watch has something due.
+    /// watch has something due; with nothing changed, gone or newly
+    /// standing, tells no watch and answers nothing.
     fn tell<'a>(
         domain: &Domain,
         watches: &mut [Watch],
@@ -134,7 +138,10 @@ impl Shared {
         before: &dyn Fn(&str) -> Option<&'a Value>,
         now: &BTreeMap<String, Value>,
         standing: Option<&Value>,
-    ) -> (Vec<u64>, bool) {
+    ) -> Option<(Vec<u64>, bool)> {
+        if changed.is_empty() && gone.is_empty() && standing.is_none() {
+            return None;
+        }
         let mut stuck = Vec::new();
         let mut pacing = false;
         for watch in watches {
@@ -191,6 +198,6 @@ impl Shared {
                 stuck.push(watch.connection);
             }
         }
-        (stuck, pacing)
+        Some((stuck, pacing))
     }
 }

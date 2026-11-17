@@ -148,9 +148,19 @@ fn cable_state(code: i64) -> &'static str {
     }
 }
 
+/// Whether the System Info page holds the switch's status. Signed out, the
+/// switch serves its sign-in form in its place, and may hang up on the other
+/// pages rather than serve the form for them, so this page alone says
+/// whether the session has ended.
+pub fn holds_status(system: &str) -> bool {
+    array(system, "macStr").is_some_and(|said| !said.is_empty())
+}
+
 /// The switch's status from its pages, or why they don't read as one. A
 /// page that comes back as the sign-in form, as it does once the switch's
-/// session has ended, holds none of its arrays and is refused.
+/// session has ended, holds none of its arrays and is refused. System Info
+/// is judged first, so a read that stopped at a signed-out System Info is
+/// refused as signed out rather than for the pages it didn't ask for.
 pub fn parse(pages: &Pages) -> Result<Status, String> {
     let page = |name: &str| {
         pages
@@ -158,20 +168,20 @@ pub fn parse(pages: &Pages) -> Result<Status, String> {
             .map(String::as_str)
             .ok_or_else(|| format!("its {} page is missing", plainly(name)))
     };
-    let system = page("SystemInfoRpm")?;
-    let setting = page("PortSettingRpm")?;
-    let statistics = page("PortStatisticsRpm")?;
-    let cables = page("CableDiagRpm")?;
     let refused = |name: &str| {
         format!(
             "its {} page holds no status, as if signed out",
             plainly(name)
         )
     };
-    let first = |key| array(system, key).and_then(|said| said.into_iter().next());
-    if first("macStr").is_none() {
+    let system = page("SystemInfoRpm")?;
+    if !holds_status(system) {
         return Err(refused("SystemInfoRpm"));
     }
+    let setting = page("PortSettingRpm")?;
+    let statistics = page("PortStatisticsRpm")?;
+    let cables = page("CableDiagRpm")?;
+    let first = |key| array(system, key).and_then(|said| said.into_iter().next());
     let state = array(setting, "state").ok_or_else(|| refused("PortSettingRpm"))?;
     let link_status =
         array(statistics, "link_status").ok_or_else(|| refused("PortStatisticsRpm"))?;
@@ -561,6 +571,35 @@ mod tests {
             "<html><form action=logon.cgi></form></html>".into(),
         );
         assert!(parse(&pages).is_err(), "a sign-in page read as status");
+    }
+
+    #[test]
+    fn only_a_system_page_with_its_mac_holds_status() {
+        let pages = contract();
+        assert!(
+            holds_status(&pages["SystemInfoRpm"]),
+            "the contract's System Info read as signed out"
+        );
+        assert!(
+            !holds_status("<html><form action=logon.cgi></form></html>"),
+            "the sign-in form read as status"
+        );
+        assert!(
+            !holds_status("var info_ds = {macStr:[]};"),
+            "an empty MAC read as status"
+        );
+    }
+
+    #[test]
+    fn a_read_that_stopped_at_a_signed_out_system_page_is_refused_as_signed_out() {
+        let pages = Pages::from([(
+            "SystemInfoRpm".to_owned(),
+            "<html><form action=logon.cgi></form></html>".to_owned(),
+        )]);
+        assert_eq!(
+            parse(&pages).err().as_deref(),
+            Some("its System Info page holds no status, as if signed out")
+        );
     }
 
     #[test]

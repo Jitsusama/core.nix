@@ -91,6 +91,7 @@ Scope {
                         : ""})` : "")
                 + (frame ? `, then ${frame.waiting} waiting for its frame and ${frame.drawing}`
                     + " drawing it" + drawingApart(frame) + collecting(frame, drawn)
+                    + framesBeforeSaid(frame)
                     + Thread.said(searched, frame.thread, "its searching") : ""));
     }
 
@@ -119,6 +120,15 @@ Scope {
     function drawingApart(frame) {
         return frame.syncing === undefined ? "" : ` (${frame.syncing} syncing,`
             + ` ${frame.rendering} rendering, ${frame.heard} before the shell heard it swapped)`;
+    }
+
+    // The frames begun before a key's own, read only for a key slow enough
+    // to be said, and only where its frame's number held (drawingApart's
+    // split), since they're counted back from it.
+    function framesBeforeSaid(frame) {
+        return frame.syncing === undefined || !frame.timesOf ? ""
+            : Trials.framesBeforeSaid(Trials.framesBefore(
+                Trials.begunBefore(frame.keyFrame, frame.timesOf), frame.keyHeard));
     }
 
     // A drawer's time from the work begun for it to the frame that drew it,
@@ -185,6 +195,11 @@ Scope {
     // its rows (Trials.js).
     function stepped(inner, at) {
         return Trials.stepped(inner, at);
+    }
+
+    // A walk stopped short's parts, with what it passed (Trials.js).
+    function passed(parts, passing) {
+        return Trials.passed(parts, passing);
     }
 
     // The three collections that took longest, if any took a millisecond,

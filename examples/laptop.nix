@@ -55,6 +55,7 @@ nixpkgs.lib.nixosSystem {
           core.homeModules.health
           core.homeModules.local-sites
           core.homeModules.merge-net
+          core.homeModules.model-relay
           core.homeModules.network-revive
           core.homeModules.passwords
           core.homeModules.people
@@ -68,6 +69,9 @@ nixpkgs.lib.nixosSystem {
         ];
         # A throwaway item made for trying the release line, as a machine names its own.
         jitsusama.secret-asks.item = "op://Private/Release Test/password";
+        # The origin its agents' model requests are relayed to, as a machine
+        # names its own.
+        jitsusama.model-relay.origin = "https://models.example";
       };
 
       system.stateVersion = "26.05";

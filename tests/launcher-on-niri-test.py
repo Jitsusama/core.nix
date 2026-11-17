@@ -73,6 +73,9 @@ DRAWING_SPLIT = re.compile(
     r" (?P<heard>\d+) before the shell heard it swapped\)"
 )
 ROUNDED = 2
+# How a key's line says the frames begun since it was heard (Trials.js's framesBeforeSaid), read
+# back from its own frame's number, which a wrong number or clock leaves unsaid.
+FRAMES_BEFORE = re.compile(r", after (?:at least )?\d+ other frames? since it was heard")
 # The most facts a home network thing's drawer holds, the rest its step in's (modules/eero's
 # drawers.rs GLANCE).
 GLANCE = 6
@@ -4182,6 +4185,9 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
     drew = DRAWING_SPLIT.search(said)
     lines = [line for line in said.splitlines() if 'launcher: "w" took' in line]
     assert drew, f"its line never said its drawing apart: {lines}"
+    assert any(FRAMES_BEFORE.search(line) for line in lines), (
+        f"its line never said the frames begun since it was heard: {lines}"
+    )
     drawing, syncing, rendering, heard = (int(part) for part in drew.groups())
     assert abs(syncing + rendering + heard - drawing) <= ROUNDED, (
         f"{drawing} ms drawing, said as {syncing} syncing, {rendering} rendering"
@@ -4769,6 +4775,26 @@ def test_a_word_and_a_space_typed_at_once_time_only_the_last_key_as_the_step(she
     steps = [one.get("step") for one in presented]
     assert steps.count("\u2192 Network") == 1, f"the step was timed other than once: {presented}"
     assert steps[-1] == "\u2192 Network", f"a key after the step was timed: {presented}"
+
+
+def test_a_walk_through_a_place_is_timed_once_as_where_it_ends(shell: Shell) -> None:
+    """A walk to a place inside another is timed once, as the place it ends in.
+
+    A spot's Return and a terminal's go to walk the places on the way, as Machine on the way
+    to Power, and each step was timed as its own, so one walk said two steps and the first
+    left out what the last took (a council, 2026-11-17). What the places on the way took is
+    said as passing, which tests/trials.qml holds.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    before = len(keys_presented_settled(shell))
+    asked = shlex.quote(json.dumps({"steps": ["machine", "power"], "words": "", "sure": False}))
+    shell.as_account(f"qs -p {shell.folder} ipc call -- launcher doing {asked}")
+    shell.launcher_until(lambda shown: shown["path"] == ["Machine", "Power"])
+    presented = keys_presented_settled(shell)[before:]
+    shell.close_launcher()
+    steps = [one.get("step") for one in presented]
+    assert steps == ["\u2192 Power"], f"the walk to Power wasn't timed once as it: {presented}"
 
 
 def minus_presented(shell: Shell, out: Callable[[Json], object]) -> list[Json]:

@@ -161,6 +161,48 @@ impl Reclaimer for Peeking {
     }
 }
 
+/// Takes a tenth of a second over each candidate, as a big folder takes
+/// hours.
+struct Slow;
+
+impl Reclaimer for Slow {
+    fn reclaim(&mut self, _: &Candidate) -> Outcome {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        Outcome::Reclaimed
+    }
+}
+
+// On 16 November a laptop's pass began at 20:44 and ran to 23:34, and each
+// of its thousand lines said 20:44: what it took at 22:46 read as taken two
+// hours before, and the one reading the journal for 22:31 to 22:46 found
+// nothing. Each line says when its own candidate was done, counted from
+// the pass's start in its own clock.
+#[test]
+fn each_action_is_stamped_when_it_was_done_not_when_its_pass_began() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("journal.jsonl");
+    let mut journal = Journal::new(&path, 1 << 20);
+    let mut journaled = Journaled {
+        inner: Slow,
+        journal: &mut journal,
+        roots: std::collections::HashMap::new(),
+        at: 1_000.0,
+        since: std::time::Instant::now(),
+        band: Band::Filling,
+    };
+    for name in ["one", "two"] {
+        journaled.reclaim(&candidate(&dir.path().join(name)));
+    }
+    let stamps: Vec<f64> = lines(&path)
+        .iter()
+        .map(|line| line["at"].as_f64().unwrap())
+        .collect();
+    assert!(
+        stamps[0] >= 1_000.1 && stamps[1] >= stamps[0] + 0.1 && stamps[1] < 1_010.0,
+        "stamped by the pass's start, not each action's end: {stamps:?}"
+    );
+}
+
 fn candidate(path: &Path) -> Candidate {
     Candidate {
         path: path.to_owned(),
@@ -192,6 +234,7 @@ fn a_directory_is_begun_before_it_is_reclaimed_and_ended_after() {
             .map(|p| (p.clone(), dir.path().to_owned()))
             .collect(),
         at: 1.0,
+        since: std::time::Instant::now(),
         band: Band::Filling,
     };
     assert_eq!(journaled.reclaim(&candidate(&run)), Outcome::Reclaimed);

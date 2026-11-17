@@ -1,7 +1,9 @@
 //! Quest workspaces: scratch kept beside a quest, spent once it's over.
 
+use crate::activity::Process;
 use crate::clock::{Awake, local};
 use crate::plan::{Candidate, Class};
+use crate::snapshots::Boot;
 use regex_lite::Regex;
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -344,6 +346,99 @@ struct Started {
     boot: Option<String>,
     #[serde(rename = "startTicks")]
     ticks: Option<u64>,
+    /// When it started, to the second in local time, as a Mac's ps gives
+    /// it: `Sun Nov 15 17:43:08 2026`.
+    #[serde(rename = "startToken")]
+    token: Option<String>,
+}
+
+impl Started {
+    /// Whether the process runs as the one that started then: by its
+    /// start ticks where the record keeps them, as on Linux, else by the
+    /// second it noted, as on a Mac. One that can't be read can't be ruled
+    /// out, so runs, as does a record that says neither.
+    fn runs(&self, processes: &[Process], boot: &Boot) -> bool {
+        let noted = self.token.as_deref().and_then(lstart);
+        processes
+            .iter()
+            .filter(|process| process.pid == self.pid)
+            .any(|process| {
+                !process.readable
+                    || match (self.ticks, noted) {
+                        (Some(ticks), _) => process.start_ticks == ticks,
+                        (None, Some(noted)) => {
+                            let since =
+                                boot.wall + crate::units::float(process.start_ticks) / boot.ticks;
+                            // The note drops the fraction of its second.
+                            (-1.0..2.0).contains(&(since - noted))
+                        }
+                        (None, None) => true,
+                    }
+            })
+    }
+}
+
+/// The wall seconds of a local time as `ps -o lstart` gives it.
+fn lstart(token: &str) -> Option<f64> {
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    let [_, month, day, time, year] = token.split_whitespace().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+    let month = MONTHS.iter().position(|name| *name == month)?;
+    let mut time = time.split(':').map(str::parse::<i32>);
+    let (Some(Ok(hour)), Some(Ok(minute)), Some(Ok(second)), None) =
+        (time.next(), time.next(), time.next(), time.next())
+    else {
+        return None;
+    };
+    let month = i32::try_from(month).ok()? + 1;
+    crate::clock::local([
+        year.parse().ok()?,
+        month,
+        day.parse().ok()?,
+        hour,
+        minute,
+        second,
+    ])
+}
+
+/// The quests a live session works on now, read from the harness's
+/// session records in `sessions` and the hosts' rosters in `rosters`, or
+/// none when the records are there but can't be read, since then any quest
+/// may be. On
+/// 16 November a laptop's guard took 188 entries of a quest's tmp/ while
+/// its session worked in it, a script written that evening among them, so
+/// a quest one works on keeps what it left, whatever each entry's age.
+pub fn worked_on(
+    sessions: &Path,
+    rosters: Option<&Path>,
+    processes: &[Process],
+    boot: &Boot,
+) -> Option<HashSet<String>> {
+    let entries = match fs::read_dir(sessions) {
+        Ok(entries) => entries,
+        // No folder holds no session, so none lives: a machine the harness
+        // never ran on clears its scratch by age, as it did before.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Some(rosters.map_or_default(hosted));
+        }
+        Err(_) => return None,
+    };
+    let mut live: HashSet<String> = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| serde_json::from_slice::<Session>(&fs::read(entry.path()).ok()?).ok())
+        .filter(|session| {
+            session
+                .process
+                .as_ref()
+                .is_some_and(|process| process.runs(processes, boot))
+        })
+        .filter_map(|session| session.quest)
+        .collect();
+    live.extend(rosters.map_or_default(hosted));
+    Some(live)
 }
 
 /// The trees quests still going list while none of their sessions lives,

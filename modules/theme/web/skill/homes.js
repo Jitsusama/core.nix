@@ -35,46 +35,202 @@
     }
   };
   // An address is compared by its path and its fragment, each decoded, so
-  // "code/#repo=Jitsusama%2Fcore.nix" and its decoded twin are one home.
-  const place = (address) => {
-    const url = new URL(address, root);
-    return `${decodeURIComponent(url.pathname)}${decodeURIComponent(url.hash)}`;
+  // "code/#repo=Jitsusama%2Fcore.nix" and its decoded twin are one home. A
+  // stray % that won't decode is compared as it is written.
+  const decoded = (text) => {
+    try {
+      return decodeURIComponent(text);
+    } catch {
+      return text;
+    }
   };
+  // An address as a URL, or null for one that won't parse.
+  const urlOf = (address, base) => {
+    try {
+      return new URL(address, base);
+    } catch {
+      return null;
+    }
+  };
+  const place = (address) => {
+    const url = urlOf(address, root);
+    return url === null ? address : `${decoded(url.pathname)}${decoded(url.hash)}`;
+  };
+  // Where a link goes, an SVG link's included, whose href is no string.
+  const hrefOf = (link) => urlOf(link.getAttribute("href") ?? "", page.baseURI);
+  const blocks = "p, li, tr, dt, dd, h1, h2, h3, h4, h5, h6, figcaption, caption, summary, "
+    + "blockquote, [role='row'], [role='treeitem'], [role='listitem']";
+  const skipped = "script, style, pre, title, [aria-hidden='true'], [data-map], [data-said-by], "
+    + "nav.sites-strip";
 
   const sites = await read("sites.json");
   if (sites === null || !Array.isArray(sites.sites)) {
     return ["sites.json at the sites' root, for the homes to be read from"];
   }
+  // A row's homes are kinds, each read from its homes.json, or patterns,
+  // {"kind", "address"}, giving every thing of a kind a home at the address
+  // with its name, percent-encoded, for {name}. Both are held to what the
+  // system reader (modules/system/src/homes.rs) takes, so a row or a record
+  // it drops is named here rather than missed: a path of plain steps, and an
+  // address that is a fragment on the row's own page in plain bytes. A
+  // pattern may be written from its page, "#machine={name}", or from the
+  // sites' root, "mycelium/#machine={name}", and reads no homes.json.
+  const slot = "{name}";
+  // A letter an address keeps as it is: a letter, a digit or one of -._~.
+  const unreserved = (letter) =>
+    (letter >= "a" && letter <= "z")
+    || (letter >= "A" && letter <= "Z")
+    || (letter >= "0" && letter <= "9")
+    || "-._~".includes(letter);
+  // Steps of unreserved letters, none empty but a closing one and none
+  // starting with a dot, so no step can climb out of the sites' root.
+  const plainPath = (path) => {
+    if (typeof path !== "string") {
+      return false;
+    }
+    const steps = path.endsWith("/") ? path.slice(0, -1) : path;
+    return steps !== ""
+      && steps.split("/").every((step) =>
+        step !== "" && !step.startsWith(".") && [...step].every(unreserved)
+      );
+  };
+  // Visible ASCII with no double quote, backslash, angle bracket or
+  // backtick, so an address can't break out of a page's markup or a
+  // terminal's link.
+  const plainText = (address) =>
+    typeof address === "string"
+    && [...address].every(
+      (letter) => letter > " " && letter <= "~" && !"\\\"<>`".includes(letter),
+    );
+  // Whether an address is its row's path and a fragment on that page.
+  const onItsPage = (address, path) =>
+    address.startsWith(`${path}#`) && plainText(address);
   const claimed = new Map();
   const things = [];
-  for (const site of sites.sites) {
-    for (const kind of site.homes ?? []) {
-      if (claimed.has(kind)) {
-        missing.push(
-          `${kind} has two homes, ${claimed.get(kind)} and ${site.path}: keep one in sites.json`,
-        );
-      }
-      claimed.set(kind, site.path);
+  const patterns = [];
+  // A kind's first claim keeps it, as the reader keeps it; a later row's
+  // claim is a fault, since that row believes it is home.
+  const claim = (kind, path) => {
+    if (claimed.has(kind)) {
+      missing.push(
+        `${kind} has two homes, ${claimed.get(kind)} and ${path}: keep one in sites.json`,
+      );
+      return false;
     }
-    if ((site.homes ?? []).length === 0) {
+    claimed.set(kind, path);
+    return true;
+  };
+  for (const site of sites.sites) {
+    const path = site.path;
+    const claims = site.homes ?? [];
+    if (!Array.isArray(claims)) {
+      missing.push(
+        `${JSON.stringify(path)}'s homes in sites.json are ${JSON.stringify(claims)}: `
+          + "a list of kinds and patterns",
+      );
       continue;
     }
-    const homes = await read(`${site.path}homes.json`);
+    if (claims.length === 0) {
+      continue;
+    }
+    if (!plainPath(path)) {
+      missing.push(
+        `${JSON.stringify(path)} in sites.json homes things on no plain path: `
+          + "steps of letters, digits and -._~, none starting with a dot",
+      );
+      continue;
+    }
+    // A row's patterns are read before its kinds, so a kind it gives both
+    // ways is the pattern's, as the reader has it.
+    const own = new Set();
+    const isPattern = (said) => typeof said === "object" && said !== null;
+    for (const each of claims.filter(isPattern)) {
+      const written = typeof each.address === "string" ? each.address : "";
+      const fragment = written.startsWith(path) ? written.slice(path.length) : written;
+      if (typeof each.kind !== "string") {
+        missing.push(`${path}'s pattern ${JSON.stringify(each)} in sites.json names no kind`);
+      } else if (!(fragment.startsWith("#") && fragment.includes(slot) && plainText(fragment))) {
+        missing.push(
+          `${path}'s pattern for ${each.kind}, ${JSON.stringify(each.address)}, must be a `
+            + `fragment (#) on its page holding ${slot}, in plain bytes`,
+        );
+      } else if (!own.has(each.kind) && claim(each.kind, path)) {
+        own.add(each.kind);
+        patterns.push({ kind: each.kind, path, fragment });
+      }
+    }
+    const kinds = [];
+    for (const each of claims.filter((said) => !isPattern(said))) {
+      if (typeof each !== "string") {
+        missing.push(
+          `${path}'s homes in sites.json hold ${JSON.stringify(each)}: `
+            + `a kind, or a pattern {"kind", "address"}`,
+        );
+      } else if (!own.has(each) && !kinds.includes(each) && claim(each, path)) {
+        kinds.push(each);
+      }
+    }
+    if (kinds.length === 0) {
+      continue;
+    }
+    const folder = path.endsWith("/") ? path : `${path}/`;
+    const homes = await read(`${folder}homes.json`);
     if (homes === null || !Array.isArray(homes.things) || homes.things.length === 0) {
-      missing.push(`${site.path}homes.json, listing every thing ${site.path} is home to`);
+      missing.push(`${folder}homes.json, listing every thing ${path} is home to`);
       continue;
     }
     for (const thing of homes.things) {
-      if (!(site.homes ?? []).includes(thing.kind)) {
+      if (!kinds.includes(thing.kind)) {
         missing.push(
-          `${site.path}homes.json lists a ${thing.kind}, which sites.json doesn't give it`,
+          `${folder}homes.json lists a ${thing.kind}, which sites.json doesn't give it by name`,
         );
+      } else if (typeof thing.address !== "string" || !onItsPage(thing.address, path)) {
+        missing.push(
+          `${folder}homes.json gives ${thing.name} ${JSON.stringify(thing.address)}: `
+            + `an address is ${path} and a fragment (#), in plain bytes`,
+        );
+      } else {
+        things.push(thing);
       }
-      things.push(thing);
     }
   }
-  if (things.length === 0) {
-    missing.push("a home site in sites.json, for any mention to be measured");
+
+  // A pattern lists no things, so its names are learned from the page: each
+  // link on the sites, outside a person's own words, or data-home whose
+  // address the pattern makes names one, and a mention of that name
+  // elsewhere on the page is measured like any other. The name is read from
+  // the address as written, where it is percent-encoded and so can't run on
+  // into the rest of the fragment. A pattern's name the page never links
+  // anywhere isn't known here, and isn't measured.
+  const literal = (text) => text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const written = [
+    ...[...page.querySelectorAll("a[href]")]
+      .filter((link) => link.closest(skipped) === null)
+      .map(hrefOf)
+      .filter((url) => url !== null && url.origin === root.origin),
+    ...[...page.querySelectorAll("[data-home]")]
+      .map((own) => urlOf(own.dataset.home, root))
+      .filter((url) => url !== null),
+  ].map((url) => `${url.pathname}${url.hash}`);
+  for (const { kind, path, fragment } of patterns) {
+    const [head, ...rest] = `/${path}${fragment}`.split(slot).map(literal);
+    const made = new RegExp(`^${head}([\\w.~%!'()*-]+)${rest.join("(?:\\1)")}$`, "u");
+    const learned = new Set();
+    for (const each of written) {
+      const found = made.exec(each);
+      const name = found === null ? "" : decoded(found[1]);
+      if (name !== "" && !learned.has(name)) {
+        learned.add(name);
+        const address = `${path}${fragment}`.replaceAll(slot, found[1]);
+        things.push({ kind, name, names: [], address });
+      }
+    }
+  }
+  // No row home to anything leaves nothing to measure, which is a fault. A
+  // page that links none of a pattern's things has nothing of it to
+  // measure, which isn't.
+  if (claimed.size === 0) {
+    missing.push("a row in sites.json home to a kind, for any mention to be measured");
     return missing;
   }
 
@@ -97,19 +253,23 @@
   // prose may trail off after a whole name.
   const before = "(?<![\\p{L}\\p{N}_/.\u2026-])";
   const after = "(?![\\p{L}\\p{N}_/-]|\\.[\\p{L}\\p{N}])";
-  const mention = new RegExp(`${before}(?:${escaped.join("|")})${after}`, "gu");
+  // With no name to look for, the pattern matches nothing rather than every
+  // empty string.
+  const named = escaped.length === 0 ? "(?!)" : escaped.join("|");
+  const mention = new RegExp(`${before}(?:${named})${after}`, "gu");
 
-  const blocks = "p, li, tr, dt, dd, h1, h2, h3, h4, h5, h6, figcaption, caption, summary, "
-    + "blockquote, [role='row'], [role='treeitem'], [role='listitem']";
-  const skipped = "script, style, pre, title, [aria-hidden='true'], [data-map], [data-said-by], "
-    + "nav.sites-strip";
   // Lower-case letters alone: each one changes when raised to a capital.
   const isWord = (name) => [...name].every((letter) => letter !== letter.toUpperCase());
   const setAsName = "code, kbd, samp, a[href]";
   const homeOf = (thing) => place(thing.address);
+  // Whether a link reaches a home: on the sites, at its address.
+  const reaches = (link, home) => {
+    const href = hrefOf(link);
+    return href !== null && href.origin === root.origin && place(href.href) === home;
+  };
   const linksTo = (element, home) => {
     const link = element?.closest("a[href]");
-    return link !== null && link !== undefined && place(link.href) === home;
+    return link !== null && link !== undefined && reaches(link, home);
   };
 
   // Each block's mentions, by name, with whether any of them links home.
@@ -156,13 +316,15 @@
     const here = place(own.dataset.home);
     const thing = things.find((each) => homeOf(each) === here);
     if (thing === undefined) {
-      missing.push(`data-home="${own.dataset.home}" is no address any homes.json gives`);
+      missing.push(
+        `data-home="${own.dataset.home}" is no address any homes.json or pattern gives`,
+      );
       continue;
     }
     const twins = (byName.get(thing.name) ?? []).filter((each) => homeOf(each) !== here);
     for (const twin of twins) {
       const reached = [...own.querySelectorAll("a[href]")].some(
-        (link) => place(link.href) === homeOf(twin),
+        (link) => reaches(link, homeOf(twin)),
       );
       if (!reached) {
         missing.push(`${thing.name}'s home is also a ${twin.kind}: link once to ${twin.address}`);

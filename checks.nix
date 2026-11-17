@@ -693,6 +693,7 @@ gather {
     ./modules/memory-modules/checks.nix
     ./modules/merge-net/checks.nix
     ./modules/mic-mute-light/checks.nix
+    ./modules/model-relay/checks.nix
     ./modules/mpv/checks.nix
     ./modules/mycelium/checks.nix
     ./modules/name-service/checks.nix

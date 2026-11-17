@@ -600,6 +600,12 @@
     what no tofu test tests, from a ref's files, and writes the day's figures as cadence reads
     them, and the hour's against each target, the hour before and the owner
   '';
+  code-health-crowds-as-core-does = ''
+    code-health and core's rule that every crowded folder says why name the same planted folders
+    crowded, and the ones expected: a reason past a note's opening, wrapped, or in AGENTS.md
+    is read, one joined to a word isn't, and a folder at the limit, past it, nested or of
+    folders is counted alike
+  '';
   code-health-finds-a-machines-programs-first = ''
     code-health finds a machine's own programs first on its PATH, such as a git that reads a
     repository stock git refuses, with core's git and coreutils after them
@@ -1214,6 +1220,12 @@
     the scripts it used to copy, draws its mark in each look's accent, and changes nothing on a
     second run
   '';
+  homes-probe-reads-as-the-reader = ''
+    the web-design skill's homes probe, in headless Chromium over small sites of its own, learns a
+    pattern's names from the page's links on the sites alone, names each row and record the system
+    reader drops, keeps a kind's first claim, passes a page that links none of a pattern's things,
+    fails with no row home to anything, and reads a shortened name's tail as no mention
+  '';
   idle-pi-windows-yield = ''
     the sorter is given the folder where the harness marks pi sessions nobody is at, and weighs pi
     sessions started outside a terminal as it weighs windows
@@ -1567,6 +1579,25 @@
   merge-net-passes-clippy = ''
     clippy finds nothing in merge-net or its tests
   '';
+  model-relay-carries-requests-whole = ''
+    model-relay, against an HTTP/2 origin of its tests' own, forwards a request's method, path,
+    headers and body as they came, refuses any other host, carries many requests at once on a few
+    connections, streams an answer as it comes, opens again a connection the origin lets go, says
+    an origin out of reach as a 502 or a 504 without queueing, doesn't ask for a connection that
+    won't open on every request, forgets a failure once the origin is back, sends pi direct with a
+    421 when it can't trust the origin, answers beside an answer longer than its idle time, leaves
+    once idle even while refusing other hosts, held open by a kept connection or knocked on as it
+    goes, keeps its socket to its account, from a second relay and off a file or a link that isn't
+    a socket, and logs nothing of a header or a body, a failure included
+  '';
+  model-relay-passes-clippy = ''
+    clippy finds nothing in model-relay or its tests
+  '';
+  model-relay-runs-in-background-slice = ''
+    model-relay is installed only where a machine names an origin, listens where only its account
+    may ask, removes its socket when stopped, runs with its socket in background.slice, forwards
+    to the origin named alone, outlasts a switch, and tells every pi where to find it
+  '';
   mona-sans-vf-is-the-whole-face = ''
     the graphical role's fontconfig, asked for Mona Sans VF by name as GitHub asks, gives the variable
     file with every axis and lists no other file under that name
@@ -1707,6 +1738,18 @@
     file in the Nix store, which only root writes, holding the same words as the account's config
     folder, so a link there can't widen how its agents' commands run; a machine declaring nothing
     names no file
+  '';
+  mycelium-node-reads-its-stimuli-from-the-store = ''
+    each realm's mycelium node, on NixOS and nix-darwin, is given the person's table of which
+    receptors say when more is asked of them as a file in the Nix store, which only root writes,
+    since the node refuses a table any other account could change; a machine naming no source
+    names no file, so every source stays silent, and a source mycelium has no receptor for is
+    refused
+  '';
+  mycelium-table-names-mycelium-s-own-sources = ''
+    the sources a machine's stimuli table may name are exactly the ones the locked mycelium's
+    receptors read, as its own source names them, so a renamed source can't make the node refuse
+    the whole table and silence every source with nothing failing
   '';
   needs-you-is-true = ''
     over the agents' own files as the node serves them, For You's to-dos hold now only what Joel
@@ -3072,8 +3115,9 @@
   '';
   mycelium-links-open-in-the-launcher = ''
     xdg-open and gio send mycelium: links to mycelium-link's entry, which asks the launcher to talk
-    to the cell or show the network a link names, by its name alone, and asks nothing for a link
-    naming neither, a name qs could take for a flag, or a second link within a few seconds
+    to the cell or show the network a link names, by its name alone, a notice's whole cell link
+    by its address wherever it says the cell runs, and asks nothing for a link naming neither, an
+    address not in capitals, a name qs could take for a flag, or a second link within a few seconds
   '';
   mycelium-link-passes-clippy = ''
     clippy finds nothing in mycelium-link, which opens a mycelium: link in the launcher, or its

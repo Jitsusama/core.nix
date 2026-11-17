@@ -237,6 +237,7 @@
         };
         meaning = ./modules/meaning/home.nix;
         merge-net = ./modules/merge-net/home.nix;
+        model-relay = ./modules/model-relay/home.nix;
         mpv = ./modules/mpv/home.nix;
         mycelium = moduleFrom ./modules/mycelium/home.nix { inherit mycelium; };
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };

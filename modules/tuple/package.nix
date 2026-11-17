@@ -1,7 +1,11 @@
-# Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_10_23.0,
+# Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_11_16.0,
 # whose command is the one Tuple's docs describe (tuple call, contacts,
-# state), its every command's help the same as v2026_10_21.0's, whose
-# screen sharing through the portal was seen to work here.
+# state). Every command v2026_10_23.0 had answers its help the same, but
+# for call react, which takes emoji and animations beside its sounds. New
+# commands raise a hand, share cards and download the transcription
+# model. The log lines and stream keys tuple-call reads are in both
+# builds. Screen sharing through the portal was last seen working here on
+# v2026_10_21.0.
 # The address and checksum of each build are what Tuple's latest_version
 # endpoint gives, the one nixpkgs' own update script reads.
 #
@@ -15,15 +19,15 @@
   tuple,
 }:
 let
-  release = "v2026_10_23.0";
+  release = "v2026_11_16.0";
   builds = {
     x86_64-linux = {
       arch = "x86_64";
-      hash = "sha256-0mYRG8QdXgWS2ExbhOXOjOi/pB16IxahO4lXOJ/Sbis=";
+      hash = "sha256-YL9OgRIe7m0XwWrs8BZvxW7VVY564dPHL73Alz7xLEw=";
     };
     aarch64-linux = {
       arch = "arm64";
-      hash = "sha256-ySj7s1L18TszOr33RWV/0xnYQphq4Uuae24BENfKdFo=";
+      hash = "sha256-2bOOKHgUmSqA9eAwAYKB/EQY4b1HB0MW6yvC1EAJQd8=";
     };
   };
   build = builds.${stdenv.hostPlatform.system} or null;
@@ -32,7 +36,7 @@ if build == null then
   tuple
 else
   tuple.overrideAttrs {
-    version = "0-unstable-2026-10-23";
+    version = "0-unstable-2026-11-16";
     src = fetchurl {
       url = "https://tuple-client-releases.s3.amazonaws.com/linux/${release}/${build.arch}/tuple";
       inherit (build) hash;

@@ -48,9 +48,14 @@ through axe-core and its own console.
    `sites.json` and every `homes.json` it names, then names each row,
    item, paragraph or heading where a known thing is named and no
    mention of it links to its home, and each `data-home` with no link to
-   its twin. A name that is a plain lower-case word, a repository called
-   `documents`, counts only in code or a link, since in prose it's the
-   word (2026-11-16). A page with a picture runs `svgtext.js` too: each word
+   its twin. A pattern's kind lists no things, so its names are the ones
+   the page's own links on the sites and `data-home` reach through the
+   pattern, each then measured everywhere else on the page; a name the
+   page never links isn't measured. A row or a record the system's
+   reader would drop is named, never missed. A name that is a plain
+   lower-case word, a repository called `documents`, counts only in code
+   or a link, since in prose it's the word (2026-11-16). A page with a
+   picture runs `svgtext.js` too: each word
    drawn in an inline SVG reaches 7:1 on what is painted behind it, the
    shapes under it blended with the page, in the look it's run in. A
    fill of `var(--name, fallback)` whose name the kit doesn't define
@@ -261,8 +266,14 @@ On a throttled middling phone (4 times slower CPU, a fast 4G network):
   back and compare it; open the live page and look, never trusting the
   publish's own report.
 - **A local site is on its home** (`sites.md`, Where a Site Lives): its row
-  is in `sites.json`, the home was rebuilt from it, and every page opens
-  with the strip whose first link goes home and whose ask is the row's.
+  is in `sites.json`, or a live site's in `home.nix`, the home was rebuilt
+  from it, and every page opens with the strip whose first link goes home;
+  a document's strip asks what its row asks, and a live site's strip is
+  its own build's. A document's head links the kit's `switch.css` and
+  loads its `document.js`, and no script file of its own. Read the head
+  for the kit's two, since the home's build names only a document loading
+  a script of its own, in the line its service prints (`journalctl --user
+  -u local-sites-home`), never one missing the kit.
 
 ## Looking
 

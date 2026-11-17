@@ -136,7 +136,7 @@ const PORTS: [(&str, Align); 5] = [
     ("port", Align::Left),
     ("kind", Align::Left),
     ("link", Align::Left),
-    ("speed mbit/s", Align::Right),
+    ("speed Mb/s", Align::Right),
     ("duplex", Align::Left),
 ];
 
@@ -194,9 +194,9 @@ const RADIOS: [(&str, Align); 6] = [
     ("radio", Align::Left),
     ("band", Align::Left),
     ("channel", Align::Right),
-    ("width mhz", Align::Right),
+    ("width MHz", Align::Right),
     ("busy %", Align::Right),
-    ("power dbm", Align::Right),
+    ("power dBm", Align::Right),
 ];
 
 fn radios(device: &Device, pen: &Pen, room: Room) -> Vec<String> {
@@ -247,8 +247,8 @@ const LINKS: [(&str, Align); 7] = [
     ("channel", Align::Right),
     ("here", Align::Left),
     ("there", Align::Left),
-    ("mbit/s", Align::Right),
-    ("signal dbm", Align::Right),
+    ("speed Mb/s", Align::Right),
+    ("signal dBm", Align::Right),
 ];
 const LINKS_GIVE_WAY: [usize; 3] = [4, 3, 2];
 
@@ -294,11 +294,11 @@ fn channels(way: &str, channels: &[Channel], active: &str, pen: &Pen, room: Room
     let columns = [
         (way, Align::Right),
         ("kind", Align::Left),
-        ("mhz", Align::Right),
-        ("width mhz", Align::Right),
+        ("centre MHz", Align::Right),
+        ("width MHz", Align::Right),
         ("modulation", Align::Left),
-        ("power dbmv", Align::Right),
-        ("snr db", Align::Right),
+        ("power dBmV", Align::Right),
+        ("snr dB", Align::Right),
         ("corrected", Align::Right),
         ("uncorrectable", Align::Right),
         (active, Align::Left),
@@ -437,6 +437,35 @@ mod tests {
         );
         // Each radio is named by its band.
         assert!(!head("RADIO").contains("BAND"), "{text}");
+    }
+
+    #[test]
+    fn a_unit_in_a_label_keeps_its_own_case() {
+        let network = network();
+        let head = |name: &str, opening: &str| {
+            let found = find(&network, name).expect("the fixture holds it");
+            let text = device(&network, found, now(), &Pen::plain(), Room::Cells(200));
+            text.lines()
+                .find(|line| line.starts_with(opening))
+                .unwrap_or_else(|| panic!("no table opens with {opening}: {text}"))
+                .to_owned()
+        };
+        // Every unit sits after its column's name, since a label's first
+        // word always goes up: a bare MHZ or MB/S would misread.
+        let heads = [
+            // The modem's fixture gives no channel widths, so its WIDTH
+            // column is left out; the radios' is read on Hall.
+            ("Modem", "DOWN", &["CENTRE MHz", "POWER dBmV", "SNR dB"][..]),
+            ("Study", "LINKED TO", &["SPEED Mb/s", "SIGNAL dBm"][..]),
+            ("Hall", "PORT", &["SPEED Mb/s"][..]),
+            ("Hall", "RADIO", &["WIDTH MHz", "POWER dBm"][..]),
+        ];
+        for (name, opening, labels) in heads {
+            let line = head(name, opening);
+            for label in labels {
+                assert!(line.contains(label), "{label} isn't in {name}'s {line:?}");
+            }
+        }
     }
 
     #[test]

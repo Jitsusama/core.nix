@@ -175,6 +175,8 @@ fn main() -> ExitCode {
         unsafe { std::env::set_var("PATH", plugins) };
     }
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        // The screen draws on stdout, the stream the kit decided for.
+        guide::screen::decide_colours(context.out.ink().colours);
         run(&context.args)
     })
 }

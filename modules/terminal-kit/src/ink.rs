@@ -188,6 +188,31 @@ struct Mark {
     console: String,
 }
 
+/// Units written in lower case alone, which capitals would misread:
+/// MS is a different unit from ms, and KB/S reads as kilobytes.
+const LOWER_UNITS: [&str; 8] = ["ms", "µs", "ns", "s", "b/s", "kb/s", "bit/s", "kbit/s"];
+
+/// A label's words in capitals, but for a unit after its first word,
+/// which keeps its case: a word holding a capital (dBm, Mb/s, MHz) is
+/// already written as its unit is, as a name from the world keeps its
+/// own case, and the few lower-case units are named. The first word is always the label's name, so it always goes
+/// up, and a group's heading such as Examples still reads EXAMPLES.
+pub(crate) fn capitals(words: &str) -> String {
+    words
+        .split(' ')
+        .enumerate()
+        .map(|(at, word)| {
+            let a_unit = word.chars().any(char::is_uppercase) || LOWER_UNITS.contains(&word);
+            if at > 0 && a_unit {
+                word.to_owned()
+            } else {
+                word.to_uppercase()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Where the account's theme is: `$XDG_CONFIG_HOME/jitsusama/theme.json`,
 /// else under `~/.config`.
 pub fn theme_file(environment: &Environment) -> Option<PathBuf> {
@@ -276,6 +301,31 @@ impl Pen {
         Self::new(Ink::plain(), None)
     }
 
+    /// A pen whose roles are SGR codes already worked out from the theme,
+    /// `role=code` as theme.nix writes them, for a program built where
+    /// no account's theme can be read, as the guide is on the installer.
+    /// A role it isn't given draws in the terminal's own colour, as does
+    /// one whose code is more than numbers and semicolons, so no code can
+    /// carry other control bytes to the terminal.
+    pub fn coded<'a>(ink: Ink, roles: impl IntoIterator<Item = (&'a str, &'a str)>) -> Self {
+        let mut pen = Self::new(ink, None);
+        pen.roles = roles
+            .into_iter()
+            .filter(|(_, code)| {
+                code.bytes()
+                    .all(|byte| byte.is_ascii_digit() || byte == b';')
+            })
+            .map(|(role, code)| {
+                let escapes = Escapes {
+                    truecolour: code.to_owned(),
+                    sixteen: code.to_owned(),
+                };
+                (role.to_owned(), escapes)
+            })
+            .collect();
+        pen
+    }
+
     /// The ink this pen draws with.
     pub fn ink(&self) -> Ink {
         self.ink
@@ -318,9 +368,10 @@ impl Pen {
         self.escaped(&["1", self.colour("strong")], words)
     }
 
-    /// A label over a group or a column: muted capitals.
+    /// A label over a group or a column: muted capitals, but for a unit
+    /// after its first word, which keeps its case (`capitals` says why).
     pub fn label(&self, words: &str) -> String {
-        self.role("muted", &words.to_uppercase())
+        self.role("muted", &capitals(words))
     }
 
     /// What the command says of itself: italic, muted.
@@ -444,12 +495,73 @@ mod tests {
     }
 
     #[test]
+    fn a_label_keeps_a_units_case_after_its_name() {
+        let pen = Pen::new(Ink::plain(), Some(&osaka_jade()));
+        // Spelled out rather than read from LOWER_UNITS, so a unit dropped
+        // from the list goes up here and fails.
+        let lower = ["ms", "µs", "ns", "s", "b/s", "kb/s", "bit/s", "kbit/s"];
+        for unit in lower {
+            assert_eq!(
+                pen.label(&format!("took {unit}")),
+                format!("TOOK {unit}"),
+                "{unit} went up after a label's name"
+            );
+        }
+        assert_eq!(
+            ["power dBm", "speed Mb/s", "linked to", "from UniFi"].map(|words| pen.label(words)),
+            ["POWER dBm", "SPEED Mb/s", "LINKED TO", "FROM UniFi"],
+            "a word holding a capital went up, or a plain word didn't"
+        );
+        // The first word is the label's name, so it goes up even when it
+        // is a unit: a column is named before its unit.
+        assert_eq!(pen.label("ms"), "MS", "a label's first word stayed down");
+    }
+
+    #[test]
     fn a_pen_with_no_ink_draws_plain_words_and_its_marks() {
         let pen = Pen::new(Ink::plain(), Some(&osaka_jade()));
         assert_eq!(pen.title("Disk"), "Disk");
         assert_eq!(pen.label("Examples"), "EXAMPLES");
         assert_eq!(pen.marked("done", "success"), "\u{2713} ");
         assert_eq!(pen.link("https://example.com", "page"), "page");
+    }
+
+    #[test]
+    fn a_coded_pen_draws_each_role_in_the_code_it_was_given_and_no_other() {
+        // Muted's code differs from the agreed one, so a pen that kept the
+        // agreed colours under the given ones would be seen.
+        let roles = [("strong", "1;37"), ("muted", "2;35")];
+        for colours in [Colours::Sixteen, Colours::Truecolour] {
+            let pen = Pen::coded(
+                Ink {
+                    colours,
+                    console: false,
+                },
+                roles,
+            );
+            assert_eq!(
+                [
+                    pen.role("strong", "a"),
+                    pen.role("muted", "b"),
+                    pen.role("alert", "c")
+                ],
+                ["\u{1b}[1;37ma\u{1b}[0m", "\u{1b}[2;35mb\u{1b}[0m", "c"],
+                "in {colours:?}, a role isn't drawn in the code it was given, or one it wasn't \
+                 given is inked"
+            );
+        }
+        let plain = Pen::coded(Ink::plain(), [("strong", "1")]);
+        assert_eq!(plain.role("strong", "a"), "a", "a pen with no ink inked");
+    }
+
+    #[test]
+    fn a_coded_pen_draws_plainly_a_code_that_is_more_than_numbers() {
+        let pen = Pen::coded(Ink::sixteen(), [("strong", "1m\u{1b}]0;x\u{7}")]);
+        assert_eq!(
+            pen.role("strong", "a"),
+            "a",
+            "a code carrying other control bytes reached the terminal"
+        );
     }
 
     #[test]

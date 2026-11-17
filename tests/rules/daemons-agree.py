@@ -56,6 +56,7 @@ SHOWN = 15
 OTHERS_PROTOCOL = {
     "pi-agent-proxy": "ssh-agent's protocol, which ssh and git speak to it",
     "pi-github-door": "HTTP's CONNECT, which gh and git speak to it through the fence's relay",
+    "model-relay-agents": "HTTP/1.1, which pi's fetch speaks to it for the model's origin",
 }
 
 # Doors for pi's fence: services that answer only the fence's own commands,
