@@ -4666,22 +4666,48 @@ def test_a_step_out_is_timed_to_its_frame_as_a_step_in_is(shell: Shell) -> None:
     shell.take_notices()
     shell.launcher_ready()
     shell.launcher_until(lambda shown: bool(shown["held"]))
-    shell.normal()
-    # Gone into with nothing typed, so - puts no words back, which the field times as its own.
+    # Gone into with nothing typed, so - puts no words back.
     depth = len(shell.showing()["held"])
-    before = len(json.loads(shell.as_account(shell.ipc("keysPresented"))))
-    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    shell.send_chars("-")
-    shell.launcher_until(lambda shown: len(shown["held"]) == depth - 1)
-    presented: list[Json] = []
-    while not presented and time.monotonic() < deadline:
-        presented = json.loads(shell.as_account(shell.ipc("keysPresented")))[before:]
-        time.sleep(launcher_on_niri.POLL)
+    presented = minus_presented(shell, lambda shown: len(shown["held"]) == depth - 1)
     shell.close_launcher()
     steps = [one.get("step") for one in presented]
     # One press, timed once: a second key beside it would count the step twice.
     assert len(steps) == 1, f"- out of the notices wasn't timed once: {presented}"
     assert str(steps[0]).startswith("\u2190 "), f"- wasn't timed as a step out: {presented}"
+
+
+def test_a_step_out_putting_words_back_is_timed_as_the_step(shell: Shell) -> None:
+    """- back onto what was typed is timed once, as the step out and the place it left.
+
+    The words it puts back search as a key's do, and were timed as those words alone, from the
+    field's change, naming no place and leaving out the step's own work (a council, 2026-11-17).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("programs", selecting="Programs")
+    shell.step_in()
+    presented = minus_presented(shell, lambda shown: shown["held"] == [] and shown["typed"] != "")
+    shell.close_launcher()
+    steps = [one.get("step") for one in presented]
+    assert steps == ["\u2190 Programs"], f"- out of Programs wasn't timed once as it: {presented}"
+
+
+def minus_presented(shell: Shell, out: Callable[[Json], object]) -> list[Json]:
+    """Press - from normal, wait until the launcher is `out`, and give every key presented since.
+
+    It waits on past the first, so a second timing a frame later is seen.
+    """
+    shell.normal()
+    before = len(json.loads(shell.as_account(shell.ipc("keysPresented"))))
+    shell.send_chars("-")
+    shell.launcher_until(out)
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    presented: list[Json] = []
+    while not presented and time.monotonic() < deadline:
+        presented = json.loads(shell.as_account(shell.ipc("keysPresented")))[before:]
+        time.sleep(launcher_on_niri.POLL)
+    time.sleep(0.5)
+    return cast("list[Json]", json.loads(shell.as_account(shell.ipc("keysPresented")))[before:])
 
 
 def moved_presented(shell: Shell, written: float, deadline: float) -> list[Json]:

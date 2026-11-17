@@ -5069,7 +5069,7 @@ Scope {
         // drawn and the ask let go by then: a kept Super+N timed its fill
         // as "→ On Screen" (a gate, 2026-11-16).
         if (openAsked < 0 && !fillingPlace)
-            keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected);
+            keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true);
         return went();
     }
 
@@ -5941,19 +5941,27 @@ Scope {
         // A step back onto one whose line holds its words puts them back.
         const onto = held.length > 0 ? held[held.length - 1].row : null;
         const words = onto?.words?.() ?? left.typed;
-        // Words put back in the field are timed by the field as they are
-        // (searchSoon), so the step isn't timed again beside them.
-        const stepTimed = timed && words === prompt.text && openAsked < 0 && !fillingPlace;
-        if (stepTimed)
+        const stepTimed = timed && openAsked < 0 && !fillingPlace;
+        const wordsBack = words !== prompt.text;
+        if (stepTimed && !wordsBack)
             searchParts = null;
-        restart(words);
+        // Words put back in the field search as a key's do, so the key
+        // the field times for them is this step, named and begun as one,
+        // rather than the words alone and timed only from the field.
+        stepOut = stepTimed && wordsBack
+            ? { text: `\u2190 ${leaving.name}`, began, heard, pressed, collected } : null;
+        try {
+            restart(words);
+        } finally {
+            stepOut = null;
+        }
         placeCaret(onto);
         reselect(left);
-        if (!stepTimed)
+        if (!stepTimed || wordsBack)
             return;
         searchParts = trials.stepped(searchParts, { began, made: began, pushed,
             opened: pushed, ended: Date.now(), making: {} });
-        keyTimed(`\u2190 ${leaving.name}`, began, heard, pressed, collected);
+        keyTimed(`\u2190 ${leaving.name}`, began, heard, pressed, collected, true);
     }
 
     // A step whose line holds its words, as a save's name, says where the
@@ -6427,8 +6435,11 @@ Scope {
     // its line says how much of the key was the collector's: Joel's
     // slowest keys waited on it, traced in the lab (2026-11-12), and his
     // own line says which.
-    function keyTimed(typed, began, heard, pressed, collected) {
+    // `stepped` when it's a step in or out, which its line says as it
+    // is presented, rather than typed words that look like one.
+    function keyTimed(typed, began, heard, pressed, collected, stepped) {
         keysDrawing = Pacing.refreshedActs(keysDrawing, [{ text: typed, began, collected,
+            step: stepped === true ? typed : "",
             searched: Date.now() - began, parts: searchParts, begun: null,
             rendered: null, pressed: pressed > 0 ? pressed : heard, heard,
             done: KeyTimes.now() }]);
@@ -7114,8 +7125,15 @@ Scope {
     // timed on its own.
     property var keysDue: []
     property bool searchedThisTurn: false
-    function searchSoon(text, began, heard, pressed) {
-        keysDue = keysDue.concat([{ text, began, heard, pressed, collected: Heap.collected() }]);
+    // The step out whose words the field is being given back, timed as
+    // the key the field's change makes (back).
+    property var stepOut: null
+    function searchSoon(text, began, heard, pressed, out) {
+        // Its text stays the field's, which the next key reads as what
+        // the field held before it (Awaited.before).
+        keysDue = keysDue.concat([out ? { text, began: out.began, heard: out.heard,
+            pressed: out.pressed, collected: out.collected, step: out.text }
+            : { text, began, heard, pressed, collected: Heap.collected(), step: "" }]);
         if (searchedThisTurn)
             return;
         searchedThisTurn = true;
@@ -7154,8 +7172,8 @@ Scope {
             Object.assign(searchParts, Awaited.waitedOf(waited, Date.now(), answersWaitedFor,
                 waited.timedOut === true));
         if (!asking)
-            due.forEach(key => keyTimed(key.text, key.began, key.heard, key.pressed,
-                key.collected));
+            due.forEach(key => keyTimed(key.step || key.text, key.began, key.heard, key.pressed,
+                key.collected, !!key.step));
     }
 
     // How long a key's list waits for the sources whose search awaits a
@@ -11109,7 +11127,7 @@ Scope {
         const one = { from, at, heard: key.heard, begun: key.begun, onRow: key.onRow,
             synchronized: times.synchronized ?? null, swapped: times.swapped ?? null,
             screen: root.screenHere?.name ?? "", refresh: times.refresh ?? 0,
-            step: /^[\u2190\u2192] /.test(key.text ?? "") ? key.text : "" };
+            step: key.step ?? "" };
         keysPresented = keysPresented.concat([one]).slice(-keysKept);
     }
 
@@ -12015,7 +12033,7 @@ Scope {
                             root.drafted();
                             root.lettersTyped();
                             root.searchSoon(text, Date.now(), KeyTimes.now(),
-                                KeyTimes.pressed());
+                                KeyTimes.pressed(), root.stepOut);
                         }
                         // Return, as the vi-paradigm spec's table has it:
                         // words asked for are handed over; a thing whose
