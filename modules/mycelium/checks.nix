@@ -146,14 +146,16 @@ let
           });
         };
       }).xdg.configFile."mycelium/declared.json".text;
-  # pi's own fence, strict, which an agent's run starts through on Linux;
-  # a Mac's is the same words with its own system's build of pi-fence.
-  launcher = [
-    (lib.getExe (pkgs.callPackage ../pi/fence-run/package.nix { }))
+  # pi's own fence, strict, which an agent's run starts through, each
+  # system's with its own build of pi-fence, whichever system checks it.
+  launcherOn = bare: [
+    (lib.getExe ((bare [ ]).pkgs.callPackage ../pi/fence-run/package.nix { }))
     "--kind"
     "strict"
     "--"
   ];
+  launcher = launcherOn bareNixos;
+  macLauncher = launcherOn bareDarwin;
   hosting = declaredAs {
     hosts = [
       {
@@ -763,9 +765,9 @@ in
         && (launching linux).fence.fence.runs or null == launcher
         && (launching linux).fence.strict.runs or null == launcher
         && !((launching linux).fence.none ? runs)
-        && lib.drop 1 ((launching mac).fence.strict.runs or [ ]) == lib.drop 1 launcher
-        && lib.hasSuffix "/bin/pi-fence" (lib.head ((launching mac).fence.strict.runs or [ "" ]))
-        && (launching mac).fence.fence.runs or null == (launching mac).fence.strict.runs
+        && (launching mac).fence.fence.runs or null == macLauncher
+        && (launching mac).fence.strict.runs or null == macLauncher
+        && macLauncher != launcher
         && !((launching mac).fence.none ? runs)
         && (
           inVm.within or null == {
