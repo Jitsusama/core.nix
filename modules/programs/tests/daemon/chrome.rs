@@ -139,12 +139,26 @@ fn chromes_bookmarks_are_rows_of_their_own_but_for_a_page_open_now() {
                "in": "chrome"}),
         "a bookmark's Return doesn't open it in Chrome: {a}"
     );
-    // The session's read as the watch begins, and its open page leaves.
-    let gone = client.gone();
+    // The session's read as the watch begins, and its open page leaves:
+    // gone after the answer, or out of it where the session was read
+    // first, as it is now and then on a busy machine.
+    let open = "row:bookmarks:https://open.example.org/";
+    if answer["records"]
+        .as_array()
+        .is_some_and(|records| records.iter().any(|record| record["key"] == open))
+    {
+        let gone = client.gone();
+        assert_eq!(
+            gone,
+            [json!(open)],
+            "a bookmark whose page is open isn't left out"
+        );
+    }
+    let got = client.ask(&json!({"id": 2, "ask": "get", "keys": [open]}));
     assert_eq!(
-        gone,
-        [json!("row:bookmarks:https://open.example.org/")],
-        "a bookmark whose page is open isn't left out"
+        got["records"],
+        json!([]),
+        "a bookmark whose page is open is still served: {got}"
     );
     bookmarked(
         &running,
