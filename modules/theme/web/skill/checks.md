@@ -45,7 +45,8 @@ through axe-core and its own console.
    which a canvas drawn at twice its size gets wrong without a word.
    `map.js` calls it afresh each time it measures. A page on the home's
    sites runs `homes.js` too, served from the sites' root: it reads
-   `sites.json` and every `homes.json` it names, then names each row,
+   the home's rows (`rows.json`, or `sites.json` where the home writes
+   none) and every `homes.json` they name, then names each row,
    item, paragraph or heading where a known thing is named and no
    mention of it links to its home, and each `data-home` with no link to
    its twin. A pattern's kind lists no things, so its names are the ones

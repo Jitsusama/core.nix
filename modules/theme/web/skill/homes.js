@@ -1,7 +1,7 @@
 // The gate's probe for sites.md's "One Home for Every Thing" (checks.md),
 // beside gate.js, layout.js and map.js and run the same way: whole, as one
 // expression in the page as published. It reads every home site's
-// homes.json through sites.json, then answers with each place the page names
+// homes.json through the home's rows, then answers with each place the page names
 // a thing that has a home without linking it there, each in a line saying
 // what to do. An empty answer passes. It ends without a semicolon, since an
 // eval asked for one expression answers nothing for a statement.
@@ -19,9 +19,15 @@
 // it as a name: in code, kbd or samp, or in a link. In running prose it is the
 // word, and "No documents yet" names no repository (2026-11-16).
 //
-// A check that finds nothing to test fails rather than passing, so a
-// sites.json no home site answers, or a homes.json that lists nothing, is
-// a fault, never a quiet pass.
+// The home's rows are rows.json, every row the home lists with a live
+// site's as Nix declares it, which the home writes beside sites.json
+// (2026-11-17). Until every home has one, a sites root without it is read
+// through sites.json. One that is there but isn't rows is a fault rather
+// than a reason to read the other, which may be older.
+//
+// A check that finds nothing to test fails rather than passing, so rows no
+// home site answers, or a homes.json that lists nothing, is a fault, never
+// a quiet pass.
 (async () => {
   const missing = [];
   const page = document;
@@ -63,9 +69,13 @@
   const skipped = "script, style, pre, title, [aria-hidden='true'], [data-map], [data-said-by], "
     + "nav.sites-strip";
 
-  const sites = await read("sites.json");
+  const rows = await read("rows.json");
+  const record = rows === null ? "sites.json" : "rows.json";
+  const sites = rows ?? (await read("sites.json"));
   if (sites === null || !Array.isArray(sites.sites)) {
-    return ["sites.json at the sites' root, for the homes to be read from"];
+    return rows === null
+      ? ["sites.json at the sites' root, for the homes to be read from"]
+      : ["rows.json at the sites' root, the home's rows as {\"sites\": [...]}, for the homes"];
   }
   // A row's homes are kinds, each read from its homes.json, or patterns,
   // {"kind", "address"}, giving every thing of a kind a home at the address
@@ -113,7 +123,7 @@
   const claim = (kind, path) => {
     if (claimed.has(kind)) {
       missing.push(
-        `${kind} has two homes, ${claimed.get(kind)} and ${path}: keep one in sites.json`,
+        `${kind} has two homes, ${claimed.get(kind)} and ${path}: keep one in ${record}`,
       );
       return false;
     }
@@ -125,7 +135,7 @@
     const claims = site.homes ?? [];
     if (!Array.isArray(claims)) {
       missing.push(
-        `${JSON.stringify(path)}'s homes in sites.json are ${JSON.stringify(claims)}: `
+        `${JSON.stringify(path)}'s homes in ${record} are ${JSON.stringify(claims)}: `
           + "a list of kinds and patterns",
       );
       continue;
@@ -133,9 +143,18 @@
     if (claims.length === 0) {
       continue;
     }
+    // The home lists a row written ./code/, as sessions write it, but the
+    // system's homes take its path as written and refuse the dot step.
+    if (typeof path === "string" && path.startsWith("./") && plainPath(path.slice(2))) {
+      missing.push(
+        `${JSON.stringify(path)} in ${record} homes things, which the system's homes refuse: `
+          + "drop its ./",
+      );
+      continue;
+    }
     if (!plainPath(path)) {
       missing.push(
-        `${JSON.stringify(path)} in sites.json homes things on no plain path: `
+        `${JSON.stringify(path)} in ${record} homes things on no plain path: `
           + "steps of letters, digits and -._~, none starting with a dot",
       );
       continue;
@@ -148,7 +167,7 @@
       const written = typeof each.address === "string" ? each.address : "";
       const fragment = written.startsWith(path) ? written.slice(path.length) : written;
       if (typeof each.kind !== "string") {
-        missing.push(`${path}'s pattern ${JSON.stringify(each)} in sites.json names no kind`);
+        missing.push(`${path}'s pattern ${JSON.stringify(each)} in ${record} names no kind`);
       } else if (!(fragment.startsWith("#") && fragment.includes(slot) && plainText(fragment))) {
         missing.push(
           `${path}'s pattern for ${each.kind}, ${JSON.stringify(each.address)}, must be a `
@@ -163,7 +182,7 @@
     for (const each of claims.filter((said) => !isPattern(said))) {
       if (typeof each !== "string") {
         missing.push(
-          `${path}'s homes in sites.json hold ${JSON.stringify(each)}: `
+          `${path}'s homes in ${record} hold ${JSON.stringify(each)}: `
             + `a kind, or a pattern {"kind", "address"}`,
         );
       } else if (!own.has(each) && !kinds.includes(each) && claim(each, path)) {
@@ -182,7 +201,7 @@
     for (const thing of homes.things) {
       if (!kinds.includes(thing.kind)) {
         missing.push(
-          `${folder}homes.json lists a ${thing.kind}, which sites.json doesn't give it by name`,
+          `${folder}homes.json lists a ${thing.kind}, which ${record} doesn't give it by name`,
         );
       } else if (typeof thing.address !== "string" || !onItsPage(thing.address, path)) {
         missing.push(
@@ -230,7 +249,7 @@
   // page that links none of a pattern's things has nothing of it to
   // measure, which isn't.
   if (claimed.size === 0) {
-    missing.push("a row in sites.json home to a kind, for any mention to be measured");
+    missing.push(`a row in ${record} home to a kind, for any mention to be measured`);
     return missing;
   }
 
