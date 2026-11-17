@@ -11,7 +11,8 @@ when they came in. `checks.nix` runs all twelve on core itself.
 `every-ruff-exception-hides-a-finding-planted.toml`, a config it must refuse
 in `every-ruff-exception-hides-a-finding-refused.toml` and one ruff can't read
 in `every-ruff-exception-hides-a-finding-broken.toml`, and first sees itself
-fail on all three, as `every-ruff-exception-hides-a-finding.sh` says.
+fail on all three and on a config that isn't TOML, which
+`every-ruff-exception-hides-a-finding.sh` writes, as it says.
 `daemons-agree` reads an evaluated account's units rather than the files
 alone, so it's given a graphical machine's account too, and runs on Linux.
 `commands-agree` runs each command on the terminal kit for its help, so it's
