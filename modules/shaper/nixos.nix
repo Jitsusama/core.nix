@@ -212,7 +212,9 @@ in
   # finds its line (src/live.rs), for an A/B of it on the real line
   # without a switch. The shaper holds each value within bounds that keep
   # a standing queue under what a call hears, and stopping the shaper
-  # would do more, so this too gives wheel nothing more.
+  # would do more. A trial's ceiling may hold the upload lower without a
+  # password, but never under 4 Mb/s, where a call still fits, and only
+  # for ten minutes after each write.
   config.systemd.tmpfiles.rules = [ "d /run/shaper-trial 0775 root wheel -" ];
 
   config.systemd.services.shaper = {

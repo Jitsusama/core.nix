@@ -169,7 +169,11 @@ impl Follow {
     /// Tunes the upload by a trial from now on, or by none, and in every
     /// stay to come.
     pub fn tune(&mut self, trial: Option<Tuning>) {
-        self.trial = trial.map(Tuning::bounded);
+        // A trial whose ceiling has ended and that set nothing else is
+        // none, so the record stops calling every second a trial.
+        self.trial = trial
+            .map(Tuning::bounded)
+            .filter(|t| *t != Tuning::default());
         self.controller.up.tune(self.trial.unwrap_or_default());
     }
 
@@ -398,7 +402,12 @@ impl Live {
     }
 
     /// The share of its lane the VPN riding the link is held to (src/tunnel.rs).
+    /// A recorder gone silent judges no wait, so the VPN has its whole
+    /// share then, under a trial's ceiling as under none.
     pub fn vpn_share(&self) -> f64 {
+        if ms(SystemTime::now()).saturating_sub(self.follow.last_ms) > SILENT_MS {
+            return 1.0;
+        }
         self.follow.controller.tunnel_share()
     }
 
