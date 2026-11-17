@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
-use crate::{Root, heat, parts, rounded};
+use crate::{Root, heat, rounded};
 
 const SUPPLIES: &str = "/sys/class/power_supply";
 
@@ -328,14 +328,16 @@ pub fn record(
     let (charge_type, charge_types) = chosen(set.types);
     let (usb_type, usb_types) = chosen(at("usb_type"));
     // The kernel counts a battery's temperature in tenths of a degree,
-    // and a gauge with none to give may say absolute zero.
-    let temperature = parts::plausible(
-        settings
-            .temperature(root, &folder, now)
-            .and_then(|t| i32::try_from(t).ok())
-            .map(|t| f64::from(t) / 10.0),
-    )
-    .map(|c| rounded(c, 1));
+    // and a gauge with none to give may say absolute zero, so it's held
+    // to the reach Heat holds a chip's reading to.
+    let temperature = settings
+        .temperature(root, &folder, now)
+        .filter(|t| {
+            t.checked_mul(100)
+                .is_some_and(|m| heat::DEGREES.contains(&m))
+        })
+        .and_then(|t| i32::try_from(t).ok())
+        .map(|t| rounded(f64::from(t) / 10.0, 1));
     json!({
         "key": format!("supply:{name}"),
         "kind": "supply",

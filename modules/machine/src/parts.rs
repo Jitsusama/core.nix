@@ -290,9 +290,7 @@ pub struct Level {
     pub warn: bool,
 }
 
-/// A temperature any part could be at, or none where a chip's said
-/// one is a placeholder, as absolute zero is.
-pub fn plausible(value: Option<f64>) -> Option<f64> {
+fn plausible(value: Option<f64>) -> Option<f64> {
     value.filter(|v| *v > COLDEST && *v < HOTTEST)
 }
 
