@@ -104,8 +104,10 @@ ShellRoot {
         made("INTERFACE=lo\nIFINDEX=99\n", "65534\n");
         aged(60000);
         read = reads();
+        uevent.reload();
+        uevent.waitForJob();
         Expect.expect("an interface made again under its name is read whole again",
-            read === 4, `${read}`);
+            read === 4, `${read}, kept ${JSON.stringify(traffic.interfaceKinds.lo)}, file says ${JSON.stringify(uevent.text())}`);
         const bare = Interfaces.sysKind("lo", { uevent: "IFINDEX=99", type: "65534" });
         Expect.expect("the case makes it something else", bare !== loopback, `${bare}`);
         Expect.expect("an interface made again is what its files say now", kind() === bare,
