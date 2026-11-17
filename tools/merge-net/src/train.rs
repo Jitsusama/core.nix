@@ -36,6 +36,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
@@ -366,6 +367,10 @@ const RECUTS: usize = 5;
 /// minutes for a lost builder to stand again before it gives up on one.
 const UNTAKEN: usize = 3;
 
+/// How long the train waits after a candidate no builder took before it
+/// cuts the next.
+const UNTAKEN_PAUSE: Duration = Duration::from_mins(1);
+
 /// What follows a red candidate.
 #[derive(Debug, PartialEq, Eq)]
 enum After {
@@ -428,12 +433,21 @@ impl Splitting {
     /// A candidate no builder took: whether the train tries again with its
     /// riders aboard and its search as it was, rather than every rider
     /// falling.
+    /// After `UNTAKEN` in a row the search starts afresh, as every rider
+    /// falls.
     fn untaken(&mut self) -> bool {
-        true
+        self.untaken += 1;
+        if self.untaken < UNTAKEN {
+            return true;
+        }
+        *self = Self::default();
+        false
     }
 
     /// A builder took a candidate, whatever it found.
-    fn taken(&mut self) {}
+    fn taken(&mut self) {
+        self.untaken = 0;
+    }
 
     /// A candidate of `riding` riders landed.
     fn landed(&mut self, riding: usize) {
@@ -511,21 +525,20 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 .join(", ")
         );
         match gate(&checkout, &log) {
-            Gated::Passed => {}
+            Gated::Passed => splitting.taken(),
             Gated::Red => {
+                splitting.taken();
                 way(&root, &Ended::Otherwise);
                 red(&root, &candidate, &log, &done.merged, &mut splitting);
                 continue;
             }
             Gated::Unsent => {
-                // The riders stay aboard: the next ready of any of them
-                // starts the train again, once a builder may take it.
-                println!(
-                    "merge-net: no builder took the candidate at {}, so its riders wait \
-                     aboard for the next ready",
-                    short(&candidate)
-                );
-                return Ok(ExitCode::SUCCESS);
+                // The train stays in its ride rather than waiting for a
+                // ready, since a rider is told it needn't ask again.
+                if unsent(&root, &candidate, &log, &mut splitting) {
+                    std::thread::sleep(UNTAKEN_PAUSE);
+                }
+                continue;
             }
         }
         match land(&checkout, &git, &candidate, &mergings, &done.merged) {
@@ -559,8 +572,26 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
 /// whether the train tries again, its riders aboard, or every rider
 /// falls back to running again alone, as `splitting` says.
 fn unsent(root: &Path, candidate: &str, log: &Path, splitting: &mut Splitting) -> bool {
-    let _ = (root, candidate, log);
-    splitting.untaken()
+    if splitting.untaken() {
+        println!(
+            "merge-net: no builder took the candidate {}, its words in {}, so the train tries \
+             again with its riders aboard",
+            short(candidate),
+            log.display()
+        );
+        return true;
+    }
+    let why = format!(
+        "no builder took the train's last {UNTAKEN} candidates, the last {}; its words are \
+         in {}",
+        short(candidate),
+        log.display()
+    );
+    println!("merge-net: {why}, so every rider falls");
+    for rider in riders(root) {
+        let _ = fall(root, &rider.head, &why);
+    }
+    false
 }
 
 /// After the candidate `candidate` of `merged` riders failed, its words in
@@ -673,13 +704,13 @@ enum Gated {
     Unsent,
 }
 
-/// How a gate that exited `code` ended. Exits 75 and 69 are nix-offload's
-/// for a run no builder or evaluator took: on 16 November, while the
-/// machine's uploads were held, one made a rider fall that broke nothing.
+/// How a gate that exited `code` ended. A run no builder or evaluator
+/// took says nothing of its riders: on 16 November, while the machine's
+/// uploads were held, one made a rider fall that broke nothing.
 fn gated(code: Option<i32>) -> Gated {
     match code {
         Some(0) => Gated::Passed,
-        Some(crate::watch::UNSENT | 69) => Gated::Unsent,
+        _ if crate::watch::untaken(code) => Gated::Unsent,
         _ => Gated::Red,
     }
 }

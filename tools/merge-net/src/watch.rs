@@ -44,6 +44,15 @@ pub use settling::Settler;
 /// What `nix-offload` exits with when no builder took the build.
 pub const UNSENT: i32 = 75;
 
+/// What `nix-offload` ends with when no builder for the system answers.
+pub const UNREACHED: i32 = 69;
+
+/// Whether a run that exited `code` was one no builder or evaluator took,
+/// so it checked nothing.
+pub fn untaken(code: Option<i32>) -> bool {
+    matches!(code, Some(UNSENT | UNREACHED))
+}
+
 /// How a revert or quarantine whose checks no builder took fails, so the
 /// net tries it again next round rather than leave its hold for a person.
 pub const UNCHECKED: &str = "no builder took its checks";

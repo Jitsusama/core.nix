@@ -21,7 +21,9 @@ use crate::holds;
 use crate::running;
 use crate::state::{now, short};
 use crate::subtests;
-use crate::watch::{Bad, Changed, DROPPED, MOVED, Merged, UNCHECKED, UNSENT, World};
+use crate::watch::{
+    Bad, Changed, DROPPED, MOVED, Merged, UNCHECKED, UNREACHED, UNSENT, World, untaken,
+};
 
 /// What the net's changed-checks runs ask, so a builder lets them ahead of
 /// sessions' runs waiting for a turn: on 8 November the net's comparison
@@ -292,9 +294,7 @@ impl Real {
             .stderr(file(&log)?)
             .status()
             .map_err(|error| format!("running changed-checks: {error}"))?;
-        // Exits 75 and 69 are nix-offload's: no builder or evaluator took
-        // the run, so nothing was checked.
-        if matches!(checked.code(), Some(75 | 69)) {
+        if untaken(checked.code()) {
             return Err(format!("{UNCHECKED}, {}", log.display()));
         }
         if !checked.success() {
@@ -649,9 +649,6 @@ impl Real {
         }
     }
 }
-
-/// What nix-offload ends with when no builder for the system answers.
-const UNREACHED: i32 = 69;
 
 /// What the net asks `nix-offload there` to compare a Mac's checks with,
 /// against `base`: the arguments a gate keeps for a comparison it skipped.
