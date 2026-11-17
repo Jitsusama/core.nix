@@ -10377,6 +10377,51 @@ Scope {
     property int warmed: -1
     // Whether the pass has had its last turn, which keeps home.
     property bool warmingDone: false
+    // Whether the card is drawn once, all but clear, as the pass ends, so
+    // its first opening isn't Qt Quick's first drawing of it. Clear, the
+    // renderer skips the card's whole tree, so its glyphs, materials and
+    // batches were made by the first opening since the shell started:
+    // Joel's took 47 and 58 ms, 19 and 24 of it drawing, where later ones
+    // drew in 1 to 4 (2026-11-16 and 17). The card is then off the screen
+    // but for the surface's one pixel, its shadow's edge.
+    property bool priming: false
+    // Whether priming is ending, so the card's fall to clear doesn't keep
+    // home or collect as a closing would.
+    property bool primeEnding: false
+    // The frames swapped since priming began: the second has the card.
+    property int primedFrames: 0
+
+    // Ends priming, saying `how` it ended, so a first opening that still
+    // draws long can be told from one the drawing didn't reach.
+    function primeEnd(how) {
+        primeOver.stop();
+        if (!priming) {
+            return;
+        }
+        console.info(`launcher: drawing the card ahead ended ${how}`);
+        primeEnding = true;
+        try {
+            priming = false;
+        } finally {
+            primeEnding = false;
+        }
+    }
+
+    // An opening while priming ends it, since the card is then drawn
+    // anyway, and its closing must fall all the way to clear.
+    onCardUpChanged: {
+        if (cardUp)
+            primeEnd("cut short by an opening");
+    }
+
+    // Priming ends after three seconds even with no frame swapped, as when
+    // niri draws none for an output that's off: the card unseen costs
+    // nothing meanwhile, and a loaded builder's two frames can take one.
+    Timer {
+        id: primeOver
+        interval: 3000
+        onTriggered: root.primeEnd(`after 3 s, ${root.primedFrames} frames swapped`)
+    }
     property real warmedTook: 0
     // Where the pass's time went between its turns, said as it ends: at a
     // switch its 83 turns made rows for 350 ms but ended 10 s after the
@@ -10470,6 +10515,15 @@ Scope {
         }
         keepHome();
         warmingDone = true;
+        // Not after a parting word, whose fade would carry the card's
+        // rise and fall past primeEnding's guard, and which was drawn as it
+        // opened anyway.
+        // Nor after any opening, which drew the card already.
+        if (!cardUp && parting === "" && !fading && openingsDrawn === 0) {
+            primedFrames = 0;
+            priming = true;
+            primeOver.restart();
+        }
         // Home not held as the pass ends says why, since its first chord
         // is then made whole with nothing saying so: Joel's first after
         // the 20:19 switch took 193 ms to its frame, though this pass had
@@ -12002,6 +12056,24 @@ Scope {
             }
         }
 
+        // Priming ends on the second frame swapped, since the first may
+        // have been under way before the card was asked for. The second is
+        // asked for, so a desktop drawing nothing else still gets it rather
+        // than waiting out primeOver.
+        Connections {
+            target: card.Window.window
+            enabled: root.priming
+
+            function onFrameSwapped() {
+                root.primedFrames += 1;
+                if (root.primedFrames >= 2) {
+                    root.primeEnd(`in ${root.primedFrames} frames`);
+                } else {
+                    card.Window.window.update();
+                }
+            }
+        }
+
         Connections {
             target: card.Window.window
             enabled: root.framesCounted
@@ -12024,11 +12096,12 @@ Scope {
             // Clear rather than hidden while closed, since a hidden field
             // can't hold the focus, and a key that came before the card was
             // shown would be lost.
-            opacity: root.cardUp || root.parting !== "" ? 1 : 0
+            // All but clear while priming, as root.priming says.
+            opacity: root.cardUp || root.parting !== "" ? 1 : root.priming ? 0.01 : 0
             // Clear, it's put back to home for the next opening, once the
             // closing's own handler is done (keepHome checks it's still shut).
             onOpacityChanged: {
-                if (opacity === 0) {
+                if (opacity === 0 && !root.primeEnding) {
                     Qt.callLater(root.keepHome);
                     root.collectDue = true;
                 }
@@ -12791,7 +12864,8 @@ Scope {
                                             anchors.fill: parent
                                             groundFrom: commandRows.x
                                             selected: commandRow.at === commandRows.chosen
-                                            shown: card.opacity > 0 && commandRow.visible
+                                            shown: card.opacity > 0 && !root.priming
+                                                && commandRow.visible
                                             glyph: commandRow.modelData?.glyph
                                                 || (commandRow.act?.glyph ?? "")
                                             hue: Theme[commandRow.modelData?.hue
@@ -13461,7 +13535,10 @@ Scope {
                                     // reading a long name on only while the keys
                                     // are on the rows: with them in the drawer,
                                     // only what they move moves.
-                                    shown: card.opacity > 0 && !QueryKeys.paged(prompt.mode)
+                                    // Not while priming, which would read a
+                                    // long name on unseen.
+                                    shown: card.opacity > 0 && !root.priming
+                                        && !QueryKeys.paged(prompt.mode)
                                     fills: false
                                     groundFrom: list.x
                                     glyph: entry.own || entry.sort !== "act"
