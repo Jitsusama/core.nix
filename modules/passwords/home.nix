@@ -96,6 +96,13 @@ let
   );
   # The launcher's vocabulary, which the daemon says its rows in.
   words = pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words);
+  # Whether secret asks are answered and drawn: once a release is listed,
+  # and only while the place is on, since an off place's daemon never runs.
+  # Read only outside the place's own settings, which Nix merges by reading
+  # each, so one reading the place's off would wait on itself.
+  answersAsks =
+    config.jitsusama.passwords.releases != [ ]
+    && !(config.jitsusama.quickshell.launcher.providers.passwords.off or false);
 in
 {
   imports = [ quickshell ];
@@ -221,6 +228,10 @@ in
       "quickshell/launcher/Managers.js".source = ./Managers.js;
       "quickshell/launcher/Checked.js".source = ./Checked.js;
       "quickshell/Clearing.qml".source = ./Clearing.qml;
+    }
+    # How long an ask's line was shown, which Asks reads beside it.
+    // lib.optionalAttrs (config.jitsusama.passwords.releases != [ ]) {
+      "quickshell/launcher/Shown.js".source = ../secret-asks/Shown.js;
     };
 
     # A password or a one-time code on the clipboard until it clears, in
@@ -252,6 +263,10 @@ in
         shows = if manager.shows == null then "" else manager.shows;
         fills = if manager.fills == null then "" else manager.fills;
       }) managers;
+      # Its daemon answers secret asks once one is listed, and serves them
+      # on the place's own connection, which Asks draws them over; an off
+      # place runs no daemon, so it needn't say the place is on.
+      answersAsks = config.jitsusama.passwords.releases != [ ];
       # The daemon the place runs as its own child, for the shell's life.
       daemon = [
         (lib.getExe passwords)
@@ -260,5 +275,28 @@ in
         "${words}"
       ];
     };
+
+    # Asks, inside Passwords, right after it, where any release is listed
+    # and the place is on: each ask this daemon serves, drawn over the
+    # place's own connection rather than a socket, and For You's thing to
+    # do while one waits. Its enable, not its being, follows the place, so
+    # reading the place's setting asks nothing of the providers' names.
+    jitsusama.quickshell.launcher.providers.asks =
+      lib.mkIf (config.jitsusama.passwords.releases != [ ])
+        {
+          enable = answersAsks;
+          order = 49;
+          source = ../secret-asks/Asks.qml;
+          over = "passwords";
+        };
+
+    # A release listed while the place is off would wait on a daemon the
+    # shell never runs, so the machine is told rather than left wondering.
+    warnings = lib.optional (config.jitsusama.passwords.releases != [ ] && !answersAsks) ''
+      jitsusama.passwords.releases lists releases, but the launcher's
+      Passwords place is off, so no secret ask is answered or drawn until
+      jitsusama.quickshell.launcher.providers.passwords.off is lib.mkForce false,
+      since this module already sets it to true.
+    '';
   };
 }

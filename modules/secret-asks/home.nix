@@ -117,5 +117,7 @@ in
       order = 49;
       source = ./Asks.qml;
     };
+    # How long a line was shown, which Asks reads beside it.
+    xdg.configFile."quickshell/launcher/Shown.js".source = ./Shown.js;
   };
 }

@@ -2618,6 +2618,11 @@
   record-window-passes-clippy = ''
     clippy finds nothing in record-window or its tests
   '';
+  releases-wait-for-the-passwords-place = ''
+    a release listed while the launcher's Passwords place is off leaves Asks out of the launcher,
+    and the machine is warned that releases need the place on; once it is on, Asks is drawn over
+    the place's daemon with the clock its yes is timed by, and nothing warns
+  '';
   reopening-finds-each-screen = ''
     Reopen Them All puts each session back on its own screen, found by its maker, model and serial
     rather than its connector, and on the one it was kept on of two alike, a gone screen's
@@ -3044,6 +3049,17 @@
     something to do, and an artist's name reads as written; a message to Joel knocks once for a
     burst, never while notices are held or with no sound set, and his safe word knocks even while
     held
+  '';
+  the-asks-say-how-long-each-was-shown = ''
+    a yes says how long since its line's frame reached the screen this opening, counted from the
+    first and again from a changed line's, and says no time for a line never presented, for the
+    line as it was, for another ask's or while the launcher is walked from outside, so the daemon
+    refuses it unread; a no is sent as served
+  '';
+  the-asks-say-how-long-each-was-shown-over-passwords = ''
+    over Passwords' connection, a first Return on an ask only arms, a yes says how long since a
+    frame presented its line selected, noted again as the launcher reopens on it, a changed line
+    says no time until presented, and a yes walked from outside the launcher is never sent
   '';
   the-asks-place-releases-through-its-daemon = ''
     the launcher's Asks lists what the secret-asks daemon serves, For You holds each waiting ask,
@@ -3943,7 +3959,8 @@
     and keeps the kernel's with no account
   '';
   the-passwords-answer-no-ipc = ''
-    nothing of the Passwords place nor the daemon interface it asks through answers the shell's IPC
+    nothing of the Passwords place, the daemon interface it asks through, nor Asks, how it says a
+    line was shown and the ready rows it acts through answers the shell's IPC
   '';
   the-passwords-place-copies-through-its-daemon-on-niri = ''
     on a nested niri, the Passwords place runs the passwords daemon as the shell's own child and
