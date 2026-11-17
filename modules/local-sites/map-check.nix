@@ -20,9 +20,7 @@ pkgs.writeShellApplication {
   runtimeInputs = [ pkgs.jq ];
   # It carries only the headless shell it launches.
   runtimeEnv.PLAYWRIGHT_BROWSERS_PATH = "${pkgs.callPackage ./headless-browsers.nix { }}";
-  text =
-    builtins.replaceStrings
-      [ "@python@" "@test@" "@live_page@" ]
-      [ python test livePage ]
-      (builtins.readFile ../mycelium/site/map-check.sh);
+  text = builtins.replaceStrings [ "@python@" "@test@" "@live_page@" ] [ python test livePage ] (
+    builtins.readFile ../mycelium/site/map-check.sh
+  );
 }

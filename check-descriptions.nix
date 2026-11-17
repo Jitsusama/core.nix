@@ -1690,10 +1690,10 @@
     the attach; a machine naming none authorizes nothing of mycelium's
   '';
   mycelium-map-check-answers-soon = ''
-    mycelium-map-check says, within a second of being run, what its last reading found and when,
-    then that it's looking again, while a stand-in for its browser test takes three seconds; it
-    keeps each answer for the next run, says nothing on the way as JSON, and hands pytest a test
-    alone in a folder of its own rather than one in the Nix store, which pytest lists whole first
+    mycelium-map-check says what its last reading found and when, with the day if not today, then
+    that it's looking again, before a stand-in for its browser test opens; it keeps each answer
+    whole for the next run, says nothing on the way as JSON or of a kept file it can't read, and
+    hands pytest a test alone in a folder of its own rather than one in the Nix store
   '';
   mycelium-runs-among-the-sessions = ''
     on Linux, every realm's node runs in the agents' slice, beside Joel's programs rather than among

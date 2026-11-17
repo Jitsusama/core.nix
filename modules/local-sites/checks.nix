@@ -463,11 +463,12 @@ in
           --import-mode=importlib --basetemp="$TMPDIR/pytest" ${../repos/site/tests}/code-reads-live-test.py
         touch $out
       '';
-  # mycelium-map-check says the last reading's answer and that it's looking
-  # again within a second, while a stand-in for its browser test takes
-  # three, as a loaded machine's map does; it keeps each answer for the next
-  # run, says nothing on the way as JSON, and hands pytest a test in a folder
-  # of its own, never the Nix store, which pytest would list whole first.
+  # mycelium-map-check says the last reading's answer, and when, then that
+  # it's looking again, before a stand-in for its browser test opens; it
+  # keeps each answer whole for the next run, says nothing on the way as
+  # JSON, and hands pytest a test in a folder of its own, never the Nix
+  # store, which pytest would list whole first
+  # (tests/map-check-answers-soon.sh).
   mycelium-map-check-answers-soon =
     let
       # Stands in for pytest and the browser: says what was beside the test
@@ -487,55 +488,7 @@ in
       };
     in
     pkgs.runCommandLocal "mycelium-map-check-answers-soon" { nativeBuildInputs = [ pkgs.jq ]; } ''
-      # Five hours behind, so a time said in UTC rather than here is caught.
-      export TZ=EST5 XDG_STATE_HOME=$TMPDIR/state MAP_CHECK_BESIDE=$TMPDIR/beside
-      export MAP_CHECK_ERR=$PWD/err MAP_CHECK_BEFORE=$TMPDIR/before
-      kept=$XDG_STATE_HOME/mycelium/map-check.json
-      looking="Opening the map in a headless browser to look again."
-      mkdir -p "''${kept%/*}"
-
-      # Says, before the browser opens, what the kept reading found and when.
-      opens() {
-        ${lib.getExe check} > out 2> err
-        if [[ $(cat "$MAP_CHECK_BEFORE") != "$1" ]]; then
-          echo "$2; before the browser opened it said:" >&2
-          cat "$MAP_CHECK_BEFORE" >&2
-          exit 1
-        fi
-      }
-
-      printf '%s' '{"at":"2026-01-02T13:05:22.164Z","cells":5,"count":2,"failures":[]}' > "$kept"
-      opens "At 08:05 on 2 January the map missed 2 of 5 cells."$'\n'"$looking" \
-        "it didn't say the last answer, here and with its day, then that it's looking"
-      [[ $(cat out) == "The map reaches all 3 cells." ]] || { echo "its answer was: $(cat out)" >&2; exit 1; }
-      [[ $(jq .cells "$kept") == 3 ]] || { echo "it didn't keep its answer" >&2; exit 1; }
-      [[ -z $(find "''${kept%/*}" -name '*.json.*') ]] || { echo "it left a half-kept file" >&2; exit 1; }
-      if [[ $(cat "$MAP_CHECK_BESIDE") != live-reach-test.py ]]; then
-        echo "pytest was handed a test beside $(wc -l < "$MAP_CHECK_BESIDE") entries, not alone" >&2
-        exit 1
-      fi
-      opens "At 09:09 on 2 January the map reached all 3 cells."$'\n'"$looking" \
-        "it didn't say the answer it kept"
-
-      now=$(date +%s)
-      jq -n --arg at "$(date -u -d "@$now" +%FT%T.5Z)" '{at:$at,cells:4,count:1,failures:[]}' > "$kept"
-      opens "At $(date -d "@$now" +%H:%M) the map missed 1 of 4 cells."$'\n'"$looking" \
-        "a reading from today didn't give just its time"
-
-      ${lib.getExe check} --json > out 2> err
-      [[ ! -s err ]] || { echo "as JSON it said on the way: $(cat err)" >&2; exit 1; }
-      jq -e '.cells == 3' out > /dev/null
-
-      for unread in 'not a reading' '{"at":"2026-01-02T13:05:22Z","cells":"\u001b[2J","count":0}'; do
-        printf '%s' "$unread" > "$kept"
-        opens "$looking" "a kept file no reading writes wasn't left unsaid"
-      done
-      rm "$kept"
-      opens "$looking" "with nothing kept, it said more than that it's looking"
-
-      env -u XDG_STATE_HOME -u HOME ${lib.getExe check} > out 2> err \
-        || { echo "with no home, it broke: $(cat err)" >&2; exit 1; }
-      [[ $(cat out) == "The map reaches all 3 cells." ]] || { echo "with no home it said: $(cat out)" >&2; exit 1; }
+      ${lib.getExe pkgs.bash} ${./tests/map-check-answers-soon.sh} ${lib.getExe check}
       touch $out
     '';
   # clippy finds nothing in the server, its tests included.
