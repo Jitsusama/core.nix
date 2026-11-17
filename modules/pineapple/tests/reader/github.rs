@@ -476,15 +476,68 @@ fn github_a_site_that_answers_with_an_error_is_named_as_itself() {
 
 #[test]
 fn github_a_site_that_cant_be_reached_is_named_as_itself() {
-    // A port taken and let go: nothing answers there, so it can't be reached.
-    let closed = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
-    let origin = format!("http://{}", closed.local_addr().expect("its address"));
-    drop(closed);
+    // No case's stand-in can take a port below 1024, so nothing answers here.
     let failed = "<4>couldn't ask Code what changed: couldn't reach Code:";
+    let said = journal_of_code_once("http://127.0.0.1:1", failed);
+    assert!(
+        said.contains(failed),
+        "the site that failed is named: {said}"
+    );
+    assert!(
+        !said.contains("GitHub"),
+        "GitHub isn't named on this path: {said}"
+    );
+}
+
+/// A stand-in whose every search names a next page at `next(origin, line)`.
+fn paging(next: fn(&str, &str) -> String) -> String {
+    let at: Arc<OnceLock<String>> = Arc::new(OnceLock::new());
+    let own = Arc::clone(&at);
+    let (origin, _) = answering_whole(move |line, _| {
+        // Known before the reader starts, so before it asks.
+        let origin = own.get().expect("the stand-in's origin");
+        Answered {
+            status: 200,
+            headers: vec![("Link", format!("<{}>; rel=\"next\"", next(origin, line)))],
+            body: json!({"items": []}),
+        }
+    });
+    at.set(origin.clone()).expect("the origin is known once");
+    origin
+}
+
+#[test]
+fn github_a_site_naming_a_next_page_elsewhere_is_named_as_itself() {
+    let origin = paging(|_, _| "http://evil.example/search/issues?page=2".to_owned());
+    let failed = "<4>couldn't ask Code what changed: Code named a next page elsewhere: \
+        http://evil.example/search/issues?page=2";
     let said = journal_of_code_once(&origin, failed);
     assert!(
         said.contains(failed),
         "the site that failed is named: {said}"
+    );
+    assert!(
+        !said.contains("GitHub"),
+        "GitHub isn't named on this path: {said}"
+    );
+}
+
+#[test]
+fn github_a_site_whose_search_runs_on_is_named_as_itself() {
+    // Each page names one more after it, so the list never ends.
+    let origin = paging(|origin, line| {
+        let page: u32 = line
+            .split_once("page=")
+            .and_then(|(_, rest)| rest.split(|c: char| !c.is_ascii_digit()).next())
+            .and_then(|digits| digits.parse().ok())
+            .unwrap_or(1);
+        format!("{origin}/search/issues?page={}", page + 1)
+    });
+    let failed = "<4>Code's /search/issues runs past 30 pages, and the rest isn't read";
+    let said = journal_of_code_once(&origin, failed);
+    assert!(
+        said.contains(failed),
+        "the site that ran on is named: {said}"
     );
     assert!(
         !said.contains("GitHub"),
