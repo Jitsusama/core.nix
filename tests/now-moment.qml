@@ -1067,6 +1067,7 @@ ShellRoot {
         Sessions.wanting = [];
         now.lookTexts = {};
         answersInPlace(forYou);
+        everyAskHasAWayOut(forYou, toDo);
         doneKept(toDo);
         shut(piece, toDo);
         remakesWhatChanged(toDo);
@@ -1284,6 +1285,68 @@ ShellRoot {
         agents.wants = {};
         theLauncher.said = [];
         Sessions.wanting = [];
+    }
+
+    // Every row Now makes for For You as Joel's to do offers inside a way to
+    // do it and Put It Off: a to-do, a session's plain ask, one with its
+    // answers, a yes. Joel found a session's yes he could neither answer nor
+    // put off on 16 Nov ("i can't get this highlighted notice to go away"),
+    // so a row with answers offers each one, and each session's Put It Off
+    // puts off the ask it shows. Agents' sessions to reopen and Sound's offer
+    // are put off their own ways, and only from their own sources.
+    function everyAskHasAWayOut(forYou, toDo) {
+        const since = "2026-11-17T07:00:00Z";
+        const asks = (address, kind, said) => ({ address: address, title: `Session ${address}`,
+            presence: { session: `s-${address}`, addresses: [], wants: { kind: kind, since: since,
+                said: said } } });
+        WaitingOnYou.now = [toDo("Sign In")];
+        Sessions.wanting = [asks("WANTG", "question", "Which branch?"),
+            asks("WANTH", "approval", "Run tool_gateway_enable_backend"),
+            asks("WANTI", "question", "Push it?")];
+        agents.wants = {
+            WANTH: { answers: { want: "approval@2026-11-17T07:00:00.000Z", own: false,
+                choices: [{ value: "yes", label: "Yes", description: "", recommended: false },
+                    { value: "no", label: "No", description: "", recommended: false }] } },
+            WANTI: { answers: { want: "question@2026-11-17T07:00:00.000Z", own: true,
+                choices: [{ value: "push", label: "Push", description: "",
+                    recommended: true }] } }
+        };
+        Sessions.knowns = { WANTG: "WANTG question@1", WANTH: "WANTH approval@1",
+            WANTI: "WANTI question@1" };
+        const putOff = act => /^verb:on:waiting:notNow:/.test(act.key)
+            && typeof act.run === "function";
+        const answer = act => act.key.startsWith("verb:on:waiting:answer:");
+        const does = act => !putOff(act)
+            && (typeof act.run === "function" || typeof act.given === "function");
+        const served = { "on:waiting:want:WANTH": 2, "on:waiting:want:WANTI": 1 };
+        // A source's row with no kind is For You's to do too; a kind's own
+        // heading is no ask.
+        const doing = forYou().filter(row => (row.forYou?.kind ?? "do") === "do"
+            && !row.key.startsWith("on:waitingOnYou:kind:"));
+        // What each row lacks, so a red run says which half went missing.
+        const lacks = doing.map(row => {
+            const inside = typeof row.verbs === "function" ? row.verbs() : [];
+            const answers = inside.filter(answer).length;
+            return [row.key, inside.some(putOff) ? "" : "put off",
+                inside.some(does) && answers === (served[row.key] ?? 0) ? "" : `do (${answers})`];
+        }).filter(([, off, way]) => off !== "" || way !== "");
+        expect("every row Now gives For You as Joel's to do has a way to do it and to put it off",
+            JSON.stringify(doing.map(row => row.key).sort()) === JSON.stringify([
+                "on:waiting:Sign In", "on:waiting:want:WANTG", "on:waiting:want:WANTH",
+                "on:waiting:want:WANTI"]) && lacks.length === 0,
+            JSON.stringify([doing.map(row => row.key), lacks]));
+        for (const row of doing.filter(one => one.key.startsWith("on:waiting:want:"))) {
+            row.verbs().find(putOff).run();
+        }
+        expect("each session's Put It Off in For You puts off the ask its row shows",
+            JSON.stringify(Sessions.putOffAsked.slice().sort()) === JSON.stringify([
+                "WANTG WANTG question@1", "WANTH WANTH approval@1", "WANTI WANTI question@1"]),
+            JSON.stringify(Sessions.putOffAsked));
+        WaitingOnYou.now = [];
+        Sessions.wanting = [];
+        Sessions.knowns = {};
+        Sessions.putOffAsked = [];
+        agents.wants = {};
     }
 
     function remakesWhatChanged(toDo) {
