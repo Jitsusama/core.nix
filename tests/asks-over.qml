@@ -66,6 +66,15 @@ ShellRoot {
             held = next;
             heard([root.key], []);
         }
+
+        // An entry, as a manager's list is read in batches over the same connection.
+        function tellEntry() {
+            const entry = "entry:onepassword:kiln";
+            const next = Object.assign({}, held);
+            next[entry] = { key: entry, kind: "entry", entry: { title: "Kiln" } };
+            held = next;
+            heard([entry], []);
+        }
     }
 
     // Passwords, as Asks finds it among the launcher's places.
@@ -189,7 +198,8 @@ ShellRoot {
 
     Component.onCompleted: {
         link.tell("d1");
-        steps([arming, untimed, untimedThenAnswered, typedThenAnswered, moving, shown, reopened,
+        steps([arming, untimed, untimedThenAnswered, typedThenAnswered, moving, shown, entryTold,
+            reopened,
             reopenedThenMoved, left, moved, changed, stepping, stepped, outside, refused, drawn,
             walkedInto, walkedThenShown, switchedFromOutside, switchedThenAnswered, typing,
             typedAfter, steppedAside, steppedAsideUntimed, switchedMidKey]);
@@ -239,6 +249,17 @@ ShellRoot {
         same("a key of his moving through the rows times the line from its next frame",
             last().shown >= 800 && last().shown < 5000, true);
         same("and says the opening it was shown in", last().opening, 1);
+    }
+
+    // Entries come in batches as a manager is read, which would push back the frame a line
+    // waits on each time, were Asks told of them.
+    function entryTold() {
+        const before = asks.everything();
+        const waiting = stage.awaiting.length;
+        link.tellEntry();
+        same("an entry told over the connection leaves Asks' rows as they were",
+            asks.everything() === before, true);
+        same("and asks no frame for its line again", stage.awaiting.length, waiting);
     }
 
     function reopened() {
