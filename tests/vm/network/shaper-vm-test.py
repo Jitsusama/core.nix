@@ -542,21 +542,45 @@ def test_each_direction_is_recorded(connection: Connection) -> None:
     The server's kernel answers ICMP timestamps itself, as a public resolver's does, and the
     router answers the recorder's echo; the recorder runs as its own user with a raw socket alone.
     The days are read as alice, since a controller is replayed over them by the machine's user.
+
+    A restart, as a switch makes beside the shaper's own, opens a new recording that names its
+    network first and has the gateway's round trip within a second: choosing reflectors takes
+    1.5 s, and the shaper's restart, the moment the record is kept to show, falls inside it.
     """
+    client = connection.client
+
+    def heard() -> list[Json]:
+        """Give every line the recorder wrote."""
+        text = client.succeed(
+            "su alice -c 'cat /var/lib/shaper-record/*.jsonl' 2>/dev/null || true"
+        )
+        return [json.loads(line) for line in text.splitlines() if line.strip()]
 
     def recorded(_last_try: bool) -> bool:
         """Say whether a day's file holds the server's one-way delays and a gateway round trip."""
-        text = connection.client.succeed(
-            "su alice -c 'cat /var/lib/shaper-record/*.jsonl' 2>/dev/null || true"
-        )
-        heard: list[Json] = [json.loads(line) for line in text.splitlines() if line.strip()]
+        lines = heard()
         stamped = any(
-            h.get("reflector") == connection.far and "out" in h and "back" in h for h in heard
+            h.get("reflector") == connection.far and "out" in h and "back" in h for h in lines
         )
-        gateway = any(isinstance(h.get("gateway"), float) for h in heard)
+        gateway = any(isinstance(h.get("gateway"), float) for h in lines)
         return stamped and gateway
 
     retry(recorded, timeout=COMING_UP)
+    # A switch restarts it in its start phase rather than stopping it with the units it stops
+    # first, or the record is blind from before the shaper's restart until after it.
+    client.succeed("grep -q X-StopIfChanged=false /etc/systemd/system/shaper-record.service")
+    since = int(client.succeed("date +%s%3N").strip())
+    client.succeed("systemctl restart shaper-record.service")
+
+    def sampled(_last_try: bool) -> bool:
+        """Say whether the new recording has its gateway's round trip yet."""
+        return any(isinstance(h.get("gateway"), float) for h in heard() if h["at"] > since)
+
+    retry(sampled, timeout=COMING_UP)
+    after = [h for h in heard() if h["at"] > since]
+    assert "network" in after[0], f"a recording didn't open by naming its network: {after[0]}"
+    first = next(h["at"] for h in after if isinstance(h.get("gateway"), float))
+    assert first - since < 1_000, f"the gateway went unsampled {first - since} ms after a restart"
 
 
 def test_slice_made_again(connection: Connection) -> None:
@@ -699,8 +723,6 @@ def restart_keeps_the_queues(on_eth2: Connection) -> None:
     # A switch restarts it only while the unit says so; otherwise it stops the old and starts
     # the new, and the stop takes every queue away.
     client.succeed("grep -q X-StopIfChanged=false /etc/systemd/system/shaper.service")
-    # The recorder too, or a switch stops it early and its record misses the restart.
-    client.succeed("grep -q X-StopIfChanged=false /etc/systemd/system/shaper-record.service")
     client.succeed(on_eth2.upload)
     # An IFB the new shaper won't take up, as a VPN gone from its list leaves.
     client.succeed("ip link add shaperfff type ifb")
