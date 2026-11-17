@@ -25,7 +25,11 @@
 //! riders to board, and halves again while they fail, so the riders that
 //! broke nothing land together and the one that breaks it is found alone,
 //! five riders in five runs at most (`Splitting`). A train red for more
-//! than its riders gives up, and every rider runs again alone.
+//! than its riders gives up, and every rider runs again alone. A candidate
+//! no builder or evaluator took says nothing of its riders, unless its
+//! words name a failed check: the train cuts again a minute on, keeping
+//! its riders and its search, and only once its candidates have gone
+//! untaken for half an hour do the last one's riders fall.
 //! A rider that conflicts, or that rode a failed candidate alone, falls:
 //! `train/fell/<head>` says why, and `ready` runs that head again alone, as
 //! before the train. A rider whose pull request moved on, or closed, steps
@@ -45,7 +49,7 @@ use right_of_way::Ended;
 pub use right_of_way::gives_way;
 
 mod splitting;
-use splitting::{After, Splitting, UNTAKEN, UNTAKEN_FOR};
+use splitting::{After, Splitting, UNTAKEN_FOR};
 
 /// A change waiting on the train.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -482,14 +486,16 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
     }
 }
 
-/// After no builder took the candidate `candidate`, its words in `log`:
-/// whether the train tries again, its riders aboard, or every rider
-/// falls back to running again alone, as `splitting` says.
+/// After no builder took the candidate `candidate` of `merged` riders,
+/// its words in `log`, `now`: whether the train tries again, its riders
+/// aboard, or the riders of that candidate fall back to running again
+/// alone, as `splitting` says. Riders that boarded since rode none of the
+/// untaken candidates, so they stay aboard and start afresh.
 fn unsent(
     root: &Path,
     candidate: &str,
     log: &Path,
-    _merged: &[String],
+    merged: &[String],
     splitting: &mut Splitting,
     now: u64,
 ) -> bool {
@@ -503,14 +509,15 @@ fn unsent(
         return true;
     }
     let why = format!(
-        "no builder took the train's last {UNTAKEN} candidates, the last {}; its words are \
-         in {}",
+        "no builder or evaluator took the train's candidates for {} minutes, the last {}; \
+         its words are in {}",
+        UNTAKEN_FOR / 60,
         short(candidate),
         log.display()
     );
-    println!("merge-net: {why}, so every rider falls");
-    for rider in riders(root) {
-        let _ = fall(root, &rider.head, &why);
+    println!("merge-net: {why}, so the riders of that candidate fall");
+    for head in merged {
+        let _ = fall(root, head, &why);
     }
     false
 }
@@ -625,15 +632,25 @@ enum Gated {
     Unsent,
 }
 
-/// How a gate that exited `code` ended. A run no builder or evaluator
-/// took says nothing of its riders: on 16 November, while the machine's
-/// uploads were held, one made a rider fall that broke nothing.
-fn gated(code: Option<i32>, _words: &str) -> Gated {
+/// How a gate that exited `code`, saying `words`, ended. A run no builder
+/// or evaluator took says nothing of its riders: on 16 November, while the
+/// machine's uploads were held, one made a rider fall that broke nothing.
+/// But nix-offload ends with the first part that failed, a VM part no
+/// builder took coming first, so words naming a failed check outrank it.
+fn gated(code: Option<i32>, words: &str) -> Gated {
     match code {
         Some(0) => Gated::Passed,
-        _ if crate::watch::untaken(code) => Gated::Unsent,
+        _ if crate::watch::untaken(code) && !names_a_failure(words) => Gated::Unsent,
         _ => Gated::Red,
     }
+}
+
+/// Whether a gate's `words` say a check failed: changed-checks' verdict,
+/// or nix's for a build that ran and failed, which a lost builder never
+/// says.
+fn names_a_failure(words: &str) -> bool {
+    words.contains("\u{2715} a check the change touched failed")
+        || words.contains("Reason: builder failed with exit code")
 }
 
 /// Run the gate in `checkout`, its words going to `log`: how it ended.

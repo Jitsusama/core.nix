@@ -1,14 +1,13 @@
 //! What the train knows of its riders from the candidates it ran: which
-//! of them a red candidate lies among, and how many candidates in a row
-//! no builder took, so a run that checked nothing neither loses that
+//! of them a red candidate lies among, and since when no builder has
+//! taken a candidate, so a run that checked nothing neither loses that
 //! search nor holds the riders aboard for ever.
 
-/// How many candidates in a row no builder may take before every rider
-/// falls back to running again alone. nix-offload waits up to four
-/// minutes for a lost builder to stand again before it gives up on one.
-pub(super) const UNTAKEN: usize = 3;
-
-/// How long candidates may go untaken, in seconds.
+/// How long, in seconds, candidates may go untaken before the last one's
+/// riders fall back to running again alone: as long as the net's watch
+/// sends a run again for (15 sends two minutes apart). A count would be
+/// gone in two minutes when nix-offload refuses at once, and the upload
+/// hold of 16 November kept a candidate untaken for 22 minutes.
 pub(super) const UNTAKEN_FOR: u64 = 30 * 60;
 
 /// What follows a red candidate.
@@ -42,8 +41,9 @@ pub(super) struct Splitting {
     suspects: usize,
     /// Whether a rider fell riding alone since the train last landed.
     fell_alone: bool,
-    /// How many candidates in a row no builder took.
-    untaken: usize,
+    /// When the first of the candidates in a row no builder took ended;
+    /// none since one was taken.
+    untaken_since: Option<u64>,
 }
 
 impl Splitting {
@@ -65,18 +65,18 @@ impl Splitting {
         *self = Self {
             suspects: 0,
             fell_alone: !twice,
-            untaken: 0,
+            untaken_since: None,
         };
         if twice { After::AllFall } else { After::Falls }
     }
 
-    /// A candidate no builder took: whether the train tries again with its
-    /// riders aboard and its search as it was, rather than every rider
-    /// falling. After `UNTAKEN` in a row the search starts afresh, as every
-    /// rider falls.
-    pub(super) fn untaken(&mut self, _now: u64) -> bool {
-        self.untaken += 1;
-        if self.untaken < UNTAKEN {
+    /// A candidate no builder took ended `now`: whether the train tries
+    /// again with its riders aboard and its search as it was, rather than
+    /// that candidate's riders falling. Once candidates have gone untaken
+    /// for `UNTAKEN_FOR` the search starts afresh, as those riders fall.
+    pub(super) fn untaken(&mut self, now: u64) -> bool {
+        let since = *self.untaken_since.get_or_insert(now);
+        if now.saturating_sub(since) < UNTAKEN_FOR {
             return true;
         }
         *self = Self::default();
@@ -85,7 +85,7 @@ impl Splitting {
 
     /// A builder took a candidate, whatever it found.
     pub(super) fn taken(&mut self) {
-        self.untaken = 0;
+        self.untaken_since = None;
     }
 
     /// A candidate of `riding` riders landed.
