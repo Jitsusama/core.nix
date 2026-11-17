@@ -682,12 +682,16 @@ ShellRoot {
 
     // How many times Now said its rows changed.
     property int nowChanged: 0
+    // What Now said moved, the last time it said so (Provider.qml's
+    // changedWhy).
+    property string nowMoved: ""
 
     Connections {
         target: now
 
         function onChanged() {
             root.nowChanged += 1;
+            root.nowMoved = now.changedWhy;
         }
     }
 
@@ -1390,6 +1394,23 @@ ShellRoot {
         now.changedTo(now.everything());
         expect("and one whose rows differ from what For You shows says so",
             root.nowChanged === 1, root.nowChanged);
+        // Each change says what moved while it's heard, and nothing once
+        // it's said, so a change said outright names none.
+        expect("saying it was the rows For You holds",
+            root.nowMoved === "the rows it holds as it stepped", root.nowMoved);
+        expect("and nothing once said", now.changedWhy === "", now.changedWhy);
+        theLauncher.held = [];
+        now.changedTo(now.everything());
+        root.nowMoved = "";
+        now.changedTo([]);
+        expect("a change with nothing held says its own rows moved",
+            root.nowMoved === "its own rows", root.nowMoved);
+        now.changedTo(now.everything());
+        theLauncher.held = into([]);
+        root.nowMoved = "";
+        now.changedTo([]);
+        expect("and stepped in, one moving its own rows says so",
+            root.nowMoved === "its own rows as it stepped", root.nowMoved);
         theLauncher.held = [];
         Facts.all = [];
         Notices.history = [];

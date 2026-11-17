@@ -153,6 +153,10 @@ Scope {
     // What its own rows showed then, and which rows were held below them.
     property string lastOwn: ""
     property string lastHeld: ""
+    // What moved, as changedTo last said the rows changed, kept only while
+    // `changed` is said, so a key's act the launcher times says what was
+    // drawn: a turn timed as Return's act said nothing more (2026-11-16).
+    property string changedWhy: ""
 
     // Since the launcher stepped in or out, what it holds below this
     // provider's rows is what it made as it stepped, not what was said
@@ -165,13 +169,19 @@ Scope {
         const held = keys.join("\u241f");
         const now = says(rows, keys, true);
         const own = keys.length === 0 ? now : says(rows, [], true);
-        const same = held === lastHeld ? now === lastSaid
+        const stepped = held !== lastHeld;
+        const same = !stepped ? now === lastSaid
             : own === lastOwn && now === says(rows, keys, true, heldRows());
+        const which = own !== lastOwn ? "its own rows" : "the rows it holds";
+        const why = stepped ? `${which} as it stepped` : which;
         lastSaid = now;
         lastOwn = own;
         lastHeld = held;
-        if (!same)
+        if (!same) {
+            changedWhy = why;
             changed();
+            changedWhy = "";
+        }
     }
 
     // The keys of the rows held below its collection in the launcher, in

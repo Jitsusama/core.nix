@@ -303,6 +303,25 @@ QtObject {
             true);
         expect("no want is none", Waiting.asksJoel({ wants: null }, by), false);
 
+        // Sessions asking at once are in one order however they're listed,
+        // by address: those elsewhere are listed last-changed first, so a
+        // turn of one would move it ahead of another asking since the same
+        // moment, and For You would draw its rows again, swapped.
+        const asking = (address, since) => ({ address: address,
+            presence: { wants: { kind: "question", since: since } } });
+        const noon = "2026-11-16T12:00:00.000Z";
+        const order = sessions => sessions.slice().sort(Waiting.askedBefore)
+            .map(session => session.address);
+        expect("the oldest ask first, whatever its address", order([asking("NUDGER", noon),
+            asking("TICKER", "2026-11-16T11:00:00.000Z")]), ["TICKER", "NUDGER"]);
+        expect("those asking at once by address, listed either way",
+            [order([asking("TICKER", noon), asking("NUDGER", noon)]),
+                order([asking("NUDGER", noon), asking("TICKER", noon)])],
+            [["NUDGER", "TICKER"], ["NUDGER", "TICKER"]]);
+        expect("one asking since no moment told first", order([asking("TICKER", noon),
+            { address: "SKIFF", presence: { wants: { kind: "question" } } }]),
+            ["SKIFF", "TICKER"]);
+
         // What an item tells beyond its title (NeedsYou.js): its note leads
         // with its owner's when, unless its side says it, and ends with how
         // long it has waited (VKCF3Z, 2026-11-07); its times and machine

@@ -926,6 +926,29 @@ QtObject {
         check(failures, "a key named by nothing is a key",
             Pacing.actSaid(Object.assign({}, act, { key: "" }), 1595, 1530, 40)
                 .startsWith("launcher: what a key changed in agents took 595 ms"), true);
+        check(failures, "and one that says what moved ends with it",
+            Pacing.actSaid(Object.assign({}, act, { why: "its rows" }), 1595, 1530, 440)
+                .endsWith("the collector ran 400 ms of the 595; what moved: its rows"), true);
+
+        // What moved for a keyed act names each telling for its key, so
+        // the For You case drawn as Return's act now and then (16 Nov)
+        // says whether Now's rows moved, Now said so outright, or the
+        // launcher refreshed it itself.
+        check(failures, "a source's own word is what moved",
+            Pacing.movedFor("", "its rows", undefined, 0), "its rows");
+        check(failures, "the launcher's refresh names what for",
+            Pacing.movedFor("", "", "a row taken back", 0), "a row taken back");
+        check(failures, "and neither is one said outright",
+            Pacing.movedFor("", "", undefined, 0), "said outright, no rows compared");
+        const outright = Pacing.movedFor("", "", undefined, 0);
+        check(failures, "a later telling through its rows follows, with when",
+            Pacing.movedFor(outright, "its own rows as it stepped", undefined, 12.4),
+            "said outright, no rows compared, then its own rows as it stepped 12 ms on");
+        const twice = Pacing.movedFor(outright, "its rows", undefined, 3);
+        check(failures, "and one said already isn't said again",
+            Pacing.movedFor(twice, "its rows", undefined, 9), twice);
+        check(failures, "nor the first again",
+            Pacing.movedFor(twice, "", undefined, 9), twice);
 
         costing(failures);
         framing(failures);

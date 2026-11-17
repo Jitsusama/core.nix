@@ -5174,7 +5174,9 @@ Scope {
             updatesBy[place] = Hearing.heardBy();
         }
     }
-    function refreshed(source) {
+    // `refreshedFor`, when the launcher refreshes a source itself, says
+    // what for.
+    function refreshed(source, refreshedFor) {
         updatedFrom(source);
         // A collection's note is read as the corpus is joined, so a source
         // saying it changed marks it stale even when its things are the
@@ -5192,12 +5194,18 @@ Scope {
         // seen for what it was.
         if (open && !byKey && !prompt.keyMoved && ago < 1000)
             Report.say(`heard ${source.settings.name} ${Math.round(ago)} ms after a key's work`);
-        if (byKey && !keyedActs.some(one => one.source === source && one.heard === keyHeardAt)) {
+        // What moved, as its source says or the launcher refreshed it for
+        // (Pacing.movedFor), each telling for the key in turn.
+        const told = keyedActs.find(one => one.source === source && one.heard === keyHeardAt);
+        if (byKey && told)
+            told.why = Pacing.movedFor(told.why, source.changedWhy, refreshedFor, now - told.at);
+        if (byKey && !told) {
             // Which key, who told it and when, so a slow one says whether
             // a daemon was late or the shell was (Pacing.actSaid).
             const act = { source: source, name: source.settings.name, key: keyHeardName,
                 heard: keyHeardAt, at: now, done: Infinity, by: Hearing.heardBy(),
-                collected: keyCollectedAt };
+                collected: keyCollectedAt,
+                why: Pacing.movedFor("", source.changedWhy, refreshedFor, 0) };
             keyedActs = keyedActs.filter(one => one.heard === keyHeardAt).concat([act]);
             // When the key's own work is done, and the change could be shown.
             Qt.callLater(() => act.done = KeyTimes.now());
@@ -5328,6 +5336,9 @@ Scope {
             const name = one.source.settings.name;
             Report.say(`act shown in ${name} after ${took} ms, `
                 + `refreshed ${waited} ms after the key's work`);
+            // What its source said moved, so a change drawn as the key's
+            // names itself.
+            Report.say(`act moved in ${name}: ${one.why}`);
             if (took >= 50)
                 console.info(Pacing.actSaid(Object.assign({}, one, { by: one.by || "the shell" }),
                     drawn, keyDoneAt, Heap.collected()));
@@ -5473,7 +5484,7 @@ Scope {
         }
         becoming = now;
         timeBecoming();
-        refreshed(from);
+        refreshed(from, "a row becoming");
     }
 
     // Its source wouldn't do what the row was to become, saying why in its
@@ -5488,7 +5499,7 @@ Scope {
         letGo([one.key]);
         toldNot(one.name, one.act, why);
         Report.say(`not become ${one.key}${why === "" ? "" : `: ${why}`}`);
-        refreshed(one.from);
+        refreshed(one.from, "a row taken back");
     }
 
     // That an act on `name` wasn't done, `why` in the daemon's words, or
@@ -6740,7 +6751,7 @@ Scope {
             || fromTop && source.things.some(own => own.key === first.key)
             || first === null && matches.some(row => row.endedBy === source);
         for (const source of sources.filter(shows))
-            refreshed(source);
+            refreshed(source, "the launcher showing it again");
     }
 
     // u: the last change taken back, or as many as counted, each action put

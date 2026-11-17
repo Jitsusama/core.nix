@@ -118,7 +118,18 @@ function actSaid(one, drawn, keyDone, collected) {
         + `${ms(one.heard, one.at)} ms after the key, its turn came ${ms(one.at, one.done)} ms `
         + `later, its refresh began ${ms(one.done, one.begun)} ms after that and was drawn `
         + `${ms(one.begun, drawn)} ms after it; the collector ran `
-        + `${ms(one.collected, collected)} ms of the ${all}`;
+        + `${ms(one.collected, collected)} ms of the ${all}`
+        + (one.why ? `; what moved: ${one.why}` : "");
+}
+
+// What moved for a keyed act: its source's word (changedWhy), the launcher's, or
+// said outright, as Now says the notices; a later telling, `after` ms on, follows.
+const msOn = / \d+ ms on$/;
+function movedFor(why, said, launchers, after) {
+    const now = said || launchers || "said outright, no rows compared";
+    const told = why.split(", then ").map(each => each.replace(msOn, ""));
+    const then = `${why}, then ${now} ${Math.round(after)} ms on`;
+    return why === "" ? now : told.includes(now) ? why : then;
 }
 
 // The timer rang: the refresh it waited for is taken.
