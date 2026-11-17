@@ -108,6 +108,52 @@ fn a_train_that_gives_up_makes_every_rider_fall_saying_why() {
 }
 
 #[test]
+fn a_candidate_no_builder_took_keeps_its_riders_and_search_until_it_gives_up() {
+    let root = root("untaken");
+    for (head, at) in [("a1", 10), ("b2", 20), ("c3", 30), ("d4", 40)] {
+        board(&root, &rider(head, at)).unwrap();
+    }
+    let mut splitting = Splitting::default();
+    assert_eq!(splitting.red(4), After::Narrows, "a red of four didn't narrow");
+    let log = Path::new("/state/train/u.log");
+    for _ in 1..UNTAKEN {
+        assert!(
+            unsent(&root, "u1", log, &mut splitting),
+            "the train gave up before {UNTAKEN} candidates went untaken"
+        );
+        assert_eq!(riders(&root).len(), 4, "a rider fell from a run no builder took");
+        assert_eq!(splitting.take(), 2, "a run no builder took lost the train's search");
+    }
+    assert!(
+        !unsent(&root, "u1", log, &mut splitting),
+        "the train never gave up on candidates no builder took"
+    );
+    assert!(riders(&root).is_empty(), "riders still rode a train no builder took");
+    let why = fell(&root, "d4").unwrap_or_default();
+    assert!(
+        why.starts_with("no builder took") && why.contains("u.log"),
+        "a rider wasn't told no builder took the train, and where: {why}"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_run_a_builder_took_counts_the_untaken_afresh() {
+    let mut splitting = Splitting::default();
+    for _ in 1..UNTAKEN {
+        assert!(splitting.untaken(), "the train gave up too soon");
+    }
+    splitting.taken();
+    for _ in 1..UNTAKEN {
+        assert!(
+            splitting.untaken(),
+            "untaken runs before one a builder took still counted"
+        );
+    }
+    assert!(!splitting.untaken(), "the train never gave up");
+}
+
+#[test]
 fn a_rider_that_fell_rides_no_more_and_runs_again_alone() {
     let root = root("fell");
     board(&root, &rider("a1", 10)).unwrap();

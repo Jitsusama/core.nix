@@ -361,6 +361,11 @@ fn systemctl(arguments: &[&str]) -> String {
 /// before it goes back to run again.
 const RECUTS: usize = 5;
 
+/// How many candidates in a row no builder may take before every rider
+/// falls back to running again alone. nix-offload waits up to four
+/// minutes for a lost builder to stand again before it gives up on one.
+const UNTAKEN: usize = 3;
+
 /// What follows a red candidate.
 #[derive(Debug, PartialEq, Eq)]
 enum After {
@@ -392,6 +397,8 @@ struct Splitting {
     suspects: usize,
     /// Whether a rider fell riding alone since the train last landed.
     fell_alone: bool,
+    /// How many candidates in a row no builder took.
+    untaken: usize,
 }
 
 impl Splitting {
@@ -413,9 +420,20 @@ impl Splitting {
         *self = Self {
             suspects: 0,
             fell_alone: !twice,
+            untaken: 0,
         };
         if twice { After::AllFall } else { After::Falls }
     }
+
+    /// A candidate no builder took: whether the train tries again with its
+    /// riders aboard and its search as it was, rather than every rider
+    /// falling.
+    fn untaken(&mut self) -> bool {
+        true
+    }
+
+    /// A builder took a candidate, whatever it found.
+    fn taken(&mut self) {}
 
     /// A candidate of `riding` riders landed.
     fn landed(&mut self, riding: usize) {
@@ -535,6 +553,14 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             }
         }
     }
+}
+
+/// After no builder took the candidate `candidate`, its words in `log`:
+/// whether the train tries again, its riders aboard, or every rider
+/// falls back to running again alone, as `splitting` says.
+fn unsent(root: &Path, candidate: &str, log: &Path, splitting: &mut Splitting) -> bool {
+    let _ = (root, candidate, log);
+    splitting.untaken()
 }
 
 /// After the candidate `candidate` of `merged` riders failed, its words in
