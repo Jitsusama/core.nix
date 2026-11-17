@@ -102,7 +102,7 @@ def twin() -> dict[str, list[dict[str, object]]]:
 
 
 def serve(folder: Path, node: StandIn) -> Iterator[Served]:
-    """Serve the map through the real server beside `node`, through its feed as home.nix declares it."""
+    """Serve the map through the real server beside `node`, its feed as home.nix declares."""
     feed = {"socket": str(node.path), "kinds": json.loads(os.environ["NODE_KINDS"])}
     with serving(folder, {"mycelium": os.environ["MYCELIUM_SITE"]}, {"node": feed}) as served:
         yield served
