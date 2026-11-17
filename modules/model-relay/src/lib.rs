@@ -49,6 +49,10 @@
 //! whoever asks next is answered by whatever build and origin the machine
 //! now names. A request refused as another host's isn't counted, so a
 //! relay left naming an origin the machine no longer does still leaves.
+//!
+//! Long because the pool, the drain and the forwarding each read and set
+//! the same few counters and slots under one relay, and split apart they
+//! would hand each other its insides to keep one account of what is open.
 
 use std::convert::Infallible;
 use std::io;

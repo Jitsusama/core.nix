@@ -16,6 +16,10 @@
 //! A request hyper hands back unsent goes again on another connection;
 //! no test makes that happen when it's wanted, since it needs a goodbye
 //! to cross a request on its way out.
+//!
+//! Long because its cases are most of it: each runs the relay's program
+//! against the one origin made here, with its certificate, routes and
+//! counters, which splitting would leave two files making alike.
 
 use std::convert::Infallible;
 use std::io::{self, Read};
@@ -260,6 +264,8 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
             let (mut sender, body) = Channel::<Bytes, Infallible>::new(2);
             tokio::spawn(async move {
                 let _ = sender.send_data(Bytes::from_static(b"first\n")).await;
+                // An answer paused mid-body for its route's named gap, so
+                // the relay is seen passing what came before the rest.
                 tokio::time::sleep(gap).await;
                 let _ = sender.send_data(Bytes::from_static(b"second\n")).await;
             });

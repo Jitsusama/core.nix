@@ -99,7 +99,7 @@ in
         # no more of the machine than reaching the origin needs: no home,
         # no shared /tmp, nothing written, no capability, no namespace of
         # its own making. A user manager takes these by putting it in a
-        # user namespace of its own, which optimus allows; its socket comes
+        # user namespace of its own, where the kernel allows one; its socket comes
         # from systemd, so the runtime folder it hides isn't needed.
         ProtectSystem = "strict";
         ProtectHome = true;
