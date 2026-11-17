@@ -36,33 +36,54 @@ function command(realm, address) {
         : null;
 }
 
-// The session a line of the node's answer says, or null when it says no
-// session: a machine, a network, an error or nothing.
-function sessionOf(line) {
+// How a row whose words ask nothing stands: a realm that isn't one is no
+// answer to be had, and an address that isn't one is a session no node
+// knows.
+function unasked(realm) {
+    return REALM.test(String(realm ?? "")) ? "unknown" : "failed";
+}
+
+// The session at `address` a line of the node's answer says, or null when
+// it says none: a machine, a network, another cell, an error or nothing.
+// `mycelium cells` also finds cells by their titles' words, so only the one
+// the address names is it.
+function sessionOf(line, address) {
+    const said = cellSaid(line);
+    const named = String(address ?? "").toUpperCase();
+    return said?.type === "session" && said.name === named ? said : null;
+}
+
+// The cell a line of the node's answer says, or null.
+function cellSaid(line) {
     try {
         const said = JSON.parse(line);
-        return said?.kind === "cell" && said.type === "session" ? said : null;
+        return said?.kind === "cell" ? said : null;
     } catch (_unread) {
-        // Words that aren't JSON, such as a warning, say no session, which
-        // is what null means.
+        // Words that aren't JSON, such as a warning, say no cell, which is
+        // what null means.
         return null;
     }
 }
 
-// The session the node's answer `text` says, from its JSON lines, or null.
-function cellOf(text) {
-    return String(text ?? "").split("\n").map(sessionOf).find(one => one !== null) ?? null;
+// The session at `address` the node's answer `text` says, from its JSON
+// lines, or null.
+function cellOf(text, address) {
+    return String(text ?? "").split("\n").map(line => sessionOf(line, address))
+        .find(one => one !== null) ?? null;
 }
 
-// How the node's answer ended, from what it wrote out and its errors: the
-// session, "unknown" when the node knows no such cell, or "failed" when it
-// couldn't say, as when the node is down or refused the realm.
-function outcome(out, errors) {
-    const cell = cellOf(out);
+// How the node's answer about `address` ended, from what it wrote out and
+// its errors: the session, "unknown" when the node knows no such cell, or
+// "failed" when it couldn't say, as when the node is down or refused the
+// realm.
+function outcome(out, errors, address) {
+    const cell = cellOf(out, address);
     if (cell !== null) {
         return { cell };
     }
-    return { stage: UNKNOWN.test(String(errors ?? "")) ? "unknown" : "failed" };
+    // Cells whose titles hold its words, and none at it, are an answer too.
+    const others = String(out ?? "").split("\n").some(line => cellSaid(line) !== null);
+    return { stage: others || UNKNOWN.test(String(errors ?? "")) ? "unknown" : "failed" };
 }
 
 // A fact's words on one line and cut short, so none can start a line or a

@@ -184,35 +184,21 @@
   # answer in the act's place only while it's the act's own
   # (tests/explainer.qml), over a stand-in mycelium that knows one session,
   # answers another late, never answers a third and can't say a fourth.
-  explain-it-shows-its-own-answer =
-    let
-      mycelium = pkgs.writeShellScript "mycelium" ''
-        printf '%s\n' "$*" >>"$MYCELIUM_ASKED"
-        cell() {
-          printf '{"kind":"cell","type":"session","name":"%s","title":"%s",' "$1" "$2"
-          printf '"quest":"QEST-20261116-HARBOR","cwd":"/home/j/src/rows","repo":"rows"}\n'
-        }
-        case "$4" in
-          HARBOR) cell HARBOR "Tidy the Rows" ;;
-          SLOW) sleep 1 && cell SLOW "Slow Work" ;;
-          HANG) exec sleep 30 ;;
-          DOWN) echo "mycelium: the node isn't answering" >&2 && exit 1 ;;
-          *) echo "mycelium: no cell is named $4" >&2 && exit 1 ;;
-        esac
-      '';
-    in
-    pkgs.runCommandLocal "explain-it-shows-its-own-answer" { } ''
-      mkdir -p launcher bin runtime && chmod 700 runtime
-      ${copied [ "launcher/Explainer.qml" ]}
-      cp ${mycelium} bin/mycelium
-      cp ${../../../tests/explainer.qml} shell.qml
-      touch asked
-      export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts} MYCELIUM_ASKED=$PWD/asked PATH=$PWD/bin:$PATH
-      ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
-      touch $out
-    '';
+  explain-it-shows-its-own-answer = pkgs.runCommandLocal "explain-it-shows-its-own-answer" { } ''
+    mkdir -p launcher bin runtime && chmod 700 runtime
+    ${copied [ "launcher/Explainer.qml" ]}
+    { echo "#!${pkgs.runtimeShell}"; cat ${../../../tests/explain-it-node.sh}; } > bin/mycelium
+    chmod +x bin/mycelium
+    cp ${../../../tests/explainer.qml} shell.qml
+    cp ${../../../tests/lib/Expect.js} Expect.js
+    cp ${../../../tests/lib/Until.qml} Until.qml
+    touch asked
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+    export FONTCONFIG_FILE=${noFonts} MYCELIUM_ASKED=$PWD/asked PATH=$PWD/bin:$PATH
+    ${shellFolderLint}
+    timeout 60 ${qs} -p shell.qml
+    touch $out
+  '';
 
   # For You's to-dos hold only what Joel can do, now or later, in the order he
   # does them, and a session's want is his only while it's true, as

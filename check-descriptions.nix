@@ -2139,9 +2139,9 @@
     from a node that can't say, and shows an answer only while it's the act's, fresh and whole
   '';
   explain-it-shows-its-own-answer = ''
-    Explain It reads one session at a time from a stand-in node, a second asked meanwhile waiting
-    its turn and the first the act again, tells an unknown session from a node that can't say,
-    gives up on a node that never answers, and shows its pi's answer only while it's its own
+    Explain It reads each session it's asked of from a stand-in node on its own, never taking one
+    row's answer for another's, tells an unknown session from a node that can't say, gives up on
+    a node that never answers, and shows its tool-less pi's answer only while it's its own
   '';
   now-lists-by-group = ''
     Now lists what wants Joel first, then what reaches other people, what's playing and the modes
@@ -2323,7 +2323,8 @@
   pi-ask-answers-on-the-machines-plan = ''
     pi-ask starts pi for the launcher's Ask row speaking RPC with nothing loaded but the machine's
     extensions, the digest of what's true on the machine and, on Linux, the launcher's tool as its
-    one tool, on pi's own plan and quick model by default, or through pi-claude on the Claude plan
+    one tool, on pi's own plan and quick model by default, or through pi-claude on the Claude plan,
+    and with no tools at all when started with --no-launcher
   '';
   pi-ask-knows-the-machine = ''
     pi-ask's digest says what's true on the machine as each question starts: the time, its

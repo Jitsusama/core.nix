@@ -1045,17 +1045,19 @@ Provider {
     // whose words go to that cell, and Go To its window, which a terminal's
     // Open already is, offered as Agents offers it: where it has a window,
     // or is parked and wakes into one; then Explain It, which says what the
-    // cell works on in a sentence or two (explainAct). None while no cell
-    // is held for it, or Agents isn't there to talk through.
+    // cell works on in a sentence or two (explainAct), where the machine
+    // has Ask's pi to answer it. None while no cell is held for it, or
+    // Agents isn't there to talk through.
     function cellActs(one) {
         const cell = lookCell(one);
         const agents = provider.source("agents");
         if (cell === null || !agents)
             return [];
         const talk = agents.sessionAct(cell, "talk");
-        const explain = explainAct(`verb:on:waiting:explain:on:look:${one.id}`, cell);
+        const explain = source("ask") === null ? []
+            : [explainAct(`verb:on:waiting:explain:on:look:${one.id}`, cell)];
         const reachable = agents.windowedOf(cell) || !!Sessions.parkedAs(cell.address);
-        return one.kind === "terminal" || !reachable ? [talk, explain] : [talk, thing({
+        return one.kind === "terminal" || !reachable ? [talk].concat(explain) : [talk, thing({
             // Under Go To's own word, so the : line names it as a want's is.
             key: `verb:on:waiting:go:on:look:${one.id}`,
             verb: Words.verb("verb:on:waiting:go"),
@@ -1065,7 +1067,7 @@ Provider {
             side: cell.title,
             later: true,
             run: () => provider.goToCell(one)
-        }), explain];
+        })].concat(explain);
     }
 
     // Explain It on `cell`, under `key`: the machine's quick model asked

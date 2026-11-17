@@ -5,12 +5,14 @@
 // as its name and the whole of it read, as On the Selection's answers do
 // (Explaining.js's shown).
 //
-// Its pi is pi-ask with the launcher's tool left out, never Ask's own: a
-// session's title and plan are an agent's words, and Ask's pi can run what
-// the launcher offers. It's started the first time a row is explained, and
-// kept warm from then on as Ask's is. One session is read at a time: one
-// asked while another is read waits for that read to end, and the one it
-// replaced is the act again.
+// Its pi is pi-ask with no tools at all (`--no-launcher`), never Ask's own:
+// a session's title and plan are an agent's words, and Ask's pi can run
+// what the launcher offers. It's made the first time a row is explained,
+// as the launcher makes each source, and kept warm from then on as Ask's
+// is. Each read of the node is a process of its own that knows its row,
+// so no answer is ever taken for another row's, and a row asked while
+// another is read makes that one the act again, its answer let go when it
+// comes.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -29,18 +31,17 @@ Scope {
     // once, so ten seconds without one is no answer.
     property int patience: 10000
     // The pi that answers, its own once a row is first explained; a test
-    // gives one standing in.
+    // gives one standing in. Its own is pi-ask started with no tools.
     property var asker: null
+    readonly property var pi: ["pi-ask", "--no-launcher"]
 
-    // The row explained last, by its act's key, and how it stands, as
+    // The row explained last, by its act's key, and how each stands, as
     // Explaining.js's shown reads it: { stage, message, at }, where stage is
     // "reading" while the node is asked, "asking" once the pi is, and
     // "unknown" or "failed" when the node can't say. Replaced whole, so
     // bindings hear it.
     property string explaining: ""
     property var explained: ({})
-    // The words the node is asked with next, while a read before them ends.
-    property var next: null
 
     // Told whenever what an act shows changes, so its place is said again.
     signal changed
@@ -54,22 +55,21 @@ Scope {
         // saying it reads.
         if (before !== key && left[before]?.stage === "reading")
             delete left[before];
-        left[key] = { stage: command === null ? "unknown" : "reading", at: Date.now() };
+        left[key] = {
+            stage: command === null ? Explaining.unasked(realm) : "reading",
+            at: Date.now()
+        };
         explained = left;
         changed();
         if (command === null)
             return;
         if (asker === null)
             asker = own();
-        if (reader.running || reader.settling) {
-            next = command;
-            return;
-        }
-        read(command);
+        reading.createObject(explainer, { key: key, command: command, patience: patience });
     }
 
-    // Its own Ask, made as the launcher makes each source, with the
-    // launcher's tool left out, or null where it can't be made.
+    // Its own Ask, made as the launcher makes each source, or null where it
+    // can't be made.
     function own() {
         const file = Qt.createComponent("Ask.qml");
         if (file.status !== Component.Ready) {
@@ -77,18 +77,9 @@ Scope {
             return null;
         }
         return file.createObject(explainer, {
-            settings: { name: "explain", command: ["pi-ask", "--exclude-tools", "launcher"] },
+            settings: { name: "explain", command: pi },
             launcher: launcher
         });
-    }
-
-    function read(command) {
-        reader.heard = {};
-        reader.settling = true;
-        reader.command = command;
-        reader.running = true;
-        waiting.interval = patience;
-        waiting.restart();
     }
 
     function stands(key, how) {
@@ -97,42 +88,22 @@ Scope {
         changed();
     }
 
-    // A read is settled once both its streams and its run have ended, in
-    // whichever order Quickshell tells them; the next waiting is read then.
-    function hear(stream, text) {
-        reader.heard = Object.assign({}, reader.heard, { [stream]: text });
-        settle();
-    }
-
-    function settle() {
-        const heard = reader.heard;
-        if (!reader.settling || reader.running || heard.out === undefined
-            || heard.errors === undefined)
+    // What the node said of the session at `address`, for `key`'s row,
+    // `out` and `errors`, or null when it gave no answer in time: it's this
+    // row's only while the row is the one explained and still reads.
+    function heard(key, address, out, errors) {
+        if (key !== explaining || explained[key]?.stage !== "reading")
             return;
-        waiting.stop();
-        if (next !== null) {
-            // Read a moment later, never from inside the reader's own
-            // telling that it ended; it stays settling until then, so a row
-            // asked meanwhile waits its turn too.
-            const command = next;
-            next = null;
-            // What the last read said is let go now, as Quickshell may tell
-            // its ending again before the next starts, and it isn't the
-            // waiting row's.
-            reader.heard = {};
-            Qt.callLater(() => explainer.read(command));
-            return;
-        }
-        reader.settling = false;
-        if (explained[explaining]?.stage !== "reading")
-            return;
-        const ended = Explaining.outcome(heard.out, heard.errors);
+        const ended = out === null ? { stage: "failed" }
+            : Explaining.outcome(out, errors, address);
         if (ended.cell === undefined || asker === null) {
-            stands(explaining, { stage: ended.stage ?? "failed" });
+            if (ended.stage !== "unknown")
+                console.warn(`Explain It: no answer from ${realm}'s node: ${errors ?? "none in time"}`);
+            stands(key, { stage: ended.stage ?? "failed" });
             return;
         }
         const message = Explaining.message(ended.cell, said.asks);
-        stands(explaining, { stage: "asking", message: message });
+        stands(key, { stage: "asking", message: message });
         asker.pose(message);
     }
 
@@ -141,45 +112,73 @@ Scope {
         return Explaining.shown(explained[key] ?? null, asker, said, Date.now());
     }
 
-    // The pi's answer, a word a moment as Ask tells it, said again while
-    // it's this act's.
+    // The pi's answer, a word a moment as Ask tells it, said again for
+    // whichever row it answers.
     Connections {
         target: explainer.asker
         ignoreUnknownSignals: true
 
         function onAnswered() {
-            const one = explainer.explained[explainer.explaining] ?? null;
-            if (one?.stage === "asking" && explainer.asker?.posed === one.message)
+            const posed = explainer.asker?.posed;
+            if (Object.values(explainer.explained).some(one => one.stage === "asking"
+                && one.message === posed))
                 explainer.changed();
         }
     }
 
-    Process {
-        id: reader
+    // One read of the node, for one row: it says what it heard once both
+    // its streams and its run have ended, in whichever order Quickshell
+    // tells them, or nothing once it's given up on, and then goes.
+    Component {
+        id: reading
 
-        property var heard: ({})
-        property bool settling: false
+        Process {
+            id: read
 
-        stdout: StdioCollector {
-            onStreamFinished: explainer.hear("out", text)
-        }
-        stderr: StdioCollector {
-            onStreamFinished: explainer.hear("errors", text)
-        }
-        onRunningChanged: explainer.settle()
-    }
+            required property string key
+            required property int patience
+            property var out: undefined
+            property var errors: undefined
+            property bool done: false
 
-    // A node that never answers is given up on, as is a reader that
-    // couldn't start, which ends neither stream.
-    Timer {
-        id: waiting
+            function settle() {
+                if (done || running || out === undefined || errors === undefined)
+                    return;
+                done = true;
+                // The address is the fifth word asked (Explaining.command).
+                explainer.heard(key, command[4], out, errors);
+                destroy();
+            }
 
-        onTriggered: {
-            reader.running = false;
-            reader.settling = false;
-            explainer.next = null;
-            if (explainer.explained[explainer.explaining]?.stage === "reading")
-                explainer.stands(explainer.explaining, { stage: "failed" });
+            running: true
+            stdout: StdioCollector {
+                onStreamFinished: {
+                    read.out = text;
+                    read.settle();
+                }
+            }
+            stderr: StdioCollector {
+                onStreamFinished: {
+                    read.errors = text;
+                    read.settle();
+                }
+            }
+            onRunningChanged: settle()
+
+            // A node that never answers is given up on, as is a read that
+            // couldn't start, which ends neither stream.
+            property Timer waiting: Timer {
+                interval: read.patience
+                running: true
+                onTriggered: {
+                    if (read.done)
+                        return;
+                    read.done = true;
+                    read.running = false;
+                    explainer.heard(read.key, "", null, null);
+                    read.destroy();
+                }
+            }
         }
     }
 }

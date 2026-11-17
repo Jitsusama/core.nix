@@ -11,6 +11,8 @@
 # machine's folders ahead on pi's PATH, in the order named. Stopped as the
 # shell's service stops, every process at once, pi is gone at once, however
 # long it would take to wind down, and it reads what the launcher asks.
+# Started with --no-launcher, as Explain It starts it, it has no tools at
+# all, the launcher's either, on either plan, and its prompt names none.
 # usage: pi-ask-answers-on-the-machines-plan.sh <pi-ask on pi's plan>
 #          <pi-ask on the Claude plan> <the stand-in pi-claude>
 set -euo pipefail
@@ -80,6 +82,7 @@ launches() {
   follows --tools launcher
   follows --exclude-tools 'mcp__*'
   lacks "arg --no-tools"
+  grep -q -- '^arg .*use it first' "$said" || fail "its prompt doesn't say to use its tool"
 }
 # How many extensions it was started with.
 loaded() { grep -cxF -- "arg -e" "$said" || true; }
@@ -102,6 +105,27 @@ extensions=$(loaded)
   fail "it loaded more than the machine named, the digest and the launcher's tool"
 digests
 launches
+
+# With no launcher, no tools: not its tool, nor any MCP server's.
+untooled() {
+  has "arg --no-tools"
+  lacks "arg --tools"
+  lacks "arg --no-launcher"
+  ! grep -A1 -xF -- "arg -e" "$said" | grep -q -- '-ask-launcher.ts$' ||
+    fail "the launcher's tool was loaded"
+  ! grep -q -- '^arg .*use it first' "$said" || fail "its prompt names a tool"
+}
+: > "$said"
+"$on_pi" --no-launcher
+has "started pi"
+follows --mode rpc
+untooled
+[ "$(loaded)" = 3 ] || fail "with no launcher, it loaded more than the machine named and the digest"
+: > "$said"
+"$on_claude" --no-launcher
+has "started pi-claude"
+untooled
+[ "$(loaded)" = 1 ] || fail "with no launcher, it loaded more than the digest"
 
 : > "$said"
 env -i PATH="$work/bin" SAID="$said" "$on_pi"

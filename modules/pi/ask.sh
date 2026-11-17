@@ -27,6 +27,11 @@
 # and where it doesn't, pi loads what it would; with no session it stays off
 # the mesh all the same.
 #
+# Started with --no-launcher, as Explain It starts it to say what a session
+# works on from that session's own words, it has no tools at all, even
+# where there's a launcher: words an agent wrote must never reach a pi that
+# can run what the launcher offers. Its prompt then says nothing of tools.
+#
 # Its own help, in the shape every command of ours takes (docs/commands.md),
 # says what it adds to pi and leaves the rest to pi's. The launcher never
 # asks it for help, so this answers only a person or an agent.
@@ -44,6 +49,8 @@ pi-ask  pi for the launcher's Ask row
   launcher's tool. Every other word is pi's, as pi --help
   says.
 
+  --no-launcher  no tools at all, the launcher's either
+
 EXAMPLES
   pi-ask  waits for the launcher's questions on stdin
 
@@ -54,6 +61,12 @@ EOF
   ;;
 *) ;;
 esac
+
+launcher=$LAUNCHER_TOOL
+if [ "${1:-}" = --no-launcher ]; then
+  launcher=
+  shift
+fi
 
 ahead=
 while IFS= read -r folder; do
@@ -68,7 +81,10 @@ PATH=$ahead$PATH
 # can promise what isn't done. Said in the tool's guidance it still did;
 # said here it didn't. Between a list and a run it still said "Let me set
 # it to 40%", so it waits for the last call, not the first.
-prompt="You answer quick questions in a desktop launcher. One or two plain sentences, no markdown. When you have a tool for what's asked, use it first and write nothing until your last call has answered, then say only what was done."
+prompt="You answer quick questions in a desktop launcher. One or two plain sentences, no markdown."
+if [ -n "$launcher" ]; then
+  prompt="$prompt When you have a tool for what's asked, use it first and write nothing until your last call has answered, then say only what was done."
+fi
 arguments=(
   --mode rpc
   --no-session
@@ -85,8 +101,8 @@ while IFS= read -r extension; do
   fi
 done <<< "$EXTENSIONS"
 arguments+=(-e "$DIGEST")
-if [ -n "$LAUNCHER_TOOL" ]; then
-  arguments+=(-e "$LAUNCHER_TOOL" --tools launcher --exclude-tools 'mcp__*')
+if [ -n "$launcher" ]; then
+  arguments+=(-e "$launcher" --tools launcher --exclude-tools 'mcp__*')
 else
   arguments+=(--no-tools)
 fi
