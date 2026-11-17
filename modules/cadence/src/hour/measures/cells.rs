@@ -230,7 +230,9 @@ fn unrun(
         let named = short_id(&q.id);
         let to = owner(&q.id);
         if of_quest.is_empty() {
-            never.push(format!("{named} {}, no cell yet · {to}", q.priority));
+            // The node forgets sessions long ended, so this says only that
+            // it knows of none, not that none ever ran.
+            never.push(format!("{named} {}, no cell the node knows · {to}", q.priority));
         } else {
             ended.push(format!("{named} {}, every cell ended · {to}", q.priority));
         }
@@ -543,7 +545,7 @@ mod tests {
         let all = cells(&answers, &quests, NOW, "FALLBACK");
         assert_eq!(
             measure(&all, "quests-without-cells").behind,
-            ["AAAAAA driving, no cell yet · PARENT"],
+            ["AAAAAA driving, no cell the node knows · PARENT"],
             "a quest with no cell was missed, or one benched, running, done or in a \
              realm not read counted"
         );
