@@ -59,7 +59,24 @@ function keysSaid(verb, times, apart) {
         return "";
     }
     const said = `launcher: ${one.count} keys ${tookSaid(one, "the key", verb)}`;
-    return apart ? said + wentTo(times) : said;
+    return apart ? said + wentTo(times) + screensSaid(times) : said;
+}
+
+// Which screen a set of keys was shown on, each `screen` its name and
+// `refresh` niri's frame in ms there (frame-presentation.patch's timesOf),
+// said after the rest as "; on DP-4 at 60 Hz", each screen once, in turn,
+// at the rate of any key niri timed there, as a key whose frame niri
+// dropped has none, or "" where none was named. A key on a 60 Hz
+// screen waits twice as long for niri's frame as on a 120 Hz one, so a
+// day docked read as a day the launcher slowed: its keys past 50 ms went
+// from 11% to 60% when Joel docked to a 60 Hz screen (16 Nov, 10:22).
+function screensSaid(times) {
+    const named = times.filter(one => one.screen).map(one => one.screen);
+    const screens = named.filter((one, at) => named.indexOf(one) === at).map(screen => {
+        const timed = times.find(one => one.screen === screen && one.refresh > 0);
+        return timed ? `${screen} at ${Math.round(1000 / timed.refresh)} Hz` : screen;
+    });
+    return screens.length === 0 ? "" : `; on ${screens.join(" and ")}`;
 }
 
 // Where a set's time went, each part's median over those stamped with

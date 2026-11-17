@@ -540,6 +540,26 @@ QtObject {
             + "the p99 70 ms, 0 within 50 ms");
         check(failures, "no keys say nothing", Presented.keysSaid("presented", [], true), "");
 
+        // Joel's keys past 50 ms went from 11% to 60% the day he docked to a
+        // 60 Hz screen, from the 120 Hz panel (16 Nov), and nothing said so.
+        const docked = { from: 0, at: 54, screen: "DP-4", refresh: 1000 / 59.997 };
+        check(failures, "keys say the screen they were shown on, and its rate",
+            Presented.screensSaid([docked, docked]), "; on DP-4 at 60 Hz");
+        // The launcher shuts as it moves screens, so one line holds one
+        // today; should that change, each is still said once.
+        check(failures, "each screen once, in turn, were they on two",
+            Presented.screensSaid([docked, { screen: "eDP-1", refresh: 1000 / 120 }, docked]),
+            "; on DP-4 at 60 Hz and eDP-1 at 120 Hz");
+        check(failures, "a key whose frame niri dropped leaves its screen once",
+            Presented.screensSaid([{ screen: "DP-4", refresh: 0 }, docked]), "; on DP-4 at 60 Hz");
+        check(failures, "and the keys' line ends with it",
+            Presented.keysSaid("presented", [docked], true)
+                .endsWith("within 50 ms; on DP-4 at 60 Hz"), true);
+        check(failures, "a screen niri gave no rate for is named alone",
+            Presented.screensSaid([{ screen: "DP-4", refresh: 0 }]), "; on DP-4");
+        check(failures, "and keys on no named screen say none",
+            Presented.screensSaid([{ from: 0, at: 54 }]), "");
+
         // Joel's 235 drawers on 2026-11-11 were timed only from the work
         // begun for each to its frame, a median 14 ms, though each followed
         // its key by 50 ms and more and reached the screen 25 to 46 ms after
@@ -599,6 +619,15 @@ QtObject {
             "launcher: 3 keys presented a median 100 ms from the key, the slowest 300 ms, "
             + "the p99 300 ms, 1 within 50 ms: a median 10 ms before the shell heard it, "
             + "20 in the shell and 20 from its frame's start (2 to its swap and 18 after it)");
+        const panel = { screen: "eDP-1", refresh: 1000 / 120 };
+        check(failures, "and the screen they were on after all of it",
+            Presented.keysSaid("presented", [Object.assign({ swapped: 82 }, keys[0], panel),
+                Object.assign({}, keys[1], panel),
+                Object.assign({ swapped: 2020 }, keys[2], panel)], true),
+            "launcher: 3 keys presented a median 100 ms from the key, the slowest 300 ms, "
+            + "the p99 300 ms, 1 within 50 ms: a median 10 ms before the shell heard it, "
+            + "20 in the shell and 20 from its frame's start (2 to its swap and 18 after it); "
+            + "on eDP-1 at 120 Hz");
 
         // Joel's openings waited a median 6 frames at 120 Hz for niri after
         // their GPU work was done (2026-11-15). Presentation times lie on the
