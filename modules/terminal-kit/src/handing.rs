@@ -11,14 +11,19 @@ use crate::tree;
 /// The words split where a subcommand that hands them on is named: the
 /// kit's own, up to and with its name, and the program's after it, with
 /// whether those ask for the subcommand's help. Words that reach no such
-/// subcommand are all the kit's.
+/// subcommand are all the kit's, and a command that hands on every word
+/// keeps them all, reading even its subcommands its own way.
 pub(crate) fn split(help: &Help, mut args: Vec<String>) -> (Vec<String>, Vec<String>, bool) {
-    // Walked as the words come, flags and all, since the walk passes over
-    // a flag as the shared flags are taken later: a word it refuses here
-    // is refused again, said, once they have been.
+    if let Some(ends) = &help.hands_on {
+        let helped = asks_help(&args, ends);
+        return (Vec::new(), args, helped);
+    }
     if help.subs.is_empty() {
         return (args, Vec::new(), false);
     }
+    // Walked as the words come, flags and all, since the walk passes over
+    // a flag as the shared flags are taken later: a word it refuses here
+    // is refused again, said, once they have been.
     let Ok(walked) = tree::walk(help, &args) else {
         return (args, Vec::new(), false);
     };
@@ -26,12 +31,17 @@ pub(crate) fn split(help: &Help, mut args: Vec<String>) -> (Vec<String>, Vec<Str
         return (args, Vec::new(), false);
     };
     let theirs = args.split_off(at + 1);
-    let ends = handing.hands_on.as_deref().unwrap_or_default();
-    let helped = theirs
+    let helped = asks_help(&theirs, handing.hands_on.as_deref().unwrap_or_default());
+    (args, theirs, helped)
+}
+
+/// Whether handed words ask for help: `-h` or `--help` before `--` or any
+/// of `ends`.
+fn asks_help(words: &[String], ends: &[String]) -> bool {
+    words
         .iter()
         .take_while(|word| *word != "--" && !ends.contains(word))
-        .any(|word| word == "-h" || word == "--help");
-    (args, theirs, helped)
+        .any(|word| word == "-h" || word == "--help")
 }
 
 #[cfg(test)]
@@ -132,6 +142,29 @@ mod tests {
             "nix's -v made the kit's failure verbose: {}",
             ending.stderr
         );
+    }
+
+    #[test]
+    fn a_command_that_hands_every_word_on_keeps_them_all_and_ends_through_the_kit() {
+        let wrapper = offload().hands_words_on(&[]);
+        let mut seen = None;
+        let ending = run(
+            &wrapper,
+            "1.0",
+            &Environment::of([false; 3], &[]),
+            words("--helper h --json --prefix p unheard"),
+            |context| {
+                seen = Some(context.args.clone());
+                Err(Failure::passed(3, "the build failed"))
+            },
+        );
+        assert_eq!(
+            seen,
+            Some(words("--helper h --json --prefix p unheard")),
+            "the kit took or refused a word the command reads its own way"
+        );
+        assert_eq!(ending.code(), 3, "{}", ending.stderr);
+        assert_eq!(ending.stderr, "\u{2715} the build failed\n");
     }
 
     #[test]

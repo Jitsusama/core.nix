@@ -246,7 +246,9 @@ pub fn run_question(
         };
     context.args.extend(theirs);
     context.shared.help |= helped;
-    let walked = if help.subs.is_empty() {
+    // A command that hands every word on reads its subcommands its own
+    // way, so its words aren't walked.
+    let walked = if help.subs.is_empty() || help.hands_on.is_some() {
         None
     } else {
         asked_for_help(help, &mut context);
