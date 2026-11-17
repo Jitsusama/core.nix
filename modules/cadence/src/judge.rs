@@ -61,6 +61,12 @@ pub fn judge(day: &Day, before: &[Day]) -> Judged {
         let says = match whose {
             None => measure.says.to_owned(),
             Some(mount) if mount.starts_with('/') => format!("{} at {mount}", measure.says),
+            // A screen is whose by its output and rate, `DP-4@60Hz`.
+            Some(screen) if screen.ends_with("Hz") && screen.contains('@') => {
+                let (output, hertz) = screen.split_once('@').unwrap_or((screen, ""));
+                let hertz = hertz.trim_end_matches("Hz");
+                format!("{} on {output} at {hertz} Hz", measure.says)
+            }
             Some(whose) => format!("{whose}'s {}", measure.says),
         };
         let worse = measure.worse();

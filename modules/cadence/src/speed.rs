@@ -15,6 +15,7 @@ pub fn launcher(journal: &str) -> BTreeMap<String, f64> {
     let mut presented = Vec::new();
     let mut usable = Vec::new();
     let mut keys = Batches::default();
+    let mut screens: BTreeMap<String, Batches> = BTreeMap::new();
     let mut changes = Batches::default();
     let mut drawers = Batches::default();
     for line in journal.lines() {
@@ -27,6 +28,9 @@ pub fn launcher(journal: &str) -> BTreeMap<String, f64> {
             usable.extend(first_number(rest));
         } else if said.contains(" keys presented a median ") {
             keys.add(said);
+            if let Some(screen) = screen_of(said) {
+                screens.entry(screen).or_default().add(said);
+            }
         } else if said.contains(" presented a median ") {
             if said.contains(" change in ") || said.contains(" changes in ") {
                 // "N changes in agents presented ...", or "1 change in ...".
@@ -48,6 +52,9 @@ pub fn launcher(journal: &str) -> BTreeMap<String, f64> {
     put("launcher.opening.usable", median(&usable));
     put("launcher.keys.presented", median(&keys.medians));
     put("launcher.keys.late", keys.late());
+    for (screen, keys) in &screens {
+        put(&format!("launcher.keys.late.on.{screen}"), keys.late());
+    }
     put("launcher.changes.presented", median(&changes.medians));
     put("launcher.drawers.presented", median(&drawers.medians));
     figures
@@ -105,6 +112,17 @@ impl Batches {
     fn late(&self) -> Option<f64> {
         (self.all > 0).then(|| 100.0 * f64::from(self.all - self.within) / f64::from(self.all))
     }
+}
+
+/// The screen a summary of keys names in its "; on DP-4 at 60 Hz" tail,
+/// as `DP-4@60Hz`, so a key holds no space. A frame at 60 Hz is twice a
+/// frame at 120 Hz, so a day's share past the bar is told by the screen
+/// it was at as much as by the launcher.
+fn screen_of(said: &str) -> Option<String> {
+    let (_, on) = said.rsplit_once("; on ")?;
+    let (output, rate) = on.trim().split_once(" at ")?;
+    let hertz = rate.strip_suffix(" Hz")?;
+    (!output.is_empty() && !hertz.is_empty()).then(|| format!("{output}@{hertz}Hz"))
 }
 
 fn first_number(text: &str) -> Option<f64> {

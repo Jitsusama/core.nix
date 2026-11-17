@@ -241,6 +241,17 @@ const MEASURES: &[Measure] = &[
         bar: None,
         floor: 5.0,
     },
+    // Each screen's share apart, as `DP-4@60Hz`, so a day at the monitor is
+    // judged against days at the monitor, its frames twice the panel's.
+    Measure {
+        key: "launcher.keys.late.on.*",
+        axis: "responsiveness",
+        evidence: LAUNCHER,
+        says: "the launcher's keys past 50 ms",
+        unit: "%",
+        bar: None,
+        floor: 5.0,
+    },
     Measure {
         key: "launcher.changes.presented",
         axis: "responsiveness",
