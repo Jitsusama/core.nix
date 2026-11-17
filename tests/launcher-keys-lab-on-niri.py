@@ -14,12 +14,13 @@ first, so a step into Programs is profiled over as many rows as Joel's. Given LA
 ids and names as `google-chrome=Google Chrome`, comma between, it installs those too, each with
 two actions, so a program's own page, whose provider keys it by its id, is there to step into,
 by Tab as Joel goes into one given LAB_STEP_KEY=tab (Return, the default, starts a program).
-Given LAB_WITHIN, names of the launcher's functions, it says what ran inside their calls too.
-Given LAB_CHANGES, it
+Given LAB_WITHIN too, names of the launcher's functions, it says what their calls took and what
+ran inside them. Given LAB_CHANGES, it
 leaves the first word typed at home each round while a window holding it in its title takes that
 many new titles, and prints what the shell says of those changes, as Joel's daemons change rows
-under his typed words at 17 to 35 ms in the shell (2026-11-15). It fails only when a key is never
-shown.
+under his typed words at 17 to 35 ms in the shell (2026-11-15). It fails when a key is never
+shown, and at once when LAB_WITHIN names no function of the launcher's or comes without
+LAB_PROFILE.
 """
 
 from __future__ import annotations
@@ -308,7 +309,11 @@ def profiled(trace: Path) -> dict[str, dict[str, Spent]]:
     # The ranges still open where the next starts: when each ends, its places' tallies, and the
     # functions asked for that it runs within.
     held: list[tuple[int, list[Spent], frozenset[str]]] = []
-    for each in sorted(root.iter("range"), key=lambda one: int(one.get("startTime", "0"))):
+    # A call starting where its caller does is read after it, by its shorter duration.
+    for each in sorted(
+        root.iter("range"),
+        key=lambda one: (int(one.get("startTime", "0")), -int(one.get("duration", "0"))),
+    ):
         start = int(each.get("startTime", "0"))
         index = each.get("eventIndex", "")
         ends = start + int(each.get("duration", "0"))
@@ -397,6 +402,8 @@ def say_profiled(trace: Path, said: list[str], capsys: pytest.CaptureFixture[str
     """
     spans = profiled(trace) if trace.exists() else {}
     with capsys.disabled():
+        for name in [name for name in within_asked() if f"within-{name}" not in spans]:
+            print(f"lab-profile within-{name}: never called while profiled", flush=True)
         for line in census(trace) if trace.exists() else []:
             print(f"lab-profile held {line}", flush=True)
         if not spans:
@@ -464,15 +471,22 @@ def within_known(launcher: Path) -> None:
     """Fail at once on a LAB_WITHIN name that's no function of the launcher's.
 
     Such a name matches nothing in the trace, so its span would be left out without a word, at
-    the end of a run of minutes.
+    the end of a run of minutes, and so would every name given without LAB_PROFILE.
     """
-    source = launcher.read_text()
+    asked = within_asked()
+    source = launcher.read_text() if asked else ""
     unknown = [
         name
-        for name in within_asked()
+        for name in asked
         if not re.search(rf"^\s*function {re.escape(name)}\(", source, re.MULTILINE)
     ]
-    refused = f"LAB_WITHIN names no function of {launcher.name}'s: {unknown}" if unknown else None
+    refused = (
+        f"LAB_WITHIN names no function of {launcher.name}'s: {unknown}"
+        if unknown
+        else "LAB_WITHIN profiles only with LAB_PROFILE"
+        if asked and not os.environ.get("LAB_PROFILE")
+        else None
+    )
     if refused:
         raise AssertionError(refused)
 

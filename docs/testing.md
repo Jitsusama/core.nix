@@ -522,9 +522,10 @@ typed, so those keys' medians aren't comparable with a run without it.
 Given `LAB_WITHIN`, names of Launcher.qml's own functions split by spaces
 or commas, such as `keep pick`, each call of them is profiled apart as
 `within-<name>`, the call and what it ran, by own and whole time, so the
-function's own place there says what its calls took. Only what runs
-within the call counts, not what it sets off later, and a name that's no
-function of Launcher.qml's fails the run at once. Inside `keep`, the 8
+function's whole time there says what its calls took. Only what runs
+within the call counts, not what it sets off later. A name that's no
+function of Launcher.qml's, or `LAB_WITHIN` without `LAB_PROFILE`, fails
+the run at once, and a function never called is said to be. Inside `keep`, the 8
 rows "c" reused cost about 1 ms each at the least, spread over the row's
 bindings, Qt laying out its name again the largest (2026-11-17).
 The profiler stretches what it times, so a cut's figures
