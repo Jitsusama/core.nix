@@ -21,6 +21,7 @@
 pub mod environment;
 pub mod failure;
 pub mod flags;
+mod handing;
 pub mod help;
 pub mod ink;
 pub mod layout;
@@ -63,6 +64,9 @@ pub struct Context {
     pub room: Room,
     /// How wide stderr is.
     pub err_room: Room,
+    /// How many of `args` are the command's own, the rest handed on to
+    /// the program a subcommand runs (`Help::hands_words_on`).
+    own: usize,
 }
 
 impl Context {
@@ -94,6 +98,7 @@ impl Context {
             theme.as_ref(),
         );
         Ok(Self {
+            own: args.len(),
             room: Room::of_stdout(&environment),
             err_room: Room::of_stderr(&environment),
             environment,
@@ -233,11 +238,14 @@ pub fn run_question(
     body: impl FnOnce(&Context) -> Result<bool, Failure>,
 ) -> Ending {
     let forms: Vec<&str> = help.forms.iter().map(String::as_str).collect();
+    let (ours, theirs, helped) = handing::split(help, args);
     let mut context =
-        match Context::saying(environment.clone(), args, &forms, !help.keeps_any_unsaid()) {
+        match Context::saying(environment.clone(), ours, &forms, !help.keeps_any_unsaid()) {
             Ok(context) => context,
             Err(failure) => return unread(environment, &failure),
         };
+    context.args.extend(theirs);
+    context.shared.help |= helped;
     let walked = if help.subs.is_empty() {
         None
     } else {
@@ -300,6 +308,7 @@ fn failed(context: &Context, environment: &Environment, failure: &Failure) -> En
     let verbose = context
         .args
         .iter()
+        .take(context.own)
         .any(|arg| arg == "--verbose" || arg == "-v");
     let said = if context.shared.format.is_json() {
         format!("{}\n", failure.json(verbose))

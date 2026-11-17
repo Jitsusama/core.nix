@@ -23,6 +23,9 @@ pub struct Walked<'a> {
     /// Whether each level above the deepest took names before the next,
     /// which an old word typed before them, as `location set`, didn't.
     named: Vec<bool>,
+    /// Where the words name a subcommand that hands every word after it
+    /// on (`Help::hands_words_on`), which ends the walk there.
+    pub(crate) handed: Option<usize>,
 }
 
 impl Walked<'_> {
@@ -75,6 +78,11 @@ impl Walked<'_> {
 /// whole tree, not just the way down so far, since a caller may type a
 /// subcommand's flag before the subcommand.
 fn takes_value(root: &Help, word: &str) -> bool {
+    // The shared flags that take one, met where the words are walked
+    // before they're taken (`handing.rs`).
+    if word == "--format" || word == "--color" {
+        return true;
+    }
     let mut helps = vec![root];
     let mut at = 0;
     while let Some(help) = helps.get(at) {
@@ -148,6 +156,7 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
         chain: vec![root],
         words: args.to_vec(),
         named: Vec::new(),
+        handed: None,
     };
     let mut filled = 0;
     let mut value_next = false;
@@ -200,6 +209,10 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
             walked.named.push(filled > 0 || old.is_none());
             walked.chain.push(sub);
             filled = 0;
+            if sub.hands_on.is_some() {
+                walked.handed = Some(at);
+                break;
+            }
             continue;
         }
         // A level whose subcommands are only listed, not declared with
