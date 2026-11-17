@@ -41,6 +41,11 @@ const LOW: i64 = 20;
 /// to run at, and warns from where it's too warm to charge well.
 const HOTTEST: f64 = 60.0;
 const WARM: f64 = 45.0;
+/// A lithium battery is made to charge from freezing up, which its row's
+/// note says below it, since its bar lights no dot there for a warn to
+/// colour. The note says what it's made for rather than that it can't
+/// charge, so it stays true beside a Status row that says Charging.
+const FREEZING: f64 = 0.0;
 /// A battery holding under four fifths of its design is worn, as makers
 /// count it, so its bar warns.
 const WORN: f64 = 0.8;
@@ -912,7 +917,11 @@ impl Say<'_> {
             let said = self.words.significant_to(degrees, 1);
             let mut row = self.leaf("temperature", format!("{said} \u{b0}C"));
             row.graph = Some(bar(degrees / HOTTEST, degrees >= WARM));
-            row.note = self.says("temperature", "of", &[("most", &HOTTEST.to_string())]);
+            row.note = if degrees < FREEZING {
+                self.says("temperature", "cold", &[("least", &FREEZING.to_string())])
+            } else {
+                self.says("temperature", "of", &[("most", &HOTTEST.to_string())])
+            };
             rows.push(row);
         }
         rows.extend(self.model(battery));
@@ -1786,6 +1795,28 @@ mod tests {
         assert_eq!(
             facts,
             ["temp=-55", "Read From=/sys/class/power_supply/BAT0"]
+        );
+    }
+
+    /// A lithium battery is made to charge from 0 °C, so at freezing
+    /// itself the note still says the most it's made to run at, and
+    /// only colder says the least it's made to charge from, whether or
+    /// not it's charging.
+    #[test]
+    fn a_battery_says_what_it_charges_from_only_below_freezing() {
+        let notes = [0.0, -0.1].map(|degrees| {
+            let mut b = battery();
+            b["temperature_c"] = json!(degrees);
+            b["status"] = json!("Discharging");
+            let ready = Power::default().read(&[b, port(true)], 0, &words());
+            row(&ready, "row:power:temperature")["note"].clone()
+        });
+        assert_eq!(
+            notes,
+            [
+                json!("of the 60 \u{b0}C it's made to run at"),
+                json!("below the 0 \u{b0}C it's made to charge from")
+            ]
         );
     }
 }

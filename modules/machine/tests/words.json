@@ -825,6 +825,15 @@
       }
     },
     {
+      "id": "power:temperature",
+      "in": "power",
+      "name": "Temperature",
+      "said": {
+        "of": "of the {most} \u00b0C it's made to run at",
+        "cold": "below the {least} \u00b0C it's made to charge from"
+      }
+    },
+    {
       "id": "heat",
       "name": "Heat",
       "glyph": "heat",
