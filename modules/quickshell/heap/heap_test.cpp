@@ -26,6 +26,7 @@
 
 #include <QCoreApplication>
 #include <QJSEngine>
+#include <QRegularExpression>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -425,6 +426,58 @@ bool namesWhatsKept() {
     return !kept.isError() && named && hidden && whole && timed;
 }
 
+// How many closures the place test keeps, each from a call of its own.
+constexpr int MADE = 30000;
+
+// Whether the census says where in the code its closures and their calls'
+// contexts came from: each call's context, and the function itself, by the
+// named function called, each closure by the line it's written on, every one
+// counted once, in the list and in the line; and whether a file whose name
+// isn't a source file's, as one named by text from data could be, is said as
+// `~`, its functions' names unsaid, and its two functions on one line merged.
+bool placesWhatMadeIt() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue made = engine.evaluate(
+        QStringLiteral("function maker(i) {\n    return () => i;\n}\nconst made = [];\n"
+                       "for (let i = 0; i < %1; i++) made.push(maker(i));\nmade;")
+            .arg(MADE),
+        QStringLiteral("/shell/made.js"));
+    // Its function and each call's context, and each closure, all on line 1.
+    const QJSValue odd = engine.evaluate(
+        QStringLiteral("function secretName(j) { return () => j; } const odd = []; "
+                       "for (let i = 0; i < %1; i++) odd.push(secretName(i)); odd;")
+            .arg(MADE),
+        QStringLiteral("/shell/from the clipboard"));
+    const QVariantMap census = heap.census(10);
+    const QString line = census.value(QStringLiteral("said")).toString();
+    const auto counted = [&](const QString &place, int many) {
+        for (const QVariant &row : census.value(QStringLiteral("places")).toList()) {
+            const QVariantList each = row.toList();
+            if (each.value(0).toString() == place && each.value(1).toDouble() > 0 &&
+                each.value(2).toDouble() == many)
+                return line.contains(
+                    QRegularExpression(QStringLiteral("(^|, |by place )%1 [0-9.]+ MB \\(%2\\)")
+                                           .arg(QRegularExpression::escape(place))
+                                           .arg(many)));
+        }
+        return false;
+    };
+    const bool called = counted(QStringLiteral("made.js:1 maker"), MADE + 1);
+    const bool closed = counted(QStringLiteral("made.js:2"), MADE);
+    const bool hidden = counted(QStringLiteral("~:1"), 2 * MADE + 1) &&
+                        !line.contains(QStringLiteral("clipboard")) &&
+                        !line.contains(QStringLiteral("secretName"));
+    if (made.isError() || odd.isError() || !called || !closed || !hidden)
+        std::fprintf(stderr,
+                     "FAIL the census says %d calls' contexts by the function called, %d "
+                     "closures by their line, and a file not named as code as ~: %s, %s, %s: "
+                     "%s\n",
+                     MADE, MADE, called ? "called" : "not called", closed ? "closed" : "not closed",
+                     hidden ? "hidden" : "not hidden", qPrintable(line));
+    return !made.isError() && !odd.isError() && called && closed && hidden;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -495,8 +548,9 @@ int main(int argc, char **argv) {
     const bool fits = takesRunsThatFit();
     const bool whole = leavesLargeRunsWhole();
     const bool census = namesWhatsKept();
+    const bool placed = placesWhatMadeIt();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
-                   roomyOutside && follows && given && fits && whole && census
+                   roomyOutside && follows && given && fits && whole && census && placed
                ? 0
                : 1;
 }

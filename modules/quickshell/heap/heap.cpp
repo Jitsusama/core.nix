@@ -59,6 +59,13 @@
 // every item once, about 17 ms at the lab's 18 MB, and names only the
 // largest shapes.
 //
+// Closures and calls' contexts are counted by place too, the file, line and
+// name of the function each is or ran in, because the count before a
+// collection showed Joel's shell making 53 MB of strings, arrays and
+// closures in the 5 s after a closing (2026-11-17, 15:50) while the lab's
+// made almost none, and a class or a shape can't say which code made them.
+// It names only the largest places, from the shell's own code.
+//
 // heap_test.cpp holds it to what it says.
 
 #include "heap.h"
@@ -72,7 +79,10 @@
 #include <algorithm>
 #include <cstdint>
 #include <dlfcn.h>
+#include <private/qv4context_p.h>
 #include <private/qv4engine_p.h>
+#include <private/qv4function_p.h>
+#include <private/qv4functionobject_p.h>
 #include <private/qv4internalclass_p.h>
 #include <private/qv4mm_p.h>
 #include <sys/mman.h>
@@ -224,9 +234,18 @@ double Heap::giveBack() {
 namespace {
 
 // How many bytes and items of one class or shape are live.
+// What an item of a class says of the code it came from: nothing, its own
+// function as a closure, or the function it ran in as a context; `Unknown`
+// until its shape is first seen.
+enum class Made : std::uint8_t { Unknown, Nothing, Closure, Context };
+
+// How many bytes and items of one class, shape or place are live, and for a
+// shape, what its items say of their code, worked out once for each shape
+// so no other item pays for it.
 struct Tally {
     double bytes = 0;
     double count = 0;
+    Made made = Made::Unknown;
 };
 
 // The `top` largest of the tallies, largest first.
@@ -282,6 +301,58 @@ QString said(const QV4::Value &name) {
                                                                        : QStringLiteral("~");
 }
 
+// The code a function was written in, as `Launcher.qml:943 spotsFrom`: its
+// file's name, its line and its own name where it has a plain one. Only the
+// shell's code is said, never what it holds, so a file named otherwise, as
+// an eval's ("eval code") or a text evaluated by name would be, is `~`, and
+// its functions' names, written in that text, aren't said at all.
+QString placeOf(const QV4::Function *function) {
+    static const QRegularExpression plain(QStringLiteral("^[A-Za-z0-9_.-]{1,48}$"));
+    const QString file = function->sourceFile().section(QLatin1Char('/'), -1);
+    const bool code = plain.match(file).hasMatch();
+    QString place = QStringLiteral("%1:%2")
+                        .arg(code ? file : QStringLiteral("~"))
+                        .arg(function->compiledFunction->location.line());
+    if (!code)
+        return place;
+    const QV4::Heap::String *name = function->name();
+    const QString named =
+        name == nullptr ? QString() : said(QV4::Value::fromHeapObject(
+                                          const_cast<QV4::Heap::String *>(name)));
+    if (!named.isEmpty() && named != QStringLiteral("~") && named != QStringLiteral("-"))
+        place += QLatin1Char(' ') + named;
+    return place;
+}
+
+// What a class's items say of their code, by its place among Qt's classes:
+// every closure, arrows, methods, generators and bound functions among them,
+// is a JavaScriptFunctionObject, and a call's context, or a block's or a
+// catch's within one, is a CallContext. Read from the classes themselves
+// rather than their names, so a class Qt adds is counted as what it is.
+Made madeAs(const QV4::VTable *vtable) {
+    if (vtable == QV4::CallContext::staticVTable())
+        return Made::Context;
+    for (const QV4::VTable *each = vtable; each != nullptr; each = each->parent) {
+        if (each == QV4::JavaScriptFunctionObject::staticVTable())
+            return Made::Closure;
+    }
+    return Made::Nothing;
+}
+
+// The function an item is, or ran in, as its class says (madeAs), or null.
+// A context of a QML binding, a signal handler, an eval or a module holds
+// none, so what those make isn't said by place; a bound function of a
+// function from C++ holds none either.
+const QV4::Function *madeBy(QV4::Heap::Base *item, Made made) {
+    if (made == Made::Context) {
+        const auto *called = static_cast<QV4::Heap::CallContext *>(item)->function.get();
+        return called == nullptr ? nullptr : called->function;
+    }
+    if (made == Made::Closure)
+        return static_cast<QV4::Heap::JavaScriptFunctionObject *>(item)->function;
+    return nullptr;
+}
+
 // Megabytes as the line says them: whole from ten, a tenth below.
 QString sized(double mb) { return QString::number(mb, 'f', mb >= 10 ? 0 : 1); }
 
@@ -298,6 +369,11 @@ QVariantMap Heap::census(int top) const {
     // Class names are static strings, so their addresses key them.
     QHash<const char *, Tally> byClass;
     QHash<const QV4::Heap::InternalClass *, Tally> byShape;
+    // Closures by the function each is, and contexts by the function each
+    // ran in, which says where in the shell's code they came from: what
+    // was made since the last sweep, counted before a collection, or
+    // what's kept, after one.
+    QHash<const QV4::Function *, Tally> byPlace;
     const auto tally = [](Tally &into, double bytes) {
         into.bytes += bytes;
         into.count += 1;
@@ -309,7 +385,12 @@ QVariantMap Heap::census(int top) const {
             return;
         }
         tally(byClass[shape->vtable->className], bytes);
-        tally(byShape[shape], bytes);
+        Tally &shaped = byShape[shape];
+        if (shaped.made == Made::Unknown)
+            shaped.made = madeAs(shape->vtable);
+        tally(shaped, bytes);
+        if (const QV4::Function *function = madeBy(item, shaped.made))
+            tally(byPlace[function], bytes);
     };
     walk(manager->blockAllocator, count);
     // The shapes themselves live in an allocator of their own, and are
@@ -348,17 +429,36 @@ QVariantMap Heap::census(int top) const {
                                    sized(megabytes(each.bytes)))
                               .arg(each.count, 0, 'f', 0));
     }
+    // Functions said alike, two on one line or two in files said as `~`,
+    // are one place before the largest are chosen, so no place is split
+    // across the functions it holds.
+    QHash<QString, Tally> bySaid;
+    for (auto it = byPlace.cbegin(); it != byPlace.cend(); ++it) {
+        Tally &into = bySaid[placeOf(it.key())];
+        into.bytes += it.value().bytes;
+        into.count += it.value().count;
+    }
+    QVariantList places;
+    QStringList placesSaid;
+    for (const auto &[place, each] : largest(bySaid, top)) {
+        places.append(QVariant(QVariantList{place, megabytes(each.bytes), each.count}));
+        placesSaid.append(QStringLiteral("%1 %2 MB (%3)")
+                              .arg(place, sized(megabytes(each.bytes)))
+                              .arg(each.count, 0, 'f', 0));
+    }
     const double ms = static_cast<double>(clock.nsecsElapsed()) / 1e6;
     return {{QStringLiteral("classes"), classes},
             {QStringLiteral("shapes"), shapes},
+            {QStringLiteral("places"), places},
             {QStringLiteral("total"), megabytes(total)},
             {QStringLiteral("ms"), ms},
             {QStringLiteral("said"), QStringLiteral("%1 MB counted in %2 ms: by class %3; by "
-                                                    "shape %4")
+                                                    "shape %4; by place %5")
                                          .arg(sized(megabytes(total)))
                                          .arg(ms, 0, 'f', 0)
                                          .arg(classesSaid.join(QStringLiteral(", ")),
-                                              shapesSaid.join(QStringLiteral(", ")))}};
+                                              shapesSaid.join(QStringLiteral(", ")),
+                                              placesSaid.join(QStringLiteral(", ")))}};
 }
 
 double Heap::collected() const {
