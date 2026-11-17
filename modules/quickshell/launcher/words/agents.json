@@ -224,6 +224,44 @@
       }
     },
     {
+      "id": "agents:start-cell",
+      "in": "agents",
+      "name": "Start New Work",
+      "verb": "more",
+      "glyph": "agent",
+      "also": "cell sprout quest link new work begin",
+      "tells": {
+        "holding": "New work from a link or a few words, as a quest of its own. Its session starts in no window; Go To opens one when you want it."
+      },
+      "said": {
+        "starting": "starting",
+        "started": "started on {machine}; it shows in Agents once it's up",
+        "unanswered": "its node didn't answer",
+        "unread": "its node's answer couldn't be read",
+        "unrealmed": "no realm to start it in"
+      }
+    },
+    {
+      "id": "verb:agents:start-cell:link",
+      "command": "new",
+      "argument": "link",
+      "in": "agents:start-cell",
+      "name": "From a Link",
+      "verb": "start",
+      "glyph": "link",
+      "ask": "a link to the work, in a repository you have"
+    },
+    {
+      "id": "verb:agents:start-cell:in",
+      "command": "new",
+      "argument": "here",
+      "in": "agents:start-cell",
+      "name": "In {folder}",
+      "verb": "start",
+      "glyph": "agent",
+      "ask": "what's the work? a link or a few words"
+    },
+    {
       "id": "agents:address",
       "in": "agents",
       "name": "Address",
