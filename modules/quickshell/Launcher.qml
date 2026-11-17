@@ -1508,18 +1508,25 @@ Scope {
 
     // Goes to the session `said` names, as `qs ipc call launcher goTo` asks, the way a notice's
     // Go To does for the session that sent it (mycelium-link's `go` step): its window raised,
-    // or one opened on it where it has none, held, hosted or on another machine (Agents'
-    // goToFor). Only the first word said names one, and nothing is typed or sent. Like talkTo,
-    // it does nothing over a launcher in use, which an open act has closed before its link
-    // reaches here. Says what it did as JSON, as talkTo does.
-    function goTo(said) {
+    // or one opened on it where it has none, held, hosted or on another machine, woken first
+    // where it's parked (Agents' goToFor). Only the first word said names one, and nothing is
+    // typed or sent. Like talkTo, it does nothing over a launcher in use, which an open act has
+    // closed before its link reaches here. A session no longer here opens Agents, its foot
+    // saying so once, so a notice from an ended one never goes nowhere unsaid. Says what it
+    // did as JSON, as talkTo does. Not goTo, which is a spot's within the launcher.
+    function goToCell(said) {
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
         console.info(`launcher: asked from outside to go to ${JSON.stringify(String(said ?? ""))}`);
         if (inUse())
             return inUseSaid;
         const session = agents ? agents.goToFor(said) : null;
-        if (session === null)
-            return { error: `the launcher has no session called ${String(said ?? "").trim()}` };
+        if (session === null) {
+            const gone = Words.of("verb:notice:goTo").said ?? {};
+            toldThat(gone.gone ?? "", gone.why ?? "");
+            into("agents");
+            prompt.linked();
+            return { done: false, said: `${gone.gone ?? ""}: ${gone.why ?? ""}` };
+        }
         return { done: true, said: String(session.title ?? "") };
     }
 
@@ -7694,7 +7701,7 @@ Scope {
         // Goes to a session by its address, its window raised or opened,
         // as Switch on its row does (root's goTo).
         function goTo(address: string): string {
-            return JSON.stringify(root.goTo(address));
+            return JSON.stringify(root.goToCell(address));
         }
 
         // Opens Agents' Networks on a network's row by its name, selected,

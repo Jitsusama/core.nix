@@ -21,6 +21,15 @@ function named(said) {
     return name;
 }
 
+// The address of the session `qs ipc call launcher goTo <said>` goes to,
+// as a notice's Go To asks it (Launcher.qml's goToCell): whom `said`
+// names, if a session, since only a session has a window; "" for the void,
+// a network or nobody. `known` is as whom's.
+function goesTo(said, known) {
+    const found = whom(said, known);
+    return found.to === "session" ? found.address : "";
+}
+
 function whom(said, known) {
     const name = named(said);
     if (name === "") {

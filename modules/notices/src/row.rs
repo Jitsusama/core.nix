@@ -1069,6 +1069,15 @@ mod tests {
             ["verb:notice:open", "verb:notice:goTo", "verb:notice:talk"],
             "its sender's own Open stays Return's"
         );
+        let acts = &mixed[0]["acts"];
+        assert_eq!(
+            (&acts[1]["open"], &acts[2]["open"]),
+            (
+                &json!("mycelium:cell/1C8A2F0E/go"),
+                &json!("mycelium:cell/1C8A2F0E")
+            ),
+            "and its Go To and Talk lead to its session"
+        );
         let forged = json!({ "x-cell": "mycelium:cell/1C8A;rm" });
         let [mixed, ..] = making(
             &[notice(11, &json!({ "read": true, "hints": forged }))],

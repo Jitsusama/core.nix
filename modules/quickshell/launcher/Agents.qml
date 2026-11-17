@@ -1089,20 +1089,24 @@ Provider {
     }
 
     // Goes to the session whom `said` names, as `qs ipc call launcher goTo` asks it
-    // (Launcher.qml's goTo), as its row's Switch does: raises its window, or opens one on it
-    // where it has none, held here, hosted or on another machine (Sessions.goTo). Only the first
-    // word said names one (TalkTo.js), and nothing is typed or sent. Gives the session gone to,
-    // or null for nobody here: the void and a network have no window to go to.
+    // (Launcher.qml's goToCell), as its row's Switch does: raises its window, or opens one on it
+    // where it has none, held here, hosted or on another machine (Sessions.goTo), waking it
+    // first where it's parked, as a look's Go To does. Only the first word said names one
+    // (TalkTo.goesTo), and nothing is typed or sent. Gives the session gone to, or null for
+    // nobody here: the void and a network have no window to go to.
     function goToFor(said) {
-        const whom = TalkTo.whom(said, {
-            isVoid: () => false,
+        const address = TalkTo.goesTo(said, {
+            isVoid: address => provider.isVoid(address),
             session: address => heldAt(address) !== null,
             network: () => false
         });
-        if (whom.to !== "session")
+        if (address === "")
             return null;
-        const session = heldAt(whom.address);
+        const session = heldAt(address);
         heard(session.address);
+        const resting = Sessions.parkedAs(session.address);
+        if (resting)
+            Sessions.wake(resting);
         Sessions.goTo(sessionAt(session.address) ?? session);
         return session;
     }

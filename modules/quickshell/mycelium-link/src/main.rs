@@ -13,8 +13,10 @@
 //! anything: any other step, a query or a fragment is let go, and a name of
 //! any letter an address or a network's name never holds is refused, so
 //! nothing else reaches the launcher. The launcher in turn reads only the
-//! name's first word and never types or sends anything for Joel; going to a
-//! session moves Joel's focus and no more. A link followed within `GAP` of
+//! name's first word and never types or sends anything for Joel. Going to a
+//! session does what its row's Switch does, no more: raises its window, or
+//! opens one on it, joining it from another machine where it runs there,
+//! wakes it where it's parked, and counts its answer as seen. A link followed within `GAP` of
 //! the last is let go too, so a page can't open the launcher over his work
 //! again and again; where when the last was followed can't be kept, none
 //! is followed at all.

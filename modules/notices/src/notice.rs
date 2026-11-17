@@ -135,7 +135,8 @@ pub struct Notice {
 /// How a session's link begins, as the mycelium names it.
 pub const CELL_LINK: &str = "mycelium:cell/";
 
-/// The most letters a mesh address runs to.
+/// The most letters a mesh address runs to, as the harness's notices send
+/// one (lib/internal/notify.ts's ADDRESS): six or eight today, with room.
 const LONGEST_ADDRESS: usize = 12;
 
 impl Notice {
@@ -268,6 +269,17 @@ mod tests {
     fn a_notice_from_a_session_names_its_cell_by_address() {
         let from = hinted("mycelium:cell/1C8A2F0E");
         assert_eq!(from.cell(), Some("1C8A2F0E"));
+        let longest = hinted("mycelium:cell/ABCDEF123456");
+        assert_eq!(
+            longest.cell(),
+            Some("ABCDEF123456"),
+            "twelve, as the harness sends"
+        );
+        assert_eq!(
+            hinted("mycelium:cell/ABCDEF1234567").cell(),
+            None,
+            "thirteen"
+        );
         assert_eq!(from.record()["notice"]["cell"], "1C8A2F0E");
         assert_eq!(Notice::default().record()["notice"]["cell"], Value::Null);
     }

@@ -14,7 +14,11 @@
       "in": "notices",
       "name": "Go To",
       "verb": "go to",
-      "glyph": "windows"
+      "glyph": "windows",
+      "said": {
+        "gone": "its session isn't here",
+        "why": "it has ended, or runs where this launcher can't see it"
+      }
     },
     {
       "id": "verb:notice:talk",
