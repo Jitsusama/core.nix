@@ -2528,11 +2528,12 @@ const BOOT_READ: &str = "cat /proc/sys/kernel/random/boot_id 2>/dev/null || \
 /// another took between the two: each run looks a second after taking its
 /// turn, or `NIX_OFFLOAD_TURN_LOOK` seconds (a second where `sleep`
 /// refuses that), and if it no longer holds it looks for a turn again as
-/// long after, so the run that took it from it has looked first. Two runs
-/// that each read the other's turn as dead, as two boots sharing the
-/// folder do, so both build rather than take one turn from each other for
-/// ever: the turns bound runs in one boot only. Only a run stalled longer
-/// than that between its look
+/// long after. A turn taken from it by a run in another boot shows the
+/// folder is shared by two boots, as a home two machines share makes it,
+/// where each reads the other's turns as dead and the turns bound nothing,
+/// so the run builds without one and says so rather than take turns back
+/// from the other boot for ever. Only a run stalled longer than that
+/// between its look
 /// and its remove lets an extra build in, until the one whose link it replaced
 /// ends; it never leaves a run waiting for a turn nobody holds. It bounds
 /// only runs that reach the machine as one account.
@@ -2563,7 +2564,9 @@ pub fn in_turn_nearby(command: &str) -> String {
          else holders=\"${{holders:+$holders, }}$pid\"; fi; \
          n=$((n + 1)); done; \
          if [ -n \"$turn\" ]; then sleep \"${{NIX_OFFLOAD_TURN_LOOK:-1}}\" 2>/dev/null || sleep 1; \
-         if [ \"$(readlink \"$turn\" 2>/dev/null)\" = \"$mine\" ]; then break; fi; \
+         taker=$(readlink \"$turn\" 2>/dev/null); \
+         if [ \"$taker\" = \"$mine\" ]; then break; fi; \
+         if [ -n \"$taker\" ] && [ \"${{taker#* }}\" != \"$boot\" ]; then turn=shared; break; fi; \
          turn=; unmadebefore=; sleep \"${{NIX_OFFLOAD_TURN_LOOK:-1}}\" 2>/dev/null || sleep 1; \
          continue; fi; \
          if [ \"$unmade\" -ge {NEARBY_AT_ONCE} ]; then \
@@ -2578,7 +2581,10 @@ pub fn in_turn_nearby(command: &str) -> String {
          if [ -z \"$boot\" ]; then echo \"nix-offload: the boot of $here can't be read from \
          its boot_id or kern.bootsessionuuid, so this builds without a turn\" >&2; \
          elif [ \"$turn\" = none ]; then echo \"nix-offload: $turns on $here can't hold its turns, \
-         so this builds without one\" >&2; fi; {command}"
+         so this builds without one\" >&2; \
+         elif [ \"$turn\" = shared ]; then echo \"nix-offload: $turns on $here is shared \
+         with another boot, which took this run's turn, so the turns can't bound its builds \
+         and this builds without one\" >&2; fi; {command}"
     )
 }
 
@@ -5423,7 +5429,8 @@ mod tests {
             &bin.path().join("sleep"),
             &format!(
                 "#!/bin/sh\necho \"$1\" >> \"$NIX_OFFLOAD_TURNS/../slept\"\n\
-                 case $1 in never) exit 1 ;; esac\nexec {sleep} \"$@\"\n",
+                 case $1 in never) echo \"sleep: invalid time interval\" >&2; exit 1 ;; \
+                 esac\nexec {sleep} \"$@\"\n",
                 sleep = which("sleep")
             ),
         );
@@ -5451,10 +5458,9 @@ mod tests {
     }
 
     #[test]
-    fn runs_in_two_boots_sharing_the_turns_both_end_whatever_their_look() {
-        // Each reads the other's turn as an earlier boot's and takes it.
-        // A run that lost its turn looked again a second later, so with
-        // a look of 3 s two such runs took turn 1 from each other for ever.
+    fn a_run_whose_turn_a_run_in_another_boot_takes_builds_without_one_and_says_so() {
+        // Each reads the other's turn as an earlier boot's and takes it,
+        // so runs in two boots took turn 1 from each other for ever.
         let bin = tempfile::tempdir().unwrap();
         crate::testing::executable(
             &bin.path().join("cat"),
@@ -5468,7 +5474,7 @@ mod tests {
             Command::new(shell)
                 .args(["-c", &first_on_path(bin.path(), &in_turn_nearby("true"))])
                 .env("NIX_OFFLOAD_TURNS", turns)
-                .env("NIX_OFFLOAD_TURN_LOOK", "3")
+                .env("NIX_OFFLOAD_TURN_LOOK", "5")
                 .env("TURN_BOOT", boot)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -5479,18 +5485,26 @@ mod tests {
             let folder = tempfile::tempdir().unwrap();
             let turns = folder.path().join("turns");
             let first = started(shell, &turns, "one");
-            // Two seconds into the first's look, past the second a run
-            // that lost its turn used to wait, and short of its look.
+            // Well inside the first's look, whichever takes turn 1 first.
             thread::sleep(Duration::from_secs(2));
             let second = started(shell, &turns, "two");
-            for (boot, run) in [("one", ended(first)), ("two", ended(second))] {
-                assert_eq!(run.status.code(), Some(0), "{shell}, boot {boot}: {run:?}");
-                assert_eq!(
-                    String::from_utf8_lossy(&run.stderr),
-                    "",
-                    "{shell}, boot {boot}"
-                );
-            }
+            let said: Vec<String> = [ended(first), ended(second)]
+                .into_iter()
+                .map(|run| {
+                    assert_eq!(run.status.code(), Some(0), "{shell}: {run:?}");
+                    String::from_utf8_lossy(&run.stderr).into_owned()
+                })
+                .collect();
+            let shared = format!(
+                "nix-offload: {} on {} is shared with another boot, which took this run's \
+                 turn, so the turns can't bound its builds and this builds without one\n",
+                turns.display(),
+                this_machine()
+            );
+            assert!(
+                said == [shared.clone(), String::new()] || said == [String::new(), shared],
+                "{shell}: one run, and only one, loses its turn to the other boot: {said:?}"
+            );
         }
     }
 
