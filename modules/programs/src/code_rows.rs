@@ -49,6 +49,9 @@ pub struct Words {
     /// lacks, not yet pushed: `{count} ahead`.
     behind: String,
     ahead: String,
+    /// How many tracked files its checkout has changed and not committed:
+    /// `{count} changed`.
+    changed: String,
     /// The labels of its drawer's facts.
     key: String,
     trunk: String,
@@ -110,6 +113,7 @@ impl Words {
             changes: said("changes"),
             behind: said("behind"),
             ahead: said("ahead"),
+            changed: said("changed"),
             key: name("code:key"),
             trunk: name("code:trunk"),
             checkout: name("code:checkout"),
@@ -143,16 +147,19 @@ impl Words {
         };
         [(count.behind, &self.behind), (count.ahead, &self.ahead)]
             .into_iter()
-            .filter(|(far, _)| *far > 0)
-            .map(|(far, words)| {
-                let far = if far >= COUNTED_TO {
-                    format!("{COUNTED_TO}+")
-                } else {
-                    far.to_string()
-                };
-                words.replace("{count}", &far)
-            })
+            .filter_map(|(far, words)| Words::up_to(words, far))
             .collect()
+    }
+
+    /// A count said only where it's above none, as `100+` past the
+    /// count's end.
+    fn up_to(words: &str, count: u32) -> Option<String> {
+        let count = match count {
+            0 => return None,
+            far if far >= COUNTED_TO => format!("{COUNTED_TO}+"),
+            far => far.to_string(),
+        };
+        Some(words.replace("{count}", &count))
     }
 
     fn count(one: &str, many: &str, count: usize) -> String {
@@ -173,12 +180,12 @@ pub fn rows(
     record: &Record,
     home: Option<&Path>,
     words: &Words,
-    _changed: &BTreeMap<String, u32>,
+    changed: &BTreeMap<String, u32>,
 ) -> Vec<Value> {
     record
         .repositories
         .iter()
-        .map(|repository| row(repository, home, words))
+        .map(|repository| row(repository, home, words, changed))
         .collect()
 }
 
@@ -343,7 +350,7 @@ pub fn changes_page(key: &str) -> Option<String> {
 
 /// The checkout a person works in: the one written to last with files of
 /// its own, else the first.
-fn worked_in(repository: &Repository) -> Option<&Checkout> {
+pub fn worked_in(repository: &Repository) -> Option<&Checkout> {
     repository
         .checkouts
         .iter()
@@ -361,7 +368,12 @@ fn follows(checkout: &Checkout) -> bool {
             .is_some_and(|head| head.upstream.is_some())
 }
 
-fn row(repository: &Repository, home: Option<&Path>, words: &Words) -> Value {
+fn row(
+    repository: &Repository,
+    home: Option<&Path>,
+    words: &Words,
+    changed: &BTreeMap<String, u32>,
+) -> Value {
     let trees: usize = repository
         .checkouts
         .iter()
@@ -380,6 +392,14 @@ fn row(repository: &Repository, home: Option<&Path>, words: &Words) -> Value {
                 .into_iter()
                 .map(|said| json!({"said": said})),
         );
+    }
+    // What a Pull or a Switch would be refused over, after how far apart.
+    if let Some(said) = checkout
+        .filter(|checkout| !checkout.bare)
+        .and_then(|checkout| changed.get(&checkout.path))
+        .and_then(|count| Words::up_to(&words.changed, *count))
+    {
+        side.push(json!({"said": said}));
     }
     if trees > 0 {
         side.push(json!({"said": words.counted(trees)}));

@@ -30,7 +30,8 @@
         "change": "1 change",
         "changes": "{count} changes",
         "behind": "{count} behind",
-        "ahead": "{count} ahead"
+        "ahead": "{count} ahead",
+        "changed": "{count} changed"
       }
     },
     {

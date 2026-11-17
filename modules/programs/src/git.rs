@@ -1,4 +1,4 @@
-//! Git as Code's acts run it on a checkout (`pull.rs`, `switch.rs`), with
+//! Git as Code runs it on a checkout (`pull.rs`, `switch.rs`, `code.rs`), with
 //! Joel's config, since a fetch needs his keys and what his ssh and
 //! credential helpers say, as his own git would. It runs in a session of
 //! its own with no terminal, and with no askpass, hooks or fsmonitor, so it
@@ -31,6 +31,22 @@ pub const READ: Duration = Duration::from_secs(30);
 pub struct Failure {
     pub exit: Option<i32>,
     pub said: String,
+}
+
+/// How many files git tracks in the checkout at `folder` that differ from
+/// its last commit, staged or not, or none when git couldn't say. Files
+/// it doesn't track aren't counted. It takes none of the locks a status
+/// may, so it never stands in the way of Joel's own git.
+#[must_use]
+pub fn changed(git: &str, folder: &Path) -> Option<u32> {
+    let status = [
+        "--no-optional-locks",
+        "status",
+        "--porcelain",
+        "--untracked-files=no",
+    ];
+    let said = tried(git, folder, &status, Some(READ)).ok()?;
+    Some(u32::try_from(said.lines().count()).unwrap_or(u32::MAX))
 }
 
 /// As [`tried`], answering only how git exited when it failed.

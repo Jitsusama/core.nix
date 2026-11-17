@@ -12,6 +12,12 @@
 //! repository's open changes, as the repos command does, so a row
 //! counts them.
 //!
+//! How many tracked files each worked-in checkout has changed and not
+//! committed is counted by git on the read behind a watch, never on the
+//! first watch's own, since a status of a large checkout takes about
+//! 150 ms. Every watch beginning reads again behind it, so a row counts
+//! what was changed since the launcher last opened Code.
+//!
 //! A checkout's files are listed only while a watch holds its Open a File
 //! by Name row ahead (ready-rows.md's "What's read only while it's looked
 //! at"), since one holds thousands: listed as Neovim's finder lists them
@@ -27,6 +33,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 
 use programs::{code_rows, command, pull, repositories, switch};
+use repos::model::Record;
 use repos::read::{Reading, read};
 use repos::{github, upstreams};
 use serde_json::Value;
@@ -75,6 +82,9 @@ pub struct Code {
     /// Held for the whole of a listing, so two at once, as the watches
     /// moving and a switch's give, never keep each other's older list.
     listing: Mutex<()>,
+    /// How many tracked files each checkout counted has changed and not
+    /// committed, by its path, kept until it's counted again.
+    changed: Mutex<BTreeMap<String, u32>>,
     /// The rows the last read made: each repository's and those inside it.
     made: Mutex<Vec<Value>>,
     /// The files listed of each Open a File by Name row ahead, and the
@@ -109,13 +119,15 @@ impl Code {
             wanted: AtomicBool::new(false),
             busy: Mutex::new(BTreeSet::new()),
             listing: Mutex::new(()),
+            changed: Mutex::new(BTreeMap::new()),
             made: Mutex::new(Vec::new()),
             listed: Mutex::new(BTreeMap::new()),
         }
     }
 
-    /// Code's rows as the disk holds them now, and the rows inside them.
-    fn rows(&self) -> Vec<Value> {
+    /// Code's rows as the disk holds them now, and the rows inside them,
+    /// with what each checkout changed counted again where `counting`.
+    fn rows(&self, counting: bool) -> Vec<Value> {
         let mut record = read(&Reading {
             roots: &self.roots,
             home: self.home.as_deref(),
@@ -128,10 +140,38 @@ impl Code {
         if let Some(kept) = upstreams::counted_file(self.home.as_deref()) {
             upstreams::merge_kept(&mut record, &kept);
         }
-        let mut rows =
-            code_rows::rows(&record, self.home.as_deref(), &self.words, &BTreeMap::new());
+        if counting {
+            self.count(&record);
+        }
+        let changed = lock(&self.changed).clone();
+        let mut rows = code_rows::rows(&record, self.home.as_deref(), &self.words, &changed);
         rows.extend(code_rows::inside(&record, &self.words));
         rows
+    }
+
+    /// Counts what each repository's worked-in checkout has changed, outside
+    /// any lock but its own. One git can't read keeps its last count, and
+    /// one no longer read goes.
+    fn count(&self, record: &Record) {
+        let git = git();
+        let paths: BTreeSet<&str> = record
+            .repositories
+            .iter()
+            .filter_map(code_rows::worked_in)
+            .filter(|checkout| !checkout.bare)
+            .map(|checkout| checkout.path.as_str())
+            .collect();
+        let counted: Vec<(&str, Option<u32>)> = paths
+            .iter()
+            .map(|path| (*path, programs::git::changed(&git, Path::new(path))))
+            .collect();
+        let mut changed = lock(&self.changed);
+        changed.retain(|path, _| paths.contains(path.as_str()));
+        for (path, count) in counted {
+            if let Some(count) = count {
+                changed.insert(path.to_owned(), count);
+            }
+        }
     }
 }
 
@@ -143,8 +183,10 @@ pub fn begin(shared: &Arc<Shared>) {
         again(shared);
         return;
     }
-    let rows = shared.code.rows();
+    let rows = shared.code.rows(false);
     take(shared, &mut lock(&shared.daemon), rows);
+    // Counted behind its answer, which never waits on git.
+    again(shared);
 }
 
 /// Reads the disk again on a thread of its own. Asked while a read is
@@ -163,7 +205,7 @@ fn again(shared: &Arc<Shared>) {
         let code = &shared.code;
         loop {
             while code.wanted.swap(false, Ordering::SeqCst) {
-                let rows = code.rows();
+                let rows = code.rows(true);
                 take(&shared, &mut lock(&shared.daemon), rows);
             }
             code.reading.store(false, Ordering::SeqCst);
