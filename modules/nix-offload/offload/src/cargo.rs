@@ -25,9 +25,12 @@
 use std::env;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
-use std::process::{Command, ExitCode, Stdio};
+use std::process::{Command, Stdio};
+
+use terminal_kit::{Exit, Failure};
 
 use crate::changed::NOT_TAKEN;
+use crate::ended;
 
 /// Subcommands whose whole run goes to a lent builder: what they say is
 /// their output, so nothing they make is wanted here.
@@ -225,10 +228,9 @@ pub fn going(stands: bool, committed: bool) -> Way {
 /// `nix-offload cargo --cargo PATH -- WORDS...`: cargo at PATH given
 /// WORDS, run where [`way`] says, `lenders` being the lent builders'
 /// folders. It ends with cargo's own code, wherever it ran.
-pub fn cargo(arguments: &[String], lenders: [&Path; 2]) -> ExitCode {
+pub fn cargo(arguments: &[String], lenders: [&Path; 2]) -> Result<(), Failure> {
     let Some((real, words)) = asked(arguments) else {
-        eprintln!("nix-offload: cargo takes --cargo PATH -- WORDS...");
-        return ExitCode::from(64);
+        return Err(ended::usage("cargo takes --cargo PATH -- WORDS..."));
     };
     let here = env::var_os("NIX_OFFLOAD_CARGO").is_some_and(|value| value == "here");
     let way = if here { Way::As } else { way(words) };
@@ -243,8 +245,8 @@ pub fn cargo(arguments: &[String], lenders: [&Path; 2]) -> ExitCode {
     };
     let what = subcommand(words).map_or("", |(_, subcommand)| subcommand);
     match way {
-        Way::As => exited(&Command::new(real).args(words).exec()),
-        Way::Turn(why) => turn(real, words, what, why),
+        Way::As => Err(exited(&Command::new(real).args(words).exec())),
+        Way::Turn(why) => Err(turn(real, words, what, why)),
         Way::There => {
             eprintln!(
                 "nix-offload: cargo {what} of the whole tree goes to a lent builder, as \
@@ -264,10 +266,13 @@ pub fn cargo(arguments: &[String], lenders: [&Path; 2]) -> ExitCode {
                 .status();
             match status.ok().and_then(|status| status.code()) {
                 Some(code) if code == i32::from(NOT_TAKEN) => {
-                    turn(real, words, what, "no lent builder took it")
+                    Err(turn(real, words, what, "no lent builder took it"))
                 }
-                Some(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
-                None => ExitCode::from(1),
+                Some(code) => ended::passed(code, || format!("cargo {what} failed on a builder")),
+                None => Err(Failure::passed(
+                    1,
+                    format!("cargo {what} was ended on a builder"),
+                )),
             }
         }
     }
@@ -441,8 +446,9 @@ fn asked(arguments: &[String]) -> Option<(&str, &[String])> {
 }
 
 /// cargo run here in night-shift's turn, said why, or at once where
-/// there's no night-shift, as on a machine that has none.
-fn turn(real: &str, words: &[String], what: &str, why: &str) -> ExitCode {
+/// there's no night-shift, as on a machine that has none. It returns only
+/// when neither could start.
+fn turn(real: &str, words: &[String], what: &str, why: &str) -> Failure {
     eprintln!("nix-offload: cargo {what} runs here in its turn, since {why}");
     let night_shift = Command::new("night-shift")
         .arg("--version")
@@ -462,10 +468,9 @@ fn turn(real: &str, words: &[String], what: &str, why: &str) -> ExitCode {
     }
 }
 
-/// What a failed exec ends with, said.
-fn exited(error: &std::io::Error) -> ExitCode {
-    eprintln!("nix-offload: cargo couldn't start: {error}");
-    ExitCode::from(69)
+/// What a failed exec ends with.
+fn exited(error: &std::io::Error) -> Failure {
+    Failure::new(Exit::Unavailable, "cargo couldn't start").because(error.to_string())
 }
 
 /// Whether the tree here holds nothing git would call a change, untracked

@@ -99,7 +99,7 @@
 //! A lender's end ends the way to its builder, and every build reaching
 //! it with that, so a switch that changes its unit reloads it (SIGHUP)
 //! rather than restarting it. It then ends at once, leaving the builder
-//! for the next start as a stop does, and exits 100, which its unit starts
+//! for the next start as a stop does, and exits 75, which its unit starts
 //! the new one on. While a build reaches the builder, its helper, run
 //! through `--outlasting` in a scope the unit's end leaves, is told to hand
 //! over rather than end, so those builds finish beside the next start's
@@ -163,6 +163,7 @@ mod changed;
 mod cloud;
 mod command;
 mod decide;
+mod ended;
 mod finishing;
 mod freeing;
 mod gate;
@@ -193,10 +194,12 @@ use std::io::{BufRead, BufReader, Read};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, fs, thread};
+use terminal_kit::{Exit, Failure};
 
 use cloud::Place;
 
@@ -267,35 +270,6 @@ const ELSEWHERE: (&str, &str) = ("WORK_RUNS_ELSEWHERE", "1");
 /// What a program asked wrongly exits with, as sysexits.h numbers it.
 const USAGE: i32 = 64;
 
-const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate DOLLARS \
-                    --first-start HH:MM --last-start HH:MM --deadline HH:MM \
-                    [--longest HH:MM] [--idle HH:MM] [--standing PATH] [--beside PATH] [--dir DIR] \
-                    [--only-there] \
-                    [--outlasting PROGRAM] [--tell PROGRAM] [--freeing PATH] \
-                    | nix-offload stand [--standing PATH] [--beside PATH] \
-                    | nix-offload relay --listen ADDRESS --to ADDRESS \
-                    | nix-offload lines --config PATH \
-                    | nix-offload prove-standing --config PATH \
-                    | nix-offload keep --folder DIR \
-                    | nix-offload passed (forget COMMIT | import | ran COMMIT) \
-                    | nix-offload report --rate DOLLARS \
-                    | nix-offload progress HOST \
-                    | nix-offload ask --quest QUEST [--session ADDRESS] [--on MACHINE] \
-                    [--longest SECONDS] \
-                    | nix-offload answer QUEST COMMIT \
-                    | nix-offload outside [--git-dir DIR --work-tree DIR] [--lent-only] \
-                    -- there WORD... \
-                    | nix-offload there [--never-ask] [-L] [--keep-going] [--apply FUNCTION] \
-                    [--out DIR] [--print-out-paths] [--here] [--here-when-idle] [--outlive] \
-                    [--bulk] [--first] [--lent-only] \
-                    (FLAKE ATTR... | FLAKE#ATTR... | DRV...) \
-                    | nix-offload there [--never-ask] [--first] [--lent-only] --changed \
-                    [CHANGED-CHECKS ARGUMENT...] \
-                    | nix-offload there [--never-ask] --run [--copy PATH]... \
-                    [--longest SECONDS] -- COMMAND... \
-                    | nix-offload cargo --cargo PATH -- WORD... \
-                    | nix-offload busy";
-
 /// Set when the service is told to end, so its builder is journalled for the
 /// next start to give back.
 static ENDING: AtomicBool = AtomicBool::new(false);
@@ -340,9 +314,13 @@ extern "C" fn leaving(_: libc::c_int) {
     LEAVING.store(true, Ordering::SeqCst);
 }
 
-/// What a lender exits with once it has ended superseded, which its unit
-/// counts as a success and starts it again on.
-const RESTARTS: u8 = 100;
+/// What a lender ends with once it has ended superseded: the table's
+/// try-again, 75, which its unit counts as a success and starts it again
+/// on. It said so as it went, so nothing more is said: a line marked as
+/// an error at every switch would read as one in the day's health.
+fn restarts() -> Failure {
+    Failure::new(Exit::TryAgain, "the lender handed over to its successor").said_already()
+}
 
 /// How often a rest looks to see whether it's been told to end.
 const HEARD_WITHIN: Duration = Duration::from_millis(100);
@@ -486,6 +464,20 @@ fn main() -> ExitCode {
     if help::asked(&arguments) {
         return help::answered();
     }
+    // Every other call's words are read below, exactly as its units and
+    // gates give them, so the kit takes none of them: a `-v` or `--json`
+    // given to `there` is nix's. It ends through the kit, so its exits
+    // are the table's (docs/commands.md). Past `--changed`, a `--help` is
+    // changed-checks', as `help::asked` reads it.
+    terminal_kit::main(
+        &help::help().hands_words_on(&["--changed"]),
+        env!("CARGO_PKG_VERSION"),
+        |context| ran(&context.args),
+    )
+}
+
+/// The call `arguments` make, run: one of the subcommands, or a lender.
+fn ran(arguments: &[String]) -> Result<(), Failure> {
     let given = |flag: &str| {
         arguments
             .iter()
@@ -509,53 +501,19 @@ fn main() -> ExitCode {
         }
         _ => {}
     }
-    if let [command, host] = arguments.as_slice()
+    if let [command, host] = arguments
         && command == "progress"
     {
         return progress(host);
     }
     if arguments.first().map(String::as_str) == Some("relay") {
         let (Some(listen), Some(to)) = (given("--listen"), given("--to")) else {
-            eprintln!("nix-offload: relay needs --listen and --to\n{USED}");
-            return ExitCode::from(64);
+            return Err(ended::asked_wrongly(
+                "relay needs --listen and --to",
+                "relay",
+            ));
         };
-        // Heard before it listens, so a helper's word to leave never
-        // ends it with its connections.
-        // SAFETY: the handler only stores to an atomic.
-        unsafe {
-            let handler = leaving as *const () as libc::sighandler_t;
-            libc::signal(libc::SIGUSR1, handler);
-        }
-        // Every address the name gives, since ssh tries localhost's ::1
-        // before 127.0.0.1, as the tunnel it stands in for listens on both.
-        let listeners = relay::listening(&listen);
-        if listeners.is_empty() {
-            eprintln!("nix-offload: couldn't listen on {listen}");
-            return ExitCode::FAILURE;
-        }
-        // Said, so a helper offers its builder only once its way stands.
-        println!("listening");
-        let _ = std::io::Write::flush(&mut std::io::stdout());
-        // Less than the 30 s root's ssh gives a server to answer
-        // (nixos.nix), so a caller hung up on hears it before ssh gives up
-        // on its own. Root's build hook drops its only builder for a build
-        // on one failed connection, and a tunnel opening under load took
-        // past 9 s three times in an hour on 14 November.
-        // Three minutes of callers hung up on is a tunnel that won't come
-        // back, where one connection's failing to open is dialled again.
-        let gave_up = relay::Relay {
-            to,
-            within: Duration::from_secs(25),
-            pause: Duration::from_millis(250),
-            gives_up: Duration::from_secs(180),
-            moved: relay::Moved::named(),
-        }
-        .serve_all(listeners, &LEAVING);
-        return if gave_up {
-            ExitCode::FAILURE
-        } else {
-            ExitCode::SUCCESS
-        };
+        return relaying(&listen, &to);
     }
     if arguments.first().map(String::as_str) == Some("lines") {
         return lining(given("--config"));
@@ -576,32 +534,85 @@ fn main() -> ExitCode {
         ["passed", "import"] => return passed::importing(&state()),
         ["passed", "ran", commit] => return passed::saying_ran(&state(), commit),
         ["passed", ..] => {
-            eprintln!("nix-offload: passed takes forget COMMIT, import or ran COMMIT\n{USED}");
-            return ExitCode::from(64);
+            return Err(ended::asked_wrongly(
+                "passed takes forget COMMIT, import or ran COMMIT",
+                "passed",
+            ));
         }
         _ => {}
     }
     if arguments.first().map(String::as_str) == Some("stand") {
-        let (standing, beside) = (given("--standing"), given("--beside"));
-        if standing.is_none() && beside.is_none() {
-            eprintln!("nix-offload: stand needs --standing or --beside\n{USED}");
-            return ExitCode::from(64);
-        }
-        let (standing, beside) = (standing.map(PathBuf::from), beside.map(PathBuf::from));
-        if stand(standing, beside) {
-            return ExitCode::from(RESTARTS);
-        }
-        return ExitCode::SUCCESS;
+        return standing_by(given("--standing"), given("--beside"));
     }
-    serving(&arguments, given)
+    serving(arguments, given)
+}
+
+/// A relay from `listen` to `to`, a lender's tunnel's stand-in, until its
+/// helper tells it to leave or its callers are hung up on for too long.
+fn relaying(listen: &str, to: &str) -> Result<(), Failure> {
+    // Heard before it listens, so a helper's word to leave never ends it
+    // with its connections.
+    // SAFETY: the handler only stores to an atomic.
+    unsafe {
+        let handler = leaving as *const () as libc::sighandler_t;
+        libc::signal(libc::SIGUSR1, handler);
+    }
+    // Every address the name gives, since ssh tries localhost's ::1
+    // before 127.0.0.1, as the tunnel it stands in for listens on both.
+    let listeners = relay::listening(listen);
+    if listeners.is_empty() {
+        return Err(Failure::new(
+            Exit::Failed,
+            format!("couldn't listen on {listen}"),
+        ));
+    }
+    // Said, so a helper offers its builder only once its way stands.
+    println!("listening");
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+    // Less than the 30 s root's ssh gives a server to answer (nixos.nix),
+    // so a caller hung up on hears it before ssh gives up on its own.
+    // Root's build hook drops its only builder for a build on one failed
+    // connection, and a tunnel opening under load took past 9 s three
+    // times in an hour on 14 November. Three minutes of callers hung up
+    // on is a tunnel that won't come back, where one connection's failing
+    // to open is dialled again.
+    let gave_up = relay::Relay {
+        to: to.to_owned(),
+        within: Duration::from_secs(25),
+        pause: Duration::from_millis(250),
+        gives_up: Duration::from_secs(180),
+        moved: relay::Moved::named(),
+    }
+    .serve_all(listeners, &LEAVING);
+    if gave_up {
+        return Err(Failure::new(
+            Exit::Failed,
+            format!("the relay to {to} gave up, as its callers were hung up on"),
+        ));
+    }
+    Ok(())
+}
+
+/// A lender that stands by for its builder's standing, ending as a
+/// superseded lender does once it hands over.
+fn standing_by(standing: Option<String>, beside: Option<String>) -> Result<(), Failure> {
+    if standing.is_none() && beside.is_none() {
+        return Err(ended::asked_wrongly(
+            "stand needs --standing or --beside",
+            "stand",
+        ));
+    }
+    if stand(standing.map(PathBuf::from), beside.map(PathBuf::from)) {
+        return Err(restarts());
+    }
+    Ok(())
 }
 
 /// `lines`: copies the lender's lines into root's, for as long as it runs,
 /// keeping gcloud's state where systemd's `StateDirectory` says.
-fn lining(config: Option<String>) -> ExitCode {
+fn lining(config: Option<String>) -> Result<(), Failure> {
     let Some(config) = config else {
-        eprintln!("nix-offload: lines needs --config\n{USED}");
-        return ExitCode::from(64);
+        return Err(ended::asked_wrongly("lines needs --config", "lines"));
     };
     let settings = match fs::read_to_string(&config)
         .map_err(|error| error.to_string())
@@ -609,8 +620,9 @@ fn lining(config: Option<String>) -> ExitCode {
     {
         Ok(settings) => settings,
         Err(error) => {
-            eprintln!("nix-offload: {config}: {error}");
-            return ExitCode::from(64);
+            return Err(
+                Failure::new(Exit::Config, format!("{config} can't be read")).because(error),
+            );
         }
     };
     let state = env::var_os("STATE_DIRECTORY").map_or_else(
@@ -622,10 +634,12 @@ fn lining(config: Option<String>) -> ExitCode {
 
 /// `prove-standing`: proves, as root, the standing builders lines' settings
 /// name, saying how they stand in `proof::STANDING`, for as long as it runs.
-fn proving_standing(config: Option<String>) -> ExitCode {
+fn proving_standing(config: Option<String>) -> Result<(), Failure> {
     let Some(config) = config else {
-        eprintln!("nix-offload: prove-standing needs --config\n{USED}");
-        return ExitCode::from(64);
+        return Err(ended::asked_wrongly(
+            "prove-standing needs --config",
+            "prove-standing",
+        ));
     };
     match fs::read_to_string(&config)
         .map_err(|error| error.to_string())
@@ -633,8 +647,7 @@ fn proving_standing(config: Option<String>) -> ExitCode {
     {
         Ok(builders) => standing::serve(builders, "nix", Path::new(proof::STANDING)),
         Err(error) => {
-            eprintln!("nix-offload: {config}: {error}");
-            ExitCode::from(64)
+            Err(Failure::new(Exit::Config, format!("{config} can't be read")).because(error))
         }
     }
 }
@@ -649,7 +662,7 @@ fn proving_standing(config: Option<String>) -> ExitCode {
 /// sent first, and taken off what it's asked. `--lent-only` is carried the
 /// same way, so a `there` the run starts goes nowhere else either. Each is
 /// looked for before a `--`, past which the words are a command's.
-fn marked(arguments: &[String]) -> Option<ExitCode> {
+fn marked(arguments: &[String]) -> Option<Failure> {
     let ours = arguments
         .iter()
         .position(|word| word == "--")
@@ -676,23 +689,25 @@ fn marked(arguments: &[String]) -> Option<ExitCode> {
         again.env(there::LENT_ONLY.0, there::LENT_ONLY.1);
     }
     let again = again.exec();
-    eprintln!("nix-offload: couldn't start there again marked: {again}");
-    Some(ExitCode::from(71))
+    Some(Failure::new(Exit::Bug, "couldn't start there again marked").because(again.to_string()))
 }
 
 /// `there`: builds a flake's attributes where src/there.rs says, each part
 /// journalled, exiting with the first status that failed.
 /// A run of derivations one of which no lent builder builds for, refused
 /// with 64 and what would build it.
-fn foreign(asked: &there::Asked, dir: &Path) -> Option<ExitCode> {
+fn foreign(asked: &there::Asked, dir: &Path) -> Option<Failure> {
     let (path, system, systems) = there::foreign_derivation(asked, dir)?;
-    eprintln!(
-        "nix-offload: {path} builds for {system}, and the lent builders build for {} \
-         alone, so none takes it; build it with nix build --builders naming a builder for \
-         {system}",
-        systems.join(", ")
-    );
-    Some(ExitCode::from(64))
+    Some(
+        ended::usage(format!(
+            "no lent builder takes {path}, which builds for {system}"
+        ))
+        .because(format!(
+            "The lent builders build for {} alone; nix build --builders naming a builder \
+                 for {system} builds it.",
+            systems.join(", ")
+        )),
+    )
 }
 
 /// Builds each machine nearby's part of `near`, journalled, saying the
@@ -784,11 +799,9 @@ fn held_nearby(machine: &there::Nearby, scratch: &Path) -> bool {
 
 /// Refuses `--here` and `--here-when-idle` under `--lent-only`, which
 /// builds on a lent builder alone.
-fn here_refused(asked: &there::Asked) -> Option<ExitCode> {
-    (there::lent_only() && asked.builds_here()).then(|| {
-        eprintln!("nix-offload: --lent-only builds on a lent builder alone, so it takes no --here");
-        ExitCode::from(64)
-    })
+fn here_refused(asked: &there::Asked) -> Option<Failure> {
+    (there::lent_only() && asked.builds_here())
+        .then(|| ended::usage("--lent-only builds on a lent builder alone, so it takes no --here"))
 }
 
 /// The person's machines nearby, none under `--lent-only`: a machine
@@ -828,15 +841,15 @@ fn nearby_listed() -> Vec<there::Nearby> {
         .unwrap_or_default()
 }
 
-fn there(arguments: &[String]) -> ExitCode {
-    if let Some(code) = marked(arguments) {
-        return code;
+fn there(arguments: &[String]) -> Result<(), Failure> {
+    if let Some(failure) = marked(arguments) {
+        return Err(failure);
     }
     // What this `there` takes, a word each, so a caller can tell it from
     // an older one, which refuses the flag with 64.
     if arguments == ["--takes"] {
         println!("{}", there::TAKES.join("\n"));
-        return ExitCode::SUCCESS;
+        return Ok(());
     }
     let (waiting, arguments) = waiting_for(arguments);
     if let [first, rest @ ..] = arguments
@@ -850,12 +863,14 @@ fn there(arguments: &[String]) -> ExitCode {
         return run_there(rest, waiting);
     }
     let Some(asked) = there::asked(arguments) else {
-        eprintln!("nix-offload: there takes a flake and its attributes, or derivations\n{USED}");
-        return ExitCode::from(64);
+        return Err(ended::asked_wrongly(
+            "there takes a flake and its attributes, or derivations",
+            "there",
+        ));
     };
     let scratch = scratch();
     if let Some(refused) = here_refused(&asked) {
-        return refused;
+        return Err(refused);
     }
     // Pinned before anything waits, so what's built and kept as passed is
     // the commit it was asked at, however far its branch moves meanwhile.
@@ -863,15 +878,15 @@ fn there(arguments: &[String]) -> ExitCode {
     let journal = state().join("nix-offload/there.jsonl");
     let kept = Kept::of(&asked);
     let Some(asked) = kept.unpassed(asked, &journal) else {
-        return ExitCode::SUCCESS;
+        return Ok(());
     };
-    if let Some(code) = built_idle(&asked, &journal) {
-        return code;
+    if let Some(status) = built_idle(&asked, &journal) {
+        return built(status);
     }
     // A test names its own folder, as changed-checks lets one.
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
     if let Some(refused) = foreign(&asked, &dir) {
-        return refused;
+        return Err(refused);
     }
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
@@ -929,7 +944,15 @@ fn there(arguments: &[String]) -> ExitCode {
     if status == 0 {
         kept.keep(&asked);
     }
-    ExitCode::from(u8::try_from(status).unwrap_or(1))
+    built(status)
+}
+
+/// How a `there` build ends: done, or with the first status that failed,
+/// nix's own or one of `there`'s, which its callers read by number.
+fn built(status: i32) -> Result<(), Failure> {
+    ended::status(status, || {
+        "what was asked didn't build, as the lines above say".to_owned()
+    })
 }
 
 /// How a `there` run waits for a builder, and the arguments left: a run
@@ -976,7 +999,7 @@ fn vm_apart_from(
 
 /// How far the builds on the lent builder ssh calls `host` have got, as
 /// src/progress.rs says, asked of the first lender whose store names it.
-fn progress(host: &str) -> ExitCode {
+fn progress(host: &str) -> Result<(), Failure> {
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
@@ -987,8 +1010,10 @@ fn progress(host: &str) -> ExitCode {
         .filter_map(|store| there::builder(store.lines().next()?.trim()))
         .find(|lent| lent.host == host);
     let Some(lent) = lent else {
-        eprintln!("nix-offload: no lender lends a builder called {host}");
-        return ExitCode::from(75);
+        return Err(Failure::new(
+            Exit::TryAgain,
+            format!("no lender lends a builder called {host}"),
+        ));
     };
     let scratch = env::var_os("XDG_RUNTIME_DIR")
         .map_or_else(env::temp_dir, PathBuf::from)
@@ -1009,11 +1034,13 @@ fn progress(host: &str) -> ExitCode {
         .filter(|answer| answer.status.success())
         .and_then(|answer| progress::read(&String::from_utf8_lossy(&answer.stdout)));
     let Some(figures) = read else {
-        eprintln!("nix-offload: ssh couldn't reach {host} for its progress");
-        return ExitCode::from(255);
+        return Err(Failure::new(
+            Exit::Unavailable,
+            format!("ssh couldn't reach {host} for its progress"),
+        ));
     };
     println!("{}", progress::line(host, figures, now()));
-    ExitCode::SUCCESS
+    Ok(())
 }
 
 /// The folders of every VM lender, the first's `vm_dir` first, then the
@@ -1385,7 +1412,7 @@ fn vm_room() -> usize {
 /// `asked` built here and journalled, when it asks to be while this
 /// machine is idle and is, by `NIX_OFFLOAD_CPU_PRESSURE`'s file, else
 /// /proc/pressure/cpu, with how it exits; none otherwise.
-fn built_idle(asked: &there::Asked, journal: &Path) -> Option<ExitCode> {
+fn built_idle(asked: &there::Asked, journal: &Path) -> Option<i32> {
     let pressure = env::var_os("NIX_OFFLOAD_CPU_PRESSURE")
         .map_or_else(|| PathBuf::from("/proc/pressure/cpu"), PathBuf::from);
     let pressure = || fs::read_to_string(&pressure).unwrap_or_default();
@@ -1400,7 +1427,7 @@ fn built_idle(asked: &there::Asked, journal: &Path) -> Option<ExitCode> {
         asked,
         &ran,
     );
-    Some(ExitCode::from(u8::try_from(ran.status).unwrap_or(1)))
+    Some(ran.status)
 }
 
 /// The patterns of VM tests' attributes, from XDG's config folder; none
@@ -1454,18 +1481,9 @@ fn say_a_warm_pass_isnt_kept(status: Option<i32>, words: &[String]) {
 /// (`passed.rs`), which `nix-offload passed ran COMMIT` says, unless it
 /// went as files cut to its cones (`archived.rs`) or ran a suite in a
 /// warm target (`cargo::runs_warm`).
-fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
-    let asked = match command::asked(arguments) {
-        Ok(asked) => asked,
-        Err(why) => {
-            eprintln!("nix-offload: {why}\n{USED}");
-            return ExitCode::from(64);
-        }
-    };
-    let not_run = |why: &str| {
-        eprintln!("nix-offload: {why}, so nothing ran");
-        ExitCode::from(changed::NOT_TAKEN)
-    };
+fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failure> {
+    let asked = command::asked(arguments).map_err(|why| ended::asked_wrongly(why, "there"))?;
+    let not_run = |why: &str| Failure::new(taken_nowhere(), format!("{why}, so nothing ran"));
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
     let more = more_dir();
     let lenders = [dir.as_path(), more.as_path()];
@@ -1475,15 +1493,15 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         .iter()
         .any(|lender| standing(lender).is_some() || there::lends(lender))
     {
-        return not_run("no builder is lent");
+        return Err(not_run("no builder is lent"));
     }
     let scratch = scratch();
     let Ok(folder) = env::current_dir() else {
-        return not_run("this folder can't be read");
+        return Err(not_run("this folder can't be read"));
     };
     let (at, checkout, bundle) = match there::for_run(&folder, &scratch) {
         Ok(sending) => sending.sent(),
-        Err(why) => return not_run(&why),
+        Err(why) => return Err(not_run(&why)),
     };
     // One name wherever it goes, since a run sent on to the other builder
     // starts afresh there and never shares this one's files.
@@ -1556,9 +1574,55 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         passed::Passed::here(&state()).keep_ran(at, &asked.words, &asked.copies, status);
     }
     match status {
-        Some(status) => ExitCode::from(u8::try_from(status).unwrap_or(1)),
-        None => not_run("no lent builder took it"),
+        Some(status) => ended::status(status, || {
+            format!("{} failed on a lent builder", asked.words.join(" "))
+        }),
+        None => Err(not_run("no lent builder took it")),
     }
+}
+
+/// How a changed-checks run that went to no builder ends, for `why`: its
+/// caller runs it here, unless it's kept to the lent builders, which
+/// leaves nothing to run here.
+fn unsent(why: &str) -> Failure {
+    if there::lent_only() {
+        return Failure::new(
+            left_unbuilt(),
+            format!("{why}, and --lent-only runs nothing here"),
+        );
+    }
+    Failure::new(
+        taken_nowhere(),
+        format!("{why}, so changed-checks runs here"),
+    )
+}
+
+/// How a changed-checks run ends that no builder or evaluator answered.
+/// While a lender runs (`lending`), this machine is one that sends its
+/// work away, and an evaluation here holds about 5 GB beside the
+/// person's work: on 7 November a tunnel that died had every run
+/// evaluate here for 8 minutes. So none runs here unasked.
+fn none_answered(lending: bool) -> Failure {
+    if lending {
+        return Failure::new(
+            left_unbuilt(),
+            "no builder or evaluator answered, and a lender runs, so nothing was evaluated here",
+        )
+        .try_this("changed-checks --here");
+    }
+    unsent("no builder or evaluator answered")
+}
+
+/// The table's exit for [`changed::NOT_TAKEN`], which a run nothing else
+/// took ends with, so its caller runs it here.
+fn taken_nowhere() -> Exit {
+    Exit::of(changed::NOT_TAKEN).unwrap_or(Exit::TryAgain)
+}
+
+/// The table's exit for [`changed::UNBUILT`], which a run ends with that
+/// left its checks unbuilt.
+fn left_unbuilt() -> Exit {
+    Exit::of(changed::UNBUILT).unwrap_or(Exit::Unavailable)
 }
 
 /// A run said as going and holding its work alone, both let go when this
@@ -1630,25 +1694,24 @@ fn told(passed: &passed::Passed, at: Option<&passed::At>, system: Option<&str>) 
 /// change whose base no lent builder keeps evaluated runs replayed onto a
 /// main one does (`replay.rs`), and again on its own base should that fail,
 /// so a replay never fails a run that would have passed.
-fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -> ExitCode {
+fn changed_there(
+    arguments: &[String],
+    waiting: there::Waiting,
+    replays: bool,
+) -> Result<(), Failure> {
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
     let scratch = scratch();
-    let own = match changed::run_by(there::lent_only()) {
-        Ok(own) => own,
-        Err(why) => return not_taken(&why),
-    };
+    let own = changed::run_by(there::lent_only()).map_err(|why| unsent(&why))?;
     let Ok(folder) = env::current_dir() else {
-        return not_taken("this folder can't be read");
+        return Err(unsent("this folder can't be read"));
     };
     let given = arguments;
     // A run naming its system is compared for that system alone.
     let named = changed::wanted(given).system.is_some();
     let arguments: &[String] = &with_system(arguments);
     let more_dir = more_dir();
-    let source = match there::source(&folder, &scratch, None, there::Sends::Changes) {
-        Ok(source) => source,
-        Err(why) => return not_taken(&why),
-    };
+    let source = there::source(&folder, &scratch, None, there::Sends::Changes)
+        .map_err(|why| unsent(&why))?;
     let (source, replayed) = if replays {
         replay_kept(arguments, &folder, &scratch, source, [&dir, &more_dir])
     } else {
@@ -1669,11 +1732,11 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
     let at = there::at_of(&source);
     if passed_already(&passed, at.as_ref(), arguments) {
         forget();
-        return ExitCode::SUCCESS;
+        return Ok(());
     }
     if let Some(held) = held_for_a_mac(arguments) {
         forget();
-        return held;
+        return Err(held);
     }
     let wanted = changed::wanted(arguments);
     // The same run already going in this tree ends in what this one would
@@ -1689,7 +1752,10 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         }
         Twinned::Busy => {
             forget();
-            return ExitCode::from(changed::NOT_TAKEN);
+            return Err(Failure::new(
+                taken_nowhere(),
+                "the same run goes in this tree already, and --never-ask waits for none",
+            ));
         }
     };
     let told = told(&passed, at.as_ref(), wanted.system.as_deref());
@@ -1710,18 +1776,7 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
     let finished = sent.for_its_system(arguments, [&dir, &more_dir], &vm_dirs(&vm_dir), vm_apart);
     forget();
     let Some(finished) = finished else {
-        // While a lender runs, this machine is one that sends its work
-        // away, and an evaluation here holds about 5 GB beside the
-        // person's work: on 7 November a tunnel that died had every run
-        // evaluate here for 8 minutes. So none runs here unasked.
-        if there::lends(&dir) || there::lends(&more_dir) {
-            eprintln!(
-                "nix-offload: no builder or evaluator answered, and a lender runs, so nothing \
-                 was evaluated here; changed-checks --here runs it on this machine"
-            );
-            return ExitCode::from(changed::UNBUILT);
-        }
-        return not_taken("no builder or evaluator answered");
+        return Err(none_answered(there::lends(&dir) || there::lends(&more_dir)));
     };
     if let Err(code) = kept_after_a_mac(
         &passed,
@@ -1732,14 +1787,18 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         started,
         waiting,
     ) {
-        return code;
+        return ended::status(code, || {
+            "a Mac's checks didn't pass, so this run's pass isn't kept".to_owned()
+        });
     }
     if runs_again(replayed.as_deref(), finished.status) {
         // The replay ended, so it goes unsaid and lets its work go first.
         drop(going);
         return changed_there(given, waiting, false);
     }
-    ExitCode::from(u8::try_from(finished.status).unwrap_or(1))
+    ended::status(finished.status, || {
+        "the changed checks didn't pass, as the lines above say".to_owned()
+    })
 }
 
 /// `arguments`, naming this machine's system when they name none: given
@@ -1754,18 +1813,6 @@ fn with_system(arguments: &[String]) -> Vec<String> {
     arguments
 }
 
-/// How a changed-checks run that couldn't go ends, saying `why`: as one
-/// no builder took, which its caller runs here, or under `--lent-only`,
-/// which keeps it off this machine, as one nothing built.
-fn not_taken(why: &str) -> ExitCode {
-    if there::lent_only() {
-        eprintln!("nix-offload: {why}, and --lent-only runs nothing here");
-        return ExitCode::from(changed::UNBUILT);
-    }
-    eprintln!("nix-offload: {why}, so changed-checks runs here");
-    ExitCode::from(changed::NOT_TAKEN)
-}
-
 /// Set on a gate's own Mac comparison, whose run asked the Mac for room
 /// already, so it isn't asked twice.
 const ROOM_ASKED: (&str, &str) = ("NIX_OFFLOAD_MAC_ROOM_ASKED", "1");
@@ -1775,7 +1822,7 @@ const ROOM_ASKED: (&str, &str) = ("NIX_OFFLOAD_MAC_ROOM_ASKED", "1");
 /// the first that answers, or none when it goes. It ends as one nothing
 /// built, which its callers try again later and never run here, where it
 /// would build nothing.
-fn held_for_a_mac(arguments: &[String]) -> Option<ExitCode> {
+fn held_for_a_mac(arguments: &[String]) -> Option<Failure> {
     use changed::mac;
     let wanted = changed::wanted(arguments);
     let asked_already = env::var_os(ROOM_ASKED.0).is_some_and(|value| value == ROOM_ASKED.1);
@@ -1800,12 +1847,10 @@ fn held_for_a_mac(arguments: &[String]) -> Option<ExitCode> {
             eprintln!("nix-offload: {room}, so a run for its system goes");
             None
         }
-        Err(why) => {
-            eprintln!(
-                "nix-offload: {why}, so a run for its system waits, ended as one nothing built"
-            );
-            Some(ExitCode::from(changed::UNBUILT))
-        }
+        Err(why) => Some(Failure::new(
+            left_unbuilt(),
+            format!("{why}, so a run for its system waits, ended as one nothing built"),
+        )),
     }
 }
 
@@ -1818,8 +1863,8 @@ enum OnAMac {
     Passed,
     /// It was skipped, for the reason given.
     Skipped(String),
-    /// It failed, and the run ends as it did.
-    Failed(ExitCode),
+    /// It failed, and the run ends with its status.
+    Failed(i32),
 }
 
 /// Whether a changed-checks run with `arguments` passed at `at` already,
@@ -1855,7 +1900,7 @@ fn kept_after_a_mac(
     finished: &Finished,
     started: u64,
     waiting: there::Waiting,
-) -> Result<(), ExitCode> {
+) -> Result<(), i32> {
     if finished.status != 0 {
         return Ok(());
     }
@@ -1948,10 +1993,7 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
         Some(_) if !answering(&mac) => {
             skipped(format!("{} stopped answering as it compared", mac.host))
         }
-        Some(status) => {
-            eprintln!("nix-offload: a Mac's checks didn't pass, so this run's pass isn't kept");
-            OnAMac::Failed(ExitCode::from(u8::try_from(status).unwrap_or(1)))
-        }
+        Some(status) => OnAMac::Failed(status),
     }
 }
 
@@ -2787,10 +2829,16 @@ fn tested(mut testing: Child, named: usize) -> i32 {
 }
 
 /// `serve`: lends builders while the queue has builds one could take.
-fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> ExitCode {
+fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Result<(), Failure> {
+    let word = arguments.first().map(String::as_str);
+    if !matches!(word, Some("report" | "serve")) {
+        return Err(unknown(word));
+    }
     let Some(rate) = given("--rate").as_deref().and_then(journal::price) else {
-        eprintln!("nix-offload: --rate takes a price, such as 0.68\n{USED}");
-        return ExitCode::from(64);
+        return Err(ended::asked_wrongly(
+            "--rate takes a price, such as 0.68",
+            word.unwrap_or("serve"),
+        ));
     };
     // A lender's lock and journal are named for its folder, so a second
     // lender, for VM tests, never gives back what the first lent.
@@ -2804,7 +2852,7 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
         Some("report") => {
             let journal = fs::read_to_string(&journal).unwrap_or_default();
             println!("{}", journal::said(&journal::day(&journal, today(), rate)));
-            ExitCode::SUCCESS
+            Ok(())
         }
         Some("serve") => {
             let seconds = |flag| given(flag).as_deref().and_then(second_of);
@@ -2815,43 +2863,21 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
                 seconds("--last-start"),
                 seconds("--deadline"),
             ) else {
-                eprintln!("nix-offload: serve needs each of its settings\n{USED}");
-                return ExitCode::from(64);
+                return Err(ended::asked_wrongly(
+                    "serve needs each of its settings",
+                    "serve",
+                ));
             };
-            let longest = match given("--longest").map(|text| second_of(&text)) {
-                None => None,
-                Some(Some(longest)) if longest > 0 => Some(longest),
-                Some(_) => {
-                    eprintln!("nix-offload: --longest takes HH:MM, more than none\n{USED}");
-                    return ExitCode::from(64);
-                }
-            };
-            let idle = match given("--idle").map(|text| second_of(&text)) {
-                None => decide::IDLE,
-                Some(Some(idle)) if idle > 0 => u64::from(idle),
-                Some(_) => {
-                    eprintln!("nix-offload: --idle takes HH:MM, more than none\n{USED}");
-                    return ExitCode::from(64);
-                }
-            };
+            let longest = span(given("--longest"), "--longest")?;
+            let idle = span(given("--idle"), "--idle")?.map_or(decide::IDLE, u64::from);
             if !(first <= last && last <= deadline) {
-                eprintln!("nix-offload: the day's hours must run first, last, deadline\n{USED}");
-                return ExitCode::from(64);
+                return Err(ended::asked_wrongly(
+                    "the day's hours must run first, last, deadline",
+                    "serve",
+                ));
             }
-            let runtime = env::var_os("XDG_RUNTIME_DIR").map_or_else(
-                || PathBuf::from("/run/user").join(unsafe { libc::getuid() }.to_string()),
-                PathBuf::from,
-            );
-            // Two would each give back what the other lent.
-            let Ok(lock) = fs::File::create(runtime.join(format!("{name}.lock"))) else {
-                eprintln!("nix-offload: can't make its lock in {}", runtime.display());
-                return ExitCode::FAILURE;
-            };
-            if lock.try_lock().is_err() {
-                eprintln!("nix-offload: another serve is running");
-                return ExitCode::FAILURE;
-            }
-            let restarts = serve(&Settings {
+            let (runtime, _lock) = locked(&name)?;
+            let superseded = serve(&Settings {
                 helper: helper.into(),
                 prefix,
                 hours: Hours {
@@ -2874,16 +2900,55 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
                 telling: given("--tell").map(PathBuf::from),
                 freeing: given("--freeing").map(PathBuf::from),
             });
-            if restarts {
-                ExitCode::from(RESTARTS)
-            } else {
-                ExitCode::SUCCESS
+            if superseded {
+                return Err(restarts());
             }
+            Ok(())
         }
-        _ => {
-            eprintln!("{USED}");
-            ExitCode::from(64)
-        }
+        _ => Err(unknown(word)),
+    }
+}
+
+/// The span `text` gives in HH:MM, for `flag`, which takes one more than
+/// none or is left out.
+fn span(text: Option<String>, flag: &str) -> Result<Option<u32>, Failure> {
+    match text.map(|text| second_of(&text)) {
+        None => Ok(None),
+        Some(Some(span)) if span > 0 => Ok(Some(span)),
+        Some(_) => Err(ended::asked_wrongly(
+            format!("{flag} takes HH:MM, more than none"),
+            "serve",
+        )),
+    }
+}
+
+/// The runtime folder, and the lock a lender named `name` holds in it
+/// while it serves: two would each give back what the other lent.
+fn locked(name: &str) -> Result<(PathBuf, fs::File), Failure> {
+    let runtime = env::var_os("XDG_RUNTIME_DIR").map_or_else(
+        || PathBuf::from("/run/user").join(unsafe { libc::getuid() }.to_string()),
+        PathBuf::from,
+    );
+    let Ok(lock) = fs::File::create(runtime.join(format!("{name}.lock"))) else {
+        return Err(Failure::new(
+            Exit::Failed,
+            format!("can't make its lock in {}", runtime.display()),
+        ));
+    };
+    if lock.try_lock().is_err() {
+        return Err(Failure::new(Exit::Failed, "another serve is running"));
+    }
+    Ok((runtime, lock))
+}
+
+/// The failure for a call whose first word is none of nix-offload's
+/// subcommands, naming the nearest where one is near.
+fn unknown(word: Option<&str>) -> Failure {
+    let help = help::help();
+    let known: Vec<&str> = help.subs.iter().map(|sub| sub.name.as_str()).collect();
+    match word {
+        Some(word) => terminal_kit::flags::unknown("subcommand", word, &known),
+        None => ended::usage("nix-offload needs a subcommand").try_this("nix-offload --help"),
     }
 }
 

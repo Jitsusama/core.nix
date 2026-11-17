@@ -78,6 +78,7 @@ pub fn help() -> Help {
     .subcommand(lines())
     .subcommand(prove_standing())
     .subcommand(keep())
+    .subcommand(busy())
 }
 
 fn there() -> Help {
@@ -446,6 +447,17 @@ fn keep() -> Help {
     .option("--folder DIR", "where the passes are kept")
 }
 
+fn busy() -> Help {
+    Help::new(
+        "busy",
+        "says whether this Mac is past its room for more work, as a gate's comparisons judge it",
+    )
+    .example("nix-offload busy", "before rebuilding a Mac's system")
+    .exit(Exit::Done, "it's past its room")
+    .exit(Exit::Failed, "it has room")
+    .exit(Exit::Unavailable, "it couldn't say its load, which a caller counts as busy")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -537,6 +549,7 @@ mod tests {
             "lines",
             "prove-standing",
             "keep",
+            "busy",
         ] {
             assert!(
                 help.command_names().contains(&name),

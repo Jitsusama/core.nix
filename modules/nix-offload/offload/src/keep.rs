@@ -22,9 +22,11 @@ use std::io::{self, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
-use std::process::ExitCode;
 use std::time::{Duration, Instant, SystemTime};
 
+use terminal_kit::Failure;
+
+use crate::ended;
 use crate::passed::At;
 
 /// Where the keeper keeps the records.
@@ -285,15 +287,15 @@ fn reach(socket: &Path, within: Duration) -> io::Result<UnixStream> {
 
 /// `nix-offload keep --folder DIR`, as its socket starts it: age out what's
 /// old, then answer until idle.
-pub fn keeping(folder: Option<String>) -> ExitCode {
+pub fn keeping(folder: Option<String>) -> Result<(), Failure> {
     let Some(folder) = folder else {
-        eprintln!("nix-offload: keep needs --folder");
-        return ExitCode::from(64);
+        return Err(ended::usage("keep needs --folder"));
     };
     let ours = std::env::var("LISTEN_PID").ok() == Some(std::process::id().to_string());
     if !ours || std::env::var("LISTEN_FDS").ok().as_deref() != Some("1") {
-        eprintln!("nix-offload: keep is started by its socket, which gave it none");
-        return ExitCode::from(64);
+        return Err(ended::usage(
+            "keep is started by its socket, which gave it none",
+        ));
     }
     // SAFETY: systemd hands the socket's one listener over as descriptor
     // 3, ours alone, as LISTEN_PID and LISTEN_FDS say.
@@ -301,7 +303,7 @@ pub fn keeping(folder: Option<String>) -> ExitCode {
     let folder = Path::new(&folder);
     age_out(folder, SystemTime::now());
     serve(&listener, folder, IDLE);
-    ExitCode::SUCCESS
+    Ok(())
 }
 
 #[cfg(test)]

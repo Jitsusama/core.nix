@@ -6,50 +6,38 @@
 //! A question, so it answers as `test` does: 0 while the Mac is past its
 //! room, 1 while it has room, and 69 when it can't say its load, which a
 //! caller holding work back counts as busy. It says the load it read, or
-//! why it read none, on standard error either way.
+//! why it read none, on standard error either way. Its help is the
+//! kit's, with every other subcommand's (`help.rs`).
 
+use crate::ended;
 use crate::there;
 use std::path::Path;
-use std::process::{Command, ExitCode, Stdio};
-
-/// What `-h` and `--help` print.
-const HELP: &str = "Usage: nix-offload busy
-
-Says whether this Mac is past its room for more work: either its last
-minute's or last five minutes' load past three a processor. A caller
-holding work back counts anything but 1 as busy.
-
-EXIT
-  0   it's past its room
-  1   it has room
-  64  asked wrongly
-  69  it couldn't say its load";
+use std::process::{Command, Stdio};
+use terminal_kit::{Exit, Failure};
 
 /// Where a Mac keeps `sysctl`, run by its path so a launchd job's `PATH`,
 /// or a `sysctl` earlier on it, never decides which runs.
 const SYSCTL: &str = "/usr/sbin/sysctl";
 
-/// Answers `busy` given `arguments`, the words after it.
-pub fn busy(arguments: &[String]) -> ExitCode {
-    if arguments
-        .iter()
-        .any(|word| word == "-h" || word == "--help")
-    {
-        println!("{HELP}");
-        return ExitCode::SUCCESS;
-    }
+/// Answers `busy` given `arguments`, the words after it: done while the
+/// Mac is past its room, and otherwise the table's exit for what it
+/// found, saying why.
+pub fn busy(arguments: &[String]) -> Result<(), Failure> {
     if !arguments.is_empty() {
-        eprintln!("nix-offload: busy takes no arguments\n{HELP}");
-        return ExitCode::from(64);
+        return Err(ended::asked_wrongly("busy takes no arguments", "busy"));
     }
     let sysctl = if Path::new(SYSCTL).exists() {
         SYSCTL
     } else {
         "sysctl"
     };
-    let (code, why) = judged(said_by(sysctl));
-    eprintln!("nix-offload: {why}");
-    ExitCode::from(code)
+    match judged(said_by(sysctl)) {
+        (Exit::Done, why) => {
+            eprintln!("nix-offload: {why}");
+            Ok(())
+        }
+        (exit, why) => Err(Failure::new(exit, why)),
+    }
 }
 
 /// What `sysctl -n vm.loadavg hw.ncpu` says, run as `sysctl`, or why it
@@ -72,18 +60,23 @@ fn said_by(sysctl: &str) -> Result<String, String> {
     }
 }
 
-/// The exit code `busy` answers with, and the line it says, given what
+/// The exit `busy` answers with, and the line it says, given what
 /// `sysctl` said or why it said nothing.
-fn judged(said: Result<String, String>) -> (u8, String) {
+fn judged(said: Result<String, String>) -> (Exit, String) {
     let said = match said {
         Ok(said) => said,
-        Err(why) => return (69, format!("couldn't say its load, since {why}")),
+        Err(why) => {
+            return (
+                Exit::Unavailable,
+                format!("couldn't say its load, since {why}"),
+            );
+        }
     };
     match there::Load::parse(&said) {
-        Some(load) if load.over() => (0, format!("past its room at {}", load.said())),
-        Some(load) => (1, format!("room at {}", load.said())),
+        Some(load) if load.over() => (Exit::Done, format!("past its room at {}", load.said())),
+        Some(load) => (Exit::Failed, format!("room at {}", load.said())),
         None => (
-            69,
+            Exit::Unavailable,
             format!(
                 "couldn't say its load, since sysctl said {:?}, not vm.loadavg and hw.ncpu",
                 said.trim()
@@ -96,7 +89,7 @@ fn judged(said: Result<String, String>) -> (u8, String) {
 mod tests {
     use super::*;
 
-    fn judged_of(said: &str) -> (u8, String) {
+    fn judged_of(said: &str) -> (Exit, String) {
         judged(Ok(said.to_owned()))
     }
 
@@ -105,7 +98,7 @@ mod tests {
         assert_eq!(
             judged_of("{ 36.17 41.53 36.98 }\n12\n"),
             (
-                0,
+                Exit::Done,
                 "past its room at load 36.2 over a minute and 41.5 over five on 12 processors"
                     .to_owned()
             ),
@@ -114,7 +107,7 @@ mod tests {
         assert_eq!(
             judged_of("{ 36.10 20.00 10.00 }\n12\n"),
             (
-                0,
+                Exit::Done,
                 "past its room at load 36.1 over a minute and 20.0 over five on 12 processors"
                     .to_owned()
             ),
@@ -127,7 +120,7 @@ mod tests {
         assert_eq!(
             judged_of("{ 36.00 36.00 50.00 }\n12\n"),
             (
-                1,
+                Exit::Failed,
                 "room at load 36.0 over a minute and 36.0 over five on 12 processors".to_owned()
             ),
             "a Mac at its room, the fifteen minutes' load aside, wasn't given room"
@@ -139,14 +132,14 @@ mod tests {
         for said in ["", "{ 1.00 2.00 }\n12\n", "{ 1.00 2.00 3.00 }\n0\n"] {
             assert_eq!(
                 judged_of(said).0,
-                69,
+                Exit::Unavailable,
                 "an unread load wasn't said to be unknown: {said:?}"
             );
         }
         assert_eq!(
             judged(Err("sysctl ended exit status: 1: unknown oid".to_owned())),
             (
-                69,
+                Exit::Unavailable,
                 "couldn't say its load, since sysctl ended exit status: 1: unknown oid".to_owned()
             ),
             "a sysctl that failed wasn't said to be why"

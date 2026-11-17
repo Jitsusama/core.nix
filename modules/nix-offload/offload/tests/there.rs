@@ -501,7 +501,9 @@ fn a_lent_builders_progress_is_its_processor_time_and_bytes_written() {
 
     assert_eq!(progress("nowhere").status.code(), Some(75));
     fs::write(folder.path().join("unreached-nix-offload-more"), "").unwrap();
-    assert_eq!(progress("nix-offload-more").status.code(), Some(255));
+    // A builder ssh can't reach is unavailable, the table's 69, rather
+    // than ssh's own 255.
+    assert_eq!(progress("nix-offload-more").status.code(), Some(69));
 }
 
 /// `there` given a derivation the builder lacks, run with `before` while

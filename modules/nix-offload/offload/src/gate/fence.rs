@@ -23,7 +23,11 @@
 use std::env;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, Stdio};
+use std::process::{Command, Stdio};
+
+use terminal_kit::{Exit, Failure};
+
+use crate::ended;
 
 /// The settings every git of a gate runs with.
 const SETTINGS: [&str; 7] = [
@@ -198,25 +202,27 @@ impl Fence {
 /// outside it, and with no new privileges, or runs nothing. It's how a
 /// gate's git runs inside bubblewrap, which can't make mounts once
 /// Landlock holds it.
-pub fn scoped(arguments: &[String]) -> ExitCode {
+pub fn scoped(arguments: &[String]) -> Result<(), Failure> {
     let [dashes, program, words @ ..] = arguments else {
-        eprintln!("nix-offload: scoped needs -- PROGRAM WORD...");
-        return ExitCode::from(64);
+        return Err(ended::usage("scoped needs -- PROGRAM WORD..."));
     };
     if dashes != "--" {
-        eprintln!("nix-offload: scoped needs -- PROGRAM WORD...");
-        return ExitCode::from(64);
+        return Err(ended::usage("scoped needs -- PROGRAM WORD..."));
     }
     if let Err(error) = scope() {
-        eprintln!(
-            "nix-offload: scoped can't keep {program} from abstract sockets: {error}. Landlock's \
-             scopes need Linux 6.12 or later; nothing runs without them."
-        );
-        return ExitCode::from(69);
+        return Err(Failure::new(
+            Exit::Unavailable,
+            format!("scoped can't keep {program} from abstract sockets"),
+        )
+        .because(format!(
+            "{error}. Landlock's scopes need Linux 6.12 or later; nothing runs without them."
+        )));
     }
     let error = Command::new(program).args(words).exec();
-    eprintln!("nix-offload: scoped couldn't start {program}: {error}");
-    ExitCode::from(70)
+    Err(
+        Failure::new(Exit::Bug, format!("scoped couldn't start {program}"))
+            .because(error.to_string()),
+    )
 }
 
 /// Landlock's ruleset as the kernel reads it, at ABI 6.

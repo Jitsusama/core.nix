@@ -21,8 +21,10 @@
 use std::env;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
-use std::process::{Command, ExitCode};
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use terminal_kit::{Exit, Failure};
 
 /// The day the exemption is due out, as the harness's
 /// `OFFLOAD_EXEMPTION_ENDS`: a broker holds the builders' key by then, so
@@ -34,11 +36,8 @@ pub const ENDS: (i64, u32, u32) = (2026, 11, 28);
 /// git it runs reads a `.git` someone else wrote.
 pub const NO_GIT_DIR: &str = "/var/empty/no-git";
 
-/// What `outside` exits with past [`ENDS`]: sysexits.h's no permission.
-const ENDED: u8 = 77;
-
-const USED: &str = "Usage: nix-offload outside [--git-dir DIR --work-tree DIR] [--lent-only] \
-                    -- there WORD...";
+/// What `outside` exits with past [`ENDS`]: the table's refused, 77.
+const ENDED: Exit = Exit::Refused;
 
 /// A tree whose commit a call sends, by its git folder and its folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -223,26 +222,27 @@ fn asked(arguments: &[String]) -> Result<Asked<'_>, String> {
 /// command that runs it stays fenced. The exemption is whoever runs it
 /// outside the fence: the harness, or mycelium starting a Mac's gate.
 /// Its help is the kit's (src/help.rs).
-pub fn outside(arguments: &[String]) -> ExitCode {
-    let asked = match asked(arguments) {
-        Ok(asked) => asked,
-        Err(why) => {
-            eprintln!("nix-offload: outside can't run that: {why}.\n{USED}");
-            return ExitCode::from(64);
-        }
-    };
+pub fn outside(arguments: &[String]) -> Result<(), Failure> {
+    let asked = asked(arguments).map_err(|why| {
+        crate::ended::usage(format!("outside can't run that: {why}"))
+            .try_this("nix-offload outside --help")
+    })?;
     if ended(today()) {
-        eprintln!(
-            "nix-offload: outside runs nothing from {}-{:02}-{:02}, when the fence's exemption \
-             ended. A broker holds the builders' key now: run `nix-offload there` inside the \
-             fence, where it reaches them through the broker.",
-            ENDS.0, ENDS.1, ENDS.2
-        );
-        return ExitCode::from(ENDED);
+        return Err(Failure::new(
+            ENDED,
+            format!(
+                "outside runs nothing from {}-{:02}-{:02}, when the fence's exemption ended",
+                ENDS.0, ENDS.1, ENDS.2
+            ),
+        )
+        .because("A broker holds the builders' key now, and reaches them inside the fence.")
+        .try_this("nix-offload there"));
     }
     let (Some(home), Ok(program)) = (env::var_os("HOME"), env::current_exe()) else {
-        eprintln!("nix-offload: outside needs HOME, and its own program's path, to run a call.");
-        return ExitCode::from(78);
+        return Err(Failure::new(
+            Exit::Config,
+            "outside needs HOME, and its own program's path, to run a call",
+        ));
     };
     let home = home.to_string_lossy().into_owned();
     let (user, runtime) = (env::var("USER").ok(), env::var("XDG_RUNTIME_DIR").ok());
@@ -260,8 +260,7 @@ pub fn outside(arguments: &[String]) -> ExitCode {
         command.current_dir(tree.work_tree);
     }
     let error = command.exec();
-    eprintln!("nix-offload: outside couldn't start its call: {error}.");
-    ExitCode::from(70)
+    Err(Failure::new(Exit::Bug, "outside couldn't start its call").because(error.to_string()))
 }
 
 #[cfg(test)]

@@ -27,8 +27,9 @@
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use terminal_kit::{Exit, Failure};
 
+use crate::ended;
 use crate::keep;
 
 /// Where a flake is in a repository: the commit, and the folder within it
@@ -313,21 +314,19 @@ impl Passed {
 }
 
 /// `nix-offload passed forget COMMIT`: have a commit's checks built again.
-pub fn forgetting(state: &Path, commit: &str) -> ExitCode {
+pub fn forgetting(state: &Path, commit: &str) -> Result<(), Failure> {
     let Some(at) = At::new(commit, None) else {
-        eprintln!("nix-offload: passed forget needs a whole commit, not {commit}");
-        return ExitCode::from(64);
+        return Err(ended::usage(format!(
+            "passed forget needs a whole commit, not {commit}"
+        )));
     };
-    match Passed::here(state).forget(&at) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(why) => {
-            eprintln!(
-                "nix-offload: couldn't forget what passed at {}: {why}",
-                at.short()
-            );
-            ExitCode::FAILURE
-        }
-    }
+    Passed::here(state).forget(&at).map_err(|why| {
+        Failure::new(
+            Exit::Failed,
+            format!("couldn't forget what passed at {}", at.short()),
+        )
+        .because(why)
+    })
 }
 
 /// `nix-offload passed ran COMMIT`: each `there --run` that passed at
@@ -335,38 +334,45 @@ pub fn forgetting(state: &Path, commit: &str) -> ExitCode {
 /// what's under the state folder is the account's own to write. It exits
 /// 69 where the machine runs no keeper, so a gate reading it can't take
 /// a record it wrote itself for a pass.
-pub fn saying_ran(state: &Path, commit: &str) -> ExitCode {
+pub fn saying_ran(state: &Path, commit: &str) -> Result<(), Failure> {
     let Some(at) = At::new(commit, None) else {
-        eprintln!("nix-offload: passed ran needs a whole commit, not {commit}");
-        return ExitCode::from(64);
+        return Err(ended::usage(format!(
+            "passed ran needs a whole commit, not {commit}"
+        )));
     };
     let kept = Passed::here(state);
     if kept.keeper.is_none() {
-        eprintln!("nix-offload: this machine runs no keeper, so no run is kept as passed");
-        return ExitCode::from(69);
+        return Err(Failure::new(
+            Exit::Unavailable,
+            "this machine runs no keeper, so no run is kept as passed",
+        ));
     }
     for line in kept.ran(&at) {
         println!("{line}");
     }
-    ExitCode::SUCCESS
+    Ok(())
 }
 
 /// `nix-offload passed import`: hand the keeper, once it stands, the
 /// records kept under the state folder, by a nix-offload from before it
 /// did or one still running from then.
-pub fn importing(state: &Path) -> ExitCode {
+pub fn importing(state: &Path) -> Result<(), Failure> {
     let kept = Passed::here(state);
     if kept.keeper.is_none() {
-        eprintln!("nix-offload: this machine runs no keeper to hand records to");
-        return ExitCode::from(69);
+        return Err(Failure::new(
+            Exit::Unavailable,
+            "this machine runs no keeper to hand records to",
+        ));
     }
     let (handed, failed) = hand_over(&Passed::under(state), &kept);
     println!("nix-offload: handed the keeper {handed} commits' records");
     if failed {
-        ExitCode::FAILURE
-    } else {
-        ExitCode::SUCCESS
+        return Err(Failure::new(
+            Exit::Failed,
+            "some records weren't handed to the keeper, as the lines above say",
+        ));
     }
+    Ok(())
 }
 
 /// Hand `kept`'s keeper each line of `own` its record lacks, a commit at a

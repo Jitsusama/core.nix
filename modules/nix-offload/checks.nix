@@ -270,8 +270,8 @@ onLinux {
         unit:
         unit.Unit.X-ReloadIfChanged
         && lib.hasSuffix " -HUP $MAINPID" unit.Service.ExecReload
-        && unit.Service.RestartForceExitStatus == "100"
-        && unit.Service.SuccessExitStatus == "100"
+        && unit.Service.RestartForceExitStatus == "75"
+        && unit.Service.SuccessExitStatus == "75"
         && lib.hasInfix " --outlasting " (started unit);
     in
     holds "nix-offload-lenders-outlive-a-switch"
