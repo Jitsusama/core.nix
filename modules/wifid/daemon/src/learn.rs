@@ -155,6 +155,7 @@ impl Learned {
             failed: 0.0,
             signal: Some(i32::from(signal)),
             moving: None,
+            room: None,
         })
     }
 
@@ -223,6 +224,7 @@ mod tests {
             failed: 0.0,
             signal: None,
             moving: None,
+            room: None,
         }
     }
 

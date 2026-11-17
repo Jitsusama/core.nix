@@ -305,6 +305,7 @@ mod tests {
             failed: 0.0,
             signal: None,
             moving: Some(200),
+            room: None,
         }
     }
 

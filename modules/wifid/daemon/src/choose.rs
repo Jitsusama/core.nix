@@ -522,16 +522,15 @@ pub(crate) mod tests {
             failed: 0.0,
             signal: Some(-50),
             moving: Some(200),
+            room: None,
         }
     }
 
     /// What a card carried moving just too little for a wider band's room
     /// to count.
-    fn idle(measured: Measured) -> Measured {
-        Measured {
-            moving: Some(99),
-            ..measured
-        }
+    fn idle(mut measured: Measured) -> Measured {
+        measured.moving = Some(99);
+        measured
     }
 
     fn hall(signal: i16, busy: Option<u8>, measured: Option<Measured>) -> Other {
@@ -1612,5 +1611,44 @@ pub(crate) mod tests {
         let choice = chooser.choose(Instant::now(), (NEAR, &unsaid, -36, CH6), &untried, false);
 
         assert_eq!(choice, Choice::Stay, "nothing says its room is used");
+    }
+
+    #[test]
+    fn a_card_moving_half_a_faint_link_on_2_4_ghz_takes_5_ghz() {
+        let (mut half, mut less) = (Chooser::default(), Chooser::default());
+        let (busy, short) = (faint_link(45), faint_link(44));
+        let untried = [desk_at(-62, None)];
+        let now = Instant::now();
+
+        let took = half.choose(now, (NEAR, &busy, -60, CH6), &untried, false);
+        let kept = less.choose(now, (NEAR, &short, -60, CH6), &untried, false);
+
+        assert_eq!(took, Choice::Try(DESK.into()), "45 of 90 Mbit/s is used");
+        assert_eq!(kept, Choice::Stay, "44 isn't");
+    }
+
+    /// What a card on a link sending at 90 Mbit/s carried, moving this much.
+    fn faint_link(moving: u32) -> Measured {
+        Measured {
+            moving: Some(moving),
+            room: Some(90),
+            ..carried(15, 0.0)
+        }
+    }
+
+    #[test]
+    fn an_idle_card_s_move_to_5_ghz_no_slower_goes_back_if_it_carries_worse() {
+        let start = Instant::now();
+        let mut chooser = Chooser::default();
+        let quick = idle(carried(15, 0.0));
+        let as_quick = [desk_at(-45, Some(carried(15, 0.0)))];
+        let tried = chooser.choose(start, (NEAR, &quick, -36, CH6), &as_quick, false);
+        assert_eq!(tried, Choice::Try(DESK.into()), "the move is made");
+        let near = [near_at(-36, Some(quick.clone()))];
+        let worse = idle(carried(30, 0.0));
+
+        let back = chooser.choose(start + TRIAL, (DESK, &worse, -45, CH52), &near, false);
+
+        assert_eq!(back, Choice::Back(NEAR.into()), "30 ms is worse than 15");
     }
 }
