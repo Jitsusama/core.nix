@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 import pytest
 from live_page import LOOKS, SIZES, Opened, Served, serving
 from playwright.sync_api import Browser, Page, expect
-from stand_in_daemon import StandIn
+from stand_in_daemon import StandIn, standing_in
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -45,10 +45,7 @@ UNREACHED = "WebSocket connection to"
 
 @pytest.fixture
 def mycelium_node(tmp_path: Path) -> Iterator[StandIn]:
-    reading = json.loads((HERE / "node.json").read_text())
-    stand_in = StandIn(tmp_path / "node.sock", "node", reading["kinds"]).start()
-    yield stand_in
-    stand_in.leave()
+    yield from standing_in(tmp_path / "node.sock", "node", HERE / "node.json")
 
 
 @pytest.fixture

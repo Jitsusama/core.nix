@@ -290,6 +290,45 @@ in
           ${../mycelium/site/tests}/map-reads-live-test.py
         touch $out
       '';
+  # Code, built on the theme's own web kit as a machine builds it, read in
+  # headless Chromium through the server beside a stand-in repos daemon and a
+  # stand-in node (modules/repos/site/tests/code-reads-live-test.py): live
+  # with every repository drawn, one growing once a tree is written, one
+  # going, a cell at work drawn and linked to its home on the map, broken
+  # while the daemon is away and live once it's back, stale once the server
+  # goes, the web-design skill's page checks passing at two widths in both
+  # looks, and nothing logged. Chromium builds only on Linux.
+  code-site-reads-live =
+    let
+      python = pkgs.python3.withPackages (python: [
+        python.playwright
+        python.pytest
+      ]);
+      page = sites.localSite {
+        name = "code";
+        src = ../repos/site;
+        webKit = (account workstation).xdg.dataFile."jitsusama/web".source;
+        tint = "success";
+      };
+    in
+    pkgs.runCommandLocal "code-site-reads-live"
+      {
+        env = {
+          LOCAL_SITES = lib.getExe' (pkgs.callPackage ./package.nix { }) "local-sites";
+          CODE_SITE = "${page}";
+          LOCAL_SITES_KIT = "${sites.kit}";
+          STRIP = "${./home/strip.css}";
+          WEB_SKILL = "${../theme/web/skill}";
+          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+          PYTHONPATH = "${./tests}";
+          PYTHONDONTWRITEBYTECODE = "1";
+        };
+      }
+      ''
+        HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider -p live_page \
+          --import-mode=importlib --basetemp="$TMPDIR/pytest" ${../repos/site/tests}/code-reads-live-test.py
+        touch $out
+      '';
   # clippy finds nothing in the server, its tests included.
   local-sites-passes-clippy = passesClippy "local-sites-passes-clippy" (
     pkgs.callPackage ./package.nix { }

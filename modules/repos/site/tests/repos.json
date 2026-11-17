@@ -1,0 +1,85 @@
+{
+  "domain": "repos",
+  "kinds": {
+    "reading": [
+      {
+        "key": "reading",
+        "machine": "kestrel",
+        "roots": ["/home/ada/src"],
+        "sources": [
+          { "name": "git", "what": "the disk", "unread": [] },
+          { "name": "github", "what": "changes", "unread": [] }
+        ]
+      }
+    ],
+    "repository": [
+      {
+        "key": "repository:github:owl/core",
+        "name": "core",
+        "owner": "owl",
+        "trunk": "main",
+        "written_at": "2026-01-05T15:00:00Z"
+      },
+      {
+        "key": "repository:local:~/src/notes",
+        "name": "notes",
+        "trunk": "main",
+        "written_at": "2026-01-02T15:00:00Z"
+      }
+    ],
+    "checkout": [
+      {
+        "key": "checkout:/home/ada/src/core",
+        "repository": "github:owl/core",
+        "path": "/home/ada/src/core",
+        "bare": false,
+        "head": { "branch": "main", "commit": "a1" },
+        "written_at": "2026-01-05T15:00:00Z"
+      },
+      {
+        "key": "checkout:/home/ada/src/notes",
+        "repository": "local:~/src/notes",
+        "path": "/home/ada/src/notes",
+        "bare": false,
+        "head": { "branch": "main", "commit": "c3" },
+        "written_at": "2026-01-02T15:00:00Z"
+      }
+    ],
+    "tree": [
+      {
+        "key": "tree:/home/ada/trees/grove",
+        "repository": "github:owl/core",
+        "checkout": "/home/ada/src/core",
+        "path": "/home/ada/trees/grove",
+        "snapshot": false,
+        "present": true,
+        "head": { "branch": "grove", "commit": "b2" },
+        "written_at": "2026-01-05T15:00:00Z",
+        "change": "change:github:owl/core#41"
+      },
+      {
+        "key": "tree:/home/ada/trees/old",
+        "repository": "github:owl/core",
+        "checkout": "/home/ada/src/core",
+        "path": "/home/ada/trees/old",
+        "snapshot": false,
+        "present": true,
+        "head": { "branch": "old", "commit": "d4" },
+        "written_at": "2026-01-01T15:00:00Z",
+        "change": null
+      }
+    ],
+    "change": [
+      {
+        "key": "change:github:owl/core#41",
+        "repository": "github:owl/core",
+        "title": "Say the grove",
+        "branch": "grove",
+        "draft": false,
+        "checks": { "state": "failing", "passed": 3, "failed": ["lint"], "pending": [] },
+        "review": "waiting",
+        "github": { "number": 41, "url": "https://github.com/owl/core/pull/41" }
+      }
+    ]
+  }
+}

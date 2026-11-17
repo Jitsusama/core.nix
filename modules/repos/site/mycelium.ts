@@ -1,11 +1,11 @@
 // What Code reads of the mycelium: the cells at work, watched live from the
 // machine's node over the sites' feed, so a cell joins its tree the moment
-// it starts there, and where each cell is home, from the mycelium site's
-// homes. A machine in no realm has no node, so its feed never answers and
+// it starts there, and where each cell is home, from the homes of the site
+// whose row in the sites' record claims cells. A machine in no realm has no node, so its feed never answers and
 // no cell is drawn, which is the truth there.
 
 import { follow } from "../../local-sites/kit/feed.ts";
-import { isObject, text } from "../../local-sites/kit/records.ts";
+import { homeSiteOf, homesOf } from "./address.ts";
 import { type Cell, cellsOf } from "./model.ts";
 
 /** What the mycelium has said so far. */
@@ -27,28 +27,16 @@ function homeOf(cells: readonly Cell[], known: string | undefined): string | und
   return match ?? known;
 }
 
-/** The mycelium's homes for cells, when its row in sites.json says it has them. */
+/** Each cell's home, from the homes of the site sites.json says is home to cells. */
 async function readHomes(): Promise<ReadonlyMap<string, string>> {
   try {
     const sites = await (await fetch("../sites.json", { cache: "no-cache" })).json();
-    const row =
-      isObject(sites) && Array.isArray(sites["sites"])
-        ? sites["sites"].find(
-            (each: unknown) => isObject(each) && text(each, "name") === "mycelium",
-          )
-        : undefined;
-    if (!(isObject(row) && Array.isArray(row["homes"]))) {
+    const site = homeSiteOf(sites, "cell");
+    if (site === undefined) {
       return new Map();
     }
-    const homes = await (await fetch("../mycelium/homes.json", { cache: "no-cache" })).json();
-    const things = isObject(homes) && Array.isArray(homes["things"]) ? homes["things"] : [];
-    return new Map(
-      things.flatMap((each: unknown) => {
-        const key = isObject(each) ? text(each, "key") : undefined;
-        const address = isObject(each) ? text(each, "address") : undefined;
-        return key === undefined || address === undefined ? [] : [[key, address] as const];
-      }),
-    );
+    const homes = await (await fetch(`../${site}homes.json`, { cache: "no-cache" })).json();
+    return homesOf(homes, "cell");
   } catch {
     // A mycelium without homes leaves each cell's name unlinked, as it should.
     return new Map();
