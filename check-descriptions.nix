@@ -1198,7 +1198,8 @@
     the local sites' home lists each site from its row in sites.json, the settled apart and every
     name escaped, with a row Nix declares for a live site standing in for the record's at its path
     or going first, strips each page that asks after its skip link, names each document loading a
-    script file of its own rather than the kit's, and changes nothing on a second run
+    script file of its own rather than the kit's, loads the kit's keys and switch and takes away
+    the scripts it used to copy, and changes nothing on a second run
   '';
   idle-pi-windows-yield = ''
     the sorter is given the folder where the harness marks pi sessions nobody is at, and weighs pi
@@ -1448,8 +1449,8 @@
   local-sites-kit-holds = ''
     the kit every live local site is built on typechecks at its strictest and its tests pass: a
     daemon's records held as its watch tells them, a feed's watch saying connecting, live, broken
-    or stale and since when, every line it can't read reported, and a document's reader stepping
-    from part to part and held at its ends
+    or stale and since when, every line it can't read reported, a document's reader stepping
+    from part to part, every step held at its list's ends, and g pressed twice going to the top
   '';
   local-sites-passes-clippy = ''
     clippy finds nothing in the local sites' server or its tests

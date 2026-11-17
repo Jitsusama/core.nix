@@ -1,9 +1,9 @@
-// Which part of a document its reader is in, where a step takes them, and
-// when two presses of g come close enough to go to the top.
+// Which part of a document its reader is in, and which part a step goes
+// from. Where the step lands is steps.test.ts's.
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { partAt, partFrom, stepped, twice } from "../document.ts";
+import { partAt, partFrom } from "../document.ts";
 
 const tops = [120, 900, 1800];
 
@@ -18,13 +18,6 @@ it("above the first part, no part is being read", () => {
   assert.equal(partAt([], 40), -1, "a document with no parts reads none");
 });
 
-it("a step goes to the next or the last part and stops at the ends", () => {
-  assert.equal(stepped(0, 1, 3), 1, "j from the first goes to the second");
-  assert.equal(stepped(2, 1, 3), 2, "j from the last stays there");
-  assert.equal(stepped(1, -1, 3), 0, "k from the second goes to the first");
-  assert.equal(stepped(0, -1, 3), 0, "k from the first stays there");
-});
-
 it("a step goes from the part last stepped to while it's on screen", () => {
   // The page is scrolled to its end: the last two parts can't reach the line.
   const atTheEnd = [-900, 30, 400, 700];
@@ -36,14 +29,4 @@ it("once the part stepped to is scrolled away, a step goes from the reading line
   const scrolledOn = [-2000, -1200, -300, 40];
   assert.equal(partFrom(1, scrolledOn, 800), 3, "a part above the window is left behind");
   assert.equal(partFrom(3, [60, 900, 1700, 2500], 800), 0, "and so is one below it");
-});
-
-it("from above the first part, j reaches the first", () => {
-  assert.equal(stepped(-1, 1, 3), 0);
-});
-
-it("g counts as twice only when its second press comes soon after the first", () => {
-  assert.equal(twice(1000, 1500), true, "half a second on is twice");
-  assert.equal(twice(1000, 1700), false, "most of a second on is a fresh first press");
-  assert.equal(twice(Number.NEGATIVE_INFINITY, 1000), false, "the first press ever is a first");
 });
