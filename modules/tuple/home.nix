@@ -31,7 +31,10 @@
 # Tuple writes a desktop entry each time its daemon starts, one that runs
 # tuple with nothing after it, which only prints the command's help. This
 # entry takes its place, hidden, since there's no window to open, and opens
-# Tuple's links. xdg-open finds the entry by what it says it opens, but gio,
+# Tuple's links. From v2026_11_16.0 the daemon writes its own over this one,
+# so the service keeps it from the folder, and should a daemon started
+# elsewhere write it all the same, tuple-entry puts this one back.
+# xdg-open finds the entry by what it says it opens, but gio,
 # and the desktop's portal that programs hand links to, find an app in a
 # folder only through the folder's index or a list of defaults, and this
 # folder has neither. So the entry is named the default in niri's own list,
@@ -82,6 +85,8 @@ let
   tuple = lib.getExe package;
   data = "${config.xdg.dataHome}/tuple/0";
   settings = "${data}/settings";
+  # Where the account's desktop entries are, ours for Tuple among them.
+  entries = "${config.xdg.dataHome}/applications";
 
   # The call Joel's in, held for the shell (call/).
   calls = pkgs.callPackage ./call/package.nix { };
@@ -111,6 +116,23 @@ let
       if [ -e log.$n.txt ]; then mv -f log.$n.txt log.$((n + 1)).txt; fi
     done
     mv -f log.txt log.1.txt
+  '';
+
+  # Puts our entry back when it no longer reads as ours (puts-back.sh).
+  putsBack = pkgs.writeShellScript "tuple-puts-its-entry-back" ''
+    PATH=${
+      lib.makeBinPath [
+        pkgs.coreutils
+        pkgs.gnugrep
+      ]
+    } exec ${lib.getExe pkgs.bash} ${./puts-back.sh} ${
+      lib.escapeShellArgs [
+        "${entries}/tuple.desktop"
+        "${config.xdg.stateHome}/home-manager/gcroots/current-home/home-files"
+        "${lib.removePrefix config.home.homeDirectory entries}/tuple.desktop"
+        "${config.home.file."${entries}/tuple.desktop".source}"
+      ]
+    }
   '';
 in
 {
@@ -193,8 +215,43 @@ in
       # no real-time priority at all, every thread of it waits its turn at
       # the daemon's raised share, its sound alongside the rest.
       LimitRTPRIO = 0;
+      # From v2026_11_16.0 the daemon writes its own tuple.desktop over
+      # ours each time it starts, and its entry neither hides itself nor
+      # opens tuple:// links, so the launcher would start Tuple rather than
+      # step into its call, and a link would open Tuple's window rather
+      # than join. Kept from writing there, it says so in its log and runs
+      # on; its icons, which our entry names, it still installs. Only a
+      # starting daemon writes it: Tuple's commands ask the one running.
+      ReadOnlyPaths = [ entries ];
     };
     Install.WantedBy = [ "graphical-session.target" ];
+  };
+
+  # Tuple's commands start a daemon of their own when tuple.service's isn't
+  # running, outside it, and that one writes its entry over ours. Whatever
+  # writes there, ours is put back the moment it changes. The folder is
+  # watched, not the entry: a watch on our link follows it into the store,
+  # and misses a file moved over it.
+  systemd.user.paths.tuple-entry = {
+    Unit.Description = "Watches that Tuple's desktop entry stays ours";
+    Path.PathChanged = entries;
+    Install.WantedBy = [ "paths.target" ];
+  };
+  systemd.user.services.tuple-entry = {
+    Unit = {
+      Description = "Puts our Tuple desktop entry back";
+      # However often the folder changes, the watch is never stopped for
+      # starting it too often.
+      StartLimitIntervalSec = 0;
+    };
+    Service = {
+      Type = "oneshot";
+      ExecStart = "${putsBack}";
+    };
+    # Once as the account starts too, for an entry written while nothing
+    # watched, as by a daemon a Tuple command started while a switch
+    # stopped tuple.service.
+    Install.WantedBy = [ "default.target" ];
   };
 
   # The call, held for the shell. It isn't in background.slice: a ring is
@@ -237,7 +294,7 @@ in
     run sh -c 'printf portal > "$1"' sh ${lib.escapeShellArg "${settings}/capture"}
   '';
 
-  home.file."${config.xdg.dataHome}/applications/tuple.desktop" = {
+  home.file."${entries}/tuple.desktop" = {
     force = true;
     text = ''
       [Desktop Entry]

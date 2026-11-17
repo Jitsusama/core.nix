@@ -39,6 +39,57 @@ def test_tuples_daemon_comes_before_the_other_apps(desktop: Desktop) -> None:
     assert sorted(comes.split()) == ["CPUWeight=1000", "Nice=-10"]
 
 
+# Our desktop entry for Tuple, hidden and opening its links, which Tuple's
+# daemon writes its own over as it starts.
+OUR_ENTRY = (
+    "grep -qx NoDisplay=true ~/.local/share/applications/tuple.desktop"
+    " && grep -q x-scheme-handler/tuple ~/.local/share/applications/tuple.desktop"
+)
+
+
+def test_tuples_own_desktop_entry_never_stays_in_place_of_ours(desktop: Desktop) -> None:
+    """Tuple's own desktop entry never stays in the place of ours."""
+    machine = desktop.machine
+    # The daemon has started and come to its entry, and was kept from the
+    # folder, as its log says; ours being put back would hide its writing.
+    machine.wait_until_succeeds(
+        desktop.in_session(
+            "systemctl --user is-active tuple && grep -q"
+            " 'failed to install desktop files: error.ReadOnlyFileSystem'"
+            " ~/.local/share/tuple/0/log.txt"
+        ),
+        timeout=STARTING,
+    )
+    desktop.as_account(OUR_ENTRY)
+    # It's put back at the account's start too, for one written unwatched.
+    assert desktop.as_account("systemctl --user is-enabled tuple-entry").strip() == "enabled"
+    # Something moves Tuple's own over ours, from outside the folder so
+    # only the move is seen there, and ours is put back.
+    desktop.as_account(
+        'printf "%s\\n" "[Desktop Entry]" "Type=Application" "Name=Tuple" "Exec=tuple"'
+        " > ~/.local/share/tuple.desktop.new"
+        " && mv -f ~/.local/share/tuple.desktop.new ~/.local/share/applications/tuple.desktop"
+    )
+    machine.wait_until_succeeds(desktop.in_session(OUR_ENTRY), timeout=timedelta(seconds=10))
+    # Linked into home-manager's generation, as home-manager links it.
+    desktop.as_account(
+        "readlink ~/.local/share/applications/tuple.desktop | grep -q -- -home-manager-files/"
+    )
+    # Then a daemon started outside the service, as a Tuple command starts
+    # one when none runs, writes its own, and ours is put back again, the
+    # watch still standing.
+    desktop.as_account("systemctl --user stop tuple && tuple start >/dev/null 2>&1")
+    machine.wait_until_succeeds(
+        desktop.in_session(
+            "grep -q 'applications/tuple.desktop: updated' ~/.local/share/tuple/0/log.txt"
+            f" && {OUR_ENTRY}"
+        ),
+        timeout=timedelta(seconds=30),
+    )
+    desktop.as_account("systemctl --user is-active tuple-entry.path")
+    desktop.as_account("tuple stop >/dev/null 2>&1 && systemctl --user start tuple")
+
+
 def in_a_tuple_call(desktop: Desktop, ago: int) -> Json:
     """Give the call Joel's in as Tuple's stream says it, connected so many seconds since.
 
