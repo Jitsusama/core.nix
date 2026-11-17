@@ -45,7 +45,7 @@ use right_of_way::Ended;
 pub use right_of_way::gives_way;
 
 mod splitting;
-use splitting::{After, Splitting, UNTAKEN};
+use splitting::{After, Splitting, UNTAKEN, UNTAKEN_FOR};
 
 /// A change waiting on the train.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -448,7 +448,8 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             Gated::Unsent => {
                 // The train stays in its ride rather than waiting for a
                 // ready, since a rider is told it needn't ask again.
-                if unsent(&root, &candidate, &log, &mut splitting) {
+                let now = crate::state::now();
+                if unsent(&root, &candidate, &log, &done.merged, &mut splitting, now) {
                     std::thread::sleep(UNTAKEN_PAUSE);
                 }
                 continue;
@@ -484,8 +485,15 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
 /// After no builder took the candidate `candidate`, its words in `log`:
 /// whether the train tries again, its riders aboard, or every rider
 /// falls back to running again alone, as `splitting` says.
-fn unsent(root: &Path, candidate: &str, log: &Path, splitting: &mut Splitting) -> bool {
-    if splitting.untaken() {
+fn unsent(
+    root: &Path,
+    candidate: &str,
+    log: &Path,
+    _merged: &[String],
+    splitting: &mut Splitting,
+    now: u64,
+) -> bool {
+    if splitting.untaken(now) {
         println!(
             "merge-net: no builder took the candidate {}, its words in {}, so the train tries \
              again with its riders aboard",
@@ -620,7 +628,7 @@ enum Gated {
 /// How a gate that exited `code` ended. A run no builder or evaluator
 /// took says nothing of its riders: on 16 November, while the machine's
 /// uploads were held, one made a rider fall that broke nothing.
-fn gated(code: Option<i32>) -> Gated {
+fn gated(code: Option<i32>, _words: &str) -> Gated {
     match code {
         Some(0) => Gated::Passed,
         _ if crate::watch::untaken(code) => Gated::Unsent,
@@ -643,7 +651,8 @@ fn gate(checkout: &Path, log: &Path) -> Gated {
         .stdout(words)
         .stderr(errors)
         .status();
-    ran.map_or(Gated::Red, |status| gated(status.code()))
+    let words = fs::read_to_string(log).unwrap_or_default();
+    ran.map_or(Gated::Red, |status| gated(status.code(), &words))
 }
 
 /// How a passed candidate's push to main went.

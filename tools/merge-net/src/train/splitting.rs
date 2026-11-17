@@ -8,6 +8,9 @@
 /// minutes for a lost builder to stand again before it gives up on one.
 pub(super) const UNTAKEN: usize = 3;
 
+/// How long candidates may go untaken, in seconds.
+pub(super) const UNTAKEN_FOR: u64 = 30 * 60;
+
 /// What follows a red candidate.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum After {
@@ -71,7 +74,7 @@ impl Splitting {
     /// riders aboard and its search as it was, rather than every rider
     /// falling. After `UNTAKEN` in a row the search starts afresh, as every
     /// rider falls.
-    pub(super) fn untaken(&mut self) -> bool {
+    pub(super) fn untaken(&mut self, _now: u64) -> bool {
         self.untaken += 1;
         if self.untaken < UNTAKEN {
             return true;

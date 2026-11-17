@@ -20,15 +20,36 @@ fn rider(head: &str, at: u64) -> Rider {
 
 #[test]
 fn a_gate_no_builder_took_says_nothing_of_its_riders() {
-    assert_eq!(gated(Some(0)), Gated::Passed, "a gate that passed");
-    assert_eq!(gated(Some(1)), Gated::Red, "a check that failed");
-    assert_eq!(gated(None), Gated::Red, "a gate a signal ended");
+    assert_eq!(gated(Some(0), ""), Gated::Passed, "a gate that passed");
+    assert_eq!(gated(Some(1), ""), Gated::Red, "a check that failed");
+    assert_eq!(gated(None, ""), Gated::Red, "a gate a signal ended");
+    let lost = "error: failed to start SSH master connection to 'nix-offload-more'\n";
     for code in [75, 69] {
         assert_eq!(
-            gated(Some(code)),
+            gated(Some(code), lost),
             Gated::Unsent,
             "nix-offload's {code} says no builder took it, not that a rider broke it"
         );
+    }
+}
+
+/// nix-offload ends with the first part that failed, and a VM part no
+/// builder took comes first: a rider that broke another part's check
+/// still reads 75 or 69.
+#[test]
+fn an_untaken_gate_whose_words_name_a_failed_check_is_red() {
+    for words in [
+        "error: Cannot build '/nix/store/x-a-check.drv'.\n       Reason: builder failed with \
+         exit code 1.\n",
+        "\u{2715} a check the change touched failed\n",
+    ] {
+        for code in [75, 69] {
+            assert_eq!(
+                gated(Some(code), words),
+                Gated::Red,
+                "a check that failed read as untaken with {code}: {words}"
+            );
+        }
     }
 }
 
@@ -120,10 +141,15 @@ fn a_candidate_no_builder_took_keeps_its_riders_and_search_until_it_gives_up() {
         "a red of four didn't narrow"
     );
     let log = Path::new("/state/train/u.log");
-    for _ in 1..UNTAKEN {
+    let riding = ["a1".to_owned(), "b2".to_owned()];
+    // A gate that exits at once comes back every few seconds, so the
+    // train gives up by time, not by how many it ran.
+    let mut now = 1000;
+    while now < 1000 + UNTAKEN_FOR {
         assert!(
-            unsent(&root, "u1", log, &mut splitting),
-            "the train gave up before {UNTAKEN} candidates went untaken"
+            unsent(&root, "u1", log, &riding, &mut splitting, now),
+            "the train gave up {} s into candidates no builder took",
+            now - 1000
         );
         assert_eq!(
             riders(&root).len(),
@@ -135,18 +161,26 @@ fn a_candidate_no_builder_took_keeps_its_riders_and_search_until_it_gives_up() {
             2,
             "a run no builder took lost the train's search"
         );
+        now += 5;
     }
     assert!(
-        !unsent(&root, "u1", log, &mut splitting),
+        !unsent(&root, "u1", log, &riding, &mut splitting, now),
         "the train never gave up on candidates no builder took"
     );
-    assert!(
-        riders(&root).is_empty(),
-        "riders still rode a train no builder took"
+    let left: Vec<String> = riders(&root).into_iter().map(|rider| rider.head).collect();
+    assert_eq!(
+        left,
+        ["c3", "d4"],
+        "riders that didn't ride the last candidate fell, or its riders didn't"
     );
-    let why = fell(&root, "d4").unwrap_or_default();
+    assert_eq!(
+        splitting.take(),
+        usize::MAX,
+        "the riders left aboard didn't start a search afresh"
+    );
+    let why = fell(&root, "b2").unwrap_or_default();
     assert!(
-        why.starts_with("no builder took") && why.contains("u.log"),
+        why.starts_with("no builder or evaluator took") && why.contains("u.log"),
         "a rider wasn't told no builder took the train, and where: {why}"
     );
     fs::remove_dir_all(&root).unwrap();
@@ -155,17 +189,24 @@ fn a_candidate_no_builder_took_keeps_its_riders_and_search_until_it_gives_up() {
 #[test]
 fn a_run_a_builder_took_counts_the_untaken_afresh() {
     let mut splitting = Splitting::default();
-    for _ in 1..UNTAKEN {
-        assert!(splitting.untaken(), "the train gave up too soon");
-    }
+    assert!(splitting.untaken(0), "the train gave up at once");
+    assert!(
+        splitting.untaken(UNTAKEN_FOR - 1),
+        "the train gave up too soon"
+    );
     splitting.taken();
-    for _ in 1..UNTAKEN {
-        assert!(
-            splitting.untaken(),
-            "untaken runs before one a builder took still counted"
-        );
-    }
-    assert!(!splitting.untaken(), "the train never gave up");
+    assert!(
+        splitting.untaken(UNTAKEN_FOR),
+        "untaken time before a run a builder took still counted"
+    );
+    assert!(
+        splitting.untaken(2 * UNTAKEN_FOR - 1),
+        "untaken time before a run a builder took still counted"
+    );
+    assert!(
+        !splitting.untaken(2 * UNTAKEN_FOR),
+        "the train never gave up"
+    );
 }
 
 #[test]
