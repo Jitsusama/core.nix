@@ -157,10 +157,7 @@ fn by_owner<'a>(
         if !gained.contains(file) {
             continue;
         }
-        let within = |folder: &&String| {
-            file.strip_prefix(folder.as_str())
-                .is_some_and(|rest| rest.starts_with('/'))
-        };
+        let within = |folder: &&String| holds(folder, file);
         let deepest = folders
             .iter()
             .filter(|(folder, _)| within(folder))
@@ -172,20 +169,21 @@ fn by_owner<'a>(
     each
 }
 
-/// The folders of `folders` holding none of `paths`, by their path from
-/// the repository's top as `by_owner` reads them: a folder misspelt or
-/// gone, whose files `by_owner` gives its repository's owner instead.
+/// The folders of `folders` holding none of `paths`, read as `by_owner`
+/// reads an entry's file: a folder misspelt or gone, which owns nothing,
+/// so what it should hold goes to the measure's or repository's owner.
 pub fn astray<'a>(folders: &'a BTreeMap<String, String>, paths: &[String]) -> Vec<&'a str> {
     folders
         .keys()
-        .filter(|folder| {
-            !paths.iter().any(|path| {
-                path.strip_prefix(folder.as_str())
-                    .is_some_and(|rest| rest.starts_with('/'))
-            })
-        })
+        .filter(|folder| !paths.iter().any(|path| holds(folder, file_of(path))))
         .map(String::as_str)
         .collect()
+}
+
+/// Whether `folder` holds `file`, by whole parts of its path.
+fn holds(folder: &str, file: &str) -> bool {
+    file.strip_prefix(folder)
+        .is_some_and(|rest| rest.starts_with('/'))
 }
 
 /// How many entries name each file.
@@ -229,6 +227,10 @@ mod tests {
             ("modules/ne", "a typo"),
             ("modules/gone", "another"),
             ("modules/net/switch", "a third"),
+            (
+                "modules/odd:name",
+                "a fourth, whose entries by_owner cuts at the colon",
+            ),
         ]
         .into_iter()
         .map(|(folder, whose)| (folder.to_owned(), whose.to_owned()))
@@ -237,10 +239,11 @@ mod tests {
             "modules/net/home.nix".to_owned(),
             "modules/net/switch/main.rs".to_owned(),
             "modules/gone.nix".to_owned(),
+            "modules/odd:name/home.nix".to_owned(),
         ];
         assert_eq!(
             astray(&folders, &paths),
-            ["modules/gone", "modules/ne"],
+            ["modules/gone", "modules/ne", "modules/odd:name"],
             "a folder holding files was called astray, or one holding none wasn't"
         );
     }

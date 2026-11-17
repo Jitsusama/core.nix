@@ -13,8 +13,9 @@ const FLAGS: [&str; 6] = [
     "--repo", "--ref", "--under", "--target", "--owner", "--into",
 ];
 
-/// Every measure it reads (measure.rs and merges.rs).
-pub const MEASURES: [&str; 21] = [
+/// Every measure it reads (measure.rs, merges.rs, and main.rs's stray
+/// owners).
+pub const MEASURES: [&str; 22] = [
     "crowded-folders",
     "daemons-waiting",
     "duplicated-lines",
@@ -26,6 +27,7 @@ pub const MEASURES: [&str; 21] = [
     "quarantined-tests",
     "shared-files",
     "stale-paths",
+    "stray-owners",
     "suppressions",
     "tf-invalid",
     "tf-undocumented",
@@ -129,7 +131,7 @@ pub fn parse(arguments: &[String]) -> Result<(BTreeMap<String, Repo>, Option<Pat
     }
     for (named, owner) in owners {
         if let Some((name, folder)) = named.split_once(':') {
-            let folder = folder.trim_end_matches('/').to_owned();
+            let folder = owned_folder(folder, &named)?;
             judged(&mut repos, name, "--owner")?
                 .folders
                 .insert(folder, owner);
@@ -148,6 +150,19 @@ pub fn parse(arguments: &[String]) -> Result<(BTreeMap<String, Repo>, Option<Pat
         return Err("no --repo given".to_owned());
     }
     Ok((repos, into))
+}
+
+/// The folder an `--owner NAME:FOLDER=WHO` names, without a trailing
+/// slash; none, which would own nothing, is refused.
+fn owned_folder(folder: &str, named: &str) -> Result<String, String> {
+    let folder = folder.trim_end_matches('/');
+    if folder.is_empty() {
+        return Err(format!(
+            "--owner wants NAME:FOLDER=WHO with a folder, not {named}; \
+             the whole repository's owner is --owner NAME=WHO"
+        ));
+    }
+    Ok(folder.to_owned())
 }
 
 /// A `NAME/MEASURE` split, or a bare `NAME`, its measure one it reads.
@@ -279,6 +294,8 @@ mod tests {
             "--repo core=/src/core --target core=96",
             "--repo core=/src/core --target core/long-files=many",
             "--repo core=/src/core --owner other=someone",
+            "--repo core=/src/core --owner core:=someone",
+            "--repo core=/src/core --owner core:/=someone",
         ] {
             assert!(parse(&said(given)).is_err(), "{given} was taken");
         }
