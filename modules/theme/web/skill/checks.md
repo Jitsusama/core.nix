@@ -48,9 +48,14 @@ through axe-core and its own console.
    `sites.json` and every `homes.json` it names, then names each row,
    item, paragraph or heading where a known thing is named and no
    mention of it links to its home, and each `data-home` with no link to
-   its twin. A name that is a plain lower-case word, a repository called
-   `documents`, counts only in code or a link, since in prose it's the
-   word (2026-11-16). A page with a picture runs `svgtext.js` too: each word
+   its twin. A pattern's kind lists no things, so its names are the ones
+   the page's own links on the sites and `data-home` reach through the
+   pattern, each then measured everywhere else on the page; a name the
+   page never links isn't measured. A row or a record the system's
+   reader would drop is named, never missed. A name that is a plain
+   lower-case word, a repository called `documents`, counts only in code
+   or a link, since in prose it's the word (2026-11-16). A page with a
+   picture runs `svgtext.js` too: each word
    drawn in an inline SVG reaches 7:1 on what is painted behind it, the
    shapes under it blended with the page, in the look it's run in. A
    fill of `var(--name, fallback)` whose name the kit doesn't define

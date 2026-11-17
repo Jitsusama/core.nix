@@ -295,6 +295,31 @@
 }
 # What follows runs the Linux workstation's own programs, which a Mac can't run.
 // onLinux {
+  # The web-design skill's homes probe, run in headless Chromium over small
+  # sites of its own (web/homes-test.py): a pattern's names learned from the
+  # page's links on the sites alone, each row and record the system reader
+  # drops named, a kind's first claim kept, and a shortened name's tail read
+  # as no mention. Chromium builds only on Linux.
+  homes-probe-reads-as-the-reader =
+    let
+      python = pkgs.python3.withPackages (python: [
+        python.playwright
+        python.pytest
+      ]);
+    in
+    pkgs.runCommandLocal "homes-probe-reads-as-the-reader"
+      {
+        env = {
+          WEB_SKILL = "${./web/skill}";
+          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+          PYTHONDONTWRITEBYTECODE = "1";
+        };
+      }
+      ''
+        HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider \
+          --basetemp="$TMPDIR/pytest" ${./web/homes-test.py}
+        touch $out
+      '';
   # Picking another theme changes everything the account draws: the desktop
   # rendered in Flexoki Light keeps none of Osaka Jade's colours anywhere in
   # its files, so no surface was left behind in the old one. The design
