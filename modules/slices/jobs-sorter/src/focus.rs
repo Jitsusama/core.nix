@@ -558,8 +558,17 @@ pub fn runs_a_pi(unit: &str, pis: &[String]) -> bool {
 pub fn held_and_kept<S: Clone>(
     looked: impl IntoIterator<Item = (bool, Option<S>, Option<S>)>,
 ) -> (Vec<S>, Vec<S>) {
-    let _ = looked.into_iter().count();
-    (Vec::new(), Vec::new())
+    let mut held = Vec::new();
+    let mut kept = Vec::new();
+    for (holds, own, pi) in looked {
+        if holds {
+            held.extend(own.clone());
+            held.extend(pi.clone());
+        }
+        kept.extend(own);
+        kept.extend(pi);
+    }
+    (held, kept)
 }
 
 /// The scopes spared, as each window's own scope and its pi's are found:
@@ -569,16 +578,19 @@ pub fn spared<'a, S: ?Sized>(
     own: impl Fn(u64) -> Option<&'a S>,
     pi: impl Fn(u64) -> Option<&'a S>,
 ) -> Vec<&'a S> {
-    let _ = (windows, own, pi);
-    Vec::new()
+    windows
+        .iter()
+        .flat_map(|window| own(window.id).into_iter().chain(pi(window.id)))
+        .collect()
 }
 
 /// Which of the `held` units are windows' own scopes, the only ones whose
 /// command lines say which host Joel views: a pi's holds its agents'
 /// commands, which may spell themselves as anything.
 pub fn viewing<'a>(held: impl IntoIterator<Item = &'a str>, pis: &[String]) -> Vec<&'a str> {
-    let _ = (held.into_iter().count(), pis);
-    Vec::new()
+    held.into_iter()
+        .filter(|unit| !runs_a_pi(unit, pis))
+        .collect()
 }
 
 /// The app id a process was started with, from its environment's bytes.
@@ -1390,7 +1402,11 @@ mod tests {
         let pis = ["mycelium-pi-".to_owned()];
         assert_eq!(
             viewing(
-                ["app-kitty-2684.scope", "mycelium-pi-41.scope", "app-niri-kitty-9.scope"],
+                [
+                    "app-kitty-2684.scope",
+                    "mycelium-pi-41.scope",
+                    "app-niri-kitty-9.scope"
+                ],
                 &pis
             ),
             ["app-kitty-2684.scope", "app-niri-kitty-9.scope"],
