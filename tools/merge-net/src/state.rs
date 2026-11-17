@@ -180,24 +180,40 @@ impl State {
     /// Remove each run's log last written more than `LOGS_KEPT` before
     /// `now`, leaving `net.log`, and say how many went. Nothing removed
     /// them before: by 11 November the folder held 8,737 logs, 12 GiB,
-    /// growing by about 2 GiB a day on a disk three quarters full.
-    pub fn age_out_logs(&self, now: SystemTime, _budget: u64) -> usize {
+    /// growing by about 2 GiB a day on a disk three quarters full. Of
+    /// those left, the newest are kept while they fit in `budget` bytes
+    /// and the rest go too, since three days alone grew to 14 GiB.
+    pub fn age_out_logs(&self, now: SystemTime, budget: u64) -> usize {
         let Ok(entries) = fs::read_dir(self.root.join("logs")) else {
             return 0;
         };
-        entries
-            .flatten()
-            .filter(|entry| entry.file_name() != "net.log")
-            .filter(|entry| {
-                entry
-                    .metadata()
-                    .and_then(|meta| meta.modified())
-                    .is_ok_and(|written| {
-                        now.duration_since(written).is_ok_and(|age| age > LOGS_KEPT)
-                    })
-            })
-            .filter(|entry| fs::remove_file(entry.path()).is_ok())
-            .count()
+        let mut kept = Vec::new();
+        let mut removed = 0;
+        for entry in entries.flatten() {
+            if entry.file_name() == "net.log" {
+                continue;
+            }
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
+            let Ok(written) = meta.modified() else {
+                continue;
+            };
+            if now.duration_since(written).is_ok_and(|age| age > LOGS_KEPT) {
+                removed += usize::from(fs::remove_file(entry.path()).is_ok());
+            } else {
+                kept.push((written, meta.len(), entry.path()));
+            }
+        }
+        kept.sort_by_key(|(written, _, _)| std::cmp::Reverse(*written));
+        let mut held = 0;
+        for (_, size, path) in kept {
+            held += size;
+            if held > budget {
+                removed += usize::from(fs::remove_file(path).is_ok());
+            }
+        }
+        removed
     }
 
     /// The head the next is compared with, and the last one looked at.
@@ -612,7 +628,10 @@ mod tests {
         let written = |name: &str, minutes: u64, bytes: usize| {
             let path = state.root.join("logs").join(name);
             fs::write(&path, vec![b'x'; bytes]).expect("a log");
-            let file = fs::File::options().write(true).open(&path).expect("the log");
+            let file = fs::File::options()
+                .write(true)
+                .open(&path)
+                .expect("the log");
             file.set_modified(now - Duration::from_mins(minutes))
                 .expect("its time");
             path
