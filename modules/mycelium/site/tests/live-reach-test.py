@@ -11,15 +11,28 @@ node.
 import json
 import os
 import re
+from collections.abc import Iterator
 from pathlib import Path
 
-from playwright.sync_api import Browser, ViewportSize, expect
+import pytest
+from playwright.sync_api import Browser, ViewportSize, expect, sync_playwright
 
 ROOT = os.environ["MAP_CHECK_ROOT"]
 SAID = Path(os.environ["MAP_CHECK_SAID"])
 # How long the map may take to hear the node and draw its whole realm.
 LIVE_MS = 60_000
 SIZE: ViewportSize = {"width": 1440, "height": 900}
+
+
+@pytest.fixture
+def browser() -> Iterator[Browser]:
+    """Headless Chromium in its own sandbox, since it draws what the realm's peers wrote."""
+    with sync_playwright() as playwright:
+        launched = playwright.chromium.launch(
+            chromium_sandbox=True, args=["--host-resolver-rules=MAP sites.localhost 127.0.0.1"]
+        )
+        yield launched
+        launched.close()
 
 
 def test_the_map_on_this_machine_reaches_every_cell(browser: Browser) -> None:

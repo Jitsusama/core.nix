@@ -159,7 +159,8 @@ let
   roots = config.jitsusama.repos.roots or null;
   # Whether the map reaches every cell of the realm (modules/mycelium/site/
   # map-check.sh): the map's live-page test, pointed at the page this
-  # machine serves, which the hourly card counts.
+  # machine serves, for a reader such as the hourly card to count with
+  # --json.
   mapCheck = pkgs.writeShellApplication {
     name = "mycelium-map-check";
     runtimeInputs = [ pkgs.jq ];

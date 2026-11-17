@@ -47,6 +47,7 @@ UNREACHED = "WebSocket connection to"
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
+TWIN_RECEPTORS = 4
 # How long a twin of ten thousand cells may take to read and draw.
 TWIN_MS = 60_000
 
@@ -61,10 +62,15 @@ def twin() -> dict[str, list[dict[str, object]]]:
 
     Every tenth orchestration nests in the one before it, and every seventh
     has no leader, as a network does when its cells hear its group while
-    none answers to it, titled by its quest as the node titles one.
+    none answers to it, titled by its quest as the node titles one. The
+    shapes that once misdrew on a real realm are in it too: orchestrations
+    run from both machines, every eleventh cell hearing the next
+    orchestration's group as well, a cell both machines still list as it
+    moves, and TWIN_RECEPTORS receptors at the realm's edge.
     """
     reading = json.loads((HERE / "node.json").read_text())["kinds"]
     session = next(cell for cell in reading["cell"] if cell["type"] == "session")
+    receptor = next(cell for cell in reading["cell"] if cell["type"] == "receptor")
     network = next(each for each in reading["network"] if each["shape"] == "orchestration")
     networks, cells = [], []
     for n in range(TWIN_NETWORKS):
@@ -85,6 +91,11 @@ def twin() -> dict[str, list[dict[str, object]]]:
         hub = networks[n // per]
         name = f"T{n:05d}"
         leads = [hub["name"]] if n % per == 0 and (n // per) % 7 else []
+        heard = [hub["name"]]
+        if n % 11 == 0:
+            beside = networks[(n // per + 1) % TWIN_NETWORKS]
+            heard.append(beside["name"])
+            beside["cells"].append(name)
         hub["cells"].append(name)
         cells.append(
             {
@@ -92,13 +103,19 @@ def twin() -> dict[str, list[dict[str, object]]]:
                 "key": f"cell:{name}",
                 "id": f"01a1a877-0000-7000-8000-{n:012d}",
                 "name": name,
+                "machine": "osprey" if (n // per + n) % 3 == 0 else "kestrel",
                 "quest": f"QEST-20261116-{name}",
                 "leads": leads,
-                "networks": [hub["name"]],
+                "networks": heard,
             }
         )
-    machines = [each for each in reading["network"] if each["shape"] == "machines"]
-    return {**reading, "network": machines + networks, "cell": cells}
+    # Still listed by the machine it left, an hour older.
+    cells.append({**copy.deepcopy(cells[1]), "machine": "osprey", "since": "2026-11-16T08:00:00Z"})
+    for n in range(TWIN_RECEPTORS):
+        name = f"radio{n}@kestrel"
+        cells.append({**copy.deepcopy(receptor), "key": f"cell:{name}", "name": name})
+    others = [each for each in reading["network"] if each["shape"] != "orchestration"]
+    return {**reading, "network": others + networks, "cell": cells}
 
 
 def serve(folder: Path, node: StandIn) -> Iterator[Served]:
@@ -182,8 +199,14 @@ def test_the_map_reaches_every_cell_but_the_receptor_it_draws_alone(
 def test_the_map_reaches_every_cell_of_ten_thousand(browser: Browser, twin_served: Served) -> None:
     root, _ = twin_served
     said = reach(browser, root, TWIN_MS)
-    assert said["cells"] == TWIN_CELLS, f"the map judged {said['cells']} of {TWIN_CELLS} cells"
-    assert said["failures"] == [], f"the map misses {said['failures'][:5]} of {said['count']}"
+    judged = TWIN_CELLS + TWIN_RECEPTORS
+    assert said["cells"] == judged, f"the map judged {said['cells']} of {judged} cells"
+    # The receptors are drawn alone until the map draws them at its edge.
+    alone = [
+        {"cell": name, "orchestration": None, "owner": name, "why": "alone"}
+        for name in (f"radio{n}@kestrel" for n in range(TWIN_RECEPTORS))
+    ]
+    assert said["failures"] == alone, f"the map misses {said['failures'][:5]} of {said['count']}"
 
 
 def test_a_cell_that_goes_leaves_the_map(mycelium_opened: Opened, mycelium_node: StandIn) -> None:

@@ -7,19 +7,26 @@ import { type Model, type Reading, asked, reachOf } from "../reach.ts";
 
 const AT = "2026-11-16T22:00:00Z";
 
-const kestrel = {
-  name: "orchestration.kestrl",
-  shape: "orchestration",
-  short: "kestrel",
-  title: "Kestrel: Hover Over the Field",
-};
-const leaderless = { name: "orchestration.osprey", shape: "orchestration", short: "osprey" };
+const kestrel = { name: "orchestration.kestrl", shape: "orchestration" };
+const leaderless = { name: "orchestration.osprey", shape: "orchestration" };
+const tern = { name: "orchestration.ternss", shape: "orchestration" };
 
-/** The map's hubs: kestrel's, led by KESTRL, and those working alone. */
+/**
+ * The map's hubs: kestrel's, led by KESTRL; osprey's, drawn by its
+ * address in another case; tern's, under a parent the map doesn't draw;
+ * and those working alone.
+ */
 const hubs = new Map([
-  ["orchestration.kestrl", { key: "orchestration.kestrl", lead: { address: "KESTRL" } }],
-  ["orchestration.osprey", { key: "orchestration.osprey", lead: null }],
-  ["#loose.skiff", { key: "#loose.skiff", alone: true }],
+  [
+    "orchestration.kestrl",
+    { key: "orchestration.kestrl", name: "Kestrel", within: null, lead: { address: "KESTRL" } },
+  ],
+  ["orchestration.osprey", { key: "orchestration.osprey", name: "OSPREY", within: null, lead: null }],
+  [
+    "orchestration.ternss",
+    { key: "orchestration.ternss", name: "Tern", within: "orchestration.gone", lead: null },
+  ],
+  ["#loose.skiff", { key: "#loose.skiff", name: "Working alone on skiff", within: null, alone: true }],
 ]);
 
 /** A map that drew each of `cells` in the hub of its key. */
@@ -34,7 +41,7 @@ function drew(cells: Record<string, string>): Model {
 }
 
 function reading(cells: Reading["cells"]): Reading {
-  return { at: AT, networks: [kestrel, leaderless], cells };
+  return { at: AT, networks: [kestrel, leaderless, tern], cells };
 }
 
 it("a map that draws every cell where it belongs misses nothing", () => {
@@ -70,6 +77,29 @@ it("a cell in a network with nothing but its address to go by is named", () => {
   assert.deepEqual(reachOf(now, drew({ OSPREY: "orchestration.osprey" })).failures, [
     { cell: "OSPREY", orchestration: "osprey", owner: "OSPREY", why: "unnamed network" },
   ]);
+});
+
+it("a cell under a network whose parent the map doesn't draw is unreachable", () => {
+  const now = reading([{ name: "TERN04", type: "session", networks: ["orchestration.ternss"] }]);
+  assert.deepEqual(reachOf(now, drew({ TERN04: "orchestration.ternss" })).failures, [
+    { cell: "TERN04", orchestration: "ternss", owner: "TERN04", why: "unreachable" },
+  ]);
+});
+
+it("a cell failing is told of the network the map drew it in", () => {
+  const now = reading([
+    { name: "OSPRY2", type: "session", networks: ["orchestration.kestrl", "orchestration.osprey"] },
+  ]);
+  assert.deepEqual(reachOf(now, drew({ OSPRY2: "orchestration.osprey" })).failures, [
+    { cell: "OSPRY2", orchestration: "osprey", owner: "OSPRY2", why: "unnamed network" },
+  ]);
+});
+
+it("a cell two machines both list is judged once", () => {
+  const twice = { name: "TERN05", type: "session", networks: ["orchestration.kestrl"] };
+  const reach = reachOf(reading([twice, twice]), drew({ TERN05: "#loose.skiff" }));
+  assert.equal(reach.cells, 1);
+  assert.equal(reach.count, 1);
 });
 
 it("a cell the map holds nowhere is unreachable", () => {
