@@ -298,17 +298,25 @@ def watched_while_typing(
     box = window_box(desktop, window)
     watch_the_focus(desktop)
     # Ten numbered words a wtype, so a key that went elsewhere leaves a gap, as in
-    # desktop-launcher-finds-sessions.
+    # desktop-launcher-finds-sessions. The count is written aside and moved into place,
+    # so a read never finds it emptied.
     typing = (
         "i=0; while [ ! -e ~/typing-done ]; do"
         ' wtype "$(seq -f "w%.0f " $((i+1)) $((i+10)) | tr -d "\\n")"; i=$((i+10));'
-        " echo $i > ~/typing-count; done; wtype -k Return"
+        " echo $i > ~/typing-count.new; mv ~/typing-count.new ~/typing-count; done;"
+        " wtype -k Return"
     )
     desktop.as_account(
-        f"rm -f ~/typing-done ~/typing-count; setsid sh -c {shlex.quote(typing)} > /dev/null 2>&1 &"
+        "rm -f ~/typing-done ~/typing-count ~/typing-count.new;"
+        f" setsid sh -c {shlex.quote(typing)} > /dev/null 2>&1 &"
     )
     machine.wait_until_succeeds(
         desktop.in_session(f"[ -s ~/typed-{session} ]"), timeout=dt.timedelta(seconds=30)
+    )
+    # The first keys land before the typer's first count, and on a busy builder
+    # typed_past reached a bare read of the count before it was written.
+    machine.wait_until_succeeds(
+        desktop.in_session("[ -s ~/typing-count ]"), timeout=dt.timedelta(seconds=30)
     )
     record_the_screen(desktop)
     return box, sat
@@ -333,7 +341,7 @@ def started_as(desktop: Desktop, session: str, kind: str) -> None:
 def typed_past(desktop: Desktop, session: str) -> None:
     """Type on past what started last, then stop typing and wait for every key to be kept."""
     machine = desktop.machine
-    since = int(desktop.as_account("cat ~/typing-count").strip() or "0")
+    since = int(desktop.as_account("cat ~/typing-count").strip())
     machine.wait_until_succeeds(
         desktop.in_session(f"[ $(cat ~/typing-count) -ge {since + TYPED_PAST} ]"), timeout=STEP
     )
@@ -446,9 +454,20 @@ def cleaned(desktop: Desktop, session: str) -> None:
 
     The launcher closes too, so a test failing with it open fails alone.
     """
+    machine = desktop.machine
     desktop.launcher_left_closed()
+    # A typer looks for typing-done only between its runs of ten words, so it is
+    # waited out before the session's programs go, or its last keys and Return land
+    # in whatever takes the focus, and before the file goes, or it types on into the
+    # next test. One that never stops is killed, so only this test fails.
+    desktop.as_account("touch ~/typing-done")
+    try:
+        machine.wait_until_fails("pgrep -f 'typing-don[e]'", timeout=STEP)
+    except Exception:
+        desktop.as_account("pkill -f 'typing-don[e]'; true")
+        raise
     desktop.as_account(
-        f"touch ~/typing-done ~/move-{session} ~/refused-{session} ~/released-{session};"
+        f"touch ~/move-{session} ~/refused-{session} ~/released-{session};"
         " pkill -f 'event-strea[m]';"
         " pkill -INT -x wf-recorder; pkill -f 'sleep 60[1]';"
         # Bracketed, so the pattern doesn't match the shell running it.
@@ -457,7 +476,8 @@ def cleaned(desktop: Desktop, session: str) -> None:
     )
     desktop.as_account(
         f"rm -rf ~/{session} ~/typed-{session} ~/move-{session} ~/hosted-{session}"
-        f" ~/released-{session} ~/refused-{session} ~/typing-done ~/typing-count ~/focus-events"
+        f" ~/released-{session} ~/refused-{session} ~/typing-done ~/typing-count"
+        " ~/typing-count.new ~/focus-events"
     )
 
 
