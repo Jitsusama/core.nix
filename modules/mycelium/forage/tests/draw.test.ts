@@ -26,6 +26,7 @@ function forage(more: Partial<Forage> = {}): Forage {
         open: 1,
       },
     ],
+    waits: [],
     startedBy: undefined,
     parent: undefined,
     depth: 0,
@@ -139,6 +140,75 @@ it("ties each comma to the address before it, so no line starts with one", () =>
     assert.ok(!line.replace(TIED, "").includes(","), `a comma stands loose in ${line}`);
     assert.equal(line.match(TIED)?.length, ties, line);
   }
+});
+
+/** A wait of kestrel's quest, with `more` over its fields. */
+function wait(more: Partial<Forage["waits"][number]> = {}): Forage["waits"][number] {
+  return {
+    id: "field-sitting",
+    title: "Watch the kestrel hover",
+    why: "Only someone at the field can see it.",
+    minutes: 30,
+    when: "Wednesday or later",
+    ready: false,
+    raised: undefined,
+    ...more,
+  };
+}
+
+/** What the panel's waits section says, without its markup, or none without one. */
+function waitsSaid(panel: string): string | undefined {
+  const section = /<section aria-labelledby="waits-title"[^>]*>([\s\S]*?)<\/section>/u.exec(panel);
+  return section?.[1]?.replace(TAG, " ").replace(/\s+/gu, " ").trim();
+}
+
+it("says in the panel what a cell's quest waits on you for, first, in its own words", () => {
+  const waiting = forage({
+    waits: [
+      wait(),
+      wait({ id: "look", title: "Look", why: "", minutes: 1, when: undefined, ready: true }),
+    ],
+  });
+  const panel = panelOf(waiting, new Set(["KESTRL"]), []);
+  assert.equal(
+    waitsSaid(panel),
+    "What It Waits On You For Watch the kestrel hover Only someone at the field can see it. About 30 minutes · Wednesday or later · Not ready yet Look About a minute · Ready now",
+  );
+  assert.ok(
+    panel.indexOf("waits-title") < panel.indexOf("docs-title"),
+    "its waits come before its documents",
+  );
+  assert.deepEqual(saidBy(panel, "QEST-20261116-KESTRL"), [
+    "Kestrel learns to hover over ~/.fields.",
+    "Watch the kestrel hover",
+    "Only someone at the field can see it.",
+    "Wednesday or later",
+    "Look",
+    "Hover Over the Field",
+  ]);
+  assert.equal(waitsSaid(panelOf(forage(), new Set(), [])), undefined);
+});
+
+it("escapes what a wait says before drawing it", () => {
+  const panel = panelOf(
+    forage({ waits: [wait({ title: '<b a="1">&', why: "<i>" })] }),
+    new Set(),
+    [],
+  );
+  assert.ok(!(panel.includes("<b ") || panel.includes("<i>")), panel);
+  assert.ok(panel.includes("&lt;b a=&quot;1&quot;&gt;&amp;"), panel);
+});
+
+it("says in a cell's row how many things its quest waits on you for", () => {
+  const said = (waits: number): string | undefined =>
+    /<span class="waits">([^<]*)<\/span>/u.exec(
+      forageRow(
+        forage({ waits: Array.from({ length: waits }, (_, at) => wait({ id: `w${at}` })) }),
+      ),
+    )?.[1];
+  assert.equal(said(0), undefined);
+  assert.equal(said(1), "Waits on you for one thing");
+  assert.equal(said(2), "Waits on you for 2 things");
 });
 
 it("says the words are a quest's when the record names none", () => {

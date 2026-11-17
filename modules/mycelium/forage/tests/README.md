@@ -6,11 +6,13 @@ run by Node's own test runner when the local sites build the page.
 - `model.test.ts` tries the records read as cells: each under the cell that
   started it, even across machines or in a ring; documents plans first, with
   their steps added up; what can't be read said while the rest still draws;
-  the counts of cells and of those with no purpose written; the find; and
-  the cells each one started.
+  the counts of cells and of those with no purpose written; what waits on
+  its person, counted once and said first; the find; and the cells each
+  one started.
 - `draw.test.ts` tries which words the page marks as its quests' own: a
   written purpose and a document's title, never the page's own words for
-  what's missing; and the panel's line of the cells a cell started, each
+  what's missing; a row's count of waits and the panel's waits, before
+  its documents; and the panel's line of the cells a cell started, each
   linked and escaped, up to seven named, past that six named and the rest
   counted, and no comma left loose.
 

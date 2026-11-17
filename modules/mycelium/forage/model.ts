@@ -1,9 +1,10 @@
 // What the forage page draws, read from the mycelium node's forage records
 // (mycelium's PROTOCOL.md, Forages): one for each cell of this machine that
-// works on a quest, keyed forage:<cell>, with the purpose its quest states
-// and the documents it keeps for it. Nothing here touches the page, so
-// every case is proven in node, and a record the page couldn't make sense
-// of is said rather than drawn as if it were whole.
+// works on a quest, keyed forage:<cell>, with the purpose its quest states,
+// the documents it keeps for it and what its quest waits on its person
+// for. Nothing here touches the page, so every case is proven in node, and
+// a record the page couldn't make sense of is said rather than drawn as if
+// it were whole.
 
 import type { Fields, Held } from "../../local-sites/kit/records.ts";
 import { isObject, number, object, text } from "../../local-sites/kit/records.ts";
@@ -18,6 +19,23 @@ interface Document {
   readonly open: number;
 }
 
+/** One thing a cell's quest waits on its person for, as the launcher keeps it. */
+interface Wait {
+  readonly id: string;
+  /** What the person is asked to do, in a line. */
+  readonly title: string;
+  /** Why it waits on them; empty when it doesn't say. */
+  readonly why: string;
+  /** About how many minutes of theirs it takes. */
+  readonly minutes: number | undefined;
+  /** When it's for, in words, such as "today". */
+  readonly when: string | undefined;
+  /** Whether it can be done now. */
+  readonly ready: boolean;
+  /** When it was raised, as the node says it. */
+  readonly raised: string | undefined;
+}
+
 /** One cell's forage, as the page draws its row and its panel. */
 interface Forage {
   readonly cell: string;
@@ -27,6 +45,8 @@ interface Forage {
   readonly purpose: string;
   readonly status: string;
   readonly documents: readonly Document[];
+  /** What its quest waits on its person for, oldest first as the node says. */
+  readonly waits: readonly Wait[];
   /** The cell that started it, by address, when one did. */
   readonly startedBy: string | undefined;
   /** The quest its own sits under, when it sits under one. */
@@ -89,6 +109,40 @@ function documentsOf(record: Fields, cell: string, unread: string[]): readonly D
   return [...read].sort((one, other) => rank(one.kind) - rank(other.kind));
 }
 
+/** The wait `value` describes, or none without an id and a title. */
+function waitOf(value: unknown): Wait | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const id = text(value, "id");
+  const title = text(value, "title");
+  if (id === undefined || title === undefined) {
+    return undefined;
+  }
+  return {
+    id,
+    title,
+    why: text(value, "why") ?? "",
+    minutes: number(value, "minutes"),
+    when: text(value, "when"),
+    ready: value["ready"] === true,
+    raised: text(value, "raised"),
+  };
+}
+
+/** What `record`'s quest waits on its person for, saying any it couldn't read. */
+function waitsOf(record: Fields, cell: string, unread: string[]): readonly Wait[] {
+  const listed = record["waits"];
+  if (!Array.isArray(listed)) {
+    return [];
+  }
+  const read = listed.map(waitOf).filter((each) => each !== undefined);
+  if (read.length < listed.length) {
+    unread.push(`${listed.length - read.length} of ${cell}'s waits had no id or title`);
+  }
+  return read;
+}
+
 /** The forage in `record`, without its depth, or none when it names no cell. */
 function forageOf(record: Fields, unread: string[]): Omit<Forage, "depth"> | undefined {
   const cell = text(record, "cell");
@@ -104,6 +158,7 @@ function forageOf(record: Fields, unread: string[]): Omit<Forage, "depth"> | und
     purpose: text(record, "purpose") ?? "",
     status: text(record, "status") ?? "",
     documents: documentsOf(record, cell, unread),
+    waits: waitsOf(record, cell, unread),
     startedBy: text(lineage, "started_by"),
     parent: text(lineage, "parent"),
   };
@@ -269,11 +324,37 @@ function furthest(
     : { cell: found.cell, ticked: found.ticked, all: found.all };
 }
 
-/** What the lede says: the cells with no purpose written, then the plan furthest from done. */
+/**
+ * What waits on its person, said first: how many things, each counted once
+ * however many cells work on its quest, and the cells waiting; nothing when
+ * none waits.
+ */
+function waited(forages: readonly Forage[]): string {
+  const things = new Set(
+    forages.flatMap((each) => each.waits.map((wait) => `${each.quest}\n${wait.id}`)),
+  );
+  if (things.size === 0) {
+    return "";
+  }
+  const cells = forages.filter((each) => each.waits.length > 0).map((each) => each.cell);
+  const count =
+    things.size === 1 ? "One thing waits on you" : `${grouped(things.size)} things wait on you`;
+  return `${count}, from ${named(cells)}. `;
+}
+
+/**
+ * What the lede says: what waits on its person, then the cells with no
+ * purpose written, then the plan furthest from done.
+ */
 function lede(forages: readonly Forage[]): string {
   if (forages.length === 0) {
     return "When a cell here takes up a quest, its purpose shows here, with how far its plans have come.";
   }
+  return `${waited(forages)}${purposes(forages)}`;
+}
+
+/** The lede's account of purposes and plans. */
+function purposes(forages: readonly Forage[]): string {
   const hollow = forages.filter((each) => each.purpose === "").map((each) => each.cell);
   const first =
     hollow.length === 0
@@ -286,16 +367,22 @@ function lede(forages: readonly Forage[]): string {
   return `${first} ${far.cell} has furthest to go, ${far.ticked} of ${far.all} steps done.`;
 }
 
-/** Whether `forage` holds `query` in its cell, quest, purpose or a document's title. */
+/** Whether `forage` holds `query` in its cell, quest, purpose, a document's or a wait's title. */
 function holds(forage: Forage, query: string): boolean {
   const sought = query.trim().toLowerCase();
   if (sought === "") {
     return true;
   }
-  return [forage.cell, forage.quest, forage.purpose, ...forage.documents.map((each) => each.title)]
+  return [
+    forage.cell,
+    forage.quest,
+    forage.purpose,
+    ...forage.documents.map((each) => each.title),
+    ...forage.waits.map((each) => each.title),
+  ]
     .map((each) => each.toLowerCase())
     .some((each) => each.includes(sought));
 }
 
-export type { Document, Forage, Forages, Headline };
+export type { Document, Forage, Forages, Headline, Wait };
 export { counted, foragesOf, headline, holds, keeps, lede, startedFrom, steps };

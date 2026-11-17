@@ -81,8 +81,11 @@ cd "${work}" || exit 70
 MAP_CHECK_ROOT=${root} MAP_CHECK_SAID=${said} \
   PYTHONPATH=@live_page@ PYTHONDONTWRITEBYTECODE=1 \
   @python@ -m pytest -q -p no:cacheprovider -p live_page --import-mode=importlib \
-  --basetemp="${work}/pytest" @test@ > "${work}/pytest.log" 2>&1 || true
-cat "${work}/pytest.log" >&2
+  --basetemp="${work}/pytest" @test@ > "${work}/pytest.log" 2>&1 && tested=0 || tested=$?
+# The browser's words are said only when the test failed, to say where.
+if ((tested != 0)); then
+  cat "${work}/pytest.log" >&2
+fi
 
 if [[ ! -s ${said} ]]; then
   if grep -q "the map never read the node" "${work}/pytest.log"; then

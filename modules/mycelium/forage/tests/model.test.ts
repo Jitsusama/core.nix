@@ -192,3 +192,66 @@ it("a find matches a cell, its quest, its purpose or a document's title", () => 
   }
   assert.ok(!holds(kestrel, "osprey"));
 });
+
+/** A wait the launcher keeps for a quest, as the node passes it on. */
+const sitting = {
+  id: "field-sitting",
+  title: "Watch the kestrel hover",
+  why: "Only someone at the field can see it.",
+  minutes: 30,
+  when: "Wednesday or later",
+  ready: false,
+  raised: "2026-11-10T22:14:48.007Z",
+};
+
+it("reads what a quest waits on its person for, keeping what it can of each", () => {
+  const { forages, unread } = foragesOf(
+    told([
+      forage("KESTRL", {
+        waits: [sitting, { id: "look", title: "Look at the field", minutes: "soon" }, { id: "x" }],
+      }),
+      forage("OSPREY"),
+    ]),
+  );
+  const [kestrel, osprey] = forages;
+  assert.deepEqual(kestrel?.waits, [
+    sitting,
+    {
+      id: "look",
+      title: "Look at the field",
+      why: "",
+      minutes: undefined,
+      when: undefined,
+      ready: false,
+      raised: undefined,
+    },
+  ]);
+  assert.deepEqual(osprey?.waits, []);
+  assert.deepEqual(unread, ["1 of KESTRL's waits had no id or title"]);
+});
+
+it("the lede first says what waits on its person, and from which cells", () => {
+  const look = { id: "look", title: "Look at the field" };
+  const { forages } = foragesOf(
+    told([
+      forage("KESTRL", { waits: [sitting, look] }),
+      // A second cell on kestrel's quest waits on the same two things.
+      forage("KESTR2", { quest: "QEST-20261116-KESTRL", waits: [sitting, look] }),
+      forage("OSPREY", { waits: [look] }),
+      forage("SKIFFS"),
+    ]),
+  );
+  assert.equal(
+    lede(forages),
+    "3 things wait on you, from KESTR2, KESTRL and OSPREY. Every cell has its purpose written. KESTR2 has furthest to go, 3 of 6 steps done.",
+  );
+  const [one] = foragesOf(told([forage("OSPREY", { waits: [look] })])).forages;
+  assert.ok(one);
+  assert.ok(lede([one]).startsWith("One thing waits on you, from OSPREY. "), lede([one]));
+});
+
+it("a find matches what a cell's quest waits on", () => {
+  const [kestrel] = foragesOf(told([forage("KESTRL", { waits: [sitting] })])).forages;
+  assert.ok(kestrel);
+  assert.ok(holds(kestrel, "watch the kestrel"));
+});
