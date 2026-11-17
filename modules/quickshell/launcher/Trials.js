@@ -92,8 +92,12 @@ function stepped(inner, at) {
         before,
         beforeParts: inner?.beforeParts ?? null,
         answers,
+        // A walk's last step is timed from where the walk began, so the
+        // places it passed on the way are said as passing, apart from
+        // this step's own making.
         each: Object.assign({}, inner?.each, { making: at.made - at.began, finding,
-            holding: at.pushed - at.made, opening: at.opened - at.pushed }),
+            holding: at.pushed - at.made, opening: at.opened - at.pushed,
+            passing: at.walked === undefined ? 0 : Math.max(0, at.began - at.walked) }),
         makingSplit: at.making ?? null,
         composing: inner?.composing ?? null
     };

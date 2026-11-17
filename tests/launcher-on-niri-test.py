@@ -4772,11 +4772,12 @@ def test_a_word_and_a_space_typed_at_once_time_only_the_last_key_as_the_step(she
 
 
 def test_a_walk_through_a_place_is_timed_once_as_where_it_ends(shell: Shell) -> None:
-    """A walk to a place inside another is timed once, as the place it ends in, from its start.
+    """A walk to a place inside another is timed once, as the place it ends in.
 
     A spot's Return and a terminal's go to walk the places on the way, as Machine on the way
     to Power, and each step was timed as its own, so one walk said two steps and the first
-    left out what the last took (a council, 2026-11-17).
+    left out what the last took (a council, 2026-11-17). What the places on the way took is
+    said as passing, which tests/trials.qml holds.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()

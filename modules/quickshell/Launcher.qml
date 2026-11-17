@@ -1167,8 +1167,7 @@ Scope {
             const first = held.length === 0;
             const searchedBefore = root.searched;
             if (row === null || !enter(row, { passing: depth < last, stood: stood, begun })) {
-                if (!listed)
-                    listHeld();
+                walkStopped(begun, !listed);
                 return;
             }
             listed = depth === last || root.searched !== searchedBefore;
@@ -5016,6 +5015,10 @@ Scope {
         // its own: timed as each, one walk said two steps, and the first
         // left out what the last took (a council, 2026-11-17).
         const { began, heard, pressed, collected, thread } = walk?.begun ?? stepBegun();
+        // The step's own parts are from its own start, and the places a
+        // walk passed before it are said as passing (Trials.stepped).
+        const stepAt = Date.now();
+        const walked = walk?.begun ? began : undefined;
         if (held.length > 0 && row.given) {
             ask(row);
             return true;
@@ -5050,11 +5053,11 @@ Scope {
             if (meant)
                 learnAfterFrame(typed, row.key);
             searchParts = null;
-            let at = { made: began, pushed: began };
+            let at = { made: stepAt, pushed: stepAt };
             listedAsStep(() => {
                 at = intoCategory(row.category, walk === undefined ? typed : "");
             });
-            searchParts = trials.stepped(searchParts, { began, made: at.made,
+            searchParts = trials.stepped(searchParts, { walked, began: stepAt, made: at.made,
                 pushed: at.pushed, opened: at.pushed, ended: Date.now() });
             if (timed)
                 keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true,
@@ -5103,7 +5106,7 @@ Scope {
         // Said as a key's are: making the step's lists, what each part of
         // stepping took, and the search that drew its rows, whose parts
         // restart() left.
-        searchParts = trials.stepped(searchParts, { began, made, pushed, opened,
+        searchParts = trials.stepped(searchParts, { walked, began: stepAt, made, pushed, opened,
             ended: Date.now(), making: spent });
         if (timed)
             keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread);
@@ -5141,6 +5144,20 @@ Scope {
                 list.positionViewAtIndex(matched, ListView.Contain);
             }
         }
+    }
+
+    // A walk that stopped short, a step on its way gone, ends where it
+    // stands: what that step holds is listed, if nothing listed it, and
+    // the walk is timed as that place from when it began, as one that
+    // went all the way is as its last (enter). Without it, a walk
+    // stopped short was timed nowhere (a council, 2026-11-17).
+    function walkStopped(begun, list) {
+        searchParts = null;
+        if (list)
+            listedAsStep(() => listHeld());
+        if (held.length > 0 && openAsked < 0 && !fillingPlace)
+            keyTimed(`\u2192 ${held[held.length - 1].row.name}`, begun.began, begun.heard,
+                begun.pressed, begun.collected, true, begun.thread);
     }
 
     // Lists what the step held holds, where a walk stopped at a step it
@@ -9602,14 +9619,14 @@ Scope {
         // only the last. All 19 of Joel's Super+N openings were past 50
         // ms, a median 204 (2026-11-11 to 14).
         const { leading, rows } = leadingTo(name) ?? { leading: null, rows: [] };
-        const begun = stepBegun();
         if (leading !== null && leading.settings.name !== name) {
+            const begun = stepBegun();
             intoWhole(leading.settings.name, rows.length > 0);
             for (const [depth, row] of rows.entries()) {
                 const stood = { typed: "", above: 0,
                     at: Math.max(0, offered.findIndex(one => steadyId(one) === steadyId(row))) };
                 if (!enter(row, { passing: depth < rows.length - 1, stood: stood, begun })) {
-                    listHeld();
+                    walkStopped(begun, true);
                     break;
                 }
             }
