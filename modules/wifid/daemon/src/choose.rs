@@ -9,8 +9,8 @@
 //! A wider band, 5 or 6 GHz, is kept to while it carries well and the
 //! card moves enough to use its room, and tried from 2.4 GHz then, or when
 //! one heard well enough is known to answer no slower: 2.4 GHz can be
-//! quicker to the gateway but carries far less. An idle card leaves it for
-//! 2.4 GHz known far quicker, as for any other access point.
+//! quicker to the gateway but carries far less. A card known to move
+//! little leaves it for 2.4 GHz known far quicker, as for any other.
 //! wpa_supplicant still roams on its own when the signal fades; this
 //! moves the card only between access points it can already hear, and
 //! has it look for what it doesn't, as often as it moves: another of its
@@ -110,8 +110,9 @@ const USED: u32 = 100;
 
 /// The least a card must move for a wider band's room to count, however
 /// slowly its link says it sends, so a rate read low isn't taken for a
-/// faint link. Over the same night, the card's two minutes passed 25
-/// Mbit/s in 4% of spans, and 10 Mbit/s in 85%.
+/// faint link; below it, a card on a wider band is resting there. Over the
+/// same night, the card's two minutes passed 25 Mbit/s in 4% of spans, and
+/// 10 Mbit/s in 85%.
 const LEAST: u32 = 25;
 
 /// How much quicker one measured lately must have been to be moved to:
@@ -233,16 +234,18 @@ impl Chooser {
         }
         self.spurned
             .retain(|_, spurned| now.duration_since(*spurned) < SPURNED);
-        // A card on a wider band carrying well and using its room keeps off
-        // a narrower one, however quick, since quickness isn't room to bring
-        // things down. An idle one may take a narrower one known far quicker:
-        // overnight on 16 to 17 Nov 2026 at a desk, the access point's 2.4
-        // GHz radio answered quicker than its 5 GHz one in four of five hours.
-        let roomless = !used(measured);
+        // A card on a wider band carrying well keeps off a narrower one,
+        // however quick, since quickness isn't room to bring things down,
+        // unless it's known to move less than `LEAST`: then it may take one
+        // known far quicker. Overnight on 16 to 17 Nov 2026 at a desk, the
+        // access point's 2.4 GHz radio answered quicker than its 5 GHz one
+        // in four of five hours. Between `LEAST` and `used`'s bar the card
+        // keeps to whichever band it's on, so use near the bar can't swap it.
+        let resting = measured.moving.is_some_and(|moving| moving < LEAST);
         let untried = others.iter().filter(|other| {
             other.point != point
                 && !self.spurned.contains_key(&other.point)
-                && (bad || roomless || wide(other.frequency) || !wide(frequency))
+                && (bad || resting || wide(other.frequency) || !wide(frequency))
         });
         let narrow = frequency != 0 && !wide(frequency);
         let banded = if narrow && !bad {

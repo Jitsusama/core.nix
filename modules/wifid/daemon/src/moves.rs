@@ -219,8 +219,8 @@ fn kept_off(on: &Joined, unreached: &str) -> String {
 }
 
 /// Why a card tries another access point: what the one it's on carried,
-/// what was known of the other, and from where, and whether it's for a
-/// wider band or a quieter channel.
+/// what was known of the other, and from where, and whether it's to a
+/// wider or narrower band or a quieter channel.
 fn tried(
     on: &Joined,
     (measured, frequency, busy): (&Measured, u32, Option<u8>),
@@ -242,6 +242,7 @@ fn tried(
     };
     let room = match (busy, to.busy) {
         _ if choose::wider(to.frequency, frequency) => ", on a wider band".to_owned(),
+        _ if choose::wider(frequency, to.frequency) => ", on a narrower band".to_owned(),
         (Some(busy), Some(theirs))
             if busy > choose::BUSIEST
                 && choose::quieter(theirs, busy)
