@@ -45,6 +45,10 @@ pub struct Routes {
     pub fallback: Option<String>,
     #[serde(default)]
     pub ledgers: Option<String>,
+    /// Who owns the harness's provider retries: a turn the model provider
+    /// failed in goes there, since the session's own cell can't fix it.
+    #[serde(default)]
+    pub provider: Option<String>,
     /// Cells nothing is ever sent to, the void's among them, so a void
     /// begun somewhere its folder doesn't say is still never written to.
     #[serde(default)]
@@ -133,6 +137,15 @@ pub fn cells(printed: &str) -> BTreeMap<String, Cell> {
             )
         })
         .collect()
+}
+
+/// The address `pain` goes to, or none for now.
+pub fn owner_of(
+    pain: &Heard,
+    cells: &BTreeMap<String, Cell>,
+    routes: &Routes,
+) -> Option<String> {
+    owner(&pain.session, pain.void, cells, routes)
 }
 
 /// The address a pain said in `session` goes to, or none for now: its own
@@ -298,6 +311,7 @@ pub fn ledger_note(pains: &[&Heard], cells: &BTreeMap<String, Cell>, offset_s: i
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hear::stalled;
 
     const SESSIONS: &str = r#"{"Ok":{"Sessions":[
         {"id":"s-live","address":"ABC123","state":"busy","quest":"Q1"},
@@ -331,8 +345,42 @@ mod tests {
             from: Some("EAR001".into()),
             fallback: Some("ORCH01".into()),
             ledgers: Some("ORCH01".into()),
+            provider: Some("PROV01".into()),
             never: vec!["VOID01".into()],
         }
+    }
+
+    #[test]
+    fn a_turn_the_provider_failed_goes_to_the_providers_owner() {
+        let cells = cells(SESSIONS);
+        let mut stall = pain(
+            "s-live",
+            "turn-1",
+            "a turn of 300 s lost him 120 s, the provider failing",
+            1,
+        );
+        stall.kinds = vec![stalled::KIND.into(), stalled::PROVIDER.into()];
+        assert_eq!(owner_of(&stall, &cells, &routes()), Some("PROV01".into()));
+        let none_named = Routes {
+            provider: None,
+            ..routes()
+        };
+        assert_eq!(
+            owner_of(&stall, &cells, &none_named),
+            Some("ABC123".into()),
+            "with no provider owner named, its cell still hears it"
+        );
+        let words = pain("s-live", "e9", "the provider failing again", 1);
+        assert_eq!(
+            owner_of(&words, &cells, &routes()),
+            Some("ABC123".into()),
+            "his words go to his session, whatever they name"
+        );
+        let refused = Routes {
+            provider: Some("VOID01".into()),
+            ..routes()
+        };
+        assert_eq!(owner_of(&stall, &cells, &refused), Some("ABC123".into()));
     }
 
     #[test]

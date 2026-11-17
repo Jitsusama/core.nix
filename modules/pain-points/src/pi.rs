@@ -587,6 +587,20 @@ mod tests {
     }
 
     #[test]
+    fn a_peers_note_starting_a_session_is_not_his_turn() {
+        let text = typed(AT, AT, "Restarted by 1JQPPC for the quest sweep: carry on")
+            + &reply(AT + 100, 120_000, "error")
+            + &typed(AT + 200_000, AT + 200_000, "Woken by 1JQPPC on a ruling")
+            + &reply(AT + 200_100, 90_000, "stop");
+        let log = read(&text);
+        assert!(
+            log.turns.is_empty(),
+            "a turn a peer opened lost Joel nothing: {:?}",
+            log.turns
+        );
+    }
+
+    #[test]
     fn a_read_picks_up_where_the_last_one_stopped() {
         let first = typed(AT, AT, "fix the launcher") + &reply(AT + 100, 1000, "toolUse");
         let rest =

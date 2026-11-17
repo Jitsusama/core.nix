@@ -235,6 +235,23 @@ mod tests {
     }
 
     #[test]
+    fn a_peers_note_starting_a_session_is_not_his() {
+        for note in [
+            "Woken by 1JQPPC on WCJQSG's ruling da5a35fb (the quest sweep): no, it's stale",
+            "Started by 1JQPPC for WCJQSG pivot 6b6ae191: this is broken",
+            "Restarted by P9R1KI for the quest's plan, which still fails",
+        ] {
+            assert_eq!(his(note), None, "{note:?} is a peer's");
+        }
+        for his_own in [
+            "Stopped by the launcher again, why",
+            "Fixed by ABC123? no, still broken",
+        ] {
+            assert!(his(his_own).is_some(), "{his_own:?} is his");
+        }
+    }
+
+    #[test]
     fn what_he_sent_from_outside_the_window_is_his_without_its_attachments() {
         let text = "[Joel is asking from outside this window: answer first, in a line or \
                     two, then do what is asked.]\n\nthe forage command does not play well \

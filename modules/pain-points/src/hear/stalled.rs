@@ -19,6 +19,10 @@ pub const STALL_S: f64 = 60.0;
 /// from what he said.
 pub const KIND: &str = "stalled";
 
+/// The kind a stall the model provider caused is heard as too, which
+/// routes it to the provider's owner rather than the session's cell.
+pub const PROVIDER: &str = "the provider failing";
+
 /// What read keeps of pi's logs, by each log's file name.
 #[derive(Deserialize)]
 struct Kept {
