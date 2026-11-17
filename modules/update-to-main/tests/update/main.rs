@@ -90,7 +90,6 @@ impl World {
         fs::write(&signers, format!("joel namespaces=\"git\" {public}")).unwrap();
         git(&origin, &["init", "--quiet", "--initial-branch=main"]);
 
-        let sh = shell();
         let head = stand_in_head();
         // nix build --print-out-paths --out-link LINK git+file://...&rev=REV#OUT,
         // or path:STATE/source/REV/FOLDER#OUT for a hosted main; and nix
@@ -233,8 +232,29 @@ impl World {
                  echo 'Activating reloadSystemd'; echo 'start operation timed out';; esac\n"
             ),
         );
-        let config = Config {
-            repository: format!("file://{}", origin.display()),
+        let config = World::config_in(&root);
+        let world = World {
+            _dir: dir,
+            root,
+            origin,
+            key,
+            config,
+        };
+        // The machine runs a system already, from before the first update.
+        let first = world.system("first");
+        fs::create_dir_all(&world.config.state).unwrap();
+        std::os::unix::fs::symlink(&first, &world.config.profile).unwrap();
+        std::os::unix::fs::symlink(&first, world.root.join("running")).unwrap();
+        std::os::unix::fs::symlink(&first, world.root.join("boots")).unwrap();
+        world
+    }
+
+    /// The config of the world made in `root`, which names only paths in
+    /// it, so a process apart can serve the same world.
+    fn config_in(root: &Path) -> Config {
+        let stand_ins = root.join("stand-ins");
+        Config {
+            repository: format!("file://{}", root.join("origin").display()),
             branch: "main".to_owned(),
             output: "system".to_owned(),
             kind: Kind::Nixos,
@@ -244,8 +264,9 @@ impl World {
             ended: root.join("last.json"),
             running: root.join("now.json"),
             profile: root.join("profile"),
+            current: root.join("running"),
             signers: Signers {
-                ssh: Some(signers),
+                ssh: Some(root.join("allowed_signers")),
                 openpgp: Vec::new(),
             },
             hosted: None,
@@ -255,7 +276,7 @@ impl World {
             kept: Kept::default(),
             here: None,
             health: vec![vec![
-                sh.clone(),
+                shell(),
                 "-c".to_owned(),
                 format!("test ! -e {}/unhealthy", root.join("running").display()),
             ]],
@@ -284,21 +305,7 @@ impl World {
             session: None,
             program: None,
             booted: root.join("booted"),
-        };
-        let world = World {
-            _dir: dir,
-            root,
-            origin,
-            key,
-            config,
-        };
-        // The machine runs a system already, from before the first update.
-        let first = world.system("first");
-        fs::create_dir_all(&world.config.state).unwrap();
-        std::os::unix::fs::symlink(&first, &world.config.profile).unwrap();
-        std::os::unix::fs::symlink(&first, world.root.join("running")).unwrap();
-        std::os::unix::fs::symlink(&first, world.root.join("boots")).unwrap();
-        world
+        }
     }
 
     /// Commits to the remote's main, signed by the machine's trusted key.
@@ -386,6 +393,7 @@ impl World {
         if !system.exists() {
             fs::create_dir_all(system.join("bin")).unwrap();
             fs::write(system.join("nixos-version"), "test\n").unwrap();
+            fs::write(system.join("darwin-version"), "test\n").unwrap();
             write_program(
                 &system.join("bin/switch-to-configuration"),
                 &format!(
@@ -400,6 +408,24 @@ impl World {
                     head = stand_in_head(),
                     modes = self.root.join("modes").display(),
                     boots = self.root.join("boots").display(),
+                    running = self.root.join("running").display()
+                ),
+            );
+            // A Mac's activate, which points `running` at itself last, as
+            // nix-darwin's does. While stops-its-daemon is there it first
+            // stops the update-to-main running it, as launchd does when
+            // activation reloads that daemon, and says more after.
+            write_program(
+                &system.join("activate"),
+                &format!(
+                    "{head}\nhere=$(cd \"$(dirname \"$0\")\" && pwd)\n\
+                     if [ -e \"$here/breaks\" ]; then echo 'activation failed' >&2; exit 1; fi\n\
+                     if [ -e \"$here/stops-its-daemon\" ]; then kill -KILL \"$PPID\"; \
+                     sleep 0.5; fi\n\
+                     echo 'setting up launchd services...'\n\
+                     echo 'reloading service org.jitsusama.update-to-main' >&2\n\
+                     ln -sfn \"$here\" {running}\n",
+                    head = stand_in_head(),
                     running = self.root.join("running").display()
                 ),
             );
@@ -579,6 +605,100 @@ fn an_ask_with_main_where_it_was_builds_nothing() {
         }
     );
     assert_eq!(world.builds(), 1);
+}
+
+#[test]
+fn a_system_the_profile_names_but_nothing_activated_is_switched_to() {
+    // On 17 November a Mac's switch died after pointing the profile at the
+    // new system and before activating it, and every update after said
+    // nothing had changed, since the profile already named what it built.
+    let world = World::new();
+    let one = world.signed("one");
+    world.system(&one);
+    world.update();
+    let two = world.signed("two");
+    let system = world.system(&two);
+    fs::remove_file(&world.config.profile).unwrap();
+    std::os::unix::fs::symlink(&system, &world.config.profile).unwrap();
+    let (_, ending) = world.update();
+    assert_eq!(ending, done(&two));
+    assert_eq!(
+        world.running(),
+        system,
+        "the system the profile named wasn't activated"
+    );
+}
+
+/// Not a test of its own: the daemon of the Mac's world made in
+/// `UPDATE_TO_MAIN_WORLD`, served in a process apart by
+/// `a_macs_switch_outlives_the_daemon_its_activation_stops`, so the
+/// activation can stop it as launchd would.
+#[test]
+#[ignore = "a_macs_switch_outlives_the_daemon_its_activation_stops runs it apart"]
+fn serves_a_macs_world_apart() {
+    let Some(root) = std::env::var_os("UPDATE_TO_MAIN_WORLD") else {
+        return;
+    };
+    let mut config = World::config_in(Path::new(&root));
+    config.kind = Kind::Darwin;
+    serve::serve(config).unwrap();
+}
+
+#[test]
+fn a_macs_switch_outlives_the_daemon_its_activation_stops() {
+    // On 17 November a Mac's activation reloaded the daemon running it, for
+    // its new open-files limit. The daemon's end closed activation's output,
+    // and activation died writing to it, before it moved the running system.
+    let world = World::new();
+    let head = world.signed("one");
+    let system = world.system(&head);
+    fs::write(system.join("stops-its-daemon"), "").unwrap();
+    let mut apart = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "serves_a_macs_world_apart",
+            "--ignored",
+            "--nocapture",
+        ])
+        .env("UPDATE_TO_MAIN_WORLD", &world.root)
+        .stdout(fs::File::create(world.root.join("apart.out")).unwrap())
+        .stderr(fs::File::create(world.root.join("apart.err")).unwrap())
+        .spawn()
+        .unwrap();
+    let by = Instant::now() + Duration::from_secs(30);
+    while !world.config.socket.exists() && Instant::now() < by {
+        thread::sleep(Duration::from_millis(20));
+    }
+    // The daemon is stopped mid-switch, so the ask ends without an ending.
+    let socket = world.config.socket.clone();
+    let asking = thread::spawn(move || ask::ask(&socket, &mut |_| {}));
+    let stopped = loop {
+        if let Some(status) = apart.try_wait().unwrap() {
+            break Some(status);
+        }
+        if Instant::now() > by {
+            let _ = apart.kill();
+            let _ = apart.wait();
+            break None;
+        }
+        thread::sleep(Duration::from_millis(50));
+    };
+    let told = || format!("{}{}", world.read("apart.out"), world.read("apart.err"));
+    assert!(
+        stopped.is_some_and(|status| !status.success()),
+        "the daemon wasn't stopped by its switch, which asked {:?}: {}",
+        asking.is_finished().then(|| asking.join().unwrap()),
+        told()
+    );
+    while world.running() != system && Instant::now() < by {
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(
+        world.running(),
+        system,
+        "the switch died with the daemon its activation stopped: {}",
+        told()
+    );
 }
 
 #[test]

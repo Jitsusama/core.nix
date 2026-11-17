@@ -1013,9 +1013,12 @@ fn matches(pattern: &str, name: &str) -> bool {
     }
 }
 
-/// The system the profile points at, which the machine runs or boots.
+/// The system the machine runs, which its activation moved to, rather
+/// than the profile, which a switch moves first: on 17 November a Mac's
+/// activation died after its profile moved, and every update after it
+/// found the profile already at main and said nothing changed.
 pub fn current(config: &Config) -> Option<PathBuf> {
-    fs::canonicalize(&config.profile).ok()
+    fs::canonicalize(&config.current).ok()
 }
 
 /// Points the profile at `system` and switches the machine to it live.
@@ -1059,10 +1062,11 @@ pub fn switch(config: &Config, system: &Path) -> Result<Switched, Failure> {
                 .as_deref()
                 .map(|p| changed_daemons(p, system))
                 .unwrap_or_default();
-            run::output(
+            run::logged(
                 run::command(&system.join("activate"), &config.state),
                 "switching",
                 std::iter::empty::<&str>(),
+                &activation_log(config),
             )?;
             Ok(Switched {
                 applied: Applied::Now,
@@ -1117,20 +1121,26 @@ fn failed_units(lines: &[String]) -> Vec<String> {
 /// Switches back to `system`, the one the machine left.
 pub fn go_back(config: &Config, system: &Path) -> Result<(), Failure> {
     set_profile(config, system)?;
-    let program = match config.kind {
-        Kind::Nixos => system.join("bin/switch-to-configuration"),
-        Kind::Darwin => system.join("activate"),
-    };
-    let args: &[&str] = match config.kind {
-        Kind::Nixos => &["switch"],
-        Kind::Darwin => &[],
-    };
-    run::output(
-        run::command(&program, &config.state),
-        "switching back",
-        args,
-    )
+    match config.kind {
+        Kind::Nixos => run::output(
+            run::command(&system.join("bin/switch-to-configuration"), &config.state),
+            "switching back",
+            ["switch"],
+        ),
+        Kind::Darwin => run::logged(
+            run::command(&system.join("activate"), &config.state),
+            "switching back",
+            std::iter::empty::<&str>(),
+            &activation_log(config),
+        ),
+    }
     .map(|_| ())
+}
+
+/// Where a Mac's activation writes what it says, which outlives the
+/// daemon it may stop, as pipes to that daemon wouldn't.
+fn activation_log(config: &Config) -> PathBuf {
+    config.state.join("activation.log")
 }
 
 /// A system update-to-main built, and what it built it from.

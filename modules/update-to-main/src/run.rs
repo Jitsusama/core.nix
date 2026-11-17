@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, OsStr};
+use std::fs;
 use std::io::{BufRead, BufReader, Read};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -282,7 +283,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    ran(command, what, args, false)
+    ran(command, what, args, Streams::Piped { errors_too: false })
 }
 
 /// Runs a command to its end as `output` does, but giving everything it
@@ -292,10 +293,31 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    ran(command, what, args, true)
+    ran(command, what, args, Streams::Piped { errors_too: true })
 }
 
-fn ran<I, S>(mut command: Command, what: &str, args: I, errors_too: bool) -> Result<String, Failure>
+/// Runs a command to its end as `said` does, but with both its streams
+/// written to `log` rather than to pipes, so it outlives this process: a
+/// Mac's activation reloads the daemon running it when the daemon's own
+/// definition changed, and on 17 November one died writing to the pipes
+/// the stopped daemon had read, before it moved the running system.
+pub fn logged<I, S>(command: Command, what: &str, args: I, log: &Path) -> Result<String, Failure>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    ran(command, what, args, Streams::Logged(log))
+}
+
+/// Where a command's streams go: to pipes this process reads, with what
+/// it gives taking the error stream too or not, or both to a file.
+#[derive(Clone, Copy)]
+enum Streams<'a> {
+    Piped { errors_too: bool },
+    Logged(&'a Path),
+}
+
+fn ran<I, S>(mut command: Command, what: &str, args: I, streams: Streams) -> Result<String, Failure>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
@@ -303,11 +325,20 @@ where
     // Each runs in a process group of its own, so a stop ends what it
     // started too. Its input is what the caller gave, or the daemon's own,
     // which systemd and launchd make empty.
-    command
-        .args(args)
-        .process_group(0)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    command.args(args).process_group(0);
+    match streams {
+        Streams::Piped { .. } => {
+            command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        }
+        Streams::Logged(log) => {
+            let opened =
+                |e: std::io::Error| Failure::new(format!("{what}: {}: {e}", log.display()));
+            let file = fs::File::create(log).map_err(opened)?;
+            command
+                .stdout(file.try_clone().map_err(opened)?)
+                .stderr(file);
+        }
+    }
     let me = thread::current().id();
     let stopped = || Failure::new(format!("{what}: the update was stopped"));
     let child = {
@@ -333,15 +364,28 @@ where
         }
     }
     let out = out.map_err(|e| Failure::new(format!("{what}: {e}")))?;
+    let (mut said, errors, errors_too) = match streams {
+        Streams::Piped { errors_too } => (
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+            errors_too,
+        ),
+        Streams::Logged(log) => (
+            fs::read(log).map_or_else(
+                |e| format!("{}: {e}", log.display()),
+                |read| String::from_utf8_lossy(&read).into_owned(),
+            ),
+            String::new(),
+            true,
+        ),
+    };
     if out.status.success() {
-        let mut said = String::from_utf8_lossy(&out.stdout).into_owned();
         if errors_too {
-            said.push_str(&String::from_utf8_lossy(&out.stderr));
+            said.push_str(&errors);
         }
         return Ok(said.trim().to_owned());
     }
-    let mut said = String::from_utf8_lossy(&out.stdout).into_owned();
-    said.push_str(&String::from_utf8_lossy(&out.stderr));
+    said.push_str(&errors);
     Err(Failure {
         why: format!("{what} failed ({})", out.status),
         lines: tail(&said),

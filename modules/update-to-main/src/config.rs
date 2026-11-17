@@ -44,6 +44,10 @@ pub struct Config {
     pub running: PathBuf,
     /// The system profile, which the machine boots and rolls back by.
     pub profile: PathBuf,
+    /// The system the machine runs now, which a switch moves only once its
+    /// activation is through, after the profile: a switch that dies between
+    /// the two leaves the profile naming a system nothing activated.
+    pub current: PathBuf,
     /// The signatures a commit may carry to be built.
     pub signers: Signers,
     /// When set, main's head is what the repository's host names, asked

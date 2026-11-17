@@ -34,6 +34,7 @@ in
       ended = "/run/update-to-main/last.json";
       running = "/run/update-to-main/running.json";
       profile = "/nix/var/nix/profiles/system";
+      current = "/run/current-system";
       booted = "/run/booted-system";
       power_supplies = "/sys/class/power_supply";
       cpu_pressure = "/proc/pressure/cpu";
