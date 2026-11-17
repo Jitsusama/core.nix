@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    g { stroke: @light-accent@; }
+    @media (prefers-color-scheme: dark) { g { stroke: @dark-accent@; } }
+  </style>
+  <g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 27h24"/>
+    <path d="M9 27V15a7 7 0 0 1 14 0v12"/>
+    <path d="M16 27v-8"/>
+    <path d="M16 22c-3 0-5-2-5.5-5 3 0 5 2 5.5 5z"/>
+  </g>
+</svg>

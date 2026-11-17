@@ -228,8 +228,8 @@ in
         name = "system";
         src = ../system/site;
         inherit webKit;
-        # Its emphasis, as its styles mark it, in the action's gold: the
-        # page's world is the weather over everything, and gold is its sun.
+        # Its emphasis, as its styles mark it, in the action's gold, the
+        # page's one accent.
         tint = "action";
       };
       network = sites.localSite {

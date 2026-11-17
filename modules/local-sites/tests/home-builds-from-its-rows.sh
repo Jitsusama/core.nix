@@ -7,8 +7,8 @@
 # them; llms.txt
 # and the twin list all three; each stripped page gets its strip after the
 # skip link, linking home from its depth; the home's own files are put
-# beside it, and its old scripts taken away, while its page loads the kit's
-# script and switch; its theme-color takes each look's ground from the kit, and
+# beside it, its mark drawn in each look's accent, and its old scripts
+# taken away, while its page loads the kit's script and switch; its theme-color takes each look's ground from the kit, and
 # names none without one; a second run changes no file; a broken record
 # keeps the last build; a root with no sites.json is left alone; and a
 # row Nix declares stands in for the record's, or goes first; and a
@@ -118,6 +118,11 @@ grep -q 'media="(prefers-color-scheme: dark)" content="forest"' "$index" ||
   fail "the dark theme-color isn't the kit's dark ground"
 grep -q 'media="(prefers-color-scheme: light)" content="paper"' "$index" ||
   fail "the light theme-color isn't the kit's light ground"
+# The mark takes the dark look's accent, and draws in the browser's ink in
+# the light look, which this kit names no accent for.
+mark=$root/favicon.svg
+grep -q 'dark) { g { stroke: jade; }' "$mark" || fail "the dark mark isn't the kit's accent"
+grep -q '^    g { stroke: currentColor; }' "$mark" || fail "the light mark has no ink of its own"
 
 listed=$(grep -c '^- \[' "$root/llms.txt")
 [ "$listed" = 3 ] || fail "llms.txt doesn't list all three"
