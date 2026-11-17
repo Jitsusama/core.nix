@@ -459,13 +459,17 @@ mod tests {
     fn a_move_to_a_narrower_band_says_so() {
         let on = joined(DESK);
         let narrow = other(HALL, Some(carried(9)));
+        let resting = Measured {
+            moving: Some(24),
+            ..carried(30)
+        };
 
-        let why = tried(&on, (&carried(30), 5260, None), &narrow, None);
+        let why = tried(&on, (&resting, 5260, None), &narrow, None);
+        let failing = tried(&on, (&carried(52), 5260, None), &narrow, None);
 
-        assert!(
-            why.ends_with("in the last two minutes, on a narrower band"),
-            "a move from 5 GHz to 2.4 GHz says it's off the band: {why}"
-        );
+        let alone = "two minutes, on a narrower band, as the card moves little";
+        assert!(why.ends_with(alone), "says why it left: {why}");
+        assert!(!failing.contains("band"), "it moves as bad: {failing}");
     }
 
     #[test]
