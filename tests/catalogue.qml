@@ -554,5 +554,27 @@ QtObject {
         expect("left at home, it isn't", Reached.reached([], passwords), false);
         expect("somewhere else as deep, it isn't",
             Reached.reached(["category:secrets", "collection:keys"], passwords), false);
+        // An act walked from outside is said done only where nothing it ran
+        // refused it, as a yes to a secret ask is withheld rather than sent.
+        expect("an act nothing refused is done", Reached.refused([]), "");
+        expect("one withheld says why", Reached.refused(["not without your own key press"]),
+            "not without your own key press");
+        expect("one told late, and then refused, says the refusal",
+            Reached.refused(["", "the daemon isn't answering"]), "the daemon isn't answering");
+        expect("one only told late isn't refused", Reached.refused([""]), "");
+        expect("two refusals say the first", Reached.refused(["", "couldn't", "no answer"]),
+            "couldn't");
+        // What `launcher do` is answered: done, refused, or unavailable where
+        // the act's daemon had no answer to give, so the terminal exits 69.
+        const names = ["Asks", "Whimbrel"];
+        expect("a walk nothing refused answers done",
+            JSON.stringify(Reached.answered("", names, "no answer")),
+            JSON.stringify({ done: true, in: names }));
+        expect("a withheld walk answers refused",
+            JSON.stringify(Reached.answered("not without your own key press", names, "no answer")),
+            JSON.stringify({ refused: "not without your own key press", in: names }));
+        expect("a walk whose daemon had no answer answers unavailable",
+            JSON.stringify(Reached.answered("no answer", names, "no answer")),
+            JSON.stringify({ unavailable: "no answer", in: names }));
     }
 }
