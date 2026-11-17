@@ -173,7 +173,7 @@ mod tests {
     fn descriptions(names: &[&str]) -> String {
         let body: String = names
             .iter()
-            .map(|name| format!("  {name} = ''\n    proves\n  '';\n"))
+            .flat_map(|name| ["  ", name, " = ''\n    proves\n  '';\n"])
             .collect();
         format!("{{\n{body}}}\n")
     }
