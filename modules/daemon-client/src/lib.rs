@@ -119,12 +119,22 @@ impl Client {
     /// its own id alone. An unwatch is asked by the watch's id, so taking
     /// such a push for its answer would go on before the watch had gone.
     pub fn ask(&mut self, asked: &Value) -> Value {
+        self.ask_hearing(asked, |_| {})
+    }
+
+    /// The answer to an ask, as `ask` gives it, handing `told` each line
+    /// said before it rather than passing over them. A daemon can hear
+    /// its own write and tell a watch the change an ask made before it
+    /// answers the ask, so a test waiting for that change after takes it
+    /// in here.
+    pub fn ask_hearing(&mut self, asked: &Value, mut told: impl FnMut(&Value)) -> Value {
         self.send(asked);
         loop {
             let said = self.heard();
             if said["id"] == asked["id"] && !pushed(&said) {
                 return said;
             }
+            told(&said);
         }
     }
 
@@ -222,6 +232,52 @@ mod tests {
         let mut client = Client::connect(&socket);
         assert_eq!(client.heard()["id"], 1, "the client heard no answer");
         listening.join().expect("the listener ends");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// What a watch is told before an ask's answer is handed on, a change
+    /// under the watch's own id among it, and the answer is the line that
+    /// isn't a push.
+    #[test]
+    fn what_a_watch_is_told_before_an_answer_is_handed_on() {
+        let folder =
+            std::env::temp_dir().join(format!("daemon-client-told-first-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("the folder is made");
+        let socket = folder.join("daemon.sock");
+        let listener = UnixListener::bind(&socket).expect("the socket is bound");
+        let answering = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("the client is taken");
+            let mut asked = String::new();
+            BufReader::new(stream.try_clone().expect("the socket is cloned"))
+                .read_line(&mut asked)
+                .expect("the ask is read");
+            let mut stream = stream;
+            for line in [
+                r#"{"id":2,"changed":[{"key":"a"}]}"#,
+                r#"{"id":1,"changed":[{"key":"b"}]}"#,
+                r#"{"id":2,"sources":{}}"#,
+                r#"{"id":2,"done":true}"#,
+            ] {
+                writeln!(stream, "{line}").expect("the line is sent");
+            }
+        });
+        let mut client = Client::connect(&socket);
+        let mut told = Vec::new();
+        let answer = client.ask_hearing(&serde_json::json!({"id": 2, "ask": "act"}), |said| {
+            told.push(said.clone());
+        });
+        assert_eq!(
+            answer,
+            serde_json::json!({"id": 2, "done": true}),
+            "the answer"
+        );
+        assert_eq!(
+            told.len(),
+            3,
+            "each line before the answer is handed on: {told:?}"
+        );
+        answering.join().expect("the daemon ends");
         let _ = std::fs::remove_dir_all(&folder);
     }
 }
