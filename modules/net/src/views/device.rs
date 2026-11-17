@@ -136,7 +136,7 @@ const PORTS: [(&str, Align); 5] = [
     ("port", Align::Left),
     ("kind", Align::Left),
     ("link", Align::Left),
-    ("speed Mbit/s", Align::Right),
+    ("speed Mb/s", Align::Right),
     ("duplex", Align::Left),
 ];
 

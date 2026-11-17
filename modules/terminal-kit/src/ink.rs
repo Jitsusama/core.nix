@@ -189,11 +189,11 @@ struct Mark {
 }
 
 /// Units written in lower case alone, which capitals would misread:
-/// MS is a different unit from ms, and DBM or MBIT/S reads as shouting.
-const LOWER_UNITS: [&str; 6] = ["ms", "µs", "ns", "s", "bit/s", "kbit/s"];
+/// MS is a different unit from ms, and KB/S reads as kilobytes.
+const LOWER_UNITS: [&str; 8] = ["ms", "µs", "ns", "s", "b/s", "kb/s", "bit/s", "kbit/s"];
 
 /// A label's words in capitals, but for a unit after its first word,
-/// which keeps its case: a word holding a capital (dBm, Mbit/s, MHz) is
+/// which keeps its case: a word holding a capital (dBm, Mb/s, MHz) is
 /// already written as its unit is, and the few lower-case units are
 /// named. The first word is always the label's name, so it always goes
 /// up, and a group's heading such as Examples still reads EXAMPLES.
@@ -500,8 +500,21 @@ mod tests {
         assert_eq!(pen.title("Disk"), "Disk");
         assert_eq!(pen.label("Examples"), "EXAMPLES");
         assert_eq!(
-            ["power dBm", "speed Mbit/s", "took ms", "linked to"].map(|words| pen.label(words)),
-            ["POWER dBm", "SPEED Mbit/s", "TOOK ms", "LINKED TO"],
+            [
+                "power dBm",
+                "speed Mb/s",
+                "rate kb/s",
+                "took ms",
+                "linked to"
+            ]
+            .map(|words| pen.label(words)),
+            [
+                "POWER dBm",
+                "SPEED Mb/s",
+                "RATE kb/s",
+                "TOOK ms",
+                "LINKED TO"
+            ],
             "a unit after a label's first word didn't keep its case"
         );
         assert_eq!(pen.marked("done", "success"), "\u{2713} ");
