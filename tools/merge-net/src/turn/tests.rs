@@ -308,6 +308,55 @@ fn a_gates_start_is_its_earliest_kept_and_none_before_starts_were() {
     assert_eq!(started(old), None, "a record with no start gave one");
 }
 
+#[test]
+fn a_pass_is_kept_when_its_run_ended_not_when_checks_were_added_to_its_record() {
+    // As nix-offload writes them: two runs that built, the newest ending
+    // second, then a naming run, a run keeping main's, a `there --run`
+    // and a run in a folder below, each ending later and none a pass.
+    let record = |_: &str| {
+        "{\"dir\":null,\"run\":[\"--system\",\"x86_64-linux\"],\"started\":100,\"ended\":300}\n\
+         {\"dir\":null,\"check\":\"checks.x.a\"}\n\
+         {\"dir\":null,\"run\":[\"--build\",\"--no-vm\",\"--system\",\"x86_64-linux\"],\
+         \"started\":200,\"ended\":400}\n\
+         {\"dir\":null,\"run\":[\"--base\",\"m\",\"--name-only\",\"--system\",\"x86_64-linux\"],\
+         \"started\":500,\"ended\":700}\n\
+         {\"dir\":null,\"run\":[\"--keep-base\",\"--system\",\"aarch64-darwin\"],\
+         \"started\":500,\"ended\":800}\n\
+         {\"dir\":null,\"ran\":[\"nix\",\"eval\"],\"copies\":[],\"ended\":850}\n\
+         {\"dir\":\"sub\",\"run\":[\"--system\",\"x86_64-linux\"],\"started\":500,\"ended\":900}\n\
+         {\"dir\":null,\"check\":\"checks.x.vm-b\"}\n"
+            .to_owned()
+    };
+    assert_eq!(
+        kept_at(&["head"], &record, &|_| Some(1000)),
+        Some(400),
+        "a pass was kept from something other than when its newest run that built ended"
+    );
+}
+
+#[test]
+fn a_pass_from_before_runs_kept_their_end_is_kept_from_when_its_record_was_written() {
+    let record =
+        |_: &str| "{\"dir\":null,\"run\":[\"--system\",\"x\"],\"started\":100}\n".to_owned();
+    assert_eq!(
+        kept_at(&["head"], &record, &|_| Some(1234)),
+        Some(1234),
+        "a record that kept no end wasn't read by when it was written"
+    );
+}
+
+#[test]
+fn a_pass_ending_after_its_record_was_written_is_kept_from_when_it_was_written() {
+    let record = |_: &str| {
+        "{\"dir\":null,\"run\":[\"--system\",\"x\"],\"started\":100,\"ended\":5000}\n".to_owned()
+    };
+    assert_eq!(
+        kept_at(&["head"], &record, &|_| Some(1000)),
+        Some(1000),
+        "an end no record could have been written by held the turn past it"
+    );
+}
+
 // A process's start is read from /proc, which only Linux has: on a Mac the
 // development shell builds merge-net too, and this test failed it there.
 #[cfg(target_os = "linux")]

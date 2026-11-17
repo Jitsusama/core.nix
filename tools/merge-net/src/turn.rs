@@ -101,12 +101,27 @@ pub fn gates(folder: &Path) -> Vec<Gate> {
 /// started, of those that built what they named at the top of the
 /// repository; none for a record kept before starts were.
 pub fn started(record: &str) -> Option<u64> {
+    built_runs(record)
+        .filter_map(|line| line["started"].as_u64())
+        .min()
+}
+
+/// The lines of a commit's record of what passed for the gates that built
+/// what they named at the top of the repository: not a run in a folder
+/// below, a `there --run`, a run that only named its checks or one that
+/// kept main's derivations, which nix-offload adds later at the same
+/// commit and none of which is a pass.
+fn built_runs(record: &str) -> impl Iterator<Item = serde_json::Value> + '_ {
     record
         .lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .filter(|line| line["dir"].is_null() && line["run"].is_array())
-        .filter_map(|line| line["started"].as_u64())
-        .min()
+        .filter(|line| line["dir"].is_null())
+        .filter(|line| {
+            line["run"].as_array().is_some_and(|run| {
+                !run.iter()
+                    .any(|word| matches!(word.as_str(), Some("--name-only" | "--keep-base")))
+            })
+        })
 }
 
 /// The gates of `trees`, each a folder with its head, that ended with a
@@ -273,7 +288,7 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     let patch = crate::waited::patch_of(commit);
     let file = crate::waited::file();
     let waited = Waited::read(&file);
-    let kept = kept_at(passes, &crate::ready::record);
+    let kept = kept_at(passes, &crate::ready::record, &written_at);
     let waits_from = waited.since(patch.as_deref(), &here, kept, now);
     let asking = Asking {
         started: places.start(&here, its_gate, now),
@@ -517,7 +532,10 @@ fn heads(places: &Places) -> Vec<(PathBuf, String)> {
 /// kept, from nix-offload's record of it.
 fn passed_at(commit: &str) -> Option<(u64, u64)> {
     let started = started(&crate::ready::record(commit))?;
-    Some((started, kept_at(&[commit], &crate::ready::record)?))
+    Some((
+        started,
+        kept_at(&[commit], &crate::ready::record, &written_at)?,
+    ))
 }
 
 /// Whether `gate`'s change and the one at `head` gave `file`, one of the
@@ -574,12 +592,34 @@ pub fn passed(head: &str, passes: &[&str], files: &[String], ready: &str) -> Exi
 }
 
 /// When the pass a change merges on was kept, in seconds since the epoch:
-/// when the record of the first of `passes` that kept a start was last
-/// written, which nix-offload does as its gate passes.
-fn kept_at(passes: &[&str], record: &dyn Fn(&str) -> String) -> Option<u64> {
+/// when the newest gate at the top of the repository ended, in the record
+/// of the first of `passes` that kept a start. Not when the record was
+/// last written, since checks run later at the same commit add to it: on
+/// 16 November a pass that ended at 13:52 was written to again at 14:06,
+/// and its branch, with no pull request, held readers of the kit behind
+/// it for ten minutes more. A record from before ends were kept is read
+/// by when it was last written, and no end is read as later than that,
+/// since no run ends after its record was written.
+fn kept_at(
+    passes: &[&str],
+    record: &dyn Fn(&str) -> String,
+    written: &dyn Fn(&str) -> Option<u64>,
+) -> Option<u64> {
     let commit = passes
         .iter()
         .find(|commit| started(&record(commit)).is_some())?;
+    let ended = built_runs(&record(commit))
+        .filter_map(|line| line["ended"].as_u64())
+        .max();
+    match (ended, written(commit)) {
+        (Some(ended), Some(written)) => Some(ended.min(written)),
+        (ended, written) => ended.or(written),
+    }
+}
+
+/// When nix-offload's record of the run at `commit` was last written, in
+/// seconds since the epoch.
+fn written_at(commit: &str) -> Option<u64> {
     let written = fs::metadata(crate::ready::record_of(commit)?)
         .ok()?
         .modified()
