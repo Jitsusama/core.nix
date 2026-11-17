@@ -11,7 +11,6 @@
 
 use std::collections::BTreeSet;
 
-use serde_json::Value;
 
 use crate::notice::Notice;
 
@@ -278,11 +277,6 @@ impl Holding {
             changed = true;
         }
         changed
-    }
-
-    /// Every record served, one a notice.
-    pub fn records(&self) -> Vec<Value> {
-        self.notices.iter().map(Notice::record).collect()
     }
 
     /// Those kept on disk: all but the transient, which pass unkept.
