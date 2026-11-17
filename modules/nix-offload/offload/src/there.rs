@@ -2511,17 +2511,20 @@ const BOOT_READ: &str = "cat /proc/sys/kernel/random/boot_id 2>/dev/null || \
 /// holds it and the boot it was taken in, made with `ln -s` since that
 /// fails if the link is already there. The shell gives it back as it
 /// ends, unless another run has taken it since. One whose shell is gone,
-/// killed outright or in an earlier boot, or that names no shell, is
-/// taken by the next to look. A run waiting says so at once and about
+/// killed outright or in an earlier boot, or that names no shell or a
+/// pid of 11 digits or more, which no system reaches, is taken by the
+/// next to look. A run waiting says so at once and about
 /// every 5 minutes, or `NIX_OFFLOAD_TURN_EVERY` seconds, so it isn't read
 /// as hung. A turn that can't be made, as a folder in its place or a dead
 /// one in a folder that can't be written, is passed over for the others;
-/// where none can be, or the boot can't be read to name one by, a run
-/// builds without one and says so, rather than wait for a turn that can
-/// never be had. Taking a dead turn back is a look, then a remove, so a
-/// run can remove a turn another took between the two: each run looks a
-/// second after taking its turn, and waits again if it no longer holds
-/// it. Only a run stalled longer than that between its look and its
+/// where none can be on two looks a second apart, since a dead turn
+/// another run is taking back at that moment reads as one that can't be,
+/// or the boot can't be read to name one by, a run builds without one and
+/// says so, rather than wait for a turn that can never be had. Taking a
+/// dead turn back is a look, then a remove, so a run can remove a turn
+/// another took between the two: each run looks a second after taking its
+/// turn, or `NIX_OFFLOAD_TURN_LOOK` seconds, and waits again if it no
+/// longer holds it. Only a run stalled longer than that between its look and its
 /// remove lets an extra build in, until the one whose link it replaced
 /// ends; it never leaves a run waiting for a turn nobody holds. It bounds
 /// only runs that reach the machine as one account.
@@ -2529,7 +2532,7 @@ pub fn in_turn_nearby(command: &str) -> String {
     format!(
         "turns=\"${{NIX_OFFLOAD_TURNS:-$HOME/.cache/nix-offload/turns}}\"; \
          boot=$({BOOT_READ}); mine=\"$$ $boot\"; \
-         here=$(uname -n); turn=; waited=0; \
+         here=$(uname -n); turn=; waited=0; unmadebefore=; \
          trap 'k=1; while [ \"$k\" -le {NEARBY_AT_ONCE} ]; do \
          if [ \"$(readlink \"$turns/$k\" 2>/dev/null)\" = \"$mine\" ]; then rm -f \"$turns/$k\"; fi; \
          k=$((k + 1)); done' EXIT; \
@@ -2544,14 +2547,16 @@ pub fn in_turn_nearby(command: &str) -> String {
          if ln -s \"$mine\" \"$turns/$n\" 2>/dev/null; then turn=\"$turns/$n\"; break; fi; \
          holder=$(readlink \"$turns/$n\" 2>/dev/null); \
          if [ -z \"$holder\" ]; then unmade=$((unmade + 1)); n=$((n + 1)); continue; fi; fi; \
-         pid=${{holder%% *}}; case \"$pid\" in ''|*[!0-9]*|0*) pid=; esac; \
+         pid=${{holder%% *}}; case \"$pid\" in ''|*[!0-9]*|0*|???????????*) pid=; esac; \
          if [ -z \"$pid\" ] || [ \"${{holder#* }}\" != \"$boot\" ] || [ \"$pid\" = \"$$\" ] || \
          ! kill -0 \"$pid\" 2>/dev/null; then \
          if rm -f \"$turns/$n\" 2>/dev/null; then continue; fi; unmade=$((unmade + 1)); fi; \
          n=$((n + 1)); done; \
-         if [ -n \"$turn\" ]; then sleep 1; \
+         if [ -n \"$turn\" ]; then sleep \"${{NIX_OFFLOAD_TURN_LOOK:-1}}\"; \
          if [ \"$(readlink \"$turn\" 2>/dev/null)\" = \"$mine\" ]; then break; fi; turn=; fi; \
-         if [ \"$unmade\" -ge {NEARBY_AT_ONCE} ]; then turn=none; break; fi; \
+         if [ \"$unmade\" -ge {NEARBY_AT_ONCE} ]; then \
+         if [ -n \"$unmadebefore\" ]; then turn=none; break; fi; unmadebefore=1; sleep 1; continue; fi; \
+         unmadebefore=; \
          if [ $((waited % ${{NIX_OFFLOAD_TURN_EVERY:-300}})) -eq 0 ]; then echo \"nix-offload: \
          $here already runs as many builds sent to it as it takes at once, so this waits there \
          for its turn, held in $turns\" >&2; fi; \
@@ -5134,6 +5139,12 @@ mod tests {
             // kill -0 0 asks of the whole group, so always answers.
             (format!("0 {boot}"), "naming no shell"),
             (format!("00 {boot}"), "naming no shell in two zeros"),
+            // No system's pids reach 11 digits, and zsh can read one that
+            // overflows as a live shell.
+            (
+                format!("99999999999999999999 {boot}"),
+                "naming a pid past any system's",
+            ),
         ];
         for (holder, why) in gone {
             for shell in ["dash", "zsh"] {
@@ -5188,6 +5199,92 @@ mod tests {
     }
 
     #[test]
+    fn a_run_waiting_as_its_turns_folder_is_removed_makes_it_again_and_takes_a_turn() {
+        // Someone clearing ~/.cache would otherwise send every waiting run
+        // to build with no turn at all.
+        let boot = this_boot();
+        let live = format!("{} {boot}", std::process::id());
+        for shell in ["dash", "zsh"] {
+            let folder = tempfile::tempdir().unwrap();
+            let turns = folder.path().join("turns");
+            fs::create_dir(&turns).unwrap();
+            for n in 1..=NEARBY_AT_ONCE {
+                held_turn(&turns, n, &live);
+            }
+            let mut waiting = Command::new(shell)
+                .args(["-c", &in_turn_nearby("readlink \"$NIX_OFFLOAD_TURNS/1\"")])
+                .env("NIX_OFFLOAD_TURNS", &turns)
+                .env("NIX_OFFLOAD_TURN_EVERY", "1")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let said = BufReader::new(waiting.stderr.take().unwrap());
+            let (tell, told) = mpsc::channel();
+            let reading = thread::spawn(move || {
+                let mut lines = Vec::new();
+                for line in said.lines().map_while(Result::ok) {
+                    let _ = tell.send(());
+                    lines.push(line);
+                }
+                lines
+            });
+            told.recv_timeout(Duration::from_secs(30))
+                .unwrap_or_else(|_| panic!("{shell} never said it waited"));
+            fs::remove_dir_all(&turns).unwrap();
+            let taker = waiting.id();
+            let ran = ended(waiting);
+            let said = reading.join().unwrap();
+            assert_eq!(ran.status.code(), Some(0), "{shell}: {ran:?}");
+            assert_eq!(
+                String::from_utf8_lossy(&ran.stdout),
+                format!("{taker} {boot}\n"),
+                "{shell} didn't take a turn in the folder made again: {said:?}"
+            );
+            assert!(
+                !said.iter().any(|line| line.contains("without one")),
+                "{shell}: {said:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_mac_names_its_turns_by_its_boot_session() {
+        // A Mac has no /proc, so its boot is read through sysctl.
+        let bin = tempfile::tempdir().unwrap();
+        crate::testing::executable(&bin.path().join("cat"), "#!/bin/sh\nexit 1\n");
+        crate::testing::executable(
+            &bin.path().join("sysctl"),
+            "#!/bin/sh\n[ \"$*\" = '-n kern.bootsessionuuid' ] || exit 1\n\
+             echo F272A3D6-9C37-42E5-9C6B-85DEF0D09E02\n",
+        );
+        let path = format!(
+            "{}:{}",
+            bin.path().display(),
+            std::env::var("PATH").unwrap()
+        );
+        for shell in ["dash", "zsh"] {
+            let turns = tempfile::tempdir().unwrap();
+            let taking = Command::new(shell)
+                .args(["-c", &in_turn_nearby("readlink \"$NIX_OFFLOAD_TURNS/1\"")])
+                .env("NIX_OFFLOAD_TURNS", turns.path())
+                .env("PATH", &path)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let taker = taking.id();
+            let ran = ended(taking);
+            assert_eq!(ran.status.code(), Some(0), "{shell}: {ran:?}");
+            assert_eq!(
+                String::from_utf8_lossy(&ran.stdout),
+                format!("{taker} F272A3D6-9C37-42E5-9C6B-85DEF0D09E02\n"),
+                "{shell}: {ran:?}"
+            );
+        }
+    }
+
+    #[test]
     fn a_run_gives_back_its_turn_whatever_its_command_leaves_in_its_names() {
         // A build's command runs in the same shell, so may set anything.
         for shell in ["dash", "zsh"] {
@@ -5218,6 +5315,8 @@ mod tests {
                 ])
                 .env("NIX_OFFLOAD_TURNS", turns.path())
                 .env("NIX_OFFLOAD_TURN_EVERY", "1")
+                // Long enough to swap its turn on a loaded builder.
+                .env("NIX_OFFLOAD_TURN_LOOK", "5")
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -5228,8 +5327,9 @@ mod tests {
                 assert!(Instant::now() < deadline, "{shell} never took turn 1");
                 thread::sleep(Duration::from_millis(10));
             }
-            fs::remove_file(turns.path().join("1")).unwrap();
-            held_turn(turns.path(), 1, &live);
+            // Swapped whole, so the run never reads the place empty.
+            held_turn(turns.path(), 0, &live);
+            fs::rename(turns.path().join("0"), turns.path().join("1")).unwrap();
             let said = BufReader::new(taking.stderr.take().unwrap());
             let (tell, told) = mpsc::channel();
             let reading = thread::spawn(move || {
@@ -5310,6 +5410,64 @@ mod tests {
             assert_eq!(String::from_utf8_lossy(&ran.stderr), "", "{shell}");
             assert!(turns.path().join("1").is_dir(), "{shell} took the folder");
         }
+    }
+
+    #[test]
+    fn a_run_finding_no_turn_it_can_make_looks_again_before_building_without_one() {
+        // A dead turn another run is taking back at that moment reads as
+        // one that can't be made, so one look alone would send a run in a
+        // burst to build with no turn. Here the stray folder in turn 1's
+        // place is cleared as the run makes its turns' folder a second time.
+        let bin = tempfile::tempdir().unwrap();
+        crate::testing::executable(
+            &bin.path().join("mkdir"),
+            &format!(
+                "#!/bin/sh\nif [ -e \"$NIX_OFFLOAD_TURNS/looked\" ]; then \
+                 rmdir \"$NIX_OFFLOAD_TURNS/1\" 2>/dev/null; \
+                 else : > \"$NIX_OFFLOAD_TURNS/looked\"; fi\nexec {} \"$@\"\n",
+                which("mkdir")
+            ),
+        );
+        let path = format!(
+            "{}:{}",
+            bin.path().display(),
+            std::env::var("PATH").unwrap()
+        );
+        for shell in ["dash", "zsh"] {
+            let turns = tempfile::tempdir().unwrap();
+            for n in 1..=NEARBY_AT_ONCE {
+                fs::create_dir(turns.path().join(n.to_string())).unwrap();
+            }
+            let taking = Command::new(shell)
+                .args(["-c", &in_turn_nearby("readlink \"$NIX_OFFLOAD_TURNS/1\"")])
+                .env("NIX_OFFLOAD_TURNS", turns.path())
+                .env("PATH", &path)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let taker = taking.id();
+            let ran = ended(taking);
+            assert_eq!(ran.status.code(), Some(0), "{shell}: {ran:?}");
+            assert_eq!(
+                String::from_utf8_lossy(&ran.stdout),
+                format!("{taker} {}\n", this_boot()),
+                "{shell} built without the turn freed on its second look: {ran:?}"
+            );
+            assert_eq!(String::from_utf8_lossy(&ran.stderr), "", "{shell}");
+        }
+    }
+
+    /// Where `program` is on this PATH.
+    fn which(program: &str) -> String {
+        std::env::var("PATH")
+            .unwrap()
+            .split(':')
+            .map(|folder| Path::new(folder).join(program))
+            .find(|path| path.is_file())
+            .unwrap_or_else(|| panic!("no {program} on PATH"))
+            .display()
+            .to_string()
     }
 
     #[test]
