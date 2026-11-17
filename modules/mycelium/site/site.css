@@ -557,14 +557,16 @@ body {
   stroke-linecap: round;
 }
 
-.hub.quiet .m-spokes {
+.hub.quiet .m-spokes,
+.knot.quiet .m-spokes {
   stroke: var(--muted);
   stroke-width: 1.75;
 }
 
 /* A network with no cell at work: its hub, cord and ground in the muted
    ink, which still clears 3:1 as a mark, so the live ones lead. */
-.hub.quiet .m-hub {
+.hub.quiet .m-hub,
+.knot.quiet .m-hub {
   stroke: var(--muted);
   stroke-width: 1.75;
 }
@@ -669,7 +671,8 @@ body {
 }
 
 .cell,
-.hub {
+.hub,
+.knot {
   cursor: pointer;
 }
 
@@ -678,7 +681,8 @@ body {
 .cell.hover .m-membrane,
 .cell.hover .m-dormant,
 .cell.hover .m-receptor,
-.hub:hover .m-hub {
+.hub:hover .m-hub,
+.knot:hover .m-hub {
   stroke: var(--strong);
   stroke-width: 2.5;
 }
@@ -686,7 +690,8 @@ body {
 .cell.chosen .m-membrane,
 .cell.chosen .m-dormant,
 .cell.chosen .m-receptor,
-.hub.chosen .m-hub {
+.hub.chosen .m-hub,
+.knot.chosen .m-hub {
   stroke: var(--strong);
   stroke-width: 4;
 }

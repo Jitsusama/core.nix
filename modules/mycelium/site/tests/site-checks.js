@@ -141,7 +141,8 @@
     if (marks('[data-key^="m:"]').length > 0) {
       faults.push("layer: the whole map draws machines before m asks for them; they are a layer of their own");
     }
-    const hubs = marks('[data-key^="h:"]').length;
+    // A knot, a network with no leader, is a network too.
+    const hubs = marks('[data-key^="h:"], [data-key^="n:"]').length;
     // The name the keys rest on is what he's engaged with, which keeps its
     // name wherever it is, so it counts against no budget.
     const whole = names().filter((el) => !el.classList.contains("strong")).length;
