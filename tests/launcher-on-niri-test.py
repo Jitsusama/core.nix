@@ -46,6 +46,9 @@ SEEING_ENDS = timedelta(seconds=4)
 # How long a place's members take to say their first answers once it's stepped into, each of
 # which makes the step again: a change told after it is said only by the row it moves.
 SETTLED = timedelta(seconds=3)
+# How long no key is said presented before every key pressed counts as shown: a key's frame
+# comes within a few, and its record a moment after.
+PRESENTED_STILL = timedelta(milliseconds=500)
 # How long before its line a chord is said to have run, well past any opening's own time here.
 CHORD_AGO = timedelta(seconds=2)
 # How long the shell is held stopped just after a chord, well past any opening's own time here.
@@ -4695,19 +4698,28 @@ def test_a_step_out_putting_words_back_is_timed_as_the_step(shell: Shell) -> Non
 def minus_presented(shell: Shell, out: Callable[[Json], object]) -> list[Json]:
     """Press - from normal, wait until the launcher is `out`, and give every key presented since.
 
-    It waits on past the first, so a second timing a frame later is seen.
+    It counts from once the keys before it are all presented, a step in's a frame behind its
+    rows, and waits on past the first since, so a second timing a frame later is seen.
     """
     shell.normal()
-    before = len(json.loads(shell.as_account(shell.ipc("keysPresented"))))
+    before = len(keys_presented_settled(shell))
     shell.send_chars("-")
     shell.launcher_until(out)
+    return keys_presented_settled(shell)[before:]
+
+
+def keys_presented_settled(shell: Shell) -> list[Json]:
+    """Give the keys the launcher said presented, once no more have come for PRESENTED_STILL."""
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    presented: list[Json] = []
-    while not presented and time.monotonic() < deadline:
-        presented = json.loads(shell.as_account(shell.ipc("keysPresented")))[before:]
+    presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
+    still = time.monotonic()
+    while time.monotonic() - still < PRESENTED_STILL.total_seconds():
+        assert time.monotonic() < deadline, f"keys kept being presented: {presented}"
         time.sleep(launcher_on_niri.POLL)
-    time.sleep(0.5)
-    return cast("list[Json]", json.loads(shell.as_account(shell.ipc("keysPresented")))[before:])
+        now = json.loads(shell.as_account(shell.ipc("keysPresented")))
+        if len(now) != len(presented):
+            presented, still = now, time.monotonic()
+    return cast("list[Json]", presented)
 
 
 def moved_presented(shell: Shell, written: float, deadline: float) -> list[Json]:
