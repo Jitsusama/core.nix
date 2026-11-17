@@ -4712,6 +4712,24 @@ def test_a_step_in_from_typed_words_is_timed_once_as_the_step(shell: Shell) -> N
     assert steps == ["\u2192 Programs"], f"Return into Programs wasn't timed once: {presented}"
 
 
+def test_a_step_in_through_the_place_holding_it_is_timed_once_as_the_step(shell: Shell) -> None:
+    """Return into Power, which sits in Machine, is timed once, as the step into Power.
+
+    A place found from the top that sits in another is stepped into through it, and that step
+    was timed only as the field's emptying, naming no place (a council, 2026-11-17).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("power")
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Power")
+    before = len(keys_presented_settled(shell))
+    shell.step_in()
+    presented = keys_presented_settled(shell)[before:]
+    shell.close_launcher()
+    steps = [one.get("step") for one in presented]
+    assert steps == ["\u2192 Power"], f"Return into Power wasn't timed once: {presented}"
+
+
 def minus_presented(shell: Shell, out: Callable[[Json], object]) -> list[Json]:
     """Press - from normal, wait until the launcher is `out`, and give every key presented since.
 

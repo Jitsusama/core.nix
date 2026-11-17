@@ -5029,10 +5029,23 @@ Scope {
             && !!row.key && !row.confirm;
         // A place found from the top that sits in another is stepped into
         // through it, so the path says where it lives.
+        // A step taken while an opening is still timed is its opening's, as
+        // Super+N steps through For You onto the notices on screen, and
+        // timed in the opening's line: open is already true by then, so only
+        // the ask held until its frame tells them apart. Timed again, each of
+        // Joel's "→ On Screen" took its opening's frame, a median 110 ms,
+        // the slowest place in his journal (2026-11-14). The fill's walk
+        // into a kept place is its opening's too, though its frame is
+        // drawn and the ask let go by then: a kept Super+N timed its fill
+        // as "→ On Screen" (a gate, 2026-11-16).
+        const timed = openAsked < 0 && !fillingPlace;
         if (held.length === 0 && row.category && placesAbove(row.category).length > 0) {
             if (meant)
                 learnAfterFrame(typed, row.key);
-            intoCategory(row.category, walk === undefined ? typed : "");
+            listedAsStep(timed, () => intoCategory(row.category,
+                walk === undefined ? typed : ""));
+            if (timed)
+                keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true);
             return went();
         }
         if (steppedAsLed(row))
@@ -5072,36 +5085,29 @@ Scope {
         // it holds (Joel, 2026-10-26: stepping in keeps the match). A step
         // whose line holds its words, as a save's name, puts them back.
         searchParts = null;
-        // The field emptied by a step timed as its own is searched as a
-        // key's change is, but timed only as the step below: timed too,
-        // one Return from what was typed counted twice (a council,
-        // 2026-11-17).
-        const timed = openAsked < 0 && !fillingPlace;
-        if (!passing) {
-            steppingIn = timed;
-            try {
-                listStepped(row);
-            } finally {
-                steppingIn = false;
-            }
-        }
+        if (!passing)
+            listedAsStep(timed, () => listStepped(row));
         // Said as a key's are: making the step's lists, what each part of
         // stepping took, and the search that drew its rows, whose parts
         // restart() left.
         searchParts = trials.stepped(searchParts, { began, made, pushed, opened,
             ended: Date.now(), making: spent });
-        // A step taken while an opening is still timed is its opening's, as
-        // Super+N steps through For You onto the notices on screen, and
-        // timed in the opening's line: open is already true by then, so only
-        // the ask held until its frame tells them apart. Timed again, each of
-        // Joel's "→ On Screen" took its opening's frame, a median 110 ms,
-        // the slowest place in his journal (2026-11-14). The fill's walk
-        // into a kept place is its opening's too, though its frame is
-        // drawn and the ask let go by then: a kept Super+N timed its fill
-        // as "→ On Screen" (a gate, 2026-11-16).
         if (timed)
             keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread);
         return went();
+    }
+
+    // Lists a step's rows, the field emptied or given the row's words as
+    // a key's change is searched; one timed as its own step isn't timed
+    // again as that change: one Return from what was typed counted twice
+    // (a council, 2026-11-17).
+    function listedAsStep(timed, list) {
+        steppingIn = timed;
+        try {
+            list();
+        } finally {
+            steppingIn = false;
+        }
     }
 
     // Lists what a step into a row holds, the row's words in the line.
