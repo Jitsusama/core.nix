@@ -134,7 +134,13 @@ Provider {
         const ids = DesktopEntries.applications.values.map(entry => entry.id);
         return managers.find(one => (one.fills ?? "") !== "" && ids.includes(one.fills)) ?? null;
     }
-    readonly property var offBrowser: offManager === null ? null : browserOf(offManager)
+    // Its browser, read from the same entries rather than through byId,
+    // which can answer null for an entry the list already holds, so a
+    // manager found here always has its browser.
+    readonly property var offBrowser: {
+        const fills = offManager?.fills ?? "";
+        return DesktopEntries.applications.values.find(entry => entry.id === fills) ?? null;
+    }
 
     // What the off row's drawer, and Home's row's, say: why it's off, and
     // what its Return opens meanwhile, where a manager's extension fills in.
@@ -142,7 +148,7 @@ Provider {
         // Sentences a drawer tells, so its words' tells rather than a said run.
         const words = Words.of("passwords").tells ?? {};
         const why = String(words.offWhy ?? "");
-        if (offManager === null)
+        if (offManager === null || offBrowser === null)
             return why;
         const fills = String(words.offFills ?? "").replace("{manager}", offManager.called)
             .replace("{browser}", offBrowser.name);
