@@ -138,7 +138,6 @@ fn usual(shared: &Shared) -> String {
 /// ahead, beside them and with no `order`, so the shell's copy of it
 /// takes its drawer whole without it joining Recent's list.
 pub fn make(shared: &Shared, daemon: &mut Daemon) {
-    daemon.unmade.taken = false;
     made(shared, daemon, &[]);
 }
 
@@ -148,6 +147,7 @@ fn made(shared: &Shared, daemon: &mut Daemon, asked: &[String]) {
     let Some(words) = &shared.taken_words else {
         return;
     };
+    daemon.unmade.taken = false;
     let folders = daemon.folders.clone();
     let taken = listed(daemon);
     let watched = keys_watched(daemon);
