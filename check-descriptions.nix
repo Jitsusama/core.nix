@@ -1725,6 +1725,11 @@
     finds first on its path, a curl speaking wss:// among them, leaving git and gh to the account,
     which may wrap its own; a machine emptying its kit gives none
   '';
+  mycelium-kit-builds-here = ''
+    the kit a machine of the system running the checks is given builds there and holds curl, fd,
+    jq, mycelium, rg and websocat, its curl speaking wss://, so a tool one system lacks fails on
+    that system's checks before a machine of it switches
+  '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session
     outlives, whether work costs money, its taints, its agents by realm, the fences its agent

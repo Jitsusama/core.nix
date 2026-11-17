@@ -691,6 +691,23 @@ in
         ))
       );
 
+  # The kit a machine of this system is given builds here and holds what its
+  # sessions reach for, so a tool one system lacks fails on that system's
+  # checks, the Mac's included, before a machine of it switches.
+  mycelium-kit-builds-here =
+    let
+      words = if pkgs.stdenv.hostPlatform.isDarwin then macNode else lib.splitString " " linuxNode;
+      kit = lib.last words;
+    in
+    pkgs.runCommandLocal "mycelium-kit-builds-here" { } ''
+      for tool in curl fd jq mycelium rg websocat; do
+        test -x "${kit}/bin/$tool" || { echo "the kit at ${kit} lacks $tool"; exit 1; }
+      done
+      "${kit}/bin/curl" --version | grep -q ' wss' \
+        || { echo "the kit's curl doesn't speak wss://"; exit 1; }
+      touch "$out"
+    '';
+
   # A machine that declares what its node can't measure has it written where
   # mycelium reads it, in mycelium's words; Linux's held sessions outlive
   # their window, the node and a suspend, and a Mac claims none yet. A fenced
