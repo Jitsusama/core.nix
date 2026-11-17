@@ -36,6 +36,7 @@ let
     ruff.toml: extend-per-file-ignores isn't read: move it to lint.per-file-ignores.
     ruff.toml: lint.extend-per-file-ignores isn't read: move it to lint.per-file-ignores.
     ruff.toml: lint.per-file-ignores names F401 twice for b.py: keep one.
+    ruff.toml: lint.per-file-ignores gives c.py something but a list of codes.
     ruff.toml is refused, so none of its exceptions is judged.
   '';
 in

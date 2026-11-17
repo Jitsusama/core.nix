@@ -3,6 +3,10 @@
 # rule must name clean.py's exception, twice.py's (the first of the pair),
 # pair.py's F4, printed.py's T201 and noqa.py's, as the check's expected lines
 # say.
+
+# Fixing would change the tree between runs, so each run must fix nothing.
+fix = true
+
 [lint]
 select = ["ALL"]
 # Off everywhere, so an exception for it hides nothing.
@@ -25,3 +29,7 @@ ignore = ["T201"]
 # An unused import its line's noqa hides, so the exception hides nothing,
 # though with it the noqa is unused, a finding that goes with the exception.
 "noqa.py" = ["F401"]
+# Two files: one holds a real unused import, which the exception hides, and
+# one an import its noqa hides. Without the exception one finding comes back
+# as the unused noqa's goes, so their count holds while the exception stays.
+"mixed*.py" = ["F401"]

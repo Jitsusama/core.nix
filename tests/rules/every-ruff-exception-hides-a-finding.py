@@ -79,6 +79,9 @@ def refused(read: dict[str, Any]) -> list[str]:
         if setting(read, *path)
     ]
     for pattern, codes in exceptions(read).items():
+        if not isinstance(codes, list) or not all(isinstance(code, str) for code in codes):
+            said.append(f"lint.per-file-ignores gives {pattern} something but a list of codes.")
+            continue
         said.extend(
             f"lint.per-file-ignores names {code} twice for {pattern}: keep one."
             for code in sorted({code for code in codes if codes.count(code) > 1})
