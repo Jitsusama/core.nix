@@ -240,12 +240,16 @@ mod tests {
             "Woken by 1JQPPC on WCJQSG's ruling da5a35fb (the quest sweep): no, it's stale",
             "Started by 1JQPPC for WCJQSG pivot 6b6ae191: this is broken",
             "Restarted by P9R1KI for the quest's plan, which still fails",
+            "Woken by WCJQSG on its pivot: carry on",
+            "Started by  1JQPPC\nfor the sweep, still broken",
+            "Woken by 1JQPPC's sweep: stale",
         ] {
             assert_eq!(his(note), None, "{note:?} is a peer's");
         }
         for his_own in [
             "Stopped by the launcher again, why",
-            "Fixed by ABC123? no, still broken",
+            "Fixed by ABC123, still broken",
+            "Broken by P9R1KI: the bar is gone",
         ] {
             assert!(his(his_own).is_some(), "{his_own:?} is his");
         }

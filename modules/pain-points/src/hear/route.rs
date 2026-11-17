@@ -366,6 +366,20 @@ mod tests {
         );
         stall.kinds = vec![stalled::KIND.into(), stalled::PROVIDER.into()];
         assert_eq!(owner_of(&stall, &cells, &routes()), Some("PROV01".into()));
+        let mut waited = stall.clone();
+        waited.kinds = vec![stalled::KIND.into()];
+        assert_eq!(
+            owner_of(&waited, &cells, &routes()),
+            Some("ABC123".into()),
+            "a stall the provider didn't cause stays with its cell"
+        );
+        let mut elsewhere = stall.clone();
+        elsewhere.session = "unknown".into();
+        assert_eq!(
+            owner_of(&elsewhere, &cells, &routes()),
+            None,
+            "another realm's session waits, whatever stalled it"
+        );
         let none_named = Routes {
             provider: None,
             ..routes()
