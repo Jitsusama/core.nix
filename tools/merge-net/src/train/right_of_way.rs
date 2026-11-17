@@ -41,6 +41,9 @@ pub enum Way {
     Give,
     /// The train holds it afresh from now, for the riders still aboard.
     Renew,
+    /// The train holds on to it from when it began, for the riders still
+    /// aboard, and it's taken back once its time is up.
+    Keep,
     /// Changes merge alone again.
     TakeBack,
 }
@@ -68,7 +71,7 @@ pub fn follow(root: &Path, ended: &Ended, now: u64) -> Option<String> {
                 RIGHT_OF_WAY / 60
             ))
         }
-        Way::Renew => {
+        Way::Renew | Way::Keep => {
             take_back(root);
             give(root, now);
             Some("the train holds the right of way afresh for the riders still aboard".into())
@@ -200,7 +203,7 @@ mod tests {
         assert_eq!(
             holds(&root, 400),
             None,
-            "a right of way from a clock stepped back held, past its time"
+            "a right of way said to begin later than now held"
         );
         let _ = fs::remove_dir_all(&root);
     }
@@ -223,10 +226,46 @@ mod tests {
             "a train that kept missing held the right of way past its time"
         );
         follow(&root, &Ended::Landed { left: true }, up + 10);
+        assert!(
+            follow(&root, &Ended::Moved, up + 20).is_some(),
+            "a miss after the train landed didn't give it the right of way again"
+        );
         assert_eq!(
-            holds(&root, up + 20),
-            Some(up + 10),
-            "a landing that left riders aboard didn't hold it afresh for them"
+            holds(&root, up + 30),
+            Some(up + 20),
+            "the right of way given again didn't begin at the miss"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_landing_that_leaves_riders_aboard_holds_on_from_when_it_began() {
+        let root = root("keeps");
+        follow(&root, &Ended::Moved, 100);
+        follow(&root, &Ended::Landed { left: true }, 200);
+        assert_eq!(
+            holds(&root, 300),
+            Some(100),
+            "a landing began the right of way afresh, so traffic could keep it for ever"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_run_that_ends_otherwise_gives_the_right_of_way_back() {
+        let root = root("back");
+        follow(&root, &Ended::Moved, 100);
+        assert!(
+            follow(&root, &Ended::Otherwise, 150).is_some(),
+            "giving it back wasn't said"
+        );
+        assert!(
+            !file(&root).exists(),
+            "the right of way given back was left on disk"
+        );
+        assert!(
+            follow(&root, &Ended::Otherwise, 160).is_none(),
+            "giving back one not held said it was given back"
         );
         let _ = fs::remove_dir_all(&root);
     }
@@ -235,7 +274,7 @@ mod tests {
     fn a_run_gives_renews_or_takes_back_the_right_of_way_by_how_it_ended() {
         for (ended, way) in [
             (Ended::Moved, Way::Give),
-            (Ended::Landed { left: true }, Way::Renew),
+            (Ended::Landed { left: true }, Way::Keep),
             (Ended::Landed { left: false }, Way::TakeBack),
             (Ended::Otherwise, Way::TakeBack),
         ] {
