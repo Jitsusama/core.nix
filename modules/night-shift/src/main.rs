@@ -362,6 +362,11 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
                     say(job, &format!("waiting for the turn, which {who} has"));
                     told = Some(who);
                 }
+                // Hours that close while it waits end the wait, rather than
+                // one that runs on to say a later try goes on when none will.
+                if outside_its_hours(job) {
+                    return Ok(None);
+                }
                 if began.elapsed() >= most {
                     return Err(Failure::new(
                         Exit::TryAgain,
@@ -379,8 +384,8 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
             }
         }
     }
-    // A wait for the turn can outlast the hours, so they're read again
-    // once it's had; the lock goes as this returns.
+    // The hours can close between the wait's last look and the turn, so
+    // they're read again once it's had; the lock goes as this returns.
     if told.is_some() && outside_its_hours(job) {
         return Ok(None);
     }

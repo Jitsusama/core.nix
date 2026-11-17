@@ -153,7 +153,8 @@ let
           timer, and the timer the job, at any hour, so keep every try
           within them. Null gives a job on the default tries
           ${nightHours}, and a job naming its own tries no hours at all,
-          as before hours were kept.
+          as before hours were kept; the nearest a job on the default
+          tries comes to none is 00:00-23:59.
         '';
         type = lib.types.nullOr (
           lib.types.addCheck (lib.types.strMatching "${clockTime}-${clockTime}") (
@@ -165,6 +166,9 @@ let
             # would never run.
             lib.elemAt ends 0 != lib.elemAt ends 1
           )
+          // {
+            description = "two clock times, HH:MM-HH:MM, that differ";
+          }
         );
         default = null;
         example = "22:00-02:00";

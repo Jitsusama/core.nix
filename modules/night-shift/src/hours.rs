@@ -90,8 +90,9 @@ unsafe extern "C" {
     fn localtime_r(time: *const i64, out: *mut Tm) -> *mut Tm;
 }
 
-/// The minute of the day now, by the local clock; None when the clock or
-/// its zone can't be read. A test's machine can stand a file holding
+/// The minute of the day now, by the local clock; None when the clock
+/// can't be read. A zone glibc can't read is UTC's, for the timer that
+/// starts the job as much as here, so the two agree. A test's machine can stand a file holding
 /// `HH:MM` in for the clock, named by `NIGHT_SHIFT_CLOCK` and read at each
 /// look, as `NIGHT_SHIFT_PROC` stands in for its pressures.
 pub fn now() -> Option<u16> {

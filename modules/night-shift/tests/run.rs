@@ -6,6 +6,7 @@ mod common;
 
 use common::Folder;
 use std::fs::{self, File};
+use std::io::{BufRead, BufReader, Read};
 use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
 use std::thread;
@@ -215,36 +216,95 @@ fn a_start_outside_its_hours_runs_nothing_and_isnt_a_failure() {
     );
 }
 
-#[test]
-fn a_wait_for_the_turn_that_outlasts_its_hours_runs_nothing() {
-    let machine = Machine::new();
+/// A job within its hours by a stand-in clock at 03:00, waiting for a
+/// turn the test holds, with the hours over by the time the test gives
+/// the clock 06:00 and `then` has run. Gives what it said in all, and
+/// whether it ended as a success.
+fn wait_past_its_hours(machine: &Machine, then: impl FnOnce()) -> (String, bool) {
     let clock = machine.path("clock");
     fs::write(&clock, "03:00\n").unwrap();
-    let held = machine.hold_the_turn();
-    let waiting = machine
+    let mut waiting = machine
         .command("--hours 01:30-05:15 --wait-at-most 10", "echo ran > ran")
         .env("NIGHT_SHIFT_CLOCK", &clock)
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    // Long enough for the job to be waiting for the turn.
-    thread::sleep(Duration::from_millis(300));
+    let mut stdout = BufReader::new(waiting.stdout.take().expect("a piped stdout"));
+    // Its own line says it's past the first look at the hours and
+    // waiting, so the clock moves only once it is.
+    let mut said = String::new();
+    while !said.contains("waiting for the turn") {
+        let read = stdout.read_line(&mut said).expect("a readable stdout");
+        assert!(
+            read > 0,
+            "the job ended without waiting for the turn: {said}"
+        );
+    }
     fs::write(&clock, "06:00\n").unwrap();
-    drop(held);
+    then();
+    stdout.read_to_string(&mut said).expect("a readable stdout");
     let output = waiting.wait_with_output().unwrap();
-    assert!(
-        output.status.success(),
-        "a wait that outlasted its hours failed its unit: {}",
-        said(&output)
-    );
+    said.push_str(&String::from_utf8_lossy(&output.stderr));
+    (said, output.status.success())
+}
+
+#[test]
+fn a_turn_had_once_its_hours_are_over_runs_nothing() {
+    let machine = Machine::new();
+    let held = machine.hold_the_turn();
+    // The turn is free at the wait's next look, which takes it before it
+    // reads the clock.
+    let (said, success) = wait_past_its_hours(&machine, || drop(held));
+    assert!(success, "a turn had past its hours failed its unit: {said}");
     assert!(
         !machine.path("ran").exists(),
-        "a wait that outlasted its hours ran the job by day"
+        "a turn had past its hours ran the job by day"
     );
     assert!(
-        said(&output).contains("06:00 is outside its hours, 01:30-05:15"),
-        "a wait that outlasted its hours didn't say why it ran nothing: {}",
-        said(&output)
+        said.contains("06:00 is outside its hours, 01:30-05:15") && !said.contains("has the turn"),
+        "a turn had past its hours didn't say why it ran nothing: {said}"
+    );
+}
+
+#[test]
+fn hours_closing_while_it_waits_end_the_wait() {
+    let machine = Machine::new();
+    let held = machine.hold_the_turn();
+    let began = Instant::now();
+    let (said, success) = wait_past_its_hours(&machine, || {});
+    drop(held);
+    assert!(success, "a wait its hours ended failed its unit: {said}");
+    assert!(
+        began.elapsed() < Duration::from_secs(8),
+        "a wait its hours ended ran on to its most: {said}"
+    );
+    assert!(
+        said.contains("06:00 is outside its hours, 01:30-05:15")
+            && !said.contains("a later try goes on"),
+        "a wait its hours ended didn't say why it ran nothing: {said}"
+    );
+}
+
+#[test]
+fn a_clock_it_cant_read_runs_nothing() {
+    let machine = Machine::new();
+    let clock = machine.path("clock");
+    fs::write(&clock, "noon\n").unwrap();
+    let ran = machine
+        .command("--hours 01:30-05:15", "echo ran > ran")
+        .env("NIGHT_SHIFT_CLOCK", &clock)
+        .output()
+        .unwrap();
+    assert!(
+        ran.status.success(),
+        "an unread clock failed its unit: {}",
+        said(&ran)
+    );
+    assert!(!machine.path("ran").exists(), "an unread clock ran the job");
+    assert!(
+        said(&ran).contains("an unread clock is outside its hours"),
+        "an unread clock didn't say why it ran nothing: {}",
+        said(&ran)
     );
 }
 

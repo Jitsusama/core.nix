@@ -116,9 +116,9 @@ mod tests {
 
     #[test]
     fn a_units_words_reach_the_job_as_written() {
-        let unit = "run repack --hours 01:30-05:15 --start-under 3 --stop app.slice=1 --stop-machine 25 \
-                    --rests 12 --wait-at-most 1800 --memory-high 12G --reads-at-most /dev/nvme0n1=50M \
-                    -- git -C /srv maintenance run --help";
+        let unit = "run repack --hours 01:30-05:15 --start-under 3 --stop app.slice=1 \
+                    --stop-machine 25 --rests 12 --wait-at-most 1800 --memory-high 12G \
+                    --reads-at-most /dev/nvme0n1=50M -- git -C /srv maintenance run --help";
         let (exit, said, command) = parsed(unit);
         assert_eq!(exit, Exit::Done, "the unit's words were refused: {said}");
         assert_eq!(
