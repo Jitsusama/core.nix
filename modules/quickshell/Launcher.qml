@@ -12965,8 +12965,14 @@ Scope {
                             width: parent.width - x
                             anchors.top: parent.top
                             // Below the empty line, where it says a place
-                            // holds nothing but ways elsewhere.
-                            anchors.topMargin: nothingShown.visible ? root.rowTall : 0
+                            // holds nothing but ways elsewhere. With no row
+                            // to show it holds still: Qt's list drops every
+                            // row it laid aside whenever it moves, so a find
+                            // finding nothing threw them away, and taking it
+                            // back, or - after it, built 3 to 9 rows afresh,
+                            // 14 to 21 ms laying them out (2026-11-17).
+                            anchors.topMargin: nothingShown.visible && root.matches.length > 0
+                                ? root.rowTall : 0
                             anchors.bottom: parent.bottom
                             // How many characters the widest of what graphed rows
                             // have said at their right in this step, as Choice

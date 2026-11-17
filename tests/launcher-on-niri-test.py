@@ -2033,6 +2033,35 @@ def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) 
         assert not differ, f"{place}'s rows drawn otherwise the second time: {differ}"
 
 
+def test_a_find_finding_nothing_keeps_the_rows_it_let_go(shell: Shell) -> None:
+    """Taking back a find that found nothing builds no row, those it let go taken back.
+
+    Qt's list drops every row it has laid aside whenever it moves, and it moved down a row while
+    the line saying nothing was found showed, so the rows a miss let go were gone: Joel's
+    Backspace after one built 3 to 9 rows, 14 to 21 ms laying them out, and his - out of To Try
+    after one built 6 of 7, 20 ms (his journal, 16 and 17 November). Each miss here is typed in
+    Desktop, the second time asserted, as the first may build what the launcher never showed.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    built = []
+    for _ in range(2):
+        shell.type_in("desktop", selecting="Desktop")
+        shell.step_in()
+        shell.launcher_until(functools.partial(stands_in, "Desktop"))
+        missed = "zqxj"
+        shell.type_in(missed)
+        before = int(laid_out(shell)["built"])
+        shell.as_account("wtype " + " ".join(["-k BackSpace"] * len(missed)))
+        shell.launcher_until(lambda shown: shown["typed"] == "" and shown["rows"] != [])
+        built.append(int(laid_out(shell)["built"]) - before)
+        shell.close_launcher()
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+    shell.close_launcher()
+    assert built[1:] == [0], f"rows built taking back each miss in Desktop: {built}"
+
+
 def drawn_rows(laid: Json) -> Iterator[tuple[tuple[str, str], list[tuple[object, ...]]]]:
     """Give each row shown by what it is and reads, with its words as drawn, each in order.
 
