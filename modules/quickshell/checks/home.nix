@@ -179,26 +179,30 @@
       touch $out
     '';
 
-  # Explain It reads one session at a time from the realm's node, tells a
+  # Explain It reads each session on its own from the realm's node, tells a
   # node that can't say from a session it doesn't know, and shows its pi's
   # answer in the act's place only while it's the act's own
-  # (tests/explainer.qml), over a stand-in mycelium that knows one session,
-  # answers another late, never answers a third and can't say a fourth.
-  explain-it-shows-its-own-answer = pkgs.runCommandLocal "explain-it-shows-its-own-answer" { } ''
-    mkdir -p launcher bin runtime && chmod 700 runtime
-    ${copied [ "launcher/Explainer.qml" ]}
-    { echo "#!${pkgs.runtimeShell}"; cat ${../../../tests/explain-it-node.sh}; } > bin/mycelium
-    chmod +x bin/mycelium
-    cp ${../../../tests/explainer.qml} shell.qml
-    cp ${../../../tests/lib/Expect.js} Expect.js
-    cp ${../../../tests/lib/Until.qml} Until.qml
-    touch asked
-    export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-    export FONTCONFIG_FILE=${noFonts} MYCELIUM_ASKED=$PWD/asked PATH=$PWD/bin:$PATH
-    ${shellFolderLint}
-    timeout 60 ${qs} -p shell.qml
-    touch $out
-  '';
+  # (tests/explainer.qml), over a stand-in mycelium (tests/explain-it-node.sh)
+  # that knows one session, answers another late, never answers a third and
+  # can't say a fourth.
+  explain-it-shows-its-own-answer =
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what the shell runs them with.
+    pkgs.runCommandLocal "explain-it-shows-its-own-answer" { } ''
+      mkdir -p launcher bin runtime && chmod 700 runtime
+      ${copied [ "launcher/Explainer.qml" ]}
+      { echo "#!${pkgs.runtimeShell}"; cat ${../../../tests/explain-it-node.sh}; } > bin/mycelium
+      chmod +x bin/mycelium
+      cp ${../../../tests/explainer.qml} shell.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${../../../tests/lib/Until.qml} Until.qml
+      touch asked
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts} MYCELIUM_ASKED=$PWD/asked PATH=$PWD/bin:$PATH
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
 
   # For You's to-dos hold only what Joel can do, now or later, in the order he
   # does them, and a session's want is his only while it's true, as

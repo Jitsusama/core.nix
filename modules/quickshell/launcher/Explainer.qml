@@ -13,6 +13,8 @@
 // so no answer is ever taken for another row's, and a row asked while
 // another is read makes that one the act again, its answer let go when it
 // comes.
+pragma ComponentBehavior: Bound
+
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -133,7 +135,7 @@ Scope {
         id: reading
 
         Process {
-            id: read
+            id: one
 
             required property string key
             required property int patience
@@ -142,41 +144,42 @@ Scope {
             property bool done: false
 
             function settle() {
-                if (done || running || out === undefined || errors === undefined)
+                if (one.done || one.running || one.out === undefined
+                    || one.errors === undefined)
                     return;
-                done = true;
+                one.done = true;
                 // The address is the fifth word asked (Explaining.command).
-                explainer.heard(key, command[4], out, errors);
-                destroy();
+                explainer.heard(one.key, one.command[4], one.out, one.errors);
+                one.destroy();
             }
 
             running: true
             stdout: StdioCollector {
                 onStreamFinished: {
-                    read.out = text;
-                    read.settle();
+                    one.out = text;
+                    one.settle();
                 }
             }
             stderr: StdioCollector {
                 onStreamFinished: {
-                    read.errors = text;
-                    read.settle();
+                    one.errors = text;
+                    one.settle();
                 }
             }
-            onRunningChanged: settle()
+            onRunningChanged: one.settle()
 
             // A node that never answers is given up on, as is a read that
             // couldn't start, which ends neither stream.
             property Timer waiting: Timer {
-                interval: read.patience
+                interval: one.patience
                 running: true
                 onTriggered: {
-                    if (read.done)
+                    if (one.done)
                         return;
-                    read.done = true;
-                    read.running = false;
-                    explainer.heard(read.key, "", null, null);
-                    read.destroy();
+                    one.done = true;
+                    one.running = false;
+                    explainer.heard(one.key, "", null, null);
+                    one.destroy();
                 }
             }
         }

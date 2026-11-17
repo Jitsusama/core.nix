@@ -168,10 +168,10 @@ ShellRoot {
         interval: 1500
         onTriggered: {
             try {
-                same("the first's late answer is never the pi's question",
-                    ask.asked, posedBefore + 1);
-                expect("and never named", !ask.posed.includes("Slow Work"), ask.posed);
-                same("and the first stays the act", explainer.shown("d"), null);
+                Expect.same("the first's late answer is never the pi's question",
+                    ask.asked, lateCheck.posedBefore + 1);
+                Expect.expect("and never named", !ask.posed.includes("Slow Work"), ask.posed);
+                Expect.same("and the first stays the act", explainer.shown("d"), null);
                 root.hung();
             } catch (error) {
                 Expect.fail(error.message);
