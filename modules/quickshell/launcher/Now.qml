@@ -1127,8 +1127,9 @@ Provider {
 
     // A look's row: its title, why in its note, its kind's mark, and at its
     // side the strongest reason it's there, or, in History, how it went and
-    // when. Return opens it, or goes to a terminal's session; the right
-    // arrow holds that, then each of its choices while it waits and none
+    // when. Return opens it, or goes to a terminal's session; its acts,
+    // stepped into with Tab as any row holding rows is (QueryKeys.js's
+    // into), hold that, then each of its choices while it waits and none
     // is given, then Talk and Go To on the cell behind it (cellActs), then
     // Clear It, an ending act d does and Return never does.
     // A choice is an answer, which ends nothing, so one Return sends it
