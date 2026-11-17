@@ -796,7 +796,7 @@ pub fn summary(report: &Report) -> String {
     for s in &report.stays {
         let _ = writeln!(
             out,
-            "\n{}, from {} for {}, against {} up and {} down Mbit/s",
+            "\n{}, from {} for {}, against {} up and {} down Mb/s",
             s.network,
             moment(s.began_ms),
             span(s.seconds),
@@ -836,7 +836,7 @@ fn judged_lines(out: &mut String, judged: &bars::Judged) {
             .map_or_else(|| "-".to_owned(), |h| format!("{:.0}%", h * 100.0));
         let _ = writeln!(
             out,
-            "{name}, against {} Mbit/s up for {}: breached {} in {} spells, longest {}; \
+            "{name}, against {} Mb/s up for {}: breached {} in {} spells, longest {}; \
              {} cuts, {} on its own delay; held {hold} of it while busy",
             mbit(bar.anchor),
             span(bar.seconds),

@@ -1531,7 +1531,7 @@ fn bytes_kbit(bytes: u64, seconds: f64) -> u64 {
 }
 
 fn mbit(kbit: u64) -> String {
-    format!("{:.1} Mbit/s", float(kbit) / 1000.0)
+    format!("{:.1} Mb/s", float(kbit) / 1000.0)
 }
 
 /// Whether systemd is restarting `unit`. When it can't say, it isn't, so
