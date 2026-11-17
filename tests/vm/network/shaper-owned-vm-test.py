@@ -114,9 +114,12 @@ class Rig:
             f" {BIN}/cat /dev/zero > /dev/tcp/{FAR}/{port}; done) & done; wait'"
         )
 
-    def app_share(self) -> float:
-        """Give the app's share of what the server takes, once its upload is under way."""
-        self.uploads("app-upload", "app.slice", 1, APP_PORT)
+    def app_share(self, slice_name: str = "app.slice") -> float:
+        """Give the app's share of what the server takes, once its upload is under way.
+
+        The app's one upload runs in `slice_name`, an app's own unless a test says otherwise.
+        """
+        self.uploads("app-upload", slice_name, 1, APP_PORT)
         started = self.taken().get(APP_PORT, 0)
         retry(
             lambda _last_try: self.taken().get(APP_PORT, 0) - started >= APP_STARTS,
@@ -184,6 +187,39 @@ def test_an_app_outruns_the_jobs(loaded: Rig) -> None:
     share = loaded.app_share()
     assert share > SHAPED_SHARE, (
         f"the app got {share:.2f} of the line at {loaded.up()} kbit/s:\n{loaded.trace()}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("slice_name", "name"),
+    [
+        # A unit directly in jobs, at depth 5, as the deploy's scope was.
+        ("jobs.slice", "app-upload.service"),
+        # A quest's cell, at depth 7, with the upload a unit in it.
+        ("jobs-work-delta-qest20261116abcdef.slice", "QEST-20261116-ABCDEF"),
+    ],
+)
+def test_work_put_first_outruns_the_jobs(loaded: Rig, slice_name: str, name: str) -> None:
+    """An upload in jobs that its account has put first gets most of the connection.
+
+    Without it, the one upload is one of 33 in jobs, as a production deploy was on 16 November
+    beside offload's copies and agents' turns.
+    """
+    folder = "/run/user/1000/shaper/first"
+    loaded.client.succeed(f"su alice -c 'mkdir -p {folder} && touch {folder}/{name}'")
+    try:
+        share = loaded.app_share(slice_name)
+    finally:
+        loaded.client.execute("systemctl -M alice@ --user stop app-upload.service")
+        loaded.client.succeed(f"rm -rf {folder}")
+    assert share > SHAPED_SHARE, (
+        f"work put first got {share:.2f} of the line at {loaded.up()} kbit/s:\n{loaded.trace()}"
+    )
+    # The journal names the cgroup found: the unit itself, or the quest's cell.
+    found = name if name.endswith(".service") else slice_name
+    said = loaded.client.succeed("journalctl -u shaper -o cat --no-pager")
+    assert f"putting first, ahead of offload and agents: {found}\n" in said, (
+        f"{found} not said to be first:\n{said}"
     )
 
 

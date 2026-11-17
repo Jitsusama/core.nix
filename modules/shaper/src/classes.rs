@@ -11,6 +11,8 @@ use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::first;
+
 /// The sets the table declares, each with the depth its rule matches at.
 /// The depths count from /sys/fs/cgroup: build.slice is 1,
 /// system.slice/nix-daemon.service 2, an account's jobs.slice 4
@@ -50,6 +52,19 @@ pub struct Sets {
     /// The protocols whose every packet from an app goes as video, which
     /// `calling` gives: UDP while a call is on, and none otherwise.
     pub calling: Vec<String>,
+    /// The work in jobs a session has put first, which `first::find` finds,
+    /// by its depth: 5 to 8, since nft matches a cgroup at one depth.
+    pub first: first::Firsts,
+}
+
+/// Whether nft reads `name`, between quotes in root's script, as the one
+/// name it is: a cgroup's name is chosen by whoever made it, and jobs is
+/// the account's own to make cgroups in, so a quote or a line in one would
+/// otherwise be read as commands. The characters systemd names units with,
+/// and the slashes between them, are all a cgroup the shaper sorts needs.
+pub fn sayable(name: &str) -> bool {
+    let plain = |c: char| c.is_ascii_alphanumeric() || "._@:/-\\".contains(c);
+    !name.is_empty() && name.chars().all(plain)
 }
 
 /// The `calling` set's members: while a call is on, an app's UDP is the
@@ -247,7 +262,7 @@ fn units(root: &Path, sessions: &[Session], want: bool) -> Vec<String> {
 }
 
 /// Every account's user manager: user.slice/user-<uid>.slice/user@<uid>.service.
-fn managers(root: &Path) -> Vec<String> {
+pub fn managers(root: &Path) -> Vec<String> {
     let mut found = Vec::new();
     let Ok(accounts) = fs::read_dir(root.join("user.slice")) else {
         return found;
@@ -286,11 +301,12 @@ pub fn transaction(table: &str, sets: &Sets, local: &Local) -> String {
     let mut out = String::new();
     let mut fill = |name: &str, elements: &[String], quote: bool| {
         let _ = writeln!(out, "flush set inet {table} {name}");
-        if !elements.is_empty() {
-            let items: Vec<String> = elements
-                .iter()
-                .map(|e| if quote { format!("\"{e}\"") } else { e.clone() })
-                .collect();
+        let items: Vec<String> = elements
+            .iter()
+            .filter(|e| !quote || sayable(e))
+            .map(|e| if quote { format!("\"{e}\"") } else { e.clone() })
+            .collect();
+        if !items.is_empty() {
             let _ = writeln!(
                 out,
                 "add element inet {table} {name} {{ {} }}",
@@ -304,6 +320,9 @@ pub fn transaction(table: &str, sets: &Sets, local: &Local) -> String {
     fill("voice2", &sets.voice2, true);
     fill("app4", &sets.app4, true);
     fill("video5", &sets.video5, true);
+    for (n, set) in sets.first.iter().enumerate() {
+        fill(&format!("first{}", n + first::DEPTH), set, true);
+    }
     fill("awaited5", &sets.awaited5, true);
     fill("bulk5", &sets.bulk5, true);
     fill("typed5", &sets.typed5, true);
@@ -604,6 +623,52 @@ mod tests {
         assert!(text.contains("add element inet shaper local4 { 192.168.4.0/22 }\n"));
         assert!(text.contains("flush set inet shaper local6\nflush set inet shaper uplinks\n"));
         assert!(text.ends_with("add element inet shaper uplinks { \"enp1\" }\n"));
+    }
+
+    #[test]
+    fn names_systemd_makes_are_sayable() {
+        for name in [
+            "user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice",
+            "jobs-work-delta-qest202611162lnvls.slice/work-1-2.scope",
+            "app.slice/app-kitty\\x2dquick-1234.scope",
+            "run-u12.service",
+            "dbus-:1.2-org.a11y.atspi.Registry@0.service",
+        ] {
+            assert!(sayable(name), "{name} was left out of the sets");
+        }
+    }
+
+    #[test]
+    fn a_name_nft_could_misread_is_left_out() {
+        let mut sets = Sets::default();
+        let sly = "user.slice/a/b/jobs.slice/x\" }\nflush ruleset\n\
+                   add element inet shaper bulk4 { \"y";
+        sets.bulk4 = vec![sly.into(), "user.slice/a/b/jobs.slice".into()];
+        sets.first[0] = vec![sly.into()];
+        let text = transaction("shaper", &sets, &Local::default());
+        assert!(
+            !text.contains("flush ruleset"),
+            "a cgroup's name reached root's nft script as commands: {text}"
+        );
+        assert!(
+            text.contains("bulk4 { \"user.slice/a/b/jobs.slice\" }"),
+            "the plain name beside it was lost: {text}"
+        );
+    }
+
+    #[test]
+    fn work_put_first_fills_a_set_for_its_depth() {
+        let mut sets = Sets::default();
+        sets.first[2] = vec!["user.slice/a/b/jobs.slice/c/d/e.slice".into()];
+        let text = transaction("shaper", &sets, &Local::default());
+        assert!(
+            text.contains(
+                "flush set inet shaper first6\nflush set inet shaper first7\n\
+                 add element inet shaper first7 { \"user.slice/a/b/jobs.slice/c/d/e.slice\" }\n\
+                 flush set inet shaper first8\n"
+            ),
+            "each depth's set is emptied and filled: {text}"
+        );
     }
 
     #[test]
