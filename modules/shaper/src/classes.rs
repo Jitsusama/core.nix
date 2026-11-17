@@ -62,7 +62,7 @@ pub struct Sets {
 /// the account's own to make cgroups in, so a quote or a line in one would
 /// otherwise be read as commands. The characters systemd names units with,
 /// and the slashes between them, are all a cgroup the shaper sorts needs.
-fn sayable(name: &str) -> bool {
+pub fn sayable(name: &str) -> bool {
     let plain = |c: char| c.is_ascii_alphanumeric() || "._@:/-\\".contains(c);
     !name.is_empty() && name.chars().all(plain)
 }
@@ -623,6 +623,19 @@ mod tests {
         assert!(text.contains("add element inet shaper local4 { 192.168.4.0/22 }\n"));
         assert!(text.contains("flush set inet shaper local6\nflush set inet shaper uplinks\n"));
         assert!(text.ends_with("add element inet shaper uplinks { \"enp1\" }\n"));
+    }
+
+    #[test]
+    fn names_systemd_makes_are_sayable() {
+        for name in [
+            "user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice",
+            "jobs-work-delta-qest202611162lnvls.slice/work-1-2.scope",
+            "app.slice/app-kitty\\x2dquick-1234.scope",
+            "run-u12.service",
+            "dbus-:1.2-org.a11y.atspi.Registry@0.service",
+        ] {
+            assert!(sayable(name), "{name} was left out of the sets");
+        }
     }
 
     #[test]

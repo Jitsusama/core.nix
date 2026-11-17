@@ -25,9 +25,14 @@ pub const DEPTH: usize = 5;
 /// was forgotten mustn't hold the upload for good.
 pub const FOR: Duration = Duration::from_hours(2);
 
-/// The most names an account's shaper/first is read for at each step, so a
-/// folder filled by mistake can't slow the shaper's loop.
+/// The most names put first an account's shaper/first is heeded for at
+/// each step, counting only those still held.
 pub const MOST: usize = 16;
+
+/// The most entries of the folder looked at each step, lapsed ones too,
+/// so a folder filled by mistake can't slow the shaper's loop, while a
+/// few names left behind can't crowd out a fresh one.
+pub const LOOKED: usize = 256;
 
 /// What's put first, by depth, as each of the `first` sets holds it.
 pub type Firsts = [Vec<String>; DEPTHS];
@@ -40,7 +45,7 @@ pub struct Heed {
 
 impl Heed {
     /// What's put first now, saying so in the journal when it changes, so
-    /// a name that matched nothing, or one let go, shows there.
+    /// work let go shows there, and work named but not found doesn't.
     pub fn heed(&mut self, root: &Path, run: &Path) -> Firsts {
         let now = find(root, run, SystemTime::now());
         if now != self.held {
@@ -73,8 +78,10 @@ fn say(first: &Firsts) {
 /// and any other name a unit of that name, never a slice, which would lift
 /// a whole tier of the agents' work. A name not touched within `FOR` of
 /// `now`, either way, is let go, so a date set ahead can't hold it. The
-/// folder is the account's, so a link in it isn't followed and only `MOST`
-/// names are read.
+/// folder is the account's, so a link in it isn't followed, only `LOOKED`
+/// entries are looked at and only `MOST` held names heeded, and a cgroup
+/// whose name nft could misread is left out here, so the journal never
+/// names work the sets didn't get.
 pub fn find(root: &Path, run: &Path, now: SystemTime) -> Firsts {
     let mut found = Firsts::default();
     for manager in classes::managers(root) {
@@ -102,9 +109,10 @@ pub fn find(root: &Path, run: &Path, now: SystemTime) -> Firsts {
         };
         let wanted: Vec<String> = names
             .flatten()
-            .take(MOST)
+            .take(LOOKED)
             .filter(|name| name.metadata().and_then(|m| m.modified()).is_ok_and(held))
             .filter_map(|name| name.file_name().into_string().ok())
+            .take(MOST)
             .collect();
         if !wanted.is_empty() {
             seek(
@@ -136,6 +144,9 @@ fn seek(root: &Path, path: &str, depth: usize, wanted: &[String], found: &mut Fi
             continue;
         }
         let here = format!("{path}/{name}");
+        if !classes::sayable(&here) {
+            continue;
+        }
         if wanted.iter().any(|want| names(want, &name)) {
             found[depth - DEPTH].push(here);
         } else if depth + 1 < DEPTH + DEPTHS {
@@ -221,18 +232,68 @@ mod tests {
              jobs-work-delta-qest20261115zejah1.slice"
         );
         let deploy = format!("{ACCOUNT}/jobs.slice/delta-deploy-1801.scope");
+        let shallow =
+            format!("{ACCOUNT}/jobs.slice/jobs-work.slice/jobs-work-qest20261117abcdef.slice");
+        let deep = format!("{other}/work-9-9.scope");
         let root = tree(&[
             &format!("{cell}/work-1-2.scope"),
-            &other,
+            &deep,
             &deploy,
+            &shallow,
             &format!("{ACCOUNT}/jobs.slice/delta-deploy-2045.scope"),
+            &format!("{ACCOUNT}/app.slice/work-9-9.scope"),
+            &format!("{ACCOUNT}/app.slice/delta-deploy-1801.scope"),
         ]);
         let run = tree(&[]);
-        put_first(&run, &["QEST-20261116-2LNVLS", "delta-deploy-1801.scope"]);
+        put_first(
+            &run,
+            &[
+                "QEST-20261116-2LNVLS",
+                "QEST-20261117-ABCDEF",
+                "delta-deploy-1801.scope",
+                "work-9-9.scope",
+            ],
+        );
         assert_eq!(
             find(&root, &run, SystemTime::now()),
-            [vec![deploy], vec![], vec![cell], vec![]],
-            "the quest's cell at 7 and the named unit at 5, nothing else"
+            [vec![deploy], vec![shallow], vec![cell], vec![deep]],
+            "each at its depth from 5 to 8, in jobs alone, and nothing else"
+        );
+    }
+
+    #[test]
+    fn names_left_behind_crowd_out_no_fresh_one() {
+        let deploy = format!("{ACCOUNT}/jobs.slice/delta-deploy-1801.scope");
+        let root = tree(&[&deploy]);
+        let run = tree(&[]);
+        let folder = run.join("1000/shaper/first");
+        let old = SystemTime::now() - 3 * FOR;
+        for n in 0..2 * MOST {
+            let name = format!("old-{n}.scope");
+            put_first(&run, &[&name]);
+            let file = fs::File::options()
+                .write(true)
+                .open(folder.join(&name))
+                .unwrap();
+            file.set_modified(old).unwrap();
+        }
+        put_first(&run, &["delta-deploy-1801.scope"]);
+        assert_eq!(
+            find(&root, &run, SystemTime::now())[0],
+            vec![deploy],
+            "lapsed names nobody removed hid a fresh one"
+        );
+    }
+
+    #[test]
+    fn work_nft_could_misread_is_not_said_to_be_first() {
+        let root = tree(&[&format!("{ACCOUNT}/jobs.slice/x\"y.scope")]);
+        let run = tree(&[]);
+        put_first(&run, &["x\"y.scope"]);
+        assert_eq!(
+            find(&root, &run, SystemTime::now()),
+            Firsts::default(),
+            "work the sets would drop was still found, so the journal named it"
         );
     }
 

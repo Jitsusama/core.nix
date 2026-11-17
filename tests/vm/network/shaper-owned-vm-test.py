@@ -215,8 +215,12 @@ def test_work_put_first_outruns_the_jobs(loaded: Rig, slice_name: str, name: str
     assert share > SHAPED_SHARE, (
         f"work put first got {share:.2f} of the line at {loaded.up()} kbit/s:\n{loaded.trace()}"
     )
+    # The journal names the cgroup found: the unit itself, or the quest's cell.
+    found = name if name.endswith(".service") else slice_name
     said = loaded.client.succeed("journalctl -u shaper -o cat --no-pager")
-    assert "putting first, ahead of offload and agents" in said, f"nothing said so:\n{said}"
+    assert f"putting first, ahead of offload and agents: {found}\n" in said, (
+        f"{found} not said to be first:\n{said}"
+    )
 
 
 def test_unshaped(loaded: Rig) -> None:

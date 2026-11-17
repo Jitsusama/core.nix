@@ -101,7 +101,7 @@ chain classify {
   ip6 dscp cs1 goto bulk
 
   # Work a session has put first, by naming its quest or its unit in its
-  # runtime folder's shaper/first (src/classes.rs says how), goes as an
+  # runtime folder's shaper/first (src/first.rs says how), goes as an
   # app's would, ahead of the rest of jobs, offload and agents; what in it
   # marks itself bulk stays bulk, above. On 16 November a production
   # deploy sent 32 KB/s beside offload's copies and agents' turns, until
