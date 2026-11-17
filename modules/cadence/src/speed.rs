@@ -159,6 +159,39 @@ followed
     }
 
     #[test]
+    fn a_screens_keys_are_late_by_their_own_share() {
+        // On 17 November Y2YBTS asked that a day at the monitor be judged
+        // against days at the monitor, its 60 Hz frames half the panel's.
+        let journal = "\
+  INFO qml: launcher: 4 keys presented a median 49 ms from the key, the slowest 76 ms, \
+the p99 76 ms, 1 within 50 ms: a median 1 ms before the shell heard it; on DP-4 at 60 Hz
+  INFO qml: launcher: 4 keys presented a median 20 ms from the key, the slowest 30 ms, \
+the p99 30 ms, 4 within 50 ms; on eDP-1 at 120 Hz
+  INFO qml: launcher: 2 keys presented a median 20 ms from the key, the slowest 30 ms, \
+2 within 50 ms
+";
+        let figures = launcher(journal);
+        let late = |key: &str| figures.get(key).copied();
+        assert_eq!(
+            (
+                late("launcher.keys.late"),
+                late("launcher.keys.late.on.DP-4@60Hz"),
+                late("launcher.keys.late.on.eDP-1@120Hz"),
+            ),
+            (Some(30.0), Some(75.0), Some(0.0)),
+            "a screen's keys weren't counted on their own, or the day's lost them: {figures:?}"
+        );
+        assert_eq!(
+            figures
+                .keys()
+                .filter(|key| key.starts_with("launcher.keys.late.on."))
+                .count(),
+            2,
+            "a line naming no screen was given one: {figures:?}"
+        );
+    }
+
+    #[test]
     fn a_day_without_the_launcher_has_no_launcher_figures() {
         assert!(
             launcher("  INFO qml: notices: shown\n").is_empty(),

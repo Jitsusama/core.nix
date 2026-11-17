@@ -258,6 +258,42 @@ mod tests {
     }
 
     #[test]
+    fn a_screens_late_keys_are_judged_against_that_screens_days() {
+        let monitor = "launcher.keys.late.on.DP-4@60Hz";
+        let before: Vec<Day> = [
+            [
+                ("launcher.keys.late", 10.0),
+                ("launcher.keys.late.on.eDP-1@120Hz", 10.0),
+            ],
+            [
+                ("launcher.keys.late", 10.0),
+                ("launcher.keys.late.on.eDP-1@120Hz", 10.0),
+            ],
+            [("launcher.keys.late", 40.0), (monitor, 40.0)],
+            [("launcher.keys.late", 40.0), (monitor, 40.0)],
+            [("launcher.keys.late", 40.0), (monitor, 40.0)],
+        ]
+        .iter()
+        .map(|figures| day(figures, &[]))
+        .collect();
+        let as_usual = judge(&day(&[(monitor, 40.0)], &[]), &before);
+        assert!(
+            as_usual.worse.is_empty(),
+            "a monitor day as late as monitor days was a regression: {as_usual:?}"
+        );
+        let later = judge(&day(&[(monitor, 60.0)], &[]), &before);
+        assert_eq!(
+            later
+                .worse
+                .iter()
+                .map(|f| f.words.as_str())
+                .collect::<Vec<_>>(),
+            ["the launcher's keys past 50 ms on DP-4 at 60 Hz went from 40% to 60%"],
+            "a monitor day later than monitor days wasn't said so, by its screen"
+        );
+    }
+
+    #[test]
     fn a_figure_is_worse_only_past_a_fifth_and_its_floor() {
         let before: Vec<Day> = [10.0, 11.0, 12.0]
             .iter()

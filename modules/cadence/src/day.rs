@@ -498,6 +498,7 @@ mod tests {
             "launcher.opening.usable",
             "launcher.keys.presented",
             "launcher.keys.late",
+            "launcher.keys.late.on.DP-4@60Hz",
             "launcher.changes.presented",
             "launcher.drawers.presented",
         ] {
