@@ -38,9 +38,11 @@
 //! in either block. A request never answered still counts, since a
 //! shaper starving Joel would look the same.
 
+mod load;
 mod verdict;
 
 use crate::qdisc;
+use load::{STOPPED, stop_scopes};
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -241,17 +243,6 @@ fn scoped(slice: &str, name: &str, command: &[&str]) -> Command {
         .stdin(Stdio::null())
         .stderr(Stdio::null());
     c
-}
-
-/// Stops every scope this proof started.
-fn stop_scopes() {
-    let _ = Command::new("systemctl")
-        .args([
-            "--user",
-            "stop",
-            &format!("shaper-proof-*-{}.scope", std::process::id()),
-        ])
-        .status();
 }
 
 fn systemctl(verb: &str) -> bool {
@@ -462,7 +453,7 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     let mut idle: Vec<f64> = Vec::new();
     let (pairs, complete) = across_windows(
         asked.pairs,
-        || opened(&gate, deadline),
+        || opened(|| gate.open(), deadline, &STOPPED),
         |from| window(&asked, &link, &gate, was_on, from, &mut idle),
     );
     if pairs.is_empty() {
@@ -499,19 +490,6 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     }
 }
 
-/// Starts the agents' uploads, from jobs.slice, each going again as it ends.
-fn load(uploads: u32, server: &str) {
-    let load = format!(
-        "while :; do head -c 400000000 /dev/zero | curl -s -o /dev/null -X POST -T - \
-         --max-time 120 '{server}/__up'; done"
-    );
-    for n in 0..uploads {
-        let _ = scoped("jobs.slice", &format!("load{n}"), &["sh", "-c", &load])
-            .stdout(Stdio::null())
-            .spawn();
-    }
-}
-
 /// Gathers the pairs across Joel's idle windows, `opened` waiting for the
 /// next and `window` measuring from the pair it's given until the gate
 /// closes. Each window starts after the last pair kept, since a pair's
@@ -533,9 +511,9 @@ fn across_windows(
     (kept, true)
 }
 
-/// Waits for the gate to open, until `deadline`.
-fn opened(gate: &Gate, deadline: Instant) -> bool {
-    while !gate.open() {
+/// Waits for `open` to say the gate is open, until `deadline`.
+fn opened(open: impl Fn() -> bool, deadline: Instant, _stopped: &AtomicBool) -> bool {
+    while !open() {
         if Instant::now() >= deadline {
             return false;
         }
@@ -587,7 +565,7 @@ fn window(
             }
         })
     };
-    load(asked.uploads, &asked.server);
+    load::start(asked.uploads, &asked.server);
     let pairs = run_pairs(asked, link, &stop, from);
     let stopped = stop.swap(true, Ordering::Relaxed);
     stop_scopes();
@@ -611,8 +589,7 @@ fn run_pairs(asked: &Asked, link: &str, stop: &AtomicBool, from: u32) -> Vec<[Bl
         let mut done: Vec<Block> = Vec::new();
         for arm in arms(pair) {
             systemctl(if arm == Arm::On { "start" } else { "stop" });
-            // Each arm settles before it counts, as SETTLE says.
-            thread::sleep(SETTLE);
+            settle(stop);
             if stop.load(Ordering::Relaxed) {
                 break 'pairs;
             }
@@ -629,11 +606,33 @@ fn run_pairs(asked: &Asked, link: &str, stop: &AtomicBool, from: u32) -> Vec<[Bl
     pairs
 }
 
+/// Lets an arm settle before it counts, as SETTLE says.
+fn settle(_stop: &AtomicBool) {
+    thread::sleep(SETTLE);
+}
+
 #[cfg(test)]
 mod tests {
     use super::verdict::tests::pairs;
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_stop_ends_the_wait_and_the_settle_at_once() {
+        let stopped = AtomicBool::new(true);
+        let began = Instant::now();
+        let deadline = began + Duration::from_secs(5);
+        assert!(
+            !opened(|| false, deadline, &stopped),
+            "opened while stopped"
+        );
+        settle(&stopped);
+        assert!(
+            began.elapsed() < Duration::from_secs(2),
+            "a stop waited {:?} for Joel's idle and the settle",
+            began.elapsed()
+        );
+    }
 
     #[test]
     fn a_block_is_said_in_words_without_padding() {
