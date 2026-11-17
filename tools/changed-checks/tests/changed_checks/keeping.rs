@@ -245,7 +245,7 @@ fn a_gate_whose_change_reaches_nothing_the_vm_tests_read_keeps_their_base_deriva
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "added    new\nchanged  a\nremoved  gone\n",
+        "KIND     CHECK\nadded    new\nchanged  a\nremoved  gone\n",
         "the VM test is the base's, so unchanged"
     );
     assert!(
@@ -285,7 +285,7 @@ fn a_gate_whose_change_reaches_what_the_vm_tests_read_evaluates_them() {
         assert!(ran.status.success(), "{}", text(&ran.stderr));
         assert_eq!(
             text(&ran.stdout),
-            "added    new\nchanged  a\nchanged  vm-x\nremoved  gone\n",
+            "KIND     CHECK\nadded    new\nchanged  a\nchanged  vm-x\nremoved  gone\n",
             "{diff:?} reaches the VM test, so it was evaluated"
         );
     }
@@ -703,7 +703,7 @@ fn a_change_to_another_folders_checks_reaches_none_it_doesnt_give() {
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "changed  b\nchanged  gone\n",
+        "KIND     CHECK\nchanged  b\nchanged  gone\n",
         "y/checks.nix gives only b, and checks.nix gives gone, yet others were evaluated again"
     );
 }
@@ -717,7 +717,7 @@ fn a_change_to_a_checks_own_file_reaches_it() {
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "changed  a\nchanged  gone\n",
+        "KIND     CHECK\nchanged  a\nchanged  gone\n",
         "x/checks.nix gives a, and checks.nix gives gone, so both are evaluated again"
     );
 }
@@ -741,7 +741,7 @@ fn a_check_whose_derivation_takes_the_whole_source_is_evaluated_by_every_gate() 
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "changed  b\n",
+        "KIND     CHECK\nchanged  b\n",
         "a check whose build may read any file kept the base's derivation"
     );
 }
@@ -765,7 +765,7 @@ fn a_check_whose_derivation_takes_a_copy_of_the_whole_source_is_evaluated_by_eve
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "changed  b\n",
+        "KIND     CHECK\nchanged  b\n",
         "a check taking a copy of the source kept the base's derivation"
     );
 }

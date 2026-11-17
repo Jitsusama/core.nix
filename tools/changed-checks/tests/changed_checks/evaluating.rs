@@ -57,7 +57,7 @@ fn a_check_told_it_passed_at_this_commit_isnt_built_again() {
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "added    new\nchanged  a\nchanged  vm-x\nremoved  gone\n",
+        "KIND     CHECK\nadded    new\nchanged  a\nchanged  vm-x\nremoved  gone\n",
         "what changed is still named"
     );
     assert!(
@@ -113,7 +113,7 @@ fn a_check_that_stops_evaluating_fails_the_run_and_nothing_is_built() {
     let ran = stand_in.run(&["--system", "x86_64-linux", "--build"]);
 
     assert_eq!(ran.status.code(), Some(1));
-    assert_eq!(text(&ran.stdout), "broken   a\n");
+    assert_eq!(text(&ran.stdout), "KIND    CHECK\nbroken  a\n");
     assert_eq!(stand_in.built(), "");
 }
 
@@ -132,7 +132,7 @@ fn a_run_building_no_vm_test_builds_while_it_evaluates_the_vm_tests() {
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "added    new\nchanged  a\nchanged  vm-x\nremoved  gone\n",
+        "KIND     CHECK\nadded    new\nchanged  a\nchanged  vm-x\nremoved  gone\n",
         "every check is named, the VM test among them"
     );
     let repo = stand_in.path("repo");
@@ -159,7 +159,7 @@ fn a_vm_test_that_stops_evaluating_beside_the_build_still_fails_the_run() {
     assert_eq!(ran.status.code(), Some(1), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "added    new\nchanged  a\nremoved  gone\nbroken   vm-x\n",
+        "KIND     CHECK\nadded    new\nchanged  a\nremoved  gone\nbroken   vm-x\n",
         "the VM test that stopped evaluating is named with the rest"
     );
 }

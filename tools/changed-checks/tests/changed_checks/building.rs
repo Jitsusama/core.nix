@@ -17,7 +17,7 @@ fn asked_only_to_name_them_it_names_each_check_the_change_moved_and_builds_nothi
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "added    new\nchanged  a\nchanged  vm-x\nremoved  gone\n"
+        "KIND     CHECK\nadded    new\nchanged  a\nchanged  vm-x\nremoved  gone\n"
     );
     assert!(
         text(&ran.stderr).contains("checks at 0123456789ab with the working tree"),
@@ -329,7 +329,7 @@ fn it_runs_here_only_when_asked_and_otherwise_says_why_it_went_nowhere() {
     stand_in.checks("base", BASE);
     stand_in.checks("working", WORKING);
     fs::create_dir_all(stand_in.path("repo")).expect("the repository");
-    let named = "added    new\nchanged  a\nchanged  vm-x\nremoved  gone\n";
+    let named = "KIND     CHECK\nadded    new\nchanged  a\nchanged  vm-x\nremoved  gone\n";
     let refused = |ran: &Output, why: &str| {
         let said = text(&ran.stderr);
         assert_eq!(ran.status.code(), Some(75), "{said}");
