@@ -34,7 +34,13 @@
     {
       "id": "code:branch",
       "in": "code",
-      "name": "Branch"
+      "name": "Branch",
+      "verb": "open",
+      "glyph": "branch",
+      "said": {
+        "here": "checked out",
+        "elsewhere": "in {tree}"
+      }
     },
     {
       "id": "code:remote",
@@ -98,7 +104,7 @@
         "took": "pulled 1 commit",
         "tookMany": "pulled {count} commits",
         "tree": "not pulled: it isn't a checkout's own folder",
-        "busy": "not pulled: it's being pulled already",
+        "busy": "not pulled: it's being pulled or switched already",
         "detached": "not pulled: it's on no branch",
         "unfollowed": "not pulled: its branch follows no other",
         "unread": "not pulled: git couldn't read it",
@@ -115,6 +121,33 @@
       "name": "Open a File by Name",
       "verb": "open",
       "glyph": "folder"
+    },
+    {
+      "id": "verb:code:branches",
+      "command": "cd",
+      "in": "code:repository",
+      "name": "Switch Branch",
+      "verb": "open",
+      "glyph": "branch"
+    },
+    {
+      "id": "verb:code:switch",
+      "command": "cd",
+      "in": "code:branch",
+      "name": "Switch to It",
+      "verb": "open",
+      "glyph": "branch",
+      "said": {
+        "switched": "switched to {branch}",
+        "here": "already on {branch}",
+        "tree": "not switched: it isn't a checkout's own folder",
+        "busy": "not switched: it's being pulled or switched already",
+        "gone": "not switched: no branch is called that now",
+        "unread": "not switched: git couldn't read it",
+        "changed": "not switched: it has changes of its own",
+        "elsewhere": "not switched: {tree} has it checked out",
+        "failed": "not switched: git refused it"
+      }
     },
     {
       "id": "code:file",
