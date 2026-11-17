@@ -70,7 +70,7 @@ COMING_UP = dt.timedelta(seconds=30)
 # How long a device's queue may take to go still after a transfer.
 STILLING = dt.timedelta(seconds=30)
 # The least share of the connection agents' bulk beside a tunnel gets while bulk inside it
-# runs too: half of agents' share by their flows, held under a quarter for the tunnel's
+# runs too: half of agents' share, one lane's of two, held under a quarter for the tunnel's
 # framing, which its lane counts and the bulk beside it doesn't. CAKE's bulk tin gave it a
 # sixteenth.
 BESIDE_LEAST = 0.2
@@ -610,8 +610,8 @@ def test_tunnel_has_a_lane_of_its_own(tunnel: Connection) -> None:
     behind what that flow holds: sent as bulk, an app's first packets inside waited in the
     connection's bulk queue, and were dropped there, before anything could move the tunnel
     out of it. The tunnel's own queue sorts what it carries instead, and agents' bulk beside
-    the tunnel shares agents' part of the connection with the bulk inside it, by their flows,
-    where CAKE's bulk tin held it to a sixteenth.
+    the tunnel shares agents' part of the connection evenly with the bulk inside it, where
+    CAKE's bulk tin held it to a sixteenth.
     """
     client = tunnel.client
     inner = f"{BIN}/head -c 1000000 /dev/zero > /dev/tcp/10.9.0.2/5201"

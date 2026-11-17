@@ -318,7 +318,7 @@ impl Shaped {
             .map_or_else(lanes::Agents::default, |tin| lanes::Agents {
                 backlog: tin.backlog,
                 flows: tin.flows,
-                dropped: tin.drops + tin.marks,
+                dropped: Some(tin.drops + tin.marks),
             });
         let rate = float(self.applied.0);
         let seen = lanes::Seen {
@@ -1050,12 +1050,23 @@ fn follow_vpns(
         .map(|name| sh(&words(&format!("tc -s -j qdisc show dev {name}"))).unwrap_or_default())
         .collect();
     let counted: Option<u64> = read.iter().map(|json| qdisc::counted_bytes(json)).sum();
-    let agents = read.iter().filter_map(|json| qdisc::bulk(json)).fold(
-        lanes::Agents::default(),
-        |all, tin| lanes::Agents {
-            backlog: all.backlog + tin.backlog,
-            flows: all.flows + tin.flows,
-            dropped: all.dropped + tin.drops + tin.marks,
+    // The drops are counted only while every VPN's CAKE was read, so one
+    // missed reads as a fresh count rather than a press.
+    let agents = read.iter().map(|json| qdisc::bulk(json)).fold(
+        lanes::Agents {
+            dropped: Some(0),
+            ..lanes::Agents::default()
+        },
+        |all, tin| match tin {
+            Some(tin) => lanes::Agents {
+                backlog: all.backlog + tin.backlog,
+                flows: all.flows + tin.flows,
+                dropped: all.dropped.map(|d| d + tin.drops + tin.marks),
+            },
+            None => lanes::Agents {
+                dropped: None,
+                ..all
+            },
         },
     );
     let joel = inside.map_or(0.0, |k| float(k.best + k.video + k.voice));

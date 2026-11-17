@@ -27,10 +27,10 @@
 //! the model inside the VPN and a few straight to the builders, so a
 //! split by flows gave the builders' copies 8 kbit/s and they failed.
 //!
-//! A lane's agents wait while they hold a few packets, or while its CAKE
-//! dropped or marked one in the last second: a copy starved to a window
-//! of two packets holds too little to count, yet CAKE drops what waits
-//! past its target, so a drop says the lane wants more than it gets.
+//! A lane's agents wait while they hold a few packets, or for twenty
+//! seconds after its CAKE last dropped or marked one: a copy starved to a
+//! window of two packets holds too little to count, yet CAKE drops what
+//! waits past its target, so a drop says the lane wants more than it gets.
 //!
 //! The VPN's share rises at once, and falls by at most a fifth a second,
 //! so a copy's queue emptying between bursts doesn't swing it; a move
@@ -64,6 +64,12 @@ const QUANTUM: u32 = 1514;
 pub const AGENTS_FLOOR: f64 = 0.25;
 /// A lane's agents with more than this many bytes held are waiting.
 const WAITING_BYTES: u64 = 3_000;
+/// How long a lane's agents wait after their CAKE last dropped or marked
+/// one, in seconds. A copy given its half drops seldom, so a lane that
+/// waited only in the second of a drop would hand its half back at once
+/// and be starved again; twenty seconds keeps the half through a copy's
+/// quiet stretches, and costs the VPN at most that long after it ends.
+const PRESSED_S: f64 = 20.0;
 /// The most the VPN's share falls in a second, as a share of itself.
 const FALL: f64 = 0.2;
 /// A move of the VPN's share under this share of itself isn't made.
@@ -77,13 +83,14 @@ pub struct Agents {
     /// Flows with something held.
     pub flows: u32,
     /// The packets the agents' CAKE has dropped or marked since it was
-    /// made, past its target: not those its ACK filter took.
-    pub dropped: u64,
+    /// made, past its target: not those its ACK filter took. None where
+    /// a CAKE couldn't be read, so the next count read starts afresh.
+    pub dropped: Option<u64>,
 }
 
 impl Agents {
     /// Whether the lane's agents wait, given whether their CAKE dropped
-    /// or marked one in the last second, `pressed`.
+    /// or marked one lately, `pressed`.
     fn waiting(self, pressed: bool) -> bool {
         pressed || self.backlog > WAITING_BYTES
     }
@@ -150,11 +157,20 @@ pub struct Said {
 pub struct Lanes {
     share: Option<f64>,
     last: Seen,
-    /// Whether each lane's CAKE, straight and inside the VPN, dropped
-    /// or marked one between the last two seconds read.
-    pressed: (bool, bool),
-    /// What each had dropped and marked when last read, once read.
-    dropped: Option<(u64, u64)>,
+    /// The seconds split over so far.
+    clock: f64,
+    /// When each lane's CAKE, straight and inside the VPN, last dropped
+    /// or marked one, on `clock`.
+    pressed_at: (Option<f64>, Option<f64>),
+    /// What each had dropped and marked when last read.
+    dropped: (Option<u64>, Option<u64>),
+}
+
+/// Whether a CAKE dropped or marked one between two counts of it. A count
+/// that couldn't be read, or a CAKE made again, which counts from
+/// nothing, reads as no drop.
+fn pressed(was: Option<u64>, now: Option<u64>) -> bool {
+    matches!((was, now), (Some(was), Some(now)) if now > was)
 }
 
 impl Lanes {
@@ -168,9 +184,20 @@ impl Lanes {
             joel: whole(split.joel),
             vpn: whole(split.vpn),
             agents: whole(split.agents),
-            waiting_vpn: self.last.agents_vpn.waiting_flows(self.pressed.1),
-            waiting_direct: self.last.agents_straight.waiting_flows(self.pressed.0),
+            waiting_vpn: self
+                .last
+                .agents_vpn
+                .waiting_flows(self.lately(self.pressed_at.1)),
+            waiting_direct: self
+                .last
+                .agents_straight
+                .waiting_flows(self.lately(self.pressed_at.0)),
         })
+    }
+
+    /// Whether a lane last pressed at `at` did so within `PRESSED_S`.
+    fn lately(&self, at: Option<f64>) -> bool {
+        at.is_some_and(|at| self.clock - at < PRESSED_S)
     }
 
     /// The split at a new rate, from what was seen last: the controller
@@ -186,14 +213,16 @@ impl Lanes {
         self.last = *seen;
         let (straight, inside) = (seen.agents_straight, seen.agents_vpn);
         // A new rate between seconds reads nothing new, so what was
-        // pressed stays. A CAKE made again counts from nothing, which
-        // reads as no drop.
+        // pressed stays.
         if dt > 0.0 {
-            let now = (straight.dropped, inside.dropped);
-            self.pressed = self
-                .dropped
-                .map_or((false, false), |was| (now.0 > was.0, now.1 > was.1));
-            self.dropped = Some(now);
+            self.clock += dt;
+            if pressed(self.dropped.0, straight.dropped) {
+                self.pressed_at.0 = Some(self.clock);
+            }
+            if pressed(self.dropped.1, inside.dropped) {
+                self.pressed_at.1 = Some(self.clock);
+            }
+            self.dropped = (straight.dropped, inside.dropped);
         }
         let rate = seen.rate;
         if rate <= 0.0 {
@@ -201,8 +230,8 @@ impl Lanes {
             return Split::default();
         }
         let (beside, within) = (
-            straight.waiting(self.pressed.0),
-            inside.waiting(self.pressed.1),
+            straight.waiting(self.lately(self.pressed_at.0)),
+            inside.waiting(self.lately(self.pressed_at.1)),
         );
         let floor = if beside || within {
             rate * AGENTS_FLOOR
@@ -367,7 +396,7 @@ mod tests {
         Agents {
             backlog: 30_000,
             flows,
-            dropped: 0,
+            dropped: None,
         }
     }
 
@@ -378,7 +407,7 @@ mod tests {
         Agents {
             backlog: 2 * 1_448,
             flows: 2,
-            dropped,
+            dropped: Some(dropped),
         }
     }
 
@@ -427,7 +456,7 @@ mod tests {
         let few = Agents {
             backlog: WAITING_BYTES,
             flows: 4,
-            dropped: 0,
+            dropped: None,
         };
         let split = lanes.split(&seen((0.0, 0.0), (few, few)), 1.0);
         let said = lanes.said(&split).expect("a split was said");
@@ -554,6 +583,76 @@ mod tests {
             lanes.said(&settled).map(|s| s.waiting_direct),
             Some(2),
             "the dropping copy's flows weren't said to wait"
+        );
+    }
+
+    #[test]
+    fn a_copy_keeps_its_half_through_a_quiet_stretch_and_then_gives_it_back() {
+        let mut lanes = Lanes::default();
+        let inside = waiting(117);
+        lanes.split(&seen((0.0, 0.0), (starved(100), inside)), 1.0);
+        let mut split = Split::default();
+        // It drops once, then holds its half without another drop for 19 s.
+        for _ in 0..20 {
+            split = lanes.split(&seen((0.0, 0.0), (starved(101), inside)), 1.0);
+        }
+        let agents = RATE - 2.0 * JOEL_LEAST;
+        assert!(
+            near(split.agents, agents / 2.0),
+            "a copy quiet for {} s of {PRESSED_S} held {}",
+            19,
+            split.agents
+        );
+        let after = lanes.split(&seen((0.0, 0.0), (starved(101), inside)), 1.0);
+        assert!(
+            near(after.agents, 0.0),
+            "a copy quiet for {PRESSED_S} s still held {}",
+            after.agents
+        );
+    }
+
+    #[test]
+    fn agents_inside_the_vpn_whose_cake_drops_wait_though_they_hold_little() {
+        let mut lanes = Lanes::default();
+        let straight = waiting(4);
+        lanes.split(&seen((0.0, 0.0), (straight, starved(100))), 1.0);
+        let split = lanes.split(&seen((0.0, 0.0), (straight, starved(101))), 1.0);
+        let agents = RATE - 2.0 * JOEL_LEAST;
+        assert!(
+            near(split.vpn, JOEL_LEAST + agents / 2.0),
+            "dropping agents inside the VPN held {}",
+            split.vpn
+        );
+    }
+
+    #[test]
+    fn a_count_after_one_that_couldn_t_be_read_is_no_drop() {
+        let mut lanes = Lanes::default();
+        let inside = waiting(30);
+        let unread = Agents {
+            dropped: None,
+            ..starved(0)
+        };
+        lanes.split(&seen((0.0, 0.0), (starved(100), inside)), 1.0);
+        lanes.split(&seen((0.0, 0.0), (unread, inside)), 1.0);
+        let split = lanes.split(&seen((0.0, 0.0), (starved(70_000), inside)), 1.0);
+        assert!(
+            near(split.agents, 0.0),
+            "a count after a missed read held {}",
+            split.agents
+        );
+    }
+
+    #[test]
+    fn a_cake_made_again_counting_from_nothing_is_no_drop() {
+        let mut lanes = Lanes::default();
+        let inside = waiting(30);
+        lanes.split(&seen((0.0, 0.0), (starved(70_000), inside)), 1.0);
+        let split = lanes.split(&seen((0.0, 0.0), (starved(3), inside)), 1.0);
+        assert!(
+            near(split.agents, 0.0),
+            "a fresh CAKE's count held {}",
+            split.agents
         );
     }
 
