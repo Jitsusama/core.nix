@@ -39,6 +39,10 @@ let
   # home-manager keeps ExecStart as a list of its lines.
   linuxNode = toString (linux links).systemd.user.services.mycelium.Service.ExecStart;
   linuxAgent = (linux links).systemd.user.services.mycelium.Service.Environment;
+  # The home realm's node of a machine naming sources in its table.
+  stimulatingNode =
+    toString
+      (linux (links // { stimuli = [ "github" ]; })).systemd.user.services.mycelium.Service.ExecStart;
   # The home realm's node for a machine naming one via, forced whole so a
   # value the option's type refuses fails here.
   viaNode =
@@ -436,7 +440,9 @@ in
   # ahead of the mycelium that reads it fails here, not as the node starts.
   mycelium-node-takes-its-flags =
     let
-      flags = lib.unique (lib.filter (lib.hasPrefix "--") (lib.splitString " " linuxNode));
+      flags = lib.unique (
+        lib.filter (lib.hasPrefix "--") (lib.splitString " " "${linuxNode} ${stimulatingNode}")
+      );
       mycelium = lib.getExe self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
     in
     pkgs.runCommandLocal "mycelium-node-takes-its-flags" { } ''
@@ -789,6 +795,91 @@ in
         && given (linuxWords bothLinux.mycelium-other) == null
         && given macNode == null
         && given (mac both).launchd.agents.mycelium-other.config.ProgramArguments == null
+      );
+
+  # The person's table of which receptors speak reaches every realm's node
+  # from the store, as the declaration does, since the node refuses a table
+  # any account but root could write. A machine naming no source names no
+  # file, so every source stays silent, and a source mycelium has no
+  # receptor for is refused.
+  mycelium-node-reads-its-stimuli-from-the-store =
+    holds "mycelium-node-reads-its-stimuli-from-the-store"
+      "A node of a machine naming sources in its table, on NixOS or nix-darwin and in each realm it joins, isn't given the store file saying those sources, one naming none is given a file, or a source mycelium has no receptor for is taken."
+      (
+        let
+          said = [
+            "github"
+            "slack"
+          ];
+          stimulating = both // {
+            stimuli = said;
+          };
+          # Each machine whole, for its own pkgs, and its account.
+          machine = {
+            linux = stimulatingOn bareNixos self.nixosModules.workstation;
+            mac = stimulatingOn bareDarwin self.darwinModules.workstation;
+          };
+          stimulatingOn =
+            bare: role:
+            bare [
+              role
+              { home-manager.users.someone.jitsusama.mycelium = stimulating; }
+            ];
+          home = lib.mapAttrs (_: account) machine;
+          onLinux = home.linux.systemd.user.services;
+          onMac = home.mac.launchd.agents;
+          # The word after --stimuli, as the unit has it.
+          given =
+            words:
+            let
+              at = lib.lists.findFirstIndex (word: word == "--stimuli") null words;
+            in
+            if at == null then null else builtins.elemAt words (at + 1);
+          linuxWords = service: lib.splitString " " (toString service.Service.ExecStart);
+          # The store file, built as the machine's own, saying the sources.
+          holding =
+            system:
+            "${machine.${system}.pkgs.writeText "mycelium-stimuli.json" (builtins.toJSON { say = said; })}";
+          # A node whose table names a source mycelium doesn't know, forced
+          # whole so the option's type is what refuses it.
+          unknown =
+            let
+              words =
+                toString
+                  (linux (both // { stimuli = [ "pager" ]; })).systemd.user.services.mycelium.Service.ExecStart;
+            in
+            builtins.tryEval (builtins.deepSeq words words);
+        in
+        given (linuxWords onLinux.mycelium) == holding "linux"
+        && given (linuxWords onLinux.mycelium-other) == holding "linux"
+        && given onMac.mycelium.config.ProgramArguments == holding "mac"
+        && given onMac.mycelium-other.config.ProgramArguments == holding "mac"
+        && given (linuxWords bothLinux.mycelium) == null
+        && given (linuxWords bothLinux.mycelium-other) == null
+        && given macNode == null
+        && given (mac both).launchd.agents.mycelium-other.config.ProgramArguments == null
+        && !unknown.success
+      );
+
+  # The sources a table may name are the locked mycelium's own, read from its
+  # source, since a name the node no longer knows makes it refuse the whole
+  # table and every source falls silent with nothing failing.
+  mycelium-table-names-mycelium-s-own-sources =
+    holds "mycelium-table-names-mycelium-s-own-sources"
+      "The sources a machine's stimuli table may name aren't the ones the locked mycelium's receptors read, as its Source::name names them."
+      (
+        let
+          lines = lib.splitString "\n" (builtins.readFile "${self.inputs.mycelium}/src/receptor.rs");
+          named = lib.concatMap (
+            line:
+            let
+              matched = builtins.match " *Self::[A-Za-z]+ => \"([a-z]+)\"," line;
+            in
+            if matched == null then [ ] else matched
+          ) lines;
+          sorted = lib.sort lib.lessThan;
+        in
+        named != [ ] && sorted (import ./sources.nix) == sorted named
       );
 
   # A machine's system pins each key that links to it, on either system, to

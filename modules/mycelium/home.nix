@@ -124,6 +124,15 @@ let
         pathsToLink = [ "/bin" ];
       }}"
     ];
+  # The person's table of which receptors' climbs the node says, from the
+  # store as the declaration is: the node refuses one any other account
+  # could write, and a table naming nothing is no table, so every source is
+  # silent.
+  stimuliArgs = lib.optionals (cfg.stimuli != [ ]) [
+    "--stimuli"
+    "${pkgs.writeText "mycelium-stimuli.json" (builtins.toJSON { say = cfg.stimuli; })}"
+  ];
+  sources = import ./sources.nix;
   name = lib.types.strMatching "[a-z0-9-]+";
   # A machine a provider's program reaches, as `PROGRAM:PLACE`: the program
   # by its absolute path, since a Mac's agent runs the node with PATH
@@ -229,6 +238,7 @@ let
     ]
     ++ apart
     ++ declaredArgs
+    ++ stimuliArgs
     ++ flowsOf realm
     ++ lib.optionals (isDarwin && signer != null) (
       lib.concatMap (option: [
@@ -430,6 +440,18 @@ in
         crosses, and only on a machine joining both realms, between their
         two nodes; a machine joining `from` alone keeps what is sent for a
         link to carry to one. Realms are apart wherever no flow is named.
+      '';
+    };
+    stimuli = lib.mkOption {
+      type = lib.types.listOf (lib.types.enum sources);
+      default = [ ];
+      example = [ "github" ];
+      description = ''
+        The sources whose receptors say on their outside network when more
+        is asked of the person, as counts alone, in every realm this
+        machine joins. A source left out stays silent, and so does every
+        source when none is named. mycelium's PROTOCOL.md says what a
+        signal holds.
       '';
     };
     declares = lib.mkOption {
