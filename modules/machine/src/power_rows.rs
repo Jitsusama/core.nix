@@ -1770,6 +1770,11 @@ mod tests {
         b["temperature_c"] = json!(-5.5);
         let ready = Power::default().read(&[b, port(true)], 0, &words());
         let temperature = row(&ready, "row:power:temperature");
+        let figure = text(&temperature["side"][0]["said"]);
+        assert!(
+            figure.starts_with("\u{2212}5.5") && figure.ends_with(" \u{b0}C"),
+            "the figure under freezing with the real minus: {figure}"
+        );
         assert_eq!(temperature["graph"]["values"], json!([0.0]));
         assert_eq!(temperature["graph"]["warn"], json!(false));
         let facts: Vec<String> = temperature["drawer"]["facts"]

@@ -691,8 +691,10 @@ mod tests {
     /// A battery's temperature is kept as far as Heat keeps a chip's
     /// reading, -100 to 200 °C, so a battery in a car through a northern
     /// winter's -40 °C still says it; only Heat's parts narrow further.
+    /// Past either edge, or too far for the reach to be worked out, it
+    /// says none.
     #[test]
-    fn a_battery_at_forty_below_says_its_temperature() {
+    fn a_battery_within_heats_reach_says_its_temperature() {
         let root = std::env::temp_dir().join(format!("machine-forty-{}", std::process::id()));
         let at = root.join("sys/class/power_supply/BAT0");
         std::fs::create_dir_all(&at).unwrap();
@@ -708,11 +710,26 @@ mod tests {
             )["temperature_c"]
                 .clone()
         };
-        let read = [said("-400"), said("-1000"), said("-1001"), said("2000")];
+        let read = [
+            "-400",
+            "-1000",
+            "-1001",
+            "2000",
+            "2001",
+            &i64::MAX.to_string(),
+        ]
+        .map(said);
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(
             read,
-            [json!(-40.0), json!(-100.0), Value::Null, json!(200.0)]
+            [
+                json!(-40.0),
+                json!(-100.0),
+                Value::Null,
+                json!(200.0),
+                Value::Null,
+                Value::Null
+            ]
         );
     }
 
