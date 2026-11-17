@@ -78,7 +78,11 @@ pub fn compose(
                 if m.class == Class::Miss {
                     "each miss's owner"
                 } else if !by_owner(m).is_empty() {
-                    "each file's owner"
+                    if m.class == Class::Cells {
+                        "each cell's owner"
+                    } else {
+                        "each file's owner"
+                    }
                 } else {
                     owner_or_none(&m.owner)
                 }

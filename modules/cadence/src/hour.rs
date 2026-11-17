@@ -91,14 +91,16 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
             .collect();
         let fallback = to.unwrap_or_default();
         let quests = quests();
-        measures.extend(measures::cells(&sessions, &quests, now, fallback));
+        measures.extend(measures::cells(&sessions, quests.as_deref(), now, fallback));
         let (exit, out) = exit_and_out("mycelium-map-check", &["--json"]);
         measures.push(measures::mapped(exit, &out, fallback));
         let looks = looks(&state_home.join("pi/agentic-harness.pi/looks"));
         measures.push(measures::unasked(
-            &reports(),
+            // The measure judges the last 3 days alone, so older files
+            // aren't opened.
+            &reports(now - 3 * DAY),
             looks.as_deref(),
-            &quests,
+            quests.as_deref(),
             now,
             fallback,
         ));
@@ -201,32 +203,38 @@ fn gather(
 }
 
 /// Each quest's folder the harness keeps on this machine.
-fn quest_folders() -> Vec<PathBuf> {
+fn quest_folders() -> Option<Vec<PathBuf>> {
     let data = std::env::var_os("XDG_DATA_HOME").map_or_else(
         || Path::new(&std::env::var_os("HOME").unwrap_or_default()).join(".local/share"),
         PathBuf::from,
     );
     let store = data.join("pi/agentic-harness.pi/quest-workflow/quests");
-    fs::read_dir(store)
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| Some(entry.ok()?.path()))
-        .collect()
+    Some(
+        fs::read_dir(store)
+            .ok()?
+            .filter_map(|entry| Some(entry.ok()?.path()))
+            .collect(),
+    )
 }
 
-/// Every quest the harness keeps on this machine, from its README.
-fn quests() -> Vec<measures::Quest> {
-    quest_folders()
-        .iter()
-        .filter_map(|folder| fs::read_to_string(folder.join("README.md")).ok())
-        .filter_map(|readme| measures::quest(&readme))
-        .collect()
+/// Every quest the harness keeps on this machine, from its README; none
+/// where the store can't be read, so it doesn't read as no quests.
+fn quests() -> Option<Vec<measures::Quest>> {
+    Some(
+        quest_folders()?
+            .iter()
+            .filter_map(|folder| fs::read_to_string(folder.join("README.md")).ok())
+            .filter_map(|readme| measures::quest(&readme))
+            .collect(),
+    )
 }
 
-/// Every report and review the quests keep, with when each file was last
-/// written, since the frontmatter dates it only by day.
-fn reports() -> Vec<measures::Report> {
+/// Every report and review the quests keep written since `since`, with
+/// when each file was last written, since the frontmatter dates it only by
+/// day; an older file isn't opened.
+fn reports(since: i64) -> Vec<measures::Report> {
     quest_folders()
+        .unwrap_or_default()
         .iter()
         .filter_map(|folder| fs::read_dir(folder.join("reports")).ok())
         .flatten()
@@ -237,10 +245,9 @@ fn reports() -> Vec<measures::Report> {
                 .duration_since(std::time::UNIX_EPOCH)
                 .ok()?
                 .as_secs();
-            measures::report(
-                &fs::read_to_string(&path).ok()?,
-                i64::try_from(written).ok()?,
-            )
+            let written = i64::try_from(written).ok()?;
+            (written >= since).then_some(())?;
+            measures::report(&fs::read_to_string(&path).ok()?, written)
         })
         .collect()
 }

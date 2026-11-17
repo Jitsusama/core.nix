@@ -81,21 +81,43 @@ fn read(session: &Value) -> Option<Cell<'_>> {
             .as_str()
             .filter(|next| !next.trim().is_empty()),
         wanting: !presence["wanting"].is_null(),
-        orchestrator: session["orchestrated_by"].as_str(),
+        orchestrator: session["orchestrated_by"]
+            .as_str()
+            .filter(|o| !o.is_empty()),
         quest_status: presence["questInfo"]["status"].as_str(),
     })
 }
 
-/// A measure of the cells with no target where no realm's node answered,
-/// since a quiet 0 would read as met.
-fn judged(key: &str, says: &str, behind: Vec<String>, read: bool, fallback: &str) -> Measure {
+/// The cells the node names, each once: it has listed a session twice,
+/// and a live listing then outranks an ended one.
+fn once<'a>(cells: impl Iterator<Item = Cell<'a>>) -> Vec<Cell<'a>> {
+    let mut kept: Vec<Cell> = Vec::new();
+    for cell in cells {
+        match kept.iter_mut().find(|c| c.address == cell.address) {
+            Some(seen) if seen.state == "ended" && cell.state != "ended" => *seen = cell,
+            Some(_) => {}
+            None => kept.push(cell),
+        }
+    }
+    kept
+}
+
+/// A measure of the cells with no target where what it reads couldn't be
+/// read, named by `unread`, since a quiet 0 would read as met.
+fn judged(
+    key: &str,
+    says: &str,
+    behind: Vec<String>,
+    unread: Option<&str>,
+    fallback: &str,
+) -> Measure {
+    let read = unread.is_none();
     Measure {
         key: key.to_owned(),
         class: Class::Cells,
-        says: if read {
-            says.to_owned()
-        } else {
-            format!("{says} (no realm's node named its sessions)")
+        says: match unread {
+            None => says.to_owned(),
+            Some(why) => format!("{says} ({why})"),
         },
         now: count(behind.len()),
         target: read.then_some(0.0),
@@ -105,26 +127,35 @@ fn judged(key: &str, says: &str, behind: Vec<String>, read: bool, fallback: &str
 }
 
 /// The four measures of the cells, from each realm's `mycelium sessions`
-/// answer, by the realm's name, and the quests' READMEs, at `now`. A cell
-/// no orchestrator or parent owns goes to `fallback`.
+/// answer, by the realm's name, and the quests' READMEs, at `now`; the
+/// quests are none where their store couldn't be read. A cell no
+/// orchestrator or parent owns goes to `fallback`.
 #[must_use]
 pub fn cells(
     answers: &[(String, String)],
-    quests: &[Quest],
+    quests: Option<&[Quest]>,
     now: i64,
     fallback: &str,
 ) -> Vec<Measure> {
+    // A realm counts as read only where its node named its sessions; an
+    // error from it says nothing of them.
     let parsed: Vec<(&str, Value)> = answers
         .iter()
         .filter_map(|(realm, text)| Some((realm.as_str(), serde_json::from_str(text).ok()?)))
+        .filter(|(_, answer): &(&str, Value)| answer["Ok"]["Sessions"].is_array())
         .collect();
     let realms: BTreeSet<&str> = parsed.iter().map(|(realm, _)| *realm).collect();
-    let all: Vec<Cell> = parsed
+    let all: Vec<Cell> = once(
+        parsed
+            .iter()
+            .flat_map(|(_, answer)| answer["Ok"]["Sessions"].as_array().into_iter().flatten())
+            .filter_map(read),
+    );
+    let readme: BTreeMap<&str, &Quest> = quests
+        .unwrap_or_default()
         .iter()
-        .flat_map(|(_, answer)| answer["Ok"]["Sessions"].as_array().into_iter().flatten())
-        .filter_map(read)
+        .map(|q| (q.id.as_str(), q))
         .collect();
-    let readme: BTreeMap<&str, &Quest> = quests.iter().map(|q| (q.id.as_str(), q)).collect();
     // A quest's cells are owned by the orchestration one of them names, else
     // the quest's parent, which is the address of the parent's own cell.
     let owner = |quest: Option<&str>, orchestrator: Option<&str>| -> String {
@@ -164,9 +195,13 @@ pub fn cells(
         .iter()
         .filter(|c| c.presence == Some("parked") && c.state == "ended")
         .filter_map(|c| {
+            // The README is written as the quest ends; the cell's word of
+            // its quest dates from when it parked.
             let status = c
-                .quest_status
-                .or_else(|| Some(readme.get(c.quest?)?.status.as_str()))?;
+                .quest
+                .and_then(|q| readme.get(q))
+                .map(|q| q.status.as_str())
+                .or(c.quest_status)?;
             matches!(status, "concluded" | "retired").then(|| {
                 format!(
                     "{} parked, its quest {status} · {}",
@@ -176,32 +211,41 @@ pub fn cells(
             })
         })
         .collect();
-    let (never, ended) = unrun(quests, &all, &realms, &|q| owner(Some(q), None));
-    let read = !parsed.is_empty();
+    let (never, ended) = unrun(quests.unwrap_or_default(), &all, &realms, &|q| {
+        owner(Some(q), None)
+    });
+    let nodes = (parsed.is_empty()).then_some("no realm's node named its sessions");
+    let store = nodes.or(quests
+        .is_none()
+        .then_some("the quests' READMEs couldn't be read"));
     [
         (
             "cells-idle",
             "cells idle 20 minutes or more with a next step no one else holds",
             idle,
+            nodes,
         ),
         (
             "cells-parked-done",
             "cells parked on a quest already concluded or retired",
             parked_done,
+            nodes,
         ),
         (
             "quests-without-cells",
             "driving and active quests no cell has taken up",
             never,
+            store,
         ),
         (
             "quests-cells-ended",
             "driving and active quests whose every cell has ended",
             ended,
+            store,
         ),
     ]
     .into_iter()
-    .map(|(key, says, behind)| judged(key, says, behind, read, fallback))
+    .map(|(key, says, behind, unread)| judged(key, says, behind, unread, fallback))
     .collect()
 }
 
@@ -287,34 +331,42 @@ const LOOK_BEFORE: i64 = 3600;
 pub fn unasked(
     reports: &[Report],
     looks: Option<&[Value]>,
-    quests: &[Quest],
+    quests: Option<&[Quest]>,
     now: i64,
     fallback: &str,
 ) -> Measure {
     let says = "drafted reports and reviews no look on Joel's list asks him about \
                 within 2 hours (a post on the change itself isn't read)";
+    let unread = |why: &str| Measure {
+        key: "reports-unasked".to_owned(),
+        class: Class::Cells,
+        says: format!("{says} ({why})"),
+        now: 0.0,
+        target: None,
+        owner: fallback.to_owned(),
+        behind: Vec::new(),
+    };
     let Some(looks) = looks else {
-        return Measure {
-            key: "reports-unasked".to_owned(),
-            class: Class::Cells,
-            says: format!("{says} (the look list couldn't be read)"),
-            now: 0.0,
-            target: None,
-            owner: fallback.to_owned(),
-            behind: Vec::new(),
-        };
+        return unread("the look list couldn't be read");
+    };
+    let Some(quests) = quests else {
+        return unread("the quests' READMEs couldn't be read");
     };
     let readme: BTreeMap<&str, &Quest> = quests.iter().map(|q| (q.id.as_str(), q)).collect();
-    // A look that asks something, or still waits on the list, puts the
-    // report to Joel; one that asked nothing clears once seen.
+    // A look that asks something, or still waits on the list unexpired,
+    // puts the report to Joel; one that asked nothing clears once seen. A
+    // look written before `asks` was asks something. One naming the report
+    // is about it whenever it came; one only of its quest must come about
+    // when the report was written.
     let asked = |r: &Report| {
         looks.iter().any(|look| {
-            let about = look["quest"].as_str() == Some(r.quest.as_str())
-                || look["target"].as_str().is_some_and(|t| t.contains(&r.id));
-            let after = seconds(&look["at"]).is_some_and(|at| at >= r.written - LOOK_BEFORE);
-            let puts =
-                look["asks"].as_bool() == Some(true) || look["state"].as_str() == Some("waiting");
-            about && after && puts
+            let named = look["target"].as_str().is_some_and(|t| t.contains(&r.id));
+            let of_quest = look["quest"].as_str() == Some(r.quest.as_str())
+                && seconds(&look["at"]).is_some_and(|at| at >= r.written - LOOK_BEFORE);
+            let waiting = look["state"].as_str() == Some("waiting")
+                && seconds(&look["expiresAt"]).is_none_or(|until| until > now);
+            let puts = look["asks"].as_bool() != Some(false) || waiting;
+            (named || of_quest) && puts
         })
     };
     let behind: Vec<String> = reports
@@ -484,7 +536,7 @@ mod tests {
             idle("DDDDDD", 30, Some("merge it"), json!({"kind": "approval"})),
             idle("EEEEEE", 30, None, Value::Null),
         ])];
-        let all = cells(&answers, &[], NOW, "FALLBACK");
+        let all = cells(&answers, Some(&[]), NOW, "FALLBACK");
         let idle = measure(&all, "cells-idle");
         assert_eq!(
             idle.behind,
@@ -514,7 +566,7 @@ mod tests {
             quest_of("AAAAAA", "concluded", "someday", Some("PARENT")),
             quest_of("BBBBBB", "retired", "someday", None),
         ];
-        let all = cells(&answers, &quests, NOW, "FALLBACK");
+        let all = cells(&answers, Some(&quests), NOW, "FALLBACK");
         assert_eq!(
             measure(&all, "cells-parked-done").behind,
             [
@@ -545,7 +597,7 @@ mod tests {
             quest_of("FFFFFF", "concluded", "driving", None),
             elsewhere,
         ];
-        let all = cells(&answers, &quests, NOW, "FALLBACK");
+        let all = cells(&answers, Some(&quests), NOW, "FALLBACK");
         assert_eq!(
             measure(&all, "quests-without-cells").behind,
             ["AAAAAA driving, no cell the node knows · PARENT"],
@@ -560,10 +612,69 @@ mod tests {
     }
 
     #[test]
+    fn the_readme_outranks_a_parked_cells_old_word_of_its_quest() {
+        let mut parked = cell("AAAAAA", "ended", "AAAAAA");
+        parked["presence"]["state"] = json!("parked");
+        let quests = [quest_of("AAAAAA", "concluded", "someday", None)];
+        let all = cells(&[answer(&[parked])], Some(&quests), NOW, "F");
+        assert_eq!(
+            measure(&all, "cells-parked-done").behind,
+            ["AAAAAA parked, its quest concluded · F"],
+            "a quest concluded after its cell parked was read from the cell's old status"
+        );
+    }
+
+    #[test]
+    fn a_cell_the_node_lists_twice_counts_once_and_an_empty_orchestrator_names_no_one() {
+        let idle = || {
+            let mut c = cell("AAAAAA", "idle", "AAAAAA");
+            c["at"] = json!(at(30));
+            c["doing"] = json!({"next": "write it"});
+            c["orchestrated_by"] = json!("");
+            c
+        };
+        let quests = [quest_of("AAAAAA", "active", "driving", Some("PARENT"))];
+        let all = cells(&[answer(&[idle(), idle()])], Some(&quests), NOW, "F");
+        assert_eq!(
+            measure(&all, "cells-idle").behind,
+            ["AAAAAA idle 30 min: write it · PARENT"],
+            "a cell listed twice counted twice, or an empty orchestrator was taken as one"
+        );
+    }
+
+    #[test]
+    fn an_answer_with_no_sessions_or_an_unread_quest_store_is_unjudged() {
+        let quests = [quest_of("AAAAAA", "active", "driving", None)];
+        let err = ("work".to_owned(), json!({"Err": "no node"}).to_string());
+        assert!(
+            cells(&[err], Some(&quests), NOW, "F")
+                .iter()
+                .all(|m| m.target.is_none()),
+            "a node's error was read as a realm with no cells"
+        );
+        let all = cells(&[answer(&[])], None, NOW, "F");
+        let unjudged: Vec<&str> = all
+            .iter()
+            .filter(|m| m.target.is_none())
+            .map(|m| m.key.as_str())
+            .collect();
+        assert_eq!(
+            unjudged,
+            ["quests-without-cells", "quests-cells-ended"],
+            "with no quest store the quests' measures read a judged 0"
+        );
+        assert_eq!(
+            unasked(&[], Some(&[]), None, NOW, "F").target,
+            None,
+            "with no quest store the reports read a judged 0"
+        );
+    }
+
+    #[test]
     fn with_no_realm_answering_the_cells_are_unjudged() {
         let all = cells(
             &[],
-            &[quest_of("AAAAAA", "active", "driving", None)],
+            Some(&[quest_of("AAAAAA", "active", "driving", None)]),
             NOW,
             "F",
         );
@@ -617,6 +728,9 @@ mod tests {
             drafted("FFFFFF", 9, "draft"),
             drafted("GGGGGG", 100, "draft"),
             drafted("HHHHHH", 9, "draft"),
+            drafted("IIIIII", 9, "draft"),
+            drafted("JJJJJJ", 9, "draft"),
+            drafted("KKKKKK", 9, "draft"),
         ];
         let looks = [
             // Seen, asking nothing: 9ZI7PR's case, which still counts.
@@ -627,7 +741,17 @@ mod tests {
             look("CCCCCC", "/r/RPRT-CCCCCC.md", 8, false, "waiting"),
             // An asking look from long before the report was written.
             look("HHHHHH", "https://a/pr/1", 30, true, "waiting"),
+            // Asked about this file, before the report's last edit.
+            look("IIIIII", "/r/RPRT-IIIIII.md", 30, true, "resolved"),
+            // Waiting, but past its time on the list.
+            json!({"quest": "QEST-20261116-JJJJJJ", "target": "/r/RPRT-JJJJJJ.md",
+                   "at": at(8 * 60), "asks": false, "state": "waiting",
+                   "expiresAt": at(60)}),
         ];
+        let mut older = look("KKKKKK", "/r/RPRT-KKKKKK.md", 8, false, "resolved");
+        // A look from before `asks` was written asks something.
+        older.as_object_mut().expect("an object").remove("asks");
+        let looks = [looks.as_slice(), &[older]].concat();
         let quests = [
             quest_of("AAAAAA", "active", "driving", Some("PARENT")),
             quest_of("BBBBBB", "active", "driving", None),
@@ -637,20 +761,24 @@ mod tests {
             quest_of("FFFFFF", "concluded", "driving", None),
             quest_of("GGGGGG", "active", "driving", None),
             quest_of("HHHHHH", "active", "driving", None),
+            quest_of("IIIIII", "active", "driving", None),
+            quest_of("JJJJJJ", "active", "driving", None),
+            quest_of("KKKKKK", "active", "driving", None),
         ];
-        let unasked = unasked(&reports, Some(&looks), &quests, NOW, "FALLBACK");
+        let unasked = unasked(&reports, Some(&looks), Some(&quests), NOW, "FALLBACK");
         assert_eq!(
             unasked.behind,
             [
                 "AAAAAA's RPRT-AAAAAA, drafted 9 h ago, asked nothing · PARENT",
-                "HHHHHH's RPRT-HHHHHH, drafted 9 h ago, asked nothing · FALLBACK"
+                "HHHHHH's RPRT-HHHHHH, drafted 9 h ago, asked nothing · FALLBACK",
+                "JJJJJJ's RPRT-JJJJJJ, drafted 9 h ago, asked nothing · FALLBACK"
             ],
             "a report no look asks about was missed, or one asked, waiting, too new, \
              concluded, of a done quest or too old counted"
         );
         assert_eq!(unasked.target, Some(0.0), "a read list went unjudged");
         assert_eq!(
-            super::unasked(&reports, None, &quests, NOW, "F").target,
+            super::unasked(&reports, None, Some(&quests), NOW, "F").target,
             None,
             "an unread list judged the reports"
         );

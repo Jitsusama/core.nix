@@ -106,8 +106,10 @@ fn routed(class: Class) -> bool {
 }
 
 /// Whether the drag filed as `key` is back in: its miss no longer open,
-/// or its measure read and within its target; a clean drag filed for each
-/// file's owner carries that owner after its measure's key.
+/// or its measure read and within its target; a drag filed for each line's
+/// owner carries that owner after its measure's key, and is back in once
+/// none of the measure's lines names them. A measure that couldn't be read
+/// says nothing, so it closes none.
 fn back_in(key: &str, measures: &[Measure]) -> bool {
     let key = key.strip_prefix("hour:").unwrap_or(key);
     if let Some(what) = key.strip_prefix("miss:") {
@@ -120,14 +122,21 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
     }
     measures
         .iter()
-        .find(|m| {
-            m.key == key
-                || (routed(m.class)
-                    && key
-                        .strip_prefix(m.key.as_str())
-                        .is_some_and(|owner| owner.starts_with(':')))
+        .find_map(|m| {
+            if m.key == key {
+                return Some((m, None));
+            }
+            let owner = key.strip_prefix(m.key.as_str())?.strip_prefix(':')?;
+            routed(m.class).then_some((m, Some(owner)))
         })
-        .is_some_and(|m| m.past().is_none())
+        .is_some_and(|(m, owner)| {
+            m.target.is_some()
+                && (m.past().is_none()
+                    || owner.is_some_and(|owner| {
+                        let named = format!(" · {owner}");
+                        !m.behind.iter().any(|line| line.ends_with(&named))
+                    }))
+        })
 }
 
 /// Files the hour's drag in the loop's ledger as a must of kind `drag`,
@@ -255,6 +264,38 @@ mod tests {
         assert!(
             ledger.iter().all(|e| !e.open),
             "back in closes every owner's"
+        );
+    }
+
+    #[test]
+    fn an_owners_cells_drag_closes_once_its_lines_go_and_stays_open_through_an_unread_hour() {
+        let mut idle = measure("cells-idle", Class::Cells, 2.0, Some(0.0));
+        idle.behind = vec![
+            "AAAAAA idle 30 min: write it · ORCH".to_owned(),
+            "BBBBBB idle 40 min: merge it · PARENT".to_owned(),
+        ];
+        let mut ledger = Vec::new();
+        file(&mut ledger, &[idle.clone()], "2026-11-17", 1000);
+        idle.behind.remove(0);
+        idle.now = 1.0;
+        file(&mut ledger, &[idle.clone()], "2026-11-17", 4600);
+        let open: Vec<&str> = ledger
+            .iter()
+            .filter(|e| e.open)
+            .filter_map(|e| e.owner.as_deref())
+            .collect();
+        assert_eq!(
+            open,
+            ["PARENT"],
+            "an owner whose cells are fixed stays open"
+        );
+        idle.target = None;
+        idle.behind.clear();
+        idle.now = 0.0;
+        file(&mut ledger, &[idle], "2026-11-17", 8200);
+        assert!(
+            ledger.iter().any(|e| e.open && e.owner.as_deref() == Some("PARENT")),
+            "an hour that couldn't read the cells closed a drag"
         );
     }
 
