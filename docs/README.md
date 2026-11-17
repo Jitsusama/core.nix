@@ -1,8 +1,8 @@
 # Docs
 
 The guides to core.nix, each about one part of it, and the records of why its
-design is what it is. [AGENTS.md][agents] points at each from the job it's
-read for.
+design is what it is. [AGENTS.md][agents] points at most of them from the job
+each is read for; the ones it leaves out are found here.
 
 | Guide                | Says                                                       |
 | -------------------- | ---------------------------------------------------------- |
