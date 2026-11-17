@@ -164,6 +164,16 @@ impl Fix {
         self
     }
 
+    /// This fix found again at `now`, which didn't move from it, as of when
+    /// `now` was found: where it is, how sure, its names and its source
+    /// all kept, so a laptop sitting still reads as placed lately rather
+    /// than as of when it got here. None where `now` is no newer, or this
+    /// fix was set by hand, which GeoClue never finds again.
+    pub fn still(&self, now: &Fix) -> Option<Fix> {
+        let _ = now;
+        None
+    }
+
     /// The fix as Joel said it himself.
     pub fn by_hand(mut self) -> Fix {
         self.hand = true;
@@ -323,6 +333,39 @@ mod tests {
         let north = at(60.0, 0.0, 0.0).distance(&at(60.0, 1.0, 0.0));
         assert!((north - degree / 2.0).abs() < 100.0, "{north}");
         assert!(at(5.0, 5.0, 0.0).distance(&at(5.0, 5.0, 0.0)).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn a_fix_found_again_where_it_was_takes_only_its_newer_time() {
+        let was = at(43.1, -82.0, 26_000.0)
+            .named(
+                Some("Cove, Westmark".into()),
+                Some("America/Toronto".into()),
+            )
+            .countried(Some("Canada".into()))
+            .sourced("WiFi");
+        let mut now = Fix::new(43.11, -82.01, 30_000.0, was.when + 7200).unwrap();
+        now.source = None;
+        let again = was.still(&now).expect("found again two hours on");
+        assert_eq!(again.when, now.when, "it's placed as of the newer finding");
+        assert_eq!(
+            Fix {
+                when: was.when,
+                ..again
+            },
+            was,
+            "only when it was found moves"
+        );
+    }
+
+    #[test]
+    fn a_fix_no_newer_or_set_by_hand_is_not_found_again() {
+        let was = at(1.0, 2.0, 3000.0);
+        assert_eq!(was.still(&was), None, "the same finding is nothing new");
+        let older = Fix::new(1.0, 2.0, 3000.0, was.when - 1).unwrap();
+        assert_eq!(was.still(&older), None, "an older finding is nothing new");
+        let newer = Fix::new(1.0, 2.0, 3000.0, was.when + 60).unwrap();
+        assert_eq!(was.by_hand().still(&newer), None, "a pin isn't found");
     }
 
     #[test]
