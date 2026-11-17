@@ -3,19 +3,17 @@
 // stood in here so each ask Asks sends is read, with the real ReadyRows.qml
 // and a stand-in launcher whose frames are presented when a case says. A
 // waiting ask's row arms on a first Return, which the launcher's Arming.js
-// says does nothing but arm, so nothing is sent. A yes says how long since
-// the first frame presented its line selected, in that opening; a line
-// still selected as the launcher opens again is noted from that opening's
-// first frame, so Joel's yes then says it too. A yes for a line that
-// changed says no time until a frame presents it as it is now, and a frame
-// asked for a line left before it came counts for nothing. Release It from
-// the right arrow's verbs counts from its ask's own line. A yes walked
-// from outside the launcher is never sent, and a no goes as served. A
-// launcher opened from outside, or stepped into Asks from outside, times
-// no line until one of Joel's keys moves through what's shown; typing
-// starts the time again, and Return never arms. A place he walks into by
-// his own key times its line from the first frame. It exits 0 once every
-// case holds, and otherwise 1, saying which didn't.
+// says does nothing but arm, so nothing is sent. Every opening is asked
+// from outside, so no line is timed until one of Joel's keys moves over the
+// rows, never on the find, where a terminal's Up and Down would be his too;
+// typing starts the time again, Return never arms, and a place stepped into
+// is no move. A yes says how long since the first frame presented its line
+// selected after that move, in that opening. A yes for a line that changed
+// says no time until a frame presents it as it is now, and a frame asked
+// for a line left before it came counts for nothing. Release It from the
+// right arrow's verbs counts from its ask's own line. A yes walked from
+// outside the launcher is never sent, and a no goes as served. It exits 0
+// once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
 import KeyTimes
@@ -95,10 +93,12 @@ ShellRoot {
         property bool cataloguing: false
         property int openingsDrawn: 0
         // The keys the line took, the last by name and whether it moved,
-        // and the asks to open from outside, as Launcher.qml counts them.
+        // whether they land on the rows rather than the find, and the asks
+        // to open from outside, as Launcher.qml counts them.
         property int keysTaken: 0
         property string keyTaken: ""
         property bool keyMoved: false
+        property bool keysOverRows: false
         property int toldFromOutside: 0
         readonly property var sources: [passwords]
         property var awaiting: []
@@ -117,10 +117,11 @@ ShellRoot {
                 one(KeyTimes.now() - ago);
         }
 
-        // An opening, asked from outside as every one is.
+        // An opening, asked from outside as every one is, on the find.
         function opened() {
             toldFromOutside += 1;
             openingsDrawn += 1;
+            keysOverRows = false;
             open = true;
         }
 
@@ -133,6 +134,13 @@ ShellRoot {
             keyMoved = moved;
             if (does)
                 does();
+        }
+
+        // Escape, which leaves the find for the rows and moves nothing.
+        function toRows() {
+            press("Escape", false, () => {
+                stage.keysOverRows = true;
+            });
         }
 
         // A step into Passwords, the asks drawn there with the ask's line
@@ -177,8 +185,26 @@ ShellRoot {
         return asks.everything().find(one => one.shownKey === root.key) ?? null;
     }
 
-    function last() {
-        return link.sent[link.sent.length - 1] ?? null;
+    // The ask a verb of the row sends, the first verb, Release It, unless
+    // `verb` says, held to have been sent by this case, never an earlier one.
+    function sent(verb) {
+        const before = link.sent.length;
+        if (verb === undefined)
+            row().run();
+        else
+            verb.run();
+        same("the verb sent its ask", link.sent.length, before + 1);
+        return link.sent[before];
+    }
+
+    // How long the yes sent now says its line was shown.
+    function shownNow() {
+        return root.sent().shown;
+    }
+
+    // Whether `ms` is a frame's time `ago` ms back, give or take the run.
+    function since(ms, ago) {
+        return ms >= ago && ms < ago + 4000;
     }
 
     // Each step runs after the last, past what its keys left for later, as
@@ -200,13 +226,14 @@ ShellRoot {
 
     Component.onCompleted: {
         link.tell("d1");
-        steps([arming, untimed, untimedThenAnswered, typedThenAnswered, moving, shown, entryTold,
-            reopened, reopenedThenEscaped, reopenedThenMoved, left, moved, changed, stepping,
-            stepped, outside, refused, drawn, returnedInto, returnedThenShown, steeredOut,
-            walkedInto, walkedThenShown, toldInPlace, typing, typedAfter, movedAgain,
-            typedBeforeItsFrame, typedThenShown, movedOnceMore, typedWithReturn,
-            typedWithReturnShown, movedThenOpened, movedThenOpenedShown, steppedAside,
-            steppedAsideUntimed, switchedMidKey, switchedMidKeyStep, switchedMidKeyShown]);
+        steps([arming, untimed, returned, returnedThenAnswered, typed, typedThenAnswered,
+            upOnTheFind, upOnTheFindAnswered, escaped, escapedThenAnswered, moving, shown,
+            entryTold, reopened, reopenedThenEscaped, reopenedThenMoved, reopenedAndShown, left,
+            moved, changed, stepping, stepped, steppedBack, movedBack, drawn, outside, refused,
+            returnedInto, returnedIntoShown, steeredOut, walkedInto, walkedIntoShown,
+            walkedThenEscaped, walkedThenMoved, walkedThenMovedShown, toldInPlace, typing,
+            typedAfter, movedAgain, typedBeforeItsFrame, typedThenShown, movedOnceMore, typedWithReturn,
+            typedWithReturnShown, movedThenOpened, movedThenOpenedShown]);
     }
 
     function arming() {
@@ -222,37 +249,58 @@ ShellRoot {
     function untimed() {
         stage.selected = row();
         stage.present(800);
-        row().run();
         same("an Asks opened from outside times no line, however long it's shown",
-            last().shown, undefined);
+            shownNow(), undefined);
+    }
+
+    function returned() {
         stage.press("Return", false);
     }
 
-    function untimedThenAnswered() {
+    function returnedThenAnswered() {
         stage.present(600);
-        stage.press("Return", false);
-        row().run();
-        same("nor do Returns pressed on it", last().shown, undefined);
-        stage.press("l", false);
+        same("nor do Returns pressed on it", shownNow(), undefined);
+    }
+
+    function typed() {
+        stage.press("s", false);
     }
 
     function typedThenAnswered() {
-        stage.press("s", false);
         stage.present(600);
-        row().run();
-        same("nor letters typed on its find", last().shown, undefined);
+        same("nor letters typed on its find", shownNow(), undefined);
+    }
+
+    // Up on the find moves through the rows, but is a terminal's commonest
+    // key, as its history's, before the Return that runs what it brought back.
+    function upOnTheFind() {
+        stage.press("Up", true);
+    }
+
+    function upOnTheFindAnswered() {
+        stage.present(600);
+        same("nor a move on the find, which a terminal's Up would be", shownNow(), undefined);
+    }
+
+    function escaped() {
+        stage.toRows();
+    }
+
+    function escapedThenAnswered() {
+        stage.present(600);
+        same("nor the Escape that leaves the find for the rows", shownNow(), undefined);
     }
 
     function moving() {
-        stage.press("Down", true);
+        stage.press("j", true);
     }
 
     function shown() {
         stage.present(800);
-        row().run();
-        same("a key of his moving through the rows times the line from its next frame",
-            last().shown >= 800 && last().shown < 5000, true);
-        same("and says the opening it was shown in", last().opening, 1);
+        const said = root.sent();
+        same("a key of his moving over the rows times the line from its next frame",
+            since(said.shown, 800), true);
+        same("and says the opening it was shown in", said.opening, 1);
     }
 
     // Entries come in batches as a manager is read, which would push back the frame a line
@@ -271,35 +319,35 @@ ShellRoot {
         same("closing the launcher forgets every line's frame", asks.seen, {});
         stage.opened();
         stage.present(700);
-        row().run();
         same("a line still selected as it opens again from outside isn't timed",
-            last().shown, undefined);
-        stage.press("Escape", false);
+            shownNow(), undefined);
+        stage.toRows();
     }
 
     // Escape is a terminal's key as much as the launcher's, and moves nothing here.
     function reopenedThenEscaped() {
         stage.present(700);
-        row().run();
-        same("nor after an Escape the launcher takes for no move", last().shown, undefined);
-        stage.press("Down", true);
+        same("nor after an Escape the launcher takes for no move", shownNow(), undefined);
     }
 
     function reopenedThenMoved() {
+        stage.press("Down", true);
+    }
+
+    function reopenedAndShown() {
         stage.present(700);
-        row().run();
-        same("until a key of his moves, even where nothing can move",
-            last().shown >= 700 && last().shown < 5000, true);
-        same("in that opening", last().opening, 2);
+        const said = root.sent();
+        same("until a key of his moves over the rows, even where nothing can move",
+            since(said.shown, 700), true);
+        same("in that opening", said.opening, 2);
     }
 
     function left() {
         stage.selected = null;
         stage.selected = row();
         stage.present(100);
-        row().run();
         same("a line selected again counts from coming back, not from when it was first shown",
-            last().shown >= 100 && last().shown < 700, true);
+            since(shownNow(), 100) && shownNow() < 700, true);
     }
 
     function moved() {
@@ -308,37 +356,55 @@ ShellRoot {
         stage.selected = null;
         stage.present(900);
         stage.selected = row();
-        row().run();
         same("a frame asked for a line left before it came counts for nothing",
-            last().shown, undefined);
+            shownNow(), undefined);
         stage.present(100);
     }
 
     function changed() {
         link.tell("d2");
         stage.selected = row();
-        row().run();
+        const said = root.sent();
         same("a yes for a line that changed says no time before a frame presents it",
-            [last().digest, last().shown], ["d2", undefined]);
+            [said.digest, said.shown], ["d2", undefined]);
         stage.present(600);
-        row().run();
-        same("and counts from the frame that does",
-            last().shown >= 600 && last().shown < 700, true);
+        same("and counts from the frame that does", since(shownNow(), 600), true);
     }
 
+    // The right arrow lists the ask's verbs, which the launcher takes as no move.
     function stepping() {
-        stage.press("Right", true, () => {
+        stage.press("Right", false, () => {
             stage.held = [{ row: root.row() }];
             stage.selected = root.row().verbs()[0];
         });
     }
 
     function stepped() {
-        row().verbs()[0].run();
         same("Release It from the right arrow's verbs counts from its ask's line",
-            last().shown >= 600 && last().shown < 5000, true);
-        stage.held = [];
-        stage.selected = row();
+            since(root.sent(row().verbs()[0]).shown, 600), true);
+    }
+
+    // Back from the verbs by Left, then a move over the rows timing the line again.
+    function steppedBack() {
+        stage.press("Left", false, () => {
+            stage.held = [];
+            stage.selected = root.row();
+        });
+    }
+
+    function movedBack() {
+        stage.press("j", true);
+    }
+
+    // A frame drawing the selected row as it was says nothing of the ask as
+    // it's served now, before the row drawn is made again.
+    function drawn() {
+        stage.present(800);
+        link.tell("d3");
+        stage.present(400);
+        const said = root.sent();
+        same("a frame of the row as it was drawn times no yes for the ask as it is now",
+            [said.digest, said.shown], ["d3", undefined]);
     }
 
     function outside() {
@@ -354,19 +420,9 @@ ShellRoot {
     }
 
     function refused() {
-        row().verbs()[1].run();
-        same("a no goes as served, saying no time", [last().ask, last().shown, last().digest],
-            ["refuse", undefined, "d2"]);
-    }
-
-    // A frame drawing the selected row as it was says nothing of the ask as
-    // it's served now, before the row drawn is made again.
-    function drawn() {
-        link.tell("d3");
-        stage.present(400);
-        row().run();
-        same("a frame of the row as it was drawn times no yes for the ask as it is now",
-            [last().digest, last().shown], ["d3", undefined]);
+        const said = root.sent(row().verbs()[1]);
+        same("a no goes as served, saying no time", [said.ask, said.shown, said.digest],
+            ["refuse", undefined, "d3"]);
     }
 
     // Opened from outside on home, Passwords selected there, then stepped into by a Return of
@@ -379,13 +435,13 @@ ShellRoot {
         stage.press("Return", false, stage.intoPasswords);
     }
 
-    function returnedThenShown() {
+    function returnedIntoShown() {
         stage.present(600);
-        row().run();
-        same("a place a lone Return steps into times nothing", last().shown, undefined);
+        same("a place a lone Return steps into times nothing", shownNow(), undefined);
     }
 
-    // Back on home, where a letter of his finds Passwords.
+    // Back on home, where a letter of his finds Passwords and his Return steps
+    // into it, as a terminal's command typed and run would.
     function steeredOut() {
         stage.held = [];
         stage.selected = null;
@@ -396,21 +452,31 @@ ShellRoot {
         stage.press("Return", false, stage.intoPasswords);
     }
 
-    function walkedThenShown() {
+    function walkedIntoShown() {
         stage.present(600);
-        row().run();
-        same("a place he walks into by his own keys times its line from its first frame",
-            last().shown >= 600 && last().shown < 5000, true);
+        same("nor a place letters and a Return step into", shownNow(), undefined);
     }
 
-    // An ask from outside in the place he walked into, which may select another line.
+    function walkedThenEscaped() {
+        stage.toRows();
+    }
+
+    function walkedThenMoved() {
+        stage.press("k", true);
+    }
+
+    function walkedThenMovedShown() {
+        stage.present(600);
+        same("until a key of his moves over its rows", since(shownNow(), 600), true);
+    }
+
+    // An ask from outside in the place he moved in, which may select another line.
     function toldInPlace() {
         stage.toldFromOutside += 1;
         stage.selected = null;
         stage.selected = row();
         stage.present(600);
-        row().run();
-        same("a line an ask from outside selects is no walk of his", last().shown, undefined);
+        same("a line an ask from outside selects is no move of his", shownNow(), undefined);
         stage.press("k", true);
     }
 
@@ -421,8 +487,7 @@ ShellRoot {
 
     function typedAfter() {
         stage.present(600);
-        row().run();
-        same("typing after a move starts the line's time again", last().shown, undefined);
+        same("typing after a move starts the line's time again", shownNow(), undefined);
     }
 
     // A move, then a letter before the frame the move asked for reaches the screen.
@@ -436,8 +501,7 @@ ShellRoot {
 
     function typedThenShown() {
         stage.present(600);
-        row().run();
-        same("a frame a move asked for before a letter times nothing", last().shown, undefined);
+        same("a frame a move asked for before a letter times nothing", shownNow(), undefined);
     }
 
     // A letter and a Return read at once, as keys typed fast are.
@@ -452,8 +516,7 @@ ShellRoot {
     }
 
     function typedWithReturnShown() {
-        row().run();
-        same("a letter read with the Return after it starts the time again", last().shown,
+        same("a letter read with the Return after it starts the time again", shownNow(),
             undefined);
     }
 
@@ -466,49 +529,6 @@ ShellRoot {
 
     function movedThenOpenedShown() {
         stage.present(600);
-        row().run();
-        same("a move an ask from outside follows arms nothing", last().shown, undefined);
-    }
-
-    // Opened from outside on home, a letter of his landing there, then
-    // Passwords stepped into by neither his key nor an ask from outside.
-    function steppedAside() {
-        stage.open = false;
-        stage.held = [];
-        stage.selected = null;
-        stage.opened();
-        stage.press("l", false);
-    }
-
-    function steppedAsideUntimed() {
-        stage.intoPasswords();
-        stage.present(600);
-        row().run();
-        same("a step no key of his made is no walk of his, whatever he typed before it",
-            last().shown, undefined);
-    }
-
-    // Opened from outside on home, a letter of his landing there, then
-    // stepped into Passwords from outside while a key of his is being taken.
-    function switchedMidKey() {
-        stage.open = false;
-        stage.held = [];
-        stage.selected = null;
-        stage.opened();
-        stage.press("p", false);
-    }
-
-    function switchedMidKeyStep() {
-        stage.press("Return", false, () => {
-            stage.toldFromOutside += 1;
-            stage.intoPasswords();
-        });
-    }
-
-    function switchedMidKeyShown() {
-        stage.present(600);
-        row().run();
-        same("nor is a step from outside that lands while a key of his is taken",
-            last().shown, undefined);
+        same("a move an ask from outside follows arms nothing", shownNow(), undefined);
     }
 }

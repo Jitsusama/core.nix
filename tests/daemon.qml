@@ -26,7 +26,8 @@
 // nothing deep is replaced whole. A client of a kind
 // with no records knows it holds none once it's answered, and one whose
 // answer is the whole of its kind, as the node's is, lets go what went in
-// a gap, and one whose answer is whole only of some records lets go only those. What each message changed and let go is heard apart, a key let
+// a gap, and one whose answer is whole only of some records lets go only
+// those. What each message changed and let go is heard apart, a key let
 // go never said as changed, and a whole answer says only the keys whose
 // records differ from what was held and those it dropped, so a rewatch
 // answered with the same records hears nothing, and lets go nothing

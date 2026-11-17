@@ -81,7 +81,7 @@ fn told(journal: &UnixDatagram) -> String {
 }
 
 #[test]
-fn a_yes_a_moment_past_an_ask_s_ten_minutes_is_refused_before_any_tidy() {
+fn a_yes_a_moment_past_an_ask_s_ten_minutes_ends_it_before_any_tidy() {
     let folder = folder("clock");
     let journal =
         UnixDatagram::bind(folder.join("journal.sock")).expect("the journal stand-in binds");
