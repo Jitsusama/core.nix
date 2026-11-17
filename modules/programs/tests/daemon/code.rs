@@ -2,7 +2,7 @@
 //! once, in a first watch's own answer; a repository cloned since told to
 //! a later watch, read behind it; the rows searched by owner; the open
 //! changes a refresh kept, how far a counting kept its checkout behind,
-//! and what it changed and didn't commit, said beside their repository; a checkout's files served
+//! and how many files it hasn't committed, said beside their repository; a checkout's files served
 //! inside Open a File by Name while it's ahead, gone once it isn't, and
 //! found there by name or folder as they're typed; New Terminal Here
 //! and Edit Here started by a stand-in for niri as they're asked; and
@@ -428,30 +428,36 @@ fn how_far_a_counting_kept_a_checkout_behind_is_said_beside_its_repository() {
 }
 
 #[test]
-fn what_a_checkout_changed_and_didnt_commit_is_counted_behind_a_watch() {
-    let running = Running::new("code-changed");
+fn what_a_checkout_hasnt_committed_is_counted_behind_a_watch_never_in_its_answer() {
+    // A status that takes 3 s, so a first answer that waited on it would
+    // hold its count.
+    let running = Running::with_git(
+        "code-uncommitted",
+        "case \"$*\" in *status*) sleep 3;; esac",
+    );
     cloned(&running, "alpha", "git@github.com:someone/alpha.git");
     let here = running.path("src/alpha");
     std::fs::write(here.join("one"), "one\n").unwrap();
-    // Added and never committed, so git tracks it as changed; a file it
-    // doesn't track is never counted.
+    // Added and never committed, so git tracks it as uncommitted; a file
+    // it doesn't track is never counted.
     git_in(&here, &["add", "one"]);
     std::fs::write(here.join("loose"), "loose\n").unwrap();
     let key = "row:code:github:someone/alpha";
     let mut client = running.client();
     let answer = client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "code"}));
-    let changed = json!({"said": "1 changed"});
-    let says = |row: &Value| row["row"]["side"].as_array().unwrap().contains(&changed);
+    let counted = json!({"said": "1 uncommitted"});
+    let says = |row: &Value| row["row"]["side"].as_array().unwrap().contains(&counted);
     let first = row_of(&answer, key)
         .unwrap_or_else(|| panic!("a first watch isn't answered with Code's rows: {answer}"));
-    // Counted behind the first answer, which never waits on git.
-    if !says(first) {
-        let told = client.changed(key);
-        assert!(
-            says(&told),
-            "what its checkout changed isn't counted beside it: {told}"
-        );
-    }
+    assert!(
+        !says(first),
+        "a first watch's answer waited on git: {first}"
+    );
+    let told = client.changed(key);
+    assert!(
+        says(&told),
+        "what its checkout hasn't committed isn't counted behind the watch: {told}"
+    );
 }
 
 #[test]

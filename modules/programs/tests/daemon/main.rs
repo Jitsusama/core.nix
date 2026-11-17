@@ -235,6 +235,16 @@ impl Running {
     /// Started by `launcher` and its arguments, each given the socket's
     /// path where it says `{socket}`, rather than on its own.
     fn through(test: &str, launcher: &[&str]) -> Running {
+        Running::started(test, launcher, None)
+    }
+
+    /// Started with a git that runs `before` in sh, then the git the path
+    /// finds, as a slow one would.
+    fn with_git(test: &str, before: &str) -> Running {
+        Running::started(test, &[], Some(before))
+    }
+
+    fn started(test: &str, launcher: &[&str], git: Option<&str>) -> Running {
         let folder = std::env::temp_dir().join(format!("programs-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         let sources = fixture(&folder);
@@ -265,6 +275,13 @@ impl Running {
             .env("PROGRAMS_NIRI", folder.join("niri"))
             .env("PROGRAMS_KITTEN", folder.join("kitten"))
             .stderr(Stdio::null());
+        if let Some(before) = git {
+            let path = folder.join("git");
+            let script = format!("#!{}\n{before}\nexec git \"$@\"\n", shell().display());
+            std::fs::write(&path, script).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            command.env("PROGRAMS_GIT", path);
+        }
         Running {
             daemon: Daemon::start(&mut command, socket, folder),
         }

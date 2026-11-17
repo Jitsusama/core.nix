@@ -15,7 +15,7 @@
         "changes": "{count} changes",
         "behind": "{count} behind",
         "ahead": "{count} ahead",
-        "changed": "{count} changed"
+        "uncommitted": "{count} uncommitted"
       }
     },
     {

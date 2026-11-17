@@ -34,18 +34,21 @@ pub struct Failure {
 }
 
 /// How many files git tracks in the checkout at `folder` that differ from
-/// its last commit, staged or not, or none when git couldn't say. Files
-/// it doesn't track aren't counted. It takes none of the locks a status
-/// may, so it never stands in the way of Joel's own git.
+/// its last commit, staged or not, or none when git couldn't say within
+/// `wait`. Files it doesn't track aren't counted. It takes none of the
+/// locks a status may, so it never stands in the way of Joel's own git,
+/// and looks for no renames, which in a partial clone would fetch what a
+/// file held from its remote; a file renamed counts as two.
 #[must_use]
-pub fn changed(git: &str, folder: &Path) -> Option<u32> {
+pub fn uncommitted(git: &str, folder: &Path, wait: Duration) -> Option<u32> {
     let status = [
         "--no-optional-locks",
         "status",
         "--porcelain",
         "--untracked-files=no",
+        "--no-renames",
     ];
-    let said = tried(git, folder, &status, Some(READ)).ok()?;
+    let said = tried(git, folder, &status, Some(wait)).ok()?;
     Some(u32::try_from(said.lines().count()).unwrap_or(u32::MAX))
 }
 
@@ -145,7 +148,8 @@ pub fn tried(
         let said = String::from_utf8_lossy(&said).trim().to_owned();
         eprintln!(
             "git {} in {} failed: {said}",
-            args.first().unwrap_or(&""),
+            // Its subcommand, past any option given git itself.
+            args.iter().find(|arg| !arg.starts_with('-')).unwrap_or(&""),
             folder.display(),
         );
         return Err(Failure {

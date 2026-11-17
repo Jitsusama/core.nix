@@ -4,8 +4,10 @@
 //! (modules/repos). The one written to last comes first, said beside it
 //! by how many changes are open on its remote, how far the checkout
 //! written to last is behind and ahead of the branch it follows (as repos'
-//! timer last counted), how many trees are cut from it and when git last wrote in it; it's found by its name, its
-//! owner and its key. Return opens its page where a remote keeps it on
+//! timer last counted), how many of its tracked files that checkout has
+//! changed and not committed (as the daemon last counted), how many trees
+//! are cut from it and when git last wrote in it; it's found by its name,
+//! its owner and its key. Return opens its page where a remote keeps it on
 //! GitHub or GitLab, else copies its checkout's path; inside are Open Its
 //! Page, Open Its Open Changes (while any are), Copy Its Path, New
 //! Terminal Here and Edit Here,
@@ -50,8 +52,9 @@ pub struct Words {
     behind: String,
     ahead: String,
     /// How many tracked files its checkout has changed and not committed:
-    /// `{count} changed`.
-    changed: String,
+    /// `{count} uncommitted`, git's word, since a change is work put up for
+    /// review.
+    uncommitted: String,
     /// The labels of its drawer's facts.
     key: String,
     trunk: String,
@@ -113,7 +116,7 @@ impl Words {
             changes: said("changes"),
             behind: said("behind"),
             ahead: said("ahead"),
-            changed: said("changed"),
+            uncommitted: said("uncommitted"),
             key: name("code:key"),
             trunk: name("code:trunk"),
             checkout: name("code:checkout"),
@@ -172,20 +175,20 @@ impl Words {
 }
 
 /// Every repository's row, in the record's order, the one written to
-/// last first; paths are said from `home` as `~`, and `changed` says how
-/// many tracked files each checkout counted has changed and not
+/// last first; paths are said from `home` as `~`, and `uncommitted` says
+/// how many tracked files each checkout counted has changed and not
 /// committed, by its path.
 #[must_use]
 pub fn rows(
     record: &Record,
     home: Option<&Path>,
     words: &Words,
-    changed: &BTreeMap<String, u32>,
+    uncommitted: &BTreeMap<String, u32>,
 ) -> Vec<Value> {
     record
         .repositories
         .iter()
-        .map(|repository| row(repository, home, words, changed))
+        .map(|repository| row(repository, home, words, uncommitted))
         .collect()
 }
 
@@ -372,7 +375,7 @@ fn row(
     repository: &Repository,
     home: Option<&Path>,
     words: &Words,
-    changed: &BTreeMap<String, u32>,
+    uncommitted: &BTreeMap<String, u32>,
 ) -> Value {
     let trees: usize = repository
         .checkouts
@@ -396,8 +399,8 @@ fn row(
     // What a Pull or a Switch would be refused over, after how far apart.
     if let Some(said) = checkout
         .filter(|checkout| !checkout.bare)
-        .and_then(|checkout| changed.get(&checkout.path))
-        .and_then(|count| Words::up_to(&words.changed, *count))
+        .and_then(|checkout| uncommitted.get(&checkout.path))
+        .and_then(|count| Words::up_to(&words.uncommitted, *count))
     {
         side.push(json!({"said": said}));
     }
