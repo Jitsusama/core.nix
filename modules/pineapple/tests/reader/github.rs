@@ -489,6 +489,31 @@ fn github_a_site_that_cant_be_reached_is_named_as_itself() {
     );
 }
 
+#[test]
+fn github_the_default_site_that_answers_with_an_error_is_named_github() {
+    let (origin, _) = answering_whole(|_, _| Answered {
+        status: 500,
+        headers: Vec::new(),
+        body: json!({"message": "Server Error"}),
+    });
+    // With no site named, the reader reads GitHub, and says so when it fails.
+    let failed = "<4>couldn't ask GitHub who Joel is: GitHub answered 500 for /user";
+    let home = home();
+    let mut reading = github_reader(&home, &origin, &[]);
+    let began = Instant::now();
+    while !journal(&home).contains(failed) && began.elapsed() < PATIENCE {
+        thread::sleep(Duration::from_millis(50));
+    }
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+    let said = journal(&home);
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+    assert!(
+        said.contains(failed),
+        "GitHub is named as the site that failed: {said}"
+    );
+}
+
 /// A stand-in whose every answer names a next page at `next(origin)`.
 fn paging(next: fn(&str) -> String) -> String {
     let at: Arc<OnceLock<String>> = Arc::new(OnceLock::new());
