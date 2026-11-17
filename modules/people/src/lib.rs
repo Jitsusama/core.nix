@@ -302,38 +302,76 @@ pub(crate) fn stamp<T: serde::Serialize + ?Sized>(what: &T) -> String {
 pub struct Record {
     pub key: String,
     pub sources: BTreeMap<String, Value>,
-    /// Each name a source gives them and their address, made ready to
-    /// search as they're heard, since a search reads everyone.
-    names: Vec<Text>,
+    /// The name their row shows and their address, as the shell matches
+    /// a row by, made ready to search as they're heard, since a search
+    /// reads everyone.
+    named: Text,
     mailed: Option<Text>,
     listed: bool,
+    /// When the first thing with them began, a meeting or a mail, after
+    /// which those listed list them too (listing.rs's `listed`).
+    began: Option<f64>,
 }
 
 impl Record {
     fn of(key: String) -> Record {
-        let mailed = address(&key).map(Text::of);
+        let mailed = address(&key)
+            .filter(|kept| kept.contains('@'))
+            .map(Text::of);
         Record {
             key,
             sources: BTreeMap::new(),
-            names: Vec::new(),
+            named: Text::of(""),
             mailed,
             listed: false,
+            began: None,
         }
     }
 
-    /// Reads again what a search and a list read, as what's said changes.
-    fn indexed(&mut self) {
-        self.names = self
-            .sources
-            .values()
-            .filter_map(|entry| entry.get("name").and_then(Value::as_str))
-            .map(Text::of)
-            .collect();
+    /// Reads again what a search and a list read, as what's said changes,
+    /// by the sources in the order they're consulted.
+    fn indexed(&mut self, consulted: &[String]) {
+        self.named = Text::of(&self.name(consulted.iter().map(String::as_str)));
         self.listed = self.sources.values().any(|entry| {
             ["favourite", "recent"]
                 .iter()
                 .any(|word| entry.get(word).and_then(Value::as_bool) == Some(true))
         });
+        self.began = consulted
+            .iter()
+            .filter_map(|source| self.sources.get(source)?.get("spans")?.as_array())
+            .flatten()
+            .filter_map(|span| {
+                let from = span.get("from")?.as_f64()?;
+                let to = span.get("to")?.as_f64()?;
+                (from.is_finite() && to.is_finite()).then_some(from)
+            })
+            .reduce(f64::min);
+    }
+
+    /// The name their row shows: the first a source gives, in the order
+    /// the sources are consulted, that isn't only an address; or else one
+    /// made of their address, or their key for one who has none.
+    pub fn name<'a>(&self, consulted: impl IntoIterator<Item = &'a str>) -> String {
+        let known = self.key.strip_prefix("person:").unwrap_or(&self.key);
+        consulted
+            .into_iter()
+            .filter_map(|source| self.sources.get(source)?.get("name")?.as_str())
+            .map(str::trim)
+            .find(|said| !name::bare(said))
+            .map_or_else(
+                || match address(&self.key).filter(|kept| kept.contains('@')) {
+                    Some(email) => name::by_address(email),
+                    None => known.to_owned(),
+                },
+                str::to_owned,
+            )
+    }
+
+    /// Whether those listed list them at `now`: as `listed`, or once
+    /// something with them has begun.
+    fn listed_at(&self, now: f64) -> bool {
+        self.listed || self.began.is_some_and(|from| from <= now)
     }
 
     /// Served with a stamp of what its sources say, `stamp`, which moves
@@ -359,15 +397,15 @@ impl Record {
     }
 
     /// How well what's typed finds them, as the shell's Fuzzy.js scores
-    /// it: the best of any name a source gives them and their address,
-    /// or nothing when none is found. Each word has to start a word of
+    /// a row: the better of the name it shows and their address, or
+    /// nothing when neither is found. Each word has to start a word of
     /// one text, its letters unbroken, in any order and any case.
     fn score(&self, typed: &Typed) -> Option<i32> {
-        self.names
-            .iter()
-            .chain(&self.mailed)
-            .filter_map(|text| text.ready.score(typed))
-            .max()
+        let address = self
+            .mailed
+            .as_ref()
+            .and_then(|text| text.ready.score(typed));
+        self.named.ready.score(typed).max(address)
     }
 }
 
@@ -413,6 +451,9 @@ pub struct Book {
     standings: BTreeMap<String, Standing>,
     /// The sources that say everyone unasked, never waited on.
     rosters: HashSet<String>,
+    /// The sources in the order they're consulted, for the name each
+    /// person's row shows.
+    consulted: Vec<String>,
 }
 
 /// The key of someone a source knows by an address, or else by its own
@@ -440,6 +481,7 @@ impl Book {
                 .iter()
                 .map(|source| (source.clone(), Standing::Starting))
                 .collect(),
+            consulted: sources.to_vec(),
             ..Book::default()
         }
     }
@@ -470,7 +512,7 @@ impl Book {
                     self.order.push(key.clone());
                 }
                 record.sources.insert(source.to_owned(), entry);
-                record.indexed();
+                record.indexed(&self.consulted);
                 Some(key)
             }
             Heard::Later { .. } => {
@@ -481,7 +523,7 @@ impl Book {
                 let key = key_of(source, &address, id.as_deref());
                 let record = self.records.get_mut(&key)?;
                 record.sources.remove(source)?;
-                record.indexed();
+                record.indexed(&self.consulted);
                 if record.sources.is_empty() {
                     self.records.remove(&key);
                     self.order.retain(|kept| kept != &key);
@@ -538,13 +580,13 @@ impl Book {
     }
 
     /// Those what's typed finds, at most `limit`, in the order the shell
-    /// shows them (People.qml): those a source lists first, then the best
+    /// shows them (People.qml): those listed at `now` first, then the best
     /// found by Fuzzy.js's score, and among equals in the order heard. So
     /// the shell shows the answer as it comes, merging and ranking no
     /// one: ranked there, everyone was merged again at each answer, 13 ms
     /// of Joel's shell at p90 and 62 at most (his journal, 2026-11-14 to
     /// 17).
-    pub fn search(&self, typed: &str, limit: usize) -> Vec<&Record> {
+    pub fn search(&self, typed: &str, limit: usize, now: f64) -> Vec<&Record> {
         let typed = Typed::of(typed);
         if typed.is_empty() {
             return Vec::new();
@@ -555,7 +597,7 @@ impl Book {
             .filter_map(|(at, record)| {
                 record
                     .score(&typed)
-                    .map(|score| (!record.listed(), Reverse(score), at, record))
+                    .map(|score| (!record.listed_at(now), Reverse(score), at, record))
             })
             .collect();
         found.sort_unstable_by_key(|&(unlisted, score, at, _)| (unlisted, score, at));
@@ -881,18 +923,99 @@ mod tests {
     }
 
     #[test]
-    fn words_start_words_as_the_shells_fuzzy_says() {
-        let find =
-            |text: &str, typed: &str| Text::of(text).ready.score(&Typed::of(typed)).is_some();
-        assert!(find("Ada Brightwater", "bri ad"));
-        assert!(find("Ada Brightwater", "ADA"));
-        assert!(!find("Ada Brightwater", "water"));
-        assert!(find("ada.brightwater@example.com", "bright"));
-        assert!(find("ada@example.com", "exam"));
-        assert!(find("McKenzie", "ken"));
-        assert!(find("agent007", "007"));
-        assert!(find("Zoë Ångström", "ång"));
-        assert!(!find("Ada", "adam"));
+    fn words_start_words_of_a_name_or_an_address_as_the_shells_fuzzy_says() {
+        let find = |address: &str, name: &str, typed: &str| {
+            let mut book = Book::of(&["tuple".to_owned()]);
+            book.take("tuple", tuple(address, 1, name, false));
+            !book.search(typed, 1, 0.0).is_empty()
+        };
+        for (address, name, typed, found) in [
+            ("a@b.c", "Ada Brightwater", "bri ad", true),
+            ("a@b.c", "Ada Brightwater", "ADA", true),
+            ("a@b.c", "Ada Brightwater", "water", false),
+            ("ada.brightwater@example.com", "Q", "bright", true),
+            ("ada@example.com", "Q", "exam", true),
+            ("a@b.c", "McKenzie", "ken", true),
+            ("a@b.c", "agent007", "007", true),
+            ("a@b.c", "Zoë Ångström", "ång", true),
+            ("a@b.c", "Ada", "adam", false),
+            ("a@b.c", "Ada", "  ", false),
+        ] {
+            assert_eq!(
+                find(address, name, typed),
+                found,
+                "{typed:?} in {name} <{address}>"
+            );
+        }
+    }
+
+    #[test]
+    fn a_search_finds_them_by_the_better_of_their_name_and_their_address() {
+        let mut book = Book::of(&["tuple".to_owned()]);
+        // "ada" scores 88 in "Adams Ray", 84 in "McAda Ray" and 96 in
+        // "ada@example.com", so the later one's address puts them first.
+        book.take("tuple", tuple("x1@example.com", 1, "Adams Ray", false));
+        book.take("tuple", tuple("ada@example.com", 2, "McAda Ray", false));
+        let keys: Vec<_> = book
+            .search("ada", 10, 0.0)
+            .iter()
+            .map(|record| record.key.clone())
+            .collect();
+        assert_eq!(
+            keys,
+            ["person:ada@example.com", "person:x1@example.com"],
+            "the better of each one's two"
+        );
+    }
+
+    #[test]
+    fn a_search_finds_them_by_the_name_their_row_shows_alone() {
+        let mut book = Book::of(&["tuple".to_owned(), "slack".to_owned()]);
+        let person = |address: &str, name: &str| Heard::Person {
+            address: address.to_owned(),
+            entry: json!({"name": name}),
+        };
+        book.take("slack", person("rob@example.com", "Bob Smith"));
+        book.take("tuple", person("rob@example.com", "Robert Smith"));
+        book.take("slack", person("chao.duan@example.com", ""));
+        let found = |typed| book.search(typed, 10, 0.0).len();
+        // Tuple is consulted first, so their row shows Robert, and the
+        // shell, matching the row, never finds them as Bob.
+        assert_eq!(found("robert"), 1, "by the name shown");
+        assert_eq!(found("bob"), 0, "not by a name another source gives");
+        // One no source names is shown, and found, as Chao Duan.
+        assert_eq!(found("chao duan"), 1, "by the name made of their address");
+    }
+
+    #[test]
+    fn a_search_lists_first_one_listed_once_something_with_them_began() {
+        let mut book = Book::of(&["tuple".to_owned(), "google".to_owned()]);
+        book.take("tuple", tuple("ada@example.com", 1, "Ada", false));
+        book.take(
+            "google",
+            Heard::Person {
+                address: "lane@example.com".to_owned(),
+                entry: json!({"name": "Ada Lane", "spans": [{"from": 100.0, "to": 200.0}]}),
+            },
+        );
+        let keys = |now| {
+            book.search("ada", 10, now)
+                .iter()
+                .map(|record| record.key.clone())
+                .collect::<Vec<_>>()
+        };
+        // Both score 96, so they're in the order heard until their
+        // meeting begins, as those listed list Ada Lane from then on.
+        assert_eq!(
+            keys(50.0),
+            ["person:ada@example.com", "person:lane@example.com"],
+            "before it began"
+        );
+        assert_eq!(
+            keys(300.0),
+            ["person:lane@example.com", "person:ada@example.com"],
+            "once it began, ended or not"
+        );
     }
 
     #[test]
@@ -904,7 +1027,7 @@ mod tests {
         book.take("tuple", tuple("adams@example.com", 2, "Adams", true));
         book.take("tuple", tuple("ada@example.com", 3, "Ada", false));
         let keys: Vec<_> = book
-            .search("ada", 10)
+            .search("ada", 10, 0.0)
             .iter()
             .map(|record| record.key.clone())
             .collect();
@@ -914,9 +1037,9 @@ mod tests {
                 "person:adams@example.com",
                 "person:ada@example.com",
                 "person:mc@example.com"
-            ]
+            ],
+            "the listed, then the better found"
         );
-        assert_eq!(book.search("  ", 10), Vec::<&Record>::new());
     }
 
     #[test]
@@ -928,7 +1051,7 @@ mod tests {
         book.take("tuple", tuple("x@example.com", 4, "Adams Ray", true));
         book.take("tuple", tuple("gus@example.com", 5, "Gus", false));
         let keys = |limit| {
-            book.search("ada", limit)
+            book.search("ada", limit, 0.0)
                 .iter()
                 .map(|record| record.key.clone())
                 .collect::<Vec<_>>()
@@ -944,7 +1067,11 @@ mod tests {
                 "person:eli@example.com"
             ]
         );
-        assert_eq!(keys(2).len(), 2);
+        assert_eq!(
+            keys(2),
+            ["person:x@example.com", "person:dale@example.com"],
+            "cut to the limit once ranked"
+        );
         assert!(book.record("person:x@example.com").unwrap().listed());
         assert!(!book.record("person:gus@example.com").unwrap().listed());
     }

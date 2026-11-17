@@ -499,7 +499,8 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
         }
         Ask::Search { id, words, limit } => {
             let daemon = lock(shared);
-            json!({"id": id, "records": drawn(&daemon, daemon.book.search(&words, limit))})
+            let found = daemon.book.search(&words, limit, clock());
+            json!({"id": id, "records": drawn(&daemon, found)})
         }
         Ask::Watch { id, keys, listed } => {
             let mut daemon = lock(shared);

@@ -24,7 +24,7 @@ use serde_json::{Map, Value, json};
 
 use crate::drawer::{self, Named};
 use crate::held::{self, Holds};
-use crate::name::{self, bare};
+use crate::name;
 use crate::{Book, LISTING, Record, address};
 
 /// How a source's entry says someone stands, as its module tells the
@@ -265,7 +265,6 @@ pub fn person(record: &Record, sources: &[(String, Option<Stands>)]) -> Person {
         .filter(|kept| kept.contains('@'))
         .unwrap_or("")
         .to_owned();
-    let known = record.key.strip_prefix("person:").unwrap_or(&record.key);
     let entries: Vec<(&String, &Value, Option<&Stands>)> = sources
         .iter()
         .filter_map(|(name, stands)| {
@@ -275,21 +274,8 @@ pub fn person(record: &Record, sources: &[(String, Option<Stands>)]) -> Person {
                 .map(|entry| (name, entry, stands.as_ref()))
         })
         .collect();
-    let name = entries
-        .iter()
-        .filter_map(|(_, entry, _)| entry.get("name").and_then(Value::as_str))
-        .map(str::trim)
-        .find(|name| !bare(name))
-        .map_or_else(
-            || {
-                if email.is_empty() {
-                    known.to_owned()
-                } else {
-                    name::by_address(&email)
-                }
-            },
-            str::to_owned,
-        );
+    // The name a search finds them by (Record's `name`).
+    let name = record.name(sources.iter().map(|(source, _)| source.as_str()));
     let spans = entries
         .iter()
         .filter_map(|(_, entry, _)| entry.get("spans").and_then(Value::as_array))
