@@ -197,8 +197,9 @@ was the first command set this way, and this generalises it.
 - **A unit keeps its case.** A column's label gives its name, then its
   unit as the unit is written: POWER dBm, SPEED Mb/s, TOOK ms. The first
   word always goes up, so a label of a unit alone would read MHZ or MB/S.
-  The kit keeps a later word that holds a capital, and the lower-case
-  units it names (ms, µs, ns, s, b/s, kb/s, bit/s, kbit/s).
+  The kit keeps a later word that holds a capital, as a name from the
+  world keeps its own (FROM UniFi), and the few lower-case units it
+  names, such as ms and kb/s.
 
 ### Space
 

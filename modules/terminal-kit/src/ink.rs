@@ -194,8 +194,8 @@ const LOWER_UNITS: [&str; 8] = ["ms", "µs", "ns", "s", "b/s", "kb/s", "bit/s", 
 
 /// A label's words in capitals, but for a unit after its first word,
 /// which keeps its case: a word holding a capital (dBm, Mb/s, MHz) is
-/// already written as its unit is, and the few lower-case units are
-/// named. The first word is always the label's name, so it always goes
+/// already written as its unit is, as a name from the world keeps its
+/// own case, and the few lower-case units are named. The first word is always the label's name, so it always goes
 /// up, and a group's heading such as Examples still reads EXAMPLES.
 pub(crate) fn capitals(words: &str) -> String {
     words
@@ -497,7 +497,10 @@ mod tests {
     #[test]
     fn a_label_keeps_a_units_case_after_its_name() {
         let pen = Pen::new(Ink::plain(), Some(&osaka_jade()));
-        for unit in LOWER_UNITS {
+        // Spelled out rather than read from LOWER_UNITS, so a unit dropped
+        // from the list goes up here and fails.
+        let lower = ["ms", "µs", "ns", "s", "b/s", "kb/s", "bit/s", "kbit/s"];
+        for unit in lower {
             assert_eq!(
                 pen.label(&format!("took {unit}")),
                 format!("TOOK {unit}"),
@@ -505,9 +508,9 @@ mod tests {
             );
         }
         assert_eq!(
-            ["power dBm", "speed Mb/s", "linked to"].map(|words| pen.label(words)),
-            ["POWER dBm", "SPEED Mb/s", "LINKED TO"],
-            "a unit holding a capital went up, or a plain word didn't"
+            ["power dBm", "speed Mb/s", "linked to", "from UniFi"].map(|words| pen.label(words)),
+            ["POWER dBm", "SPEED Mb/s", "LINKED TO", "FROM UniFi"],
+            "a word holding a capital went up, or a plain word didn't"
         );
         // The first word is the label's name, so it goes up even when it
         // is a unit: a column is named before its unit.
