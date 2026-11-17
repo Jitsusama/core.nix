@@ -139,19 +139,19 @@ pub fn automated(text: &str) -> bool {
     let text = text.trim_start();
     peers_note(text)
         || [
-        "[",
-        "<",
-        "Mesh message",
-        "Reloaded",
-        "At a glance",
-        "The conversation history",
-        "Carry on",
-        "Continue",
-        "You are ",
-        "Your ",
-    ]
-    .iter()
-    .any(|opening| text.starts_with(opening))
+            "[",
+            "<",
+            "Mesh message",
+            "Reloaded",
+            "At a glance",
+            "The conversation history",
+            "Carry on",
+            "Continue",
+            "You are ",
+            "Your ",
+        ]
+        .iter()
+        .any(|opening| text.starts_with(opening))
 }
 
 /// Whether a message is a peer's note in the user's place, as one starting,
@@ -159,8 +159,7 @@ pub fn automated(text: &str) -> bool {
 /// capitalised word, "by", and a cell's six-character address.
 fn peers_note(text: &str) -> bool {
     let mut words = text.splitn(4, ' ');
-    let (Some(verb), Some("by"), Some(address)) = (words.next(), words.next(), words.next())
-    else {
+    let (Some(verb), Some("by"), Some(address)) = (words.next(), words.next(), words.next()) else {
         return false;
     };
     let address = address.trim_end_matches([',', ':', '.', ';']);

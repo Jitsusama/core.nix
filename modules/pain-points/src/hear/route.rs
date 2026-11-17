@@ -143,11 +143,7 @@ pub fn cells(printed: &str) -> BTreeMap<String, Cell> {
 /// The address `pain` goes to, or none for now: a turn the model provider
 /// failed in goes to the provider's owner when the routes name one, and
 /// everything else to its session's owner.
-pub fn owner_of(
-    pain: &Heard,
-    cells: &BTreeMap<String, Cell>,
-    routes: &Routes,
-) -> Option<String> {
+pub fn owner_of(pain: &Heard, cells: &BTreeMap<String, Cell>, routes: &Routes) -> Option<String> {
     let provider = routes
         .provider
         .as_ref()
