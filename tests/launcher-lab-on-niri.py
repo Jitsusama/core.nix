@@ -151,9 +151,25 @@ def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture
     # Opened once untimed first: a fresh niri blurs behind its first surface only as that
     # shows, which held the first opening of every run 368 to 902 ms from its ask though it was
     # drawn in 11, against 38 and 42 with the blur off (H6EDLC, 2026-11-11). Joel's niri has
-    # blurred since he logged in, so his openings never pay it.
-    opened(shell, "home")
+    # blurred since he logged in, so his openings never pay it. Its shell's own part is his,
+    # though: the first opening since the shell started took 47 and 58 ms on his laptop, 19
+    # and 24 of it drawing, where later ones drew in 1 to 4 (2026-11-16 and 17). So it's
+    # printed with the shell's line for it, the first's drawing beside the second's.
+    first = shell.mark()
+    opening = opened(shell, "home")
     shell.close_launcher()
+    shell.launcher_until(lambda shown: not shown["open"])
+    second = shell.mark()
+    again = opened(shell, "home")
+    shell.close_launcher()
+    with capsys.disabled():
+        for nth, (mark, each) in enumerate(((first, opening), (second, again)), start=1):
+            line = said_after(shell, mark, "opening took")[:1]
+            print(
+                f"lab-first {os.environ.get('LAB_RUN', '')} opening {nth}: took "
+                f"{each.get('took')} ms; {line[0].split('qml: ', 1)[-1] if line else 'unsaid'}",
+                flush=True,
+            )
     timed: dict[str, list[int]] = {place: [] for place in places}
     # From the ask to the shell's swap of the frame at the card's size, which `presented` runs
     # on from to niri's presented frame.
