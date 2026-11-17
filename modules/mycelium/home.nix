@@ -89,7 +89,7 @@ let
   linking = cfg.links != [ ] || cfg.vias != [ ] || cfg.providers != [ ];
   serving = cfg.realm != null;
   agentsKey = config.systemd.user.sockets ? agent-signing;
-  declaration = import ./declaration.nix { inherit lib isLinux; } cfg;
+  declaration = import ./declaration.nix { inherit lib; } cfg;
   # The node reads the declaration from the store, where only root writes,
   # never from the account's config folder: anything running as the account
   # could repoint that link and widen how agents' commands run.
@@ -507,27 +507,25 @@ in
     };
     # Internal, so no machine widens it; only a test sets it otherwise. An
     # agent asking as fenced runs strict, which is stricter than it needs,
-    # never looser.
+    # never looser; a Mac declares only fenced, but runs its strict, which
+    # writes only the run's folder.
     fenceRuns = lib.mkOption {
       type = lib.types.nullOr (lib.types.listOf lib.types.str);
-      default =
-        if isLinux then
-          [
-            (lib.getExe (pkgs.callPackage ../pi/fence-run/package.nix { }))
-            "--kind"
-            "strict"
-            "--"
-          ]
-        else
-          null;
+      default = [
+        (lib.getExe (pkgs.callPackage ../pi/fence-run/package.nix { }))
+        "--kind"
+        "strict"
+        "--"
+      ];
       defaultText = lib.literalExpression ''[ "\''${pi-fence}/bin/pi-fence" "--kind" "strict" "--" ]'';
       internal = true;
       description = ''
         The words an agent's `mycelium run` is put after to run in its
         fence here, the first a program in the Nix store, as each fenced
         and strict fence the machine declares says them: pi's own fence,
-        strict, on Linux, and null on a Mac, where every agent's run is
-        refused.
+        strict, on Linux and on a Mac, which declares only its fenced
+        fence, since its strict still reads the home folder but a denylist.
+        Null says none, so every agent's run is refused.
       '';
     };
   };
@@ -558,6 +556,13 @@ in
             one: one.from != one.to && (lib.elem one.from realms || lib.elem one.to realms)
           ) cfg.flows;
           message = "jitsusama.mycelium.flows has a flow from a realm into itself, or between two realms this machine joins neither of.";
+        }
+        {
+          # A Mac's sandbox-exec profile reads the home folder but a
+          # denylist, where Linux's strict reads only what it lists, so a
+          # strict run sent to a Mac would land on the weaker fence.
+          assertion = isDarwin -> cfg.declares == null || cfg.declares.fence.strict == null;
+          message = "jitsusama.mycelium.declares.fence.strict is set on a Mac, whose fence reads the home folder but what it hides, so it isn't strict: declare fence instead.";
         }
         {
           assertion = !(cfg.alsoJoins ? balance);

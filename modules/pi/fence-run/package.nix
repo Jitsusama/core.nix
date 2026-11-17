@@ -16,14 +16,15 @@ let
   harness = fetchFromGitHub {
     owner = "Jitsusama";
     repo = "agentic-harness.pi";
-    rev = "e84873b79f3278149daead4f0563587debecfe04";
-    hash = "sha256-IWDfMHGNyW832r/fxFwL78uWcK+7PN6U0+KJpGw7g0U=";
+    rev = "8119d13a6620c4b1790e0de8c9091ea990fea768";
+    hash = "sha256-bhRlkkimii/+LtMN7Cu7mU781w2f6yhvaX9XXOXeKBM=";
   };
 in
 writeShellApplication {
   name = "pi-fence";
   # The bash it runs the fenced line with, found even on a path as bare as
-  # a service's; bubblewrap and landrun it takes from the system alone.
+  # a service's; bubblewrap and landrun on Linux, and sandbox-exec on a
+  # Mac, it takes from the system alone.
   runtimeInputs = [ bash ];
   text = ''
     exec ${lib.getExe nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON \
@@ -32,6 +33,6 @@ writeShellApplication {
   passthru = { inherit harness; };
   meta = {
     description = "Run one command in pi's own agent fence";
-    platforms = lib.platforms.linux;
+    platforms = lib.platforms.linux ++ lib.platforms.darwin;
   };
 }
