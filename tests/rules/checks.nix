@@ -107,10 +107,13 @@
   # A ruff rule switched off for some files, once nothing there breaks it,
   # only waves through the next finding unseen, so each per-file exception
   # in ruff.toml has to hide one. Every exception hid one once its five
-  # stale ones went, so none waits.
-  every-ruff-exception-hides-a-finding = self.lib.everyRuffExceptionHidesAFinding pkgs {
-    src = ../..;
-  };
+  # stale ones went, so none waits. Repositories built on core lint with
+  # core's ruff.toml, so it's core's alone, with no `core.lib` entry.
+  every-ruff-exception-hides-a-finding =
+    pkgs.callPackage ./every-ruff-exception-hides-a-finding.nix { }
+      {
+        src = ../..;
+      };
 }
 # The example laptop is a NixOS machine, which a Mac doesn't evaluate.
 // onLinux {

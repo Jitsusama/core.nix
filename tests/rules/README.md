@@ -7,13 +7,17 @@ that broke it before the rule came in. A list only shrinks: fixing a file takes
 it off, and nothing new goes on. `every-lock-agrees-with-its-manifests` and
 `every-ruff-exception-hides-a-finding` have no list, since nothing broke them
 when they came in. `checks.nix` runs all twelve on core itself.
+`every-ruff-exception-hides-a-finding` keeps its planted tree's config in
+`every-ruff-exception-hides-a-finding-planted.toml`, and first sees itself fail
+there.
 `daemons-agree` reads an evaluated account's units rather than the files
 alone, so it's given a graphical machine's account too, and runs on Linux.
 `commands-agree` runs each command on the terminal kit for its help, so it's
 given those commands built, and runs on Linux, where the first builds. It
 reads the scripts Nix wrappers build as well as the crates' programs.
-Every rule is also given to other repositories built on core, through
-`core.lib` in `flake.nix`, with a waiting list of their own.
+Every rule but `every-ruff-exception-hides-a-finding` is also given to other
+repositories built on core, through `core.lib` in `flake.nix`, with a waiting
+list of their own; they lint with core's ruff.toml, which that one reads.
 
 | Rule                                             | Holds                                                         |
 | ------------------------------------------------ | ------------------------------------------------------------- |

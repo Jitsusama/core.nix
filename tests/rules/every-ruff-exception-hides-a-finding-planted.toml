@@ -1,0 +1,16 @@
+# The ruff config of the tree every-ruff-exception-hides-a-finding.nix plants
+# to see the rule fail. Each file it names holds what its comment says, and the
+# rule must name clean.py's exception and twice.py's, the first of the pair.
+[lint]
+select = ["F"]
+
+[lint.per-file-ignores]
+# An unused import, which the exception hides.
+"hidden.py" = ["F401"]
+# An unused import, hidden by a prefix that selects its rule.
+"prefixed.py" = ["F4"]
+# Nothing to hide.
+"clean.py" = ["F401"]
+# An unused import, hidden twice over: one of the two can go, not both.
+"twice.py" = ["F401"]
+"twic*.py" = ["F401"]

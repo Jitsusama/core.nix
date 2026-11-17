@@ -632,13 +632,6 @@
       lib.everyLockAgreesWithItsManifests =
         pkgs: pkgs.callPackage ./tests/rules/every-lock-agrees-with-its-manifests.nix { };
 
-      # How a repository built on core keeps each per-file exception in its ruff
-      # config hiding a finding, as core does:
-      # `core.lib.everyRuffExceptionHidesAFinding pkgs { src = ./.; }` is a check
-      # that fails on an exception whose rule raises nothing more once it's gone.
-      lib.everyRuffExceptionHidesAFinding =
-        pkgs: pkgs.callPackage ./tests/rules/every-ruff-exception-hides-a-finding.nix { };
-
       # How a repository built on core holds its daemons to docs/daemons.md's
       # convention, as core does: `core.lib.daemonsAgree pkgs { src = ./.; home
       # = ...; waiting = { ... }; }` is a check that fails on a daemon the
