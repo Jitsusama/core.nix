@@ -66,6 +66,8 @@ const CLEAR_MS: f64 = 5.0;
 const FLOWING_KBIT: f64 = 500.0;
 /// The least a direction is ever held to.
 const LEAST_KBIT: f64 = 500.0;
+/// The lowest ceiling a trial may set the upload under, in kbit/s.
+const MOST_KBIT_LEAST: f64 = 1_000.0;
 /// A direction carrying under this share of what it could carry, its rate
 /// or its connection, when its queue stands carries a sliver: the queue is
 /// mostly another machine's or the air's, so a cut halves what it could
@@ -225,6 +227,11 @@ pub struct Tuning {
     pub hold: f64,
     /// How far over the plateau a probe looks.
     pub probe_up: f64,
+    /// The most, in kbit/s, the upload is given, whatever it learns, or
+    /// none. Held under a second shaper past ours, it learns whether the
+    /// loss past our queues is that shaper's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub most_kbit: Option<f64>,
 }
 
 impl Default for Tuning {
@@ -234,6 +241,7 @@ impl Default for Tuning {
             standing_s: STANDING_S,
             hold: HOLD,
             probe_up: PROBE_UP,
+            most_kbit: None,
         }
     }
 }
@@ -256,6 +264,12 @@ impl Tuning {
             standing_s: within(self.standing_s, 1.0, 3.0, today.standing_s),
             hold: within(self.hold, 0.9, 1.0, today.hold),
             probe_up: within(self.probe_up, 1.02, 1.2, today.probe_up),
+            // Under a megabit agents' own lane starves, and its copies
+            // fail, so a ceiling stops there.
+            most_kbit: self
+                .most_kbit
+                .filter(|most| most.is_finite())
+                .map(|most| most.max(MOST_KBIT_LEAST)),
         }
     }
 }
@@ -771,14 +785,20 @@ impl Way {
     }
 
     pub fn limit(&self) -> Option<u64> {
-        self.rate.is_finite().then(|| {
+        // A trial's ceiling holds what's given, not what's learned, so the
+        // line found before it is found again the moment it ends.
+        let rate = self
+            .tuning
+            .most_kbit
+            .map_or(self.rate, |most| self.rate.min(most));
+        rate.is_finite().then(|| {
             // A rate is a few hundred thousand kbit/s at most.
             #[expect(
                 clippy::cast_possible_truncation,
                 clippy::cast_sign_loss,
                 reason = "a positive rate far under u64's range"
             )]
-            let kbit = self.rate.round() as u64;
+            let kbit = rate.round() as u64;
             kbit
         })
     }
@@ -2618,6 +2638,54 @@ mod tests {
         assert!(near(limits, 11_760.0), "held under the router: {limits:?}");
     }
 
+    // On 16 November heavy uploads lost a fifth of their packets past our
+    // queues while light pings lost none, as a second shaper past ours
+    // would drop them. A trial's ceiling holds the upload under it to
+    // learn whether the loss is that shaper's, and ends with the trial.
+    #[test]
+    fn a_trial_s_ceiling_holds_the_upload_under_it_until_it_ends() {
+        let mut c = Controller::new(None, None);
+        c.up.tune(Tuning {
+            most_kbit: Some(8_500.0),
+            ..Tuning::default()
+        });
+        let limits = run_flow_queued(&mut c, 0.0, 20.0, 12_000.0);
+        assert_eq!(limits, Some(8_500), "held under its ceiling");
+        c.up.tune(Tuning::default());
+        let limits = run_flow_queued(&mut c, 20.0, 40.0, 12_000.0);
+        assert!(limits > Some(8_500), "held after it ended: {limits:?}");
+    }
+
+    #[test]
+    fn a_ceiling_over_what_the_upload_learned_changes_nothing() {
+        let mut c = Controller::new(None, None);
+        c.up.tune(Tuning {
+            most_kbit: Some(50_000.0),
+            ..Tuning::default()
+        });
+        let limits = run_flow_queued(&mut c, 0.0, 10.0, 12_000.0);
+        assert!(near(limits, 11_400.0), "held under the router: {limits:?}");
+    }
+
+    #[test]
+    fn a_trial_file_naming_only_a_ceiling_keeps_today_s_tuning() {
+        let trial: Tuning = serde_json::from_str(r#"{"most_kbit": 8500}"#).expect("a trial");
+        assert_eq!(
+            trial,
+            Tuning {
+                most_kbit: Some(8_500.0),
+                ..Tuning::default()
+            },
+            "the ceiling, and today's for the rest"
+        );
+        assert!(
+            !serde_json::to_string(&Tuning::default())
+                .expect("written")
+                .contains("most_kbit"),
+            "no ceiling is said as none, so records read as before"
+        );
+    }
+
     #[test]
     fn a_trial_s_probe_looks_as_far_over_the_plateau_as_it_says() {
         let mut c = Controller::new(None, None);
@@ -2664,6 +2732,7 @@ mod tests {
             standing_s: 0.0,
             hold: 2.0,
             probe_up: f64::NAN,
+            most_kbit: Some(10.0),
         };
         assert_eq!(
             wild.bounded(),
@@ -2672,8 +2741,14 @@ mod tests {
                 standing_s: 1.0,
                 hold: 1.0,
                 probe_up: PROBE_UP,
+                most_kbit: Some(MOST_KBIT_LEAST),
             }
         );
+        let lost = Tuning {
+            most_kbit: Some(f64::NAN),
+            ..Tuning::default()
+        };
+        assert_eq!(lost.bounded().most_kbit, None, "no number is no ceiling");
         let mut c = Controller::new(None, None);
         c.up.tune(wild);
         assert_eq!(c.up.tuning(), wild.bounded());
