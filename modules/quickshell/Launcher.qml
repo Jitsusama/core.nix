@@ -5027,8 +5027,6 @@ Scope {
         // step into powering off and back out teaches nothing.
         const meant = walk === undefined && held.length === 0 && typed.trim() !== ""
             && !!row.key && !row.confirm;
-        // A place found from the top that sits in another is stepped into
-        // through it, so the path says where it lives.
         // A step taken while an opening is still timed is its opening's, as
         // Super+N steps through For You onto the notices on screen, and
         // timed in the opening's line: open is already true by then, so only
@@ -5039,13 +5037,21 @@ Scope {
         // drawn and the ask let go by then: a kept Super+N timed its fill
         // as "→ On Screen" (a gate, 2026-11-16).
         const timed = openAsked < 0 && !fillingPlace;
+        // A place found from the top that sits in another is stepped into
+        // through it, so the path says where it lives. Its line says the
+        // places it made as a step's does, beside the search that drew it.
         if (held.length === 0 && row.category && placesAbove(row.category).length > 0) {
             if (meant)
                 learnAfterFrame(typed, row.key);
+            const through = Date.now();
+            searchParts = null;
             listedAsStep(timed, () => intoCategory(row.category,
                 walk === undefined ? typed : ""));
+            searchParts = trials.stepped(searchParts, { began, made: through,
+                pushed: through, opened: through, ended: Date.now() });
             if (timed)
-                keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true);
+                keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true,
+                    thread);
             return went();
         }
         if (steppedAsLed(row))
@@ -6217,7 +6223,10 @@ Scope {
             && String(row.name ?? "").toLowerCase().startsWith(letters))
             ? categoryFor(chipped[1]) : null;
         if (named) {
-            intoCategory(named, chipped[1]);
+            // The key that typed the space is timed as the step it took,
+            // and the field it empties not at all (searchedNow).
+            listedAsStep(true, () => intoCategory(named, chipped[1]));
+            steppedByKey = named.name;
             return;
         }
         const whole = category !== null ? askedWhole(letters) : "";
@@ -7226,15 +7235,28 @@ Scope {
         // The wait ends as the search begins, so the search's own time
         // isn't said as time behind the shell's other work.
         const listed = Date.now();
+        steppedByKey = "";
         search(prompt.text);
+        const into = steppedByKey;
+        steppedByKey = "";
         // Its key's time holds the wait, said apart in the journal.
         if (waited && searchParts)
             Object.assign(searchParts, Awaited.waitedOf(waited, listed, answersWaitedFor,
                 waited.timedOut === true));
-        if (!asking)
-            due.filter(key => key.untimed !== true).forEach(key => keyTimed(key.step || key.text,
-                key.began, key.heard, key.pressed, key.collected, !!key.step, key.thread));
+        if (asking)
+            return;
+        const timed = due.filter(key => key.untimed !== true);
+        timed.forEach((key, at) => {
+            const step = into !== "" && at === timed.length - 1 ? `\u2192 ${into}` : key.step;
+            keyTimed(step || key.text, key.began, key.heard, key.pressed, key.collected, !!step,
+                key.thread);
+        });
     }
+    // The place a key's word and space stepped into as it was searched,
+    // so that key is timed as the step: timed as its words, and the field
+    // the step emptied as another key, one step counted twice (a council,
+    // 2026-11-17).
+    property string steppedByKey: ""
 
     // How long a key's list waits for the sources whose search awaits a
     // daemon's answer (Provider's awaits), from when they're asked, so a

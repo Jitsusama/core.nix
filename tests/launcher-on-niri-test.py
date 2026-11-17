@@ -4707,9 +4707,13 @@ def test_a_step_in_from_typed_words_is_timed_once_as_the_step(shell: Shell) -> N
     before = len(keys_presented_settled(shell))
     shell.step_in()
     presented = keys_presented_settled(shell)[before:]
+    # A letter typed after the step is timed as a key again.
+    shell.type_in("f")
+    after = keys_presented_settled(shell)[before + len(presented) :]
     shell.close_launcher()
     steps = [one.get("step") for one in presented]
     assert steps == ["\u2192 Programs"], f"Return into Programs wasn't timed once: {presented}"
+    assert [one.get("step") for one in after] == [""], f"a letter after it went untimed: {after}"
 
 
 def test_a_step_in_through_the_place_holding_it_is_timed_once_as_the_step(shell: Shell) -> None:
@@ -4724,10 +4728,29 @@ def test_a_step_in_through_the_place_holding_it_is_timed_once_as_the_step(shell:
     shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Power")
     before = len(keys_presented_settled(shell))
     shell.step_in()
+    shell.launcher_until(lambda shown: shown["path"][-2:] == ["Machine", "Power"])
     presented = keys_presented_settled(shell)[before:]
     shell.close_launcher()
     steps = [one.get("step") for one in presented]
     assert steps == ["\u2192 Power"], f"Return into Power wasn't timed once: {presented}"
+
+
+def test_a_step_in_by_a_word_and_a_space_is_timed_once_as_the_step(shell: Shell) -> None:
+    """ "network " steps into Network, and the space's key is timed once, as the step into it.
+
+    The space's key was timed as the words it typed, and the field the step emptied as a key of
+    its own, so one step counted twice and named no place (a council, 2026-11-17).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("network")
+    before = len(keys_presented_settled(shell))
+    shell.send_chars(" ")
+    shell.launcher_until(lambda shown: shown["path"][-1:] == ["Network"])
+    presented = keys_presented_settled(shell)[before:]
+    shell.close_launcher()
+    steps = [one.get("step") for one in presented]
+    assert steps == ["\u2192 Network"], f"the space into Network wasn't timed once: {presented}"
 
 
 def minus_presented(shell: Shell, out: Callable[[Json], object]) -> list[Json]:
