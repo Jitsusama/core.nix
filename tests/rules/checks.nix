@@ -103,6 +103,25 @@
   every-lock-agrees-with-its-manifests = self.lib.everyLockAgreesWithItsManifests pkgs {
     src = ../..;
   };
+
+  # A ruff rule switched off for some files, once nothing there breaks it,
+  # only waves through the next finding unseen, so each per-file exception
+  # in ruff.toml has to hide one. Every exception hid one once its five
+  # stale ones went, so none waits. Repositories built on core lint with
+  # core's ruff.toml, so it's core's alone, with no `core.lib` entry. It's
+  # given only what ruff reads, so an edit to anything else runs it again
+  # nowhere.
+  every-ruff-exception-hides-a-finding =
+    pkgs.callPackage ./every-ruff-exception-hides-a-finding.nix { }
+      {
+        src = pkgs.lib.fileset.toSource {
+          root = ../..;
+          fileset = pkgs.lib.fileset.unions [
+            (pkgs.lib.fileset.fileFilter (file: file.hasExt "py" || file.hasExt "pyi") ../..)
+            ../../ruff.toml
+          ];
+        };
+      };
 }
 # The example laptop is a NixOS machine, which a Mac doesn't evaluate.
 // onLinux {

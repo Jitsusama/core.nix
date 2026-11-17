@@ -886,6 +886,10 @@
     every Cargo.lock names each dependency its crates' manifests take, and none they dropped, as
     cargo locks them
   '';
+  every-ruff-exception-hides-a-finding = ''
+    every per-file exception in ruff.toml hides a finding of its rule that ruff would raise without
+    it
+  '';
   every-long-file-says-why = ''
     every code file past 800 lines and folder of more than 40 entries says why it stays whole, but
     those still waiting to be split
