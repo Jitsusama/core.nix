@@ -150,26 +150,41 @@ mod tests {
         assert_eq!(environment.var("COLUMNS"), None);
     }
 
-    /// A folder of name files for the test `case`: each (file, what it
-    /// holds), made afresh under this process's own name.
-    fn named(case: &str, files: &[(&str, &str)]) -> PathBuf {
-        let folder = env::temp_dir().join(format!("kit-machine-{}-{case}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&folder);
-        std::fs::create_dir_all(&folder).unwrap();
-        for (file, name) in files {
-            std::fs::write(folder.join(file), name).unwrap();
+    /// A folder of name files, removed when the test that made it ends,
+    /// whether it passed or not.
+    struct Named(PathBuf);
+
+    impl Named {
+        /// The folder for the test `case`: each (file, what it holds), made
+        /// afresh under this process's own name.
+        fn of(case: &str, files: &[(&str, &str)]) -> Self {
+            let folder = env::temp_dir().join(format!("kit-machine-{}-{case}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&folder);
+            std::fs::create_dir_all(&folder).unwrap();
+            for (file, name) in files {
+                std::fs::write(folder.join(file), name).unwrap();
+            }
+            Self(folder)
         }
-        folder
+
+        fn join(&self, file: &str) -> PathBuf {
+            self.0.join(file)
+        }
+    }
+
+    impl Drop for Named {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
     }
 
     #[test]
     fn the_machine_is_the_first_file_that_names_it_trimmed() {
-        let folder = named("first", &[("kernel", "  kernels\n"), ("system", "other\n")]);
+        let folder = Named::of("first", &[("kernel", "  kernels\n"), ("system", "other\n")]);
         let files = [folder.join("kernel"), folder.join("system")];
         let name = machine_named(&files.each_ref().map(PathBuf::as_path), || {
             panic!("hostname was asked though a file named the machine")
         });
-        std::fs::remove_dir_all(&folder).unwrap();
         assert_eq!(
             name, "kernels",
             "the kernel's file, trimmed, wasn't the name"
@@ -178,14 +193,13 @@ mod tests {
 
     #[test]
     fn a_missing_or_blank_file_is_passed_over() {
-        let folder = named("passed", &[("kernel", " \n"), ("system", "systems\n")]);
+        let folder = Named::of("passed", &[("kernel", " \n"), ("system", "systems\n")]);
         let files = [
             folder.join("gone"),
             folder.join("kernel"),
             folder.join("system"),
         ];
         let name = machine_named(&files.each_ref().map(PathBuf::as_path), || None);
-        std::fs::remove_dir_all(&folder).unwrap();
         assert_eq!(
             name, "systems",
             "a missing or blank file was taken as the name"
@@ -194,12 +208,11 @@ mod tests {
 
     #[test]
     fn hostname_is_asked_when_no_file_names_it() {
-        let folder = named("asked", &[]);
+        let folder = Named::of("asked", &[]);
         let files = [folder.join("gone")];
         let name = machine_named(&files.each_ref().map(PathBuf::as_path), || {
             Some("asked\n".into())
         });
-        std::fs::remove_dir_all(&folder).unwrap();
         assert_eq!(
             name, "asked",
             "what hostname said, trimmed, wasn't the name"
@@ -210,6 +223,26 @@ mod tests {
     fn a_dressed_name_is_cut_at_its_first_dot() {
         let name = machine_named(&[], || Some("studio.local\n".into()));
         assert_eq!(name, "studio", "a dressed name wasn't cut to the bare one");
+    }
+
+    #[test]
+    fn a_dressed_name_in_a_file_is_cut_too() {
+        let folder = Named::of("dressed", &[("kernel", "studio.example.org\n")]);
+        let files = [folder.join("kernel")];
+        let name = machine_named(&files.each_ref().map(PathBuf::as_path), || None);
+        assert_eq!(
+            name, "studio",
+            "a file's dressed name wasn't cut to the bare one"
+        );
+    }
+
+    #[test]
+    fn this_machine_has_a_bare_name() {
+        let name = machine();
+        assert!(
+            !name.is_empty() && !name.contains('.') && name.trim() == name,
+            "the machine's own name read {name:?}, not a bare one"
+        );
     }
 
     #[test]
