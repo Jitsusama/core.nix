@@ -1,7 +1,7 @@
 // The system page's markup: how everything Joel runs stands. Each part
 // stands on one horizon, and how it stands is its health in the system's
 // own words, good, watch, bad or not read, each with its own mark so none
-// is told by colour. The outlook draws the four stations large under the
+// is told by colour. The outlook draws the four parts large under the
 // headline; each part below hangs its mark in the gutter, then what in it
 // is worth a look and the way deeper. Every row the keys step through is a
 // link marked data-row, in reading order, so the cursor is focus itself and
@@ -95,17 +95,19 @@ function headlineOf(heading: Headline): string {
 
 /**
  * What one part says under its name on the outlook, as markup: how many looks,
- * or its health's word.
+ * or its health's word. With looks, its health is said to a screen reader
+ * too, since its mark is hidden and watch and bad would otherwise sound
+ * the same.
  */
 function forecast(part: Part): string {
   const looks = looksIn(part);
   if (looks > 0) {
-    return `${looks} worth a look`;
+    return `${looks} worth a look${spoken(part.health)}`;
   }
   return WORDS[part.health].toLowerCase();
 }
 
-/** The outlook: the four parts as stations on one horizon, each its mark. */
+/** The outlook: the four parts on one horizon, each with its mark. */
 function outlookOf(system: System): string {
   return system.parts
     .map((part, at) => {

@@ -227,6 +227,8 @@
   gap: var(--tie) var(--groups);
   margin: 0;
   padding-inline-start: var(--gutter);
+  /* No bullets; Safari drops a bare list's role for it, so index.html
+     says role="list" outright. */
   list-style: none;
   color: var(--muted);
   font: 400 var(--step-small) / 1.5 var(--serif);

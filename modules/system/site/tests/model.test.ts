@@ -220,8 +220,23 @@ function read(markup: string): string {
     .trim();
 }
 
-/** The weather words the page once wore, which the glossary keeps for real weather. */
-const WEATHER = /\b(?:clear|cloud|storm|fog|sky)\b/iu;
+/**
+ * The weather words the page once wore, which the glossary keeps for real
+ * weather, and the same without cloud, which two marks are drawn as.
+ */
+const WEATHER =
+  /\b(?:weather|forecasts?|clear|clouds?|cloudy|storms?|stormy|fog|foggy|sky|skies)\b/iu;
+const WEATHER_BUT_CLOUD =
+  /\b(?:weather|forecasts?|clear|cloudy|storms?|stormy|fog|foggy|sky|skies)\b/iu;
+
+/** The attributes a person or a preview reads: descriptions, labels, titles. */
+const READ_ATTRIBUTE = /\b(?:content|aria-label|title|alt)="(?<said>[^"]*)"/gu;
+
+/** What `markup` says to a person: its text, and the attributes read aloud. */
+function said(markup: string): string {
+  const attributes = [...markup.matchAll(READ_ATTRIBUTE)].map((each) => each.groups?.["said"]);
+  return [read(markup), ...attributes].join(" ");
+}
 
 /** A legend item: its mark's health, then its word. */
 const KEY =
@@ -229,11 +244,10 @@ const KEY =
 
 /** A part on the outlook: its name, then what it says. */
 const ON_THE_OUTLOOK =
-  /<span class="place">(?<place>[^<]*)<\/span><span class="forecast">(?<says>[^<]*)<\/span>/gu;
+  /<span class="place">(?<place>[^<]*)<\/span><span class="forecast">(?<says>[\s\S]*?)<\/span><\/a>/gu;
 
-/** What a part heading and a machine's row say to a screen reader for watch. */
-const HEADING_WATCH = /Machines<span class="sr"> \(watch\)<\/span>/u;
-const MACHINE_WATCH = /osprey<\/span><span class="sr"> \(watch\)<\/span>/u;
+/** A drawn mark's shape: what is inside its svg. */
+const SHAPE = /<svg [^>]*>(?<shape>[\s\S]*?)<\/svg>/gu;
 
 it("the legend gives each health its own item: its own mark, then its word", () => {
   const keys = [...legend().matchAll(KEY)].map((key) => [
@@ -246,6 +260,8 @@ it("the legend gives each health its own item: its own mark, then its word", () 
     ["bad", "Bad"],
     ["unread", "Not read"],
   ]);
+  const shapes = new Set([...legend().matchAll(SHAPE)].map((each) => each.groups?.["shape"]));
+  assert.equal(shapes.size, 4, "each health is drawn in a shape of its own");
 });
 
 it("each part on the outlook says how many are worth a look, or else its health's word", () => {
@@ -260,37 +276,56 @@ it("each part on the outlook says how many are worth a look, or else its health'
       { ...first, health: "good" as const, side: [] },
       { ...second, health: "unread" as const, side: [] },
       { ...second, health: "watch" as const, side: [] },
+      { ...second, health: "watch" as const, side: ["a"] },
       { ...second, health: "bad" as const, side: ["a", "b"] },
     ],
   };
-  const said = [...outlookOf(four).matchAll(ON_THE_OUTLOOK)].map((each) => [
+  const spoke = [...outlookOf(four).matchAll(ON_THE_OUTLOOK)].map((each) => [
     each.groups?.["place"],
-    each.groups?.["says"],
+    read(each.groups?.["says"] ?? ""),
   ]);
-  assert.deepEqual(said, [
+  assert.deepEqual(spoke, [
     ["Machines", "good"],
     ["Code", "not read"],
     ["Code", "watch"],
-    ["Code", "2 worth a look"],
+    ["Code", "1 worth a look (watch)"],
+    ["Code", "2 worth a look (bad)"],
   ]);
+  assert.doesNotMatch(read(outlookOf(four)), WEATHER);
 });
 
-it("a screen reader hears each part's and machine's health in the system's word", () => {
-  const { summary, part, machine } = told(records);
-  const system = systemOf(summary, part, machine);
-  assert.ok(system);
-  const drawn = partsOf(system);
-  assert.match(drawn, HEADING_WATCH);
-  assert.match(drawn, MACHINE_WATCH);
-  assert.doesNotMatch(read(drawn), WEATHER);
-});
+for (const [health, word] of [
+  ["good", "good"],
+  ["watch", "watch"],
+  ["bad", "bad"],
+  ["unread", "not read"],
+] as const) {
+  it(`a screen reader hears a part and a machine that are ${health} as "${word}"`, () => {
+    const these = records.map((record) =>
+      record.key === "part:machines" || record.key === "machine:osprey"
+        ? { ...record, health }
+        : record,
+    );
+    const { summary, part, machine } = told(these);
+    const system = systemOf(summary, part, machine);
+    assert.ok(system);
+    const drawn = partsOf(system);
+    assert.ok(drawn.includes(`Machines<span class="sr"> (${word})</span>`), "the part's heading");
+    assert.ok(
+      drawn.includes(`osprey</span><span class="sr"> (${word})</span>`),
+      "the machine's row",
+    );
+  });
+}
 
-it("the page and its words for a model wear no weather words", () => {
-  // index.md is left out: it describes each mark's shape, and a cloud is
-  // what two of them are drawn as.
-  for (const file of ["index.html", "llms.txt"]) {
+it("the page and its words for a model wear no weather words, nor in what is read aloud", () => {
+  for (const [file, words] of [
+    ["index.html", WEATHER],
+    ["llms.txt", WEATHER],
+    ["index.md", WEATHER_BUT_CLOUD],
+  ] as const) {
     const text = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
-    assert.doesNotMatch(read(text), WEATHER, file);
+    assert.doesNotMatch(said(text), words, file);
   }
 });
 

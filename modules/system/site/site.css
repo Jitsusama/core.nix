@@ -277,12 +277,12 @@ html:not([data-theme="light"]) body {
   }
 }
 
-/* ---- The outlook: four stations on one horizon. ---- */
+/* ---- The outlook: the four parts on one horizon. ---- */
 
 .outlook {
   /* One part's height on the outlook, from what it is made of: its padding, a large
      mark, a name and its words with a tie between each. An empty horizon
-     holds this much, so the stations' arrival moves nothing below. */
+     holds this much, so the parts' arrival moves nothing below. */
   --station: calc(
     var(--items) + var(--mark) + 3rem + 2 * var(--tie) + 1.2 * var(--step-large) + 1.4 *
     var(--step-small)
@@ -351,7 +351,7 @@ html:not([data-theme="light"]) body {
   font-style: italic;
 }
 
-/* ---- A phone: a narrower gutter, and the stations two by two. ---- */
+/* ---- A phone: a narrower gutter, and the outlook two by two. ---- */
 
 @media (max-width: 40rem) {
   :root {
