@@ -5272,19 +5272,19 @@ mod tests {
         crate::testing::executable(
             &bin.path().join("sysctl"),
             "#!/bin/sh\n[ \"$*\" = '-n kern.bootsessionuuid' ] || exit 1\n\
-             echo F272A3D6-9C37-42E5-9C6B-85DEF0D09E02\n",
-        );
-        let path = format!(
-            "{}:{}",
-            bin.path().display(),
-            std::env::var("PATH").unwrap()
+             echo 0A1B2C3D-0000-4000-8000-00000000F00D\n",
         );
         for shell in ["dash", "zsh"] {
             let turns = tempfile::tempdir().unwrap();
             let taking = Command::new(shell)
-                .args(["-c", &in_turn_nearby("readlink \"$NIX_OFFLOAD_TURNS/1\"")])
+                .args([
+                    "-c",
+                    &first_on_path(
+                        bin.path(),
+                        &in_turn_nearby("readlink \"$NIX_OFFLOAD_TURNS/1\""),
+                    ),
+                ])
                 .env("NIX_OFFLOAD_TURNS", turns.path())
-                .env("PATH", &path)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -5294,7 +5294,7 @@ mod tests {
             assert_eq!(ran.status.code(), Some(0), "{shell}: {ran:?}");
             assert_eq!(
                 String::from_utf8_lossy(&ran.stdout),
-                format!("{taker} F272A3D6-9C37-42E5-9C6B-85DEF0D09E02\n"),
+                format!("{taker} 0A1B2C3D-0000-4000-8000-00000000F00D\n"),
                 "{shell}: {ran:?}"
             );
         }
@@ -5444,20 +5444,20 @@ mod tests {
                 which("mkdir")
             ),
         );
-        let path = format!(
-            "{}:{}",
-            bin.path().display(),
-            std::env::var("PATH").unwrap()
-        );
         for shell in ["dash", "zsh"] {
             let turns = tempfile::tempdir().unwrap();
             for n in 1..=NEARBY_AT_ONCE {
                 fs::create_dir(turns.path().join(n.to_string())).unwrap();
             }
             let taking = Command::new(shell)
-                .args(["-c", &in_turn_nearby("readlink \"$NIX_OFFLOAD_TURNS/1\"")])
+                .args([
+                    "-c",
+                    &first_on_path(
+                        bin.path(),
+                        &in_turn_nearby("readlink \"$NIX_OFFLOAD_TURNS/1\""),
+                    ),
+                ])
                 .env("NIX_OFFLOAD_TURNS", turns.path())
-                .env("PATH", &path)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -5472,6 +5472,13 @@ mod tests {
             );
             assert_eq!(String::from_utf8_lossy(&ran.stderr), "", "{shell}");
         }
+    }
+
+    /// `script`, with `bin`'s programs first on PATH. Set by the script, not
+    /// the environment, since a Mac's zsh sets PATH again from /etc/zshenv
+    /// before it runs anything.
+    fn first_on_path(bin: &Path, script: &str) -> String {
+        format!("PATH='{}':\"$PATH\"; export PATH; {script}", bin.display())
     }
 
     /// Where `program` is on this PATH.
@@ -5493,11 +5500,6 @@ mod tests {
         let bin = tempfile::tempdir().unwrap();
         crate::testing::executable(&bin.path().join("cat"), "#!/bin/sh\nexit 1\n");
         crate::testing::executable(&bin.path().join("sysctl"), "#!/bin/sh\nexit 1\n");
-        let path = format!(
-            "{}:{}",
-            bin.path().display(),
-            std::env::var("PATH").unwrap()
-        );
         let live = format!("{} {}", std::process::id(), this_boot());
         for shell in ["dash", "zsh"] {
             let turns = tempfile::tempdir().unwrap();
@@ -5506,9 +5508,11 @@ mod tests {
             }
             let ran = ended(
                 Command::new(shell)
-                    .args(["-c", &in_turn_nearby("echo ran")])
+                    .args([
+                        "-c",
+                        &first_on_path(bin.path(), &in_turn_nearby("echo ran")),
+                    ])
                     .env("NIX_OFFLOAD_TURNS", turns.path())
-                    .env("PATH", &path)
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .spawn()
