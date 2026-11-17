@@ -9805,7 +9805,8 @@ Scope {
         // Opened from what it kept, it was shown already, holding the keys
         // since then; what follows fills it in.
         const filling = open && opening;
-        if (open && !filling && openAsked >= 0 && openChord === "" && openingsDrawn > 0)
+        if (open && !filling && openAsked >= 0 && openChord === ""
+            && (openingsDrawn > 0 || warmingDone))
             openedWholeSaid();
         const began = lapped;
         opening = false;
@@ -10156,10 +10157,13 @@ Scope {
             console.warn(`launcher: home couldn't be held again: ${homeUnheld}`);
         return homeHeld;
     }
-    // Home opened whole by a chord after the first says what opened it,
-    // and how home stood: Joel's at 17:11 took 114 ms to its frame with
-    // neither line homeRescued says, though only it opens one whole
-    // (2026-11-14). Its callers are read from the stack, by file and line.
+    // Home opened whole once it was meant to be kept, after an opening or
+    // once warming's pass has ended, says what opened it and how home
+    // stood: Joel's at 17:11 took 114 ms to its frame with neither line
+    // homeRescued says, though only it opens one whole (2026-11-14), and
+    // his first after the 20:19 start, 224 ms presented, said nothing of
+    // who opened it (2026-11-16). Its callers are read from the stack, by
+    // file and line.
     function openedWholeSaid() {
         const by = (new Error().stack ?? "").split("\n").slice(1, 7)
             .map(frame => frame.replace(/@.*\//, "@")).join(" < ");
