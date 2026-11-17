@@ -4,9 +4,9 @@ The checks that hold every file in the repository to one rule of the quality
 standard. Each is three files: `<rule>.nix` builds the check, `<rule>.py`,
 beside it, says what breaks the rule, and `<rule>-waiting.nix` lists the files
 that broke it before the rule came in. A list only shrinks: fixing a file takes
-it off, and nothing new goes on. `every-lock-agrees-with-its-manifests` has no
-list, since nothing broke it when it came in. `checks.nix` runs all eleven on
-core itself.
+it off, and nothing new goes on. `every-lock-agrees-with-its-manifests` and
+`every-ruff-exception-hides-a-finding` have no list, since nothing broke them
+when they came in. `checks.nix` runs all twelve on core itself.
 `daemons-agree` reads an evaluated account's units rather than the files
 alone, so it's given a graphical machine's account too, and runs on Linux.
 `commands-agree` runs each command on the terminal kit for its help, so it's
@@ -26,6 +26,7 @@ Every rule is also given to other repositories built on core, through
 | `every-script-meets-shellcheck-at-its-strictest` | a shell script meets shellcheck's optional fault checks       |
 | `every-test-function-lives-once`                 | no function in test code is copied into another file          |
 | `every-lock-agrees-with-its-manifests`           | a Cargo.lock names what its crates' manifests take            |
+| `every-ruff-exception-hides-a-finding`           | each per-file exception in ruff.toml hides a finding          |
 | `daemons-agree`                                  | every daemon keeps docs/daemons.md's convention               |
 | `commands-agree`                                 | every command keeps docs/commands.md's convention             |
 
