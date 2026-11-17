@@ -54,14 +54,16 @@ impl Homes {
     /// row's address stands, as the record orders them. A pattern holds its
     /// kind against every later row, and against its own row's record, but
     /// not against an earlier row that claimed that kind by name, whether
-    /// or not its record could be read. A pattern this can't read holds its
-    /// kind the same way, with no link, so a mistyped row isn't overtaken by
-    /// a later one. A record gives only the kinds its row claims by name,
-    /// and only addresses on its row's own site, their bytes plain.
+    /// or not its record could be read. A row this can't read, its path or
+    /// its pattern, holds its kinds against every later row too, with no
+    /// link, so a mistyped row isn't overtaken by a later one. A record
+    /// gives only the kinds its row claims by name, and only addresses that
+    /// are a fragment on its row's own page, their bytes plain.
     pub fn from_sites(sites: &Value, homes: impl Fn(&str) -> Option<Value>) -> Self {
         let mut addresses = HashMap::new();
         let mut patterns: HashMap<String, String> = HashMap::new();
         let mut named = HashSet::new();
+        let mut held = HashSet::new();
         let rows = sites.get("sites").and_then(Value::as_array);
         for row in rows.into_iter().flatten() {
             let claims = row.get("homes").and_then(Value::as_array);
@@ -73,26 +75,28 @@ impl Homes {
                 .and_then(Value::as_str)
                 .filter(|path| inside(path))
             else {
+                held.extend(claims.iter().filter_map(claimed).map(str::to_owned));
                 continue;
             };
             for claim in claims.iter().filter(|claim| claim.is_object()) {
                 let Some(kind) = claim.get("kind").and_then(Value::as_str) else {
                     continue;
                 };
+                let taken = patterns.contains_key(kind) || named.contains(kind);
                 match pattern(claim) {
-                    Some(address) if !patterns.contains_key(kind) && !named.contains(kind) => {
+                    _ if taken || held.contains(kind) => {}
+                    Some(address) => {
                         patterns.insert(kind.to_owned(), format!("{path}{address}"));
                     }
-                    Some(_) => {}
                     None => {
-                        named.insert(kind.to_owned());
+                        held.insert(kind.to_owned());
                     }
                 }
             }
             let recorded: HashSet<&str> = claims
                 .iter()
                 .filter_map(Value::as_str)
-                .filter(|kind| !patterns.contains_key(*kind))
+                .filter(|kind| !patterns.contains_key(*kind) && !held.contains(*kind))
                 .collect();
             named.extend(recorded.iter().map(|kind| (*kind).to_owned()));
             if recorded.is_empty() {
@@ -109,7 +113,10 @@ impl Homes {
                 ) else {
                     continue;
                 };
-                if !recorded.contains(kind) || !address.starts_with(path) || !plain(address) {
+                let on_its_page = address
+                    .strip_prefix(path)
+                    .is_some_and(|rest| rest.starts_with('#'));
+                if !recorded.contains(kind) || !on_its_page || !plain(address) {
                     continue;
                 }
                 for name in names(thing) {
@@ -163,7 +170,17 @@ fn names(thing: &Value) -> impl Iterator<Item = &str> {
         .into_iter()
         .flatten()
         .filter_map(Value::as_str);
-    key.into_iter().chain(name).chain(others)
+    key.into_iter()
+        .chain(name)
+        .chain(others)
+        .filter(|name| !name.is_empty())
+}
+
+/// The kind a claim names, by name or as a pattern's.
+fn claimed(claim: &Value) -> Option<&str> {
+    claim
+        .as_str()
+        .or_else(|| claim.get("kind").and_then(Value::as_str))
 }
 
 /// A claim's address when it is a pattern whose address names the thing and
@@ -176,13 +193,15 @@ fn pattern(claim: &Value) -> Option<&str> {
     (address.starts_with('#') && plain(address) && address.contains(NAME)).then_some(address)
 }
 
-/// Whether an address's bytes are visible ASCII with no backslash, quote,
-/// angle bracket or backtick, so it can't break out of a terminal's link or
-/// a page's markup. A record's address and a pattern are held to it alike.
+/// Whether an address's bytes are visible ASCII with no backslash, double
+/// quote, angle bracket or backtick, so it can't break out of a terminal's
+/// link or a page's markup. An apostrophe passes, since `encodeURIComponent`
+/// leaves one raw and the page escapes it. A record's address and a pattern
+/// are held to it alike.
 fn plain(address: &str) -> bool {
     address
         .bytes()
-        .all(|byte| byte.is_ascii_graphic() && !b"\\\"'<>`".contains(&byte))
+        .all(|byte| byte.is_ascii_graphic() && !b"\\\"<>`".contains(&byte))
 }
 
 /// A name as it may sit in an address: every byte but the unreserved ones
@@ -361,13 +380,13 @@ mod tests {
         ] {
             let homes = Homes::from_sites(
                 &sites(&json!([{"path": path, "homes": ["machine"]}])),
-                |_| {
+                |site| {
                     Some(home(
                         "machine",
                         "laptop",
                         "laptop",
                         &[],
-                        "x/#machine=laptop",
+                        &format!("{site}#machine=laptop"),
                     ))
                 },
             );
@@ -579,9 +598,9 @@ mod tests {
             "?machine={name}",
             "#machine={name}\u{1b}]8;;",
             "#machine=\"{name}\"",
-            "#machine='{name}'",
             "#machine=\\{name}",
-            "#machine=<{name}>",
+            "#machine=<{name}",
+            "#machine={name}>",
             "#machine=`{name}`",
             "#machine={name}\u{202e}",
             "#machine={name} x",
@@ -613,17 +632,56 @@ mod tests {
     }
 
     #[test]
-    fn a_records_address_off_its_site_or_with_bytes_a_link_cant_hold_is_not_read() {
+    fn a_row_that_isnt_read_holds_its_kind_against_a_later_rows_record() {
+        for first in [
+            json!({"path": "mycelium/", "homes": [
+                {"kind": "machine", "address": "mycelium/#machine={name}"},
+            ]}),
+            json!({"path": "/mycelium/", "homes": ["machine"]}),
+            json!({"path": "/mycelium/", "homes": [
+                {"kind": "machine", "address": "#machine={name}"},
+            ]}),
+        ] {
+            let homes = Homes::from_sites(
+                &sites(&json!([
+                    first,
+                    {"path": "health/", "homes": ["machine"]},
+                    {"path": "later/", "homes": [
+                        {"kind": "machine", "address": "#m={name}"},
+                    ]},
+                ])),
+                |site| {
+                    Some(home(
+                        "machine",
+                        "osprey",
+                        "osprey",
+                        &[],
+                        &format!("{site}#m=osprey"),
+                    ))
+                },
+            );
+            assert_eq!(homes, Homes::default(), "{first}");
+        }
+    }
+
+    #[test]
+    fn a_records_address_off_its_page_or_with_bytes_a_link_cant_hold_is_not_read() {
         let homes = Homes::from_sites(
             &sites(&json!([{"path": "code/", "homes": ["repository"]}])),
             |_| {
                 Some(json!({"things": [
                     {"kind": "repository", "key": "core", "address": "code/#repo=core"},
+                    {"kind": "repository", "key": "notes", "address": "code/#tree=joel's"},
                     {"kind": "repository", "key": "off", "address": "health/#r=off"},
-                    {"kind": "repository", "key": "esc",
-                        "address": "code/#x\u{1b}\\\u{1b}]8;;http://elsewhere/"},
-                    {"kind": "repository", "key": "quote", "address": "code/#\"x\""},
-                    {"kind": "repository", "names": [""], "address": "code/#none"},
+                    {"kind": "repository", "key": "up", "address": "code/../health/#r=up"},
+                    {"kind": "repository", "key": "coded", "address": "code/%2e%2e/h/#r=x"},
+                    {"kind": "repository", "key": "deeper", "address": "code/x/#r=x"},
+                    {"kind": "repository", "key": "esc", "address": "code/#x\u{1b}]8;;"},
+                    {"kind": "repository", "key": "slash", "address": "code/#a\\b"},
+                    {"kind": "repository", "key": "quote", "address": "code/#\"x"},
+                    {"kind": "repository", "key": "angle", "address": "code/#<x"},
+                    {"kind": "repository", "key": "tick", "address": "code/#`x"},
+                    {"kind": "repository", "key": "space", "address": "code/#a b"},
                 ]}))
             },
         );
@@ -631,9 +689,34 @@ mod tests {
             homes.address("repository", "core"),
             Some("code/#repo=core".into())
         );
-        for name in ["off", "esc", "quote", ""] {
+        assert_eq!(
+            homes.address("repository", "notes"),
+            Some("code/#tree=joel's".into()),
+            "an apostrophe is left raw by encodeURIComponent"
+        );
+        for name in [
+            "off", "up", "coded", "deeper", "esc", "slash", "quote", "angle", "tick", "space",
+        ] {
             assert_eq!(homes.address("repository", name), None, "{name:?}");
         }
+    }
+
+    #[test]
+    fn a_record_on_a_path_with_no_closing_slash_stays_on_its_page() {
+        let homes = Homes::from_sites(
+            &sites(&json!([{"path": "code", "homes": ["repository"]}])),
+            |_| {
+                Some(json!({"things": [
+                    {"kind": "repository", "key": "core", "address": "code#repo=core"},
+                    {"kind": "repository", "key": "other", "address": "codex/#repo=other"},
+                ]}))
+            },
+        );
+        assert_eq!(
+            homes.address("repository", "core"),
+            Some("code#repo=core".into())
+        );
+        assert_eq!(homes.address("repository", "other"), None);
     }
 
     #[test]
