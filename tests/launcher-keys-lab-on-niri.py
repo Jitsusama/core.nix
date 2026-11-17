@@ -14,12 +14,13 @@ first, so a step into Programs is profiled over as many rows as Joel's. Given LA
 ids and names as `google-chrome=Google Chrome`, comma between, it installs those too, each with
 two actions, so a program's own page, whose provider keys it by its id, is there to step into,
 by Tab as Joel goes into one given LAB_STEP_KEY=tab (Return, the default, starts a program).
-Given LAB_WITHIN, names of the launcher's functions, it says what ran inside their calls too.
-Given LAB_CHANGES, it
+Given LAB_WITHIN too, names of the launcher's functions, it says what their calls took and what
+ran inside them. Given LAB_CHANGES, it
 leaves the first word typed at home each round while a window holding it in its title takes that
 many new titles, and prints what the shell says of those changes, as Joel's daemons change rows
-under his typed words at 17 to 35 ms in the shell (2026-11-15). It fails only when a key is never
-shown.
+under his typed words at 17 to 35 ms in the shell (2026-11-15). It fails when a key is never
+shown, and at once when LAB_WITHIN names no function of the launcher's or comes without
+LAB_PROFILE.
 """
 
 from __future__ import annotations
@@ -291,8 +292,9 @@ def profiled(trace: Path) -> dict[str, dict[str, Spent]]:
     root = ET.parse(trace).getroot()  # noqa: S314, the trace this run wrote
     places: dict[str, str] = {}
     parts = Parts()
-    # The functions whose calls are spans of their own, `within-<name>`, holding what ran inside.
-    asked = set(os.environ.get("LAB_WITHIN", "").split())
+    # The functions whose calls are spans of their own, `within-<name>`, each call holding itself
+    # and what ran inside it, so the function's own place in its span says what its calls took.
+    asked = set(within_asked())
     within: dict[str, str] = {}
     for event in root.iter("event"):
         where = Path(event.findtext("filename") or "").name
@@ -301,13 +303,17 @@ def profiled(trace: Path) -> dict[str, dict[str, Spent]]:
         places[event.get("index", "")] = f"{kind} {where}:{event.findtext('line')} {details}"
         if where == "Launcher.qml" and details in parts.functions:
             parts.functions[details].add(event.get("index", ""))
-        if where == "Launcher.qml" and details in asked:
+        if where == "Launcher.qml" and kind == "Javascript" and details in asked:
             within[event.get("index", "")] = details
     spans: dict[str, dict[str, Spent]] = defaultdict(lambda: defaultdict(Spent))
     # The ranges still open where the next starts: when each ends, its places' tallies, and the
     # functions asked for that it runs within.
     held: list[tuple[int, list[Spent], frozenset[str]]] = []
-    for each in sorted(root.iter("range"), key=lambda one: int(one.get("startTime", "0"))):
+    # A call starting where its caller does is read after it, by its shorter duration.
+    for each in sorted(
+        root.iter("range"),
+        key=lambda one: (int(one.get("startTime", "0")), -int(one.get("duration", "0"))),
+    ):
         start = int(each.get("startTime", "0"))
         index = each.get("eventIndex", "")
         ends = start + int(each.get("duration", "0"))
@@ -316,14 +322,18 @@ def profiled(trace: Path) -> dict[str, dict[str, Spent]]:
             held.pop()
         for parent in held[-1][1] if held else []:
             parent.own -= took
-        inside = held[-1][2] if held else frozenset()
+        # A named call is in its own span as well as what it ran; one inside another of the same
+        # name adds its whole again at that place, as no function of the launcher's recurses.
+        inside = (held[-1][2] if held else frozenset()) | (
+            {within[index]} if index in within else set()
+        )
         names = parts.at(index, start, ends) + [f"within-{name}" for name in sorted(inside)]
         tallies = [spans[name][places.get(index, "?")] for name in names]
         for tally in tallies:
             tally.count += 1
             tally.own += took
             tally.whole += took
-        held.append((ends, tallies, inside | ({within[index]} if index in within else set())))
+        held.append((ends, tallies, inside))
     return spans
 
 
@@ -392,6 +402,8 @@ def say_profiled(trace: Path, said: list[str], capsys: pytest.CaptureFixture[str
     """
     spans = profiled(trace) if trace.exists() else {}
     with capsys.disabled():
+        for name in [name for name in within_asked() if f"within-{name}" not in spans]:
+            print(f"lab-profile within-{name}: never called while profiled", flush=True)
         for line in census(trace) if trace.exists() else []:
             print(f"lab-profile held {line}", flush=True)
         if not spans:
@@ -415,8 +427,9 @@ def say_profiled(trace: Path, said: list[str], capsys: pytest.CaptureFixture[str
                     f" over {spent.count}, {place}",
                     flush=True,
                 )
-            # A step's showing is said by its whole too, so what holds the rest is named, as
-            # keep holds laying the rows out and each row's acts made within it.
+            # A step's showing and each named function's span are said by whole time too, so
+            # what holds the rest is named, as keep holds laying the rows out and each row's
+            # acts made within it.
             if span == "search-step" or span.startswith("within-"):
                 wholes = sorted(places.items(), key=lambda one: one[1].whole, reverse=True)
                 for place, spent in wholes[:COSTLIEST]:
@@ -449,6 +462,35 @@ def flushed(profiler: subprocess.Popen[bytes], trace: Path) -> None:
     commands.flush()
 
 
+def within_asked() -> list[str]:
+    """Give the launcher's functions LAB_WITHIN names, by spaces or commas."""
+    return [name for name in re.split(r"[\s,]+", os.environ.get("LAB_WITHIN", "")) if name]
+
+
+def within_known(launcher: Path) -> None:
+    """Fail at once on a LAB_WITHIN name that's no function of the launcher's.
+
+    Such a name matches nothing in the trace, so its span would be left out without a word, at
+    the end of a run of minutes, and so would every name given without LAB_PROFILE.
+    """
+    asked = within_asked()
+    source = launcher.read_text() if asked else ""
+    unknown = [
+        name
+        for name in asked
+        if not re.search(rf"^\s*function {re.escape(name)}\(", source, re.MULTILINE)
+    ]
+    refused = (
+        f"LAB_WITHIN names no function of {launcher.name}'s: {unknown}"
+        if unknown
+        else "LAB_WITHIN profiles only with LAB_PROFILE"
+        if asked and not os.environ.get("LAB_PROFILE")
+        else None
+    )
+    if refused:
+        raise AssertionError(refused)
+
+
 def say_heard(log: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Print what else the shell said that LAB_HEARD asks for, where it asks for any.
 
@@ -477,6 +519,7 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
     step_key = os.environ.get("LAB_STEP_KEY", "ret")
     launcher_on_niri.installed(int(os.environ.get("LAB_PROGRAMS", "0")))
     named(os.environ.get("LAB_NAMED", ""), step, step_key)
+    within_known(Path(os.environ["SHELL_FOLDER"]) / "Launcher.qml")
     with launcher_on_niri.running() as shell:
         shell.launcher_until(lambda shown: shown.get("kept"))
         if os.environ.get("LAB_PROFILE"):

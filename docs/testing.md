@@ -512,17 +512,22 @@ step's showing is profiled apart as `search-step`, from when it lives its
 rows on, and said by whole time too, so what calls the dear functions is
 named. Into Programs with 21, about half its showing was the selection
 asked whether its acts lie on its row, each time making its whole step
-(2026-11-15). Given `LAB_WITHIN`, names of the launcher's functions such as
-`keep`, what ran inside their calls is profiled apart as `within-<name>`,
-by own and whole time: inside `keep`, the 8 rows "c" reused cost about
-1 ms each, spread over the row's bindings, Qt laying out its name again the
-largest (2026-11-17). `LAB_NAMED`, desktop ids and names such as
+(2026-11-15). `LAB_NAMED`, desktop ids and names such as
 `google-chrome=Google Chrome`, installs those programs too, each with two
 actions, so a page a provider keys by its id is there, and
 `LAB_STEP_KEY = "tab"` steps in as Joel goes into a program's page, where
 Return would start it: Chrome's page stepped in at 11 to 20 ms with its
 three rows (2026-11-16). A named program joins home's rows for the words
 typed, so those keys' medians aren't comparable with a run without it.
+Given `LAB_WITHIN`, names of Launcher.qml's own functions split by spaces
+or commas, such as `keep pick`, each call of them is profiled apart as
+`within-<name>`, the call and what it ran, by own and whole time, so the
+function's whole time there says what its calls took. Only what runs
+within the call counts, not what it sets off later. A name that's no
+function of Launcher.qml's, or `LAB_WITHIN` without `LAB_PROFILE`, fails
+the run at once, and a function never called is said to be. Inside `keep`, the 8
+rows "c" reused cost about 1 ms each at the least, spread over the row's
+bindings, Qt laying out its name again the largest (2026-11-17).
 The profiler stretches what it times, so a cut's figures
 come from runs without it. The home it types into
 holds this niri's few windows and programs, where Joel's holds about a
