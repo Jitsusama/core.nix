@@ -108,6 +108,12 @@ fn quarantine_owned(
 /// apart, before the round leaves it for the next.
 const SENDS: u32 = 15;
 
+/// How often a leaving net may cut one revert's comparison short before
+/// the next try waits it out. Each try starts over at a new commit, so
+/// builds installed more often than a comparison takes, about 50 minutes
+/// on a Mac on 17 November, would keep a needed revert from ever landing.
+const CUTS: u64 = 2;
+
 /// How many times a test fails at a commit, and passes not once, before
 /// it counts as broken there.
 const FAILURES: usize = 2;
@@ -980,7 +986,7 @@ fn fixed_forward(
     if newest == head || same_drv(world, &newest, head, test) {
         return Ok(false);
     }
-    let outcome = attempt_together(world, state, &newest, test);
+    let outcome = state.building(|| attempt_together(world, state, &newest, test));
     told_fixed(world, state, head, &newest, test, commit, outcome)
 }
 
@@ -1118,7 +1124,9 @@ fn to_search(
 }
 
 /// Keeps in the hold how its revert went: the PR and commit that landed,
-/// or that it's to be tried again because no builder took its checks.
+/// or that it's to be tried again because no builder took its checks. The
+/// hold no longer says its revert is under way, which until now let a job
+/// kept by a net stopped mid-revert settle it again.
 fn keep_revert(
     state: &State,
     hold: &mut Value,
@@ -1132,6 +1140,10 @@ fn keep_revert(
         }
         Err(why) if tried_again(why) => hold["revert_again"] = json!(true),
         Err(_) => hold["revert_again"] = json!(false),
+    }
+    if let Some(hold) = hold.as_object_mut() {
+        hold.remove("reverting");
+        hold.remove("cuts");
     }
     state.set_hold(hold)
 }
@@ -1153,7 +1165,7 @@ fn revert_again(world: &dyn World, state: &State) -> Result<(), String> {
         return Ok(());
     };
     let (true, Some(commit), Some(test)) = (
-        hold["revert_again"] == true,
+        tried_again_now(state, &hold),
         hold["bad"].as_str().map(str::to_owned),
         hold["test"].as_str().map(str::to_owned),
     ) else {
@@ -1168,7 +1180,7 @@ fn revert_again(world: &dyn World, state: &State) -> Result<(), String> {
         log: state.log(&commit, &test, 2).display().to_string(),
     };
     let failed_at = hold["failed_at"].as_str().map(str::to_owned);
-    let wanted = revert_wanted(world, state, &found, failed_at.as_deref());
+    let wanted = revert_wanted(world, state, &found, failed_at.as_deref(), false);
     let reverted = world.revert(&found, &wanted);
     keep_revert(state, &mut hold, &reverted)?;
     if dropped(state, &found, &reverted)? {
@@ -1420,17 +1432,25 @@ const QUICK_EVERY: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// Look quickly at main's head, again and again, until the rounds are done.
 pub fn quick(world: &dyn World, state: &State, settler: &Settler, done: &AtomicBool) {
-    while !done.load(Ordering::Relaxed) {
+    while looks_on(done, settler) {
         if let Err(why) = quick_beside(world, state, settler) {
             state.say(&format!("a quick look failed: {why}"));
         }
         let rested = std::time::Instant::now();
         // Rested in short steps, so the rounds ending isn't kept waiting
         // for the rest of a look's five minutes.
-        while rested.elapsed() < QUICK_EVERY && !done.load(Ordering::Relaxed) {
+        while rested.elapsed() < QUICK_EVERY && looks_on(done, settler) {
             std::thread::sleep(std::time::Duration::from_secs(5));
         }
     }
+}
+
+/// Whether the quick look goes on: until the rounds are done, or the net
+/// leaves. It rests in a sleep, so while it went on through a leave the
+/// stall guard never read every thread waiting on a lock, and a leave
+/// hung on its write was never aborted.
+fn looks_on(done: &AtomicBool, settler: &Settler) -> bool {
+    !done.load(Ordering::Relaxed) && !settler.leaving()
 }
 
 /// One quick look: run the checks other than VM tests that main's head
@@ -1567,12 +1587,7 @@ impl<'a, 's, F: Fn(&str) -> bool> Breaking<'a, 's, F> {
         let Ok(mut tried) = self.tried.try_lock() else {
             return;
         };
-        let Some(test) = self
-            .state
-            .hold()
-            .filter(|hold| !hold["revert_commit"].is_string())
-            .and_then(|hold| hold["test"].as_str().map(str::to_owned))
-        else {
+        let Some(test) = forwardable(self.state) else {
             return;
         };
         let Ok(newest) = self.world.head() else {
@@ -1588,6 +1603,37 @@ impl<'a, 's, F: Fn(&str) -> bool> Breaking<'a, 's, F> {
             test,
         });
     }
+}
+
+/// How many times a revert of `bad` for `test` was cut short before, by
+/// the hold `was` it left.
+fn cuts_before(was: Option<&Value>, test: &str, bad: &str) -> u64 {
+    was.filter(|was| was["reverting"] == true && was["test"] == test && was["bad"] == bad)
+        .map_or(0, |was| was["cuts"].as_u64().unwrap_or(0) + 1)
+}
+
+/// Whether the round tries `hold`'s revert again now: one asked to, or
+/// one under way whose kept job is gone, as after a rollback to a build
+/// that didn't know the hold's word, or a lost file. Nothing else would
+/// revert it, and a forward run can't, so it would stand for good. The
+/// round's thread isn't cut by a leaving net, so its comparison runs whole.
+fn tried_again_now(state: &State, hold: &Value) -> bool {
+    hold["revert_again"] == true
+        || (hold["reverting"] == true
+            && hold["test"]
+                .as_str()
+                .is_some_and(|test| !state.keeps_settling(test)))
+}
+
+/// The test of a hold with no revert on main, which a run at main's newest
+/// head may clear. One whose revert is under way is left to the job kept
+/// for it, whose place a forward run's job would take, there being one for
+/// each test; with no job kept, the round tries its revert again.
+fn forwardable(state: &State) -> Option<String> {
+    state
+        .hold()
+        .filter(|hold| !hold["revert_commit"].is_string() && hold["reverting"] != true)
+        .and_then(|hold| hold["test"].as_str().map(str::to_owned))
 }
 
 /// Clear the hold if it still names `test`, which `passes` says how. A
@@ -2204,16 +2250,20 @@ fn revert_and_tell(
 ) -> Result<(), String> {
     let (commit, test, log) = (&found.commit, &found.test, &found.log);
     let already_runs = world.runs(commit);
+    // A hold still saying this revert is under way was left by a net that
+    // ended or was stopped before keeping its outcome.
+    let cuts = cuts_before(state.hold().as_ref(), test, commit);
     let mut hold = json!({
         "test": test, "bad": commit, "bad_pr": found.pr, "revert_pr": Value::Null,
         "revert_commit": Value::Null, "failed_at": head, "at": now(),
-        "already_runs": already_runs,
+        "already_runs": already_runs, "reverting": true, "cuts": cuts,
     });
     state.set_hold(&hold)?;
     if already_runs {
         state.say(&running::lets_through(commit, test));
     }
-    let reverted = world.revert(found, &revert_wanted(world, state, found, Some(head)));
+    let wanted = revert_wanted(world, state, found, Some(head), cuts < CUTS);
+    let reverted = world.revert(found, &wanted);
     keep_revert(state, &mut hold, &reverted)?;
     if dropped(state, found, &reverted)? {
         return Ok(());
@@ -2262,22 +2312,31 @@ fn revert_and_tell(
 /// what #2705 draws, but the test never ran there or with the revert, so
 /// the revert broke the test it was for. Only a newest head building the
 /// test as `failed_at` does, where it ran and failed, isn't run again.
+/// A leaving net may end during the comparison only when `may_be_cut`.
 fn revert_wanted<'a>(
     world: &'a dyn World,
     state: &'a State,
     found: &'a Bad,
     failed_at: Option<&'a str>,
+    may_be_cut: bool,
 ) -> impl Fn(&str, &str) -> Result<bool, String> + 'a {
     move |newest: &str, reverted: &str| {
         let test = &found.test;
-        let (without, with) = std::thread::scope(|scope| {
-            let with = scope.spawn(|| attempt_together(world, state, reverted, test));
-            let without = match failed_at {
-                Some(failed) if same_drv(world, newest, failed, test) => Outcome::Failed,
-                _ => attempt_together(world, state, newest, test),
-            };
-            (without, with.join().unwrap_or(Outcome::Unsent))
-        });
+        let compare = || {
+            std::thread::scope(|scope| {
+                let with = scope.spawn(|| attempt_together(world, state, reverted, test));
+                let without = match failed_at {
+                    Some(failed) if same_drv(world, newest, failed, test) => Outcome::Failed,
+                    _ => attempt_together(world, state, newest, test),
+                };
+                (without, with.join().unwrap_or(Outcome::Unsent))
+            })
+        };
+        let (without, with) = if may_be_cut {
+            state.building(compare)
+        } else {
+            compare()
+        };
         if without == Outcome::Unsent || with == Outcome::Unsent {
             return Err(format!(
                 "{UNCHECKED}: no builder ran {test} at main's newest head {} with and \
@@ -4560,6 +4619,404 @@ mod tests {
             log().contains("nothing writes the hold now, so this leaves"),
             "the net didn't say it left once the write ended: {}",
             log()
+        );
+    }
+
+    /// Run `during` while a write holds the hold and a net leaves, once
+    /// it has said it waits on the write, then let the write go and wait
+    /// for the leave, which runs `left`.
+    fn while_a_leave_waits<'a>(
+        settler: &'a Settler<'a>,
+        state: &State,
+        left: impl FnOnce() + Send + 'a,
+        during: impl for<'s> FnOnce(&'s std::thread::Scope<'s, 'a>),
+    ) {
+        let log = || fs::read_to_string(state.root.join("logs/net.log")).unwrap_or_default();
+        let (held, holding) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                settler.write(|| {
+                    held.send(()).unwrap();
+                    let _ = released.recv();
+                });
+            });
+            holding.recv().unwrap();
+            let leaving = scope.spawn(move || settler.leave(left));
+            let until = std::time::Instant::now() + Duration::from_secs(5);
+            while !log().contains("leaving waits") && std::time::Instant::now() < until {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            during(scope);
+            release.send(()).unwrap();
+            leaving.join().unwrap();
+        });
+    }
+
+    #[test]
+    fn a_write_asked_for_while_a_net_leaves_waits_behind_the_leave() {
+        // A leave looks again every 200 ms, so a write that queued on the
+        // hold behind the one it waited on took it first, and the next,
+        // for as long as the workers kept ending jobs (council 10's F221).
+        let state = state("leaving-first");
+        let world = Stand::default();
+        let settler = Settler::new(&world, &state);
+        let order = Mutex::new(Vec::new());
+        let order = &order;
+        while_a_leave_waits(
+            &settler,
+            &state,
+            move || order.lock().unwrap().push("left"),
+            |scope| {
+                let settler = &settler;
+                scope.spawn(move || settler.write(|| order.lock().unwrap().push("wrote")));
+                std::thread::sleep(Duration::from_millis(50));
+            },
+        );
+        assert_eq!(
+            *order.lock().unwrap(),
+            ["left", "wrote"],
+            "a write asked for while a net left took the hold ahead of the leave"
+        );
+    }
+
+    #[test]
+    fn the_quick_look_ends_once_a_net_leaves() {
+        // The quick look slept between its looks through a leave, so the
+        // stall guard never read every thread waiting on a lock, and a
+        // leave hung on its write was never aborted (council 10's F205).
+        let state = state("leaving-quick");
+        let world = Stand::default();
+        let settler = Settler::new(&world, &state);
+        let done = AtomicBool::new(false);
+        assert!(
+            looks_on(&done, &settler),
+            "the quick look ended with nothing leaving"
+        );
+        let looking = Mutex::new(None);
+        while_a_leave_waits(
+            &settler,
+            &state,
+            || (),
+            |_| *looking.lock().unwrap() = Some(looks_on(&done, &settler)),
+        );
+        assert_eq!(
+            *looking.lock().unwrap(),
+            Some(false),
+            "the quick look went on while the net left"
+        );
+    }
+
+    #[test]
+    fn a_net_leaving_ends_while_a_macs_revert_compares_in_its_write() {
+        // 17 November: a watcher told at 00:45 that another build was
+        // installed waited to 01:37 on a Mac revert's comparison at main's
+        // newest head, run inside its write, and one told at 03:08 waited
+        // on the next from 03:02 until it was restarted at 03:29.
+        let state = state("leaves-mid-compare");
+        let check = crate::macs::check("s");
+        let world = Stand {
+            head: "n".into(),
+            merges: names("m n"),
+            slow: names("n"),
+            ..Stand::default()
+        }
+        .exits("m", &check, &[1, 1])
+        .exits("n", &check, &[1, 1]);
+        let settler = Settler::new(&world, &state);
+        settler.hand(Job::Mac {
+            merge: "m".into(),
+            check: check.clone(),
+            since: now(),
+        });
+        let at_newest = ("n".to_owned(), check.clone());
+        let (kept, took) = std::thread::scope(|scope| {
+            settler.start(scope);
+            world.wait_while(
+                |built| !built.contains(&at_newest),
+                "the revert's comparison at main's newest head",
+            );
+            let began = std::time::Instant::now();
+            let kept = settler.leave(|| (state.settling().len(), state.hold().unwrap_or_default()));
+            let took = began.elapsed();
+            settler.close();
+            (kept, took)
+        });
+        let (kept, hold) = kept;
+        assert!(
+            hold["reverting"] == true && hold.get("revert_again").is_none(),
+            "a hold left mid-comparison doesn't say its revert is unsettled: {hold}"
+        );
+        assert!(
+            took < Duration::from_secs(5),
+            "a net leaving waited {took:?} on a revert's comparison, which lands nothing"
+        );
+        assert_eq!(
+            kept, 1,
+            "the Mac's job a net left mid-comparison wasn't kept for the next build"
+        );
+    }
+
+    #[test]
+    fn a_net_leaving_waits_out_a_comparison_cut_short_twice() {
+        // Each cut starts the comparison over at a new commit, so builds
+        // installed more often than one takes would keep a revert from
+        // ever landing.
+        let state = state("leaves-after-two-cuts");
+        let check = crate::macs::check("s");
+        let mut hold = reverting(&check);
+        hold["bad"] = json!("m");
+        hold["cuts"] = json!(1);
+        state.set_hold(&hold).unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("m n"),
+            slow: names("n"),
+            ..Stand::default()
+        }
+        .exits("m", &check, &[1, 1])
+        .exits("n", &check, &[1, 1]);
+        let settler = Settler::new(&world, &state);
+        settler.hand(Job::Mac {
+            merge: "m".into(),
+            check: check.clone(),
+            since: now(),
+        });
+        let at_newest = ("n".to_owned(), check.clone());
+        let left_early = std::thread::scope(|scope| {
+            settler.start(scope);
+            world.wait_while(
+                |built| !built.contains(&at_newest),
+                "the revert's comparison at main's newest head",
+            );
+            let leaving = scope.spawn(|| settler.leave(|| ()));
+            std::thread::sleep(Duration::from_millis(500));
+            let left_early = leaving.is_finished();
+            settler.close();
+            left_early
+        });
+        assert!(
+            !left_early,
+            "a net leaving cut short a revert's comparison cut twice before"
+        );
+        assert_eq!(
+            state.hold().unwrap_or_default().get("cuts"),
+            None,
+            "a revert's kept outcome left its count of cuts in the hold"
+        );
+    }
+
+    #[test]
+    fn a_search_whose_revert_a_leave_cut_settles_again() {
+        // A net leaving mid-comparison, or stopped there, keeps the
+        // search's job, with a hold on its test whose revert never landed;
+        // dropping the job as held would leave switches held with no
+        // revert and nobody told.
+        let state = state("search-cut");
+        state.set_hold(&reverting("vm-a")).unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        let settler = Settler::new(&world, &state);
+        settler.hand(search_for("vm-a"));
+        std::thread::scope(|scope| {
+            settler.start(scope);
+            settler.close();
+        });
+        assert_eq!(
+            *world.reverted.lock().unwrap(),
+            names("h"),
+            "a search whose revert a leave cut was dropped as held"
+        );
+        let hold = state.hold().unwrap_or_default();
+        assert!(
+            hold.get("reverting").is_none() && !hold["revert_pr"].is_null(),
+            "the search settled again didn't keep its revert's outcome: {hold}"
+        );
+    }
+
+    #[test]
+    fn a_kept_job_let_go_clears_the_hold_its_revert_left_unsettled() {
+        // A kept search whose test main has listed since is let go
+        // without settling, and the hold its cut revert left would hold
+        // switches with no revert to clear it.
+        let state = state("cut-let-go");
+        state.set_hold(&reverting("vm-a")).unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("h n"),
+            quarantined: names("vm-a"),
+            ..Stand::default()
+        };
+        let settler = Settler::new(&world, &state);
+        settler.hand(search_for("vm-a"));
+        std::thread::scope(|scope| {
+            settler.start(scope);
+            settler.close();
+        });
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "a search main lists as quarantined reverted"
+        );
+        assert_eq!(
+            state.hold(),
+            None,
+            "a kept job let go left its unsettled revert's hold"
+        );
+    }
+
+    #[test]
+    fn a_hold_whose_revert_is_under_way_is_left_to_its_own_job() {
+        // A forward run's job would take the place of the kept job that
+        // settles the hold, there being one for each test, and a forward
+        // run that fails then lets go of the hold with nothing to revert.
+        let state = state("forward-reverting");
+        state.set_hold(&reverting("vm-a")).unwrap();
+        state.keep_settling("vm-a", &json!({})).unwrap();
+        assert_eq!(
+            forwardable(&state),
+            None,
+            "a hold whose revert is under way was handed a forward run"
+        );
+        assert!(
+            !tried_again_now(&state, &reverting("vm-a")),
+            "a hold whose revert's job is kept was tried again beside it"
+        );
+        state.settled("vm-a").unwrap();
+        assert_eq!(
+            forwardable(&state),
+            None,
+            "a hold whose revert's job is gone was handed a forward run, which can't revert"
+        );
+        assert!(
+            tried_again_now(&state, &reverting("vm-a")),
+            "a hold whose revert's job is gone wasn't tried again, so it would stand for good"
+        );
+        let mut hold = reverting("vm-a");
+        hold.as_object_mut().unwrap().remove("reverting");
+        state.set_hold(&hold).unwrap();
+        assert_eq!(
+            forwardable(&state).as_deref(),
+            Some("vm-a"),
+            "a hold with no revert on main wasn't handed a forward run"
+        );
+    }
+
+    #[test]
+    fn a_revert_is_cut_twice_at_most_and_counted_for_its_own_merge() {
+        let mut was = reverting("vm-a");
+        assert_eq!(
+            cuts_before(None, "vm-a", "h"),
+            0,
+            "a first try counted a cut"
+        );
+        let once = cuts_before(Some(&was), "vm-a", "h");
+        assert!(
+            once == 1 && once < CUTS,
+            "a second try wasn't one cut, to be cut again"
+        );
+        was["cuts"] = json!(once);
+        let twice = cuts_before(Some(&was), "vm-a", "h");
+        assert!(
+            twice == 2 && twice >= CUTS,
+            "a third try wasn't two cuts, to wait"
+        );
+        assert_eq!(
+            (
+                cuts_before(Some(&was), "vm-b", "h"),
+                cuts_before(Some(&was), "vm-a", "g")
+            ),
+            (0, 0),
+            "another test's or merge's cuts were counted"
+        );
+        was.as_object_mut().unwrap().remove("reverting");
+        assert_eq!(
+            cuts_before(Some(&was), "vm-a", "h"),
+            0,
+            "a kept revert's hold counted a cut"
+        );
+    }
+
+    /// A hold on `test` whose revert was begun and never kept.
+    fn reverting(test: &str) -> Value {
+        json!({
+            "test": test, "bad": "h", "bad_pr": 1, "revert_pr": null,
+            "revert_commit": null, "reverting": true, "failed_at": "h", "at": now(),
+        })
+    }
+
+    #[test]
+    fn a_build_outside_a_write_lets_no_leaving_net_past_one() {
+        let state = state("leaves-after-landing");
+        let world = Stand::default();
+        let settler = Settler::new(&world, &state);
+        let (held, holding) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let (building, built) = std::sync::mpsc::channel();
+        let (finish, finished) = std::sync::mpsc::channel::<()>();
+        let (writer, builder) = (&settler, &state);
+        let left_early = std::thread::scope(|scope| {
+            scope.spawn(move || {
+                writer.write(|| {
+                    held.send(()).unwrap();
+                    let _ = released.recv();
+                });
+            });
+            holding.recv().unwrap();
+            scope.spawn(move || {
+                builder.building(|| {
+                    building.send(()).unwrap();
+                    let _ = finished.recv();
+                });
+            });
+            built.recv().unwrap();
+            let leaving = scope.spawn(|| settler.leave(|| ()));
+            std::thread::sleep(Duration::from_millis(500));
+            let left_early = leaving.is_finished();
+            release.send(()).unwrap();
+            finish.send(()).unwrap();
+            leaving.join().unwrap();
+            left_early
+        });
+        assert!(
+            !left_early,
+            "a net left mid-write, which may land, since a build outside any write went"
+        );
+    }
+
+    #[test]
+    fn a_write_past_its_builds_lets_no_leaving_net_end() {
+        // After its comparison a revert's write lands, pushing and merging,
+        // and a net ending then would leave it half landed.
+        let state = state("leaves-while-landing");
+        let world = Stand::default();
+        let settler = Settler::new(&world, &state);
+        let (held, holding) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let (writer, builder) = (&settler, &state);
+        let left_early = std::thread::scope(|scope| {
+            scope.spawn(move || {
+                writer.write(|| {
+                    builder.building(|| ());
+                    held.send(()).unwrap();
+                    let _ = released.recv();
+                });
+            });
+            holding.recv().unwrap();
+            let leaving = scope.spawn(|| settler.leave(|| ()));
+            std::thread::sleep(Duration::from_millis(500));
+            let left_early = leaving.is_finished();
+            release.send(()).unwrap();
+            leaving.join().unwrap();
+            left_early
+        });
+        assert!(
+            !left_early,
+            "a net left a write landing after its builds, which may leave it half landed"
         );
     }
 

@@ -16,8 +16,10 @@
 //! round takes it up.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, Mutex};
 use std::thread::Scope;
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
@@ -135,6 +137,21 @@ impl Job {
 /// still compare it by hand.
 const UNRUN: u64 = 24 * 60 * 60;
 
+/// How often a net leaving looks again whether the write it waits on only
+/// builds or has ended.
+const LOOK_AGAIN: Duration = Duration::from_millis(200);
+
+/// Wait `LOOK_AGAIN` before a leaving net, or a write behind it, looks
+/// again, parked rather than asleep. A timed park is a futex wait, so the
+/// stall guard, which tells a hung net by every thread waiting on a lock,
+/// reads a leave looking at a write that never ends as it read one blocked
+/// on it, the quick look having ended. A leave that only slept would hide
+/// that write, and one that blocked after a while would wait out a
+/// revert's Mac comparison whole, the stall it exists to end.
+fn look_again() {
+    std::thread::park_timeout(LOOK_AGAIN);
+}
+
 /// How many searches waiting for room may ask main's newest head at once
 /// whether it fixed their test.
 const ASKS: usize = 1;
@@ -219,6 +236,8 @@ pub struct Settler<'a> {
     moved: Condvar,
     /// Taken by everything that writes the hold, one at a time.
     writing: Mutex<()>,
+    /// Whether a net leaves, so a write not yet begun waits behind it.
+    leaving: AtomicBool,
     first_error: Mutex<Option<String>>,
 }
 
@@ -230,6 +249,7 @@ impl<'a> Settler<'a> {
             queue: Mutex::default(),
             moved: Condvar::new(),
             writing: Mutex::new(()),
+            leaving: AtomicBool::new(false),
             first_error: Mutex::new(None),
         }
     }
@@ -259,19 +279,60 @@ impl<'a> Settler<'a> {
     /// It says when a write holds it and when it goes, since on 16 November
     /// a watcher told at 08:28 hung to 08:33, when it was restarted, and
     /// nothing showed whether a write held it or its own exit did.
+    ///
+    /// A write that only builds, before anything it decided lands, isn't
+    /// waited on: its job is kept on disk, and the next build takes it up.
+    /// A revert's hold says it's under way until its outcome is kept, so a
+    /// job kept mid-revert settles again in full, telling the owner, rather
+    /// than being dropped as held, as it does after a net is stopped. The
+    /// guard on the write is held while `end` runs, so an `end` that
+    /// returns, as a test's does, leaves the write stopped at its build only
+    /// until the guard goes; the watch's own `end` exits.
+    ///
+    /// A write asked for once the leave waits goes behind it, as a worker's
+    /// ending its job would otherwise take the hold each time the write it
+    /// waits on lets go, and the leave, looking again only every
+    /// `LOOK_AGAIN`, never would.
     pub fn leave<R>(&self, end: impl FnOnce() -> R) -> R {
-        let _writing = match self.writing.try_lock() {
-            Ok(writing) => writing,
-            Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
-            Err(std::sync::TryLockError::WouldBlock) => {
-                self.state
-                    .say("leaving waits for a write to the hold, a settle's or a round's");
-                lock(&self.writing)
-            }
-        };
-        self.state
-            .say("nothing writes the hold now, so this leaves");
-        end()
+        self.leaving.store(true, Ordering::SeqCst);
+        let ended = self.leave_once_free(end);
+        self.leaving.store(false, Ordering::SeqCst);
+        ended
+    }
+
+    /// Whether a net leaves.
+    pub fn leaving(&self) -> bool {
+        self.leaving.load(Ordering::SeqCst)
+    }
+
+    /// End once nothing but a build writes the hold, as `leave` says.
+    fn leave_once_free<R>(&self, end: impl FnOnce() -> R) -> R {
+        let mut said = false;
+        loop {
+            let _writing = match self.writing.try_lock() {
+                Ok(writing) => writing,
+                Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    if let Some(_building) = self.state.only_building() {
+                        self.state.say(
+                            "the write to the hold only builds, and nothing it decided has \
+                             landed, so this leaves, and the next build takes its job up again",
+                        );
+                        return end();
+                    }
+                    if !said {
+                        self.state
+                            .say("leaving waits for a write to the hold, a settle's or a round's");
+                        said = true;
+                    }
+                    look_again();
+                    continue;
+                }
+            };
+            self.state
+                .say("nothing writes the hold now, so this leaves");
+            return end();
+        }
     }
 
     /// Run `during` while the workers wait for the queue, as a worker
@@ -294,8 +355,11 @@ impl<'a> Settler<'a> {
 
     /// Run `write` while nothing else writes the hold.
     pub fn write<R>(&self, write: impl FnOnce() -> R) -> R {
+        while self.leaving() {
+            look_again();
+        }
         let _writing = lock(&self.writing);
-        write()
+        self.state.writing(write)
     }
 
     /// Run `write` unless a settle is writing the hold, for what a round
@@ -306,12 +370,15 @@ impl<'a> Settler<'a> {
     /// test of the round that ended meanwhile waited on it before the next
     /// could start, so a merge at 05:26 was found only at 07:56.
     pub fn write_unless_busy<R>(&self, write: impl FnOnce() -> R) -> Option<R> {
+        if self.leaving() {
+            return None;
+        }
         let _writing = match self.writing.try_lock() {
             Ok(writing) => writing,
             Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
             Err(std::sync::TryLockError::WouldBlock) => return None,
         };
-        Some(write())
+        Some(self.state.writing(write))
     }
 
     /// How many merges a search's next step tries: the room `AT_ONCE` names,
@@ -457,7 +524,20 @@ impl<'a> Settler<'a> {
     /// a net left the moment its settle listed shows-then-rests, before
     /// letting the search go, and the next build searched the test again,
     /// ten VM runs. A job whose write fails is kept, to be taken up again.
+    /// A hold on `test` its revert left under way goes with the job, which
+    /// was the one to settle it, as one kept mid-revert and then let go for
+    /// a test main fixed or listed since is.
     fn end(&self, test: &str, write: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
+        self.let_go(test, || {
+            write()?;
+            clear_an_unsettled_revert(self.state, test)
+        })
+    }
+
+    /// Write what `test`'s job settled and let the job go, as `end` does,
+    /// leaving the hold to what the write decided: a fixed-forward run
+    /// that fails leaves a revert's hold to its own job.
+    fn let_go(&self, test: &str, write: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
         self.write(|| {
             write()?;
             self.state.settled(test)
@@ -476,10 +556,10 @@ impl<'a> Settler<'a> {
             || same_drv(world, newest, head, test)
             || attempt(world, state, newest, test) != Outcome::Passed
         {
-            return self.end(test, || Ok(()));
+            return self.let_go(test, || Ok(()));
         }
         let passes = format!("passes at main's newest head {}", short(newest));
-        self.end(test, || clear_hold_of(state, test, &passes))
+        self.let_go(test, || clear_hold_of(state, test, &passes))
     }
 
     /// Compare a Mac's checks at `merge` as `check`, and revert the merge
@@ -531,9 +611,13 @@ impl<'a> Settler<'a> {
         fixed_forward(self.world, self.state, head, test, None) == Ok(true)
     }
 
-    /// Whether the hold names `test` already.
+    /// Whether the hold is on `test` already, so its job has nothing left
+    /// to settle; one whose revert is still under way, as a net stopped
+    /// mid-revert leaves it, isn't.
     fn held_for(&self, test: &str) -> bool {
-        self.state.hold().is_some_and(|hold| hold["test"] == test)
+        self.state
+            .hold()
+            .is_some_and(|hold| hold["test"] == test && hold["reverting"] != true)
     }
 
     fn failed(&self, why: String) {
@@ -542,9 +626,86 @@ impl<'a> Settler<'a> {
     }
 }
 
+/// Clear the hold on `test` when its revert was begun and its outcome never
+/// kept: nothing else clears it, and it holds switches with no revert.
+fn clear_an_unsettled_revert(state: &State, test: &str) -> Result<(), String> {
+    let unsettled = state
+        .hold()
+        .is_some_and(|hold| hold["test"] == test && hold["reverting"] == true);
+    if unsettled {
+        state.clear_hold()?;
+        state.say(&format!(
+            "{test}'s hold was left mid-revert, and its job ends with nothing to revert, \
+             so the hold is cleared"
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // `/proc` is Linux's alone, and a Mac's dev shell builds merge-net too.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_net_leaving_reads_to_the_stall_guard_as_waiting_on_a_lock() {
+        // What `/proc` says, in 10 reads 50 ms apart, that the thread
+        // `during` runs on waits in, before `after` lets it end.
+        fn waits_of(during: impl FnOnce() + Send + 'static, after: impl FnOnce()) -> Vec<String> {
+            let (tell, told) = std::sync::mpsc::channel();
+            let running = std::thread::spawn(move || {
+                let own = std::fs::read_link("/proc/thread-self")
+                    .ok()
+                    .and_then(|link| {
+                        link.file_name()
+                            .map(|tid| tid.to_string_lossy().into_owned())
+                    });
+                tell.send(own).unwrap();
+                during();
+            });
+            let own = told.recv().unwrap().expect("the thread has no id");
+            let mut seen = Vec::new();
+            for _ in 0..10 {
+                std::thread::sleep(Duration::from_millis(50));
+                seen.extend(std::fs::read_to_string(format!("/proc/self/task/{own}/wchan")).ok());
+            }
+            after();
+            running.join().unwrap();
+            seen
+        }
+        // The kernel's own words for a lock vary, so a thread blocked on
+        // one shows what they are here.
+        let lock = std::sync::Arc::new(Mutex::new(()));
+        let held = lock.lock().unwrap();
+        let waiting = std::sync::Arc::clone(&lock);
+        let blocking = waits_of(move || drop(waiting.lock().unwrap()), || drop(held));
+        assert!(
+            blocking.iter().any(|wait| crate::stall::on_a_lock(wait)),
+            "a thread blocked on a lock isn't read as on one: {blocking:?}"
+        );
+        // The round rests between rounds in a sleep, which must never read
+        // as a lock, or the guard would abort a net at rest.
+        let resting = waits_of(|| std::thread::sleep(Duration::from_millis(600)), || {});
+        assert!(
+            !resting.iter().any(|wait| crate::stall::on_a_lock(wait)),
+            "a net resting between rounds reads as on a lock: {resting:?}"
+        );
+        let leaving = waits_of(
+            || {
+                for _ in 0..5 {
+                    look_again();
+                }
+            },
+            || {},
+        );
+        assert!(
+            leaving.iter().any(|wait| crate::stall::on_a_lock(wait))
+                && !leaving.iter().any(|wait| wait.contains("sleep")),
+            "a leave looking again reads as resting, so a net hung on its write \
+             would never be aborted: {leaving:?}"
+        );
+    }
 
     #[test]
     fn a_search_with_no_room_is_asked_once_and_then_waits() {

@@ -89,7 +89,7 @@
     "due": "2026-11-18",
     "due_why": "Its owner, the call shaper's, reruns it three times on an idle builder by 2026-11-18 23:59 UTC and takes it off if all three hold, or fixes it: 3 of its 35 net runs from listing to 17 Nov 11:00 UTC failed, the last on 16 Nov",
     "owner_pr": 4228,
-    "owner_session": "2DZF5Z",
+    "owner_session": "B8RBNW",
     "reason": "failed, then passed, at 580dc8dbd580",
     "subtests": [
       "test_a_call_loses_little",
