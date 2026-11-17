@@ -19,8 +19,8 @@
 //! - `answers.jsonl`: a line for each hold, run again and pass `ready`
 //!   answered, with the files it turned on (`answers.rs`).
 //! - `findings/`: a file for each failure, for a session to tell its owner.
-//! - `logs/`: each run's log, kept three days, and the net's own in
-//!   `net.log`.
+//! - `logs/`: each run's log, kept three days within a budget of bytes,
+//!   and the net's own in `net.log`.
 //! - `core/`: the net's own checkout of the repository it watches.
 //! - `drv/`: the derivation each check builds at a commit, named
 //!   `<commit>-<check>`, so a search evaluates each once.
@@ -182,12 +182,21 @@ impl State {
     /// them before: by 11 November the folder held 8,737 logs, 12 GiB,
     /// growing by about 2 GiB a day on a disk three quarters full. Of
     /// those left, the newest are kept while they fit in `budget` bytes
-    /// and the rest go too, since three days alone grew to 14 GiB.
+    /// and the rest go too, since three days alone grew to 14 GiB; but
+    /// never a log under `LOGS_READ` old, nor one of a head the net
+    /// still holds, which it reads back to judge a test at a round's base
+    /// or to tell an owner what a search found.
     pub fn age_out_logs(&self, now: SystemTime, budget: u64) -> Aged {
         let mut aged = Aged::default();
         let Ok(entries) = fs::read_dir(self.root.join("logs")) else {
             return aged;
         };
+        let (passed, seen) = self.heads();
+        let held: Vec<String> = [passed, seen, self.under_way()]
+            .into_iter()
+            .flatten()
+            .map(|head| format!("{}-", short(&head)))
+            .collect();
         let mut kept = Vec::new();
         for entry in entries.flatten() {
             if entry.file_name() == "net.log" {
@@ -206,10 +215,17 @@ impl State {
             }
         }
         kept.sort_by_key(|(written, _, _)| std::cmp::Reverse(*written));
-        let mut held = 0;
-        for (_, size, path) in kept {
-            held += size;
-            if held > budget {
+        let mut size = 0;
+        for (written, bytes, path) in kept {
+            size += bytes;
+            let young = !now
+                .duration_since(written)
+                .is_ok_and(|age| age >= LOGS_READ);
+            let named = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| held.iter().any(|head| name.starts_with(head)));
+            if size > budget && !young && !named {
                 aged.over += usize::from(fs::remove_file(path).is_ok());
             }
         }
@@ -507,8 +523,13 @@ pub fn runs_in(text: &str, commit: &str, check: &str) -> Vec<Ran> {
 
 /// How long a run's log is kept. A finding names its log for a session to
 /// read, which it does within the day, and a search reads only the logs of
-/// the runs it made; three days leaves a weekend's findings readable.
+/// the runs it made; three days leaves a weekend's findings readable
+/// while they fit in `LOGS_BUDGET`.
 const LOGS_KEPT: Duration = Duration::from_hours(72);
+
+/// How long a run's log is kept whatever the budget: a search reads the
+/// logs of the runs it made, and the longest takes a few hours.
+const LOGS_READ: Duration = Duration::from_hours(6);
 
 /// How many bytes of runs' logs are kept, the newest first. Three days
 /// of logs grew to 14 GiB by 17 November on a disk 83% full, 13 GiB of
