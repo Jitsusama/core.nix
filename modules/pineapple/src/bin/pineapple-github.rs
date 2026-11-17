@@ -26,7 +26,7 @@
 //!
 //! A round spends Joel's rate limit, which gh and his agents share: two
 //! requests, two to four more for each pull request or issue that changed,
-//! one more for its repository where something on it is worth judging,
+//! one more for each repository where something on one is to be judged,
 //! and a page more for each hundred of a long list. One his limit
 //! refuses is tried again whole, so nothing it couldn't read is skipped.
 //!
@@ -48,12 +48,13 @@
 //! nothing kept, it begins ten minutes back rather than judging GitHub's
 //! whole history.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pineapple::gate::Gate;
-use pineapple::github::{self, Kind, Said, Thread, found, notified, worth_judging};
+use pineapple::github::{self, Kind, Said, Thread, add_page, found, notified, worth_judging};
 use pineapple::progress::{self, Judged};
 use pineapple::record::{self, Source};
 use pineapple::resume;
@@ -514,21 +515,6 @@ impl GitHub<'_> {
     }
 }
 
-/// A page added to a list read so far: a list's own, or a search's items.
-fn add_page(list: &mut Value, page: Value) {
-    let (kept, more) = match (list, page) {
-        (Value::Array(kept), Value::Array(more)) => (kept, more),
-        (Value::Object(kept), Value::Object(mut more)) => {
-            match (kept.get_mut("items"), more.remove("items")) {
-                (Some(Value::Array(kept)), Some(Value::Array(more))) => (kept, more),
-                _ => return,
-            }
-        }
-        _ => return,
-    };
-    kept.extend(more);
-}
-
 /// Who Joel is on the site: as `--login` says, else as GitHub answers.
 fn who(github: &GitHub<'_>, how: &Run) -> Option<String> {
     if let Some(login) = &how.login {
@@ -607,9 +593,13 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged) {
             .origin
             .trim_end_matches('/')
             .eq_ignore_ascii_case(GITHUB);
-    let mut heard = Vec::new();
+    // What this round judges, which alone is worth asking about a repository.
+    let keeps = |said: &Said| {
+        said.at >= from && !judged.keys.contains(&said.key) && worth_judging(&said.text, &login)
+    };
+    let (mut heard, mut asked) = (Vec::new(), HashMap::new());
     for thread in &threads {
-        match said_on(github, thread, &since, (open, &login)) {
+        match said_on(github, thread, &since, (open, &login), &keeps, &mut asked) {
             Ok(found) => heard.extend(found),
             Err(Unread::Gone(why)) => eprintln!("<4>{} can't be read: {why}", thread.key()),
             Err(Unread::Failed(why)) => {
@@ -618,9 +608,7 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged) {
             }
         }
     }
-    heard.retain(|(said, _, _, _)| {
-        said.at >= from && !judged.keys.contains(&said.key) && worth_judging(&said.text, &login)
-    });
+    heard.retain(|(said, _, _, _)| keeps(said));
     heard.sort_by_key(|(said, _, _, _)| said.at);
     // Where logins are addresses, what Joel says is by his address.
     let joel = Joel {
@@ -644,13 +632,16 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged) {
 /// comment (`open`), a writer not the repository's own, or anyone on a
 /// repository Joel doesn't work in. Reviews can't be asked for by time,
 /// so all are read and the round keeps those since. Whether he works in
-/// it is asked only when something there is worth judging, which most
-/// threads hold nothing of, so his rate limit isn't spent on the rest.
+/// it is asked only when something there is one the round `keeps`, which
+/// most threads hold nothing of, and once a round however many threads it
+/// has, so his rate limit isn't spent on the rest.
 fn said_on(
     github: &GitHub<'_>,
     thread: &Thread,
     since: &str,
     who: (bool, &str),
+    keeps: &dyn Fn(&Said) -> bool,
+    asked: &mut HashMap<String, bool>,
 ) -> Result<Sayings, Unread> {
     let (open, login) = who;
     let base = format!("/repos/{}", thread.repo);
@@ -675,16 +666,8 @@ fn said_on(
         )?;
         found.extend(github::said(&reviews, thread, Kind::Review));
     }
-    let worth = found.iter().any(|said| worth_judging(&said.text, login));
-    let works_in = !open
-        || joel_opened
-        || (worth
-            && match github.get(&base, &[]) {
-                Ok(repo) => github::works_in(&repo),
-                // Unreadable, it's one he doesn't work in; his own words still count.
-                Err(Unread::Gone(_)) => false,
-                Err(failed) => return Err(failed),
-            });
+    let works_in =
+        !open || joel_opened || (found.iter().any(keeps) && works_in(github, &base, asked)?);
     let trusted = !open || joel_opened || (works_in && opened_by_own);
     let opening = if trusted {
         format!(
@@ -703,6 +686,26 @@ fn said_on(
             (said, thread.clone(), context.clone(), outsider)
         })
         .collect())
+}
+
+/// Whether Joel works in the repository at `base`, asked of GitHub only
+/// the first time a round wants to know.
+fn works_in(
+    github: &GitHub<'_>,
+    base: &str,
+    asked: &mut HashMap<String, bool>,
+) -> Result<bool, Unread> {
+    if let Some(&known) = asked.get(base) {
+        return Ok(known);
+    }
+    let known = match github.get(base, &[]) {
+        Ok(repo) => github::works_in(&repo),
+        // Unreadable, it's one he doesn't work in; his own words still count.
+        Err(Unread::Gone(_)) => false,
+        Err(failed) => return Err(failed),
+    };
+    asked.insert(base.to_owned(), known);
+    Ok(known)
 }
 
 /// What a round hears: each saying, with where and whether by an outsider.

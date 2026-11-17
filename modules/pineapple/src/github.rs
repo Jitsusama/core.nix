@@ -296,6 +296,22 @@ pub fn next_page(link: &str) -> Option<&str> {
     })
 }
 
+/// A page added to a list read so far: a list's own, or a search's
+/// items. A page of another shape adds nothing.
+pub fn add_page(list: &mut Value, page: Value) {
+    let (kept, more) = match (list, page) {
+        (Value::Array(kept), Value::Array(more)) => (kept, more),
+        (Value::Object(kept), Value::Object(mut more)) => {
+            match (kept.get_mut("items"), more.remove("items")) {
+                (Some(Value::Array(kept)), Some(Value::Array(more))) => (kept, more),
+                _ => return,
+            }
+        }
+        _ => return,
+    };
+    kept.extend(more);
+}
+
 /// Whether GitHub refused for its rate limit rather than because what
 /// was asked is gone: a 429, or a 403 saying none is left, when to ask
 /// again, or in its message that it is a rate limit (or, as GitHub once
@@ -582,6 +598,26 @@ mod tests {
                     <https://api.example.com/notifications?page=4>; rel=\"prev\"";
         assert_eq!(next_page(last), None);
         assert_eq!(next_page(""), None);
+    }
+
+    #[test]
+    fn a_page_adds_to_a_list_or_a_searchs_items_and_nothing_else() {
+        let mut list = json!([1]);
+        add_page(&mut list, json!([2, 3]));
+        assert_eq!(list, json!([1, 2, 3]), "a list's next page follows it");
+        let mut search = json!({"total_count": 3, "items": [1]});
+        add_page(&mut search, json!({"total_count": 3, "items": [2, 3]}));
+        assert_eq!(
+            search,
+            json!({"total_count": 3, "items": [1, 2, 3]}),
+            "a search's next items follow its first"
+        );
+        add_page(&mut list, json!({"items": [4]}));
+        assert_eq!(
+            list,
+            json!([1, 2, 3]),
+            "a page of another shape adds nothing"
+        );
     }
 
     #[test]
