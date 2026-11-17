@@ -21,6 +21,15 @@ use serde_json::{Value, json};
 
 use super::{Daemon, Run, Shared, agents, bookmarks, due, keep, lock, programs, start};
 
+/// Which places' rows changed while nothing watched them (`changed`, and
+/// bookmarks.rs), for the next watch of each to make (`read`); each is
+/// cleared as its rows are made, wherever that is.
+#[derive(Default)]
+pub struct Unmade {
+    pub tabs: bool,
+    pub bookmarks: bool,
+}
+
 /// Whether a watch wants the tabs' rows, as a whole place: of it, or of
 /// every row.
 pub fn watched(daemon: &Daemon) -> bool {
@@ -47,7 +56,8 @@ pub fn kitty(shared: &Shared) -> Option<usize> {
 /// of its own: only what isn't held yet, since what is was read again at
 /// every change of the session while they were watched, so a watch
 /// beginning reads nothing more. kitty's list is read as it's due, or
-/// never read yet, while the tabs are watched.
+/// never read yet, while the tabs are watched. Their rows and the
+/// bookmarks' are made where a read ended before this watch was held.
 pub fn read(shared: &Arc<Shared>) {
     let (unread, listed) = {
         let daemon = lock(&shared.daemon);
@@ -79,27 +89,48 @@ pub fn read(shared: &Arc<Shared>) {
     if let Some(at) = listed {
         start(shared, at, Run::List);
     }
+    // What changed as this watch was asked, before it was held, made no
+    // rows for it, and a read of it is held, so it starts no read above.
+    // Only marked rows are made here: the launcher asks its watch again at
+    // each opening, and the bookmarks are files read under the lock.
+    // Each place is made only once it's watched, so a watch of the other
+    // leaves its mark for the watch still to be held.
+    let mut daemon = lock(&shared.daemon);
+    if daemon.unmade.tabs && watched(&daemon) {
+        make(shared, &mut daemon);
+    }
+    if daemon.unmade.bookmarks && bookmarks::watched(&daemon) {
+        bookmarks::make(shared, &mut daemon);
+    }
 }
 
 /// What a source's command read or refused, as it's kept: the rows and
-/// the head made again where it was what Chrome or kitty has open and the
-/// tabs are watched.
+/// the head changed where it was what Chrome or kitty has open.
 pub fn heard(shared: &Shared, daemon: &mut Daemon, at: usize, what: Run) {
     let theirs = match what {
         Run::Opened => shared.sources[at].session.is_some(),
         Run::List => kitty(shared) == Some(at),
     };
-    if theirs && watched(daemon) {
+    if theirs {
+        changed(shared, daemon);
+    }
+}
+
+/// What the rows are made of changed: they're made again while watched,
+/// and otherwise marked for the next watch to make (`read`). Watched is
+/// asked once, so a watch held as this runs gets one or the other.
+pub fn changed(shared: &Shared, daemon: &mut Daemon) {
+    if watched(daemon) {
         make(shared, daemon);
+    } else {
+        daemon.unmade.tabs = true;
     }
 }
 
 /// A folder of entries changed, so a program may be named anew: the tabs
-/// are made again while a watch wants them, each said in its new name.
+/// are made again in its new name, or marked while nothing watches them.
 pub fn renamed(shared: &Shared, daemon: &mut Daemon) {
-    if watched(daemon) {
-        make(shared, daemon);
-    }
+    changed(shared, daemon);
 }
 
 /// Makes the rows again from what's held open, keeping what changed and
@@ -109,6 +140,7 @@ pub fn renamed(shared: &Shared, daemon: &mut Daemon) {
 /// Each program is named as its desktop entry names it, so as its
 /// Programs row is, the entries read once as Programs' are.
 pub fn make(shared: &Shared, daemon: &mut Daemon) {
+    daemon.unmade.tabs = false;
     if daemon.catalogue.is_none() {
         daemon.catalogue = Some(programs(shared, daemon, None));
     }

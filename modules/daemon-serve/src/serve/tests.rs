@@ -631,6 +631,48 @@ fn a_daemon_reading_on_demand_reads_before_a_get_a_list_or_a_watch_is_answered()
 }
 
 #[test]
+fn a_daemon_hears_a_watch_begun_once_it_is_held() {
+    let (shared, mut client, _folder) = served("begun", Box::new(|_| None));
+    let (telling, told) = channel();
+    let this = Arc::downgrade(&shared);
+    shared.begun(Box::new(move |wanted| {
+        let place = wanted.places.and_then(<[String]>::first);
+        let held = this
+            .upgrade()
+            .zip(place)
+            .is_some_and(|(shared, place)| shared.watches("row", place));
+        let _ = telling.send((asked(wanted), held));
+    }));
+    client.ask(&json!({"id": 1, "ask": "get", "keys": ["row:agents:a"]}));
+    client.ask(&json!({"id": 2, "ask": "list", "kind": "row"}));
+    let watched = client.ask(&json!({"id": 3, "ask": "watch", "kind": "row", "place": "agents"}));
+    assert_eq!(watched["id"], 3, "the watch is answered: {watched}");
+    assert_eq!(
+        told.recv_timeout(Duration::from_secs(10)),
+        Ok((r#"["row"] None Some(["agents"]) true"#.to_string(), true)),
+        "a watch begun is said once it's held, and only a watch is"
+    );
+    let again = client.ask(&json!({"id": 3, "ask": "watch", "kind": "row", "place": "people"}));
+    assert_eq!(again["id"], 3, "the watch asked again is answered: {again}");
+    assert_eq!(
+        told.recv_timeout(Duration::from_secs(10)),
+        Ok((r#"["row"] None Some(["people"]) true"#.to_string(), true)),
+        "a watch asked again under its id is said begun again"
+    );
+    // Kept on, a watch asked again for the same records is answered with
+    // nothing, so health, answered after it, says it was heard.
+    client.send(&json!({"id": 3, "ask": "watch", "kind": "row", "place": "people"}));
+    client.ask(&json!({"id": 4, "ask": "health"}));
+    assert_eq!(
+        told.try_recv(),
+        Ok((r#"["row"] None Some(["people"]) true"#.to_string(), true)),
+        "a watch kept on is said begun again"
+    );
+    client.ask(&json!({"id": 5, "ask": "health"}));
+    assert!(told.try_recv().is_err(), "each watch begun is said once");
+}
+
+#[test]
 fn health_says_what_else_a_daemon_counts_but_never_in_place_of_its_own() {
     let (shared, mut client, _folder) = served("health-too", Box::new(|_| None));
     shared.health_too(Box::new(|| json!({"took_us": [12, 30], "watches": 99})));

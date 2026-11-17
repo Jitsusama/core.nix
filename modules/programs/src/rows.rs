@@ -50,9 +50,7 @@ fn windows_changed(shared: &Shared, said: &Value) {
     if watched(&daemon) {
         make(shared, &mut daemon);
     }
-    if tabs::watched(&daemon) {
-        tabs::make(shared, &mut daemon);
-    }
+    tabs::changed(shared, &mut daemon);
 }
 
 /// Whether a watch wants Programs' rows: one of the `row` kind whole, of

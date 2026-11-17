@@ -178,10 +178,7 @@ pub fn notice(shared: &Arc<Shared>, folders: &HashMap<i32, Heard>) {
             entries_changed(shared);
         }
         if marked {
-            let mut daemon = lock(&shared.daemon);
-            if bookmarks::watched(&daemon) {
-                bookmarks::make(shared, &mut daemon);
-            }
+            bookmarks::changed(shared, &mut lock(&shared.daemon));
         }
         for at in lists {
             let watching = {

@@ -143,6 +143,8 @@ struct Daemon {
     /// What the windows daemon last said of each window, by its key; none
     /// until it's first heard.
     windows: Option<BTreeMap<String, Value>>,
+    /// Which of the tabs' and bookmarks' rows wait for a watch (tabs.rs).
+    unmade: tabs::Unmade,
     /// Every entry's `program` record, as Programs' rows were last made
     /// from, until a folder of them changes.
     catalogue: Option<Vec<Value>>,
@@ -257,6 +259,7 @@ fn serve(given: &[String]) -> Result<(), Failure> {
             took: VecDeque::new(),
             looked: Looked::default(),
             windows: None,
+            unmade: tabs::Unmade::default(),
             catalogue: None,
             rows: Kept::default(),
             taken: Kept::default(),
@@ -282,6 +285,17 @@ fn serve(given: &[String]) -> Result<(), Failure> {
         move |wanted| {
             if let Some(shared) = shared.upgrade() {
                 read_for(&shared, wanted);
+            }
+        }
+    }));
+    // What a watch reads after its answer begins once it's held, so a read asking whether
+    // it's watched finds it; begun as asked, an open page's bookmark stayed listed (11-17).
+    shared.served().begun(Box::new({
+        let shared = Arc::downgrade(&shared);
+        move |wanted| {
+            if let Some(shared) = shared.upgrade() {
+                let (kinds, keys) = (wanted.kinds.to_vec(), wanted.keys.map(<[String]>::to_vec));
+                std::thread::spawn(move || begin(&shared, &kinds, keys.as_deref()));
             }
         }
     }));
@@ -547,8 +561,8 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
             tabs::heard(shared, &mut daemon, at, what);
             // A page opened or shut leaves its bookmark's row or brings it
             // back, so home never lists one page twice.
-            if what == Run::Opened && source.session.is_some() && bookmarks::watched(&daemon) {
-                bookmarks::make(shared, &mut daemon);
+            if what == Run::Opened && source.session.is_some() {
+                bookmarks::changed(shared, &mut daemon);
             }
         }
         Err(why) => {
@@ -614,9 +628,9 @@ fn names_programs(kinds: &[String], keys: Option<&[String]>) -> bool {
 
 /// What a watch beginning reads after its answer: each list whose file
 /// changed since it was read, and, for a watch naming its program's key,
-/// a list that's asked and what the program has open. A watch of a whole
-/// kind, as the launcher holds while it's open, runs neither, so Chrome's
-/// history is read only as Chrome is stepped into.
+/// a list that's asked and what the program has open; then the tabs, and
+/// the rows waiting for a watch (`tabs::read`). A whole kind runs no
+/// program's reads, so Chrome's history is read as it's stepped into.
 fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
     let lists = sources_of(shared, Run::List, kinds, keys);
     for at in lists.into_iter().chain(taken::lists(shared)) {
@@ -722,9 +736,6 @@ fn read_for(shared: &Arc<Shared>, wanted: &Wanted<'_>) {
             taken::make_ahead(shared, &mut daemon, keys);
         }
     }
-    let (shared, kinds) = (Arc::clone(shared), kinds.to_vec());
-    let keys = keys.map(<[String]>::to_vec);
-    std::thread::spawn(move || begin(&shared, &kinds, keys.as_deref()));
 }
 
 /// How each source stands, by its name: the entries, and each list's or

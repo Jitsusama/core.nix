@@ -27,7 +27,9 @@
 //! preview only once it's got, is handed what each get, list or watch
 //! names before it's answered (`fresh`), and hands what it read to
 //! `change` like anything else, so every watch hears it and no answer
-//! says what a watch wasn't told. A record nothing should hold, as the
+//! says what a watch wasn't told. What a watch reads only after its
+//! answer, it starts once the watch is held (`begun`), so a read asking
+//! whether it's watched finds it. A record nothing should hold, as the
 //! clipboard's history serves the text highlighted now, is read instead
 //! as a get names its key (`read_on_get`), and never held, listed or
 //! told to a watch.
@@ -51,7 +53,7 @@ mod change;
 mod demand;
 
 use demand::joined;
-pub use demand::{Fresh, HealthToo, Read, Wanted};
+pub use demand::{Begun, Fresh, HealthToo, Read, Wanted};
 
 /// How many lines a connection may have waiting to be written before
 /// it's taken as no longer reading and hung up on.
@@ -210,6 +212,9 @@ pub struct Shared {
     peered: OnceLock<(&'static [&'static str], Peered)>,
     /// What reads what an ask wants first, once the daemon says.
     fresh: OnceLock<Fresh>,
+    /// What reads what a watch wants once it's begun, once the daemon
+    /// says.
+    begun: OnceLock<Begun>,
     /// What else health says, once the daemon says.
     health_too: OnceLock<HealthToo>,
     /// The kinds read as a get names them, and what reads them.
@@ -249,6 +254,7 @@ impl Shared {
             slow: OnceLock::new(),
             peered: OnceLock::new(),
             fresh: OnceLock::new(),
+            begun: OnceLock::new(),
             health_too: OnceLock::new(),
             read: OnceLock::new(),
         })
@@ -442,6 +448,9 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
             Ask::Watch { id, .. } => Some(id.clone()),
             _ => None,
         };
+        // What a watch names, said again once it's held and answered, to
+        // a daemon that asked to hear it.
+        let begins = (watch.is_some() && shared.begun.get().is_some()).then(|| asked.clone());
         let mut held = lock(shared);
         let mut answer = match own {
             Some(own) => Some(own),
@@ -473,6 +482,9 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
         drop(held);
         if !queued {
             break;
+        }
+        if let Some(begins) = &begins {
+            shared.watch_begun(begins);
         }
     }
     let went = lock(shared).drop_watches(|watch| watch.connection == connection);
