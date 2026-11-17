@@ -507,23 +507,25 @@ in
     };
     # Internal, so no machine widens it; only a test sets it otherwise. An
     # agent asking as fenced runs strict, which is stricter than it needs,
-    # never looser.
+    # never looser; a Mac declares only fenced, but runs its strict, which
+    # writes only the run's folder.
     fenceRuns = lib.mkOption {
       type = lib.types.nullOr (lib.types.listOf lib.types.str);
       default = [
         (lib.getExe (pkgs.callPackage ../pi/fence-run/package.nix { }))
         "--kind"
-        (if isDarwin then "fence" else "strict")
+        "strict"
         "--"
       ];
-      defaultText = lib.literalExpression ''[ "\''${pi-fence}/bin/pi-fence" "--kind" "strict" "--" ], fence on a Mac'';
+      defaultText = lib.literalExpression ''[ "\''${pi-fence}/bin/pi-fence" "--kind" "strict" "--" ]'';
       internal = true;
       description = ''
         The words an agent's `mycelium run` is put after to run in its
         fence here, the first a program in the Nix store, as each fenced
         and strict fence the machine declares says them: pi's own fence,
-        strict on Linux, and fenced on a Mac, which declares no strict
-        fence. Null says none, so every agent's run is refused.
+        strict, on Linux and on a Mac, which declares only its fenced
+        fence, since its strict still reads the home folder but a denylist.
+        Null says none, so every agent's run is refused.
       '';
     };
   };
