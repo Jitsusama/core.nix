@@ -21,6 +21,15 @@ use serde_json::{Value, json};
 
 use super::{Daemon, Run, Shared, agents, bookmarks, due, keep, lock, programs, start};
 
+/// Which places' rows a read of what's open left unmade, since nothing
+/// watched them as it ended, for the next watch of each to make (`read`);
+/// each is cleared as its rows are made, wherever that is.
+#[derive(Default)]
+pub struct Unmade {
+    pub tabs: bool,
+    pub bookmarks: bool,
+}
+
 /// Whether a watch wants the tabs' rows, as a whole place: of it, or of
 /// every row.
 pub fn watched(daemon: &Daemon) -> bool {
@@ -84,14 +93,14 @@ pub fn read(shared: &Arc<Shared>) {
     // no rows for it, and what it read is held, so it starts no read above.
     // Only then are they made here: the launcher asks its watch again at
     // each opening, and the bookmarks are files read under the lock.
+    // Each place is made only once it's watched, so a watch of the other
+    // leaves its mark for the watch still to be held.
     let mut daemon = lock(&shared.daemon);
-    if wanted(&daemon) && std::mem::take(&mut daemon.unmade) {
-        if watched(&daemon) {
-            make(shared, &mut daemon);
-        }
-        if bookmarks::watched(&daemon) {
-            bookmarks::make(shared, &mut daemon);
-        }
+    if daemon.unmade.tabs && watched(&daemon) {
+        make(shared, &mut daemon);
+    }
+    if daemon.unmade.bookmarks && bookmarks::watched(&daemon) {
+        bookmarks::make(shared, &mut daemon);
     }
 }
 
@@ -106,8 +115,12 @@ pub fn heard(shared: &Shared, daemon: &mut Daemon, at: usize, what: Run) {
     if theirs && watched(daemon) {
         make(shared, daemon);
     }
-    if theirs && !(watched(daemon) && bookmarks::watched(daemon)) {
-        daemon.unmade = true;
+    if theirs && !watched(daemon) {
+        daemon.unmade.tabs = true;
+    }
+    // The bookmarks leave out what Chrome has open, never kitty's tabs.
+    if theirs && what == Run::Opened && !bookmarks::watched(daemon) {
+        daemon.unmade.bookmarks = true;
     }
 }
 
@@ -126,6 +139,7 @@ pub fn renamed(shared: &Shared, daemon: &mut Daemon) {
 /// Each program is named as its desktop entry names it, so as its
 /// Programs row is, the entries read once as Programs' are.
 pub fn make(shared: &Shared, daemon: &mut Daemon) {
+    daemon.unmade.tabs = false;
     if daemon.catalogue.is_none() {
         daemon.catalogue = Some(programs(shared, daemon, None));
     }

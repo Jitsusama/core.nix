@@ -22,6 +22,7 @@ pub fn watched(daemon: &Daemon) -> bool {
 /// every page held open now, keeping what changed and telling each watch
 /// only the rows that read differently and those gone.
 pub fn make(shared: &Shared, daemon: &mut Daemon) {
+    daemon.unmade.bookmarks = false;
     let open: HashSet<&str> = shared
         .sources
         .iter()

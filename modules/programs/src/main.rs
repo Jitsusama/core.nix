@@ -143,8 +143,8 @@ struct Daemon {
     /// What the windows daemon last said of each window, by its key; none
     /// until it's first heard.
     windows: Option<BTreeMap<String, Value>>,
-    /// Whether the tabs' or bookmarks' rows wait for a watch (tabs.rs).
-    unmade: bool,
+    /// Which of the tabs' and bookmarks' rows wait for a watch (tabs.rs).
+    unmade: tabs::Unmade,
     /// Every entry's `program` record, as Programs' rows were last made
     /// from, until a folder of them changes.
     catalogue: Option<Vec<Value>>,
@@ -259,7 +259,7 @@ fn serve(given: &[String]) -> Result<(), Failure> {
             took: VecDeque::new(),
             looked: Looked::default(),
             windows: None,
-            unmade: false,
+            unmade: tabs::Unmade::default(),
             catalogue: None,
             rows: Kept::default(),
             taken: Kept::default(),
