@@ -7,7 +7,8 @@ the page's own test, run in the build beside a stand-in daemon
 (`modules/local-sites/tests`); these prove only that the units find each
 other. Each test's opening comment says what it proves.
 
-| File                           | Holds                                                          |
-| ------------------------------ | -------------------------------------------------------------- |
-| `checks.nix`                   | the area's checks, by name                                     |
-| `system-page.nix`, `-vm-test.py` | the system page served, its feed live from the system daemon |
+| File                             | Holds                                                   |
+| -------------------------------- | ------------------------------------------------------- |
+| `checks.nix`                     | the area's checks, by name                              |
+| `code-page.nix`, `-vm-test.py`   | the code page served, its feed live as git writes       |
+| `system-page.nix`, `-vm-test.py` | the system page served, its feed live from its daemon   |
