@@ -621,7 +621,7 @@ in
   # first for agents too and nothing an agent writes may change them.
   mycelium-carries-the-realms-kit =
     holds "mycelium-carries-the-realms-kit"
-      "A machine's node, in its home realm or a further one, isn't given its realm's kit in the store last among its words, the kit lacks the shared tools or what the machine adds, or a machine emptying its kit gives one anyway."
+      "A machine's node, in its home realm or a further one, isn't given its realm's kit in the store last among its words, the kit lacks the shared tools or what the machine adds, it takes git or gh from an account that may wrap its own, or a machine emptying its kit gives one anyway."
       (
         let
           kitted =
@@ -630,11 +630,16 @@ in
           shares =
             kit:
             lib.all (tool: lib.elem tool kit) [
-              pkgs.gh
-              pkgs.git
+              pkgs.jq
+              pkgs.ripgrep
               pkgs.websocat
               self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default
-            ];
+            ]
+            && !(lib.any (tool: lib.elem tool kit) [
+              pkgs.gh
+              pkgs.git
+              pkgs.git-lfs
+            ]);
           adding = linux (
             both
             // {

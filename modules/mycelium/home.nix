@@ -100,13 +100,12 @@ let
   # The tools every machine of every realm has, whatever its own
   # configuration adds: what a session or run another machine starts here
   # reaches for. ssh stays the system's, which a Mac's keychain and enclave
-  # options need.
+  # options need. git, git-lfs and gh stay the account's own, since the kit
+  # goes first and an account may wrap them, as one whose repositories
+  # need their own git or gh does; a realm that wants them adds them.
   shared = [
     package
     pkgs.fd
-    pkgs.gh
-    pkgs.git
-    pkgs.git-lfs
     pkgs.jq
     pkgs.ripgrep
     pkgs.websocat
