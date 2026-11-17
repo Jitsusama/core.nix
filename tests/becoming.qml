@@ -76,6 +76,11 @@ QtObject {
         // 17 Nov, from a hold let go on its own row and never redrawn.
         check(failures, "a hold's own row, drawn as it will be, never agrees as its source's",
             Becoming.agrees(one, laid.rows[0], reads), false);
+        const again = Becoming.laid([laid.rows[0], office], left, reads);
+        check(failures, "rows laid again over one drawn over agree with nothing",
+            again.agreed.length, 0);
+        check(failures, "and keep it drawn as it will be", read(again.rows),
+            "lantern:saved* office:saved");
         check(failures, "the row its source made is found beside one drawn over",
             Becoming.made([laid.rows[0], { key: "lantern", side: "connected" }], "lantern")
                 ?.side, "connected");

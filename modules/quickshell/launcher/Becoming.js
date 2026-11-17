@@ -15,7 +15,8 @@
 
 // The rows as they'll be: each held row laid over the one with its key, the
 // fields the launcher added to it kept, and one that goes left out. A row
-// that already reads as it was to become is agreed, its hold done with.
+// that already reads as it was to become is agreed, its hold done with, as
+// `agrees` says, so one already drawn over agrees with nothing here either.
 // `reads(held, row)` says how a row reads, as its source compares them.
 function laid(rows, holds, reads) {
     const agreed = [];
@@ -25,13 +26,11 @@ function laid(rows, holds, reads) {
         if (!one) {
             shown.push(row);
         } else if (one.row !== null) {
-            const becomes = Object.assign({}, row, one.row);
-            if (typeof one.done === "function" ? one.done(row)
-                : reads(one, becomes) === reads(one, row)) {
+            if (agrees(one, row, reads)) {
                 agreed.push(one.key);
                 shown.push(row);
             } else {
-                shown.push(Object.assign(becomes, { becoming: true }));
+                shown.push(Object.assign({}, row, one.row, { becoming: true }));
             }
         }
     }
