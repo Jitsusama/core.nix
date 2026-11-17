@@ -647,22 +647,25 @@ in
           kitted =
             realm: words:
             builtins.match ".* --kit ${builtins.storeDir}/[a-z0-9]{32}-mycelium-kit-${realm}" words != null;
+          # Tools by name, since the machines here are Linux ones whatever
+          # system runs the checks, so a Mac's own packages never match.
+          names = map lib.getName;
           shares =
             kit:
-            lib.all (tool: lib.elem tool kit) [
-              pkgs.jq
-              pkgs.ripgrep
-              pkgs.websocat
-              self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default
+            lib.all (tool: lib.elem tool (names kit)) [
+              "jq"
+              "ripgrep"
+              "websocat"
+              "mycelium"
             ]
             # A curl speaking wss://, which a Mac's websocat can't over TLS 1.3.
             && lib.any (
-              tool: (tool.pname or "") == "curl" && lib.elem "--enable-websockets" (tool.configureFlags or [ ])
+              tool: lib.getName tool == "curl" && lib.elem "--enable-websockets" (tool.configureFlags or [ ])
             ) kit
-            && !(lib.any (tool: lib.elem tool kit) [
-              pkgs.gh
-              pkgs.git
-              pkgs.git-lfs
+            && !(lib.any (tool: lib.elem tool (names kit)) [
+              "gh"
+              "git"
+              "git-lfs"
             ]);
           adding = linux (
             both
@@ -682,9 +685,9 @@ in
         && shares (linux links).jitsusama.mycelium.kit
         && shares (linux both).jitsusama.mycelium.alsoJoins.other.kit
         && shares adding.jitsusama.mycelium.kit
-        && lib.elem pkgs.hello adding.jitsusama.mycelium.kit
-        && lib.elem pkgs.cowsay adding.jitsusama.mycelium.alsoJoins.other.kit
-        && !(lib.elem pkgs.cowsay adding.jitsusama.mycelium.kit)
+        && lib.elem "hello" (names adding.jitsusama.mycelium.kit)
+        && lib.elem "cowsay" (names adding.jitsusama.mycelium.alsoJoins.other.kit)
+        && !(lib.elem "cowsay" (names adding.jitsusama.mycelium.kit))
         && !(lib.hasInfix "--kit" (
           toString
             (linux (links // { kit = lib.mkForce [ ]; })).systemd.user.services.mycelium.Service.ExecStart
@@ -700,11 +703,7 @@ in
       kit = lib.last words;
     in
     pkgs.runCommandLocal "mycelium-kit-builds-here" { } ''
-      for tool in curl fd jq mycelium rg websocat; do
-        test -x "${kit}/bin/$tool" || { echo "the kit at ${kit} lacks $tool"; exit 1; }
-      done
-      "${kit}/bin/curl" --version | grep -q ' wss' \
-        || { echo "the kit's curl doesn't speak wss://"; exit 1; }
+      bash ${./tests/kit-builds-here.sh} ${kit}
       touch "$out"
     '';
 
