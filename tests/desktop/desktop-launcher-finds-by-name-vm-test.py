@@ -517,7 +517,8 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_ctr
     # Stepping in by the word and a space was a look, as by Return or Tab, so an opening that
     # only looked inside and left isn't kept as a miss. QEMU's keys carry the time they were
     # pressed, which wtype's don't, so this is where a look by a key of Joel's shows.
-    assert opening_since(desktop, since)["looked"] == "stepped"
+    opening = opening_since(desktop, since)
+    assert opening["looked"] == "stepped", opening
     # A question that starts with a category's word is still a question.
     desktop.answer("time in utc")
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["kind"] == "answer")
@@ -542,13 +543,18 @@ def opening_since(desktop: Desktop, since: int) -> Json:
     """Give the first opening the trials kept begun at or after `since`, in the machine's ms.
 
     It's told by when it began rather than by being the file's last line, since the pipe
-    writes each on its own time.
+    writes each on its own time. A line still being written is read again on the next try,
+    and find's own -exec reads no file at all while there's none, where `cat $(find ...)`
+    would wait on the driver's input.
     """
-    kept = "cat $(find ~/.local/state/quickshell -name launcher-trials.jsonl)"
+    kept = "find ~/.local/state/quickshell -name launcher-trials.jsonl -exec cat {} +"
     found: list[Json] = []
 
     def begun(_: bool) -> bool:
-        lines = [json.loads(line) for line in desktop.as_account(kept).splitlines() if line]
+        try:
+            lines = [json.loads(line) for line in desktop.as_account(kept).splitlines() if line]
+        except json.JSONDecodeError:
+            return False
         found[:] = sorted(
             (line for line in lines if cast("int", line["at"]) >= since),
             key=lambda line: cast("int", line["at"]),

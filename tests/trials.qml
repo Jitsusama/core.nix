@@ -72,6 +72,18 @@ QtObject {
             JSON.stringify(steppedAway));
         expect("the first look is kept", Trials.looked(Trials.looked(typed, "drawer"),
             "stepped").looked === "drawer", "replaced");
+
+        // A step in is his look only by a key pressed since the opening began: a step no
+        // key made, as an opening given its words or a key sent with no press time, says a
+        // press of 0, and a key pressed before the opening began wasn't for it.
+        expect("a step in by a key pressed since is a look",
+            Trials.wentIn(typed, 500, 600).looked === "stepped", "not looked");
+        expect("a step in with no press isn't a look",
+            (Trials.wentIn(typed, 500, 0).looked ?? "") === "", "looked");
+        expect("a step in by a key pressed before the opening isn't a look",
+            (Trials.wentIn(typed, 500, 400).looked ?? "") === "", "looked");
+        expect("a step in with no press stays a miss",
+            Trials.ended(Trials.wentIn(typed, 500, 0), 9, "audio").missed, "not missed");
         const arrowed = Trials.counted(typed, "arrows");
         const read = Trials.ended(Trials.drawerShown(arrowed, 100, true), 1200, "audio");
         expect("a drawer out a second on a row arrowed to was read", !read.missed
