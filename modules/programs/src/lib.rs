@@ -39,6 +39,7 @@ pub mod program_rows;
 pub mod pull;
 pub mod repositories;
 pub mod source;
+#[cfg(feature = "daemon")]
 pub mod switch;
 pub mod tab_rows;
 pub mod taken_rows;
