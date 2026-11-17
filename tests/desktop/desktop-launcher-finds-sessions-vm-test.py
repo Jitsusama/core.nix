@@ -617,8 +617,8 @@ def test_agents_starts_new_work_from_a_link_in_no_window(desktop: Desktop) -> No
     told = desktop.as_account(f"cat {first}")
     assert f"sprouted this session from {link}" in told, told
     assert "quest create with kind quest" in told, told
-    # The row says where it started, and nothing opened a window for it.
-    desktop.launcher_until(lambda shown: "started on" in json.dumps(shown["selected"]))
+    # The foot says where it started, and nothing opened a window for it.
+    desktop.launcher_until(lambda shown: shown["stands"].startswith("started on machine"))
     opened_windows = {window["id"] for window in desktop.windows()} - before
     assert not opened_windows, f"Start New Work opened windows: {desktop.windows()}"
     desktop.close_launcher()
