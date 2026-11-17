@@ -82,11 +82,7 @@ Provider {
         // fenced off the clipboard; null keeps one out of its environment.
         command: provider.off ? [] : provider.settings.daemon ?? []
         environment: ({ PASSWORDS_COPIER: provider.settings.copier ?? null })
-        // Where secret asks are listed, its asks' rows come beside the
-        // entries, which Asks draws over this one connection (asksLink),
-        // so the asks folder is watched once, by this daemon.
-        kind: provider.answersAsks ? ["entry", "row"] : "entry"
-        watching: provider.answersAsks ? { place: "asks" } : ({})
+        kind: "entry"
         // Entries change as a manager is read, so each is kept by key and
         // a manager's standing told as it changes.
         onSourcesChanged: provider.changed()
@@ -101,11 +97,6 @@ Provider {
     // Joel reads it, the pattern of its own link to an entry, and the app
     // ids its program's windows carry.
     readonly property var managers: settings.managers ?? []
-
-    // Whether the daemon answers secret asks, as it does once any is
-    // listed, and the connection Asks draws them over, held by none else.
-    readonly property bool answersAsks: settings.answersAsks === true
-    readonly property var asksLink: answersAsks ? daemon : null
 
     // Whether the place is off, as it is until agents are fenced off Joel's
     // runtime folder and Wayland: every agent runs as his uid, so a daemon
@@ -258,8 +249,7 @@ Provider {
     // Every entry held, in the order the daemon holds them.
     readonly property var records: {
         const held = daemon.revision >= 0 ? daemon.held : {};
-        return Object.values(held).filter(record => record && record.gone !== true
-            && record.kind === "entry");
+        return Object.values(held).filter(record => record && record.gone !== true);
     }
 
     // Each entry's row, made again only when its record says something

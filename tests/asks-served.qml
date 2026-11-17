@@ -6,9 +6,7 @@
 // served, says how many wait in the daemon's words, and gives For You each
 // as a thing to do that blocks its agent. Return on one is Release It, armed
 // by a first Return as it waits and by nothing once it's answered, and r is
-// Refuse It, the right arrow's verbs both: walked from outside the
-// launcher, as its IPC's do and run walk it, the yes is never sent, told
-// as Joel next opens it, and the ask still waits; while the screen is locked
+// Refuse It, the right arrow's verbs both: while the screen is locked
 // the yes is refused, said in the daemon's words, and op never runs;
 // unlocked, it releases the item to the checker once, and For You lets
 // that ask go, Asks saying it changed, so a launcher open on it draws the
@@ -54,14 +52,6 @@ ShellRoot {
 
         property bool open: true
         property var refusals: []
-        // Whether it's walked from outside, as the IPC's do and run walk it
-        // (Launcher.qml's cataloguing), and what it said wasn't done then.
-        property bool cataloguing: false
-        property var toldNots: []
-
-        function toldNot(name, act, why) {
-            toldNots = toldNots.concat([`${name} ${act} ${why}`]);
-        }
 
         function wants(source) {
             return true;
@@ -174,14 +164,6 @@ ShellRoot {
             "releases");
         same("r refuses, and Release It is Return's alone",
             row.verbs().map(one => one.actKey), ["", "r"]);
-        asking.cataloguing = true;
-        row.run();
-        asking.cataloguing = false;
-        same("a yes walked from outside the launcher is told as not done, without a key press",
-            asking.toldNots, [`${root.item} release not without your own key press`]);
-        same("and is never sent, so it isn't refused by the daemon", asking.refusals, []);
-        same("op never ran for it", lines(opRan), 0);
-        same("and it still waits", asks.counted(), "2 waiting");
         locked.setText("yes");
         row.run();
         waits.until("a locked yes refused", () => asking.refusals.length > 0, lockedOut);

@@ -60,18 +60,16 @@ done
 
 /// A manager that releases a listed reference's value to Joel's yes,
 /// as 1Password's does once it's started with `--release`: a made-up
-/// value that looks it, said only to a release `asked` as his. It lists
-/// one entry, so a watch is seen to hear entries apart from their rows.
+/// value that looks it, said only to a release `asked` as his.
 pub const RELEASING: &str = r#"
 log=$1
-entry() { printf '{"id":"%s","title":"%s","category":"login","version":1}' "$1" "$2"; }
 echo '{"state":"answering"}'
 while read -r line; do
   printf '%s\n' "$line" >> "$log"
   [[ $line =~ \"id\":([0-9]+) ]] && id=${BASH_REMATCH[1]}
   [[ $line =~ \"ask\":\"([a-z-]+)\" ]] && ask=${BASH_REMATCH[1]}
   case $ask in
-    list) printf '{"id":%s,"entries":[%s]}\n' "$id" "$(entry gh GitHub)" ;;
+    list) printf '{"id":%s,"entries":[]}\n' "$id" ;;
     release)
       if [[ $line != *'"asked":true'* ]]; then
         printf '{"id":%s,"error":{"code":"refused","message":"not asked"}}\n' "$id"

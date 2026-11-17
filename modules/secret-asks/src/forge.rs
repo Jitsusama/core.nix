@@ -334,19 +334,7 @@ mod tests {
             std::env::temp_dir().join(format!("secret-asks-gh-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("the stand-in's folder is made");
         let gh = folder.join("gh");
-        // The script is copied into place by cp rather than written here,
-        // so no thread of this process holds it open for writing: a test
-        // forking meanwhile keeps that handle until its child execs, and
-        // gh run then is refused as busy (ETXTBSY), which failed the merge
-        // train's run of this module on 16 November.
-        let draft = folder.join("gh.draft");
-        std::fs::write(&draft, format!("#!/bin/sh\nprintf '{said}'\n")).expect("gh is written");
-        let copied = std::process::Command::new("cp")
-            .arg(&draft)
-            .arg(&gh)
-            .status()
-            .expect("cp runs");
-        assert!(copied.success(), "gh wasn't copied into place");
+        std::fs::write(&gh, format!("#!/bin/sh\nprintf '{said}'\n")).expect("gh is written");
         std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o755))
             .expect("the stand-in runs");
         gh
