@@ -69,6 +69,22 @@ QtObject {
         check(failures, "and not while it's there", Becoming.agrees(stopping.lantern, lantern,
             reads), false);
 
+        // A step's rows are drawn through the holds, so the row a hold finds
+        // there may be its own, laid over what its source said: that one
+        // agrees with itself and says nothing of the source. WARP's switch
+        // row read Connect for 30 s after its source said connected, on
+        // 17 Nov, from a hold let go on its own row and never redrawn.
+        check(failures, "a hold's own row, drawn as it will be, never agrees as its source's",
+            Becoming.agrees(one, laid.rows[0], reads), false);
+        check(failures, "the row its source made is found beside one drawn over",
+            Becoming.made([laid.rows[0], { key: "lantern", side: "connected" }], "lantern")
+                ?.side, "connected");
+        check(failures, "one only drawn over can't say what its source made",
+            Becoming.made([laid.rows[0], office], "lantern"), undefined);
+        check(failures, "a row its source no longer makes is none",
+            Becoming.made([office, { key: "lantern", side: "saved", gone: true }], "lantern"),
+            null);
+
         const holds = {
             a: { key: "a", row: null, at: 1000 },
             b: { key: "b", row: null, at: 3000 }
