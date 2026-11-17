@@ -589,6 +589,9 @@ struct Windows<'a> {
     focus: Option<&'a focus::Following>,
     /// The prefix of the pi hosts' units, when they're ranked.
     hosts: Option<&'a str>,
+    /// The prefixes of the scopes a session window's pi runs in beside it
+    /// (`--weigh`), held with the window ([`focus::attached_to`]).
+    pis: &'a [String],
 }
 
 /// How each window ranks, as last set: its weight, whether it's kept as
@@ -603,6 +606,10 @@ struct Ranks {
     /// Each held or kept window's scope, by niri's id for it, or when it was last
     /// looked for and not found.
     found: HashMap<u64, Result<PathBuf, std::time::Instant>>,
+    /// The scope of each held or kept window's pi, by niri's id for it,
+    /// with when it was last looked for and how many looks in a row found
+    /// none ([`pi_of`]).
+    pis: HashMap<u64, (Option<PathBuf>, std::time::Instant, u8)>,
     /// The window with the focus whose memory was last asked back, so
     /// it's asked once each time the focus comes to it ([`swap_in`]).
     reading: Option<u64>,
@@ -698,12 +705,14 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
     } else {
         Vec::new()
     };
-    ranks.found.retain(|id, _| {
+    let looked_for = |id: &u64| {
         wanted
             .iter()
             .chain(&in_memory)
             .any(|window| window.id == *id)
-    });
+    };
+    ranks.found.retain(|id, _| looked_for(id));
+    ranks.pis.retain(|id, _| looked_for(id));
     let mut scopes: Option<Vec<PathBuf>> = None;
     // What each kitty drawing a window not found by its app id says it
     // shows, asked once a look, as its answer runs to megabytes.
@@ -728,7 +737,7 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
                         .flat_map(|slice| homes(slice, windows.prefixes))
                         .collect()
                 });
-                let unit = focus::scope_of(window, &started_with(all))
+                let unit = focus::scope_of(window, &started_with(all), windows.pis)
                     .map(str::to_owned)
                     .or_else(|| {
                         let shown = kitties.entry(window.pid).or_insert_with(|| {
@@ -748,24 +757,98 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
                 scope
             }
         };
+        let pi = pi_of(window, known.as_deref(), windows, &mut ranks.pis, now);
         if holds {
             held.extend(known.clone());
+            held.extend(pi.clone());
         }
+        // A window's pi ran in its window's own scope when keeping was
+        // measured, on 11 November, so keeping its pi keeps what was.
         kept.extend(known);
+        kept.extend(pi);
     }
     ranks.spared = following
         .within(now, keep::SPARED_FOR)
         .iter()
-        .filter_map(|window| match ranks.found.get(&window.id) {
-            Some(Ok(scope)) => Some(scope.file_name()?.to_str()?.to_owned()),
-            _ => None,
+        .flat_map(|window| {
+            let own = match ranks.found.get(&window.id) {
+                Some(Ok(scope)) => Some(scope),
+                _ => None,
+            };
+            let pi = ranks.pis.get(&window.id).and_then(|(pi, _, _)| pi.as_ref());
+            own.into_iter().chain(pi)
         })
+        .filter_map(|scope| unit_of(scope).map(str::to_owned))
         .collect();
     set_holds(&held, &kept, ranks);
     set_in_memory(&kept, ranks);
     read_back(following.at(), ranks);
     held.iter()
         .filter_map(|scope| Some(scope.file_name()?.to_str()?.to_owned()))
+        .collect()
+}
+
+/// The scope of the pi of `window`, whose own scope is `own`, as last
+/// found while it stands ([`focus::stands`]), or looked for again. A
+/// session's window with none is said once ([`focus::says_alone`]), as a
+/// mycelium spelling its command lines anew would leave every pi unheld.
+fn pi_of(
+    window: &focus::Window,
+    own: Option<&Path>,
+    windows: &Windows,
+    found: &mut HashMap<u64, (Option<PathBuf>, std::time::Instant, u8)>,
+    now: std::time::Instant,
+) -> Option<PathBuf> {
+    let Some(own) = own else {
+        found.remove(&window.id);
+        return None;
+    };
+    let last = found.get(&window.id);
+    if let Some((pi, when, _)) = last
+        && focus::stands(pi.as_deref(), *when, now, Path::exists)
+    {
+        return pi.clone();
+    }
+    let before = last.map_or(0, |(_, _, misses)| *misses);
+    let pi = beside(own, window.pid, windows);
+    let misses = focus::misses(pi.is_some(), before);
+    if window.session() && focus::says_alone(misses) {
+        eprintln!(
+            "Holding {} alone: no pi found beside it.",
+            unit_of(own).unwrap_or_default()
+        );
+    }
+    found.insert(window.id, (pi.clone(), now, misses));
+    pi
+}
+
+/// The scope, in any watched slice, of the pi whose held session a process
+/// the window's kitty, `kitty`, started in its scope `own` attaches to or
+/// holds ([`focus::kittys_own`]).
+fn beside(own: &Path, kitty: u32, windows: &Windows) -> Option<PathBuf> {
+    let procs = samples(own);
+    let named: Vec<(u32, u32, &str)> = procs
+        .iter()
+        .map(|proc| (proc.pid, proc.ppid, proc.comm.as_str()))
+        .collect();
+    let cmdline = |pid: u32| fs::read(format!("/proc/{pid}/cmdline")).ok();
+    let ids = focus::window_ids(&named, kitty, cmdline, children);
+    focus::pi_scope(&ids, windows.under, windows.pis, Path::exists)
+}
+
+/// The processes `pid` started, as each of its threads' children says.
+fn children(pid: u32) -> Vec<u32> {
+    fs::read_dir(format!("/proc/{pid}/task"))
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter_map(|task| fs::read_to_string(task.path().join("children")).ok())
+        .flat_map(|children| {
+            children
+                .split_whitespace()
+                .filter_map(|pid| pid.parse().ok())
+                .collect::<Vec<_>>()
+        })
         .collect()
 }
 
@@ -851,8 +934,9 @@ fn set_in_memory(kept: &[PathBuf], ranks: &mut Ranks) {
 }
 
 /// Asks, once each time the focus comes to a session window whose scope is
-/// found, for the window's swapped memory to be read back, through the
-/// root unit that may (`src/swap_in.rs`), which checks it all again itself.
+/// found, for the swapped memory of the window and its pis to be read back,
+/// through the root unit that may (`src/swap_in.rs`), which checks it all
+/// again itself.
 fn read_back(at: Option<focus::Window>, ranks: &mut Ranks) {
     let Some(window) = at else {
         ranks.reading = None;
@@ -865,12 +949,45 @@ fn read_back(at: Option<focus::Window>, ranks: &mut Ranks) {
         return;
     };
     ranks.reading = Some(window.id);
-    let Some(pid) = fs::read_to_string(scope.join("cgroup.procs"))
+    let first = fs::read_to_string(scope.join("cgroup.procs"))
         .ok()
-        .and_then(|procs| procs.lines().next().map(str::to_owned))
-    else {
-        return;
-    };
+        .and_then(|procs| procs.lines().next().map(str::to_owned));
+    // The pi's scope is read back by its holder, which carries the app id
+    // of the window that started it, as a launcher's window did, where the
+    // pi doesn't, so the reader knows it as the window's; a session
+    // attached again in another window carries its first one's, and the
+    // reader refuses it. The pi goes first, as it's what Joel waits on.
+    let pi = ranks
+        .pis
+        .get(&window.id)
+        .and_then(|(pi, _, _)| pi.as_deref())
+        .and_then(|pi| started_by(pi, &window.app_id));
+    for pid in pi.into_iter().chain(first) {
+        start_reading_back(&pid);
+    }
+}
+
+/// The first process in `scope` started with `app_id`.
+fn started_by(scope: &Path, app_id: &str) -> Option<String> {
+    fs::read_to_string(scope.join("cgroup.procs"))
+        .ok()?
+        .lines()
+        .find(|pid| {
+            fs::read(format!("/proc/{pid}/environ"))
+                .ok()
+                .and_then(|environ| focus::app_id(&environ))
+                .is_some_and(|id| id == app_id)
+        })
+        .map(str::to_owned)
+}
+
+/// A scope's unit, from its path.
+fn unit_of(scope: &Path) -> Option<&str> {
+    scope.file_name()?.to_str()
+}
+
+/// Starts reading back the swapped memory of `pid`'s scope.
+fn start_reading_back(pid: &str) {
     let unit = format!("memory-swap-in@{pid}.service");
     match Command::new("systemctl")
         .args(["start", "--no-block", &unit])
@@ -930,6 +1047,7 @@ fn weigh_windows(windows: &Windows, ranks: &mut Ranks) {
         weight,
         focus: _,
         hosts: _,
+        pis: _,
     } = *windows;
     if let Some(prefix) = windows.hosts {
         rank_hosts(windows, prefix, &held, ranks);
@@ -994,10 +1112,16 @@ fn weigh_windows(windows: &Windows, ranks: &mut Ranks) {
 /// orchestrators last counted. A failure is said once, and tried again on
 /// the next look.
 fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &mut Ranks) {
+    // Only a window's own scope says which host Joel views: a pi's holds
+    // its agents' commands, which may spell themselves as anything.
     let viewers: Vec<String> = windows
         .under
         .iter()
-        .flat_map(|slice| held.iter().map(|unit| slice.join(unit)))
+        .flat_map(|slice| {
+            held.iter()
+                .filter(|unit| !focus::runs_a_pi(unit, windows.pis))
+                .map(|unit| slice.join(unit))
+        })
         .flat_map(|scope| samples(&scope))
         .filter_map(|proc| {
             let words = fs::read(format!("/proc/{}/cmdline", proc.pid)).ok()?;
@@ -1633,13 +1757,21 @@ fn return_sessions(root: &Path, settings: &Settings, warned: &mut bool) {
     let cmdline = |pid: u32| fs::read(format!("/proc/{pid}/cmdline")).ok();
     for (id, pids) in sessions::found(&procs, &settings.keep, cmdline) {
         let name = format!("{prefix}{id}.scope");
+        let scope = root.join(slice).join(&name);
+        // A holder in jobs naming a session whose scope holds its holder
+        // already is an agent's, which would be held as Joel's pi is.
+        let there = samples(&scope)
+            .into_iter()
+            .filter_map(|proc| cmdline(proc.pid));
+        if sessions::held_already(there, &id) {
+            continue;
+        }
         let made = Command::new("busctl")
             .args(sessions::scope_call(&name, slice, &pids))
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
             .is_ok_and(|status| status.success());
-        let scope = root.join(slice).join(&name);
         if !made && scope.join("cgroup.procs").exists() {
             send(&scope, &pids, warned);
         } else if !made {
@@ -1807,6 +1939,7 @@ fn run(settings: &Settings) -> Result<(), String> {
                     weight: settings.low_weight,
                     focus: following.as_ref(),
                     hosts: settings.hosts.as_deref(),
+                    pis: &settings.weigh,
                 };
                 rest(watch, settings.every, &windows, &mut ranks);
             }

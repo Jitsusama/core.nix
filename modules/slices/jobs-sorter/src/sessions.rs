@@ -67,6 +67,15 @@ pub fn found(
         .collect()
 }
 
+/// Whether a session's scope already holds its holder `id`, from the
+/// command lines of the processes in it: then one in jobs saying it holds
+/// `id` is another, and moving it in would have it held as Joel's pi is.
+pub fn held_already(cmdlines: impl IntoIterator<Item = Vec<u8>>, id: &str) -> bool {
+    cmdlines
+        .into_iter()
+        .any(|cmdline| holder_id(&cmdline).as_deref() == Some(id))
+}
+
 /// What busctl is given to start the scope `name` in `slice` around
 /// `pids`, as mycelium starts a session's: collected once it ends or
 /// fails, and stopped as any session's is.
@@ -108,8 +117,11 @@ pub fn scope_call(name: &str, slice: &str, pids: &[u32]) -> Vec<String> {
 mod tests {
     use super::*;
 
+    /// A command line as /proc gives it, each word ending in a NUL.
     fn line(words: &[&str]) -> Vec<u8> {
-        words.join("\0").into_bytes()
+        let mut line = words.join("\0").into_bytes();
+        line.push(0);
+        line
     }
 
     fn proc(own: u32, parent: u32, comm: &str) -> Sample {
@@ -191,6 +203,19 @@ mod tests {
         let keep = ["mycelium".to_owned()];
         let procs = [proc(10, 1, "mycelium")];
         assert_eq!(found(&procs, &keep, |_| None), []);
+    }
+
+    #[test]
+    fn a_scope_holding_its_holder_already_takes_no_other() {
+        let holder = line(&["mycelium", "holder", "--id", "ab12", "--", "pi"]);
+        let pi = line(&["pi", "--session", "s"]);
+        assert!(
+            held_already([pi.clone(), holder.clone()], "ab12"),
+            "its holder is there"
+        );
+        assert!(!held_already([pi], "ab12"), "its holder isn't there");
+        assert!(!held_already([holder], "cd34"), "another session's holder");
+        assert!(!held_already(Vec::new(), "ab12"), "no scope");
     }
 
     #[test]
