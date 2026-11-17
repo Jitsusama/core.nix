@@ -44,7 +44,7 @@ const { SettingsManager } = await load(`${core}/settings-manager.${extension}`);
 const { DefaultResourceLoader } = await load(`${core}/resource-loader.${extension}`);
 const { Agent } = await load(`${root}/node_modules/@earendil-works/pi-agent-core/dist/index.js`);
 const compat = await load(`${root}/node_modules/@earendil-works/pi-ai/dist/compat.js`);
-const { fauxAssistantMessage, getCurrentTools } = await load(
+const { fauxAssistantMessage, fauxToolCall, getCurrentTools } = await load(
   `${root}/node_modules/@earendil-works/pi-ai/dist/index.js`,
 );
 
@@ -341,35 +341,59 @@ it("a carried run, as a prompt's, leaves a restored tool that registers after it
   }
 });
 
+// An extension whose section says what it is given, as one an upgrade changes.
+const addsSection = (changing) => ({
+  name: "changes-section",
+  factory: (pi) => {
+    pi.on("before_agent_start", (event) => {
+      event.systemPromptOptions.sections = { ...event.systemPromptOptions.sections, changing };
+    });
+  },
+});
+
+// How many of a request's system messages hold the text.
+const systemMessagesHolding = (request, text) =>
+  systemMessages(request).filter((message) => text.test(JSON.stringify(message))).length;
+
 it("a carried run's first request holds the sections as they stand after a restart", async () => {
-  let changing = "before the restart";
-  const changesSection = {
-    name: "changes-section",
-    factory: (pi) => {
-      pi.on("before_agent_start", (event) => {
-        event.systemPromptOptions.sections = { ...event.systemPromptOptions.sections, changing };
-      });
-    },
-  };
-  const { session, faux, requests, close } = await openPreparedSession({
-    extensions: [changesSection],
+  const before = await openPreparedSession({
+    tools: ["read"],
+    extensions: [addsSection("before the restart")],
   });
   try {
-    faux.setResponses([fauxAssistantMessage("answered as typed"), fauxAssistantMessage("carried")]);
-    await promptRun(session, "typed words");
-    // An upgrade across the restart changes what an extension adds.
-    changing = "after the restart";
+    before.faux.setResponses([fauxAssistantMessage("answered as typed")]);
+    await promptRun(before.session, "typed words");
+    assert.match(JSON.stringify(systemMessages(before.requests[0])), BEFORE_RESTART);
+  } finally {
+    before.close();
+  }
+  // The restart reopens the transcript under an upgrade that changed what the extension adds.
+  const { session, faux, requests, close } = await openPreparedSession({
+    tools: ["read"],
+    sessionManager: before.session.sessionManager,
+    extensions: [addsSection("after the restart")],
+  });
+  try {
+    faux.setResponses([
+      fauxAssistantMessage(fauxToolCall("read", { path: "absent" }), { stopReason: "toolUse" }),
+      fauxAssistantMessage("answered as carried"),
+    ]);
+    // As a host carrying on, the work places what it is handed ahead of its first new message.
     await deadline(
       session.runForHost((prepared) =>
         session.agent.prompt([...(prepared ?? []), userMessage("carried on")]),
       ),
     );
-    const sent = (request) => JSON.stringify(systemMessages(request));
-    assert.match(sent(requests[0]), BEFORE_RESTART);
-    assert.match(
-      sent(requests[1]),
-      AFTER_RESTART,
+    assert.equal(requests.length, 2, "the carried run takes a tool round and a second turn");
+    assert.equal(
+      systemMessagesHolding(requests[0], AFTER_RESTART),
+      1,
       "the work is handed the update and places it, so the first request is current",
+    );
+    assert.equal(
+      systemMessagesHolding(requests[1], AFTER_RESTART),
+      1,
+      "and the next turn's refresh finds it recorded, so it is sent once",
     );
   } finally {
     close();

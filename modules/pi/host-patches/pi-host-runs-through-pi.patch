@@ -17,9 +17,10 @@ result. A handler's edit of selectedTools goes into the live tool loadout,
 as a prompt's run applies it, so the model is offered what the handler
 chose, and restored tools not yet registered are dropped, as a prompt's
 run drops them. The system message that brings the prompt's sections up
-to date is handed to the work, for the host to place in the run's first
-request: after a restart that changed the sections, as an upgrade does,
-that request would otherwise go out on the old ones. A run that fails to
+to date is handed to the work, for the host to record before the run's
+first request: after a restart that changed the sections, as an upgrade
+does, that request would otherwise go out on the old ones. A runtime
+without this hands the work undefined. A run that fails to
 start passes on held messages, as a prompt's does. hostRuns marks a
 runtime that has it. Nothing in pi calls
 it, so a pi no host drives behaves as before.
@@ -39,7 +40,7 @@ pi build; ordinary interactive pi stays unchanged.
  	readonly agent: SessionAgent;
  	readonly sessionManager: SessionManager;
  	readonly settingsManager: SettingsManager;
-@@ -1990,6 +1992,70 @@
+@@ -1990,6 +1992,72 @@
  			this._runSystemPromptOptions = undefined;
  			this._flushPendingBashMessages();
  			this._flushPendingCustomMessages();
@@ -52,9 +53,11 @@ pi build; ordinary interactive pi stays unchanged.
 +	 * pi's runs with no starting message. The session is busy from here on; before_agent_start
 +	 * fires as a "continue" run, and the prompt options it returns hold for every turn of the run,
 +	 * as a prompt's do. The work is handed the system message that brings the prompt's sections up
-+	 * to date, if they changed, for the host to place in its first request, as a prompt's run
-+	 * places it ahead of its starting message; later turns' refresh keeps them current. A message
-+	 * a handler returns waits for the next prompt, so none lands between a tool call and its
++	 * to date, if they changed. The host records it in the transcript before its first request,
++	 * after any tool result the cut-off turn still owes, as a prompt's run puts it ahead of its
++	 * starting message; later turns' refresh then diffs against it. A runtime without this hands
++	 * undefined, not an empty list. A message a handler returns waits for the next prompt, and
++	 * one sent while the run starts waits for its end, so none lands between a tool call and its
 +	 * result. agent_settled fires as the work ends. Inside a run of pi's own, the work joins it,
 +	 * is handed nothing, and pi's run settles it. Nothing in pi calls this.
 +	 */
