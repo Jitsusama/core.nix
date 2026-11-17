@@ -2,8 +2,8 @@
 //! kept in settled.json (settle.rs), and on a look, kept in its own file
 //! (looked.rs). The daemon's watches on them then tell every watch as they
 //! tell any write, in no set order with the act's answer, since the write
-//! is heard on the daemon's own thread. Everything else asked
-//! is answered by daemon-serve from the records the daemon's loop hands it.
+//! is heard on the daemon's own thread. Everything else asked is answered
+//! by daemon-serve from the records the daemon's loop hands it.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;

@@ -273,9 +273,13 @@ mod tests {
             "the answer"
         );
         assert_eq!(
-            told.len(),
-            3,
-            "each line before the answer is handed on: {told:?}"
+            told,
+            [
+                serde_json::json!({"id": 2, "changed": [{"key": "a"}]}),
+                serde_json::json!({"id": 1, "changed": [{"key": "b"}]}),
+                serde_json::json!({"id": 2, "sources": {}}),
+            ],
+            "each line before the answer is handed on, in turn"
         );
         answering.join().expect("the daemon ends");
         let _ = std::fs::remove_dir_all(&folder);
