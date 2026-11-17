@@ -3200,15 +3200,26 @@ def test_a_marks_click_draws_now_from_what_was_kept_on_its_row(shell: Shell) -> 
 
     It opened Now whole, as nothing but a chord's place was drawn from what was kept: Joel's
     clicks took 51 and 89 ms to the screen, 19 and 34 of it making Now again (2026-11-17, 10:07
-    and 10:21). Now is kept before the mark lights, so its first frame holds the mark's row only
-    if Now's rows are listed as they stand rather than as last made. The Work Network's mark,
-    alone in the margin, is centred along the top.
+    and 10:21). Now is kept while a look waits, and the look is cleared and the mark lit before
+    the click, so its first frame lands on the mark's row, with For You's saying nothing waits,
+    only if Now's rows are listed as they stand rather than as last made. The Work Network's mark,
+    alone in the margin once the look's is gone, is centred along the top.
     """
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    looks = state / "pi/agentic-harness.pi/looks"
+    looks.mkdir(parents=True, exist_ok=True)
+    look = looks / "kept-waiting.json"
+    # It came just now, since one three days old goes quiet (launcher/Looks.js).
+    told = {"v": 1, "id": "kept-waiting", "title": "Kept Waiting", "target": "/etc/hostname",
+            "kind": "file", "state": "waiting", "at": now("-u", "+%FT%TZ")}  # fmt: skip
+    launcher_on_niri.laid_whole(look, json.dumps(told))
+    assert "Kept Waiting" in looks_listed(shell, "Kept Waiting"), "the look was never heard"
     # Now opened once by its chord and closed, so it's kept whatever the binds warm.
     shell.as_account(shell.ipc("collection", "on"))
     shell.launcher_ready()
     shell.close_launcher()
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    launcher_on_niri.laid_whole(look, json.dumps(told | {"state": "cleared"}))
     said = Path(os.environ["HOME"]) / "warp-cli"
     contract = Path(os.environ["WARP_CONTRACT"])
     said.mkdir()
@@ -3223,6 +3234,8 @@ def test_a_marks_click_draws_now_from_what_was_kept_on_its_row(shell: Shell) -> 
             return [glyph["mark"] for glyph in drawn] == ["tunnel"]
 
         shell.reported("sets margin ", alone, lit)
+        # Said once its frame is handed to niri, so the click lands on a surface that's there.
+        shell.reported("drawn margin", lambda _: True, lit)
         timed = json.loads(shell.as_account(shell.ipc("openings")))
         before = max((one["nth"] for one in timed), default=0)
         output = json.loads(shell.as_account("niri msg --json focused-output"))["logical"]
@@ -3244,6 +3257,17 @@ def test_a_marks_click_draws_now_from_what_was_kept_on_its_row(shell: Shell) -> 
         first = opened[0].get("shown") or {"keys": [], "at": -1}
         landed = first["keys"][first["at"]] if 0 <= first["at"] < len(first["keys"]) else None
         assert landed == "on:tunnel", f"the first frame didn't land on the mark's row: {first}"
+
+        def filled_in(shown: Json) -> bool:
+            return came(shown) and "filled" in opened[0]
+
+        shell.launcher_until(filled_in)
+        sides = [
+            dict(zip(each["keys"], each["sides"], strict=True))
+            for each in (first, opened[0]["filled"])
+        ]
+        told_first, told_filled = (each.get("on:waitingOnYou") for each in sides)
+        assert told_first == told_filled, f"For You's row said {told_first!r}, then {told_filled!r}"
         shell.launcher_until(
             lambda shown: (
                 shown["path"][-1:] == ["Now"]
@@ -3252,6 +3276,7 @@ def test_a_marks_click_draws_now_from_what_was_kept_on_its_row(shell: Shell) -> 
         )
         shell.close_launcher()
     finally:
+        look.unlink()
         warp_forgotten(said)
 
 

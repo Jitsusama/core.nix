@@ -86,8 +86,11 @@ Provider {
         keptOnly(piecesKept);
         // What sessions landed that says what to try waits in For You, so
         // it's counted once there and never lifted here too (VKCF3Z,
-        // 2026-11-10).
-        return [waiting].concat(moment, Groups.ordered(rows).map(each => each.row));
+        // 2026-11-10). For You's row and the location are whileWanted's
+        // own, so each is read through `standing`, which makes it as it
+        // stands when the launcher lists Now shut (Provider's asItStands).
+        return [standing("waiting", waiting)].concat(momentAt(standing("location", location)),
+            Groups.ordered(rows).map(each => each.row));
     })
     // Said only when what the rows show has changed (Provider's
     // changedTo), since `all` is made again whenever any fact moves, and
@@ -453,9 +456,10 @@ Provider {
         number: (value, decimals) => Qt.locale().toString(value, "f", decimals)
     })
 
-    // Made again as the clock turns a minute, so the time says it.
-    readonly property var moment: {
-        const rows = [timeRow, dateRow, location];
+    // This moment's rows, with `here` as the location: `all`, which reads
+    // them, is made again as the clock turns a minute, so the time says it.
+    function momentAt(here) {
+        const rows = [timeRow, dateRow, here];
         if (weather)
             rows.push(weather);
         if (meeting)

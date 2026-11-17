@@ -9602,8 +9602,9 @@ Scope {
     // what its rows follow of the window under it is as it was kept. It's
     // filled in after its frame by opening it whole (filled), which lands
     // its rows where the kept ones stood. Asked to list its rows now
-    // (`listedNow`), a place a source leads to is listed as it stands
-    // (ledListing) rather than drawn as kept.
+    // (`listedNow`), a plain place is listed whole as it stands
+    // (keptListing) and a place a source leads to by ledListing, rather
+    // than drawn as kept.
     function intoKept(name, listedNow) {
         const kept = placesKept[name];
         if (!kept || !homeHeld || parting !== "" || kept.under !== keptUnder(name))
@@ -9611,14 +9612,13 @@ Scope {
         const source = collections.find(one => one.settings.name === name) ?? null;
         // One Super+N is led to is listed as it stands however it's asked
         // for, since what it holds comes and goes, and one kept as the
-        // shell started (warmLed) holds no rows. A collection asked to list
-        // now that no source leads anywhere, as a margin mark opens Now, is
-        // listed whole with its rows made as they stand (asItStands), since
-        // shut they're as last made and a mark lit since would have no row;
-        // unless it steps deeper as it opens (`leading`, as Keyboard's does).
+        // shell started (warmLed) holds no rows. A plain place asked to list
+        // now, as a margin mark opens Now, is listed whole with its rows
+        // made as they stand (asItStands), since shut they're as last made
+        // and a mark lit since would have no row.
         const listed = source?.keptListed === true ? keptListing(source)
-            : listedNow === true && source !== null && !source.leading
-                && leadingTo(name) === null ? source.asItStands(() => keptListing(source))
+            : listedNow === true && plainPlace(source, name)
+                ? source.asItStands(() => keptListing(source))
             : listedNow === true || kept.led === true ? ledListing(name) : kept.matches;
         if (listed === null)
             return false;
@@ -10576,11 +10576,13 @@ Scope {
     // it opens, as Keyboard does into the program in use's keys, since
     // what that leads to is known only as its chord is pressed.
     readonly property var chordPlaces: [...new Set(Shortcuts.actions.map(action => action.opens))]
-        .filter(name => {
-            const source = collections.find(one => one.settings.name === name);
-            return !!source && typeof source.leading !== "function"
-                && leadingTo(name) === null;
-        })
+        .filter(name => plainPlace(collections.find(one => one.settings.name === name), name))
+    // A place that is a source's own and that no source leads to, nor
+    // leads deeper as it opens (`leading`), so what it opens into is known
+    // before it's asked: a chord's place is kept, and listed now, by it.
+    function plainPlace(source, name) {
+        return !!source && typeof source.leading !== "function" && leadingTo(name) === null;
+    }
 
     // The places a source leads to that Super+N opens (Notifications.qml's
     // history), kept as the chords' are: only a chord's were, so each

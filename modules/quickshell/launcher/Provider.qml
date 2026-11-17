@@ -524,9 +524,11 @@ Scope {
     function looksThrough() {
         return asItStands(everything);
     }
-    // What `make` gives with each of whileWanted's rows made as they stand,
-    // as looksThrough's are, even shut: the launcher lists a place it opens
-    // from what was kept this way (Launcher.qml's intoKept).
+    // What `make` gives with whileWanted's rows made as they stand, as
+    // looksThrough's are, even shut: only those it reads through `standing`,
+    // so a maker that reads another's rows reads them through it too (Now's
+    // `all`). The launcher lists a place it opens from what was kept this
+    // way (Launcher.qml's intoKept).
     function asItStands(make) {
         const was = lookingThrough.now;
         lookingThrough.now = true;

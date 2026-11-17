@@ -1383,13 +1383,7 @@ Provider {
 
     // A search looks through Choose by Ear's rows too.
     function looksThrough() {
-        const was = lookingThrough.now;
-        lookingThrough.now = true;
-        try {
-            return everything().concat(standing("byEarFound", byEarFound));
-        } finally {
-            lookingThrough.now = was;
-        }
+        return asItStands(() => everything().concat(standing("byEarFound", byEarFound)));
     }
 
     function search(typed) {
