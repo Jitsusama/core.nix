@@ -128,16 +128,24 @@ fn stray_owners(
     repo: &options::Repo,
     paths: &[String],
 ) -> Vec<String> {
-    let read = if repo.under.is_empty() {
-        repo.reference.clone()
-    } else {
-        format!("{} under {}", repo.reference, repo.under.join(", "))
+    let read = match repo.under.as_slice() {
+        [] => repo.reference.clone(),
+        [under] => format!(
+            "{} under {under}, whose folders count from inside it",
+            repo.reference
+        ),
+        unders => format!(
+            "{} under {}, whose folders count from the repository's top",
+            repo.reference,
+            unders.join(", ")
+        ),
     };
     let stray = hour::astray(&repo.judged.folders, paths);
     for folder in &stray {
         let said = format!(
-            "{name}'s owner of {folder} owns nothing: no file read at {read} sits in it, \
-             so what it should own goes to the measure's or {name}'s owner"
+            "{name}'s owner of {folder:?} owns nothing: no file read at {read} is given to \
+             it, so what it should own goes to the owner of a folder above it, else the \
+             measure's or {name}'s"
         );
         let _ = context.tell("caution", "warning", &said);
     }
@@ -158,7 +166,7 @@ fn run(context: &Context) -> Result<(), Failure> {
                 let roots = git::roots(&repo.under);
                 let mut health = measure::measure(&paths, &files, &roots);
                 let count = stray.len();
-                health.put("stray-owners", stray, count);
+                health.put(hour::STRAY_OWNERS, stray, count);
                 put_terraform(&mut health, &paths, &files).unwrap_or_else(|error| {
                     let said = format!("{name}'s Terraform left out: {error}");
                     let _ = context.tell("caution", "warning", &said);

@@ -24,6 +24,10 @@ pub const DAYS: usize = 7;
 /// only to the target set.
 const SWINGING: [&str; 3] = ["edit-to-merge", "files-per-change", "shared-files"];
 
+/// The folders a repository's owners are given that own nothing, which
+/// is always a mistake, so it's held to none where no target is set.
+pub const STRAY_OWNERS: &str = "stray-owners";
+
 /// What a repository's machine judges it by: a target for some of its
 /// measures, who owns each, by measure or for the whole repository, and
 /// who owns each folder, by its path from the repository's top.
@@ -72,7 +76,11 @@ pub fn hour(
     for (repo, read) in figures {
         let judged = judged.get(repo).unwrap_or(&unjudged);
         for (measure, now) in read {
-            let set = judged.targets.get(*measure).copied();
+            let set = judged
+                .targets
+                .get(*measure)
+                .copied()
+                .or_else(|| (*measure == STRAY_OWNERS).then_some(0.0));
             let lowest = held(days, repo, measure).filter(|_| !SWINGING.contains(measure));
             let target = set.map(|set| lowest.map_or(set, |lowest| set.min(lowest)));
             let owner = judged.owners.get(*measure).or(judged.owner.as_ref());
@@ -170,8 +178,9 @@ fn by_owner<'a>(
 }
 
 /// The folders of `folders` holding none of `paths`, read as `by_owner`
-/// reads an entry's file: a folder misspelt or gone, which owns nothing,
-/// so what it should hold goes to the measure's or repository's owner.
+/// reads an entry's file: a folder misspelt, gone or empty, which owns
+/// nothing, so what it should hold goes to the owner of a folder above
+/// it, else the measure's or the repository's.
 pub fn astray<'a>(folders: &'a BTreeMap<String, String>, paths: &[String]) -> Vec<&'a str> {
     folders
         .keys()
@@ -231,6 +240,7 @@ mod tests {
                 "modules/odd:name",
                 "a fourth, whose entries by_owner cuts at the colon",
             ),
+            ("", "a fifth, given the empty folder"),
         ]
         .into_iter()
         .map(|(folder, whose)| (folder.to_owned(), whose.to_owned()))
@@ -243,8 +253,8 @@ mod tests {
         ];
         assert_eq!(
             astray(&folders, &paths),
-            ["modules/gone", "modules/ne", "modules/odd:name"],
-            "a folder holding files was called astray, or one holding none wasn't"
+            ["", "modules/gone", "modules/ne", "modules/odd:name"],
+            "a folder by_owner gives entries to was called astray, or one it gives none wasn't"
         );
     }
 
@@ -379,6 +389,30 @@ mod tests {
             hour["worst"]["owner"],
             Value::Null,
             "a measure no one owns was given an owner"
+        );
+    }
+
+    #[test]
+    fn a_stray_owner_is_held_to_none_unless_a_target_is_set() {
+        let read = figures(&[
+            ("core", STRAY_OWNERS, 1.0),
+            ("pi", STRAY_OWNERS, 0.0),
+            ("set", STRAY_OWNERS, 1.0),
+        ]);
+        let judged = BTreeMap::from([("set".to_owned(), judged(&[(STRAY_OWNERS, 2.0)], None))]);
+        let hour = hour("now", &read, &BTreeMap::new(), &judged, None, None, &[]);
+        let targets =
+            ["core", "pi", "set"].map(|repo| &measure(&hour, repo, STRAY_OWNERS)["target"]);
+        assert_eq!(
+            targets,
+            [&json!(0.0), &json!(0.0), &json!(2.0)],
+            "a stray owner wasn't held to none, or a target set for it was lost"
+        );
+        assert_eq!(
+            (&hour["worst"]["repo"], &hour["worst"]["measure"]),
+            (&json!("core"), &json!(STRAY_OWNERS)),
+            "a stray owner with no target set wasn't the worst: {}",
+            hour["worst"]
         );
     }
 
