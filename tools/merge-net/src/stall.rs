@@ -26,9 +26,14 @@ pub const QUIET_FOR: Duration = Duration::from_mins(20);
 /// How often the guard looks.
 const EVERY: Duration = Duration::from_secs(60);
 
-/// What the kernel says a thread blocked on a lock, a join or a channel
-/// waits in.
-pub const ON_A_LOCK: &str = "__futex_wait";
+/// Whether the kernel says a thread waits in a futex, as one blocked on a
+/// lock, a join or a channel does: `__futex_wait` on one kernel, and
+/// `futex_wait_queue` on another, where the first is inlined away. A
+/// timed wait is a futex wait too; the round's own sleep between rounds
+/// isn't one, so a net at rest still never reads as hung.
+pub fn on_a_lock(wait: &str) -> bool {
+    wait.contains("futex_wait")
+}
 
 /// Whether a net quiet for `quiet`, running `children` processes, whose
 /// other threads wait in `waits`, is hung.
@@ -36,7 +41,7 @@ pub fn hung(quiet: Duration, children: usize, waits: &[String]) -> bool {
     quiet >= QUIET_FOR
         && children == 0
         && !waits.is_empty()
-        && waits.iter().all(|wait| wait == ON_A_LOCK)
+        && waits.iter().all(|wait| on_a_lock(wait))
 }
 
 /// Guard the net for as long as it runs, from a thread of its own.
@@ -112,7 +117,7 @@ mod tests {
 
     #[test]
     fn a_quiet_net_running_nothing_with_every_thread_on_a_lock_is_hung() {
-        let locked = waiting(&[ON_A_LOCK, ON_A_LOCK, ON_A_LOCK]);
+        let locked = waiting(&["__futex_wait", "futex_wait_queue", "__futex_wait"]);
         assert!(
             hung(QUIET_FOR, 0, &locked),
             "the hang of 12 November wasn't seen"
@@ -126,7 +131,11 @@ mod tests {
             "a net running a test was taken as hung"
         );
         assert!(
-            !hung(QUIET_FOR, 0, &waiting(&[ON_A_LOCK, "hrtimer_nanosleep"])),
+            !hung(
+                QUIET_FOR,
+                0,
+                &waiting(&["__futex_wait", "hrtimer_nanosleep"])
+            ),
             "a net resting between rounds was taken as hung"
         );
     }

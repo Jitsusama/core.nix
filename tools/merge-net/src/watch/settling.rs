@@ -140,15 +140,14 @@ const UNRUN: u64 = 24 * 60 * 60;
 /// builds or has ended.
 const LOOK_AGAIN: Duration = Duration::from_millis(200);
 
-/// How long a net leaving looks again before it waits on the write as a
-/// lock, as it did before it looked at all: the stall guard tells a hung
-/// net only by every thread waiting on a lock, and a leave that looked
-/// forever would hide a write that never ends.
-const LOOK_FOR: Duration = Duration::from_mins(2);
-
-/// Wait `LOOK_AGAIN` before a leaving net looks again.
+/// Wait `LOOK_AGAIN` before a leaving net looks again, parked rather than
+/// asleep. A timed park is a futex wait, so the stall guard, which tells a
+/// hung net by every thread waiting on a lock, reads a leave looking at a
+/// write that never ends as it read one blocked on it. A leave that only
+/// slept would hide that write, and one that blocked after a while would
+/// wait out a revert's Mac comparison whole, the stall it exists to end.
 fn look_again() {
-    std::thread::sleep(LOOK_AGAIN);
+    std::thread::park_timeout(LOOK_AGAIN);
 }
 
 /// How many searches waiting for room may ask main's newest head at once
@@ -286,14 +285,7 @@ impl<'a> Settler<'a> {
     /// until the guard goes; the watch's own `end` exits.
     pub fn leave<R>(&self, end: impl FnOnce() -> R) -> R {
         let mut said = false;
-        let began = std::time::Instant::now();
         loop {
-            if began.elapsed() >= LOOK_FOR {
-                let _writing = lock(&self.writing);
-                self.state
-                    .say("the write to the hold has ended, so this leaves");
-                return end();
-            }
             let _writing = match self.writing.try_lock() {
                 Ok(writing) => writing,
                 Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
@@ -627,31 +619,53 @@ mod tests {
 
     #[test]
     fn a_net_leaving_reads_to_the_stall_guard_as_waiting_on_a_lock() {
-        let (tell, told) = std::sync::mpsc::channel();
-        let looking = std::thread::spawn(move || {
-            let own = std::fs::read_link("/proc/thread-self")
-                .ok()
-                .and_then(|link| {
-                    link.file_name()
-                        .map(|tid| tid.to_string_lossy().into_owned())
-                });
-            tell.send(own).unwrap();
+        // What `/proc` says, in 10 reads 50 ms apart, that the thread
+        // `during` runs on waits in, before `after` lets it end.
+        fn waits_of(during: impl FnOnce() + Send + 'static, after: impl FnOnce()) -> Vec<String> {
+            let (tell, told) = std::sync::mpsc::channel();
+            let running = std::thread::spawn(move || {
+                let own = std::fs::read_link("/proc/thread-self")
+                    .ok()
+                    .and_then(|link| {
+                        link.file_name()
+                            .map(|tid| tid.to_string_lossy().into_owned())
+                    });
+                tell.send(own).unwrap();
+                during();
+            });
+            let own = told.recv().unwrap().expect("the thread has no id");
+            let mut seen = Vec::new();
             for _ in 0..10 {
-                look_again();
+                std::thread::sleep(Duration::from_millis(50));
+                seen.extend(std::fs::read_to_string(format!("/proc/self/task/{own}/wchan")).ok());
             }
-        });
-        let own = told.recv().unwrap().expect("the looking thread has no id");
-        let mut seen = Vec::new();
-        for _ in 0..20 {
-            std::thread::sleep(Duration::from_millis(50));
-            seen.extend(std::fs::read_to_string(format!("/proc/self/task/{own}/wchan")).ok());
+            after();
+            running.join().unwrap();
+            seen
         }
-        looking.join().unwrap();
+        // The kernel's own words for a lock vary, so a thread blocked on
+        // one shows what they are here.
+        let lock = std::sync::Arc::new(Mutex::new(()));
+        let held = lock.lock().unwrap();
+        let waiting = std::sync::Arc::clone(&lock);
+        let blocking = waits_of(move || drop(waiting.lock().unwrap()), || drop(held));
         assert!(
-            seen.iter().any(|wait| wait == crate::stall::ON_A_LOCK)
-                && !seen.iter().any(|wait| wait.contains("sleep")),
+            blocking.iter().any(|wait| crate::stall::on_a_lock(wait)),
+            "a thread blocked on a lock isn't read as on one: {blocking:?}"
+        );
+        let leaving = waits_of(
+            || {
+                for _ in 0..5 {
+                    look_again();
+                }
+            },
+            || {},
+        );
+        assert!(
+            leaving.iter().any(|wait| crate::stall::on_a_lock(wait))
+                && !leaving.iter().any(|wait| wait.contains("sleep")),
             "a leave looking again reads as resting, so a net hung on its write \
-             would never be aborted: {seen:?}"
+             would never be aborted: {leaving:?}"
         );
     }
 
