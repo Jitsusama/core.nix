@@ -11034,8 +11034,11 @@ Scope {
     function keyPresented(from, at, key) {
         keysReached += 1;
         const times = surface.FramePresentation.timesOf(key.frame ?? 0);
+        // The screen it was shown on and niri's frame there, so a day
+        // docked to a 60 Hz screen reads as that (Presented.screensSaid).
         const one = { from, at, heard: key.heard, begun: key.begun, onRow: key.onRow,
-            synchronized: times.synchronized ?? null, swapped: times.swapped ?? null };
+            synchronized: times.synchronized ?? null, swapped: times.swapped ?? null,
+            screen: root.screenHere?.name ?? "", refresh: times.refresh ?? 0 };
         keysPresented = keysPresented.concat([one]).slice(-keysKept);
     }
 
