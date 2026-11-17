@@ -57,6 +57,16 @@ public:
     // still be reading them; it gives nothing back while one is.
     Q_INVOKABLE double giveBack();
 
+    // What's live, by what each item is: `classes`, the `top` largest of
+    // Qt's classes, each a list of its name, megabytes and count; and
+    // `shapes`, the `top` largest shapes, each its class, its first six
+    // property names joined by commas, how many names it has, its
+    // megabytes and its count, a name taken from data said as `~`; `total`,
+    // the megabytes of every class; `ms`, how long counting took; and
+    // `said`, all of it as one line. While a collection is under way it
+    // counts nothing and answers only `busy`.
+    Q_INVOKABLE QVariantMap census(int top) const;
+
 private:
     QJSEngine *engine;
 };

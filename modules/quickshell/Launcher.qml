@@ -10938,6 +10938,33 @@ Scope {
                 : `; jemalloc ${Math.round(allocator.used)} MB in use of`
                 + ` ${Math.round(allocator.resident)} MB resident,`
                 + ` ${Math.round(allocator.kept)} MB freed and kept`));
+        if (KeyTimes.now() >= censusDue)
+            censusLater.restart();
+    }
+
+    // What's live is said by kind, from the shell's tenth minute and then
+    // hourly, since Joel's shell keeps 62 to 73 MB live against the lab's
+    // 18, which sets what each collection costs and what the heap holds,
+    // and only his own shell says which of what it keeps holds it. The
+    // count walks the whole heap, about 17 ms in the lab and so about 60
+    // in his, so it waits 5 s past a closing and isn't run once an opening
+    // has begun; what's made since the closing's collection counts too,
+    // which is little with the launcher shut (heap.cpp). A key pressed in
+    // those milliseconds waits for it, once an hour; the line's time says
+    // when. Mid-collection it counts nothing, and the next closing tries.
+    property real censusDue: KeyTimes.now() + 10 * 60 * 1000
+    Timer {
+        id: censusLater
+        interval: 5000
+        onTriggered: {
+            if (root.open || root.opening || root.parting !== "")
+                return;
+            const census = Heap.census(8);
+            if (census.busy)
+                return;
+            root.censusDue = KeyTimes.now() + 60 * 60 * 1000;
+            console.info(`launcher: what's live, ${census.said}`);
+        }
     }
 
     // The rows the card shows, by what each is, what each says at its

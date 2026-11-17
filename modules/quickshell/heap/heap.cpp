@@ -52,15 +52,28 @@
 // link to it and says nothing in a process that doesn't allocate through
 // it.
 //
+// What's live is counted by class and by shape, each shape named by its
+// property names, because Joel's shell keeps 62 to 73 MB live against the
+// lab's 18, and what's live sets both what a collection costs and what the
+// heap holds, so the largest kinds say what to cut (2026-11-17). It walks
+// every item once, about 17 ms at the lab's 18 MB, and names only the
+// largest shapes.
+//
 // heap_test.cpp holds it to what it says.
 
 #include "heap.h"
 
+#include <QElapsedTimer>
+#include <QHash>
 #include <QJSEngine>
+#include <QRegularExpression>
+#include <QStringList>
+#include <QVariantList>
 #include <algorithm>
 #include <cstdint>
 #include <dlfcn.h>
 #include <private/qv4engine_p.h>
+#include <private/qv4internalclass_p.h>
 #include <private/qv4mm_p.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -206,6 +219,146 @@ double Heap::giveBack() {
     if (manager->gcStateMachine->inProgress())
         return 0;
     return megabytes(givenBack(manager->blockAllocator) + givenBack(manager->icAllocator));
+}
+
+namespace {
+
+// How many bytes and items of one class or shape are live.
+struct Tally {
+    double bytes = 0;
+    double count = 0;
+};
+
+// The `top` largest of the tallies, largest first.
+template <typename Key> std::vector<std::pair<Key, Tally>> largest(const QHash<Key, Tally> &tallies,
+                                                                   int top) {
+    std::vector<std::pair<Key, Tally>> entries;
+    for (auto it = tallies.cbegin(); it != tallies.cend(); ++it)
+        entries.emplace_back(it.key(), it.value());
+    std::sort(entries.begin(), entries.end(),
+              [](const auto &a, const auto &b) { return a.second.bytes > b.second.bytes; });
+    entries.resize(std::min(entries.size(), static_cast<std::size_t>(std::max(top, 0))));
+    return entries;
+}
+
+// Calls `each` with every item an allocator holds, and its bytes. An item
+// starts at a slot whose object bit is set and runs on through the slots
+// whose extends bits are; each chunk's header comes first.
+template <typename Each> void walk(const QV4::BlockAllocator &allocator, Each each) {
+    using QV4::Chunk;
+    const auto set = [](const quintptr *bitmap, std::size_t index) {
+        return ((bitmap[index / Chunk::Bits] >> (index % Chunk::Bits)) & 1U) != 0;
+    };
+    for (Chunk *chunk : allocator.chunks) {
+        QV4::HeapItem *base = chunk->realBase();
+        for (std::size_t index = Chunk::HeaderSize / Chunk::SlotSize; index < Chunk::NumSlots;
+             ++index) {
+            if (!set(chunk->objectBitmap, index))
+                continue;
+            std::size_t span = 1;
+            while (index + span < Chunk::NumSlots && set(chunk->extendsBitmap, index + span))
+                ++span;
+            each(reinterpret_cast<QV4::Heap::Base *>(base + index),
+                 static_cast<double>(span * Chunk::SlotSize));
+            index += span - 1;
+        }
+    }
+}
+
+// The longest property name said, so a key made of what Joel keeps can't
+// carry it into the journal.
+constexpr qsizetype NAME_LENGTH = 32;
+
+// A property name as the journal says it: a plain identifier as it is, and
+// anything else, a key taken from data, a symbol or a long name, as `~`, so
+// no clipboard text, title or path reaches the line, nor breaks its shape
+// for what reads it.
+QString said(const QV4::Value &name) {
+    if (name.isUndefined())
+        return QStringLiteral("-");
+    static const QRegularExpression plain(QStringLiteral("^[A-Za-z_$][A-Za-z0-9_$]*$"));
+    const QString text = name.isString() ? name.toQStringNoThrow() : QString();
+    return text.size() <= NAME_LENGTH && plain.match(text).hasMatch() ? text
+                                                                       : QStringLiteral("~");
+}
+
+// Megabytes as the line says them: whole from ten, a tenth below.
+QString sized(double mb) { return QString::number(mb, 'f', mb >= 10 ? 0 : 1); }
+
+} // namespace
+
+QVariantMap Heap::census(int top) const {
+    QV4::MemoryManager *manager = engine->handle()->memoryManager;
+    // Mid-cycle, what's unmarked is garbage not yet swept, and would be
+    // counted as live, so the census waits for the cycle to end.
+    if (manager->gcStateMachine->inProgress())
+        return {{QStringLiteral("busy"), true}};
+    QElapsedTimer clock;
+    clock.start();
+    // Class names are static strings, so their addresses key them.
+    QHash<const char *, Tally> byClass;
+    QHash<const QV4::Heap::InternalClass *, Tally> byShape;
+    const auto tally = [](Tally &into, double bytes) {
+        into.bytes += bytes;
+        into.count += 1;
+    };
+    const auto count = [&](QV4::Heap::Base *item, double bytes) {
+        const QV4::Heap::InternalClass *shape = item->internalClass;
+        if (shape == nullptr) {
+            tally(byClass["unshaped"], bytes);
+            return;
+        }
+        tally(byClass[shape->vtable->className], bytes);
+        tally(byShape[shape], bytes);
+    };
+    walk(manager->blockAllocator, count);
+    // The shapes themselves live in an allocator of their own, and are
+    // counted as one class without reading them as objects.
+    walk(manager->icAllocator,
+         [&](QV4::Heap::Base *, double bytes) { tally(byClass["InternalClass"], bytes); });
+    for (const auto &huge : manager->hugeItemAllocator.chunks)
+        count(reinterpret_cast<QV4::Heap::Base *>(huge.chunk->first()),
+              static_cast<double>(huge.size));
+    double total = 0;
+    for (const Tally &each : std::as_const(byClass))
+        total += each.bytes;
+    QVariantList classes;
+    QStringList classesSaid;
+    for (const auto &[name, each] : largest(byClass, top)) {
+        const QString named = QString::fromLatin1(name);
+        classes.append(QVariant(QVariantList{named, megabytes(each.bytes), each.count}));
+        classesSaid.append(QStringLiteral("%1 %2 MB (%3)")
+                               .arg(named, sized(megabytes(each.bytes)))
+                               .arg(each.count, 0, 'f', 0));
+    }
+    // Names are read only for the shapes said, since each is a string made.
+    constexpr uint NAMES = 6;
+    QVariantList shapes;
+    QStringList shapesSaid;
+    for (const auto &[shape, each] : largest(byShape, top)) {
+        QStringList names;
+        for (uint at = 0; at < shape->size && at < NAMES; ++at)
+            names.append(said(QV4::Value::fromReturnedValue(shape->keyAt(at))));
+        const QString named = QString::fromLatin1(shape->vtable->className);
+        const QString keys = names.join(QLatin1Char(','));
+        shapes.append(QVariant(QVariantList{named, keys, static_cast<double>(shape->size),
+                                            megabytes(each.bytes), each.count}));
+        shapesSaid.append(QStringLiteral("%1 {%2%3} %4 MB (%5)")
+                              .arg(named, keys, shape->size > NAMES ? QStringLiteral(",...") : "",
+                                   sized(megabytes(each.bytes)))
+                              .arg(each.count, 0, 'f', 0));
+    }
+    const double ms = static_cast<double>(clock.nsecsElapsed()) / 1e6;
+    return {{QStringLiteral("classes"), classes},
+            {QStringLiteral("shapes"), shapes},
+            {QStringLiteral("total"), megabytes(total)},
+            {QStringLiteral("ms"), ms},
+            {QStringLiteral("said"), QStringLiteral("%1 MB counted in %2 ms: by class %3; by "
+                                                    "shape %4")
+                                         .arg(sized(megabytes(total)))
+                                         .arg(ms, 0, 'f', 0)
+                                         .arg(classesSaid.join(QStringLiteral(", ")),
+                                              shapesSaid.join(QStringLiteral(", ")))}};
 }
 
 double Heap::collected() const {
