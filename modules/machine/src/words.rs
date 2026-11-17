@@ -156,14 +156,15 @@ impl Words {
     /// A measured figure to three significant digits, its zeros kept so
     /// each says as much as the next: 28.47 as "28.5", 5.2 as "5.20", 0
     /// as "0", -3.2 as "−3.20", 1234 as "1,230".
-    /// A measured figure to three significant digits, but to no more
-    /// places than `most`: a temperature read to tenths is said to them.
-    pub fn significant_to(&self, value: f64, most: usize) -> String {
-        let _ = most;
-        self.significant(value)
+    pub fn significant(&self, value: f64) -> String {
+        self.significant_to(value, usize::MAX)
     }
 
-    pub fn significant(&self, value: f64) -> String {
+    /// A measured figure to three significant digits, but to no more
+    /// places than `most`, since its zeros would claim places it was
+    /// never read to: a temperature read to tenths, with `most` 1, says
+    /// 5.2 as "5.2", -0.2 as "−0.2" and 0.04 as "0".
+    pub fn significant_to(&self, value: f64, most: usize) -> String {
         let rounded: f64 = format!("{value:.AFTER_FIRST$e}").parse().unwrap_or(value);
         if rounded == 0.0 || !rounded.is_finite() {
             return "0".to_owned();
@@ -173,7 +174,13 @@ impl Words {
             reason = "a finite figure's power of ten is within an i32"
         )]
         let magnitude = rounded.abs().log10().floor() as i32;
-        let places = usize::try_from(SIGNIFICANT - 1 - magnitude).unwrap_or(0);
+        let places = usize::try_from(SIGNIFICANT - 1 - magnitude)
+            .unwrap_or(0)
+            .min(most);
+        let shown: f64 = format!("{rounded:.places$}").parse().unwrap_or(rounded);
+        if shown == 0.0 {
+            return "0".to_owned();
+        }
         let said = self
             .number(rounded, places)
             .replacen('-', &MINUS.to_string(), 1);

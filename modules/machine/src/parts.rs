@@ -300,6 +300,13 @@ fn limit_of(value: Option<f64>) -> Option<f64> {
     plausible(value).filter(|v| *v > 0.0)
 }
 
+/// A chip's least, or none where it says 0 beside a most of 0: Dell's
+/// DDV firmware gives both for every sensor, and as a most of 0 is no
+/// limit, neither is the 0 beside it.
+fn least_of(low: Option<f64>, high: Option<f64>) -> Option<f64> {
+    plausible(low).filter(|low| *low != 0.0 || high != Some(0.0))
+}
+
 fn number(value: &Value) -> Option<f64> {
     value.as_f64()
 }
@@ -394,7 +401,7 @@ fn chip_of(record: &Value) -> Chip {
                 value: plausible(number(&each["temperature_c"]))?,
                 high: limit_of(number(&each["high_c"])),
                 crit: limit_of(number(&each["critical_c"])),
-                low: plausible(number(&each["low_c"])),
+                low: least_of(number(&each["low_c"]), number(&each["high_c"])),
                 emergency: limit_of(number(&each["emergency_c"])),
                 alarm: each["alarm"] == Value::Bool(true),
                 chip: chip.clone(),

@@ -252,8 +252,13 @@ impl Say<'_> {
         self.words.significant(value)
     }
 
+    /// A temperature, said to the tenths it's read to at most.
+    fn tenths(&self, value: f64) -> String {
+        self.words.significant_to(value, 1)
+    }
+
     fn degrees(&self, value: f64) -> String {
-        format!("{} \u{b0}C", self.measured(value))
+        format!("{} \u{b0}C", self.tenths(value))
     }
 
     fn rpm(&self, value: f64) -> String {
@@ -332,7 +337,7 @@ impl Say<'_> {
     /// What's left to a limit, or how far past it: "29.0 °C below high".
     fn limit_said(&self, left: &Left) -> String {
         let phrase = if left.past { "past" } else { "below" };
-        self.says(left.limit, phrase, &[("by", &self.measured(left.by))])
+        self.says(left.limit, phrase, &[("by", &self.tenths(left.by))])
     }
 
     /// Its Last Reads, while shown, as a spark and its range.
@@ -1444,7 +1449,10 @@ mod tests {
             1000,
             &words(),
         );
-        assert_eq!(row(&ready, "disk:0/low")["side"][0]["said"], "\u{2212}0.2 \u{b0}C");
+        assert_eq!(
+            row(&ready, "disk:0/low")["side"][0]["said"],
+            "\u{2212}0.2 \u{b0}C"
+        );
         assert_eq!(row(&ready, "disk:0")["side"][0]["said"], "5.2 \u{b0}C");
     }
 
