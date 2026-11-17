@@ -403,3 +403,38 @@ fn a_quest_a_live_session_works_on_keeps_what_it_left_whatever_its_age() {
         );
     }
 }
+
+// Every machine's guard is now told where the harness keeps its session
+// records, so on one it never ran on, with no such folder, no session
+// lives and each quest's scratch still goes by its own age.
+#[test]
+fn with_no_sessions_folder_a_quest_scratch_goes_by_its_age() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let quests = dir(&home.join("quests"));
+    let workspaces = dir(&home.join("workspaces"));
+    let id = "QEST-20200101-NOHARN";
+    file(
+        &quests.join(format!("{id}/README.md")),
+        &format!("---\nid: {id}\nstatus: active\nupdated: 2020-01-01\n---\n# At work\n"),
+    );
+    let script = dir(&workspaces.join(id)).join("tmp/splice.sh");
+    file(&script, "x");
+    written_ago(&script, 8.0 * DAY);
+    let config = config(&format!(
+        r#""workspaces": {{ "kind": "workspaces", "path": "{}", "quests": "{}",
+            "sessions": "{}" }}"#,
+        workspaces.display(),
+        quests.display(),
+        home.join("no-sessions").display()
+    ));
+    let found = offers(&config, &[], &|_| false);
+    assert!(
+        found.iter().any(|offer| offer.candidate.path == script),
+        "a week-old entry was kept with no sessions folder: {:?}",
+        found
+            .iter()
+            .map(|offer| &offer.candidate.path)
+            .collect::<Vec<_>>()
+    );
+}

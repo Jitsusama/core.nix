@@ -406,7 +406,8 @@ fn lstart(token: &str) -> Option<f64> {
 
 /// The quests a live session works on now, read from the harness's
 /// session records in `sessions` and the hosts' rosters in `rosters`, or
-/// none when the records can't be read, since then any quest may be. On
+/// none when the records are there but can't be read, since then any quest
+/// may be. On
 /// 16 November a laptop's guard took 188 entries of a quest's tmp/ while
 /// its session worked in it, a script written that evening among them, so
 /// a quest one works on keeps what it left, whatever each entry's age.
@@ -416,7 +417,15 @@ pub fn worked_on(
     processes: &[Process],
     boot: &Boot,
 ) -> Option<HashSet<String>> {
-    let entries = fs::read_dir(sessions).ok()?;
+    let entries = match fs::read_dir(sessions) {
+        Ok(entries) => entries,
+        // No folder holds no session, so none lives: a machine the harness
+        // never ran on clears its scratch by age, as it did before.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Some(rosters.map_or_default(hosted));
+        }
+        Err(_) => return None,
+    };
     let mut live: HashSet<String> = entries
         .filter_map(Result::ok)
         .filter_map(|entry| serde_json::from_slice::<Session>(&fs::read(entry.path()).ok()?).ok())
