@@ -130,10 +130,12 @@ impl Measures {
             failed: per_hundred(failed, sent),
             signal: counts.last().and_then(|counts| counts.signal),
             moving: moving(&kept.counts, now),
+            // The most it sent at, since rate control may drop a quiet
+            // link's for a moment, which isn't the room it has.
             room: counts
                 .iter()
-                .rev()
-                .find_map(|counts| counts.link)
+                .filter_map(|counts| counts.link)
+                .max()
                 .map(|kbps| kbps / 1000),
         })
     }
@@ -332,9 +334,11 @@ fn said(on: &Joined, measured: &Measured, call: bool) -> String {
     let signal = measured
         .signal
         .map_or("unread".into(), |signal| format!("{signal} dBm"));
-    let moving = measured
-        .moving
-        .map_or(String::new(), |moving| format!("; moving {moving} Mbit/s"));
+    let moving = match (measured.moving, measured.room) {
+        (Some(moving), Some(room)) => format!("; moving {moving} of {room} Mbit/s"),
+        (Some(moving), None) => format!("; moving {moving} Mbit/s"),
+        (None, _) => String::new(),
+    };
     format!(
         "{} on {}: gateway {} at p50, {} at p95, {:.1}% of {} echoes lost; \
          {:.2} in 100 frames sent again, {:.2} lost; signal {signal}{moving}{}",

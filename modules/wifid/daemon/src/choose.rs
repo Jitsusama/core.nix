@@ -107,6 +107,12 @@ const STRONG: i16 = -50;
 /// seconds passed 85 Mbit/s on 2.4 GHz, linked at 287, nor 181 on 5 GHz.
 const USED: u32 = 100;
 
+/// The least a card must move for a wider band's room to count, however
+/// slowly its link says it sends, so a rate read low isn't taken for a
+/// faint link. Over the same night, the card's two minutes passed 25
+/// Mbit/s in 4% of spans, and 10 Mbit/s in 85%.
+const LEAST: u32 = 25;
+
 /// How much quicker one measured lately must have been to be moved to:
 /// both, so neither a small figure's ratio nor a large one's few
 /// milliseconds moves the card.
@@ -473,8 +479,8 @@ pub fn badly(measured: &Measured) -> bool {
 /// Whether a card moves enough for a wider band's room to count, which a
 /// card whose kernel doesn't say what it moved isn't known to.
 fn used(measured: &Measured) -> bool {
-    let half = measured.room.filter(|room| *room > 0).map(|room| room / 2);
-    let bar = half.map_or(USED, |half| half.min(USED));
+    let half = measured.room.map(|room| room / 2);
+    let bar = half.map_or(USED, |half| half.clamp(LEAST, USED));
     measured.moving.is_some_and(|moving| moving >= bar)
 }
 
