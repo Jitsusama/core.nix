@@ -2794,6 +2794,10 @@
   shaper-passes-clippy = ''
     clippy finds nothing in the shaper or its tests
   '';
+  shaper-stays-through-a-switch = ''
+    a switch starts the shaper and its recorder again in place, never stopping them first, so the
+    queues keep their counts and the record has no hole around the switch
+  '';
   shell-preview-follows-the-working-copy = ''
     shell-preview links each built file the working copy holds back to it, copies what the build
     made, and ends the nested desktop it started however it's ended, asking it before killing it

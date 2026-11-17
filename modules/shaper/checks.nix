@@ -30,8 +30,8 @@ onLinux {
   # restart keeps its queues (src/restart.rs); the recorder's keeps the
   # record on the shaper's restart, which on 16 November it was blind to
   # from 20:18:46 to 20:18:53 and from 21:51:52 to 21:52:02.
-  shaper-restarts-in-place =
-    holds "shaper-restarts-in-place"
+  shaper-stays-through-a-switch =
+    holds "shaper-stays-through-a-switch"
       "A switch would stop the shaper or its recorder first, so its queues or its record go."
       (
         services.shaper.restartIfChanged

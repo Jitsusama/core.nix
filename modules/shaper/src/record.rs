@@ -615,11 +615,11 @@ mod tests {
         );
     }
 
-    /// Asks of Quad9 twice and Cloudflare once, waited on until `until`.
+    /// Asks of one operator twice and another once, waited on until `until`.
     fn asking(until: Instant) -> Asking {
         let quad9 = ("Quad9", at(9));
         Asking {
-            asked: BTreeMap::from([(1, quad9), (2, ("Cloudflare", at(1))), (3, quad9)]),
+            asked: BTreeMap::from([(1, quad9), (2, ("AdGuard", at(1))), (3, quad9)]),
             heard: Vec::new(),
             until,
         }
@@ -628,8 +628,14 @@ mod tests {
     #[test]
     fn a_candidate_asked_twice_is_heard_once() {
         let mut asked = asking(Instant::now());
-        assert!(asked.answered(1, Some(at(9)), true));
-        assert!(asked.answered(3, Some(at(9)), true));
+        assert!(
+            asked.answered(1, Some(at(9)), true),
+            "the first ask's reply went to the record"
+        );
+        assert!(
+            asked.answered(3, Some(at(9)), true),
+            "the second ask's reply went to the record"
+        );
         assert_eq!(asked.heard, vec![("Quad9", at(9))]);
     }
 
@@ -646,7 +652,10 @@ mod tests {
     #[test]
     fn an_answer_whose_clock_is_not_standard_is_not_heard() {
         let mut asked = asking(Instant::now());
-        assert!(asked.answered(2, Some(at(1)), false));
+        assert!(
+            asked.answered(2, Some(at(1)), false),
+            "an ask's reply went to the record"
+        );
         assert!(asked.heard.is_empty(), "heard {:?}", asked.heard);
     }
 
@@ -664,8 +673,11 @@ mod tests {
     fn the_asks_are_waited_on_until_their_time() {
         let now = Instant::now();
         let asked = asking(now + ASKING_FOR);
-        assert!(!asked.done(now));
-        assert!(asked.done(now + ASKING_FOR));
+        assert!(!asked.done(now), "the asks were done as they were sent");
+        assert!(
+            asked.done(now + ASKING_FOR),
+            "the asks were waited on past their time"
+        );
     }
 
     #[test]
