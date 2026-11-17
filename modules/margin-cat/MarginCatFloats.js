@@ -164,7 +164,7 @@ function off(way, cols, to, at) {
     way.facing = end.dir;
     Ways.goes(way, end.dir > 0 ? from.right - at.wide : from.left, way.y);
     const ground = Falls.under({ x: end.x, y: way.y }, cols, at);
-    if (steps(way, ground, at)) {
+    if (steps(way, ground, at, { first: { x: end.x, y: way.y } })) {
         Ways.goes(way, end.x, way.y);
         Ways.goes(way, end.x, ground.y);
         return done();

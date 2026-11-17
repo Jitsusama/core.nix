@@ -151,11 +151,12 @@ QtObject {
         // tiled windows there: a leap on from beside its edge that moves
         // across as it rises cut its corner for 230 ms (2026-11-16). Each
         // way's frames every 4 ms, as where its box lies over the face; a
-        // closed one has none. The cat's box is its world's size.
+        // closed one has none. The cat is 8 cells square, at its way's
+        // cell.
         const overFace = (way, it) => {
             const hits = [];
-            const wide = way.at ? way.at.wide : 8;
-            const tall = way.at ? way.at.tall : 8;
+            const wide = 8 * way.cell;
+            const tall = wide;
             for (let t = 0; t <= way.ends; t += 4) {
                 const at = Paths.frame(way, t);
                 if (at.x + wide > it.left + 0.5 && at.x < it.right - 0.5
@@ -332,7 +333,7 @@ QtObject {
         // Its beats from beside a floating window's edge to beside its far
         // one, not the gap's leap between columns. By it, it only walks:
         // never a crouch, a leap or a landing's crouch, and never up or
-        // down more than `most` in one leg, 2 cells unless it's said.
+        // down more than `most` pixels in one leg, 2 unless it's said.
         const by = (way, it, wide) => way.beats.filter(beat =>
             Math.max(beat.from.x, beat.to.x) >= it.left - (wide ?? 8)
                 && Math.min(beat.from.x, beat.to.x) <= it.right);
@@ -347,6 +348,12 @@ QtObject {
                 ends(stepsOff.beats[stepsOff.beats.length - 1]).slice(2)], [[800, 5], [100, 7]]);
         expect("stepping on and off one 2 above, never over its face",
             [overFace(stepsOn, flush), overFace(stepsOff, flush)], [[], []]);
+        // And over it on its way, as a route goes, to a seat clear of it.
+        const stepsOver = Paths.walk({ x: 100, y: 7 }, { x: 1000, y: 7 },
+            world({ floats: [flush] }));
+        expect("over one 2 above the tops on its way, it steps on and off within its walk",
+            [walks(stepsOver, flush), endsAt(stepsOver), overFace(stepsOver, flush)],
+            [true, [1000, 7], []]);
         // One cell more, with room over it for an arc: a leap on, a hop
         // off.
         const three = float(700, 13, 200, 100);
