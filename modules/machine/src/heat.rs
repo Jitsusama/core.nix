@@ -297,9 +297,13 @@ fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Va
                 .and_then(|v| v.parse::<u32>().ok())
                 .map(|p| rounded(f64::from(p.min(255)) / 255.0, 3));
             // pwm_enable says 1 where the fan is set by hand, 2 where the
-            // chip sets it itself, 0 where it's at full.
+            // chip sets it itself, 0 where it's at full. dell_smm says 2
+            // only in the automatic state written to it, and 1 at every
+            // other time, the firmware running the fan included, so its 1
+            // is the firmware's (dell_smm_read in the kernel's driver).
             let mode = moving.enable.as_deref().map(|m| match m {
                 "0" => "full",
+                "1" if name.starts_with("dell_smm") => "firmware",
                 "1" => "manual",
                 _ => "automatic",
             });

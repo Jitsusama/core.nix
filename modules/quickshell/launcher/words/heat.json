@@ -306,6 +306,7 @@
       "said": {
         "automatic": "automatic",
         "manual": "set by hand",
+        "firmware": "its firmware",
         "full": "full speed",
         "note": "what sets its speed"
       }
@@ -350,6 +351,7 @@
       "said": {
         "automatic": "its chip sets its speed",
         "manual": "a program sets its speed, through Linux",
+        "firmware": "the laptop's firmware sets its speed",
         "full": "nothing slows it: it turns at full speed"
       }
     }
