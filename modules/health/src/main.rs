@@ -51,6 +51,7 @@
 mod agents;
 mod asks;
 mod busy;
+mod cli;
 mod day;
 mod defunct;
 mod disk;
@@ -74,95 +75,47 @@ mod typing;
 mod unified;
 
 use std::env;
-use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
+use terminal_kit::{Context, Exit, Failure};
 
-use crate::day::Day;
-
-/// What `health --help` says.
-const USAGE: &str = "\
-health                 what today's journals said, one line a kind, the worst first
-health KIND            a kind's worst things: words, programs, services, devices,
-                       security or tools
-health boot            each boot's stages, and each shutdown's seconds
-health memory          what pi and the shell hold, by how long each copy has run
-health died            the agents that died, and those gone since before today
-health launcher        each part of the launcher, timed against its budget
-health launches        each program's openings, ends and ready, the slowest first
-health figures         each figure cadence holds the day to, his first, then ours
-health busy            whose work kept the processors busy, an hour a line
-health WORDS           what each thing whose name holds the words kept saying
-health --day DATE ...  another day, as YYYY-MM-DD
-health follow          the daemon, which keeps the day's file current
-";
+use crate::cli::{Asked, View};
 
 fn main() -> ExitCode {
-    let mut args: Vec<String> = env::args().skip(1).collect();
-    let into = match take_value(&mut args, "--into") {
-        Ok(into) => into.map_or_else(kept_in, PathBuf::from),
-        Err(said) => return refused(&said),
-    };
-    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
-        print!("{USAGE}");
-        return ExitCode::SUCCESS;
-    }
-    if args.first().is_some_and(|arg| arg == "follow") {
-        return match follow::follow(&into) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(fault) => {
-                eprintln!("health: {fault}");
-                ExitCode::FAILURE
-            }
-        };
-    }
-    let date = match take_value(&mut args, "--day") {
-        Ok(date) => date.unwrap_or_else(|| {
-            follow::date_of(Timestamp::now().as_microsecond(), &TimeZone::system())
-        }),
-        Err(said) => return refused(&said),
-    };
-    let Ok(file) = fs::read(follow::file_of(&into, &date)) else {
-        eprintln!("health: nothing kept for {date}; is it running? systemctl --user status health");
-        return ExitCode::FAILURE;
-    };
-    let day: Day = match serde_json::from_slice(&file) {
-        Ok(day) => day,
-        Err(fault) => {
-            eprintln!("health: {date}'s file can't be read: {fault}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let words = args.join(" ");
-    // The kit's context, taking no words, only reads the terminal: how
-    // wide it is and whether it inks, which the day and the lists are
-    // fitted to.
-    let context = match terminal_kit::Context::new(terminal_kit::Environment::here(), vec![], &[]) {
-        Ok(context) => context,
-        Err(failure) => return refused(&failure.what),
-    };
-    if words.is_empty() {
-        print!("{}", show::day(&day, &context.out, context.room));
-        return ExitCode::SUCCESS;
-    }
-    print!("{}", show::asked(&day, &words, &context.out, context.room));
-    ExitCode::SUCCESS
+    terminal_kit::main(&cli::help(), env!("CARGO_PKG_VERSION"), run)
 }
 
-/// Take a flag and its value out of the arguments, if it's there.
-fn take_value(args: &mut Vec<String>, flag: &str) -> Result<Option<String>, String> {
-    let Some(place) = args.iter().position(|arg| arg == flag) else {
-        return Ok(None);
-    };
-    if place + 1 >= args.len() {
-        return Err(format!("{flag} needs a value"));
+/// Does what the words ask: follows the journals, or shows the day's
+/// view they name, fitted to the terminal.
+fn run(context: &Context) -> Result<(), Failure> {
+    // Its views are said as text alone; a caller asking for JSON is told so
+    // rather than handed text it would fail to read.
+    if context.format().is_json() {
+        return Err(
+            Failure::new(Exit::Usage, "health says its views as text alone")
+                .try_this("health --help --format json"),
+        );
     }
-    let value = args.remove(place + 1);
-    args.remove(place);
-    Ok(Some(value))
+    let Asked { into, day, view } = cli::read(&context.args)?;
+    let into = into.unwrap_or_else(kept_in);
+    if view == View::Follow {
+        return follow::follow(&into).map_err(|fault| {
+            Failure::new(Exit::Failed, "the journals stopped being followed")
+                .because(fault.to_string())
+        });
+    }
+    let date = day
+        .unwrap_or_else(|| follow::date_of(Timestamp::now().as_microsecond(), &TimeZone::system()));
+    let day = cli::day_in(&into, &date)?;
+    let shown = match view {
+        View::Words(words) => show::asked(&day, &words, &context.out, context.room),
+        View::Day | View::Follow => show::day(&day, &context.out, context.room),
+    };
+    print!("{shown}");
+    Ok(())
 }
 
 /// Where the days are kept: the account's state folder.
@@ -172,10 +125,4 @@ fn kept_in() -> PathBuf {
         .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")))
         .unwrap_or_default()
         .join("health")
-}
-
-/// Say why the arguments weren't taken, and how they're given.
-fn refused(said: &str) -> ExitCode {
-    eprint!("health: {said}\n{USAGE}");
-    ExitCode::from(64)
 }
