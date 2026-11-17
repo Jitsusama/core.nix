@@ -21,12 +21,18 @@ const hubs = new Map([
     "orchestration.kestrl",
     { key: "orchestration.kestrl", name: "Kestrel", within: null, lead: { address: "KESTRL" } },
   ],
-  ["orchestration.osprey", { key: "orchestration.osprey", name: "OSPREY", within: null, lead: null }],
+  [
+    "orchestration.osprey",
+    { key: "orchestration.osprey", name: "OSPREY", within: null, lead: null },
+  ],
   [
     "orchestration.ternss",
     { key: "orchestration.ternss", name: "Tern", within: "orchestration.gone", lead: null },
   ],
-  ["#loose.skiff", { key: "#loose.skiff", name: "Working alone on skiff", within: null, alone: true }],
+  [
+    "#loose.skiff",
+    { key: "#loose.skiff", name: "Working alone on skiff", within: null, alone: true },
+  ],
 ]);
 
 /** A map that drew each of `cells` in the hub of its key. */

@@ -125,7 +125,7 @@ function missed(
   drawn: Drawn | undefined,
   model: Model,
 ): Why | null {
-  if (!drawn || !drawnIn(drawn.hub ?? drawn.loose, model)) {
+  if (!(drawn && drawnIn(drawn.hub ?? drawn.loose, model))) {
     return "unreachable";
   }
   const alone = drawn.hub === null && drawn.loose?.alone === true;

@@ -11,11 +11,14 @@ node.
 import json
 import os
 import re
-from collections.abc import Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from playwright.sync_api import Browser, ViewportSize, expect, sync_playwright
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 ROOT = os.environ["MAP_CHECK_ROOT"]
 SAID = Path(os.environ["MAP_CHECK_SAID"])
