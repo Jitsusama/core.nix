@@ -252,8 +252,13 @@ impl Say<'_> {
         self.words.significant(value)
     }
 
+    /// A temperature, said to the tenths it's read to at most.
+    fn tenths(&self, value: f64) -> String {
+        self.words.significant_to(value, 1)
+    }
+
     fn degrees(&self, value: f64) -> String {
-        format!("{} \u{b0}C", self.measured(value))
+        format!("{} \u{b0}C", self.tenths(value))
     }
 
     fn rpm(&self, value: f64) -> String {
@@ -332,15 +337,16 @@ impl Say<'_> {
     /// What's left to a limit, or how far past it: "29.0 °C below high".
     fn limit_said(&self, left: &Left) -> String {
         let phrase = if left.past { "past" } else { "below" };
-        self.says(left.limit, phrase, &[("by", &self.measured(left.by))])
+        self.says(left.limit, phrase, &[("by", &self.tenths(left.by))])
     }
 
-    /// Its Last Reads, while shown, as a spark and its range.
+    /// Its Last Reads, while shown, as a spark and its range: its least
+    /// as a `bare` figure, its most `said` with its unit.
     fn lately(
         &self,
         id: String,
         values: &[f64],
-        said: impl Fn(f64) -> String,
+        (bare, said): (impl Fn(f64) -> String, impl Fn(f64) -> String),
         drawn: &[f64],
     ) -> Made {
         let least = values.iter().copied().fold(f64::INFINITY, f64::min);
@@ -351,7 +357,7 @@ impl Say<'_> {
             self.says(
                 "lately",
                 "range",
-                &[("least", &self.measured(least)), ("most", &said(most))],
+                &[("least", &bare(least)), ("most", &said(most))],
             )
         };
         let note = if values.len() == 1 {
@@ -669,7 +675,7 @@ impl Say<'_> {
         let lately = self.lately(
             at("lately"),
             &values,
-            |v| self.degrees(v),
+            (|v| self.tenths(v), |v| self.degrees(v)),
             &parts::heat_spark(&values),
         );
         let mut lead = self.ranged(part.value, &values, |v| self.degrees(v));
@@ -1034,7 +1040,7 @@ impl Say<'_> {
         let lately = self.lately(
             at("lately"),
             &values,
-            |v| self.rpm(v),
+            (|v| self.words.number(v, 0), |v| self.rpm(v)),
             &parts::fan_spark(&values),
         );
         let mut ranged = self.ranged(fan.value, &values, |v| self.rpm(v));
@@ -1421,6 +1427,73 @@ mod tests {
         assert_eq!(
             head,
             Some(json!("71.0 \u{b0}C at the processor, a fan turning"))
+        );
+    }
+
+    /// A temperature is read to tenths, so it's said to tenths at most:
+    /// a drive's under-temperature limit of 273 K is "−0.2 °C", never
+    /// "−0.200 °C", and what's left to a limit and the least of its Last
+    /// Reads are said the same way.
+    #[test]
+    fn a_temperature_near_freezing_is_said_to_tenths() {
+        let mut held = sensors(71.0, 79.0);
+        held[1]["temperatures"][0]["low_c"] = json!(-0.2);
+        held[1]["temperatures"][0]["temperature_c"] = json!(77.7);
+        let zones = zones();
+        let cpu = processor();
+        let ready = Heat::default().read(
+            Held {
+                sensors: &held,
+                zones: &zones,
+                processor: Some(&cpu),
+                ..Held::default()
+            },
+            1000,
+            &words(),
+        );
+        assert_eq!(
+            row(&ready, "disk:0/low")["side"][0]["said"],
+            "\u{2212}0.2 \u{b0}C"
+        );
+        assert_eq!(
+            row(&ready, "disk:0")["side"][1]["said"],
+            "5.2 \u{b0}C below high"
+        );
+        let mut heat = Heat::default();
+        read(&mut heat, 5.2, 79.0, 1000);
+        let cold = read(&mut heat, 6.1, 79.0, 2000);
+        assert_eq!(
+            row(&cold, "processor:0/lately")["side"][0]["said"],
+            "5.2 to 6.1 \u{b0}C"
+        );
+        assert_eq!(row(&cold, "processor:0")["side"][0]["said"], "6.1 \u{b0}C");
+    }
+
+    /// A fan's speed is read whole, so its Last Reads say their least
+    /// whole, as their most: "2,345 to 2,400 rpm", never "2,350".
+    #[test]
+    fn a_fans_last_reads_say_their_least_whole() {
+        let mut heat = Heat::default();
+        let zones = zones();
+        let cpu = processor();
+        let mut ready = Ready::default();
+        for (rpm, now) in [(2345, 1000), (2400, 2000)] {
+            let mut held = sensors(71.0, 79.0);
+            held[2]["fans"][0]["rpm"] = json!(rpm);
+            ready = heat.read(
+                Held {
+                    sensors: &held,
+                    zones: &zones,
+                    processor: Some(&cpu),
+                    ..Held::default()
+                },
+                now,
+                &words(),
+            );
+        }
+        assert_eq!(
+            row(&ready, "fan:fan:1/lately")["side"][0]["said"],
+            "2,345 to 2,400 rpm"
         );
     }
 

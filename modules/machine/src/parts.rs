@@ -300,6 +300,13 @@ fn limit_of(value: Option<f64>) -> Option<f64> {
     plausible(value).filter(|v| *v > 0.0)
 }
 
+/// A chip's least, or none where it says 0 beside a most of 0: Dell's
+/// DDV firmware gives both for every sensor, and as a most of 0 is no
+/// limit, neither is the 0 beside it.
+fn least_of(low: Option<f64>, high: Option<f64>) -> Option<f64> {
+    plausible(low).filter(|low| *low != 0.0 || high != Some(0.0))
+}
+
 fn number(value: &Value) -> Option<f64> {
     value.as_f64()
 }
@@ -394,7 +401,7 @@ fn chip_of(record: &Value) -> Chip {
                 value: plausible(number(&each["temperature_c"]))?,
                 high: limit_of(number(&each["high_c"])),
                 crit: limit_of(number(&each["critical_c"])),
-                low: plausible(number(&each["low_c"])),
+                low: least_of(number(&each["low_c"]), number(&each["high_c"])),
                 emergency: limit_of(number(&each["emergency_c"])),
                 alarm: each["alarm"] == Value::Bool(true),
                 chip: chip.clone(),
@@ -1325,6 +1332,32 @@ mod tests {
                 ..fan(1, "", 2400.0)
             }]
         );
+    }
+
+    /// Dell's DDV firmware gives 0 as every sensor's least and most, so
+    /// a 0 beside a most of 0 is no limit, as the most of 0 isn't; a 0
+    /// beside a real most, any other least beside a most of 0, or a
+    /// least below freezing, is one.
+    #[test]
+    fn a_least_of_0_beside_a_most_of_0_is_no_limit() {
+        let held = chips_of(&[
+            json!({ "key": "sensor:dell_ddv", "part": "", "temperatures": [
+                { "n": 6, "label": "SODIMM", "temperature_c": 55, "low_c": 0, "high_c": 0 },
+                { "n": 7, "label": "Ambient", "temperature_c": 42, "low_c": 0,
+                    "high_c": 60 },
+                { "n": 8, "label": "GPU", "temperature_c": 34, "low_c": -5,
+                    "high_c": 0 }],
+                "fans": [] }),
+            json!({ "key": "sensor:nvme", "part": "disk", "temperatures": [
+                { "n": 1, "label": "Composite", "temperature_c": 52.9, "low_c": -0.2,
+                    "high_c": 82.9 }],
+                "fans": [] }),
+        ]);
+        let lows: Vec<Option<f64>> = held
+            .iter()
+            .flat_map(|chip| chip.temps.iter().map(|temp| temp.low))
+            .collect();
+        assert_eq!(lows, [None, Some(0.0), Some(-5.0), Some(-0.2)]);
     }
 
     #[test]
