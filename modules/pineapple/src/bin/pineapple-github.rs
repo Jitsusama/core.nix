@@ -661,6 +661,8 @@ fn said_on(
         .as_str()
         .is_some_and(|by| by.eq_ignore_ascii_case(login));
     let mut found = github::said(&opened, thread, Kind::Opening);
+    // Its writer's standing alone, before anything said after it joins it.
+    let opened_by_own = found.first().is_some_and(|it| it.own);
     let recent = [("since", since), ("per_page", PAGE)];
     let comments = github.all(&format!("{base}/issues/{number}/comments"), &recent)?;
     found.extend(github::said(&comments, thread, Kind::Comment));
@@ -683,7 +685,7 @@ fn said_on(
                 Err(Unread::Gone(_)) => false,
                 Err(failed) => return Err(failed),
             });
-    let trusted = !open || joel_opened || (works_in && found.first().is_some_and(|it| it.own));
+    let trusted = !open || joel_opened || (works_in && opened_by_own);
     let opening = if trusted {
         format!(
             "{}\n\n{}",

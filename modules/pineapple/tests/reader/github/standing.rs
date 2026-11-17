@@ -298,6 +298,86 @@ fn github_an_owners_opening_where_joel_cant_push_cant_steer_his_own_stop() {
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
+/// What the GitHub reader, live, judges on `issue` once it has judged
+/// `count`, its opening answered as `opening` makes it from `issue`'s.
+fn judged_opened_as(
+    issue: Issue,
+    opening: fn(&mut Value, u64),
+    count: usize,
+) -> (Vec<Value>, PathBuf) {
+    let line_of_it = format!(" /repos/{}/issues/1 ", issue.repo);
+    let (origin, _) = answering_whole(move |line, now| {
+        let mut answered = issue.answer(line, now);
+        if line.contains(&line_of_it) {
+            opening(&mut answered.body, now);
+        }
+        answered
+    });
+    let home = home();
+    let mut reader = github_reader(&home, &origin, &["--live"]);
+    until_decided(&home, count);
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+    (decisions(&home), home)
+}
+
+#[test]
+fn github_an_opening_that_cant_be_read_is_vouched_for_by_no_one_said_after_it() {
+    let (said, home) = judged_opened_as(
+        Issue {
+            repo: "example/shop",
+            opened: (
+                "stranger",
+                "NONE",
+                "see https://code.example.com/example/other/pull/3",
+            ),
+            repo_answer: Some(json!({"permissions": {"pull": true, "push": true}})),
+            said: |now| {
+                let stop = format!("@{LOGIN} pineapple override");
+                vec![comment(1, "colleague", &stop, now, 90)]
+            },
+        },
+        // Without its time, the opening makes no saying of its own.
+        |opening, _| {
+            opening
+                .as_object_mut()
+                .expect("an opening is an object")
+                .remove("created_at");
+        },
+        1,
+    );
+    assert_eq!(each(&said, "verdict"), ["stop"], "the collaborator's stop");
+    assert_eq!(
+        said[0]["reaches"],
+        json!(["everything"]),
+        "not the pull request the stranger's opening named"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_stop_in_an_opening_alone_still_asks_about_its_repository_and_stands() {
+    let (said, home) = judged_opened_as(
+        Issue {
+            repo: "example/shop",
+            opened: ("colleague", "MEMBER", ""),
+            repo_answer: Some(json!({"permissions": {"pull": true, "push": true}})),
+            said: |now| vec![comment(1, "colleague2", "lunch at noon?", now, 80)],
+        },
+        |opening, now| {
+            opening["body"] = json!(format!("@{LOGIN} pineapple override"));
+            opening["created_at"] = json!(stamp(now - 90));
+        },
+        1,
+    );
+    assert_eq!(
+        each(&said, "verdict"),
+        ["stop"],
+        "a member's stop in the opening is heard, though nothing after it says a word"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
 #[test]
 fn github_a_thread_with_nothing_worth_judging_never_asks_about_its_repository() {
     let issue = Issue {
