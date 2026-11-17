@@ -149,3 +149,36 @@ pub fn until(why: &str, done: impl Fn() -> bool) {
         std::thread::sleep(Duration::from_millis(20));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::net::UnixListener;
+
+    /// A daemon's socket is on the disk from its bind, a moment before it
+    /// listens, so a test asking in between is refused: the case a daemon
+    /// starting under load gives, made here by a socket no one listens on
+    /// until a moment later.
+    #[test]
+    fn a_socket_not_listened_on_yet_is_waited_for() {
+        let folder = std::env::temp_dir().join(format!("daemon-client-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("the folder is made");
+        let socket = folder.join("daemon.sock");
+        drop(UnixListener::bind(&socket).expect("the socket is bound"));
+        let listening = {
+            let socket = socket.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(300));
+                std::fs::remove_file(&socket).expect("the old socket goes");
+                let listener = UnixListener::bind(&socket).expect("the socket is listened on");
+                let (mut stream, _) = listener.accept().expect("the client is taken");
+                writeln!(stream, "{{\"id\": 1}}").expect("the answer is sent");
+            })
+        };
+        let mut client = Client::connect(&socket);
+        assert_eq!(client.heard()["id"], 1, "the client heard no answer");
+        listening.join().expect("the listener ends");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+}
