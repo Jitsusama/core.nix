@@ -304,6 +304,11 @@ in
     wantedBy = [ "multi-user.target" ];
     after = [ "network.target" ];
     path = [ pkgs.iproute2 ];
+    # A switch restarts it in its start phase, beside the shaper, rather
+    # than stopping it with the units it stops first: on 16 November at
+    # 20:18 the record went blind from 20:18:46 to 20:18:53, and the
+    # shaper's restart, the very moment worth seeing, fell inside.
+    stopIfChanged = false;
     serviceConfig = {
       ExecStart = "${shaper}/bin/shaper record --state /var/lib/shaper-record";
       Restart = "always";
