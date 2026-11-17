@@ -18,6 +18,7 @@ QtObject {
             left();
             outside();
             refused();
+            keys();
             Qt.exit(0);
         } catch (error) {
             Expect.fail(`${error}`);
@@ -87,6 +88,23 @@ QtObject {
         const seen = Shown.noted({}, key, "d1", 1200);
         Expect.same("a yes while the launcher is walked from outside isn't sent at all",
             Shown.stamped(yes("d1"), seen, key, at(9000, true)), null);
+    }
+
+    // What each key Joel presses does to the selected ask's line: one that
+    // only moves through what's shown arms it, Return answers and leaves it
+    // as it was, and any other, typing above all, starts it again.
+    function keys() {
+        for (const name of ["Up", "Down", "Left", "Right", "Tab", "Shift+Tab", "Escape"])
+            Expect.same(`${name} arms the line, moved or not`, Shown.keyed(name, false), "arms");
+        Expect.same("j arms it where it moves", Shown.keyed("j", true), "arms");
+        Expect.same("and so does k", Shown.keyed("k", true), "arms");
+        Expect.same("j typed on the find starts it again", Shown.keyed("j", false), "resets");
+        Expect.same("as any letter typed does", Shown.keyed("l", false), "resets");
+        Expect.same("or a letter that does something else", Shown.keyed("r", false), "resets");
+        Expect.same("as does any move, G's to the last", Shown.keyed("G", true), "arms");
+        for (const name of ["Return", "Enter", "Shift+Return"])
+            Expect.same(`${name} never arms it`, Shown.keyed(name, false), "passes");
+        Expect.same("a key with no name starts it again", Shown.keyed("", false), "resets");
     }
 
     function refused() {
