@@ -1,9 +1,10 @@
 //! How the cells stand: a session left idle with work it could do, one
 //! parked on a quest already done, a quest meant to be moving that no cell
-//! runs, and the cells the map draws wrongly. On 16 November a sweep
-//! found 111 open quests with no session, 16 of them driving, and Joel
-//! found cells the map showed alone after the audit said it was done; the
-//! hour saw none of it, since it read only what shipped.
+//! runs, the cells the map draws wrongly, and a finished report no one put
+//! to Joel. On 16 November a sweep found 111 open quests with no session,
+//! 16 of them driving, Joel found cells the map showed alone after the
+//! audit said it was done, and he found a review that had waited nine
+//! hours for him; the hour saw none of it, since it read only what shipped.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -241,9 +242,26 @@ pub struct Report {
 /// another kind of document.
 #[must_use]
 pub fn report(text: &str, written: i64) -> Option<Report> {
-    let _ = (text, written);
-    None
+    let front = front(text);
+    (field(front, "kind")? == "report").then_some(())?;
+    Some(Report {
+        id: field(front, "id")?.to_owned(),
+        quest: field(front, "quest")?.to_owned(),
+        stage: field(front, "stage").unwrap_or_default().to_owned(),
+        written,
+    })
 }
+
+/// How long a drafted report may wait for a look that asks Joel about it.
+const ASKED_WITHIN: i64 = 2 * 3600;
+
+/// How far back drafted reports are judged: the looks began on 8 November,
+/// so older drafts would count misses nothing could have avoided.
+const REPORTS_SINCE: i64 = 3 * 24 * 3600;
+
+/// How long before a report's last write a look may come and still be
+/// about it, since a session puts the look up as it finishes writing.
+const LOOK_BEFORE: i64 = 3600;
 
 /// Reports and reviews still in draft, written at least 2 hours ago and in
 /// the last 3 days, by a quest still active, that no look on Joel's list
@@ -258,15 +276,57 @@ pub fn unasked(
     now: i64,
     fallback: &str,
 ) -> Measure {
-    let _ = (reports, looks, quests, now);
+    let says = "drafted reports and reviews no look on Joel's list asks him about \
+                within 2 hours (a post on the change itself isn't read)";
+    let Some(looks) = looks else {
+        return Measure {
+            key: "reports-unasked".to_owned(),
+            class: Class::Cells,
+            says: format!("{says} (the look list couldn't be read)"),
+            now: 0.0,
+            target: None,
+            owner: fallback.to_owned(),
+            behind: Vec::new(),
+        };
+    };
+    let readme: BTreeMap<&str, &Quest> = quests.iter().map(|q| (q.id.as_str(), q)).collect();
+    // A look that asks something, or still waits on the list, puts the
+    // report to Joel; one that asked nothing clears once seen.
+    let asked = |r: &Report| {
+        looks.iter().any(|look| {
+            let about = look["quest"].as_str() == Some(r.quest.as_str())
+                || look["target"].as_str().is_some_and(|t| t.contains(&r.id));
+            let after = seconds(&look["at"]).is_some_and(|at| at >= r.written - LOOK_BEFORE);
+            let puts = look["asks"].as_bool() == Some(true)
+                || look["state"].as_str() == Some("waiting");
+            about && after && puts
+        })
+    };
+    let behind: Vec<String> = reports
+        .iter()
+        .filter(|r| matches!(r.stage.as_str(), "draft" | "build"))
+        .filter(|r| (ASKED_WITHIN..=REPORTS_SINCE).contains(&(now - r.written)))
+        .filter_map(|r| {
+            let quest = readme.get(r.quest.as_str())?;
+            (quest.status == "active" && !asked(r)).then(|| {
+                let owner = quest.parent.as_deref().map_or(fallback, short_id);
+                format!(
+                    "{}'s {}, drafted {} h ago, asked nothing · {owner}",
+                    short_id(&r.quest),
+                    r.id,
+                    (now - r.written) / 3600
+                )
+            })
+        })
+        .collect();
     Measure {
         key: "reports-unasked".to_owned(),
         class: Class::Cells,
-        says: String::new(),
-        now: 0.0,
-        target: None,
+        says: says.to_owned(),
+        now: count(behind.len()),
+        target: Some(0.0),
         owner: fallback.to_owned(),
-        behind: Vec::new(),
+        behind,
     }
 }
 
