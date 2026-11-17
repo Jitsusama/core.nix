@@ -138,6 +138,13 @@ def test_the_murmurs_are_drawn_live_newest_first(
     expect(settled, "the settled murmur didn't say how").to_have_text(
         "Settled: charted this morning"
     )
+    # Its quest's name and its ties are what the node feed lets through as
+    # purpose and tied_to, so either withheld shows here.
+    said = page.locator(f'#murmurs [data-key="murmur:KESTRL:{kestrel}"] .said')
+    expect(said, "the murmur wasn't named by its quest's purpose").to_contain_text(
+        "from Watch the kestrl shore"
+    )
+    expect(said, "the murmur didn't say what it's tied to").to_contain_text("tied to OSPREY")
 
 
 def test_a_murmur_said_arrives(murmurs_opened: Opened, murmuring_node: StandIn) -> None:
@@ -167,8 +174,12 @@ def test_a_murmur_that_goes_leaves_the_page(
 ) -> None:
     page = murmurs_opened.page
     the_page_counts(page, COUNTED, "the page miscounted the murmurs")
-    murmuring_node.tell("murmur", gone=[f"murmur:KESTRL:{said_at[0]}"])
+    key = f"murmur:KESTRL:{said_at[0]}"
+    murmuring_node.tell("murmur", gone=[key])
     the_page_counts(page, "Two murmured, one still in the air.", "the gone murmur still counted")
+    expect(
+        page.locator(f'[data-key="{key}"]'), "the gone murmur's row or bird stayed"
+    ).to_have_count(0)
 
 
 def test_a_murmur_it_cannot_read_is_said_while_the_rest_draw(
@@ -223,12 +234,18 @@ def test_a_murmurs_words_are_drawn_as_words(
     # Markup, and a quote that would break out of an attribute it's written into.
     hostile = "Mend the <b>Hull</b> & \"oars\" ' onmouseover='x' <img src=x>"
     now = int(time.time())
-    murmuring_node.tell("murmur", changed=[murmur("HERONS", now, hostile, settled=hostile)])
+    hostile_murmur = murmur(
+        "HERONS", now, hostile, settled=hostile, purpose=hostile, tied_to=[f"QEST-{hostile}"]
+    )
+    murmuring_node.tell("murmur", changed=[hostile_murmur])
     row = page.locator(f'#murmurs [data-key="murmur:HERONS:{now}"]')
     expect(row.locator(".words"), "the murmur's words never reached its row").to_have_text(
         hostile, timeout=PACE_MS
     )
-    # Past a redraw, so the lede, the flock and the row have each drawn it.
+    expect(row.locator(".said"), "the hostile quest name never reached its row").to_contain_text(
+        f"from {hostile}"
+    )
+    # Past a redraw, so the lede, the flock and the row have each drawn every field.
     page.wait_for_timeout(REDRAWN_MS)
     drawn = page.locator('b:has-text("Hull"), img[src="x"], [onmouseover]')
     expect(drawn, "a murmur's words were drawn as markup somewhere").to_have_count(0)
@@ -264,10 +281,16 @@ def test_a_tap_on_a_key_the_head_shows_does_what_typing_it_does(
     the_page_counts(page, COUNTED, "the page miscounted the murmurs")
     _, osprey, tern = said_at
     shown = page.locator(".hero .keys kbd")
+    holding = page.locator("#murmurs")
     shown.filter(has_text="j").click()
     the_cursor_is_on(page, f"murmur:OSPREY:{osprey}", "a tap on j didn't step")
+    expect(holding, "the list didn't hold the keys after a tap on j").to_be_focused()
     shown.filter(has_text="k").click()
     the_cursor_is_on(page, f"murmur:TERNAA:{tern}", "a tap on k didn't step back")
+    expect(holding, "the list didn't hold the keys after a tap on k").to_be_focused()
+    # Typed now, so a tap that left the keys on the kbd would leave the cursor.
+    page.keyboard.press("j")
+    the_cursor_is_on(page, f"murmur:OSPREY:{osprey}", "a key typed after a tap didn't step")
     shown.filter(has_text="?").click()
     expect(page.locator("#keys"), "a tap on ? didn't show the keys").to_be_visible()
 
