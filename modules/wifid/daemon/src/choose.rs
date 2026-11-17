@@ -553,6 +553,13 @@ pub(crate) mod tests {
         measured
     }
 
+    /// What a card carried moving just too little to be using a wider
+    /// band's room however slowly its link sends.
+    fn resting(mut measured: Measured) -> Measured {
+        measured.moving = Some(24);
+        measured
+    }
+
     fn hall(signal: i16, busy: Option<u8>, measured: Option<Measured>) -> Other {
         Other {
             point: HALL.into(),
@@ -1181,7 +1188,7 @@ pub(crate) mod tests {
     #[test]
     fn an_idle_card_on_5_ghz_takes_a_2_4_ghz_radio_known_far_quicker() {
         let mut chooser = Chooser::default();
-        let middling = idle(carried(30, 0.0));
+        let middling = resting(carried(30, 0.0));
         let quick = near_at(-34, Some(carried(9, 0.0)));
 
         let on = (DESK, &middling, -45, CH52);
@@ -1193,25 +1200,66 @@ pub(crate) mod tests {
     #[test]
     fn an_idle_card_on_5_ghz_keeps_off_a_2_4_ghz_radio_a_little_quicker() {
         let mut chooser = Chooser::default();
-        let middling = idle(carried(30, 0.0));
-        let quick = near_at(-34, Some(carried(22, 0.0)));
+        let middling = resting(carried(20, 0.0));
+        let quick = near_at(-34, Some(carried(11, 0.0)));
 
         let on = (DESK, &middling, -45, CH52);
         let choice = chooser.choose(Instant::now(), on, &[quick], false);
 
-        assert_eq!(choice, Choice::Stay, "8 ms quicker isn't far");
+        assert_eq!(choice, Choice::Stay, "9 ms quicker isn't far");
     }
 
     #[test]
-    fn an_idle_card_on_5_ghz_keeps_off_2_4_ghz_during_a_call() {
+    fn a_card_moving_25_mbit_s_on_5_ghz_keeps_off_2_4_ghz_however_quick() {
+        let (mut more, mut less) = (Chooser::default(), Chooser::default());
+        let some = Measured {
+            moving: Some(25),
+            ..carried(30, 0.0)
+        };
+        let little = resting(carried(30, 0.0));
+        let quick = [near_at(-34, Some(carried(9, 0.0)))];
+        let now = Instant::now();
+
+        let kept = more.choose(now, (DESK, &some, -45, CH52), &quick, false);
+        let took = less.choose(now, (DESK, &little, -45, CH52), &quick, false);
+
+        assert_eq!(kept, Choice::Stay, "25 Mbit/s may be using its room");
+        assert_eq!(took, Choice::Try(NEAR.into()), "24 isn't");
+    }
+
+    #[test]
+    fn a_card_on_5_ghz_whose_kernel_says_nothing_moved_keeps_off_2_4_ghz() {
         let mut chooser = Chooser::default();
-        let middling = idle(carried(30, 0.0));
+        let unsaid = Measured {
+            moving: None,
+            ..carried(30, 0.0)
+        };
         let quick = near_at(-34, Some(carried(9, 0.0)));
 
-        let on = (DESK, &middling, -45, CH52);
-        let choice = chooser.choose(Instant::now(), on, &[quick], true);
+        let on = (DESK, &unsaid, -45, CH52);
+        let choice = chooser.choose(Instant::now(), on, &[quick], false);
 
-        assert_eq!(choice, Choice::Stay, "a call isn't moved");
+        assert_eq!(choice, Choice::Stay, "it may be using its room");
+    }
+
+    #[test]
+    fn an_idle_card_s_move_to_2_4_ghz_holds_until_it_moves_enough_for_5_ghz() {
+        let start = Instant::now();
+        let mut chooser = Chooser::default();
+        let middling = resting(carried(30, 0.0));
+        let quick = [near_at(-34, Some(carried(9, 0.0)))];
+        let tried = chooser.choose(start, (DESK, &middling, -45, CH52), &quick, false);
+        assert_eq!(tried, Choice::Try(NEAR.into()), "the move is made");
+        let slower = [desk_at(-45, Some(middling.clone()))];
+        let (quiet, busy) = (resting(carried(9, 0.0)), carried(9, 0.0));
+
+        let kept = chooser.choose(start + TRIAL, (NEAR, &quiet, -34, CH6), &slower, false);
+        let held = chooser.choose(start + SETTLE, (NEAR, &quiet, -34, CH6), &slower, false);
+        let used = chooser.choose(start + SETTLE, (NEAR, &busy, -34, CH6), &slower, false);
+
+        assert_eq!(kept, Choice::Stay, "9 ms is no worse than 30");
+        assert_eq!(held, Choice::Stay, "5 GHz is slower, and unused");
+        assert_eq!(used, Choice::Try(DESK.into()), "its room is used now");
     }
 
     /// The hall's 5 GHz radio as the card on it hears it, saying how busy

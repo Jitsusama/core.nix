@@ -455,6 +455,19 @@ mod tests {
     }
 
     #[test]
+    fn a_move_to_a_narrower_band_says_so() {
+        let on = joined(DESK);
+        let narrow = other(HALL, Some(carried(9)));
+
+        let why = tried(&on, (&carried(30), 5260, None), &narrow, None);
+
+        assert!(
+            why.ends_with("in the last two minutes, on a narrower band"),
+            "a move from 5 GHz to 2.4 GHz says it's off the band: {why}"
+        );
+    }
+
+    #[test]
     fn a_card_keeping_off_a_point_it_was_moved_to_says_where_it_is() {
         let why = kept_off(&joined(HALL), DESK);
 
