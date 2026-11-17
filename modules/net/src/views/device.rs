@@ -453,11 +453,9 @@ mod tests {
         // Every unit sits after its column's name, since a label's first
         // word always goes up: a bare MHZ or MB/S would misread.
         let heads = [
-            (
-                "Modem",
-                "DOWN",
-                &["CENTRE MHz", "WIDTH MHz", "POWER dBmV", "SNR dB"][..],
-            ),
+            // The modem's fixture gives no channel widths, so its WIDTH
+            // column is left out; the radios' is read on Hall.
+            ("Modem", "DOWN", &["CENTRE MHz", "POWER dBmV", "SNR dB"][..]),
             ("Study", "LINKED TO", &["SPEED Mb/s", "SIGNAL dBm"][..]),
             ("Hall", "PORT", &["SPEED Mb/s"][..]),
             ("Hall", "RADIO", &["WIDTH MHz", "POWER dBm"][..]),
