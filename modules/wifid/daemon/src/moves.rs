@@ -190,7 +190,7 @@ async fn look(
         Ok(true) => {
             let _ = looked.send(card).await;
         }
-        Ok(false) => eprintln!("<7>{card}'s look didn't end in time to choose again"),
+        Ok(false) => println!("<6>{card}'s look didn't end in time to choose again at once"),
         Err(refused) => {
             eprintln!("<4>{card} couldn't look for another access point: {refused:?}");
         }

@@ -276,6 +276,9 @@ async fn looked(
 /// `LOOKING` for the look to end, saying whether it did; the chooser asks
 /// this of a card hearing no better access point of its network
 /// (moves.rs). A look is answered once it's asked for, not once it ends.
+/// Any look's end is heard as this one's, as a move's look is: one another
+/// card or the shell asked for may end first, and the card chosen for
+/// again then hears nothing new, and stays until its next minute.
 pub(crate) async fn look(
     asks: &mpsc::Sender<Ask>,
     mut air: watch::Receiver<State>,

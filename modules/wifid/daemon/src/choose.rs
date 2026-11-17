@@ -971,6 +971,22 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_look_ended_with_no_choice_then_leaves_the_next_minute_as_it_was() {
+        let mut chooser = Chooser::default();
+        let now = Instant::now();
+        let slow = carried(60, 0.0);
+        let on = (DESK, &slow, -45, CH6);
+
+        let heard = [near_at(-40, None)];
+
+        chooser.choose(now, on, &[], false);
+        chooser.looked_over(now + Duration::from_secs(12));
+        let next = chooser.choose(now + Duration::from_secs(60), on, &heard, false);
+
+        assert_eq!(next, Choice::Try(NEAR.into()), "two bad minutes");
+    }
+
+    #[test]
     fn a_card_on_2_4_ghz_carrying_well_tries_5_ghz_heard_well_enough() {
         let mut chooser = Chooser::default();
         let well = carried(9, 0.0);
