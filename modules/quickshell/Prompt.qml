@@ -247,8 +247,8 @@ Item {
     property real quietUntil: 0
     // Whether Return waits for a key typed first.
     property bool returnWaits: false
-    // How many keys the quiet dropped since the line opened, which the launcher's showing
-    // says, so a check knows which of its keys came inside it however late they landed. A
+    // How many keys the quiet dropped since the line opened, which Super+S's line says in the
+    // launcher's showing, so a check knows which of its keys came inside it however late they landed. A
     // press repeated because its release came late is the same key, so it isn't counted.
     property int quietDropped: 0
     function linked() {

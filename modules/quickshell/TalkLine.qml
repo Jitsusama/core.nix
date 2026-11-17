@@ -776,7 +776,8 @@ Scope {
     // how the talk stands and what it offers, and how far down the screen its card stands.
     function shown() {
         return { up, keys: up && prompt.Window.active, typed: prompt.text, mode: prompt.mode,
-            caret: prompt.caret, hears: root.hears === null ? "" : root.said.hearer ?? "",
+            caret: prompt.caret, quietDropped: prompt.quietDropped,
+            hears: root.hears === null ? "" : root.said.hearer ?? "",
             about: foot.text, attached: root.shownRows.map(row => ({ kind: row.kind,
                 text: row.text, note: row.note })), lines: prompt.typedLines, talk: root.talk?.said ?? "",
             standing: root.standingOf(root.exchanges[0] ?? null), talks: root.exchanges,
@@ -784,7 +785,7 @@ Scope {
             menu: commandMenu.shown.map(one => commandMenu.named(one)),
             menuDrawn: commandMenu.drawn, menuChosen: commandMenu.chosen,
             menuEnds: commandMenu.y + commandMenu.height, footAt: foot.y,
-            top: up ? surface.margins.top + card.reach : -1, quietDropped: prompt.quietDropped,
+            top: up ? surface.margins.top + card.reach : -1,
             bottom: up ? surface.margins.top + card.reach + card.height : -1,
             screen: surface.screen?.height ?? 0, scrolled: spoken.scrolled, picked,
             thread: root.thread, nerdy, threadScrolled: threadView.scrolled,

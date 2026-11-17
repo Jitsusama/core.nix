@@ -2691,6 +2691,12 @@ def test_talk_to_the_voids_address_opens_super_s_line_as_its_talk_does(shell: Sh
     shell.launcher_until(lambda shown: not shown["line"]["up"])
 
 
+# What a case types into the void's line a link opened, and how often it tries to type inside
+# the link's quiet.
+VOID_KEYS = "hi"
+VOID_TRIES = 5
+
+
 def test_a_link_to_the_void_opens_nothing_over_the_launcher_and_its_line_drops_keys_at_first(
     shell: Shell,
 ) -> None:
@@ -2708,45 +2714,56 @@ def test_a_link_to_the_void_opens_nothing_over_the_launcher_and_its_line_drops_k
     assert not shell.showing()["line"]["up"], shell.showing()
     shell.close_launcher()
     # Typed past the quiet, every key is taken.
-    assert typed_into_the_void(shell, late=True) == (0, "hi")
+    assert typed_into_the_void(shell, late=True) == (0, VOID_KEYS)
     # Under load keys can land past the quiet however soon they're sent, so each try asks how
-    # many it dropped: those are the first, and the rest are typed.
-    for _ in range(3):
+    # many it dropped: those are the first, and the rest are typed. Tries run under the same
+    # load, so there are enough of them that one lands inside the 700 ms on a busy builder.
+    for _ in range(VOID_TRIES):
         dropped, typed = typed_into_the_void(shell, late=False)
-        assert typed == "hi"[dropped:], (dropped, typed)
+        assert typed == VOID_KEYS[dropped:], (dropped, typed)
         if dropped:
             return
-    pytest.fail("no key landed inside the link's quiet in three tries")
+    pytest.fail(f"no key landed inside the link's quiet in {VOID_TRIES} tries")
 
 
 def typed_into_the_void(shell: Shell, *, late: bool) -> tuple[int, str]:
-    """Open the void's line by a link and type "hi", late or at once, and empty it again.
+    """Open the void's line by a link and type VOID_KEYS, late or at once, and empty it again.
 
     It gives how many keys the line says its quiet dropped, and what it took of them, waiting
     until one or the other has every key, so a key that lands late is still counted.
     """
     did = followed(shell, "talkTo", "void", quiet=late)
     assert did["done"], did
-    shell.launcher_until(lambda shown: shown["line"]["up"] and shown["line"]["keys"])
+    # What's typed already is read from the showing the wait passes on, since asking again
+    # would spend the quiet on a round trip.
+    was = [""]
+
+    def up(shown: Json) -> bool:
+        was[0] = shown["line"]["typed"]
+        return bool(shown["line"]["up"] and shown["line"]["keys"])
+
+    shell.launcher_until(up)
     try:
-        was = shell.showing()["line"]["typed"]
-        shell.send_chars("hi")
+        shell.send_chars(VOID_KEYS)
         shell.launcher_until(
             lambda shown: (
-                shown["line"]["quietDropped"] + len(shown["line"]["typed"]) - len(was) == 2
+                shown["line"]["quietDropped"] + len(shown["line"]["typed"]) - len(was[0])
+                == len(VOID_KEYS)
             )
         )
         line = shell.showing()["line"]
-        assert line["typed"].startswith(was), (was, line)
-        return line["quietDropped"], line["typed"][len(was) :]
+        assert line["typed"].startswith(was[0]), (was[0], line)
+        return line["quietDropped"], line["typed"][len(was[0]) :]
     finally:
-        # Past the quiet, so the key that empties the line isn't dropped as well, and the
-        # cases after this one find it as they would.
-        time.sleep(LINK_QUIET)
-        shell.send_key("ctrl-u")
-        shell.launcher_until(lambda shown: shown["line"]["typed"] == "")
-        shell.as_account(shell.ipc("line"))
-        shell.launcher_until(lambda shown: not shown["line"]["up"])
+        try:
+            # Past the quiet, so the key that empties the line isn't dropped as well, and the
+            # cases after this one find it as they would.
+            time.sleep(LINK_QUIET)
+            shell.send_key("ctrl-u")
+            shell.launcher_until(lambda shown: shown["line"]["typed"] == "")
+        finally:
+            shell.as_account(shell.ipc("line"))
+            shell.launcher_until(lambda shown: not shown["line"]["up"])
 
 
 def test_super_s_line_shows_every_line_still_open_after_a_restart_an_earlier_days_too(
