@@ -18,6 +18,7 @@
 use std::collections::VecDeque;
 use std::sync::{Condvar, Mutex};
 use std::thread::Scope;
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
@@ -134,6 +135,10 @@ impl Job {
 /// unrun: a day, since a Mac away overnight is usual, and its owner can
 /// still compare it by hand.
 const UNRUN: u64 = 24 * 60 * 60;
+
+/// How often a net leaving looks again whether the write it waits on only
+/// builds or has ended.
+const LOOK_AGAIN: Duration = Duration::from_millis(200);
 
 /// How many searches waiting for room may ask main's newest head at once
 /// whether it fixed their test.
@@ -259,19 +264,36 @@ impl<'a> Settler<'a> {
     /// It says when a write holds it and when it goes, since on 16 November
     /// a watcher told at 08:28 hung to 08:33, when it was restarted, and
     /// nothing showed whether a write held it or its own exit did.
+    ///
+    /// A write that only builds, before anything it decided lands, isn't
+    /// waited on: its job is kept on disk, and the next build takes it up.
     pub fn leave<R>(&self, end: impl FnOnce() -> R) -> R {
-        let _writing = match self.writing.try_lock() {
-            Ok(writing) => writing,
-            Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
-            Err(std::sync::TryLockError::WouldBlock) => {
-                self.state
-                    .say("leaving waits for a write to the hold, a settle's or a round's");
-                lock(&self.writing)
-            }
-        };
-        self.state
-            .say("nothing writes the hold now, so this leaves");
-        end()
+        let mut said = false;
+        loop {
+            let _writing = match self.writing.try_lock() {
+                Ok(writing) => writing,
+                Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    if let Some(_building) = self.state.only_building() {
+                        self.state.say(
+                            "the write to the hold only builds, and nothing it decided has \
+                             landed, so this leaves, and the next build takes its job up again",
+                        );
+                        return end();
+                    }
+                    if !said {
+                        self.state
+                            .say("leaving waits for a write to the hold, a settle's or a round's");
+                        said = true;
+                    }
+                    std::thread::sleep(LOOK_AGAIN);
+                    continue;
+                }
+            };
+            self.state
+                .say("nothing writes the hold now, so this leaves");
+            return end();
+        }
     }
 
     /// Run `during` while the workers wait for the queue, as a worker
@@ -295,7 +317,7 @@ impl<'a> Settler<'a> {
     /// Run `write` while nothing else writes the hold.
     pub fn write<R>(&self, write: impl FnOnce() -> R) -> R {
         let _writing = lock(&self.writing);
-        write()
+        self.state.writing(write)
     }
 
     /// Run `write` unless a settle is writing the hold, for what a round
@@ -311,7 +333,7 @@ impl<'a> Settler<'a> {
             Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
             Err(std::sync::TryLockError::WouldBlock) => return None,
         };
-        Some(write())
+        Some(self.state.writing(write))
     }
 
     /// How many merges a search's next step tries: the room `AT_ONCE` names,

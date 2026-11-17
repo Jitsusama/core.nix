@@ -30,7 +30,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::thread::{self, ThreadId};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
@@ -44,6 +45,28 @@ pub struct State {
     /// while a search's two runs of it there still went, about 35 minutes
     /// each, and the round ended only with the last.
     turns: Mutex<HashMap<(String, String), Turn>>,
+    writer: Mutex<Writer>,
+}
+
+/// Who writes the hold now, and whether that write only builds, before
+/// anything it decided lands.
+#[derive(Default)]
+pub struct Writer {
+    by: Option<ThreadId>,
+    building: bool,
+}
+
+/// The writer let go when a write ends, however it ends.
+struct Written<'a>(&'a Mutex<Writer>);
+
+impl Drop for Written<'_> {
+    fn drop(&mut self) {
+        *locked(self.0) = Writer::default();
+    }
+}
+
+fn locked(writer: &Mutex<Writer>) -> MutexGuard<'_, Writer> {
+    writer.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// What whoever runs a check at a commit holds while it does.
@@ -79,12 +102,45 @@ impl State {
         Self {
             root,
             turns: Mutex::default(),
+            writer: Mutex::default(),
         }
     }
 
-    /// Run `runs`, a write's builds before anything it decided lands.
+    /// Run `write` as the one write to the hold, whose builds `building`
+    /// marks. The caller holds the write's own lock.
+    pub fn writing<R>(&self, write: impl FnOnce() -> R) -> R {
+        locked(&self.writer).by = Some(thread::current().id());
+        let _written = Written(&self.writer);
+        write()
+    }
+
+    /// Run `runs`, a write's builds before anything it decided lands, so a
+    /// net leaving may end during them: the job stays on disk and the next
+    /// build takes it up again. A build outside the write marks nothing,
+    /// since the write may be landing meanwhile. On 17 November a net told
+    /// at 00:45 that another build was installed waited to 01:37 on a Mac
+    /// revert's comparison inside its write, testing nothing meanwhile.
     pub fn building<R>(&self, runs: impl FnOnce() -> R) -> R {
-        runs()
+        let mine = {
+            let mut writer = locked(&self.writer);
+            let mine = writer.by == Some(thread::current().id());
+            writer.building |= mine;
+            mine
+        };
+        let ran = runs();
+        if mine {
+            // A net leaving holds the writer as it ends, so the write
+            // goes no further than its builds.
+            locked(&self.writer).building = false;
+        }
+        ran
+    }
+
+    /// The writer, held, while the write to the hold only builds; whoever
+    /// holds it may end the net there.
+    pub fn only_building(&self) -> Option<MutexGuard<'_, Writer>> {
+        let writer = locked(&self.writer);
+        writer.building.then_some(writer)
     }
 
     /// The lock whoever runs `check` at `commit` holds while it does.

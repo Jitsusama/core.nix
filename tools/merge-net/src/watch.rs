@@ -980,7 +980,7 @@ fn fixed_forward(
     if newest == head || same_drv(world, &newest, head, test) {
         return Ok(false);
     }
-    let outcome = attempt_together(world, state, &newest, test);
+    let outcome = state.building(|| attempt_together(world, state, &newest, test));
     told_fixed(world, state, head, &newest, test, commit, outcome)
 }
 
@@ -2270,13 +2270,15 @@ fn revert_wanted<'a>(
 ) -> impl Fn(&str, &str) -> Result<bool, String> + 'a {
     move |newest: &str, reverted: &str| {
         let test = &found.test;
-        let (without, with) = std::thread::scope(|scope| {
-            let with = scope.spawn(|| attempt_together(world, state, reverted, test));
-            let without = match failed_at {
-                Some(failed) if same_drv(world, newest, failed, test) => Outcome::Failed,
-                _ => attempt_together(world, state, newest, test),
-            };
-            (without, with.join().unwrap_or(Outcome::Unsent))
+        let (without, with) = state.building(|| {
+            std::thread::scope(|scope| {
+                let with = scope.spawn(|| attempt_together(world, state, reverted, test));
+                let without = match failed_at {
+                    Some(failed) if same_drv(world, newest, failed, test) => Outcome::Failed,
+                    _ => attempt_together(world, state, newest, test),
+                };
+                (without, with.join().unwrap_or(Outcome::Unsent))
+            })
         });
         if without == Outcome::Unsent || with == Outcome::Unsent {
             return Err(format!(
