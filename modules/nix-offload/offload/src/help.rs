@@ -155,7 +155,7 @@ fn there() -> Help {
     )
     .option("--longest SECONDS", "with --run, gives it SECONDS at most")
     .option("--takes", "names a word each for what this there takes")
-    .exit(Exit::Failed, "a build failed")
+    .exit(Exit::Failed, "nix failed, as an evaluation does")
     .exit(
         Exit::Unavailable,
         "part of it was left unbuilt, owed for when a machine that builds it \
@@ -166,7 +166,10 @@ fn there() -> Help {
         "no builder took it, so nothing was built: with --changed, \
          changed-checks builds it here, and otherwise ask again once one is lent",
     )
-    .passes("with --run, the command's own code")
+    .passes(
+        "nix's own code, 100 for a failed build; changed-checks' with --changed; \
+         the command's with --run",
+    )
 }
 
 fn outside() -> Help {
@@ -194,6 +197,7 @@ fn outside() -> Help {
         "from 2026-11-28, when the exemption ends, it runs nothing",
     )
     .exit(Exit::Config, "HOME isn't set, so it can't run the call")
+    .exit(Exit::Bug, "it couldn't start the call")
     .passes("the there call's own code, once it runs")
 }
 
@@ -224,7 +228,15 @@ fn ask() -> Help {
         "how long it waits for the result, else 7200",
     )
     .exit(Exit::BadInput, "what it was asked can't be gated")
+    .exit(Exit::NotFound, "it isn't in a git tree with a commit")
+    .exit(
+        Exit::Unavailable,
+        "mycelium couldn't share the quest or start the gate",
+    )
+    .exit(Exit::Bug, "it couldn't leave the gate's request")
     .exit(Exit::TryAgain, "no result came in time")
+    .exit(Exit::Config, "neither --on nor gates-on names a machine")
+    .passes("the gate's own code, once the gate ran")
 }
 
 fn answer() -> Help {
@@ -303,6 +315,8 @@ fn progress() -> Help {
     )
     .argument("HOST", "the builder, as ssh calls it")
     .example("nix-offload progress nix-offload", "for the first builder")
+    .exit(Exit::Unavailable, "ssh couldn't reach the builder")
+    .exit(Exit::TryAgain, "no lender lends a builder by that name")
 }
 
 fn report() -> Help {
@@ -326,6 +340,7 @@ fn cargo() -> Help {
         "runs a crate's tests",
     )
     .option("--cargo PATH", "the cargo to run")
+    .exit(Exit::Unavailable, "cargo couldn't start")
     .passes("cargo's own code, wherever it ran")
 }
 
@@ -337,6 +352,7 @@ fn scoped() -> Help {
     .argument("-- PROGRAM WORD...", "the program and its words")
     .example("nix-offload scoped -- git status", "as a gate's git runs")
     .exit(Exit::Unavailable, "Landlock isn't here, so it ran nothing")
+    .exit(Exit::Bug, "it couldn't start the program")
 }
 
 fn serve() -> Help {
@@ -386,6 +402,14 @@ fn serve() -> Help {
         "--freeing PATH",
         "names what frees each builder beside once it's full",
     )
+    .exit(
+        Exit::Failed,
+        "another serve is running, or it couldn't make its lock",
+    )
+    .exit(
+        Exit::TryAgain,
+        "it handed over to its successor, which its unit counts done",
+    )
 }
 
 fn stand() -> Help {
@@ -396,6 +420,10 @@ fn stand() -> Help {
     .example("nix-offload stand --standing PATH", "as its unit runs it")
     .option("--standing PATH", "the standing builders")
     .option("--beside PATH", "the builders beside them")
+    .exit(
+        Exit::TryAgain,
+        "it handed over to its successor, which its unit counts done",
+    )
 }
 
 fn relay() -> Help {
@@ -409,6 +437,7 @@ fn relay() -> Help {
     )
     .option("--listen ADDRESS", "where it listens")
     .option("--to ADDRESS", "where it relays to")
+    .exit(Exit::Failed, "it couldn't listen, or gave up relaying")
 }
 
 fn lines() -> Help {
@@ -421,6 +450,7 @@ fn lines() -> Help {
         "as its unit runs it",
     )
     .option("--config PATH", "its settings")
+    .exit(Exit::Config, "its settings can't be read")
 }
 
 fn prove_standing() -> Help {
@@ -433,6 +463,7 @@ fn prove_standing() -> Help {
         "as its unit runs it",
     )
     .option("--config PATH", "its settings")
+    .exit(Exit::Config, "its settings can't be read")
 }
 
 fn keep() -> Help {
