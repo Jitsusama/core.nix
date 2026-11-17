@@ -87,7 +87,10 @@ def browser() -> Iterator[Browser]:
         # The page is reached by the name a browser sends to this machine by
         # itself, with no resolver in the sandbox to say where it is.
         launched = playwright.chromium.launch(
-            args=["--host-resolver-rules=MAP sites.localhost 127.0.0.1"]
+            # The build sandbox's /dev/shm is small, and a tab that outgrows it
+            # crashes mid-load ("Page crashed"), so the browser keeps that memory
+            # in a temporary file instead.
+            args=["--host-resolver-rules=MAP sites.localhost 127.0.0.1", "--disable-dev-shm-usage"]
         )
         yield launched
         launched.close()
@@ -106,6 +109,9 @@ class Opened:
         )
         self.page: Page = self.context.new_page()
         self.logged: list[str] = []
+        # Words a test expects the page to log from some line on, each with
+        # where in the log it began expecting them (see expecting).
+        self.expected: list[tuple[str, int]] = []
         self.page.on("console", self._heard)
         self.page.on("pageerror", lambda error: self.logged.append(f"thrown: {error}"))
         self.page.goto(address)
@@ -113,6 +119,20 @@ class Opened:
     def _heard(self, message: ConsoleMessage) -> None:
         if message.type in {"error", "warning"}:
             self.logged.append(f"{message.type}: {message.text}")
+
+    def expecting(self, words: str) -> None:
+        """Let the browser log `words` from now on, without holding it against the page.
+
+        For a line a test causes, such as the browser's own for a WebSocket that
+        couldn't connect once the server is taken away. It never covers what was
+        logged before, nor anything the page threw.
+        """
+        self.expected.append((words, len(self.logged)))
+
+    def _expected(self, at: int, line: str) -> bool:
+        if line.startswith("thrown: "):
+            return False
+        return any(words in line and at >= since for words, since in self.expected)
 
     def passes_the_skills_checks(self) -> None:
         """Hold the page to the web-design skill's checks, each finding nothing."""
@@ -124,4 +144,5 @@ class Opened:
     def close(self) -> None:
         """Close the tab, failing if the page logged anything while it was open."""
         self.context.close()
-        assert self.logged == [], f"the page logged {self.logged}"
+        unexpected = [line for at, line in enumerate(self.logged) if not self._expected(at, line)]
+        assert unexpected == [], f"the page logged {unexpected}"

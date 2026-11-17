@@ -188,10 +188,10 @@ The page watches the machine's mycelium node through the sites' server,
 which core.nix's local-sites module carries: its `network`, `cell`,
 `machine` and `message` kinds, the same records `mycelium networks -o
 json`, `mycelium machines` and `mycelium messages` print. The server
-passes only the fields the page draws, and of the messages never their
-words. The line over the map says whether it is live and since when, and
-when the node or the server can't be reached, it keeps the last map and
-says so. What it draws holds:
+passes networks and cells whole, of the machines only the fields the
+page draws, and of the messages never their words. The line over the
+map says whether it is live and since when, and when the node or the
+server can't be reached, it keeps the last map and says so. What it draws holds:
 
 - `at`: when the map was last handed a change.
 - `cells`: every session, each with its name (its address), title, window

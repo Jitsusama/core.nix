@@ -2,13 +2,15 @@
 
 The page is the one Nix builds, served by the real local-sites server beside a
 stand-in node (modules/local-sites/tests/stand_in_daemon.py) holding a small
-realm under test names, node.json. It must say it's live with the realm drawn,
-follow a change within its pace, say broken when the node stops and live again
-when it's back, say stale when the server goes, and pass the web-design
-skill's page checks and the map's own (site-checks.js) at a phone's width and
-a desk's in both looks. Any error
-the page logs fails it, since that is how the map froze on "reading" unseen.
-The server, the browser and the tab are modules/local-sites/tests/live_page.py's.
+realm under test names, node.json, through the node feed exactly as home.nix
+declares it for a machine in a realm (NODE_KINDS). It must say it's live with
+the realm drawn, follow a change within its pace, say broken when the node
+stops while keeping the realm drawn, and live again when it's back, say stale
+when the server goes, draw a record's words as words and never as markup, and
+pass the web-design skill's page checks and the map's own (site-checks.js) at
+a phone's width and a desk's in both looks. Any error the page logs fails it,
+since that is how the map froze on "reading" unseen. The server, the browser
+and the tab are modules/local-sites/tests/live_page.py's.
 """
 
 import json
@@ -27,13 +29,18 @@ if TYPE_CHECKING:
 HERE = Path(__file__).parent
 # The map redraws at most every 2 seconds, so a change must show well inside this.
 PACE_MS = 6000
-# The feed waits up to 30 seconds between tries once the node has been gone a while.
-RETRY_MS = 35000
-# What node.json's realm comes to on the map.
+# The server watches a daemon that went again every 2 seconds (upstream.rs's
+# AGAIN) while the page stays connected to it, so a node back is live well
+# inside this.
+BACK_MS = 12000
+# A page hands the map a reading at most every 2 seconds (site.ts's FLOOR_MS),
+# so waiting past one hand-over lets a page that dropped what it drew on a
+# change show it, before the test looks for what should have stayed.
+REDRAWN_MS = 2500
+# What node.json's realm comes to on the map, every part of the count.
 COUNTED = "8 cells, 2 moving, 1 stuck"
-# The fields of a machine and a message the map draws, as a machine's feed declares them.
-MACHINE = ["name", "state", "os", "system", "cpu", "memory", "disk", "power", "measured_at"]
-MESSAGE = ["at", "from", "intent", "groups"]
+# The browser's own line for a feed that couldn't connect, once the server is gone.
+UNREACHED = "WebSocket connection to"
 
 
 @pytest.fixture
@@ -46,22 +53,16 @@ def mycelium_node(tmp_path: Path) -> Iterator[StandIn]:
 
 @pytest.fixture
 def mycelium_served(tmp_path: Path, mycelium_node: StandIn) -> Iterator[Served]:
-    kinds = {
-        "network": {},
-        "cell": {},
-        "machine": {"fields": MACHINE},
-        "message": {"fields": MESSAGE},
-    }
-    node = {"socket": str(mycelium_node.path), "kinds": kinds}
+    node = {"socket": str(mycelium_node.path), "kinds": json.loads(os.environ["NODE_KINDS"])}
     with serving(tmp_path, {"mycelium": os.environ["MYCELIUM_SITE"]}, {"node": node}) as served:
         yield served
 
 
 @pytest.fixture
-def mycelium_page(browser: Browser, mycelium_served: Served) -> Iterator[Page]:
+def mycelium_opened(browser: Browser, mycelium_served: Served) -> Iterator[Opened]:
     root, _ = mycelium_served
     opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
-    yield opened.page
+    yield opened
     opened.close()
 
 
@@ -71,49 +72,85 @@ def the_map_stands(page: Page, state: str, timeout: int = PACE_MS) -> None:
     )
 
 
-def test_the_map_draws_the_realm_live(mycelium_page: Page) -> None:
-    the_map_stands(mycelium_page, "live")
-    expect(mycelium_page.locator("#world .hub").first, "the map drew no network").to_be_visible()
-    expect(mycelium_page.locator("#status-words"), "the map miscounted the realm").to_have_text(
-        COUNTED
-    )
+def the_map_counts(page: Page, counted: str, why: str, timeout: int = PACE_MS) -> None:
+    expect(page.locator("#status-words"), why).to_have_text(counted, timeout=timeout)
 
 
-def test_a_cell_that_moves_is_drawn_moving(mycelium_page: Page, mycelium_node: StandIn) -> None:
-    the_map_stands(mycelium_page, "live")
-    words = mycelium_page.locator("#status-words")
-    expect(words, "the map miscounted the realm").to_have_text(COUNTED)
+def test_the_map_draws_the_realm_live(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    expect(page.locator("#world .hub").first, "the map drew no network").to_be_visible()
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
+
+
+def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_node: StandIn) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
     mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
-    expect(words, "the moved cell wasn't drawn moving").to_contain_text(
-        "8 cells, 3 moving", timeout=PACE_MS
-    )
+    the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the moved cell wasn't drawn moving")
 
 
-def test_a_cell_that_goes_leaves_the_map(mycelium_page: Page, mycelium_node: StandIn) -> None:
-    the_map_stands(mycelium_page, "live")
+def test_a_cell_that_goes_leaves_the_map(mycelium_opened: Opened, mycelium_node: StandIn) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
     mycelium_node.tell("cell", gone=["cell:HERON1"])
-    expect(mycelium_page.locator("#status-words"), "the gone cell was still counted").to_have_text(
-        "7 cells, 2 moving", timeout=PACE_MS
-    )
+    the_map_counts(page, "7 cells, 2 moving", "the gone cell was still counted")
 
 
-def test_a_node_that_stops_is_said_broken_and_then_live(
-    mycelium_page: Page, mycelium_node: StandIn
+def test_a_node_that_stops_is_said_broken_with_the_realm_kept_then_live(
+    mycelium_opened: Opened, mycelium_node: StandIn
 ) -> None:
-    the_map_stands(mycelium_page, "live")
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
     mycelium_node.leave()
-    the_map_stands(mycelium_page, "broken")
-    expect(mycelium_page.locator("#asof"), "the map didn't say since when").to_contain_text("since")
+    the_map_stands(page, "broken")
+    expect(page.locator("#asof"), "the map didn't say it wasn't live").to_contain_text(
+        "Not live since"
+    )
+    page.wait_for_timeout(REDRAWN_MS)
+    expect(page.locator("#world .hub").first, "the broken map dropped the realm").to_be_visible()
+    the_map_counts(page, COUNTED, "the broken map lost count of the realm")
     mycelium_node.start()
-    the_map_stands(mycelium_page, "live", RETRY_MS)
-    expect(mycelium_page.locator("#status-words"), "the map lost the realm").to_have_text(COUNTED)
+    the_map_stands(page, "live", BACK_MS)
+    # A change after it's back shows the watch delivers again, not just the old map.
+    mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
+    the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the map back live missed a change")
 
 
-def test_a_server_that_goes_is_said_stale(mycelium_page: Page, mycelium_served: Served) -> None:
-    the_map_stands(mycelium_page, "live")
+def test_a_server_that_goes_is_said_stale(mycelium_opened: Opened, mycelium_served: Served) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    # The feed tries the server again a second on, which the browser logs.
+    mycelium_opened.expecting(UNREACHED)
     _, server = mycelium_served
     server.kill()
-    the_map_stands(mycelium_page, "stale")
+    the_map_stands(page, "stale")
+    page.wait_for_timeout(REDRAWN_MS)
+    expect(page.locator("#world .hub").first, "the stale map dropped the realm").to_be_visible()
+    the_map_counts(page, COUNTED, "the stale map lost count of the realm")
+
+
+def test_a_records_words_are_drawn_as_words(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
+    # Markup, and a quote that would break out of an attribute it's written into.
+    hostile = "Paint the <b>Hull</b> & \"oars\" ' onmouseover='x' <img src=x>"
+    mycelium_node.tell("cell", changed=[{"key": "cell:GULL01", "title": hostile}])
+    page.evaluate("location.hash = '#cell=GULL01'")
+    # The panel says a cell's title as what it's for, so the words show there.
+    expect(page.locator("#panel-body"), "the cell's words never reached its panel").to_contain_text(
+        "<b>Hull</b>", timeout=PACE_MS
+    )
+    # Past a hand-over, so every other place the title is drawn has drawn it too.
+    page.wait_for_timeout(REDRAWN_MS)
+    drawn = page.locator('b:has-text("Hull"), img[src="x"], [onmouseover]')
+    expect(drawn, "a cell's title was drawn as markup somewhere on the map").to_have_count(0)
 
 
 @pytest.mark.parametrize("look", LOOKS)
@@ -123,10 +160,12 @@ def test_the_map_passes_the_skills_page_checks_and_its_own(
 ) -> None:
     root, _ = mycelium_served
     opened = Opened(browser, f"{root}mycelium/", size, look)
-    the_map_stands(opened.page, "live")
-    expect(opened.page.locator("#status-words"), "the map didn't draw").to_have_text(COUNTED)
-    opened.passes_the_skills_checks()
-    # The map's own, after the skill's, since it opens things through the hash.
-    found = opened.page.evaluate((HERE / "site-checks.js").read_text())
-    assert found == [], f"site-checks.js at {size} in the {look} look found {found}"
-    opened.close()
+    try:
+        the_map_stands(opened.page, "live")
+        the_map_counts(opened.page, COUNTED, "the map didn't draw")
+        opened.passes_the_skills_checks()
+        # The map's own, after the skill's, since it opens things through the hash.
+        found = opened.page.evaluate((HERE / "site-checks.js").read_text())
+        assert found == [], f"site-checks.js at {size} in the {look} look found {found}"
+    finally:
+        opened.close()
