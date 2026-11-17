@@ -17,7 +17,9 @@
 //! forward, never forced, and GitHub marks each pull request merged. When
 //! main moved meanwhile, the candidate is cut again on it, and goes when
 //! its pass still speaks for it as one for a rebased change would
-//! (`earlier.rs`); otherwise it runs again with whoever has boarded since.
+//! (`earlier.rs`); otherwise it runs again with whoever has boarded since,
+//! holding the right of way meanwhile, so changes that would merge alone
+//! board it rather than move main again (`right_of_way.rs`).
 //!
 //! A candidate that fails splits: the train takes the first half of its
 //! riders to board, and halves again while they fail, so the riders that
@@ -38,6 +40,8 @@ use std::process::{Command, ExitCode};
 use serde_json::{Value, json};
 
 use crate::state::short;
+use right_of_way::Ended;
+pub use right_of_way::gives_way;
 
 /// A change waiting on the train.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -288,6 +292,14 @@ pub fn fell_said(head: &str) -> Option<String> {
     fell(&root, head).map(|why| format!("it fell off the merge train: {why}"))
 }
 
+/// Do to the right of way of the train under `root` what a run that
+/// `ended` so does, saying so in the train's log.
+fn way(root: &Path, ended: &Ended) {
+    if let Some(said) = right_of_way::follow(root, ended, crate::state::now()) {
+        println!("merge-net: {said}");
+    }
+}
+
 /// Whether the train's unit goes.
 fn going() -> bool {
     let shown = systemctl(&["show", UNIT, "--property=ActiveState"]);
@@ -420,6 +432,19 @@ impl Splitting {
 /// When its checkout can't be made.
 pub fn ride(url: &str) -> Result<ExitCode, String> {
     let root = crate::state::State::from_env().root;
+    // A train that was killed left its right of way behind, so one
+    // starting afresh holds none, and however it stops, changes merge
+    // alone again.
+    way(&root, &Ended::Otherwise);
+    let ridden = ride_from(&root, url);
+    way(&root, &Ended::Otherwise);
+    ridden
+}
+
+/// Ride the train whose state is under `root` from the repository at
+/// `url`, until no one waits on it.
+fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
+    let root = root.to_path_buf();
     let checkout = folder(&root).join("checkout");
     if !checkout.join(".git").exists() {
         run_git(
@@ -468,6 +493,7 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
                 .join(", ")
         );
         if !gate(&checkout, &log) {
+            way(&root, &Ended::Otherwise);
             red(&root, &candidate, &log, &done.merged, &mut splitting);
             continue;
         }
@@ -479,9 +505,12 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
                 }
                 keep_landed(&root, &landed, &done.merged, crate::state::now() - began);
                 println!("merge-net: the train landed {} on main", short(&landed));
+                let left = !riders(&root).is_empty();
+                way(&root, &Ended::Landed { left });
             }
-            Landing::Moved => {}
+            Landing::Moved => way(&root, &Ended::Moved),
             Landing::Refused(why) => {
+                way(&root, &Ended::Otherwise);
                 splitting = Splitting::default();
                 for head in &done.merged {
                     let _ = fall(
@@ -753,6 +782,8 @@ fn run_git(folder: &Path, arguments: &[&str]) -> Result<String, String> {
         ))
     }
 }
+
+mod right_of_way;
 
 #[cfg(test)]
 mod tests;
