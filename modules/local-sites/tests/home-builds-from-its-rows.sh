@@ -14,8 +14,8 @@
 # run changes no file; a broken record keeps the last build; a root with no
 # sites.json is left alone; a row Nix declares stands in for the record's,
 # or goes first, and rows.json says every row listed as it was written, in
-# the home's order; a row whose path leads off the sites is left out and
-# said; and a
+# the home's order; a recorded row whose path leads off the sites is left
+# out and said, and a declared one fails the build; and a
 # document loading a script file of its own is named, on any of its pages,
 # however its tag is spelled and even past a byte that isn't UTF-8, while one
 # loading only the kit's, and an app loading its own, are not.
@@ -213,13 +213,14 @@ listed=$(grep -o '^- \[[^]]*\]' "$root/llms.txt" | tr '\n' ' ')
   fail "the declared rows aren't first and in place: $listed"
 # What reads each site's homes reads them in rows.json, each row whole.
 [ -f "$root/rows.json" ] || fail "the home wrote no rows.json"
+# Each is the row as written, the declared one where Nix declares its path.
 rows=$("$python" -c 'import json, sys
-for row in json.load(open(sys.argv[1]))["sites"]:
-    print(row["path"], json.dumps(row.get("homes")), json.dumps(row.get("pages")))' \
-  "$root/rows.json" | tr '\n' ' ')
-expected='grove/ null null map/ null {"tree.html": "test"} notes/ null {"more.html": "record"}'
-expected+=' old/ ["tree", {"kind": "heron", "address": "#heron={name}"}] null '
-[ "$rows" = "$expected" ] || fail "rows.json isn't every row as written: $rows"
+listed = json.load(open(sys.argv[1]))["sites"]
+written = {row["path"]: row for name in sys.argv[2:] for row in json.load(open(name))["sites"]}
+whole = all(row == written.get(row["path"]) for row in listed)
+print(*(row["path"] for row in listed), "whole" if whole else "rewritten")' \
+  "$root/rows.json" "$root/sites.json" "$work/declared.json")
+[ "$rows" = "grove/ map/ notes/ old/ whole" ] || fail "rows.json isn't every row as written: $rows"
 before=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)
 "$python" "$sources/home.py" "$sources" "$root" "$work/declared.json" > /dev/null
 after=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)
@@ -238,6 +239,67 @@ listed=$(grep -c '^- \[The grove\]' "$work/twice/llms.txt")
 "$python" "$sources/home.py" "$sources" "$work/fresh/sites" "$work/declared.json" > /dev/null
 grep -q '<span class="name">The grove</span>' "$work/fresh/sites/index.html" ||
   fail "with no record, the declared rows made no home"
+# A row whose path leads anywhere but a page of the sites' own is left out of
+# every list, and said, while the rest are built, however a browser would
+# read it: a leading space or a tab inside is dropped before the scheme is.
+mkdir -p "$work/strays"
+cat > "$work/strays/sites.json" << 'EOF'
+{"sites": [
+  {"path": "javascript:x()", "name": "Stray", "kind": "mock"},
+  {"path": "//gull.example/", "name": "Stray", "kind": "mock"},
+  {"path": "../up/", "name": "Stray", "kind": "mock"},
+  {"path": "a\\b/", "name": "Stray", "kind": "mock"},
+  {"path": " javascript:x()", "name": "Stray", "kind": "mock"},
+  {"path": "java\tscript:x()", "name": "Stray", "kind": "mock"},
+  {"path": "", "name": "Stray", "kind": "mock"},
+  {"path": "/root/", "name": "Stray", "kind": "mock"},
+  {"path": "./.dot/", "name": "Stray", "kind": "mock"},
+  {"path": "\u0663/", "name": "Stray", "kind": "mock"},
+  {"path": 5, "name": "Stray", "kind": "mock"},
+  {"path": "tern/.hidden/", "name": "Stray", "kind": "mock"},
+  {"path": "tern/javascript:x()", "name": "Stray", "kind": "mock"},
+  {"path": "./heron/", "name": "Heron", "kind": "mock"},
+  {"path": "tern/", "name": "Tern", "kind": "mock"}
+]}
+EOF
+said=$("$python" "$sources/home.py" "$sources" "$work/strays")
+left="left out 'javascript:x()', '//gull.example/', '../up/', 'a\\\\b/', ' javascript:x()',"
+left+=" 'java\\tscript:x()', '', '/root/', './.dot/', '٣/', 5,"
+left+=" 'tern/.hidden/', 'tern/javascript:x()', no path of ours"
+[[ $said == *"; $left" ]] || fail "the strays weren't said: $said"
+for listing in index.html index.md llms.txt rows.json; do
+  [ -f "$work/strays/$listing" ] || fail "the strays left no $listing"
+  ! grep -q 'Stray' "$work/strays/$listing" || fail "a stray row was listed in $listing"
+done
+for kept in Tern Heron; do
+  grep -q "<span class=\"name\">$kept</span>" "$work/strays/index.html" ||
+    fail "the strays kept $kept out too"
+done
+# NaN, an infinity however it's spelled, and a lone surrogate are nothing a
+# strict reader of rows.json takes, nor the page draws, so the record isn't
+# read and the last build stays.
+mkdir -p "$work/unread"
+for field in '"weight": NaN' '"weight": 1e999' '"note": "\ud800"'; do
+  echo "{\"sites\": [{\"path\": \"gull/\", \"name\": \"Gull\", \"kind\": \"mock\", $field}]}" \
+    > "$work/unread/sites.json"
+  said=$("$python" "$sources/home.py" "$sources" "$work/unread")
+  [[ $said == *"can't be read"*"so the last build stays" ]] || fail "$field was read: $said"
+  [ ! -e "$work/unread/index.html" ] || fail "$field was built"
+done
+# A stray path Nix declared is the build's fault, so it fails rather than
+# leaving the site out.
+mkdir -p "$work/astray"
+echo '{"sites": [{"path": "javascript:x()", "name": "Stray", "kind": "app"}]}' \
+  > "$work/astray.json"
+if "$python" "$sources/home.py" "$sources" "$work/astray" "$work/astray.json" \
+  > /dev/null 2> "$work/astray.said"; then
+  fail "a stray declared row didn't fail the build"
+fi
+told=$(< "$work/astray.said")
+[[ $told == *"declared rows 'javascript:x()' lead off the sites"* ]] ||
+  fail "a stray declared row failed for another reason: $told"
+written=$(ls -A "$work/astray")
+[ -z "$written" ] || fail "a stray declared row failed after writing $written"
 
 # Without the kit, the home names no ground rather than a made-up one.
 rm "$root/kit/theme.css"

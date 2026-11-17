@@ -26,7 +26,9 @@ built with it. The home writes every row it lists, the declared ones as
 declared, into `rows.json` beside it, for the readers of a row's `homes`
 (the system daemon's, the web-design skill's and Code's). Until each reads
 that, they read `sites.json`, so its live rows stay there; a session's
-edit to a live row there no longer reaches the home. The system page
+edit to a live row there no longer reaches the home. A home rolled back
+to before `rows.json` leaves the last one in place, so remove it then, or
+its readers keep its rows. The system page
 ([`modules/system/site`][system]) is the first, and the mycelium map
 ([`modules/mycelium/site`][map]) is fed live by the node. Code
 ([`modules/repos/site`][code]) draws every repository live from the repos

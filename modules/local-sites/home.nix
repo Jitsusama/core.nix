@@ -158,6 +158,12 @@ let
   realm = config.jitsusama.mycelium.realm or null;
   # Rows naming a site nothing is mounted at.
   unmounted = lib.attrNames (removeAttrs cfg.rows (lib.attrNames cfg.mounts));
+  # Rows whose path isn't plain steps, which the home's builder refuses
+  # (home/home.py's ours), named here so the switch never gets that far.
+  step = "[A-Za-z0-9_~-][A-Za-z0-9._~-]*";
+  astray = lib.filter (path: builtins.match "${step}(/${step})*" path == null) (
+    lib.attrNames cfg.rows
+  );
   roots = config.jitsusama.repos.roots or null;
   # Whether the map reaches every cell of the realm (modules/mycelium/site/
   # map-check.sh): the map's live-page test, pointed at the page this
@@ -483,6 +489,14 @@ in
       message = lib.concatStrings [
         "jitsusama.local-sites.rows names sites with no mount: ${toString unmounted}; "
         "remove them from jitsusama.local-sites.rows too"
+      ];
+    }
+    {
+      assertion = astray == [ ];
+      message = lib.concatStrings [
+        "jitsusama.local-sites.rows names sites by paths that lead off the sites: "
+        "${toString astray}; name each by plain steps of letters, digits and -._~, "
+        "none starting with a dot"
       ];
     }
   ];
