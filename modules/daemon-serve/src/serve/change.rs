@@ -46,7 +46,7 @@ impl Shared {
             .filter(|(key, record)| held.records.get(*key) != Some(record))
             .map(|(_, record)| record)
             .collect();
-        let Some(told) = Self::tell(
+        let told = Self::tell(
             &self.domain,
             &mut held.watches,
             &changed,
@@ -54,12 +54,14 @@ impl Shared {
             &|key| held.records.get(key),
             &now,
             standing.as_ref(),
-        ) else {
-            return;
-        };
+        );
+        // Held whatever was told, so a list keeps the order given last
+        // though no record changed and no watch heard of it.
         held.records = now;
         held.given = given;
-        self.answered(held, &told);
+        if let Some(told) = told {
+            self.answered(held, &told);
+        }
     }
 
     /// Tells each watch these records, which changed, and these keys,

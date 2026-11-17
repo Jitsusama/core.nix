@@ -189,6 +189,27 @@ fn a_list_and_a_whole_answer_keep_the_order_the_daemon_gave() {
 }
 
 #[test]
+fn a_list_keeps_the_order_given_last_though_no_record_changed() {
+    let (shared, mut client, _folder) = served("reorder", Box::new(|_| None));
+    shared.change(
+        vec![row("agents", "P", "reef"), row("agents", "O", "kelp")],
+        json!({}),
+    );
+    // The same records, the one used last now first, as windows are
+    // given when focus moves among them.
+    shared.change(
+        vec![row("agents", "O", "kelp"), row("agents", "P", "reef")],
+        json!({}),
+    );
+    let listed = client.ask(&json!({"id": 1, "ask": "list", "kind": "row"}));
+    assert_eq!(
+        listed["records"],
+        json!([row("agents", "O", "kelp"), row("agents", "P", "reef")]),
+        "listed in the order given last"
+    );
+}
+
+#[test]
 fn a_list_of_a_place_has_only_its_rows() {
     let (shared, mut client, _folder) = served("listed", Box::new(|_| None));
     shared.change(
