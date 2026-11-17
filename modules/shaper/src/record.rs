@@ -227,39 +227,17 @@ struct Sent {
     at: Instant,
 }
 
-/// The reflectors that answer timestamps from this link, two tries each.
-fn answering(socket: &Socket, id: u16) -> Vec<(&'static str, Ipv4Addr)> {
-    let mut asked = BTreeMap::new();
-    let mut seq: u16 = 0;
-    for _ in 0..2 {
-        for &(operator, address) in &candidates() {
-            seq = seq.wrapping_add(1);
-            let request = stamp::request(id, seq, stamp::since_midnight(SystemTime::now()));
-            if socket.send(address, &request).is_ok() {
-                asked.insert(seq, (operator, address));
-            }
-        }
-    }
-    let mut heard = Vec::new();
-    let mut buffer = [0_u8; 1_500];
-    let until = Instant::now() + Duration::from_millis(1_500);
-    while Instant::now() < until {
-        let Ok(Some(length)) = socket.receive(&mut buffer) else {
-            continue;
-        };
-        let packet = &buffer[..length];
-        let Some(reply) = stamp::reply(packet, id) else {
-            continue;
-        };
-        let finished = stamp::since_midnight(SystemTime::now());
-        if let Some(&reflector) = asked.get(&reply.seq)
-            && stamp::one_way(&reply, finished).is_some()
-            && !heard.contains(&reflector)
-        {
-            heard.push(reflector);
-        }
-    }
-    heard
+/// How long the candidates asked for a pool are waited on.
+const ASKING_FOR: Duration = Duration::from_millis(1_500);
+
+/// The candidates asked for a pool, and those that answered so far. It's
+/// heard in the loop beside the probes rather than waited on, since the
+/// 1.5 s it takes left the gateway unsampled at each start and each hour:
+/// a switch on 16 November restarted the shaper inside one.
+struct Asking {
+    asked: BTreeMap<u16, (&'static str, Ipv4Addr)>,
+    heard: Vec<(&'static str, Ipv4Addr)>,
+    until: Instant,
 }
 
 /// The pool's line in the journal.
@@ -287,9 +265,31 @@ struct Recorder<'a> {
     turn: usize,
     next: Instant,
     window: ((u64, u64), Instant),
+    asking: Option<Asking>,
 }
 
 impl Recorder<'_> {
+    /// Ask every candidate for a timestamp, twice, to choose the next pool
+    /// from those that answer.
+    fn ask(&mut self, now: Instant) {
+        let mut asked = BTreeMap::new();
+        for _ in 0..2 {
+            for &(operator, address) in &candidates() {
+                self.seq = self.seq.wrapping_add(1);
+                let request =
+                    stamp::request(self.id, self.seq, stamp::since_midnight(SystemTime::now()));
+                if self.socket.send(address, &request).is_ok() {
+                    asked.insert(self.seq, (operator, address));
+                }
+            }
+        }
+        self.asking = Some(Asking {
+            asked,
+            heard: Vec::new(),
+            until: now + ASKING_FOR,
+        });
+    }
+
     /// Send the next probes when they're due: a timestamp to the next
     /// reflector in turn, and an echo to the gateway.
     fn probe(&mut self, now: Instant) {
@@ -341,8 +341,19 @@ impl Recorder<'_> {
         };
         let packet = &buffer[..length];
         let arrived = Instant::now();
+        let stamped = stamp::reply(packet, self.id);
+        if let Some(reply) = &stamped
+            && let Some(asking) = self.asking.as_mut()
+            && let Some(&reflector) = asking.asked.get(&reply.seq)
+        {
+            let finished = stamp::since_midnight(SystemTime::now());
+            if stamp::one_way(reply, finished).is_some() && !asking.heard.contains(&reflector) {
+                asking.heard.push(reflector);
+            }
+            return;
+        }
         let (rx, tx) = carried(self.link);
-        if let Some(reply) = stamp::reply(packet, self.id)
+        if let Some(reply) = stamped
             && let Some(sent) = self.outstanding.remove(&reply.seq)
             && let Some((operator, address)) = sent.to
         {
@@ -399,23 +410,34 @@ impl Recorder<'_> {
 
     /// Choose the pool again when one of it keeps missing or an hour has
     /// passed; an empty pool asks again only every five minutes, so a
-    /// network that answers no timestamps isn't flooded with them.
-    fn repool(&mut self) {
+    /// network that answers no timestamps isn't flooded with them. The old
+    /// pool is probed until the new is chosen.
+    fn repool(&mut self, now: Instant) {
+        if let Some(asking) = self.asking.take_if(|asking| now >= asking.until) {
+            self.reflectors = pool(&asking.heard);
+            self.pooled = now;
+            self.misses.clear();
+            eprintln!(
+                "recording {} with {} reflectors from {} operators",
+                self.link,
+                self.reflectors.len(),
+                operators(&self.reflectors)
+            );
+            // Each pool names its link, so a shaper started mid-stay
+            // (src/live.rs) learns within the hour which link it holds.
+            let mut line = pool_line(&self.reflectors);
+            line["link"] = json!(self.link);
+            self.journal.write(&line);
+            return;
+        }
         let failing = self.misses.values().any(|m| *m >= MISSES);
         let due = if self.reflectors.is_empty() {
             EMPTY_REPOOL
         } else {
             REPOOL
         };
-        if failing || self.pooled.elapsed() > due {
-            self.reflectors = pool(&answering(&self.socket, self.id));
-            self.pooled = Instant::now();
-            self.misses.clear();
-            // Each pool names its link, so a shaper started mid-stay
-            // (src/live.rs) learns within the hour which link it holds.
-            let mut line = pool_line(&self.reflectors);
-            line["link"] = json!(self.link);
-            self.journal.write(&line);
+        if self.asking.is_none() && (failing || self.pooled.elapsed() > due) {
+            self.ask(now);
         }
     }
 }
@@ -438,17 +460,14 @@ pub fn record(
         }
     };
     let _ = fs::create_dir_all(folder);
-    let reflectors = pool(&answering(&socket, id));
-    eprintln!(
-        "recording {link} on {network}: {} reflectors from {} operators",
-        reflectors.len(),
-        operators(&reflectors)
-    );
+    eprintln!("recording {link} on {network}, choosing reflectors");
     let mut journal = Journal {
         folder: folder.to_path_buf(),
         file: None,
     };
-    let mut first = pool_line(&reflectors);
+    // The recording opens with its network, which begins a stay
+    // (src/live.rs), before any sample; its pool follows once chosen.
+    let mut first = pool_line(&[]);
     first["link"] = json!(link);
     first["network"] = json!(network);
     journal.write(&first);
@@ -458,7 +477,7 @@ pub fn record(
         id,
         socket,
         journal,
-        reflectors,
+        reflectors: Vec::new(),
         pooled: Instant::now(),
         misses: BTreeMap::new(),
         outstanding: BTreeMap::new(),
@@ -466,7 +485,9 @@ pub fn record(
         turn: 0,
         next: Instant::now(),
         window: (carried(link), Instant::now()),
+        asking: None,
     };
+    recorder.ask(Instant::now());
     let mut buffer = [0_u8; 1_500];
     let mut checked = Instant::now();
     loop {
@@ -480,7 +501,7 @@ pub fn record(
         recorder.probe(now);
         recorder.hear(&mut buffer);
         recorder.expire();
-        recorder.repool();
+        recorder.repool(now);
     }
 }
 
