@@ -513,17 +513,17 @@ in
       default = [
         (lib.getExe (pkgs.callPackage ../pi/fence-run/package.nix { }))
         "--kind"
-        "strict"
+        (if isDarwin then "fence" else "strict")
         "--"
       ];
-      defaultText = lib.literalExpression ''[ "\''${pi-fence}/bin/pi-fence" "--kind" "strict" "--" ]'';
+      defaultText = lib.literalExpression ''[ "\''${pi-fence}/bin/pi-fence" "--kind" "strict" "--" ], fence on a Mac'';
       internal = true;
       description = ''
         The words an agent's `mycelium run` is put after to run in its
         fence here, the first a program in the Nix store, as each fenced
         and strict fence the machine declares says them: pi's own fence,
-        strict, on Linux and on a Mac alike. Null says none, so every
-        agent's run is refused.
+        strict on Linux, and fenced on a Mac, which declares no strict
+        fence. Null says none, so every agent's run is refused.
       '';
     };
   };
@@ -554,6 +554,13 @@ in
             one: one.from != one.to && (lib.elem one.from realms || lib.elem one.to realms)
           ) cfg.flows;
           message = "jitsusama.mycelium.flows has a flow from a realm into itself, or between two realms this machine joins neither of.";
+        }
+        {
+          # A Mac's sandbox-exec profile reads the home folder but a
+          # denylist, where Linux's strict reads only what it lists, so a
+          # strict run sent to a Mac would land on the weaker fence.
+          assertion = isDarwin -> cfg.declares == null || cfg.declares.fence.strict == null;
+          message = "jitsusama.mycelium.declares.fence.strict is set on a Mac, whose fence reads the home folder but what it hides, so it isn't strict: declare fence instead.";
         }
         {
           assertion = !(cfg.alsoJoins ? balance);

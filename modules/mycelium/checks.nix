@@ -133,29 +133,49 @@ let
       secrets = [ ];
     };
   };
-  # A machine fenced every way.
-  launching =
-    bare:
+  # A machine fenced every way, and one whose agents' runs are turned off.
+  launching = bare: launchingWith bare { };
+  launchingWith =
+    bare: settings:
     read
+      (bare (
+        settings
+        // {
+          declares = declaring // {
+            fence = lib.genAttrs [ "none" "fence" "strict" ] (_: {
+              builders = [ ];
+              forges = [ ];
+              secrets = [ ];
+            });
+          };
+        }
+      )).xdg.configFile."mycelium/declared.json".text;
+  # pi's own fence, which an agent's run starts through, each system's
+  # with its own build of pi-fence, whichever system checks it: strict on
+  # Linux, and fenced on a Mac, whose sandbox-exec profile reads the home
+  # folder but a denylist, so it is never strict.
+  launcherOn = bare: kind: [
+    (lib.getExe ((bare [ ]).pkgs.callPackage ../pi/fence-run/package.nix { }))
+    "--kind"
+    kind
+    "--"
+  ];
+  launcher = launcherOn bareNixos "strict";
+  macLauncher = launcherOn bareDarwin "fence";
+  # A machine of either system declaring a strict fence, which a Mac refuses.
+  strictOn =
+    bare:
+    lib.any
+      (check: !check.assertion && lib.hasInfix "jitsusama.mycelium.declares.fence.strict" check.message)
       (bare {
         declares = declaring // {
-          fence = lib.genAttrs [ "none" "fence" "strict" ] (_: {
+          fence.strict = {
             builders = [ ];
             forges = [ ];
             secrets = [ ];
-          });
+          };
         };
-      }).xdg.configFile."mycelium/declared.json".text;
-  # pi's own fence, strict, which an agent's run starts through, each
-  # system's with its own build of pi-fence, whichever system checks it.
-  launcherOn = bare: [
-    (lib.getExe ((bare [ ]).pkgs.callPackage ../pi/fence-run/package.nix { }))
-    "--kind"
-    "strict"
-    "--"
-  ];
-  launcher = launcherOn bareNixos;
-  macLauncher = launcherOn bareDarwin;
+      }).assertions;
   hosting = declaredAs {
     hosts = [
       {
@@ -734,7 +754,7 @@ in
   # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, a held session's outlives isn't each system's, a fence it doesn't say is written, an agent's run in a fenced or strict fence on Linux or a Mac isn't said to start through the fence's launcher, an unfenced one's is, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, a held session's outlives isn't each system's, a fence it doesn't say is written, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a Mac may declare strict, or a machine declaring nothing gets a file anyway."
       (
         declared linux == {
           reach = [ "internet" ];
@@ -766,9 +786,13 @@ in
         && (launching linux).fence.strict.runs or null == launcher
         && !((launching linux).fence.none ? runs)
         && (launching mac).fence.fence.runs or null == macLauncher
-        && (launching mac).fence.strict.runs or null == macLauncher
-        && macLauncher != launcher
+        && strictOn mac
+        && !(strictOn linux)
         && !((launching mac).fence.none ? runs)
+        && lib.all (kind: !((launchingWith linux { fenceRuns = null; }).fence.${kind} ? runs)) [
+          "fence"
+          "strict"
+        ]
         && (
           inVm.within or null == {
             machine = "host-machine";

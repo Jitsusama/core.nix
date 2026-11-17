@@ -1749,9 +1749,10 @@
     a machine declaring what mycelium's node can't measure (its reach, what a held session
     outlives, whether work costs money, its taints, its agents by realm, the fences its agent
     sessions run in) has it written where mycelium reads it, in mycelium's words; a fence it
-    doesn't say is left out, a fenced or strict one on Linux or a Mac says the fence's launcher
-    for an agent's run and an unfenced one none, one declaring nothing has no file, and agents
-    in a realm it doesn't join are refused
+    doesn't say is left out, a fenced or strict one says the fence's launcher for an agent's run
+    (strict on Linux, fenced on a Mac) and an unfenced one none, none does when its runs are
+    refused, a Mac declaring a strict fence is refused, one declaring nothing has no file, and
+    agents in a realm it doesn't join are refused
   '';
   mycelium-node-reads-its-declaration-from-the-store = ''
     each realm's mycelium node, on NixOS and nix-darwin, is given what its machine declares as a
