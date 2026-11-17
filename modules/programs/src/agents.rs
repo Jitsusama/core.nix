@@ -67,9 +67,7 @@ fn told(shared: &Shared, said: &Value) {
     if rows::watched(&daemon) {
         rows::make(shared, &mut daemon);
     }
-    if tabs::watched(&daemon) {
-        tabs::make(shared, &mut daemon);
-    }
+    tabs::changed(shared, &mut daemon);
 }
 
 /// The windows daemon's keys for the agents' windows.

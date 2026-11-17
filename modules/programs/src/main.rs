@@ -562,8 +562,8 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
             tabs::heard(shared, &mut daemon, at, what);
             // A page opened or shut leaves its bookmark's row or brings it
             // back, so home never lists one page twice.
-            if what == Run::Opened && source.session.is_some() && bookmarks::watched(&daemon) {
-                bookmarks::make(shared, &mut daemon);
+            if what == Run::Opened && source.session.is_some() {
+                bookmarks::opened(shared, &mut daemon);
             }
         }
         Err(why) => {

@@ -18,6 +18,18 @@ pub fn watched(daemon: &Daemon) -> bool {
     daemon.served.watches("row", PLACE)
 }
 
+/// What Chrome has open was read again: the rows are made again while
+/// watched, and otherwise marked for the next watch to make (tabs.rs).
+/// Watched is asked once, so a watch held as this runs gets one or the
+/// other.
+pub fn opened(shared: &Shared, daemon: &mut Daemon) {
+    if watched(daemon) {
+        make(shared, daemon);
+    } else {
+        daemon.unmade.bookmarks = true;
+    }
+}
+
 /// Makes the rows again from each profile's bookmark files, leaving out
 /// every page held open now, keeping what changed and telling each watch
 /// only the rows that read differently and those gone.
