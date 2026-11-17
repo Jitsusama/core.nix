@@ -12,6 +12,7 @@ import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
 import { said } from "../../local-sites/kit/status.ts";
+import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { command, escaped, floorOf, forageRow, onMap, panelOf } from "./draw.ts";
 import { type Forage, foragesOf, headline, holds, lede, startedFrom } from "./model.ts";
@@ -448,16 +449,18 @@ floor.addEventListener("click", (event) => {
 
 themeSwitch();
 
-for (const key of document.querySelectorAll<HTMLElement>(".hero .keys kbd[data-key]")) {
-  key.addEventListener("click", () => {
-    if (key.dataset["key"] === "?") {
-      toggle(keys);
-    } else if (key.dataset["key"] === "/") {
-      find();
-    } else if (key.dataset["key"] === "Enter") {
-      goDeeper();
-    } else {
-      list.focus();
-    }
-  });
-}
+// The keys the head names, each a button doing what typing it does, for a
+// reader who taps: j and k step the list and leave it where its keys go.
+pressable(".hero .keys kbd", {
+  j: () => {
+    move(1);
+    list.focus();
+  },
+  k: () => {
+    move(-1);
+    list.focus();
+  },
+  "/": find,
+  Return: goDeeper,
+  "?": () => toggle(keys),
+});
