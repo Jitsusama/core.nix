@@ -762,6 +762,26 @@ let
   # (mycelium-link/src/main.rs says what it lets through).
   myceliumLink = pkgs.callPackage ./mycelium-link/package.nix { };
 
+  # Where a browser sends a mycelium: link, found by what it opens; it
+  # stays out of the launcher's own list of programs. It's in the profile's
+  # applications, not the account's own folder, because only there is it
+  # written into mimeinfo.cache: the portal opens a link straight in its app
+  # only when exactly one is registered for its scheme, and asks Open With
+  # otherwise, which knows none to offer (Joel, 2026-11-17 15:31).
+  myceliumLinkEntry = pkgs.writeTextFile {
+    name = "mycelium-link-entry";
+    destination = "/share/applications/mycelium-link.desktop";
+    text = ''
+      [Desktop Entry]
+      Type=Application
+      Name=Mycelium Link
+      Comment=Open a cell or network of the realm's map in the launcher
+      Exec=${lib.getExe myceliumLink} %u
+      MimeType=x-scheme-handler/mycelium;
+      NoDisplay=true
+    '';
+  };
+
   # What the shell weighs, part by part, read from outside it so its own
   # thread pays nothing (shell-weighs/src/main.rs says how).
   shellWeighs = pkgs.callPackage ./shell-weighs/package.nix { };
@@ -1842,6 +1862,7 @@ in
         askpass
         launcherInATerminal
         launcherSay
+        myceliumLinkEntry
         pkgs.quickshell
         # What the timer writes to the journal, at hand: typed in a terminal,
         # it says what the shell weighs now, part by part.
@@ -1865,21 +1886,6 @@ in
     # yet (twice on 2026-10-24). A shell's calls wait two minutes instead;
     # services keep systemd's own limit.
     home.sessionVariables.SYSTEMD_BUS_TIMEOUT = "2min";
-
-    # Where a browser sends a mycelium: link, found by what it opens; it
-    # stays out of the launcher's own list of programs.
-    home.file."${config.xdg.dataHome}/applications/mycelium-link.desktop" = {
-      force = true;
-      text = ''
-        [Desktop Entry]
-        Type=Application
-        Name=Mycelium Link
-        Comment=Open a cell or network of the realm's map in the launcher
-        Exec=${lib.getExe myceliumLink} %u
-        MimeType=x-scheme-handler/mycelium;
-        NoDisplay=true
-      '';
-    };
 
     xdg.configFile =
       lib.genAttrs (map (file: "quickshell/${file}") qml) (path: {

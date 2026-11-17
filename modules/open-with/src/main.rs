@@ -67,6 +67,17 @@ enum Ended {
     Unasked,
 }
 
+/// The app to open with at once, without asking the shell: the portal's
+/// default, where it offers no app at all. It asks with none when the app
+/// declared for a link's scheme isn't registered for it in any folder's
+/// mimeinfo.cache, as for an entry in the account's own folder, but still
+/// names that app as the last choice; the shell could only say "Nothing
+/// here opens it" (Joel's mycelium: and tuple: links, 2026-11-17). With one
+/// app offered the portal opens it itself, so this does as it would.
+fn at_once(choices: &[String], last: Option<String>) -> Option<String> {
+    if choices.is_empty() { last } else { None }
+}
+
 /// What the portal is told for how a choice ended, and the app picked,
 /// which must be one it offered, since the shell's answer is only a line.
 fn response(ended: &Ended, offered: &[String]) -> (u32, Option<String>) {
@@ -75,6 +86,20 @@ fn response(ended: &Ended, offered: &[String]) -> (u32, Option<String>) {
         Ended::Said(id) if offered.contains(id) => (PICKED, Some(id.clone())),
         _ => (NEITHER, None),
     }
+}
+
+/// What the portal is told of an app picked: the app, and the token the
+/// program gave, for the app to come to the front.
+fn picked(choice: String, options: &HashMap<String, OwnedValue>) -> HashMap<String, OwnedValue> {
+    let mut results = HashMap::new();
+    results.insert("choice".to_owned(), OwnedValue::from(Str::from(choice)));
+    if let Some(token) = text(options, "activation_token") {
+        results.insert(
+            "activation_token".to_owned(),
+            OwnedValue::from(Str::from(token)),
+        );
+    }
+    results
 }
 
 /// An option's text, if it has one.
@@ -277,6 +302,9 @@ impl Chooser {
     ) -> (u32, HashMap<String, OwnedValue>) {
         // The shell asks over its own window, whichever program asked.
         let _ = (app_id, parent_window);
+        if let Some(app) = at_once(&choices, text(&options, "last_choice")) {
+            return (PICKED, picked(app, &options));
+        }
         let words = vec![
             what(&options),
             text(&options, "content_type").unwrap_or_default(),
@@ -297,17 +325,7 @@ impl Chooser {
 
         let offered = held(&pending.offered).clone();
         let (code, choice) = response(&ended, &offered);
-        let mut results = HashMap::new();
-        if let Some(choice) = choice {
-            results.insert("choice".to_owned(), OwnedValue::from(Str::from(choice)));
-            // The token the program gave, for the app to come to the front.
-            if let Some(token) = text(&options, "activation_token") {
-                results.insert(
-                    "activation_token".to_owned(),
-                    OwnedValue::from(Str::from(token)),
-                );
-            }
-        }
+        let results = choice.map_or_else(HashMap::new, |choice| picked(choice, &options));
         (code, results)
     }
 
@@ -427,6 +445,21 @@ mod tests {
             response(&Ended::Said("rm".to_owned()), &offered()),
             (NEITHER, None)
         );
+    }
+
+    #[test]
+    fn the_portals_default_opens_at_once_where_it_offers_no_app() {
+        let default = Some("mycelium-link".to_owned());
+        assert_eq!(
+            at_once(&[], default.clone()),
+            Some("mycelium-link".to_owned())
+        );
+        assert_eq!(
+            at_once(&offered(), default),
+            None,
+            "one offered went unasked"
+        );
+        assert_eq!(at_once(&[], None), None, "an app was made up");
     }
 
     #[test]

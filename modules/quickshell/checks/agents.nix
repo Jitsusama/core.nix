@@ -129,14 +129,25 @@
     '';
 
   # A mycelium: link a page hands the desktop reaches mycelium-link's entry
-  # through niri's own list of defaults, and asks the launcher to talk to
-  # the cell or show the network it names, by its name alone, and nothing
+  # through niri's own list of defaults, the entry registered for the
+  # scheme in the profile's applications as the portal needs, and none left
+  # in the account's own folder to stand in its way. It asks the launcher to
+  # talk to the cell or show the network it names, by its name alone, and nothing
   # for a link naming neither or a second within a few seconds
   # (tests/mycelium-links-open-in-the-launcher.sh). Its tests run as it builds.
   mycelium-links-open-in-the-launcher =
     let
       home = account graphical;
-      entry = home.home.file."${home.xdg.dataHome}/applications/mycelium-link.desktop".text;
+      named = "mycelium-link.desktop";
+      # The home's package that holds the entry, as the profile is made of.
+      isEntry = package: (package.name or "") == "mycelium-link-entry";
+      holding = lib.filter isEntry home.home.packages;
+      entry =
+        assert lib.assertMsg (
+          !(home.home.file ? "${home.xdg.dataHome}/applications/${named}")
+        ) "the account's own folder holds ${named}, where no cache registers it";
+        assert lib.assertMsg (lib.length holding == 1) "the home's packages hold no ${named}";
+        "${lib.head holding}/share/applications/${named}";
       defaults = home.xdg.configFile."niri-mimeapps.list".text;
       # The same program built to ask a stand-in, which writes down what
       # it was asked where the script says.
@@ -149,12 +160,13 @@
         nativeBuildInputs = [
           pkgs.xdg-utils
           pkgs.glib.bin
+          pkgs.desktop-file-utils
         ];
       }
       ''
         ${lib.getExe pkgs.bash} ${../../../tests/mycelium-links-open-in-the-launcher.sh} ${
           lib.escapeShellArgs [
-            (pkgs.writeText "mycelium-link.desktop" entry)
+            entry
             (pkgs.writeText "niri-mimeapps.list" defaults)
             (lib.getExe askingStandIn)
           ]
