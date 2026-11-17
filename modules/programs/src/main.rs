@@ -44,11 +44,12 @@
 //! open list leaves out the panes the agents daemon names, and Programs counts
 //! their windows apart, as it tells (agents.rs). The tab in front of one
 //! of Chrome's windows is made as a get names niri's window (fronts.rs).
-//! Each command runs on a thread of its own, without a shell, so a slow one never holds an
-//! answer back, and is stopped past ten seconds (command.rs), its record
-//! kept as it answers (read.rs). A source is
-//! read once at a time, a get's own read too, and once more after it
-//! where a change came meanwhile, so the newest read ends last (runs.rs).
+//! Each command runs on a thread of its own, without a shell, so a slow
+//! one never holds an answer back, and is stopped past ten seconds
+//! (command.rs). Which sources an ask names, whether a list is due, and
+//! reading one and keeping what it said are read.rs's. A source is read
+//! once at a time, a get's own read too, and once more after it where a
+//! change came meanwhile, so the newest read ends last (runs.rs).
 //!
 //! It speaks the shell's daemon interface through daemon-serve, as every
 //! daemon does (docs/daemons.md): each change hands it every record held,
