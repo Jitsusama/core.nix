@@ -1027,11 +1027,11 @@ exit $?
 
     #[test]
     fn a_lost_link_is_reattached_to_and_the_run_ends_as_it_did() {
-        use std::os::unix::fs::PermissionsExt;
         let folder = tempfile::tempdir().unwrap();
         let ssh = folder.path().join("ssh");
-        std::fs::write(&ssh, LOSES_FIRST_LINK).unwrap();
-        std::fs::set_permissions(&ssh, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // Copied in, since a test forking as this one wrote it would keep
+        // it open for writing, and running it then is refused as busy.
+        crate::testing::executable(&ssh, LOSES_FIRST_LINK);
         let (out, err) = (Kept::default(), Kept::default());
         let (printed, mut erred) = (out.clone(), err.clone());
         let scratch = folder.path().join("scratch");
