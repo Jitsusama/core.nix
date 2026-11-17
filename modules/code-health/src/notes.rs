@@ -13,7 +13,9 @@
 //! folder says what it holds when the folder it tests does, a crate's
 //! `src/bin` when each program in it opens with a comment, any other
 //! folder by a line of its parent's note opening with its name, and a top
-//! folder by a line of the repository's map.
+//! folder by a line of the repository's map. Where several folders of a
+//! larger repository are read, the notes above them aren't, so each of
+//! those says what it holds only by a note or an entry of its own.
 //!
 //! Hidden folders, such as `.github`, are passed over.
 
@@ -140,14 +142,17 @@ impl Tree<'_> {
     }
 
     /// Whether a file read opens with a comment.
+    /// Its first line starting with `#` or `//` is enough, as core's rule
+    /// reads it, though in Rust that `#` may open an attribute.
     fn opens(&self, path: &str) -> bool {
-        self.texts
-            .get(path)
-            .is_some_and(|text| opens_with_comment(path, text))
+        self.texts.get(path).is_some_and(|text| {
+            opens_with_comment(path, text) || text.starts_with('#') || text.starts_with("//")
+        })
     }
 
-    /// Whether a crate's `src/bin` holds programs only, each opening with
-    /// a `//` comment on its first line.
+    /// Whether a crate's `src/bin` holds a program, and each of its
+    /// programs, its `.rs` files, opens with a `//` comment on its first
+    /// line.
     fn programs_say(&self, folder: &str, names: &[&str]) -> bool {
         let programs: Vec<&&str> = names
             .iter()
@@ -315,6 +320,9 @@ mod tests {
             file("tools/a.b/b.txt", "\n"),
             file("tools/axb/a.txt", "\n"),
             file("tools/axb/b.txt", "\n"),
+            file("tools/AGENTS.md", "- `agents/`: from the other note.\n"),
+            file("tools/agents/a.txt", "\n"),
+            file("tools/agents/b.txt", "\n"),
         ];
         assert_eq!(
             bare(&files),
@@ -356,6 +364,40 @@ mod tests {
     }
 
     #[test]
+    fn a_top_tests_folder_and_a_top_src_bin_are_read_as_top_and_inner_folders() {
+        let files = [
+            file("README.md", "# A crate\n"),
+            file("tests/a.py", "\n"),
+            file("tests/b.py", "\n"),
+            file("src/main.rs", "//! The main program.\n"),
+            file("src/bin/one.rs", "//! One program.\n"),
+            file("src/bin/two.rs", "// Two programs.\n"),
+        ];
+        assert_eq!(
+            bare(&files),
+            ["src/bin", "tests"],
+            "a top tests folder needs the map, and a top src/bin its parent's note"
+        );
+    }
+
+    #[test]
+    fn an_entry_whose_first_line_opens_with_a_hash_says_as_core_reads_it() {
+        let files = [
+            file("README.md", "# A repository\n"),
+            file(
+                "attributed/lib.rs",
+                "#![forbid(unsafe_code)]\npub fn a() {}\n",
+            ),
+            file("attributed/more.rs", "\n"),
+            file("launched/home.nix", "#!nix\n{ }\n"),
+            file("launched/more.nix", "{ }\n"),
+            file("spaced/home.nix", "{ }\n# too late\n"),
+            file("spaced/more.nix", "{ }\n"),
+        ];
+        assert_eq!(bare(&files), ["spaced"]);
+    }
+
+    #[test]
     fn a_crates_src_bin_says_what_it_holds_when_each_program_opens_with_a_comment() {
         let files = [
             file("README.md", "# A repository\n"),
@@ -382,7 +424,6 @@ mod tests {
             ),
             file("modules/backports/one.patch", "\n"),
             file("modules/backports/two.patch", "\n"),
-            file("modules/system.nix", "{ }\n"),
             file("modules/booted/system.nix", "# The system it boots.\n{ }\n"),
             file("modules/booted/two.nix", "{ }\n"),
         ];
