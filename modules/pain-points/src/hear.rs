@@ -15,12 +15,13 @@
 //!
 //! It writes hour.json each run, for cadence's hourly card: the pains
 //! heard and routed in the last hour, those of the last day still open,
-//! and the one he hit most.
+//! the one he hit most, and the turns that stalled him.
 
 pub mod heard;
 pub mod route;
 pub mod said;
 pub mod sore;
+pub mod stalled;
 
 use heard::Heard;
 use route::{Cell, Routes};
@@ -28,7 +29,7 @@ use said::Carried;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, UNIX_EPOCH};
@@ -45,6 +46,9 @@ pub const FRESH_MS: i64 = 2 * HOUR_MS;
 /// The longest a send may take: the node answers in well under a second,
 /// and a run every five minutes must end long before the next begins.
 const SEND_AT_MOST: Duration = Duration::from_secs(20);
+
+/// How long a quick question of the machine, its time zone, may take.
+const ASK_AT_MOST: Duration = Duration::from_secs(5);
 
 /// Where a run listens and what it knows of the time.
 pub struct Ears {
@@ -78,6 +82,13 @@ pub struct Hour {
     pub open: usize,
     pub worst: Option<String>,
     pub worst_hits: usize,
+    /// Turns that stalled him in the hour, heard though he said nothing.
+    #[serde(default)]
+    pub stalled: usize,
+    /// What kept the run from routing, so a broken listener doesn't read
+    /// as a quiet hour.
+    #[serde(default)]
+    pub troubles: Vec<String>,
 }
 
 /// Hears what's new since the last run, sends each new pain to its owner
@@ -100,12 +111,15 @@ pub fn listen(home: &Path, given: &mut BTreeMap<&'static str, String>) -> Result
         at: take("--at")
             .and_then(|at| at.parse().ok())
             .unwrap_or_else(crate::millis_now),
-        offset_s: crate::output(Command::new(&date).arg("+%z"))
+        offset_s: output_within(Command::new(&date).arg("+%z"), ASK_AT_MOST)
             .as_deref()
             .and_then(crate::offset_of)
             .unwrap_or(0),
     };
-    let cells = crate::output(Command::new(&mycelium).arg("sessions")).unwrap_or_default();
+    // A node that never answers leaves the run with no cells, said as a
+    // trouble, rather than holding every later run behind this one.
+    let cells =
+        output_within(Command::new(&mycelium).arg("sessions"), SEND_AT_MOST).unwrap_or_default();
     let from = Routes::read(&ears.state).from;
     let hour = hear(&ears, &cells, &mut |to, text| {
         let Some(from) = &from else { return false };
@@ -114,21 +128,28 @@ pub fn listen(home: &Path, given: &mut BTreeMap<&'static str, String>) -> Result
         ran_within(
             Command::new(&mycelium)
                 .args([
-                    "send", "--from", from, "--intent", "finding", "--text", text,
+                    // A question, as a finding is read only on a cell's
+                    // next turn and wants nothing back, and each owner is
+                    // asked to say when its fix lands.
+                    "send", "--from", from, "--intent", "question", "--text", text,
                 ])
                 .arg(format!("peer.{}", to.to_lowercase())),
             SEND_AT_MOST,
         )
     })?;
     Ok(format!(
-        "pain-points: {} pains heard and {} routed in the hour, {} open in the day{}",
+        "pain-points: {} pains heard and {} routed in the hour, {} open in the day{}{}",
         hour.heard,
         hour.routed,
         hour.open,
         hour.worst.as_ref().map_or(String::new(), |_| format!(
             "; the most hit, {} times",
             hour.worst_hits
-        ))
+        )),
+        hour.troubles
+            .iter()
+            .map(|t| ["; ", t].concat())
+            .collect::<String>()
     ))
 }
 
@@ -143,6 +164,33 @@ fn ran_within(command: &mut Command, limit: Duration) -> bool {
     else {
         return false;
     };
+    ended_within(&mut child, limit)
+}
+
+/// What a command printed, when it ended within `limit`.
+fn output_within(command: &mut Command, limit: Duration) -> Option<String> {
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let mut out = child.stdout.take()?;
+    // Read beside the wait, so a command printing more than a pipe holds
+    // isn't stopped waiting on its reader.
+    let reading = std::thread::spawn(move || {
+        let mut text = String::new();
+        out.read_to_string(&mut text).ok().map(|_| text)
+    });
+    if !ended_within(&mut child, limit) {
+        return None;
+    }
+    reading.join().ok().flatten().filter(|s| !s.is_empty())
+}
+
+/// Whether a child ended well within `limit`; one still running then is
+/// killed and counts as failed.
+fn ended_within(child: &mut std::process::Child, limit: Duration) -> bool {
     let started = Instant::now();
     loop {
         match child.try_wait() {
@@ -200,6 +248,13 @@ pub fn hear(
         .flat_map(|path| heard::ledger(&fs::read_to_string(path).unwrap_or_default()))
         .collect();
     let cells = route::cells(cells_printed);
+    // A pain the keeper has carried since it was heard is closed, though
+    // it was open on an earlier run.
+    for h in &mut kept {
+        if !h.carried && !stalled::is(h) && h.at >= ears.at - DAY_MS {
+            h.carried = heard::carried(&h.words, &ledgers);
+        }
+    }
 
     let mut present = Vec::new();
     for (name, path) in logs(&ears.sessions, since) {
@@ -232,6 +287,8 @@ pub fn hear(
     }
     following.retain(|name, _| present.contains(name));
 
+    keep_stalls(ears, &following, &mut kept, since);
+
     // What it heard is kept before anything is sent, and again after each
     // send, so a run stopped partway sends nothing twice but the one it
     // was sending.
@@ -240,15 +297,64 @@ pub fn hear(
         &following_at,
         &serde_json::to_string(&following).map_err(|e| e.to_string())?,
     )?;
-    let owned = route_waiting(ears, &routes, &cells, &mut kept, send, &heard_at);
-    note_for_keeper(ears, &routes, &cells, &mut kept, &owned, send, &heard_at);
+    // Nothing reaches a cell the routes say never to, whichever way it
+    // was found, and each send that failed is counted for the hour.
+    let mut failed = 0;
+    let mut guarded = |to: &str, text: &str| {
+        if routes.refuses(to) {
+            return false;
+        }
+        let went = send(to, text);
+        failed += usize::from(!went);
+        went
+    };
+    let owned = route_waiting(ears, &routes, &cells, &mut kept, &mut guarded, &heard_at);
+    note_for_keeper(
+        ears,
+        &routes,
+        &cells,
+        &mut kept,
+        &owned,
+        &mut guarded,
+        &heard_at,
+    );
     keep(&heard_at, &kept)?;
-    let hour = hour_of(&kept, ears.at);
+    let mut hour = hour_of(&kept, ears.at);
+    hour.troubles.extend(Routes::trouble(&ears.state));
+    if failed > 0 {
+        hour.troubles
+            .push(format!("{failed} sends failed, to be tried again next run"));
+    }
+    if routes.from.is_some() && cells.is_empty() {
+        hour.troubles
+            .push("the mycelium named no sessions, so none could be routed".into());
+    }
     crate::write_whole(
         &ears.state.join("hour.json"),
         &serde_json::to_string(&hour).map_err(|e| e.to_string())?,
     )?;
     Ok(hour)
+}
+
+/// Keeps each turn read timed as stalling him in a followed session, so
+/// what slowed him goes to the session's cell too, though he said nothing.
+fn keep_stalls(
+    ears: &Ears,
+    following: &BTreeMap<String, Following>,
+    kept: &mut Vec<Heard>,
+    since: i64,
+) {
+    let timed = stalled::logs(&ears.state);
+    for (name, log) in following {
+        let Some(turns) = timed.get(name).filter(|_| !log.lab) else {
+            continue;
+        };
+        for stall in stalled::stalls(turns, &log.session, log.void, since, ears.at) {
+            if !kept.iter().any(|h| h.key == stall.key) {
+                kept.push(stall);
+            }
+        }
+    }
 }
 
 /// Sends each pain of the last two hours not yet sent, nor carried, to its
@@ -311,21 +417,33 @@ fn note_for_keeper(
     let late: Vec<usize> = (0..kept.len())
         .filter(|n| {
             let pain = &kept[*n];
+            // A stall is no ask or miss of his, and one heard late has
+            // nothing for the keeper to carry.
+            // One from a session this realm doesn't know waits, as it
+            // would for its owner.
             !pain.carried
+                && !stalled::is(pain)
+                && route::owner(&pain.session, pain.void, cells, routes).is_some()
                 && pain.routed_at.is_none()
                 && pain.at >= ears.at - DAY_MS
                 && pain.at < ears.at - FRESH_MS
         })
         .collect();
-    if owned.is_empty() && late.is_empty() {
-        return;
-    }
     let noted: Vec<&Heard> = kept
         .iter()
         .enumerate()
-        .filter(|(n, h)| owned.contains(&h.key) || late.contains(n))
+        .filter(|(n, h)| {
+            // The keeper isn't told again of what it was itself just sent.
+            let to_keeper =
+                h.to.as_ref()
+                    .is_some_and(|to| to.eq_ignore_ascii_case(keeper));
+            (owned.contains(&h.key) && !stalled::is(h) && !to_keeper) || late.contains(n)
+        })
         .map(|(_, h)| h)
         .collect();
+    if noted.is_empty() {
+        return;
+    }
     // The note of pains already sent is said once: a keeper that misses it
     // still has each from its owner's side, and heard.jsonl. Late ones
     // wait for the next run until the note goes.
@@ -341,23 +459,29 @@ fn note_for_keeper(
 /// The hour as cadence's card says it.
 fn hour_of(kept: &[Heard], at: i64) -> Hour {
     let in_hour = |t: i64| t >= at - HOUR_MS;
-    let worst = kept
+    let said: Vec<&Heard> = kept.iter().filter(|h| !stalled::is(h)).collect();
+    let worst = said
         .iter()
         .filter(|h| h.at >= at - DAY_MS && !h.carried)
         .max_by_key(|h| (h.hits, h.at));
     Hour {
         at,
-        heard: kept.iter().filter(|h| in_hour(h.at)).count(),
+        heard: said.iter().filter(|h| in_hour(h.at)).count(),
+        stalled: kept
+            .iter()
+            .filter(|h| stalled::is(h) && in_hour(h.at))
+            .count(),
         routed: kept
             .iter()
             .filter(|h| h.routed_at.is_some_and(in_hour))
             .count(),
-        open: kept
+        open: said
             .iter()
             .filter(|h| h.at >= at - DAY_MS && !h.carried)
             .count(),
         worst: worst.map(|h| h.words.clone()),
         worst_hits: worst.map_or(0, |h| h.hits),
+        troubles: Vec::new(),
     }
 }
 

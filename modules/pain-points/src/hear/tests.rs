@@ -219,6 +219,15 @@ fn a_first_run_sends_each_new_pain_to_its_owner_once() {
         "void and ledgers: {sent:?}"
     );
     assert!(!to.contains(&"VOID01"), "nothing goes to the void");
+    let note = &sent
+        .iter()
+        .rfind(|(to, _)| to == "ORCH01")
+        .expect("noted")
+        .1;
+    assert!(
+        !note.contains("slow"),
+        "the keeper isn't told again of what it was just sent: {note}"
+    );
     let live = &sent.iter().find(|(to, _)| to == "ABC123").expect("sent").1;
     assert!(
         live.contains("broken again") && live.contains("status update"),
@@ -298,7 +307,7 @@ fn a_later_run_sends_only_what_is_new() {
     );
     assert!(
         sent[0].1.contains("hold up") && sent[1].1.contains("hold up"),
-        "sent again after a failed send: {sent:?}"
+        "sent again on a later run: {sent:?}"
     );
     assert_eq!(place.heard().len(), 5);
 }
@@ -423,6 +432,149 @@ fn a_finding_names_five_pains_the_most_hit_first() {
         finding.find("stuck").unwrap_or(usize::MAX) < finding.find("the bar").unwrap_or(0),
         "the one said twice leads: {finding}"
     );
+    let routed = place
+        .heard()
+        .iter()
+        .filter(|h| h.routed_at.is_some())
+        .count();
+    assert_eq!(routed, 5, "the sixth, not named, waits for the next run");
+}
+
+#[test]
+fn a_session_this_realm_does_not_know_is_never_sent_however_old() {
+    let place = Place::new("unknown");
+    place.routes();
+    let said = [user("a", "2026-11-16T15:00:00.000Z", "no, that's broken")];
+    place.log("src", "s-other", Path::new("/home/j/src"), &said);
+    let hour = hear(&place.ears(), CELLS, &mut |to, text| {
+        panic!("another realm's words went to {to}: {text}")
+    })
+    .expect("a run");
+    assert_eq!(hour.open, 1, "it waits, counted open");
+}
+
+#[test]
+fn a_pain_the_keeper_carries_later_is_closed() {
+    let place = Place::new("closed");
+    place.routes();
+    let words = "no, the drawer forgets its place";
+    let said = [user("a", "2026-11-16T19:50:00.000Z", words)];
+    place.log("src", "s-live", Path::new("/home/j/src"), &said);
+    let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a run");
+    assert_eq!(hour.open, 1, "{hour:?}");
+    let line = json!({"at": "x", "words": words, "owner": "Y"}).to_string();
+    fs::write(place.root.join("asks.jsonl"), line).expect("a ledger");
+    let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a second run");
+    assert_eq!(hour.open, 0, "carried since: {hour:?}");
+}
+
+#[test]
+fn nothing_goes_to_a_cell_the_routes_say_never_to_whatever_its_case() {
+    let place = Place::new("never");
+    fs::write(
+        place.root.join("state/routes.json"),
+        r#"{"from":"EAR001","fallback":"void01","ledgers":"ORCH01","never":["VOID01"]}"#,
+    )
+    .expect("routes");
+    a_day(&place);
+    hear(&place.ears(), CELLS, &mut |to, text| {
+        assert!(!to.eq_ignore_ascii_case("void01"), "sent the void: {text}");
+        true
+    })
+    .expect("a run");
+}
+
+#[test]
+fn a_run_that_could_not_send_says_so() {
+    let place = Place::new("failing");
+    place.routes();
+    a_day(&place);
+    let hour = hear(&place.ears(), CELLS, &mut |_, _| false).expect("a run");
+    assert!(
+        hour.troubles.iter().any(|t| t.contains("failed")),
+        "{hour:?}"
+    );
+    fs::write(place.root.join("state/routes.json"), "{not json").expect("routes");
+    let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a run");
+    assert!(
+        hour.troubles.iter().any(|t| t.contains("routes.json")),
+        "a broken routes file isn't a quiet hour: {hour:?}"
+    );
+}
+
+#[test]
+fn a_command_that_hangs_gives_nothing_and_is_stopped() {
+    let started = std::time::Instant::now();
+    let mut sleeping = Command::new("sleep");
+    sleeping.arg("30");
+    assert_eq!(
+        output_within(&mut sleeping, std::time::Duration::from_millis(200)),
+        None
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "stopped, not waited on"
+    );
+    let mut echo = Command::new("echo");
+    echo.arg("hi");
+    assert_eq!(
+        output_within(&mut echo, std::time::Duration::from_secs(5)).as_deref(),
+        Some("hi\n")
+    );
+}
+
+/// read's state of one session's turns: one begun at `enter` whose first
+/// call waited `wait_ms` for pi.
+fn timed(place: &Place, session: &str, enter: i64, wait_ms: i64) {
+    let turns = json!([{"offset": 0, "enter": enter, "delivered": enter,
+        "calls": [{"start": enter + wait_ms, "ms": 4000, "stop": "done"}],
+        "again": false, "correction": false, "status": false}]);
+    let name = format!("2026-11-16T10-00-00-000Z_{session}.jsonl");
+    let kept = json!({"reader": "r", "logs": {name: {"end": 0, "open": false, "turns": turns}}});
+    fs::write(place.root.join("state/pi-logs.json"), kept.to_string()).expect("written");
+}
+
+#[test]
+fn a_turn_that_stalled_him_goes_to_its_cell_though_he_said_nothing() {
+    let place = Place::new("stalled");
+    place.routes();
+    let said = [user("a", "2026-11-16T19:50:00.000Z", "make the bar green")];
+    place.log("src", "s-live", Path::new("/home/j/src"), &said);
+    // 19:50 UTC, and a three-minute wait for pi's first call.
+    timed(&place, "s-live", 1_794_858_600_000, 180_000);
+    let mut sent: Vec<(String, String)> = Vec::new();
+    hear(&place.ears(), CELLS, &mut |to, text| {
+        sent.push((to.into(), text.into()));
+        true
+    })
+    .expect("a run");
+    let finding = &sent.iter().find(|(to, _)| to == "ABC123").expect("sent").1;
+    assert!(finding.contains("stalled"), "{finding}");
+    assert!(
+        finding.contains("lost him 120 s"),
+        "read's own reckoning: {finding}"
+    );
+    assert!(
+        !finding.contains("\"make the bar green\""),
+        "what he said was no pain: {finding}"
+    );
+    hear(&place.ears(), CELLS, &mut |to, text| {
+        panic!("sent {to} again: {text}");
+    })
+    .expect("a second run");
+}
+
+#[test]
+fn a_short_wait_is_no_stall() {
+    let place = Place::new("short-wait");
+    place.routes();
+    let said = [user("a", "2026-11-16T19:50:00.000Z", "make the bar green")];
+    place.log("src", "s-live", Path::new("/home/j/src"), &said);
+    timed(&place, "s-live", 1_794_858_600_000, 20_000);
+    hear(&place.ears(), CELLS, &mut |to, text| {
+        panic!("a twenty-second wait sent {to}: {text}");
+    })
+    .expect("a run");
 }
 
 #[test]

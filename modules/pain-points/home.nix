@@ -42,6 +42,9 @@ in
       # on it.
       Slice = "background.slice";
       StateDirectory = "pain-points";
+      # Both units share the folder, and systemd sets its mode as each
+      # starts, so read keeps it as closed as hear does.
+      StateDirectoryMode = "0700";
       ProtectHome = "read-only";
       ReadWritePaths = "%S/pain-points";
       # A user unit can't hold IP filters, so a network namespace of its

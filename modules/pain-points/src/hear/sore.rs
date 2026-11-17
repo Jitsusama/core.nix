@@ -96,16 +96,14 @@ pub fn kinds(words: &str, at: i64, earlier: &[(i64, String)]) -> Vec<&'static st
     {
         kinds.push("said again");
     }
-    if [
-        "slow",
-        "forever",
-        "so long",
-        "still waiting",
-        "hanging",
-        "frozen",
-    ]
-    .iter()
-    .any(|word| low.contains(word))
+    // Waits are words too, so "changing" holds no "hanging"; slow, slower
+    // and slowly all are.
+    if each
+        .iter()
+        .any(|w| w.starts_with("slow") || ["forever", "hanging", "frozen", "hung"].contains(w))
+        || [" so long ", " still waiting "]
+            .iter()
+            .any(|phrase| spaced.contains(phrase))
     {
         kinds.push("waited");
     }
@@ -212,5 +210,12 @@ mod tests {
             none,
             "a plain why"
         );
+        assert_eq!(
+            kinds("we are changing the theme", AT, &[]),
+            none,
+            "a wait is a word"
+        );
+        assert_eq!(kinds("make it snowy", AT, &[]), none);
+        assert_eq!(kinds("it opens slowly", AT, &[]), vec!["waited"]);
     }
 }
