@@ -3043,6 +3043,12 @@
     newest first under their quests' titles, ties without the writer's own, how one settled, the
     sentence's turns, the quote cut on a word, and a record it can't read said, not dropped
   '';
+  start-new-work-asks-only-a-sprout = ''
+    Start New Work asks the realm's node only a sprout of the trimmed words or link, after --,
+    with -o json and never --join, in a whole folder from the open quests' repositories, home in
+    any spelling and repeats left out; it says why when it asks nothing, hears both streams before
+    saying it started on the node's machine, else the node's or sprout's why
+  '';
   carry-back-asks-the-node-only-a-carry = ''
     Carry Back asks the realm's node only a carry of a quest's id to a machine's name, rebuilt from
     the act's parts so nothing else it holds is sent, and says it done once the carry ended

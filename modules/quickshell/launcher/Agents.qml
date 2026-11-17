@@ -37,6 +37,7 @@
 // budget the sessions draw on stands, as AI spend lists them.
 import qs
 import Quickshell
+import Quickshell.Io
 import QtQuick
 import KeyTimes
 import "../Fuzzy.js" as Fuzzy
@@ -51,6 +52,7 @@ import "Order.js" as Order
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
 import "SpendDrawer.js" as SpendDrawer
+import "Sprouting.js" as Sprouting
 import "TalkTo.js" as TalkTo
 import "Wanted.js" as Wanted
 
@@ -364,6 +366,7 @@ Provider {
     onLandedChanged: lastMade.landed = landed
     onRecentChanged: lastMade.recent = recent
     onStartChanged: lastMade.start = start
+    onStartNewWorkChanged: lastMade.startNewWork = startNewWork
     onBudgetsChanged: lastMade.budgets = budgets
 
     // The daemon's rows of Agents, each record held by its key, its fields
@@ -1443,6 +1446,130 @@ Provider {
         });
     }
 
+    // Start New Work, after Start a Session (Joel, 16 November: starting new
+    // work was too hard to do at all): From a Link, then one row for each
+    // repository the open quests work in, each asking for a link or a few
+    // words and asking the realm's node to sprout them (Sprouting.js), a
+    // quest of its own whose session starts held in no window, which Go To
+    // opens. Folded, found by its name, as Start a Session is.
+    // Its rows are made only when it's stepped into (inside), so it costs
+    // the first letter typed at home one folded row.
+    readonly property var startNewWork: {
+        if (!readNow)
+            return madeBefore("startNewWork", null);
+        const words = Words.of("agents:start-new-work");
+        const act = (id, folder, name) => {
+            const key = folder === "" ? `verb:agents:start-new-work:${id}`
+                : `verb:agents:start-new-work:${id}:${folder}`;
+            return thing({
+                key: key,
+                verb: Words.verb(`verb:agents:start-new-work:${id}`),
+                name: name,
+                glyph: Words.glyph(`verb:agents:start-new-work:${id}`),
+                hue: "action",
+                ask: Words.of(`verb:agents:start-new-work:${id}`).ask ?? "",
+                state: () => provider.sproutSaid[key] ?? "",
+                given: said => provider.sprout(key, said, folder)
+            });
+        };
+        const inside = () => [act("link", "", Words.name("verb:agents:start-new-work:link"))]
+            .concat(Sprouting.folders(source("quests")?.folders() ?? [],
+                Quickshell.env("HOME") ?? "").map(one => act("in", one.folder,
+                Words.name("verb:agents:start-new-work:in").replace("{folder}", one.name))));
+        return Object.assign(thingRow({
+            key: "agents:start-new-work",
+            name: Words.name("agents:start-new-work"),
+            thing: true,
+            drawer: () => ({
+                eyebrow: (Words.field.drawer ?? {}).place ?? "",
+                title: Words.name("agents:start-new-work"),
+                body: (words.tells ?? {}).holding ?? ""
+            }),
+            glyph: Theme.glyph.agent,
+            hue: "action"
+        }, inside), {
+            folded: true
+        });
+    }
+
+    // How each Start New Work act stands, by its key, as that act says it:
+    // starting, how it ended (Sprouting.js), why it asked nothing, or that
+    // the last is still starting. One runs at a time; `sprouting` is the
+    // key of the act it's for, "" while none runs.
+    property var sproutSaid: ({})
+    property string sprouting: ""
+    function sproutSays(key, text) {
+        sproutSaid = Object.assign({}, sproutSaid, { [key]: String(text ?? "") });
+    }
+    function sprout(key, said, folder) {
+        const words = Words.of("agents:start-new-work").said ?? {};
+        if (sprouter.running || sprouting !== "") {
+            sproutSays(key, words.busy);
+            return;
+        }
+        const command = Sprouting.command(Sessions.realm, said, folder);
+        if (command === null) {
+            sproutSays(key, Sprouting.refused(Sessions.realm, said, folder, words));
+            return;
+        }
+        sprouting = key;
+        sproutSays(key, words.starting);
+        sprouter.heard = {};
+        sprouter.command = command;
+        sprouter.running = true;
+        sproutPatience.restart();
+    }
+    // Both its streams are heard before how it ended is said, since a
+    // refusal before the node is asked comes on stderr alone. One that
+    // stops with neither ended couldn't start (Quickshell ends neither
+    // then); one still running past its patience is stopped.
+    Process {
+        id: sprouter
+        property var heard: ({})
+        stdout: StdioCollector {
+            onStreamFinished: provider.sproutHeard("out", text)
+        }
+        stderr: StdioCollector {
+            onStreamFinished: provider.sproutHeard("errors", text)
+        }
+        onRunningChanged: {
+            if (!running && provider.sprouting !== "" && !Sprouting.whole(heard))
+                provider.sprouted(Sprouting.unended(false, provider.sproutWords()));
+        }
+    }
+    // The node answers a start once it's placed, in a second or two; a
+    // minute without one is no answer.
+    Timer {
+        id: sproutPatience
+        interval: 60000
+        onTriggered: {
+            if (provider.sprouting === "")
+                return;
+            provider.sprouted(Sprouting.unended(true, provider.sproutWords()));
+            sprouter.running = false;
+        }
+    }
+    function sproutWords() {
+        return Words.of("agents:start-new-work").said ?? {};
+    }
+    function sproutHeard(stream, text) {
+        if (sprouting === "")
+            return;
+        sprouter.heard = Sprouting.hear(sprouter.heard, stream, text);
+        if (Sprouting.whole(sprouter.heard))
+            sprouted(Sprouting.ended(sprouter.heard.out, sprouter.heard.errors, sproutWords()));
+    }
+    // How the running act ended, said on it and in the journal; another
+    // may start from here.
+    function sprouted(how) {
+        const key = sprouting;
+        sprouting = "";
+        sproutPatience.stop();
+        sproutSays(key, Sprouting.told(how, sproutWords()));
+        Report.say(how.started ? `sprouted new work on ${how.machine}`
+            : `couldn't sprout new work: ${how.why}`);
+    }
+
     // The sessions there are to reopen (Sessions.qml's toReopen): those the
     // last boot's end took away, gone on the boot they ran in or once put
     // off, and those other machines carried here or pi's host gave back,
@@ -2208,7 +2335,8 @@ Provider {
     }
     onSpecChanged: lastMade.spec = spec
 
-    things: [toReopen, landed, budgets, spec, recent, start].filter(row => row !== null)
+    things: [toReopen, landed, budgets, spec, recent, start, startNewWork]
+        .filter(row => row !== null)
 
     // Asked while they aren't wanted, as a step into Agents asks before it's
     // held, its rows are laid out as asked, from the daemon's rows held.
@@ -2217,7 +2345,7 @@ Provider {
         // made ready from those (Provider.qml's looksThrough).
         const tree = provider.wanted || !opened() ? treeRows() : laidOut();
         const sessions = topServed && opened() && !provider.lookingThrough.now ? top.rows() : tree;
-        return sessions.concat([toReopen, landed, spec, recent, start]
+        return sessions.concat([toReopen, landed, spec, recent, start, startNewWork]
             .filter(row => row !== null));
     }
 

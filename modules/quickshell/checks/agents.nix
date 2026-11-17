@@ -89,6 +89,26 @@
       touch $out
     '';
 
+  # Start New Work asks the realm's node only a sprout of what Joel said,
+  # in no window, in one of the repositories his quests work in, and says
+  # how it ended in the node's or sprout's own words, as
+  # tests/start-new-work.qml holds launcher/Sprouting.js to it in Qt's own
+  # engine.
+  start-new-work-asks-only-a-sprout =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "start-new-work-asks-only-a-sprout" { } ''
+      cp ${../../../tests/start-new-work.qml} start-new-work.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "launcher/Sprouting.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml start-new-work.qml
+      touch $out
+    '';
+
   # Carry Back asks the realm's node only a carry of a quest to a machine,
   # rebuilt from the act's parts, and says how it ended in the node's own
   # words, as tests/carry-back.qml holds launcher/CarryBack.js to it in Qt's
