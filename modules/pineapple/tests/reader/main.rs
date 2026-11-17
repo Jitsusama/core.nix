@@ -13,6 +13,7 @@ mod live;
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -477,6 +478,55 @@ fn resumed(home: &Path, id: &str) -> Value {
     )
     .expect("the record is JSON");
     record["resumed"].clone()
+}
+
+#[test]
+fn a_keyring_that_never_answers_holds_the_stops_back_only_its_patience_and_rest() {
+    let (origin, _) = stand_in();
+    let home = home();
+    // The stand-in secret-tool: asked first, it never answers, as one
+    // waiting on a locked keyring's unlock doesn't; asked again, it prints
+    // the sign-in.
+    let keyring = home.join("keyring");
+    let asked = home.join("keyring-asked");
+    let sign_in = json!({"token": {
+        "accessToken": "xoxc-stand-in", "cookie": "stand-in", "teamId": "T0TEAM0001",
+        "userId": JOEL,
+    }});
+    let script = format!(
+        "#!/bin/sh\nif [ -e {asked} ]; then printf '%s\\n' '{sign_in}'; \
+         else : > {asked}; exec sleep 600; fi\n",
+        asked = asked.display()
+    );
+    std::fs::write(&keyring, script).expect("the keyring written");
+    std::fs::set_permissions(&keyring, std::fs::Permissions::from_mode(0o755))
+        .expect("the keyring runs");
+    let mut reader = Command::new(env!("CARGO_BIN_EXE_pineapple-slack"))
+        .args(["run", "--origin", &origin, "--every", PACE])
+        .env("HOME", &home)
+        .env("XDG_CONFIG_HOME", home.join("config"))
+        .env("XDG_STATE_HOME", home.join("state"))
+        .env("SIGN_IN_KEYRING", &keyring)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("the reader starts");
+    let began = Instant::now();
+    until_decided(&home, 4);
+    let took = began.elapsed();
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+    assert!(asked.exists(), "the keyring was asked");
+    // At a tenth of a second a round, twenty rounds' patience and rest.
+    assert!(
+        took >= Duration::from_secs(4),
+        "the stops waited out the keyring's patience and rest: {took:?}"
+    );
+    assert_eq!(
+        each(&decisions(&home), "verdict"),
+        ["stop", "stop", "stop-asked", "stop"],
+        "every stop said while the keyring hung is heard"
+    );
 }
 
 #[test]

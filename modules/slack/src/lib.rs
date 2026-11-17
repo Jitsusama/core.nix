@@ -56,12 +56,47 @@ struct File {
     token: Account,
 }
 
+/// How long a program rests from the keyring once its sign-in ran over:
+/// long enough that a keyring's unlock prompt isn't raised again each
+/// round, short against a stop going unheard.
+pub const REST: Duration = Duration::from_mins(10);
+
+/// When this program's keyring sign-in last ran over, shared by every
+/// read of it, so no caller asks again during the rest.
+static RAN_OVER_AT: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+
+/// What the harness's sign-in came to.
+#[derive(Debug)]
+pub enum Signed {
+    /// Joel's sign-in.
+    In(Account),
+    /// None, in the keyring or the file.
+    Out,
+    /// The keyring's program ran past [`sign_in_program::PATIENCE`] and
+    /// was stopped, just now.
+    RanOver,
+    /// It ran over less than [`REST`] ago, so the keyring wasn't asked.
+    Resting,
+}
+
 impl Account {
-    /// The harness's sign-in, as `kept` reads it, the keyring's printed by
-    /// the program `SIGN_IN_KEYRING` names, as each program's unit says.
+    /// The harness's sign-in, as `signed` reads it, or none.
     pub fn read(path: &Path) -> Option<Account> {
+        match Account::signed(path, sign_in_program::PATIENCE, REST) {
+            Signed::In(account) => Some(account),
+            Signed::Out | Signed::RanOver | Signed::Resting => None,
+        }
+    }
+
+    /// The harness's sign-in, as `kept` reads it, the keyring's printed by
+    /// the program `SIGN_IN_KEYRING` names, as each program's unit says,
+    /// its program given `patience`, and never asked for during the `rest`
+    /// after it ran over.
+    pub fn signed(path: &Path, patience: Duration, rest: Duration) -> Signed {
         let keyring = std::env::var_os("SIGN_IN_KEYRING").map(PathBuf::from);
-        Account::kept(keyring.as_deref(), path)
+        rested(&RAN_OVER_AT, rest, || {
+            Account::kept_within(keyring.as_deref(), path, patience)
+        })
     }
 
     /// The harness's sign-in: the keyring's, printed by the program
@@ -69,27 +104,44 @@ impl Account {
     /// it holds one; else the file at `path`, as pi kept it before. None
     /// when neither holds one: then the program says nothing of anyone.
     pub fn kept(keyring: Option<&Path>, path: &Path) -> Option<Account> {
-        let text = keyring
-            .and_then(printed)
-            .or_else(|| std::fs::read_to_string(path).ok())?;
-        serde_json::from_str::<File>(&text)
-            .ok()
-            .map(|file| file.token)
+        match Account::kept_within(keyring, path, sign_in_program::PATIENCE) {
+            Signed::In(account) => Some(account),
+            Signed::Out | Signed::RanOver | Signed::Resting => None,
+        }
+    }
+
+    /// As `kept`, the keyring's program given `patience`. One that ran over
+    /// isn't read past to the file, whose sign-in is older, so the caller
+    /// hears it ran over.
+    fn kept_within(keyring: Option<&Path>, path: &Path, patience: Duration) -> Signed {
+        use sign_in_program::SignIn;
+        let printed =
+            match keyring.map(|program| sign_in_program::token(program.as_os_str(), patience)) {
+                Some(SignIn::Token(text)) => Some(text),
+                Some(SignIn::RanOver) => return Signed::RanOver,
+                Some(SignIn::Missing) | None => None,
+            };
+        let Some(text) = printed.or_else(|| std::fs::read_to_string(path).ok()) else {
+            return Signed::Out;
+        };
+        serde_json::from_str::<File>(&text).map_or(Signed::Out, |file| Signed::In(file.token))
     }
 }
 
-/// What the program `keyring` prints, or none when it can't be run, fails,
-/// as it does for an item the keyring lacks, or prints nothing. What it
-/// says otherwise is let go, so no part of a sign-in reaches the journal.
-fn printed(keyring: &Path) -> Option<String> {
-    use std::process::{Command, Stdio};
-    let out = Command::new(keyring)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    let text = String::from_utf8(out.stdout).ok()?;
-    (out.status.success() && !text.trim().is_empty()).then_some(text)
+/// What `ask` gives, unless its last answer under `at` ran over less than
+/// `rest` ago; one that runs over now starts the rest.
+fn rested(
+    at: &std::sync::Mutex<Option<Instant>>,
+    rest: Duration,
+    ask: impl FnOnce() -> Signed,
+) -> Signed {
+    let mut at = at.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if at.is_some_and(|when| when.elapsed() < rest) {
+        return Signed::Resting;
+    }
+    let signed = ask();
+    *at = matches!(signed, Signed::RanOver).then(Instant::now);
+    signed
 }
 
 /// What Slack said of an address, as the shell is told it: who it is in
@@ -1168,5 +1220,56 @@ mod tests {
             Account::kept(Some(&keyring), missing).is_none(),
             "a sign-in from nowhere"
         );
+    }
+
+    #[test]
+    fn a_keyring_that_never_answers_runs_over_and_isnt_read_past() {
+        let patience = Duration::from_millis(300);
+        let (keyring, path) = kept_in("hangs", &signed_in("xoxc-file"), "exec sleep 60");
+        let (said, heard) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            // The case may have given up, and then nobody listens.
+            let _ = said.send(Account::kept_within(Some(&keyring), &path, patience));
+        });
+        let signed = heard
+            .recv_timeout(patience + Duration::from_secs(5))
+            .expect("a keyring that never answers is never waited on for good");
+        assert!(
+            matches!(signed, Signed::RanOver),
+            "a keyring that never answers ran over, not {signed:?}"
+        );
+    }
+
+    #[test]
+    fn a_sign_in_that_ran_over_isnt_asked_for_again_until_its_rest_is_up() {
+        let at = std::sync::Mutex::new(None);
+        let asked = Cell::new(0);
+        let ask = |answer: Signed| {
+            asked.set(asked.get() + 1);
+            answer
+        };
+        let hour = Duration::from_secs(3600);
+        let first = rested(&at, hour, || ask(Signed::RanOver));
+        assert!(
+            matches!(first, Signed::RanOver),
+            "it ran over, not {first:?}"
+        );
+        let resting = rested(&at, hour, || ask(Signed::Out));
+        assert!(
+            matches!(resting, Signed::Resting),
+            "it rests, not {resting:?}"
+        );
+        assert_eq!(asked.get(), 1, "the keyring was asked during its rest");
+        let after = rested(&at, Duration::ZERO, || ask(Signed::Out));
+        assert!(
+            matches!(after, Signed::Out),
+            "asked once rested, not {after:?}"
+        );
+        let again = rested(&at, hour, || ask(Signed::Out));
+        assert!(
+            matches!(again, Signed::Out),
+            "an answer ends the rest, not {again:?}"
+        );
+        assert_eq!(asked.get(), 3, "asked once its rest was up, and after");
     }
 }

@@ -1,7 +1,8 @@
 # slack-people and slack-unreads, built from this directory, their tests run
 # as they build. Their rows take the form every daemon's do (../ready-rows),
 # and slack-unreads serves them as every daemon does (../daemon-serve); both
-# take their shape from the terminal kit (../terminal-kit). So the source is
+# take their shape from the terminal kit (../terminal-kit), and the keyring's
+# sign-in is run as every reader's is (../sign-in-program). So the source is
 # cut from the modules folder holding them all, and built from this one.
 {
   lib,
@@ -25,6 +26,8 @@ rustPlatform.buildRustPackage rec {
       ../daemon-serve/src
       ../ready-rows/Cargo.toml
       ../ready-rows/src
+      ../sign-in-program/Cargo.toml
+      ../sign-in-program/src
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
     ];

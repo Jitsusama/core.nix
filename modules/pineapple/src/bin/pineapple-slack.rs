@@ -52,16 +52,22 @@ use pineapple::phone::{self, Alert, Missed, OwnIm, UNSURE, done, told_as};
 use pineapple::record::{self, Source};
 use pineapple::reply::{self, Post};
 use pineapple::resume;
+use pineapple::sign_in::{self, ran_over};
 use pineapple::slack::{Message, found, micros, root};
 use pineapple::vocabulary::Words;
 use pineapple::{Context, Heard, Joel, Platform, Target, Verdict, decide};
 use serde_json::{Value, json};
-use slack_people::{Account, Slack};
+use slack_people::{Account, Signed, Slack};
 use terminal_kit::{Exit, Failure, Format, Help, flags};
 
 /// How often Slack is searched, unless a test says otherwise: with the
 /// enforcer's few seconds after, a stop lands well inside five minutes.
 const EVERY: Duration = Duration::from_secs(30);
+
+/// How many rounds the keyring's sign-in may take, and the rest after one
+/// that ran over may last, at most: at the service's pace, 30 seconds and
+/// ten minutes, so a test's quicker pace waits less.
+const SIGN_IN_ROUNDS: u32 = 20;
 
 /// How far back a first start looks, in seconds.
 const LOOK_BACK: u64 = 10 * 60;
@@ -241,7 +247,7 @@ fn state() -> PathBuf {
 }
 
 /// The harness's old Slack sign-in file, read only when the keyring
-/// `SIGN_IN_KEYRING` names holds no sign-in (../slack's `Account::read`).
+/// `SIGN_IN_KEYRING` names holds no sign-in (../slack's `Account::signed`).
 fn credentials() -> PathBuf {
     env_dir("XDG_CONFIG_HOME", ".config").join("agentic-harness/slack/credentials.json")
 }
@@ -344,14 +350,20 @@ fn run(how: &Run) -> Result<(), Failure> {
         looked: false,
         shadow: how.shadow,
     };
+    let patience = sign_in::PATIENCE.min(how.every * SIGN_IN_ROUNDS);
+    let rest = slack_people::REST.min(how.every * SIGN_IN_ROUNDS);
     loop {
-        match Account::read(&credentials) {
-            Some(account) if !account.user.is_empty() => {
+        match Account::signed(&credentials, patience, rest) {
+            Signed::In(account) if !account.user.is_empty() => {
                 round(&slack, &reader, &account, &state, &mut judged);
                 tell_phone(&slack, &mut phone, &account, &state);
             }
-            Some(_) => eprintln!("<4>the Slack sign-in doesn't say who Joel is"),
-            None => eprintln!("<4>no Slack sign-in yet, so nothing is read"),
+            Signed::In(_) => eprintln!("<4>the Slack sign-in doesn't say who Joel is"),
+            Signed::Out => eprintln!("<4>no Slack sign-in yet, so nothing is read"),
+            // A locked keyring prompts each time it's asked, so it rests.
+            Signed::RanOver => eprintln!("<4>{}", ran_over("Slack", "slack", rest)),
+            // Said as it began.
+            Signed::Resting => {}
         }
         std::thread::sleep(how.every);
     }

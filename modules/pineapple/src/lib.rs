@@ -28,7 +28,8 @@
 //!   back; [`serve`] serves them on a socket of its own, taking a press
 //!   only from his shell ([`peer`]), and knocks as a row first appears.
 //! - [`sign_in`] runs the program a reader is given for Joel's sign-in,
-//!   and never waits on it for good.
+//!   never waiting on it for good (../sign-in-program), and says so when
+//!   it ran over.
 //! - [`phone`] says the same alert in Joel's own note-to-self IM in
 //!   Slack, the one place it can send to, so it reaches his phone.
 //!

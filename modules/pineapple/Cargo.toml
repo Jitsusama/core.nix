@@ -23,6 +23,9 @@ serde_json = "1.0"
 # Slack's client and Joel's sign-in, through its door that only reads
 # (../slack), so nothing here can write to Slack.
 slack-people = { path = "../slack" }
+# Joel's sign-in to GitHub and Delta, its program never waited on for good
+# (../sign-in-program).
+sign-in-program = { path = "../sign-in-program" }
 # The shape every command of ours takes: its flags, help, errors and ink.
 terminal-kit = { path = "../terminal-kit" }
 # The shell's daemon interface, which pineapple serve speaks to the

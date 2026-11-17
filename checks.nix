@@ -744,6 +744,7 @@ gather {
     ./modules/secret-asks/checks.nix
     ./modules/session-backup/checks.nix
     ./modules/shaper/checks.nix
+    ./modules/sign-in-program/checks.nix
     ./modules/signing/checks.nix
     ./modules/slack/checks.nix
     ./modules/slices/checks.nix

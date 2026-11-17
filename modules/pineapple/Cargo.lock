@@ -365,6 +365,7 @@ dependencies = [
  "daemon-serve",
  "libc",
  "serde_json",
+ "sign-in-program",
  "slack-people",
  "terminal-kit",
  "ureq",
@@ -509,6 +510,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
+name = "sign-in-program"
+version = "0.1.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "simd-adler32"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -522,6 +530,7 @@ dependencies = [
  "ready-rows",
  "serde",
  "serde_json",
+ "sign-in-program",
  "terminal-kit",
  "ureq",
 ]
