@@ -118,28 +118,21 @@ let
     mv -f log.txt log.1.txt
   '';
 
-  # Puts our entry back when it no longer reads as ours, hidden and opening
-  # tuple: links, as after a daemon started outside tuple.service writes
-  # its own. Any generation's entry reads as ours, so an old one's unit
-  # never takes back a new one home-manager has just linked, and its own
-  # putting back doesn't set it off again. It links into home-manager's
-  # generation, as home-manager does, so it's home-manager's to replace or
-  # clean up; this generation's entry only while there's none.
-  ours = config.home.file."${entries}/tuple.desktop".source;
-  generation = "${config.xdg.stateHome}/home-manager/gcroots/current-home/home-files";
-  inGeneration = "${lib.removePrefix config.home.homeDirectory entries}/tuple.desktop";
+  # Puts our entry back when it no longer reads as ours (puts-back.sh).
   putsBack = pkgs.writeShellScript "tuple-puts-its-entry-back" ''
-    entry=${lib.escapeShellArg "${entries}/tuple.desktop"}
-    grep=${lib.getExe pkgs.gnugrep}
-    if "$grep" -qx NoDisplay=true "$entry" \
-      && "$grep" -qx 'MimeType=x-scheme-handler/tuple;' "$entry"; then
-      exit 0
-    fi
-    files=$(${pkgs.coreutils}/bin/readlink -f ${lib.escapeShellArg generation})
-    linked=$files${lib.escapeShellArg inGeneration}
-    [ -f "$linked" ] || linked=${ours}
-    ${pkgs.coreutils}/bin/ln -sfn "$linked" "$entry"
-    echo "Tuple's own desktop entry was in the place of ours; ours is back"
+    PATH=${
+      lib.makeBinPath [
+        pkgs.coreutils
+        pkgs.gnugrep
+      ]
+    } exec ${lib.getExe pkgs.bash} ${./puts-back.sh} ${
+      lib.escapeShellArgs [
+        "${entries}/tuple.desktop"
+        "${config.xdg.stateHome}/home-manager/gcroots/current-home/home-files"
+        "${lib.removePrefix config.home.homeDirectory entries}/tuple.desktop"
+        "${config.home.file."${entries}/tuple.desktop".source}"
+      ]
+    }
   '';
 in
 {
