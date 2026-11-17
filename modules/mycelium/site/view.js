@@ -900,6 +900,7 @@
         clipKnocks(g, w, h);
       }
       for (const s of layer) {
+        if (s.hidden) continue;
         let shape;
         if (s.tag === "circle") {
           const [cx, cy, r] = [X(s.at[0]), Y(s.at[1]), s.r * k];
@@ -986,7 +987,7 @@
     let nearest = TOUCH_PX;
     for (const shapes of [talkShapes, lineShapes]) {
       for (const line of shapes) {
-        if (!line.opens || (onGround && line.within)) continue;
+        if (!line.opens || line.hidden || (onGround && line.within)) continue;
         const [p, c, q] = line.map(([px, py]) => [px * k + tx, py * k + ty]);
         if (x < Math.min(p[0], c[0], q[0]) - nearest || x > Math.max(p[0], c[0], q[0]) + nearest) continue;
         if (y < Math.min(p[1], c[1], q[1]) - nearest || y > Math.max(p[1], c[1], q[1]) + nearest) continue;
@@ -1143,6 +1144,50 @@
     );
   };
 
+  // A network nobody leads, shared by cells under two networks or more,
+  // is a knot of its own: the same spokes and ring, empty in the middle
+  // since nobody leads it. It stands among its cells, clear of every
+  // network's ground, so its cells are the bridge between the networks
+  // they're under and no line ever runs from one network's mark to
+  // another's. Shared by cells of one network only, it stays the faint
+  // hyphae inside that network's ground.
+  let knotsAt = new Map();
+  const KNOT_CLEAR = HUB_R + 14; // from a ground's edge to a knot's middle
+  const KNOT_TRIES = 8; // pushes out of grounds before a knot stays put
+  const knotClass = (n) => {
+    const cls = ["knot"];
+    if (chosen?.kind === "net" && chosen.id === n.key) cls.push("chosen");
+    if (near && !near.shared.has(n.key)) cls.push("far");
+    if (!isLive(n)) cls.push("quiet");
+    return cls.join(" ");
+  };
+  const knotMarkup = (n, [x, y]) =>
+    `<g class="${knotClass(n)}" data-key="n:${esc(n.key)}" data-level="${TOP_LEVEL}" data-within="" transform="translate(${x.toFixed(1)},${y.toFixed(1)})">` +
+    `<circle class="m-hit" r="${HUB_R + 6}"/><path class="m-spokes" d="${spokesPath(HUB_R)}"/><circle class="m-hub" r="${HUB_R}"/></g>`;
+  const homesOf = (n) => new Set(n.cells.map((s) => (s.hub || s.loose)?.key).filter(Boolean));
+  // Each knot starts at the middle of its cells and is pushed straight out
+  // of any ground, machine or knot it lands on, a few times at most.
+  const placeKnots = (m, machines) => {
+    const at = new Map();
+    const taken = [...groundsAt.map(([, x, y, r]) => [x, y, r + KNOT_CLEAR]), ...machines.map((x) => [...(L.machines.get(x.name) || [0, 0]), MACHINE_R + KNOT_CLEAR])];
+    for (const n of m.shared) {
+      const on = n.cells.filter((s) => pos.has(s.id));
+      if (on.length < 2 || homesOf(n).size < 2) continue;
+      let [x, y] = on.reduce(([a, b], s) => [a + pos.get(s.id)[0] / on.length, b + pos.get(s.id)[1] / on.length], [0, 0]);
+      for (let i = 0; i < KNOT_TRIES; i++) {
+        const hit = taken.find(([tx, ty, r]) => Math.hypot(x - tx, y - ty) < r);
+        if (!hit) break;
+        const [tx, ty, r] = hit;
+        const d = Math.hypot(x - tx, y - ty);
+        const [ux, uy] = d > 1 ? [(x - tx) / d, (y - ty) / d] : [Math.cos(Math.atan2(ty, tx)), Math.sin(Math.atan2(ty, tx))];
+        [x, y] = [tx + ux * (r + 1), ty + uy * (r + 1)];
+      }
+      at.set(n.key, [x, y]);
+      taken.push([x, y, HUB_R * 2 + KNOT_CLEAR]);
+    }
+    return at;
+  };
+
   const machineClass = (x) => (near && !near.machines.has(x.name) ? "machine far" : "machine");
   // A machine's mark is its name, boxed, drawn with the words on the map;
   // here it keeps only the place the keys and the walk stand on.
@@ -1163,13 +1208,19 @@
   // test of whether the choice touches it, asked again on every draw. What
   // the choice leaves untouched steps back; a hypha or cross-hypha it
   // touches is also drawn strong.
-  const inked = (base, on, tail = "", strong = false) => ({ base, on, tail, strong });
+  // A shy shape is drawn only when the choice touches it: the lines that
+  // join cells across networks, which at the whole map hid the cells.
+  const inked = (base, on, tail = "", strong = false, shy = false) => ({ base, on, tail, strong, shy });
   const inkOfShape = (s) => `${s.base}${near ? (s.on() ? (s.strong ? " lit" : "") : " far") : ""}${s.tail}`;
   // What is far is painted first, so what the choice touches lies on top.
   const farFirst = (a, b) => (b.cls.includes(" far") ? 1 : 0) - (a.cls.includes(" far") ? 1 : 0);
   const inkGround = () => {
     for (const layer of groundLayers) {
-      for (const s of layer) s.cls = inkOfShape(s);
+      for (const s of layer) {
+        s.cls = inkOfShape(s);
+        s.hidden = s.shy && !(near && s.on());
+        if (s.line) s.line.hidden = s.hidden;
+      }
       layer.sort(farFirst);
     }
   };
@@ -1202,6 +1253,8 @@
       if (el.getAttribute("class") !== cls) el.setAttribute("class", cls);
     };
     for (const el of world.querySelectorAll("g.hub")) setClass(el, hubClass(current.hubs.get(el.dataset.key.slice(2))));
+    const shared = new Map(current.shared.map((n) => [n.key, n]));
+    for (const el of world.querySelectorAll("g.knot")) setClass(el, knotClass(shared.get(el.dataset.key.slice(2))));
     const machines = new Map(current.machines.map((x) => [x.name, x]));
     for (const el of world.querySelectorAll("g.machine")) setClass(el, machineClass(machines.get(el.dataset.key.slice(2))));
     for (const el of world.querySelectorAll(".cell.chosen")) setClass(el, "cell m-hit");
@@ -1294,6 +1347,11 @@
       const grow = swell(h.owes);
       if (grow) colonies.push({ tag: "circle", ...inked("m-waits m-held", () => near.hubs.has(h.key)), at, r: r + WAIT_GAP + grow });
     }
+    knotsAt = placeKnots(m, machines);
+    for (const [key, at] of knotsAt) {
+      spots.set(`n:${key}`, at);
+      sizes.set(`n:${key}`, HUB_R);
+    }
     // A machine carrying more than CORD_BUNDLE_OVER networks bundles its
     // cords as a mycelium does: one trunk out each way, splitting into a
     // twig for each network, so a crowd reads as parts, not a dark mass.
@@ -1356,20 +1414,23 @@
       }
     }
     // Cross-hyphae: the cells of each shared network, joined by the
-    // shortest tree, and a cell on a second orchestration joined to its hub.
+    // shortest tree, from its knot where it has one, and a cell on a
+    // second orchestration joined to its hub.
     for (const n of m.shared) {
       const on = n.cells.filter((s) => pos.has(s.id) && !isFolded(s));
-      const points = on.map((s) => pos.get(s.id));
-      for (const [a, b] of treeOf(`s|${n.key}|${on.map((s) => s.id).join(",")}`, points)) {
-        link(crossAdj, `c:${on[a].address}`, `c:${on[b].address}`);
-        cross.push({ tag: "path", ...inked(`m-cross m-${n.shape}`, () => near.shared.has(n.key), "", true), line: opens(curve(points[a], points[b], 0.18), "net", n.key) });
+      const knot = knotsAt.get(n.key);
+      const points = [...(knot ? [knot] : []), ...on.map((s) => pos.get(s.id))];
+      const at = (i) => (!knot ? `c:${on[i].address}` : i === 0 ? `n:${n.key}` : `c:${on[i - 1].address}`);
+      for (const [a, b] of treeOf(`s|${n.key}|${knot ? "knot|" : ""}${on.map((s) => s.id).join(",")}`, points)) {
+        link(crossAdj, at(a), at(b));
+        cross.push({ tag: "path", ...inked(`m-cross m-${n.shape}`, () => near.shared.has(n.key), "", true, true), line: opens(curve(points[a], points[b], 0.18), "net", n.key) });
       }
     }
     for (const s of m.cells) {
       if (!pos.has(s.id) || isFolded(s)) continue;
       for (const h of s.also) {
         link(crossAdj, `c:${s.address}`, `h:${h.key}`);
-        cross.push({ tag: "path", ...inked("m-cross m-bridge", () => near.ids.has(s.id) && near.hubs.has(h.key), "", true), line: opens(curve(pos.get(s.id), L.at.get(h.key), 0.14), "net", h.key) });
+        cross.push({ tag: "path", ...inked("m-cross m-bridge", () => near.ids.has(s.id) && near.hubs.has(h.key), "", true, true), line: opens(curve(pos.get(s.id), L.at.get(h.key), 0.14), "net", h.key) });
       }
     }
     // Machines joined to each other: the link that keeps a realm one.
@@ -1385,6 +1446,7 @@
     if (!marks) {
       machines.forEach((x) => nodes.push(machineMarkup(x, L.machines.get(x.name))));
       for (const h of m.hubs.values()) nodes.push(hubMarkup(h, L.at.get(h.key)));
+      for (const n of m.shared) if (knotsAt.has(n.key)) nodes.push(knotMarkup(n, knotsAt.get(n.key)));
       for (const s of m.cells) if (pos.has(s.id) && !isFolded(s)) nodes.push(cellMarkup(s, pos.get(s.id)));
     }
     paintCells();
@@ -1438,6 +1500,17 @@
       const busy = [n.asks, n.stuck, n.moving, h.cells.length];
       out.push({ key: `h:${h.key}`, kind: "hub", rank: 1, busy, at: L.at.get(h.key), r: HUB_R, disc: L.disc.get(h.key), out: [Math.cos(a), Math.sin(a)], name: lines(clipped(h.name), 22), sub, far: near && !near.hubs.has(h.key) });
     }
+    // A knot is named by what its cells share, or by its quest's title.
+    for (const n of m.shared) {
+      const at = knotsAt.get(n.key);
+      const key = `n:${n.key}`;
+      const open = chosen?.kind === "net" && chosen.id === n.key;
+      if (!at || (near && !near.shared.has(n.key) && key !== pointed) || (capped && key !== pointed && !open)) continue;
+      const c = countsOf(n.cells);
+      const sub = [SHARED_WORD[n.shape], plural(n.cells.length, "cell"), ...["asks", "stuck"].filter((s) => c[s]).map((s) => `${c[s]} ${STANDING_WORD[s]}`)].join(" \u00b7 ");
+      const a = Math.atan2(at[1], at[0]);
+      out.push({ key, kind: "hub", rank: 1, busy: [c.asks, c.stuck, c.moving, n.cells.length], at, r: HUB_R, disc: HUB_R, out: [Math.cos(a), Math.sin(a)], name: lines(clipped(n.title || n.short), 22), sub });
+    }
     const counts = new Map();
     for (const s of m.cells) counts.set(s.machine, (counts.get(s.machine) || 0) + 1);
     // A machine's name is its mark, so it shows in full whatever is open,
@@ -1482,7 +1555,7 @@
       const sought = key === `c:${m.byId.get(hover)?.address}` || foundSet.has(key);
       out.push({ key, kind: "cell", rank: strong ? 0 : sought ? 2 : 4, at: p, r: R, out: [1, 0], name: [clipped(s.short)], sub, strong });
     }
-    const open = chosen && { cell: "c", net: "h", machine: "m" }[chosen.kind];
+    const open = chosen && (chosen.kind === "net" && knotsAt.has(chosen.id) ? "n" : { cell: "c", net: "h", machine: "m" }[chosen.kind]);
     const openKey = open && `${open}:${chosen.id}`;
     for (const l of out) if (!l.mark && (l.key === pointed || l.key === openKey)) l.rank = 0;
     out.sort((a, b) => a.rank - b.rank || busier(a.busy, b.busy));
@@ -1849,7 +1922,7 @@
       adj.get(p).add(q);
     }
   };
-  const KIND_OF = { c: "cell", h: "net", m: "machine" };
+  const KIND_OF = { c: "cell", h: "net", n: "net", m: "machine" };
   const choiceOf = (key) => ({ kind: KIND_OF[key[0]], id: key.slice(2) });
   const keyOf = (c) => {
     if (!c) return null;
@@ -3185,6 +3258,7 @@
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><rect class="m-box m-lent" x="-10" y="-7" width="20" height="14" style="stroke-dasharray:9 11 9 5;stroke-dashoffset:4.5"/></svg></dt><dd>A lent machine, here until its lease ends: only its box's corners</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><rect class="m-box m-lent" x="-10" y="-7" width="20" height="14" style="stroke-dasharray:0 20 48"/></svg></dt><dd>A basin: a machine borrowed from a pool in the cloud, its box open at the top</dd></div>` +
       `<div><dt><svg viewBox="-17 -17 34 34" aria-hidden="true"><path class="m-spokes" d="${spokesPath(10)}" style="stroke-width:1.75"/><circle class="m-hub" r="10"/><path class="m-hub-shape" d="${SHAPES.square(5)}"/></svg></dt><dd>A network's hub, a knot: spokes round its ring, and its own shape in the middle; a click on its ground opens it</dd></div>` +
+      `<div><dt><svg viewBox="-17 -17 34 34" aria-hidden="true"><path class="m-spokes" d="${spokesPath(10)}" style="stroke-width:1.75"/><circle class="m-hub" r="10"/></svg></dt><dd>A network with no leader, shared by cells of other networks: the same knot, empty in the middle; the cells it shares are the bridge between them</dd></div>` +
       (m.cells.length > FOLD_OVER
         ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-colony folded" r="12"/><circle class="m-hub" r="7"/></svg></dt><dd>A folded network: drawn too small to read, or off the map, so its cells wait in its ground until you come closer or open it</dd></div>`
         : "") +
@@ -4067,7 +4141,14 @@
     if (!WARMS) return;
     talkShapes = [];
     talkLayer = [];
+    // Talk is drawn only where the choice touches it: at the whole map
+    // its arcs hid the cells, so there it shows only as the messages that
+    // travel. A cell open shows its own talk; a network shows the talk
+    // within it, since talk with one of its cells reaches most of the map.
+    const own = chosen?.kind === "cell" ? `c:${chosen.id}` : null;
+    const touches = (end) => (end[0] === "h" ? near.hubs.has(end.slice(2)) : near.ids.has(current.byAddress.get(end.slice(2))?.id));
     for (const [e, n] of talk) {
+      if (chosen?.kind === "talk" ? chosen.id !== e : !near || !(own ? e.split("|").includes(own) : e.split("|").every(touches))) continue;
       const [a, b] = e.split("|");
       const arc = arcOf(a, b);
       if (!arc) continue;
