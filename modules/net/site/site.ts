@@ -8,6 +8,7 @@
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { hasOwnKeys, listen, toggle } from "../../local-sites/kit/keys.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
+import { pressable } from "../../local-sites/kit/steps.ts";
 import { said } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { followMycelium } from "./beside.ts";
@@ -441,15 +442,7 @@ for (const button of document.querySelectorAll<HTMLElement>("[data-zoom]")) {
   button.addEventListener("click", () => ZOOM_BUTTONS[button.dataset["zoom"] ?? "fit"]?.());
 }
 
-for (const key of document.querySelectorAll<HTMLElement>(".keys kbd[data-key]")) {
-  key.addEventListener("click", () => {
-    if (key.dataset["key"] === "?") {
-      toggle(keys);
-    } else {
-      find.focus();
-    }
-  });
-}
+pressable(".head .keys kbd", { "?": () => toggle(keys) });
 
 themeSwitch();
 
