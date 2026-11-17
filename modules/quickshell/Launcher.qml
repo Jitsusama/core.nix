@@ -9697,6 +9697,14 @@ Scope {
             openedWholeSaid();
         const began = lapped;
         opening = false;
+        // However it opened or shut (a chord, a walk from outside, the
+        // command line, a wake), what a kept opening left for its fill is
+        // spent: its own fill took the place and the landing before
+        // opening, and any other way in never fills, so they would send a
+        // later kept opening's fill into a place, or onto a row, it never
+        // asked for.
+        openInto = "";
+        landsOnFill = null;
         markOpen(open);
         if (!open) {
             Report.say("closing");
@@ -10462,14 +10470,13 @@ Scope {
         // A place a chord opened, opened whole now, as its chord would.
         const place = openInto;
         if (place !== "") {
+            const lands = landsOnFill;
             fillingPlace = true;
             try {
                 into(place);
             } finally {
                 fillingPlace = false;
             }
-            const lands = landsOnFill;
-            landsOnFill = null;
             if (lands !== null)
                 landingOn(lands.wanted, lands.normal);
         } else {
