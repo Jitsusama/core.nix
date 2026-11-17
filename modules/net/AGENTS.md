@@ -170,12 +170,16 @@ credential `/etc/credstore.encrypted/switch-password`, written by hand with
 `systemd-creds encrypt`, and reads it as `$CREDENTIALS_DIRECTORY/switch-password`;
 it may reach the switch's address and nothing else.
 Each minute it reads four status pages one at a time, since the switch
-drops a reply when asked for two, and asks for a page again once when it
-answers nothing. It signs in only when the pages come back holding no
-status, as they do once the switch's session has ended, because the
-sign-in is plain HTTP and puts the password on the home network in the
-clear. It writes `$RUNTIME_DIRECTORY/report.json` with only what the pages
-show: the password, the sign-in and ureq's own error words never go in it.
+drops a reply when asked for two, and asks for a page up to five times
+when it answers nothing, the pause doubling from 300 ms, since its drops
+come in bursts. System Info is read first, and the read stops there when
+it holds no status, since a signed-out switch may hang up on the other
+pages rather than serve its sign-in form. It signs in only then, once
+the switch's session has ended, because the sign-in is plain HTTP and
+puts the password on the home network in the clear. Each change of what
+the switch reads, and why, goes to the service's journal. It writes
+`$RUNTIME_DIRECTORY/report.json` with only what the pages show: the
+password, the sign-in and ureq's own error words never go in it.
 With no credential the report says signed out, and nothing else changes.
 
 ## The Views

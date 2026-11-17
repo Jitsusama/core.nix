@@ -1,9 +1,10 @@
 //! The switch's reader: what the switch's system service runs, apart from
 //! net's daemon, since signing in to the switch takes its admin password,
 //! which lets its holder change the switch. Each minute it reads the four
-//! status pages, and signs in only when they come back holding no status,
-//! as they do once the switch's session has ended: the sign-in is plain
-//! HTTP, so each one puts the password on the home network in the clear.
+//! status pages, System Info first, and signs in only when System Info
+//! holds no status, as once the switch's session has ended: the sign-in is
+//! plain HTTP, so each one puts the password on the home network in the
+//! clear.
 //! It writes only what the pages show, as a report (sources/switch.rs),
 //! for net's daemon to read; never the password or the sign-in.
 
@@ -66,23 +67,25 @@ pub fn run(address: &str) -> Result<(), String> {
         // holds the password: `kind` keeps only the failure's kind.
         let now = (said.state, said.reason.clone());
         if told.as_ref() != Some(&now) {
-            eprintln!(
-                "the switch reads {}{}",
-                serde_json::to_value(said.state)
-                    .ok()
-                    .and_then(|state| state.as_str().map(str::to_owned))
-                    .unwrap_or_default(),
-                said.reason
-                    .as_deref()
-                    .map(|why| format!(": {why}"))
-                    .unwrap_or_default()
-            );
+            eprintln!("{}", journalled(&said));
             told = Some(now);
         }
         let written = serde_json::to_string_pretty(&said).map_err(|error| error.to_string())?;
         write(&report, &(written + "\n"))
             .map_err(|error| format!("can't write the report: {error}"))?;
         thread::sleep(EVERY);
+    }
+}
+
+/// The journal's line for what a round read: its state, and why.
+fn journalled(report: &Report) -> String {
+    let state = serde_json::to_value(report.state)
+        .ok()
+        .and_then(|state| state.as_str().map(str::to_owned))
+        .unwrap_or_default();
+    match report.reason.as_deref() {
+        Some(why) => format!("the switch reads {state}: {why}"),
+        None => format!("the switch reads {state}"),
     }
 }
 
@@ -178,7 +181,7 @@ fn pages(agent: &Agent, address: &str) -> Result<Pages, String> {
             }
         })
         .map_err(|why| format!("its {} page didn't answer: {why}", switch::plainly(page)))?;
-        let signed_out = page == "SystemInfoRpm" && !switch::signed_in(&text);
+        let signed_out = page == "SystemInfoRpm" && !switch::holds_status(&text);
         pages.insert(page.to_owned(), text);
         if signed_out {
             break;
@@ -275,17 +278,21 @@ fn io_kind(error: &io::Error) -> &'static str {
 }
 
 /// Makes one request until the switch answers it, at most `TRIES` times,
-/// the pause between them doubling: 4.5 s of pauses in all.
+/// the pauses between them as `pauses` says.
 fn again<T>(mut ask: impl FnMut() -> Result<T, &'static str>) -> Result<T, &'static str> {
-    let mut pause = PAUSE;
-    for _ in 1..TRIES {
+    for pause in pauses() {
         if let Ok(answer) = ask() {
             return Ok(answer);
         }
         thread::sleep(pause);
-        pause *= 2;
     }
     ask()
+}
+
+/// The pauses between one request's tries, one fewer than the tries,
+/// each twice the one before.
+fn pauses() -> impl Iterator<Item = Duration> {
+    (0..).take(TRIES - 1).map(|nth: u32| PAUSE * 2_u32.pow(nth))
 }
 
 /// Writes a file whole, so net's daemon never reads half of one.
@@ -334,6 +341,9 @@ mod tests {
         /// every other page's connection without a reply, as the real switch
         /// was read doing for 16 rounds from 03:10 on 17 Nov.
         HangsUpSignedOut,
+        /// Signed in or not, it closes Port Statistics' connection without a
+        /// reply, as the real switch did for one round at 03:51 on 17 Nov.
+        HangsUpOnPortStatistics,
     }
 
     fn stand_in(signed_in: bool, behaves: Behaves) -> (String, Arc<Mutex<Vec<String>>>) {
@@ -378,6 +388,12 @@ mod tests {
                     && path.ends_with("Rpm.htm")
                     && path != "/SystemInfoRpm.htm"
                 {
+                    kept.lock()
+                        .expect("the log")
+                        .push(format!("hung up {request}"));
+                    continue;
+                }
+                if behaves == Behaves::HangsUpOnPortStatistics && path == "/PortStatisticsRpm.htm" {
                     kept.lock()
                         .expect("the log")
                         .push(format!("hung up {request}"));
@@ -519,6 +535,46 @@ mod tests {
             Some("its sign-in was refused: its System Info page holds no status, as if signed out")
         );
         assert_eq!(signed_in(&heard), 1, "a refused password was sent again");
+    }
+
+    #[test]
+    fn a_signed_in_switch_that_hangs_up_on_a_later_page_is_never_signed_in_to() {
+        let (address, heard) = stand_in(true, Behaves::HangsUpOnPortStatistics);
+        let report = round(&agent(), &address, Some(PASSWORD), 10);
+        assert_eq!(
+            report.state,
+            SourceState::Unreachable,
+            "{:?}",
+            report.reason
+        );
+        assert_eq!(
+            report.reason.as_deref(),
+            Some(
+                "its Port Statistics page didn't answer: it closed the connection without a \
+                 reply"
+            )
+        );
+        assert_eq!(signed_in(&heard), 0, "it signed in over a live session");
+    }
+
+    #[test]
+    fn each_pause_between_tries_doubles_from_the_first() {
+        let pauses: Vec<u128> = pauses().map(|pause| pause.as_millis()).collect();
+        assert_eq!(pauses, [300, 600, 1200, 2400]);
+    }
+
+    #[test]
+    fn the_journal_says_the_state_and_why_but_never_the_password() {
+        let (address, _) = switch_on_loopback(false);
+        let refused = journalled(&round(&agent(), &address, Some("not it"), 10));
+        assert_eq!(
+            refused,
+            "the switch reads signed-out: its sign-in was refused: its System Info page holds \
+             no status, as if signed out"
+        );
+        let answered = journalled(&round(&agent(), &address, Some(PASSWORD), 10));
+        assert_eq!(answered, "the switch reads answering");
+        assert!(!refused.contains("not it") && !answered.contains(PASSWORD));
     }
 
     #[test]

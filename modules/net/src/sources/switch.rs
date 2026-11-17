@@ -152,7 +152,7 @@ fn cable_state(code: i64) -> &'static str {
 /// switch serves its sign-in form in its place, and may hang up on the other
 /// pages rather than serve the form for them, so this page alone says
 /// whether the session has ended.
-pub fn signed_in(system: &str) -> bool {
+pub fn holds_status(system: &str) -> bool {
     array(system, "macStr").is_some_and(|said| !said.is_empty())
 }
 
@@ -175,7 +175,7 @@ pub fn parse(pages: &Pages) -> Result<Status, String> {
         )
     };
     let system = page("SystemInfoRpm")?;
-    if !signed_in(system) {
+    if !holds_status(system) {
         return Err(refused("SystemInfoRpm"));
     }
     let setting = page("PortSettingRpm")?;
@@ -571,6 +571,26 @@ mod tests {
             "<html><form action=logon.cgi></form></html>".into(),
         );
         assert!(parse(&pages).is_err(), "a sign-in page read as status");
+    }
+
+    #[test]
+    fn only_a_system_page_with_its_mac_holds_status() {
+        let pages = contract();
+        assert!(holds_status(&pages["SystemInfoRpm"]));
+        assert!(!holds_status("<html><form action=logon.cgi></form></html>"));
+        assert!(!holds_status("var info_ds = {macStr:[]};"));
+    }
+
+    #[test]
+    fn a_read_that_stopped_at_a_signed_out_system_page_is_refused_as_signed_out() {
+        let pages = Pages::from([(
+            "SystemInfoRpm".to_owned(),
+            "<html><form action=logon.cgi></form></html>".to_owned(),
+        )]);
+        assert_eq!(
+            parse(&pages).err().as_deref(),
+            Some("its System Info page holds no status, as if signed out")
+        );
     }
 
     #[test]
