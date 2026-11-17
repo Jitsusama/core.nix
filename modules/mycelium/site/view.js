@@ -4341,11 +4341,8 @@
   };
   const drawStatus = () => {
     if (!current) return;
-    // The sentence counts the sessions; the receptors at the edge are
-    // what they hear from, and the map counts them apart.
-    const working = current.cells.filter((s) => s.kind !== "receptor");
-    const n = countsOf(working);
-    const all = working.length;
+    const n = countsOf(current.cells);
+    const all = current.cells.length;
     const stuck = n.stuck ? `, ${NUMBER.format(n.stuck)} stuck` : "";
     const asks = n.asks === 1 ? "one needs you" : n.asks ? `${NUMBER.format(n.asks)} need you` : "";
     const clauses = [["cells", plural(all, "cell")]];

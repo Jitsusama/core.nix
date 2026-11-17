@@ -154,9 +154,9 @@
   // the cells working alone.
   const reach = async () => {
     const counted = Number((document.querySelector('[data-count="cells"]')?.textContent || "").replace(/\D/g, ""));
-    const sessions = marks('[data-key^="c:"]').filter((el) => el.dataset.level !== "#outside").length;
-    if (counted <= FOLD_OVER && sessions !== counted) {
-      faults.push(`reach: the sentence counts ${counted} cells and the map marks ${sessions}`);
+    const drawn = marks('[data-key^="c:"]').length;
+    if (counted <= FOLD_OVER && drawn !== counted) {
+      faults.push(`reach: the sentence counts ${counted} cells and the map marks ${drawn}`);
     }
     for (const hub of marks('[data-key^="h:#loose"]')) {
       await open(`#net=${encodeURIComponent(hub.dataset.key.slice(2))}`);
