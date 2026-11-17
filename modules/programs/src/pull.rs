@@ -184,6 +184,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::git::stub::shell;
 
     fn words() -> Words {
         Words::read(&json!({"things": [{"id": "verb:code:pull", "said": {
@@ -206,16 +207,6 @@ mod tests {
     fn the_commits_each_side_has_alone_are_read_as_git_counts_them() {
         assert_eq!(counts("2\t5\n"), Some((2, 5)));
         assert_eq!(counts("2\n"), None);
-    }
-
-    /// The shell the path finds, as the build has no /bin/sh.
-    fn shell() -> std::path::PathBuf {
-        std::env::var("PATH")
-            .unwrap_or_default()
-            .split(':')
-            .map(|folder| Path::new(folder).join("sh"))
-            .find(|sh| sh.is_file())
-            .expect("no sh on the path")
     }
 
     #[test]

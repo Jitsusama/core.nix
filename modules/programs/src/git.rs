@@ -199,3 +199,20 @@ fn stop(child: &mut Child) {
     unsafe { libc::kill(-group, libc::SIGKILL) };
     let _ = child.wait();
 }
+
+/// What the acts' tests share to run a stub git in place of git.
+#[cfg(test)]
+pub mod stub {
+    use std::path::{Path, PathBuf};
+
+    /// The first sh on the path, which a stub git is run by, as the build
+    /// sandbox has no /bin/sh.
+    pub fn shell() -> PathBuf {
+        std::env::var("PATH")
+            .unwrap_or_default()
+            .split(':')
+            .map(|folder| Path::new(folder).join("sh"))
+            .find(|sh| sh.is_file())
+            .expect("no sh on the path")
+    }
+}

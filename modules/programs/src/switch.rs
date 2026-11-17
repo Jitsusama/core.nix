@@ -314,6 +314,7 @@ fn midway(own: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::stub::shell;
 
     fn words() -> Words {
         Words::read(&json!({"things": [{"id": "verb:code:switch", "said": {
@@ -408,17 +409,6 @@ mod tests {
         std::fs::create_dir(folder.join(".git")).unwrap();
         assert_eq!(switch("true", &folder, "main", None), Err(Refused::Tree));
         let _ = std::fs::remove_dir_all(&folder);
-    }
-
-    /// The first sh on the path, which a stub git is run by, as the build
-    /// sandbox has no /bin/sh.
-    fn shell() -> std::path::PathBuf {
-        std::env::var("PATH")
-            .unwrap_or_default()
-            .split(':')
-            .map(|folder| Path::new(folder).join("sh"))
-            .find(|sh| sh.is_file())
-            .expect("no sh on the path")
     }
 
     /// A checkout on main whose git answers each subcommand as `answers`
