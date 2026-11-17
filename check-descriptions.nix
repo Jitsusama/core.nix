@@ -1750,7 +1750,8 @@
     outlives, whether work costs money, its taints, its agents by realm, the fences its agent
     sessions run in) has it written where mycelium reads it, in mycelium's words; a fence it
     doesn't say is left out, a fenced or strict one says the fence's launcher for an agent's run
-    (strict, on a Mac too) and an unfenced one none, no fence says a launcher when
+    (a Mac's fenced one, its only fence, launching pi's strict profile) and an unfenced one
+    none, no fence says a launcher when
     agents' runs are turned off, a Mac declaring only what it may evaluates while one declaring
     a strict fence is refused, one declaring nothing has no file, and agents in a realm it
     doesn't join are refused

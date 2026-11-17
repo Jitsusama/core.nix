@@ -753,8 +753,10 @@ in
   # A machine that declares what its node can't measure has it written where
   # mycelium reads it, in mycelium's words; Linux's held sessions outlive
   # their window, the node and a suspend, and a Mac claims none yet. A fenced
-  # or strict fence on Linux or a Mac starts an agent's run through the
-  # fence's launcher; an unfenced one says none, so mycelium refuses it.
+  # or strict fence on Linux starts an agent's run through the fence's
+  # launcher, and so does a Mac's fenced one, the only fence it declares,
+  # whose launcher runs pi's strict profile; an unfenced one says none, so
+  # mycelium refuses it.
   # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
