@@ -82,6 +82,8 @@ let
   tuple = lib.getExe package;
   data = "${config.xdg.dataHome}/tuple/0";
   settings = "${data}/settings";
+  # Where the account's desktop entries are, ours for Tuple among them.
+  entries = "${config.xdg.dataHome}/applications";
 
   # The call Joel's in, held for the shell (call/).
   calls = pkgs.callPackage ./call/package.nix { };
@@ -193,6 +195,13 @@ in
       # no real-time priority at all, every thread of it waits its turn at
       # the daemon's raised share, its sound alongside the rest.
       LimitRTPRIO = 0;
+      # From v2026_11_16.0 the daemon writes its own tuple.desktop over
+      # ours each time it starts, and its entry neither hides itself nor
+      # opens tuple:// links, so the launcher would start Tuple rather than
+      # step into its call, and a link would open Tuple's window rather
+      # than join. Kept from writing there, it says so in its log and runs
+      # on; its icons, which our entry names, it still installs.
+      ReadOnlyPaths = [ entries ];
     };
     Install.WantedBy = [ "graphical-session.target" ];
   };
@@ -213,6 +222,9 @@ in
       # Shown in ps by its name, not its store path (docs/daemons.md).
       ExecStart = "@${lib.getExe calls} tuple-call %t/daemons/tuple-call.sock ${tuple}";
       Restart = "on-failure";
+      # A command it runs starts Tuple's daemon when none is running, and
+      # that daemon is kept from our entry as tuple.service's is.
+      ReadOnlyPaths = [ entries ];
       RestartSec = 5;
     };
     Install.WantedBy = [ "default.target" ];
@@ -237,7 +249,7 @@ in
     run sh -c 'printf portal > "$1"' sh ${lib.escapeShellArg "${settings}/capture"}
   '';
 
-  home.file."${config.xdg.dataHome}/applications/tuple.desktop" = {
+  home.file."${entries}/tuple.desktop" = {
     force = true;
     text = ''
       [Desktop Entry]
