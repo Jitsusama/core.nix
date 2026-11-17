@@ -13,7 +13,6 @@ mod live;
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -495,12 +494,20 @@ fn a_keyring_that_never_answers_holds_the_stops_back_only_its_patience_and_rest(
     }});
     let script = format!(
         "#!/bin/sh\nif [ -e '{asked}' ]; then printf '%s\\n' '{sign_in}'; \
-         else : > '{asked}'; exec sleep 600; fi\n",
+         else : > '{asked}'; exec sleep 600; fi",
         asked = asked.display()
     );
-    std::fs::write(&keyring, script).expect("the keyring written");
-    std::fs::set_permissions(&keyring, std::fs::Permissions::from_mode(0o755))
-        .expect("the keyring runs");
+    // Written by a shell of its own, never by this process: a case forking
+    // beside this one would hold it open for writing until its child ran,
+    // and running it meanwhile fails as a text file busy.
+    let written = Command::new("/bin/sh")
+        .args(["-c", r#"printf '%s\n' "$2" > "$1" && chmod 755 "$1""#, "sh"])
+        .arg(&keyring)
+        .arg(script)
+        .status()
+        .expect("the keyring's shell runs");
+    assert!(written.success(), "the keyring wasn't written");
+    let journal = std::fs::File::create(home.join("journal")).expect("the journal");
     let mut reader = Command::new(env!("CARGO_BIN_EXE_pineapple-slack"))
         .args(["run", "--origin", &origin, "--every", PACE])
         .env("HOME", &home)
@@ -508,7 +515,7 @@ fn a_keyring_that_never_answers_holds_the_stops_back_only_its_patience_and_rest(
         .env("XDG_STATE_HOME", home.join("state"))
         .env("SIGN_IN_KEYRING", &keyring)
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(journal)
         .spawn()
         .expect("the reader starts");
     let began = Instant::now();
@@ -526,6 +533,13 @@ fn a_keyring_that_never_answers_holds_the_stops_back_only_its_patience_and_rest(
         each(&decisions(&home), "verdict"),
         ["stop", "stop", "stop-asked", "stop"],
         "every stop said while the keyring hung is heard"
+    );
+    let said = std::fs::read_to_string(home.join("journal")).expect("the journal");
+    // Twenty rounds' patience; the rest, at this pace, under a minute.
+    assert!(
+        said.contains("Slack's sign-in ran past 2 seconds and was stopped")
+            && said.contains("restart pineapple-slack to ask again sooner"),
+        "the journal says the keyring ran over, with the patience used: {said}"
     );
 }
 

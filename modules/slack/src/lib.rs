@@ -39,7 +39,7 @@ pub mod unreads;
 /// The harness's Slack sign-in, as its credentials file keeps it: the
 /// token Slack's own client uses, with the cookie it goes with, and the
 /// workspace it's for.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Account {
     #[serde(rename = "accessToken")]
     pub token: String,
@@ -59,12 +59,17 @@ struct File {
 /// How long a program rests from the keyring once its sign-in ran over:
 /// long enough that a keyring's unlock prompt isn't raised again each
 /// round, and with the 30 seconds it ran and pineapple's Slack reader's
-/// round, inside the five minutes a stop said in Slack is to land in.
-pub const REST: Duration = Duration::from_mins(4);
+/// 30-second round, four minutes, leaving one of the five a stop said in
+/// Slack is to land in for its search and the enforcer.
+pub const REST: Duration = Duration::from_mins(3);
 
 /// When this program's keyring sign-in last ran over, shared by every
 /// read of it, so no caller asks again during the rest.
 static RAN_OVER_AT: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+
+/// The sign-in this program last read, which `read` answers with while
+/// the keyring runs over or rests.
+static LAST_READ: std::sync::Mutex<Option<Account>> = std::sync::Mutex::new(None);
 
 /// What the harness's sign-in came to.
 pub enum Signed {
@@ -93,23 +98,21 @@ impl std::fmt::Debug for Signed {
 }
 
 impl Account {
-    /// The harness's sign-in, as `signed` reads it, or none. A keyring that
-    /// ran over is said in the journal, so none for the rest after it isn't
-    /// taken for Joel signed out.
+    /// The harness's sign-in, as `signed` reads it, or none. While the
+    /// keyring runs over or rests, the one this program last read, so a
+    /// locked keyring doesn't read as Joel signed out; a run-over is said
+    /// in the journal.
     pub fn read(path: &Path) -> Option<Account> {
-        match Account::signed(path, sign_in_program::PATIENCE, REST) {
-            Signed::In(account) => Some(account),
-            Signed::RanOver => {
-                eprintln!(
-                    "<4>the keyring's Slack sign-in ran past {} seconds and was stopped, so \
-                     it isn't asked again for {} minutes",
-                    sign_in_program::PATIENCE.as_secs(),
-                    REST.as_secs() / 60
-                );
-                None
-            }
-            Signed::Out | Signed::Resting => None,
+        let signed = Account::signed(path, sign_in_program::PATIENCE, REST);
+        if matches!(signed, Signed::RanOver) {
+            eprintln!(
+                "<4>the keyring's Slack sign-in ran past {} seconds and was stopped, so it \
+                 isn't asked again for {} minutes, and the sign-in last read stands",
+                sign_in_program::PATIENCE.as_secs(),
+                REST.as_secs().div_ceil(60)
+            );
         }
+        remembered(&LAST_READ, signed)
     }
 
     /// The harness's sign-in, as `kept` reads it, the keyring's printed by
@@ -153,21 +156,42 @@ impl Account {
 }
 
 /// What `ask` gives, unless its last answer under `at` ran over less than
-/// `rest` ago; one that runs over now starts the rest. `at` is held only to
-/// look and mark, never across the ask, so callers on other threads don't
-/// queue behind a keyring that's slow.
+/// `rest` ago; one that runs over now starts the rest. `at` is held across
+/// the ask, so a locked keyring is asked once however many callers want
+/// it, each prompting for its unlock; the others wait, at most a sign-in's
+/// patience, then rest.
 fn rested(
     at: &std::sync::Mutex<Option<Instant>>,
     rest: Duration,
     ask: impl FnOnce() -> Signed,
 ) -> Signed {
-    let held = || at.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    if held().is_some_and(|when| when.elapsed() < rest) {
+    let mut at = at.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if at.is_some_and(|when| when.elapsed() < rest) {
         return Signed::Resting;
     }
     let signed = ask();
-    *held() = matches!(signed, Signed::RanOver).then(Instant::now);
+    *at = matches!(signed, Signed::RanOver).then(Instant::now);
     signed
+}
+
+/// The sign-in `signed` holds, kept in `last`; or, while the keyring runs
+/// over or rests, the one `last` kept; or none, once neither the keyring
+/// nor the file holds one.
+fn remembered(last: &std::sync::Mutex<Option<Account>>, signed: Signed) -> Option<Account> {
+    let mut last = last
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    match signed {
+        Signed::In(account) => {
+            *last = Some(account.clone());
+            Some(account)
+        }
+        Signed::RanOver | Signed::Resting => last.clone(),
+        Signed::Out => {
+            *last = None;
+            None
+        }
+    }
 }
 
 /// What Slack said of an address, as the shell is told it: who it is in
@@ -1300,33 +1324,76 @@ mod tests {
     }
 
     #[test]
-    fn a_slow_keyring_doesnt_hold_another_caller_back() {
+    fn a_keyring_running_over_is_asked_once_however_many_want_it() {
         static AT: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+        static OTHERS_ASKED: std::sync::atomic::AtomicUsize =
+            std::sync::atomic::AtomicUsize::new(0);
         let (asking, asked) = std::sync::mpsc::channel();
         let (release, released) = std::sync::mpsc::channel::<()>();
-        let slow = std::thread::spawn(move || {
+        let first = std::thread::spawn(move || {
             rested(&AT, REST, || {
                 // The case may have given up, and then nobody listens.
                 let _ = asking.send(());
-                // Held until the other caller has its answer, or a minute.
+                // Held until the other caller has come, or a minute.
                 let _ = released.recv_timeout(Duration::from_mins(1));
-                Signed::Out
+                Signed::RanOver
             })
         });
         asked
             .recv_timeout(Duration::from_secs(5))
-            .expect("the slow caller started asking");
+            .expect("the first caller started asking");
         let (said, heard) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
+            let signed = rested(&AT, REST, || {
+                OTHERS_ASKED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Signed::Out
+            });
             // The case may have given up, and then nobody listens.
-            let _ = said.send(rested(&AT, REST, || Signed::Out));
+            let _ = said.send(signed);
         });
-        let other = heard.recv_timeout(Duration::from_secs(5));
+        // Long enough for the other caller to ask, were it let.
+        std::thread::sleep(Duration::from_millis(300));
         let _ = release.send(());
-        let _ = slow.join();
-        assert!(
-            matches!(other, Ok(Signed::Out)),
-            "another caller waited on a slow keyring, not answered: {other:?}"
+        let _ = first.join();
+        let other = heard.recv_timeout(Duration::from_secs(5));
+        assert_eq!(
+            OTHERS_ASKED.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "a second caller asked the keyring while the first ran over: {other:?}"
         );
+        assert!(
+            matches!(other, Ok(Signed::Resting)),
+            "the second caller rests once the first ran over, not {other:?}"
+        );
+    }
+
+    #[test]
+    fn a_sign_in_read_stands_while_the_keyring_runs_over_or_rests() {
+        let last = std::sync::Mutex::new(None);
+        let account = |token: &str| Account {
+            token: token.to_owned(),
+            cookie: "d".to_owned(),
+            team: "T1".to_owned(),
+            user: String::new(),
+        };
+        let token = |kept: Option<Account>| kept.map(|account| account.token);
+        assert_eq!(
+            token(remembered(&last, Signed::RanOver)),
+            None,
+            "none read yet"
+        );
+        let read = token(remembered(&last, Signed::In(account("xoxc-keyring"))));
+        assert_eq!(read.as_deref(), Some("xoxc-keyring"), "what's read");
+        let over = token(remembered(&last, Signed::RanOver));
+        assert_eq!(
+            over.as_deref(),
+            Some("xoxc-keyring"),
+            "it stands as it runs over"
+        );
+        let resting = token(remembered(&last, Signed::Resting));
+        assert_eq!(resting.as_deref(), Some("xoxc-keyring"), "and as it rests");
+        assert_eq!(token(remembered(&last, Signed::Out)), None, "signed out is");
+        let after = token(remembered(&last, Signed::Resting));
+        assert_eq!(after, None, "and nothing stands once Joel signed out");
     }
 }
