@@ -1850,7 +1850,7 @@ fn held_for_a_mac(arguments: &[String]) -> Option<Failure> {
             eprintln!("nix-offload: {room}, so a run for its system goes");
             None
         }
-        Err(why) => Some(Failure::new(
+        Err(why) => Some(ended::backs_off(
             left_unbuilt(),
             format!("{why}, so a run for its system waits, ended as one nothing built"),
         )),
