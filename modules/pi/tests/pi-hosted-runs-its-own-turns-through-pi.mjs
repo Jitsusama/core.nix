@@ -458,18 +458,19 @@ it("a carried run that fails to start keeps what it held for the next turn", asy
 });
 
 it("a handler's setActiveTools() holds for a carried run", async () => {
-  // It adds a tool the session left inactive, so neither the base loadout nor none at all passes.
-  const widens = (pi) =>
+  // It keeps one of two tools, so neither the base loadout nor none at all passes.
+  const narrows = (pi) =>
     pi.on("before_agent_start", () => {
-      pi.setActiveTools(["read", LATE_TOOL.name]);
+      pi.setActiveTools([LATE_TOOL.name]);
     });
   const late = registersLate({ atLoad: true }).extension;
-  const opened = { tools: ["read"], extensions: [late, { name: "widens", factory: widens }] };
+  const tools = ["read", LATE_TOOL.name];
+  const opened = { tools, extensions: [late, { name: "narrows", factory: narrows }] };
   const { session, faux, requests, close } = await openPreparedSession(opened);
   try {
     faux.setResponses([fauxAssistantMessage("answered as carried")]);
     await carry(session);
-    assert.deepEqual(requests[0].tools.toSorted(), [LATE_TOOL.name, "read"]);
+    assert.deepEqual(requests[0].tools, [LATE_TOOL.name]);
   } finally {
     close();
   }
