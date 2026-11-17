@@ -1,8 +1,8 @@
-// Your system, now: the weather over everything Joel runs. The four parts
-// of the system as the system daemon holds them, under a headline that
-// counts what is worth a look, a lede that names the worst of it, and the
-// outlook, each part a station on one horizon wearing its sky. It watches the daemon's summary, parts and things
-// over the sites' server, so a part redraws the moment its owner's answer
+// Your system, now: how everything Joel runs stands. The four parts of the
+// system as the system daemon holds them, under a headline that counts
+// what is worth a look, a lede that names the worst of it, and the outlook,
+// each part a station on one horizon with its health's mark. It watches
+// the daemon's summary, parts and things over the sites' server, so a part redraws the moment its owner's answer
 // moves, and the line over the headline says whether what it shows is live
 // and since when. The cursor is focus: j and k move it through every row,
 // and Return follows the link it is on.
@@ -166,7 +166,7 @@ function draw(): void {
   title.innerHTML = headlineOf(heading);
   const worst = lede(system);
   // The lede keeps its lines while a part is still to come, since that
-  // part may be the one to name; only a sky every part has told is clear.
+  // part may be the one to name; only all good once every part has told.
   ledeLine.hidden = worst === undefined && system.untold.length === 0;
   ledeLine.textContent = worst ?? "";
   document.title = `${sentence(heading)} Your system, now`;

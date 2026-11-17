@@ -1,5 +1,5 @@
 /* The parts under the outlook: each a name and what it holds, what in it is
-   worth a look, and the ways deeper, every row hanging its sky in the
+   worth a look, and the ways deeper, every row hanging its mark in the
    gutter so each name starts on the page's one edge (site.css). */
 
 /* ---- The parts: each a name and what it holds on one line, what is
@@ -90,7 +90,7 @@
   color: var(--strong);
 }
 
-/* ---- A row: its sky in the gutter, its words on the main line, and the
+/* ---- A row: its mark in the gutter, its words on the main line, and the
    keys it answers at its end while it has the cursor. ---- */
 
 .row {
@@ -161,7 +161,7 @@
   color: var(--strong);
 }
 
-/* ---- Skies: each its own shape, in its state's hue. ---- */
+/* ---- Marks: each health its own shape, in its hue. ---- */
 
 .sky {
   inline-size: 1.15em;
@@ -177,7 +177,7 @@
   stroke-width: 0.9;
 }
 
-/* A heading's sky is sized from the gutter, not the heading's type, so it
+/* A heading's mark is sized from the gutter, not the heading's type, so it
    always ends short of the name rather than running into it. */
 .name .sky {
   inline-size: min(1.75rem, var(--gutter) - 0.75rem);
@@ -196,7 +196,7 @@
   color: var(--alert);
 }
 
-/* ---- The foot: what each sky says, once. ---- */
+/* ---- The foot: each mark's word, once. ---- */
 
 .note {
   padding-inline-start: var(--gutter);
@@ -237,7 +237,7 @@
   gap: var(--mark);
 }
 
-.legend .sky-name {
+.legend .word {
   color: var(--text);
   font-style: italic;
 }

@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
-import { escaped } from "../draw.ts";
+import { escaped, legend, outlookOf } from "../draw.ts";
 import { headline, lede, looksIn, sentence, systemOf } from "../model.ts";
 
 /** The three watches, told `these` whole, each to its kind's. */
@@ -156,7 +156,7 @@ it("the headline counts the parts, what is worth a look and what wasn't read", (
   };
   assert.equal(sentence(headline(many)), "Two parts, 12 worth a look and one not read.");
   const good = { ...system, parts: [{ ...first, health: "good" as const, side: [] }] };
-  assert.equal(sentence(headline(good)), "One part, all clear.");
+  assert.equal(sentence(headline(good)), "One part, all good.");
 });
 
 it("the lede names the worst part's first look, then why a part wasn't read", () => {
@@ -209,6 +209,42 @@ it("the lede names the worst part's first look, then why a part wasn't read", ()
     lede({ ...system, parts: [{ ...first, health: "good" as const, side: [] }] }),
     undefined,
   );
+});
+
+/** What `markup` reads as, its tags gone and its spaces run together. */
+function read(markup: string): string {
+  return markup
+    .replace(/<[^>]*>/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+/** The weather words the page once wore, which the glossary keeps for real weather. */
+const WEATHER = /\b(?:clear|cloud|storm|fog|sky)\b/iu;
+
+it("the legend says each health in the system's own word, once, beside its mark", () => {
+  const said = read(legend());
+  assert.equal(said, "Good Watch Bad Not read");
+  assert.doesNotMatch(said, WEATHER);
+  assert.equal(legend().match(/<svg /gu)?.length, 4, "each word has its mark");
+});
+
+it("a station with nothing worth a look says its health in the system's word", () => {
+  const { summary, part, machine } = told(records);
+  const system = systemOf(summary, part, machine);
+  assert.ok(system);
+  const [first, second] = system.parts;
+  assert.ok(first && second);
+  const quiet = {
+    ...system,
+    parts: [
+      { ...first, health: "good" as const, side: [] },
+      { ...second, health: "unread" as const, side: [] },
+    ],
+  };
+  const said = read(outlookOf(quiet));
+  assert.equal(said, "Machines good Code not read");
+  assert.doesNotMatch(said, WEATHER);
 });
 
 it("a record's words reach the page as text, never as markup", () => {

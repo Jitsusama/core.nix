@@ -69,28 +69,19 @@ const NAMES: { readonly [part: string]: string } = {
   code: "Code",
 };
 
-/** How each health is said, once in the legend and to a screen reader. */
+/**
+ * How each health is said, in the system's own words as the `system`
+ * command says them: in the legend, at a station and to a screen reader.
+ */
 const WORDS: { readonly [health in Health]: string } = {
   good: "Good",
-  watch: "Worth a look",
+  watch: "Watch",
   bad: "Bad",
   unread: "Not read",
 };
 
-/**
- * Each health as the page's sky: the world it is drawn in, where a part is
- * a station on a horizon and how it stands is its weather. The word in
- * WORDS says what the sky means; this one names the sky.
- */
-const SKIES: { readonly [health in Health]: string } = {
-  good: "Clear",
-  watch: "Cloud",
-  bad: "Storm",
-  unread: "Fog",
-};
-
 /** What a headline says when nothing anywhere is worth a look. */
-const CLEAR = "all clear";
+const CLEAR = "all good";
 
 /** The numbers a headline says in words, as a sentence would. */
 const NUMBERS = [
@@ -280,4 +271,4 @@ function systemOf(summaries: Held, parts: Held, things: Held): System | undefine
 }
 
 export type { Deeper, Headline, Health, Part, System, Thing };
-export { CLEAR, headline, lede, looksIn, named, SKIES, sentence, systemOf, WORDS };
+export { CLEAR, headline, lede, looksIn, named, sentence, systemOf, WORDS };

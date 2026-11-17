@@ -1,12 +1,12 @@
-// The system page's markup, in its world: the weather over everything Joel
-// runs. Each part is a station on one horizon and how it stands is its sky,
-// clear, cloud, storm or fog, each its own shape so none is told by colour.
-// The outlook draws the four stations large under the headline; each part
-// below hangs its sky in the gutter, then what in it is worth a look and the
-// way deeper. Every row the keys step through is a link marked data-row, in
-// reading order, so the cursor is focus itself and Return follows it, and a
-// row shows its own keys while it has the cursor. Every word read from a
-// record is escaped before it reaches the page.
+// The system page's markup: how everything Joel runs stands. Each part is a
+// station on one horizon, and how it stands is its health in the system's
+// own words, good, watch, bad or not read, each with its own mark so none
+// is told by colour. The outlook draws the four stations large under the
+// headline; each part below hangs its mark in the gutter, then what in it
+// is worth a look and the way deeper. Every row the keys step through is a
+// link marked data-row, in reading order, so the cursor is focus itself and
+// Return follows it, and a row shows its own keys while it has the cursor.
+// Every word read from a record is escaped before it reaches the page.
 
 import {
   CLEAR,
@@ -15,18 +15,17 @@ import {
   looksIn,
   named,
   type Part,
-  SKIES,
   type System,
   type Thing,
   WORDS,
 } from "./model.ts";
 
 /**
- * Each sky on a 16 grid, its horizon at the foot: the sun half risen with
- * its rays, a cloud resting on the line, a storm cloud with its bolt, and
- * fog in broken lines.
+ * Each health's mark on a 16 grid, its horizon at the foot: the sun half
+ * risen with its rays, a cloud resting on the line, a storm cloud with its
+ * bolt, and fog in broken lines.
  */
-const SKY_MARKS: { readonly [health in Health]: string } = {
+const MARKS: { readonly [health in Health]: string } = {
   good: '<path d="M1.5 13h13"/><path d="M4.2 13a3.8 3.8 0 0 1 7.6 0"/><path d="M8 6.4V4.6M4.2 8.1 3 6.9M11.8 8.1 13 6.9"/>',
   watch: '<path d="M4.6 13h6.9a2.7 2.7 0 0 0 .2-5.4 3.8 3.8 0 0 0-7.3.9A2.3 2.3 0 0 0 4.6 13z"/>',
   bad: '<path d="M4.6 9.6h6.9a2.6 2.6 0 0 0 .2-5.2 3.7 3.7 0 0 0-7.1.9 2.2 2.2 0 0 0 0 4.3z"/><path d="M8.8 10.2 7.2 12.6h2.1L7.8 15"/>',
@@ -50,7 +49,7 @@ interface Row {
   readonly href: string;
   readonly key: string;
   readonly inner: string;
-  /** The sky hung in its gutter, when it has one. */
+  /** The mark hung in its gutter, when it has one. */
   readonly health?: Health;
   /** The keys it answers while it has the cursor, beyond Return. */
   readonly acts?: string;
@@ -61,9 +60,9 @@ function escaped(text: string): string {
   return text.replace(/[&<>"']/gu, (character) => ESCAPES[character] ?? character);
 }
 
-/** The sky `health` is drawn with, its word said only to a screen reader. */
+/** The mark `health` is drawn with, its word said only to a screen reader. */
 function mark(health: Health, size = "small"): string {
-  return `<svg class="sky ${health} ${size}" viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">${SKY_MARKS[health]}</g></svg>`;
+  return `<svg class="sky ${health} ${size}" viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">${MARKS[health]}</g></svg>`;
 }
 
 /** How `health` is said to a screen reader, after a name. */
@@ -96,17 +95,17 @@ function headlineOf(heading: Headline): string {
 
 /**
  * What one part's station says under its name, as markup: how many looks,
- * or its sky's name, with what that sky means said to a screen reader.
+ * or its health's word.
  */
 function forecast(part: Part): string {
   const looks = looksIn(part);
   if (looks > 0) {
     return `${looks} worth a look`;
   }
-  return `${SKIES[part.health].toLowerCase()}${spoken(part.health)}`;
+  return WORDS[part.health].toLowerCase();
 }
 
-/** The outlook: the four parts as stations on one horizon, each its sky. */
+/** The outlook: the four parts as stations on one horizon, each its mark. */
 function outlookOf(system: System): string {
   return system.parts
     .map((part, at) => {
@@ -138,7 +137,7 @@ function row(drawn: Row): string {
   return `<li>${link(drawn)}</li>`;
 }
 
-/** A row's link: its sky in the gutter, its words on the main line, its keys. */
+/** A row's link: its mark in the gutter, its words on the main line, its keys. */
 function link(drawn: Row): string {
   const gutter = drawn.health === undefined ? "" : mark(drawn.health);
   const health = drawn.health === undefined ? "" : ` data-health="${drawn.health}"`;
@@ -213,21 +212,13 @@ function partsOf(system: System): string {
   return system.parts.map((part) => partOf(part)).join("\n");
 }
 
-/** What each sky means, as the legend says it after the sky's name. */
-const MEANS: { readonly [health in Health]: string } = {
-  good: "all good",
-  watch: "worth a look",
-  bad: "bad",
-  unread: "not read",
-};
-
-/** The legend: each sky beside its name and what it means, said once. */
+/** The legend: each health's mark beside its word, said once. */
 function legend(): string {
   const healths: readonly Health[] = ["good", "watch", "bad", "unread"];
   return healths
     .map(
       (health) =>
-        `<span class="key">${mark(health)}<span class="sky-name">${SKIES[health]}</span>, ${MEANS[health]}</span>`,
+        `<span class="key">${mark(health)}<span class="word">${WORDS[health]}</span></span>`,
     )
     .join("");
 }
