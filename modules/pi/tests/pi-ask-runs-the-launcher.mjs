@@ -70,6 +70,7 @@ case "$4" in
     case "$5" in
       app:kitty) echo '{"done":true,"said":"Opened Kitty"}' ;;
       category:computer›category:energy›session:Reboot) echo '{"done":false,"offered":true,"said":"Reboot?"}' ;;
+      ask:Whimbrel›yes) echo '{"done":false,"said":"Whimbrel › Yes: not without your own key press"}' ;;
       *) echo '{"error":"no entry by that id"}' ;;
     esac ;;
   runWith)
@@ -122,6 +123,12 @@ assert.match(
   /^Not done yet: .*a row \(Reboot\?\) and Return does it/u,
 );
 assert.equal(await said({ action: "run", id: "nothing" }), "Not done: no entry by that id");
+// One the launcher ran and was refused, as a yes to a secret ask withheld
+// without Joel's own key press, is said not done in its words.
+assert.equal(
+  await said({ action: "run", id: "ask:Whimbrel›yes" }),
+  "Not done: Whimbrel › Yes: not without your own key press",
+);
 assert.equal(await said({ action: "run" }), "Name the id to run, as list gives it.");
 
 const calls = readFileSync(asked, "utf8").trim().split("\n");

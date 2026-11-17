@@ -12,3 +12,24 @@
 function reached(held, ids) {
     return held.length === ids.length && held.every((step, at) => step === ids[at]);
 }
+
+// Why an act walked from outside wasn't done, from what the launcher was
+// told not done while it ran (`told`, each in the daemon's or the
+// launcher's words, one told late as ""), or "" where nothing refused it.
+// A yes to a secret ask walked so is withheld rather than sent
+// (ReadyRows.qml's withheld), yet both walks answered it done, so the
+// agent that asked waited until its ask timed out (5GLTPH, 2026-11-16).
+function refused(told) {
+    return told.find(why => why !== "") ?? "";
+}
+
+// What `launcher do` is answered for an act walked in `names`, from why it
+// was refused (`refused`): done; unavailable where its daemon had no
+// answer to give, `noAnswer` in the launcher's words, so the terminal
+// says the shell isn't answering and an agent may ask again; else refused.
+function answered(why, names, noAnswer) {
+    if (why === "") {
+        return { done: true, in: names };
+    }
+    return why === noAnswer ? { unavailable: why, in: names } : { refused: why, in: names };
+}

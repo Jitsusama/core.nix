@@ -937,8 +937,14 @@ Scope {
             return;
         }
         const row = served(key);
-        if (!row || !link)
+        if (!row || !link) {
+            // Nothing is sent, so a walk from outside isn't answered done
+            // (Launcher.qml's walkedRun).
+            const becoming = Words.field.becoming ?? {};
+            maker?.launcher?.walkRefused?.(link ? becoming.couldNot ?? ""
+                : Ready.refusal(null, becoming));
             return;
+        }
         acted(key, one);
         // What it becomes may be another row, as a charge limit's stop
         // becomes the limit's own row, so that row is the one held.
@@ -982,6 +988,7 @@ Scope {
         const words = Words.field.becoming ?? {};
         if (!link) {
             said(key, Ready.refusal(null, words));
+            maker?.launcher?.walkRefused?.(Ready.refusal(null, words));
             return;
         }
         asksMade[key] = (asksMade[key] ?? 0) + 1;
