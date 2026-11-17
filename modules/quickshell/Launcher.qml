@@ -9698,10 +9698,12 @@ Scope {
         const began = lapped;
         opening = false;
         // However it opened or shut (a chord, a walk from outside, the
-        // command line, a wake), a kept Super+N's landing is spent: its own
-        // fill took it before opening, and any other way in never fills,
-        // so it would land a later fill on rows this opening never asked
-        // for.
+        // command line, a wake), what a kept opening left for its fill is
+        // spent: its own fill took the place and the landing before
+        // opening, and any other way in never fills, so they would send a
+        // later kept opening's fill into a place, or onto a row, it never
+        // asked for.
+        openInto = "";
         landsOnFill = null;
         markOpen(open);
         if (!open) {
