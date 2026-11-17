@@ -105,8 +105,9 @@ let
   # need their own git or gh does; a realm that wants them adds them.
   # curl speaks WebSockets, since a Mac's websocat reaches TLS only through
   # Secure Transport, which stops at 1.2, and a front taking 1.3 alone needs
-  # a wss:// client over OpenSSL there; curl's certificates are the ones the
-  # account's own curl already trusts.
+  # a wss:// client over OpenSSL there. Going first changes nothing else:
+  # the account's curl is core's own, the same build without WebSockets,
+  # trusting the same certificates.
   shared = [
     package
     (pkgs.curl.override { websocketSupport = true; })
