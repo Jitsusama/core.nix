@@ -130,6 +130,14 @@ fn run(context: &Context) -> Result<(), Failure> {
     for (name, repo) in &repos {
         match git::files_in(&repo.checkout, &repo.reference, &repo.under) {
             Ok((paths, files)) => {
+                for folder in hour::astray(&repo.judged.folders, &paths) {
+                    let said = format!(
+                        "{name}'s owner of {folder} owns nothing: no file sits there at {}, \
+                         so what would be its owner's goes to {name}'s",
+                        repo.reference
+                    );
+                    let _ = context.tell("caution", "warning", &said);
+                }
                 let roots = git::roots(&repo.under);
                 let mut health = measure::measure(&paths, &files, &roots);
                 put_terraform(&mut health, &paths, &files).unwrap_or_else(|error| {

@@ -172,6 +172,22 @@ fn by_owner<'a>(
     each
 }
 
+/// The folders of `folders` holding none of `paths`, by their path from
+/// the repository's top as `by_owner` reads them: a folder misspelt or
+/// gone, whose files `by_owner` gives its repository's owner instead.
+pub fn astray<'a>(folders: &'a BTreeMap<String, String>, paths: &[String]) -> Vec<&'a str> {
+    folders
+        .keys()
+        .filter(|folder| {
+            !paths.iter().any(|path| {
+                path.strip_prefix(folder.as_str())
+                    .is_some_and(|rest| rest.starts_with('/'))
+            })
+        })
+        .map(String::as_str)
+        .collect()
+}
+
 /// How many entries name each file.
 pub fn per_file<'a>(entries: impl Iterator<Item = &'a str>) -> BTreeMap<&'a str, usize> {
     let mut counts = BTreeMap::new();
@@ -205,6 +221,29 @@ fn was(before: Option<&Value>, repo: &str, measure: &str) -> Value {
 mod tests {
     use super::*;
     use crate::measure::NAMED;
+
+    #[test]
+    fn a_folder_owned_but_holding_no_file_is_astray() {
+        let folders: BTreeMap<String, String> = [
+            ("modules/net", "someone"),
+            ("modules/ne", "a typo"),
+            ("modules/gone", "another"),
+            ("modules/net/switch", "a third"),
+        ]
+        .into_iter()
+        .map(|(folder, whose)| (folder.to_owned(), whose.to_owned()))
+        .collect();
+        let paths = [
+            "modules/net/home.nix".to_owned(),
+            "modules/net/switch/main.rs".to_owned(),
+            "modules/gone.nix".to_owned(),
+        ];
+        assert_eq!(
+            astray(&folders, &paths),
+            ["modules/gone", "modules/ne"],
+            "a folder holding files was called astray, or one holding none wasn't"
+        );
+    }
 
     fn figures(
         each: &[(&str, &'static str, f64)],
