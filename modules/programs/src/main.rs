@@ -517,10 +517,14 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
         Run::List => (&source.list, source.list_key()),
         Run::Opened => (&source.opened, source.opened_key().unwrap_or_default()),
     };
-    if what == Run::List {
+    {
         let mut daemon = lock(&shared.daemon);
-        daemon.stale[at] = false;
-        daemon.read_as_of[at] = changed_at(source);
+        if what == Run::List {
+            daemon.stale[at] = false;
+            daemon.read_as_of[at] = changed_at(source);
+        } else {
+            daemon.unmade.sessions.remove(&at);
+        }
     }
     let started = Instant::now();
     let read = (what == Run::Opened).then(|| source::open_now(source));

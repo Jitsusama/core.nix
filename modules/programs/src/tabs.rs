@@ -10,6 +10,7 @@
 //! asks of this daemon, each answered at once and done on a thread of
 //! its own, so no other ask or watch waits on kitty.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use programs::interface::{TabAct, TabAsk};
@@ -23,11 +24,15 @@ use super::{Daemon, Run, Shared, agents, bookmarks, due, keep, lock, programs, s
 
 /// Which places' rows changed while nothing watched them (`changed`, and
 /// bookmarks.rs), for the next watch of each to make (`read`); each is
-/// cleared as its rows are made, wherever that is.
+/// cleared as its rows are made, wherever that is. With them, the sources
+/// whose session changed while nothing wanted what they have open
+/// (heard.rs), for the next watch to read again; each is cleared as its
+/// read begins (`read_source`).
 #[derive(Default)]
 pub struct Unmade {
     pub tabs: bool,
     pub bookmarks: bool,
+    pub sessions: BTreeSet<usize>,
 }
 
 /// Whether a watch wants the tabs' rows, as a whole place: of it, or of
@@ -53,9 +58,9 @@ pub fn kitty(shared: &Shared) -> Option<usize> {
 
 /// Reads what each program reading Chrome's session has open, as a watch
 /// begins while the tabs or the bookmarks are watched, each on a thread
-/// of its own: only what isn't held yet, since what is was read again at
-/// every change of the session while they were watched, so a watch
-/// beginning reads nothing more. kitty's list is read as it's due, or
+/// of its own: only what isn't held yet, or whose session changed while
+/// nothing wanted it, since the rest was read again at every change of
+/// the session while they were watched. kitty's list is read as it's due, or
 /// never read yet, while the tabs are watched. Their rows and the
 /// bookmarks' are made where a read ended before this watch was held.
 pub fn read(shared: &Arc<Shared>) {
@@ -64,7 +69,7 @@ pub fn read(shared: &Arc<Shared>) {
         if !wanted(&daemon) {
             return;
         }
-        let unread: Vec<usize> = shared
+        let unread: BTreeSet<usize> = shared
             .sources
             .iter()
             .enumerate()
@@ -75,6 +80,7 @@ pub fn read(shared: &Arc<Shared>) {
                     .is_some_and(|key| !daemon.held.contains_key(&key))
             })
             .map(|(at, _)| at)
+            .chain(daemon.unmade.sessions.iter().copied())
             .collect();
         let listed = kitty(shared).filter(|&at| {
             watched(&daemon)
