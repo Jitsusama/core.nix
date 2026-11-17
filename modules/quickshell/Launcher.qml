@@ -5655,8 +5655,10 @@ Scope {
         if (!anyBecoming)
             return rows;
         const laid = Becoming.laid(rows, becoming, reads);
+        // What's returned already shows each agreed row as its source made
+        // it, so nothing is drawn again for them.
         if (laid.agreed.length > 0)
-            agreed(laid.agreed);
+            settled(laid.agreed);
         return laid.rows;
     }
 
@@ -5664,7 +5666,19 @@ Scope {
         return one.from.says([row], [], true);
     }
 
+    // Holds let go once their rows agree, or can't be read to tell, each
+    // source's rows drawn again: what's drawn is still each row as it was
+    // to become, and nothing else redraws a source that hasn't changed.
+    // WARP's switch row read Connect for 30 s after its source said
+    // connected, on 17 Nov, from a hold let go and never drawn again.
     function agreed(keys) {
+        const sources = [...new Set(keys.map(key => becoming[key]?.from).filter(Boolean))];
+        settled(keys);
+        for (const source of sources)
+            refreshed(source, "a row agreed");
+    }
+
+    function settled(keys) {
         for (const key of keys)
             Report.say(`became ${key}`);
         letGo(keys);
@@ -5673,16 +5687,16 @@ Scope {
     // The row a hold's source makes now, wherever the launcher reads it: its
     // things, its collection's members, or a step shown; null where none
     // is, and undefined where it can't be told, as a step's act once the
-    // step is left.
+    // step is left, or a step's row drawn as it will be, which is the
+    // hold's own and says nothing of its source (Becoming.made).
     function nowRow(one) {
         const key = one.key;
         const own = one.from.rowNow(key);
         if (own !== undefined)
             return own;
-        const made = one.from.things.concat(one.from.everything())
-            .concat(...held.map(step => step.rows ?? []));
-        const found = made.find(row => row.key === key && !row.gone);
-        if (found)
+        const found = Becoming.made(one.from.things.concat(one.from.everything())
+            .concat(...held.map(step => step.rows ?? [])), key);
+        if (found !== null)
             return found;
         return String(key).startsWith("verb:") && !open ? undefined : null;
     }
