@@ -190,9 +190,13 @@ let
         # refuse again, so it waits for a fix rather than retrying forever.
         RestartPreventExitStatus = "78";
         # Parking ends each turn in flight, the tools it runs with it; what is
-        # still running after that is ended with it.
+        # still running after that is ended with it. At 03:30 on 17 November
+        # a host with a 2.5 GB heap was still parking 13 conversations when
+        # a 60 s stop killed it, its loop busy 35 s of the first 50, and the
+        # parks it hadn't written were lost; 150 s leaves a whole roster's
+        # parks time while a stuck stop still ends.
         KillMode = "mixed";
-        TimeoutStopSec = "60s";
+        TimeoutStopSec = "150s";
         # Its conversations are agents' sessions, so they run among the
         # sessions rather than among Joel's programs (modules/slices).
         Slice = "agents.slice";
