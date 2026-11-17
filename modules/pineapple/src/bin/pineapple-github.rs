@@ -50,7 +50,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, Stdio};
+use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pineapple::gate::Gate;
@@ -58,6 +58,7 @@ use pineapple::github::{self, Kind, Said, Thread, add_page, found, notified, wor
 use pineapple::progress::{self, Judged};
 use pineapple::record::{self, Source};
 use pineapple::resume;
+use pineapple::sign_in::{self, SignIn};
 use pineapple::{Context, Heard, Joel, Platform, Reply, Target, Verdict, decide};
 use serde_json::{Value, json};
 use terminal_kit::{Exit, Failure, Format, Help, flags};
@@ -92,6 +93,11 @@ const PATIENCE: Duration = Duration::from_secs(20);
 
 /// GitHub's own API.
 const GITHUB: &str = "https://api.github.com";
+
+/// How long a reader whose sign-in ran over waits before asking again,
+/// beyond its round's pace: long enough that a keyring's unlock prompt
+/// isn't raised again each minute, short against a stop going unheard.
+const RAN_OVER_REST: Duration = Duration::from_mins(9);
 
 /// Whether Joel's resume said on GitHub may end a live stop. Not while his
 /// agents post as his GitHub account: a resume one forged would defeat
@@ -377,7 +383,7 @@ fn run(how: &Run) -> Result<(), Failure> {
     let name = shown(&how.site);
     loop {
         match token() {
-            Some(token) => {
+            SignIn::Token(token) => {
                 let github = GitHub {
                     origin: &how.origin,
                     name: &name,
@@ -386,26 +392,24 @@ fn run(how: &Run) -> Result<(), Failure> {
                 };
                 round(&github, how, &state, &mut judged);
             }
-            None => eprintln!("<4>no {name} sign-in yet, so nothing is read"),
+            SignIn::Missing => eprintln!("<4>no {name} sign-in yet, so nothing is read"),
+            SignIn::RanOver => {
+                // A locked keyring prompts each time it's asked (RAN_OVER_REST).
+                let rest = RAN_OVER_REST + how.every;
+                eprintln!("<4>{}", sign_in::ran_over(&name, &how.site, rest));
+                std::thread::sleep(RAN_OVER_REST);
+            }
         }
         std::thread::sleep(how.every);
     }
 }
 
 /// Joel's sign-in to the site, as the program `SIGN_IN_KEYRING` names prints
-/// it, read each round so one renewed while it runs is read without a
-/// restart. None when it can't be run, fails or prints nothing; what it
-/// says otherwise is let go, so no part of a sign-in reaches the journal.
-fn token() -> Option<String> {
-    let keyring = std::env::var_os("SIGN_IN_KEYRING")?;
-    let out = Command::new(keyring)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    let text = String::from_utf8(out.stdout).ok()?;
-    let token = text.trim();
-    (out.status.success() && !token.is_empty()).then(|| token.to_owned())
+/// it, each round, never waited on for good (pineapple's `sign_in`).
+fn token() -> SignIn {
+    std::env::var_os("SIGN_IN_KEYRING").map_or(SignIn::Missing, |program| {
+        sign_in::token(&program, sign_in::PATIENCE)
+    })
 }
 
 /// Why the site didn't answer, as far as a round cares.
