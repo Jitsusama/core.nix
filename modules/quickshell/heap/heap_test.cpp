@@ -16,8 +16,9 @@
 // (qtdeclarative-large-runs-by-size.patch); and small stores made next
 // split the small free runs and leave the large runs whole for the large
 // stores after them, reading back as they were made
-// (qtdeclarative-small-runs-split-first.patch). And what it says of
-// jemalloc, which the test is linked with as Quickshell is: what's in use
+// (qtdeclarative-small-runs-split-first.patch). Its census counts all that's
+// live and names a shape kept by its property names, but no key taken from
+// data. And what it says of jemalloc, which the test is linked with as Quickshell is: what's in use
 // grows by a block kept, and what's freed and kept by one let go, and
 // neither is more than what's resident. It exits 0 once all of it holds,
 // and otherwise 1, saying what didn't.
@@ -369,6 +370,61 @@ bool expect(const char *what, bool holds, const Weight &before, const Weight &af
     return holds;
 }
 
+// How many objects of one shape are kept for the census to find, each two
+// names no other object in the engine has; and how many of a shape whose
+// second key is taken from data, as a map keyed by clipboard text is.
+constexpr int SHAPED = 50000;
+constexpr int KEYED = 20000;
+
+// How many numbers the one huge array kept holds, so its store, about 2.4
+// MB, is a huge item of its own outside the heap's chunks.
+constexpr int HUGE_LENGTH = 300000;
+
+// Whether the census counts what weigh() calls live, to a rounding, the
+// huge item and the shapes' own allocator included; names the shape kept
+// by its property names and counts every one of it; says a key from data
+// as `~`; and says it all in its line.
+bool namesWhatsKept() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue kept = engine.evaluate(
+        QStringLiteral("(() => { const kept = []; for (let i = 0; i < %1; i++) kept.push({ "
+                       "censusFirst: i, censusSecond: true }); for (let i = 0; i < %2; i++) "
+                       "kept.push({ censusThird: i, 'from the clipboard': true }); "
+                       "kept.push(new Array(%3).fill(0.5)); return kept; })()")
+            .arg(SHAPED)
+            .arg(KEYED)
+            .arg(HUGE_LENGTH));
+    const Weight weight = weighed(engine, heap);
+    const QVariantMap census = heap.census(10);
+    const double total = census.value(QStringLiteral("total")).toDouble();
+    const QString line = census.value(QStringLiteral("said")).toString();
+    const auto counts = [&](const QString &keys, int many) {
+        for (const QVariant &row : census.value(QStringLiteral("shapes")).toList()) {
+            const QVariantList shape = row.toList();
+            if (shape.value(0).toString() == QStringLiteral("Object") &&
+                shape.value(1).toString() == keys && shape.value(2).toDouble() == 2 &&
+                shape.value(3).toDouble() > 0 && shape.value(4).toDouble() == many)
+                return line.contains(QStringLiteral("Object {%1} ").arg(keys));
+        }
+        return false;
+    };
+    const bool named = counts(QStringLiteral("censusFirst,censusSecond"), SHAPED);
+    const bool hidden = counts(QStringLiteral("censusThird,~"), KEYED) &&
+                        !line.contains(QStringLiteral("clipboard"));
+    const bool whole = std::abs(total - weight.live) <= 0.01;
+    const bool timed = census.value(QStringLiteral("ms")).toDouble() > 0;
+    if (kept.isError() || !named || !hidden || !whole || !timed)
+        std::fprintf(stderr,
+                     "FAIL the census counts the %.1f MB live, names %d objects kept by their "
+                     "names and hides %d keys from data, and says how long it took: %.2f MB, "
+                     "%s, %s, %.2f ms: %s\n",
+                     weight.live, SHAPED, KEYED, total, named ? "named" : "not named",
+                     hidden ? "hidden" : "not hidden",
+                     census.value(QStringLiteral("ms")).toDouble(), qPrintable(line));
+    return !kept.isError() && named && hidden && whole && timed;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -438,8 +494,9 @@ int main(int argc, char **argv) {
     const bool given = givesBack();
     const bool fits = takesRunsThatFit();
     const bool whole = leavesLargeRunsWhole();
+    const bool census = namesWhatsKept();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
-                   roomyOutside && follows && given && fits && whole
+                   roomyOutside && follows && given && fits && whole && census
                ? 0
                : 1;
 }
