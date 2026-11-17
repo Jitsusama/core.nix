@@ -28,7 +28,8 @@
 # machine: its tests are desktop/desktop-<area>-vm-test.py, run through
 # pytest inside the driver, which ask for the desktop, its boot and helpers,
 # from desktop/desktop_session.py. So a change to one area reruns only that
-# one, and the areas run side by side. checks.nix names each area.
+# one, and the areas run side by side. checks.nix names each area, or the
+# checks.nix of its area of tests/vm/ once it has moved there.
 #
 # The pictures it takes for a person to look at, which `shots-changed`
 # compares, are taken only by an area's gallery, `.gallery`, the same test

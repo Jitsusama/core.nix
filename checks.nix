@@ -313,10 +313,6 @@ let
       inherit self pkgs;
       area = "locks-and-asks";
     };
-    vm-desktop-answers-secret-asks = import ./tests/desktop.nix {
-      inherit self pkgs;
-      area = "answers-secret-asks";
-    };
     vm-desktop-keeps-pace = import ./tests/desktop.nix {
       inherit self pkgs;
       area = "keeps-pace";

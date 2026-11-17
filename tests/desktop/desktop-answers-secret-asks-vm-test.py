@@ -182,13 +182,22 @@ def test_a_yes_walked_through_the_ipc_releases_nothing(desktop: Desktop) -> None
     retry(lambda _: answered(desktop, ask)["state"] == "refused", timeout=dt.timedelta(seconds=30))
 
 
+def scene_warnings(desktop: Desktop) -> str:
+    """Give each warning Quickshell's scene gave, one a line, or nothing.
+
+    A binding that throws or assigns the wrong type only warns, and only once a surface draws
+    it. This belongs in desktop_session.py with the other areas' copies, which wait to move
+    there (tests/rules/every-test-function-lives-once-waiting.nix).
+    """
+    return desktop.as_account(
+        "journalctl --user -u quickshell --no-pager -o cat | grep -a -E 'WARN[^ ]* scene' || true"
+    ).strip()
+
+
 def test_quickshell_warned_of_nothing_it_drew_all_along(desktop: Desktop) -> None:
     """Quickshell warned of nothing it drew all along.
 
-    A binding that throws or assigns the wrong type only warns, and only once a surface draws
-    it, which can be long after the start, so this comes last.
+    Quickshell warns of a scene only once a surface draws it, so this comes last.
     """
-    log = desktop.as_account(
-        "journalctl --user -u quickshell --no-pager -o cat | grep -a -E 'WARN[^ ]* scene' || true"
-    )
-    assert log.strip() == "", f"Quickshell warned of a scene: {log}"
+    warned = scene_warnings(desktop)
+    assert warned == "", f"Quickshell warned of a scene: {warned}"
