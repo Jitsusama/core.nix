@@ -9,7 +9,10 @@
 # skip link, linking home from its depth; the home's own files are put
 # beside it; its theme-color takes each look's ground from the kit, and
 # names none without one; a second run changes no file; a broken record
-# keeps the last build; and a root with no sites.json is left alone.
+# keeps the last build; a root with no sites.json is left alone; and a
+# document loading a script file of its own is named, on any of its pages,
+# however its tag is spelled and even past a byte that isn't UTF-8, while one
+# loading only the kit's, and an app loading its own, are not.
 # usage: home-builds-from-its-rows.sh <python> <sources>
 set -euo pipefail
 
@@ -50,18 +53,27 @@ cat > "$root/sites.json" << 'EOF'
    "when": "15 Nov", "kind": "app", "status": "growing", "strip": true,
    "pages": {"tree.html": "test"}},
   {"path": "notes/", "name": "Notes & such", "what": "Notes.", "asks": "",
-   "when": "14 Nov", "kind": "record", "status": "growing"},
+   "when": "14 Nov", "kind": "record", "status": "growing",
+   "pages": {"more.html": "record"}},
   {"path": "old/", "name": "The old one", "what": "Kept.", "asks": "",
    "when": "11 Nov", "kind": "mock", "status": "settled", "strip": true}
 ]}
 EOF
-for page in map/index.html map/tree.html old/index.html; do
+for page in map/index.html map/tree.html old/index.html notes/index.html notes/more.html; do
   printf '<!doctype html>\n<body>\n<a class="skip" href="#main">Skip</a>\n<main id="main"></main>\n' \
     > "$root/$page"
 done
+script() { printf '<script %s></script>\n' "$1" >> "$root/$2"; }
+script 'src="site.js"' map/index.html
+script 'type="module" src="/local-sites/kit/document.js"' notes/index.html
+script 'src="site.js" defer' old/index.html
+script 'type="module" src="ways.js"' old/index.html
+printf '\xff\n' >> "$root/notes/more.html"
+script "type=module SRC='/local-sites/kit/../x.js'" notes/more.html
 
 said=$("$python" "$sources/home.py" "$sources" "$root")
-[ "$said" = "home: 2 sites, 1 kept; strips on 3 pages" ] || fail "it said: $said"
+owning="scripts of their own in notes/ (/local-sites/kit/../x.js), old/ (site.js, ways.js)"
+[ "$said" = "home: 2 sites, 1 kept; strips on 3 pages; $owning" ] || fail "it said: $said"
 
 for file in home.js home.css theme.js strip.css; do
   cmp -s "$sources/$file" "$root/$file" || fail "$file wasn't put beside the home"

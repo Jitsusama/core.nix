@@ -5,7 +5,10 @@ of every page whose row asks for one, and puts the home's own scripts and
 styles in place beside them. A row may name pages of its site that say their
 own kind in the strip, as "pages": {"tree.html": "test"}. The home's
 theme-color takes each look's ground from the kit's theme.css, so it turns
-with the theme.
+with the theme. A document, any row but an app, takes its keys and theme
+switch from the kit's /local-sites/kit/document.js, so what it says names
+every document loading a script file of its own, which is a copy that
+won't learn what the kit does next.
 
 usage: home.py <sources> <root>, where sources holds the home's page and its
 files, and root is the sites' folder. It rewrites index.html, index.md and
@@ -32,6 +35,10 @@ STATUS = {"withdrawn": "turned down, kept", "settled": "settled", "growing": ""}
 FILES = ("home.js", "home.css", "theme.js", "strip.css")
 OPEN, CLOSE = "<!-- sites strip: home.py writes this -->", "<!-- /sites strip -->"
 GROUND = re.compile(r"--background:\s*([^;]+);")
+# A script file a page loads, by its address however it's quoted.
+SCRIPT_SRC = re.compile(r"<script\b[^>]*?\bsrc\s*=\s*([\"']?)([^\"'\s>]+)\1", re.IGNORECASE)
+# Where the kit's own scripts are served from, the only ones a document loads.
+KIT = "/local-sites/kit/"
 LIGHT = "@media (prefers-color-scheme: light)"
 
 
@@ -248,6 +255,35 @@ def stripped(text: str, block: str) -> str:
     return text[:at] + "\n" + block + "\n" + text[at:]
 
 
+def inside(root: Path, page: str) -> Path | None:
+    """Find the file a row names under root, or None when the name would lead out of it."""
+    path = (root / page).resolve()
+    return path if path.is_relative_to(root.resolve()) else None
+
+
+def own_scripts(root: Path, sites: list[Site]) -> list[str]:
+    """Name each document whose pages load a script file of their own, with the files.
+
+    A page that can't be read is passed over rather than failing the build,
+    since this only reports.
+    """
+    owning = []
+    for site in (site for site in sites if site.kind != "app"):
+        own = site.path + ("index.html" if site.path.endswith("/") else "")
+        scripts = []
+        for page in [own, *(site.path + page for page in site.pages)]:
+            path = inside(root, page)
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace") if path else ""
+            except OSError:
+                continue
+            sources = (source for _, source in SCRIPT_SRC.findall(text))
+            scripts += [s for s in sources if not s.startswith(KIT) or ".." in s]
+        if scripts:
+            owning.append(f"{site.path} ({', '.join(scripts)})")
+    return owning
+
+
 def write(path: Path, text: str) -> None:
     """Write a file only when it changes, so a run with nothing new touches nothing.
 
@@ -284,11 +320,13 @@ def build(sources: Path, root: Path) -> str:
         pages[site.path + ("index.html" if site.path.endswith("/") else "")] = (site, site.kind)
         pages.update({site.path + page: (site, kind) for page, kind in site.pages.items()})
     for page, (site, kind) in pages.items():
-        path = root / page
-        if path.exists():
+        path = inside(root, page)
+        if path and path.exists():
             write(path, stripped(path.read_text(encoding="utf-8"), strip(site, page, kind)))
     kept = sum(site.kept for site in sites)
-    return f"home: {len(sites) - kept} sites, {kept} kept; strips on {len(pages)} pages"
+    said = f"home: {len(sites) - kept} sites, {kept} kept; strips on {len(pages)} pages"
+    owning = own_scripts(root, sites)
+    return said + (f"; scripts of their own in {', '.join(owning)}" if owning else "")
 
 
 if __name__ == "__main__":
