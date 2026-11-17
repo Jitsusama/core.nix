@@ -81,6 +81,24 @@ pub fn once_gone_for(pid: u32, began: &str, body: &str) -> String {
 /// another process, so the group is only ever its own.
 ///
 /// [`scoped`]: super::scoped
+/// Whether nothing of the group `group` runs, for the tests here and
+/// the probes': a member killed may stay a zombie a while, until
+/// whoever inherits it reaps it.
+#[cfg(test)]
+pub fn group_gone(group: u32) -> bool {
+    let group = group.to_string();
+    std::fs::read_dir("/proc")
+        .expect("/proc")
+        .flatten()
+        .all(|entry| {
+            let stat = std::fs::read_to_string(entry.path().join("stat")).unwrap_or_default();
+            let fields: Vec<&str> = stat
+                .rsplit_once(") ")
+                .map_or(Vec::new(), |(_, rest)| rest.split(' ').collect());
+            !matches!(fields.as_slice(), [state, _, pgrp, ..] if *pgrp == group && *state != "Z")
+        })
+}
+
 pub fn end_group(child: &Child) {
     if let Ok(group) = libc::pid_t::try_from(child.id()) {
         // SAFETY: kill(2) on the group of a child still unreaped.
@@ -181,12 +199,10 @@ mod tests {
             .spawn()
             .expect("a shell");
         let group = libc::pid_t::try_from(sh.id()).expect("a pid");
-        // SAFETY: kill(2) with signal 0 only asks whether the group is.
-        let gone = || unsafe { libc::kill(-group, 0) } != 0;
         let asked = Instant::now();
         while asked.elapsed() < within {
             let _ = sh.try_wait();
-            if gone() {
+            if group_gone(sh.id()) {
                 return true;
             }
             thread::sleep(Duration::from_millis(50));
@@ -281,7 +297,14 @@ mod tests {
 
     #[test]
     fn a_stopped_proof_counts_as_gone() {
-        let mut proof = Command::new("sleep").arg("30").spawn().expect("sleep");
+        use std::os::unix::process::CommandExt;
+        // In a group of its own, where the Ctrl-Z test's waking can't
+        // reach it.
+        let mut proof = Command::new("sleep")
+            .arg("30")
+            .process_group(0)
+            .spawn()
+            .expect("sleep");
         let (pid, began) = (proof.id(), began_of(&proof.id().to_string()));
         let group = libc::pid_t::try_from(pid).expect("a pid");
         // SAFETY: stopping, then ending, this test's own sleep.
@@ -319,11 +342,17 @@ mod tests {
     #[test]
     fn what_waits_for_a_proof_runs_once_it_is_gone() {
         let (pid, began) = a_proof_for("1");
+        let asked = Instant::now();
         let out = Command::new("sh")
             .args(["-c", &once_gone_for(pid, &began, "echo after")])
             .output()
             .expect("a shell");
         assert_eq!(String::from_utf8_lossy(&out.stdout), "after\n");
+        assert!(
+            asked.elapsed() >= Duration::from_millis(800),
+            "ran while its proof lived, after {:?}",
+            asked.elapsed()
+        );
     }
 
     #[test]

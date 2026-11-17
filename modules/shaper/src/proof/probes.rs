@@ -141,10 +141,12 @@ mod tests {
         at
     }
 
-    /// What the shell `script` says, given `first` as its first argument.
+    /// What the shell `script` says, given `first` as its first argument,
+    /// in a group of its own, so a watcher's `kill 0` can't reach cargo.
     fn says(script: &str, first: &str) -> String {
         let out = Command::new("sh")
             .args(["-c", script, "sh", first])
+            .process_group(0)
             .output()
             .expect("a shell");
         String::from_utf8_lossy(&out.stdout).into_owned()
@@ -178,18 +180,7 @@ mod tests {
             .expect("a shell")
     }
 
-    /// Whether nothing of the group `group` runs: a member killed may
-    /// stay a zombie a while, until whoever inherits it reaps it.
-    fn gone(group: u32) -> bool {
-        let group = group.to_string();
-        std::fs::read_dir("/proc").expect("/proc").flatten().all(|entry| {
-            let stat = std::fs::read_to_string(entry.path().join("stat")).unwrap_or_default();
-            let fields: Vec<&str> = stat
-                .rsplit_once(") ")
-                .map_or(Vec::new(), |(_, rest)| rest.split(' ').collect());
-            !matches!(fields.as_slice(), [state, _, pgrp, ..] if *pgrp == group && *state != "Z")
-        })
-    }
+    use super::super::load::group_gone as gone;
 
     #[test]
     fn a_probe_ends_at_a_stop_or_well_past_its_block() {

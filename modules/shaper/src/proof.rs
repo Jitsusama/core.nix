@@ -24,12 +24,13 @@
 //! Wayland's idle notice tells swayidle. The moment any of them changes,
 //! every load stops, the shaper goes back as it was, the pair under way
 //! is dropped, and it waits for his next idle stretch. SIGTERM, SIGINT,
-//! SIGHUP and SIGTSTP end it the same way, writing what it measured to
-//! `--out` and exiting 130. A proof killed outright can put nothing back
-//! itself, but its load and probes end within about two seconds, and a
-//! keeper beside it puts the shaper back as it found it, or, failing
-//! that, the next proof does. It waits `--wait` seconds from its start
-//! in all, and exits 75 if they run out before every pair is measured,
+//! SIGHUP and SIGTSTP end it the same way, and so does SIGCONT after a
+//! SIGSTOP, writing what it measured to `--out` and exiting 130. A proof
+//! killed outright can put nothing back itself, but its load and probes
+//! end within about two seconds, and a keeper beside it puts the shaper
+//! back as it found it, or, failing that, the next proof does. One proof
+//! runs at a time; another exits 75 at once. It waits `--wait` seconds
+//! from its start in all, and exits 75 if they run out before every pair is measured,
 //! writing what it measured to `--out`. It exits 69 if it couldn't put
 //! the shaper back, saying how to. The call's packets are src/call.rs's.
 //!
@@ -338,6 +339,15 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     };
     let waits = waits_while(std::env::var(WAITS_ENV).ok().as_deref())
         .map_err(|e| Failure::new(Exit::Config, e))?;
+    let marker = stop::marker();
+    // Held to the end, released however the proof ends.
+    let _alone = match &marker {
+        Some(m) => Some(stop::alone(m).ok_or_else(|| {
+            Failure::new(Exit::TryAgain, "another proof is running")
+                .because("two at once would load the link twice")
+        })?),
+        None => None,
+    };
     let Some(gate) = Gate::new(waits) else {
         return Err(Failure::new(
             Exit::Unavailable,
@@ -346,7 +356,6 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     };
     let gate = Arc::new(gate);
     let deadline = Instant::now() + Duration::from_secs(asked.wait);
-    let marker = stop::marker();
     let active = systemctl("is-active");
     let was_on = marker
         .as_deref()
@@ -686,7 +695,7 @@ mod tests {
         assert!(
             args[..ends]
                 .iter()
-                .any(|a| a.starts_with("--property=MemoryMax=")),
+                .any(|a| a == "--property=MemoryMax=128M"),
             "a scope an agent starts is taken back into its work: {args:?}"
         );
     }

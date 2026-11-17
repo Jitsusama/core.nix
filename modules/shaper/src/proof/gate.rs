@@ -1,10 +1,16 @@
 //! When a proof may load the link: Joel away, as swayidle tells it, no
 //! call on, no audio playing, and nothing the machine names busy.
 
+use super::load::end_group;
+use super::stop::STOPPED;
 use std::fs;
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::Ordering;
 use std::sync::{Mutex, PoisonError};
+use std::thread;
+use std::time::{Duration, Instant};
 
 /// What the gate's idle notice waits for, in seconds.
 const IDLE_S: u32 = 120;
@@ -12,6 +18,40 @@ const IDLE_S: u32 = 120;
 /// commands, each a list of its program and arguments: the machine's
 /// `jitsusama.shaper.proofWaitsWhile`, which the wrapper sets.
 pub const WAITS_ENV: &str = "SHAPER_PROOF_WAITS_WHILE";
+
+/// How long a command the gate asks may take.
+const ASKED_FOR: Duration = Duration::from_secs(10);
+
+/// The code `command` exits with, in a group of its own so the
+/// terminal's Ctrl-C or Ctrl-Z reaches only the proof; None if it won't
+/// run, or if it's still going `within` from now or at a stop, when the
+/// whole of its group is ended, so a hung one can't hold the gate.
+fn exits(mut command: Command, within: Duration, halted: impl Fn() -> bool) -> Option<i32> {
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .ok()?;
+    let by = Instant::now() + within;
+    loop {
+        if let Ok(Some(status)) = child.try_wait() {
+            return status.code();
+        }
+        if halted() || Instant::now() >= by {
+            end_group(&child);
+            let _ = child.wait();
+            return None;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// Whether a signal has asked the proof to stop.
+fn signalled() -> bool {
+    STOPPED.load(Ordering::Relaxed)
+}
 
 /// Reads the commands the proof waits on from `named`, the machine's;
 /// none named waits on none.
@@ -31,13 +71,9 @@ pub fn waits_while(named: Option<&str>) -> Result<Vec<Vec<String>>, String> {
 /// included, counts as busy, since it couldn't tell.
 fn busy(commands: &[Vec<String>]) -> bool {
     commands.iter().any(|command| {
-        !Command::new(&command[0])
-            .args(&command[1..])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|s| s.code() == Some(1))
+        let mut asked = Command::new(&command[0]);
+        asked.args(&command[1..]);
+        exits(asked, ASKED_FOR, signalled) != Some(1)
     })
 }
 
@@ -54,15 +90,35 @@ impl Gate {
     pub fn new(waits: Vec<Vec<String>>) -> Option<Gate> {
         let runtime = std::env::var_os("XDG_RUNTIME_DIR")?;
         let mark = PathBuf::from(runtime).join(format!("shaper-proof-idle-{}", std::process::id()));
-        let _ = fs::remove_file(&mark);
+        // Only one proof runs at a time, so any other proof's mark is
+        // one a proof killed outright left.
+        if let Ok(marks) = fs::read_dir(mark.parent()?) {
+            for left in marks.flatten() {
+                if left
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("shaper-proof-idle-")
+                {
+                    let _ = fs::remove_file(left.path());
+                }
+            }
+        }
         let shown = mark.display().to_string();
-        let idle = Command::new("swayidle")
-            .args(["timeout", &IDLE_S.to_string(), &format!("touch {shown}")])
+        let mut idle = Command::new("swayidle");
+        idle.args(["timeout", &IDLE_S.to_string(), &format!("touch {shown}")])
             .args(["resume", &format!("rm -f {shown}")])
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .spawn()
-            .ok()?;
+            .stdout(Stdio::null());
+        // SAFETY: prctl(2) is async-signal-safe, so fit to run between
+        // fork and exec. It ends swayidle once the thread that started
+        // it, the proof's main one, ends, however the proof ends.
+        unsafe {
+            idle.pre_exec(|| {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                Ok(())
+            });
+        }
+        let idle = idle.spawn().ok()?;
         Some(Gate {
             mark,
             idle: Mutex::new(idle),
@@ -86,11 +142,7 @@ impl Gate {
     /// commands waited on are asked last, being the slowest.
     pub fn open(&self) -> bool {
         self.mark.exists()
-            && Command::new("a-call-is-on")
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .is_ok_and(|s| s.code() == Some(1))
+            && exits(Command::new("a-call-is-on"), ASKED_FOR, signalled) == Some(1)
             && !audio_plays()
             && !busy(&self.waits)
     }
@@ -100,12 +152,17 @@ impl Gate {
 /// watch a stream without touching the keys, so idle alone doesn't say
 /// he's away. A graph that can't be read is taken for audio playing.
 fn audio_plays() -> bool {
+    // Cut off as any command the gate asks is, leaving a graph cut short,
+    // which can't be read.
     Command::new("pw-dump")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .output()
+        .process_group(0)
+        .spawn()
         .ok()
-        .filter(|out| out.status.success())
-        .and_then(|out| serde_json::from_slice(&out.stdout).ok())
+        .map(|dump| super::probes::finish(dump, Instant::now() + ASKED_FOR, signalled))
+        .and_then(|graph| serde_json::from_str(&graph).ok())
         .is_none_or(|graph| plays(&graph))
 }
 
@@ -172,6 +229,29 @@ mod tests {
         );
         assert!(!busy(&[exits(1), exits(1)]), "held with nothing busy");
         assert!(!busy(&[]), "held with nothing to wait on");
+    }
+
+    #[test]
+    fn a_command_asked_is_cut_off_at_a_stop_or_when_it_hangs() {
+        let hangs = || {
+            let mut c = Command::new("sh");
+            c.args(["-c", "sleep 30 & sleep 30"]);
+            c
+        };
+        let asked = std::time::Instant::now();
+        assert_eq!(exits(hangs(), ASKED_FOR, || true), None, "a stop waited on");
+        assert_eq!(
+            exits(hangs(), std::time::Duration::from_millis(300), || false),
+            None
+        );
+        assert!(
+            asked.elapsed() < std::time::Duration::from_secs(2),
+            "a hung command held the gate {:?}",
+            asked.elapsed()
+        );
+        let mut answers = Command::new("sh");
+        answers.args(["-c", "exit 1"]);
+        assert_eq!(exits(answers, ASKED_FOR, || false), Some(1));
     }
 
     #[test]
