@@ -1,14 +1,13 @@
-# A ruff config every-ruff-exception-hides-a-finding.nix plants for the rule to
-# refuse before ruff runs, for each reason the check's expected lines say: lint
-# settings where it doesn't read them, a selection other than ALL, and an
-# ignore broader than an exception's code.
+# A ruff config every-ruff-exception-hides-a-finding.sh plants for the rule to
+# refuse before ruff runs: it keeps per-file exceptions in each place the rule
+# doesn't read, as the check's expected lines say.
 extend = "base.toml"
-ignore = ["E501"]
 
-[lint]
-select = ["F"]
-ignore = ["F4"]
-extend-ignore = ["E501"]
+[per-file-ignores]
+"a.py" = ["F401"]
+
+[extend-per-file-ignores]
+"a.py" = ["F401"]
 
 [lint.extend-per-file-ignores]
 "a.py" = ["F401"]
