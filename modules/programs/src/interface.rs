@@ -67,6 +67,9 @@ pub enum Own {
     /// Edit Here on a repository's row (`code_rows.rs`): Neovim started
     /// on its checkout, by the folder's absolute path.
     Edit(String),
+    /// Switch to It on a branch's row (`switch.rs`): its checkout, by its
+    /// absolute path, put on the branch.
+    Switch { folder: String, branch: String },
     /// What the rows are made of, held until the next (docs/daemons.md,
     /// Settings).
     Settings(Settings),
@@ -177,6 +180,11 @@ pub fn own_of(said: &Value) -> Option<Own> {
             let folder = text_of(said, "path");
             folder.starts_with('/').then_some(Own::Edit(folder))
         }
+        "code:switch" => {
+            let (folder, branch) = (text_of(said, "path"), text_of(said, "branch"));
+            (folder.starts_with('/') && !branch.is_empty())
+                .then_some(Own::Switch { folder, branch })
+        }
         asked @ ("tab:go" | "tab:close") => {
             let act = if asked == "tab:go" {
                 TabAct::Go
@@ -237,6 +245,27 @@ mod tests {
             own_of(&json!({"ask": "code:pull", "path": "src/core.nix"})),
             None,
             "a pull of a folder relative to nothing was taken"
+        );
+    }
+
+    #[test]
+    fn a_branchs_switch_names_its_checkout_and_the_branch() {
+        assert_eq!(
+            own_of(&json!({"ask": "code:switch", "path": "/home/j/src/core.nix", "branch": "fix"})),
+            Some(Own::Switch {
+                folder: "/home/j/src/core.nix".into(),
+                branch: "fix".into(),
+            })
+        );
+        assert_eq!(
+            own_of(&json!({"ask": "code:switch", "path": "src/core.nix", "branch": "fix"})),
+            None,
+            "a switch of a folder relative to nothing was taken"
+        );
+        assert_eq!(
+            own_of(&json!({"ask": "code:switch", "path": "/home/j/src/core.nix"})),
+            None,
+            "a switch naming no branch was taken"
         );
     }
 

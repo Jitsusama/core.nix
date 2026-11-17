@@ -13,7 +13,8 @@
         "local": "no remote",
         "change": "1 change",
         "changes": "{count} changes",
-        "behind": "{count} behind"
+        "behind": "{count} behind",
+        "ahead": "{count} ahead"
       }
     },
     {
@@ -34,7 +35,13 @@
     {
       "id": "code:branch",
       "in": "code",
-      "name": "Branch"
+      "name": "Branch",
+      "verb": "open",
+      "glyph": "branch",
+      "said": {
+        "here": "checked out here",
+        "elsewhere": "in {tree}"
+      }
     },
     {
       "id": "code:remote",
@@ -98,7 +105,7 @@
         "took": "pulled 1 commit",
         "tookMany": "pulled {count} commits",
         "tree": "not pulled: it isn't a checkout's own folder",
-        "busy": "not pulled: it's being pulled already",
+        "busy": "not pulled: it's being pulled or switched already",
         "detached": "not pulled: it's on no branch",
         "unfollowed": "not pulled: its branch follows no other",
         "unread": "not pulled: git couldn't read it",
@@ -115,6 +122,38 @@
       "name": "Open a File by Name",
       "verb": "open",
       "glyph": "folder"
+    },
+    {
+      "id": "verb:code:branches",
+      "command": "edit",
+      "argument": "branches",
+      "in": "code:repository",
+      "name": "Switch Branch",
+      "verb": "open",
+      "glyph": "branch"
+    },
+    {
+      "id": "verb:code:switch",
+      "command": "switch",
+      "in": "code:branch",
+      "name": "Switch to It",
+      "verb": "switch",
+      "glyph": "branch",
+      "said": {
+        "switched": "switched to {branch}",
+        "here": "already on {branch}",
+        "tree": "not switched: it isn't a checkout's own folder",
+        "busy": "not switched: it's being pulled or switched already",
+        "unknown": "not switched: there's no branch {branch} now",
+        "unread": "not switched: git couldn't read it",
+        "detached": "not switched: it's on no branch",
+        "midway": "not switched: a merge, rebase, cherry-pick or revert is under way",
+        "changed": "not switched: it has changes of its own",
+        "elsewhere": "not switched: {tree} has it checked out",
+        "intheway": "not switched: files git doesn't track are in the way",
+        "partway": "not switched: git stopped partway and left changes",
+        "failed": "not switched: git refused the switch"
+      }
     },
     {
       "id": "code:file",

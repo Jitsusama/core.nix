@@ -8,12 +8,15 @@ fn words() -> Words {
         {"id": "code:repository", "said": {
             "kind": "repository", "tree": "1 tree", "trees": "{count} trees",
             "local": "no remote", "change": "1 change", "changes": "{count} changes",
-            "behind": "{count} behind",
+            "behind": "{count} behind", "ahead": "{count} ahead",
         }},
         {"id": "code:key", "name": "Key"},
         {"id": "code:trunk", "name": "Trunk"},
         {"id": "code:checkout", "name": "Checkout"},
-        {"id": "code:branch", "name": "Branch"},
+        {"id": "code:branch", "name": "Branch", "glyph": "branch", "said": {
+            "here": "checked out", "elsewhere": "in {tree}",
+        }},
+        {"id": "verb:code:branches", "name": "Switch Branch", "glyph": "branch"},
         {"id": "code:remote", "name": "Remote"},
         {"id": "verb:code:find", "name": "Open a File by Name", "glyph": "folder"},
         {"id": "code:file", "name": "File", "glyph": "path"},
@@ -175,7 +178,7 @@ fn apart(count: Option<Count>) -> Repository {
 }
 
 #[test]
-fn a_checkout_behind_its_branch_says_how_far_after_its_open_changes() {
+fn a_checkout_apart_from_its_branch_says_how_far_after_its_open_changes() {
     let mut repository = apart(Some(Count {
         behind: 3,
         ahead: 1,
@@ -187,10 +190,11 @@ fn a_checkout_behind_its_branch_says_how_far_after_its_open_changes() {
         json!([
             {"said": "1 change"},
             {"said": "3 behind"},
+            {"said": "1 ahead"},
             {"said": "3 trees"},
             {"at": 1_700_000_000_000_i64, "as": "came", "keep": 1},
         ]),
-        "how far its checkout is behind wasn't said after its open changes"
+        "how far its checkout is behind and ahead wasn't said after its open changes"
     );
 }
 
@@ -198,7 +202,7 @@ fn a_checkout_behind_its_branch_says_how_far_after_its_open_changes() {
 fn past_the_counts_end_it_says_as_much_and_even_or_uncounted_says_nothing() {
     let far = apart(Some(Count {
         behind: COUNTED_TO,
-        ahead: 0,
+        ahead: COUNTED_TO,
     }));
     let ahead = apart(Some(Count {
         behind: 0,
@@ -206,8 +210,14 @@ fn past_the_counts_end_it_says_as_much_and_even_or_uncounted_says_nothing() {
     }));
     let rows = rows(&record(vec![far, ahead, apart(None)]), None, &words());
     assert_eq!(rows[0]["side"][0], json!({"said": "100+ behind"}));
+    assert_eq!(rows[0]["side"][1], json!({"said": "100+ ahead"}));
     assert_eq!(
         rows[1]["side"][0],
+        json!({"said": "2 ahead"}),
+        "a checkout only ahead didn't say so alone"
+    );
+    assert_eq!(
+        rows[1]["side"][1],
         json!({"said": "3 trees"}),
         "a checkout only ahead said it was behind"
     );
@@ -380,7 +390,7 @@ fn a_repository_with_a_checkout_steps_into_its_files_by_name() {
     gone.checkouts.clear();
     let inside = inside(&record(vec![core(), gone]), &words());
     assert_eq!(
-        inside,
+        inside[..1],
         [json!({
             "key": "row:code:github:Jitsusama/core.nix:files",
             "thing": "repository:github:Jitsusama/core.nix:files",
@@ -397,6 +407,91 @@ fn a_repository_with_a_checkout_steps_into_its_files_by_name() {
         })],
         "a repository with no checkout had files to find, or one with one didn't"
     );
+    assert_eq!(
+        inside.len(),
+        2,
+        "a repository with no checkout had rows inside"
+    );
+}
+
+#[test]
+fn a_checkout_with_files_steps_into_its_branches_after_its_files() {
+    let rows = inside(&record(vec![core()]), &words());
+    assert_eq!(
+        rows.get(1),
+        Some(&json!({
+            "key": "row:code:github:Jitsusama/core.nix:branches",
+            "thing": "repository:github:Jitsusama/core.nix:branches",
+            "place": "code",
+            "kind": "act",
+            "parent": "row:code:github:Jitsusama/core.nix",
+            "depth": 1,
+            "name": "Switch Branch",
+            "glyph": "branch",
+            "hue": "action",
+            "side": [],
+            "held": {"path": "/home/j/src/core.nix"},
+            "acts": [{"key": "verb:more", "step": "rows"}],
+        })),
+        "a checkout with files had no branches to switch to"
+    );
+    let mut bare = core();
+    bare.checkouts = vec![checkout("/home/j/src/core.nix.git", true, Vec::new())];
+    assert_eq!(
+        inside(&record(vec![bare]), &words()).len(),
+        1,
+        "a bare checkout, with no files to switch, had branches to switch to"
+    );
+}
+
+#[test]
+fn a_branch_is_a_row_that_switches_to_it_saying_when_it_was_written() {
+    let parent = "row:code:github:Jitsusama/core.nix:branches";
+    let listed = [
+        json!({"name": "main", "at_s": 2, "here": true, "elsewhere": null, "path": "/c"}),
+        json!({"name": "fix", "at_s": 1, "here": false, "elsewhere": "~/t/fix", "path": "/c"}),
+        json!({"name": "old", "at_s": null, "here": false, "elsewhere": null, "path": "/c"}),
+    ];
+    let rows = branches(parent, &listed, &words());
+    assert_eq!(
+        rows[2],
+        json!({
+            "key": "row:code:github:Jitsusama/core.nix:branches:old",
+            "thing": "branch:github:Jitsusama/core.nix:old",
+            "place": "code",
+            "kind": "branch",
+            "parent": parent,
+            "depth": 2,
+            "name": "old",
+            "glyph": "branch",
+            "hue": "program",
+            "side": [],
+            "held": {"path": "/c", "branch": "old"},
+            "acts": [{
+                "key": "verb:code:switch",
+                "ask": {"ask": "code:switch", "path": "/c", "branch": "old"},
+                "streams": true,
+            }],
+        }),
+        "a branch's row doesn't name it or switch to it"
+    );
+    assert_eq!(
+        (&rows[0]["side"], &rows[0]["acts"]),
+        (
+            &json!([{"said": "checked out"}, {"at": 2000, "as": "came", "keep": 1}]),
+            &json!([])
+        ),
+        "the branch it's on didn't say so, or offered to switch to itself"
+    );
+    assert_eq!(
+        (&rows[1]["side"], &rows[1]["acts"][0]["key"]),
+        (
+            &json!([{"said": "in ~/t/fix"}, {"at": 1000, "as": "came", "keep": 1}]),
+            &json!("verb:code:switch")
+        ),
+        "a branch another tree holds didn't name it, or had no act to say why it can't"
+    );
+    assert_eq!(rows.len(), 3, "each branch listed isn't a row");
 }
 
 #[test]

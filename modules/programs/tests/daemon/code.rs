@@ -36,11 +36,11 @@ fn cloned(running: &Running, folder: &str, remote: &str) {
 
 /// A checkout's path as the daemon names it, with no link left in it,
 /// since a test's temporary folder may sit behind one.
-fn real(path: &Path) -> std::path::PathBuf {
+pub(super) fn real(path: &Path) -> std::path::PathBuf {
     path.canonicalize().unwrap()
 }
 
-fn row_of<'a>(answer: &'a Value, key: &str) -> Option<&'a Value> {
+pub(super) fn row_of<'a>(answer: &'a Value, key: &str) -> Option<&'a Value> {
     answer["records"]
         .as_array()?
         .iter()
@@ -171,10 +171,18 @@ fn a_checkouts_files_are_served_inside_open_a_file_by_name_only_while_its_ahead(
 
 /// Git run in `folder` as none of Joel's config says, in the case's own
 /// home, answering what it printed.
-fn git_alone(home: &Path, folder: &Path, args: &[&str]) -> String {
+pub(super) fn git_alone(home: &Path, folder: &Path, args: &[&str]) -> String {
+    let ran = git_command(home, folder, args).output().unwrap();
+    assert!(ran.status.success(), "git {args:?} failed");
+    String::from_utf8(ran.stdout).unwrap().trim().to_owned()
+}
+
+/// Git to run in `folder` as none of Joel's config says, in the case's
+/// own home, for a case that sets more of its environment.
+pub(super) fn git_command(home: &Path, folder: &Path, args: &[&str]) -> Command {
     std::fs::create_dir_all(folder).unwrap();
-    let ran = Command::new("git")
-        .arg("-C")
+    let mut git = Command::new("git");
+    git.arg("-C")
         .arg(folder)
         .args(args)
         .env("HOME", home)
@@ -183,11 +191,8 @@ fn git_alone(home: &Path, folder: &Path, args: &[&str]) -> String {
         .env("GIT_AUTHOR_NAME", "someone")
         .env("GIT_AUTHOR_EMAIL", "someone@example.com")
         .env("GIT_COMMITTER_NAME", "someone")
-        .env("GIT_COMMITTER_EMAIL", "someone@example.com")
-        .output()
-        .unwrap();
-    assert!(ran.status.success(), "git {args:?} failed");
-    String::from_utf8(ran.stdout).unwrap().trim().to_owned()
+        .env("GIT_COMMITTER_EMAIL", "someone@example.com");
+    git
 }
 
 /// Joel's checkout of a repository, cloned from a bare remote and one

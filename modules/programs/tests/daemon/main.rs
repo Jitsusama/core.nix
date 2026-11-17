@@ -15,7 +15,8 @@
 //! (taken.rs), what Chrome has open (chrome.rs), kitty's open list
 //! without the agents' panes (agents.rs), every open tab in one place
 //! (tabs.rs), the tab in front of one of Chrome's windows (front.rs),
-//! every repository's row (code.rs), and a page's list read again while
+//! every repository's row (code.rs), a checkout's branches and the
+//! switch between them (switch.rs), and a page's list read again while
 //! it's refused (refused.rs).
 
 mod agents;
@@ -27,6 +28,7 @@ mod refused;
 mod repositories;
 mod rows;
 mod search;
+mod switch;
 mod tabs;
 mod taken;
 
@@ -176,38 +178,10 @@ fn fixture(folder: &Path) -> PathBuf {
     file
 }
 
-/// The launcher's words Capture's rows and the tabs' are said in, as
+/// The launcher's words the cases' rows and answers are said in, as
 /// words.json holds them: each program named by its desktop entry, else
 /// by its id.
-const WORDS: &str = r#"{"things": [
-  {"id": "tabs:tab", "said": {"in": "in {program}", "kind": "tab",
-    "silent": "{program} isn't answering; its tabs come back when it does."}},
-  {"id": "tabs:site", "name": "Site"},
-  {"id": "tabs:address", "name": "Address"},
-  {"id": "tabs:folder", "name": "Folder"},
-  {"id": "capture:recent", "said": {"in": "in {folder}", "picture": "picture",
-    "video": "video", "silent": "not answering"}},
-  {"id": "capture:taken", "name": "Taken"},
-  {"id": "capture:dimensions", "name": "Dimensions"},
-  {"id": "capture:length", "name": "Length"},
-  {"id": "file-chooser:size", "name": "Size"},
-  {"id": "code:repository", "said": {"change": "1 change", "changes": "{count} changes",
-    "behind": "{count} behind"}},
-  {"id": "verb:code:find", "name": "Open a File by Name", "glyph": "folder"},
-  {"id": "verb:code:pull", "said": {"even": "already up to date",
-    "took": "pulled 1 commit", "tookMany": "pulled {count} commits",
-    "tree": "not pulled: it isn't a checkout's own folder",
-    "busy": "not pulled: it's being pulled already",
-    "detached": "not pulled: it's on no branch",
-    "unfollowed": "not pulled: its branch follows no other",
-    "unread": "not pulled: git couldn't read it",
-    "changed": "not pulled: it has changes of its own",
-    "unfetched": "not pulled: the fetch failed",
-    "diverged": "not pulled: it has commits of its own, so only a merge would do",
-    "failed": "not pulled: git refused to fast-forward"}},
-  {"id": "code:file", "glyph": "path"},
-  {"id": "path:file", "glyph": "file"}
-]}"#;
+const WORDS: &str = include_str!("words.json");
 
 /// The shell the path finds, as the build has no /bin/sh.
 fn shell() -> PathBuf {

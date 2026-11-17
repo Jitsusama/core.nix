@@ -3,8 +3,8 @@
 //! checkouts of it lie on the disk, as `repos` reads them
 //! (modules/repos). The one written to last comes first, said beside it
 //! by how many changes are open on its remote, how far the checkout
-//! written to last is behind the branch it follows (as repos' timer last
-//! counted), how many trees are cut from it and when git last wrote in it; it's found by its name, its
+//! written to last is behind and ahead of the branch it follows (as repos'
+//! timer last counted), how many trees are cut from it and when git last wrote in it; it's found by its name, its
 //! owner and its key. Return opens its page where a remote keeps it on
 //! GitHub or GitLab, else copies its checkout's path; inside are Open Its
 //! Page, Open Its Open Changes (while any are), Copy Its Path, New
@@ -14,7 +14,9 @@
 //! launcher as they're asked so the new window takes the keys, then, as a row
 //! of its own (`inside`), Open a File by Name, which steps into its
 //! checkout's files (`files`), each found by its name and the folder it's
-//! in and opened by Return in its default program; its drawer names its
+//! in and opened by Return in its default program, and Switch Branch,
+//! which steps into its checkout's branches (`branches`), each checked out
+//! by Return (switch.rs); its drawer names its
 //! key, its trunk and the checkout written to last, at its branch.
 
 use repos::model::{COUNTED_TO, Checkout, Head, Record, Repository};
@@ -42,8 +44,10 @@ pub struct Words {
     change: String,
     changes: String,
     /// How far its checkout's branch has fallen behind the branch it
-    /// follows: `{count} behind`.
+    /// follows: `{count} behind`, and how many commits it has that branch
+    /// lacks, not yet pushed: `{count} ahead`.
     behind: String,
+    ahead: String,
     /// The labels of its drawer's facts.
     key: String,
     trunk: String,
@@ -56,6 +60,15 @@ pub struct Words {
     find_glyph: String,
     /// The glyph a file's row wears.
     file_glyph: String,
+    /// The row inside a repository that steps into its branches, and its
+    /// glyph.
+    branches: String,
+    branches_glyph: String,
+    /// The glyph a branch's row wears, and what its side says of the one
+    /// the checkout is on and of one another tree holds: `in {tree}`.
+    branch_glyph: String,
+    branch_here: String,
+    branch_elsewhere: String,
 }
 
 impl Words {
@@ -80,12 +93,13 @@ impl Words {
                 .unwrap_or(id)
                 .to_owned()
         };
-        let said = |field: &str| {
-            of("code:repository")
+        let said_of = |id: &str, field: &str| {
+            of(id)
                 .and_then(|thing| thing["said"][field].as_str())
-                .unwrap_or("code:repository")
+                .unwrap_or(id)
                 .to_owned()
         };
+        let said = |field: &str| said_of("code:repository", field);
         Words {
             kind: said("kind"),
             tree: said("tree"),
@@ -94,6 +108,7 @@ impl Words {
             change: said("change"),
             changes: said("changes"),
             behind: said("behind"),
+            ahead: said("ahead"),
             key: name("code:key"),
             trunk: name("code:trunk"),
             checkout: name("code:checkout"),
@@ -102,6 +117,11 @@ impl Words {
             find: name("verb:code:find"),
             find_glyph: glyph("verb:code:find"),
             file_glyph: glyph("code:file"),
+            branches: name("verb:code:branches"),
+            branches_glyph: glyph("verb:code:branches"),
+            branch_glyph: glyph("code:branch"),
+            branch_here: said_of("code:branch", "here"),
+            branch_elsewhere: said_of("code:branch", "elsewhere"),
         }
     }
 
@@ -113,17 +133,25 @@ impl Words {
         Words::count(&self.change, &self.changes, count)
     }
 
-    /// How far a head is behind the branch it follows, where it's been
-    /// counted and is: `100+` past the count's end; none when it's even
-    /// or only ahead.
-    fn behind(&self, head: &Head) -> Option<String> {
-        let count = head.upstream.as_ref()?.count?.behind;
-        let far = match count {
-            0 => return None,
-            COUNTED_TO.. => format!("{COUNTED_TO}+"),
-            count => count.to_string(),
+    /// How far a head is behind and ahead of the branch it follows, where
+    /// it's been counted, each only where it's apart: `100+` past the
+    /// count's end. Behind comes first, since it's what a Pull mends.
+    fn apart(&self, head: &Head) -> Vec<String> {
+        let Some(count) = head.upstream.as_ref().and_then(|upstream| upstream.count) else {
+            return Vec::new();
         };
-        Some(self.behind.replace("{count}", &far))
+        [(count.behind, &self.behind), (count.ahead, &self.ahead)]
+            .into_iter()
+            .filter(|(far, _)| *far > 0)
+            .map(|(far, words)| {
+                let far = if far >= COUNTED_TO {
+                    format!("{COUNTED_TO}+")
+                } else {
+                    far.to_string()
+                };
+                words.replace("{count}", &far)
+            })
+            .collect()
     }
 
     fn count(one: &str, many: &str, count: usize) -> String {
@@ -147,30 +175,40 @@ pub fn rows(record: &Record, home: Option<&Path>, words: &Words) -> Vec<Value> {
 }
 
 /// The rows inside the repositories' rows, served beside them: for each
-/// with a checkout, Open a File by Name, which steps into its files.
+/// with a checkout, Open a File by Name, which steps into its files, and
+/// where it has files of its own, Switch Branch, which steps into its
+/// branches.
 #[must_use]
 pub fn inside(record: &Record, words: &Words) -> Vec<Value> {
     record
         .repositories
         .iter()
-        .filter_map(|repository| {
-            let checkout = worked_in(repository)?;
-            let parent = format!("row:{PLACE}:{}", repository.key);
-            Some(json!({
-                "key": format!("{parent}{FILES}"),
-                // Its own, so the shell tells one repository's apart.
-                "thing": format!("repository:{}{FILES}", repository.key),
-                "place": PLACE,
-                "kind": "act",
-                "parent": parent,
-                "depth": 1,
-                "name": words.find,
-                "glyph": words.find_glyph,
-                "hue": "action",
-                "side": [],
-                "held": {"path": checkout.path},
-                "acts": [{"key": "verb:more", "step": "rows"}],
-            }))
+        .flat_map(|repository| {
+            let checkout = worked_in(repository);
+            let find = checkout.map(|checkout| (FILES, &words.find, &words.find_glyph, checkout));
+            let switch = checkout
+                .filter(|checkout| !checkout.bare)
+                .map(|checkout| (BRANCHES, &words.branches, &words.branches_glyph, checkout));
+            find.into_iter()
+                .chain(switch)
+                .map(|(end, name, glyph, checkout)| {
+                    let parent = format!("row:{PLACE}:{}", repository.key);
+                    json!({
+                        "key": format!("{parent}{end}"),
+                        // Its own, so the shell tells one repository's apart.
+                        "thing": format!("repository:{}{end}", repository.key),
+                        "place": PLACE,
+                        "kind": "act",
+                        "parent": parent,
+                        "depth": 1,
+                        "name": name,
+                        "glyph": glyph,
+                        "hue": "action",
+                        "side": [],
+                        "held": {"path": checkout.path},
+                        "acts": [{"key": "verb:more", "step": "rows"}],
+                    })
+                })
         })
         .collect()
 }
@@ -178,6 +216,63 @@ pub fn inside(record: &Record, words: &Words) -> Vec<Value> {
 /// What ends the key of Open a File by Name's row, after its
 /// repository's row's.
 pub const FILES: &str = ":files";
+
+/// What ends the key of Switch Branch's row, after its repository's
+/// row's.
+pub const BRANCHES: &str = ":branches";
+
+/// The rows inside Switch Branch's row of key `parent`, one for each
+/// branch `listed` says as switch.rs lists them,
+/// `{name, at_s, here, elsewhere, path}`, in its order.
+#[must_use]
+pub fn branches(parent: &str, listed: &[Value], words: &Words) -> Vec<Value> {
+    let repository = parent
+        .strip_prefix(&format!("row:{PLACE}:"))
+        .and_then(|rest| rest.strip_suffix(BRANCHES))
+        .unwrap_or(parent);
+    listed
+        .iter()
+        .filter_map(|one| {
+            let name = one["name"].as_str()?;
+            let path = one["path"].as_str()?;
+            let here = one["here"].as_bool().unwrap_or(false);
+            let mut side = Vec::new();
+            if here {
+                side.push(json!({"said": words.branch_here}));
+            } else if let Some(tree) = one["elsewhere"].as_str() {
+                side.push(json!({"said": words.branch_elsewhere.replace("{tree}", tree)}));
+            }
+            if let Some(at) = one["at_s"].as_u64() {
+                side.push(json!({"at": at.saturating_mul(1000), "as": "came", "keep": 1}));
+            }
+            // The one it's on is no choice. One another tree holds keeps
+            // its act, so pressing it says which tree (switch.rs).
+            let acts = if here {
+                json!([])
+            } else {
+                json!([{
+                    "key": "verb:code:switch",
+                    "ask": {"ask": "code:switch", "path": path, "branch": name},
+                    "streams": true,
+                }])
+            };
+            Some(json!({
+                "key": format!("{parent}:{name}"),
+                "thing": format!("branch:{repository}:{name}"),
+                "place": PLACE,
+                "kind": "branch",
+                "parent": parent,
+                "depth": 2,
+                "name": name,
+                "glyph": words.branch_glyph,
+                "hue": "program",
+                "side": side,
+                "held": {"path": path, "branch": name},
+                "acts": acts,
+            }))
+        })
+        .collect()
+}
 
 /// The rows inside Open a File by Name's row of key `parent`, one for each
 /// file `listed` says as repositories.rs lists them, `{path, at, within}`,
@@ -270,11 +365,13 @@ fn row(repository: &Repository, home: Option<&Path>, words: &Words) -> Value {
         side.push(json!({"said": words.changes_open(repository.changes.len())}));
     }
     let checkout = worked_in(repository);
-    if let Some(behind) = checkout
-        .and_then(|checkout| checkout.head.as_ref())
-        .and_then(|head| words.behind(head))
-    {
-        side.push(json!({"said": behind}));
+    if let Some(head) = checkout.and_then(|checkout| checkout.head.as_ref()) {
+        side.extend(
+            words
+                .apart(head)
+                .into_iter()
+                .map(|said| json!({"said": said})),
+        );
     }
     if trees > 0 {
         side.push(json!({"said": words.counted(trees)}));

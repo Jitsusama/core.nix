@@ -11,7 +11,8 @@
 //! them changes ([`notify`]),
 //! every open tab's row, Chrome's ([`tab_rows`]) and kitty's
 //! ([`kitty_tabs`]), and every repository's, Code's ([`code_rows`]), whose
-//! checkouts Pull brings forward ([`pull`]).
+//! checkouts Pull brings forward ([`pull`]) and Switch Branch checks out
+//! another branch of ([`switch`]), running git as [`git`] runs it.
 //!
 //! A record names every figure its source has, as the source says it,
 //! with its unit in its key (`_s` seconds since 1970, `_ms`
@@ -26,6 +27,7 @@ pub mod command;
 pub mod entry;
 pub mod folder;
 pub mod front;
+pub mod git;
 pub mod interface;
 pub mod kitty_tabs;
 pub mod machines;
@@ -37,6 +39,8 @@ pub mod program_rows;
 pub mod pull;
 pub mod repositories;
 pub mod source;
+#[cfg(feature = "daemon")]
+pub mod switch;
 pub mod tab_rows;
 pub mod taken_rows;
 pub mod visited;
