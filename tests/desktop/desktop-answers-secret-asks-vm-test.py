@@ -112,6 +112,17 @@ def asks_open_on(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == RELEASED)
 
 
+def refuse_on(desktop: Desktop) -> None:
+    """Press r on the selected ask's line, as Joel does: in normal, since on the find it's typed."""
+    desktop.machine.send_key("esc")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["mode"] == "normal" and (shown["selected"] or {}).get("name") == RELEASED
+        )
+    )
+    desktop.machine.send_chars("r")
+
+
 def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> None:
     """Joel's yes, Return twice on the ask's line, releases the value into its command alone."""
     ask = "0123456789abcdef0123456789abcdef"
@@ -136,7 +147,7 @@ def test_r_refuses_an_ask(desktop: Desktop) -> None:
     ask = "1123456789abcdef0123456789abcdef"
     put_up(desktop, ask)
     asks_open_on(desktop)
-    desktop.machine.send_key("r")
+    refuse_on(desktop)
     answer = answered(desktop, ask)
     assert answer["state"] == "refused", answer
     desktop.as_account(f"! test -e {TREE}/released")
@@ -167,7 +178,7 @@ def test_a_yes_walked_through_the_ipc_releases_nothing(desktop: Desktop) -> None
     desktop.as_account(f"! test -e {TREE}/released")
     # Refused by Joel's key, so no ask is left waiting for the tests after.
     asks_open_on(desktop)
-    desktop.machine.send_key("r")
+    refuse_on(desktop)
     retry(lambda _: answered(desktop, ask)["state"] == "refused", timeout=dt.timedelta(seconds=30))
 
 
