@@ -97,6 +97,34 @@ let
     "--declared"
     "${pkgs.writeText "mycelium-declared.json" declaration}"
   ];
+  # The tools every machine of every realm has, whatever its own
+  # configuration adds: what a session or run another machine starts here
+  # reaches for. ssh stays the system's, which a Mac's keychain and enclave
+  # options need.
+  shared = [
+    package
+    pkgs.fd
+    pkgs.gh
+    pkgs.git
+    pkgs.git-lfs
+    pkgs.jq
+    pkgs.ripgrep
+    pkgs.websocat
+  ];
+  # A realm's kit as one folder, its `bin` the node puts first on the path
+  # of each session and run it starts, after the login profile, so no
+  # start-up file hides a tool. Its store path names its version, which
+  # each machine record carries.
+  kitArgs =
+    realm: tools:
+    lib.optionals (tools != [ ]) [
+      "--kit"
+      "${pkgs.buildEnv {
+        name = "mycelium-kit-${realm}";
+        paths = tools;
+        pathsToLink = [ "/bin" ];
+      }}"
+    ];
   name = lib.types.strMatching "[a-z0-9-]+";
   # A machine a provider's program reaches, as `PROGRAM:PLACE`: the program
   # by its absolute path, since a Mac's agent runs the node with PATH
@@ -144,6 +172,10 @@ let
           example = providersExample;
           description = providersDescription;
         };
+        kit = lib.mkOption {
+          type = lib.types.listOf lib.types.package;
+          description = kitDescription;
+        };
         signsInWith = lib.mkOption {
           type = lib.types.nullOr (lib.types.strMatching "[a-z0-9-]+");
           # tpm-signing serves each realm's link key so, apart from the
@@ -159,8 +191,19 @@ let
           '';
         };
       };
+      # Every realm's kit holds the shared tools; a machine adds its own.
+      config.kit = shared;
     }
   );
+  kitDescription = ''
+    The tools every session and run this realm's node starts here finds
+    first on its path, whatever the login profile sets: the realm's kit,
+    which its machine record names, so work needing a tool goes where the
+    kit holds it. It holds the tools every machine shares, and a machine's
+    own configuration adds to it, such as a work layer's cloud tools, a
+    tool given as `lib.hiPrio` winning over a shared one of the same name;
+    empty, the node is given no kit.
+  '';
   # What a machine may say of itself, and the flows between realms
   # (declares.nix).
   inherit (import ./declares.nix { inherit lib isLinux name; }) declares flow;
@@ -226,7 +269,8 @@ let
   node =
     nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ]
     ++ [ "--eases" ]
-    ++ lib.optionals isLinux builders;
+    ++ lib.optionals isLinux builders
+    ++ kitArgs cfg.realm cfg.kit;
   # Where the harness and mycelium keep a realm that isn't the home one.
   apartIn = realm: [
     "--state"
@@ -237,7 +281,8 @@ let
     "${config.xdg.stateHome}/pi/agentic-harness.pi/realms/${realm}/steer"
   ];
   furtherNodes = lib.mapAttrs (
-    realm: joined: nodeIn realm joined.links joined.vias joined.providers (apartIn realm)
+    realm: joined:
+    nodeIn realm joined.links joined.vias joined.providers (apartIn realm) ++ kitArgs realm joined.kit
   ) cfg.alsoJoins;
   linuxNode = description: words: key: realm: {
     Unit = {
@@ -397,6 +442,10 @@ in
         reads as unknown.
       '';
     };
+    kit = lib.mkOption {
+      type = lib.types.listOf lib.types.package;
+      description = kitDescription;
+    };
     healthSocket = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default =
@@ -492,6 +541,8 @@ in
         package
         completion
       ];
+      # Every realm's kit holds the shared tools; a machine adds its own.
+      jitsusama.mycelium.kit = shared;
 
       # So an agent asked what the sessions are doing answers from the node,
       # in words, the same model every other view draws.

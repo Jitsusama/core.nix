@@ -1678,6 +1678,12 @@
     Mac's in the account's state folder, where its launchd agent serves; a machine naming no
     socket gives none
   '';
+  mycelium-carries-the-realms-kit = ''
+    each of a machine's mycelium nodes, in its home realm or a further one, is given its realm's
+    kit last among its words, one folder in the store holding the tools every machine shares and
+    whatever the machine adds for that realm alone, which each session and run the node starts
+    finds first on its path; a machine emptying its kit gives none
+  '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session
     outlives, whether work costs money, its taints, its agents by realm, the fences its agent
