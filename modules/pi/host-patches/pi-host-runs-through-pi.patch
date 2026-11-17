@@ -80,14 +80,14 @@ pi build; ordinary interactive pi stays unchanged.
 +				result.systemPromptOptions.selectedTools.length !== selectedToolsBefore.length ||
 +				result.systemPromptOptions.selectedTools.some((name, index) => name !== selectedToolsBefore[index]);
 +			if (!handlerEditedTools) result.systemPromptOptions.selectedTools = this.getActiveToolNames();
-+			// As a prompt's prepared run does, drop restored tools that have not registered by now: the
-+			// run records its loadout, so one registering later is not put back into it.
-+			this._pendingToolNames.clear();
 +			// As a prompt's run does, apply the loadout and diff the sections now, so the run's first
 +			// request carries them rather than its second.
 +			const update = this._preparePromptAndToolLoadout(result.systemPromptOptions);
 +			this._runSystemPromptOptions = result.systemPromptOptions;
 +			if (update) prepared = [update];
++			// As a prompt's prepared run does, drop restored tools that have not registered by now: the
++			// run records its loadout, so one registering later is not put back into it.
++			this._pendingToolNames.clear();
 +			// Queued only once nothing above can throw, so a retried start queues them once.
 +			for (const msg of result.messages) {
 +				this._pendingNextTurnMessages.push({

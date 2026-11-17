@@ -2274,7 +2274,8 @@
     and sections a prompt's run sends with no change recorded, a handler's message held for the next
     prompt, and one agent_settled at its end; work inside a run already going joins it. After a
     restart that changed the sections, the run's first request carries them, sent once across its
-    turns, and a run that fails to start passes on the messages it held
+    turns, a message sent as it starts lands after its first turn's tool results, and one held by a
+    start that fails waits for the next turn
   '';
   pi-hosted-loads-where-a-link-points = ''
     pi built with the host's patches, applied exactly, loads a linked extension through the file

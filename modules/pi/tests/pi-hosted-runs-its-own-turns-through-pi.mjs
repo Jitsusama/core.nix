@@ -386,9 +386,13 @@ const carryThroughToolRound = (session, faux) => {
   return carry(session);
 };
 
-const indexOf = (session, matches) => session.messages.findIndex(matches);
 const isHeld = (message) => message.customType === "held";
-const isToolResult = (message) => message.role === "toolResult";
+
+// Whether the held message sits after a tool result, so it splits no call from its result.
+const heldAfterToolResult = ({ messages }) => {
+  const result = messages.findIndex((message) => message.role === "toolResult");
+  return result > 0 && messages.findIndex(isHeld) > result;
+};
 
 // How many of a request's system messages hold the text.
 const systemMessagesHolding = (request, text) =>
@@ -415,16 +419,9 @@ it("a carried run's first request holds the sections as they stand after a resta
   try {
     await carryThroughToolRound(session, faux);
     assert.equal(requests.length, 2, "the carried run takes a tool round and a second turn");
-    assert.equal(
-      systemMessagesHolding(requests[0], AFTER_RESTART),
-      1,
-      "the work is handed the update and places it, so the first request is current",
-    );
-    assert.equal(
-      systemMessagesHolding(requests[1], AFTER_RESTART),
-      1,
-      "and the next turn's refresh finds it recorded, so it is sent once",
-    );
+    // The work is handed the update and places it, and the next turn's refresh finds it.
+    assert.equal(systemMessagesHolding(requests[0], AFTER_RESTART), 1, "current from the first");
+    assert.equal(systemMessagesHolding(requests[1], AFTER_RESTART), 1, "and sent only once");
   } finally {
     close();
   }
@@ -435,9 +432,10 @@ it("a message sent as a carried run starts lands after its first turn's tool res
   try {
     sendsAsItStarts(session);
     await carryThroughToolRound(session, faux);
-    assert.doesNotMatch(JSON.stringify(requests[0].messages), HELD_TEXT);
-    // It waits for the turn to end, so it never splits a tool call from its result.
-    assert.ok(indexOf(session, isHeld) > indexOf(session, isToolResult));
+    // It waits for the first turn to end, so it never splits a tool call from its result.
+    const holdsHeld = requests.map((request) => HELD_TEXT.test(JSON.stringify(request)));
+    assert.deepEqual(holdsHeld, [false, true]);
+    assert.ok(heldAfterToolResult(session));
   } finally {
     close();
   }
@@ -450,26 +448,28 @@ it("a carried run that fails to start keeps what it held for the next turn", asy
     await assert.rejects(deadline(session.runForHost(() => Promise.resolve())), FAILED_START);
     assert.equal(session.isStreaming, false);
     // The transcript it would carry on may owe a tool result, so nothing goes after it yet.
-    assert.equal(indexOf(session, isHeld), -1);
+    assert.ok(!session.messages.some(isHeld));
     await carryThroughToolRound(session, faux);
     // The next run's turn places it once its tool result is in.
-    assert.ok(indexOf(session, isHeld) > indexOf(session, isToolResult));
+    assert.ok(heldAfterToolResult(session));
   } finally {
     close();
   }
 });
 
 it("a handler's setActiveTools() holds for a carried run", async () => {
-  const narrows = (pi) =>
+  // It adds a tool the session left inactive, so neither the base loadout nor none at all passes.
+  const widens = (pi) =>
     pi.on("before_agent_start", () => {
-      pi.setActiveTools([]);
+      pi.setActiveTools(["read", LATE_TOOL.name]);
     });
-  const opened = { tools: ["read"], extensions: [{ name: "narrows", factory: narrows }] };
+  const late = registersLate({ atLoad: true }).extension;
+  const opened = { tools: ["read"], extensions: [late, { name: "widens", factory: widens }] };
   const { session, faux, requests, close } = await openPreparedSession(opened);
   try {
     faux.setResponses([fauxAssistantMessage("answered as carried")]);
     await carry(session);
-    assert.deepEqual(requests[0].tools, [], "the live loadout the handler set is what is offered");
+    assert.deepEqual(requests[0].tools.toSorted(), [LATE_TOOL.name, "read"]);
   } finally {
     close();
   }
