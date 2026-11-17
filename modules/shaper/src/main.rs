@@ -39,6 +39,7 @@ mod qdisc;
 mod rate;
 mod realtime;
 mod record;
+mod reflectors;
 mod replay;
 mod restart;
 #[cfg(test)]
