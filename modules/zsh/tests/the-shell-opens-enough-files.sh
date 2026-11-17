@@ -44,9 +44,27 @@ printf '%s\r' ". $work/ask.zsh" exit > keys
 # The shell started under a soft and a hard limit, as "soft hard engine".
 # The soft limit goes first, since a hard limit under the soft one is
 # refused. Anything the shell says on its error stream fails the case;
-# its prompt and what's typed go to the terminal instead.
+# its prompt and what's typed go to the terminal instead. An engine left
+# from the case before is waited out first, so the one read is this
+# shell's.
+engines() {
+  local process count=0
+  for process in /proc/[0-9]*; do
+    [ "$(cat "$process/comm" 2> /dev/null)" = git-engine ] && count=$((count + 1))
+  done
+  echo "$count"
+}
 given() {
   rm -f "$SEEN" errors
+  for _ in $(seq 100); do
+    [ "$(engines)" = 0 ] && break
+    sleep 0.05
+  done
+  if [ "$(engines)" != 0 ]; then
+    echo "The case before's git-engine was still running" > errors
+    echo "stale"
+    return
+  fi
   (
     ulimit -Sn "$1"
     ulimit -Hn "$2"
@@ -70,8 +88,12 @@ failed=0
 expect() {
   local seen
   seen=$(given "$1" "$2")
-  if [ "$seen" != "$3" ] || [ -s errors ]; then
+  if [ "$seen" != "$3" ]; then
     echo "Given soft $1 and hard $2, the shell's commands got $seen, not $3" >&2
+    failed=1
+  elif [ -s errors ]; then
+    echo "Given soft $1 and hard $2, the limits were right but the shell said:" >&2
+    cat errors >&2
     failed=1
   fi
 }
@@ -83,17 +105,22 @@ expect 1024 4096 "4096 4096 4096"
 expect 9000 10000 "9000 10000 9000"
 
 # limits.zsh read under a stand-in ulimit that answers with the limits
-# given and writes down any it's asked to set, as "set <soft>".
+# given and writes down any it's asked to set, as "set <soft>" or
+# "hard <hard>", and anything else it's asked, as "asked <words>".
+# Anything said on the error stream is said too.
 unlimited() {
   rm -f "$SEEN"
   S=$1 H=$2 zsh -f -c '
     ulimit() {
-      case $1 in
-        (-Sn) if (( $# == 2 )); then print set $2 > $SEEN; else print $S; fi ;;
-        (-Hn) print $H ;;
+      case $#:$1 in
+        (1:-Sn) print $S ;;
+        (1:-Hn) print $H ;;
+        (2:-Sn) print set $2 >> $SEEN ;;
+        (2:-Hn) print hard $2 >> $SEEN ;;
+        (*) print asked $@ >> $SEEN ;;
       esac
     }
-    . "$0"' "$3"
+    . "$0"' "$3" 2>&1
   cat "$SEEN" 2> /dev/null || echo "nothing set"
 }
 expectUnlimited() {
