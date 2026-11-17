@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 
 use repos::model::{
     Change, Checkout, Checks, ChecksState, GitHubChange, Head, Record, Remote, Repository, Review,
-    SCHEMA, Source, Tree, TreeKind,
+    SCHEMA, Source, Tree, TreeKind, Weight,
 };
 
 use super::{records, sources};
@@ -87,6 +87,14 @@ fn record() -> Record {
                         written_at: None,
                     },
                 ],
+                weight: Some(Weight {
+                    loose: 512,
+                    estimated: false,
+                    loose_bytes: 1024,
+                    packs: 1,
+                    packed_bytes: 4096,
+                    due: false,
+                }),
             }],
             changes: vec![
                 change("joel/say-trees", Some(42)),
@@ -140,6 +148,23 @@ fn a_tree_names_its_checkout_its_repository_and_the_change_at_its_branch() {
     assert_eq!(pinned["snapshot"], true);
     assert_eq!(pinned["present"], false);
     assert_eq!(pinned["change"], Value::Null);
+}
+
+#[test]
+fn a_checkout_says_what_its_git_store_weighs() {
+    let said = records(&record());
+    let checkout = find(&said, "checkout:/home/joel/src/core.nix");
+    assert_eq!(
+        checkout["weight"],
+        json!({
+            "loose": 512,
+            "estimated": false,
+            "loose_bytes": 1024,
+            "packs": 1,
+            "packed_bytes": 4096,
+            "due": false,
+        })
+    );
 }
 
 #[test]

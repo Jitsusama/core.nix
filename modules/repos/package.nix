@@ -28,7 +28,8 @@ rustPlatform.buildRustPackage rec {
   };
   sourceRoot = "${src.name}/repos";
   cargoLock.lockFile = ./Cargo.lock;
-  # The counting's test counts over a small repository it builds with git.
+  # The counting's test counts over a small repository it builds with git,
+  # and the weighing's weighs one git wrote and gathered.
   nativeCheckInputs = [ git ];
   meta = {
     description = "Lists every repository on the machine once, with its checkouts and trees";

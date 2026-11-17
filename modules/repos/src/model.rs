@@ -169,6 +169,33 @@ pub struct Checkout {
     /// Every tree cut from it, wherever its folder is, the one written to
     /// last first.
     pub trees: Vec<Tree>,
+    /// What its git store holds, as git's own upkeep judges it (weight.rs);
+    /// none where its objects folder can't be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight: Option<Weight>,
+}
+
+/// What a checkout's git store holds, which its trees share: objects git
+/// wrote one file each (loose), and the packs it gathers them into. Loose
+/// objects are reckoned as git's auto-gc reckons them, from one of the 256
+/// folders they're spread over, so a checkout of a million costs one
+/// folder's listing; a store with few is counted whole.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Weight {
+    /// How many loose objects it holds, about where `estimated` says.
+    pub loose: u64,
+    /// Whether the loose count and room are reckoned from one folder
+    /// rather than counted in every one.
+    pub estimated: bool,
+    /// About how much room they take on the disk, in bytes.
+    pub loose_bytes: u64,
+    pub packs: u64,
+    /// The room its pack folder takes on the disk, in bytes: every pack,
+    /// kept or not, and every file beside them.
+    pub packed_bytes: u64,
+    /// Whether git's automatic gc, at the checkout's config, would gather
+    /// it now: too many loose objects, or too many packs not kept.
+    pub due: bool,
 }
 
 /// A folder holding a repository's files to work in, cut from a checkout.

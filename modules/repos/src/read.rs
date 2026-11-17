@@ -22,6 +22,7 @@ use crate::model::{
     Checkout, Count, Head, Record, Remote, Repository, SCHEMA, Source, Tree, TreeKind, Upstream,
 };
 use crate::reftable::{self, Ref};
+use crate::weight;
 
 /// How deep a `.git` is looked for under a root: in
 /// `src/github.com/someone/a/.git`, a checkout three folders deep.
@@ -219,6 +220,7 @@ pub fn checkout(common: &Path, home: Option<&Path>) -> Found {
         head: (!bare).then(|| head(common, &refs)).flatten(),
         written_at: written(common),
         trees,
+        weight: weight::weigh(common, &limits(&config)),
     };
     Found {
         checkout,
@@ -471,9 +473,10 @@ struct Setting<'a> {
     value: &'a str,
 }
 
-/// Each key a checkout's config sets within a named section, in its
-/// order. Only what repos reads is understood: comments, blank lines,
-/// keys outside a named section and lines with no `=` are passed over.
+/// Each key a checkout's config sets within a section, in its order, a
+/// section with no name said with an empty one. Only what repos reads is
+/// understood: comments, blank lines, keys outside any section and lines
+/// with no `=` are passed over.
 fn settings(config: &str) -> impl Iterator<Item = Setting<'_>> {
     let mut section: Option<(&str, &str)> = None;
     config.lines().filter_map(move |line| {
@@ -483,9 +486,14 @@ fn settings(config: &str) -> impl Iterator<Item = Setting<'_>> {
         }
         if let Some(header) = line.strip_prefix('[') {
             let header = header.split(']').next().unwrap_or_default().trim();
-            section = header
-                .split_once(char::is_whitespace)
-                .map(|(kind, name)| (kind, name.trim().trim_matches('"')));
+            // A section with no name, `[gc]`, is said with an empty one.
+            section = Some(
+                header
+                    .split_once(char::is_whitespace)
+                    .map_or((header, ""), |(kind, name)| {
+                        (kind, name.trim().trim_matches('"'))
+                    }),
+            );
             return None;
         }
         let (kind, name) = section?;
@@ -494,9 +502,33 @@ fn settings(config: &str) -> impl Iterator<Item = Setting<'_>> {
             kind,
             name,
             key: key.trim(),
-            value: value.trim().trim_matches('"'),
+            value: uncommented(value).trim().trim_matches('"'),
         })
     })
+}
+
+/// A value with the comment git allows after it on its line cut off: from
+/// a `#` or `;` outside quotes, so one inside a quoted value stays.
+fn uncommented(value: &str) -> &str {
+    let mut quoted = false;
+    for (at, character) in value.char_indices() {
+        match character {
+            '"' => quoted = !quoted,
+            '#' | ';' if !quoted => return &value[..at],
+            _ => {}
+        }
+    }
+    value
+}
+
+/// When git's own upkeep gathers the checkout's store, from what its
+/// config sets.
+fn limits(config: &str) -> weight::Limits {
+    let mut limits = weight::Limits::default();
+    for set in settings(config) {
+        limits.set(set.kind, set.name, set.key, set.value);
+    }
+    limits
 }
 
 /// The remotes a checkout's config names, in its order, each with the
@@ -504,7 +536,7 @@ fn settings(config: &str) -> impl Iterator<Item = Setting<'_>> {
 fn remotes(config: &str) -> Vec<Remote> {
     let mut remotes: Vec<Remote> = Vec::new();
     let urls = settings(config)
-        .filter(|set| set.kind.eq_ignore_ascii_case("remote"))
+        .filter(|set| set.kind.eq_ignore_ascii_case("remote") && !set.name.is_empty())
         .filter(|set| set.key.eq_ignore_ascii_case("url"));
     for set in urls {
         if !remotes.iter().any(|remote| remote.name == set.name) {
@@ -528,7 +560,9 @@ struct Follows {
 /// with them. A key said twice takes its last value, as git does.
 fn follows(config: &str) -> HashMap<String, Follows> {
     let mut follows: HashMap<String, Follows> = HashMap::new();
-    for set in settings(config).filter(|set| set.kind.eq_ignore_ascii_case("branch")) {
+    let branches = settings(config)
+        .filter(|set| set.kind.eq_ignore_ascii_case("branch") && !set.name.is_empty());
+    for set in branches {
         let entry = follows.entry(set.name.to_owned()).or_default();
         match set.key.to_ascii_lowercase().as_str() {
             "remote" => set.value.clone_into(&mut entry.remote),

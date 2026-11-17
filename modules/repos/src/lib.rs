@@ -12,7 +12,9 @@
 //! through the command's own daemon, `repos serve`, which holds it split by
 //! kind and reads it again as git writes.
 //!
-//! Git's own files are read each time. GitHub, read for each repository's
+//! Git's own files are read each time, a checkout's store weighed among
+//! them as git's auto-gc samples it, from one folder's listing
+//! (weight.rs). GitHub, read for each repository's
 //! open changes and their checks, is a source beside them, asked by a
 //! refresh on a timer and merged in (github.rs), keeping its own words in
 //! a section of its own, as net's sources do. It's asked through the
@@ -39,4 +41,5 @@ pub mod read;
 pub mod receptor;
 mod reftable;
 pub mod upstreams;
+pub mod weight;
 pub mod when;
