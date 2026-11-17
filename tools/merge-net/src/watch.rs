@@ -2204,6 +2204,9 @@ fn revert_and_tell(
 ) -> Result<(), String> {
     let (commit, test, log) = (&found.commit, &found.test, &found.log);
     let already_runs = world.runs(commit);
+    // Revert again until keep_revert says how this one went, since a net
+    // leaving while the revert's comparison builds ends here, and the next
+    // build's search drops a job whose test is already held.
     let mut hold = json!({
         "test": test, "bad": commit, "bad_pr": found.pr, "revert_pr": Value::Null,
         "revert_commit": Value::Null, "failed_at": head, "at": now(),
@@ -4595,11 +4598,16 @@ mod tests {
                 "the revert's comparison at main's newest head",
             );
             let began = std::time::Instant::now();
-            let kept = settler.leave(|| state.settling().len());
+            let kept = settler.leave(|| (state.settling().len(), state.hold().unwrap_or_default()));
             let took = began.elapsed();
             settler.close();
             (kept, took)
         });
+        let (kept, hold) = kept;
+        assert!(
+            hold["revert_again"] == true && hold["revert_commit"].is_null(),
+            "a hold left mid-comparison doesn't say to revert again: {hold}"
+        );
         assert!(
             took < Duration::from_secs(5),
             "a net leaving waited {took:?} on a revert's comparison, which lands nothing"
@@ -4627,13 +4635,13 @@ mod tests {
                     let _ = released.recv();
                 });
             });
+            holding.recv().unwrap();
             scope.spawn(move || {
                 builder.building(|| {
                     building.send(()).unwrap();
                     let _ = finished.recv();
                 });
             });
-            holding.recv().unwrap();
             built.recv().unwrap();
             let leaving = scope.spawn(|| settler.leave(|| ()));
             std::thread::sleep(Duration::from_millis(500));

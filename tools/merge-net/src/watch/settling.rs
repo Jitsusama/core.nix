@@ -266,7 +266,11 @@ impl<'a> Settler<'a> {
     /// nothing showed whether a write held it or its own exit did.
     ///
     /// A write that only builds, before anything it decided lands, isn't
-    /// waited on: its job is kept on disk, and the next build takes it up.
+    /// waited on: its job is kept on disk, and the next build takes it up,
+    /// and a hold it set says to revert again, so the next round does. The
+    /// guard on the write is held while `end` runs, so an `end` that
+    /// returns, as a test's does, leaves the write stopped at its build only
+    /// until the guard goes; the watch's own `end` exits.
     pub fn leave<R>(&self, end: impl FnOnce() -> R) -> R {
         let mut said = false;
         loop {
