@@ -12,6 +12,16 @@
 # made spaces. Its help and failures take the shape every command of ours
 # does (docs/commands.md), by hand, since a script has no kit.
 #
+# A reading takes ten seconds or more on a loaded machine, so as text it
+# first says on standard error what the last one found and when, then
+# that it's looking again; every answer is kept for the next run, in the
+# state folder's mycelium/map-check.json. As JSON it says nothing on the
+# way, for the readers that count with it.
+#
+# The test runs from a copy in the run's own folder, since pytest roots
+# itself at the folder of the file it's given and lists all of it first:
+# in the Nix store, a minute's work under load for a ten-second check.
+#
 # MAP_CHECK_ROOT, the sites' root, defaults to this machine's.
 # Given by Nix: @python@, @test@ and @live_page@.
 
@@ -76,13 +86,30 @@ work=$(mktemp -d)
 trap 'rm -rf "${work}"' EXIT
 said=${work}/said.json
 root=${MAP_CHECK_ROOT:-http://sites.localhost:8484/}
+kept=${XDG_STATE_HOME:-${HOME}/.local/state}/mycelium/map-check.json
 
-# From its own empty folder, so no Python where it was asked from runs.
+# What the last reading found, said while this one is made.
+if [[ ${format} == text ]]; then
+  if last=$(jq -r -f /dev/stdin "${kept}" 2> /dev/null << 'EOF'
+(.at | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601 | localtime | strftime("%H:%M")) as $at
+| if .count == 0 then "At \($at) the map reached all \(.cells) cells."
+  else "At \($at) the map missed \(.count) of \(.cells) cells." end
+EOF
+  ); then
+    printf '%s\n' "${last}" >&2
+  fi
+  printf '%s\n' "Opening the map in a headless browser to look again." >&2
+fi
+
+# From its own folder, so no Python where it was asked from runs, and on a
+# copy of the test alone in a folder of its own, so pytest lists only that.
 cd "${work}" || exit 70
+mkdir "${work}/test" && cp @test@ "${work}/test/live-reach-test.py" || exit 70
 MAP_CHECK_ROOT=${root} MAP_CHECK_SAID=${said} \
   PYTHONPATH=@live_page@ PYTHONDONTWRITEBYTECODE=1 \
   @python@ -m pytest -q -p no:cacheprovider -p live_page --import-mode=importlib \
-  --basetemp="${work}/pytest" @test@ > "${work}/pytest.log" 2>&1 || true
+  --rootdir="${work}/test" --basetemp="${work}/pytest" "${work}/test/live-reach-test.py" \
+  > "${work}/pytest.log" 2>&1 || true
 
 if [[ ! -s ${said} ]]; then
   if grep -q "the map never read the node" "${work}/pytest.log"; then
@@ -98,6 +125,8 @@ if [[ ! -s ${said} ]]; then
     "  try  mycelium-map-check again, and tell the map's owner if it repeats" >&2
   exit 70
 fi
+# Kept for the next run to open with; a run that can't keep it still answers.
+mkdir -p "${kept%/*}" && cp "${said}" "${kept}" 2> /dev/null || true
 if [[ ${format} == json ]]; then
   jq -c . "${said}"
 else

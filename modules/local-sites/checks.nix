@@ -463,6 +463,63 @@ in
           --import-mode=importlib --basetemp="$TMPDIR/pytest" ${../repos/site/tests}/code-reads-live-test.py
         touch $out
       '';
+  # mycelium-map-check says the last reading's answer and that it's looking
+  # again within a second, while a stand-in for its browser test takes
+  # three, as a loaded machine's map does; it keeps each answer for the next
+  # run, says nothing on the way as JSON, and hands pytest a test in a folder
+  # of its own, never the Nix store, which pytest would list whole first.
+  mycelium-map-check-answers-soon =
+    let
+      slowly = pkgs.writeShellScript "slow-map-test" ''
+        test=''${*: -1}
+        ls -A "''${test%/*}" > "$MAP_CHECK_BESIDE"
+        sleep 3
+        printf '%s' '{"at":"2026-11-17T14:09:54.139Z","cells":3,"count":0,"failures":[]}' \
+          > "$MAP_CHECK_SAID"
+      '';
+      check = import ./map-check.nix {
+        inherit lib pkgs;
+        python = "${slowly}";
+        test = "${./tests/live_page.py}";
+        livePage = "${./tests}";
+      };
+    in
+    pkgs.runCommandLocal "mycelium-map-check-answers-soon" { nativeBuildInputs = [ pkgs.jq ]; } ''
+      export TZ=UTC XDG_STATE_HOME=$TMPDIR/state MAP_CHECK_BESIDE=$TMPDIR/beside
+      kept=$XDG_STATE_HOME/mycelium/map-check.json
+      mkdir -p "''${kept%/*}"
+      printf '%s' '{"at":"2026-11-17T13:05:00Z","cells":5,"count":2,"failures":[]}' > "$kept"
+
+      ${lib.getExe check} > out 2> err &
+      running=$!
+      sleep 1
+      if ! kill -0 "$running" 2> /dev/null; then
+        echo "the stand-in answered within a second, so this times nothing" >&2
+        exit 1
+      fi
+      if [[ $(cat err) != "At 13:05 the map missed 2 of 5 cells."$'\n'"Opening the map in a headless browser to look again." ]]; then
+        echo "a second in, it said neither the last answer nor that it's looking:" >&2
+        cat err >&2
+        exit 1
+      fi
+      wait "$running"
+      [[ $(cat out) == "The map reaches all 3 cells." ]] || { echo "its answer was: $(cat out)" >&2; exit 1; }
+      [[ $(jq .cells "$kept") == 3 ]] || { echo "it didn't keep its answer" >&2; exit 1; }
+      if [[ $(cat "$MAP_CHECK_BESIDE") != live-reach-test.py ]]; then
+        echo "pytest was handed a test beside $(wc -l < "$MAP_CHECK_BESIDE") entries, not alone" >&2
+        exit 1
+      fi
+
+      ${lib.getExe check} --json > out 2> err
+      [[ ! -s err ]] || { echo "as JSON it said on the way: $(cat err)" >&2; exit 1; }
+      jq -e '.cells == 3' out > /dev/null
+
+      rm "$kept"
+      ${lib.getExe check} > out 2> err
+      [[ $(cat err) == "Opening the map in a headless browser to look again." ]] \
+        || { echo "with nothing kept, it said: $(cat err)" >&2; exit 1; }
+      touch $out
+    '';
   # clippy finds nothing in the server, its tests included.
   local-sites-passes-clippy = passesClippy "local-sites-passes-clippy" (
     pkgs.callPackage ./package.nix { }
