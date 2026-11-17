@@ -52,15 +52,16 @@ sections, each opening with an h2, its list of keys the dialog `#keys`,
 and its switch the kit's radios. The home names, in what it says as it
 builds, each document still loading a script file of its own.
 
-| Path                     | What it holds                                           |
-| ------------------------ | ------------------------------------------------------- |
-| [`home.nix`][module]     | the server's unit, its options, the sites and the home  |
-| [`package.nix`][package] | the server's build, its tests run as it builds          |
-| [`site.nix`][site]       | how the kit and a live site are built and tested        |
-| [`src/`][src]            | the server: config, door, files, gate, feeds, pages     |
-| [`tests/`][tests]        | the server run beside a stand-in daemon, and scripts'   |
-| [`kit/`][kit]            | what every live site shares: feeds, records, the switch |
-| [`home/`][home]          | the home page's builder and its styles                  |
+| Path                                | What it holds                                           |
+| ----------------------------------- | ------------------------------------------------------- |
+| [`home.nix`][module]                | the server's unit, its options, the sites and the home  |
+| [`package.nix`][package]            | the server's build, its tests run as it builds          |
+| [`site.nix`][site]                  | how the kit and a live site are built and tested        |
+| [`headless-browsers.nix`][browsers] | the one browser a headless launch opens                 |
+| [`src/`][src]                       | the server: config, door, files, gate, feeds, pages     |
+| [`tests/`][tests]                   | the server run beside a stand-in daemon, and scripts'   |
+| [`kit/`][kit]                       | what every live site shares: feeds, records, the switch |
+| [`home/`][home]                     | the home page's builder and its styles                  |
 
 A live page's own test reads it in headless Chromium as Joel's browser
 would, through the real server beside a stand-in for its daemon. What
@@ -70,6 +71,7 @@ web-design skill's page checks (`live_page.py`, loaded as a pytest plugin
 for its `browser`). The system page's is `system-site-reads-live`, and the
 map's `mycelium-site-reads-live`.
 
+[browsers]: ./headless-browsers.nix
 [code]: ../repos/site
 [daemons]: ../../docs/daemons.md
 [forage]: ../mycelium/forage
