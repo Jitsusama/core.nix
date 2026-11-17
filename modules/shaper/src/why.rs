@@ -108,14 +108,16 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
 
 /// The journal's line when the one-way controller begins to hold `link`:
 /// what each way is held to, in kbit/s, and the controller's reason, as
-/// `say` gave it, where it has one.
-pub fn holding(link: &str, up: u64, down: u64, why: Option<&str>) -> String {
+/// `say` gave it, where it has one. `asked` is the upload the controller
+/// asked for: its reason is said only when that is the upload held, since
+/// it speaks of the upload alone, and of its own rate.
+pub fn holding(link: &str, asked: Option<u64>, up: u64, down: u64, why: Option<&str>) -> String {
     let held = format!(
         "{link}: held to {} up and {} down",
         mbit(lossless(up)),
         mbit(lossless(down))
     );
-    match why {
+    match why.filter(|_| asked == Some(up)) {
         Some(why) => format!("{held}. {why}"),
         None => format!("{held}, by the one-way controller."),
     }
@@ -251,7 +253,7 @@ mod tests {
         // taken back each time (16 times on 16 November).
         let clear = say(Why::Clear, Some(10_800), Some(12_000.0), 5.0);
         assert_eq!(
-            holding("wlp0s20f3", 10_800, 2_000_000, Some(&clear)),
+            holding("wlp0s20f3", Some(10_800), 10_800, 2_000_000, Some(&clear)),
             "wlp0s20f3: held to 10.8 Mb/s up and 2000.0 Mb/s down. Upload 10.8 Mb/s of \
              12.0 Mb/s, the line's rate: clear for 5 s."
         );
@@ -259,14 +261,40 @@ mod tests {
 
     #[test]
     fn a_hold_with_no_reason_claims_no_queue() {
-        let line = holding("wlp0s20f3", 10_800, 2_000_000, None);
-        assert!(
-            !line.contains("queue"),
-            "a hold with no reason named a queue: {line}"
+        assert_eq!(
+            holding("wlp0s20f3", Some(10_800), 10_800, 2_000_000, None),
+            "wlp0s20f3: held to 10.8 Mb/s up and 2000.0 Mb/s down, by the one-way controller."
         );
-        assert!(
-            line.contains("10.8 Mb/s up"),
-            "the hold's rate went unsaid: {line}"
+    }
+
+    // The shaper clamps what the controller asks to its own bounds, and the
+    // reason says the controller's rate: said beside the clamped one, the
+    // line gave the upload two rates.
+    #[test]
+    fn a_clamped_upload_is_not_given_the_controller_s_reason() {
+        let cut = say(
+            Why::Line {
+                delay_ms: 22.0,
+                eased: false,
+            },
+            Some(11_500),
+            Some(12_000.0),
+            1.0,
+        );
+        assert_eq!(
+            holding("wlp0s20f3", Some(11_500), 10_800, 2_000_000, Some(&cut)),
+            "wlp0s20f3: held to 10.8 Mb/s up and 2000.0 Mb/s down, by the one-way controller."
+        );
+    }
+
+    // The reasons speak of the upload alone, so a spell the download opens
+    // isn't explained by one.
+    #[test]
+    fn a_hold_of_the_download_alone_is_not_given_the_upload_s_reason() {
+        let clear = say(Why::Clear, None, Some(12_000.0), 5.0);
+        assert_eq!(
+            holding("wlp0s20f3", None, 10_800, 80_000, Some(&clear)),
+            "wlp0s20f3: held to 10.8 Mb/s up and 80.0 Mb/s down, by the one-way controller."
         );
     }
 

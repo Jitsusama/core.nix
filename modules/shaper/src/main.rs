@@ -1302,7 +1302,7 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Liv
             Some((link, rates)) => (Some(link.to_string()), rates),
             None => (None, replay::Rates::default()),
         };
-        let why = l.heard().and_then(|(_, heard)| heard.why);
+        let why = l.why(SystemTime::now());
         (link, rates, why)
     });
     for (name, (sent, received)) in links::connection_loads(&carried, &follows) {
@@ -1346,10 +1346,10 @@ fn hold(s: &mut Shaped, rates: replay::Rates, why: Option<&str>) {
     let limited = rates.up.is_some() || rates.down.is_some();
     let name = &s.uplink.name;
     if limited && !s.told {
-        eprintln!("{}", why::holding(name, up, down, why));
+        eprintln!("{}", why::holding(name, rates.up, up, down, why));
         s.told = true;
     } else if !limited && s.told {
-        eprintln!("{name}: neither direction queues now, so the link's whole rate is kept");
+        eprintln!("{name}: neither direction is held now, so the link's whole rate is kept");
         s.told = false;
     }
     s.state = if limited {

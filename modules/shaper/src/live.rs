@@ -278,6 +278,13 @@ impl Follow {
         Some((link, heard))
     }
 
+    /// Why the controller holds the upload where it does, at a moment in
+    /// ms since 1970: none once the recorder has gone silent, when what
+    /// holds is no longer what it heard.
+    pub fn why(&self, at_ms: u64) -> Option<String> {
+        (at_ms.saturating_sub(self.last_ms) <= SILENT_MS).then(|| self.controller.why())
+    }
+
     /// The link the recorder follows and the rates to hold it to, at a
     /// moment in ms since 1970: no limit once the recorder has gone silent.
     pub fn now(&self, at_ms: u64) -> Option<(&str, Rates)> {
@@ -370,6 +377,12 @@ impl Live {
     /// The link the controller holds, and what it last heard of it.
     pub fn heard(&self) -> Option<(&str, Heard)> {
         self.follow.heard()
+    }
+
+    /// Why the controller holds the upload where it does, now, or none
+    /// while the recorder is silent.
+    pub fn why(&self, now: SystemTime) -> Option<String> {
+        self.follow.why(ms(now))
     }
 
     /// The line for the trace of the recorded second the controller last
@@ -615,6 +628,24 @@ mod tests {
             heard.plateau,
             follow.controller.up.learned().plateau,
             "the plateau: {heard:?}"
+        );
+    }
+
+    // Under a silent recorder, a trial's ceiling is all that holds the
+    // upload, and the controller's last reason was about a second it
+    // heard before.
+    #[test]
+    fn a_silent_recorder_gives_no_reason() {
+        let mut follow = waiting(Known::new());
+        for line in &flow_queued(NOV3) {
+            follow.take(&parse(line).expect("a sample"));
+        }
+        let last = follow.last_ms;
+        assert!(follow.why(last).is_some(), "a heard second gave no reason");
+        assert_eq!(
+            follow.why(last + SILENT_MS + 1),
+            None,
+            "a silent recorder gave the last second's reason"
         );
     }
 
