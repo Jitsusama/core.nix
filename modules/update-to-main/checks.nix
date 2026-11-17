@@ -133,7 +133,8 @@ in
         lib.all
           (
             job:
-            (job.SoftResourceLimits.NumberOfFiles or 0) >= 8192 && !(job ? HardResourceLimits)
+            (job.SoftResourceLimits.NumberOfFiles or 0) >= 8192
+            && (job.HardResourceLimits.NumberOfFiles or null) == null
           )
           [
             daemon
