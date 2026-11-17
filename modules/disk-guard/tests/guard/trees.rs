@@ -107,9 +107,9 @@ fn a_pinned_snapshots_build_is_spent_once_nobody_has_used_it_for_an_hour() {
     // after the gate ended, and would have for six, while the disk filled:
     // its holder was the session that cut it, which went on working.
     let target = found(
-        "/home/u/world/trees/s-d1f2/src/delta/target",
+        "/home/u/trees/s-d1f2/src/app/target",
         Kind::Target,
-        Checkout::At("/home/u/world/trees/s-d1f2/src".into()),
+        Checkout::At("/home/u/trees/s-d1f2/src".into()),
     );
     let snapshot = |last_used| Seen {
         pinned: true,

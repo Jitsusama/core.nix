@@ -284,6 +284,46 @@ fn a_root_targets_and_installs_share_is_walked_once() {
 }
 
 #[test]
+fn a_tree_unbuilt_since_an_earlier_survey_keeps_the_size_it_found() {
+    // On 17 November a laptop's guard spent five and a half hours sizing
+    // installs one package at a time, and every survey sized each build
+    // and install whole again, so no pass came while its disk sat at 91%.
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let roots = dir(&home.join("src"));
+    let (_, target, modules) = src(&roots);
+    for old in [&modules, &modules.join("left-pad")] {
+        written_ago(old, 2.0 * 3600.0);
+    }
+    let config = config(&format!(
+        r#""cargo": {{ "kind": "cargo", "roots": ["{0}"] }},
+           "installs": {{ "kind": "installs", "roots": ["{0}"] }}"#,
+        roots.display()
+    ));
+    let (found, sizes) = offers_sized(&config, now(), Sizes::default());
+    let built = find(&found, &target).candidate.size;
+    let installed = find(&found, &modules).candidate.size;
+    assert_eq!(
+        sizes.walked, 2,
+        "the build and the install weren't each sized once"
+    );
+    let (found, sizes) = offers_sized(&config, now(), sizes);
+    assert_eq!(sizes.walked, 2, "a tree unchanged since was walked again");
+    assert_eq!(find(&found, &target).candidate.size, built);
+    assert_eq!(find(&found, &modules).candidate.size, installed);
+    file(&modules.join("right-pad/index.js"), &"y".repeat(20_000));
+    let (found, sizes) = offers_sized(&config, now(), sizes);
+    assert_eq!(
+        sizes.walked, 3,
+        "an install written since wasn't sized again"
+    );
+    assert!(
+        find(&found, &modules).candidate.size > installed,
+        "an install written since kept its old size"
+    );
+}
+
+#[test]
 fn a_root_named_through_a_link_holds_what_it_offers() {
     // A Mac's /var is a link to /private/var, so its temporary folder is
     // named through a link, and what's found there is named where it lives.

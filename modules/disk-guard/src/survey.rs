@@ -138,7 +138,8 @@ pub struct World<'a> {
     /// share, as trees cloned with their builds inside do, count once:
     /// deleting them all frees those once.
     pub counted: RefCell<Counted>,
-    /// What earlier surveys sized of quest workspaces, kept between them.
+    /// What earlier surveys sized of quest workspaces and trees' builds and
+    /// installs, kept between them.
     pub sizes: RefCell<Sizes>,
     /// How many times the survey walked a root for targets and installs.
     pub walked: usize,
@@ -148,11 +149,13 @@ pub struct World<'a> {
     pub stop: &'a dyn Fn() -> bool,
 }
 
-/// The sizes of quest workspaces and the entries they hold, each by the
-/// last write it was sized at, kept by a daemon from one survey to the
-/// next. On 16 November 215 workspaces held 70,882 entries, 68,202 of them
-/// unwritten for six hours, and every pass of a filling disk walked each
-/// old one whole to size it again, reading 178 GB in four hours.
+/// The sizes of quest workspaces and the entries they hold, and of trees'
+/// builds and installs, each by the last write it was sized at, kept by a
+/// daemon from one survey to the next. On 16 November 215 workspaces held
+/// 70,882 entries, 68,202 of them unwritten for six hours, and every pass
+/// of a filling disk walked each old one whole to size it again, reading
+/// 178 GB in four hours. On 17 November a laptop's guard spent five and a
+/// half hours sizing its trees' installs again, and no pass came meanwhile.
 ///
 /// A size only says what taking an entry would free: whether it may be
 /// taken is dated afresh each survey, so a size kept from an earlier one
@@ -784,7 +787,7 @@ impl Walks {
 /// benchmarks and the targets kept inside it, so what those hold doesn't
 /// count. The ones inside are offered first, so what each holds is counted
 /// already, but for one being worked in, which was never sized.
-fn target_frees(target: &Path, world: &World) -> u64 {
+fn target_frees(target: &Path, last_used: f64, world: &World) -> u64 {
     let working: u64 = world
         .kept
         .iter()
@@ -793,7 +796,7 @@ fn target_frees(target: &Path, world: &World) -> u64 {
         .sum();
     crate::reclaim::KEEP
         .iter()
-        .fold(size(target, world), |left, kept| {
+        .fold(sized(target, last_used, world), |left, kept| {
             left.saturating_sub(whole(&target.join(kept)))
         })
         .saturating_sub(working)
@@ -826,9 +829,12 @@ fn trees_under(
             world.kept.push((tree.path.clone(), used));
             continue;
         }
+        // Sized by the use it's dated by, so a tree nobody has built in or
+        // installed into since an earlier survey isn't walked again.
+        let last_used = trees::last_used(tree);
         let frees = match kind {
-            Kind::Target => target_frees(&tree.path, world),
-            Kind::Install => size(&tree.path, world),
+            Kind::Target => target_frees(&tree.path, last_used, world),
+            Kind::Install => sized(&tree.path, last_used, world),
         };
         if kind == Kind::Target && frees == 0 {
             continue;
@@ -839,7 +845,7 @@ fn trees_under(
             finished,
             pinned: checkout.is_some_and(|dir| (world.pinned)(dir)),
             size: frees,
-            last_used: trees::last_used(tree),
+            last_used,
         };
         let Some(candidate) = trees::candidate(tree, &seen, world.awake, world.now) else {
             continue;
@@ -866,7 +872,7 @@ fn trees_under(
                         .awake
                         .since(variant.last_used.min(world.now), world.now)
                         .max(0.0),
-                    size: size(&variant.path, world),
+                    size: sized(&variant.path, variant.last_used, world),
                     occupied: false,
                     spent: false,
                     checkout: checkout.map(Path::to_owned),
