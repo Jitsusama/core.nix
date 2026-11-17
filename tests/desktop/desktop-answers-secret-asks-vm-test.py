@@ -10,8 +10,9 @@ opening comment says what the test proves. It proves the wiring alone, one path 
 connection: how long a line must be shown, a digest that changed, a command that ends first and
 what the fence hides are the passwords daemon's own tests' (modules/passwords/tests/asks), and
 what Asks sends for each press is asks-over's (tests/asks-over.qml). Every test asks for the
-desktop, started once a run (desktop_session.py), and leaves no ask waiting, so any test runs
-alone.
+desktop, started once a run (desktop_session.py), and gives each ask a why of its own, which its
+line's drawer says, so a line answered earlier is never taken for it. Each test's asks are taken
+away after it, passed or failed, so any test runs alone.
 """
 
 from __future__ import annotations
@@ -24,7 +25,6 @@ import time
 from typing import TYPE_CHECKING
 
 import pytest
-from desktop_session import retry
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -52,7 +52,11 @@ PAST_THE_READING = 1.0
 
 @pytest.fixture
 def asking(desktop: Desktop) -> Iterator[None]:
-    """Give the daemon the fence's list and the ask a tree, and close the launcher after."""
+    """Give the daemon the fence's list and the ask a tree; after, take every ask away.
+
+    An ask taken away is let go (modules/secret-asks/tests/daemon.rs), so one a failed test left
+    waiting can't be answered by the next test's keys.
+    """
     fence = json.dumps({"version": 1, "home": [], "sshKept": [], "npmrc": None})
     desktop.as_account(
         f"mkdir -p $(dirname {FENCE_LIST}) {TREE} && printf %s {shlex.quote(fence)} > {FENCE_LIST}"
@@ -61,19 +65,20 @@ def asking(desktop: Desktop) -> Iterator[None]:
     yield
     if desktop.showing()["open"]:
         desktop.close_launcher()
+    desktop.as_account(f"rm -f {ASKS}/*.ask.json")
 
 
 pytestmark = pytest.mark.usefixtures("asking")
 
 
-def put_up(desktop: Desktop, ask: str) -> None:
+def put_up(desktop: Desktop, ask: str, why: str) -> None:
     """Put an ask up as the harness does, written aside and renamed into place.
 
     Its command writes the digest of the value it's given into its tree, so the test sees it
-    arrive without the value itself reaching any log.
+    arrive, and prints the value itself, so the answer's output shows it masked.
     """
     asked_ms = int(desktop.as_account("date +%s%3N").strip())
-    command = 'printf %s "$GIVEN" | sha256sum > released'
+    command = 'printf %s "$GIVEN" | sha256sum > released && printf %s "$GIVEN"'
     said = json.dumps(
         {
             "version": 1,
@@ -82,7 +87,7 @@ def put_up(desktop: Desktop, ask: str) -> None:
             "session": "TESTER",
             "quest": None,
             "item": RELEASED,
-            "why": "To fire the kiln.",
+            "why": why,
             "argv": ["/run/current-system/sw/bin/bash", "-c", command],
             "tree": desktop.as_account(f"realpath {TREE}").strip(),
             "given": "GIVEN",
@@ -105,29 +110,51 @@ def answered(desktop: Desktop, ask: str) -> dict[str, object]:
     return answer
 
 
-def asks_open_on(desktop: Desktop) -> None:
-    """Open the launcher on Asks, the waiting ask's line selected."""
+def selects(shown: dict[str, object], why: str) -> bool:
+    """Say whether the launcher's selected line is the ask with this why."""
+    selected = shown["selected"] or {}
+    assert isinstance(selected, dict)
+    return bool(selected.get("drawer", {}).get("body") == why)
+
+
+def asks_open_on(desktop: Desktop, ask: str, why: str) -> None:
+    """Open the launcher on Asks, the ask's line selected, or say what became of the ask."""
     desktop.as_account("qs ipc call launcher collection asks")
     desktop.launcher_ready()
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == RELEASED)
+    try:
+        desktop.launcher_until(lambda shown: selects(shown, why))
+    except AssertionError as unselected:
+        answer = desktop.as_account(f"cat {ASKS}/{ask}.answer.json 2>/dev/null || true")
+        message = f"the ask's line was never selected; its answer: {answer or 'none'}"
+        raise AssertionError(message) from unselected
 
 
-def refuse_on(desktop: Desktop) -> None:
-    """Press r on the selected ask's line, as Joel does: in normal, since on the find it's typed."""
+def refuse_on(desktop: Desktop, why: str) -> None:
+    """Press r on the ask's line, as Joel does: in normal, since on the find it's typed."""
     desktop.machine.send_key("esc")
-    desktop.launcher_until(
-        lambda shown: (
-            shown["mode"] == "normal" and (shown["selected"] or {}).get("name") == RELEASED
-        )
-    )
+    desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
     desktop.machine.send_chars("r")
+
+
+def read_nowhere(desktop: Desktop) -> None:
+    """Assert the value is in no journal, the system's or any account's, and no file of the tree.
+
+    The journal is flushed first, so what the daemon said just now is read too.
+    """
+    desktop.machine.succeed("journalctl --sync")
+    found = desktop.machine.succeed(
+        f"journalctl --no-pager -o export | grep -a -c -F {shlex.quote(STAND_IN)} || true"
+    )
+    assert found.strip() == "0", f"the journal holds the value {found.strip()} times"
+    desktop.as_account(f"! grep -r -a -q -F {shlex.quote(STAND_IN)} {TREE}")
 
 
 def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> None:
     """Joel's yes, Return twice on the ask's line, releases the value into its command alone."""
     ask = "0123456789abcdef0123456789abcdef"
-    put_up(desktop, ask)
-    asks_open_on(desktop)
+    why = "To fire the kiln."
+    put_up(desktop, ask, why)
+    asks_open_on(desktop, ask, why)
     machine = desktop.machine
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["returned"].get("act") == "armed")
@@ -137,31 +164,35 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     assert (answer["state"], answer["exit"]) == ("ran", 0), answer
     given = desktop.as_account(f"cat {TREE}/released").split()[0]
     assert given == hashlib.sha256(STAND_IN.encode()).hexdigest(), "the command wasn't given it"
-    journal = desktop.as_account("journalctl --user --no-pager -o cat")
-    assert STAND_IN not in journal, "the journal holds the value"
+    assert answer["output"], f"the command's output isn't in its answer: {answer}"
     assert STAND_IN not in json.dumps(answer), answer
+    read_nowhere(desktop)
 
 
 def test_r_refuses_an_ask(desktop: Desktop) -> None:
     """R on an ask's line refuses it, releasing nothing."""
     ask = "1123456789abcdef0123456789abcdef"
-    put_up(desktop, ask)
-    asks_open_on(desktop)
-    refuse_on(desktop)
+    why = "To glaze the pots."
+    put_up(desktop, ask, why)
+    asks_open_on(desktop, ask, why)
+    refuse_on(desktop, why)
     answer = answered(desktop, ask)
-    assert answer["state"] == "refused", answer
+    assert (answer["state"], answer["why"]) == ("refused", "refused by Joel"), answer
     desktop.as_account(f"! test -e {TREE}/released")
 
 
 def test_a_yes_walked_through_the_ipc_releases_nothing(desktop: Desktop) -> None:
     """A yes walked through the launcher's IPC, as any process running as Joel may, is withheld.
 
-    Only his own key press on the drawn line grants an ask, so the ask still waits after it.
+    Only his own key press on the drawn line grants an ask, so the ask still waits after it. The
+    line stays drawn past the time a yes needs, so only the walk's being no key press of his
+    withholds it.
     """
     ask = "2123456789abcdef0123456789abcdef"
-    put_up(desktop, ask)
-    asks_open_on(desktop)
-    desktop.close_launcher()
+    why = "To light the forge."
+    put_up(desktop, ask, why)
+    asks_open_on(desktop, ask, why)
+    time.sleep(PAST_THE_READING)
     since = desktop.mark()
     walked = json.dumps({"steps": ["Passwords", "Asks", RELEASED, "Release It"], "sure": True})
     said = desktop.as_account(f"qs ipc call launcher doing {shlex.quote(walked)}")
@@ -176,10 +207,6 @@ def test_a_yes_walked_through_the_ipc_releases_nothing(desktop: Desktop) -> None
     )
     desktop.as_account(f"test -e {ASKS}/{ask}.ask.json && ! test -e {ASKS}/{ask}.answer.json")
     desktop.as_account(f"! test -e {TREE}/released")
-    # Refused by Joel's key, so no ask is left waiting for the tests after.
-    asks_open_on(desktop)
-    refuse_on(desktop)
-    retry(lambda _: answered(desktop, ask)["state"] == "refused", timeout=dt.timedelta(seconds=30))
 
 
 def scene_warnings(desktop: Desktop) -> str:
