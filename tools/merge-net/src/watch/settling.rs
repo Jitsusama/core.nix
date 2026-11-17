@@ -266,8 +266,10 @@ impl<'a> Settler<'a> {
     /// nothing showed whether a write held it or its own exit did.
     ///
     /// A write that only builds, before anything it decided lands, isn't
-    /// waited on: its job is kept on disk, and the next build takes it up,
-    /// and a hold it set says to revert again, so the next round does. The
+    /// waited on: its job is kept on disk, and the next build takes it up.
+    /// A hold whose revert it cuts is marked cut, so that job settles again
+    /// in full, telling the owner, rather than being dropped as held; when
+    /// the mark can't be written, the leave waits as for any write. The
     /// guard on the write is held while `end` runs, so an `end` that
     /// returns, as a test's does, leaves the write stopped at its build only
     /// until the guard goes; the watch's own `end` exits.
@@ -278,8 +280,9 @@ impl<'a> Settler<'a> {
                 Ok(writing) => writing,
                 Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
                 Err(std::sync::TryLockError::WouldBlock) => {
-                    if let Some(_building) = self.state.only_building() {
-                        revert_again_once_cut(self.state);
+                    if let Some(_building) = self.state.only_building()
+                        && mark_a_cut_revert(self.state)
+                    {
                         self.state.say(
                             "the write to the hold only builds, and nothing it decided has \
                              landed, so this leaves, and the next build takes its job up again",
@@ -449,12 +452,6 @@ impl<'a> Settler<'a> {
             since,
         } = job
         {
-            // A Mac check is named for its merge, so a hold on it is this
-            // job's own revert, cut short by a leave and tried again by the
-            // round: reverting here too would land a second one.
-            if self.held_for(check) {
-                return self.end(check, || Ok(()));
-            }
             return self.mac(merge, check, *since);
         }
         if listed_on_main(world, job.head(), job.test()) || self.held_for(job.test()) {
@@ -565,8 +562,12 @@ impl<'a> Settler<'a> {
     }
 
     /// Whether the hold names `test` already.
+    /// Whether the hold is on `test` already, so its job has nothing left
+    /// to settle; a hold a leave cut short of its revert isn't.
     fn held_for(&self, test: &str) -> bool {
-        self.state.hold().is_some_and(|hold| hold["test"] == test)
+        self.state
+            .hold()
+            .is_some_and(|hold| hold["test"] == test && hold["cut"] != true)
     }
 
     fn failed(&self, why: String) {
@@ -575,20 +576,25 @@ impl<'a> Settler<'a> {
     }
 }
 
-/// Mark a hold whose revert a leave cuts short to be reverted again, so the
-/// next round does: its outcome is never kept, and the next build drops the
-/// job as held. Only a cut revert says so, since cadence reads a hold saying
-/// it before its first try ends as a failed revert.
-fn revert_again_once_cut(state: &State) {
+/// Mark the hold cut when a leave cuts its revert short, before its outcome
+/// is kept, so the job kept for it settles again in full at the next build,
+/// telling the owner or quarantining as a first revert does. Whether the
+/// leave may end: not while a mark it needs can't be written.
+fn mark_a_cut_revert(state: &State) -> bool {
     let Some(mut hold) = state.hold() else {
-        return;
+        return true;
     };
-    if hold["revert_commit"].is_null() && hold.get("revert_again").is_none() {
-        hold["revert_again"] = json!(true);
-        if let Err(why) = state.set_hold(&hold) {
+    if !hold["revert_commit"].is_null() || hold.get("revert_again").is_some() {
+        return true;
+    }
+    hold["cut"] = json!(true);
+    match state.set_hold(&hold) {
+        Ok(()) => true,
+        Err(why) => {
             state.say(&format!(
-                "the cut revert isn't marked to be tried again: {why}"
+                "the cut revert's hold isn't marked, so this waits: {why}"
             ));
+            false
         }
     }
 }
