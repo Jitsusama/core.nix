@@ -15,9 +15,11 @@ use super::{Class, Measure, count, lines, seconds};
 const HOUR: i64 = 3600;
 
 /// The definitions read. A newer one may weigh a load differently (the
-/// second counts processor use as well as pressure), so an hour holding
-/// two takes the newer's minutes alone rather than compare across them.
-const DEFINITIONS: [&str; 2] = ["balance/1", "balance/2"];
+/// second counts processor use as well as pressure; the third counts a
+/// machine over only past its memory limit or at processor pressure 70),
+/// so an hour holding two takes the newer's minutes alone rather than
+/// compare across them.
+const DEFINITIONS: [&str; 3] = ["balance/1", "balance/2", "balance/3"];
 
 /// One machine's share of the hour, summed over the minutes it was read.
 #[derive(Default)]
@@ -274,6 +276,30 @@ mod tests {
                 .last()
                 .is_some_and(|line| line.starts_with("only balance/2's minutes")),
             "the card didn't say the older minutes were left out: {:?}",
+            measure.behind
+        );
+    }
+
+    #[test]
+    fn an_hour_across_a_bump_to_balance_3_takes_its_minutes() {
+        let lone = [("kestrel", 1, 0.1, 0.1)];
+        let minutes = [
+            minute(120, "balance/2", Some(0.9), &lone, HOT),
+            minute(60, "balance/3", Some(0.3), &lone, ""),
+        ]
+        .join("\n");
+        let measure = balanced(&minutes, NOW, "OWNER").expect("an hour with minutes in it");
+        assert!(
+            (measure.now - 0.3).abs() < 1e-9,
+            "balance/3's minutes weren't the ones taken: {}",
+            measure.now
+        );
+        assert!(
+            measure
+                .behind
+                .last()
+                .is_some_and(|line| line.starts_with("only balance/3's minutes")),
+            "the card didn't say balance/2's minutes were left out: {:?}",
             measure.behind
         );
     }
