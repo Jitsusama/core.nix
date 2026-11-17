@@ -255,6 +255,7 @@
         "unheld": "not joined \u00b7 {machine} can't hand it over",
         "unreached": "not joined \u00b7 {machine} is out of reach",
         "hosted": "not opened \u00b7 its host gave no way to view it",
+        "unopened": "not opened \u00b7 it runs in a terminal the launcher can't reach",
         "untold": "not told, {why}",
         "unanswered": "not told, the node didn't answer"
       }

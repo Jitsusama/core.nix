@@ -205,13 +205,16 @@ Singleton {
         return Waiting.identity(item);
     }
 
-    // The session an item is from, by its owner's address, else its file's,
-    // or another address that session answers to.
+    // The session an item is from, running or parked (Waiting.js), or null.
     function session(item) {
-        const address = item.owner?.address ?? item.from;
-        const presence = Sessions.present[address] ?? null;
-        return Sessions.running.find(one => one.address === address
-            || (presence !== null && one.presence === presence)) ?? null;
+        return Waiting.sessionOf(item, known())?.session ?? null;
+    }
+
+    // What the shell knows of where an item can be dealt with: niri's
+    // windows, the sessions running and parked, and each presence.
+    function known() {
+        return { windows: Object.values(Niri.windows), running: Sessions.running,
+            parked: Sessions.parked ?? [], present: Sessions.present };
     }
 
     // What one not ready yet waits for (Waiting.js).
@@ -236,19 +239,30 @@ Singleton {
     // the window of the session it's from when it names none; null when
     // neither is open.
     function windowOf(item) {
-        const named = item.where?.window ?? item.window;
-        const titled = typeof named === "string" && named !== ""
-            ? Object.values(Niri.windows).find(window => window.title === named) : undefined;
-        if (titled)
-            return titled;
-        const own = session(item);
-        return own ? own.window : null;
+        const deal = Waiting.dealsIn(item, known());
+        return deal.to === "window" ? deal.window
+            : deal.to === "session" ? deal.session.window ?? null : null;
     }
 
+    // Takes Joel to where an item is dealt with (Waiting.dealsIn): the
+    // window it names, or its session as a cell's Go To does, woken first
+    // where it's parked, a window opened on it where it has none, held,
+    // hosted or elsewhere (Sessions.goTo, which says what it can't open).
+    // Never nothing: one from no session the shell knows is told `unfound`.
+    signal unfound(var item)
     function go(item) {
-        const window = windowOf(item);
-        if (window)
-            Niri.act({ FocusWindow: { id: window.id } });
+        const deal = Waiting.dealsIn(item, known());
+        if (deal.to === "window") {
+            Niri.act({ FocusWindow: { id: deal.window.id } });
+            return;
+        }
+        if (deal.to !== "session") {
+            unfound(item);
+            return;
+        }
+        if (deal.wake)
+            Sessions.wake(deal.session);
+        Sessions.goTo(deal.session);
     }
 
     // Those said as a notice, by identity, kept so a restart says none

@@ -2224,7 +2224,13 @@ Singleton {
                 "--match", `id:${session.kitty.window}`]);
         else if (session.held)
             attach(session.held, root.goesTo(session));
+        else
+            unopened(session);
     }
+    // A session here in no window, kitty or holder the shell can reach, as
+    // pi run in another terminal is, which Go To can't open: said, never
+    // a press that does nothing.
+    signal unopened(var session)
 
     // Where Go To opens a new window of a session, focused, since Joel asked
     // for it: home to its orchestrator's workspace, else beside its kin,

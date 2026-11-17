@@ -753,6 +753,11 @@ Provider {
                 provider.elsewhere("hosted", session), Theme.alert]]);
         }
 
+        function onUnopened(session) {
+            provider.launcher?.tellOnOpen([[session.address,
+                provider.elsewhere("unopened", session), Theme.alert]]);
+        }
+
         function onUnsteered(session, why) {
             provider.launcher?.tellOnOpen([[session.address,
                 provider.elsewhere(why !== "" ? "untold" : "unanswered", session, why),
