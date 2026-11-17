@@ -16,7 +16,12 @@ as a nextTurn message does, so none lands between a tool call and its
 result. A handler's edit of selectedTools goes into the live tool loadout,
 as a prompt's run applies it, so the model is offered what the handler
 chose, and restored tools not yet registered are dropped, as a prompt's
-run drops them. hostRuns marks a runtime that has it. Nothing in pi calls
+run drops them. The system message that brings the prompt's sections up
+to date is handed to the work, for the host to place in the run's first
+request: after a restart that changed the sections, as an upgrade does,
+that request would otherwise go out on the old ones. A run that fails to
+start passes on held messages, as a prompt's does. hostRuns marks a
+runtime that has it. Nothing in pi calls
 it, so a pi no host drives behaves as before.
 
 Its hunk sits on _startRun's own ending, so a pi whose run lifecycle moved
@@ -34,7 +39,7 @@ pi build; ordinary interactive pi stays unchanged.
  	readonly agent: SessionAgent;
  	readonly sessionManager: SessionManager;
  	readonly settingsManager: SettingsManager;
-@@ -1990,6 +1992,63 @@
+@@ -1990,6 +1992,70 @@
  			this._runSystemPromptOptions = undefined;
  			this._flushPendingBashMessages();
  			this._flushPendingCustomMessages();
@@ -46,12 +51,16 @@ pi build; ordinary interactive pi stays unchanged.
 +	 * Run work the host's agent does itself, such as a turn a restart cut off carried on, as one of
 +	 * pi's runs with no starting message. The session is busy from here on; before_agent_start
 +	 * fires as a "continue" run, and the prompt options it returns hold for every turn of the run,
-+	 * as a prompt's do. A message a handler returns waits for the next prompt, so none lands
-+	 * between a tool call and its result. agent_settled fires as the work ends. Inside a run of
-+	 * pi's own, the work joins it, and pi's run settles it. Nothing in pi calls this.
++	 * as a prompt's do. The work is handed the system message that brings the prompt's sections up
++	 * to date, if they changed, for the host to place in its first request, as a prompt's run
++	 * places it ahead of its starting message; later turns' refresh keeps them current. A message
++	 * a handler returns waits for the next prompt, so none lands between a tool call and its
++	 * result. agent_settled fires as the work ends. Inside a run of pi's own, the work joins it,
++	 * is handed nothing, and pi's run settles it. Nothing in pi calls this.
 +	 */
-+	async runForHost(work: () => Promise<void>): Promise<void> {
-+		if (this._isAgentRunActive) return work();
++	async runForHost(work: (prepared: readonly AgentMessage[]) => Promise<void>): Promise<void> {
++		if (this._isAgentRunActive) return work([]);
++		let prepared: AgentMessage[] = [];
 +		this._isAgentRunActive = true;
 +		this._agentRunAbortRequested = false;
 +		try {
@@ -60,14 +69,12 @@ pi build; ordinary interactive pi stays unchanged.
 +				{ messageType: "continue" },
 +				this._baseSystemPromptOptions,
 +			);
-+			// As in a prompt's run, a handler's explicit edit of selectedTools wins, so it goes into the
-+			// live loadout the next turn's refresh builds from; otherwise that loadout stands, keeping a
-+			// handler's setActiveTools() call.
++			// As in a prompt's run, a handler's explicit edit of selectedTools wins; otherwise the live
++			// loadout stands, keeping a handler's setActiveTools() call.
 +			const handlerEditedTools =
 +				result.systemPromptOptions.selectedTools.length !== selectedToolsBefore.length ||
 +				result.systemPromptOptions.selectedTools.some((name, index) => name !== selectedToolsBefore[index]);
-+			if (handlerEditedTools) this._applyToolLoadout(result.systemPromptOptions.selectedTools);
-+			result.systemPromptOptions.selectedTools = this.getActiveToolNames();
++			if (!handlerEditedTools) result.systemPromptOptions.selectedTools = this.getActiveToolNames();
 +			// As a prompt's prepared run does, drop restored tools that have not registered by now: the
 +			// run records its loadout, so one registering later is not put back into it.
 +			this._pendingToolNames.clear();
@@ -81,15 +88,20 @@ pi build; ordinary interactive pi stays unchanged.
 +					timestamp: Date.now(),
 +				});
 +			}
-+			// The next turn's refresh applies these with the live tool loadout, as it does a prompt's.
++			// As a prompt's run does, apply the loadout and diff the sections now, so the run's first
++			// request carries them rather than its second.
++			const update = this._preparePromptAndToolLoadout(result.systemPromptOptions);
 +			this._runSystemPromptOptions = result.systemPromptOptions;
++			if (update) prepared = [update];
 +		} catch (error) {
 +			this._isAgentRunActive = false;
++			this._flushPendingBashMessages();
++			this._flushPendingCustomMessages();
 +			this._resolveIdleWaitIfIdle();
 +			throw error;
 +		}
 +		try {
-+			await work();
++			await work(prepared);
 +		} finally {
 +			if (this._agentRunAbortRequested) this._finishCancelledRetry();
 +			this._runSystemPromptOptions = undefined;

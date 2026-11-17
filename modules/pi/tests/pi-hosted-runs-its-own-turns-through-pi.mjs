@@ -13,6 +13,9 @@ import { pathToFileURL } from "node:url";
 const SETTLE_TIMEOUT_MS = 5000;
 const RESIDENT_SECTION = /<resident>/u;
 const CARRIED_NOTE = "noted on the carry";
+const BEFORE_RESTART = /before the restart/u;
+const AFTER_RESTART = /after the restart/u;
+const FAILED_START = /the start failed/u;
 const root = resolve(process.argv[2]);
 const codeDirectory = process.argv[3] ?? "dist";
 assert.ok(
@@ -213,13 +216,16 @@ it("a run the host's agent starts itself is prepared and settled as a prompt's r
     ]);
     await promptRun(session, "typed words");
     let busyInWork;
+    let handed;
     await deadline(
-      session.runForHost(async () => {
+      session.runForHost(async (prepared) => {
         busyInWork = session.isStreaming;
+        handed = prepared;
         await session.agent.prompt(userMessage("asked again"));
       }),
     );
     assert.equal(busyInWork, true, "the session is busy through the host's work");
+    assert.deepEqual(handed, [], "an unchanged prompt hands the work nothing to place");
     assert.equal(session.isStreaming, false, "and idle once it ends");
     assert.deepEqual(heard.starts, ["custom", "continue"], "each run is prepared once");
     assert.deepEqual(heard.busy, [true, true], "each is busy from before it is prepared");
@@ -335,19 +341,83 @@ it("a carried run, as a prompt's, leaves a restored tool that registers after it
   }
 });
 
+it("a carried run's first request holds the sections as they stand after a restart", async () => {
+  let changing = "before the restart";
+  const changesSection = {
+    name: "changes-section",
+    factory: (pi) => {
+      pi.on("before_agent_start", (event) => {
+        event.systemPromptOptions.sections = { ...event.systemPromptOptions.sections, changing };
+      });
+    },
+  };
+  const { session, faux, requests, close } = await openPreparedSession({
+    extensions: [changesSection],
+  });
+  try {
+    faux.setResponses([fauxAssistantMessage("answered as typed"), fauxAssistantMessage("carried")]);
+    await promptRun(session, "typed words");
+    // An upgrade across the restart changes what an extension adds.
+    changing = "after the restart";
+    await deadline(
+      session.runForHost((prepared) =>
+        session.agent.prompt([...(prepared ?? []), userMessage("carried on")]),
+      ),
+    );
+    const sent = (request) => JSON.stringify(systemMessages(request));
+    assert.match(sent(requests[0]), BEFORE_RESTART);
+    assert.match(
+      sent(requests[1]),
+      AFTER_RESTART,
+      "the work is handed the update and places it, so the first request is current",
+    );
+  } finally {
+    close();
+  }
+});
+
+it("a carried run that fails to start passes on the messages it held", async () => {
+  const { session, close } = await openPreparedSession();
+  try {
+    // No handler's error escapes pi's runner, so the start is failed from inside it, with a
+    // message sent while the run was busy, which pi holds until the run ends.
+    session._extensionRunner.emitBeforeAgentStart = async () => {
+      await session.sendCustomMessage(
+        { customType: "held", content: "sent as the run started", display: false },
+        { triggerTurn: false },
+      );
+      throw new Error("the start failed");
+    };
+    await assert.rejects(
+      session.runForHost(() => Promise.resolve()),
+      FAILED_START,
+    );
+    assert.equal(session.isStreaming, false);
+    assert.ok(
+      session.messages.some((message) => message.customType === "held"),
+      "the held message is in the conversation, as a prompt's failed start leaves it",
+    );
+  } finally {
+    close();
+  }
+});
+
 it("a host's work inside a run of pi's own joins that run", async () => {
   const { session, heard, close } = await openPreparedSession();
   try {
     let joined = false;
+    let handedInside;
     await deadline(
       session.runForHost(() =>
-        session.runForHost(() => {
+        session.runForHost((prepared) => {
           joined = session.isStreaming;
+          handedInside = prepared;
           return Promise.resolve();
         }),
       ),
     );
     assert.equal(joined, true, "the inner work ran inside the run");
+    assert.deepEqual(handedInside, [], "and is handed nothing, since pi's run placed it");
     assert.deepEqual(heard.starts, ["continue"], "the inner work prepares no run of its own");
     assert.deepEqual(heard.settles, [false], "and the run settles once");
   } finally {
