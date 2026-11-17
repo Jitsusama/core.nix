@@ -26,8 +26,17 @@ ShellRoot {
         interfaces: root.sys
     }
 
+    // One for each file, each at its own path for good, since a write to
+    // one moved from path to path can land after the read that follows.
     FileView {
-        id: written
+        id: uevent
+        path: `${root.sys}/lo/uevent`
+        blockWrites: true
+        printErrors: false
+    }
+    FileView {
+        id: type
+        path: `${root.sys}/lo/type`
         blockWrites: true
         printErrors: false
     }
@@ -44,11 +53,11 @@ ShellRoot {
     }
 
     // lo's sysfs folder, as the kernel would write it for the facts given.
-    function made(uevent, type) {
-        for (const [file, text] of [["uevent", uevent], ["type", type]]) {
-            written.path = `${sys}/lo/${file}`;
-            written.setText(text);
-        }
+    function made(said, typed) {
+        uevent.setText(said);
+        uevent.waitForJob();
+        type.setText(typed);
+        type.waitForJob();
     }
 
     // The reads kept as though the last was taken `ago` ms before now, as
