@@ -36,11 +36,11 @@ fn cloned(running: &Running, folder: &str, remote: &str) {
 
 /// A checkout's path as the daemon names it, with no link left in it,
 /// since a test's temporary folder may sit behind one.
-fn real(path: &Path) -> std::path::PathBuf {
+pub(super) fn real(path: &Path) -> std::path::PathBuf {
     path.canonicalize().unwrap()
 }
 
-fn row_of<'a>(answer: &'a Value, key: &str) -> Option<&'a Value> {
+pub(super) fn row_of<'a>(answer: &'a Value, key: &str) -> Option<&'a Value> {
     answer["records"]
         .as_array()?
         .iter()
@@ -171,7 +171,7 @@ fn a_checkouts_files_are_served_inside_open_a_file_by_name_only_while_its_ahead(
 
 /// Git run in `folder` as none of Joel's config says, in the case's own
 /// home, answering what it printed.
-fn git_alone(home: &Path, folder: &Path, args: &[&str]) -> String {
+pub(super) fn git_alone(home: &Path, folder: &Path, args: &[&str]) -> String {
     std::fs::create_dir_all(folder).unwrap();
     let ran = Command::new("git")
         .arg("-C")

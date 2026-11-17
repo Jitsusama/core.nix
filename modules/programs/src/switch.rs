@@ -159,7 +159,7 @@ fn listed(printed: &str, folder: &Path, home: Option<&Path>) -> Vec<Branch> {
             let elsewhere = fields
                 .next()
                 .filter(|tree| !tree.is_empty() && !same(Path::new(tree), folder))
-                .map(|tree| shown(Path::new(tree), home));
+                .map(|tree| from_home(Path::new(tree), home));
             Some(Branch {
                 name,
                 at_s,
@@ -171,6 +171,19 @@ fn listed(printed: &str, folder: &Path, home: Option<&Path>) -> Vec<Branch> {
     // Stable, so the rest keep the order of the commit written to last.
     branches.sort_by_key(|branch| !branch.here);
     branches
+}
+
+/// A tree as said from home, `~` for it, where home is named by a link
+/// as well as where git names it, by the folder the link leads to.
+fn from_home(tree: &Path, home: Option<&Path>) -> String {
+    let real = home.and_then(|home| home.canonicalize().ok());
+    match home
+        .filter(|home| tree.starts_with(home))
+        .or(real.as_deref())
+    {
+        Some(home) => shown(tree, Some(home)),
+        None => shown(tree, None),
+    }
 }
 
 /// Whether two paths name one folder, however each was reached.
@@ -214,7 +227,7 @@ pub fn switch(
         read(&["for-each-ref", "--format=%(worktreepath)", &named]).map_err(|_| Refused::Unread)?;
     let held = held.trim();
     if !held.is_empty() && !same(Path::new(held), folder) {
-        return Err(Refused::Elsewhere(shown(Path::new(held), home)));
+        return Err(Refused::Elsewhere(from_home(Path::new(held), home)));
     }
     let changed =
         read(&["status", "--porcelain", "--untracked-files=no"]).map_err(|_| Refused::Unread)?;
@@ -274,8 +287,8 @@ mod tests {
     #[test]
     fn the_branch_it_is_on_comes_first_and_one_another_tree_holds_names_it() {
         let home = Path::new("/home/joel");
-        let printed = " \0refs/heads/fix\0200\0/home/joel/trees/fix\n\
-                       *\0refs/heads/main\0100\0/home/joel/src/core\n\
+        let printed = " \0refs/heads/fix\x00200\0/home/joel/trees/fix\n\
+                       *\0refs/heads/main\x00100\0/home/joel/src/core\n\
                        \x20\0refs/heads/old\0\0\n";
         assert_eq!(
             listed(printed, Path::new("/home/joel/src/core"), Some(home)),

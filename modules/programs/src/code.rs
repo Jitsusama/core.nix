@@ -17,14 +17,16 @@
 //! at"), since one holds thousands: listed as Neovim's finder lists them
 //! (repositories.rs), on the thread that follows the watches, outside the
 //! lock, and served inside the row. Once no watch names the row, its
-//! files go.
+//! files go. A checkout's branches are listed the same way, while a watch
+//! holds its Switch Branch row ahead (switch.rs). A Pull or a switch
+//! lists both again, since each moves what the checkout holds.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 
-use programs::{code_rows, command, pull, repositories};
+use programs::{code_rows, command, pull, repositories, switch};
 use repos::read::{Reading, read};
 use repos::{github, upstreams};
 use serde_json::Value;
@@ -57,6 +59,8 @@ pub struct Code {
     words: code_rows::Words,
     /// What Pull's answer says.
     pulled: pull::Words,
+    /// What Switch to It's answer says.
+    switched: switch::Words,
     /// Whether the disk has been read once, so a watch knows whether rows
     /// are held to answer with.
     read_once: AtomicBool,
@@ -66,11 +70,13 @@ pub struct Code {
     /// Whether the disk is to be read again, asked while a read was under
     /// way, which may have read it before what moved it.
     wanted: AtomicBool,
-    /// The checkouts a Pull is under way in, so a second waits for none.
-    pulling: Mutex<BTreeSet<String>>,
+    /// The checkouts a Pull or a switch is under way in, so a second
+    /// waits for none and neither races the other.
+    busy: Mutex<BTreeSet<String>>,
     /// The rows the last read made: each repository's and those inside it.
     made: Mutex<Vec<Value>>,
-    /// The files listed of each Open a File by Name row ahead, by its key.
+    /// The files listed of each Open a File by Name row ahead, and the
+    /// branches of each Switch Branch row ahead, by its key.
     listed: Mutex<BTreeMap<String, Vec<Value>>>,
 }
 
@@ -95,10 +101,11 @@ impl Code {
             machine: machine(),
             words: code_rows::Words::read(vocabulary),
             pulled: pull::Words::read(vocabulary),
+            switched: switch::Words::read(vocabulary),
             read_once: AtomicBool::new(false),
             reading: AtomicBool::new(false),
             wanted: AtomicBool::new(false),
-            pulling: Mutex::new(BTreeSet::new()),
+            busy: Mutex::new(BTreeSet::new()),
             made: Mutex::new(Vec::new()),
             listed: Mutex::new(BTreeMap::new()),
         }
@@ -171,30 +178,50 @@ fn take(shared: &Shared, daemon: &mut Daemon, rows: Vec<Value>) {
     shared.code.read_once.store(true, Ordering::Release);
 }
 
-/// Serves the rows the last read made and the files listed inside them,
-/// telling each watch only what moved.
+/// Serves the rows the last read made and the files and branches listed
+/// inside them, telling each watch only what moved.
 fn served(shared: &Shared, daemon: &mut Daemon) {
     let mut rows = lock(&shared.code.made).clone();
-    for (parent, files) in lock(&shared.code.listed).iter() {
-        rows.extend(code_rows::files(parent, files, &shared.code.words));
+    for (parent, listed) in lock(&shared.code.listed).iter() {
+        let words = &shared.code.words;
+        rows.extend(if parent.ends_with(code_rows::BRANCHES) {
+            code_rows::branches(parent, listed, words)
+        } else {
+            code_rows::files(parent, listed, words)
+        });
     }
     let moved = daemon.code.take(rows, Vec::new());
     keep(daemon, moved.changed, &moved.gone);
 }
 
-/// As the watches move: lists the files of each Open a File by Name row a
-/// watch now names, on this thread and outside the lock, and lets go of
-/// those of each no watch names any more, then serves them. Those still
-/// named keep what was listed as their row came ahead.
+/// As the watches move: lists the files of each Open a File by Name row,
+/// and the branches of each Switch Branch row, a watch now names, on this
+/// thread and outside the lock, and lets go of those of each no watch
+/// names any more, then serves them. Those still named keep what was
+/// listed as their row came ahead.
 pub fn ahead(shared: &Shared, watched: &[String]) {
+    list(shared, watched, &[]);
+}
+
+/// As `ahead`, but those of the rows `stale` names are listed again
+/// rather than kept, and served in place of what was listed, never gone
+/// between.
+fn list(shared: &Shared, watched: &[String], stale: &[String]) {
     let wanted: Vec<&String> = watched
         .iter()
-        .filter(|key| key.starts_with("row:code:") && key.ends_with(code_rows::FILES))
+        .filter(|key| {
+            key.starts_with("row:code:")
+                && (key.ends_with(code_rows::FILES) || key.ends_with(code_rows::BRANCHES))
+        })
         .collect();
-    let was = lock(&shared.code.listed).clone();
-    if wanted.len() == was.len() && wanted.iter().all(|key| was.contains_key(*key)) {
+    let mut was = lock(&shared.code.listed).clone();
+    if stale.is_empty()
+        && wanted.len() == was.len()
+        && wanted.iter().all(|key| was.contains_key(*key))
+    {
         return;
     }
+    was.retain(|key, _| !stale.contains(key));
     let checkouts: Vec<(String, Option<String>)> = {
         let made = lock(&shared.code.made);
         wanted
@@ -209,11 +236,12 @@ pub fn ahead(shared: &Shared, watched: &[String]) {
     let listed: BTreeMap<String, Vec<Value>> = checkouts
         .into_iter()
         .filter_map(|(key, path)| {
-            let files = match was.get(&key) {
-                Some(files) => files.clone(),
+            let listed = match was.get(&key) {
+                Some(listed) => listed.clone(),
+                None if key.ends_with(code_rows::BRANCHES) => branches(shared, &path?),
                 None => repositories::files(&path?),
             };
-            Some((key, files))
+            Some((key, listed))
         })
         .collect();
     *lock(&shared.code.listed) = listed;
@@ -277,16 +305,73 @@ fn kitty(id: &Value, folder: &str, program: &[&str], what: &'static str) -> Valu
 /// read again behind any that reached git, and the row says how far
 /// apart they are now.
 pub fn pull(shared: &Arc<Shared>, id: &Value, folder: &str) -> Value {
-    if !lock(&shared.code.pulling).insert(folder.to_owned()) {
+    if !lock(&shared.code.busy).insert(folder.to_owned()) {
         return shared.code.pulled.answer(id, Err(pull::Refused::Busy));
     }
-    let git = std::env::var("PROGRAMS_GIT").unwrap_or_else(|_| "git".to_owned());
-    let pulled = pull::pull(&git, Path::new(folder), pull::FETCH);
-    lock(&shared.code.pulling).remove(folder);
+    let pulled = pull::pull(&git(), Path::new(folder), pull::FETCH);
+    lock(&shared.code.busy).remove(folder);
     if !matches!(pulled, Err(pull::Refused::Tree)) {
-        again(shared);
+        moved(shared, folder);
     }
     shared.code.pulled.answer(id, pulled)
+}
+
+/// Switch to It on a branch's row, answered on a thread of its own as
+/// Pull is, and never beside a Pull or another switch of the checkout.
+/// One that reached git is followed as a Pull is (`moved`), so the
+/// branch rows say which it's on now.
+pub fn switch(shared: &Arc<Shared>, id: &Value, folder: &str, branch: &str) -> Value {
+    if !lock(&shared.code.busy).insert(folder.to_owned()) {
+        return shared
+            .code
+            .switched
+            .answer(id, branch, Err(switch::Refused::Busy));
+    }
+    let home = shared.code.home.as_deref();
+    let switched = switch::switch(&git(), Path::new(folder), branch, home);
+    lock(&shared.code.busy).remove(folder);
+    if !matches!(switched, Err(switch::Refused::Tree | switch::Refused::Gone)) {
+        moved(shared, folder);
+    }
+    shared.code.switched.answer(id, branch, switched)
+}
+
+/// After git moved the checkout at `folder`: the disk read again, and its
+/// files and branches listed again where a watch holds them ahead, since
+/// a pull or a switch changes both.
+fn moved(shared: &Arc<Shared>, folder: &str) {
+    again(shared);
+    let inside: Vec<String> = lock(&shared.code.made)
+        .iter()
+        .filter(|row| row["held"]["path"] == folder && row["depth"] == 1)
+        .filter_map(|row| row["key"].as_str().map(str::to_owned))
+        .collect();
+    // Read first, so the daemon's lock is let go before `list` takes it.
+    let watched = keys_watched(&lock(&shared.daemon));
+    list(shared, &watched, &inside);
+}
+
+/// The git Code's acts run, which a test names.
+fn git() -> String {
+    std::env::var("PROGRAMS_GIT").unwrap_or_else(|_| "git".to_owned())
+}
+
+/// The branches of the checkout at `path`, as Switch Branch lists them
+/// (`code_rows::branches`).
+fn branches(shared: &Shared, path: &str) -> Vec<Value> {
+    let home = shared.code.home.as_deref();
+    switch::branches(&git(), Path::new(path), home)
+        .into_iter()
+        .map(|branch| {
+            serde_json::json!({
+                "name": branch.name,
+                "at_s": branch.at_s,
+                "here": branch.here,
+                "elsewhere": branch.elsewhere,
+                "path": path,
+            })
+        })
+        .collect()
 }
 
 /// The machine's name as it calls itself, which the record carries.
