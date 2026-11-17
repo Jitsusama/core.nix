@@ -41,6 +41,9 @@ const LOW: i64 = 20;
 /// to run at, and warns from where it's too warm to charge well.
 const HOTTEST: f64 = 60.0;
 const WARM: f64 = 45.0;
+/// Below this a lithium battery is too cold to charge, which its row's
+/// note says, since its bar lights no dot there for a warn to colour.
+const FREEZING: f64 = 0.0;
 /// A battery holding under four fifths of its design is worn, as makers
 /// count it, so its bar warns.
 const WORN: f64 = 0.8;
@@ -912,7 +915,11 @@ impl Say<'_> {
             let said = self.words.significant_to(degrees, 1);
             let mut row = self.leaf("temperature", format!("{said} \u{b0}C"));
             row.graph = Some(bar(degrees / HOTTEST, degrees >= WARM));
-            row.note = self.says("temperature", "of", &[("most", &HOTTEST.to_string())]);
+            row.note = if degrees < FREEZING {
+                self.says("temperature", "cold", &[("least", &FREEZING.to_string())])
+            } else {
+                self.says("temperature", "of", &[("most", &HOTTEST.to_string())])
+            };
             rows.push(row);
         }
         rows.extend(self.model(battery));
