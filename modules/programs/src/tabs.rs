@@ -47,8 +47,9 @@ pub fn kitty(shared: &Shared) -> Option<usize> {
 /// of its own: only what isn't held yet, since what is was read again at
 /// every change of the session while they were watched, so a watch
 /// beginning reads nothing more. kitty's list is read as it's due, or
-/// never read yet, while the tabs are watched.
-pub fn read(shared: &Arc<Shared>) {
+/// never read yet, while the tabs are watched. The tabs' and the
+/// bookmarks' rows are made again where the watch names their place.
+pub fn read(shared: &Arc<Shared>, places: &[String]) {
     let (unread, listed) = {
         let daemon = lock(&shared.daemon);
         if !wanted(&daemon) {
@@ -78,6 +79,17 @@ pub fn read(shared: &Arc<Shared>) {
     }
     if let Some(at) = listed {
         start(shared, at, Run::List);
+    }
+    // A session read that ended between this watch's answer and its
+    // being held made neither place's rows, as neither was watched then,
+    // and what it read is held, so it starts no read above.
+    let mut daemon = lock(&shared.daemon);
+    for place in places {
+        if place == PLACE {
+            make(shared, &mut daemon);
+        } else if place == programs::bookmark_rows::PLACE {
+            bookmarks::make(shared, &mut daemon);
+        }
     }
 }
 

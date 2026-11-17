@@ -294,7 +294,8 @@ fn serve(given: &[String]) -> Result<(), Failure> {
         move |wanted| {
             if let Some(shared) = shared.upgrade() {
                 let (kinds, keys) = (wanted.kinds.to_vec(), wanted.keys.map(<[String]>::to_vec));
-                std::thread::spawn(move || begin(&shared, &kinds, keys.as_deref()));
+                let places = wanted.places.unwrap_or_default().to_vec();
+                std::thread::spawn(move || begin(&shared, &kinds, keys.as_deref(), &places));
             }
         }
     }));
@@ -630,7 +631,7 @@ fn names_programs(kinds: &[String], keys: Option<&[String]>) -> bool {
 /// a list that's asked and what the program has open. A watch of a whole
 /// kind, as the launcher holds while it's open, runs neither, so Chrome's
 /// history is read only as Chrome is stepped into.
-fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
+fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>, places: &[String]) {
     let lists = sources_of(shared, Run::List, kinds, keys);
     for at in lists.into_iter().chain(taken::lists(shared)) {
         if keys.is_none() && shared.sources[at].asked {
@@ -651,7 +652,7 @@ fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
         read_named(shared, keys);
         taken::ahead(shared, keys);
     }
-    tabs::read(shared);
+    tabs::read(shared, places);
 }
 
 /// What a get or a list reads first, on this thread: the entries not yet
