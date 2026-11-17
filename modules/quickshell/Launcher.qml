@@ -5213,7 +5213,11 @@ Scope {
         const now = KeyTimes.now();
         const ago = Pacing.sinceKey(now, keyHeardAt, keyDoneAt);
         const near = open && !prompt.keyMoved && ago < keyedWithin;
-        const byKey = near && Pacing.keyed(ago, prompt.keyMoved, keyedWithin, onScreen(source));
+        // A source's change to rows the launcher doesn't show, its own
+        // while a step below one is held (Provider.qml's changedUnseen),
+        // is taken at the pace and timed as no key's.
+        const byKey = near && !source.changedUnseen
+            && Pacing.keyed(ago, prompt.keyMoved, keyedWithin, onScreen(source));
         // One just past it is said, so a key's change left to the pace is
         // seen for what it was.
         if (open && !byKey && !prompt.keyMoved && ago < 1000)

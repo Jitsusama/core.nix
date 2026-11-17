@@ -685,6 +685,8 @@ ShellRoot {
     // What Now said moved, the last time it said so (Provider.qml's
     // changedWhy).
     property string nowMoved: ""
+    // And whether it said none of what moved is shown (changedUnseen).
+    property bool nowUnseen: false
 
     Connections {
         target: now
@@ -692,6 +694,7 @@ ShellRoot {
         function onChanged() {
             root.nowChanged += 1;
             root.nowMoved = now.changedWhy;
+            root.nowUnseen = now.changedUnseen;
         }
     }
 
@@ -1411,6 +1414,25 @@ ShellRoot {
         now.changedTo([]);
         expect("and stepped in, one moving its own rows says so",
             root.nowMoved === "its own rows as it stepped", root.nowMoved);
+        // For You held, one of Now's other rows moving is drawn nowhere,
+        // so it's no key's act: a session's work turning just after Return
+        // was timed as Return's (the niri case, 16 November).
+        theLauncher.held = into(now.waiting.verbs());
+        now.changedTo(now.everything());
+        root.nowChanged = 0;
+        now.changedTo(now.everything().concat([{ key: "on:another", name: "Another" }]));
+        expect("For You held, another of Now's rows moving says none of it is shown",
+            root.nowChanged === 1 && root.nowUnseen, JSON.stringify([root.nowChanged,
+                root.nowUnseen]));
+        expect("and nothing once said", !now.changedUnseen, "it stayed unseen");
+        now.changedTo(now.everything().map(row => row.key === "on:waitingOnYou"
+            ? { key: row.key, name: "For You Renamed", verbs: () => [] } : row));
+        expect("but For You itself moving is shown", root.nowChanged === 2 && !root.nowUnseen,
+            JSON.stringify([root.nowChanged, root.nowUnseen]));
+        now.changedTo(now.everything());
+        expect("as is For You put back",
+            root.nowChanged === 3 && !root.nowUnseen, JSON.stringify([root.nowChanged,
+                root.nowUnseen]));
         theLauncher.held = [];
         Facts.all = [];
         Notices.history = [];

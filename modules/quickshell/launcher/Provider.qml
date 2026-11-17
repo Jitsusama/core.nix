@@ -157,6 +157,14 @@ Scope {
     // `changed` is said, so a key's act the launcher times says what was
     // drawn: a turn timed as Return's act said nothing more (2026-11-16).
     property string changedWhy: ""
+    // Whether only its own rows moved while the launcher holds a step
+    // below one of them, kept only while `changed` is said: then the
+    // launcher shows the step's rows and none of the others, so the change
+    // is no key's act on screen. A session's work turning just after
+    // Return into For You moved For You's own row at home, and was timed
+    // as Return's act (the niri case, 16 November: "its own rows").
+    property bool changedUnseen: false
+    property string lastHeldRow: ""
 
     // Since the launcher stepped in or out, what it holds below this
     // provider's rows is what it made as it stepped, not what was said
@@ -174,13 +182,21 @@ Scope {
             : own === lastOwn && now === says(rows, keys, true, heldRows());
         const which = own !== lastOwn ? "its own rows" : "the rows it holds";
         const why = stepped ? `${which} as it stepped` : which;
+        // The row held and what it holds, the one of its own rows drawn.
+        const holding = rows.filter(row => keys.length > 0 && row.key === keys[0]);
+        const heldRow = says(holding, keys, true);
+        const unseen = keys.length > 0 && heldRow
+            === (stepped ? says(holding, keys, true, heldRows()) : lastHeldRow);
         lastSaid = now;
         lastOwn = own;
         lastHeld = held;
+        lastHeldRow = heldRow;
         if (!same) {
             changedWhy = why;
+            changedUnseen = unseen;
             changed();
             changedWhy = "";
+            changedUnseen = false;
         }
     }
 
