@@ -104,6 +104,13 @@ fn told(
     }
 }
 
+/// The answer to `asked`, asked on a watching client, taking in each line
+/// the watch is told before it: the daemon can hear its own write and tell
+/// the watch before it answers, so a `told` after never misses the change.
+fn answered(client: &mut Client, held: &mut BTreeMap<String, Value>, asked: &Value) -> Value {
+    client.ask_hearing(asked, |said| take(held, said))
+}
+
 /// Takes in one line a watch is told: its records, those that changed and
 /// the keys gone.
 fn take(held: &mut BTreeMap<String, Value>, said: &Value) {
@@ -592,20 +599,21 @@ fn joels_word_is_kept_as_he_asks_and_each_to_do_is_worded() {
         ),
         "a to-do worded for For You: {plug}"
     );
-    // Answered before the change it makes, which the daemon's watch on
-    // Joel's word hears after.
     let mut asked = plug["acts"][0]["ask"].clone();
     asked["id"] = json!(2);
     assert_eq!(
-        client.ask(&asked),
+        answered(&mut client, &mut held, &asked),
         json!({"id": 2, "done": true}),
         "its act, asked as it says"
     );
     told(&mut client, &mut held, |held| {
         held["to-do:QEST-10:plug"]["state"] == "done"
     });
-    let put_off = client.ask(&json!({"id": 3, "ask": "act", "act": "notNow",
-        "item": "QEST-10:later"}));
+    let put_off = answered(
+        &mut client,
+        &mut held,
+        &json!({"id": 3, "ask": "act", "act": "notNow", "item": "QEST-10:later"}),
+    );
     assert_eq!(put_off["done"], true, "put off: {put_off}");
     told(&mut client, &mut held, |held| {
         held["to-do:QEST-10:later"]["state"] == "later"
@@ -643,8 +651,12 @@ fn a_look_joel_clears_is_kept_in_its_file_and_told_as_it_now_stands() {
         &client.ask(&json!({"id": 1, "ask": "watch", "kind": "look"})),
     );
     told(&mut client, &mut held, |held| held.contains_key("look:a1"));
-    let cleared = client.ask(&json!({"id": 2, "ask": "settle-look", "look": "a1",
-        "state": "cleared", "how": "cleared from For You"}));
+    let cleared = answered(
+        &mut client,
+        &mut held,
+        &json!({"id": 2, "ask": "settle-look", "look": "a1", "state": "cleared",
+            "how": "cleared from For You"}),
+    );
     assert_eq!(cleared, json!({"id": 2, "done": true}), "cleared as asked");
     told(&mut client, &mut held, |held| {
         held["look:a1"]["look"]["state"] == "cleared"
