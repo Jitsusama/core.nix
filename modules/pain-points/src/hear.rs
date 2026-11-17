@@ -20,6 +20,7 @@
 //! heard and routed in the last hour, those of the last day still open,
 //! the one he hit most, and the turns that stalled him.
 
+pub mod day;
 pub mod heard;
 pub mod route;
 pub mod said;
@@ -96,6 +97,10 @@ pub struct Hour {
     /// Turns that stalled him in the hour, heard though he said nothing.
     #[serde(default)]
     pub stalled: usize,
+    /// Times he asked how something stands today where he is: status
+    /// should reach him unasked, so this is aimed at none.
+    #[serde(default)]
+    pub status_asks: usize,
     /// What kept the run from routing, so a broken listener doesn't read
     /// as a quiet hour.
     #[serde(default)]
@@ -628,6 +633,7 @@ fn hour_of(kept: &[Heard], at: i64) -> Hour {
             .count(),
         worst: worst.map(|h| h.words.clone()),
         worst_hits: worst.map_or(0, |h| h.hits),
+        status_asks: 0,
         troubles: Vec::new(),
     }
 }
