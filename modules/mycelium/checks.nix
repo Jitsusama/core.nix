@@ -159,10 +159,7 @@ let
     "fence"
     "strict"
   ];
-  macKinds = [
-    "none"
-    "fence"
-  ];
+  macKinds = lib.remove "strict" everyKind;
   # Whether every assertion a machine's account makes holds.
   evaluates = home: lib.all (check: check.assertion) home.assertions;
   # pi's own fence, strict, which an agent's run starts through, each
