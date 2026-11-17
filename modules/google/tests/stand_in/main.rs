@@ -116,17 +116,28 @@ impl StandIn {
     }
 }
 
-/// How many sign-ins this process has handed out, so each is its own.
+/// How many folders this process has handed out, so each is its own.
 static HANDED: AtomicUsize = AtomicUsize::new(0);
 
-/// The harness's file, in a folder of its own, with pi's access token
-/// ending at `expires`. The folder is this call's alone, whatever `test`
-/// names it, since looks run beside each other in one process.
-fn credentials(test: &str, expires: i64) -> PathBuf {
+/// An empty folder that is this call's alone, whatever `test` names it.
+/// Looks run beside each other in one process, and two that chose one
+/// name shared a sign-in: one's write truncates the file before filling
+/// it, so the other's look could read it empty or half-written. One left
+/// by an earlier run is emptied rather than read.
+fn folder(test: &str) -> PathBuf {
     let handed = HANDED.fetch_add(1, Ordering::SeqCst);
     let folder =
         std::env::temp_dir().join(format!("google-{test}-{}-{handed}", std::process::id()));
+    // None there is the usual case, and fine.
+    let _ = fs::remove_dir_all(&folder);
     fs::create_dir_all(&folder).unwrap();
+    folder
+}
+
+/// The harness's file, in a folder of its own, with pi's access token
+/// ending at `expires`.
+fn credentials(test: &str, expires: i64) -> PathBuf {
+    let folder = folder(test);
     let path = folder.join("credentials.json");
     fs::write(
         &path,
@@ -142,10 +153,9 @@ fn credentials(test: &str, expires: i64) -> PathBuf {
 }
 
 #[test]
-fn every_look_has_a_sign_in_of_its_own_whatever_its_name() {
-    // Tests run beside each other in one process, so two that chose the
-    // same name shared one file, and one's expired token could land in
-    // the other's look between its asks.
+fn two_looks_of_one_name_are_handed_sign_ins_of_their_own() {
+    // The mail and sign-in looks both named theirs "refused", and the
+    // mail look failed train runs when it read the other's half-written.
     assert_ne!(
         credentials("shared", 0),
         credentials("shared", 0),
