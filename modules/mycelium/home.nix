@@ -125,22 +125,14 @@ let
       }}"
     ];
   # The person's table of which receptors' climbs the node says, from the
-  # store for the same reason: the node refuses one any other account could
-  # write, and a table naming nothing is no table, so every source is silent.
+  # store as the declaration is: the node refuses one any other account
+  # could write, and a table naming nothing is no table, so every source is
+  # silent.
   stimuliArgs = lib.optionals (cfg.stimuli != [ ]) [
     "--stimuli"
     "${pkgs.writeText "mycelium-stimuli.json" (builtins.toJSON { say = cfg.stimuli; })}"
   ];
-  # The sources mycelium's receptors read, as its `Source::EACH` names them.
-  sources = [
-    "slack"
-    "mail"
-    "calendar"
-    "calls"
-    "reviews"
-    "github"
-    "messages"
-  ];
+  sources = import ./sources.nix;
   name = lib.types.strMatching "[a-z0-9-]+";
   # A machine a provider's program reaches, as `PROGRAM:PLACE`: the program
   # by its absolute path, since a Mac's agent runs the node with PATH

@@ -857,7 +857,29 @@ in
         && given (linuxWords bothLinux.mycelium) == null
         && given (linuxWords bothLinux.mycelium-other) == null
         && given macNode == null
+        && given (mac both).launchd.agents.mycelium-other.config.ProgramArguments == null
         && !unknown.success
+      );
+
+  # The sources a table may name are the locked mycelium's own, read from its
+  # source, since a name the node no longer knows makes it refuse the whole
+  # table and every source falls silent with nothing failing.
+  mycelium-table-names-mycelium-s-own-sources =
+    holds "mycelium-table-names-mycelium-s-own-sources"
+      "The sources a machine's stimuli table may name aren't the ones the locked mycelium's receptors read, as its Source::name names them."
+      (
+        let
+          lines = lib.splitString "\n" (builtins.readFile "${self.inputs.mycelium}/src/receptor.rs");
+          named = lib.concatMap (
+            line:
+            let
+              matched = builtins.match " *Self::[A-Za-z]+ => \"([a-z]+)\"," line;
+            in
+            if matched == null then [ ] else matched
+          ) lines;
+          sorted = lib.sort lib.lessThan;
+        in
+        named != [ ] && sorted (import ./sources.nix) == sorted named
       );
 
   # A machine's system pins each key that links to it, on either system, to

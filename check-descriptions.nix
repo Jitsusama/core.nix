@@ -1715,6 +1715,11 @@
     names no file, so every source stays silent, and a source mycelium has no receptor for is
     refused
   '';
+  mycelium-table-names-mycelium-s-own-sources = ''
+    the sources a machine's stimuli table may name are exactly the ones the locked mycelium's
+    receptors read, as its own source names them, so a renamed source can't make the node refuse
+    the whole table and silence every source with nothing failing
+  '';
   needs-you-is-true = ''
     over the agents' own files as the node serves them, For You's to-dos hold now only what Joel
     can do now, a timed one first
