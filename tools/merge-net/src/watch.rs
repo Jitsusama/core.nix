@@ -2204,15 +2204,9 @@ fn revert_and_tell(
 ) -> Result<(), String> {
     let (commit, test, log) = (&found.commit, &found.test, &found.log);
     let already_runs = world.runs(commit);
-    // Revert again until keep_revert says how this one went, since a net
-    // leaving while the revert's comparison builds ends here, and the next
-    // build's search drops a job whose test is already held.
-    // Revert again until keep_revert says how this one went, since a net
-    // leaving while the revert's comparison builds ends here, and the next
-    // build's search drops a job whose test is already held.
     let mut hold = json!({
         "test": test, "bad": commit, "bad_pr": found.pr, "revert_pr": Value::Null,
-        "revert_commit": Value::Null, "revert_again": true, "failed_at": head, "at": now(),
+        "revert_commit": Value::Null, "failed_at": head, "at": now(),
         "already_runs": already_runs,
     });
     state.set_hold(&hold)?;
@@ -4618,6 +4612,46 @@ mod tests {
         assert_eq!(
             kept, 1,
             "the Mac's job a net left mid-comparison wasn't kept for the next build"
+        );
+    }
+
+    #[test]
+    fn a_macs_job_whose_test_is_held_reverts_nothing_again() {
+        // A net leaving mid-comparison keeps the Mac's job, and its hold
+        // says to revert again, which the next round does; the job itself
+        // reverting too would land a second revert over the first.
+        let state = state("mac-held");
+        let check = crate::macs::check("s");
+        state
+            .set_hold(&json!({
+                "test": check, "bad": "m", "bad_pr": 1, "revert_pr": null,
+                "revert_commit": null, "revert_again": true, "failed_at": "m", "at": now(),
+            }))
+            .unwrap();
+        let world = Stand {
+            head: "m".into(),
+            merges: names("m"),
+            ..Stand::default()
+        }
+        .exits("m", &check, &[1, 1]);
+        let settler = Settler::new(&world, &state);
+        settler.hand(Job::Mac {
+            merge: "m".into(),
+            check: check.clone(),
+            since: now(),
+        });
+        std::thread::scope(|scope| {
+            settler.start(scope);
+            settler.close();
+        });
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "a Mac job whose test is held reverted again: {:?}",
+            world.reverted.lock().unwrap()
+        );
+        assert!(
+            state.settling().is_empty(),
+            "a Mac job whose test is held was kept"
         );
     }
 
