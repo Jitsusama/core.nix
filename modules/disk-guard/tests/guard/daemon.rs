@@ -927,6 +927,7 @@ fn a_status_whose_estimates_only_drift_is_no_news() {
         filesystems: vec![one],
         cleared: Vec::new(),
         last: None,
+        failed: None,
         frozen: Vec::new(),
         writer: None,
         notice: None,

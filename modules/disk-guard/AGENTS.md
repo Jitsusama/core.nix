@@ -291,11 +291,11 @@ or launchd, and [`home.nix`][2] the account's.
   exception is the guard itself failing: a pass on a filling disk whose
   tries failed and freed nothing, or where one timed out, is told once,
   with the failure's error line, and written to the system journal as an
-  error, since a guard that can't clear is otherwise silent. The next
-  pass on that disk that frees some, or finds it no longer filling, takes
-  it away, a frozen writer's notice going back in its place, so it says
-  how the guard stands now; a pass elsewhere, or one that freed nothing,
-  says nothing of it. A folder its owner wrote again
+  error, since a guard that can't clear is otherwise silent. The status
+  keeps that pass as `failed` until a pass on that disk frees some, or
+  finds it no longer filling, whatever passed between; that pass takes
+  the notice away, a frozen writer's or a nearly full disk's notice going
+  back in its place, so it says how the guard stands now. A folder its owner wrote again
   while the guard emptied it is kept, not failed. A notice the
   desktop didn't take, as when the notification server is still starting,
   is told again each step until it is. What stands to be told now, once

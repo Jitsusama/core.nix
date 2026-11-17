@@ -141,7 +141,7 @@ pub struct Journaled<'a, R> {
     pub journal: &'a mut Journal,
     /// The root each candidate's delete is anchored to.
     pub roots: HashMap<PathBuf, PathBuf>,
-    /// When the pass began, in wall seconds, and the same moment on the
+    /// A wall time, as the step's tick read it, and the same moment on the
     /// monotonic clock. Each line is stamped that far on from it: a pass on
     /// 16 November ran from 20:44 to 23:34, and its lines all saying 20:44
     /// hid what it took at 22:46 from the one reading that hour.

@@ -28,6 +28,7 @@ fn status(bands: &[(&str, Band, u64)], last: Option<LastPass>) -> Status {
             })
             .collect(),
         cleared: Vec::new(),
+        failed: last.clone().filter(|last| last.failing.is_some()),
         last,
         frozen: Vec::new(),
         writer: None,
@@ -46,6 +47,13 @@ fn pass(at: f64, band: Band, end: &str, freed: u64) -> LastPass {
         freed: freed * GIB,
         failing: None,
     }
+}
+
+/// `status` while an earlier pass's failing still stands, as the guard
+/// keeps it through passes that don't clear it.
+fn still(mut status: Status, failed: &LastPass) -> Status {
+    status.failed = Some(failed.clone());
+    status
 }
 
 /// A pass whose six deletes all failed, freeing nothing.
@@ -115,27 +123,61 @@ fn a_pass_that_works_after_failing_takes_the_failing_notice_away() {
 
 // The notice says the failing disk is failing, so only that disk's pass
 // can say it isn't: one on another disk, or one on it that freed nothing,
-// leaves it standing; and with a writer frozen, its notice goes back in
-// the failing one's place rather than nothing.
+// leaves it standing, and the pass that clears it later still takes it
+// away; with a writer frozen, or another disk nearly full, that notice
+// goes back in the failing one's place rather than nothing.
 #[test]
 fn only_a_pass_that_frees_room_on_the_failing_disk_takes_its_notice_away() {
-    let failing = status(&[("/", Band::Filling, 140)], Some(refused(2.0)));
-    let elsewhere = status(
-        &[("/", Band::Filling, 140)],
-        Some(LastPass {
-            path: PathBuf::from("/var/cache/builds"),
-            ..pass(3.0, Band::Filling, "reached", 33)
-        }),
+    let refusal = refused(2.0);
+    let failing = status(&[("/", Band::Filling, 140)], Some(refusal.clone()));
+    let elsewhere = still(
+        status(
+            &[("/", Band::Filling, 140)],
+            Some(LastPass {
+                path: PathBuf::from("/var/cache/builds"),
+                ..pass(3.0, Band::Filling, "reached", 33)
+            }),
+        ),
+        &refusal,
     );
     assert_eq!(change(&failing, &elsewhere), None, "a pass on another disk");
-    let fruitless = status(
-        &[("/", Band::Filling, 140)],
-        Some(pass(3.0, Band::Filling, "exhausted", 0)),
+    let fruitless = still(
+        status(
+            &[("/", Band::Filling, 140)],
+            Some(pass(3.0, Band::Filling, "exhausted", 0)),
+        ),
+        &refusal,
     );
     assert_eq!(
         change(&failing, &fruitless),
         None,
         "a pass that freed nothing"
+    );
+    let freed = status(
+        &[("/", Band::Filling, 173)],
+        Some(pass(4.0, Band::Filling, "reached", 33)),
+    );
+    assert_eq!(
+        change(&elsewhere, &freed),
+        Some(Change::Withdraw),
+        "a freeing pass after one on another disk"
+    );
+    let roomy = status(
+        &[("/", Band::Healthy, 300)],
+        Some(pass(4.0, Band::Healthy, "reached", 0)),
+    );
+    assert_eq!(
+        change(&fruitless, &roomy),
+        Some(Change::Withdraw),
+        "a pass finding the disk no longer filling, after one that freed nothing"
+    );
+    let other_full = status(
+        &[("/", Band::Filling, 173), ("/home", Band::NearlyFull, 20)],
+        Some(pass(4.0, Band::Filling, "reached", 33)),
+    );
+    assert!(
+        matches!(change(&elsewhere, &other_full), Some(Change::Show(_))),
+        "another disk nearly full is told in its place"
     );
     let mut frozen = status(
         &[("/", Band::Filling, 173)],

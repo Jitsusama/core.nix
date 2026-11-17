@@ -349,12 +349,21 @@ pub struct Guard {
     answers_path: PathBuf,
     watched: BTreeMap<u64, Watched>,
     last: Option<LastPass>,
+    /// The pass whose failing still stands: kept through passes elsewhere
+    /// or ones that free nothing, until a pass on its disk frees some or
+    /// finds it no longer filling.
+    failed: Option<LastPass>,
     saved_at: Option<f64>,
     written: Option<(f64, Status)>,
     /// The status last written, which each beat writes again fresh.
     beaten: Arc<Mutex<Option<Status>>>,
     /// Whether what an earlier run left moved aside has been seen to.
     resumed: bool,
+    /// When this step began, as its tick was read, so what a step does
+    /// is timed from the tick's wall time by how long the step has run:
+    /// a pass after a long one in the same step, or after the survey, is
+    /// stamped when it ran, not when the step began.
+    stepped: Instant,
     /// Nix's garbage as last listed, for the system daemon, and where it's
     /// kept for the next guard.
     listing: Option<Listing>,
@@ -516,6 +525,10 @@ pub struct Status {
     /// The last things cleared, newest first.
     pub cleared: Vec<ClearedStatus>,
     pub last: Option<LastPass>,
+    /// The pass whose clearing failed, while its failing stands: until a
+    /// pass on its disk frees some or finds it no longer filling.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failed: Option<LastPass>,
     /// The writers frozen now, for the desktop to offer to thaw.
     pub frozen: Vec<crate::writers::Frozen>,
     /// Who wrote most of the last minute's writes, while a disk is below
@@ -728,10 +741,12 @@ impl Guard {
             answers_path,
             watched: BTreeMap::new(),
             last: None,
+            failed: None,
             saved_at: None,
             written: None,
             beaten: Arc::default(),
             resumed: false,
+            stepped: Instant::now(),
             listing_begun: listing.as_ref().map(|listing| listing.listed_at),
             listing_ended: listing.as_ref().and_then(Listing::ended),
             listing,
@@ -1098,6 +1113,7 @@ impl Guard {
     }
 
     pub fn step(&mut self, tick: &Tick, senses: &Senses) -> io::Result<()> {
+        self.stepped = Instant::now();
         // Once: what it resumes it journals as ended, so looking again
         // would only re-read the journal every step to find nothing.
         if !self.resumed {
@@ -2143,7 +2159,7 @@ impl Guard {
             };
             let end = self.pass_on(tick, device, &here, aim(decision), thresholds, &mut scan)?;
             if decision == Decision::Collect {
-                self.rest_collect(tick.wall, &offered);
+                self.rest_collect(tick.wall + self.stepped.elapsed().as_secs_f64(), &offered);
             }
             let Decision::Reach(band) = decision else {
                 continue;
@@ -2354,6 +2370,7 @@ impl Guard {
         };
         let candidates: Vec<_> = here.iter().map(|offer| offer.candidate.clone()).collect();
         let started = Instant::now();
+        let since = self.stepped;
         let gentle = band < Band::NearlyFull;
         let pacer = Rc::new(RefCell::new(self.pacer(&path, band, thresholds)));
         let images = self.images(device, here);
@@ -2373,7 +2390,7 @@ impl Guard {
                 .map(|offer| (offer.candidate.path.clone(), offer.action.root().to_owned()))
                 .collect(),
             at: tick.wall,
-            since: started,
+            since,
             band,
         };
         // A pass that can wait waits for the filesystem's own commits; one
@@ -2428,14 +2445,22 @@ impl Guard {
             freed: report.freed,
             seconds,
         })?;
-        self.last = Some(LastPass {
+        let last = LastPass {
             at: tick.wall,
             path,
             band: report.band,
             end,
             freed: report.freed,
             failing,
-        });
+        };
+        if last.failing.is_some() {
+            self.failed = Some(last.clone());
+        } else if self.failed.as_ref().is_some_and(|failed| {
+            failed.path == last.path && (last.freed > 0 || last.band < Band::Filling)
+        }) {
+            self.failed = None;
+        }
+        self.last = Some(last);
         Ok(report.end)
     }
 
@@ -2661,6 +2686,7 @@ impl Guard {
             filesystems,
             cleared,
             last: self.last.clone(),
+            failed: self.failed.clone(),
             frozen: self.memory.frozen.clone(),
             writer: self
                 .writers

@@ -72,20 +72,19 @@ pub fn change(before: &Status, after: &Status) -> Option<Change> {
     // A notice says how the guard stands now: on 16 November Joel read that
     // clearing was failing eight minutes after two passes had freed 33 GiB.
     // So the first pass on that disk that frees some, or finds it no longer
-    // filling, takes it away; a pass elsewhere, or one that freed nothing,
-    // says nothing of it. A frozen writer's notice goes back in its place.
-    if let Some(last) = &after.last
-        && after.last != before.last
-        && last.failing.is_none()
-        && (last.freed > 0 || last.band < Band::Filling)
-        && before
-            .last
-            .as_ref()
-            .is_some_and(|was| was.failing.is_some() && was.path == last.path)
-    {
-        return Some(match after.frozen.first() {
-            Some(frozen) => Change::Show(froze(frozen, after)),
-            None => Change::Withdraw,
+    // filling, takes it away, whatever passed between; a pass elsewhere, or
+    // one that freed nothing, says nothing of it. A frozen writer's notice,
+    // or a nearly full disk's, goes back in its place.
+    if before.failed.is_some() && after.failed.is_none() {
+        let fullest = after
+            .filesystems
+            .iter()
+            .filter(|filesystem| filesystem.band >= Band::NearlyFull)
+            .max_by_key(|filesystem| filesystem.band);
+        return Some(match (after.frozen.first(), fullest) {
+            (Some(frozen), _) => Change::Show(froze(frozen, after)),
+            (None, Some(filesystem)) => Change::Show(full(filesystem)),
+            (None, None) => Change::Withdraw,
         });
     }
     let was = |filesystem: &FilesystemStatus| {
