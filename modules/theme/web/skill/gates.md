@@ -35,7 +35,7 @@ contrast of the tint, not the tint into the kit's default.
    set into the page's own composition as the Crossing sets them (under the
    contents, centred, quiet), never as a bar of chrome; a keyboard
    reaching everything, and nothing moving that the reader didn't move.
-5. **The style.** Colour roles and a space ladder, never a value retyped,
+5. **The style.** The theme's colours and a space ladder, never a value retyped,
    and the layout's measure and edges. The faces and the tint are the
    site's own choice within `language.md`.
 

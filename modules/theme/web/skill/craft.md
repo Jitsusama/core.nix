@@ -62,7 +62,7 @@ What follows from them:
 Contrast on the dark theme's ground, as WCAG ratios and APCA Lc, from the theme
 files. The light theme's figures are in brackets.
 
-| Role | Ratio | APCA Lc | Fit |
+| Colour | Ratio | APCA Lc | Fit |
 | --- | --- | --- | --- |
 | `--text` | 11.7 (10.4) | 78.9 (92.8) | body text |
 | `--strong` | 14.3 | 91.6 | headings, emphasis |
@@ -82,7 +82,7 @@ files. The light theme's figures are in brackets.
   under 3:1, so draw the ring with an offset outside the row, or inset with
   the ground between.
 - **A site's tint stays within reach of the theme.** `--turn` keeps each
-  role's lightness, so contrast holds; check a large turn anyway, since chroma
+  colour's lightness, so contrast holds; check a large turn anyway, since chroma
   shifts with hue.
 
 ## Type Steps
@@ -426,8 +426,8 @@ const mod = mac ? "⌘" : "Ctrl";
 
 ## Diagrams
 
-- **Inline `<svg>`, never an image**, so it takes the page's faces, roles and
-  properties: text in `--serif` or `--mono` at a named level, and never
+- **Inline `<svg>`, never an image**, so it takes the page's faces, colours
+  and properties: text in `--serif` or `--mono` at a named level, and never
   under 12 px on screen at any width, once the drawing is scaled to fit;
   strokes in `--rule` or `currentColor`, marks in their kind's colour, the
   accent nowhere but a focusable node.

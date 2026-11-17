@@ -66,12 +66,12 @@ brighter.
      was sampled rather than copied.
 
 2. **Name the pigments by what they look like:** `jade`, `parchment`,
-   `night`, never `accent` or `background`. The role says what a colour is
+   `night`, never `accent` or `background`. A colour's name says what it's
    for; the pigment's name only has to tell two greens apart. Keep every
    colour the source has, even unused ones, and note beside each the name
    the source gives it, so the translation can be checked against it.
 
-3. **Choose the roles.** Most map directly; some are judgement:
+3. **Choose the colours.** Most map directly; some are judgement:
    - `background`, `sunken`, `deepest`, `raised`: the source's main
      background and the ones just below and above it. A source with one
      background gets the others by darkening and lightening it a step in
@@ -101,7 +101,7 @@ brighter.
      from one another and from the accent, each reading on the backgrounds
      as text does.
 
-   Mark every role that wasn't a direct copy with a comment saying what was
+   Mark every colour that wasn't a direct copy with a comment saying what was
    decided and why. Those are what Joel checks by eye.
 
 4. **Fill the terminal.** The source's own sixteen colours when it has them.
@@ -119,9 +119,9 @@ brighter.
 - **Legibility.** Build any check with the theme picked
   (`jitsusama.theme.name = "<name>"` on a bare machine, as
   `a-faint-theme-is-refused` in `modules/theme/checks.nix` does). Every text pair under
-  4.5:1 is listed by name with its ratio, and every text role under its APCA Lc with its
-  Lc. Fix each by adding a pigment, never
-  by loosening the check.
+  4.5:1 is listed by name with its ratio, and every text colour under its
+  APCA Lc with its Lc. Fix each by adding a pigment, never by loosening the
+  check.
 - **Nothing hard-coded.** A module that names a colour of its own isn't a
   theme problem; fix the module, so the theme reaches it.
 - **By eye.** Switch a machine to the theme and screenshot the desktop, a

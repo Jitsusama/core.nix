@@ -142,7 +142,7 @@ Load each when its step needs it, not before.
 | `checks.md` | running the verification, with `gate.js`, `layout.js`, `map.js`, `homes.js` and `svgtext.js` |
 
 The kit (`~/.local/share/jitsusama/web/`, `sites.md`) gives a site its
-colour roles, faces, space ladder and a sensible base. It's a palette to
+colours, faces, space ladder and a sensible base. It's a palette to
 start from, not a uniform: a site sets its own world on top, with its own
 tint, turn, type scale and ornament, and overrides the base wherever its
 design says so.

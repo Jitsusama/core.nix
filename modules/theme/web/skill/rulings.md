@@ -91,7 +91,7 @@ rule below exists.
 - **Figures carry the explanation, and words caption them.** "don't be too
   miserly with diagrams, and don't be too verbose with prose" (2026-09-22);
   "the visuals do not connect with the narrative" (2026-09-10) is the fault to
-  avoid. Inline SVG in the page's own faces, roles and hairlines; labels
+  avoid. Inline SVG in the page's own faces, colours and hairlines; labels
   placed, never only on hover; drawn again for a narrow screen rather than
   shrunk; a caption saying what it shows; a table or list with the same facts
   beside it; text in it edited like prose (2026-10-22).
@@ -244,7 +244,7 @@ causing the page to reformat" (2026-11-10). `layout.js` measures all three.
 
 ### Colour and Surfaces
 
-- **Roles, never colours,** and colour on glyphs, marks and bars, never on
+- **Colours, never values,** and colour on glyphs, marks and bars, never on
   words (but for the heading exception above). The accent is only the focus
   ring, the one place the keys are. Nothing is told by colour alone: "right
   now people have to remember colour associations" (2026-09-03). Every colour

@@ -129,9 +129,9 @@ The night is `--background: #0b1422`, with `--raised: #132136` and
 a warm cream that keeps the blue from going cold. The tint is `--hue:
 var(--azure)` (`#62b1ff`), with `--hue-quiet` at 55%. Gold (`#e8c34f`) is
 kept for what is running: the diagrams' lock, the standing mark, the
-ladder's `where` lines. States are roles: `--starting: var(--lavender);
+ladder's `where` lines. States are colours: `--starting: var(--lavender);
 --accepting: var(--azure); --draining: var(--amber); --gone: var(--rule)`.
-The light theme is the same roles in oklch, cast toward the night's hue 255
+The light theme is the same colours in oklch, cast toward the night's hue 255
 at a whisper of chroma (`--background: oklch(0.985 0.006 255)`), each glyph
 hue darkened to hold contrast. A 10% radial azure wash tops the dark theme
 only; the source says that on paper it reads as a smudge.

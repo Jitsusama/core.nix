@@ -112,7 +112,7 @@ Network and Code are worth a look.").
 ## Figures
 
 - **One drawing carries the idea**, on or just under the first screen,
-  inline SVG in the page's faces and roles.
+  inline SVG in the page's faces and colours.
 - **Strokes by class, not inline colour**: a stem, a vine, a gilt line, a
   hot dashed path; records filled with an edge, the next one dashed.
 - **Labels in two voices**: a name in italic serif, a note in small muted
