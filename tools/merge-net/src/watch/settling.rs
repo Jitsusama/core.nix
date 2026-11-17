@@ -279,6 +279,7 @@ impl<'a> Settler<'a> {
                 Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
                 Err(std::sync::TryLockError::WouldBlock) => {
                     if let Some(_building) = self.state.only_building() {
+                        revert_again_once_cut(self.state);
                         self.state.say(
                             "the write to the hold only builds, and nothing it decided has \
                              landed, so this leaves, and the next build takes its job up again",
@@ -448,6 +449,12 @@ impl<'a> Settler<'a> {
             since,
         } = job
         {
+            // A Mac check is named for its merge, so a hold on it is this
+            // job's own revert, cut short by a leave and tried again by the
+            // round: reverting here too would land a second one.
+            if self.held_for(check) {
+                return self.end(check, || Ok(()));
+            }
             return self.mac(merge, check, *since);
         }
         if listed_on_main(world, job.head(), job.test()) || self.held_for(job.test()) {
@@ -565,6 +572,24 @@ impl<'a> Settler<'a> {
     fn failed(&self, why: String) {
         self.state.say(&why);
         lock(&self.first_error).get_or_insert(why);
+    }
+}
+
+/// Mark a hold whose revert a leave cuts short to be reverted again, so the
+/// next round does: its outcome is never kept, and the next build drops the
+/// job as held. Only a cut revert says so, since cadence reads a hold saying
+/// it before its first try ends as a failed revert.
+fn revert_again_once_cut(state: &State) {
+    let Some(mut hold) = state.hold() else {
+        return;
+    };
+    if hold["revert_commit"].is_null() && hold.get("revert_again").is_none() {
+        hold["revert_again"] = json!(true);
+        if let Err(why) = state.set_hold(&hold) {
+            state.say(&format!(
+                "the cut revert isn't marked to be tried again: {why}"
+            ));
+        }
     }
 }
 
