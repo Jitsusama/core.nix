@@ -131,11 +131,11 @@ fn stray_owners(
     let read = match repo.under.as_slice() {
         [] => repo.reference.clone(),
         [under] => format!(
-            "{} under {under}, whose folders count from inside it",
+            "{} under {under} (whose folders count from inside it)",
             repo.reference
         ),
         unders => format!(
-            "{} under {}, whose folders count from the repository's top",
+            "{} under {} (whose folders count from the repository's top)",
             repo.reference,
             unders.join(", ")
         ),
