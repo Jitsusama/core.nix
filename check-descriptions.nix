@@ -2122,6 +2122,10 @@
   onepassword-brings-ops-zsh-completion = ''
     the account's zsh is given op's own completion, the file the op the system wraps was built with
   '';
+  onepassword-gives-its-manager-each-release = ''
+    1Password's manager for Passwords is given each op:// reference a secret ask may release, each
+    after its own --release, and no other manager's reference
+  '';
   onepassword-manager-passes-clippy = ''
     clippy finds nothing in 1Password's manager for Passwords or its tests
   '';
