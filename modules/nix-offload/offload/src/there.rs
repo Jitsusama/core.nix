@@ -2513,10 +2513,11 @@ const BOOT_READ: &str = "cat /proc/sys/kernel/random/boot_id 2>/dev/null || \
 /// ends, unless another run has taken it since. One whose shell is gone,
 /// killed outright or in an earlier boot, or that names no shell or a
 /// pid of 8 digits or more, past Linux's highest and a Mac's, which zsh
-/// can read as -1 and so as live, is taken by the next to look. A run waiting says so at once and about
-/// every 5 minutes, or `NIX_OFFLOAD_TURN_EVERY` seconds, so it isn't read
-/// as hung. A turn that can't be made, as a folder in its place or a dead
-/// one in a folder that can't be written, is passed over for the others;
+/// can read as -1 and so as live, is taken by the next to look. A run
+/// waiting says so at once and about every 5 minutes, or
+/// `NIX_OFFLOAD_TURN_EVERY` seconds, so it isn't read as hung. A turn
+/// that can't be made, as a folder in its place or a dead one in a folder
+/// that can't be written, is passed over for the others;
 /// where none can be on two looks a second apart, since a dead turn
 /// another run is taking back at that moment reads as one that can't be,
 /// or the boot can't be read to name one by, a run builds without one and
@@ -2524,8 +2525,8 @@ const BOOT_READ: &str = "cat /proc/sys/kernel/random/boot_id 2>/dev/null || \
 /// dead turn back is a look, then a remove, so a run can remove a turn
 /// another took between the two: each run looks a second after taking its
 /// turn, or `NIX_OFFLOAD_TURN_LOOK` seconds, and waits again if it no
-/// longer holds it. Only a run stalled longer than that between its look and its
-/// remove lets an extra build in, until the one whose link it replaced
+/// longer holds it. Only a run stalled longer than that between its look
+/// and its remove lets an extra build in, until the one whose link it replaced
 /// ends; it never leaves a run waiting for a turn nobody holds. It bounds
 /// only runs that reach the machine as one account.
 pub fn in_turn_nearby(command: &str) -> String {
@@ -2534,7 +2535,8 @@ pub fn in_turn_nearby(command: &str) -> String {
          boot=$({BOOT_READ}); mine=\"$$ $boot\"; \
          here=$(uname -n); turn=; waited=0; unmadebefore=; \
          trap 'k=1; while [ \"$k\" -le {NEARBY_AT_ONCE} ]; do \
-         if [ \"$(readlink \"$turns/$k\" 2>/dev/null)\" = \"$mine\" ]; then rm -f \"$turns/$k\"; fi; \
+         if [ \"$(readlink \"$turns/$k\" 2>/dev/null)\" = \"$mine\" ]; then \
+         rm -f \"$turns/$k\"; fi; \
          k=$((k + 1)); done' EXIT; \
          if [ -z \"$boot\" ]; then turn=none; fi; \
          while [ -z \"$turn\" ]; do mkdir -p \"$turns\" 2>/dev/null; n=1; unmade=0; \
@@ -2555,7 +2557,8 @@ pub fn in_turn_nearby(command: &str) -> String {
          if [ -n \"$turn\" ]; then sleep \"${{NIX_OFFLOAD_TURN_LOOK:-1}}\"; \
          if [ \"$(readlink \"$turn\" 2>/dev/null)\" = \"$mine\" ]; then break; fi; turn=; fi; \
          if [ \"$unmade\" -ge {NEARBY_AT_ONCE} ]; then \
-         if [ -n \"$unmadebefore\" ]; then turn=none; break; fi; unmadebefore=1; sleep 1; continue; fi; \
+         if [ -n \"$unmadebefore\" ]; then turn=none; break; fi; \
+         unmadebefore=1; sleep 1; continue; fi; \
          unmadebefore=; \
          if [ $((waited % ${{NIX_OFFLOAD_TURN_EVERY:-300}})) -eq 0 ]; then echo \"nix-offload: \
          $here already runs as many builds sent to it as it takes at once, so this waits there \
