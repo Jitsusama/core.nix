@@ -170,14 +170,23 @@ fn chosen(
     }
 }
 
-/// Has every card look, for the chooser to choose from what it hears on
-/// the minute after. wpa_supplicant forgets an access point it hasn't
-/// heard for 3 minutes, and nothing else looks while a card is on its
-/// network, so on 15 Nov 2026 a card on one carrying 44 to 52 ms at p95
-/// heard no other, though one 15 minutes before had carried 15.
-async fn look(asks: mpsc::Sender<Ask>, card: String, _looked: mpsc::Sender<String>) {
-    if let Err(refused) = acts::look(&asks).await {
-        eprintln!("<4>{card} couldn't look for another access point: {refused:?}");
+/// Has every card look, and hands this one back to be chosen for as soon
+/// as the look ends: on 16 Nov 2026 a card on a point carrying 77 to 106
+/// ms at p95 heard another within 12 s of looking, and waited out the
+/// rest of the minute there. wpa_supplicant forgets an access point it
+/// hasn't heard for 3 minutes, and nothing else looks while a card is on
+/// its network, so on 15 Nov 2026 a card on one carrying 44 to 52 ms at
+/// p95 heard no other, though one 15 minutes before had carried 15.
+async fn look(asks: mpsc::Sender<Ask>, card: String, looked: mpsc::Sender<String>) {
+    match acts::look(&asks).await {
+        // Wifid stopping is the only way the channel closes, so a card
+        // not handed back then has nothing to be chosen for.
+        Ok(()) => {
+            let _ = looked.send(card).await;
+        }
+        Err(refused) => {
+            eprintln!("<4>{card} couldn't look for another access point: {refused:?}");
+        }
     }
 }
 

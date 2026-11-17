@@ -131,7 +131,9 @@ const TOLD: Duration = Duration::from_secs(60);
 
 /// Measures the access point each card is on, for as long as wifid runs,
 /// and logs each one's figures every minute, saying when a call was on,
-/// learning from them what each carries at each hour.
+/// learning from them what each carries at each hour. A card is chosen for
+/// each minute, and again as soon as a look its chooser asked for ends, so
+/// what the look heard is gone to without waiting out the minute.
 pub async fn follow(
     state: watch::Receiver<State>,
     calling: watch::Receiver<Calling>,
@@ -142,7 +144,7 @@ pub async fn follow(
     let mut choosers: HashMap<String, Chooser> = HashMap::new();
     let mut kernel: Option<Nl80211> = None;
     let mut measures = Measures::default();
-    let (looked, _ended) = mpsc::channel(1);
+    let (looked, mut ended) = mpsc::channel(1);
     let mut each = interval(EACH);
     each.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut told = interval(TOLD);
@@ -181,6 +183,28 @@ pub async fn follow(
                         call,
                     );
                 }
+            }
+            Some(card) = ended.recv() => {
+                let (now, hour) = (Instant::now(), learn::hour_here());
+                let call = calling.borrow().on(now);
+                let joined = state.borrow().joined();
+                let Some(on) = joined.into_iter().find(|on| on.card == card) else {
+                    continue;
+                };
+                let Some(carried) = measures.of(&on.point, now) else {
+                    continue;
+                };
+                let around = state.borrow().around(&on.card);
+                let chooser = choosers.entry(on.card.clone()).or_default();
+                moves::choose(
+                    chooser,
+                    (now, hour),
+                    (&on, &carried),
+                    &around,
+                    (&measures, &learned),
+                    (&asks, &state, &looked),
+                    call,
+                );
             }
         }
     }
