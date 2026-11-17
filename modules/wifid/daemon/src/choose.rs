@@ -86,6 +86,13 @@ const FAINTEST: i16 = -67;
 /// carried worse, while its own 5 GHz radio was heard at -45.
 const ACROSS: i16 = 10;
 
+/// How loud a radio on a wider band is heard that's within reach however
+/// loud the card's own point: on 16 Nov 2026 a card heard its access
+/// point's 2.4 GHz radio at -29 dBm, and kept off the same one's 5 GHz
+/// radio, 16 to 19 dB fainter, through four looks over 43 minutes. Heard
+/// at -45 at last, it moved and linked at 1080 Mbit/s.
+const STRONG: i16 = -50;
+
 /// How much quicker one measured lately must have been to be moved to:
 /// both, so neither a small figure's ratio nor a large one's few
 /// milliseconds moves the card.
@@ -383,10 +390,6 @@ fn for_the_band<'a>(
         .or_else(|| heard.max_by_key(|other| other.signal))
 }
 
-/// Whether another access point is heard loud enough, from one heard this
-/// loud on this channel, to be tried: within `FAINTER`, or on a wider band
-/// within `ACROSS` more and no fainter than `FAINTEST`, since the same
-/// access point is heard fainter there.
 /// Whether another access point is on a wider band and heard loud enough,
 /// from one heard this loud on this channel, to be tried for the band:
 /// within reach and no fainter than `FAINTEST`, however faint the card's
@@ -395,10 +398,14 @@ fn in_band_reach(other: &Other, signal: i16, frequency: u32) -> bool {
     wide(other.frequency) && other.signal >= FAINTEST && within_reach(other, signal, frequency)
 }
 
+/// Whether another access point is heard loud enough, from one heard this
+/// loud on this channel, to be tried: within `FAINTER`, or on a wider band
+/// within `ACROSS` more and no fainter than `FAINTEST`, since the same
+/// access point is heard fainter there, or at `STRONG` or louder.
 fn within_reach(other: &Other, signal: i16, frequency: u32) -> bool {
     other.signal >= signal - FAINTER
         || (wider(other.frequency, frequency)
-            && other.signal >= FAINTEST.max(signal - FAINTER - ACROSS))
+            && other.signal >= FAINTEST.max(signal - FAINTER - ACROSS).min(STRONG))
 }
 
 /// Whether a channel is on 5 or 6 GHz.
