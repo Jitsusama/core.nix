@@ -55,7 +55,7 @@ one is answered for it in [the surfaces table][surfaces].
    Where vi has a key for it, the key is vi's.
 9. **Collapses on purpose.** As space shrinks, a surface gives way in a
    written order, never by truncation.
-10. **The theme, whole.** Type, colour, glyphs, space and motion come from
+10. **The theme, whole.** Type, colour, marks, space and motion come from
     the theme and change with it.
 11. **Customisable at no cost.** Every choice is an option, rendered into the
     program's own files when the machine is built.
@@ -133,7 +133,7 @@ for judging before it's been judged here first.
   surface carries its shots at 1.5 and 2, cropped where it changed, and a
   table of what it changed measured to the ink: each gap by its rung, each
   edge by its column, each baseline by its pitch, each run by its level, each
-  ink by its colour role. A design review judges type, space, alignment and
+  ink by its colour. A design review judges type, space, alignment and
   colour together on those shots and answers within half an hour, and the
   change merges on its pass (Joel, 2026-11-05: "you are not considering
   enough design elements when changing things"). If no answer comes within
@@ -184,12 +184,12 @@ of each kind of line it sets, and a row's pitch is its height.
 ### Typesetting
 
 - **Type carries the design.** Hierarchy comes from the type levels (size,
-  weight, face, case and colour role, each with its own job), set as a
+  weight, face, case and colour, each with its own job), set as a
   typesetter sets a page, never from a stock
   template's sizes and boxes (the first look, 2026-11-02: "the typography is
   middling ... not leveraging type and typesetting enough"). **Check:** a
   table of every run of text on the surface, giving its face, step, weight,
-  colour role, OpenType features and line pitch, and why it differs from the
+  colour, OpenType features and line pitch, and why it differs from the
   run nearest it. Two runs that differ for no written reason are a fault.
 - **Set, not styled.** Figures, case, ligatures, punctuation and breaks are
   chosen: tabular figures where a number changes in place, a face's case
@@ -233,7 +233,7 @@ of each kind of line it sets, and a row's pitch is its height.
 ### Colour's Use
 
 - **Every pair measured.** **Check:** each pair of ink and ground on the
-  surface, by role, with its contrast in every theme, measured on the
+  surface, by colour, with its contrast in every theme, measured on the
   colours the screenshot shows, since a floating ground is translucent.
   Each passes what the theme's build holds (`modules/theme/home.nix`, which
   [Themes][themes] describes): 4.5:1 by WCAG for text, and by APCA Lc 75
@@ -241,8 +241,8 @@ of each kind of line it sets, and a row's pitch is its height.
   raised and selection surfaces muted isn't drawn, as [Colour][colour]
   says, so what would be muted is measured as text there.
 - **Colour says something.** The accent marks only where the keys go, once
-  per screen state; a glyph's hue says its kind; text keeps to the text
-  roles. **Check:** a list of every coloured thing on the surface and the
+  per screen state; a mark's hue says its kind; text keeps to the text
+  colours. **Check:** a list of every coloured thing on the surface and the
   kind or state it says. Anything coloured that says nothing is a fault, and
   so is a second accent.
 - **Structure in type, warmth in colour.** Colour gives the focal point and
@@ -619,9 +619,10 @@ The rest follows from the ladder:
   line read alike. A head with no rows under it, a prompt's or the picker's,
   has no rhythm to size it, so its capitals sit the inset under the frame
   and its hairline falls where the text centres, the same room under it.
-- **A glyph's column is its cell and a mark.** A mark sits in a square cell
-  one line pitch wide, its text the mark rung after it, so a list's names
-  start at `Theme.level.name.pitch + Theme.space.rung.mark` from its glyphs,
+- **A mark's column is its cell and the mark rung.** A mark sits in a
+  square cell one line pitch wide, its text the mark rung after it, so a
+  list's names
+  start at `Theme.level.name.pitch + Theme.space.rung.mark` from its marks,
   an indent is the same again, and the column follows the type.
 - **A stroke isn't a space.** A meter's bar, a wave's bars and the room in a
   texture are counted in hairlines, `4 * Theme.border`, never named by a rung,
@@ -661,7 +662,7 @@ The rest follows from the ladder:
 The palette's colours are given meanings that hold on every surface, and a
 surface names a meaning, never a colour value:
 
-| Role       | Meaning                                                      |
+| Colour     | Meaning                                                      |
 | ---------- | ------------------------------------------------------------ |
 | background | behind everything: windows, the terminal, menus              |
 | sunken     | below the background: a sidebar, an inactive tab, a list     |
@@ -695,12 +696,12 @@ sits only on the background, sunken and deepest; on the raised and selection sur
 switch to text, since a muted that read there would be too bright to be
 muted.
 
-**Colour goes on glyphs, never on text.** Text keeps to the text, strong and
-muted roles, so it always reads, and glyphs carry the colour, which is where
-the whimsy is. Each glyph hue is a kind of thing, the same kind on every
+**Colour goes on marks, never on text.** Text keeps to the text, strong and
+muted colours, so it always reads, and marks carry the colour, which is where
+the whimsy is. Each mark's hue is a kind of thing, the same kind on every
 surface:
 
-| Role    | A glyph for                    | In Osaka Jade | For example                     |
+| Colour  | A mark for                     | In Osaka Jade | For example                     |
 | ------- | ------------------------------ | ------------- | ------------------------------- |
 | action  | something to do                | gold          | "Open a terminal" in the launcher |
 | program | a program                      | aqua          | kitty's cat, a browser's notice |
@@ -708,16 +709,16 @@ surface:
 | person  | a person                       | orchid        | a message from someone          |
 | voice   | the desktop speaking for itself | turquoise    | an empty list, nothing found    |
 
-The accent is never a glyph's: it stays where the keys go, on a border and
-the caret. Glyph hues are held to the same contrast as text.
+The accent is never a mark's: it stays where the keys go, on a border and
+the caret. Marks' hues are held to the same contrast as text.
 
 A terminal program draws with the terminal's sixteen ANSI colours, which
 carry no meaning of their own, and something that draws in shades, such as a
 graph, takes the theme's eight shades from the background to the brightest
-text. A command of ours names the theme's roles instead, drawn in 24-bit
+text. A command of ours names the theme's colours instead, drawn in 24-bit
 colour where the terminal draws it, as [Commands][commands] sets them.
 
-## Glyphs
+## Marks
 
 One mark per idea, in a single table in the theme that every surface draws
 from, aligned to the text's baseline and never decoration. The seed is pi's:
@@ -727,7 +728,7 @@ aligned, and its package tests refuse any surface that spells one itself. That
 idea holds everywhere now: a mark is looked up by meaning, never typed.
 
 The console's font holds 256 glyphs, since a font of more costs the console its
-bright colours, and none of Nerd Fonts' marks, so each glyph also has a
+bright colours, and none of Nerd Fonts' marks, so each mark also has a
 stand-in the console can draw, and a surface running on a console (the prompt
 in an emergency shell) uses those. The consoles signed in on are kmscon's,
 which draws the face itself, so the prompt there has its real marks.
@@ -779,28 +780,28 @@ blur never spills past a corner. Two light shadows lift it
 `floating.scrim`. The launcher's selected row is the selection colour at
 `floating.selection`, an inset inside the border.
 
-**A glyph leads a line only when the line is something to act on:** a field,
+**A mark leads a line only when the line is something to act on:** a field,
 such as the padlock beside a password or the magnifier on the command line,
-or a result in a list, where the glyphs form a column. In a list a row's
-glyph says what sort of row it is, so a thing to do never reads like a
+or a result in a list, where the marks form a column. In a list a row's
+mark says what sort of row it is, so a thing to do never reads like a
 figure. An act (a thing with verbs, a verb, anything Return does) wears its
-own glyph, or else its thing's, in its hue. A row that holds more (an
+own mark, or else its thing's, in its hue. A row that holds more (an
 answer, whose parts are a step in, a row of rows, a collection) wears its
-glyph muted, since what it's for is inside. A figure, a value an answer's
+mark muted, since what it's for is inside. A figure, a value an answer's
 part only says, wears none, even where Return copies it, and its words keep
 the column's edge; a colour's swatch stays, since it is the figure. A row
 that says how it stands by its mark, as a budget and its windows do, keeps
 a warning's or an alert's hue on it, holding more or not, and a figure of
-those wears its mark. Return's own Copy wears the copy glyph, as every
+those wears its mark. Return's own Copy wears the copy mark, as every
 Copy row does, never its row's. In a
-block of text a glyph never starts a line, since it would leave a hole under
+block of text a mark never starts a line, since it would leave a hole under
 itself or push the text off its edge. It sits inline before the word it
 marks, or in a signature, as a notice signs what sent it: its mark in a
 column of its own, then its name, and the time at the right. Edges line
-up to the ink, not the box, so a glyph's left edge and the letters above
+up to the ink, not the box, so a mark's left edge and the letters above
 it share a column.
 
-**Chords are drawn key by key:** a key's own glyph where a proper one exists
+**Chords are drawn key by key:** a key's own mark where a proper one exists
 (⇧, ↵ and the arrows), its name where none does (Super, Ctrl, Alt, Esc,
 Tab, Space), and a letter as itself, joined by + with the same room on each
 side, all muted, even on the selected row. A chord is spaced the same
@@ -963,7 +964,7 @@ centred on.
 
 **The margin** is how the desktop shows what's on that Joel would otherwise
 forget, without covering a window or taking a pixel from one. It isn't a
-surface at all: each thing that's true is its glyph alone, set straight on
+surface at all: each thing that's true is its mark alone, set straight on
 the picture in the gap the windows already leave above them, lifted off it
 by a tight shade of its own that never reaches a window. Nothing true,
 nothing drawn, so an empty strip says all is well.
@@ -974,7 +975,7 @@ row is centred on the screen, as far from either side, on the launcher's
 line, and about half as far from where Joel looks as a corner; with two
 windows side by side it sits where the gap between them meets the gap
 above. One coming or going slides the rest along to stay centred. A mark is
-the theme's drawing of it (a glyph's `drawn`, a path on a twelve by twelve
+the theme's drawing of it (a mark's `drawn`, a path on a twelve by twelve
 grid), made simple enough to read at six pixels, since a font's glyph is
 drawn for text and goes to mush that small; six is also whole pixels at
 both of Joel's screens' scales. Every drawing touches its grid's top and
@@ -985,21 +986,21 @@ then what wants Joel, then what was left on (Keep Awake, do not disturb, the
 mic muted, caps lock), and within each in the overview's order. Colour says
 only how much: strong for what's on air or wants him, muted for what was
 left on, and the alert for what needs him now, the battery about to die or
-a call ringing. Nothing else in the margin has a hue, no glyph carries a
-badge, and no line underlines one, since a glyph that pictures its thing
+a call ringing. Nothing else in the margin has a hue, no mark carries a
+badge, and no line underlines one, since a mark that pictures its thing
 needs nothing told twice. Something on air that goes stays fifteen
 seconds in its place, muted (`margin.linger`), so a camera that was on
 for a moment is still seen to have been on; nothing else lingers. A card
 or a mark, never both: while a program's notice is on screen saying the
-same thing, as pi's want or a call ringing does, its glyph waits for the
+same thing, as pi's want or a call ringing does, its mark waits for the
 card to go. What comes true by itself, a camera a program opened or the
 battery running low, arrives as one notice of its own, signed with its
-glyph and name and carrying what can be done about it, and again, urgent,
+mark and name and carrying what can be done about it, and again, urgent,
 when it comes to need Joel now; what his own keys turned on, and what was
 already true as the desktop started, says nothing, since he knows. Every
 battery runs low at 20% and needs him now at 10%, the laptop's and each
 Bluetooth device's alike: each device is a notice, a mark and a row of
-its own, signed with its name and drawn with its kind's glyph, so a
+its own, signed with its name and drawn with its kind's mark, so a
 headset running low never reads as the laptop. Its row in Now is its own
 row in Bluetooth, saying "12% · running low" at its side, never a second
 way of drawing it. Once low, a battery only
@@ -1012,7 +1013,7 @@ himself, and the launcher's "lag" says what waited.
 
 What each is, in words, is the launcher's Now, opened by Super+O on its
 first row, For You, or by clicking a mark, on that mark's row: a
-row each, its glyph, its name, how it stands at the right, and what more
+row each, its mark, its name, how it stands at the right, and what more
 there is to know in the footer, grouped by how much it asks with what
 wants Joel first. Return does there what it
 does on that thing's row anywhere, and Ctrl+] goes to it in its own place. While it's open, the mark
@@ -1199,7 +1200,7 @@ same way:
    in a prompt, the file in an editor, the query in a launcher.
 2. **When it's true:** state that changes what Joel would do, shown only while
    it holds: a failed command, a dirty tree, a low battery, do not disturb, a
-   muted microphone, a failing test. Each has its glyph and its colour role.
+   muted microphone, a failing test. Each has its mark and its colour.
 3. **On request:** everything else, one consistent step away, behind the thing
    it belongs to.
 
@@ -1230,7 +1231,7 @@ it. Owners go by layer:
 - **Frames repeat nothing their content says.** The compositor draws no title
   bars. A terminal's tab bar appears only with two tabs or more and names the
   tabs that aren't in view. An editor names a file once. Old prompts in
-  scrollback collapse to their folder and glyph.
+  scrollback collapse to their folder and mark.
 
 | Fact                                                                   | At a glance                                        | In detail, in the launcher   |
 | ---------------------------------------------------------------------- | -------------------------------------------------- | ---------------------------- |
@@ -1246,7 +1247,7 @@ it. Owners go by layer:
 | In a call                                                              | the margin mark, while in one                      | Programs › Tuple; Now        |
 | Notifications waiting                                                  | nothing in the margin: they're what came lately, and a critical one is For You's | Notifications (Super+N); Now |
 | A password or one-time code copied                                     | the margin mark, until the clipboard clears it, since the launcher goes as it copies | Passwords' foot; Now |
-| A password reused or breached                                          | nothing, and nothing guessed, until Joel presses Check Every Password, which reads every password, so never on its own | Passwords › Needing Attention, counted, shown again after the vaults in its manager's program; each entry's Health in the warning's role, "reused in 3 other entries", "seen in 1,204 breaches" |
+| A password reused or breached                                          | nothing, and nothing guessed, until Joel presses Check Every Password, which reads every password, so never on its own | Passwords › Needing Attention, counted, shown again after the vaults in its manager's program; each entry's Health in the warning's colour, "reused in 3 other entries", "seen in 1,204 breaches" |
 | Disk space                                                             | the margin mark, only while a disk is short of room, a writer is frozen or nothing watches it; a notice once a disk is nearly full, again when the guard has made room or can't, and when it freezes a writer, each saying what to do or that nothing is needed | Now |
 | RAM type, speed, maker and part                                        | nothing, since it never changes                    | Memory's Type                |
 | AI spend and its caps                                                  | the margin mark, only while a finding wants a look or nothing watches it; a notice once when one starts to; a line each morning; the launcher's foot | AI spend, a part of Agents (Super+U); Now |
@@ -1254,7 +1255,7 @@ it. Owners go by layer:
 | Directory, repository, branch, git state                               | the program running the window                     | nobody                       |
 | Window titles                                                          | a terminal's unseen tabs; the launcher's windows   | the launcher's windows       |
 
-The margin mark is the one always-visible desktop element: a glyph at the
+The margin mark is the one always-visible desktop element: a mark at the
 top centre for each thing that's true (Shape and Kinds), nothing at all when nothing is
 true, so the screen is calm by default. The launcher's foot is the other
 glance: one line, its keys on the right, and on the left how things
@@ -1262,20 +1263,20 @@ stand, always, whatever's typed, held or asked, since Joel looks there
 for the battery and the network; what the selection has to say goes at
 the field's right end instead. It's the
 quietest thing in the launcher, below the field, the rows and the keys:
-all muted but a fact that wants Joel, each fact its glyph and the least
+all muted but a fact that wants Joel, each fact its mark and the least
 that tells him something, as a key hint is its key and what it does, at
 the hints' size and step. The battery is its charge, and its time left
-while it drains; the network and the volume are their glyph alone while
+while it drains; the network and the volume are their mark alone while
 all is well; the agents are what's moving. It's the time, the date, the
 battery, the network, the volume, the day's AI spend and the agents, the
-last two both AI's and so under the agents' glyph, drawn once for both.
+last two both AI's and so under the agents' mark, drawn once for both.
 Short of room, each says its least first, the battery its charge
-alone; then each shrinks to its glyph alone by collapse rank, the
-volume first, so every fact still shows it's there, and a glyph never
+alone; then each shrinks to its mark alone by collapse rank, the
+volume first, so every fact still shows it's there, and a mark never
 gives way: the marks have first claim on the foot, and the keys make room
 for them, the arrows said by their marks alone (Joel, 2026-10-28: "i
 want icons to be able to be there as much as possible"). The date, with
-no glyph, goes where it would shrink, and the time never goes. Each
+no mark, goes where it would shrink, and the time never goes. Each
 keeps the room it has needed since the launcher opened, so one that
 reads shorter, the battery going from 100% to 99%, moves nothing after
 it. The volume and the date shrink first since they're not what Joel looks there for, and
@@ -1348,7 +1349,7 @@ works the same way everywhere.
 - **One word each.** Every name and word the launcher knows is said
   once, in its vocabulary (`modules/quickshell/launcher/words/`, the
   option `jitsusama.quickshell.launcher.words`): each thing's name as
-  shown, the place it's in and the glyph it wears. A thing is named by
+  shown, the place it's in and the mark it wears. A thing is named by
   its context's one term for it, the glossary's (`docs/glossary.md`), and
   that term is what finds it: there are no synonyms and no hidden words
   (Joel, 2026-10-25: "i don't want 1,000 synonyms for similar ideas").
@@ -1513,8 +1514,8 @@ works the same way everywhere.
   A to Z is only ever the last tie, or the order of many peers alike, as
   a large folder's files.
 - **Under what it belongs to, a step in.** A session orchestrated by
-  another sits right under it, its glyph and its name a glyph's column
-  in, so its glyph stands where the name above it starts, and two steps
+  another sits right under it, its mark and its name a mark's column
+  in, so its mark stands where the name above it starts, and two steps
   at most. No line, box or fold says so, and the selection keeps the
   whole row. An orchestration stands where its most urgent row would,
   and every list of sessions keeps one order of how they stand: needs
@@ -1524,7 +1525,7 @@ works the same way everywhere.
   its note ("under QX7RTA · ..."). An orchestrator's figure is its
   whole orchestration's ("$14 today in all"), its own and its sessions'
   inside it. A live session past 80% of its context says how full first
-  ("84% full · working · $4.20"), its glyph in the warning's hue, the
+  ("84% full · working · $4.20"), its mark in the warning's hue, the
   figure kept longest while room runs short and the money giving way
   before how it stands, since its drawer says the spend. Its drawer's
   first screen holds what matters of it, never only its title (Joel,
@@ -1551,7 +1552,7 @@ works the same way everywhere.
   management should be a universal concern with 1password being a
   particular implementation. same with agents"): a session's source is
   named only while two or more are on the machine, first in its note and
-  never in its name, its glyph the agent's mark whatever runs it; its
+  never in its name, its mark always the agent's, whatever runs it; its
   drawer's eyebrow always says it; typing a source's name finds its
   sessions; and an act its source can't do is absent, never dimmed.
   Its figures go by
@@ -2031,7 +2032,7 @@ works the same way everywhere.
 - **Copies stay in memory.** One program hears every copy for the session,
   text and pictures, and the desktop asks it for them, so none is written to
   disk, a picture's file sitting in the runtime directory, and none is kept
-  that a password manager marks secret. A copy's glyph says what it is:
+  that a password manager marks secret. A copy's mark says what it is:
   several lines, a link, an address, a path and a number each wear their
   own, plain text the clipboard's, and a picture a picture's. A picture's
   row is named by its size, and the picture itself shows in the drawer
@@ -2192,7 +2193,7 @@ works the same way everywhere.
   several files, Return takes the cursor row's file and answers, and
   :arga gathers the cursor row's file, or a range's, across folders, as
   Vim's argument list does (VKCF3Z's vi-paradigm spec, The File
-  Picker). A gathered row's glyph is the mark, in an act's hue, the one
+  Picker). A gathered row's mark is `marked`, in an act's hue, the one
   colour on its row, and Return then answers what's gathered, the foot
   saying how many ("↵ open 2"). :args steps into Gathered: the files,
   each with its folder, then Forget Them, then Copy the Paths, its plate
@@ -2437,7 +2438,7 @@ top beside a layer named as it is, the program stands for both, so one
 Neovim is listed.
 
 Nothing the desktop shows is reached only by pointing. Super+O opens Now,
-the margin's glyphs in words, and Super+N opens the notices in the
+the margin's marks in words, and Super+N opens the notices in the
 launcher, and closes it pressed again. While any wait on screen, it
 lists those alone, On Screen, in the order the arrival line takes them,
 the cursor on the one it shows, so j and k go through them and Return
@@ -2553,12 +2554,12 @@ the hairlines and the mode word start, as wide as the digits this place
 needs now and right-aligned in it, as Vim makes room only for the largest
 (Joel, 2026-11-06: "why leave constant room for three when we often have
 only 1?"): one figure on home in normal. A find holds the digits of the
-most rows it lists at opening and only grows within that find. The glyph
+most rows it lists at opening and only grows within that find. The mark
 column stays where three figures and a tie would put it, on every page and
-in every mode, so the spare room lies between the numbers and the glyphs,
-never before the numbers, and no page or mode moves a glyph or a name
+in every mode, so the spare room lies between the numbers and the marks,
+never before the numbers, and no page or mode moves a mark or a name
 sideways (Gutter.qml, Columns.js). The head's mark, its Title and what's
-typed stand on the rows' glyph and name columns. While a find narrows the
+typed stand on the rows' mark and name columns. While a find narrows the
 rows, the head keeps its count after what's typed: "/ Home slack · 3
 found". The status line says where the cursor stands ("1 of 3"), so the
 two never both read "of".
@@ -2809,11 +2810,11 @@ head, a hairline, the rows, a hairline, the status line; the arrival
 line's notice is the same card, on the same columns and inset.
 
 - **The head** is the card's one line for typing, a 48 band like the rows.
-  It draws nothing over the gutter in any mode. The place's glyph stands in
-  the rows' glyph cell and its Title over their names, home's too ("⌂ Home",
-  "Notices", "Time › Servers"). The glyph is its path's first place's,
+  It draws nothing over the gutter in any mode. The place's mark stands in
+  the rows' mark cell and its Title over their names, home's too ("⌂ Home",
+  "Notices", "Time › Servers"). The mark is its path's first place's,
   however deep it goes, so "Now › For You › Slack" wears Now's mark.
-  The mode's mark takes the glyph's cell while the mode lasts, centred by
+  The mode's mark takes the place's cell while the mode lasts, centred by
   its ink: the accent's `/` on the find,
   `:` on the command line (Joel, 2026-11-06: "we have an extra space in
   front of the launcher heading when in command mode that we don't have in
@@ -2824,7 +2825,7 @@ line's notice is the same card, on the same columns and inset.
   (Joel, 2026-11-06: "it is like a bumpy hill and a bit too chaotic"): the
   launcher's find has no bare ask, since the mark and the caret say to type,
   and a prompt keeps its particular one ("open which file?").
-- **The rows** are the launcher's: the gutter, the glyph, the name and its
+- **The rows** are the launcher's: the gutter, the mark, the name and its
   words, the side at the far end, each a band meeting the next, the cursor's
   ground filling its band. A row that holds more draws its mark muted, never
   in a rule's or the ground's colour, so it reads on the cursor, but for a
@@ -2856,8 +2857,8 @@ line's notice is the same card, on the same columns and inset.
   is the frame, its edge, radius and fill and the inset on every side, and
   Columns.js finds the gutter, the mark column and the text column from
   what stands in them (Joel, 2026-11-06: "they need to share more code and
-  UI/UX design to stop them from constantly drifting"). A glyph in the mark
-  column is followed by a mark (8), a picture, as music's 48 cover, by an
+  UI/UX design to stop them from constantly drifting"). A mark in the mark
+  column is followed by the mark rung (8), a picture, as music's 48 cover, by an
   apart (12). The arrival line's notice has no gutter, as Vim's
   `nonumber`, and is as wide as forty letters of Words beside its mark
   column. `every-card-is-the-one-card` fails on a surface that
@@ -3037,7 +3038,7 @@ Every choice comes with deep room to change it, and changing it never slows
 anything.
 
 - **Options, not edits.** What a surface shows, the order, each piece's tier,
-  its collapse rank, its threshold, its glyph and its colour role are
+  its collapse rank, its threshold, its mark and its colour are
   `jitsusama.*` options with documented defaults. The prompt's pieces, the
   launcher's foot, the margin mark, the editors' status lines, the boot
   splash's lines and every chord are lists that can be reordered, extended or
@@ -3046,7 +3047,7 @@ anything.
   it: pieces by name, so a machine changes one in a line or adds its own
   beside the rest, each with its `order`, its `tier` (`always`, `when` it's
   true, on `request`, or null to leave it out), its `collapse` rank (lowest
-  gives way first, null never), the theme glyph it wears while it's true as
+  gives way first, null never), the theme mark it wears while it's true as
   its `mark`, its `source` (a built-in piece by name, or a file of the same
   shape) and settings of its own, such as a format or a threshold. The
   built-in settings are defaults, so a machine's own win without a fight. The
@@ -3110,13 +3111,13 @@ background = "forest"
 black = "forest"
 bright_black = "sage"
 
-# Code's roles (keyword, string, comment and the rest), by pigment and style.
+# Code's colours (keyword, string, comment and the rest), by pigment and style.
 [syntax]
 string = "mint"
 comment = { pigment = "sage", italic = true }
 
 # The type scale's ratio and steps, the space scale's unit and steps, motion's
-# spring, curve and durations, and any glyph to change, as the theme module's
+# spring, curve and durations, and any mark to change, as the theme module's
 # options of the same names spell them.
 [type]
 ratio = "1.25"
@@ -3145,17 +3146,17 @@ The shades, `palette`, `colours` and `terminal` are required. Every other table
 falls back to the defaults the theme module carries, so a theme changes only
 what it means to.
 
-Code has nine roles, each falling back to a role of the theme's: `comment`
+Code has nine colours, each falling back to one of the theme's: `comment`
 (muted, in italics), `keyword` (strong), `punctuation` (muted), `operator`
 (text), `string` (success), `constant` (machine), `function` (program),
 `type` (voice) and `special` (person) for escapes, macros and attributes.
 Structure goes by brightness and meaning by a few hues, so most of a file
 reads as text, and the accent stays where the keys go. Neovim's colour scheme
 is drawn from them, and the legibility check holds each to 4.5:1 on the
-background and the sunken shade. Colours may carry alpha (`#rrggbbaa`). Roles always name a
+background and the sunken shade. Colours may carry alpha (`#rrggbbaa`). A colour always names a
 pigment, never a value, so changing one pigment recolours everything that
 means it. A pigment's name says what it looks like (jade, parchment, night),
-never what it's for, which is the role's job.
+never what it's for, which is the colour's job.
 
 **Bringing a theme in from elsewhere** is a translation into this format, done
 once by an agent and committed, so evaluation only ever reads one format.
@@ -3163,8 +3164,8 @@ There's no importer to maintain: the `translate-a-theme` skill, in
 `.agents/skills/`, guides an agent through it for whatever the source is
 (Omarchy's `colors.toml`, a base16 or base24 scheme, a kitty or Ghostty theme,
 an iTerm2 `.itermcolors`, a VS Code colour theme, a Neovim colour scheme, or a
-screenshot). It says how to name the pigments, how to choose each role and
-where the usual formats keep each colour, to mark every role that was a
+screenshot). It says how to name the pigments, how to choose each colour and
+where the usual formats keep each one, to mark every colour that was a
 judgement call with a comment, to run the legibility check, and to screenshot
 the result beside the source before calling it done.
 
@@ -3173,11 +3174,11 @@ the result beside the source before calling it done.
   colours and font, the greeter, the compositor, the desktop, the apps, the
   terminal, the editors and pi.
 - **Nothing names its own.** No surface names a colour or a font; it names a
-  role or a face. A check holds that across every module, listing each
+  colour or a face. A check holds that across every module, listing each
   remaining exception with the reason until it's gone.
 - **Legibility is a check.** Each theme's text pairs are measured for WCAG
   contrast as the machine is evaluated: 4.5:1 for every pair a surface draws
-  text in. The text roles are measured by APCA as well, which weighs how light
+  text in. The text colours are measured by APCA as well, which weighs how light
   the background is: on the background, sunken and deepest, text and strong
   need Lc 75, as body text does, and muted Lc 60. Each mark's hue needs Lc 45,
   as a fine mark does, on those grounds and on the selection as a floating
@@ -3216,9 +3217,9 @@ by them isn't done.
 | The greeter                               | Quickshell, greetd       | both           | the time, the date, who's signing in, the session it starts | a refused password, what PAM says | Tab to the next account | the lock screen's | the boot's timings; the time stays |
 | The compositor                            | niri                     | none           |        |        |           |         |          |
 | The wallpaper                             | Quickshell, niri         | none           |        |        |           |         |          |
-| Dictation                                 | dictation, Quickshell    | monospace      | nothing | while it listens, at the bottom centre in a meter's frame: a person speaking in the voice colour, listening, a wave of what the microphone hears, and the time, counting down the last five of Whisper's thirty seconds with the glyph in the warning colour; typing, once it lasts long enough to see; then for a moment heard nothing, still writing, or, with the muted microphone, the microphone is muted | nothing | Super+D starts and stops it | nothing; it's never in the margin, and never a notice while the shell watches |
-| The launcher's glance and the margin mark | Quickshell               | both           | the status line after its mark: the time, the date, the battery with its time and watts, the network, the volume, the day's AI spend, pi, each after its glyph | the battery running low, offline, a network wanting a sign-in, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
-| The launcher and palette                  | Quickshell               | monospace      | what's typed; the selected row: its glyph, its name, its kind or its chord; Return's verb at the foot's right | the foot's note: "sl is enough", the chord that opens a thing next time, where an answer came from | a thing's verbs, a collection's members and an answer's parts, a step in by Return | the accent frame, a command line over a list split by a hairline, centred on the screen | past eight rows the list scrolls, keeping the height it opened at; a note takes the glance's place in the foot |
+| Dictation                                 | dictation, Quickshell    | monospace      | nothing | while it listens, at the bottom centre in a meter's frame: a person speaking in the voice colour, listening, a wave of what the microphone hears, and the time, counting down the last five of Whisper's thirty seconds with the mark in the warning colour; typing, once it lasts long enough to see; then for a moment heard nothing, still writing, or, with the muted microphone, the microphone is muted | nothing | Super+D starts and stops it | nothing; it's never in the margin, and never a notice while the shell watches |
+| The launcher's glance and the margin mark | Quickshell               | both           | the status line after its mark: the time, the date, the battery with its time and watts, the network, the volume, the day's AI spend, pi, each after its mark | the battery running low, offline, a network wanting a sign-in, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
+| The launcher and palette                  | Quickshell               | monospace      | what's typed; the selected row: its mark, its name, its kind or its chord; Return's verb at the foot's right | the foot's note: "sl is enough", the chord that opens a thing next time, where an answer came from | a thing's verbs, a collection's members and an answer's parts, a step in by Return | the accent frame, a command line over a list split by a hairline, centred on the screen | past eight rows the list scrolls, keeping the height it opened at; a note takes the glance's place in the foot |
 | Notifications                             | Quickshell               | both           |        |        |           |         |          |
 | Menus and overlays                        | Quickshell               | both           |        |        |           |         |          |
 | The lock screen, polkit and PIN prompts   | Quickshell               | both           |        |        |           |         |          |
@@ -3228,16 +3229,16 @@ by them isn't done.
 | Documents                                 | zathura                  | proportional   | nothing | nothing | nothing | zathura's own keys | its bar and command line show only while they're asked for |
 | Music                                     | spotify, Quickshell      | both           | nothing | a note in the margin while any player plays; for a moment, the track as a notice | What's on: the track, artist, album and player; pause, next, previous, the player's window, and pausing a second player | Play or pause the music, Play the next track, Play the previous track, on the media keys | the mark carries no words; a title wraps to two lines, then gives way |
 | Pairing                                   | tuple, Quickshell, niri  | both           | nothing | a phone in the margin while in a call, and wanting Joel while one rings; for a moment, who joined or left, and that he's the only one left; a ring, and a missed call kept | What's on: how long, and who with or who's sharing; leave, share the screen, mute him in Tuple, copy the room's link; while ringing, show the call | the launcher's rows: show a ringing call, first at home; open the room and copy its link; join a copied call's link, first at home once copied; leave, share, mute; Tuple's Recent in Programs › Tuple, the last nine calls ended or missed, newest first, each by who, how long or missed, and when, a missed one's mark in the alert, its drawer saying each thing once (who rang whom where tuple-call saw it, with for two or more, then their addresses), Return going in and Call Them Again first inside; a tuple: link from the browser joins its room | the mark carries no words; What's on says how long and who with |
-| AI spend                                  | spend-watch, Quickshell  | both           | the launcher's foot: today's spend against usual ("$214 today · usual") | the margin's glyph while a finding wants a look: a cap near, over or refused, an override ending, a cap lowered or lapsed, a credential nobody knew spending, a source signed out, or the watch stopped or on hold; a notice once for each, at most three a week beside a cap's, and one line each morning | What's on: how it stands, the day's likely end, the week, and how the figures were got; go to the session, ask for more, sign in, it's expected, read the week's report, show where it went | the launcher's rows: "spend", "cap" and a report by its words ("spend last week by quest"), Return copying it as markdown and Ctrl+] going into its rows; Super+U opens the collection: what wants a look first, then today, each cap longer than a day and earlier, a day's cap behind today and the next seven days behind the week's cap, each a figure of a few words with the rest in the footer and its parts a step in (a period's cuts and their rows, a cap's changes and its sign-in), then what was found | the row gives way before the network; the mark carries no words; while sharing, every amount gives way and the words stay; a source that can't be read says nothing for its first fifteen minutes, as a machine waking finds its network, and no more than a note unless only a sign-in fixes it; a history a newer watch keeps, as when an older system boots again, is left as it is, the watch on hold and saying so until that one runs; a cap's allowance that changes for one reading and comes back says nothing, a change being told once it has stood ten minutes unless the cap warns or refuses at it, and a fall stops asking once the cap is back |
+| AI spend                                  | spend-watch, Quickshell  | both           | the launcher's foot: today's spend against usual ("$214 today · usual") | the margin's mark while a finding wants a look: a cap near, over or refused, an override ending, a cap lowered or lapsed, a credential nobody knew spending, a source signed out, or the watch stopped or on hold; a notice once for each, at most three a week beside a cap's, and one line each morning | What's on: how it stands, the day's likely end, the week, and how the figures were got; go to the session, ask for more, sign in, it's expected, read the week's report, show where it went | the launcher's rows: "spend", "cap" and a report by its words ("spend last week by quest"), Return copying it as markdown and Ctrl+] going into its rows; Super+U opens the collection: what wants a look first, then today, each cap longer than a day and earlier, a day's cap behind today and the next seven days behind the week's cap, each a figure of a few words with the rest in the footer and its parts a step in (a period's cuts and their rows, a cap's changes and its sign-in), then what was found | the row gives way before the network; the mark carries no words; while sharing, every amount gives way and the words stay; a source that can't be read says nothing for its first fifteen minutes, as a machine waking finds its network, and no more than a note unless only a sign-in fixes it; a history a newer watch keeps, as when an older system boots again, is left as it is, the watch on hold and saying so until that one runs; a cap's allowance that changes for one reading and comes back says nothing, a change being told once it has stood ten minutes unless the cap warns or refuses at it, and a fall stops asking once the cap is back |
 | The home network                          | eero, Quickshell         | both           | nothing | a notice once for each change while the daemon watches: the internet out and back, a node offline and back online, critical while out; a device new to the home network; a firmware update waiting and the nodes updated; an event eero lists that nothing else says; the access point in the margin, warning, and a line in Now while something ails (the internet down since when, a node offline) | Network › Home Network, its row's drawer saying how the home network stands ("via eero · network", a lead such as "Connected to the internet, last tested at 370 Mb/s down, with 3 nodes online and 15 devices on now.", then the internet's state, provider, speeds, test day, outages and nodes); inside, the internet as its head (how it stands, its internet provider, the last speed test and when, its side "connected · tested 370 Mb/s down", conferencing and gaming, outages, the nodes by state, the devices eero counts), its drawer served ready by the eero daemon ("via eero · internet"; the last speed test, its round trip, the nodes, outages, the public address and the newest thing that happened), its step in listing the rest (firmware and the day's traffic, this machine's looks at it sparked over the hour, each outage of 30 days, every speed test, its addressing, its settings and what happened to it), each node after the one its backhaul hangs from, its drawer served ready by the eero daemon (when it was last heard from, its backhaul, radios and ports, how busy each radio was over the hour, the devices on it and off it now, who joined and left it), heading a group of its own a beat from the one above, with its devices a step in under it, strongest first, each called by its name, nickname or hostname, this machine by its own hostname where eero knows none, else by its maker ("Intel device"), never by the maker eero shows as a name, each drawer served ready by the eero daemon (how well it's heard and its rates, sparked over the hour, what it is, what had to be sent again, its addresses, where it moved over the day and what happened to it), then the profiles, each drawer served ready by the eero daemon (what it blocks and allows, its schedules, its day's traffic sparked by the hour, each device in it and the node it's on); each a thing whose plate holds a glance, at most six of the figures eero's contract places there, and whose step in lists every one as rows Return copies, sparked where a history is kept | Run a Speed Test (:speedtest, Return twice) and Optimize for Conferencing and Gaming (:set sqm), rows inside the internet the eero daemon serves and does itself, saying eero's refusal in the foot where it refuses; the speed test's row says "testing" from Return until eero has its figures, at most 5 minutes; every node, device and profile found by its name, a device by its hardware address, hostname or address too | a row's note gives way at a whole word from its end; a plate lays its facts beside their names while all fit, else each under its name; a figure eero didn't give is left out, never guessed |
 | The work network                          | warp, Quickshell         | both           | nothing | the tunnel in the margin, warning, and a line in Now while it ails (down since when, degraded, connecting for over 30 s, WARP's service not answering, slow once 50 ms or more waits through it for a minute, until under 30 ms for half of one: "slow · 120 ms waiting"), gone within seconds of healing; a disconnect Joel chose says nothing | Network › Work Network, after the Home Network, its row saying "slow · 120 ms waiting" while slow, its drawer saying how work stands ("via WARP · tunnel", a lead such as "Connected to work for 3 h; a round trip takes 38 ms." or "Connected to work, slow for 4 min, with 120 ms waiting.", its figures, and warp-cli's own tunnel mode, organisation and reason in its nerdy bits, 2026-11-12); inside, how WARP's link stands, its health and round trips, Through: WARP last | Disconnect WARP and Connect WARP (:disconnect, :connect); found by work, warp, vpn and tunnel | a switch the organisation holds is left as it is, saying who holds it |
 | VMs                                       | libvirt, Quickshell      | both           | nothing | nothing | Programs › VMs, listed only while a VM exists on the session's connection or the system's: each machine by name, "system" after one on the system's, its state at the right in the launcher's words, never libvirt's (running, waiting, paused, powering off, off, crashed, asleep, unknown), the program's row counting them by state; its mark a cube's outline, never a screen's monitor; its plate, its eyebrow where then what, "on this machine · VM" or "on the system · VM", every figure dominfo gives (processor time and memory in use while it runs, processors, most memory, whether it starts with the machine, is kept when off, a saved state only where it has one, its security model and label only where it has one, never its DOI, messages, then ID and UUID), each size in decimal units from its bytes ("4.29 GB"), each a row a step in that Return copies, and in its words each figure dominfo left out, named with why ("Known only while it runs: Processor Time, Memory in Use and ID.") | by its state, Open the Console (:open, in virt-manager), Start It (:boot), Resume It (:resume, u pausing it again), Power It Off (:off, Return twice) and Force It Off (:forceoff, d, asking once); one on the system's says it asks for his password and is done only by his own Return | a figure dominfo leaves out is named as left out, never guessed; a state reads … until the launcher's opening has read it |
 | Chat, passwords, calls                    | their own settings       | proportional   |        |        |           |         |          |
 | The terminal                              | kitty                    | monospace      |        |        |           |         |          |
-| The prompt                                | prompt, kitty            | monospace      | where Joel is, told from the nearest root (the root in text, the folders between muted, the folder he's in strong); the glyph where his keys go, in the accent, red after a failure, # in gold as root | another machine, @ and its name; a rebase, merge or pick under way, a rebase drawn as its steps, red while a conflict waits; a development shell and jobs as glyphs; a long command's time; the branch, muted, then git's notation: * not staged, + staged, ? untracked, together, then ↑N ahead and ↓N behind, together, and nothing when clean and in step; over ssh in kitty, the window a little towards the machine hue | git status, and a wider window | nothing | laid out per prompt, never per keystroke: a long run's time, the shell's glyphs, the branch's middle, the path's middle, the branch to its glyph, the right side, then what's under way to its glyph; what gives way goes without a trace; the left keeps to a third of the window; zsh clears the right side once typing reaches it |
+| The prompt                                | prompt, kitty            | monospace      | where Joel is, told from the nearest root (the root in text, the folders between muted, the folder he's in strong); the mark where his keys go, in the accent, red after a failure, # in gold as root | another machine, @ and its name; a rebase, merge or pick under way, a rebase drawn as its steps, red while a conflict waits; a development shell and jobs as marks; a long command's time; the branch, muted, then git's notation: * not staged, + staged, ? untracked, together, then ↑N ahead and ↓N behind, together, and nothing when clean and in step; over ssh in kitty, the window a little towards the machine hue | git status, and a wider window | nothing | laid out per prompt, never per keystroke: a long run's time, the shell's marks, the branch's middle, the path's middle, the branch to its mark, the right side, then what's under way to its mark; what gives way goes without a trace; the left keeps to a third of the window; zsh clears the right side once typing reaches it |
 | Terminal programs                         | terminal-kit, each command's module | monospace | the answer on stdout, in the form `--format` asks for, as [Commands][commands] sets it | on stderr: a wait's line and meter, what changed, an error's three parts | `--help`, examples first; `--format json` for every fact | the shared flags, and zsh's completion for a command with subcommands | into a terminal a row's words give way, then its side, then its name at a whole word; into a pipe nothing gives way |
-| Neovim                                    | neovim                   | monospace      | the status line's one line at the bottom, on Neovim's own background: the file told from its root as the prompt tells a folder (the root in text, the folders between muted, the file strong), or a buffer's kind by name (help, terminal, quickfix, a plugin's window) | Vim's [+] while the buffer has edits not yet written, a padlock on a file that can't be changed; what git is in the middle of, drawn as the prompt draws it; the mode, in the accent, whenever it isn't Normal; what's selected, in lines or characters, or which match of a search; errors and warnings, each its mark and count; a language server at work; the agents' glyph while an agent is paired; the branch, muted, with the prompt's git notation; a tab line only with two tabs or more | the problems list, the outline, git's status | nothing | the language server's words, the branch's middle, the path's middle, the branch to its glyph, what's under way to its glyph, the path to the file's name, the right side but for the problems, then the name's own middle; what gives way goes without a trace |
-| pi                                        | its theme, its harness   | monospace      | the status line's one line at the bottom: where pi works, told from its root as the prompt tells a folder (the root in text, the folders between muted, the folder strong); the model, muted; context's mark and reading, and what the next turn costs | what git is in the middle of, drawn as the prompt draws it; how hard the model thinks, its mark in the level's colour and the word muted; each extension's mark while its state holds; the panel's height when it isn't the usual one; the session's total; the branch, muted, with the prompt's git notation | each mark's own command (`/guards`, `/jobs`), `/settings` | nothing | the total, the branch's middle, the path's middle, context to a share, the model to its short name, how hard it thinks, the branch to its glyph, what's under way to its glyph, the path to the folder's name, the model, then the name's own middle; the next turn's cost never; what gives way goes without a trace |
+| Neovim                                    | neovim                   | monospace      | the status line's one line at the bottom, on Neovim's own background: the file told from its root as the prompt tells a folder (the root in text, the folders between muted, the file strong), or a buffer's kind by name (help, terminal, quickfix, a plugin's window) | Vim's [+] while the buffer has edits not yet written, a padlock on a file that can't be changed; what git is in the middle of, drawn as the prompt draws it; the mode, in the accent, whenever it isn't Normal; what's selected, in lines or characters, or which match of a search; errors and warnings, each its mark and count; a language server at work; the agents' mark while an agent is paired; the branch, muted, with the prompt's git notation; a tab line only with two tabs or more | the problems list, the outline, git's status | nothing | the language server's words, the branch's middle, the path's middle, the branch to its mark, what's under way to its mark, the path to the file's name, the right side but for the problems, then the name's own middle; what gives way goes without a trace |
+| pi                                        | its theme, its harness   | monospace      | the status line's one line at the bottom: where pi works, told from its root as the prompt tells a folder (the root in text, the folders between muted, the folder strong); the model, muted; context's mark and reading, and what the next turn costs | what git is in the middle of, drawn as the prompt draws it; how hard the model thinks, its mark in the level's colour and the word muted; each extension's mark while its state holds; the panel's height when it isn't the usual one; the session's total; the branch, muted, with the prompt's git notation | each mark's own command (`/guards`, `/jobs`), `/settings` | nothing | the total, the branch's middle, the path's middle, context to a share, the model to its short name, how hard it thinks, the branch to its mark, what's under way to its mark, the path to the folder's name, the model, then the name's own middle; the next turn's cost never; what gives way goes without a trace |
 
 Where a surface can't take the design (web pages in a browser, a chat app's
 messages), the row says so, and what's themed is what can be reached. The
@@ -3310,9 +3311,9 @@ What each studio round settled, newest first, with the reason.
 
 - **Actions read apart from figures, and a figure draws its range in
   braille** (2026-10-24, at Joel's word: "it is hard to tell actions from
-  stats"). Every row wore a glyph in its kind's hue, so the battery's
-  health and Turn on do not disturb led the same way. Now the glyph says
-  the sort of row: an act its own in its hue, a row holding more its glyph
+  stats"). Every row wore a mark in its kind's hue, so the battery's
+  health and Turn on do not disturb led the same way. Now the mark says
+  the sort of row: an act its own in its hue, a row holding more its mark
   in the edge colour, and a figure none. In the approved spike graphs were
   drawn in braille, ten characters over a dim track of every dot, after
   block characters read as "too blocky"; the track shows a graph's ends
@@ -3336,13 +3337,13 @@ What each studio round settled, newest first, with the reason.
   line read as a mark of its own.
 
 - **The margin's marks are drawn, each in a square, and grow in What's
-  on** (2026-10-24, at Joel's word on the built glyphs: "the icons are super
+  on** (2026-10-24, at Joel's word on the built marks: "the icons are super
   small and feel very tight"; "everythng has to be symmetrical for my
   OCD"; "i want them to be inset from the right edge to where a maximal
   windows right edge should be and slightly inlayed from that"; "when i
   open what's on, they enlarge and overlay"). Measured on the laptop, the
   gap above the windows and the one beside them were both twelve pixels;
-  the glyphs looked tight because they filled the strip, two pixels off
+  the marks looked tight because they filled the strip, two pixels off
   each side, eight apart, and ended twenty pixels in, lining up with
   nothing. A taller gap would take room from every window, which he
   wouldn't give, so each mark got a square cell with the same room all
@@ -3351,7 +3352,7 @@ What each studio round settled, newest first, with the reason.
   and microphone cut a gap along one side of the slash, since one filled
   over the mark read as neither.
 
-- **The margin is glyphs alone, and the drawer goes** (2026-10-24, at
+- **The margin is marks alone, and the drawer goes** (2026-10-24, at
   Joel's word: "having a little square in my top right doesn't really let
   me know what is happening"; "having different width lines of a few
   colours does not tell me anything"; "every pixel of my screen is
@@ -3365,7 +3366,7 @@ What each studio round settled, newest first, with the reason.
   their font's own heights set off "my autism infused OCD", so each now
   stands the same height, inside the gap the windows already leave, since
   a taller gap would move every window. The third round, "it seems nice i
-  think", is what's built: glyphs alone, level, coloured only by how much
+  think", is what's built: marks alone, level, coloured only by how much
   each asks, with their words in the launcher's Now, a surface Joel
   already knows. A sixteen-pixel gap read better in the mock but cost
   every window four pixels, so twelve stays.
@@ -3375,7 +3376,7 @@ What each studio round settled, newest first, with the reason.
   dysfunction"; "i have an impossible time knowing what i'm looking at").
   Four ways of saying a row's kind were drawn at full size in the theme's
   own type: the kind at the right edge on every row, its chord moved to
-  the foot; the kind in a narrow column after the glyph; no kind, as
+  the foot; the kind in a narrow column after the mark; no kind, as
   before; and the kind at the right only on a thing's row. A column of
   kinds pushed every name right and read as a table, and no kind left
   "Slack" the program and "Slack" the window looking alike. A sentence
@@ -3393,7 +3394,7 @@ What each studio round settled, newest first, with the reason.
   small type, with a word before every value and dots between, was a
   second foot and a busy line, and took the hints' place. The foot is one
   line again: the keys on the right, the selection's note on the left, and
-  when it has none, the glance, each fact its glyph and the least that
+  when it has none, the glance, each fact its mark and the least that
   tells something, at the hints' size and step and all muted, the two
   crossfading; at Joel's word ("it needs to feel fucking polished ... and
   also not steal visual focus"; "feel free to reduce what it shows
@@ -3575,7 +3576,7 @@ What each studio round settled, newest first, with the reason.
   breadcrumbs, and couldn't draw the prompt's path or marks. The status line
   is now Neovim's own: the file told from its root as the prompt tells a
   folder, the mode as a word in the accent after it (where the prompt puts
-  its glyph, so nothing to its left moves), and on the right the branch,
+  its mark, so nothing to its left moves), and on the right the branch,
   muted, with the prompt's marks. Fields on the right are two spaces apart,
   a mark and its count one, so each count reads with its own mark. Git's
   state comes from git-engine, asked when something may have changed it,
@@ -3630,7 +3631,7 @@ What each studio round settled, newest first, with the reason.
   and a figure of a few words, its detail in the footer and its parts a
   step in, each fact once: a cap's dollars in its footer, the basis only
   when it's weaker than a bill. A finding that wants a look leads, since
-  the cursor starts there. The glyph says the kind of row: the dollar for
+  the cursor starts there. The mark says the kind of row: the dollar for
   how things stand, a trend line for what was found, a tick for what's
   expected, the chart for a report and the door for a sign-in. A source
   down a moment is nothing, since boots and wakes outpace the network.
@@ -3641,7 +3642,7 @@ What each studio round settled, newest first, with the reason.
   had spent by this hour, and reaches the margin only when a finding wants
   a look: a cap close or reached, a raise about to end, a burn. The daemon
   works out every string, the desktop draws them, and while the screen is
-  shared it draws a second set with no amounts. The glyph is a dollar sign
+  shared it draws a second set with no amounts. The mark is a dollar sign
   (md-currency-usd), plain where a console draws it. The chord is Super+U,
   for usage, since $ is a layer away on the ErgoDox. No sparkline:
   a row's words say whether today is usual, and the collection holds the
@@ -3769,7 +3770,7 @@ What each studio round settled, newest first, with the reason.
 - **The overview's status wears a halo** (2026-10-11). A card behind the
   status, mostly opaque, read well over the workspaces but was "the large
   block overlapping", and Joel asked for shadowing instead, letting text
-  and glyphs overlap with no opaque box. Of a card, the plain wallpaper
+  and marks overlap with no opaque box. Of a card, the plain wallpaper
   shadows and a halo, he chose the halo: twelve shadows centred on the
   letters, from 1 px to 40 px, each the deepest colour at 0.95.
 
@@ -3780,9 +3781,9 @@ What each studio round settled, newest first, with the reason.
   completes in place over a list, a hairline between them, the accent frame,
   and a cloudy surface that only hints at what's beneath. From it came the
   language above: one meaning per property, a kind for each sort of
-  surface, colour on glyphs only, chords drawn as glyphs, and glyphs leading
-  only the lines to act on. A glyph hanging over indented text, a badge
-  beside the block, a glyph at the end of its first line, a drop cap and a
+  surface, colour on marks only, chords drawn as marks, and marks leading
+  only the lines to act on. A mark hanging over indented text, a badge
+  beside the block, a mark at the end of its first line, a drop cap and a
   sender written into the border were all tried for notices and prompts,
   and each read as slightly off. What stayed: the padlock beside the dots,
   and a notice signed in its footer. Look 3's first gap (2026-11-03) gave
@@ -3806,7 +3807,7 @@ What each studio round settled, newest first, with the reason.
   wide and semi-wide widths, but lacks 1,579 characters the patched one has,
   among them every Braille pattern, which btop draws its graphs with, and
   those would fall back to another face. The variable font has neither the
-  icons nor anything the static faces lack but its width axis.
+  marks nor anything the static faces lack but its width axis.
 - **Muted text is sage, not Osaka Jade's own muted** (2026-10-10). Omarchy's
   muted measures 2.90:1 on the background, too faint to read, so muted text
   is its hue made just light enough to pass (4.52:1), and the original

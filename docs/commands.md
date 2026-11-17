@@ -140,12 +140,13 @@ Where there's ink, it's the theme's, read at each run from
 `~/.config/jitsusama/theme.json`, so a theme switch reaches every command
 without a rebuild:
 
-- **Roles, never colours.** A command names a role (text, strong, muted,
-  alert, warning, success, and the glyph kinds action, program, machine,
-  person and voice), never a colour or an ANSI number, as jj names labels.
+- **Colours, never values.** A command names a colour (text, strong, muted,
+  alert, warning, success, and the mark kinds action, program, machine,
+  person and voice), never a colour's value or an ANSI number, as jj
+  names labels.
   It's drawn in 24-bit colour where `COLORTERM` says the terminal draws
   it, kitty among them, and otherwise in the one of the terminal's sixteen
-  colours holding the role's pigment or near it, as the console and the
+  colours holding the colour's pigment or near it, as the console and the
   guide read a theme ([nearest.nix][nearest]).
 - **Colour goes on marks, never on text** ([Colour][colour]). Text keeps
   to text, strong and muted; a mark wears its kind's hue or its state's:
@@ -170,7 +171,7 @@ without a rebuild:
 ## How It Reads
 
 A terminal has one size and one face, so the [levels][levels] move onto
-the cues a cell has: weight, the colour roles, case, italic, and space
+the cues a cell has: weight, the colours, case, italic, and space
 counted in cells and lines. The launcher in a terminal (`launcher show`)
 was the first command set this way, and this generalises it.
 
@@ -492,7 +493,7 @@ It gives:
 - the shared flags (`--format`, `--json`, `--color`, `-h`, `--help`,
   `--version`), taken from the arguments before the command reads the
   rest its own way;
-- the ink decision above for each stream, and the theme's roles and marks;
+- the ink decision above for each stream, and the theme's colours and marks;
 - help set in the levels from what the command declares, and the same
   declaration as JSON for the check;
 - tables and lists set to How It Reads, fitting the width and giving way;
