@@ -5215,13 +5215,16 @@ Scope {
         const near = open && !prompt.keyMoved && ago < keyedWithin;
         // A source's change to rows the launcher doesn't show, its own
         // while a step below one is held (Provider.qml's changedUnseen),
-        // is taken at the pace and timed as no key's.
-        const byKey = near && !source.changedUnseen
-            && Pacing.keyed(ago, prompt.keyMoved, keyedWithin, onScreen(source));
+        // is one to a place none of whose rows are on screen, as Pacing
+        // has it.
+        const unseen = source.changedUnseen === true;
+        const byKey = near
+            && Pacing.keyed(ago, prompt.keyMoved, keyedWithin, !unseen && onScreen(source));
         // One just past it is said, so a key's change left to the pace is
-        // seen for what it was.
+        // seen for what it was, and one drawn nowhere says so.
         if (open && !byKey && !prompt.keyMoved && ago < 1000)
-            Report.say(`heard ${source.settings.name} ${Math.round(ago)} ms after a key's work`);
+            Report.say(`heard ${source.settings.name} ${Math.round(ago)} ms after a key's work`
+                + (unseen ? ", none of it shown" : ""));
         // What moved, as its source says or the launcher refreshed it for
         // (Pacing.movedFor), each telling for the key in turn.
         const told = keyedActs.find(one => one.source === source && one.heard === keyHeardAt);

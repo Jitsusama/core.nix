@@ -1417,22 +1417,58 @@ ShellRoot {
         // For You held, one of Now's other rows moving is drawn nowhere,
         // so it's no key's act: a session's work turning just after Return
         // was timed as Return's (the niri case, 16 November).
+        const another = { key: "on:another", name: "Another" };
+        const said = (name, changes, unseen) => expect(name,
+            root.nowChanged === changes && root.nowUnseen === unseen,
+            JSON.stringify([root.nowChanged, root.nowUnseen]));
+        const forYouAs = made => now.everything().map(row => row.key === "on:waitingOnYou"
+            ? Object.assign({}, row, made) : row);
         theLauncher.held = into(now.waiting.verbs());
         now.changedTo(now.everything());
         root.nowChanged = 0;
-        now.changedTo(now.everything().concat([{ key: "on:another", name: "Another" }]));
-        expect("For You held, another of Now's rows moving says none of it is shown",
-            root.nowChanged === 1 && root.nowUnseen, JSON.stringify([root.nowChanged,
-                root.nowUnseen]));
+        now.changedTo(now.everything().concat([another]));
+        said("For You held, another of Now's rows moving says none of it is shown", 1, true);
         expect("and nothing once said", !now.changedUnseen, "it stayed unseen");
-        now.changedTo(now.everything().map(row => row.key === "on:waitingOnYou"
-            ? { key: row.key, name: "For You Renamed", verbs: () => [] } : row));
-        expect("but For You itself moving is shown", root.nowChanged === 2 && !root.nowUnseen,
-            JSON.stringify([root.nowChanged, root.nowUnseen]));
+        now.changedTo(forYouAs({ name: "For You Renamed" }));
+        said("but For You's own line moving is shown", 2, false);
         now.changedTo(now.everything());
-        expect("as is For You put back",
-            root.nowChanged === 3 && !root.nowUnseen, JSON.stringify([root.nowChanged,
-                root.nowUnseen]));
+        said("as is For You put back", 3, false);
+        now.changedTo(forYouAs({ verbs: () => [] }));
+        said("and what For You holds moving, its own line the same", 4, false);
+        now.changedTo(now.everything());
+        // A held row gone from the rows is never unseen, since what the
+        // launcher draws for it can't be read: Windows' agents' fold isn't
+        // among its things, and its keys' acts went untimed.
+        now.changedTo(now.everything().filter(row => row.key !== "on:waitingOnYou"));
+        said("For You gone from Now's rows is shown", 6, false);
+        now.changedTo(now.everything().filter(row => row.key !== "on:waitingOnYou")
+            .concat([another]));
+        said("and so is a change after, while it's still gone", 7, false);
+        // Stepping, what For You holds is compared with what the launcher
+        // made as it stepped, and its own line with what it read before.
+        theLauncher.held = [];
+        now.changedTo(now.everything());
+        root.nowChanged = 0;
+        theLauncher.held = into(now.waiting.verbs());
+        now.changedTo(now.everything().concat([another]));
+        said("stepped into For You, another row moving says none of it is shown", 1, true);
+        theLauncher.held = [];
+        now.changedTo(now.everything());
+        root.nowChanged = 0;
+        theLauncher.held = into(now.waiting.verbs());
+        now.changedTo(forYouAs({ name: "For You Renamed" }).concat([another]));
+        said("but For You's own line moving as it's stepped into is shown", 1, false);
+        theLauncher.held = [];
+        now.changedTo(now.everything());
+        root.nowChanged = 0;
+        theLauncher.held = into([]);
+        now.changedTo(now.everything().concat([another]));
+        said("as is what it holds differing from what the launcher made", 1, false);
+        theLauncher.held = [];
+        now.changedTo(now.everything());
+        root.nowChanged = 0;
+        now.changedTo(now.everything().concat([another]));
+        said("with nothing held, any row moving is shown", 1, false);
         theLauncher.held = [];
         Facts.all = [];
         Notices.history = [];
