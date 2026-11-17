@@ -134,6 +134,21 @@ in
           example = 12000;
           description = "What the network's line carries up, in kbit/s.";
         };
+        options.most = lib.mkOption {
+          # Under 4 Mb/s a value is most likely written in Mb/s, and one
+          # that low starves agents' lane, as the shaper's trials refuse.
+          type = lib.types.nullOr (lib.types.ints.between 4000 10000000);
+          default = null;
+          example = 9500;
+          description = ''
+            The most the upload is held to on this network, in kbit/s,
+            probes included, or null for no ceiling. Set it under a router
+            that shapes the upload itself, a little under that router's
+            rate, so the queue stands here, where Joel's traffic goes
+            first, rather than in the router's. A trial may hold it lower,
+            never higher.
+          '';
+        };
       }
     );
     default = { };

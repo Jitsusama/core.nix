@@ -2607,7 +2607,7 @@ mod tests {
             Some(12_000.0),
             "the ceiling was learned as the line"
         );
-        assert!(c.why().contains("a trial's ceiling"), "{}", c.why());
+        assert!(c.why().contains("held at its ceiling"), "{}", c.why());
         c.up.tune(Tuning::default());
         let limits = run_flow_queued(&mut c, 150.0, 210.0, 12_000.0);
         assert!(near(limits, 11_400.0), "not back at the line: {limits:?}");

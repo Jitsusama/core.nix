@@ -539,8 +539,15 @@ fn start(
     let network = network_of(&uplink);
     let mut held = FIRST;
     // A network whose line is declared starts at its hold, as its stay in
-    // the one-way controller does (src/oneway.rs).
-    if let Some(up) = networks.and_then(|path| networks::hold(&networks::anchors(path), &network)) {
+    // the one-way controller does (src/oneway.rs), under its ceiling.
+    let hold = |path: &Path| {
+        networks::hold(
+            &networks::anchors(path),
+            &networks::ceilings(path),
+            &network,
+        )
+    };
+    if let Some(up) = networks.and_then(hold) {
         held.up = up;
     }
     let max = ceiling(&uplink.name);
@@ -773,6 +780,13 @@ fn started_live(options: &Options) -> live::Live {
             .networks
             .as_deref()
             .map(networks::anchors)
+            .unwrap_or_default(),
+    );
+    live.ceil(
+        options
+            .networks
+            .as_deref()
+            .map(networks::ceilings)
             .unwrap_or_default(),
     );
     live
