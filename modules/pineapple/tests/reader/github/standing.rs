@@ -521,7 +521,8 @@ fn github_a_repository_that_cant_be_read_is_asked_and_told_of_once_in_a_round() 
     assert_eq!(
         each(&decisions(&home), "verdict"),
         ["waved:outsider", "waved:outsider"],
-        "only Joel counts where the repository can't be read"
+        "collaborators' stops on what Joel didn't open are an outsider's where the repository \
+         can't be read"
     );
     let asked: &Mutex<Vec<String>> = &asked;
     let asked = asked.lock().expect("what was asked").clone();
@@ -532,8 +533,8 @@ fn github_a_repository_that_cant_be_read_is_asked_and_told_of_once_in_a_round() 
     assert_eq!(times, 1, "its repository was asked about once: {asked:?}");
     let said = journal(&home);
     let warning = "<4>GitHub answered 404 for /repos/example/shop: Not Found, \
-                   so a stop there by anyone but Joel, on what he didn't open, \
-                   is only logged and never judged again";
+                   so a stop there by anyone but Joel counts this round \
+                   only on what he opened";
     let told = said.lines().filter(|line| *line == warning).count();
     assert_eq!(
         told, 1,

@@ -686,8 +686,8 @@ fn joel_works_in(
         // Unreadable, it's one he doesn't work in; his own words still count.
         Err(Unread::Gone(why)) => {
             eprintln!(
-                "<4>{why}, so a stop there by anyone but Joel, on what he didn't open, \
-                 is only logged and never judged again"
+                "<4>{why}, so a stop there by anyone but Joel counts this round \
+                 only on what he opened"
             );
             false
         }
