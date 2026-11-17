@@ -2862,7 +2862,8 @@
   secret-asks-keeps-the-item-to-its-yes = ''
     a yes releases the one item to the checker alone, which says its length and never the value;
     an ask for another item reads nothing and draws no row; a yes for a line that changed since it
-    was drawn is refused and drawn again; a yes while locked reads nothing; and a no refuses
+    was drawn is refused and drawn again; a yes while locked reads nothing; a yes past the ask's
+    wait ends it as unanswered and tells its watchers; and a no refuses
   '';
   secret-asks-passes-clippy = ''
     clippy finds nothing in the secret-asks daemon or its tests
@@ -3238,13 +3239,18 @@
   the-asks-say-how-long-each-was-shown = ''
     a yes says how long since its line's frame reached the screen this opening, counted from the
     first and again from a changed line's, and says no time for a line never presented, for the
-    line as it was or for another ask's, so the daemon refuses it unread; while the launcher is
-    walked from outside a yes is stamped as nothing to send; a no is sent as served
+    line as it was or for another ask's, so the daemon refuses it unread; a line is timed from its
+    first frame only when Joel's key brought the place on screen, and otherwise from the first key
+    that moves through it, typing starting the time again and Return never starting it; while the
+    launcher is walked from outside a yes is stamped as nothing to send; a no is sent as served
   '';
   the-asks-say-how-long-each-was-shown-over-passwords = ''
     over Passwords' connection, a first Return on an ask only arms, a yes says how long since a
     frame presented its line selected, noted again as the launcher reopens on it, a changed line
-    says no time until presented, and a yes walked from outside the launcher is never sent
+    says no time until presented, a launcher opened from outside times nothing until Joel's key
+    moves, typing starts the time again and Return never starts it, a withheld yes says why, the
+    entries told over the connection leave the asks' rows be, and a yes walked from outside the
+    launcher is never sent
   '';
   the-asks-place-releases-through-its-daemon = ''
     the launcher's Asks lists what the secret-asks daemon serves, For You holds each waiting ask,
@@ -4905,7 +4911,8 @@
   vm-desktop-answers-secret-asks = ''
     the passwords daemon the shell runs answers an agent's secret ask drawn in the launcher's Asks:
     Joel's Return twice releases the stand-in value into the one command asked for, which no
-    journal holds, his r refuses it, and a yes walked through the launcher's IPC releases nothing
+    journal holds, his r refuses it, a launcher opened from outside takes no yes until his key
+    moves, and a yes walked through the launcher's IPC releases nothing
   '';
   vm-desktop-captures = ''
     the desktop takes a screen, a window, a region, a recording and the camera's pictures and
