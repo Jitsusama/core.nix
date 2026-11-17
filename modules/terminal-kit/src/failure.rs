@@ -144,6 +144,9 @@ pub struct Failure {
     /// in place of its exit's (docs/commands.md, A stand-in passes
     /// through).
     pub passed: Option<u8>,
+    /// Whether the command said it already, as it went, so the kit ends
+    /// with its code and says nothing more.
+    pub said: bool,
 }
 
 impl Failure {
@@ -156,6 +159,7 @@ impl Failure {
             then: None,
             chain: Vec::new(),
             passed: None,
+            said: false,
         }
     }
 
@@ -188,6 +192,17 @@ impl Failure {
     #[must_use]
     pub fn try_this(mut self, then: impl Into<String>) -> Self {
         self.then = Some(then.into());
+        self
+    }
+
+    /// The same, said already: the command said why on stderr as it went,
+    /// in the words it goes by, so the kit only ends with its code. It's
+    /// for a daemon whose ending is its unit's sign, as a lender's
+    /// handing over to its successor is, which an error line in the
+    /// journal would count as a failure at every switch.
+    #[must_use]
+    pub fn said_already(mut self) -> Self {
+        self.said = true;
         self
     }
 

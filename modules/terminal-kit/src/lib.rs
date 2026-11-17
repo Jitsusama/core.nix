@@ -312,7 +312,9 @@ fn failed(context: &Context, environment: &Environment, failure: &Failure) -> En
         .iter()
         .take(context.own)
         .any(|arg| arg == "--verbose" || arg == "-v");
-    let said = if context.shared.format.is_json() {
+    let said = if failure.said {
+        String::new()
+    } else if context.shared.format.is_json() {
         format!("{}\n", failure.json(verbose))
     } else {
         for_the_journal(
@@ -611,6 +613,22 @@ mod tests {
             ending.stderr,
             "<3>\u{2715} no such row\n<3>  try  thing go\n"
         );
+    }
+
+    #[test]
+    fn a_failure_said_already_ends_with_its_code_and_says_nothing_more() {
+        let mut journal = Environment::of([false; 3], &[]);
+        journal.journal = true;
+        for environment in [Environment::of([false; 3], &[]), journal] {
+            let ending = run(&help(), "1.0", &environment, vec!["go".to_owned()], |_| {
+                Err(Failure::new(Exit::TryAgain, "it handed over").said_already())
+            });
+            assert_eq!(
+                (ending.code(), ending.stderr.as_str()),
+                (75, ""),
+                "a failure the command said as it went was said again"
+            );
+        }
     }
 
     #[test]
