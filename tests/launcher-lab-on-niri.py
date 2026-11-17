@@ -57,6 +57,10 @@ ROUNDS = 10
 # How many windows are open as it runs, so Windows has rows to make.
 WINDOWS = 4
 
+# How long the first opening waits for the shell to say it drew the card ahead, in seconds:
+# two frames or a second at most once home is kept, with room for a loaded builder.
+PRIMED_S = 5
+
 # How many notices are on screen as it runs, when it times Super+N's opening ("notices").
 NOTICES = 3
 
@@ -154,7 +158,22 @@ def test_each_chord_opening_is_timed(shell: Shell, capsys: pytest.CaptureFixture
     # blurred since he logged in, so his openings never pay it. Its shell's own part is his,
     # though: the first opening since the shell started took 47 and 58 ms on his laptop, 19
     # and 24 of it drawing, where later ones drew in 1 to 4 (2026-11-16 and 17). So it's
-    # printed with the shell's line for it, the first's drawing beside the second's.
+    # printed with the shell's line for it, the first's drawing beside the second's, once the
+    # shell has drawn the card ahead, or after a few seconds where it doesn't, with how it did.
+    primed = "unsaid"
+    giving_up = time.monotonic() + PRIMED_S
+    while primed == "unsaid" and time.monotonic() < giving_up:
+        primed = next(
+            (
+                line.split("qml: ", 1)[-1]
+                for line in shell.log.read_bytes().decode(errors="replace").splitlines()
+                if "launcher: the card was drawn before" in line
+            ),
+            "unsaid",
+        )
+        time.sleep(launcher_on_niri.POLL)
+    with capsys.disabled():
+        print(f"lab-first {os.environ.get('LAB_RUN', '')} primed: {primed}", flush=True)
     first = shell.mark()
     opening = opened(shell, "home")
     shell.close_launcher()

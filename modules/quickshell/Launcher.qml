@@ -10384,11 +10384,14 @@ Scope {
     // The frames swapped since priming began: the second has the card.
     property int primedFrames: 0
 
-    function primeEnd() {
+    // Ends priming, saying `how` it ended, so a first opening that still
+    // draws long can be told from one the drawing didn't reach.
+    function primeEnd(how) {
         primeOver.stop();
         if (!priming) {
             return;
         }
+        console.info(`launcher: the card was drawn before its first opening, ${how}`);
         primeEnding = true;
         try {
             priming = false;
@@ -10401,7 +10404,7 @@ Scope {
     // anyway, and its closing must fall all the way to clear.
     onCardUpChanged: {
         if (cardUp)
-            primeEnd();
+            primeEnd("cut short by an opening");
     }
 
     // Priming ends after a second even with no frame swapped, as when
@@ -10409,7 +10412,7 @@ Scope {
     Timer {
         id: primeOver
         interval: 1000
-        onTriggered: root.primeEnd()
+        onTriggered: root.primeEnd(`for a second, ${root.primedFrames} frames swapped`)
     }
     property real warmedTook: 0
     // Where the pass's time went between its turns, said as it ends: at a
@@ -10504,7 +10507,10 @@ Scope {
         }
         keepHome();
         warmingDone = true;
-        if (!cardUp && parting === "") {
+        // Not after a parting word, whose fade would carry the card's
+        // rise and fall past primeEnding's guard, and which was drawn as it
+        // opened anyway.
+        if (!cardUp && parting === "" && !fading) {
             primedFrames = 0;
             priming = true;
             primeOver.restart();
@@ -12042,15 +12048,20 @@ Scope {
         }
 
         // Priming ends on the second frame swapped, since the first may
-        // have been under way before the card was asked for.
+        // have been under way before the card was asked for. The second is
+        // asked for, so a desktop drawing nothing else still gets it rather
+        // than waiting out primeOver.
         Connections {
             target: card.Window.window
             enabled: root.priming
 
             function onFrameSwapped() {
                 root.primedFrames += 1;
-                if (root.primedFrames >= 2)
-                    root.primeEnd();
+                if (root.primedFrames >= 2) {
+                    root.primeEnd(`in ${root.primedFrames} frames`);
+                } else {
+                    card.Window.window.update();
+                }
             }
         }
 

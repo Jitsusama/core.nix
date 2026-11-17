@@ -131,6 +131,13 @@ ROWS_DOWN = 3
 WARMED_SAID = "places kept as the shell started"
 WARMED = timedelta(seconds=20)
 
+# What the shell says once it has drawn the card, unseen, as the pass ends (Launcher.qml's
+# primeEnd), and how it says the drawing ended when two frames were swapped. The fixture's
+# shell has kept home by then, and the drawing takes two frames, or a second at most.
+PRIMED_SAID = "launcher: the card was drawn before its first opening"
+PRIMED_BY_FRAMES = "in 2 frames"
+PRIMED = timedelta(seconds=10)
+
 # How long after a start every source here has first answered: what warming once waited out by
 # beginning at 6 s. The restart case passed waiting 5 s past home kept (2026-11-12), but on a
 # gate's loaded builder Networks, Traffic and Displays answered later still, so past it the
@@ -284,6 +291,32 @@ def settled(shell: Shell) -> Json:
     """Wait until the launcher's rows have held still, and give the rows it shows then."""
     assert shell.held_still(), "the launcher never held still after it opened"
     return cast("Json", shell.showing()["seen"])
+
+
+def test_the_card_is_drawn_before_its_first_opening(shell: Shell) -> None:
+    """The card is drawn once, unseen, as home is kept, so its first opening isn't Qt's first.
+
+    Clear, Qt Quick skips the card's whole tree, so the first opening since the shell started
+    made its shaders, glyphs and batches: Joel's drew in 19 and 24 ms where later ones drew in 1
+    to 4 (2026-11-16 and 17), and the lab on OpenGL in 100 and 72 (2026-11-17). It's drawn on
+    two frames swapped, the second asked for, rather than by waiting out its second. First here,
+    since any opening ends the drawing.
+    """
+    assert openings(shell) == [], "the launcher was opened before the test opened it"
+    deadline = time.monotonic() + PRIMED.total_seconds()
+    while not (
+        said := [
+            line
+            for line in shell.log.read_bytes().decode(errors="replace").splitlines()
+            if PRIMED_SAID in line
+        ]
+    ):
+        assert time.monotonic() < deadline, (
+            f"the card wasn't drawn before its first opening:\n{shell.tail()}"
+        )
+        time.sleep(launcher_on_niri.POLL)
+    assert len(said) == 1, f"the card was drawn ahead more than once: {said}"
+    assert PRIMED_BY_FRAMES in said[0], f"the card's drawing didn't end on its frames: {said}"
 
 
 def test_the_first_opening_after_a_start_is_drawn_from_home_kept_as_it_started(
