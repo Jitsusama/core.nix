@@ -94,7 +94,7 @@ pub const FENCE_LIST: &str = r#"{
   "npmrc": ".npmrc",
   "emptied": [
     {"path": ".docker/config.json",
-     "when": ["auths", "credsStore", "credHelpers", "HttpHeaders", "proxies"]},
+     "when": ["auths", "credsStore", "HttpHeaders", "proxies"]},
     {"path": ".kept-settings.json", "when": ["auths"]}
   ]
 }"#;

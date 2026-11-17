@@ -80,17 +80,12 @@ fn field<'a>(settings: &'a Map<String, Value>, name: &str) -> Option<&'a Value> 
 mod tests {
     use super::*;
 
-    /// Docker's settings, as the harness's list names them.
+    /// Docker's settings, as the harness's list names them: not
+    /// credHelpers, which only names a helper program.
     fn docker() -> Vec<String> {
-        [
-            "auths",
-            "credsStore",
-            "credHelpers",
-            "HttpHeaders",
-            "proxies",
-        ]
-        .map(String::from)
-        .to_vec()
+        ["auths", "credsStore", "HttpHeaders", "proxies"]
+            .map(String::from)
+            .to_vec()
     }
 
     #[test]
@@ -112,6 +107,7 @@ mod tests {
             r#"{"auths": {"registry.example": {"email": "joel@example"}}}"#,
             r#"{"auths": {}, "credsStore": "", "HttpHeaders": {}, "detachKeys": "ctrl-p"}"#,
             r#"{"proxies": {"default": {"httpProxy": "http://proxy.example:3128"}}}"#,
+            r#"{"credHelpers": {"registry.example": "ecr-login"}}"#,
         ] {
             assert!(
                 !empties(text, &docker()),
@@ -125,7 +121,6 @@ mod tests {
         for text in [
             r#"{"credsStore": "secretservice"}"#,
             r#"{"CREDSSTORE": "secretservice"}"#,
-            r#"{"credHelpers": {"registry.example": "ecr-login"}}"#,
             r#"{"HttpHeaders": {"Authorization": "Bearer made-up"}}"#,
             r#"{"proxies": {"default": {"httpsProxy": "http://joel:made-up@proxy.example"}}}"#,
         ] {
