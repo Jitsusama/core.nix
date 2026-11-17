@@ -367,6 +367,11 @@ fn borrow(config: &Config, hosted: &Hosted, account: &Account) -> Result<(), Fai
 /// own, as the last ask's main is there: a git that checks only what a
 /// fetch adds to the refs it moves then walks back to that, not through
 /// every ref, which in a large repository took 2 minutes rather than 10 s.
+/// It writes no commit graph, whatever the checkout's config says: writing
+/// one walks every ref, so a side branch missing an old commit failed each
+/// fetch of a main that needs nothing from it. Its negotiation, its check
+/// that what came is whole, and the maintenance it starts all put up with
+/// such a branch; only the graph's write failed the fetch.
 fn fetch(config: &Config, hosted: &Hosted, account: &Account) -> Result<(), Failure> {
     git::retried(&git::FETCH_AGAIN, std::thread::sleep, || {
         let mut command = run::command_as("git".as_ref(), account, &hosted.path, &hosted.checkout);
@@ -375,6 +380,8 @@ fn fetch(config: &Config, hosted: &Hosted, account: &Account) -> Result<(), Fail
             command,
             "fetching main into the checkout",
             [
+                "-c",
+                "fetch.writeCommitGraph=false",
                 "fetch",
                 "--quiet",
                 "--no-tags",
