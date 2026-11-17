@@ -24,12 +24,12 @@ if TYPE_CHECKING:
 PROBE = Path(os.environ["WEB_SKILL"]) / "homes.js"
 CODE = {"path": "code/", "homes": ["repository"]}
 MACHINES = {"path": "mycelium/", "homes": [{"kind": "machine", "address": "#machine={name}"}]}
-DOTFILES = {
+NOTEBOOK = {
     "kind": "repository",
-    "key": "github:example/dotfiles",
-    "name": "example/dotfiles",
-    "names": ["dotfiles"],
-    "address": "code/#repo=example%2Fdotfiles",
+    "key": "github:example/notebook",
+    "name": "example/notebook",
+    "names": ["notebook"],
+    "address": "code/#repo=example%2Fnotebook",
 }
 NOTHING = "<p>Nothing named.</p>"
 
@@ -87,12 +87,12 @@ def test_a_pattern_learns_names_from_links(browser: Browser, tmp_path: Path) -> 
         "</blockquote> <code>quoted</code></li>"
         '<li><a href="/mycelium/#machine=deep&amp;view=x">d</a> <code>deep</code></li></ul>'
         '<svg><a href="/mycelium/#machine=drawn"><text>drawn</text></a></svg>'
-        "<p>And <code>drawn</code> too.</p><p>See <code>dotfiles</code>.</p>"
+        "<p>And <code>drawn</code> too.</p><p>See <code>notebook</code>.</p>"
     )
-    assert probed(browser, tmp_path, [CODE, MACHINES], page, code=[DOTFILES]) == [
+    assert probed(browser, tmp_path, [CODE, MACHINES], page, code=[NOTEBOOK]) == [
         unlinked("studio", "Then studio idles.", "machine", "mycelium/#machine=studio"),
         unlinked("drawn", "And drawn too.", "machine", "mycelium/#machine=drawn"),
-        unlinked("dotfiles", "See dotfiles.", "repository", "code/#repo=example%2Fdotfiles"),
+        unlinked("notebook", "See notebook.", "repository", "code/#repo=example%2Fnotebook"),
     ]
 
 
@@ -114,7 +114,7 @@ def test_what_the_reader_drops_is_named(browser: Browser, tmp_path: Path) -> Non
         {"path": "odd/", "homes": [{"kind": "tag", "address": "#tag=%zz{name}"}]},
     ]
     stray = {"kind": "repository", "name": "stray", "address": "/elsewhere/#x"}
-    assert probed(browser, tmp_path, sites, NOTHING, code=[DOTFILES, stray]) == [
+    assert probed(browser, tmp_path, sites, NOTHING, code=[NOTEBOOK, stray]) == [
         (
             'code/homes.json gives stray "/elsewhere/#x": '
             "an address is code/ and a fragment (#), in plain bytes"
@@ -158,16 +158,16 @@ def test_no_row_home_to_anything_is_a_fault(browser: Browser, tmp_path: Path) ->
 def test_a_shortened_names_tail_is_no_mention(browser: Browser, tmp_path: Path) -> None:
     """The tail after an ellipsis is part of a name cut short; a name before one counts."""
     page = (
-        '<ul><li data-home="code/#repo=example%2Fdotfiles">'
-        "<code>example/dotfiles</code></li></ul>"
-        "<p><code>long.name\u2026dotfiles</code></p>"
-        "<p>Then <code>dotfiles\u2026</code> trails off.</p>"
+        '<ul><li data-home="code/#repo=example%2Fnotebook">'
+        "<code>example/notebook</code></li></ul>"
+        "<p><code>long.name\u2026notebook</code></p>"
+        "<p>Then <code>notebook\u2026</code> trails off.</p>"
     )
-    assert probed(browser, tmp_path, [CODE], page, code=[DOTFILES]) == [
+    assert probed(browser, tmp_path, [CODE], page, code=[NOTEBOOK]) == [
         unlinked(
-            "dotfiles",
-            "Then dotfiles\u2026 trails off.",
+            "notebook",
+            "Then notebook\u2026 trails off.",
             "repository",
-            "code/#repo=example%2Fdotfiles",
+            "code/#repo=example%2Fnotebook",
         ),
     ]
