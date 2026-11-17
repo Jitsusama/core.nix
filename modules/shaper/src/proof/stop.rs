@@ -1,7 +1,8 @@
 //! How a proof stops and puts the shaper back: a signal heard as a stop
 //! by every thread, progress said without dying when nothing reads it,
-//! and the shaper's own state kept on disk until it's back, so a proof
-//! killed outright leaves the next one what it found.
+//! and the shaper's own state kept on disk until it's back, so a keeper
+//! beside a proof killed outright, or failing that the next proof, puts
+//! it back as the killed one found it.
 
 use std::fs;
 use std::io::Write;
@@ -24,16 +25,20 @@ extern "C" fn heard(_: libc::c_int) {
     }
 }
 
-/// Hears SIGTERM, SIGINT and SIGHUP as a stop, so the proof puts the
-/// shaper back as it was and ends its load before it exits, where it
-/// would otherwise die with the shaper off and the uploads going on. A
-/// signal already ignored, as nohup ignores SIGHUP, stays ignored.
+/// The signals heard as a stop.
+pub const STOPS: [libc::c_int; 4] = [libc::SIGTERM, libc::SIGINT, libc::SIGHUP, libc::SIGTSTP];
+
+/// Hears SIGTERM, SIGINT, SIGHUP and SIGTSTP as a stop, so the proof puts
+/// the shaper back as it was and ends its load before it exits, where it
+/// would otherwise die with the shaper off and the uploads going on, or,
+/// at a Ctrl-Z, sleep while they go on. A signal already ignored, as
+/// nohup ignores SIGHUP, stays ignored.
 pub fn hear_stops() {
     // SAFETY: the handler only touches an atomic and calls write(2), and
     // a disposition put back as it was found is no change.
     unsafe {
         let handler = heard as *const () as libc::sighandler_t;
-        for signal in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
+        for signal in STOPS {
             if libc::signal(signal, handler) == libc::SIG_IGN {
                 libc::signal(signal, libc::SIG_IGN);
             }
@@ -54,9 +59,14 @@ pub fn tell(line: &str) {
     let _ = writeln!(std::io::stderr(), "{line}");
 }
 
+/// Asks systemd to `verb` the shaper, in a process group of its own, so
+/// a Ctrl-C at the terminal can't cut it short and have an `is-active`
+/// read as off.
 pub fn systemctl(verb: &str) -> bool {
+    use std::os::unix::process::CommandExt;
     Command::new("systemctl")
         .args([verb, "shaper.service"])
+        .process_group(0)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
@@ -111,6 +121,42 @@ pub fn forget(marker: &Path) {
     let _ = fs::remove_file(marker);
 }
 
+/// Starts a keeper beside this proof, in a scope of its own named apart
+/// from the proof's, which the proof's stops leave alone. Once the proof
+/// is gone, however it went, the keeper puts the shaper back as `marker`
+/// says and forgets it, so one killed outright leaves the shaper as it
+/// found it within about a second. A proof that put it back has
+/// forgotten the marker already, and its keeper does nothing.
+pub fn keep(marker: &Path) {
+    let Some(at) = marker.to_str() else {
+        return;
+    };
+    let me = std::process::id();
+    let script = keeper(me, &super::load::began());
+    let unit = format!("shaper-keeper-{me}");
+    let command = ["sh", "-c", &script, "sh", at, "systemctl"];
+    if super::scoped_as("app.slice", &unit, &command)
+        .stdout(Stdio::null())
+        .spawn()
+        .is_err()
+    {
+        tell("couldn't start the keeper: a proof killed outright would leave the shaper off");
+    }
+}
+
+/// The keeper's shell for the proof `pid` that began at `began`: given
+/// the marker and systemctl as its arguments, it waits for the proof to
+/// go, then starts or stops the shaper as the marker says, and forgets
+/// it once that's done. A marker saying neither is nobody's word.
+fn keeper(pid: u32, began: &str) -> String {
+    super::load::once_gone_for(
+        pid,
+        began,
+        "v=; read -r v 2>/dev/null <\"$1\"; case $v in on) v=start;; off) v=stop;; \
+         *) exit 0;; esac; \"$2\" \"$v\" shaper.service && rm -f \"$1\"",
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,7 +179,18 @@ mod tests {
             libc::signal(libc::SIGHUP, libc::SIG_DFL);
         }
         hear_stops();
-        for signal in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
+        for signal in STOPS {
+            // Asked first, since a Ctrl-Z unheard would stop the tests.
+            // SAFETY: sigaction(2) with no new action only reads one.
+            let set = unsafe {
+                let mut was: libc::sigaction = std::mem::zeroed();
+                libc::sigaction(signal, std::ptr::null(), &raw mut was);
+                was.sa_sigaction
+            };
+            assert_eq!(
+                set, heard as *const () as libc::sighandler_t,
+                "signal {signal} isn't heard as a stop"
+            );
             STOPPED.store(false, Ordering::Relaxed);
             // SAFETY: raising a signal whose handler was just set.
             unsafe {
@@ -149,11 +206,44 @@ mod tests {
         // its default, so the rest of the tests hear Ctrl-C as ever.
         unsafe {
             libc::raise(libc::SIGTERM);
-            for signal in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
+            for signal in STOPS {
                 libc::signal(signal, libc::SIG_DFL);
             }
         }
         STOPPED.store(false, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn the_keeper_puts_the_shaper_back_once_its_proof_is_gone() {
+        let dir = std::env::temp_dir().join(format!("shaper-keeper-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("a folder");
+        let marker = dir.join("was-on");
+        let at = marker.to_str().expect("a path");
+        // What it asks, with echo standing in for systemctl.
+        let kept = |pid: u32, began: &str| {
+            let out = Command::new("sh")
+                .args(["-c", &keeper(pid, began), "sh", at, "echo"])
+                .output()
+                .expect("a shell");
+            String::from_utf8_lossy(&out.stdout).into_owned()
+        };
+        let mut gone = Command::new("true").spawn().expect("true");
+        let pid = gone.id();
+        let began = super::super::load::began_of(&pid.to_string());
+        gone.wait().expect("true to end");
+        for (was, asks) in [
+            ("on", "start shaper.service\n"),
+            ("off", "stop shaper.service\n"),
+        ] {
+            fs::write(&marker, was).expect("a marker");
+            assert_eq!(kept(pid, &began), asks, "the shaper wasn't put back {was}");
+            assert!(!marker.exists(), "the marker outlived putting it back");
+        }
+        // A proof that put it back left nothing to do.
+        assert_eq!(kept(pid, &began), "", "acted on no marker");
+        fs::write(&marker, "").expect("an empty marker");
+        assert_eq!(kept(pid, &began), "", "took an empty marker for a state");
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

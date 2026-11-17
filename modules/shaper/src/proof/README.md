@@ -6,8 +6,10 @@ What `shaper proof` (`../proof.rs`) splits off from the run itself:
   nothing the machine names busy.
 - `load.rs`: the agents' uploads it loads the link with, and how they end:
   at its word, or on their own once it's gone.
+- `probes.rs`: Joel's probes in each block, and how each ends: on its
+  own, at a stop, or once it has run well past its block.
 - `stop.rs`: how it stops and puts the shaper back: a signal heard as a
-  stop, progress said safely, and the shaper's own state kept on disk
-  until it's back.
+  stop, progress said safely, the shaper's own state kept on disk until
+  it's back, and a keeper that puts it back if the proof is killed.
 - `verdict.rs`: what each block measured, which pairs are void, and the
   verdict on the shaper over the rest.

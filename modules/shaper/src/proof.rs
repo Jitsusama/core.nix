@@ -23,11 +23,12 @@
 //! before its microphone opens, and Joel has been idle two minutes, as
 //! Wayland's idle notice tells swayidle. The moment any of them changes,
 //! every load stops, the shaper goes back as it was, the pair under way
-//! is dropped, and it waits for his next idle stretch. SIGTERM, SIGINT
-//! and SIGHUP end it the same way, writing what it measured to `--out`
-//! and exiting 130. A proof killed outright can put nothing back, but its
-//! load and probes end within about two seconds, and the next proof puts the shaper back
-//! as the killed one found it. It waits `--wait` seconds from its start
+//! is dropped, and it waits for his next idle stretch. SIGTERM, SIGINT,
+//! SIGHUP and SIGTSTP end it the same way, writing what it measured to
+//! `--out` and exiting 130. A proof killed outright can put nothing back
+//! itself, but its load and probes end within about two seconds, and a
+//! keeper beside it puts the shaper back as it found it, or, failing
+//! that, the next proof does. It waits `--wait` seconds from its start
 //! in all, and exits 75 if they run out before every pair is measured,
 //! writing what it measured to `--out`. It exits 69 if it couldn't put
 //! the shaper back, saying how to. The call's packets are src/call.rs's.
@@ -44,12 +45,13 @@
 
 mod gate;
 mod load;
+mod probes;
 mod stop;
 mod verdict;
 
 use crate::qdisc;
 use gate::{Gate, WAITS_ENV, waits_while};
-use load::{guarded, stop_scopes};
+use load::{end_group, stop_scopes};
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -129,24 +131,53 @@ fn asked(args: &[String], named: Option<String>) -> Result<Asked, String> {
         .ok_or("no speed server: give --server, or set jitsusama.shaper.speedServer")?
         .trim_end_matches('/')
         .to_string();
+    // Anything else would reach curl as an option, not an address.
+    if !a.server.starts_with("https://") && !a.server.starts_with("http://") {
+        return Err(format!(
+            "--server {}: not an http or https address",
+            a.server
+        ));
+    }
     Ok(a)
 }
 
 /// Starts `command` in a scope of its own under `slice`, named so the
 /// proof can stop every scope it started at once.
 fn scoped(slice: &str, name: &str, command: &[&str]) -> Command {
+    scoped_as(
+        slice,
+        &format!("shaper-proof-{name}-{}", std::process::id()),
+        command,
+    )
+}
+
+/// Starts `command` in a scope named `unit` under `slice`. A scope runs
+/// its command in this process, which leads a group of its own, so what
+/// it starts can end all of it at once, and a terminal's Ctrl-C or
+/// Ctrl-Z reaches only the proof, which ends it. The command is passed
+/// as it stands, since systemd-run would read a shell's `${...}` itself.
+/// Its memory ceiling, far over what curl or a shell needs, keeps the
+/// jobs sorter from taking a scope an agent starts back into its work:
+/// Joel's probes there would be agents' traffic, and the keeper would
+/// end with the agent's command.
+fn scoped_as(slice: &str, unit: &str, command: &[&str]) -> Command {
     use std::os::unix::process::CommandExt;
     let mut c = Command::new("systemd-run");
-    // A scope runs its command in this process, which leads a group of
-    // its own, so what it starts can end all of it at once.
     c.process_group(0);
-    c.args(["--user", "--quiet", "--collect", "--scope"])
-        .arg(format!("--slice={slice}"))
-        .arg(format!("--unit=shaper-proof-{name}-{}", std::process::id()))
-        .arg("--")
-        .args(command)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null());
+    c.args([
+        "--user",
+        "--quiet",
+        "--collect",
+        "--scope",
+        "--expand-environment=no",
+    ])
+    .arg("--property=MemoryMax=128M")
+    .arg(format!("--slice={slice}"))
+    .arg(format!("--unit={unit}"))
+    .arg("--")
+    .args(command)
+    .stdin(Stdio::null())
+    .stderr(Stdio::null());
     c
 }
 
@@ -171,55 +202,15 @@ fn kbit(bytes: f64, seconds: f64) -> f64 {
     bytes * 8.0 / 1_000.0 / seconds
 }
 
-/// A shell loop asking `request` again until `seconds` have passed, and
-/// waiting `every` after each. A server that refused one, its status 400
-/// or more, is given a second before the next: asked again at once, it
-/// went on refusing for most of an hour.
-fn repeated(seconds: &str, request: &str, every: &str) -> String {
-    format!(
-        "end=$((SECONDS + {seconds})); while [ $SECONDS -lt $end ]; do a=$({request}); \
-         echo \"$a\"; case $a in [45]*) sleep 1;; esac; {every} done"
-    )
-}
-
 /// Measures one block: Joel's four probes for `seconds`, while the load
 /// runs, reading CAKE's queue each second.
 fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block> {
     let seconds = asked.seconds;
     let server = &asked.server;
-    let s = seconds.to_string();
     let me = std::env::current_exe().ok()?;
     let me = me.to_str()?;
-    // Each probe says each answer's status beside what it measured, so a
-    // server refusing Joel's requests is told from a shaper slowing them,
-    // and the upload is repeated as the download is, since a server may
-    // end one early. The download comes in pieces of 5 MB, since the
-    // server refuses one of 10 MB or more once it has sent many.
-    let up = repeated(
-        &s,
-        "head -c 4000000000 /dev/zero | curl -s -o /dev/null -X POST -T - \
-         --max-time $((end - SECONDS + 1)) -w '%{http_code} %{size_upload}\\n' \
-         \"$1/__up\"",
-        "",
-    );
-    let down = repeated(
-        &s,
-        "curl -s -o /dev/null --max-time $((end - SECONDS + 1)) \
-         -w '%{http_code} %{size_download}\\n' \"$1/__down?bytes=5000000\"",
-        "",
-    );
-    let first = repeated(
-        &s,
-        "curl -s -o /dev/null -w '%{http_code} %{time_starttransfer}\\n' \
-         \"$1/__down?bytes=0\"",
-        // A fresh connection a second, as a page's would be.
-        "sleep 1;",
-    );
-    // Each ends with its proof, however that ends; the server is given as
-    // an argument, never read as shell.
-    let (up, down, first) = (guarded(&up), guarded(&down), guarded(&first));
-    let call = guarded(&format!("\"$1\" proof-call {s}"));
-    let probes: Vec<Child> = [
+    let [up, down, first, call] = probes::scripts(seconds);
+    let spawned: Vec<_> = [
         scoped("app.slice", "up", &["sh", "-c", &up, "sh", server]),
         scoped("app.slice", "down", &["sh", "-c", &down, "sh", server]),
         scoped("app.slice", "first", &["sh", "-c", &first, "sh", server]),
@@ -227,8 +218,16 @@ fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block
     ]
     .into_iter()
     .map(|mut c| c.stdout(Stdio::piped()).spawn())
-    .collect::<Result<_, _>>()
-    .ok()?;
+    .collect();
+    // A block missing a probe measures nothing, and those started end.
+    if spawned.iter().any(Result::is_err) {
+        for mut probe in spawned.into_iter().flatten() {
+            end_group(&probe);
+            let _ = probe.wait();
+        }
+        return None;
+    }
+    let probes: Vec<Child> = spawned.into_iter().flatten().collect();
     let sent_then = sent_bytes(link);
     let began = Instant::now();
     let mut owned = false;
@@ -244,19 +243,14 @@ fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block
         // CAKE's queue is read once a second through the block.
         thread::sleep(Duration::from_secs(1));
     }
-    // A stop ends the probes here, rather than waiting on the watch to.
-    if halted(stop) {
-        stop_scopes();
-    }
     let elapsed = began.elapsed().as_secs_f64();
     let sent = sent_bytes(link).saturating_sub(sent_then);
+    // A stop ends the probes at once, whether or not systemd has their
+    // scopes yet, and one held past its block ends then.
+    let by = began + Duration::from_secs(seconds) + probes::GRACE;
     let outs: Vec<String> = probes
         .into_iter()
-        .map(|c| {
-            c.wait_with_output()
-                .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-                .unwrap_or_default()
-        })
+        .map(|p| probes::finish(p, by, || halted(stop)))
         .collect();
     if halted(stop) {
         return None;
@@ -279,26 +273,27 @@ fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block
     })
 }
 
-/// The call's round trips with nothing loading the link.
-fn idle_call(seconds: u64) -> Vec<f64> {
+/// The call's round trips with nothing loading the link, until `seconds`
+/// pass or a stop.
+fn idle_call(seconds: u64, stop: &AtomicBool) -> Vec<f64> {
     let Some(me) = std::env::current_exe().ok() else {
         return Vec::new();
     };
-    let s = seconds.to_string();
     let Some(me) = me.to_str() else {
         return Vec::new();
     };
-    let call = guarded(&format!("\"$1\" proof-call {s}"));
-    scoped("app.slice", "idle", &["sh", "-c", &call, "sh", me])
+    let call = probes::call(seconds);
+    let Ok(probe) = scoped("app.slice", "idle", &["sh", "-c", &call, "sh", me])
         .stdout(Stdio::piped())
-        .output()
-        .map(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .filter_map(|l| l.parse().ok())
-                .collect()
-        })
-        .unwrap_or_default()
+        .spawn()
+    else {
+        return Vec::new();
+    };
+    let by = Instant::now() + Duration::from_secs(seconds) + probes::GRACE;
+    probes::finish(probe, by, || halted(stop))
+        .lines()
+        .filter_map(|l| l.parse().ok())
+        .collect()
 }
 
 fn say(block: &Block, arm: Arm) {
@@ -356,6 +351,9 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     let was_on = marker
         .as_deref()
         .map_or(active, |m| stop::own_state(m, active));
+    if let Some(marker) = &marker {
+        stop::keep(marker);
+    }
     let mut idle: Vec<f64> = Vec::new();
     let (pairs, complete) = across_windows(
         asked.pairs,
@@ -366,6 +364,8 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     if back && let Some(marker) = &marker {
         stop::forget(marker);
     }
+    // Ended here, since a watch left unjoined still holds the gate.
+    gate.end();
     let stopped = STOPPED.load(Ordering::Relaxed);
     let verdict = (!pairs.is_empty()).then(|| judge(&idle, &pairs));
     if let Some(verdict) = &verdict {
@@ -380,20 +380,7 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
             }
         }
     }
-    let state = if was_on { "on" } else { "off" };
-    if !back {
-        return Err(
-            Failure::new(Exit::Unavailable, "couldn't put the shaper back").because(format!(
-                "it should be {state}: systemctl {} shaper.service",
-                if was_on { "start" } else { "stop" }
-            )),
-        );
-    }
-    if stopped {
-        return Err(Failure::new(Exit::Interrupted, "stopped").because(format!(
-            "a signal asked it to; the shaper is back {state}, its load ended"
-        )));
-    }
+    put_back_or_stopped(back, stopped, was_on)?;
     let Some(verdict) = verdict else {
         return Err(Failure::new(Exit::TryAgain, "not loading the link")
             .because("Joel hasn't been idle two minutes, or a call, audio or a meeting is on"));
@@ -416,6 +403,27 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
             "the shaper didn't beat the router",
         ))
     }
+}
+
+/// How a proof ends before its verdict counts: 69 when the shaper isn't
+/// back as `was_on` says, which outranks a stop since it's Joel's to put
+/// right, else 130 when `stopped`.
+fn put_back_or_stopped(back: bool, stopped: bool, was_on: bool) -> Result<(), Failure> {
+    let state = if was_on { "on" } else { "off" };
+    if !back {
+        return Err(
+            Failure::new(Exit::Unavailable, "couldn't put the shaper back").because(format!(
+                "it should be {state}: systemctl {} shaper.service",
+                if was_on { "start" } else { "stop" }
+            )),
+        );
+    }
+    if stopped {
+        return Err(Failure::new(Exit::Interrupted, "stopped").because(format!(
+            "a signal asked it to; the shaper is back {state}, its load ended"
+        )));
+    }
+    Ok(())
 }
 
 /// Gathers the pairs across Joel's idle windows, `opened` waiting for the
@@ -474,7 +482,7 @@ fn window(
         settle(&stop);
         if !halted(&stop) {
             tell("idle: the call's round trips through the shaper, with the proof loading nothing");
-            *idle = idle_call(asked.seconds.min(15));
+            *idle = idle_call(asked.seconds.min(15), &stop);
         }
     }
     if halted(&stop) {
@@ -661,28 +669,34 @@ mod tests {
     }
 
     #[test]
-    fn a_refused_request_waits_before_it_is_asked_again() {
-        let refused = repeated("2", "echo '429 0'", "");
-        let out = Command::new("sh")
-            .args(["-c", &refused])
-            .output()
-            .expect("a shell");
-        let asked = String::from_utf8_lossy(&out.stdout).lines().count();
+    fn a_scopes_shell_gets_its_own_dollars() {
+        // systemd-run would otherwise read ${20} and ${s##*) } itself, as
+        // nothing, and every watcher would take a live proof for gone.
+        let c = scoped_as("app.slice", "u", &["sh", "-c", "${20}"]);
+        let args: Vec<_> = c.get_args().map(|a| a.to_string_lossy()).collect();
+        let ends = args.iter().position(|a| a == "--").expect("its command");
         assert!(
-            (1..=3).contains(&asked),
-            "asked {asked} times in two seconds a server refused"
+            args[..ends].iter().any(|a| a == "--expand-environment=no"),
+            "systemd-run is left to expand the command: {args:?}"
         );
-        // Answered, a probe waits only what it asks to between requests.
-        let answered = repeated("2", "echo '200 5'", "sleep 0.4;");
-        let out = Command::new("sh")
-            .args(["-c", &answered])
-            .output()
-            .expect("a shell");
-        let asked = String::from_utf8_lossy(&out.stdout).lines().count();
+        assert_eq!(args[ends + 1..], ["sh", "-c", "${20}"]);
+        // The sorter sends a scope with no ceiling, started from an
+        // agent's work, back into that work, where Joel's probes would be
+        // agents' traffic and the keeper would die with the agent's command.
         assert!(
-            (2..=6).contains(&asked),
-            "asked {asked} times, not every 0.4 s"
+            args[..ends]
+                .iter()
+                .any(|a| a.starts_with("--property=MemoryMax=")),
+            "a scope an agent starts is taken back into its work: {args:?}"
         );
+    }
+
+    #[test]
+    fn a_shaper_left_wrong_outranks_a_stop() {
+        let code = |back, stopped| put_back_or_stopped(back, stopped, true).map_err(|f| f.code());
+        assert_eq!(code(false, true), Err(69), "a stop hid a shaper left off");
+        assert_eq!(code(true, true), Err(130));
+        assert_eq!(code(true, false), Ok(()));
     }
 
     #[test]
@@ -700,5 +714,9 @@ mod tests {
             "a flag with no value taken"
         );
         assert!(asked(&[], None).is_err(), "a proof with no server to load");
+        assert!(
+            asked(&[], Some("-K/etc/passwd".into())).is_err(),
+            "took a server curl would read as its option"
+        );
     }
 }

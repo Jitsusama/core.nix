@@ -4,6 +4,7 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::{Mutex, PoisonError};
 
 /// What the gate's idle notice waits for, in seconds.
 const IDLE_S: u32 = 120;
@@ -43,7 +44,7 @@ fn busy(commands: &[Vec<String>]) -> bool {
 /// Joel's being away and no call on, held as swayidle tells it.
 pub struct Gate {
     mark: PathBuf,
-    idle: Child,
+    idle: Mutex<Child>,
     /// What else the load waits on, as `jitsusama.shaper.proofWaitsWhile`
     /// names it.
     waits: Vec<Vec<String>>,
@@ -62,7 +63,22 @@ impl Gate {
             .stdout(Stdio::null())
             .spawn()
             .ok()?;
-        Some(Gate { mark, idle, waits })
+        Some(Gate {
+            mark,
+            idle: Mutex::new(idle),
+            waits,
+        })
+    }
+
+    /// Ends swayidle and its mark, once the proof needs them no more: a
+    /// stopped proof doesn't wait on the watch still holding the gate, so
+    /// dropping it alone would leave swayidle running. Asked again, it
+    /// does nothing more.
+    pub fn end(&self) {
+        let mut idle = self.idle.lock().unwrap_or_else(PoisonError::into_inner);
+        let _ = idle.kill();
+        let _ = idle.wait();
+        let _ = fs::remove_file(&self.mark);
     }
 
     /// Whether the link may carry the load now. A call detector that
@@ -107,9 +123,7 @@ fn plays(graph: &serde_json::Value) -> bool {
 
 impl Drop for Gate {
     fn drop(&mut self) {
-        let _ = self.idle.kill();
-        let _ = self.idle.wait();
-        let _ = fs::remove_file(&self.mark);
+        self.end();
     }
 }
 
