@@ -5,8 +5,9 @@
 //! that was working on it (route.rs), once, ranked by how often he hits
 //! the same thing (heard.rs). His orchestrator's asks and misses ledgers
 //! are read, never written: a pain they carry goes to no one again, and
-//! the keeper of the ledgers hears of each new one. Nothing is ever sent
-//! to the void, and nothing is posted anywhere.
+//! the keeper of the ledgers hears of each new one as it goes to its
+//! owner, and of each day in a count once it ends (day.rs). Nothing is
+//! ever sent to the void, and nothing is posted anywhere.
 //!
 //! Unlike `read`, which keeps kinds and timings alone, `hear` keeps his
 //! words, since a finding without them can't be acted on. They stay in
@@ -18,7 +19,8 @@
 //!
 //! It writes hour.json each run, for cadence's hourly card: the pains
 //! heard and routed in the last hour, those of the last day still open,
-//! the one he hit most, and the turns that stalled him.
+//! the one he hit most, the turns that stalled him, and the times today
+//! he asked how something stands.
 
 pub mod day;
 pub mod heard;
@@ -44,9 +46,10 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 pub const DAY_MS: i64 = 86_400_000;
 const HOUR_MS: i64 = 3_600_000;
 
-/// A pain first heard longer than this after he said it goes to the
-/// ledgers' keeper alone: its cell has moved on, and a first run over a
-/// day of logs would otherwise send every cell a day of old pains.
+/// A pain first heard longer than this after he said it goes to no one,
+/// and is said only in its day's count: its cell has moved on, the keeper
+/// asked to hear only what's new, and a first run over a day of logs
+/// would otherwise send every cell a day of old pains.
 pub const FRESH_MS: i64 = 2 * HOUR_MS;
 
 /// The longest a send may take: the node answers in well under a second,
@@ -56,8 +59,8 @@ const SEND_AT_MOST: Duration = Duration::from_secs(20);
 /// How long a quick question of the machine, its time zone, may take.
 const ASK_AT_MOST: Duration = Duration::from_secs(5);
 
-/// How many times a pain's finding is sent that the node never took, and
-/// again its keeper's note, before the run gives up on it and says so: a
+/// How many times a pain's finding is sent that the node never took
+/// before the run gives up on it and says so: a
 /// send that went but read as failed would otherwise ask a cell the same
 /// question every five minutes.
 pub const SEND_TRIES: u32 = 3;
@@ -326,17 +329,15 @@ pub fn hear(
         went
     };
     let owned = route_waiting(ears, &routes, &cells, &mut kept, &mut guarded, &heard_at);
-    note_for_keeper(
-        ears,
-        &routes,
-        &cells,
-        &mut kept,
-        &owned,
-        &mut guarded,
-        &heard_at,
-    );
+    note_for_keeper(ears, &routes, &cells, &kept, &owned, &mut guarded);
     keep(&heard_at, &kept)?;
+    if let Some(keeper) = routes.ledgers.clone().filter(|_| routes.sends()) {
+        day::count(&ears.state, &kept, ears.at, ears.offset_s, &mut |text| {
+            guarded(&keeper, text)
+        })?;
+    }
     let mut hour = hour_of(&kept, ears.at);
+    hour.status_asks = day::asked_since(&kept, crate::local_day(ears.at, ears.offset_s).1);
     let (waiting, given_up) = unsent(&kept, ears.at);
     hour.troubles = troubles(
         &ears.state,
@@ -405,16 +406,15 @@ fn hear_logs(
 
 /// Whether any pain of the day waits to be sent, since a node naming no
 /// sessions is a trouble only then, and how many were given up on: their
-/// owner's tries spent while they were fresh, or the keeper's after them.
+/// owner's tries spent while they were fresh. One heard late waits for
+/// no one, since it goes only into its day's count.
 fn unsent(kept: &[Heard], at: i64) -> (bool, usize) {
     let unsent = || {
         kept.iter()
-            .filter(move |h| h.routed_at.is_none() && h.at >= at - DAY_MS)
+            .filter(move |h| h.routed_at.is_none() && h.at >= at - FRESH_MS)
     };
-    let waiting = unsent().any(|h| !h.carried);
-    let given_up = unsent()
-        .filter(|h| h.tries >= 2 * SEND_TRIES || (h.tries >= SEND_TRIES && h.at >= at - FRESH_MS))
-        .count();
+    let waiting = unsent().any(|h| !h.carried && h.tries < SEND_TRIES);
+    let given_up = unsent().filter(|h| h.tries >= SEND_TRIES).count();
     (waiting, given_up)
 }
 
@@ -546,66 +546,36 @@ fn route_waiting(
     owned
 }
 
-/// Sends the ledgers' keeper the pains just sent and those heard too late
-/// for their owners, and marks the late ones as gone to the keeper once
-/// the note went.
+/// Sends the ledgers' keeper the pains just sent to their owners: only
+/// what's new, each already routed, as the keeper asked. A stall is no
+/// ask or miss of his, so it isn't noted.
 fn note_for_keeper(
     ears: &Ears,
     routes: &Routes,
     cells: &BTreeMap<String, Cell>,
-    kept: &mut [Heard],
+    kept: &[Heard],
     owned: &[String],
     send: &mut dyn FnMut(&str, &str) -> bool,
-    heard_at: &Path,
 ) {
     let Some(keeper) = routes.ledgers.as_ref().filter(|_| routes.sends()) else {
         return;
     };
-    let late: Vec<usize> = (0..kept.len())
-        .filter(|n| {
-            let pain = &kept[*n];
-            // A stall is no ask or miss of his, and one heard late has
-            // nothing for the keeper to carry.
-            // One from a session this realm doesn't know waits, as it
-            // would for its owner.
-            !pain.carried
-                && !stalled::is(pain)
-                && route::owner(&pain.session, pain.void, cells, routes).is_some()
-                && pain.routed_at.is_none()
-                && pain.tries < 2 * SEND_TRIES
-                && pain.at >= ears.at - DAY_MS
-                && pain.at < ears.at - FRESH_MS
-        })
-        .collect();
     let noted: Vec<&Heard> = kept
         .iter()
-        .enumerate()
-        .filter(|(n, h)| {
+        .filter(|h| {
             // The keeper isn't told again of what it was itself just sent.
             let to_keeper =
                 h.to.as_ref()
                     .is_some_and(|to| to.eq_ignore_ascii_case(keeper));
-            (owned.contains(&h.key) && !stalled::is(h) && !to_keeper) || late.contains(n)
+            owned.contains(&h.key) && !stalled::is(h) && !to_keeper
         })
-        .map(|(_, h)| h)
         .collect();
     if noted.is_empty() {
         return;
     }
-    // The note of pains already sent is said once: a keeper that misses it
-    // still has each from its owner's side, and heard.jsonl. Late ones
-    // wait for the next run until the note goes.
-    // A late pain has its keeper's own tries, after any its owner had.
-    let went = send(keeper, &route::ledger_note(&noted, cells, ears.offset_s));
-    for n in late {
-        if went {
-            kept[n].to = Some(keeper.clone());
-            kept[n].routed_at = Some(ears.at);
-        } else {
-            kept[n].tries = kept[n].tries.max(SEND_TRIES) + 1;
-        }
-    }
-    let _ = keep(heard_at, kept);
+    // The note is said once: a keeper that misses it still has each from
+    // its owner's side, heard.jsonl, and the day's count.
+    send(keeper, &route::ledger_note(&noted, cells, ears.offset_s));
 }
 
 /// The hour as cadence's card says it.
