@@ -326,7 +326,7 @@ mod tests {
             hints,
             ..Notice::default()
         };
-        let record = notice.record("optimus");
+        let record = notice.record("here");
         assert_eq!(record["key"], "notice:12");
         assert_eq!(record["kind"], "notice");
         assert_eq!(record["notice"]["low"], true);
@@ -364,7 +364,7 @@ mod tests {
             "thirteen"
         );
         assert_eq!(
-            Notice::default().record("optimus")["notice"]["cell"],
+            Notice::default().record("here")["notice"]["cell"],
             Value::Null
         );
     }
@@ -379,22 +379,22 @@ mod tests {
             notice.record(host)["notice"]["cell"].clone()
         };
         assert_eq!(
-            record("mycelium:cell/1C8A2F0E", "optimus"),
-            "mycelium:cell/1C8A2F0E@optimus#notice:12",
+            record("mycelium:cell/1C8A2F0E", "here"),
+            "mycelium:cell/1C8A2F0E@here#notice:12",
             "a bare address is stamped with this machine and the notice"
         );
         assert_eq!(
-            record("mycelium:cell/1C8A2F0E@mac-2#todo:7", "optimus"),
+            record("mycelium:cell/1C8A2F0E@mac-2#todo:7", "here"),
             "mycelium:cell/1C8A2F0E@mac-2#todo:7",
             "the sender's machine and anchor are kept"
         );
         assert_eq!(
-            record("mycelium:cell/1C8A2F0E#look:a1.b", "optimus"),
-            "mycelium:cell/1C8A2F0E@optimus#look:a1.b",
+            record("mycelium:cell/1C8A2F0E#look:a1.b", "here"),
+            "mycelium:cell/1C8A2F0E@here#look:a1.b",
             "an anchor with no machine is stamped with this one"
         );
         assert_eq!(
-            record("mycelium:cell/1C8A2F0E@mac-2", "optimus"),
+            record("mycelium:cell/1C8A2F0E@mac-2", "here"),
             "mycelium:cell/1C8A2F0E@mac-2#notice:12",
             "a machine with no anchor takes the notice's"
         );
@@ -417,7 +417,7 @@ mod tests {
         let anchor = format!("a:{}", "b".repeat(126));
         let longest = format!("mycelium:cell/1C8A2F0E@{machine}#{anchor}");
         assert_eq!(
-            record(&longest, "optimus"),
+            record(&longest, "here"),
             longest.as_str(),
             "a machine of 63 and an anchor of 128, the longest kept"
         );
