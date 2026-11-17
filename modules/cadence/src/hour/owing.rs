@@ -31,7 +31,13 @@ fn filed(m: &Measure) -> Vec<Filed> {
             .filter_map(|line| line.rsplit_once(" · "))
             .map(|(what, owner)| Filed {
                 key: format!("hour:miss:{what}"),
-                owner: owner.to_owned(),
+                // A note after the owner, ", though ...", is no address.
+                owner: owner
+                    .split(',')
+                    .next()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_owned(),
                 says: format!("a miss Joel found himself: {what}"),
                 text: format!(
                     "cadence hour: a miss Joel found himself is yours: {what}. Which check \
@@ -361,6 +367,25 @@ mod tests {
             open,
             ["hour:miss:the map had no network"],
             "History's closed"
+        );
+    }
+
+    #[test]
+    fn a_miss_noted_after_its_owner_still_goes_to_that_owner() {
+        let mut misses = measure("misses", Class::Miss, 2.0, Some(0.0));
+        misses.behind = vec![
+            "the map drew cells alone · WCJQSG, though its check map-cells can't judge it yet"
+                .to_owned(),
+            "the notice stayed up · 88LQC0, though cadence couldn't read world's main to see \
+             its check"
+                .to_owned(),
+        ];
+        let told = file(&mut Vec::new(), &[misses], "2026-11-17", 1000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(
+            owners,
+            ["WCJQSG", "88LQC0"],
+            "a miss's note was taken as part of its owner's address"
         );
     }
 }

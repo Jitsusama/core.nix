@@ -23,7 +23,14 @@ pub struct Kept {
     pub drag: Option<Held>,
     #[serde(default)]
     pub open: Vec<String>,
+    /// The misses Joel has been told are fixed, by their words, so a miss
+    /// held open an hour by a node that didn't answer isn't told twice.
+    #[serde(default)]
+    pub told: Vec<String>,
 }
+
+/// How many misses told fixed the hour keeps, newest last.
+const TOLD_KEPT: usize = 300;
 
 /// The drag as an hour named it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -110,27 +117,7 @@ pub fn compose(
             let _ = writeln!(card, "  - {miss}");
         }
     }
-    // A miss is its words: one handed to a new owner, or noted as unread,
-    // is still open, so only words gone from the open misses are fixed.
-    let still: Vec<&str> = open.iter().map(|miss| miss_words(miss)).collect();
-    for what in kept
-        .open
-        .iter()
-        .map(|miss| miss_words(miss))
-        .filter(|what| !still.contains(what))
-    {
-        // Joel works on many things at once, so the line says which thing
-        // of his it was, that it's fixed, and that nothing is asked of him.
-        let thing = said
-            .get(what)
-            .cloned()
-            .unwrap_or_else(|| format!("something you ran into, {what}"));
-        let _ = writeln!(
-            card,
-            "For Joel: {thing}, is fixed, and a check now catches it if it comes back. \
-             Nothing to do."
-        );
-    }
+    let mut told = tell_fixed(&mut card, kept, &open, said);
     let next = Kept {
         drag: chosen.map(|m| Held {
             key: m.key.clone(),
@@ -149,8 +136,46 @@ pub fn compose(
                 .map_or(0, |_| unmoved),
         }),
         open,
+        // The ledger holds some forty misses; the newest few hundred told
+        // are kept, so the file can't grow without end.
+        told: told.split_off(told.len().saturating_sub(TOLD_KEPT)),
     };
     (card, next)
+}
+
+/// Writes a line for Joel for each miss gone since last hour, and gives
+/// back every miss told so far. A miss is its words: one handed to a new
+/// owner, or noted as unread, is still open, so only words gone from the
+/// open misses are fixed. One already told isn't told again, though an
+/// hour the node didn't answer held it open between.
+fn tell_fixed(
+    card: &mut String,
+    kept: &Kept,
+    open: &[String],
+    said: &BTreeMap<String, String>,
+) -> Vec<String> {
+    let still: Vec<&str> = open.iter().map(|miss| miss_words(miss)).collect();
+    let mut told = kept.told.clone();
+    for what in kept
+        .open
+        .iter()
+        .map(|miss| miss_words(miss))
+        .filter(|what| !still.contains(what) && !kept.told.iter().any(|t| t == what))
+    {
+        told.push(what.to_owned());
+        // Joel works on many things at once, so the line says which thing
+        // of his it was, that it's fixed, and that nothing is asked of him.
+        let thing = said
+            .get(what)
+            .cloned()
+            .unwrap_or_else(|| format!("something you ran into, {what}"));
+        let _ = writeln!(
+            card,
+            "For Joel: {thing}, is fixed, and a check now catches it if it comes back. \
+             Nothing to do."
+        );
+    }
+    told
 }
 
 /// What became of last hour's drag, and how many hours it has now gone
@@ -252,6 +277,7 @@ mod tests {
                 unmoved,
             }),
             open: Vec::new(),
+            told: Vec::new(),
         }
     }
 
@@ -389,6 +415,7 @@ mod tests {
                 "the map had no network · KNURBN".to_owned(),
                 "History · Reader paused · RCTRF8".to_owned(),
             ],
+            told: Vec::new(),
         };
         let said = BTreeMap::from([(
             "History · Reader paused".to_owned(),
@@ -426,6 +453,38 @@ mod tests {
         );
     }
 
+    /// A node that doesn't answer for an hour holds a fixed miss open again;
+    /// once it answers, Joel isn't told a second time.
+    #[test]
+    fn a_miss_told_fixed_once_is_not_told_again_when_it_closes_anew() {
+        let open = measure("misses", Class::Miss, 0.0, Some(0.0));
+        let kept = Kept {
+            drag: None,
+            open: vec!["the map drew cells alone · WCJQSG".to_owned()],
+            told: Vec::new(),
+        };
+        let said = BTreeMap::from([(
+            "the map drew cells alone".to_owned(),
+            "what you ran into".to_owned(),
+        )]);
+        let (first, next) = compose("03:10", std::slice::from_ref(&open), &kept, &said, "");
+        assert!(first.contains("For Joel"), "{first}");
+        let again = Kept {
+            open: kept.open.clone(),
+            ..next
+        };
+        let (second, after) = compose("05:10", &[open], &again, &said, "");
+        assert!(
+            !second.contains("For Joel"),
+            "a miss already told fixed was told again: {second}"
+        );
+        assert_eq!(
+            after.told,
+            ["the map drew cells alone"],
+            "what was told wasn't kept"
+        );
+    }
+
     #[test]
     fn a_miss_still_open_under_new_words_after_its_owner_is_not_said_fixed() {
         let mut open = measure("misses", Class::Miss, 2.0, Some(0.0));
@@ -441,6 +500,7 @@ mod tests {
                 "the map had no network · KNURBN".to_owned(),
                 "the notice stayed up · 88LQC0".to_owned(),
             ],
+            told: Vec::new(),
         };
         let (card, _) = compose("12:10", &[open], &kept, &none(), "");
         assert!(
