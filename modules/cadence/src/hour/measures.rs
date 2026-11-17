@@ -12,12 +12,14 @@ mod broken;
 mod cells;
 mod locked;
 mod misses;
+mod reports;
 
 pub use balanced::balanced;
 pub use broken::{Main, broken, failed_in};
-pub use cells::{Quest, Report, cells, mapped, quest, report, unasked};
+pub use cells::{Quest, cells, mapped, quest};
 pub use locked::read as unlocked;
 pub use misses::{checked, said};
+pub use reports::{REPORTS_SINCE, Report, report, unasked};
 
 const DAY: i64 = 86_400;
 

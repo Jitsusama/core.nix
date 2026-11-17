@@ -302,6 +302,33 @@ mod tests {
     }
 
     #[test]
+    fn a_clean_drag_stays_open_while_its_measure_is_past_though_its_owner_left_the_list() {
+        let mut long = measure("clean:core.nix:long", Class::Clean, 12.0, Some(10.0));
+        long.behind = vec!["a.rs · PN2VZC".to_owned(), "b.rs · Y9XISP".to_owned()];
+        let mut ledger = Vec::new();
+        file(&mut ledger, &[long.clone()], "2026-11-17", 1000);
+        long.behind.remove(0);
+        file(&mut ledger, &[long], "2026-11-17", 4600);
+        assert!(
+            ledger.iter().all(|e| e.open),
+            "a clean owner's drag closed while the zone was still past its target"
+        );
+    }
+
+    #[test]
+    fn a_reports_drag_says_reports_and_how_it_closes() {
+        let mut unasked = measure("reports-unasked", Class::Cells, 1.0, Some(0.0));
+        unasked.behind = vec!["AAAAAA's RPRT-1, drafted 9 h ago, asked nothing · ORCH".to_owned()];
+        let told = file(&mut Vec::new(), &[unasked], "2026-11-17", 1000);
+        assert!(
+            told[0].1.contains("these of its reports are yours")
+                && told[0].1.contains("once none of them is left"),
+            "a reports drag spoke of cells, or of a figure it doesn't wait for: {}",
+            told[0].1
+        );
+    }
+
+    #[test]
     fn each_miss_of_joels_goes_to_its_own_owner_and_closes_once_its_check_is_named() {
         let mut misses = measure("misses", Class::Miss, 2.0, Some(0.0));
         misses.behind = vec![

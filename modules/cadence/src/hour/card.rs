@@ -357,6 +357,23 @@ mod tests {
         let (card, next) = compose("20:10", &back, &held("slips", 2.0, 0), &none(), "");
         assert!(card.contains("is back in"), "{card}");
         assert_eq!(next.drag, None, "nothing past its target is no drag");
+        let unread = [measure("slips", Class::Slip, 0.0, None)];
+        let (card, _) = compose("21:10", &unread, &held("slips", 2.0, 0), &none(), "");
+        assert!(
+            card.contains("Last hour's drag, slips said, wasn't read this hour."),
+            "a drag its hour couldn't read was said to be back in: {card}"
+        );
+    }
+
+    #[test]
+    fn a_cells_drag_goes_to_each_cells_owner() {
+        let mut idle = measure("cells-idle", Class::Cells, 1.0, Some(0.0));
+        idle.behind = vec!["AAAAAA idle 30 min: write it · ORCH".to_owned()];
+        let (card, _) = compose("02:10", &[idle], &Kept::default(), &none(), "x");
+        assert!(
+            card.contains("to each cell's owner by x"),
+            "a cells drag was said to go to files' owners: {card}"
+        );
     }
 
     #[test]

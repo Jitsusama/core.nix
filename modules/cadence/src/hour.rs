@@ -98,7 +98,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         measures.push(measures::unasked(
             // The measure judges the last 3 days alone, so older files
             // aren't opened.
-            &reports(now - 3 * DAY),
+            &reports(now - measures::REPORTS_SINCE),
             looks.as_deref(),
             quests.as_deref(),
             now,
