@@ -183,17 +183,11 @@ def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_nod
     the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the moved cell wasn't drawn moving")
 
 
-def test_the_map_reaches_every_cell_but_the_receptor_it_draws_alone(
-    browser: Browser, mycelium_served: Served
-) -> None:
-    # The map draws calls@kestrel, a receptor, as working alone until
-    # receptors sit at the realm's edge; the change that puts them there
-    # expects no failure here.
+def test_the_map_reaches_every_cell(browser: Browser, mycelium_served: Served) -> None:
     root, _ = mycelium_served
     said = reach(browser, root)
     assert said["cells"] == CELLS, f"the map judged {said['cells']} of node.json's {CELLS} cells"
-    alone = {"cell": "calls@kestrel", "orchestration": None, "owner": "calls@kestrel"}
-    assert said["failures"] == [{**alone, "why": "alone"}], f"the map misses {said['failures']}"
+    assert said["failures"] == [], f"the map misses {said['failures']}"
 
 
 def test_the_map_reaches_every_cell_of_ten_thousand(browser: Browser, twin_served: Served) -> None:
@@ -201,12 +195,7 @@ def test_the_map_reaches_every_cell_of_ten_thousand(browser: Browser, twin_serve
     said = reach(browser, root, TWIN_MS)
     judged = TWIN_CELLS + TWIN_RECEPTORS
     assert said["cells"] == judged, f"the map judged {said['cells']} of {judged} cells"
-    # The receptors are drawn alone until the map draws them at its edge.
-    alone = [
-        {"cell": name, "orchestration": None, "owner": name, "why": "alone"}
-        for name in (f"radio{n}@kestrel" for n in range(TWIN_RECEPTORS))
-    ]
-    assert said["failures"] == alone, f"the map misses {said['failures'][:5]} of {said['count']}"
+    assert said["failures"] == [], f"the map misses {said['failures'][:5]} of {said['count']}"
 
 
 def test_a_cell_that_goes_leaves_the_map(mycelium_opened: Opened, mycelium_node: StandIn) -> None:
