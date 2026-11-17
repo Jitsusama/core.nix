@@ -145,7 +145,12 @@ fn a_day_that_falls_back_an_hour_is_counted_whole() {
     place.routes();
     a_day(&place);
     // 00:30 on the 16th, while he was four hours behind UTC.
-    said(&place, "s-dst", "2026-11-16T04:30:00.000Z", "no, that's wrong");
+    said(
+        &place,
+        "s-dst",
+        "2026-11-16T04:30:00.000Z",
+        "no, that's wrong",
+    );
     let mut ears = place.ears();
     ears.offset_s = -4 * 3600;
     run_with(&ears, CELLS, true);
@@ -269,7 +274,11 @@ fn days_the_listener_did_not_hear_are_not_counted() {
         "{counted:?}"
     );
     let counted = counts(&place, &[AT + 3 * DAY + 11 * HOUR]);
-    assert_eq!(counted.len(), 1, "the 17th and 18th weren't heard: {counted:?}");
+    assert_eq!(
+        counted.len(),
+        1,
+        "the 17th and 18th weren't heard: {counted:?}"
+    );
     assert!(
         counted[0].contains("2026-11-19") && !counted[0].contains("listener off"),
         "the day it came back is heard whole, a day back: {counted:?}"
@@ -301,13 +310,21 @@ fn a_day_counted_is_never_counted_again() {
     assert_eq!(counts(&place, &[NEXT_NIGHT]).len(), 1);
     // 01:00 on the 17th, five hours behind UTC; then flown eight hours
     // west, it's the 16th again where he is.
-    said(&place, "s-west", "2026-11-17T06:00:00.000Z", "no, that's wrong");
+    said(
+        &place,
+        "s-west",
+        "2026-11-17T06:00:00.000Z",
+        "no, that's wrong",
+    );
     let mut ears = place.ears();
     ears.at = NEXT_NIGHT + HOUR;
     ears.offset_s = -13 * 3600;
     let (counted, hour) = run_with(&ears, CELLS, true);
     assert!(counted.is_empty(), "{counted:?}");
-    assert!(!hour_says(&hour, "clock"), "a zone moved isn't a clock: {hour:?}");
+    assert!(
+        !hour_says(&hour, "clock"),
+        "a zone moved isn't a clock: {hour:?}"
+    );
     let counted = counts(&place, &[NEXT_NIGHT + DAY]);
     assert_eq!(counted.len(), 1, "{counted:?}");
     assert!(
@@ -391,7 +408,12 @@ fn the_hour_says_his_status_asks_of_his_own_day() {
     let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a run");
     assert_eq!(hour.status_asks, 1, "{:?}", place.heard());
     // 23:30 on the 16th where he is, but the 17th in UTC.
-    said(&place, "s-night", "2026-11-17T04:30:00.000Z", "status update");
+    said(
+        &place,
+        "s-night",
+        "2026-11-17T04:30:00.000Z",
+        "status update",
+    );
     let mut ears = place.ears();
     ears.at = NEXT_NIGHT;
     let hour = hear(&ears, CELLS, &mut |_, _| true).expect("a run");

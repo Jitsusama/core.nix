@@ -58,7 +58,10 @@ fn a_pain_given_up_on_waits_on_no_mycelium() {
     ears.at = AT + 300_000;
     let hour = hear(&ears, r#"{"Ok":{"Sessions":[]}}"#, &mut |_, _| true).expect("a run");
     assert!(
-        !hour.troubles.iter().any(|t| t.contains("named no sessions")),
+        !hour
+            .troubles
+            .iter()
+            .any(|t| t.contains("named no sessions")),
         "one outage, said once as given up: {hour:?}"
     );
 }
