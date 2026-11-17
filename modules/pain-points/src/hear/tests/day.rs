@@ -47,10 +47,12 @@ fn the_keeper_hears_each_day_counted_once_after_it_ends() {
     let counted = counts(&place, &[NEXT_NIGHT, NEXT_NIGHT + 300_000]);
     assert_eq!(counted.len(), 1, "once a day: {counted:?}");
     let day = &counted[0];
+    assert!(
+        !day.contains(", from "),
+        "a first run reads a day back, so it hears its day whole: {day}"
+    );
     for said in [
         "2026-11-16",
-        // The listener began at 15:00 his time, so the day is counted from then.
-        "from 15:00",
         "4 pains heard",
         "1 asking how something stands",
         "3 sent to their owners",
@@ -165,7 +167,10 @@ fn a_clock_set_back_starts_the_count_again() {
     place.routes();
     a_day(&place);
     counts(&place, &[NEXT_NIGHT]);
-    assert!(counts(&place, &[AT - 2 * DAY]).is_empty());
+    assert!(
+        counts(&place, &[AT - 2 * DAY]).is_empty(),
+        "a day ahead of today is no day to count"
+    );
     let counted = counts(&place, &[AT - 2 * DAY + 11 * HOUR]);
     assert_eq!(counted.len(), 1, "{counted:?}");
     assert!(counted[0].contains("2026-11-14"), "{counted:?}");

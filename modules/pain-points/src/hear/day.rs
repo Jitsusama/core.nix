@@ -91,10 +91,10 @@ pub fn note(name: &str, from: Option<&str>, day: &Day) -> String {
 }
 
 /// Sends the keeper the count of yesterday once, when the run before was
-/// in it. A first run starts counting from the moment it runs, and sends
-/// nothing. A count the node didn't take is sent again next run, at most
-/// SEND_TRIES times. Days are told apart by his offset now, so a day
-/// around a clock change is counted an hour off.
+/// in it. A first run sends nothing, and counts its day from a day back,
+/// as far as it reads. A count the node didn't take is sent again next
+/// run, at most `SEND_TRIES` times. Days are told apart by his offset now,
+/// so a day around a clock change is counted an hour off.
 ///
 /// # Errors
 ///
@@ -115,6 +115,8 @@ pub fn count(
     let path = state.join("day.json");
     let (today, began) = crate::local_day(at, offset_s);
     let today_n = (began + offset_s * 1000).div_euclid(super::DAY_MS);
+    // A run reads a day back, so it hears today from its start.
+    let heard_back = at - super::DAY_MS;
     let keep = |counting: &Counting| {
         crate::write_whole(
             &path,
@@ -126,7 +128,7 @@ pub fn count(
             .ok()
             .and_then(|c| day_number(&c.day).map(|n| (n, c))),
         Err(e) if e.kind() == ErrorKind::NotFound => {
-            keep(&Counting { day: today, from: at, tries: 0 })?;
+            keep(&Counting { day: today, from: heard_back, tries: 0 })?;
             return Ok(None);
         }
         Err(_) => None,
@@ -134,7 +136,7 @@ pub fn count(
     // An unreadable file starts the count again now: a lost day's count
     // costs less than a listener that stops routing over it.
     let Some((held_n, mut held)) = held else {
-        keep(&Counting { day: today, from: at, tries: 0 })?;
+        keep(&Counting { day: today, from: heard_back, tries: 0 })?;
         return Ok(Some("day.json couldn't be read, so the day's count began again".into()));
     };
     if held.day == today {
