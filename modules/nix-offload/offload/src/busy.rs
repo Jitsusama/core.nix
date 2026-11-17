@@ -21,7 +21,8 @@ const SYSCTL: &str = "/usr/sbin/sysctl";
 
 /// Answers `busy` given `arguments`, the words after it: done while the
 /// Mac is past its room, and otherwise the table's exit for what it
-/// found, saying why.
+/// found, saying why on its one line, since a caller holding work back
+/// reads the code and goes on (`ended::backs_off`).
 pub fn busy(arguments: &[String]) -> Result<(), Failure> {
     if !arguments.is_empty() {
         return Err(ended::asked_wrongly("busy takes no arguments", "busy"));
@@ -36,7 +37,7 @@ pub fn busy(arguments: &[String]) -> Result<(), Failure> {
             eprintln!("nix-offload: {why}");
             Ok(())
         }
-        (exit, why) => Err(Failure::new(exit, why)),
+        (exit, why) => Err(ended::backs_off(exit, why)),
     }
 }
 

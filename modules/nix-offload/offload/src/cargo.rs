@@ -269,10 +269,13 @@ pub fn cargo(arguments: &[String], lenders: [&Path; 2]) -> Result<(), Failure> {
                     Err(turn(real, words, what, "no lent builder took it"))
                 }
                 Some(code) => ended::passed(code, || format!("cargo {what} failed on a builder")),
+                // Only a signal here ends the local run with no code, and
+                // it said nothing before the kit, so nothing is added.
                 None => Err(Failure::passed(
                     1,
-                    format!("cargo {what} was ended on a builder"),
-                )),
+                    format!("cargo {what}'s run was ended here by a signal"),
+                )
+                .said_already()),
             }
         }
     }

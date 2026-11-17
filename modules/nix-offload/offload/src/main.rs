@@ -583,11 +583,13 @@ fn relaying(listen: &str, to: &str) -> Result<(), Failure> {
         moved: relay::Moved::named(),
     }
     .serve_all(listeners, &LEAVING);
+    // serve_all said why as it gave up, so the kit adds nothing.
     if gave_up {
         return Err(Failure::new(
             Exit::Failed,
             format!("the relay to {to} gave up, as its callers were hung up on"),
-        ));
+        )
+        .said_already());
     }
     Ok(())
 }
@@ -601,10 +603,10 @@ fn standing_by(standing: Option<String>, beside: Option<String>) -> Result<(), F
             "stand",
         ));
     }
-    if stand(standing.map(PathBuf::from), beside.map(PathBuf::from)) {
-        return Err(ended::handed_over());
-    }
-    Ok(())
+    ended::lent(stand(
+        standing.map(PathBuf::from),
+        beside.map(PathBuf::from),
+    ))
 }
 
 /// `lines`: copies the lender's lines into root's, for as long as it runs,
@@ -1482,7 +1484,7 @@ fn say_a_warm_pass_isnt_kept(status: Option<i32>, words: &[String]) {
 /// warm target (`cargo::runs_warm`).
 fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failure> {
     let asked = command::asked(arguments).map_err(|why| ended::asked_wrongly(why, "there"))?;
-    let not_run = |why: &str| Failure::new(taken_nowhere(), format!("{why}, so nothing ran"));
+    let not_run = |why: &str| ended::backs_off(taken_nowhere(), format!("{why}, so nothing ran"));
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
     let more = more_dir();
     let lenders = [dir.as_path(), more.as_path()];
@@ -1585,12 +1587,12 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
 /// leaves nothing to run here.
 fn unsent(why: &str) -> Failure {
     if there::lent_only() {
-        return Failure::new(
+        return ended::backs_off(
             left_unbuilt(),
             format!("{why}, and --lent-only runs nothing here"),
         );
     }
-    Failure::new(
+    ended::backs_off(
         taken_nowhere(),
         format!("{why}, so changed-checks runs here"),
     )
@@ -1603,11 +1605,11 @@ fn unsent(why: &str) -> Failure {
 /// evaluate here for 8 minutes. So none runs here unasked.
 fn none_answered(lending: bool) -> Failure {
     if lending {
-        return Failure::new(
+        return ended::backs_off(
             left_unbuilt(),
-            "no builder or evaluator answered, and a lender runs, so nothing was evaluated here",
-        )
-        .try_this("changed-checks --here");
+            "no builder or evaluator answered, and a lender runs, so nothing was evaluated \
+             here; changed-checks --here runs it on this machine",
+        );
     }
     unsent("no builder or evaluator answered")
 }
@@ -1749,12 +1751,14 @@ fn changed_there(
             forget();
             return changed_there(given, waiting, replays);
         }
+        // Said as it was found busy (running.rs), so the kit adds nothing.
         Twinned::Busy => {
             forget();
             return Err(Failure::new(
                 taken_nowhere(),
                 "the same run goes in this tree already, and --never-ask waits for none",
-            ));
+            )
+            .said_already());
         }
     };
     let told = told(&passed, at.as_ref(), wanted.system.as_deref());
@@ -1992,7 +1996,10 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
         Some(_) if !answering(&mac) => {
             skipped(format!("{} stopped answering as it compared", mac.host))
         }
-        Some(status) => OnAMac::Failed(status),
+        Some(status) => {
+            eprintln!("nix-offload: a Mac's checks didn't pass, so this run's pass isn't kept");
+            OnAMac::Failed(status)
+        }
     }
 }
 
@@ -2899,10 +2906,7 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Resu
                 telling: given("--tell").map(PathBuf::from),
                 freeing: given("--freeing").map(PathBuf::from),
             });
-            if superseded {
-                return Err(ended::handed_over());
-            }
-            Ok(())
+            ended::lent(superseded)
         }
         _ => Err(unknown(word)),
     }

@@ -82,6 +82,21 @@ fn each_call_its_units_and_gates_make_reaches_its_subcommand() {
             "relay needs --listen and --to",
         ),
         (&["passed"][..], 64, "passed takes forget COMMIT"),
+        // The gates' calls: mycelium's answer, the harness's fence, and
+        // the fenced session's way out, whose --lent-only the kit must
+        // leave to it.
+        (
+            &["answer", "x"][..],
+            64,
+            "answer takes a quest and a commit",
+        ),
+        (&["ask", "--quest"][..], 64, "--quest needs a value"),
+        (&["scoped", "git"][..], 64, "scoped needs -- PROGRAM"),
+        (
+            &["outside", "--lent-only", "--", "nix"][..],
+            64,
+            "it runs only a `there` call",
+        ),
     ] {
         let (ran, said) = asked(words);
         assert_eq!(ran.status.code(), Some(code), "{words:?}: {said}");
@@ -121,17 +136,20 @@ fn a_word_that_isnt_text_is_asked_wrongly_not_a_panic() {
     use std::os::unix::ffi::OsStrExt;
     let home = tempfile::tempdir().expect("a home folder");
     let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .arg("outside")
-        .arg(OsStr::from_bytes(b"--git-dir=\xff"))
+        .args(["outside", "--git-dir"])
+        .arg(OsStr::from_bytes(b"/\xff"))
+        .args(["--work-tree", "/x", "--", "there"])
         .env_clear()
         .env("PATH", "/nonexistent")
         .env("HOME", home.path())
         .output()
         .expect("nix-offload runs");
-    assert_eq!(
-        ran.status.code(),
-        Some(64),
-        "{}",
-        String::from_utf8_lossy(&ran.stderr)
+    // A call outside would take, but for the word, so only the kit's
+    // refusal ends it 64.
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(ran.status.code(), Some(64), "{said}");
+    assert!(
+        said.contains("isn't UTF-8"),
+        "the kit refused the word: {said}"
     );
 }

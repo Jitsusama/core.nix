@@ -31,13 +31,30 @@ pub fn coded(code: u8, what: impl FnOnce() -> String) -> Result<(), Failure> {
     Err(failure.said_already())
 }
 
-/// What a lender ends with once it has ended superseded: the table's
-/// try-again, 75, which its unit counts as a success and starts it again
-/// on (home.nix's `SuccessExitStatus`). Handing over is the unit's sign,
-/// not a failure, so nothing is said: a line marked as an error at every
-/// switch would read as one in the day's health.
-pub fn handed_over() -> Failure {
-    Failure::new(Exit::TryAgain, "the lender handed over to its successor").said_already()
+/// How a lender ends, `superseded` or told to end: superseded, with the
+/// table's try-again, 75, which its unit counts as a success and starts
+/// it again on (home.nix's `SuccessExitStatus`). Handing over is the
+/// unit's sign, not a failure, so nothing is said: a line marked as an
+/// error at every switch would read as one in the day's health. This is
+/// the only way a lender ends 75, since the unit counts every 75 a
+/// handover.
+pub fn lent(superseded: bool) -> Result<(), Failure> {
+    if superseded {
+        return Err(
+            Failure::new(Exit::TryAgain, "the lender handed over to its successor").said_already(),
+        );
+    }
+    Ok(())
+}
+
+/// A run that backs off to its caller with `exit`, `what` saying why on a
+/// line of its own as it always has. Its callers (changed-checks, its
+/// keep of main, cargo) read the code and go on, so the kit adds no line
+/// of its own, which a unit's journal would mark an error.
+pub fn backs_off(exit: Exit, what: impl Into<String>) -> Failure {
+    let what = what.into();
+    eprintln!("nix-offload: {what}");
+    Failure::new(exit, what).said_already()
 }
 
 /// As [`coded`], for a status as a child gave it: one no exit code holds
@@ -122,11 +139,29 @@ mod tests {
 
     #[test]
     fn a_lender_that_handed_over_ends_as_its_unit_counts_a_success() {
-        let ended = handed_over();
+        let ended = lent(true).expect_err("a superseded lender ends a way its unit reads");
         assert_eq!(
             (ended.code(), ended.said),
             (75, true),
             "home.nix's SuccessExitStatus counts 75, said by nothing"
+        );
+    }
+
+    #[test]
+    fn a_lender_told_to_end_ends_done() {
+        assert!(
+            lent(false).is_ok(),
+            "a lender stopped, not superseded, ends 0 as it did"
+        );
+    }
+
+    #[test]
+    fn a_run_that_backs_off_adds_no_line_of_the_kits() {
+        let ended = backs_off(Exit::TryAgain, "no lent builder took it, so nothing ran");
+        assert_eq!(
+            (ended.code(), ended.said),
+            (75, true),
+            "its own line says why, and its caller reads 75"
         );
     }
 }
