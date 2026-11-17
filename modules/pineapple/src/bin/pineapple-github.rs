@@ -395,10 +395,8 @@ fn run(how: &Run) -> Result<(), Failure> {
             SignIn::Missing => eprintln!("<4>no {name} sign-in yet, so nothing is read"),
             SignIn::RanOver => {
                 // A locked keyring prompts each time it's asked (RAN_OVER_REST).
-                eprintln!(
-                    "<4>{name}'s sign-in ran past 30 seconds and was stopped, \
-                     so nothing is read for ten minutes"
-                );
+                let rest = RAN_OVER_REST + how.every;
+                eprintln!("<4>{}", sign_in::ran_over(&name, &how.site, rest));
                 std::thread::sleep(RAN_OVER_REST);
             }
         }

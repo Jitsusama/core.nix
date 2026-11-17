@@ -23,13 +23,17 @@ pub const PATIENCE: Duration = Duration::from_secs(30);
 /// How often a sign-in that has said its piece is looked at for its end.
 const LOOK_EVERY: Duration = Duration::from_millis(20);
 
+/// The most a sign-in may print: far past any token, and short of a
+/// program printing for good filling memory before its patience runs out.
+pub const MOST: usize = 64 * 1024;
+
 /// What a sign-in program gave.
 #[derive(Debug, PartialEq, Eq)]
 pub enum SignIn {
     /// The sign-in it printed, trimmed.
     Token(String),
-    /// None: it couldn't be run, failed, or printed nothing, as a keyring
-    /// lacking the item does.
+    /// None: it couldn't be run, failed, printed nothing, as a keyring
+    /// lacking the item does, or printed what can't be a sign-in.
     Missing,
     /// It ran past its patience, and it and all it started were killed.
     RanOver,
@@ -51,21 +55,37 @@ pub fn token(program: &OsStr, patience: Duration) -> SignIn {
         return SignIn::Missing;
     };
     let Some(out) = running.stdout.take() else {
-        return stop(running);
+        stop(running);
+        return SignIn::Missing;
     };
     // Its output ends only once all it started have let go of it, so a
     // child left holding the pipe runs the program over too. Read here,
     // not on a thread of its own, so nothing is left waiting once it is.
-    let Some(text) = read_until(out, until) else {
-        return stop(running);
+    let text = match read_until(out, until) {
+        Output::Text(text) => text,
+        Output::Late => {
+            stop(running);
+            return SignIn::RanOver;
+        }
+        // Not a sign-in, though it may still be running: ended, not waited
+        // out, so it isn't taken for one that ran over.
+        Output::Broken => {
+            stop(running);
+            return SignIn::Missing;
+        }
     };
     let ended = loop {
         match running.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if Instant::now() < until => thread::sleep(LOOK_EVERY),
-            Ok(None) => return stop(running),
-            // Not this program's to wait on any more, so nothing to kill.
-            Err(_) => return SignIn::Missing,
+            Ok(None) => {
+                stop(running);
+                return SignIn::RanOver;
+            }
+            Err(_) => {
+                stop(running);
+                return SignIn::Missing;
+            }
         }
     };
     match text.trim() {
@@ -74,10 +94,19 @@ pub fn token(program: &OsStr, patience: Duration) -> SignIn {
     }
 }
 
-/// All `out` holds once it ends, or None when it hasn't by `until` or
-/// can't be read. Dropped either way, so a writer left behind finds the
-/// pipe closed.
-fn read_until(mut out: ChildStdout, until: Instant) -> Option<String> {
+/// What a sign-in's output came to.
+enum Output {
+    /// All it printed, once it ended.
+    Text(String),
+    /// It hadn't ended by its time.
+    Late,
+    /// It couldn't be read, wasn't text, or ran past [`MOST`].
+    Broken,
+}
+
+/// What `out` comes to by `until`. Dropped however it ends, so a writer
+/// left behind finds the pipe closed.
+fn read_until(mut out: ChildStdout, until: Instant) -> Output {
     let mut held = Vec::new();
     let mut chunk = [0_u8; 4096];
     loop {
@@ -96,26 +125,39 @@ fn read_until(mut out: ChildStdout, until: Instant) -> Option<String> {
             if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
                 continue;
             }
-            return None;
+            return Output::Broken;
         }
-        // Out of time, whether it went quiet or never stops printing.
+        // Out of time, whether it went quiet or kept printing.
         if answered == 0 || Instant::now() >= until {
-            return None;
+            return Output::Late;
         }
         // Ready, so this read doesn't wait: what's there, or its end.
         match out.read(&mut chunk) {
-            Ok(0) => return String::from_utf8(held).ok(),
+            Ok(0) => return String::from_utf8(held).map_or(Output::Broken, Output::Text),
+            Ok(read) if held.len() + read > MOST => return Output::Broken,
             Ok(read) => held.extend_from_slice(&chunk[..read]),
             Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
-            Err(_) => return None,
+            Err(_) => return Output::Broken,
         }
     }
+}
+
+/// The line a reader says when the sign-in for `shown`, read by the unit
+/// for `site`, ran over and nothing is read for `rest`.
+#[must_use]
+pub fn ran_over(shown: &str, site: &str, rest: Duration) -> String {
+    format!(
+        "{shown}'s sign-in ran past {} seconds and was stopped, so nothing is read for {} \
+         minutes; restart pineapple-{site} to ask again sooner",
+        PATIENCE.as_secs(),
+        rest.as_secs().div_ceil(60)
+    )
 }
 
 /// Kills `running`'s group, and `running` itself should it have left the
 /// group, before reaping it, so its id can't have gone to another; then
 /// reaps it, killed, so the wait is short.
-fn stop(mut running: Child) -> SignIn {
+fn stop(mut running: Child) {
     if let Ok(group) = libc::pid_t::try_from(running.id()) {
         // SAFETY: killpg only sends a signal. The group is the one this
         // program was started in, and its leader isn't reaped yet, so the
@@ -125,5 +167,4 @@ fn stop(mut running: Child) -> SignIn {
     // An error says it had already ended, which the wait then reaps.
     let _ = running.kill();
     let _ = running.wait();
-    SignIn::RanOver
 }

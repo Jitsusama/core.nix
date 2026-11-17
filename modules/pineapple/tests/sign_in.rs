@@ -7,7 +7,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use pineapple::sign_in::{SignIn, token};
+use pineapple::sign_in::{MOST, PATIENCE, SignIn, ran_over, token};
 
 /// The patience a case cuts a sign-in off at.
 const SHORT: Duration = Duration::from_millis(300);
@@ -18,6 +18,10 @@ const AMPLE: Duration = Duration::from_secs(20);
 
 /// How far past its patience a case waits before calling it a hang.
 const HANG: Duration = Duration::from_secs(5);
+
+/// The patience a case gives a program that must start a child first,
+/// so a loaded builder can't cut it off before the child is running.
+const SETTLED: Duration = Duration::from_secs(2);
 
 /// Taken by each case for its whole run. A program written while another
 /// case's thread forks can be held open for writing in that child, and
@@ -155,11 +159,48 @@ fn sign_in_that_says_its_piece_and_hangs_runs_over() {
 #[test]
 fn sign_in_that_never_stops_printing_runs_over() {
     let _turn = turn();
-    let (answer, _) = signed("prints-on", "exec yes stand-in-token", SHORT);
+    let script = "while :; do echo stand-in-token; sleep 0.01; done";
+    let (answer, _) = signed("prints-on", script, SHORT);
     assert_eq!(
         answer,
         SignIn::RanOver,
         "a sign-in printing for good runs over"
+    );
+}
+
+#[test]
+fn sign_in_printing_past_the_most_is_no_token_at_once() {
+    let _turn = turn();
+    let (answer, took) = signed("floods", "exec yes stand-in-token", AMPLE);
+    assert_eq!(
+        answer,
+        SignIn::Missing,
+        "a flood past {MOST} bytes is no token"
+    );
+    assert!(
+        took < HANG,
+        "cut off at its most, not its patience: {took:?}"
+    );
+}
+
+#[test]
+fn sign_in_that_isnt_text_is_no_token_and_not_run_over() {
+    let _turn = turn();
+    let (answer, _) = signed("not-text", r"printf '\377\n'", AMPLE);
+    assert_eq!(answer, SignIn::Missing, "what can't be a token is none");
+}
+
+#[test]
+fn sign_in_run_over_is_said_with_its_times_and_the_way_out() {
+    let said = ran_over("Delta", "delta", Duration::from_mins(10));
+    assert_eq!(
+        said,
+        format!(
+            "Delta's sign-in ran past {} seconds and was stopped, so nothing is read for 10 \
+             minutes; restart pineapple-delta to ask again sooner",
+            PATIENCE.as_secs()
+        ),
+        "the line names its times and how to cut the rest short"
     );
 }
 
@@ -172,7 +213,7 @@ fn sign_in_run_over_takes_what_it_started_with_it() {
         "sleep 60 & echo $! > {}; echo stand-in-token",
         left.display()
     );
-    let (answer, _) = asked(program(&at, &script), SHORT);
+    let (answer, _) = asked(program(&at, &script), SETTLED);
     let pid = std::fs::read_to_string(&left).expect("the child's id is written");
     std::fs::remove_dir_all(&at).expect("the case's folder goes");
     assert_eq!(
@@ -180,14 +221,18 @@ fn sign_in_run_over_takes_what_it_started_with_it() {
         SignIn::RanOver,
         "a child holding its output runs it over"
     );
-    let status = PathBuf::from(format!("/proc/{}/status", pid.trim()));
-    let gone = |status: &Path| {
-        std::fs::read_to_string(status).map_or(true, |text| text.contains("State:\tZ"))
-    };
+    let pid: u32 = pid.trim().parse().expect("the child's id is whole");
+    let status = PathBuf::from(format!("/proc/{pid}/status"));
+    let state = |status: &Path| std::fs::read_to_string(status).ok();
+    let gone = |status: &Path| state(status).is_none_or(|text| text.contains("State:\tZ"));
     let began = Instant::now();
     // Killed, it's gone once whoever took it in reaps it.
-    while !gone(&status) && began.elapsed() < HANG {
+    while !gone(&status) && began.elapsed() < AMPLE {
         thread::sleep(Duration::from_millis(20));
     }
-    assert!(gone(&status), "the child it left is killed too");
+    assert!(
+        gone(&status),
+        "the child it left is killed too: {:?}",
+        state(&status)
+    );
 }
