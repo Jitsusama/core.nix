@@ -1337,24 +1337,18 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Liv
 /// begins, with the controller's reason `why`, and when it ends, rather
 /// than of each second's cut.
 fn hold(s: &mut Shaped, rates: replay::Rates, why: Option<&why::Reason>) {
-    let held =
-        |rate: Option<u64>, floor: u64, max: u64| rate.map_or(max, |r| r.max(floor).min(max));
-    let (up_max, down_max) = (s.controller.up.bounds.max, s.controller.down.bounds.max);
-    let (up, down) = (
-        held(rates.up, FLOOR.up, up_max),
-        held(rates.down, FLOOR.down, down_max),
-    );
-    s.controller.up.rate = up;
-    s.controller.down.rate = down;
-    let limited = rates.up.is_some() || rates.down.is_some();
-    let name = &s.uplink.name;
-    if limited && !s.told {
-        eprintln!("{}", why::holding(name, up, down, why));
-        s.told = true;
-    } else if !limited && s.told {
-        eprintln!("{name}: neither direction is held now, so the link's whole rate is kept");
-        s.told = false;
+    let most = Held {
+        up: s.controller.up.bounds.max,
+        down: s.controller.down.bounds.max,
+    };
+    let spell = spell(&s.uplink.name, s.told, rates, most, why);
+    s.controller.up.rate = spell.held.up;
+    s.controller.down.rate = spell.held.down;
+    if let Some(line) = &spell.said {
+        eprintln!("{line}");
     }
+    s.told = spell.told;
+    let limited = rates.up.is_some() || rates.down.is_some();
     s.state = if limited {
         State::Holding
     } else {
@@ -1362,6 +1356,50 @@ fn hold(s: &mut Shaped, rates: replay::Rates, why: Option<&why::Reason>) {
     };
     apply(s);
     go_straight(s, rates.down.is_none());
+}
+
+/// What a second's rates come to on a link: what each way is held to, and
+/// whether a spell of limits is told, with the journal's line as one
+/// begins or ends.
+#[derive(Debug, PartialEq)]
+struct Spell {
+    held: Held,
+    told: bool,
+    said: Option<String>,
+}
+
+/// Holds each way to the rate asked, kept between the floor and `most`, or
+/// to `most` where none is asked, and says a spell beginning, with the
+/// controller's reason `why` for the rate it held, or ending, a spell
+/// `told` already or not.
+fn spell(
+    name: &str,
+    told: bool,
+    rates: replay::Rates,
+    most: Held,
+    why: Option<&why::Reason>,
+) -> Spell {
+    let held =
+        |rate: Option<u64>, floor: u64, max: u64| rate.map_or(max, |r| r.max(floor).min(max));
+    let held = Held {
+        up: held(rates.up, FLOOR.up, most.up),
+        down: held(rates.down, FLOOR.down, most.down),
+    };
+    let limited = rates.up.is_some() || rates.down.is_some();
+    let said = if limited && !told {
+        Some(why::holding(name, held.up, held.down, why))
+    } else if !limited && told {
+        Some(format!(
+            "{name}: neither direction is held now, so the link's whole rate is kept"
+        ))
+    } else {
+        None
+    };
+    Spell {
+        held,
+        told: limited,
+        said,
+    }
 }
 
 /// Lets what a link receives go straight in, past its IFB, or turns it
@@ -1618,5 +1656,82 @@ fn sweep(kept: &BTreeSet<String>) {
             let _ = sh(&words(&format!("tc qdisc del dev {name} root")));
             let _ = sh(&words(&format!("tc qdisc del dev {name} ingress")));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MOST: Held = Held {
+        up: 10_800,
+        down: 2_000_000,
+    };
+
+    fn asked(up: Option<u64>, down: Option<u64>) -> replay::Rates {
+        replay::Rates { up, down }
+    }
+
+    // The controller asked past the shaper's most, which holds the upload
+    // instead: the line names the rate held, and not the controller's
+    // reason, which speaks of the rate it asked.
+    #[test]
+    fn a_spell_held_under_what_was_asked_says_the_rate_held_without_its_reason() {
+        let reason = why::Reason {
+            up: Some(11_500),
+            said: "Upload queued 30 ms.".to_owned(),
+        };
+        let spell = spell(
+            "wlp0s20f3",
+            false,
+            asked(Some(11_500), None),
+            MOST,
+            Some(&reason),
+        );
+        assert_eq!(
+            spell.held,
+            Held {
+                up: 10_800,
+                down: 2_000_000
+            }
+        );
+        assert_eq!(
+            spell.said.as_deref(),
+            Some("wlp0s20f3: held to 10.8 Mb/s up and 2000.0 Mb/s down."),
+            "{spell:?}"
+        );
+        assert!(spell.told);
+    }
+
+    #[test]
+    fn a_spell_is_said_once_as_it_begins_and_once_as_it_ends() {
+        let reason = why::Reason {
+            up: Some(9_000),
+            said: "Upload queued 30 ms.".to_owned(),
+        };
+        let limited = asked(Some(9_000), None);
+        let begun = spell("wlp0s20f3", false, limited, MOST, Some(&reason));
+        assert_eq!(
+            begun.said.as_deref(),
+            Some("wlp0s20f3: held to 9.0 Mb/s up and 2000.0 Mb/s down. Upload queued 30 ms."),
+            "{begun:?}"
+        );
+        let going = spell("wlp0s20f3", true, limited, MOST, Some(&reason));
+        assert_eq!(going.said, None, "a spell under way was said again");
+        let ended = spell("wlp0s20f3", true, asked(None, None), MOST, None);
+        assert_eq!(ended.held, MOST, "no limit holds the whole link");
+        assert!(!ended.told);
+        assert_eq!(
+            ended.said.as_deref(),
+            Some("wlp0s20f3: neither direction is held now, so the link's whole rate is kept")
+        );
+        let resting = spell("wlp0s20f3", false, asked(None, None), MOST, None);
+        assert_eq!(resting.said, None, "a link at rest was said to end a spell");
+    }
+
+    #[test]
+    fn a_rate_asked_under_the_floor_is_held_at_it() {
+        let spell = spell("wlp0s20f3", true, asked(Some(10), Some(10)), MOST, None);
+        assert_eq!(spell.held, FLOOR);
     }
 }
