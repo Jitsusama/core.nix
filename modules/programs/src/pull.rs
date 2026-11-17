@@ -15,15 +15,12 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
+pub use crate::git::READ;
 use crate::git::ran;
 
 /// The longest a fetch may run before it's stopped, which leaves the
 /// checkout as it was.
 pub const FETCH: Duration = Duration::from_secs(120);
-
-/// The longest reading the checkout may take before it's stopped: its
-/// branch, the one it follows, its changes and how far apart they are.
-pub const READ: Duration = Duration::from_secs(30);
 
 /// How a pull went when it changed nothing it shouldn't.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,7 +36,7 @@ pub enum Pulled {
 pub enum Refused {
     /// The folder isn't a checkout's own, as a tree cut from one isn't.
     Tree,
-    /// A pull of the same checkout is under way.
+    /// A Pull or a switch of the same checkout is under way.
     Busy,
     /// Its head is no branch, as while a rebase is under way.
     Detached,

@@ -19,11 +19,21 @@ use std::time::{Duration, Instant};
 /// before it's stopped outright.
 const LETTING_GO: Duration = Duration::from_secs(5);
 
-/// Runs git on the checkout at `folder`, named outright, with nothing to
-/// answer it, answering what it printed, or else how it exited, none if
-/// it was stopped or never started. It runs in a session of its own, with
-/// no terminal for ssh to ask at and no askpass, hooks or fsmonitor. Past
-/// `wait`, where one is given, it's stopped with all it started.
+/// The longest reading a checkout may take before it's stopped, for Pull
+/// and Switch Branch alike: its branch and the one it follows, its
+/// branches, its changes and how far apart they are.
+pub const READ: Duration = Duration::from_secs(30);
+
+/// How a run of git failed: how it exited, none when it was stopped,
+/// never started or printed what isn't text, and what it said, in C's
+/// words whatever Joel's language, so a refusal can be told by them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Failure {
+    pub exit: Option<i32>,
+    pub said: String,
+}
+
+/// As [`tried`], answering only how git exited when it failed.
 ///
 /// # Errors
 ///
@@ -35,6 +45,28 @@ pub fn ran(
     args: &[&str],
     wait: Option<Duration>,
 ) -> Result<String, Option<i32>> {
+    tried(git, folder, args, wait).map_err(|failure| failure.exit)
+}
+
+/// Runs git on the checkout at `folder`, named outright, with nothing to
+/// answer it, answering what it printed, or else how it exited, none if
+/// it was stopped or never started. It runs in a session of its own, with
+/// no terminal for ssh to ask at and no askpass, hooks or fsmonitor. Past
+/// `wait`, where one is given, it's stopped with all it started.
+///
+/// # Errors
+///
+/// How git failed, and what it said.
+pub fn tried(
+    git: &str,
+    folder: &Path,
+    args: &[&str],
+    wait: Option<Duration>,
+) -> Result<String, Failure> {
+    let failed = |exit| Failure {
+        exit,
+        said: String::new(),
+    };
     let mut command = Command::new(git);
     command
         .arg("-C")
@@ -46,6 +78,11 @@ pub fn ran(
         .env("GIT_WORK_TREE", folder)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("SSH_ASKPASS_REQUIRE", "never")
+        // Its messages in C's words, which only they are read for; its
+        // other settings stay Joel's.
+        .env("LC_MESSAGES", "C")
+        .env_remove("LC_ALL")
+        .env_remove("LANGUAGE")
         .env_remove("GIT_ASKPASS")
         .env_remove("SSH_ASKPASS")
         .stdin(Stdio::null())
@@ -70,31 +107,33 @@ pub fn ran(
             Ok(())
         });
     }
-    let mut child = command.spawn().map_err(|_| None)?;
+    let mut child = command.spawn().map_err(|_| failed(None))?;
     // Read as it prints, so a long status never fills its pipe and waits.
     let (printed, said) = (drained(child.stdout.take()), drained(child.stderr.take()));
     if let Some(wait) = wait
         && !ended_within(&child, wait)
     {
         stop(&mut child);
-        return Err(None);
+        return Err(failed(None));
     }
-    let exit = child.wait().map_err(|_| None)?;
+    let exit = child.wait().map_err(|_| failed(None))?;
     // A helper it left running, as ssh's shared connection is, may hold
     // its pipes open, so what was printed is waited on only so long.
     let printed = printed.recv_timeout(LETTING_GO).unwrap_or_default();
     if !exit.success() {
         let said = said.recv_timeout(LETTING_GO).unwrap_or_default();
-        let said = String::from_utf8_lossy(&said);
+        let said = String::from_utf8_lossy(&said).trim().to_owned();
         eprintln!(
-            "git {} in {} failed: {}",
+            "git {} in {} failed: {said}",
             args.first().unwrap_or(&""),
             folder.display(),
-            said.trim()
         );
-        return Err(exit.code());
+        return Err(Failure {
+            exit: exit.code(),
+            said,
+        });
     }
-    String::from_utf8(printed).map_err(|_| exit.code())
+    String::from_utf8(printed).map_err(|_| failed(exit.code()))
 }
 
 /// What a pipe holds, read to its end on a thread of its own.

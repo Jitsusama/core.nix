@@ -39,7 +39,7 @@
       "verb": "open",
       "glyph": "branch",
       "said": {
-        "here": "checked out",
+        "here": "checked out here",
         "elsewhere": "in {tree}"
       }
     },
@@ -125,7 +125,8 @@
     },
     {
       "id": "verb:code:branches",
-      "command": "cd",
+      "command": "edit",
+      "argument": "branches",
       "in": "code:repository",
       "name": "Switch Branch",
       "verb": "open",
@@ -133,21 +134,24 @@
     },
     {
       "id": "verb:code:switch",
-      "command": "cd",
+      "command": "switch",
       "in": "code:branch",
       "name": "Switch to It",
-      "verb": "open",
+      "verb": "switch",
       "glyph": "branch",
       "said": {
         "switched": "switched to {branch}",
         "here": "already on {branch}",
         "tree": "not switched: it isn't a checkout's own folder",
         "busy": "not switched: it's being pulled or switched already",
-        "gone": "not switched: no branch is called that now",
+        "unknown": "not switched: there's no branch {branch} now",
         "unread": "not switched: git couldn't read it",
+        "detached": "not switched: it's on no branch",
+        "midway": "not switched: a merge or rebase is under way",
         "changed": "not switched: it has changes of its own",
         "elsewhere": "not switched: {tree} has it checked out",
-        "failed": "not switched: git refused it"
+        "intheway": "not switched: files git doesn't track are in the way",
+        "failed": "not switched: git refused the switch"
       }
     },
     {

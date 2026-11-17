@@ -33,9 +33,9 @@ use serde_json::Value;
 
 use super::{Daemon, Shared, keep, keys_watched, lock};
 
-/// Hears each watch begin or end, on a thread of its own, and hands the
-/// keys watched then to `ahead`. daemon-serve says so with every record
-/// held, so it's only passed on there, and the keys read here after.
+/// Hears each watch begin or end, on a thread of its own, and has `ahead`
+/// list what the watches name then. daemon-serve says so with every
+/// record held, so it's only passed on there, and the keys read after.
 pub fn follow(shared: &Arc<Shared>) {
     let (moved, heard) = mpsc::channel();
     shared.served().on_watches(Box::new(move || {
@@ -45,8 +45,7 @@ pub fn follow(shared: &Arc<Shared>) {
     std::thread::spawn(move || {
         while heard.recv().is_ok() {
             let _ = heard.try_iter().count();
-            let watched = keys_watched(&lock(&shared.daemon));
-            ahead(&shared, &watched);
+            ahead(&shared);
         }
     });
 }
@@ -73,6 +72,9 @@ pub struct Code {
     /// The checkouts a Pull or a switch is under way in, so a second
     /// waits for none and neither races the other.
     busy: Mutex<BTreeSet<String>>,
+    /// Held for the whole of a listing, so two at once, as the watches
+    /// moving and a switch's give, never keep each other's older list.
+    listing: Mutex<()>,
     /// The rows the last read made: each repository's and those inside it.
     made: Mutex<Vec<Value>>,
     /// The files listed of each Open a File by Name row ahead, and the
@@ -106,6 +108,7 @@ impl Code {
             reading: AtomicBool::new(false),
             wanted: AtomicBool::new(false),
             busy: Mutex::new(BTreeSet::new()),
+            listing: Mutex::new(()),
             made: Mutex::new(Vec::new()),
             listed: Mutex::new(BTreeMap::new()),
         }
@@ -199,22 +202,35 @@ fn served(shared: &Shared, daemon: &mut Daemon) {
 /// thread and outside the lock, and lets go of those of each no watch
 /// names any more, then serves them. Those still named keep what was
 /// listed as their row came ahead.
-pub fn ahead(shared: &Shared, watched: &[String]) {
-    list(shared, watched, &[]);
+pub fn ahead(shared: &Shared) {
+    list(shared, &[]);
 }
 
 /// As `ahead`, but those of the rows `stale` names are listed again
 /// rather than kept, and served in place of what was listed, never gone
-/// between.
-fn list(shared: &Shared, watched: &[String], stale: &[String]) {
-    let wanted: Vec<&String> = watched
-        .iter()
-        .filter(|key| {
-            key.starts_with("row:code:")
-                && (key.ends_with(code_rows::FILES) || key.ends_with(code_rows::BRANCHES))
-        })
-        .collect();
-    let mut was = lock(&shared.code.listed).clone();
+/// between; one git can't list now keeps what it listed before. The keys
+/// watched are read once the listing is this one's alone, so the last to
+/// list lists what's watched last.
+fn list(shared: &Shared, stale: &[String]) {
+    let _alone = lock(&shared.code.listing);
+    // Read first, so the daemon's lock is let go before `served` takes it.
+    let watched = keys_watched(&lock(&shared.daemon));
+    // Only a repository's own rows list anything, never a branch's row
+    // inside one, whatever its branch is called.
+    let wanted: Vec<&String> = {
+        let made = lock(&shared.code.made);
+        watched
+            .iter()
+            .filter(|key| {
+                (key.ends_with(code_rows::FILES) || key.ends_with(code_rows::BRANCHES))
+                    && made
+                        .iter()
+                        .any(|row| row["key"] == key.as_str() && row["depth"] == 1)
+            })
+            .collect()
+    };
+    let before = lock(&shared.code.listed).clone();
+    let mut was = before.clone();
     if stale.is_empty()
         && wanted.len() == was.len()
         && wanted.iter().all(|key| was.contains_key(*key))
@@ -238,7 +254,9 @@ fn list(shared: &Shared, watched: &[String], stale: &[String]) {
         .filter_map(|(key, path)| {
             let listed = match was.get(&key) {
                 Some(listed) => listed.clone(),
-                None if key.ends_with(code_rows::BRANCHES) => branches(shared, &path?),
+                None if key.ends_with(code_rows::BRANCHES) => branches(shared, &path?)
+                    .or_else(|| before.get(&key).cloned())
+                    .unwrap_or_default(),
                 None => repositories::files(&path?),
             };
             Some((key, listed))
@@ -299,17 +317,19 @@ fn kitty(id: &Value, folder: &str, program: &[&str], what: &'static str) -> Valu
 }
 
 /// Pull on a repository's row, answered on a thread of its own (main.rs
-/// says it's slow), since a fetch waits on the network. A second Pull of
-/// a checkout while one is under way says so rather than racing it. A
+/// says it's slow), since a fetch waits on the network. A Pull of a
+/// checkout while a Pull or a switch of it is under way says so rather
+/// than racing it. A
 /// fetch moves the branch followed and a pull the head, so the disk is
 /// read again behind any that reached git, and the row says how far
 /// apart they are now.
 pub fn pull(shared: &Arc<Shared>, id: &Value, folder: &str) -> Value {
-    if !lock(&shared.code.busy).insert(folder.to_owned()) {
-        return shared.code.pulled.answer(id, Err(pull::Refused::Busy));
-    }
-    let pulled = pull::pull(&git(), Path::new(folder), pull::FETCH);
-    lock(&shared.code.busy).remove(folder);
+    let pulled = {
+        let Some(_held) = Holding::take(&shared.code, folder) else {
+            return shared.code.pulled.answer(id, Err(pull::Refused::Busy));
+        };
+        pull::pull(&git(), Path::new(folder), pull::FETCH)
+    };
     if !matches!(pulled, Err(pull::Refused::Tree)) {
         moved(shared, folder);
     }
@@ -318,37 +338,64 @@ pub fn pull(shared: &Arc<Shared>, id: &Value, folder: &str) -> Value {
 
 /// Switch to It on a branch's row, answered on a thread of its own as
 /// Pull is, and never beside a Pull or another switch of the checkout.
-/// One that reached git is followed as a Pull is (`moved`), so the
-/// branch rows say which it's on now.
+/// Any that reached the checkout is followed as a Pull is (`moved`), so
+/// the branch rows say which it's on now, and one refused for a branch
+/// gone lists them without it.
 pub fn switch(shared: &Arc<Shared>, id: &Value, folder: &str, branch: &str) -> Value {
-    if !lock(&shared.code.busy).insert(folder.to_owned()) {
-        return shared
-            .code
-            .switched
-            .answer(id, branch, Err(switch::Refused::Busy));
-    }
-    let home = shared.code.home.as_deref();
-    let switched = switch::switch(&git(), Path::new(folder), branch, home);
-    lock(&shared.code.busy).remove(folder);
-    if !matches!(switched, Err(switch::Refused::Tree | switch::Refused::Gone)) {
+    let switched = {
+        let Some(_held) = Holding::take(&shared.code, folder) else {
+            return shared
+                .code
+                .switched
+                .answer(id, branch, Err(switch::Refused::Busy));
+        };
+        let home = shared.code.home.as_deref();
+        switch::switch(&git(), Path::new(folder), branch, home)
+    };
+    if !matches!(switched, Err(switch::Refused::Tree)) {
         moved(shared, folder);
     }
     shared.code.switched.answer(id, branch, switched)
 }
 
+/// A checkout a Pull or a switch is under way in, let go however it
+/// ends, a panic in git's handling included, so it's never left busy.
+struct Holding<'a> {
+    code: &'a Code,
+    folder: &'a str,
+}
+
+impl<'a> Holding<'a> {
+    /// The checkout at `folder` held, or none when it's held already.
+    fn take(code: &'a Code, folder: &'a str) -> Option<Holding<'a>> {
+        lock(&code.busy)
+            .insert(folder.to_owned())
+            .then_some(Holding { code, folder })
+    }
+}
+
+impl Drop for Holding<'_> {
+    fn drop(&mut self) {
+        lock(&self.code.busy).remove(self.folder);
+    }
+}
+
 /// After git moved the checkout at `folder`: the disk read again, and its
 /// files and branches listed again where a watch holds them ahead, since
-/// a pull or a switch changes both.
+/// a pull or a switch changes both. Listed on a thread of its own, so the
+/// act answers without waiting on a listing.
 fn moved(shared: &Arc<Shared>, folder: &str) {
     again(shared);
-    let inside: Vec<String> = lock(&shared.code.made)
-        .iter()
-        .filter(|row| row["held"]["path"] == folder && row["depth"] == 1)
-        .filter_map(|row| row["key"].as_str().map(str::to_owned))
-        .collect();
-    // Read first, so the daemon's lock is let go before `list` takes it.
-    let watched = keys_watched(&lock(&shared.daemon));
-    list(shared, &watched, &inside);
+    let shared = Arc::clone(shared);
+    let folder = folder.to_owned();
+    std::thread::spawn(move || {
+        let inside: Vec<String> = lock(&shared.code.made)
+            .iter()
+            .filter(|row| row["held"]["path"] == folder.as_str() && row["depth"] == 1)
+            .filter_map(|row| row["key"].as_str().map(str::to_owned))
+            .collect();
+        list(&shared, &inside);
+    });
 }
 
 /// The git Code's acts run, which a test names.
@@ -357,10 +404,11 @@ fn git() -> String {
 }
 
 /// The branches of the checkout at `path`, as Switch Branch lists them
-/// (`code_rows::branches`).
-fn branches(shared: &Shared, path: &str) -> Vec<Value> {
+/// (`code_rows::branches`), or none when git can't list them.
+fn branches(shared: &Shared, path: &str) -> Option<Vec<Value>> {
     let home = shared.code.home.as_deref();
-    switch::branches(&git(), Path::new(path), home)
+    let listed = switch::branches(&git(), Path::new(path), home)?;
+    let listed = listed
         .into_iter()
         .map(|branch| {
             serde_json::json!({
@@ -371,5 +419,6 @@ fn branches(shared: &Shared, path: &str) -> Vec<Value> {
                 "path": path,
             })
         })
-        .collect()
+        .collect();
+    Some(listed)
 }

@@ -5,7 +5,9 @@
 //! cut from it, where an agent works, and it never carries changes
 //! across: a checkout with changes of its own to its tracked files is
 //! left on its branch, and so is one asked for a branch another tree has
-//! checked out, which git would refuse; the answer says which tree.
+//! checked out, which git would refuse; the answer says which tree. Nor
+//! does it overwrite a file git doesn't track, ignored ones included, or
+//! leave a head on no branch, or a merge or rebase under way, for another.
 //!
 //! Git runs as `git.rs` runs it, with Joel's config and asking at no
 //! terminal. A read past [`READ`] is stopped with all it started; the
@@ -17,8 +19,8 @@ use serde_json::{Value, json};
 
 use repos::read::shown;
 
-use crate::git::ran;
-pub use crate::pull::READ;
+pub use crate::git::READ;
+use crate::git::{ran, tried};
 
 /// How a switch went when it changed nothing it shouldn't.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,13 +39,21 @@ pub enum Refused {
     /// A Pull or a switch of the same checkout is under way.
     Busy,
     /// No branch is called that now.
-    Gone,
+    Unknown,
     /// Git couldn't read its branch, its changes or where a branch is.
     Unread,
+    /// Its head is on no branch, as Pull refuses it, so a switch would
+    /// leave its commits on none.
+    Detached,
+    /// A merge, rebase, cherry-pick or revert is under way in it.
+    Midway,
     /// Its tracked files have changes of its own.
     Changed,
     /// Another tree has the branch checked out, as shown from home.
     Elsewhere(String),
+    /// Files git doesn't track, ignored ones included, stand where the
+    /// branch has files of its own.
+    InTheWay,
     /// Git refused the switch itself.
     Failed,
 }
@@ -53,10 +63,13 @@ impl Refused {
         match self {
             Refused::Tree => "tree",
             Refused::Busy => "busy",
-            Refused::Gone => "gone",
+            Refused::Unknown => "unknown",
             Refused::Unread => "unread",
+            Refused::Detached => "detached",
+            Refused::Midway => "midway",
             Refused::Changed => "changed",
             Refused::Elsewhere(_) => "elsewhere",
+            Refused::InTheWay => "intheway",
             Refused::Failed => "failed",
         }
     }
@@ -131,9 +144,10 @@ pub struct Branch {
 }
 
 /// The branches of the checkout at `folder`, the one it's on first and
-/// the rest by the commit written to last; none when git can't read them.
+/// the rest by the commit written to last; none when git can't read them,
+/// which is no list rather than a checkout with no branches.
 #[must_use]
-pub fn branches(git: &str, folder: &Path, home: Option<&Path>) -> Vec<Branch> {
+pub fn branches(git: &str, folder: &Path, home: Option<&Path>) -> Option<Vec<Branch>> {
     let format = "--format=%(HEAD)%00%(refname)%00%(committerdate:unix)%00%(worktreepath)";
     let args = [
         "for-each-ref",
@@ -142,7 +156,8 @@ pub fn branches(git: &str, folder: &Path, home: Option<&Path>) -> Vec<Branch> {
         "refs/heads",
     ];
     ran(git, folder, &args, Some(READ))
-        .map_or_else(|_| Vec::new(), |printed| listed(&printed, folder, home))
+        .ok()
+        .map(|printed| listed(&printed, folder, home))
 }
 
 /// The branches as `for-each-ref` printed them, each `%(HEAD)`,
@@ -214,14 +229,27 @@ pub fn switch(
     }
     // Never handed to git as an option, whatever it says.
     if branch.is_empty() || branch.starts_with('-') {
-        return Err(Refused::Gone);
+        return Err(Refused::Unknown);
+    }
+    // Before its head is read, which a rebase leaves on no branch.
+    if midway(&own) {
+        return Err(Refused::Midway);
     }
     let read = |args: &[&str]| ran(git, folder, args, Some(READ));
     let named = format!("refs/heads/{branch}");
-    read(&["rev-parse", "--verify", "--quiet", &named]).map_err(|_| Refused::Gone)?;
-    // A head that's no branch exits 1, which is no branch it's on.
-    if read(&["symbolic-ref", "--quiet", "--short", "HEAD"]).is_ok_and(|on| on.trim() == branch) {
-        return Ok(Switched::Here);
+    // A branch that isn't there exits 1; git failing exits otherwise.
+    match read(&["show-ref", "--verify", "--quiet", &named]) {
+        Ok(_) => {}
+        Err(Some(1)) => return Err(Refused::Unknown),
+        Err(_) => return Err(Refused::Unread),
+    }
+    // Named in full, so a branch called `heads/x` is never taken for `x`;
+    // a head on no branch exits 1.
+    match read(&["symbolic-ref", "--quiet", "HEAD"]) {
+        Ok(on) if on.trim() == named => return Ok(Switched::Here),
+        Ok(_) => {}
+        Err(Some(1)) => return Err(Refused::Detached),
+        Err(_) => return Err(Refused::Unread),
     }
     let held =
         read(&["for-each-ref", "--format=%(worktreepath)", &named]).map_err(|_| Refused::Unread)?;
@@ -234,15 +262,36 @@ pub fn switch(
     if !changed.trim().is_empty() {
         return Err(Refused::Changed);
     }
-    // Never stopped part way, which would leave it half written.
-    ran(
-        git,
-        folder,
-        &["switch", "--quiet", "--no-guess", branch],
-        None,
-    )
-    .map_err(|_| Refused::Failed)?;
-    Ok(Switched::Switched)
+    // Never stopped part way, which would leave it half written, and
+    // never over an ignored file, which git would overwrite unasked.
+    let switching = [
+        "switch",
+        "--quiet",
+        "--no-guess",
+        "--no-overwrite-ignore",
+        branch,
+    ];
+    match tried(git, folder, &switching, None) {
+        Ok(_) => Ok(Switched::Switched),
+        // Git says so in C's words, which `tried` has it speak.
+        Err(failure) if failure.said.contains("would be overwritten") => Err(Refused::InTheWay),
+        Err(_) => Err(Refused::Failed),
+    }
+}
+
+/// Whether a merge, rebase, cherry-pick or revert is under way in the
+/// checkout whose `.git` folder is `own`, by the files git keeps while
+/// it is.
+fn midway(own: &Path) -> bool {
+    [
+        "MERGE_HEAD",
+        "rebase-merge",
+        "rebase-apply",
+        "CHERRY_PICK_HEAD",
+        "REVERT_HEAD",
+    ]
+    .iter()
+    .any(|kept| own.join(kept).exists())
 }
 
 #[cfg(test)]
@@ -281,7 +330,7 @@ mod tests {
             refused(Refused::Elsewhere("~/trees/fix".to_owned()))["said"],
             "not switched: ~/trees/fix has it checked out"
         );
-        assert_eq!(refused(Refused::Gone)["said"], "gone");
+        assert_eq!(refused(Refused::Unknown)["said"], "unknown");
     }
 
     #[test]
@@ -324,9 +373,9 @@ mod tests {
         // A git that would say yes to anything, so only the check refuses.
         assert_eq!(
             switch("true", &folder, "--orphan", None),
-            Err(Refused::Gone)
+            Err(Refused::Unknown)
         );
-        assert_eq!(switch("true", &folder, "", None), Err(Refused::Gone));
+        assert_eq!(switch("true", &folder, "", None), Err(Refused::Unknown));
         let _ = std::fs::remove_dir_all(&folder);
     }
 
@@ -337,6 +386,135 @@ mod tests {
         std::fs::create_dir_all(&folder).unwrap();
         std::fs::write(folder.join(".git"), "gitdir: /elsewhere\n").unwrap();
         assert_eq!(switch("true", &folder, "main", None), Err(Refused::Tree));
+        // Nor a `.git` folder with no head, which no checkout's own is.
+        std::fs::remove_file(folder.join(".git")).unwrap();
+        std::fs::create_dir(folder.join(".git")).unwrap();
+        assert_eq!(switch("true", &folder, "main", None), Err(Refused::Tree));
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// The first sh on the path, which a stub git is run by, as the build
+    /// sandbox has no /bin/sh.
+    fn shell() -> std::path::PathBuf {
+        std::env::var("PATH")
+            .unwrap_or_default()
+            .split(':')
+            .map(|folder| Path::new(folder).join("sh"))
+            .find(|sh| sh.is_file())
+            .expect("no sh on the path")
+    }
+
+    /// A checkout on main whose git answers each subcommand as `answers`
+    /// says, as sh's case arms, else as a clean checkout on main would,
+    /// writing every run it's asked to `asked`.
+    fn stubbed(name: &str, answers: &str) -> (std::path::PathBuf, String) {
+        let folder = std::env::temp_dir().join(format!("switch-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(folder.join(".git")).unwrap();
+        std::fs::write(folder.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+        let git = folder.join("git");
+        std::fs::write(
+            &git,
+            format!(
+                "#!{}\necho \"$*\" >> {}\n\
+                 while [ \"$1\" = -C ] || [ \"$1\" = -c ]; do shift 2; done\n\
+                 case \"$1\" in {answers}\n\
+                 symbolic-ref) echo refs/heads/main;; esac\n",
+                shell().display(),
+                folder.join("asked").display(),
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&git, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        let git = git.to_str().unwrap().to_owned();
+        (folder, git)
+    }
+
+    #[test]
+    fn each_refusal_is_said_before_git_is_asked_to_switch() {
+        let overwritten = "switch) echo 'error: The following untracked working tree files would be \
+                           overwritten by checkout:' >&2; exit 1;;";
+        let cases: [(&str, &str, &str, Result<Switched, Refused>); 12] = [
+            ("switched", "", "fix", Ok(Switched::Switched)),
+            ("here", "", "main", Ok(Switched::Here)),
+            (
+                "unknown",
+                "show-ref) exit 1;;",
+                "fix",
+                Err(Refused::Unknown),
+            ),
+            (
+                "unread-ref",
+                "show-ref) exit 128;;",
+                "fix",
+                Err(Refused::Unread),
+            ),
+            (
+                "detached",
+                "symbolic-ref) exit 1;;",
+                "fix",
+                Err(Refused::Detached),
+            ),
+            (
+                "unread-head",
+                "symbolic-ref) exit 128;;",
+                "fix",
+                Err(Refused::Unread),
+            ),
+            (
+                "unread-held",
+                "for-each-ref) exit 128;;",
+                "fix",
+                Err(Refused::Unread),
+            ),
+            (
+                "unread-status",
+                "status) exit 128;;",
+                "fix",
+                Err(Refused::Unread),
+            ),
+            (
+                "changed",
+                "status) echo ' M a';;",
+                "fix",
+                Err(Refused::Changed),
+            ),
+            (
+                "elsewhere",
+                "for-each-ref) echo /trees/fix;; status) echo ' M a';;",
+                "fix",
+                Err(Refused::Elsewhere("/trees/fix".to_owned())),
+            ),
+            ("intheway", overwritten, "fix", Err(Refused::InTheWay)),
+            ("failed", "switch) exit 128;;", "fix", Err(Refused::Failed)),
+        ];
+        for (name, answers, branch, expected) in cases {
+            let (folder, git) = stubbed(name, answers);
+            assert_eq!(switch(&git, &folder, branch, None), expected, "{name}");
+            let asked = std::fs::read_to_string(folder.join("asked")).unwrap_or_default();
+            let switching = asked.lines().any(|run| run.contains("/dev/null switch "));
+            let reached = matches!(
+                expected,
+                Ok(Switched::Switched) | Err(Refused::InTheWay | Refused::Failed)
+            );
+            assert_eq!(switching, reached, "{name} asked git to switch: {asked}");
+            let _ = std::fs::remove_dir_all(&folder);
+        }
+    }
+
+    #[test]
+    fn a_merge_or_rebase_under_way_is_left_to_end() {
+        for kept in ["MERGE_HEAD", "rebase-merge", "CHERRY_PICK_HEAD"] {
+            let (folder, git) = stubbed("midway", "");
+            std::fs::write(folder.join(".git").join(kept), "").unwrap();
+            assert_eq!(
+                switch(&git, &folder, "fix", None),
+                Err(Refused::Midway),
+                "{kept}"
+            );
+            assert!(!folder.join("asked").exists(), "git was asked with {kept}");
+            let _ = std::fs::remove_dir_all(&folder);
+        }
     }
 }
