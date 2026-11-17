@@ -106,20 +106,28 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
     }
 }
 
+/// The controller's reason for the upload, as `say` gave it, and the
+/// upload it speaks of, in kbit/s: none while the controller lets it go.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Reason {
+    pub up: Option<u64>,
+    pub said: String,
+}
+
 /// The journal's line when the one-way controller begins to hold `link`:
-/// what each way is held to, in kbit/s, and the controller's reason, as
-/// `say` gave it, where it has one. `asked` is the upload the controller
-/// asked for: its reason is said only when that is the upload held, since
-/// it speaks of the upload alone, and of its own rate.
-pub fn holding(link: &str, asked: Option<u64>, up: u64, down: u64, why: Option<&str>) -> String {
+/// what each way is held to, in kbit/s, and the controller's reason where
+/// it speaks of the upload held. Another upload's reason would give the
+/// line two rates: one the shaper clamped, or a trial's ceiling holding
+/// what the controller let go, or none while only the download is held.
+pub fn holding(link: &str, up: u64, down: u64, reason: Option<&Reason>) -> String {
     let held = format!(
         "{link}: held to {} up and {} down",
         mbit(lossless(up)),
         mbit(lossless(down))
     );
-    match why.filter(|_| asked == Some(up)) {
-        Some(why) => format!("{held}. {why}"),
-        None => format!("{held}, by the one-way controller."),
+    match reason.filter(|reason| reason.up == Some(up)) {
+        Some(reason) => format!("{held}. {}", reason.said),
+        None => format!("{held}."),
     }
 }
 
@@ -251,19 +259,24 @@ mod tests {
         // Since the learned anchor, the controller holds at every start
         // with a clear line, and the journal said a hidden queue was
         // taken back each time (16 times on 16 November).
-        let clear = say(Why::Clear, Some(10_800), Some(12_000.0), 5.0);
+        let clear = Reason {
+            up: Some(10_800),
+            said: say(Why::Clear, Some(10_800), Some(12_000.0), 5.0),
+        };
         assert_eq!(
-            holding("wlp0s20f3", Some(10_800), 10_800, 2_000_000, Some(&clear)),
+            holding("wlp0s20f3", 10_800, 2_000_000, Some(&clear)),
             "wlp0s20f3: held to 10.8 Mb/s up and 2000.0 Mb/s down. Upload 10.8 Mb/s of \
              12.0 Mb/s, the line's rate: clear for 5 s."
         );
     }
 
+    // With no reason, what holds may be a trial's ceiling or the shaper's
+    // own bounds, so the line names no cause at all.
     #[test]
-    fn a_hold_with_no_reason_claims_no_queue() {
+    fn a_hold_with_no_reason_names_no_cause() {
         assert_eq!(
-            holding("wlp0s20f3", Some(10_800), 10_800, 2_000_000, None),
-            "wlp0s20f3: held to 10.8 Mb/s up and 2000.0 Mb/s down, by the one-way controller."
+            holding("wlp0s20f3", 10_800, 2_000_000, None),
+            "wlp0s20f3: held to 10.8 Mb/s up and 2000.0 Mb/s down."
         );
     }
 
@@ -272,18 +285,35 @@ mod tests {
     // line gave the upload two rates.
     #[test]
     fn a_clamped_upload_is_not_given_the_controller_s_reason() {
-        let cut = say(
-            Why::Line {
-                delay_ms: 22.0,
-                eased: false,
-            },
-            Some(11_500),
-            Some(12_000.0),
-            1.0,
-        );
+        let cut = Reason {
+            up: Some(11_500),
+            said: say(
+                Why::Line {
+                    delay_ms: 22.0,
+                    eased: false,
+                },
+                Some(11_500),
+                Some(12_000.0),
+                1.0,
+            ),
+        };
         assert_eq!(
-            holding("wlp0s20f3", Some(11_500), 10_800, 2_000_000, Some(&cut)),
-            "wlp0s20f3: held to 10.8 Mb/s up and 2000.0 Mb/s down, by the one-way controller."
+            holding("wlp0s20f3", 10_800, 2_000_000, Some(&cut)),
+            "wlp0s20f3: held to 10.8 Mb/s up and 2000.0 Mb/s down."
+        );
+    }
+
+    // A trial's ceiling holds the upload the controller lets go, and the
+    // controller's reason then says the upload is unlimited.
+    #[test]
+    fn a_ceiling_holding_a_let_go_upload_is_not_given_the_controller_s_reason() {
+        let let_go = Reason {
+            up: None,
+            said: say(Why::Ceiling, None, Some(12_000.0), 5.0),
+        };
+        assert_eq!(
+            holding("wlp0s20f3", 8_500, 2_000_000, Some(&let_go)),
+            "wlp0s20f3: held to 8.5 Mb/s up and 2000.0 Mb/s down."
         );
     }
 
@@ -291,10 +321,13 @@ mod tests {
     // isn't explained by one.
     #[test]
     fn a_hold_of_the_download_alone_is_not_given_the_upload_s_reason() {
-        let clear = say(Why::Clear, None, Some(12_000.0), 5.0);
+        let clear = Reason {
+            up: None,
+            said: say(Why::Clear, None, Some(12_000.0), 5.0),
+        };
         assert_eq!(
-            holding("wlp0s20f3", None, 10_800, 80_000, Some(&clear)),
-            "wlp0s20f3: held to 10.8 Mb/s up and 80.0 Mb/s down, by the one-way controller."
+            holding("wlp0s20f3", 10_800, 80_000, Some(&clear)),
+            "wlp0s20f3: held to 10.8 Mb/s up and 80.0 Mb/s down."
         );
     }
 

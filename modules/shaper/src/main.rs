@@ -1298,11 +1298,14 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Liv
     // other goes at its whole rate, its traffic still sorted by CAKE.
     let share = live.as_deref().map_or(1.0, live::Live::vpn_share);
     let held = live.map(|l| {
-        let (link, rates) = match l.poll(SystemTime::now()) {
+        // One moment for both, so the rates and the reason judge the
+        // recorder's silence alike.
+        let now = SystemTime::now();
+        let (link, rates) = match l.poll(now) {
             Some((link, rates)) => (Some(link.to_string()), rates),
             None => (None, replay::Rates::default()),
         };
-        let why = l.why(SystemTime::now());
+        let why = l.why(now);
         (link, rates, why)
     });
     for (name, (sent, received)) in links::connection_loads(&carried, &follows) {
@@ -1321,7 +1324,7 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Liv
             match &held {
                 None => step(s, t, sent, received),
                 Some((link, rates, why)) if link.as_deref() == Some(name.as_str()) => {
-                    hold(s, *rates, why.as_deref());
+                    hold(s, *rates, why.as_ref());
                 }
                 Some(_) => hold(s, replay::Rates::default(), None),
             }
@@ -1333,7 +1336,7 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Liv
 /// ceiling where it sets none, and tells the journal when a spell of limits
 /// begins, with the controller's reason `why`, and when it ends, rather
 /// than of each second's cut.
-fn hold(s: &mut Shaped, rates: replay::Rates, why: Option<&str>) {
+fn hold(s: &mut Shaped, rates: replay::Rates, why: Option<&why::Reason>) {
     let held =
         |rate: Option<u64>, floor: u64, max: u64| rate.map_or(max, |r| r.max(floor).min(max));
     let (up_max, down_max) = (s.controller.up.bounds.max, s.controller.down.bounds.max);
@@ -1346,7 +1349,7 @@ fn hold(s: &mut Shaped, rates: replay::Rates, why: Option<&str>) {
     let limited = rates.up.is_some() || rates.down.is_some();
     let name = &s.uplink.name;
     if limited && !s.told {
-        eprintln!("{}", why::holding(name, rates.up, up, down, why));
+        eprintln!("{}", why::holding(name, up, down, why));
         s.told = true;
     } else if !limited && s.told {
         eprintln!("{name}: neither direction is held now, so the link's whole rate is kept");

@@ -278,11 +278,14 @@ impl Follow {
         Some((link, heard))
     }
 
-    /// Why the controller holds the upload where it does, at a moment in
-    /// ms since 1970: none once the recorder has gone silent, when what
-    /// holds is no longer what it heard.
-    pub fn why(&self, at_ms: u64) -> Option<String> {
-        (at_ms.saturating_sub(self.last_ms) <= SILENT_MS).then(|| self.controller.why())
+    /// Why the controller holds the upload where it does, and the upload
+    /// that reason speaks of, at a moment in ms since 1970: none once the
+    /// recorder has gone silent, when what holds is no longer what it heard.
+    pub fn why(&self, at_ms: u64) -> Option<crate::why::Reason> {
+        (at_ms.saturating_sub(self.last_ms) <= SILENT_MS).then(|| crate::why::Reason {
+            up: self.controller.up.limit(),
+            said: self.controller.why(),
+        })
     }
 
     /// The link the recorder follows and the rates to hold it to, at a
@@ -381,7 +384,7 @@ impl Live {
 
     /// Why the controller holds the upload where it does, now, or none
     /// while the recorder is silent.
-    pub fn why(&self, now: SystemTime) -> Option<String> {
+    pub fn why(&self, now: SystemTime) -> Option<crate::why::Reason> {
         self.follow.why(ms(now))
     }
 
@@ -637,16 +640,36 @@ mod tests {
     #[test]
     fn a_silent_recorder_gives_no_reason() {
         let mut follow = waiting(Known::new());
+        follow.tune(Some(Tuning {
+            most_kbit: Some(8_500.0),
+            ..Tuning::default()
+        }));
         for line in &flow_queued(NOV3) {
             follow.take(&parse(line).expect("a sample"));
         }
         let last = follow.last_ms;
         assert!(follow.why(last).is_some(), "a heard second gave no reason");
+        let silent = last + SILENT_MS + 1;
+        let (_, rates) = follow.now(silent).expect("a link");
+        assert_eq!(rates.up, Some(8_500), "the ceiling went with the recorder");
         assert_eq!(
-            follow.why(last + SILENT_MS + 1),
+            follow.why(silent),
             None,
             "a silent recorder gave the last second's reason"
         );
+    }
+
+    // The reason is the controller's, so it speaks of the controller's
+    // own upload, which the journal holds against what the shaper holds.
+    #[test]
+    fn a_reason_speaks_of_the_controller_s_own_upload() {
+        let mut follow = waiting(Known::new());
+        for line in &flow_queued(NOV3) {
+            follow.take(&parse(line).expect("a sample"));
+        }
+        let reason = follow.why(follow.last_ms).expect("a reason");
+        assert_eq!(reason.up, follow.controller.up.limit());
+        assert_eq!(reason.said, follow.controller.why());
     }
 
     // A trial set before a stay begins tunes it too: the A/B it serves
