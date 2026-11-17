@@ -22,8 +22,6 @@ as the kit builds.
 
 The kit is typechecked with `noPropertyAccessFromIndexSignature`, so a field
 a record may lack is read as `record["field"]` and only a declared one as
-`record.field`. A site extending its `tsconfig.json` takes the flag too;
-the system and network pages turn it off for now, until their reads are
-moved over by their owners.
+`record.field`. A site extending its `tsconfig.json` takes the flag too.
 
 [site]: ../site.nix

@@ -123,15 +123,16 @@
       }
     },
     {
-      // The local sites' kit, the map, forage, the system page and Code are
-      // typechecked with noPropertyAccessFromIndexSignature, so a field a
-      // record may lack is read as record["field"] and only a declared one as
-      // record.field. The rule asks for the dotted form everywhere, and the
-      // two can't both hold.
+      // The local sites' kit, the map, forage, the system page, Code and the
+      // network page are typechecked with noPropertyAccessFromIndexSignature,
+      // so a field a record may lack is read as record["field"] and only a
+      // declared one as record.field. The rule asks for the dotted form
+      // everywhere, and the two can't both hold.
       "includes": [
         "modules/local-sites/kit/**/*.ts",
         "modules/mycelium/site/**/*.ts",
         "modules/mycelium/forage/**/*.ts",
+        "modules/net/site/**/*.ts",
         "modules/system/site/**/*.ts",
         "modules/repos/site/**/*.ts"
       ],

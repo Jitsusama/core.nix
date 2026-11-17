@@ -79,7 +79,7 @@ function sayWhen(): void {
   const problems = [...(network?.unread ?? []), ...heard.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
   asof.textContent = `${stands === undefined ? "" : said(stands)}${trouble}`;
-  asof.dataset.state = stands?.state ?? "connecting";
+  asof.dataset["state"] = stands?.state ?? "connecting";
 }
 
 function context(): Context | undefined {
@@ -193,7 +193,7 @@ function paint(): void {
   for (const line of draw.querySelectorAll<SVGElement>(".n-link")) {
     const { from, to } = line.dataset;
     const between = from !== undefined && to !== undefined && way.has(from) && way.has(to);
-    const internet = line.dataset.way === "internet" && modem !== undefined && way.has(modem);
+    const internet = line.dataset["way"] === "internet" && modem !== undefined && way.has(modem);
     line.classList.toggle("lit", opened !== null && (between || internet));
   }
   drawn.marks.replaceChildren();
@@ -330,8 +330,8 @@ function showFound(): void {
 const FIND_KEYS: { readonly [key: string]: () => void } = {
   Enter: () => {
     const first = body.querySelector<HTMLElement>(FOUND_ROW);
-    if (first?.dataset.id !== undefined) {
-      open(first.dataset.id, { focusPanel: true });
+    if (first?.dataset["id"] !== undefined) {
+      open(first.dataset["id"], { focusPanel: true });
     }
   },
   ArrowDown: () => body.querySelector<HTMLElement>(FOUND_ROW)?.focus(),
@@ -356,8 +356,8 @@ heedTree(tree, (id) => open(id));
 
 draw.addEventListener("click", (event) => {
   const item = event.target instanceof Element ? event.target.closest(MAP_ITEM) : null;
-  if (item instanceof SVGElement && item.dataset.id !== undefined) {
-    open(item.dataset.id);
+  if (item instanceof SVGElement && item.dataset["id"] !== undefined) {
+    open(item.dataset["id"]);
     view.focus({ preventScroll: true });
   } else if (opened !== null) {
     letGo();
@@ -438,12 +438,12 @@ const ZOOM_BUTTONS: { readonly [asked: string]: () => void } = {
 };
 
 for (const button of document.querySelectorAll<HTMLElement>("[data-zoom]")) {
-  button.addEventListener("click", () => ZOOM_BUTTONS[button.dataset.zoom ?? "fit"]?.());
+  button.addEventListener("click", () => ZOOM_BUTTONS[button.dataset["zoom"] ?? "fit"]?.());
 }
 
 for (const key of document.querySelectorAll<HTMLElement>(".keys kbd[data-key]")) {
   key.addEventListener("click", () => {
-    if (key.dataset.key === "?") {
+    if (key.dataset["key"] === "?") {
       toggle(keys);
     } else {
       find.focus();

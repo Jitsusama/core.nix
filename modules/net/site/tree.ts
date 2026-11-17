@@ -68,9 +68,9 @@ function leaf(
 /** Draws the tree again, keeping which branches were shut and where focus was. */
 function drawTree(tree: HTMLElement, network: Network, shape: Shape): void {
   const shut = new Set(
-    [...tree.querySelectorAll<HTMLElement>(SHUT)].flatMap((item) => item.dataset.id ?? []),
+    [...tree.querySelectorAll<HTMLElement>(SHUT)].flatMap((item) => item.dataset["id"] ?? []),
   );
-  const focused = tree.querySelector<HTMLElement>(FOCUSED)?.dataset.id;
+  const focused = tree.querySelector<HTMLElement>(FOCUSED)?.dataset["id"];
   tree.replaceChildren();
   for (const floor of shape.floors) {
     const kids = [...floor.switches, ...floor.devices];
@@ -87,7 +87,7 @@ function drawTree(tree: HTMLElement, network: Network, shape: Shape): void {
 /** Marks the item of the device opened, if any. */
 function markOpened(tree: HTMLElement, opened: string | null): void {
   for (const item of tree.querySelectorAll<HTMLElement>(".ti")) {
-    item.classList.toggle("opened", item.parentElement?.dataset.id === opened);
+    item.classList.toggle("opened", item.parentElement?.dataset["id"] === opened);
   }
 }
 
@@ -161,8 +161,8 @@ function heedTree(tree: HTMLElement, open: (id: string) => void): void {
       focusItem(tree, MOVES[key]?.(list, list.indexOf(item)));
     } else if (Object.hasOwn(TURNS, key)) {
       TURNS[key]?.(tree, item);
-    } else if (key === "Enter" && item.dataset.id !== undefined) {
-      open(item.dataset.id);
+    } else if (key === "Enter" && item.dataset["id"] !== undefined) {
+      open(item.dataset["id"]);
       focusItem(tree, item);
     } else {
       return;
@@ -179,8 +179,8 @@ function heedTree(tree: HTMLElement, open: (id: string) => void): void {
     if (target?.closest(".twisty") !== null && item.hasAttribute("aria-expanded")) {
       const wasOpen = item.getAttribute("aria-expanded") === "true";
       item.setAttribute("aria-expanded", wasOpen ? "false" : "true");
-    } else if (item.dataset.id !== undefined) {
-      open(item.dataset.id);
+    } else if (item.dataset["id"] !== undefined) {
+      open(item.dataset["id"]);
     }
     focusItem(tree, item);
   });
