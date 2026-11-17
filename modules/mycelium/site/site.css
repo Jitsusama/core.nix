@@ -866,6 +866,44 @@ body {
   font-feature-settings: var(--mono-features);
 }
 
+/* A machine's mark is its name in a hairline box, standing on its point:
+   its cords leave the box's edge, nothing else sits inside it, and it
+   takes the pointer as a disc does. Dashed while the machine is off. */
+.m-box,
+.t-box {
+  fill: none;
+  stroke: var(--strong);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+
+.m-box {
+  fill: var(--background);
+}
+
+.t-mark .t-plate {
+  opacity: 1;
+}
+
+.t-mark.off .t-box {
+  stroke-dasharray: 4 3;
+}
+
+.t-mark.strong .t-box {
+  stroke-width: 2px;
+}
+
+/* Where the keys rest, on a machine: the focus ring round its box. */
+.t-mark.here .t-box {
+  stroke: var(--accent);
+  stroke-width: 3px;
+}
+
+.labels .t-mark {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
 /* Where the keys have walked to: a ring in the accent with a halo of the
    map's ground, so it reads over hyphae and cells alike. */
 .p-halo,
