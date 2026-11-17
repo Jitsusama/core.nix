@@ -5,6 +5,9 @@
 //! the rates that shape a link are the ones a replay of its lines scores.
 //! What each network's directions learned is kept, on disk too, so a
 //! network met again, after a restart or a rejoin, starts from it.
+//!
+//! Long because its tests replay recorded days through every path a stay
+//! takes, which only reads whole beside the follower they step.
 
 use crate::networks::Anchors;
 use crate::oneway::{self, Learned, Ours, Tuning};
@@ -77,12 +80,30 @@ pub fn starting_up(kept: &Path, network: &str) -> Option<u64> {
 /// The trial written at `path`, held within its bounds: none while there
 /// is no file, and today's tuning for whatever it doesn't say. A file
 /// that can't be read as one is no trial, so a slip in writing it leaves
-/// the shaper as it was.
+/// the shaper as it was. A ceiling ends `CEILING_KEPT` after the file was
+/// written, so one a script left behind can't hold the upload down on
+/// every network after.
 pub fn trial(path: &Path) -> Option<Tuning> {
     let text = fs::read_to_string(path).ok()?;
-    serde_json::from_str::<Tuning>(&text)
-        .ok()
-        .map(Tuning::bounded)
+    let written = fs::metadata(path).and_then(|m| m.modified()).ok()?;
+    let tuning = serde_json::from_str::<Tuning>(&text).ok()?.bounded();
+    Some(ended(tuning, SystemTime::now().duration_since(written)))
+}
+
+/// How long a trial's ceiling holds after its file was written.
+const CEILING_KEPT: Duration = Duration::from_secs(600);
+
+/// `tuning`, its ceiling gone once `age` has passed `CEILING_KEPT`, or
+/// when the file's time is past the clock's, which no age can be told by.
+fn ended(tuning: Tuning, age: Result<Duration, std::time::SystemTimeError>) -> Tuning {
+    if age.is_ok_and(|age| age <= CEILING_KEPT) {
+        tuning
+    } else {
+        Tuning {
+            most_kbit: None,
+            ..tuning
+        }
+    }
 }
 
 /// The name a recording gives a network it couldn't name, which is no one
@@ -148,7 +169,11 @@ impl Follow {
     /// Tunes the upload by a trial from now on, or by none, and in every
     /// stay to come.
     pub fn tune(&mut self, trial: Option<Tuning>) {
-        self.trial = trial.map(Tuning::bounded);
+        // A trial whose ceiling has ended and that set nothing else is
+        // none, so the record stops calling every second a trial.
+        self.trial = trial
+            .map(Tuning::bounded)
+            .filter(|t| *t != Tuning::default());
         self.controller.up.tune(self.trial.unwrap_or_default());
     }
 
@@ -258,7 +283,9 @@ impl Follow {
     pub fn now(&self, at_ms: u64) -> Option<(&str, Rates)> {
         let link = self.link.as_deref()?;
         if at_ms.saturating_sub(self.last_ms) > SILENT_MS {
-            return Some((link, Rates::default()));
+            // A trial's ceiling still holds what nothing else does.
+            let up = self.trial.and_then(|t| t.most_kbit).map(crate::rate::whole);
+            return Some((link, Rates { up, down: None }));
         }
         Some((link, self.rates))
     }
@@ -375,7 +402,12 @@ impl Live {
     }
 
     /// The share of its lane the VPN riding the link is held to (src/tunnel.rs).
+    /// A recorder gone silent judges no wait, so the VPN has its whole
+    /// share then, under a trial's ceiling as under none.
     pub fn vpn_share(&self) -> f64 {
+        if ms(SystemTime::now()).saturating_sub(self.follow.last_ms) > SILENT_MS {
+            return 1.0;
+        }
         self.follow.controller.tunnel_share()
     }
 
@@ -631,7 +663,24 @@ mod tests {
         );
         fs::write(&path, "late_ms = 22").expect("written");
         assert_eq!(trial(&path), None, "a file that isn't one is no trial");
+        fs::write(&path, r#"{"most_kbit": 8500}"#).expect("written");
+        let ceiling = trial(&path).expect("a trial").most_kbit;
+        assert_eq!(ceiling, Some(8_500.0), "a ceiling just written holds");
         let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_trial_s_ceiling_ends_ten_minutes_after_its_file_was_written() {
+        let ceiling = Tuning {
+            most_kbit: Some(8_500.0),
+            ..Tuning::default()
+        };
+        let at = |s| Ok(Duration::from_secs(s));
+        assert_eq!(ended(ceiling, at(599)), ceiling, "before ten minutes");
+        let after = ended(ceiling, at(601));
+        assert_eq!(after, Tuning::default(), "after ten minutes");
+        let ahead = SystemTime::UNIX_EPOCH.duration_since(SystemTime::now());
+        assert_eq!(ended(ceiling, ahead), Tuning::default(), "written ahead");
     }
 
     // On 11 November a shaper started at 13:17 stepped through two hours

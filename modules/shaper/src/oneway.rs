@@ -66,6 +66,10 @@ const CLEAR_MS: f64 = 5.0;
 const FLOWING_KBIT: f64 = 500.0;
 /// The least a direction is ever held to.
 const LEAST_KBIT: f64 = 500.0;
+/// The lowest ceiling a trial may set the upload under, in kbit/s.
+/// A ceiling under it is refused rather than raised to it, since it's
+/// most likely written in Mb/s, and one this low starves agents' lane.
+const MOST_KBIT_LEAST: f64 = 4_000.0;
 /// A direction carrying under this share of what it could carry, its rate
 /// or its connection, when its queue stands carries a sliver: the queue is
 /// mostly another machine's or the air's, so a cut halves what it could
@@ -225,6 +229,11 @@ pub struct Tuning {
     pub hold: f64,
     /// How far over the plateau a probe looks.
     pub probe_up: f64,
+    /// The most, in kbit/s, the upload is given, whatever it learns, or
+    /// none. Held under a second shaper past ours, it learns whether the
+    /// loss past our queues is that shaper's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub most_kbit: Option<f64>,
 }
 
 impl Default for Tuning {
@@ -234,6 +243,7 @@ impl Default for Tuning {
             standing_s: STANDING_S,
             hold: HOLD,
             probe_up: PROBE_UP,
+            most_kbit: None,
         }
     }
 }
@@ -256,6 +266,9 @@ impl Tuning {
             standing_s: within(self.standing_s, 1.0, 3.0, today.standing_s),
             hold: within(self.hold, 0.9, 1.0, today.hold),
             probe_up: within(self.probe_up, 1.02, 1.2, today.probe_up),
+            most_kbit: self
+                .most_kbit
+                .filter(|most| most.is_finite() && *most >= MOST_KBIT_LEAST),
         }
     }
 }
@@ -532,6 +545,24 @@ impl Way {
             self.rate = self.rate.min((plateau * tuning.hold).max(LEAST_KBIT));
         }
         self.tuning = tuning;
+        self.under_the_ceiling();
+    }
+
+    /// Holds the rate under a trial's ceiling. It bounds the rate itself,
+    /// not only what's given, so the queue it leaves in our CAKE is known
+    /// for ours: held only at the output, a link carrying the ceiling
+    /// with our queue full read as the line, and was learned as its
+    /// plateau. A ceiling lifted is climbed from gently, as after a cut.
+    fn under_the_ceiling(&mut self) {
+        if let Some(most) = self.tuning.most_kbit {
+            self.rate = self.rate.min(most);
+        }
+    }
+
+    /// Whether a trial's ceiling, not the line, holds the rate: what the
+    /// link carries then says only where the trial put it.
+    fn at_the_ceiling(&self) -> bool {
+        self.tuning.most_kbit.is_some_and(|most| self.rate >= most)
     }
 
     /// A direction starting from what it learned before: at its base, and
@@ -679,7 +710,9 @@ impl Way {
         match self.probing_until {
             Some(until) if at >= until => {
                 self.probing_until = None;
-                if ours.queued && through >= self.rate * share * UNDER {
+                // A probe the ceiling held carried the ceiling, not the
+                // line, however full our queue stood.
+                if ours.queued && !self.at_the_ceiling() && through >= self.rate * share * UNDER {
                     // The link carried the higher rate with CAKE still
                     // holding a queue, so there is room past it: keep it,
                     // and look higher at once.
@@ -771,16 +804,13 @@ impl Way {
     }
 
     pub fn limit(&self) -> Option<u64> {
-        self.rate.is_finite().then(|| {
-            // A rate is a few hundred thousand kbit/s at most.
-            #[expect(
-                clippy::cast_possible_truncation,
-                clippy::cast_sign_loss,
-                reason = "a positive rate far under u64's range"
-            )]
-            let kbit = self.rate.round() as u64;
-            kbit
-        })
+        self.rate.is_finite().then(|| crate::rate::whole(self.rate))
+    }
+
+    /// What a trial's ceiling holds the upload to while the controller
+    /// lets it go, which a trial still means to hold.
+    fn let_go(&self) -> Option<u64> {
+        self.tuning.most_kbit.map(crate::rate::whole)
     }
 
     /// Whether carrying `carried` leaves this direction idle: no flow, or
@@ -1057,7 +1087,12 @@ impl Way {
         let futile =
             self.rate.is_finite() && (unbroken || !self.download && spanned && share >= CROWDED);
         let held_down = match self.connection() {
-            Some(base) if self.rate < base * 0.5 && self.late_since.is_none() => {
+            // A trial's ceiling holding it low is no fault to go back from.
+            Some(base)
+                if self.rate < base * 0.5
+                    && self.late_since.is_none()
+                    && !self.at_the_ceiling() =>
+            {
                 at - *self.under_half_since.get_or_insert(at) >= GUARD_WINDOW_S
             }
             _ => {
@@ -1455,6 +1490,11 @@ impl Controller {
             self.up.start_over();
             self.down.start_over();
         }
+        // Let go, the upload is held at most at a trial's ceiling, and the
+        // VPN within it at its whole share, since no wait is judged.
+        if self.given_up() || unanswered {
+            self.tunnel = crate::tunnel::Hold::default();
+        }
         if self.given_up() || unanswered {
             self.judge(
                 at,
@@ -1465,7 +1505,7 @@ impl Controller {
                 },
             );
             return Limits {
-                up: None,
+                up: self.up.let_go(),
                 down: None,
             };
         }
@@ -1517,15 +1557,17 @@ impl Controller {
             }
         }
         if self.given_up() {
+            self.tunnel = crate::tunnel::Hold::default();
             self.gave_up_at.get_or_insert(at);
             self.judge(at, Why::GaveUp);
             return Limits {
-                up: None,
+                up: self.up.let_go(),
                 down: None,
             };
         }
         let cut = self.up.last_cut > cuts;
         let guarded = self.guard_the_anchor(at, fed, cut);
+        self.up.under_the_ceiling();
         let why = self.reason(at, guarded, met, heeded);
         self.judge(at, why);
         Limits {
@@ -1582,6 +1624,14 @@ impl Controller {
             (Some(_), Some(plateau)) => plateau * up.tuning.hold,
             _ => up.rate,
         };
+        // Held at a trial's ceiling, the upload is where the trial put it,
+        // which no return to the anchor would mend.
+        // Its low spell ends there, so a cut under the ceiling later is
+        // given the whole minute before a return.
+        if up.tuning.most_kbit.is_some_and(|most| held >= most) {
+            self.guard.low_since = None;
+            return false;
+        }
         if !self.guard.breached(at, held, fed, late, cut, anchor) {
             return false;
         }
@@ -1599,6 +1649,9 @@ impl Controller {
         // The guard's return is the reason until a cut or a minute passes.
         if guarded || self.why == Why::Guarded && up.last_cut < since && at - since < ANCHOR_LOW_S {
             return Why::Guarded;
+        }
+        if up.tuning.most_kbit.is_some_and(|most| up.rate >= most) {
+            return Why::Ceiling;
         }
         if !up.rate.is_finite() {
             return Why::Unmeasured;
@@ -2618,6 +2671,121 @@ mod tests {
         assert!(near(limits, 11_760.0), "held under the router: {limits:?}");
     }
 
+    // On 16 November heavy uploads lost a fifth of their packets past our
+    // queues while light pings lost none, as a second shaper past ours
+    // would drop them. A trial's ceiling holds the upload under it to
+    // learn whether the loss is that shaper's, and ends with the trial.
+    #[test]
+    fn a_trial_s_ceiling_holds_the_upload_under_it_until_it_ends() {
+        // A plateau learned before, so the probes the trial spans, each
+        // ending with our queue full at the ceiling, have one to move.
+        let mut c = Controller::from_learned(
+            Learned {
+                base: None,
+                plateau: Some(12_000.0),
+            },
+            Learned::default(),
+        );
+        c.up.tune(Tuning {
+            most_kbit: Some(8_500.0),
+            ..Tuning::default()
+        });
+        let held = flow_queued(&mut c, 0.0, 150.0, |_| 12_000.0);
+        assert!(
+            held.iter().all(|&(_, limit)| limit == Some(8_500)),
+            "held over or under its ceiling: {held:?}"
+        );
+        assert_eq!(
+            c.up.plateau,
+            Some(12_000.0),
+            "the ceiling was learned as the line"
+        );
+        assert!(c.why().contains("a trial's ceiling"), "{}", c.why());
+        c.up.tune(Tuning::default());
+        let limits = run_flow_queued(&mut c, 150.0, 210.0, 12_000.0);
+        assert!(near(limits, 11_400.0), "not back at the line: {limits:?}");
+    }
+
+    // A trial may hold the upload under half what the connection carries;
+    // the guard that sends a direction held that low back to its base
+    // would undo the trial each minute and give up after three.
+    #[test]
+    fn a_ceiling_under_half_the_base_is_no_fault_to_go_back_from() {
+        let mut c = Controller::from_learned(
+            Learned {
+                base: Some(20_000.0),
+                plateau: Some(20_000.0),
+            },
+            Learned::default(),
+        );
+        c.up.tune(Tuning {
+            most_kbit: Some(8_000.0),
+            ..Tuning::default()
+        });
+        let held = flow_queued(&mut c, 0.0, 200.0, |_| 25_000.0);
+        assert_eq!(c.returns, 0, "sent back to its base under a trial");
+        assert!(
+            held.iter().all(|&(_, limit)| limit == Some(8_000)),
+            "held over or under its ceiling: {held:?}"
+        );
+    }
+
+    // A ceiling holds an upload nothing measures yet, and otherwise only
+    // what passes it.
+    #[test]
+    fn a_ceiling_over_what_the_upload_is_given_changes_nothing_else() {
+        let mut today = Controller::new(None, None);
+        let given = flow_queued(&mut today, 0.0, 30.0, |_| 12_000.0);
+        let mut trial = Controller::new(None, None);
+        trial.up.tune(Tuning {
+            most_kbit: Some(50_000.0),
+            ..Tuning::default()
+        });
+        let held = flow_queued(&mut trial, 0.0, 30.0, |_| 12_000.0);
+        for (&(at, today), &(_, trial)) in given.iter().zip(&held) {
+            let meant = Some(today.map_or(50_000, |limit| limit.min(50_000)));
+            assert_eq!(trial, meant, "at {at:.1} s");
+        }
+    }
+
+    // A trial means to hold the upload while the controller lets it go,
+    // as it does when no reflector answers.
+    #[test]
+    fn a_ceiling_holds_when_the_controller_lets_the_upload_go() {
+        let mut c = Controller::new(None, None);
+        c.up.tune(Tuning {
+            most_kbit: Some(8_500.0),
+            ..Tuning::default()
+        });
+        let unanswered = |at_s| Seen {
+            at_s,
+            ..Seen::default()
+        };
+        c.step(&unanswered(0.0));
+        let limits = c.step(&unanswered(UNANSWERED_S + 1.0));
+        assert_eq!(limits.up, Some(8_500), "let go past the ceiling");
+        assert_eq!(limits.down, None, "the download is no part of it");
+    }
+
+    #[test]
+    fn a_trial_file_naming_only_a_ceiling_keeps_today_s_tuning() {
+        let trial: Tuning = serde_json::from_str(r#"{"most_kbit": 8500}"#).expect("a trial");
+        assert_eq!(
+            trial,
+            Tuning {
+                most_kbit: Some(8_500.0),
+                ..Tuning::default()
+            },
+            "the ceiling, and today's for the rest"
+        );
+        assert!(
+            !serde_json::to_string(&Tuning::default())
+                .expect("written")
+                .contains("most_kbit"),
+            "no ceiling is said as none, so records read as before"
+        );
+    }
+
     #[test]
     fn a_trial_s_probe_looks_as_far_over_the_plateau_as_it_says() {
         let mut c = Controller::new(None, None);
@@ -2664,6 +2832,7 @@ mod tests {
             standing_s: 0.0,
             hold: 2.0,
             probe_up: f64::NAN,
+            most_kbit: Some(8.5),
         };
         assert_eq!(
             wild.bounded(),
@@ -2672,8 +2841,21 @@ mod tests {
                 standing_s: 1.0,
                 hold: 1.0,
                 probe_up: PROBE_UP,
+                most_kbit: None,
             }
         );
+        for most in [f64::NAN, f64::INFINITY, -8_500.0, MOST_KBIT_LEAST - 1.0] {
+            let lost = Tuning {
+                most_kbit: Some(most),
+                ..Tuning::default()
+            };
+            assert_eq!(lost.bounded().most_kbit, None, "{most} is no ceiling");
+        }
+        let least = Tuning {
+            most_kbit: Some(MOST_KBIT_LEAST),
+            ..Tuning::default()
+        };
+        assert_eq!(least.bounded(), least, "the least ceiling holds");
         let mut c = Controller::new(None, None);
         c.up.tune(wild);
         assert_eq!(c.up.tuning(), wild.bounded());
@@ -3627,6 +3809,21 @@ mod tests {
             "with no anchor: {:?}",
             said[0]
         );
+    }
+
+    // A ceiling under the guard's share of the anchor is the trial's, so
+    // the guard leaves it, and what the upload learned stays as it was.
+    #[test]
+    fn an_anchored_upload_held_under_a_trial_s_ceiling_stays_there() {
+        let mut c = anchored(12_000.0);
+        c.up.tune(Tuning {
+            most_kbit: Some(8_500.0),
+            ..Tuning::default()
+        });
+        let said = filling(&mut c, 130.0, &[65.0, 125.0]);
+        assert_eq!(said, [Some(8_500), Some(8_500)], "held at the ceiling");
+        assert_eq!(c.guarded, 0, "the guard returned it to the anchor");
+        assert_eq!(c.up.plateau, Some(12_000.0), "the line learned under it");
     }
 
     /// At 07:34 on 16 November a hidden queue held the plateau at 10,040,

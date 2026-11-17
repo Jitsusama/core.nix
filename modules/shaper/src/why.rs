@@ -35,6 +35,8 @@ pub enum Why {
     /// Sent back to the anchor's hold, after a minute under the guard's
     /// share of it with no cut that drained a queue.
     Guarded,
+    /// Held at a trial's ceiling, under what it would otherwise be given.
+    Ceiling,
 }
 
 impl Why {
@@ -100,6 +102,7 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
                 |a| mbit(a * crate::oneway::ANCHOR_LOW)
             )
         ),
+        Why::Ceiling => format!("Upload {rate}: held at a trial's ceiling; {held}."),
     }
 }
 

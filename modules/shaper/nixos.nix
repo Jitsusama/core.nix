@@ -36,8 +36,8 @@
 # straight on the connection, the VPN's, and agents' bulk straight on the
 # connection, each a class of the connection's HTB at the controller's
 # rate. Joel comes first on both lanes; while agents have something
-# waiting, a quarter of the rate is theirs, split between the lanes by
-# their flows, and they take whatever Joel leaves.
+# waiting, a quarter of the rate is theirs, split evenly between the lanes
+# on which they wait, and they take whatever Joel leaves.
 #
 # Each time the shaper starts, the kernel warns "htb: cake qdisc 2: is
 # non-work-conserving?" for the IFB, and never again until the queues are
@@ -212,7 +212,9 @@ in
   # finds its line (src/live.rs), for an A/B of it on the real line
   # without a switch. The shaper holds each value within bounds that keep
   # a standing queue under what a call hears, and stopping the shaper
-  # would do more, so this too gives wheel nothing more.
+  # would do more. A trial's ceiling may hold the upload lower without a
+  # password, but never under 4 Mb/s, where a call still fits, and only
+  # for ten minutes after each write.
   config.systemd.tmpfiles.rules = [ "d /run/shaper-trial 0775 root wheel -" ];
 
   config.systemd.services.shaper = {

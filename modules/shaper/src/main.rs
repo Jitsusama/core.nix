@@ -1304,7 +1304,8 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Liv
     for (name, (sent, received)) in links::connection_loads(&carried, &follows) {
         if let Some(s) = shaped.get_mut(&name) {
             // The VPN is held only while the upload is: a recorder gone
-            // silent lets both go.
+            // silent lets both go, unless a trial's ceiling holds the
+            // upload, when the VPN has its whole share of it.
             s.vpn_share = match &held {
                 Some((link, rates))
                     if link.as_deref() == Some(name.as_str()) && rates.up.is_some() =>
