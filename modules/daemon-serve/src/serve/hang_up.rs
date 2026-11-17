@@ -14,7 +14,7 @@ use std::sync::mpsc::{self, SyncSender, TrySendError};
 
 use serde_json::Value;
 
-use super::{Held, QUEUED, Shared};
+use super::{Held, LONGEST, QUEUED, Shared};
 
 /// How many hang-up lines may wait for standard error before more are
 /// dropped, so a stalled journal neither holds the daemon up nor fills it.
@@ -177,11 +177,28 @@ impl Shared {
     /// `how` for `why`, unless its writer had ended or it was said
     /// already, so a journal shows which daemon shut which process and why.
     pub(super) fn say_once(&self, peer: &Peer, why: Unqueued, how: &str) {
-        if why != Unqueued::Unread || peer.said.swap(true, Ordering::Relaxed) {
+        if why == Unqueued::Unread {
+            self.say(peer, &format!("which left {QUEUED} lines unread as {how}"));
+        }
+    }
+
+    /// Says that `peer` was hung up on for an ask that ran past what a
+    /// line may hold, ended or not, unless its hang-up was said already.
+    pub(super) fn say_overlong(&self, peer: &Peer) {
+        let most = LONGEST >> 20;
+        self.say(
+            peer,
+            &format!("whose ask ran past the {most} MiB a line may hold"),
+        );
+    }
+
+    /// Says that `peer` was hung up on, `why`, once a connection.
+    fn say(&self, peer: &Peer, why: &str) {
+        if peer.said.swap(true, Ordering::Relaxed) {
             return;
         }
         let line = format!(
-            "{}: hung up on connection {} ({}), which left {QUEUED} lines unread as {how}",
+            "{}: hung up on connection {} ({}), {why}",
             self.domain.name, peer.connection, peer.process
         );
         self.said.get().unwrap_or(&self.saying).say(line);

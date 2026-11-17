@@ -15,6 +15,7 @@ onLinux {
   # while the rest are still told; one that asks without reading, slowly
   # or not, or whose pace finds its queue full, is shut and its writer ended,
   # and each hang-up is said once on standard error, unless its writer ended;
+  # one whose ask runs past the longest a line may hold is hung up on too;
   # an ask of the daemon's own is the daemon's to answer, one it doesn't
   # know refused; and a record read on get is read as asked, never held.
   daemon-serve-tells-each-watch-what-moved = pkgs.callPackage ./package.nix { };

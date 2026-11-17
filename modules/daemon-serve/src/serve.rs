@@ -423,8 +423,17 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
     // What its hang-up names it by, shared with its watches and its slow
     // asks, so whichever finds its queue full first says it, and only it.
     let peer = Arc::new(Peer::of(connection, &hangup));
-    for line in BufReader::new(reading).lines() {
-        let Ok(line) = line else { break };
+    let mut reading = BufReader::new(reading);
+    loop {
+        let line = match next_line(&mut reading, LONGEST) {
+            Next::Line(line) => line,
+            Next::Ended => break,
+            Next::Overlong => {
+                shared.say_overlong(&peer);
+                let _ = hangup.shutdown(Shutdown::Both);
+                break;
+            }
+        };
         let asked = shared.domain.ask(&line);
         if let Ask::Own { id, said } = &asked
             && shared.is_slow(said)
@@ -495,6 +504,44 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
     }
     let went = lock(shared).drop_watches(|watch| watch.peer.connection == connection);
     shared.heeded(went);
+}
+
+/// The longest ask a connection's line may hold, its end not counted, far
+/// past any a client asks, so what a connection that never ends a line
+/// holds is bounded, at most twice this as its buffer grows.
+const LONGEST: usize = 16 << 20;
+
+/// What a connection's next line held.
+#[derive(Debug, PartialEq, Eq)]
+enum Next {
+    /// An ask, without its line's end.
+    Line(String),
+    /// Nothing more: the connection ended, or sent what isn't words.
+    Ended,
+    /// More than `longest`, its line ended or not.
+    Overlong,
+}
+
+/// The next line `reading` holds, as `lines` would give it, reading no
+/// more than `longest` and its line's end, a newline or a carriage return
+/// and a newline.
+fn next_line(reading: &mut impl BufRead, longest: usize) -> Next {
+    let mut bytes = Vec::new();
+    let most = u64::try_from(longest).unwrap_or(u64::MAX).saturating_add(2);
+    match std::io::Read::take(&mut *reading, most).read_until(b'\n', &mut bytes) {
+        Ok(0) | Err(_) => return Next::Ended,
+        Ok(_) => {}
+    }
+    if bytes.last() == Some(&b'\n') {
+        bytes.pop();
+        if bytes.last() == Some(&b'\r') {
+            bytes.pop();
+        }
+    }
+    if bytes.len() > longest {
+        return Next::Overlong;
+    }
+    String::from_utf8(bytes).map_or(Next::Ended, Next::Line)
 }
 
 /// One of the daemon's slow asks, answered on a thread of its own once
