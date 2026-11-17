@@ -179,6 +179,19 @@ pub fn inside(record: &Record, words: &Words) -> Vec<Value> {
 /// repository's row's.
 pub const FILES: &str = ":files";
 
+/// What ends the key of Switch Branch's row, after its repository's
+/// row's.
+pub const BRANCHES: &str = ":branches";
+
+/// The rows inside Switch Branch's row of key `parent`, one for each
+/// branch `listed` says as switch.rs lists them,
+/// `{name, at_s, here, elsewhere, path}`, in its order.
+#[must_use]
+pub fn branches(parent: &str, listed: &[Value], words: &Words) -> Vec<Value> {
+    let _ = (parent, listed, words);
+    Vec::new()
+}
+
 /// The rows inside Open a File by Name's row of key `parent`, one for each
 /// file `listed` says as repositories.rs lists them, `{path, at, within}`,
 /// in its order; Return opens one in its default program.
