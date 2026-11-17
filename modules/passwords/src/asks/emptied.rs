@@ -129,6 +129,48 @@ mod tests {
     }
 
     #[test]
+    fn a_credential_under_any_spelling_of_a_setting_empties_the_file() {
+        // Docker's reader takes every spelling of a setting, so one empty
+        // spelling beside another holding a login hides nothing. Each pair
+        // has its credential under both the spelling read first and last.
+        for text in [
+            r#"{"auths": {}, "AUTHS": {"registry.example": {"auth": "made-up"}}}"#,
+            r#"{"AUTHS": {}, "auths": {"registry.example": {"auth": "made-up"}}}"#,
+            r#"{"credsStore": "", "CredsStore": "secretservice"}"#,
+            r#"{"CredsStore": "", "credsStore": "secretservice"}"#,
+            r#"{"auths": {"registry.example": {"auth": "", "Auth": "made-up"}}}"#,
+            r#"{"auths": {"registry.example": {"Auth": "", "auth": "made-up"}}}"#,
+        ] {
+            assert!(
+                empties(text, &docker()),
+                "a second spelling's credential was left: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_proxys_login_with_no_scheme_empties_the_file() {
+        let text = r#"{"proxies": {"default": {"httpProxy": "joel:made-up@proxy.example:3128"}}}"#;
+        assert!(
+            empties(text, &docker()),
+            "a proxy's login with no scheme was left: {text}"
+        );
+    }
+
+    #[test]
+    fn an_at_past_a_proxys_address_is_no_login() {
+        for text in [
+            r#"{"proxies": {"default": {"httpProxy": "http://proxy.example:3128/at@path"}}}"#,
+            r#"{"proxies": {"default": {"noProxy": "*.example,localhost"}}}"#,
+        ] {
+            assert!(
+                !empties(text, &docker()),
+                "a proxy with no login was emptied: {text}"
+            );
+        }
+    }
+
+    #[test]
     fn settings_that_cant_be_told_are_emptied() {
         for text in ["", "{", "[]", r#""auths""#, "null"] {
             assert!(
