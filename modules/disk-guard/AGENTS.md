@@ -74,7 +74,13 @@ or launchd, and [`home.nix`][2] the account's.
   What such a quest keeps beside its `tmp/`, its labs, clones and runs,
   goes the same way after a week, two days once the disk is nearly full
   and twelve hours once it's critically full, but for its handover and a
-  folder of GC roots, whose links keep what running programs read.
+  folder of GC roots, whose links keep what running programs read. A
+  quest a live session works on keeps all of it, in `tmp/` and beside it,
+  but its profiles at rest, whatever each entry's age: on 16 November a
+  laptop's guard took 188 entries of a working session's `tmp/`, a script
+  it wrote that evening among them. A session lives while its process
+  runs as the one that started then, told by its start ticks on Linux and
+  by the second it noted on a Mac, or while a pi host's roster holds it.
   A `store-roots` source names links a tool keeps to hold its builds from
   collection, as a development shell keeps its environment: those under
   its roots that Nix's indirect roots list and its pattern matches go once
@@ -134,8 +140,10 @@ or launchd, and [`home.nix`][2] the account's.
 - **Removal.** Everything is reached through directories opened beneath the
   source's root, never through a symlink, another filesystem or `..`. A
   target is renamed into a trash beside it, judged again, then emptied; a
-  disk too full to rename deletes in place. Each step is in the journal, and
-  a guard starting after a crash empties what was begun. `disk-guard
+  disk too full to rename deletes in place. Each step is in the journal,
+  stamped when it was done rather than when its pass began, since a pass
+  can run for hours, and a guard starting after a crash empties what was
+  begun. `disk-guard
   journal` shows the account's guard and the machine's together, by time,
   each line saying whose: the machine's guard owns the store and what lies
   outside every home, so the account's alone never said where most of a
@@ -165,9 +173,12 @@ or launchd, and [`home.nix`][2] the account's.
   and hash every derivation it met, five times the CPU; one that only a
   realisation keeps is listed dead, and Nix refuses it when it's deleted.
   The garbage's own pass, which comes once something let go of some, rests
-  after one that frees under a mebibyte, two minutes doubling to half an
-  hour until one frees more, since an evaluation registering the same
-  paths again brought 16 passes freeing nothing in eight minutes.
+  after one that left every path it was offered, two minutes doubling to
+  half an hour until one takes some, since an evaluation registering the
+  same paths again brought 16 passes freeing nothing in eight minutes.
+  What's left is judged by the paths still there, not by the room
+  measured, which other writers move, and garbage that pass wasn't
+  offered, as a root's leaving lets go, still goes at once.
   It deletes them oldest first,
   in a pass of their own once something has let some go. While the disk is healthy it keeps what
   was built in the last hour, up to 5% of the disk, unless a machine gives
@@ -281,8 +292,10 @@ or launchd, and [`home.nix`][2] the account's.
   tries failed and freed nothing, or where one timed out, is told once,
   with the failure's error line, and written to the system journal as an
   error, since a guard that can't clear is otherwise silent. The next
-  pass that works takes it away, unless a frozen writer's notice stands,
-  so it says how the guard stands now; a folder its owner wrote again
+  pass on that disk that frees some, or finds it no longer filling, takes
+  it away, a frozen writer's notice going back in its place, so it says
+  how the guard stands now; a pass elsewhere, or one that freed nothing,
+  says nothing of it. A folder its owner wrote again
   while the guard emptied it is kept, not failed. A notice the
   desktop didn't take, as when the notification server is still starting,
   is told again each step until it is. What stands to be told now, once
