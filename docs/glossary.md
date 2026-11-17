@@ -689,5 +689,9 @@ page that set it out: "i love this page and what it describes"):
   purpose may need its own word.
 - **fruiting body**: what a forage puts out when it's done, such as a merged
   change, waiting on whether it's a landing.
+- **basin**: the map's mark for a pool of cloud boxes that cells borrow,
+  drawn as one bowl since a box is never drawn alone. The boxes are ground
+  that cells stand on, as a machine is, not cells. The choice is whether basin is the word for
+  them, beside machine, or stays the map's key alone.
 
 [design]: design.md
