@@ -160,6 +160,11 @@ let
   # and took a new chunk while runs that fit sat further on; over 130
   # openings in a lab its hold grew from 25 to 40 MB around 18 live, and
   # to 34 with them kept by size (qtdeclarative-large-runs-by-size.patch).
+  # A small request splits a larger small run before it carves a large
+  # one, since the small runs sweeps leave scattered stayed free while each
+  # large run carved sent the next large request to a new chunk; the same
+  # lab then held 25 growing to 29, flat from its first tenth
+  # (qtdeclarative-small-runs-split-first.patch).
   # Its Wayland client focuses the window a sync asks for even while an
   # earlier change is still queued, since a leave and an enter close
   # together left the launcher holding the keys yet never active
@@ -193,6 +198,7 @@ let
             ./qtdeclarative-uncached-pictures-let-go.patch
             ./qtdeclarative-heap-held-once.patch
             ./qtdeclarative-large-runs-by-size.patch
+            ./qtdeclarative-small-runs-split-first.patch
           ];
         });
       }

@@ -1,0 +1,66 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] Split a small free run before carving a large one
+
+A request under 63 slots that found no run of its own size and no room
+at the bump pointer took a large run, and split a larger small run only
+when no large run was free. The small runs each sweep leaves scattered
+stayed free, while every large run carved left the next large request a
+new chunk. Over 130 openings in a lab, with the large runs kept by
+size, the shell's heap held 25 MB growing to 33 around 18 live. A small
+request now splits the smallest larger small run before it looks in
+the large bins, and the same lab held 25 MB growing to 29, flat from
+its first tenth.
+
+---
+--- a/src/qml/memory/qv4mm.cpp
++++ b/src/qml/memory/qv4mm.cpp
+@@ -450,6 +450,25 @@
+         goto done;
+     }
+ 
++    if (slotsRequired < NumExactBins) {
++        // Split the smallest larger small run before taking a large one, so the scattered
++        // runs of sizes few ask for are used up rather than kept, and the large runs stay
++        // whole for the requests that need them.
++        for (size_t i = slotsRequired + 1; i < NumExactBins; ++i) {
++            m = freeBins[i];
++            if (m) {
++                freeBins[i] = m->freeData.next; // take it out of the list
++                size_t remainingSlots = i - slotsRequired;
++                Q_ASSERT(remainingSlots < NumExactBins);
++                HeapItem *remainder = m + slotsRequired;
++                remainder->freeData.availableSlots = remainingSlots;
++                remainder->freeData.next = freeBins[remainingSlots];
++                freeBins[remainingSlots] = remainder;
++                goto done;
++            }
++        }
++    }
++
+     // search the large bins for a large enough item, from the one for this size up. Only the
+     // request's own bin holds runs too small for it, and it passes at most a few of them, since
+     // each pass of a long list is paid again by every request that follows it; the first run of
+@@ -491,23 +510,6 @@
+         }
+     }
+ 
+-    if (slotsRequired < NumExactBins) {
+-        // check if we can split up another slot
+-        for (size_t i = slotsRequired + 1; i < NumExactBins; ++i) {
+-            m = freeBins[i];
+-            if (m) {
+-                freeBins[i] = m->freeData.next; // take it out of the list
+-                size_t remainingSlots = i - slotsRequired;
+-                Q_ASSERT(remainingSlots < NumExactBins);
+-                HeapItem *remainder = m + slotsRequired;
+-                remainder->freeData.availableSlots = remainingSlots;
+-                remainder->freeData.next = freeBins[remainingSlots];
+-                freeBins[remainingSlots] = remainder;
+-                goto done;
+-            }
+-        }
+-    }
+-
+     if (!m) {
+         if (!forceAllocation)
+             return nullptr;
