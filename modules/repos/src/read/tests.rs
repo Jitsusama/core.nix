@@ -471,6 +471,76 @@ fn a_snapshot_follows_nothing() {
 }
 
 #[test]
+fn each_checkout_carries_its_stores_weight_judged_by_its_own_config() {
+    let src = place("weight");
+    // Past git's default of 27 loose objects in the folder it counts.
+    let heavy = |folder: &Path| {
+        let objects = folder.join(".git/objects");
+        fs::create_dir_all(objects.join("pack")).expect("a pack folder");
+        for at in 0..28 {
+            write(&objects.join("17").join(format!("{at:038x}")), "x");
+        }
+    };
+    checkout_at(&src.join("due"), None, 100);
+    heavy(&src.join("due"));
+    checkout_at(&src.join("off"), None, 100);
+    heavy(&src.join("off"));
+    let config = src.join("off/.git/config");
+    let said = fs::read_to_string(&config).expect("its config");
+    // Quoted, and with a comment after it, as a hand-written config may be.
+    write(&config, &format!("{said}[gc]\n\tauto = \"0\" # off\n"));
+    checkout_at(&src.join("unweighed"), None, 100);
+    let record = reading(&[src], None);
+    let mut weights: Vec<(&str, Option<(u64, bool)>)> = record
+        .repositories
+        .iter()
+        .map(|repository| {
+            let weight = repository.checkouts[0].weight;
+            (
+                repository.name.as_str(),
+                weight.map(|weight| (weight.loose, weight.due)),
+            )
+        })
+        .collect();
+    weights.sort_unstable();
+    assert_eq!(
+        weights,
+        [
+            ("due", Some((28 * 256, true))),
+            ("off", Some((28 * 256, false))),
+            ("unweighed", None),
+        ],
+        "{record:#?}"
+    );
+}
+
+#[test]
+fn a_remote_or_branch_section_with_no_name_names_nothing() {
+    let src = place("unnamed");
+    checkout_at(&src.join("plain"), None, 100);
+    let config = src.join("plain/.git/config");
+    let said = fs::read_to_string(&config).expect("its config");
+    let unnamed = "[remote]\n\turl = https://github.com/owl/core\n[branch]\n\tremote = .\n";
+    write(
+        &config,
+        &format!("{said}{unnamed}\tmerge = refs/heads/main\n"),
+    );
+    let record = reading(&[src], None);
+    let repository = &record.repositories[0];
+    assert!(repository.remotes.is_empty(), "{record:#?}");
+    assert!(repository.key.starts_with("local:"), "{record:#?}");
+    let read = fs::read_to_string(&config).expect("its config");
+    assert!(follows(&read).is_empty(), "no branch follows anything");
+}
+
+#[test]
+fn a_value_loses_the_comment_after_it_but_not_a_mark_inside_its_quotes() {
+    let config = "[remote \"origin\"]\n\turl = \"a#b;c\" # where\n\tfetch = x ; why\n";
+    let values: Vec<&str> = settings(config).map(|set| set.value).collect();
+    assert_eq!(values, ["a#b;c", "x"]);
+}
+
+#[test]
 fn a_path_is_said_from_home() {
     let home = Path::new("/home/someone");
     assert_eq!(

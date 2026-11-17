@@ -241,5 +241,6 @@ pub fn merge_kept(record: &mut Record, file: &Path) {
     }
 }
 
+// Its git helper builds the weighing's repository too (weight/tests.rs).
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

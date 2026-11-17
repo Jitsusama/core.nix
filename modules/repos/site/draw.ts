@@ -15,6 +15,7 @@ import {
   seasonOf,
   treeAddress,
 } from "./model.ts";
+import { weighedBriefly, weighedFully, weightOfAll } from "./weight.ts";
 
 /** What every part of the drawer reads besides its own: the time it's drawn at, the home
  * folder said as ~, and where the mycelium keeps each cell's home. */
@@ -255,12 +256,13 @@ function growth(repository: Repository): string {
   return week > 0 ? `${week} this week` : "";
 }
 
-/** The words of a row after its name: its size, how it grows and its changes. */
+/** The words of a row after its name: its size, how it grows, its changes and its weight. */
 function rowMeta(repository: Repository): string {
   const parts = [
     size(repository),
     growth(repository),
     repository.changes.length > 0 ? plural(repository.changes.length, "change") : "",
+    weighedBriefly(weightOfAll(repository.checkouts.map((each) => each.weight))),
   ].filter(Boolean);
   return parts.join(" · ");
 }
@@ -411,8 +413,9 @@ function drawer(
         each.behind ? `${each.behind} behind` : "",
         each.ahead ? `${each.ahead} ahead` : "",
       ].filter(Boolean);
+      const weight = weighedFully(each.weight);
       return `<li class="checkout"><span class="path" translate="no">${escaped(tilde(each.path, home))}</span>
-        <span class="meta">${escaped([at, ...drift].filter(Boolean).join(" · "))}</span>${cellsLine(each.cells, homes)}</li>`;
+        <span class="meta">${escaped([at, ...drift, weight].filter(Boolean).join(" · "))}</span>${cellsLine(each.cells, homes)}</li>`;
     })
     .join("");
   const joined = repository.joined

@@ -59,6 +59,7 @@ fn record(own: Head, trees: Vec<Tree>) -> Record {
                 head: Some(own),
                 written_at: None,
                 trees,
+                weight: None,
             }],
             changes: Vec::new(),
             read_through: None,
@@ -254,7 +255,7 @@ fn a_kept_counting_reads_back_whole_and_only_its_owner_can() {
 
 /// git, as the test runs it: on an empty config, so the person's own,
 /// signing included, is never read, and with fixed names and times.
-fn git(dir: &Path, args: &[&str]) -> String {
+pub(crate) fn git(dir: &Path, args: &[&str]) -> String {
     let out = Command::new(git_program())
         .arg("-C")
         .arg(dir)

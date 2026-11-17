@@ -7,7 +7,8 @@ test names (repos.json) and one cell at work in a tree (node.json), with the
 sites' record, Code's homes and the map's homes among the documents. It must
 say it's live with every repository drawn, grow a repository whose tree is
 written now, drop a repository that goes, draw the cell at work and link it to
-its home on the map, say broken when the daemon stops and live again, its
+its home on the map, say each repository's weight and due upkeep in its row and
+drawer, say broken when the daemon stops and live again, its
 repositories drawn, when it's back, say stale when the server goes, and pass
 the web-design skill's page checks and its homes check at a phone's width and
 a desk's in both looks. Anything the page logs fails it, but for the browser's
@@ -34,9 +35,10 @@ HERE = Path(__file__).parent
 PACE_MS = 6000
 # The server watches a gone daemon again every 2 seconds, so its return shows inside this.
 BACK_MS = 15000
-# The browser's own lines for a feed that couldn't connect and a fetch cut off,
-# once the server is gone.
-UNREACHED = ["WebSocket connection to", "net::ERR_CONNECTION_RESET"]
+# The browser's own lines for a feed that couldn't connect and a fetch that
+# failed, once the server is gone: cut off in flight, or refused when the page's
+# second read of its homes starts after.
+UNREACHED = ["WebSocket connection to", "Failed to load resource: net::ERR_"]
 # The kinds the repos daemon serves, each told whole, as home.nix declares them.
 KINDS = ["reading", "repository", "checkout", "tree", "change"]
 # The sites' record as the home keeps it, each row named for people. The site
@@ -175,6 +177,18 @@ def test_a_repository_that_goes_leaves_the_list(code_page: Page, repos_daemon: S
     expect(row(code_page, "github:owl/core"), "the one left went too").to_be_visible()
 
 
+def test_a_repositorys_weight_and_due_upkeep_are_said(code_page: Page) -> None:
+    says_it_stands(code_page, "live")
+    # Only core's checkout weighs anything, reckoned from one folder, and git
+    # would gather it now.
+    expect(row(code_page, "github:owl/core"), "core's weight wasn't said").to_contain_text(
+        "about 2.5 GB, upkeep due"
+    )
+    expect(code_page.locator("#open"), "the drawer didn't say why").to_contain_text(
+        "about 2.5 GB in git: 7,168 loose, 11 packs; git's upkeep is due"
+    )
+
+
 def test_a_cell_at_work_is_drawn_in_its_repository(code_page: Page) -> None:
     says_it_stands(code_page, "live")
     expect(row(code_page, "github:owl/core"), "the cell at work wasn't drawn").to_contain_text(
@@ -216,7 +230,7 @@ def test_a_sites_server_that_goes_is_said_stale(code_opened: Opened, code_served
     code_page = code_opened.page
     says_it_stands(code_page, "live")
     # Once the server's gone, the browser logs the feed's next try, and any of
-    # the page's reads of its homes still in flight, as lines of its own.
+    # the page's reads of its homes not yet answered, as lines of its own.
     for words in UNREACHED:
         code_opened.expecting(words)
     _, server = code_served

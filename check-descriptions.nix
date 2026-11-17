@@ -624,7 +624,8 @@
     the code page typechecks on the kit at its strictest and builds, its tests passing: each
     repository's trees by season then branch, a cursor stepping within the rows, an address
     landing on a place, a repository or a tree in its season, and another site home to a kind found
-    by the row claiming it, inside the sites' folders, its homes of that kind alone
+    by the row claiming it, inside the sites' folders, its homes of that kind alone, and a
+    store's weight said in disk units, about only where the daemon reckoned it, with its upkeep
   '';
   code-site-reads-live = ''
     the code page, served by the local sites' server beside a stand-in repos daemon and node,
@@ -632,7 +633,8 @@
     and one going, a cell at work drawn and linked to its home on the map, broken while the daemon
     is away and live with its repositories again once it's back, stale once the server goes, the
     web-design skill's page checks and its homes check passing at a phone's width and a desk's in
-    both looks, and nothing logged
+    both looks, a repository's weight and due upkeep said in its row and drawer, and nothing
+    logged
   '';
   code-site-keeps-its-last-homes = ''
     the code site's writer, while repos fails, ends well in one line and leaves the last homes as
@@ -2751,7 +2753,9 @@
   repos-reads-the-disk = ''
     checkouts and trees laid out as git lays them out, a reftable's included, read as one
     repository for each remote with each checkout's trees and heads, its trunk and when it was
-    last written, a tree whose folder is gone said so, and every view of them fitting each width
+    last written, a tree whose folder is gone said so, each checkout's store weighed as git's
+    auto-gc samples it and due as its config sets, over stores laid out by hand and one git wrote,
+    and every view of them fitting each width
   '';
   resolved-is-set-per-network = ''
     a laptop leaves resolved's global DNS settings as they ship
