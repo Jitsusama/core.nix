@@ -272,10 +272,21 @@ async fn looked(
         .map(|ended| ended.is_ok())
 }
 
-/// Has every card look, as the scan act does; the chooser asks this of a
-/// card hearing no other access point of its network (moves.rs).
-pub(crate) async fn look(asks: &mpsc::Sender<Ask>) -> Result<(), Refused> {
-    once(asks, |done| Ask::Scan { done }).await
+/// Has every card look, as the scan act does, and waits as long as
+/// `LOOKING` for the look to end, saying whether it did; the chooser asks
+/// this of a card hearing no better access point of its network
+/// (moves.rs). A look is answered once it's asked for, not once it ends.
+pub(crate) async fn look(
+    asks: &mpsc::Sender<Ask>,
+    mut air: watch::Receiver<State>,
+) -> Result<bool, Refused> {
+    let before = air.borrow_and_update().looks();
+    once(asks, |done| Ask::Scan { done }).await?;
+    match looked(&mut air, before, LOOKING).await {
+        Ok(true) => Ok(true),
+        Ok(false) => Err(stopping()),
+        Err(_) => Ok(false),
+    }
 }
 
 /// Asks the main loop one thing and waits for its answer.

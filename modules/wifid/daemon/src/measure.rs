@@ -196,6 +196,7 @@ pub async fn follow(
                 };
                 let around = state.borrow().around(&on.card);
                 let chooser = choosers.entry(on.card.clone()).or_default();
+                chooser.looked_over(now);
                 moves::choose(
                     chooser,
                     (now, hour),

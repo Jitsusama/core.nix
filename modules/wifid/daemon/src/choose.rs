@@ -150,6 +150,12 @@ pub struct Chooser {
     /// 45 ms at p95 for a minute between 11 and 18, and the one tried for
     /// it carried 32 to 64 for the next 14.
     badly_on: Option<String>,
+    /// Where it carried badly the minute before the last choice, which a
+    /// choice again within that minute goes by, so one bad minute isn't
+    /// counted twice.
+    badly_before: Option<String>,
+    /// When the card's look ended, where it's chosen for again then.
+    again: Option<Instant>,
     trial: Option<Trial>,
     spurned: HashMap<String, Instant>,
     /// The access point a move on trial never reached, kept off from the
@@ -183,7 +189,14 @@ impl Chooser {
         let carried_badly = badly(measured);
         // A failing link is left on its first minute, a merely bad one on
         // its second.
-        let lately = std::mem::replace(&mut self.badly_on, carried_badly.then(|| point.to_owned()));
+        let lately = if self.again.take() == Some(now) {
+            self.badly_before.clone()
+        } else {
+            let lately =
+                std::mem::replace(&mut self.badly_on, carried_badly.then(|| point.to_owned()));
+            self.badly_before.clone_from(&lately);
+            lately
+        };
         let bad = carried_badly && (failing || lately.as_deref() == Some(point));
         if calling && !failing {
             return Choice::Stay;
@@ -256,6 +269,12 @@ impl Chooser {
             banded: banded.is_some(),
         });
         Choice::Try(chosen.point.clone())
+    }
+
+    /// Takes in that the card's look ended now, so the choice made now is
+    /// one again within the minute rather than the next minute's.
+    pub fn looked_over(&mut self, now: Instant) {
+        self.again = Some(now);
     }
 
     /// The access point the last choice kept off as a move never reached,
@@ -914,6 +933,41 @@ pub(crate) mod tests {
             frequency: CH6,
             measured,
         }
+    }
+
+    #[test]
+    fn a_card_that_looked_for_another_tries_what_it_heard_at_once() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let now = Instant::now();
+        let later = now + Duration::from_secs(12);
+        let slow = carried(106, 0.0);
+        let on = (DESK, &slow, -45, CH52);
+
+        let looks = chooser.choose(now, on, &[], false);
+        chooser.looked_over(later);
+        let again = chooser.choose(later, on, &[near_at(-37, None)], false);
+
+        assert_eq!(looks, Choice::Look, "it hears no other");
+        assert_eq!(again, Choice::Try(NEAR.into()), "tries what it heard");
+    }
+
+    #[test]
+    fn a_card_chosen_for_again_after_a_look_counts_its_bad_minute_once() {
+        let mut chooser = Chooser::default();
+        let now = Instant::now();
+        let later = now + Duration::from_secs(12);
+        let slow = carried(60, 0.0);
+        let on = (DESK, &slow, -45, CH6);
+        let heard = [near_at(-40, None)];
+
+        let looks = chooser.choose(now, on, &[], false);
+        chooser.looked_over(later);
+        let again = chooser.choose(later, on, &heard, false);
+        let next = chooser.choose(now + Duration::from_secs(60), on, &heard, false);
+
+        assert_eq!(looks, Choice::LookWider, "it hears no 5 GHz");
+        assert_eq!(again, Choice::Stay, "one bad minute");
+        assert_eq!(next, Choice::Try(NEAR.into()), "two bad minutes");
     }
 
     #[test]
