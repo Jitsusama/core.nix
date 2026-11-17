@@ -99,13 +99,19 @@ pub fn count(
     let held = std::fs::read_to_string(&path)
         .ok()
         .and_then(|text| serde_json::from_str::<Counting>(&text).ok());
-    let mut counting = held.unwrap_or(Counting { day: today.clone(), began });
+    let mut counting = held.unwrap_or(Counting {
+        day: today.clone(),
+        began,
+    });
     while counting.day != today && counting.began < began {
         let (next, ended) = crate::local_day(counting.began + PAST_A_DAY_MS, offset_s);
         if !send(&note(&counting.day, &of(kept, counting.began, ended))) {
             break;
         }
-        counting = Counting { day: next, began: ended };
+        counting = Counting {
+            day: next,
+            began: ended,
+        };
     }
     crate::write_whole(
         &path,
