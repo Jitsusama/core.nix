@@ -336,10 +336,16 @@ pub fn hear(
     let owned = route_waiting(ears, &routes, &cells, &mut kept, &mut guarded, &heard_at);
     note_for_keeper(ears, &routes, &cells, &kept, &owned, &mut guarded);
     keep(&heard_at, &kept)?;
+    // A run that took UTC for want of his zone would split his days at
+    // the wrong hour, so it counts none and waits for one that knows.
     let mut counted = None;
-    if let Some(keeper) = routes.ledgers.clone().filter(|_| routes.sends()) {
-        let zone = ears.zone_known.then_some(ears.offset_s);
-        counted = day::count(&ears.state, &kept, ears.at, zone, &mut |text| {
+    if !ears.zone_known {
+        counted = Some(
+            "his time zone couldn't be read, so his day was split at UTC midnight and not counted"
+                .into(),
+        );
+    } else if let Some(keeper) = routes.ledgers.clone().filter(|_| routes.sends()) {
+        counted = day::count(&ears.state, &kept, ears.at, ears.offset_s, &mut |text| {
             guarded(&keeper, text)
         })?;
     }
@@ -412,17 +418,18 @@ fn hear_logs(
     following.retain(|name, _| present.contains(name));
 }
 
-/// Whether any pain of the day waits to be sent, since a node naming no
-/// sessions is a trouble only then, and how many were given up on: their
-/// owner's tries spent, said through the pain's day so it isn't lost once
-/// it's no longer fresh. One heard late waits for no one, since it goes
-/// only into its day's count.
+/// Whether any fresh pain waits to be sent, since a node naming no
+/// sessions is a trouble only then, and how many fresh ones were given up
+/// on, their owner's tries spent. Past fresh, a pain given up on is said
+/// only in its day's count, so a short outage of the node fails the
+/// listener no longer than a pain stays fresh. One heard late waits for
+/// no one, since it goes only into its day's count.
 fn unsent(kept: &[Heard], at: i64) -> (bool, usize) {
     let unsent = || {
         kept.iter()
-            .filter(move |h| h.routed_at.is_none() && h.at >= at - DAY_MS)
+            .filter(move |h| h.routed_at.is_none() && h.at >= at - FRESH_MS)
     };
-    let waiting = unsent().any(|h| !h.carried && h.tries < SEND_TRIES && h.at >= at - FRESH_MS);
+    let waiting = unsent().any(|h| !h.carried && h.tries < SEND_TRIES);
     let given_up = unsent().filter(|h| h.tries >= SEND_TRIES).count();
     (waiting, given_up)
 }
