@@ -29,9 +29,11 @@ use said::Carried;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
+use std::fs::TryLockError;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 /// How far back a first run hears, and how long a pain stays open.
@@ -92,20 +94,42 @@ pub struct Hour {
 }
 
 /// Hears what's new since the last run, sends each new pain to its owner
-/// through the mycelium, and says the hour in a line for the journal.
+/// through the mycelium, and says the hour in a line for the journal,
+/// with whether the run had troubles, so a run that couldn't route exits
+/// failed where `systemctl --user --failed` shows it.
 ///
 /// # Errors
 ///
-/// When its state can't be written.
-pub fn listen(home: &Path, given: &mut BTreeMap<&'static str, String>) -> Result<String, String> {
+/// When its state can't be written, or another run is hearing.
+pub fn listen(
+    home: &Path,
+    given: &mut BTreeMap<&'static str, String>,
+) -> Result<(String, bool), String> {
     let mut take = |flag: &str| given.remove(flag);
     let state = crate::state_home();
+    let own = state.join("pain-points");
+    fs::create_dir_all(&own).map_err(|e| format!("{}: {e}", own.display()))?;
+    // One run at a time: the timer's and one typed in a terminal would
+    // each send the same findings and write over each other's state.
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(own.join("hear.lock"))
+        .map_err(|e| format!("hear.lock: {e}"))?;
+    match lock.try_lock() {
+        Ok(()) => {}
+        Err(TryLockError::WouldBlock) => {
+            return Err("another run is hearing, so this one stepped aside".into());
+        }
+        Err(TryLockError::Error(e)) => return Err(format!("hear.lock: {e}")),
+    }
     let mission = take("--ledgers").map_or_else(|| state.join("mission"), PathBuf::from);
     let mycelium = take("--mycelium").map_or_else(|| "mycelium".into(), PathBuf::from);
     let date = take("--date").map_or_else(|| "date".into(), PathBuf::from);
     let ears = Ears {
         sessions: take("--sessions").map_or_else(|| home.join(".pi/agent/sessions"), PathBuf::from),
-        state: state.join("pain-points"),
+        state: own,
         ledgers: vec![mission.join("asks.jsonl"), mission.join("misses.jsonl")],
         void: take("--void").map_or_else(|| state.join("void"), PathBuf::from),
         at: take("--at")
@@ -125,7 +149,7 @@ pub fn listen(home: &Path, given: &mut BTreeMap<&'static str, String>) -> Result
         let Some(from) = &from else { return false };
         // A node that never answers would hold every later run behind this
         // one, so a send that hangs is stopped and tried again next run.
-        ran_within(
+        output_within(
             Command::new(&mycelium)
                 .args([
                     // A question, as a finding is read only on a cell's
@@ -136,11 +160,15 @@ pub fn listen(home: &Path, given: &mut BTreeMap<&'static str, String>) -> Result
                 .arg(format!("peer.{}", to.to_lowercase())),
             SEND_AT_MOST,
         )
+        .is_some_and(|answer| node_took(&answer))
     })?;
-    Ok(format!(
-        "pain-points: {} pains heard and {} routed in the hour, {} open in the day{}{}",
+    drop(lock);
+    let said = format!(
+        "pain-points: {} pains heard and {} routed in the hour, {} turns stalled him, {} open \
+         in the day{}{}",
         hour.heard,
         hour.routed,
+        hour.stalled,
         hour.open,
         hour.worst.as_ref().map_or(String::new(), |_| format!(
             "; the most hit, {} times",
@@ -150,21 +178,14 @@ pub fn listen(home: &Path, given: &mut BTreeMap<&'static str, String>) -> Result
             .iter()
             .map(|t| ["; ", t].concat())
             .collect::<String>()
-    ))
+    );
+    Ok((said, !hour.troubles.is_empty()))
 }
 
-/// Whether a command ran and ended well within `limit`; one still running
-/// then is killed and counts as failed.
-fn ran_within(command: &mut Command, limit: Duration) -> bool {
-    let Ok(mut child) = command
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-    else {
-        return false;
-    };
-    ended_within(&mut child, limit)
+/// Whether the node's answer to a send says it took it: the mycelium
+/// exits well on a send it refused, and says so only in its answer.
+fn node_took(answer: &str) -> bool {
+    answer.trim_start().starts_with(r#"{"Ok""#)
 }
 
 /// What a command printed, when it ended within `limit`.
@@ -177,15 +198,22 @@ fn output_within(command: &mut Command, limit: Duration) -> Option<String> {
         .ok()?;
     let mut out = child.stdout.take()?;
     // Read beside the wait, so a command printing more than a pipe holds
-    // isn't stopped waiting on its reader.
-    let reading = std::thread::spawn(move || {
+    // isn't stopped waiting on its reader; and read with the same limit,
+    // as a child it left behind may hold the pipe open long after.
+    let started = Instant::now();
+    let (read, reading) = mpsc::channel();
+    std::thread::spawn(move || {
         let mut text = String::new();
-        out.read_to_string(&mut text).ok().map(|_| text)
+        let _ = read.send(out.read_to_string(&mut text).ok().map(|_| text));
     });
     if !ended_within(&mut child, limit) {
         return None;
     }
-    reading.join().ok().flatten().filter(|s| !s.is_empty())
+    reading
+        .recv_timeout(limit.saturating_sub(started.elapsed()))
+        .ok()
+        .flatten()
+        .filter(|s| !s.is_empty())
 }
 
 /// Whether a child ended well within `limit`; one still running then is
@@ -242,7 +270,7 @@ pub fn hear(
         .filter_map(|line| serde_json::from_str(line).ok())
         .filter(|h: &Heard| h.at >= ears.at - heard::KEPT_MS)
         .collect();
-    let ledgers: Vec<(String, bool)> = ears
+    let ledgers: Vec<String> = ears
         .ledgers
         .iter()
         .flat_map(|path| heard::ledger(&fs::read_to_string(path).unwrap_or_default()))
@@ -263,7 +291,15 @@ pub fn hear(
         for said in follow(&path, &ears.void, log) {
             let key = format!("{}/{}", log.session, said.entry);
             let kinds = sore::kinds(&said.words, said.at, &said.before);
-            if log.lab || said.at < since || kinds.is_empty() || kept.iter().any(|h| h.key == key) {
+            // A session carried on into a new log repeats what was said
+            // in the old one, at the same time, so it is heard once.
+            if log.lab
+                || said.at < since
+                || kinds.is_empty()
+                || kept
+                    .iter()
+                    .any(|h| h.key == key || (h.at == said.at && h.words == said.words))
+            {
                 continue;
             }
             let hits = heard::hits(&said.words, &kept);
@@ -321,11 +357,11 @@ pub fn hear(
     keep(&heard_at, &kept)?;
     let mut hour = hour_of(&kept, ears.at);
     hour.troubles.extend(Routes::trouble(&ears.state));
+    hour.troubles.extend(refused(&routes));
     if failed > 0 {
-        hour.troubles
-            .push(format!("{failed} sends failed, to be tried again next run"));
+        hour.troubles.push(format!("{failed} sends failed"));
     }
-    if routes.from.is_some() && cells.is_empty() {
+    if routes.sends() && cells.is_empty() {
         hour.troubles
             .push("the mycelium named no sessions, so none could be routed".into());
     }
@@ -334,6 +370,23 @@ pub fn hear(
         &serde_json::to_string(&hour).map_err(|e| e.to_string())?,
     )?;
     Ok(hour)
+}
+
+/// What the routes say that keeps a run from sending as it should: no
+/// cell named never to send to, or a fallback or keeper that is one.
+fn refused(routes: &Routes) -> Vec<String> {
+    let mut troubles = Vec::new();
+    if routes.from.is_some() && routes.never.is_empty() {
+        troubles.push("routes.json names no cell never to send to, so nothing was sent".into());
+    }
+    for (what, to) in [("fallback", &routes.fallback), ("keeper", &routes.ledgers)] {
+        if let Some(to) = to.as_ref().filter(|to| routes.refuses(to)) {
+            troubles.push(format!(
+                "routes.json's {what} {to} is one never to send to, so what goes to it waits"
+            ));
+        }
+    }
+    troubles
 }
 
 /// Keeps each turn read timed as stalling him in a followed session, so
@@ -350,7 +403,12 @@ fn keep_stalls(
             continue;
         };
         for stall in stalled::stalls(turns, &log.session, log.void, since, ears.at) {
-            if !kept.iter().any(|h| h.key == stall.key) {
+            // A stall is the same one when its turn began at the same
+            // moment, though a carried-on log names it again.
+            if !kept
+                .iter()
+                .any(|h| h.key == stall.key || (stalled::is(h) && h.at == stall.at))
+            {
                 kept.push(stall);
             }
         }
@@ -368,9 +426,9 @@ fn route_waiting(
     send: &mut dyn FnMut(&str, &str) -> bool,
     heard_at: &Path,
 ) -> Vec<String> {
-    // With no one named to send as, nothing is sent: a listener nobody
-    // set up hears and counts alone.
-    if routes.from.is_none() {
+    // With no one named to send as, or no cell named never to send to,
+    // nothing is sent: a listener nobody set up hears and counts alone.
+    if !routes.sends() {
         return Vec::new();
     }
     let mut by_owner: BTreeMap<String, Vec<usize>> = BTreeMap::new();
@@ -411,7 +469,7 @@ fn note_for_keeper(
     send: &mut dyn FnMut(&str, &str) -> bool,
     heard_at: &Path,
 ) {
-    let (Some(keeper), Some(_)) = (&routes.ledgers, &routes.from) else {
+    let Some(keeper) = routes.ledgers.as_ref().filter(|_| routes.sends()) else {
         return;
     };
     let late: Vec<usize> = (0..kept.len())

@@ -83,6 +83,9 @@ in
       # A first run reads a day of pi's logs a line at a time; past this,
       # the kernel takes those pages back first.
       MemoryHigh = "256M";
+      # A run ends in seconds; one held past this by a node that never
+      # answers is stopped before the next is due, five minutes on.
+      TimeoutStartSec = "4min";
     };
   };
 

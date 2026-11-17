@@ -163,9 +163,17 @@ fn main() -> ExitCode {
         };
         let home = PathBuf::from(env::var_os("HOME").unwrap_or_default());
         if verb == "hear" {
-            let said = hear::listen(&home, &mut given).map_err(|error| {
-                Failure::new(Exit::Failed, "pain-points couldn't keep what it heard").because(error)
+            let (said, troubled) = hear::listen(&home, &mut given).map_err(|error| {
+                Failure::new(Exit::Failed, "pain-points couldn't hear").because(error)
             })?;
+            // A run that couldn't route all it heard fails, so the unit
+            // says so rather than reading as a quiet hour.
+            if troubled {
+                return Err(
+                    Failure::new(Exit::Failed, "pain-points couldn't route all it heard")
+                        .because(said),
+                );
+            }
             println!("{said}");
             return Ok(());
         }

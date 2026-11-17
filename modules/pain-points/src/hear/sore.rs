@@ -11,8 +11,11 @@
 
 use crate::words::{ALIKE, PRAISE, alike, asking_status, nudging};
 
-/// Phrases that say the last go didn't do it.
-const FAULTS: [&str; 20] = [
+/// Phrases that say the last go didn't do it, each matched as whole words;
+/// one ending in `*` takes any ending on its last word, so "still fail*"
+/// hears "still failing" too, and "again?" is heard only ending a
+/// question or a cry.
+const FAULTS: [&str; 21] = [
     "not that",
     "that's not",
     "doesn't work",
@@ -21,17 +24,18 @@ const FAULTS: [&str; 20] = [
     "didn't work",
     "broken",
     "stuck",
-    "again",
+    "again?",
+    "yet again",
     "keeps",
     "why did",
     "why didn't",
     "why isn't",
-    "still look",
+    "still look*",
     "still not",
-    "still no ",
-    "still fail",
+    "still no",
+    "still fail*",
     "still doesn't",
-    "still slow",
+    "still slow*",
     "went off the rails",
 ];
 
@@ -43,6 +47,32 @@ pub const AGAIN_MS: i64 = 30 * 60_000;
 
 /// A message shorter than this is too short to be heard as said again.
 const AGAIN_LEAST: usize = 20;
+
+/// Whether `fault` is said among a message's words, as whole words, so
+/// "against" holds no "again".
+fn said(each: &[&str], low: &str, fault: &str) -> bool {
+    if let Some(word) = fault.strip_suffix('?') {
+        let mut ends = low.split(['?', '!']);
+        ends.next_back();
+        return ends.any(|before| {
+            before
+                .trim_end()
+                .rsplit(|c: char| !c.is_alphanumeric())
+                .next()
+                == Some(word)
+        });
+    }
+    let (fault, stem) = fault
+        .strip_suffix('*')
+        .map_or((fault, false), |f| (f, true));
+    let words: Vec<&str> = fault.split(' ').collect();
+    each.windows(words.len()).any(|run| {
+        run.iter()
+            .zip(&words)
+            .enumerate()
+            .all(|(at, (w, f))| w == f || (stem && at + 1 == words.len() && w.starts_with(f)))
+    })
+}
 
 /// The ways a message says something hurt, each a word for the finding,
 /// or none.
@@ -58,13 +88,8 @@ pub fn kinds(words: &str, at: i64, earlier: &[(i64, String)]) -> Vec<&'static st
     let opening_no = ["no,", "no.", "no!", "wrong,", "wrong.", "wrong!"]
         .iter()
         .any(|opening| low.trim_start().starts_with(opening));
-    // Each fault is matched as whole words, so "against" holds no "again".
     let spaced = format!(" {} ", each.join(" "));
-    if opening_no
-        || FAULTS
-            .iter()
-            .any(|fault| spaced.contains(&format!(" {} ", fault.trim())))
-    {
+    if opening_no || FAULTS.iter().any(|fault| said(&each, &low, fault)) {
         kinds.push("corrected");
     }
     let swore = each.iter().enumerate().any(|(at, w)| {
@@ -96,14 +121,14 @@ pub fn kinds(words: &str, at: i64, earlier: &[(i64, String)]) -> Vec<&'static st
     {
         kinds.push("said again");
     }
-    // Waits are words too, so "changing" holds no "hanging"; slow, slower
-    // and slowly all are.
-    if each
+    // Waits are words too, so "changing" holds no "hanging". A "slow"
+    // after another word, or "slowly", is a wait; "make it slower" or
+    // "slow the scroll down" is a design ask.
+    if each.iter().enumerate().any(|(at, w)| {
+        (*w == "slow" && at > 0) || ["slowly", "forever", "hanging", "frozen", "hung"].contains(w)
+    }) || [" so long ", " still waiting "]
         .iter()
-        .any(|w| w.starts_with("slow") || ["forever", "hanging", "frozen", "hung"].contains(w))
-        || [" so long ", " still waiting "]
-            .iter()
-            .any(|phrase| spaced.contains(phrase))
+        .any(|phrase| spaced.contains(phrase))
     {
         kinds.push("waited");
     }
@@ -132,6 +157,14 @@ mod tests {
             kinds("quest backup failed yet again.", AT, &[]),
             vec!["corrected"]
         );
+        assert_eq!(kinds("it broke, again?", AT, &[]), vec!["corrected"]);
+        for ask in [
+            "run the tests again",
+            "make the fade slower",
+            "slow the scroll down",
+        ] {
+            assert_eq!(kinds(ask, AT, &[]), Vec::<&str>::new(), "{ask}");
+        }
         assert_eq!(
             kinds("why does it still look like ass?", AT, &[]),
             vec!["corrected", "swore"]
@@ -217,5 +250,17 @@ mod tests {
         );
         assert_eq!(kinds("make it snowy", AT, &[]), none);
         assert_eq!(kinds("it opens slowly", AT, &[]), vec!["waited"]);
+        for waited in [
+            "the tab is hanging",
+            "the window hung",
+            "the bar is frozen",
+            "it took so long",
+            "i'm still waiting",
+        ] {
+            assert_eq!(kinds(waited, AT, &[]), vec!["waited"], "{waited}");
+        }
+        for failed in ["the build is still failing", "it still looks off"] {
+            assert_eq!(kinds(failed, AT, &[]), vec!["corrected"], "{failed}");
+        }
     }
 }

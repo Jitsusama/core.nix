@@ -41,7 +41,7 @@ impl Place {
     fn routes(&self) {
         fs::write(
             self.root.join("state/routes.json"),
-            r#"{"from":"EAR001","fallback":"ORCH01","ledgers":"ORCH01"}"#,
+            r#"{"from":"EAR001","fallback":"ORCH01","ledgers":"ORCH01","never":["NEVER1"]}"#,
         )
         .expect("routes written");
     }
@@ -171,28 +171,104 @@ fn each_pain_sent_is_kept_before_the_next_send() {
 }
 
 #[test]
-fn a_send_that_hangs_is_stopped() {
-    let started = std::time::Instant::now();
-    let mut sleeping = Command::new("sleep");
-    sleeping.arg("30");
+fn a_send_counts_only_when_the_node_took_it() {
+    assert!(node_took(r#"{"Ok":{"Sent":1}}"#), "taken");
     assert!(
-        !ran_within(&mut sleeping, std::time::Duration::from_millis(200)),
-        "a hung send counts as failed"
+        !node_took(r#"{"Err":"from: \"bad/x\" is not a mesh name"}"#),
+        "mycelium exits 0 on a refusal, so its answer says"
     );
+    assert!(!node_took(""), "no answer");
+}
+
+#[test]
+fn a_command_that_leaves_its_output_open_is_not_waited_on() {
+    let started = std::time::Instant::now();
+    let shell = std::env::var("BASH").unwrap_or_else(|_| "sh".into());
+    let mut leaving = Command::new(shell);
+    leaving.args(["-c", "sleep 30 & echo hi"]);
+    let _ = output_within(&mut leaving, std::time::Duration::from_millis(500));
     assert!(
         started.elapsed() < std::time::Duration::from_secs(5),
-        "and is stopped, not waited on"
+        "a child holding the pipe open doesn't hold the run"
     );
+}
+
+#[test]
+fn a_command_printing_more_than_a_pipe_holds_is_read_whole() {
+    let mut zeros = Command::new("head");
+    zeros.args(["-c", "300000", "/dev/zero"]);
+    let out = output_within(&mut zeros, std::time::Duration::from_secs(5));
+    assert_eq!(out.map(|o| o.len()), Some(300_000));
+}
+
+#[test]
+fn a_session_carried_into_a_new_log_is_heard_once() {
+    let place = Place::new("carried-on");
+    place.routes();
+    let cells = r#"{"Ok":{"Sessions":[
+        {"id":"s-old","address":"DEF456","state":"busy"},
+        {"id":"s-live","address":"ABC123","state":"busy"}]}}"#;
+    let said = [user(
+        "a",
+        "2026-11-16T19:50:00.000Z",
+        "no, the drawer forgets its place",
+    )];
+    place.log("src", "s-old", Path::new("/home/j/src"), &said);
+    place.log("src", "s-live", Path::new("/home/j/src"), &said);
+    timed(&place, "s-old", 1_794_858_600_000, 180_000);
+    let mut more = serde_json::from_str::<serde_json::Value>(
+        &fs::read_to_string(place.root.join("state/pi-logs.json")).expect("timed"),
+    )
+    .expect("json");
+    let old = more["logs"]["2026-11-16T10-00-00-000Z_s-old.jsonl"].clone();
+    more["logs"]["2026-11-16T10-00-00-000Z_s-live.jsonl"] = old;
+    fs::write(place.root.join("state/pi-logs.json"), more.to_string()).expect("written");
+    let mut sent: Vec<String> = Vec::new();
+    let hour = hear(&place.ears(), cells, &mut |to, text| {
+        if to != "ORCH01" {
+            sent.push(text.into());
+        }
+        true
+    })
+    .expect("a run");
+    let drawer = sent.iter().filter(|t| t.contains("drawer")).count();
+    let stalls = sent
+        .iter()
+        .map(|t| t.matches("turn of").count())
+        .sum::<usize>();
+    assert_eq!((drawer, stalls, hour.heard), (1, 1, 1), "{sent:?}");
+}
+
+#[test]
+fn routes_that_never_name_a_cell_never_to_send_nothing() {
+    let place = Place::new("no-never");
+    fs::write(
+        place.root.join("state/routes.json"),
+        r#"{"from":"EAR001","fallback":"ORCH01","ledgers":"ORCH01"}"#,
+    )
+    .expect("routes");
+    a_day(&place);
+    let hour = hear(&place.ears(), CELLS, &mut |to, text| {
+        panic!("sent {to} with no void guarded: {text}")
+    })
+    .expect("a run");
     assert!(
-        ran_within(&mut Command::new("true"), std::time::Duration::from_secs(5)),
-        "a send that ends well went"
+        hour.troubles.iter().any(|t| t.contains("never")),
+        "{hour:?}"
     );
+}
+
+#[test]
+fn a_mycelium_that_names_no_sessions_is_a_trouble() {
+    let place = Place::new("no-sessions");
+    place.routes();
+    a_day(&place);
+    let hour = hear(&place.ears(), "", &mut |_, _| true).expect("a run");
     assert!(
-        !ran_within(
-            &mut Command::new("false"),
-            std::time::Duration::from_secs(5)
-        ),
-        "a send that fails didn't"
+        hour.troubles
+            .iter()
+            .any(|t| t.contains("named no sessions")),
+        "{hour:?}"
     );
 }
 
@@ -213,6 +289,7 @@ fn a_first_run_sends_each_new_pain_to_its_owner_once() {
         1,
         "one finding: {sent:?}"
     );
+    assert!(hour.troubles.is_empty(), "a run that went well: {hour:?}");
     assert_eq!(
         to.iter().filter(|t| **t == "ORCH01").count(),
         2,
@@ -437,7 +514,10 @@ fn a_finding_names_five_pains_the_most_hit_first() {
         .iter()
         .filter(|h| h.routed_at.is_some())
         .count();
-    assert_eq!(routed, 5, "the sixth, not named, waits for the next run");
+    assert_eq!(
+        routed, 5,
+        "those past the fifth, not named, wait for the next run"
+    );
 }
 
 #[test]
@@ -477,11 +557,18 @@ fn nothing_goes_to_a_cell_the_routes_say_never_to_whatever_its_case() {
     )
     .expect("routes");
     a_day(&place);
-    hear(&place.ears(), CELLS, &mut |to, text| {
+    let mut live = 0;
+    let hour = hear(&place.ears(), CELLS, &mut |to, text| {
         assert!(!to.eq_ignore_ascii_case("void01"), "sent the void: {text}");
+        live += usize::from(to == "ABC123");
         true
     })
     .expect("a run");
+    assert_eq!(live, 1, "the live cell still hears its own");
+    assert!(
+        hour.troubles.iter().any(|t| t.contains("void01")),
+        "a fallback never sent to says so: {hour:?}"
+    );
 }
 
 #[test]
@@ -557,6 +644,12 @@ fn a_turn_that_stalled_him_goes_to_its_cell_though_he_said_nothing() {
     assert!(
         !finding.contains("\"make the bar green\""),
         "what he said was no pain: {finding}"
+    );
+    assert!(
+        !sent
+            .iter()
+            .any(|(to, text)| to == "ORCH01" && text.contains("turn of")),
+        "a stall is no ask for the keeper: {sent:?}"
     );
     hear(&place.ears(), CELLS, &mut |to, text| {
         panic!("sent {to} again: {text}");

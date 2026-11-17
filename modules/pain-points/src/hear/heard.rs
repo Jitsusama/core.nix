@@ -11,6 +11,11 @@ use serde::{Deserialize, Serialize};
 /// How alike two pains' words must be to be the same friction hit again.
 pub const SAME: f64 = 0.5;
 
+/// How alike a pain must be to a ledger line to be the one it carries:
+/// stricter than SAME, as two pains about one tool ("too tight on the
+/// right", "slow to open") share half their words yet aren't one ask.
+const CARRIED_ALIKE: f64 = 0.75;
+
 /// A ledger's words shorter than this are too short to find inside his.
 const QUOTED_LEAST: usize = 16;
 
@@ -48,27 +53,21 @@ pub struct Heard {
     pub routed_at: Option<i64>,
 }
 
-/// The words of each line of a ledger, and whether that line says its ask
-/// landed or its miss has a check.
-pub fn ledger(text: &str) -> Vec<(String, bool)> {
+/// The words of each line of a ledger. A line carries its pain whether or
+/// not its ask has landed: either way the keeper has it.
+pub fn ledger(text: &str) -> Vec<String> {
     text.lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .filter_map(|line| {
-            let words = line.get("words")?.as_str()?.to_string();
-            let closed = ["landed", "check"]
-                .iter()
-                .any(|key| line.get(key).is_some_and(|v| !v.is_null()));
-            Some((words, closed))
-        })
+        .filter_map(|line| Some(line.get("words")?.as_str()?.to_string()))
         .collect()
 }
 
 /// Whether a ledger line's words are these words: alike, or quoted
 /// inside them, a part at a time where the ledger cut him with "...".
-pub fn carried(words: &str, ledgers: &[(String, bool)]) -> bool {
+pub fn carried(words: &str, ledgers: &[String]) -> bool {
     let low = words.to_lowercase();
-    ledgers.iter().any(|(said, _)| {
-        alike(said, words) > SAME
+    ledgers.iter().any(|said| {
+        alike(said, words) > CARRIED_ALIKE
             || said
                 .to_lowercase()
                 .split("...")
@@ -110,7 +109,7 @@ mod tests {
     }
 
     #[test]
-    fn a_ledger_gives_each_lines_words_and_whether_it_closed() {
+    fn a_ledger_gives_each_lines_words() {
         let text = concat!(
             r#"{"at":"x","words":"the bar is too tight","owner":"Y","landed":"2026"}"#,
             "\n",
@@ -121,21 +120,15 @@ mod tests {
         );
         assert_eq!(
             ledger(text),
-            vec![
-                ("the bar is too tight".to_string(), true),
-                ("no window opened".to_string(), true),
-                ("still open ask".to_string(), false),
-            ]
+            vec!["the bar is too tight", "no window opened", "still open ask"]
         );
     }
 
     #[test]
     fn a_pain_the_ledgers_quote_is_carried() {
-        let ledgers = vec![(
-            "i had sent a number of things to the void ... now going in shows me nothing"
-                .to_string(),
-            false,
-        )];
+        let ledgers = vec![
+            "i had sent a number of things to the void ... now going in shows me nothing".into(),
+        ];
         assert!(
             carried(
                 "so i had sent a number of things to the void earlier, and now going in shows \
@@ -152,8 +145,13 @@ mod tests {
             !carried("the launcher is slow to open", &ledgers),
             "another pain"
         );
-        let short = vec![("no".to_string(), false)];
+        let short = vec!["no".to_string()];
         assert!(!carried("no, the other one", &short), "too short to find");
+        let tight = vec!["the launcher is too tight on the right".to_string()];
+        assert!(
+            !carried("the launcher is slow to open", &tight),
+            "another pain about the same tool"
+        );
     }
 
     #[test]
