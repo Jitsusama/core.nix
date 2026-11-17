@@ -9,9 +9,9 @@
 }:
 onLinux {
   # Its test runs as it builds: a client asking a socket that's on the
-  # disk but not listened on yet waits for it, as a daemon starting under
-  # load gives.
-  daemon-client-waits-for-a-socket-to-listen = pkgs.callPackage ./package.nix { };
+  # disk but not listened on yet, or gone while it's made again, waits for
+  # it, as a daemon starting under load gives.
+  daemon-client-waits-for-its-daemon-to-listen = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in it.
   daemon-client-passes-clippy = passesClippy "daemon-client-passes-clippy" (
     pkgs.callPackage ./package.nix { }
