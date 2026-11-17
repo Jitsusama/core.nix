@@ -5072,8 +5072,19 @@ Scope {
         // it holds (Joel, 2026-10-26: stepping in keeps the match). A step
         // whose line holds its words, as a save's name, puts them back.
         searchParts = null;
-        if (!passing)
-            listStepped(row);
+        // The field emptied by a step timed as its own is searched as a
+        // key's change is, but timed only as the step below: timed too,
+        // one Return from what was typed counted twice (a council,
+        // 2026-11-17).
+        const timed = openAsked < 0 && !fillingPlace;
+        if (!passing) {
+            steppingIn = timed;
+            try {
+                listStepped(row);
+            } finally {
+                steppingIn = false;
+            }
+        }
         // Said as a key's are: making the step's lists, what each part of
         // stepping took, and the search that drew its rows, whose parts
         // restart() left.
@@ -5088,7 +5099,7 @@ Scope {
         // into a kept place is its opening's too, though its frame is
         // drawn and the ask let go by then: a kept Super+N timed its fill
         // as "→ On Screen" (a gate, 2026-11-16).
-        if (openAsked < 0 && !fillingPlace)
+        if (timed)
             keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread);
         return went();
     }
@@ -7163,14 +7174,17 @@ Scope {
     // The step out whose words the field is being given back, timed as
     // the key the field's change makes (back).
     property var stepOut: null
-    function searchSoon(text, began, heard, pressed, out) {
+    // Whether a step in that times itself is listing its rows, so the
+    // field's change it makes is searched untimed.
+    property bool steppingIn: false
+    function searchSoon(text, began, heard, pressed, out, untimed) {
         // Its text stays the field's, which the next key reads as what
         // the field held before it (Awaited.before).
         keysDue = keysDue.concat([out ? { text, began: out.began, heard: out.heard,
             pressed: out.pressed, collected: out.collected, step: out.text,
             thread: out.thread }
             : { text, began, heard, pressed, collected: Heap.collected(), step: "",
-                thread: threadNow() }]);
+                thread: threadNow(), untimed: untimed === true }]);
         if (searchedThisTurn)
             return;
         searchedThisTurn = true;
@@ -7212,8 +7226,8 @@ Scope {
             Object.assign(searchParts, Awaited.waitedOf(waited, listed, answersWaitedFor,
                 waited.timedOut === true));
         if (!asking)
-            due.forEach(key => keyTimed(key.step || key.text, key.began, key.heard, key.pressed,
-                key.collected, !!key.step, key.thread));
+            due.filter(key => key.untimed !== true).forEach(key => keyTimed(key.step || key.text,
+                key.began, key.heard, key.pressed, key.collected, !!key.step, key.thread));
     }
 
     // How long a key's list waits for the sources whose search awaits a
@@ -12089,7 +12103,7 @@ Scope {
                             root.drafted();
                             root.lettersTyped();
                             root.searchSoon(text, Date.now(), KeyTimes.now(),
-                                KeyTimes.pressed(), root.stepOut);
+                                KeyTimes.pressed(), root.stepOut, root.steppingIn);
                         }
                         // Return, as the vi-paradigm spec's table has it:
                         // words asked for are handed over; a thing whose

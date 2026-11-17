@@ -4695,6 +4695,23 @@ def test_a_step_out_putting_words_back_is_timed_as_the_step(shell: Shell) -> Non
     assert steps == ["\u2190 Programs"], f"- out of Programs wasn't timed once as it: {presented}"
 
 
+def test_a_step_in_from_typed_words_is_timed_once_as_the_step(shell: Shell) -> None:
+    """Return into a place found by what's typed is timed once, as the step and the place.
+
+    The step empties the field, and the field timed that as a key of its own beside the step's,
+    so one Return counted twice in health and trials (a council, 2026-11-17).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("programs", selecting="Programs")
+    before = len(keys_presented_settled(shell))
+    shell.step_in()
+    presented = keys_presented_settled(shell)[before:]
+    shell.close_launcher()
+    steps = [one.get("step") for one in presented]
+    assert steps == ["\u2192 Programs"], f"Return into Programs wasn't timed once: {presented}"
+
+
 def minus_presented(shell: Shell, out: Callable[[Json], object]) -> list[Json]:
     """Press - from normal, wait until the launcher is `out`, and give every key presented since.
 
