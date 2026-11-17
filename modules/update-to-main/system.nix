@@ -507,7 +507,11 @@ in
         machine boots, such as one that boots it in a VM and unlocks its
         disk. Until then the new system runs and the machine boots what it
         did, and a failure is said in the update's ending. None to make it
-        the boot default at once.
+        the boot default at once. It is told what the system was built
+        from in its environment: UPDATE_TO_MAIN_COMMIT, main's commit;
+        UPDATE_TO_MAIN_FLAKE, the flake reference, locked at it, without
+        its output; and UPDATE_TO_MAIN_OVERRIDES, the override-input words
+        for the followed inputs, a line each, to pass to any build of it.
       '';
     };
     batteryFloor = mkOption {

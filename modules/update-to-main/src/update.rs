@@ -172,7 +172,11 @@ fn run(
         None => Ok(git::flake(config, &head)),
     };
     let overrides = follows::overrides(config, &followed);
-    let built = match flake.and_then(|flake| system::build(config, &flake, &overrides)) {
+    let flake = match flake {
+        Ok(flake) => flake,
+        Err(failure) => return failed(last, failure),
+    };
+    let built = match system::build(config, &flake, &overrides) {
         Ok(built) => built,
         Err(failure) => return failed(last, failure),
     };
@@ -216,6 +220,11 @@ fn run(
     if run::stopping() {
         return failed(last, Failure::new("the update was stopped"));
     }
+    let built = system::Built {
+        system: &built,
+        flake: &flake,
+        overrides: &overrides,
+    };
     switch(config, &built, last, head, followed)
 }
 
@@ -340,7 +349,7 @@ fn waited(config: &Config) -> Option<Waiting> {
 /// fail.
 fn switch(
     config: &Config,
-    built: &std::path::Path,
+    built: &system::Built,
     last: Option<String>,
     head: String,
     followed: follows::Followed,
@@ -348,7 +357,7 @@ fn switch(
     let previous = system::current(config);
     // Whatever waited for a hold is older than what switches now.
     let _ = fs::remove_file(waiting_file(config));
-    let switched = system::switch(config, built)
+    let switched = system::switch(config, built.system)
         .and_then(|switched| system::healthy(config).map(|()| switched));
     match switched {
         Ok(mut switched) => {
@@ -362,7 +371,7 @@ fn switch(
             // changes.
             let mut boots = None;
             if switched.unbooted
-                && let Err(failure) = system::boot_once_checked(config, built)
+                && let Err(failure) = system::boot_once_checked(config, built, &head)
             {
                 switched.restart = None;
                 boots = Some(format!(

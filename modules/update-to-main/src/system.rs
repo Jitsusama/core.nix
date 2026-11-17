@@ -1117,14 +1117,36 @@ pub fn go_back(config: &Config, system: &Path) -> Result<(), Failure> {
     .map(|_| ())
 }
 
-/// Runs the boot check on `system`, which runs but isn't yet what the
-/// machine boots, and once it passes makes `system` the boot default.
-pub fn boot_once_checked(config: &Config, system: &Path) -> Result<(), Failure> {
+/// A system update-to-main built, and what it built it from.
+pub struct Built<'a> {
+    /// The system's path in the store.
+    pub system: &'a Path,
+    /// The flake reference and output it was built from, as `build` took.
+    pub flake: &'a str,
+    /// The words overriding the followed inputs it was built with.
+    pub overrides: &'a [String],
+}
+
+/// Runs the boot check on `built`, main's `commit`, which runs but isn't
+/// yet what the machine boots, and once it passes makes it the boot
+/// default. Beside the system's path the check is told, in its
+/// environment, the commit, the flake reference without its output, and
+/// the override words a line each, so one that builds a test of the
+/// system builds it from the same tree and inputs: the path alone names
+/// neither.
+pub fn boot_once_checked(config: &Config, built: &Built, commit: &str) -> Result<(), Failure> {
+    let system = built.system;
     if let Some(check) = &config.boot_check
         && let Some((program, args)) = check.split_first()
     {
+        let output = format!("#{}", config.output);
+        let flake = built.flake.strip_suffix(&output).unwrap_or(built.flake);
         let mut command = run::command(Path::new(program), &config.state);
-        command.args(args);
+        command
+            .args(args)
+            .env("UPDATE_TO_MAIN_COMMIT", commit)
+            .env("UPDATE_TO_MAIN_FLAKE", flake)
+            .env("UPDATE_TO_MAIN_OVERRIDES", built.overrides.join("\n"));
         let what = format!("the boot check `{}`", check.join(" "));
         run::output(command, &what, [system])?;
     }
