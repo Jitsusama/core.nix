@@ -46,5 +46,17 @@ QtObject {
         Expect.same("a network is named by the first word said alone, as network reads it",
             TalkTo.named(" repo.world and more\tstill"), "repo.world");
         Expect.same("nothing said names nothing", TalkTo.named(undefined), "");
+
+        // Whom `qs ipc call launcher goTo` goes to, as a notice's Go To
+        // asks it: a session alone, since only a session has a window.
+        Expect.same("a session's address goes to it, in any case",
+            TalkTo.goesTo("listen", known), "LISTEN");
+        Expect.same("words after an address are left behind",
+            TalkTo.goesTo("PAUSED and type this", known), "PAUSED");
+        Expect.same("the void has no window to go to", TalkTo.goesTo("VOID01", known), "");
+        Expect.same("nor has a network", TalkTo.goesTo("repo.world", known), "");
+        Expect.same("an address no session has goes nowhere",
+            TalkTo.goesTo("GONE42", known), "");
+        Expect.same("nothing said goes nowhere", TalkTo.goesTo("", known), "");
     }
 }

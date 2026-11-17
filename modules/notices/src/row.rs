@@ -32,7 +32,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::{Value, json};
 
 use crate::body::{self, Body};
-use crate::notice::{Notice, Urgency};
+use crate::notice::{CELL_LINK, Notice, Urgency};
 use crate::sender::{Sender, Signs};
 use crate::words::Words;
 
@@ -198,7 +198,13 @@ fn reads(notice: &Notice) -> Value {
 /// What can be done to it, in the order its card lists them (Notice.js's
 /// acts): first going to what it's about, which Return does, by opening
 /// it through its sender while it's open and offers that, else going to
-/// its program where one is known, else into its drawer. Then what its
+/// the session that sent it, else to its program where one is known, else
+/// into its drawer. A notice from a session goes to it and talks to it
+/// next, whatever Return does, so what reaches Joel leads to the work
+/// behind it (Joel, 2026-11-16: "i have no way to go from the thing it
+/// shows to engaging with the thing working on it"). Both are served as
+/// links to it, which mycelium-link takes to the launcher: the cell
+/// itself to Talk, its `go` to Go To, as a map page's would. Then what its
 /// sender offers while it's open, the links in what it said, whether it's
 /// read, and forgetting it while it's open, since what changes a notice
 /// comes before what ends it; then copying what it said, last, never
@@ -211,14 +217,32 @@ fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str, words: &Words
     };
     let mut acts = Vec::new();
     let opens = notice.live && notice.actions.iter().any(|action| action.id == "default");
+    let cell = notice.cell();
+    let goes = |address: &str| {
+        json!({
+            "key": "verb:notice:goTo", "open": format!("{CELL_LINK}{address}/go"),
+            "also": reads(notice),
+        })
+    };
     if opens {
         acts.push(json!({ "key": "verb:notice:open", "ask": invoke("default"), "token": true }));
+    } else if let Some(address) = cell {
+        acts.push(goes(address));
     } else if let Some(entry) = &sender.entry {
         acts.push(json!({
             "key": "verb:notice:goTo", "go": entry, "side": sender.name, "also": reads(notice),
         }));
     } else {
         acts.push(json!({ "key": "verb:details", "step": "drawer" }));
+    }
+    if let Some(address) = cell {
+        if opens {
+            acts.push(goes(address));
+        }
+        acts.push(json!({
+            "key": "verb:notice:talk", "open": format!("{CELL_LINK}{address}"),
+            "also": reads(notice),
+        }));
     }
     if notice.live {
         for offer in notice
@@ -1008,6 +1032,60 @@ mod tests {
         assert_eq!(
             (untitled[0]["name"].as_str(), untitled[0]["note"].as_str()),
             (Some("hi"), Some(""))
+        );
+    }
+
+    #[test]
+    fn a_notice_from_a_session_goes_to_it_and_talks_to_it() {
+        let cell = json!({ "x-cell": "mycelium:cell/1C8A2F0E" });
+        let gone = notice(9, &json!({ "read": true, "hints": cell }));
+        let [mixed, ..] = making(&[gone], &[]);
+        assert_eq!(
+            act_keys(&mixed[0]),
+            [
+                "verb:notice:goTo",
+                "verb:notice:talk",
+                "verb:notice:read",
+                "verb:notice:copy"
+            ],
+            "Go To leads to its session, before its program"
+        );
+        let acts = &mixed[0]["acts"];
+        assert_eq!(acts[0]["open"], "mycelium:cell/1C8A2F0E/go");
+        assert_eq!(acts[0].get("go"), None, "not its program");
+        assert_eq!(acts[1]["open"], "mycelium:cell/1C8A2F0E");
+        assert_eq!(
+            acts[1]["also"],
+            json!({ "ask": "mark", "notices": [9], "read": true })
+        );
+        let opening = notice(
+            10,
+            &json!({ "live": true, "hints": cell,
+                "actions": [{ "id": "default", "text": "Open" }] }),
+        );
+        let [mixed, ..] = making(&[opening], &[]);
+        assert_eq!(
+            act_keys(&mixed[0])[..3],
+            ["verb:notice:open", "verb:notice:goTo", "verb:notice:talk"],
+            "its sender's own Open stays Return's"
+        );
+        let acts = &mixed[0]["acts"];
+        assert_eq!(
+            (&acts[1]["open"], &acts[2]["open"]),
+            (
+                &json!("mycelium:cell/1C8A2F0E/go"),
+                &json!("mycelium:cell/1C8A2F0E")
+            ),
+            "and its Go To and Talk lead to its session"
+        );
+        let forged = json!({ "x-cell": "mycelium:cell/1C8A;rm" });
+        let [mixed, ..] = making(
+            &[notice(11, &json!({ "read": true, "hints": forged }))],
+            &[],
+        );
+        assert!(
+            !act_keys(&mixed[0]).contains(&"verb:notice:talk"),
+            "no cell, no Talk"
         );
     }
 
