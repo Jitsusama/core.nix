@@ -1165,7 +1165,7 @@ fn revert_again(world: &dyn World, state: &State) -> Result<(), String> {
         return Ok(());
     };
     let (true, Some(commit), Some(test)) = (
-        hold["revert_again"] == true,
+        tried_again_now(state, &hold),
         hold["bad"].as_str().map(str::to_owned),
         hold["test"].as_str().map(str::to_owned),
     ) else {
@@ -1595,6 +1595,19 @@ impl<'a, 's, F: Fn(&str) -> bool> Breaking<'a, 's, F> {
             test,
         });
     }
+}
+
+/// How many times a revert of `bad` for `test` was cut short before, by
+/// the hold `was` it left.
+fn cuts_before(was: Option<&Value>, test: &str, bad: &str) -> u64 {
+    was.filter(|was| was["reverting"] == true && was["test"] == test && was["bad"] == bad)
+        .map_or(0, |was| was["cuts"].as_u64().unwrap_or(0) + 1)
+}
+
+/// Whether the round tries `hold`'s revert again now.
+fn tried_again_now(state: &State, hold: &Value) -> bool {
+    let _ = state;
+    hold["revert_again"] == true
 }
 
 /// The test of a hold with no revert on main, which a run at main's newest
@@ -2228,11 +2241,7 @@ fn revert_and_tell(
     let already_runs = world.runs(commit);
     // A hold still saying this revert is under way was left by a net that
     // ended or was stopped before keeping its outcome.
-    let cuts = state
-        .hold()
-        .filter(|was| was["reverting"] == true && was["test"] == test.as_str())
-        .filter(|was| was["bad"] == commit.as_str())
-        .map_or(0, |was| was["cuts"].as_u64().unwrap_or(0) + 1);
+    let cuts = cuts_before(state.hold().as_ref(), test, commit);
     let mut hold = json!({
         "test": test, "bad": commit, "bad_pr": found.pr, "revert_pr": Value::Null,
         "revert_commit": Value::Null, "failed_at": head, "at": now(),
@@ -4777,11 +4786,19 @@ mod tests {
             None,
             "a hold whose revert is under way was handed a forward run"
         );
+        assert!(
+            !tried_again_now(&state, &reverting("vm-a")),
+            "a hold whose revert's job is kept was tried again beside it"
+        );
         state.settled("vm-a").unwrap();
         assert_eq!(
-            forwardable(&state).as_deref(),
-            Some("vm-a"),
-            "a hold whose revert's job is gone wasn't handed a forward run"
+            forwardable(&state),
+            None,
+            "a hold whose revert's job is gone was handed a forward run, which can't revert"
+        );
+        assert!(
+            tried_again_now(&state, &reverting("vm-a")),
+            "a hold whose revert's job is gone wasn't tried again, so it would stand for good"
         );
         let mut hold = reverting("vm-a");
         hold.as_object_mut().unwrap().remove("reverting");
@@ -4790,6 +4807,41 @@ mod tests {
             forwardable(&state).as_deref(),
             Some("vm-a"),
             "a hold with no revert on main wasn't handed a forward run"
+        );
+    }
+
+    #[test]
+    fn a_revert_is_cut_twice_at_most_and_counted_for_its_own_merge() {
+        let mut was = reverting("vm-a");
+        assert_eq!(
+            cuts_before(None, "vm-a", "h"),
+            0,
+            "a first try counted a cut"
+        );
+        let once = cuts_before(Some(&was), "vm-a", "h");
+        assert!(
+            once == 1 && once < CUTS,
+            "a second try wasn't one cut, to be cut again"
+        );
+        was["cuts"] = json!(once);
+        let twice = cuts_before(Some(&was), "vm-a", "h");
+        assert!(
+            twice == 2 && twice >= CUTS,
+            "a third try wasn't two cuts, to wait"
+        );
+        assert_eq!(
+            (
+                cuts_before(Some(&was), "vm-b", "h"),
+                cuts_before(Some(&was), "vm-a", "g")
+            ),
+            (0, 0),
+            "another test's or merge's cuts were counted"
+        );
+        was.as_object_mut().unwrap().remove("reverting");
+        assert_eq!(
+            cuts_before(Some(&was), "vm-a", "h"),
+            0,
+            "a kept revert's hold counted a cut"
         );
     }
 
