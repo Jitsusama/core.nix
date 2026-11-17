@@ -166,10 +166,25 @@ let
         # a second through a night's work on 12 November, the longest an
         # answer waited was 6.5 s; on 11 November a starved machine ran 13 s
         # of work in 96 s, and two minutes leaves the loop that slowdown five
-        # times over. systemd kills a quiet host with SIGABRT, so its core,
-        # the one record of where its loop wedged, goes to systemd-coredump;
-        # writing it may take TimeoutStopSec's minute before SIGKILL.
+        # times over.
         WatchdogSec = "2min";
+        # A host keeps no core. Its heap runs to 4 GB and holds every hosted
+        # conversation's keys and tokens. On 16 November V8 aborted it out of
+        # memory at 20:44:47, and it couldn't exit while the kernel streamed
+        # 4.4 GB into systemd-coredump: the watchdog killed it at 20:47:38,
+        # three minutes on, and coredump wrote 12.5 GB before its own limit
+        # ended it, keeping nothing. core_pattern pipes to systemd-coredump,
+        # which reads the soft limit of 0, records the crash in coredumpctl
+        # with no core, and closes the pipe, so a host that dies restarts in
+        # seconds. Its journal says where it held: the host's watcher writes
+        # "the loop has held N s so far" every few seconds while the loop is
+        # stuck, naming the kernel waits and files its thread is in. The hard
+        # limit is 0 too: with it open, any command a conversation runs, as
+        # the same user, could raise the host's own soft limit with prlimit
+        # and have its next crash write every conversation's keys to disk.
+        # So the commands it runs keep no core either; coredumpctl still
+        # records each of their crashes.
+        LimitCORE = "0";
         # The host exits 78 when what it was given is refused (its kind, its
         # realm, a pi missing a host patch), which another start would only
         # refuse again, so it waits for a fix rather than retrying forever.
