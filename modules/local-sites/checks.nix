@@ -160,8 +160,9 @@ in
   };
 
   # The home's builder lists each site from its row, settled ones apart,
-  # strips each page that asks, and changes nothing on a second run
-  # (tests/home-builds-from-its-rows.sh).
+  # puts each row Nix declares in its recorded row's place, strips each page
+  # that asks, names documents with scripts of their own, and changes nothing
+  # on a second run (tests/home-builds-from-its-rows.sh).
   home-builds-from-its-rows = pkgs.runCommandLocal "home-builds-from-its-rows" { } ''
     ${lib.getExe pkgs.bash} ${./tests/home-builds-from-its-rows.sh} ${
       lib.escapeShellArgs [
