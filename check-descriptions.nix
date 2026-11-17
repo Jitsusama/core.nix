@@ -3687,8 +3687,9 @@
     no frame from the first to the settled one empties a row and fills it again or puts a shown
     value back as being read; keys typed the moment it holds them are all found; and chords said
     as the shell restarts open it once the new one listens, a second never shutting it; a
-    program's next ask what to open a file with is drawn from what the last kept, asking about
-    its own file; and chords said all through a handover are each presented within 2 s, software-rendered,
+    program's next ask what to open a file with is drawn from what the last kept, asking
+    about its own file, and refused or shut if shut or withdrawn before it's filled in;
+    and chords said all through a handover are each presented within 2 s, software-rendered,
     with niri never holding both shells' surfaces, the new shell told to systemd as the unit's
     main process and the old one ended
   '';

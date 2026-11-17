@@ -971,23 +971,12 @@ def test_an_ask_to_open_with_is_drawn_from_what_was_kept_asking_its_own(shell: S
 
     Every ask opened Open With whole, its own rows made again: Joel's three took 51 to 104 ms to
     the screen, 32 to 37 of it settling (2026-11-17, 08:4x). Kept, the place's step holds the
-    last ask's words, so the first frame must say the new file's.
+    last ask's words, so the first frame must say the new file's. The second ask offers its
+    apps the other way round, the last picked first, so rows kept from the first can't pass.
     """
-    folder = Path(os.environ["XDG_RUNTIME_DIR"]) / "open-with"
-    folder.mkdir(exist_ok=True)
-    # The chooser's sockets, listening as it does, so each answer has somewhere to go.
-    listening = [socket.socket(socket.AF_UNIX) for _ in range(2)]
-    try:
-        for number, each in enumerate(listening, start=1):
-            each.bind(str(folder / f"{number}.sock"))
-            each.listen()
-        asked_to_open_with(shell, folder / "1.sock", "/home/whimbrel/kiln.txt")
-        shell.launcher_ready()
-        shell.launcher_until(lambda shown: bool(shown["rows"]))
-        shell.close_launcher()
-        shell.launcher_until(lambda shown: shown.get("kept"))
-        timed = latest(openings(shell))
-        asked_to_open_with(shell, folder / "2.sock", "/home/whimbrel/godwit.txt")
+    with choosers_listening(shell) as listening:
+        timed = open_with_kept(shell, listening)
+        asked_to_open_with(shell, listening[1], "/home/whimbrel/godwit.txt", FOOT_CLIENT_LAST)
         shell.launcher_until(lambda _: latest(openings(shell)) > timed)
         first = openings(shell)[-1]
         assert first.get("kept"), f"the ask opened Open With whole: {first}"
@@ -997,17 +986,110 @@ def test_an_ask_to_open_with_is_drawn_from_what_was_kept_asking_its_own(shell: S
         assert asked == "open godwit.txt with?", f"its first frame asked {asked!r}: {opening}"
         drawn, filled = opening["shown"]["keys"], opening["filled"]["keys"]
         assert drawn == filled, f"kept, it drew {drawn}, then filled in {filled}"
+        assert drawn[0] == "open-with:footclient", f"it drew the last ask's rows: {drawn}"
+        shell.close_launcher()
+        assert answered(listening[1]) == b"\n", "closing on the ask didn't refuse it"
+
+
+def test_an_ask_drawn_from_what_was_kept_and_shut_before_its_fill_is_refused(
+    shell: Shell,
+) -> None:
+    """Shut while drawn from what was kept, before its fill, the ask is answered with none.
+
+    A kept opening isn't open until it's filled in, so a chooser that heard only the launcher
+    closing was never told, and the program and every later ask waited. Niri is held, so no
+    frame comes and nothing fills it in.
+    """
+    with choosers_listening(shell) as listening:
+        open_with_kept(shell, listening)
+        with launcher_on_niri.niri_held():
+            asked_to_open_with(shell, listening[1], "/home/whimbrel/godwit.txt", FOOT_CLIENT_LAST)
+            shell.launcher_until(lambda shown: shown.get("opening"))
+            told("toggle")
+            shell.launcher_until(lambda shown: not shown.get("opening"))
+            assert answered(listening[1]) == b"\n", "the ask shut unfilled wasn't refused"
+
+
+def test_an_ask_withdrawn_before_its_fill_shuts_what_was_drawn_for_it(shell: Shell) -> None:
+    """Withdrawn while drawn from what was kept, before its fill, the ask's opening shuts.
+
+    Shutting it said only that the launcher wasn't open, which a kept opening isn't yet, so it
+    stood and was filled in on an ask no one waited on. Niri is held, so nothing fills it in.
+    """
+    with choosers_listening(shell) as listening:
+        open_with_kept(shell, listening)
+        with launcher_on_niri.niri_held():
+            asked_to_open_with(shell, listening[1], "/home/whimbrel/godwit.txt", FOOT_CLIENT_LAST)
+            shell.launcher_until(lambda shown: shown.get("opening"))
+            withdrawn(shell, listening[1])
+            shell.launcher_until(lambda shown: not shown.get("opening"))
+        shell.launcher_until(lambda shown: not shown["open"])
+
+
+# The apps the chooser offers: foot's two, and the same the other way round with the second
+# picked last time, which Open With lists first.
+FOOT_FIRST = ("foot;footclient", "")
+FOOT_CLIENT_LAST = ("footclient;foot", "footclient")
+
+
+@contextlib.contextmanager
+def choosers_listening(shell: Shell) -> Iterator[list[Path]]:
+    """Listen on two of the chooser's sockets, as it does, so each answer has somewhere to go.
+
+    Each ask left on them is withdrawn as they close, so none waits ahead of a later case's.
+    """
+    folder = Path(os.environ["XDG_RUNTIME_DIR"]) / "open-with"
+    folder.mkdir(exist_ok=True)
+    paths = [folder / f"{number}.sock" for number in (1, 2)]
+    listening = [socket.socket(socket.AF_UNIX) for _ in paths]
+    try:
+        for path, each in zip(paths, listening, strict=True):
+            each.bind(str(path))
+            each.listen()
+            each.settimeout(launcher_on_niri.WAITING.total_seconds())
+            CHOOSERS[path] = each
+        yield paths
     finally:
-        for each in listening:
+        for path, each in zip(paths, listening, strict=True):
+            withdrawn(shell, path)
+            CHOOSERS.pop(path, None)
             each.close()
-        for left in folder.glob("*.sock"):
-            left.unlink()
+            path.unlink(missing_ok=True)
 
 
-def asked_to_open_with(shell: Shell, reply: Path, what: str) -> None:
-    """Ask what to open a file with, as the portal's chooser does, offering foot's two apps."""
+# Each socket listening, by its path, while choosers_listening holds it.
+CHOOSERS: dict[Path, socket.socket] = {}
+
+
+def answered(reply: Path) -> bytes:
+    """Give what the launcher said on a chooser's socket: the app picked or none, and a newline."""
+    taken, _ = CHOOSERS[reply].accept()
+    with taken:
+        return taken.recv(256)
+
+
+def open_with_kept(shell: Shell, listening: list[Path]) -> int:
+    """Ask once and close on it, refused, so Open With is kept; give that opening's number."""
+    asked_to_open_with(shell, listening[0], "/home/whimbrel/kiln.txt", FOOT_FIRST)
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: bool(shown["rows"]))
+    shell.close_launcher()
+    assert answered(listening[0]) == b"\n", "closing on the first ask didn't refuse it"
+    shell.launcher_until(lambda shown: shown.get("kept"))
+    return latest(openings(shell))
+
+
+def withdrawn(shell: Shell, reply: Path) -> None:
+    """Withdraw an ask, as the chooser does once the program gives up."""
+    words = ["qs", "-p", str(shell.folder), "ipc", "call", "open-with", "withdraw"]
+    shell.as_account(shlex.join([*words, str(reply)]))
+
+
+def asked_to_open_with(shell: Shell, reply: Path, what: str, apps: tuple[str, str]) -> None:
+    """Ask what to open a file with, as the portal's chooser does, offering apps and the last."""
+    offered, last = apps
     words = ["qs", "-p", str(shell.folder), "ipc", "call", "open-with", "ask"]
-    shell.as_account(shlex.join([*words, str(reply), what, "file", "", "foot;footclient"]))
+    shell.as_account(shlex.join([*words, str(reply), what, "file", last, offered]))
 
 
 def test_a_place_its_chord_opened_weighs_its_keys_once_before_its_frame(shell: Shell) -> None:

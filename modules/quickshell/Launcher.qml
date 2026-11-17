@@ -8969,6 +8969,8 @@ Scope {
         const lines = drawerCard.baselines();
         return JSON.stringify({
             open: root.open,
+            // Whether it's drawn from what it kept, not yet filled in.
+            opening: root.opening,
             keys: root.open && prompt.Window.active,
             // Super+S's talk line (TalkLine.qml).
             line: talkLine.shown(),
@@ -10979,6 +10981,17 @@ Scope {
             + ` them ${waited} ms (${said})`);
     }
 
+    // Shuts it however it's shown, for a source done with it: shut again
+    // unfilled while drawn from what it kept, closed once open. Closing
+    // alone left a kept opening standing, to be filled in on what no one
+    // waited on any more, as Open With's withdrawn ask.
+    function shut() {
+        if (opening && !open)
+            unopened();
+        else
+            open = false;
+    }
+
     // Shut again before it was filled in, as a second press of the chord
     // does: nothing woke for it, so nothing has to settle.
     function unopened() {
@@ -11144,12 +11157,13 @@ Scope {
     }
 
     // The rows the card shows, by what each is, what each says at its
-    // right, and where the cursor is, for the check that rows filled in
-    // land where the kept ones stood.
+    // right, where the cursor is and what the field asks, for the check
+    // that rows filled in land where the kept ones stood, under the ask
+    // of the place drawn.
     function rowsSaid() {
         const seen = matches.slice(0, rows);
         return { keys: seen.map(row => pairedId(row)), sides: seen.map(row => row.side ?? ""),
-            at: current, ask: held.length > 0 ? held[held.length - 1].row.ask ?? "" : "" };
+            at: current, ask: prompt.hint };
     }
 
     // What filling an opening in took, said once it's done, with the rows
