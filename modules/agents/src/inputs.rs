@@ -10,8 +10,10 @@
 //! Long because its cases are near half of it: each feeds several sources
 //! at once to show how they meet in one record, which only this file can.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::rc::Rc;
 
 use daemon_serve::watch::Held;
 use serde_json::Value;
@@ -110,6 +112,40 @@ pub struct Inputs {
     pub unsent: HashMap<String, Vec<Talk>>,
     /// The wants Joel put off, each for an hour (wants.rs).
     pub put_off: wants::PutOff,
+    /// Landed's records as last made, with what they were made from.
+    pub landed_made: LandedCache,
+}
+
+/// Landed's records as last made, which only `landed` reads or keeps.
+#[derive(Default)]
+pub struct LandedCache(RefCell<Option<LandedMade>>);
+
+/// Landed's records as made, and the keys held, kept while what they
+/// were made from reads the same.
+struct LandedMade {
+    from: LandedFrom,
+    records: Rc<Vec<Value>>,
+    held: Rc<HashSet<String>>,
+}
+
+/// All that Landed's records are made from: how many times each source
+/// they read moved, and of what moves with every session, only what a
+/// landing says of its session. Making them all again whenever any
+/// session's step moved was over a third of the agents daemon's work
+/// while it kept 49% of a core busy (perf, 2026-11-16).
+#[derive(PartialEq)]
+struct LandedFrom {
+    landings: u64,
+    quests: u64,
+    /// Read only while Joel's words were sent on a landing, else none.
+    talks: u64,
+    fed_back: usize,
+    read: Reading,
+    carried: Carried,
+    /// Each running or parked session's address, title, id and landings.
+    live: Vec<(String, String, String, Value)>,
+    /// The minute it's made in, since To Try holds a landing a day.
+    minute: i64,
 }
 
 impl Inputs {
@@ -339,21 +375,69 @@ impl Inputs {
     /// how many landed each day, and the keys of every landing held
     /// (landed.rs). A session ended is named by its quest's title, as the
     /// node's quest records give it.
-    pub fn landed(&self) -> (Vec<Value>, HashSet<String>) {
+    /// Made again only once what they're made from moved (`LandedFrom`),
+    /// so the same records are shared until then.
+    pub fn landed(&self) -> (Rc<Vec<Value>>, Rc<HashSet<String>>) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_millis());
+        self.landed_at(i64::try_from(now).unwrap_or(0))
+    }
+
+    fn landed_at(&self, now: i64) -> (Rc<Vec<Value>>, Rc<HashSet<String>>) {
         let live: Vec<Session> = self
             .sessions
             .records()
             .map(|(_, one)| Session(one))
             .filter(|one| matches!(one.lives(), Lives::Running | Lives::Parked))
             .collect();
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |since| since.as_millis());
+        let from = LandedFrom {
+            landings: self.landings.taken(),
+            quests: self.quests.taken(),
+            talks: if self.fed_back.is_empty() {
+                0
+            } else {
+                self.talks.taken()
+            },
+            fed_back: self.fed_back.len(),
+            read: self.read.clone(),
+            carried: self.carried.clone(),
+            live: live
+                .iter()
+                .map(|one| {
+                    let landings = one
+                        .presence()
+                        .map_or(Value::Null, |presence| presence["landings"].clone());
+                    (
+                        one.address().to_owned(),
+                        one.named().0,
+                        one.id().to_owned(),
+                        landings,
+                    )
+                })
+                .collect(),
+            minute: now.div_euclid(60_000),
+        };
+        let mut made = self.landed_made.0.borrow_mut();
+        if let Some(made) = made.as_ref().filter(|made| made.from == from) {
+            return (Rc::clone(&made.records), Rc::clone(&made.held));
+        }
+        let (records, held) = self.landed_from(&live, now);
+        let (records, held) = (Rc::new(records), Rc::new(held));
+        *made = Some(LandedMade {
+            from,
+            records: Rc::clone(&records),
+            held: Rc::clone(&held),
+        });
+        (records, held)
+    }
+
+    fn landed_from(&self, live: &[Session], now: i64) -> (Vec<Value>, HashSet<String>) {
         let (mut records, held) = landed::landed(
             self.landings.records().map(|(_, one)| one),
-            &live,
+            live,
             &self.read,
-            i64::try_from(now).unwrap_or(0),
+            now,
         );
         landed::waiting_for_switch(&mut records, &self.carried);
         let titles: HashMap<&str, &str> = self
@@ -673,6 +757,8 @@ fn orchestrators<'a>(shown: &'a [Shown], into: &mut HashSet<&'a str>) {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
     use serde_json::json;
 
     use super::*;
@@ -697,6 +783,53 @@ mod tests {
              "presence": {"addresses": ["X"]}}
         ]}));
         inputs
+    }
+
+    /// How many landings Landed's records hold.
+    fn landings_in(records: &[Value]) -> usize {
+        records.iter().filter(|one| one["kind"] == "landed").count()
+    }
+
+    #[test]
+    fn landed_is_made_again_only_once_what_it_reads_moved() {
+        let mut inputs = inputs();
+        let landing = |reference: &str| {
+            json!({"key": format!("landing:s-p:{reference}"), "session": "s-p",
+                "ref": reference, "at": "2026-11-11T01:00:00Z", "what": "One"})
+        };
+        inputs.landings.took(&json!({"records": [landing("o#1")]}));
+        let now = 1_763_000_000_000;
+        let (first, _) = inputs.landed_at(now);
+        inputs
+            .sessions
+            .took(&json!({"changed": [{"key": "session:p", "step": "reading",
+            "usage": {"percent": 40}}]}));
+        inputs
+            .teams
+            .took(&json!({"records": [{"key": "team:O", "lead": "s-o"}]}));
+        let (again, _) = inputs.landed_at(now + 1_000);
+        assert!(
+            Rc::ptr_eq(&first, &again),
+            "a session's step and a team moved nothing a landing reads, yet it was made again"
+        );
+        inputs.landings.took(&json!({"changed": [landing("o#2")]}));
+        let (second, _) = inputs.landed_at(now);
+        assert_eq!(landings_in(&second), 2, "a new landing is made");
+        inputs
+            .sessions
+            .took(&json!({"changed": [{"key": "session:p",
+            "presence": {"addresses": ["P"], "session": "s-p", "busy": true,
+                         "orchestratedBy": "O", "questInfo": {"title": "Mend the reef"}}}]}));
+        let (renamed, _) = inputs.landed_at(now);
+        assert!(
+            !Rc::ptr_eq(&second, &renamed),
+            "a session named anew names its landings anew, yet they were kept"
+        );
+        let (later, _) = inputs.landed_at(now + 60_000);
+        assert!(
+            !Rc::ptr_eq(&renamed, &later),
+            "a minute on, To Try's day is weighed again, yet they were kept"
+        );
     }
 
     #[test]

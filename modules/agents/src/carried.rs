@@ -40,7 +40,7 @@ const RECORDED_WITHIN: i64 = 34_000;
 /// What of each repository's merges the running system carries, by their
 /// numbers, or of mycelium's by the time of its pin, each none where that
 /// can't be told.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Carried {
     core: Option<HashSet<u64>>,
     harness: Option<HashSet<u64>>,

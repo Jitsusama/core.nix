@@ -35,6 +35,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::rc::Rc;
 use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -292,6 +293,18 @@ fn own(
     })
 }
 
+/// Follows the node: every kind of record it holds that Agents reads.
+fn follow_node(node: &Path, to: &mpsc::Sender<Heard>) {
+    sources::follow(node.to_owned(), "session", Heard::Sessions, to.clone());
+    sources::follow(node.to_owned(), "job", Heard::Jobs, to.clone());
+    sources::follow(node.to_owned(), "quest", Heard::Quests, to.clone());
+    sources::follow(node.to_owned(), "talk", Heard::Talks, to.clone());
+    sources::follow(node.to_owned(), "team", Heard::Teams, to.clone());
+    sources::follow(node.to_owned(), "network", Heard::Networks, to.clone());
+    sources::follow(node.to_owned(), "carry", Heard::Carries, to.clone());
+    sources::follow(node.to_owned(), "landing", Heard::Landings, to.clone());
+}
+
 /// Follows the windows daemon: its windows, its workspaces, and Screens'
 /// rows alone, for what each screen is, since a place names its screen
 /// by that rather than by a connector a dock can change.
@@ -424,14 +437,7 @@ fn serve(args: Args) -> Result<(), Failure> {
         }
     }
     if let Some(node) = args.node {
-        sources::follow(node.clone(), "session", Heard::Sessions, to.clone());
-        sources::follow(node.clone(), "job", Heard::Jobs, to.clone());
-        sources::follow(node.clone(), "quest", Heard::Quests, to.clone());
-        sources::follow(node.clone(), "talk", Heard::Talks, to.clone());
-        sources::follow(node.clone(), "team", Heard::Teams, to.clone());
-        sources::follow(node.clone(), "network", Heard::Networks, to.clone());
-        sources::follow(node.clone(), "carry", Heard::Carries, to.clone());
-        sources::follow(node, "landing", Heard::Landings, to.clone());
+        follow_node(&node, &to);
     }
     sources::follow(args.to_do, "to-do", Heard::ToDos, to.clone());
     follow_windows(&args.windows, &to);
@@ -463,6 +469,7 @@ fn serve(args: Args) -> Result<(), Failure> {
     })?;
     let mut inputs = started(words, &paths);
     let mut served = Served::default();
+    let mut held_landed = Rc::clone(served.landed());
     let mut still = Still::default();
     while let Ok(said) = hear(&heard, &still, &inputs.put_off) {
         for one in said {
@@ -474,10 +481,18 @@ fn serve(args: Args) -> Result<(), Failure> {
         if still.due(Instant::now()) {
             inputs.keep_places(&paths.arrangement);
         }
-        if !served.take(inputs.made()).is_empty() {
-            landings.hold(served.all());
+        let moved = served.take(inputs.made());
+        if !moved.is_empty() {
+            // The landings are read again only once they were made again,
+            // and only what moved is told: 4,997 of them, read and cloned
+            // at every move, kept the daemon at 49% of a core (perf,
+            // 2026-11-16).
+            if !Rc::ptr_eq(&held_landed, served.landed()) {
+                held_landed = Rc::clone(served.landed());
+                landings.hold(held_landed.iter());
+            }
             wants.hold(served.all());
-            shared.change(served.all().cloned().collect(), json!({}));
+            shared.mend(moved.changed, &moved.gone, json!({}));
         }
         // A quest can change whom a line reaches with no row moving.
         routes.hold(

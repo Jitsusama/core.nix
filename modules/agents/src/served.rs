@@ -11,8 +11,9 @@
 //! step alone moved sends nothing.
 
 use std::collections::BTreeMap;
+use std::rc::Rc;
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::figures::Item;
 use crate::row::{Row, Shown};
@@ -27,10 +28,35 @@ pub const SPACING: i64 = 1024;
 /// included.
 pub const SUMMARY: &str = "summary:agents";
 
+/// What moved from `was` to `now`: the records that read differently,
+/// whole, and the keys gone.
+fn between(was: &BTreeMap<String, Value>, now: &BTreeMap<String, Value>) -> Moved {
+    Moved {
+        changed: now
+            .iter()
+            .filter(|(key, record)| was.get(*key) != Some(record))
+            .map(|(_, record)| record.clone())
+            .collect(),
+        gone: was
+            .keys()
+            .filter(|key| !now.contains_key(*key))
+            .cloned()
+            .collect(),
+    }
+}
+
 /// The records as last served, by key.
 #[derive(Debug, Default)]
 pub struct Served {
+    /// Every record but Landed's.
     records: BTreeMap<String, Value>,
+    /// Landed's records as last taken, which a making serving the same
+    /// again leaves served without reading them (`take`).
+    landed: Rc<Vec<Value>>,
+    /// Where each of Landed's records is in `landed`, by key: an index
+    /// rather than a copy, which held 24 MB more than the daemon had
+    /// before (2026-11-16).
+    landed_at: BTreeMap<String, usize>,
 }
 
 /// What a making moved: the records that read differently, whole, and
@@ -61,8 +87,9 @@ pub struct Made {
     /// Each session Recent lists, a whole record (recent.rs).
     recent: Vec<Value>,
     /// Each landing Landed lists, and how many landed each day, whole
-    /// records (landed.rs).
-    landed: Vec<Value>,
+    /// records (landed.rs), shared with the making they were made in, so
+    /// one that made none afresh serves the same (inputs.rs's landed).
+    landed: Rc<Vec<Value>>,
     /// Each closed orchestrator, a whole record (closed.rs).
     closed: Vec<Value>,
     /// Which window each session here is in, a whole record (windows.rs).
@@ -95,7 +122,7 @@ impl Made {
 
     /// The same, with every landing Landed lists beside its rows.
     #[must_use]
-    pub fn with_landed(self, landed: Vec<Value>) -> Self {
+    pub fn with_landed(self, landed: Rc<Vec<Value>>) -> Self {
         Self { landed, ..self }
     }
 
@@ -209,7 +236,7 @@ pub fn made(shown: &[Shown], summary: &str) -> Made {
         drawers: Vec::new(),
         reopens: Vec::new(),
         recent: Vec::new(),
-        landed: Vec::new(),
+        landed: Rc::default(),
         closed: Vec::new(),
         windows: Vec::new(),
         wants: Vec::new(),
@@ -285,16 +312,29 @@ fn rising(was: &[Option<i64>]) -> Vec<usize> {
 impl Served {
     /// A record as last served.
     pub fn get(&self, key: &str) -> Option<&Value> {
-        self.records.get(key)
+        self.records
+            .get(key)
+            .or_else(|| Some(&self.landed[*self.landed_at.get(key)?]))
     }
 
-    /// Every record as last served, in the order of their keys.
+    /// Every record as last served, Landed's last.
     pub fn all(&self) -> impl Iterator<Item = &Value> {
-        self.records.values()
+        let landed = self.landed_at.values().map(|at| &self.landed[*at]);
+        self.records.values().chain(landed)
+    }
+
+    /// Landed's records as last served.
+    pub fn landed(&self) -> &Rc<Vec<Value>> {
+        &self.landed
     }
 
     /// Takes a making in place of the last, each row given its `order`
-    /// against what it had before, answering what moved.
+    /// against what it had before, answering what moved. Landed's records
+    /// the last making served too stay as they are, unread and unmoved:
+    /// there were 4,997 of them on Joel's laptop, 2.9 MB, and reading each
+    /// against itself about once a second, as sessions moved, was a
+    /// quarter of the daemon's work while it kept 49% of a core busy
+    /// (perf, 2026-11-16).
     pub fn take(&mut self, made: Made) -> Moved {
         let was: Vec<Option<i64>> = made
             .rows
@@ -310,7 +350,15 @@ impl Served {
         for (mut row, order) in made.rows.into_iter().zip(spaced(&was)) {
             row["order"] = json!(order);
             let key = row["key"].as_str().unwrap_or("").to_owned();
-            records.insert(key.clone(), json!({"key": key, "kind": "row", "row": row}));
+            // Built by hand, since `json!` would write the row out anew
+            // rather than move it: 7% of the daemon's work (perf,
+            // 2026-11-16).
+            let record = Map::from_iter([
+                ("key".to_owned(), json!(key)),
+                ("kind".to_owned(), json!("row")),
+                ("row".to_owned(), row),
+            ]);
+            records.insert(key, Value::Object(record));
         }
         records.insert(
             SUMMARY.to_owned(),
@@ -321,7 +369,6 @@ impl Served {
             .into_iter()
             .chain(made.reopens)
             .chain(made.recent)
-            .chain(made.landed)
             .chain(made.closed)
             .chain(made.windows)
             .chain(made.wants)
@@ -331,19 +378,32 @@ impl Served {
                 records.insert(key.to_owned(), whole);
             }
         }
-        let gone = self
-            .records
-            .keys()
-            .filter(|key| !records.contains_key(*key))
-            .cloned()
-            .collect();
-        let changed = records
-            .iter()
-            .filter(|(key, record)| self.records.get(*key) != Some(record))
-            .map(|(_, record)| record.clone())
-            .collect();
+        let mut moved = between(&self.records, &records);
         self.records = records;
-        Moved { changed, gone }
+        if !Rc::ptr_eq(&made.landed, &self.landed) {
+            let landed_at: BTreeMap<String, usize> = made
+                .landed
+                .iter()
+                .enumerate()
+                .filter_map(|(at, whole)| Some((whole["key"].as_str()?.to_owned(), at)))
+                .collect();
+            let was = |key: &str| Some(&self.landed[*self.landed_at.get(key)?]);
+            moved.changed.extend(
+                landed_at
+                    .iter()
+                    .filter(|(key, at)| was(key) != Some(&made.landed[**at]))
+                    .map(|(_, at)| made.landed[*at].clone()),
+            );
+            moved.gone.extend(
+                self.landed_at
+                    .keys()
+                    .filter(|key| !landed_at.contains_key(*key))
+                    .cloned(),
+            );
+            self.landed_at = landed_at;
+            self.landed = made.landed;
+        }
+        moved
     }
 }
 
@@ -427,6 +487,29 @@ mod tests {
                 .get(SUMMARY)
                 .map(|one| one["summary"]["said"].clone()),
             Some(json!("1 working"))
+        );
+    }
+
+    #[test]
+    fn landings_made_once_stay_served_until_made_anew() {
+        let landing = |at: &str| json!({"key": format!("landed:{at}"), "kind": "landed"});
+        let once = Rc::new(vec![landing("o#1"), landing("o#2")]);
+        let mut served = Served::default();
+        let first = served.take(made(&[], "").with_landed(Rc::clone(&once)));
+        assert_eq!(first.changed.len(), 3, "both landings and the summary");
+        let again = served.take(made(&[row("P", "working")], "").with_landed(Rc::clone(&once)));
+        assert_eq!(
+            (again.changed.len(), again.gone.len()),
+            (1, 0),
+            "only the new row moved; the landings stay served"
+        );
+        assert!(served.get("landed:o#2").is_some(), "a landing kept over");
+        let anew = served
+            .take(made(&[row("P", "working")], "").with_landed(Rc::new(vec![landing("o#1")])));
+        assert_eq!(
+            (anew.changed.len(), anew.gone),
+            (0, vec!["landed:o#2".to_owned()]),
+            "made anew, the one no longer landed goes and the same one moves nothing"
         );
     }
 
