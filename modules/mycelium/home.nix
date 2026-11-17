@@ -199,7 +199,7 @@ let
     first on its path, whatever the login profile sets: the realm's kit,
     which its machine record names, so work needing a tool goes where the
     kit holds it. It holds the tools every machine shares, and a machine's
-    own configuration adds to it, such as a work layer's cloud tools, a
+    own configuration adds to it, such as an account's cloud tools, a
     tool given as `lib.hiPrio` winning over a shared one of the same name;
     empty, the node is given no kit.
   '';

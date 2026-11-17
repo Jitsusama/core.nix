@@ -1,5 +1,7 @@
 # The checks of mycelium, which checks.nix gathers with every other folder's;
-# its opening comment says what each kind of check proves.
+# its opening comment says what each kind of check proves. Long because each
+# check reads the same few machines built below, which a split would have to
+# pass from file to file.
 {
   account,
   bareDarwin,
