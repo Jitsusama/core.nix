@@ -605,6 +605,45 @@ mod tests {
         assert_eq!(part("dell_ddv"), "");
     }
 
+    /// `dell_smm` says a fan's `pwm_enable` is 2 only in the automatic state
+    /// it's asked for and 1 at every other time, the firmware setting its
+    /// speed included, so its 1 is the firmware's; another chip's 1 is a
+    /// speed set by hand. On 16 November Heat said Joel's fans were set by
+    /// hand at full power under load, though nothing had set them.
+    #[test]
+    fn a_dell_fan_not_asked_to_run_itself_is_run_by_its_firmware() {
+        let folder = std::env::temp_dir().join(format!("machine-control-{}", std::process::id()));
+        let modes = [("dell_smm", "1"), ("dell_smm", "2"), ("nct6775", "1")];
+        for (n, (name, enable)) in modes.iter().enumerate() {
+            let chip = folder.join(format!("sys/class/hwmon/hwmon{n}"));
+            std::fs::create_dir_all(&chip).expect("the chip's folder is made");
+            for (file, says) in [
+                ("name", *name),
+                ("fan1_input", "5400"),
+                ("pwm1", "255"),
+                ("pwm1_enable", *enable),
+            ] {
+                std::fs::write(chip.join(file), says).expect("the chip's file is written");
+            }
+        }
+        let root = Root::new(&folder);
+        let records = sensors(&root, &mut Kept::default(), Instant::now());
+        std::fs::remove_dir_all(&folder).ok();
+        let said: Vec<(Value, Value)> = records
+            .iter()
+            .map(|record| (record["chip"].clone(), record["fans"][0]["mode"].clone()))
+            .collect();
+        assert_eq!(
+            said,
+            [
+                (json!("dell_smm"), json!("firmware")),
+                (json!("dell_smm"), json!("automatic")),
+                (json!("nct6775"), json!("manual")),
+            ],
+            "what sets each fan, as its chip says it"
+        );
+    }
+
     /// A moving file is read once a pass, its drawer's files the figures'
     /// own reads: `dell_smm` answers each read through the firmware, about
     /// 2 ms a file on Joel's laptop, and Heat reads every second it's
