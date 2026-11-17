@@ -46,23 +46,18 @@ pub struct Judged {
 #[must_use]
 pub fn judge(day: &Day, before: &[Day]) -> Judged {
     let mut judged = Judged::default();
-    for (measure, key, whose, now) in measures().flat_map(|measure| {
+    for (measure, key, now) in measures().flat_map(|measure| {
         measure
             .read(&day.figures)
             .into_iter()
-            .map(move |(key, whose, now)| (measure, key, whose, now))
+            .map(move |(key, now)| (measure, key, now))
     }) {
         judged.read += 1;
         let past: Vec<f64> = before
             .iter()
             .filter_map(|d| d.figures.get(key).copied())
             .collect();
-        // A disk is whose by its mount, which reads as where, not whose.
-        let says = match whose {
-            None => measure.says.to_owned(),
-            Some(mount) if mount.starts_with('/') => format!("{} at {mount}", measure.says),
-            Some(whose) => format!("{whose}'s {}", measure.says),
-        };
+        let says = measure.said(key);
         let worse = measure.worse();
         let middle = (past.len() >= ENOUGH).then(|| median(&past)).flatten();
         if middle.is_some() {
@@ -254,6 +249,40 @@ mod tests {
             judged.worse[0].words.contains("past its bar of 0"),
             "the finding didn't say its bar: {:?}",
             judged.worse[0].words
+        );
+    }
+
+    #[test]
+    fn a_screens_late_keys_are_judged_against_that_screens_days() {
+        // Three panel days at 10% and three monitor days at 40%: pooled,
+        // their median of 25% would make a monitor day at 45% a regression.
+        let monitor = "launcher.keys.late.on.DP-4@60Hz";
+        let panel = "launcher.keys.late.on.eDP-1@120Hz";
+        let before: Vec<Day> = [
+            (panel, 10.0),
+            (panel, 10.0),
+            (panel, 10.0),
+            (monitor, 40.0),
+            (monitor, 40.0),
+            (monitor, 40.0),
+        ]
+        .iter()
+        .map(|figure| day(&[*figure], &[]))
+        .collect();
+        let as_usual = judge(&day(&[(monitor, 45.0)], &[]), &before);
+        assert!(
+            as_usual.worse.is_empty(),
+            "a monitor day about as late as monitor days was a regression: {as_usual:?}"
+        );
+        let later = judge(&day(&[(monitor, 60.0)], &[]), &before);
+        assert_eq!(
+            later
+                .worse
+                .iter()
+                .map(|f| f.words.as_str())
+                .collect::<Vec<_>>(),
+            ["the launcher's keys past 50 ms on DP-4 at 60 Hz went from 40% to 60%"],
+            "a monitor day later than monitor days wasn't said so, by its screen"
         );
     }
 

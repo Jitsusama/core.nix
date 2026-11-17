@@ -15,6 +15,7 @@ pub fn launcher(journal: &str) -> BTreeMap<String, f64> {
     let mut presented = Vec::new();
     let mut usable = Vec::new();
     let mut keys = Batches::default();
+    let mut screens: BTreeMap<String, Batches> = BTreeMap::new();
     let mut changes = Batches::default();
     let mut drawers = Batches::default();
     for line in journal.lines() {
@@ -27,6 +28,9 @@ pub fn launcher(journal: &str) -> BTreeMap<String, f64> {
             usable.extend(first_number(rest));
         } else if said.contains(" keys presented a median ") {
             keys.add(said);
+            if let Some(screen) = screens_of(said) {
+                screens.entry(screen).or_default().add(said);
+            }
         } else if said.contains(" presented a median ") {
             if said.contains(" change in ") || said.contains(" changes in ") {
                 // "N changes in agents presented ...", or "1 change in ...".
@@ -47,7 +51,14 @@ pub fn launcher(journal: &str) -> BTreeMap<String, f64> {
     put("launcher.opening.presented", median(&presented));
     put("launcher.opening.usable", median(&usable));
     put("launcher.keys.presented", median(&keys.medians));
-    put("launcher.keys.late", keys.late());
+    // A day across screens has no one share to judge, so only a day whose
+    // keys name no screen, as before the shell named them, keeps one.
+    if screens.is_empty() {
+        put("launcher.keys.late", keys.late());
+    }
+    for (screen, keys) in &screens {
+        put(&format!("launcher.keys.late.on.{screen}"), keys.late());
+    }
     put("launcher.changes.presented", median(&changes.medians));
     put("launcher.drawers.presented", median(&drawers.medians));
     figures
@@ -107,6 +118,43 @@ impl Batches {
     }
 }
 
+/// The screens a summary of keys names in its "; on DP-4 at 60 Hz" tail,
+/// or "; on eDP-1 at 120 Hz and DP-4 at 60 Hz" for a batch across two,
+/// as `DP-4@60Hz+eDP-1@120Hz`, in order, so a key holds no space and a
+/// batch names one series however its screens were said. A screen whose
+/// keys niri timed none of is named without its rate, as `DP-4`. A frame
+/// at 60 Hz is twice a frame at 120 Hz, so a day's share past the bar is
+/// told by the screen it was at as much as by the launcher. A tail that
+/// reads otherwise names none.
+fn screens_of(said: &str) -> Option<String> {
+    let (_, on) = said.rsplit_once("; on ")?;
+    let mut screens = on
+        .trim()
+        .split(" and ")
+        .map(screen_of)
+        .collect::<Option<Vec<_>>>()?;
+    screens.sort();
+    screens.dedup();
+    Some(screens.join("+"))
+}
+
+/// One screen as the shell says it, "DP-4 at 60 Hz" or "DP-4", as
+/// `DP-4@60Hz` or `DP-4`, when its output is a name niri gives and its
+/// rate a whole number.
+fn screen_of(said: &str) -> Option<String> {
+    let (output, hertz) = match said.split_once(" at ") {
+        Some((output, rate)) => (output, Some(rate.strip_suffix(" Hz")?)),
+        None => (said, None),
+    };
+    let named = !output.is_empty()
+        && output
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    let rated = hertz.is_none_or(|hz| !hz.is_empty() && hz.chars().all(|c| c.is_ascii_digit()));
+    (named && rated)
+        .then(|| hertz.map_or_else(|| output.to_owned(), |hz| format!("{output}@{hz}Hz")))
+}
+
 fn first_number(text: &str) -> Option<f64> {
     text.split(|c: char| !c.is_ascii_digit() && c != '.')
         .find(|part| !part.is_empty())?
@@ -155,6 +203,53 @@ followed
         assert_eq!(
             figures, want,
             "an opening, a key or a change was misread, or a line that isn't one was read"
+        );
+    }
+
+    #[test]
+    fn a_screens_keys_are_late_by_their_own_share() {
+        // On 17 November Y2YBTS asked that a day at the monitor be judged
+        // against days at the monitor, its 60 Hz frames half the panel's.
+        let journal = "\
+  INFO qml: launcher: 4 keys presented a median 49 ms from the key, the slowest 76 ms, \
+the p99 76 ms, 1 within 50 ms: a median 1 ms before the shell heard it; on DP-4 at 60 Hz
+  INFO qml: launcher: 4 keys presented a median 20 ms from the key, the slowest 30 ms, \
+the p99 30 ms, 4 within 50 ms; on eDP-1 at 120 Hz
+  INFO qml: launcher: 2 keys presented a median 20 ms from the key, the slowest 30 ms, \
+2 within 50 ms
+  INFO qml: launcher: 2 keys presented a median 60 ms from the key, the slowest 70 ms, \
+0 within 50 ms; on eDP-1 at 120 Hz and DP-4 at 60 Hz
+  INFO qml: launcher: 1 keys presented a median 60 ms from the key, the slowest 60 ms, \
+0 within 50 ms; on DP-4
+  INFO qml: launcher: 1 keys presented a median 60 ms from the key, the slowest 60 ms, \
+0 within 50 ms; on DP 4 at sixty Hz
+";
+        let figures = launcher(journal);
+        let late = |key: &str| figures.get(key).copied();
+        assert_eq!(
+            (
+                late("launcher.keys.late.on.DP-4@60Hz"),
+                late("launcher.keys.late.on.eDP-1@120Hz"),
+                late("launcher.keys.late.on.DP-4@60Hz+eDP-1@120Hz"),
+                late("launcher.keys.late.on.DP-4"),
+            ),
+            (Some(75.0), Some(0.0), Some(100.0), Some(100.0)),
+            "a screen's keys, or a pair's, weren't counted on their own: {figures:?}"
+        );
+        // A day across screens has no one figure to judge: pooled, a
+        // monitor day still read as the launcher slowing.
+        assert_eq!(
+            late("launcher.keys.late"),
+            None,
+            "a day naming screens kept a share pooled across them: {figures:?}"
+        );
+        assert_eq!(
+            figures
+                .keys()
+                .filter(|key| key.starts_with("launcher.keys.late.on."))
+                .count(),
+            4,
+            "a line naming no screen, or a tail misread, was given one: {figures:?}"
         );
     }
 

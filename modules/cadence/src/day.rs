@@ -31,8 +31,9 @@ pub struct Day {
 
 /// A figure the loop reads each day, where more is always worse.
 pub struct Measure {
-    /// Its figure's key, or, with `*` in place of the repository, each
-    /// repository's: `code.*.long-files` holds `code.core.long-files`.
+    /// Its figure's key, or, with `*` in place of whose it is, each one's:
+    /// `code.*.long-files` holds `code.core.long-files`, a repository's,
+    /// and `launcher.keys.late.on.*` holds a screen's, as `DP-4@60Hz`.
     pub key: &'static str,
     /// Which of the loop's axes it reads: resources, time to done,
     /// quality, polish and the others the loop's research names.
@@ -54,20 +55,35 @@ const KILLS: &str = "journalctl -k --grep=oom-kill: over the day";
 const STALLS: &str = "lag-watch's day files, each slice's mean cpu_some and memory_full";
 const UPDATES: &str = "journalctl -u update-to-main.service over the day";
 
+/// The launcher's share of keys past the bar on each screen, or pair of
+/// screens, by `speed::launcher`'s `DP-4@60Hz+eDP-1@120Hz`.
+const SCREENS: &str = "launcher.keys.late.on.*";
+
+/// Screens as a note says them: `DP-4@60Hz+eDP-1` as "DP-4 at 60 Hz and
+/// eDP-1".
+fn on(screens: &str) -> String {
+    screens
+        .split('+')
+        .map(|screen| match screen.split_once('@') {
+            Some((output, hertz)) => {
+                format!("{output} at {} Hz", hertz.trim_end_matches("Hz"))
+            }
+            None => screen.to_owned(),
+        })
+        .collect::<Vec<_>>()
+        .join(" and ")
+}
+
 /// How much worse than its median a figure must be to be a regression.
 pub const WORSE: f64 = 1.2;
 
 impl Measure {
-    /// Each of a day's figures this measure holds, by its key, with whose
-    /// it is when the measure is each repository's.
-    pub fn read<'a>(
-        &self,
-        figures: &'a BTreeMap<String, f64>,
-    ) -> Vec<(&'a str, Option<&'a str>, f64)> {
+    /// Each of a day's figures this measure holds, by its key.
+    pub fn read<'a>(&self, figures: &'a BTreeMap<String, f64>) -> Vec<(&'a str, f64)> {
         figures
             .iter()
             .filter(|(key, _)| self.holds(key))
-            .map(|(key, now)| (key.as_str(), self.whose(key), *now))
+            .map(|(key, now)| (key.as_str(), *now))
             .collect()
     }
 
@@ -77,6 +93,18 @@ impl Measure {
             self.whose(key).is_some()
         } else {
             key == self.key
+        }
+    }
+
+    /// What a figure of this measure is, as a note says it.
+    #[must_use]
+    pub fn said(&self, key: &str) -> String {
+        match self.whose(key) {
+            None => self.says.to_owned(),
+            // A disk is whose by its mount, which reads as where, not whose.
+            Some(mount) if mount.starts_with('/') => format!("{} at {mount}", self.says),
+            Some(screens) if self.key == SCREENS => format!("{} on {}", self.says, on(screens)),
+            Some(whose) => format!("{whose}'s {}", self.says),
         }
     }
 
@@ -234,6 +262,17 @@ const MEASURES: &[Measure] = &[
     },
     Measure {
         key: "launcher.keys.late",
+        axis: "responsiveness",
+        evidence: LAUNCHER,
+        says: "the launcher's keys past 50 ms",
+        unit: "%",
+        bar: None,
+        floor: 5.0,
+    },
+    // Each screen's share apart, as `DP-4@60Hz`, so a day at the monitor is
+    // judged against days at the monitor, its frames twice the panel's.
+    Measure {
+        key: SCREENS,
         axis: "responsiveness",
         evidence: LAUNCHER,
         says: "the launcher's keys past 50 ms",
@@ -490,6 +529,31 @@ mod tests {
     }
 
     #[test]
+    fn a_figure_is_said_by_what_it_is_of() {
+        // On 17 November a screen's finding read "DP-4@60Hz's the launcher's
+        // keys" in the week's review, and a pair of screens had no words.
+        let said = |key: &str| measures().find(|m| m.holds(key)).map(|m| m.said(key));
+        let keys = "the launcher's keys past 50 ms";
+        assert_eq!(
+            [
+                said("launcher.keys.late.on.DP-4@60Hz"),
+                said("launcher.keys.late.on.DP-4@60Hz+eDP-1@120Hz"),
+                said("launcher.keys.late.on.DP-4"),
+                said("health.disk./var.most-used-percent"),
+                said("code.core.long-files"),
+            ],
+            [
+                Some(format!("{keys} on DP-4 at 60 Hz")),
+                Some(format!("{keys} on DP-4 at 60 Hz and eDP-1 at 120 Hz")),
+                Some(format!("{keys} on DP-4")),
+                Some("the most in use of the disk at /var".to_owned()),
+                Some("core's long files that don't say why".to_owned()),
+            ],
+            "a screen, a disk or a repository wasn't said as what its figure is of"
+        );
+    }
+
+    #[test]
     fn the_launchers_figures_list_where_axes_reads_the_launcher() {
         // On 12 November a drawer's 66 ms was filed on polish, while
         // `cadence axes` reads the launcher on responsiveness.
@@ -498,6 +562,7 @@ mod tests {
             "launcher.opening.usable",
             "launcher.keys.presented",
             "launcher.keys.late",
+            "launcher.keys.late.on.DP-4@60Hz",
             "launcher.changes.presented",
             "launcher.drawers.presented",
         ] {

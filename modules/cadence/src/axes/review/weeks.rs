@@ -40,15 +40,12 @@ pub fn weeks(days: &[Day]) -> Option<Weeks> {
         return Some(weeks);
     };
     for measure in measures() {
-        for (key, whose, now) in measure.read(&newest.figures) {
+        for (key, now) in measure.read(&newest.figures) {
             let Some(&then) = before.figures.get(key) else {
                 continue;
             };
             weeks.held += 1;
-            let says = whose.map_or_else(
-                || measure.says.to_owned(),
-                |whose| format!("{whose}'s {}", measure.says),
-            );
+            let says = measure.said(key);
             let unit = measure.unit;
             let words = format!(
                 "{says} went from {}{unit} to {}{unit}",
