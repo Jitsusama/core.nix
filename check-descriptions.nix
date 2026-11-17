@@ -2116,7 +2116,10 @@
     two minutes a go, and keeps nothing he typed or an agent wrote in the day file, its state or
     its line; and reads Chrome's history from its bytes in memory, asking only when each visit
     began and how, to count reloads a minute apart, leaving out a page reloading itself, and
-    going back within seconds, keeping no page
+    going back within seconds, keeping no page; and pain-points hear keeps what Joel said that
+    hurt, or a turn that stalled him, with his words in its own 0700 state for a fortnight, and
+    asks the session's own cell for a fix time, once, never the void or a cell the routes say
+    never to, sending nothing without them, and exits failed when it couldn't route
   '';
   pain-points-passes-clippy = ''
     clippy finds nothing in pain-points or its tests

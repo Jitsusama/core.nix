@@ -18,6 +18,7 @@
 //! its refusals and its exits take the terminal kit's shape (`help()`).
 
 mod chrome;
+mod hear;
 mod pain;
 mod pi;
 mod trial;
@@ -34,6 +35,9 @@ use std::process::{Command, ExitCode, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 use terminal_kit::{Exit, Failure, Help, flags};
 
+/// A verb, and the value given each of its flags.
+type Asked = (String, BTreeMap<&'static str, String>);
+
 /// How far back his usual time for each kind of pick is drawn from.
 const USUAL_DAYS: i64 = 14;
 const DAY_MS: i64 = 86_400_000;
@@ -49,6 +53,16 @@ struct Run {
     state: PathBuf,
     at: i64,
 }
+
+/// The flags `hear` takes, each with a value.
+const HEAR_FLAGS: [&str; 6] = [
+    "--sessions",
+    "--ledgers",
+    "--void",
+    "--mycelium",
+    "--date",
+    "--at",
+];
 
 /// The flags `read` takes, each with a value.
 const FLAGS: [&str; 6] = [
@@ -78,34 +92,51 @@ fn help() -> Help {
                 .option("--at MILLIS", "the day to count, or today")
                 .exit(Exit::Failed, "today's use couldn't be read or written"),
         )
+        .subcommand(
+            Help::new("hear", "hears what hurt him and sends it to its owner")
+                .example(
+                    "pain-points hear --mycelium PATH --date PATH",
+                    "as its timer runs it",
+                )
+                .option("--sessions DIR", "pi's session logs, or its own")
+                .option(
+                    "--ledgers DIR",
+                    "the asks and misses ledgers, or the mission's",
+                )
+                .option("--void DIR", "the void's folder, never sent to, or its own")
+                .option("--mycelium PATH", "the mycelium on PATH, or this")
+                .option("--date PATH", "the date on PATH, or this")
+                .option("--at MILLIS", "the time to hear up to, or now")
+                .exit(Exit::Failed, "its state couldn't be written"),
+        )
 }
 
-/// The flags `read` was given, each by its name. The kit has walked them,
-/// so the first word is `read`, or there are none for a bare run.
+/// The flags a subcommand was given, each by its name. The kit has walked
+/// them, so the first word is the subcommand, or there are none for a
+/// bare run.
 ///
 /// # Errors
 ///
 /// Asked wrongly, 64, for a flag it doesn't know, a flag with no value, a
 /// word that isn't a flag's, or a time that isn't a number.
-fn asked(args: &[String]) -> Result<Option<BTreeMap<&'static str, String>>, Failure> {
-    let wrongly =
-        |what: String| Failure::new(Exit::Usage, what).try_this("pain-points read --help");
-    let Some((_, rest)) = args.split_first() else {
+fn asked(args: &[String]) -> Result<Option<Asked>, Failure> {
+    let Some((verb, rest)) = args.split_first() else {
         return Ok(None);
     };
+    let known: &[&'static str] = if verb == "hear" { &HEAR_FLAGS } else { &FLAGS };
+    let try_this = format!("pain-points {verb} --help");
+    let wrongly = |what: String| Failure::new(Exit::Usage, what).try_this(&try_this);
     let mut given = BTreeMap::new();
     let mut rest = rest.iter();
     while let Some(arg) = rest.next() {
-        let flag = match FLAGS.iter().find(|flag| **flag == arg) {
+        let flag = match known.iter().find(|flag| **flag == arg) {
             Some(flag) => *flag,
             None if arg.starts_with('-') => {
-                return Err(
-                    flags::unknown("option", arg, &FLAGS).try_this("pain-points read --help")
-                );
+                return Err(flags::unknown("option", arg, known).try_this(&try_this));
             }
             None => {
                 return Err(wrongly(format!(
-                    "pain-points read takes no word like {arg}"
+                    "pain-points {verb} takes no word like {arg}"
                 )));
             }
         };
@@ -117,13 +148,13 @@ fn asked(args: &[String]) -> Result<Option<BTreeMap<&'static str, String>>, Fail
     if let Some(at) = given.get("--at").filter(|at| at.parse::<i64>().is_err()) {
         return Err(wrongly(format!("--at takes Unix milliseconds, not {at}")));
     }
-    Ok(Some(given))
+    Ok(Some((verb.clone(), given)))
 }
 
 fn main() -> ExitCode {
     let help = help();
     terminal_kit::main(&help, env!("CARGO_PKG_VERSION"), |context| {
-        let Some(mut given) = asked(&context.args)? else {
+        let Some((verb, mut given)) = asked(&context.args)? else {
             return context
                 .say(&help.brief(&context.out, context.room))
                 .map_err(|why| {
@@ -131,6 +162,21 @@ fn main() -> ExitCode {
                 });
         };
         let home = PathBuf::from(env::var_os("HOME").unwrap_or_default());
+        if verb == "hear" {
+            let (said, troubled) = hear::listen(&home, &mut given).map_err(|error| {
+                Failure::new(Exit::Failed, "pain-points couldn't hear").because(error)
+            })?;
+            // A run that couldn't route all it heard fails, so the unit
+            // says so rather than reading as a quiet hour.
+            if troubled {
+                return Err(
+                    Failure::new(Exit::Failed, "pain-points couldn't route all it heard")
+                        .because(said),
+                );
+            }
+            println!("{said}");
+            return Ok(());
+        }
         let mut take = |flag: &str| given.remove(flag);
         let run = Run {
             trials: take("--trials").map(PathBuf::from).or_else(newest_trials),
@@ -344,7 +390,12 @@ fn begun_in_a_lab(path: &Path) -> bool {
     else {
         return false;
     };
-    let parts: Vec<_> = header.cwd.components().collect();
+    a_lab(&header.cwd)
+}
+
+/// Whether a session's folder is a quest's scratch `tmp`.
+fn a_lab(cwd: &Path) -> bool {
+    let parts: Vec<_> = cwd.components().collect();
     parts
         .windows(3)
         .any(|w| w[0].as_os_str() == "quest-workspace" && w[2].as_os_str() == "tmp")

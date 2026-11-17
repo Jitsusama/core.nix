@@ -9,7 +9,7 @@
 pub const ALIKE: f64 = 0.6;
 
 /// Words a swear can sharpen into praise, as in "looks damn good".
-const PRAISE: [&str; 10] = [
+pub const PRAISE: [&str; 10] = [
     "amazing",
     "awesome",
     "beautiful",
@@ -64,6 +64,9 @@ pub fn asking_status(text: &str) -> bool {
         "where we at",
         "where are things",
         "status?",
+        "status update",
+        "where do things stand",
+        "what's the latest",
         "what's the status",
         "what's happening",
         "what is happening",
@@ -176,6 +179,12 @@ mod tests {
         );
         assert!(asking_status("where are we at?"), "where are we");
         assert!(asking_status("What\u{2019}s left"), "a curly apostrophe");
+        assert!(asking_status("status update"), "his most usual ask");
+        assert!(
+            asking_status("where do things stand?"),
+            "where things stand"
+        );
+        assert!(asking_status("what's the latest"), "the latest");
         assert!(
             !asking_status("make the status line green"),
             "status as a thing"
