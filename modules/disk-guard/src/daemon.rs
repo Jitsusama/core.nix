@@ -213,6 +213,16 @@ const LISTING_RETRY_PRESSED: f64 = 300.0;
 /// ends, either way, since that needs no listing.
 const ROOT_LEFT_GAP: f64 = 30.0;
 const HELD_ENDED_GAP: f64 = 120.0;
+/// How long the garbage's own passes rest after one frees under
+/// `COLLECT_WORTH`, doubling from the first to the longest until one frees
+/// more. From 21:59 to 22:07 on 16 November a machine's guard ran 16 such
+/// passes, one each time a process holding the store ended, each deleting
+/// the same 14,448 bytes that an evaluation registered again and freeing
+/// nothing, for 9 to 49 s of waiting on the disk's commits apiece. A pass a
+/// band brings takes the garbage too, so resting these leaves none behind.
+const COLLECT_FIRST_REST: f64 = 120.0;
+const COLLECT_LONGEST_REST: f64 = 1800.0;
+const COLLECT_WORTH: u64 = 1 << 20;
 /// How many times its own length a listing rests after it ends before a
 /// relist brings another on a healthy disk, so listing takes at most a
 /// tenth of the guard's time, kept with the listing so a restart rests
@@ -393,6 +403,9 @@ pub struct Guard {
     /// Whether the listing's garbage is to be looked at for a pass of its
     /// own, something having let some of it go.
     collect: bool,
+    /// Until when, in wall seconds, the garbage's own passes rest, and how
+    /// long the rest was, after one that freed next to nothing.
+    collect_rest: Option<(f64, f64)>,
     /// A run linking the store's identical files: when it began, what
     /// stops it, and where it tells how it ended.
     dedupe_out: Option<DedupeOut>,
@@ -733,6 +746,7 @@ impl Guard {
             root_left: false,
             held_ended: false,
             collect: false,
+            collect_rest: None,
             dedupe_out: None,
             dedupe_failed: None,
             uses: Arc::new(Mutex::new(uses)),
@@ -1538,6 +1552,10 @@ impl Guard {
         if !self.collect {
             return;
         }
+        // What let go meanwhile waits for the rest's end, or a band's pass.
+        if self.collect_rest.is_some_and(|(until, _)| now < until) {
+            return;
+        }
         self.collect = false;
         let Some((_, device)) = self.store() else {
             return;
@@ -2075,6 +2093,15 @@ impl Guard {
                 .cloned()
                 .collect();
             let end = self.pass_on(tick, device, &here, aim(decision), thresholds, &mut scan)?;
+            if decision == Decision::Collect {
+                let freed = self.last.as_ref().map_or(0, |last| last.freed);
+                self.collect_rest = (freed < COLLECT_WORTH).then(|| {
+                    let seconds = self.collect_rest.map_or(COLLECT_FIRST_REST, |(_, was)| {
+                        (was * 2.0).min(COLLECT_LONGEST_REST)
+                    });
+                    (tick.wall + seconds, seconds)
+                });
+            }
             let Decision::Reach(band) = decision else {
                 continue;
             };

@@ -74,7 +74,8 @@ impl Store {
     /// `held` beside its `meta` is listed as dead every time and refused by
     /// every delete, as what a build roots again after a listing; one with
     /// `refused` can't be deleted, as a Mac's protected app, and stops a
-    /// delete there, the paths before it gone; while `listing-slow` is
+    /// delete there, the paths before it gone; one with `lingers` Nix says
+    /// it deleted and leaves, as what an evaluation registers again; while `listing-slow` is
     /// there, every listing after the first waits on it.
     fn new() -> Store {
         let dir = tempfile::tempdir().unwrap();
@@ -164,7 +165,7 @@ impl Store {
                    for p in \"$@\"; do\n\
                      [ -e \"$p/refused\" ] && {{ echo \"error: fchmodat \\\"$p/Applications/X.app\\\": \
                        Operation not permitted\" >&2; exit 1; }}\n\
-                     rm -r \"$p\"\n\
+                     [ -e \"$p/lingers\" ] || rm -r \"$p\"\n\
                    done ;;\n\
                  'store gc') shift 2; echo \"gc $* {policy}\" >> {log} ;;\n\
                  'config show') [ \"$3\" = min-free ] || exit 9; cat {min_free} ;;\n\
@@ -1425,6 +1426,39 @@ fn garbage_goes_once_the_process_holding_it_ends() {
     fs::remove_file(&holding).unwrap();
     // Long before the next upkeep, six hours on.
     step_later_until(&store, &mut guard, 10.0, &BUSY, |_, _| !built.exists());
+}
+
+// From 21:59 to 22:07 on 16 November a machine's guard ran 16 passes on a
+// filling disk, one each time a process holding the store ended, each
+// deleting the same 14,448 bytes and freeing nothing, for 9 to 49 s of
+// waiting on the disk's commits apiece.
+#[test]
+fn a_collect_that_frees_nothing_rests_before_the_next() {
+    let store = Store::new();
+    let lingering = store.dead("aaa-again.drv", 2.0 * 3600.0, 14448);
+    fs::write(lingering.join("lingers"), "").unwrap();
+    let mut guard = store.guard(store.config_as_given("100%", "0%"));
+    listed_later(&store, &mut guard, 0.0, &CALM);
+    // An evaluation begins and ends every half minute for ten minutes.
+    for half in 0..20 {
+        let process = store.root.join(format!("temproots/{}", 5000 + half));
+        fs::write(&process, "").unwrap();
+        step_later(&mut guard, f64::from(half) * 30.0 + 1.0, &BUSY);
+        fs::remove_file(&process).unwrap();
+        step_later(&mut guard, f64::from(half) * 30.0 + 15.0, &BUSY);
+    }
+    let deletes = store
+        .log()
+        .iter()
+        .filter(|line| line.starts_with("delete"))
+        .count();
+    // Two, four and eight minutes apart: tried at once, at 2 and at 6.
+    assert!(
+        deletes <= 3,
+        "{deletes} deletes in ten minutes: {:?}",
+        store.log()
+    );
+    assert!(deletes >= 1, "tried once at least");
 }
 
 #[test]

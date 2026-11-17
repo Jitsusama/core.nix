@@ -110,7 +110,10 @@ or launchd, and [`home.nix`][2] the account's.
   unlinks for 30 seconds, past Btrfs's own commit, and longer while the
   guard's probe, a page beside its state synced once a second, comes back
   slow more than three times in two minutes, until two minutes pass
-  without. Before measuring, they wait for Btrfs's own commit rather than
+  without. Each item waits on that strain four minutes in all, then rests
+  only its 30 seconds, since strain others make never ends for its
+  waiting: one install of 40,000 files held a pass two hours on 16
+  November. Before measuring, they wait for Btrfs's own commit rather than
   ask for one, since a commit asked for holds up every save on the disk. A
   disk becoming nearly full ends the resting. Passes on a nearly or critically full disk never
   rest, and ask for their commits. Either keeps the status file's
@@ -161,6 +164,10 @@ or launchd, and [`home.nix`][2] the account's.
   experimental features, since content-addressed derivations made Nix parse
   and hash every derivation it met, five times the CPU; one that only a
   realisation keeps is listed dead, and Nix refuses it when it's deleted.
+  The garbage's own pass, which comes once something let go of some, rests
+  after one that frees under a mebibyte, two minutes doubling to half an
+  hour until one frees more, since an evaluation registering the same
+  paths again brought 16 passes freeing nothing in eight minutes.
   It deletes them oldest first,
   in a pass of their own once something has let some go. While the disk is healthy it keeps what
   was built in the last hour, up to 5% of the disk, unless a machine gives
@@ -273,7 +280,10 @@ or launchd, and [`home.nix`][2] the account's.
   exception is the guard itself failing: a pass on a filling disk whose
   tries failed and freed nothing, or where one timed out, is told once,
   with the failure's error line, and written to the system journal as an
-  error, since a guard that can't clear is otherwise silent. A notice the
+  error, since a guard that can't clear is otherwise silent. The next
+  pass that works takes it away, unless a frozen writer's notice stands,
+  so it says how the guard stands now; a folder its owner wrote again
+  while the guard emptied it is kept, not failed. A notice the
   desktop didn't take, as when the notification server is still starting,
   is told again each step until it is. What stands to be told now, once
   a disk is filling, is the status file's `notice` too, for whoever looks after
