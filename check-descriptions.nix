@@ -3155,8 +3155,8 @@
   the-asks-say-how-long-each-was-shown = ''
     a yes says how long since its line's frame reached the screen this opening, counted from the
     first and again from a changed line's, and says no time for a line never presented, for the
-    line as it was, for another ask's or while the launcher is walked from outside, so the daemon
-    refuses it unread; a no is sent as served
+    line as it was or for another ask's, so the daemon refuses it unread; while the launcher is
+    walked from outside the shell withholds a yes and never sends it; a no is sent as served
   '';
   the-asks-say-how-long-each-was-shown-over-passwords = ''
     over Passwords' connection, a first Return on an ask only arms, a yes says how long since a

@@ -179,8 +179,8 @@ onLinux {
   # something is added: only Joel's keys in the launcher do. Nor do Asks,
   # which draws this daemon's secret asks, how it says a line was shown,
   # or the ready rows it acts through, so no IPC says yes to an ask; the
-  # launcher's own do and run, walked from outside, say no time shown
-  # (the-asks-say-how-long-each-was-shown), which the daemon refuses.
+  # launcher's own do and run, walked from outside, have the shell withhold
+  # a yes and never send it (the-asks-say-how-long-each-was-shown).
   the-passwords-answer-no-ipc =
     let
       read = map builtins.readFile [
