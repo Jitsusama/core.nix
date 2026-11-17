@@ -467,7 +467,13 @@ fn send(
             "mycelium didn't run it on {machine}, ending {code}"
         )));
     }
-    if let Err(why) = far::bring_back(&job.handover, &job.folder, &kind.brings_back) {
+    let brought = far::bring_back(
+        &job.handover,
+        &job.folder,
+        &kind.brings_back,
+        far::CROSSES_WITHIN,
+    );
+    if let Err(why) = brought {
         eprintln!("couldn't bring back what it made on {machine}: {why}");
     }
     Ok(Sent::Ended(code))

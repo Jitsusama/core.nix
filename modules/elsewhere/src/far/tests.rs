@@ -165,7 +165,7 @@ fn a_name_a_share_keeps_home_crosses_marked_and_a_marked_one_twice() {
 
 /// How long the far line waits for a job's files in these tests, in
 /// seconds, rather than the five minutes a real crossing gets.
-const WAITS: u64 = 2;
+const WAITS: u64 = 5;
 
 /// The job's handover folder in a far run's `home`.
 fn handover(home: &Path) -> PathBuf {
@@ -181,6 +181,17 @@ fn handover(home: &Path) -> PathBuf {
 /// It waits only `WAITS` for the files, so a list they never match ends
 /// quickly.
 fn far_run(list: &str, files: &[(&str, &str)], run: &str) -> (Option<i32>, String, PathBuf) {
+    far_run_while(list, files, run, |_| ())
+}
+
+/// Runs the far line as `far_run` does, doing `meanwhile` to the job's
+/// tree a second after it starts, as a share still crossing would.
+fn far_run_while(
+    list: &str,
+    files: &[(&str, &str)],
+    run: &str,
+    meanwhile: impl FnOnce(&Path),
+) -> (Option<i32>, String, PathBuf) {
     static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     let home = std::env::temp_dir().join(format!(
         "elsewhere-far-{}-{}",
@@ -208,12 +219,17 @@ fn far_run(list: &str, files: &[(&str, &str)], run: &str) -> (Option<i32>, Strin
     );
     assert!(line.contains(&waits), "the far line's wait moved:\n{line}");
     let line = line.replace(&waits, &format!("-ge {WAITS}"));
-    let output = std::process::Command::new("sh")
+    let far = std::process::Command::new("sh")
         .args(["-c", &line])
         .env("HOME", &home)
         .env_remove("XDG_CACHE_HOME")
-        .output()
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    meanwhile(&job.join(super::TREE));
+    let output = far.wait_with_output().unwrap();
     (
         output.status.code(),
         String::from_utf8_lossy(&output.stderr).into_owned(),
@@ -222,8 +238,43 @@ fn far_run(list: &str, files: &[(&str, &str)], run: &str) -> (Option<i32>, Strin
 }
 
 #[test]
+fn what_is_left_is_listed_at_the_size_its_copy_came_to() {
+    let root = std::env::temp_dir().join(format!("elsewhere-left-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    // Gathered at 1 byte, then rewritten before it was left.
+    std::fs::write(root.join("x"), "xyz").unwrap();
+    let job = root.join("job");
+    super::left(&root, &[("x".to_owned(), 1)], &job).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(job.join(super::LEFT)).unwrap(),
+        "3\tx\nend\n",
+        "a file was listed at the size it was gathered at, not the one that crossed"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
-    // A file the share is still writing is there, but short.
+    // A file the share is still writing is there, but short, until the
+    // share finishes it.
+    let (code, err, home) = far_run_while("3\tx\nend\n", &[("x", "x")], "cat x > ../ran", |tree| {
+        // A far line that didn't wait has taken the tree already, which
+        // the assertions below say better than this write could.
+        let _ = std::fs::write(tree.join("x"), "xyz");
+    });
+    assert_eq!(
+        code,
+        Some(0),
+        "a file finished crossing wasn't taken: {err}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(home.join("s/ran")).ok().as_deref(),
+        Some("xyz"),
+        "the job ran before its file was whole"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+    // One the share never finishes ends the wait with nothing run.
     let (code, err, home) = far_run("3\tx\nend\n", &[("x", "x")], "touch ../ran");
     assert_eq!(
         code,
@@ -255,7 +306,7 @@ fn what_comes_back_comes_back_under_its_own_name_past_one_that_failed() {
     );
     let into = home.join("near");
     assert_eq!(
-        bring_back(&handover(&home), &into, &["out".into()]),
+        bring_back(&handover(&home), &into, &["out".into()], WAITS),
         Ok(2),
         "the near side didn't bring back the two that crossed"
     );
@@ -272,36 +323,79 @@ fn what_comes_back_comes_back_under_its_own_name_past_one_that_failed() {
 }
 
 #[test]
-fn what_comes_back_never_lands_through_a_link_near() {
+fn the_near_side_waits_for_each_file_at_its_listed_size() {
     let (code, err, home) = far_run(
         "1\tx\nend\n",
         &[("x", "x")],
         "mkdir out && printf a > out/a",
     );
     assert_eq!(code, Some(0), "the job didn't run: {err}");
+    let job = handover(&home);
+    // The far list says out/a is longer than the copy that crossed.
+    std::fs::write(job.join(super::BROUGHT), "5\tout/a\nend\n").unwrap();
+    let into = home.join("near");
+    let landed = bring_back(&job, &into, &["out".into()], 1);
+    assert!(
+        landed
+            .as_ref()
+            .is_err_and(|why| why.contains("didn't cross")),
+        "a copy short of its listed size was taken: {landed:?}"
+    );
+    assert!(!into.join("out/a").exists(), "a short copy landed");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn what_comes_back_never_lands_through_a_link_out_of_its_folder() {
+    let (code, err, home) = far_run(
+        "1\tx\nend\n",
+        &[("x", "x")],
+        "mkdir out && printf a > out/a && printf b > out/b",
+    );
+    assert_eq!(code, Some(0), "the job didn't run: {err}");
+    let back = ["out".to_owned()];
     let elsewhere = home.join("elsewhere");
     std::fs::create_dir_all(&elsewhere).unwrap();
-    // A folder linked away, and a file linked away under a plain folder.
-    for (link, under) in [("out", "near"), ("out/a", "near2")] {
+    // A folder linked away, and one file of two linked away under a
+    // plain folder, so the other would land first if nothing looked.
+    for (link, under) in [("out", "near"), ("out/b", "near2")] {
         let into = home.join(under);
         let at = into.join(link);
         std::fs::create_dir_all(at.parent().unwrap()).unwrap();
         let points = if link == "out" {
             elsewhere.clone()
         } else {
-            elsewhere.join("a")
+            elsewhere.join("b")
         };
         std::os::unix::fs::symlink(points, &at).unwrap();
-        let landed = bring_back(&handover(&home), &into, &["out".into()]);
+        let landed = bring_back(&handover(&home), &into, &back, WAITS);
         assert!(
             landed.as_ref().is_err_and(|why| why.contains("link")),
             "a file came back through {link}: {landed:?}"
         );
         assert!(
-            !elsewhere.join("a").exists(),
+            !elsewhere.join("a").exists() && !elsewhere.join("b").exists(),
             "a file came back through {link} to where it points"
         );
+        assert!(
+            link == "out" || !into.join("out/a").exists(),
+            "out/a landed before the link beside it was refused"
+        );
     }
+    // A link within the folder is the person's own, and is written through.
+    let into = home.join("near3");
+    std::fs::create_dir_all(into.join("kept")).unwrap();
+    std::os::unix::fs::symlink(into.join("kept"), into.join("out")).unwrap();
+    assert_eq!(
+        bring_back(&handover(&home), &into, &back, WAITS),
+        Ok(2),
+        "a link within the folder was refused"
+    );
+    assert_eq!(
+        std::fs::read_to_string(into.join("kept/b")).ok().as_deref(),
+        Some("b"),
+        "what came back didn't land through the folder's own link"
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 

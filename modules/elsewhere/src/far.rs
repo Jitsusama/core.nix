@@ -203,18 +203,19 @@ pub fn crossing(path: &str) -> String {
 
 /// Leaves `files`, from the tree at `root`, in the job's folder of the
 /// handover, each under the name it crosses by, and lists them last so
-/// the list is never ahead of its files.
+/// the list is never ahead of its files. Each is listed at the size its
+/// copy came to, which a file rewritten since it was gathered changes.
 pub fn left(root: &Path, files: &[(String, u64)], job: &Path) -> io::Result<()> {
     let tree = job.join(TREE);
     fs::create_dir_all(&tree)?;
     let mut list = String::new();
-    for (path, size) in files {
+    for (path, _) in files {
         let crossed = crossing(path);
         let into = tree.join(&crossed);
         if let Some(parent) = into.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::copy(root.join(path), into)?;
+        let size = fs::copy(root.join(path), into)?;
         // Writing to a String can't fail.
         let _ = writeln!(list, "{size}\t{crossed}");
     }
@@ -438,8 +439,14 @@ fn brought_back(path: &str, brings_back: &[String]) -> bool {
 }
 
 /// Copies what the far machine brought back for the job in the handover
-/// folder `job` into `folder`, once it has all crossed, or says why not.
-pub fn bring_back(job: &Path, folder: &Path, brings_back: &[String]) -> Result<usize, String> {
+/// folder `job` into `folder`, once it has all crossed `within` seconds,
+/// or says why not.
+pub fn bring_back(
+    job: &Path,
+    folder: &Path,
+    brings_back: &[String],
+    within: u64,
+) -> Result<usize, String> {
     if brings_back.is_empty() {
         return Ok(0);
     }
@@ -449,7 +456,7 @@ pub fn bring_back(job: &Path, folder: &Path, brings_back: &[String]) -> Result<u
             fs::metadata(numbered(brought)).is_ok_and(|meta| meta.len() == brought.size)
         })
     };
-    for _ in 0..=CROSSES_WITHIN {
+    for _ in 0..=within {
         let heard = fs::read_to_string(job.join(BROUGHT))
             .ok()
             .and_then(|text| listed(&text, brings_back));
@@ -459,7 +466,7 @@ pub fn bring_back(job: &Path, folder: &Path, brings_back: &[String]) -> Result<u
                 .find_map(|brought| linked(folder, &brought.path).map(|link| (brought, link)));
             if let Some((brought, link)) = through {
                 return Err(format!(
-                    "{} would land through the link {}",
+                    "{} would land through the link {}, which leads out of its folder",
                     brought.path,
                     link.display()
                 ));
@@ -478,18 +485,21 @@ pub fn bring_back(job: &Path, folder: &Path, brings_back: &[String]) -> Result<u
         // often finds nothing new.
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
-    Err(format!("it didn't cross home within {CROSSES_WITHIN}s"))
+    Err(format!("it didn't cross home within {within}s"))
 }
 
-/// The first part of `path` under `folder` that is a symbolic link, which
-/// a file brought back would be written through to wherever it points.
+/// The first part of `path` under `folder` that is a symbolic link leading
+/// out of `folder`, which a file brought back would be written through to
+/// wherever it points. A link within the folder is the person's own, and
+/// one that leads nowhere would make what it names, so it counts as out.
 fn linked(folder: &Path, path: &str) -> Option<PathBuf> {
+    let home = fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
     let mut at = folder.to_path_buf();
     Path::new(path).components().find_map(|part| {
         at.push(part);
-        fs::symlink_metadata(&at)
-            .is_ok_and(|meta| meta.file_type().is_symlink())
-            .then(|| at.clone())
+        let link = fs::symlink_metadata(&at).is_ok_and(|meta| meta.file_type().is_symlink());
+        let out = || fs::canonicalize(&at).map_or(true, |to| !to.starts_with(&home));
+        (link && out()).then(|| at.clone())
     })
 }
 
