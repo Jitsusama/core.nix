@@ -102,7 +102,7 @@ fn a_provider_owner_never_to_send_to_is_a_trouble() {
     )
     .expect("routes");
     a_day(&place);
-    let hour = hear(&place.ears(), CELLS, &mut |_, _| Ok(())).expect("a run");
+    let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a run");
     assert!(
         hour.troubles.iter().any(|t| t.contains("provider NEVER1")),
         "{hour:?}"

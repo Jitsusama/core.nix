@@ -154,22 +154,32 @@ pub fn automated(text: &str) -> bool {
         .any(|opening| text.starts_with(opening))
 }
 
+/// The verbs a peer opens its note with when it starts, restarts or wakes
+/// a session in the user's place. Only these, so Joel writing "Fixed by
+/// ABC123, still broken" about a cell stays his.
+const PEERS_VERBS: [&str; 6] = ["Started", "Restarted", "Woken", "Resumed", "Reopened", "Spawned"];
+
 /// Whether a message is a peer's note in the user's place, as one starting,
-/// restarting or waking a session writes: "Woken by 1JQPPC on ...", a
-/// capitalised word, "by", and a cell's six-character address.
+/// restarting or waking a session writes: "Woken by 1JQPPC on ...", one of
+/// those verbs, "by", and a cell's six-character address, which may be all
+/// letters (WCJQSG) and may end in a possessive or a mark.
 fn peers_note(text: &str) -> bool {
-    let mut words = text.splitn(4, ' ');
+    let mut words = text.split_whitespace();
     let (Some(verb), Some("by"), Some(address)) = (words.next(), words.next(), words.next()) else {
         return false;
     };
-    let address = address.trim_end_matches([',', ':', '.', ';']);
-    verb.chars().next().is_some_and(char::is_uppercase)
-        && verb.chars().skip(1).all(|c| c.is_ascii_lowercase())
+    let marks = [',', ':', '.', ';'];
+    let address = address.trim_end_matches(marks);
+    let address = address
+        .strip_suffix("'s")
+        .or_else(|| address.strip_suffix("\u{2019}s"))
+        .unwrap_or(address)
+        .trim_end_matches(marks);
+    PEERS_VERBS.contains(&verb)
         && address.len() == 6
         && address
             .chars()
             .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
-        && address.chars().any(|c| c.is_ascii_digit())
 }
 
 fn lowered(text: &str) -> String {

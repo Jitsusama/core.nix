@@ -141,13 +141,15 @@ pub fn cells(printed: &str) -> BTreeMap<String, Cell> {
 }
 
 /// The address `pain` goes to, or none for now: a turn the model provider
-/// failed in goes to the provider's owner when the routes name one, and
-/// everything else to its session's owner.
+/// failed in goes to the provider's owner when the routes name one and the
+/// session is this realm's, and everything else to its session's owner, so
+/// a session the mycelium doesn't know waits whatever stalled it.
 pub fn owner_of(pain: &Heard, cells: &BTreeMap<String, Cell>, routes: &Routes) -> Option<String> {
     let provider = routes
         .provider
         .as_ref()
         .filter(|to| !routes.refuses(to))
+        .filter(|_| cells.contains_key(&pain.session))
         .filter(|_| stalled::is(pain) && pain.kinds.iter().any(|k| k == stalled::PROVIDER));
     provider
         .cloned()
