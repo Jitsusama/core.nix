@@ -134,3 +134,7 @@ pub fn uplink(report: &Report, pen: &Pen, room: Room) -> String {
         ),
     ])
 }
+
+#[cfg(test)]
+#[path = "uplink_tests.rs"]
+mod tests;

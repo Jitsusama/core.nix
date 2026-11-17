@@ -18,6 +18,8 @@ rustPlatform.buildRustPackage rec {
       # The record every view's tests draw from, and what it's collected
       # from: a real modem's pages and eero's golden record.
       ./tests/network.json
+      # The rates the page says, which net is held to saying alike.
+      ./site/tests/rates.json
       ./contract
       ../eero/home-network.json
       ../daemon-serve/Cargo.toml

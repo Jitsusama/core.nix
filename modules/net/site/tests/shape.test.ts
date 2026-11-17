@@ -1,6 +1,7 @@
 // How the network page lays the house out, and says its figures.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { networkOf } from "../model.ts";
 import { study } from "../shape.ts";
@@ -44,31 +45,35 @@ it("a floor's place comes from the words in its eero's name", () => {
   assert.deepEqual(["Attic", "Kitchen", "Den", "Basement"].map(rank), [0, 1, 2, 3]);
 });
 
-it("a measured rate keeps three figures, in the unit that holds it under a thousand", () => {
-  assert.deepEqual([369.86, 11.93, 9.9, 0.4, 0.05, 1200, 999.96, 0.000_098_2].map(rate), [
-    "370 Mb/s",
-    "11.9 Mb/s",
-    "9.90 Mb/s",
-    "400 kb/s",
-    "50.0 kb/s",
-    "1.20 Gb/s",
-    "1.00 Gb/s",
-    "98.2 b/s",
-  ]);
+it("a measured rate reads as net says it, in three figures", () => {
+  // net's figures_tests.rs reads the same cases, so the panel and net's
+  // concerns can't round one rate two ways.
+  const cases: { mbps: number; says: string }[] = JSON.parse(
+    readFileSync(new URL("rates.json", import.meta.url), "utf8"),
+  );
+  assert.ok(cases.length > 0, "the shared cases are there");
+  assert.deepEqual(
+    cases.map((c) => rate(c.mbps)),
+    cases.map((c) => c.says),
+  );
 });
 
-it("a rate of nothing, or of no number, is none", () => {
-  assert.deepEqual([0, -3, Number.NaN].map(rate), ["0 b/s", "0 b/s", "0 b/s"]);
+it("a rate of no number is none", () => {
+  assert.deepEqual([Number.NaN, Number.POSITIVE_INFINITY].map(rate), ["0 b/s", "0 b/s"]);
 });
 
 it("a link's speed is a name, said with only the digits it has", () => {
-  assert.deepEqual([1000, 2500, 866, 72, 72.2, 100].map(linkSpeed), [
+  assert.deepEqual([1000, 2500, 10_000, 866, 1201, 2402, 72, 72.2, 100, 999.999].map(linkSpeed), [
     "1 Gb/s",
     "2.5 Gb/s",
+    "10 Gb/s",
     "866 Mb/s",
+    "1201 Mb/s",
+    "2402 Mb/s",
     "72 Mb/s",
     "72.2 Mb/s",
     "100 Mb/s",
+    "1 Gb/s",
   ]);
 });
 

@@ -38,7 +38,7 @@ changes the network or any device on it.
 Opening a device (Return, or a click) lights its way to the internet on
 the map and lists it in the panel, hop by hop: each hop's medium, speed
 and signal. Below it, for each way (down and up), the hop with the least
-room, in Mb/s. A Wi-Fi hop's room is its speed less the time its busier
+room, as a rate. A Wi-Fi hop's room is its speed less the time its busier
 radio is busy; a hop with no figure is counted and never guessed.
 
 Opening a device puts its name after the address's #, so the address
@@ -48,7 +48,7 @@ takes net's id instead, and a link by id opens the device too, as the
 launcher's do.
 
 A device eero counts gets Its Speed: what it carries each way now, and
-the most it carried in eero's last hour, with when, in Mb/s.
+the most it carried in eero's last hour, with when, each as a rate.
 
 ## Keys
 

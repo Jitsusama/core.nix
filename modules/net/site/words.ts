@@ -7,6 +7,8 @@ import type { Device } from "./model.ts";
 const MINUS = "\u2212";
 
 const KILO = 1e3;
+/** A cable's speed comes in whole hundreds of megabits. */
+const HUNDRED = 100;
 const MEGA = 1e6;
 const GIGA = 1e9;
 /** From a hundred gigabytes on, a tenth of one says nothing more. */
@@ -59,26 +61,32 @@ const RATES: readonly (readonly [number, string])[] = [
 /**
  * A measured rate given in Mb/s, in three figures, in the largest unit it
  * is at least one of once rounded: 370 Mb/s, 1.20 Gb/s, 400 kb/s, and
- * 0 b/s for none. net's figures.rs says them the same way.
+ * 0 b/s for none, as under a bit a second is. net's figures.rs says them
+ * the same way, held to the same cases (tests/rates.json).
  */
 function rate(mbps: number): string {
-  if (!(mbps > 0 && Number.isFinite(mbps))) {
+  const rounded = (value: number): number => Number(value.toPrecision(DIGITS));
+  const [bit] = BITS;
+  if (!(Number.isFinite(mbps) && rounded(mbps / bit) >= 1)) {
     return "0 b/s";
   }
-  const rounded = (value: number): number => Number(value.toPrecision(DIGITS));
   const [scale, unit] = RATES.find(([s]) => rounded(mbps / s) >= 1) ?? BITS;
-  const n = mbps / scale;
-  // Past a thousand of the largest unit, toPrecision would write an exponent.
-  return `${n >= KILO ? Math.round(n) : n.toPrecision(DIGITS)} ${unit}`;
+  const near = rounded(mbps / scale);
+  // toFixed rather than toPrecision, which writes 1000 as "1.00e+3".
+  const power = Number(near.toExponential().split("e")[1]);
+  return `${near.toFixed(Math.max(0, DIGITS - 1 - power))} ${unit}`;
 }
 
 /**
  * A link's speed given in Mb/s, which names the link rather than measures
- * it, so it keeps only the digits it has: 1 Gb/s, 2.5 Gb/s, 866 Mb/s.
+ * it, so it keeps the digits it's named by. A cable's come in hundreds of
+ * megabits and read 1 Gb/s or 2.5 Gb/s; Wi-Fi's read as they're named,
+ * 866, 1201 or 72.2 Mb/s.
  */
 function linkSpeed(mbps: number): string {
+  const near = Number(mbps.toFixed(2));
   const trim = (n: number): string => n.toFixed(2).replace(TRAILING_ZEROS, "$<kept>");
-  return mbps >= KILO ? `${trim(mbps / KILO)} Gb/s` : `${trim(mbps)} Mb/s`;
+  return near >= KILO && near % HUNDRED === 0 ? `${trim(near / KILO)} Gb/s` : `${trim(near)} Mb/s`;
 }
 
 /** How long `s` seconds is, in the largest unit or two that say it. */
