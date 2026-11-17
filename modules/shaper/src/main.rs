@@ -540,14 +540,14 @@ fn start(
     let mut held = FIRST;
     // A network whose line is declared starts at its hold, as its stay in
     // the one-way controller does (src/oneway.rs), under its ceiling.
-    let hold = |path: &Path| {
+    let declared = |path: &Path| {
         networks::hold(
             &networks::anchors(path),
             &networks::ceilings(path),
             &network,
         )
     };
-    if let Some(up) = networks.and_then(hold) {
+    if let Some(up) = networks.and_then(declared) {
         held.up = up;
     }
     let max = ceiling(&uplink.name);
