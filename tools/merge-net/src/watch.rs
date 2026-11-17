@@ -1257,10 +1257,14 @@ fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, String>
 /// Remove the logs of runs over three days old, and the oldest past the
 /// budget, saying how many went.
 fn age_out_logs(state: &State) {
-    let aged = state.age_out_logs(std::time::SystemTime::now(), crate::state::LOGS_BUDGET);
-    if aged > 0 {
+    let budget = crate::state::LOGS_BUDGET;
+    let aged = state.age_out_logs(std::time::SystemTime::now(), budget);
+    if aged.old + aged.over > 0 {
         state.say(&format!(
-            "removed {aged} logs, over three days old or past the 3 GiB the net keeps"
+            "removed {} logs over three days old and {} past the {} GiB the net keeps",
+            aged.old,
+            aged.over,
+            budget >> 30
         ));
     }
 }

@@ -183,12 +183,12 @@ impl State {
     /// growing by about 2 GiB a day on a disk three quarters full. Of
     /// those left, the newest are kept while they fit in `budget` bytes
     /// and the rest go too, since three days alone grew to 14 GiB.
-    pub fn age_out_logs(&self, now: SystemTime, budget: u64) -> usize {
+    pub fn age_out_logs(&self, now: SystemTime, budget: u64) -> Aged {
+        let mut aged = Aged::default();
         let Ok(entries) = fs::read_dir(self.root.join("logs")) else {
-            return 0;
+            return aged;
         };
         let mut kept = Vec::new();
-        let mut removed = 0;
         for entry in entries.flatten() {
             if entry.file_name() == "net.log" {
                 continue;
@@ -200,7 +200,7 @@ impl State {
                 continue;
             };
             if now.duration_since(written).is_ok_and(|age| age > LOGS_KEPT) {
-                removed += usize::from(fs::remove_file(entry.path()).is_ok());
+                aged.old += usize::from(fs::remove_file(entry.path()).is_ok());
             } else {
                 kept.push((written, meta.len(), entry.path()));
             }
@@ -210,10 +210,10 @@ impl State {
         for (_, size, path) in kept {
             held += size;
             if held > budget {
-                removed += usize::from(fs::remove_file(path).is_ok());
+                aged.over += usize::from(fs::remove_file(path).is_ok());
             }
         }
-        removed
+        aged
     }
 
     /// The head the next is compared with, and the last one looked at.
@@ -515,6 +515,14 @@ const LOGS_KEPT: Duration = Duration::from_hours(72);
 /// them a day or more old, which a session reads seldom.
 pub const LOGS_BUDGET: u64 = 3 * 1024 * 1024 * 1024;
 
+/// How many runs' logs a round removed: those over `LOGS_KEPT` old, and
+/// those past `LOGS_BUDGET`.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Aged {
+    pub old: usize,
+    pub over: usize,
+}
+
 /// A commit's first twelve characters, as names and logs give it.
 pub fn short(commit: &str) -> &str {
     commit.get(..12).unwrap_or(commit)
@@ -615,7 +623,11 @@ mod tests {
         let old = written("aaaa-vm-a-1.log", 4 * day);
         let new = written("aaaa-vm-a-2.log", 2 * day);
         let own = written("net.log", 9 * day);
-        assert_eq!(state.age_out_logs(now, LOGS_BUDGET), 1, "not one log went");
+        assert_eq!(
+            state.age_out_logs(now, LOGS_BUDGET),
+            Aged { old: 1, over: 0 },
+            "not one log went for its age alone"
+        );
         assert!(!old.exists(), "a log four days old stayed");
         assert!(new.exists(), "a log two days old went");
         assert!(own.exists(), "the net's own log went");
@@ -625,7 +637,71 @@ mod tests {
     fn the_oldest_logs_past_the_budget_go_and_the_nets_own_stays() {
         let state = state("budget");
         let now = SystemTime::now();
-        let written = |name: &str, minutes: u64, bytes: usize| {
+        let written =
+            |name: &str, minutes: u64, bytes: usize| written(&state, now, name, minutes, bytes);
+        // The names sort otherwise than their ages, so a budget kept by
+        // name keeps the wrong ones; the net's log is the newest and
+        // largest, so counting it takes logs that fit.
+        let newest = written("dddd-vm-a-1.log", 7 * 60, 40);
+        let newer = written("aaaa-vm-b-1.log", 8 * 60, 40);
+        let older = written("cccc-vm-c-1.log", 9 * 60, 40);
+        let oldest = written("bbbb-vm-d-1.log", 10 * 60, 40);
+        let aged = written("eeee-vm-e-1.log", 4 * 24 * 60, 1000);
+        let own = written("net.log", 1, 400);
+        assert_eq!(
+            state.age_out_logs(now, 80),
+            Aged { old: 1, over: 2 },
+            "not the one log past three days and the two past a budget of 80 bytes went"
+        );
+        assert!(
+            newest.exists() && newer.exists(),
+            "a log within the budget went, or the budget counted the net's log or an aged one"
+        );
+        assert!(
+            !older.exists() && !oldest.exists() && !aged.exists(),
+            "a log past the budget or past three days stayed"
+        );
+        assert!(own.exists(), "the net's own log went for the budget");
+    }
+
+    #[test]
+    fn the_budget_leaves_the_logs_the_net_still_reads() {
+        let state = state("still-read");
+        let now = SystemTime::now();
+        let (passed, round) = ("1".repeat(40), "2".repeat(40));
+        write_json(
+            &state.root.join("state.json"),
+            &json!({"passed": passed, "seen": passed, "round": round}),
+        )
+        .expect("the heads");
+        let written = |name: &str, minutes: u64| written(&state, now, name, minutes, 40);
+        let base = written("111111111111-vm-a-1.log", 10 * 60);
+        let under_way = written("222222222222-vm-b-1.log", 11 * 60);
+        let young = written("333333333333-vm-c-1.log", 30);
+        let other = written("444444444444-vm-d-1.log", 12 * 60);
+        let newer = written("555555555555-vm-e-1.log", 7 * 60);
+        assert_eq!(
+            state.age_out_logs(now, 0),
+            Aged { old: 0, over: 2 },
+            "not just the two logs the net no longer reads went for the budget"
+        );
+        assert!(
+            base.exists() && under_way.exists(),
+            "a log of a head the net holds went for the budget"
+        );
+        assert!(
+            young.exists(),
+            "a log under six hours old went for the budget"
+        );
+        assert!(
+            !other.exists() && !newer.exists(),
+            "a log the net no longer reads stayed past the budget"
+        );
+    }
+
+    /// A log `name` of `bytes` bytes, last written `minutes` before `now`.
+    fn written(state: &State, now: SystemTime, name: &str, minutes: u64, bytes: usize) -> PathBuf {
+        {
             let path = state.root.join("logs").join(name);
             fs::write(&path, vec![b'x'; bytes]).expect("a log");
             let file = fs::File::options()
@@ -635,26 +711,7 @@ mod tests {
             file.set_modified(now - Duration::from_mins(minutes))
                 .expect("its time");
             path
-        };
-        let newest = written("aaaa-vm-a-1.log", 1, 40);
-        let newer = written("aaaa-vm-b-1.log", 2, 40);
-        let older = written("aaaa-vm-c-1.log", 3, 40);
-        let oldest = written("aaaa-vm-d-1.log", 4, 40);
-        let own = written("net.log", 5, 400);
-        assert_eq!(
-            state.age_out_logs(now, 100),
-            2,
-            "not just the two logs past a budget of 100 bytes went"
-        );
-        assert!(
-            newest.exists() && newer.exists(),
-            "a log within the budget went"
-        );
-        assert!(
-            !older.exists() && !oldest.exists(),
-            "a log past the budget stayed"
-        );
-        assert!(own.exists(), "the net's own log went for the budget");
+        }
     }
 
     #[test]
