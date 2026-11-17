@@ -753,6 +753,11 @@ Provider {
                 provider.elsewhere("hosted", session), Theme.alert]]);
         }
 
+        function onUnopened(session) {
+            provider.launcher?.tellOnOpen([[session.address,
+                provider.elsewhere("unopened", session), Theme.alert]]);
+        }
+
         function onUnsteered(session, why) {
             provider.launcher?.tellOnOpen([[session.address,
                 provider.elsewhere(why !== "" ? "untold" : "unanswered", session, why),
@@ -1104,10 +1109,8 @@ Provider {
             return null;
         const session = heldAt(address);
         heard(session.address);
-        const resting = Sessions.parkedAs(session.address);
-        if (resting)
-            Sessions.wake(resting);
-        Sessions.goTo(sessionAt(session.address) ?? session);
+        Sessions.wakeToGo(Sessions.parkedAs(session.address),
+            sessionAt(session.address) ?? session);
         return session;
     }
 

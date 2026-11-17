@@ -360,6 +360,77 @@ QtObject {
             NeedsYou.note({ why: "It needs you.", raisedAt: cable.raisedAt }, said, told),
             "It needs you. \u00b7 waiting 15 h");
 
+        // Deal With It takes Joel to the session an item is from, which
+        // most often has no window, since sessions start in none (Joel,
+        // 2026-11-17 00:12: "when i hit deal with it when a window is not
+        // loaded from the launcher, nothing happens"): one running with
+        // no window, held or hosted, is found as one with a window is,
+        // and one parked is found to be woken first.
+        const heldPresence = { session: "s-held", addresses: ["HELD01"] };
+        const hostedPresence = { session: "s-host", addresses: ["HOST01"], hosted: true };
+        const restingPresence = { session: "s-rest", addresses: ["REST01", "OLD001"] };
+        const windowed = { address: "OPEN01", window: { id: 4, title: "pi: open" },
+            presence: { session: "s-open", addresses: ["OPEN01"] } };
+        const heldNoWindow = { address: "HELD01", window: null, held: "held-1",
+            presence: heldPresence };
+        const hostedNoWindow = { address: "HOST01", window: null, presence: hostedPresence };
+        const resting = { address: "REST01", window: null, held: "held-2",
+            presence: restingPresence };
+        const known = {
+            windows: [{ id: 9, title: "Firefox: the form" }],
+            running: [windowed, heldNoWindow, hostedNoWindow],
+            parked: [resting],
+            present: { HELD01: heldPresence, HOST01: hostedPresence }
+        };
+        const fromOwner = address => ({ quest: "QEST-X", owner: { address } });
+        expect("one with a window is gone to there",
+            Waiting.dealsIn(fromOwner("OPEN01"), known),
+            { to: "session", session: windowed, wake: false });
+        expect("one held in no window is found, for Go To to open one on it",
+            Waiting.dealsIn(fromOwner("HELD01"), known),
+            { to: "session", session: heldNoWindow, wake: false });
+        expect("one hosted in no window is found, for Go To to view it",
+            Waiting.dealsIn(fromOwner("HOST01"), known),
+            { to: "session", session: hostedNoWindow, wake: false });
+        expect("one parked is found, woken first",
+            Waiting.dealsIn(fromOwner("REST01"), known),
+            { to: "session", session: resting, wake: true });
+        expect("one parked is found by any address it goes by, in either case",
+            Waiting.dealsIn(fromOwner("old001"), known),
+            { to: "session", session: resting, wake: true });
+        expect("an item from an older file names its session as from",
+            Waiting.dealsIn({ quest: "QEST-X", from: "HELD01" }, known),
+            { to: "session", session: heldNoWindow, wake: false });
+        expect("a window the item names by its title comes first",
+            Waiting.dealsIn(Object.assign(fromOwner("HELD01"),
+                { where: { window: "Firefox: the form" } }), known),
+            { to: "window", window: { id: 9, title: "Firefox: the form" } });
+        expect("a window it names that isn't open leaves its session",
+            Waiting.dealsIn(Object.assign(fromOwner("HELD01"), { window: "gone" }), known),
+            { to: "session", session: heldNoWindow, wake: false });
+        // Joel's own, as he pressed it at 00:12: its window long shut.
+        const pressed = { address: "WJATIN", window: null, held: "held-3",
+            presence: { session: "s-wjatin", addresses: ["WJATIN"] } };
+        const asked = { quest: "QEST-20261112-WJATIN", owner: { address: "WJATIN" },
+            where: { window: "\u03c0 - Sail Every Ship From One Harbour - harbour" } };
+        expect("a parked one whose named window isn't open is woken and gone to",
+            Waiting.dealsIn(asked, Object.assign({}, known, { parked: [resting, pressed] })),
+            { to: "session", session: pressed, wake: true });
+        expect("and one running in no window is gone to as it is",
+            Waiting.dealsIn(asked, Object.assign({}, known,
+                { running: known.running.concat([pressed]) })),
+            { to: "session", session: pressed, wake: false });
+        expect("one running is never woken, though a record of it is parked too",
+            Waiting.dealsIn(fromOwner("HELD01"), Object.assign({}, known,
+                { parked: [Object.assign({}, heldNoWindow, { window: null })] })),
+            { to: "session", session: heldNoWindow, wake: false });
+        expect("one whose session is gone goes nowhere",
+            Waiting.dealsIn(fromOwner("GONE01"), known), { to: "nobody" });
+        expect("one from nobody goes nowhere",
+            Waiting.dealsIn({ quest: "QEST-X" }, known), { to: "nobody" });
+        expect("what the shell doesn't know yet finds nobody",
+            Waiting.dealsIn(fromOwner("HELD01"), {}), { to: "nobody" });
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);

@@ -155,6 +155,20 @@ Provider {
             weather = row;
     }
 
+    // An item with neither a window nor a session here is said in the foot where Go To or
+    // Deal With It was pressed, never a press that does nothing (Joel,
+    // 2026-11-17 00:12: "when i hit deal with it when a window is not
+    // loaded from the launcher, nothing happens"). What goTo itself can't
+    // open, Agents says (Sessions' unjoined, unhosted and unopened).
+    Connections {
+        target: WaitingOnYou
+
+        function onUnfound(item) {
+            provider.launcher?.tellOnOpen([[Words.name("on:waiting"),
+                waitingSaid("unfound", {}), Theme.alert]]);
+        }
+    }
+
     Connections {
         target: provider.launcher
 
@@ -629,15 +643,17 @@ Provider {
     // the item and asking the session to check it still holds before it
     // asks him anything (Joel, 2026-11-08: "it should give me a prompt that
     // gets filled into it stating i'm reayd to deal with it if it is still
-    // valid"). The harness fills a prompt only while it's empty.
+    // valid"). The harness fills a prompt only while it's empty. Going
+    // comes first, so a parked session's wake reaches its inbox before
+    // the fill it then reads.
     function dealWith(each) {
         const session = WaitingOnYou.session(each);
+        WaitingOnYou.go(each);
         if (session)
             Sessions.steer(session.address, {
                 act: "fill",
                 text: readyToDeal(each.title)
             });
-        WaitingOnYou.go(each);
     }
 
     // A fact of For You's drawers, named in the vocabulary.
@@ -703,11 +719,15 @@ Provider {
     }
 
     // Where an item is done, by name: the session its window is, else the
-    // window's own title; "" when none is open.
+    // window's own title, else the session it's from in no window, which
+    // Go To opens one on (WaitingOnYou.go); "" when it has neither.
     function whereOf(each) {
         const window = WaitingOnYou.windowOf(each);
+        const own = WaitingOnYou.session(each);
         if (window === null)
-            return "";
+            return own?.title ?? "";
+        if (own !== null && own.window?.id === window.id)
+            return own.title;
         // A session in no window, as one held or elsewhere is, isn't it.
         const session = Sessions.running.find(one => one.window?.id === window.id);
         return session ? session.title : window.title ?? "";
@@ -1016,10 +1036,7 @@ Provider {
         const cell = lookCell(one);
         if (cell === null)
             return;
-        const resting = Sessions.parkedAs(cell.address);
-        if (resting)
-            Sessions.wake(resting);
-        Sessions.goTo(cell);
+        Sessions.wakeToGo(Sessions.parkedAs(cell.address), cell);
     }
 
     // What a look's row does with the cell behind it (Joel, 2026-11-16:
@@ -1681,11 +1698,7 @@ Provider {
             })),
             thing(Object.assign(named("go"), {
                 key: `verb:on:waiting:go:${key}`,
-                run: () => {
-                    if (resting)
-                        Sessions.wake(resting);
-                    Sessions.goTo(session());
-                }
+                run: () => Sessions.wakeToGo(resting, session())
             })),
             putOffWant(address, key, known)
         ];

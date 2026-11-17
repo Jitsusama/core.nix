@@ -392,6 +392,7 @@
         "file": "once its file is written",
         "check": "once its check passes",
         "from": "from {from} \u00b7 {kind}",
+        "unfound": "not gone to \u00b7 neither its window nor its session is here",
         "blocks": "blocks {count} session",
         "blocksMany": "blocks {count} sessions",
         "due": "due {time}",
