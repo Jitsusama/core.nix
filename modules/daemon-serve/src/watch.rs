@@ -308,6 +308,10 @@ mod tests {
         assert_eq!(held.taken(), 1, "only the records moved it");
         held.took(&json!({"changed": [{"key": "a", "step": 2}]}));
         assert_eq!(held.taken(), 2, "a change moved it again");
+        held.took(&json!({"changed": [{"key": "a", "step": 2}]}));
+        assert_eq!(held.taken(), 3, "a change restating a record counts too");
+        held.took(&json!({"gone": ["a"]}));
+        assert_eq!(held.taken(), 4, "a record taken away counts");
     }
 
     #[test]

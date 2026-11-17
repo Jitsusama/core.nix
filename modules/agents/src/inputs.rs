@@ -878,7 +878,8 @@ mod tests {
                 "orchestratedBy": "O", "questInfo": {"title": "Kelp"},
                 "landings": landings}}]})
         };
-        inputs.sessions.took(&present("P", "s-p", json!([])));
+        // Null reads as the landings the presence named none of before.
+        inputs.sessions.took(&present("P", "s-p", Value::Null));
         remade(&mut was, &inputs, "a live session's title");
         inputs
             .sessions
