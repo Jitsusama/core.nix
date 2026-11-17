@@ -172,7 +172,11 @@ fn run(
         None => Ok(git::flake(config, &head)),
     };
     let overrides = follows::overrides(config, &followed);
-    let built = match flake.and_then(|flake| system::build(config, &flake, &overrides)) {
+    let flake = match flake {
+        Ok(flake) => flake,
+        Err(failure) => return failed(last, failure),
+    };
+    let built = match system::build(config, &flake, &overrides) {
         Ok(built) => built,
         Err(failure) => return failed(last, failure),
     };
@@ -216,6 +220,11 @@ fn run(
     if run::stopping() {
         return failed(last, Failure::new("the update was stopped"));
     }
+    let built = system::Built {
+        system: &built,
+        flake: &flake,
+        overrides: &overrides,
+    };
     switch(config, &built, last, head, followed)
 }
 
@@ -271,19 +280,47 @@ fn switch_waiting(
     if let Some(why) = busy(config) {
         return Line::Refused { commit: last, why };
     }
+    // Only a boot check reads the flake, so it's worked out only for a
+    // system that waits on one, before the switch is told.
+    let flake = if system::waits_on_its_boot_check(config, &waiting.system) {
+        match waiting_flake(config, &waiting.commit) {
+            Ok(flake) => flake,
+            Err(failure) => return failed(last, failure),
+        }
+    } else {
+        String::new()
+    };
     tell(&Line::Switching {
         commit: waiting.commit.clone(),
     });
     if run::stopping() {
         return failed(last, Failure::new("the update was stopped"));
     }
-    switch(
-        config,
-        &waiting.system,
-        last,
-        waiting.commit,
-        waiting.followed,
-    )
+    let overrides = follows::overrides(config, &waiting.followed);
+    let built = system::Built {
+        system: &waiting.system,
+        flake: &flake,
+        overrides: &overrides,
+    };
+    switch(config, &built, last, waiting.commit, waiting.followed)
+}
+
+/// The flake a system that waited was built from, for its boot check: root's
+/// copy at its commit, or on a hosted machine its folder unpacked again, since
+/// every unpack wipes the one before and a later ask may have unpacked
+/// another. One whose folder can't be had again fails the grant, saying why,
+/// rather than have the check judge a system it can't rebuild.
+fn waiting_flake(config: &Config, commit: &str) -> Result<String, Failure> {
+    match &config.hosted {
+        None => Ok(git::flake(config, commit)),
+        Some(hosted) => hosted::prepare(config, hosted, commit).map_err(|failure| Failure {
+            why: format!(
+                "unpacking main at {commit} again for its boot check: {}",
+                failure.why
+            ),
+            ..failure
+        }),
+    }
 }
 
 /// Why main at `head` mustn't be built, if it mustn't: it doesn't descend
@@ -340,7 +377,7 @@ fn waited(config: &Config) -> Option<Waiting> {
 /// fail.
 fn switch(
     config: &Config,
-    built: &std::path::Path,
+    built: &system::Built,
     last: Option<String>,
     head: String,
     followed: follows::Followed,
@@ -348,7 +385,7 @@ fn switch(
     let previous = system::current(config);
     // Whatever waited for a hold is older than what switches now.
     let _ = fs::remove_file(waiting_file(config));
-    let switched = system::switch(config, built)
+    let switched = system::switch(config, built.system)
         .and_then(|switched| system::healthy(config).map(|()| switched));
     match switched {
         Ok(mut switched) => {
@@ -362,7 +399,7 @@ fn switch(
             // changes.
             let mut boots = None;
             if switched.unbooted
-                && let Err(failure) = system::boot_once_checked(config, built)
+                && let Err(failure) = system::boot_once_checked(config, built, &head)
             {
                 switched.restart = None;
                 boots = Some(format!(

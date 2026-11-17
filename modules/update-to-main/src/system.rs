@@ -82,14 +82,30 @@ pub fn build(config: &Config, flake: &str, overrides: &[String]) -> Result<PathB
 /// it follows are, and the system's own path may hold none.
 pub(crate) fn nix(config: &Config) -> std::process::Command {
     let mut nix = run::command(&config.tools.nix, &config.state);
+    git_first(config, &mut nix);
+    nix.args(["--extra-experimental-features", "nix-command flakes"]);
+    nix
+}
+
+/// Puts root's git first on `command`'s path, ahead of update-to-main's
+/// own.
+fn git_first(config: &Config, command: &mut std::process::Command) {
     if let Some(git) = config.tools.git.parent() {
         let rest = std::env::split_paths(run::PATH);
         let path = std::env::join_paths(std::iter::once(git.to_path_buf()).chain(rest))
             .unwrap_or_else(|_| run::PATH.into());
-        nix.env("PATH", path);
+        command.env("PATH", path);
     }
-    nix.args(["--extra-experimental-features", "nix-command flakes"]);
-    nix
+}
+
+/// Whether switching to `system` leaves it unbooted until a boot check
+/// passes, as `switch` would: on NixOS with a boot check, when its kernel,
+/// initrd or kernel parameters differ from the booted system's.
+pub fn waits_on_its_boot_check(config: &Config, system: &Path) -> bool {
+    config.kind == Kind::Nixos
+        && config.boot_check.is_some()
+        && config.booted.exists()
+        && for_next_boot(&config.booted, system).is_some()
 }
 
 /// Builds every piece of the system that nixpkgs doesn't mark light on the
@@ -1117,14 +1133,39 @@ pub fn go_back(config: &Config, system: &Path) -> Result<(), Failure> {
     .map(|_| ())
 }
 
-/// Runs the boot check on `system`, which runs but isn't yet what the
-/// machine boots, and once it passes makes `system` the boot default.
-pub fn boot_once_checked(config: &Config, system: &Path) -> Result<(), Failure> {
+/// A system update-to-main built, and what it built it from.
+pub struct Built<'a> {
+    /// The system's path in the store.
+    pub system: &'a Path,
+    /// The flake reference and output it was built from, as `build` took.
+    pub flake: &'a str,
+    /// The words overriding the followed inputs it was built with.
+    pub overrides: &'a [String],
+}
+
+/// Runs the boot check on `built`, main's `commit`, which runs but isn't
+/// yet what the machine boots, and once it passes makes it the boot
+/// default. Beside the system's path the check is told, in its
+/// environment, the commit, the flake reference without its output, and
+/// the override words a line each, so one that builds a test of the
+/// system builds it from the same tree and inputs: the path alone names
+/// neither.
+pub fn boot_once_checked(config: &Config, built: &Built, commit: &str) -> Result<(), Failure> {
+    let system = built.system;
     if let Some(check) = &config.boot_check
         && let Some((program, args)) = check.split_first()
     {
+        let output = format!("#{}", config.output);
+        let flake = built.flake.strip_suffix(&output).unwrap_or(built.flake);
         let mut command = run::command(Path::new(program), &config.state);
-        command.args(args);
+        // A nix it runs fetches a git+file flake with git, as
+        // update-to-main's own nix does.
+        git_first(config, &mut command);
+        command
+            .args(args)
+            .env("UPDATE_TO_MAIN_COMMIT", commit)
+            .env("UPDATE_TO_MAIN_FLAKE", flake)
+            .env("UPDATE_TO_MAIN_OVERRIDES", built.overrides.join("\n"));
         let what = format!("the boot check `{}`", check.join(" "));
         run::output(command, &what, [system])?;
     }
