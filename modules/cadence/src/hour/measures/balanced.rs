@@ -16,9 +16,10 @@ const HOUR: i64 = 3600;
 
 /// The definitions read. A newer one may weigh a load differently (the
 /// second counts processor use as well as pressure; the third counts a
-/// machine over only past its memory limit or at processor pressure 70),
-/// so an hour holding two takes the newer's minutes alone rather than
-/// compare across them.
+/// machine over only past its queue's memory limit or at processor
+/// pressure 70), so an hour holding more than one takes the minutes of
+/// the definition its latest minute was read under, rather than compare
+/// across them: after a bump the newer, after a rollback the older.
 const DEFINITIONS: [&str; 3] = ["balance/1", "balance/2", "balance/3"];
 
 /// One machine's share of the hour, summed over the minutes it was read.
@@ -300,6 +301,14 @@ mod tests {
                 .last()
                 .is_some_and(|line| line.starts_with("only balance/3's minutes")),
             "the card didn't say balance/2's minutes were left out: {:?}",
+            measure.behind
+        );
+        assert!(
+            !measure
+                .behind
+                .iter()
+                .any(|line| line.contains("over while")),
+            "balance/2's flag was counted with balance/3's minutes: {:?}",
             measure.behind
         );
     }
