@@ -3,14 +3,13 @@
     "at": 1794337827,
     "commit": "26852ce9a8ec1e828c6d26df64581bccba210135",
     "due": "2026-11-18",
-    "due_why": "Its owner, the launcher's, fixes it by 2026-11-18 23:59 UTC: 122 of its 162 net runs from listing to 17 Nov 11:00 UTC ended nonzero, 50 of them naming a listed subtest",
+    "due_why": "Its owner, the launcher's, fixes it by 2026-11-18 23:59 UTC: 122 of its 162 net runs from listing to 17 Nov 11:00 UTC ended nonzero, 50 of them naming a listed subtest. capture_recent's wait timed out on its own 4 times, and warned-of-nothing reads every warning the run's earlier cases left, so it stays beside it; the categories case, failing every run since 16 Nov on a step count Code broke, stands again",
     "owner_pr": 2855,
     "owner_session": "Y2YBTS",
     "reason": "failed twice at 420e2aa35b28, and at 26852ce9a8ec after it",
     "subtests": [
       "test_capture_recent_finds_past_its_nine_by_name_then_by_what_a_screenshot_says",
-      "test_quickshell_warned_of_nothing_it_drew_all_along",
-      "test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds"
+      "test_quickshell_warned_of_nothing_it_drew_all_along"
     ],
     "test": "vm-desktop-launcher-goes-places"
   },
