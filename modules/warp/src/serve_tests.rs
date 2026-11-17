@@ -414,9 +414,7 @@ fn a_client_asking_without_reading_is_hung_up_on() {
     // ask after that fails as one to a closed socket does, rather than
     // waiting on a daemon holding it open with nothing reading it.
     let failed = (0..1_000_000)
-        .find_map(|id| {
-            writeln!(client.stream, "{}", json!({"id": id, "ask": "overclock"})).err()
-        })
+        .find_map(|id| writeln!(client.stream, "{}", json!({"id": id, "ask": "overclock"})).err())
         .expect("the daemon stops taking asks");
     assert!(
         matches!(
