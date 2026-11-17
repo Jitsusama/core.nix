@@ -239,5 +239,14 @@
       "test_a_pointer_resting_on_the_cat_leans_it_in"
     ],
     "test": "the-margin-cat-follows-the-keys-on-niri"
+  },
+  {
+    "at": 1794906878,
+    "commit": "652dc728fe8abea0a8614ce2479ab8cfbb982e3f",
+    "due": "2026-11-19",
+    "owner_pr": 5110,
+    "owner_session": "orchestrator",
+    "reason": "has been broken since #5110, but fails with it reverted too, so a later merge breaks it as well; whoever finds that merge fixes it forward and takes it off this list",
+    "test": "a-macs-checks-since-39fb6de4dee4bb8e346322df7343151404c2eda7"
   }
 ]
