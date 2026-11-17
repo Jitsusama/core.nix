@@ -6,8 +6,9 @@
 //! card is on is kept while it carries well, and another is tried only
 //! when it carries badly two minutes running, or fails, or when one
 //! measured lately carried far better.
-//! A wider band, 5 or 6 GHz, is kept to while it carries well and tried
-//! from 2.4 GHz whenever one is heard well enough: 2.4 GHz can be quicker
+//! A wider band, 5 or 6 GHz, is kept to while it carries well, and tried
+//! from 2.4 GHz when one heard well enough is known to answer no slower,
+//! or while the card moves enough to use its room: 2.4 GHz can be quicker
 //! to the gateway but carries far less.
 //! wpa_supplicant still roams on its own when the signal fades; this
 //! moves the card only between access points it can already hear, and
@@ -94,6 +95,14 @@ const ACROSS: i16 = 10;
 /// the card's 5 GHz links heard at -50 to -54 dBm ran at a mean 730
 /// Mbit/s, none under 400, against about 287 on 2.4 GHz.
 const STRONG: i16 = -50;
+
+/// How much a card must move both ways, in Mbit/s over the span, for a
+/// wider band's room to count for more than how quickly it answers. Over
+/// the night of 16 to 17 Nov 2026 at a desk, the access point's 2.4 GHz
+/// radio answered quicker than its 5 GHz one in four of five hours, and the
+/// card went back to 5 GHz four times for room it never used: no ten
+/// seconds passed 85 Mbit/s on 2.4 GHz, linked at 287, nor 181 on 5 GHz.
+const USED: u32 = 100;
 
 /// How much quicker one measured lately must have been to be moved to:
 /// both, so neither a small figure's ratio nor a large one's few
@@ -221,7 +230,7 @@ impl Chooser {
         });
         let narrow = frequency != 0 && !wide(frequency);
         let banded = if narrow && !bad {
-            for_the_band(untried.clone(), (signal, frequency))
+            for_the_band(untried.clone(), (signal, frequency), measured)
         } else {
             None
         };
@@ -248,6 +257,7 @@ impl Chooser {
             let hemmed = hemmed_in(crowded, (signal, frequency), others);
             let unbanded = narrow
                 && !bad
+                && used(measured)
                 && !others
                     .iter()
                     .any(|other| in_band_reach(other, signal, frequency));
@@ -391,22 +401,28 @@ fn crowding((point, frequency): (&str, u32), others: &[Other]) -> Option<u8> {
     (wide(frequency) && busy > BUSIEST).then_some(busy)
 }
 
-/// Where a card on a narrower band carrying well goes for a wider one:
-/// the quickest within reach known to carry well from here, else the
-/// loudest untried within reach and not too busy. One known wins over a
-/// louder one untried, since what it carried was learnt at this hour heard
-/// about this loud, and a banded trial goes back if it carries badly.
+/// Where a card on a narrower band carrying well, as `ours` says, goes for
+/// a wider one: the quickest within reach known to carry well from here,
+/// else the loudest untried within reach and not too busy. While the card
+/// moves less than `USED`, the wider band's room goes unused, so only one
+/// known to answer no slower is gone to. One known wins over a louder one
+/// untried, since what it carried was learnt at this hour heard about this
+/// loud, and a banded trial goes back if it carries badly.
 fn for_the_band<'a>(
     untried: impl Iterator<Item = &'a Other> + Clone,
     (signal, frequency): (i16, u32),
+    ours: &Measured,
 ) -> Option<&'a Other> {
+    let using = used(ours);
     let on_it = untried.filter(|other| in_band_reach(other, signal, frequency));
     let known = on_it.clone().filter_map(|other| {
         let theirs = other.measured.as_ref()?;
-        (!badly(theirs)).then_some((slowness(theirs), other))
+        let worth = using || slowness(theirs) <= slowness(ours);
+        (!badly(theirs) && worth).then_some((slowness(theirs), other))
     });
-    let heard = on_it
-        .filter(|other| other.measured.is_none() && other.busy.is_none_or(|busy| busy <= BUSIEST));
+    let heard = on_it.filter(|other| {
+        using && other.measured.is_none() && other.busy.is_none_or(|busy| busy <= BUSIEST)
+    });
     known
         .min_by_key(|(slowness, _)| *slowness)
         .map(|(_, other)| other)
@@ -445,6 +461,12 @@ pub fn wider(to: u32, from: u32) -> bool {
 /// Whether an access point carries badly enough to try another.
 pub fn badly(measured: &Measured) -> bool {
     slowness(measured) > SLOW || measured.lost > LOSSY
+}
+
+/// Whether a card moves enough for a wider band's room to count, which a
+/// card whose kernel doesn't say what it moved isn't known to.
+fn used(measured: &Measured) -> bool {
+    measured.moving.is_some_and(|moving| moving >= USED)
 }
 
 /// An access point's p95, where nothing answered as slow as can be.

@@ -124,7 +124,7 @@ impl Measures {
             retried: per_hundred(retries, sent),
             failed: per_hundred(failed, sent),
             signal: counts.last().and_then(|counts| counts.signal),
-            moving: None,
+            moving: moving(&kept.counts, now),
         })
     }
 }
@@ -351,6 +351,35 @@ fn within<T: Copy>(kept: &VecDeque<(Instant, T)>, now: Instant) -> impl Iterator
     kept.iter()
         .filter(move |(at, _)| now.duration_since(*at) <= SPAN)
         .map(|(_, measured)| *measured)
+}
+
+/// What the card moved both ways over the span, in Mbit/s: each rise in
+/// its byte counts from one reading to the next, over the time from the
+/// first reading saying them to the last. A reading lower than the one
+/// before is a new join, whose bytes before it count nothing.
+fn moving(kept: &VecDeque<(Instant, Counts)>, now: Instant) -> Option<u32> {
+    let said: Vec<(Instant, u64)> = kept
+        .iter()
+        .filter(|(at, _)| now.duration_since(*at) <= SPAN)
+        .filter_map(|(at, counts)| Some((*at, counts.moved?)))
+        .collect();
+    let (first, last) = (said.first()?.0, said.last()?.0);
+    let micros = last.duration_since(first).as_micros();
+    if micros == 0 {
+        return None;
+    }
+    let bytes = said
+        .windows(2)
+        .filter_map(|pair| {
+            let [(_, before), (_, after)] = pair else {
+                return None;
+            };
+            after.checked_sub(*before)
+        })
+        .fold(0, u64::saturating_add);
+    // Bits a microsecond are megabits a second, rounded to the nearest.
+    let megabits = (u128::from(bytes) * 8 + micros / 2) / micros;
+    Some(u32::try_from(megabits).unwrap_or(u32::MAX))
 }
 
 /// The time by which `percent` of the answered echoes had answered, by
