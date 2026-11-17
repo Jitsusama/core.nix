@@ -1,9 +1,11 @@
 # Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_11_16.0,
 # whose command is the one Tuple's docs describe (tuple call, contacts,
 # state). Every command v2026_10_23.0 had answers its help the same, but
-# for call react, which takes emoji and animations beside its sounds; it
-# adds raised hands, shared cards and the transcription model's download.
-# v2026_10_21.0's screen sharing through the portal was seen to work here.
+# for call react, which takes emoji and animations beside its sounds. New
+# commands raise a hand, share cards and download the transcription
+# model. The log lines and stream keys tuple-call reads are in both
+# builds. Screen sharing through the portal was last seen working here on
+# v2026_10_21.0.
 # The address and checksum of each build are what Tuple's latest_version
 # endpoint gives, the one nixpkgs' own update script reads.
 #
