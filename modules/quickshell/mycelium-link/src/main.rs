@@ -6,7 +6,10 @@
 //! links its cells and networks so (XUBK2E, 2026-11-15 [2b5c927a]).
 //! `mycelium:cell/<ADDRESS>/go` goes to that session instead, its window
 //! raised or one opened on it, as `qs ipc call launcher goTo` does, which a
-//! notice from a session offers as its Go To.
+//! notice from a session offers as its Go To. A cell may say where it runs
+//! and what in it is meant, `mycelium:cell/<ADDRESS>@<machine>#<anchor>`, as
+//! a notice's whole cell link does: the machine is checked and the anchor let
+//! go, since the address alone names the session across the realm.
 //!
 //! Any page can write such a link, so it's trusted with a name and one word
 //! more. Only the step after a cell's address is read, and only `go` means
@@ -37,8 +40,13 @@ use terminal_kit::{Exit, Failure, Help};
 const GAP: Duration = Duration::from_secs(3);
 
 /// The longest name a link carries: an address is eight letters at most and
-/// a network's name a few dozen, so anything past this is no name.
+/// a network's name or a machine's a few dozen, so anything past this is no
+/// name.
 const LONGEST: usize = 64;
+
+/// The most letters a mesh address runs to, as the notices daemon reads a
+/// cell (notice.rs's `LONGEST_ADDRESS`): six or eight today, with room.
+const LONGEST_ADDRESS: usize = 12;
 
 /// `qs`, by the path the package was built with, or found on PATH.
 const QS: &str = match option_env!("MYCELIUM_LINK_QS") {
@@ -81,10 +89,29 @@ fn named(name: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
 }
 
+/// Whether `address` is one a session has on the mesh: capital letters and
+/// digits, no more than `LONGEST_ADDRESS` of them.
+fn addressed(address: &str) -> bool {
+    (1..=LONGEST_ADDRESS).contains(&address.len())
+        && address
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+}
+
+/// The address a cell's name gives, `<ADDRESS>` or `<ADDRESS>@<machine>` as
+/// a notice's whole cell link says where it runs, or none where either part
+/// is misshaped. The machine is only checked: the address names one session
+/// across the realm, and the launcher finds it wherever it runs.
+fn address_of(name: &str) -> Option<&str> {
+    let (address, machine) = name.split_once('@').unwrap_or((name, ""));
+    let placed = !name.contains('@') || named(machine);
+    (addressed(address) && placed).then_some(address)
+}
+
 /// What `link` names, or what's wrong with it: its scheme in any case, with
 /// or without the slashes a page may add, then its kind and its name, and
 /// for a cell `go` after it; what else follows the name, a step, a query or
-/// a fragment, is let go.
+/// a fragment such as a notice's `#notice:<id>`, is let go.
 fn read(link: &str) -> Result<Link, Failure> {
     let wrong = |why: &str| {
         Failure::new(Exit::Usage, format!("{link:?} isn't a mycelium link"))
@@ -102,15 +129,21 @@ fn read(link: &str) -> Result<Link, Failure> {
     let mut steps = path.split('/');
     let kind = steps.next().unwrap_or("");
     let name = steps.next().unwrap_or("");
-    if !named(name) {
-        return Err(wrong(
-            "it names no cell or network in letters, digits, dots, hyphens or underscores",
-        ));
-    }
     match kind {
-        "cell" if steps.next() == Some("go") => Ok(Link::GoTo(name.to_owned())),
-        "cell" => Ok(Link::Cell(name.to_owned())),
-        "network" => Ok(Link::Network(name.to_owned())),
+        "cell" => {
+            let address = address_of(name).ok_or_else(|| {
+                wrong("its cell isn't an address in capitals, and a machine after @ if any")
+            })?;
+            Ok(if steps.next() == Some("go") {
+                Link::GoTo(address.to_owned())
+            } else {
+                Link::Cell(address.to_owned())
+            })
+        }
+        "network" if named(name) => Ok(Link::Network(name.to_owned())),
+        "network" => Err(wrong(
+            "it names no network in letters, digits, dots, hyphens or underscores",
+        )),
         _ => Err(wrong("its kind is neither cell nor network")),
     }
 }
@@ -174,7 +207,7 @@ fn help() -> Help {
     )
     .argument(
         "<link>",
-        "mycelium:cell/<address>[/go] or mycelium:network/<name>",
+        "mycelium:cell/<ADDRESS>[@machine][/go][#anchor] or mycelium:network/<name>",
     )
     .exit(Exit::Usage, "the link names no cell or network")
     .exit(Exit::Failed, "qs couldn't be run")
@@ -269,6 +302,40 @@ mod tests {
             Ok(Link::Network("machines".to_owned())),
             "a network has no window to go to"
         );
+    }
+
+    #[test]
+    fn a_cell_link_names_its_address_wherever_it_says_the_cell_runs() {
+        for link in [
+            "mycelium:cell/DAHTNJ@kestrel",
+            "mycelium:cell/DAHTNJ@kestrel#notice:42",
+            "mycelium:cell/DAHTNJ@kestrel/talk#notice:42",
+            "mycelium://cell/DAHTNJ@work-laptop.local#ask",
+        ] {
+            assert_eq!(named_by(link), Ok(cell("DAHTNJ")), "{link} named another");
+        }
+        assert_eq!(
+            named_by("mycelium:cell/DAHTNJ@kestrel/go#notice:42"),
+            Ok(going_to("DAHTNJ"))
+        );
+    }
+
+    #[test]
+    fn a_cell_link_with_a_misshaped_address_or_machine_is_refused() {
+        for link in [
+            "mycelium:cell/dahtnj",
+            "mycelium:cell/DahtNJ",
+            "mycelium:cell/DAHT.NJ",
+            "mycelium:cell/DAHTNJDAHTNJ1",
+            "mycelium:cell/DAHTNJ@",
+            "mycelium:cell/@kestrel",
+            "mycelium:cell/DAHTNJ@kes;trel",
+            "mycelium:cell/DAHTNJ@-help",
+            "mycelium:cell/DAHTNJ@kestrel@osprey",
+            &format!("mycelium:cell/DAHTNJ@{}", "k".repeat(LONGEST + 1)),
+        ] {
+            assert!(read(link).is_err(), "{link} was followed");
+        }
     }
 
     #[test]
