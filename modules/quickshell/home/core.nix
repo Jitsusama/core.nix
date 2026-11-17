@@ -68,6 +68,7 @@
   "launcher/CommandRow.js"
   "launcher/KeysHeld.js"
   "launcher/Awaited.js"
+  "launcher/Thread.js"
   "launcher/RowsPlace.js"
   "launcher/Gathering.qml"
   "launcher/Reached.js"

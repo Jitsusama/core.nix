@@ -21,6 +21,7 @@ import QtQuick
 import "Pacing.js" as Pacing
 import "Presented.js" as Presented
 import "Spots.js" as Spots
+import "Thread.js" as Thread
 import "Wanted.js" as Wanted
 
 QtObject {
@@ -250,13 +251,39 @@ QtObject {
         check(failures, "a tick without its clocks keeps the last",
             Pacing.feltTicked(felt, 164, pace).thread.ran, 60);
         check(failures, "it's said after the stall's parts, sleeping what neither took",
-            Pacing.threadSaid(felt.stall, felt.stallThread),
+            Thread.said(felt.stall, felt.stallThread, "the stall"),
             "; its thread ran 40 ms of the stall, waited 38 for a CPU and slept 22");
         check(failures, "clocks read past the stall leave no sleep below nothing",
-            Pacing.threadSaid(20, { ran: 15, waited: 9 }),
+            Thread.said(20, { ran: 15, waited: 9 }, "the stall"),
             "; its thread ran 15 ms of the stall, waited 9 for a CPU and slept 0");
         check(failures, "an opening that never stalled says nothing of it",
-            Pacing.threadSaid(0, { ran: 0, waited: 0 }), "");
+            Thread.said(0, { ran: 0, waited: 0 }, "the stall"), "");
+        keyThreaded(failures);
+    }
+
+    // What a slow key's thread did while it searched: Joel's "↓" in Agents
+    // took 121 ms searching, mid key repeat, with every move around it under
+    // 6, and his "ca" waited 62 ms behind the shell's other work, neither
+    // saying whether the thread ran, waited for a CPU or slept (2026-11-16).
+    function keyThreaded(failures) {
+        const spent = Thread.spent({ ran: 1000.25, waited: 40 }, { ran: 1003.5, waited: 48 });
+        check(failures, "a key's part is its clocks across its searching",
+            JSON.stringify(spent), JSON.stringify({ ran: 3.25, waited: 8 }));
+        check(failures, "it's said of the key's searching",
+            Thread.said(121, spent, "its searching"),
+            "; its thread ran 3 ms of its searching, waited 8 for a CPU and slept 110");
+        check(failures, "a key read without clocks says nothing of them",
+            Thread.said(121, null, "its searching"), "");
+        check(failures, "nor does one whose run clock went back",
+            Thread.spent({ ran: 9, waited: 4 }, { ran: 5, waited: 4 }), null);
+        check(failures, "nor one whose wait went back",
+            Thread.spent({ ran: 5, waited: 9 }, { ran: 9, waited: 4 }), null);
+        check(failures, "a key without a reading at its start has none",
+            Thread.spent(null, { ran: 5, waited: 4 }), null);
+        check(failures, "a wait that failed to read at the start isn't taken as none waited",
+            Thread.spent({ ran: 5, waited: 0 }, { ran: 9, waited: 5000 }), null);
+        check(failures, "nor one that failed at the end",
+            Thread.spent({ ran: 5, waited: 40 }, { ran: 9, waited: 0 }), null);
     }
 
     // What held an opening's longest stall, by the work it ran into: Joel's

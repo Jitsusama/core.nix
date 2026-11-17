@@ -88,6 +88,7 @@ import "launcher/SystemPart.js" as SystemPart
 import "launcher/CommandRow.js" as CommandRow
 import "launcher/KeysHeld.js" as KeysHeld
 import "launcher/Awaited.js" as Awaited
+import "launcher/Thread.js" as Thread
 import "launcher/RowsPlace.js" as RowsPlace
 import "launcher/Reached.js" as Reached
 import "launcher/Headings.js" as Headings
@@ -5008,6 +5009,7 @@ Scope {
         const heard = KeyTimes.now();
         const pressed = KeyTimes.pressed();
         const collected = Heap.collected();
+        const thread = threadNow();
         if (held.length > 0 && row.given) {
             ask(row);
             return true;
@@ -5087,7 +5089,7 @@ Scope {
         // drawn and the ask let go by then: a kept Super+N timed its fill
         // as "→ On Screen" (a gate, 2026-11-16).
         if (openAsked < 0 && !fillingPlace)
-            keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true);
+            keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread);
         return went();
     }
 
@@ -5957,6 +5959,7 @@ Scope {
         const heard = KeyTimes.now();
         const pressed = KeyTimes.pressed();
         const collected = Heap.collected();
+        const thread = threadNow();
         const leaving = held[held.length - 1].row;
         const left = held[held.length - steps];
         // A talk's words put away are kept at once, not a moment later.
@@ -5975,7 +5978,7 @@ Scope {
         // the field times for them is this step, named and begun as one,
         // rather than the words alone and timed only from the field.
         stepOut = stepTimed && wordsBack
-            ? { text: `\u2190 ${leaving.name}`, began, heard, pressed, collected } : null;
+            ? { text: `\u2190 ${leaving.name}`, began, heard, pressed, collected, thread } : null;
         try {
             restart(words);
         } finally {
@@ -5987,7 +5990,7 @@ Scope {
             return;
         searchParts = trials.stepped(searchParts, { began, made: began, pushed,
             opened: pushed, ended: Date.now(), making: {} });
-        keyTimed(`\u2190 ${leaving.name}`, began, heard, pressed, collected, true);
+        keyTimed(`\u2190 ${leaving.name}`, began, heard, pressed, collected, true, thread);
     }
 
     // A step whose line holds its words, as a save's name, says where the
@@ -6463,10 +6466,14 @@ Scope {
     // own line says which.
     // `stepped` when it's a step in or out, which its line says as it
     // is presented, rather than typed words that look like one.
-    function keyTimed(typed, began, heard, pressed, collected, stepped) {
+    // `thread` is the shell thread's clocks as the key began (threadNow), so
+    // its line says what of its searching the thread ran, waited for a CPU
+    // and slept (launcher/Thread.js).
+    function keyTimed(typed, began, heard, pressed, collected, stepped, thread) {
         keysDrawing = Pacing.refreshedActs(keysDrawing, [{ text: typed, began, collected,
             step: stepped === true ? typed : "",
-            searched: Date.now() - began, parts: searchParts, begun: null,
+            searched: Date.now() - began, thread: Thread.spent(thread, threadNow()),
+            parts: searchParts, begun: null,
             rendered: null, pressed: pressed > 0 ? pressed : heard, heard,
             done: KeyTimes.now() }]);
         keysPressed.push(pressed > 0 ? pressed : null);
@@ -6561,7 +6568,8 @@ Scope {
             Object.assign({
                 waiting: Math.round(newest.begun - newest.done),
                 drawing: Math.round(shown - newest.begun),
-                collecting: Math.round(Heap.collected() - newest.collected)
+                collecting: Math.round(Heap.collected() - newest.collected),
+                thread: newest.thread
             }, frameSplit(newest, shown)));
         // Every key the frame drew keeps it as its own, and the list holds
         // one time a key.
@@ -6692,6 +6700,7 @@ Scope {
         const heard = KeyTimes.now();
         const pressed = KeyTimes.pressed();
         const collected = Heap.collected();
+        const thread = threadNow();
         searchParts = null;
         // An arrow's drawer follows as it always has, the letters before
         // it done (Pacing.lettersComing), and the drawer they waited for
@@ -6702,7 +6711,7 @@ Scope {
         movingFrom = pressed > 0 ? pressed : heard;
         current = to;
         movingFrom = 0;
-        keyTimed(arrow, began, heard, pressed, collected);
+        keyTimed(arrow, began, heard, pressed, collected, false, thread);
     }
     property real movingFrom: 0
 
@@ -7158,8 +7167,10 @@ Scope {
         // Its text stays the field's, which the next key reads as what
         // the field held before it (Awaited.before).
         keysDue = keysDue.concat([out ? { text, began: out.began, heard: out.heard,
-            pressed: out.pressed, collected: out.collected, step: out.text }
-            : { text, began, heard, pressed, collected: Heap.collected(), step: "" }]);
+            pressed: out.pressed, collected: out.collected, step: out.text,
+            thread: out.thread }
+            : { text, began, heard, pressed, collected: Heap.collected(), step: "",
+                thread: threadNow() }]);
         if (searchedThisTurn)
             return;
         searchedThisTurn = true;
@@ -7202,7 +7213,7 @@ Scope {
                 waited.timedOut === true));
         if (!asking)
             due.forEach(key => keyTimed(key.step || key.text, key.began, key.heard, key.pressed,
-                key.collected, !!key.step));
+                key.collected, !!key.step, key.thread));
     }
 
     // How long a key's list waits for the sources whose search awaits a
@@ -11296,8 +11307,12 @@ Scope {
     // The collector's and the shell thread's clocks now, as Pacing.feltBegun
     // reads them.
     function feltClocks() {
-        return { collected: Heap.collected(),
-            thread: { ran: KeyTimes.ran(), waited: KeyTimes.waited() } };
+        return { collected: Heap.collected(), thread: threadNow() };
+    }
+    // The shell thread's clocks now: what it has run and waited for a CPU,
+    // a few microseconds to read (key-times/keytimes.cpp).
+    function threadNow() {
+        return { ran: KeyTimes.ran(), waited: KeyTimes.waited() };
     }
     function feltTicked() {
         const now = KeyTimes.now();
@@ -11323,7 +11338,7 @@ Scope {
             : "";
         const collecting = Pacing.collectorSaid(feltTicks.stallCollected,
             Heap.collected() - feltCollectedFrom)
-            + Pacing.threadSaid(feltTicks.stall, feltTicks.stallThread);
+            + Thread.said(feltTicks.stall, feltTicks.stallThread, "the stall");
         feltSpans = [];
         console.info(usable >= 0
             ? `launcher: opening usable ${usable} ms from ${from}, its longest stall ${stalled} ms`
