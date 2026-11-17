@@ -1,6 +1,7 @@
 //! What the train does, case by case, the git cases against repositories
 //! of their own.
 
+use super::hub::Hub;
 use super::*;
 
 /// A state folder of the test's own.
