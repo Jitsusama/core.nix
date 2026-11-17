@@ -15,11 +15,14 @@ does next.
 A live site's row comes from its declaration in Nix rather than the record,
 so what the home says of it changes as the site does. The rows the Nix
 config declares, as declared.json writes them, stand in for the record's row
-at the same path, however it is spelled, or go first if it has none.
+at the same path, however it is spelled, or go first if it has none. Every
+row the home lists, each as it was written, goes into rows.json beside it,
+for the pages that read what each site is home to, so they read a live
+site's row as its declaration says it rather than the record's.
 
 usage: home.py <sources> <root> [<declared>], where sources holds the home's
 page and its files, root is the sites' folder, and declared is the rows the
-Nix config declares. It rewrites index.html, index.md and
+Nix config declares. It rewrites index.html, index.md, rows.json and
 llms.txt whole, and in each stripped page only what sits between the strip's
 two markers, so a run with nothing changed leaves every file as it was.
 Without declared rows, a root with no sites.json yet is left alone; with
@@ -28,11 +31,12 @@ them, they make the home, the root made if need be.
 
 import html
 import json
+import math
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 KINDS = {"mock": "Mock", "record": "Record", "explainer": "Explainer", "test": "Test", "app": "App"}
 ROMAN = ("I", "II", "III", "IV", "V", "VI")
@@ -58,6 +62,10 @@ COLOUR = re.compile(r"(?!.*(?:var\(|/\*))[#\w(). ,%/-]+")
 SCRIPT_SRC = re.compile(r"<script\b[^>]*?\bsrc\s*=\s*([\"']?)([^\"'\s>]+)\1", re.IGNORECASE)
 # Where the kit's own scripts are served from, the only ones a document loads.
 KIT = "/local-sites/kit/"
+# A step of a site's path the home links to: nothing a browser reads as a
+# scheme, host, space or escape, and no dot first: the step system's homes keep,
+# which home.nix's astray spells again for the rows Nix declares.
+STEP = re.compile(r"[A-Za-z0-9_~-][A-Za-z0-9._~-]*")
 LIGHT = "@media (prefers-color-scheme: light)"
 
 
@@ -74,6 +82,8 @@ class Site:
     status: str
     strip: bool
     pages: dict[str, str]
+    # The row as it was written, every field kept, for rows.json.
+    row: dict[str, Any] = field(compare=False, repr=False)
 
     @classmethod
     def read(cls, row: dict[str, Any]) -> Site:
@@ -89,6 +99,7 @@ class Site:
             status=str(row.get("status") or "growing"),
             strip=bool(row.get("strip")),
             pages={str(page): str(kind) for page, kind in pages.items()},
+            row=row,
         )
 
     @property
@@ -307,6 +318,42 @@ def stripped(text: str, block: str) -> str:
     return text[:at] + "\n" + block + "\n" + text[at:]
 
 
+def ours(path: object) -> bool:
+    """Whether a row's path names a page among the sites' own, as a link from the home.
+
+    Only plain steps pass, after the ./ some sessions open with, so no
+    scheme, host, backslash, step up or escape can ride in, nor whitespace a
+    browser drops before reading the rest, nor a path that isn't a string.
+    System's homes take no ./, so a reader of rows.json sees one as written.
+    """
+    if not isinstance(path, str):
+        return False
+    steps = path.removeprefix("./").removesuffix("/")
+    return bool(steps) and all(STEP.fullmatch(step) for step in steps.split("/"))
+
+
+def refused(constant: str) -> NoReturn:
+    """Refuse NaN and the infinities, which Python reads but no strict reader of rows.json does."""
+    message = f"{constant} isn't JSON"
+    raise ValueError(message)
+
+
+def finite(number: str) -> float:
+    """Read a number, refusing one too large to be anything but an infinity."""
+    if math.isfinite(read := float(number)):
+        return read
+    return refused(number)
+
+
+def drawable(rows: object) -> None:
+    """Refuse a lone surrogate anywhere in rows, which no page draws and no strict reader takes."""
+    try:
+        json.dumps(rows, ensure_ascii=False).encode("utf-8")
+    except UnicodeEncodeError:
+        message = "a lone surrogate isn't text"
+        raise ValueError(message) from None
+
+
 def inside(root: Path, page: str) -> Path | None:
     """Find the file a row names under root, or None when the name would lead out of it."""
     path = (root / page).resolve()
@@ -347,6 +394,15 @@ def write(path: Path, text: str) -> None:
         fresh = path.with_name(f".{path.name}.new")
         fresh.write_text(text, encoding="utf-8")
         fresh.replace(path)
+
+
+def live(declared: Path) -> list[Site]:
+    """Read the rows Nix declares, refusing one whose path leads off the sites."""
+    sites = [Site.read(row) for row in json.loads(declared.read_text(encoding="utf-8"))["sites"]]
+    if strays := [site.row["path"] for site in sites if not ours(site.row["path"])]:
+        message = f"declared rows {', '.join(map(repr, strays))} lead off the sites"
+        raise ValueError(message)
+    return sites
 
 
 def declaring(recorded: list[Site], declared: list[Site]) -> list[Site]:
@@ -390,14 +446,19 @@ def build(sources: Path, root: Path, declared: Path | None = None) -> str:
     # A record caught half written, or broken by a slip, leaves the last good
     # build serving and says why, since the next change to it builds again.
     try:
-        rows = json.loads(record.read_text(encoding="utf-8"))["sites"] if record.exists() else []
+        text = record.read_text(encoding="utf-8") if record.exists() else '{"sites": []}'
+        rows = json.loads(text, parse_constant=refused, parse_float=finite)["sites"]
+        drawable(rows)
         sites = [Site.read(row) for row in rows]
     except (ValueError, KeyError, TypeError, AttributeError) as error:
         return f"home: sites.json can't be read ({error}), so the last build stays"
     # Nix wrote the declared rows, so a fault in them is the build's, and fails it.
     if declared:
-        live = [Site.read(row) for row in json.loads(declared.read_text(encoding="utf-8"))["sites"]]
-        sites = declaring(sites, live)
+        sites = declaring(sites, live(declared))
+    # A row's path becomes the home's link to it, so one that would lead
+    # anywhere but a page of the sites' own is left out, and said.
+    strays = [site.row["path"] for site in sites if not ours(site.row["path"])]
+    sites = [site for site in sites if ours(site.row["path"])]
     for name in FILES:
         write(root / name, (sources / name).read_text(encoding="utf-8"))
     write(root / "favicon.svg", marked((sources / "favicon.svg").read_text(encoding="utf-8"), root))
@@ -408,6 +469,8 @@ def build(sources: Path, root: Path, declared: Path | None = None) -> str:
         (root / name).unlink(missing_ok=True)
     write(root / "llms.txt", llms(root, sites))
     write(root / "index.md", twin(sites))
+    listed = {"sites": [site.row for site in sites]}
+    write(root / "rows.json", json.dumps(listed, indent=2) + "\n")
 
     pages: dict[str, tuple[Site, str]] = {}
     for site in (site for site in sites if site.strip):
@@ -420,7 +483,8 @@ def build(sources: Path, root: Path, declared: Path | None = None) -> str:
     kept = sum(site.kept for site in sites)
     said = f"home: {len(sites) - kept} sites, {kept} kept; strips on {len(pages)} pages"
     owning = own_scripts(root, sites)
-    return said + (f"; scripts of their own in {', '.join(owning)}" if owning else "")
+    said += f"; scripts of their own in {', '.join(owning)}" if owning else ""
+    return said + (f"; left out {', '.join(map(repr, strays))}, no path of ours" if strays else "")
 
 
 if __name__ == "__main__":

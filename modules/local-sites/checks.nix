@@ -203,10 +203,12 @@ in
   };
 
   # The home's builder lists each site from its row, settled ones apart,
-  # puts each row Nix declares in its recorded row's place, strips each page
-  # that asks, names documents with scripts of their own, draws its mark in
-  # each look's tint or the other's where one is missing, leaves out and says
-  # a tint or ground that isn't a colour, and changes nothing on a second run
+  # puts each row Nix declares in its recorded row's place, says each row in
+  # rows.json as written, strips each page that asks, names documents with
+  # scripts of their own, draws its mark in each look's tint or the other's
+  # where one is missing, leaves out and says a tint or ground that isn't a
+  # colour, leaves out and says a recorded row whose path leads off the
+  # sites and fails on a declared one, and changes nothing on a second run
   # (tests/home-builds-from-its-rows.sh).
   home-builds-from-its-rows = pkgs.runCommandLocal "home-builds-from-its-rows" { } ''
     ${lib.getExe pkgs.bash} ${./tests/home-builds-from-its-rows.sh} ${

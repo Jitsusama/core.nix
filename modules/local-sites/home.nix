@@ -96,11 +96,12 @@ let
     };
   };
   # Each declared row as home.py reads it: an app, growing, and live. Its
-  # strip is the one its build writes, so the home writes none. The homes'
-  # readers (system's, the web-design skill's, Code's) still read sites.json,
-  # so its live rows stay there, and rolling this back stays safe, until
-  # they read these. A session's edit to a live row there no longer reaches
-  # the home, since the declaration stands in for it.
+  # strip is the one its build writes, so the home writes none. The home
+  # writes every row it lists into rows.json, these as declared, for the
+  # homes' readers (system's, the web-design skill's, Code's). Until each
+  # reads that, they read sites.json, so its live rows stay there, and
+  # rolling this back stays safe. A session's edit to a live row there no
+  # longer reaches the home, since the declaration stands in for it.
   declared = pkgs.writeText "local-sites-rows.json" (
     builtins.toJSON {
       sites = lib.mapAttrsToList (
@@ -157,6 +158,12 @@ let
   realm = config.jitsusama.mycelium.realm or null;
   # Rows naming a site nothing is mounted at.
   unmounted = lib.attrNames (removeAttrs cfg.rows (lib.attrNames cfg.mounts));
+  # Rows whose path isn't plain steps, which the home's builder refuses
+  # (home/home.py's ours), named here so the switch never gets that far.
+  step = "[A-Za-z0-9_~-][A-Za-z0-9._~-]*";
+  astray = lib.filter (path: builtins.match "${step}(/${step})*" path == null) (
+    lib.attrNames cfg.rows
+  );
   roots = config.jitsusama.repos.roots or null;
   # Whether the map reaches every cell of the realm (modules/mycelium/site/
   # map-check.sh): the map's live-page test, pointed at the page this
@@ -305,6 +312,13 @@ in
           "from the networks it has joined, moving the moment one changes."
         ];
         asks = "Keep it open a while; say what you'd want to see that it doesn't show.";
+        # Each machine's address on the map, which system links to.
+        homes = [
+          {
+            kind = "machine";
+            address = "#machine={name}";
+          }
+        ];
       };
       web = {
         name = "What your sessions murmur";
@@ -475,6 +489,14 @@ in
       message = lib.concatStrings [
         "jitsusama.local-sites.rows names sites with no mount: ${toString unmounted}; "
         "remove them from jitsusama.local-sites.rows too"
+      ];
+    }
+    {
+      assertion = astray == [ ];
+      message = lib.concatStrings [
+        "jitsusama.local-sites.rows names sites by paths that lead off the sites: "
+        "${toString astray}; name each by plain steps of letters, digits and -._~, "
+        "none starting with a dot"
       ];
     }
   ];
