@@ -362,6 +362,62 @@ it("a wait with no time to it is passed over", () => {
   assert.deepEqual(nowOf(toldWaits([], [timeless]), AT).waits, []);
 });
 
+/** A tie as the node serves the `tie` kind, heard at its last message. */
+function tie(ends: string, heard: number, fields: object) {
+  return { key: `tie:${ends}`, kind: "tie", heard, ...fields };
+}
+
+/** The four watches and the tie kind's, told `these` and the ties. */
+function toldTies(these: Parameters<typeof told>[0], ties: readonly object[]) {
+  const held = new Held();
+  held.took({ records: ties });
+  return { ...told(these), tie: held };
+}
+
+const HOUR_MS = 3_600_000;
+
+it("a tie is heard as its two ends, how each talked, and its strength faded to now", () => {
+  const lately = tie("OSPREY~TERN01", AT - 2 * HOUR_MS, {
+    hour: [0, 0],
+    today: [3, 1],
+    intents: ["fyi", "question"],
+    groups: ["peer.osprey"],
+    strength: 4,
+  });
+  const { ties } = nowOf(toldTies([], [lately]), AT);
+  assert.deepEqual(ties, [
+    {
+      ends: ["OSPREY", "TERN01"],
+      at: new Date(AT - 2 * HOUR_MS).toISOString(),
+      hour: [0, 0],
+      today: [3, 1],
+      intents: ["fyi", "question"],
+      strength: 2,
+    },
+  ]);
+});
+
+it("a cell's own talk, and a tie with no time or no second end, are no tie", () => {
+  const own = tie("OSPREY", AT, { hour: 1, today: 4, ties: 2 });
+  const timeless = { key: "tie:OSPREY~TERN01", kind: "tie", strength: 1 };
+  const lone = tie("OSPREY~", AT, { strength: 1 });
+  assert.deepEqual(nowOf(toldTies([], [own, timeless, lone]), AT).ties, []);
+});
+
+it("the strongest tie comes first, and a node that serves none is told apart", () => {
+  const weak = tie("KITE01~OSPREY", AT, { strength: 1 });
+  const strong = tie("OSPREY~TERN01", AT, { strength: 5 });
+  const { ties } = nowOf(toldTies([], [weak, strong]), AT);
+  assert.deepEqual(
+    ties?.map((one) => one.ends),
+    [
+      ["OSPREY", "TERN01"],
+      ["KITE01", "OSPREY"],
+    ],
+  );
+  assert.equal(nowOf(told([]), AT).ties, null);
+});
+
 it("a cell's change is drawn, and a cell gone is gone from the map", () => {
   const heard = told([session("OSPREY", "the map"), session("TERN01", "the feed")]);
   heard.cell.took({

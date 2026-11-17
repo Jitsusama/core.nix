@@ -591,6 +591,15 @@ body {
   stroke-dasharray: 3.5 3;
 }
 
+/* A receptor: a dish open to the outside, in the strongest ink so its
+   shape reads beside the membranes, which it never resembles. */
+.m-receptor {
+  fill: none;
+  stroke: var(--strong);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
 .m-off {
   stroke: var(--machine);
 }
@@ -647,6 +656,7 @@ body {
    drawn in the strongest ink, so the two never read as one. */
 .cell.hover .m-membrane,
 .cell.hover .m-dormant,
+.cell.hover .m-receptor,
 .hub:hover .m-hub {
   stroke: var(--strong);
   stroke-width: 2.5;
@@ -654,6 +664,7 @@ body {
 
 .cell.chosen .m-membrane,
 .cell.chosen .m-dormant,
+.cell.chosen .m-receptor,
 .hub.chosen .m-hub {
   stroke: var(--strong);
   stroke-width: 4;

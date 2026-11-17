@@ -30,6 +30,9 @@
   const HOLE = 5; // seeds left empty round a hub, so it has room
   const GAP = 54; // between two neighbouring discs
   const BRANCH_GAP = 2.4 * GAP; // between a hub's disc and a branch's, so each colony reads as its own
+  const EDGE_GAP = 2 * GAP; // between the furthest network and the receptors at the edge
+  const DISH_LIP = 0.6; // how far above a receptor's middle its dish's lips reach, in R
+  const DISH_DEPTH = 1.6; // its curve's pull below the middle, which puts its floor half an R down
   const RING_MIN = 190; // the least distance from the machines to a hub
   const MACHINE_STEP = 96;
   const MACHINE_SPREAD = 0.4; // the least distance between machines, as a share of the ring
@@ -198,6 +201,23 @@
     // never by its code.
     return middle.replace(/\u2026|\.\.\./g, "").trim() || `Unnamed cell on ${s.machine || "no machine"}`;
   };
+
+  // The receptors stand together at the realm's edge, as one group of
+  // their own: the sources the network hears from, never a network.
+  const OUTSIDE = "#outside";
+  // What a receptor heard, in the node's own counts: how much came in
+  // today and this hour, and how much of it was addressed to him.
+  const sensedWords = (n) => {
+    const today = Number(n.today) || 0;
+    const hour = Number(n.hour) || 0;
+    const his = Number(n.addressed) || 0;
+    if (!today) return "Listening; nothing has come in today";
+    return `${plural(today, "arrival")} today, ${his ? `${NUMBER.format(his)} addressed to you` : "none addressed to you"}, ${hour ? `${NUMBER.format(hour)} this hour` : "none this hour"}`;
+  };
+  // What a group of cells is counted as: receptors when it holds only them.
+  const kindWord = (cells) => (cells.length && cells.every((s) => s.kind === "receptor") ? "receptor" : "cell");
+  // The group a cell is walked in: its network, or the receptors' edge.
+  const netOf = (s) => s?.hub || (s?.loose?.edge ? s.loose : null);
 
   const splitTitle = (title) => {
     const at = title.indexOf(": ");
@@ -378,7 +398,7 @@
       networks: (s.groups || []).filter((g) => counted.has(g)),
       leads: now.teams.filter((t) => t.lead === s.id).map((t) => lower(t.key)),
     }));
-    return { at: now.at, networks: [...teams, ...shared], cells, machines: now.machines, messages: now.messages, waits: now.waits, balance: now.balance };
+    return { at: now.at, networks: [...teams, ...shared], cells, machines: now.machines, messages: now.messages, waits: now.waits, balance: now.balance, ties: now.ties };
   };
 
   const model = (raw) => {
@@ -387,7 +407,12 @@
     const orchestrations = now.networks.filter((n) => n.shape === "orchestration");
     const shapes = shapesFor(orchestrations.map((n) => n.name));
     const hubs = new Map();
-    for (const n of orchestrations) {
+    // An orchestration the node left untitled is named by its quest's
+    // network, the same id on the quest's side, so it never reads as a
+    // bare id where a title is known.
+    const questTitle = new Map(now.networks.filter((n) => n.title && n.name.startsWith("quest.")).map((n) => [n.name.slice("quest.".length), n.title]));
+    for (const o of orchestrations) {
+      const n = o.title ? o : { ...o, title: questTitle.get(o.name.slice(o.name.indexOf(".") + 1)) || null };
       const [name, carries] = splitTitle(n.title || n.short || n.name);
       hubs.set(n.name, {
         key: n.name,
@@ -416,14 +441,31 @@
         once.set(c.name, { ...keep, networks: [...new Set([...keep.networks, ...other.networks])] });
       }
     }
+    // A network sits within another, so a cell on a quest that sits under
+    // an orchestration works in that orchestration, even when the node
+    // names only the quest: it is alone only in no orchestration at all.
+    const withinOf = new Map(now.networks.map((n) => [n.name, n.within]));
+    const orchestrationOf = (name) => {
+      const seen = new Set();
+      for (let at = name; at && !seen.has(at); at = withinOf.get(at)) {
+        if (hubs.has(at)) return hubs.get(at);
+        seen.add(at);
+      }
+      return null;
+    };
     const cells = [...once.values()].map((c) => {
-      const on = c.networks.map((name) => hubs.get(name)).filter(Boolean);
+      const on = [...new Set(c.networks.map(orchestrationOf).filter(Boolean))];
       const own = on.find((h) => c.quest && c.quest.toLowerCase().endsWith(`-${h.key.split(".").pop()}`));
       const deepest = [...on].sort((a, b) => depth(b) - depth(a))[0];
       const hub = own || deepest || null;
       const windowed = !c.window && (c.title || "").startsWith("\u03c0 - ");
+      const receptor = c.type === "receptor";
       const s = {
         id: c.id || c.name,
+        // A receptor is where the outside comes in (mail, calls, the
+        // calendar): a cell of the realm's edge, never one working alone.
+        kind: receptor ? "receptor" : "session",
+        senses: receptor ? c.counts || {} : null,
         address: c.name,
         machine: c.machine,
         since: c.since,
@@ -433,11 +475,11 @@
         // stand-in for a cell that said nothing.
         purpose: windowed || c.title === UNNAMED ? null : c.title || null,
         quest: c.quest || null,
-        doing: c.doing || null,
+        doing: receptor ? sensedWords(c.counts || {}) : c.doing || null,
         wants: c.asks || null,
         repo: c.repo || null,
         usage: c.usage || {},
-        standing: STANDING_OF_CELL[c.standing] || "quiet",
+        standing: receptor ? (c.state === "reading" ? "moving" : "quiet") : STANDING_OF_CELL[c.standing] || "quiet",
         hub,
         also: on.filter((h) => h !== hub),
         networks: c.networks,
@@ -449,7 +491,14 @@
     // with the others like it on its own machine, so each cell stays under
     // the machine it runs on.
     const loose = new Map();
+    const outside = { key: OUTSIDE, name: "Receptors", carries: "", shape: "circle", within: null, children: [], cells: [], edge: true };
     for (const s of cells) {
+      if (s.kind === "receptor") {
+        s.hub = null;
+        s.loose = outside;
+        outside.cells.push(s);
+        continue;
+      }
       if (s.hub) {
         s.hub.cells.push(s);
         continue;
@@ -459,7 +508,14 @@
       s.loose = loose.get(on);
       s.loose.cells.push(s);
     }
+    // Where they run is said only to tell two such groups apart.
+    if (loose.size === 1) for (const h of loose.values()) h.name = "Working alone";
     for (const h of loose.values()) hubs.set(h.key, h);
+    if (outside.cells.length) {
+      const senses = outside.cells.map((s) => s.purpose || s.address).sort(collate);
+      outside.carries = `where ${senses.length > 1 ? `${senses.slice(0, -1).join(", ")} and ${senses.at(-1)}` : senses[0]} come in from outside, each listened to for the cells that read it`;
+      hubs.set(OUTSIDE, outside);
+    }
     for (const h of hubs.values()) h.lead = cells.find((s) => s.leads.includes(h.key)) || null;
     // A hub is placed by the machine most of its cells run on. That is
     // where it sits on the map and in the tree, never what it belongs to:
@@ -489,7 +545,7 @@
       .map((n) => ({ key: n.name, shape: n.shape, short: n.short || n.name, title: n.title, cells: n.cells.map((a) => byAddress.get(a)).filter(Boolean) }))
       .filter((n) => n.cells.length >= 2);
     const repositories = new Set(cells.map((s) => s.repo).filter(Boolean)).size || shared.filter((n) => n.shape === "repository").length;
-    return { at: now.at, hubs, cells, byAddress, byId, shared, machines: now.machines, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, repositories };
+    return { at: now.at, hubs, cells, byAddress, byId, shared, machines: now.machines, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, repositories };
   };
 
   // ---- Places that never move. ----
@@ -544,7 +600,7 @@
     // and a machine opened is the arc it carries.
     const machineAt = new Map(m.machines.map((x, i) => [x.name, i]));
     const arc = (h) => machineAt.get(h.machine) ?? m.machines.length;
-    const tops = [...m.hubs.values()].filter((h) => !h.within).sort((a, b) => Boolean(a.alone) - Boolean(b.alone) || arc(a) - arc(b) || collate(a.name, b.name));
+    const tops = [...m.hubs.values()].filter((h) => !h.within && !h.edge).sort((a, b) => Boolean(a.alone) - Boolean(b.alone) || arc(a) - arc(b) || collate(a.name, b.name));
     const familyWidth = (h) => {
       const kids = h.children.reduce((sum, c) => sum + familyWidth(c) + GAP, 0);
       return Math.max(2 * disc.get(h.key), kids - GAP);
@@ -581,6 +637,13 @@
       const d = ring + disc.get(h.key);
       place(h, Math.cos(a) * d, Math.sin(a) * d, a);
     });
+    // The receptors stand at the edge, above everything the ring and its
+    // branches reach, since they are where the outside comes in.
+    const edge = m.hubs.get(OUTSIDE);
+    if (edge) {
+      const outer = Math.max(ring, ...[...at].map(([k, [x, y]]) => Math.hypot(x, y) + disc.get(k)));
+      place(edge, 0, -(outer + EDGE_GAP + disc.get(OUTSIDE)), -Math.PI / 2);
+    }
     // Machines stand in a column, apart in proportion to the ring, since a
     // machine's mark is its name, wide and short: a row of them would
     // need several times the room to keep their boxes apart.
@@ -971,6 +1034,11 @@
   let pos = new Map(); // each cell's place
   let near = null; // what the chosen thing touches: {ids, hubs, links}
   let hover = null;
+  // The machines the networks run on are a layer of their own, off until
+  // "m" or opening a machine puts it on: where a cell runs says nothing of
+  // the network it is part of, so the map is networks and cells alone.
+  let machinesShown = false;
+  const shownMachines = () => (machinesShown ? current.machines : []);
 
   // Each mark says which level the arrows walk it on and which network it
   // sits in, so a probe can judge the map by level from outside.
@@ -989,7 +1057,7 @@
   // it is far is the paint's to say, and a new choice leaves it alone.
   const cellMarkClass = (s) => (chosen?.kind === "cell" && chosen.id === s.address ? "cell chosen m-hit" : "cell m-hit");
   const cellMarkup = (s, [x, y]) => {
-    const net = esc(s.hub?.key || "");
+    const net = esc(netOf(s)?.key || "");
     return `<circle class="${cellMarkClass(s)}" data-key="c:${esc(s.address)}" data-level="${net || LOOSE_LEVEL}" data-within="${net}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${R + 4}"/>`;
   };
   // What a cell paints, innermost last: what changed, what waits on it,
@@ -1000,6 +1068,14 @@
     const parts = [];
     const disc = (cls, r) => parts.push({ tag: "circle", cls, at, r, key, parent });
     if (changed.has(s.id)) disc("m-changed", R + 4);
+    // A receptor is a dish open to the outside, its dot inside: no
+    // membrane, so it never reads as a session at work.
+    if (s.kind === "receptor") {
+      const [x, y] = at;
+      parts.push({ tag: "path", cls: "m-receptor", line: [[x - R, y - R * DISH_LIP], [x, y + R * DISH_DEPTH], [x + R, y - R * DISH_LIP]], key, parent });
+      disc(s.standing === "moving" ? "m-nucleus" : "m-quiet", QUIET_DOT);
+      return parts;
+    }
     // A ring round what holds others up: dashed, since it waits rather than
     // works, and wider with each question and with the oldest one's age.
     const grow = swell(s.owes);
@@ -1142,14 +1218,16 @@
     pos = placed(m, L);
     near = chosen ? nearOf(chosen) : null;
     const folds = foldsNow();
-    if (drawnFor?.m === m && drawnFor.L === L && sameSet(folds, folded)) {
+    const same = drawnFor?.m === m && drawnFor.L === L && drawnFor.machines === machinesShown;
+    if (same && sameSet(folds, folded)) {
       restyle();
       drawnAgain();
       return;
     }
-    const marks = drawnFor?.m === m && drawnFor.L === L ? world.querySelector("g.nodes") : null;
+    const marks = same ? world.querySelector("g.nodes") : null;
     const was = folded;
-    drawnFor = { m, L };
+    drawnFor = { m, L, machines: machinesShown };
+    const machines = shownMachines();
     const cords = [];
     const hyphae = [];
     const cross = [];
@@ -1162,7 +1240,7 @@
     lineShapes = [];
     treeAdj = new Map();
     crossAdj = new Map();
-    for (const x of m.machines) {
+    for (const x of machines) {
       spots.set(`m:${x.name}`, L.machines.get(x.name));
       sizes.set(`m:${x.name}`, MACHINE_R);
     }
@@ -1206,6 +1284,8 @@
       if (h.within) {
         link(treeAdj, `h:${h.within}`, `h:${h.key}`);
         cords.push({ tag: "path", ...inked("m-cord", () => near.hubs.has(h.key) && near.hubs.has(h.within), quiet(h)), w: weight, line: opens(curve(L.at.get(h.within), at, 0.08), "net", h.key) });
+      } else if (!machinesShown) {
+        // With no machine drawn, a top network hangs from nothing.
       } else if ((tops.get(h.machine) || 0) > CORD_BUNDLE_OVER) {
         link(treeAdj, `m:${h.machine}`, `h:${h.key}`);
         const turn = (((L.angle.get(h.key) + Math.PI / 2) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
@@ -1221,7 +1301,7 @@
     // A machine feeding a network it isn't the root of draws its own cord
     // to the network's hub, weighted by the cells it runs there.
     for (const h of m.hubs.values()) {
-      if (h.within) continue;
+      if (h.within || !machinesShown) continue;
       for (const [machine, count] of h.feeds) {
         if (machine === h.machine || !L.machines.has(machine)) continue;
         link(crossAdj, `m:${machine}`, `h:${h.key}`);
@@ -1270,9 +1350,9 @@
       }
     }
     // Machines joined to each other: the link that keeps a realm one.
-    const machinesAt = m.machines.map((x) => L.machines.get(x.name));
+    const machinesAt = machines.map((x) => L.machines.get(x.name));
     for (let i = 1; i < machinesAt.length; i++) {
-      const [a, b] = [`m:${m.machines[i - 1].name}`, `m:${m.machines[i].name}`];
+      const [a, b] = [`m:${machines[i - 1].name}`, `m:${machines[i].name}`];
       link(treeAdj, a, b);
       const [p, q] = [machinesAt[i - 1], machinesAt[i]];
       const line = [p, [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2], q];
@@ -1280,7 +1360,7 @@
       cords.push({ tag: "path", ...inked("m-link", () => false), line });
     }
     if (!marks) {
-      m.machines.forEach((x) => nodes.push(machineMarkup(x, L.machines.get(x.name))));
+      machines.forEach((x) => nodes.push(machineMarkup(x, L.machines.get(x.name))));
       for (const h of m.hubs.values()) nodes.push(hubMarkup(h, L.at.get(h.key)));
       for (const s of m.cells) if (pos.has(s.id) && !isFolded(s)) nodes.push(cellMarkup(s, pos.get(s.id)));
     }
@@ -1331,7 +1411,7 @@
       if (near && !near.hubs.has(h.key) && key !== pointed) continue;
       const a = L.angle.get(h.key);
       const n = countsOf(h.cells);
-      const sub = [plural(h.cells.length, "cell"), ...["asks", "stuck"].filter((s) => n[s]).map((s) => `${n[s]} ${STANDING_WORD[s]}`)].join(" \u00b7 ");
+      const sub = [plural(h.cells.length, kindWord(h.cells)), ...["asks", "stuck"].filter((s) => n[s]).map((s) => `${n[s]} ${STANDING_WORD[s]}`)].join(" \u00b7 ");
       const busy = [n.asks, n.stuck, n.moving, h.cells.length];
       out.push({ key: `h:${h.key}`, kind: "hub", rank: 1, busy, at: L.at.get(h.key), r: HUB_R, disc: L.disc.get(h.key), out: [Math.cos(a), Math.sin(a)], name: lines(clipped(h.name), 22), sub, far: near && !near.hubs.has(h.key) });
     }
@@ -1340,7 +1420,7 @@
     // A machine's name is its mark, so it shows in full whatever is open,
     // as a hub's disc does; only when the choice touches it does it say
     // what it carries.
-    for (const x of m.machines) {
+    for (const x of shownMachines()) {
       const key = `m:${x.name}`;
       const far = near && !near.machines.has(x.name) && key !== pointed;
       const off = x.state !== "ready";
@@ -1739,7 +1819,7 @@
     if (c.kind === "machine") return `m:${c.id}`;
     return current?.hubs.has(c.id) ? `h:${c.id}` : null;
   };
-  const firstKey = () => (current.machines[0] ? `m:${current.machines[0].name}` : spots.keys().next().value);
+  const firstKey = () => (shownMachines()[0] ? `m:${shownMachines()[0].name}` : spots.keys().next().value);
   const pointing = () => view.contains(document.activeElement) || tree.contains(document.activeElement);
 
   // Where the keys rest, and the level they walk, said on the marks too.
@@ -1864,15 +1944,15 @@
   const levelOf = (key) => {
     if (!key || key[0] !== "c") return { hub: null, keys: topKeys() };
     const s = current.byAddress.get(key.slice(2));
-    const hub = s?.hub || null;
-    const keys = (hub ? hub.cells : current.cells.filter((x) => !x.hub)).map((x) => `c:${x.address}`).filter((k2) => spots.has(k2));
+    const hub = netOf(s);
+    const keys = (hub ? hub.cells : current.cells.filter((x) => !netOf(x))).map((x) => `c:${x.address}`).filter((k2) => spots.has(k2));
     return { hub, keys };
   };
   const topKeys = () => [...spots.keys()].filter((key) => key[0] !== "c");
   const levelWords = (key) => {
     const { hub } = levelOf(key);
-    if (key?.[0] !== "c") return "Arrows walk the machines and networks; Return goes in.";
-    return `Arrows walk ${hub ? `the cells of ${hub.name}` : "the cells working alone"}; - comes back out.`;
+    if (key?.[0] !== "c") return `Arrows walk the ${machinesShown ? "machines and networks" : "networks"}; Return goes in.`;
+    return `Arrows walk ${hub?.edge ? "the receptors" : hub ? `the cells of ${hub.name}` : "the cells working alone"}; - comes back out.`;
   };
   // Into a network: the keys land on its cell nearest `around`, by
   // default the middle of the view, which is where the eye already is.
@@ -2091,7 +2171,7 @@
   };
 
   const wholeBox = () => {
-    const points = [...L.machines.values()];
+    const points = shownMachines().map((x) => L.machines.get(x.name));
     for (const h of current.hubs.values()) {
       const [x, y] = L.at.get(h.key);
       const r = L.disc.get(h.key);
@@ -2553,10 +2633,10 @@
         // The whole of the cord it hangs from comes into view too, out to
         // its machine or the network it branches from, so the line that was
         // clicked is never cut off at the edge.
-        const root = hub.within ? L.at.get(hub.within) : L.machines.get(hub.machine);
+        const root = hub.within ? L.at.get(hub.within) : machinesShown && L.machines.get(hub.machine);
         if (root) points.push(root);
         // So do the cords from every other machine feeding it.
-        if (!hub.within) for (const [x] of hub.feeds) if (L.machines.has(x)) points.push(L.machines.get(x));
+        if (!hub.within && machinesShown) for (const [x] of hub.feeds) if (L.machines.has(x)) points.push(L.machines.get(x));
       } else {
         const n = current.shared.find((x) => x.key === c.id);
         points = (n?.cells || []).map((s) => pos.get(s.id)).filter(Boolean);
@@ -2628,6 +2708,7 @@
   const apply = (animate) => {
     const c = fromHash();
     chosen = knows(c) ? c : null;
+    if (chosen?.kind === "machine") machinesShown = true;
     const key = keyOf(chosen);
     if (key) {
       pointed = key;
@@ -2663,12 +2744,13 @@
   };
   const countsLine = (cells) => {
     const n = countsOf(cells);
-    const bits = [plural(cells.length, "cell")];
+    const bits = [plural(cells.length, kindWord(cells))];
     for (const s of STANDINGS) if (n[s]) bits.push(`${n[s]} ${STANDING_WORD[s]}`);
     return bits.map((b) => b.replaceAll(" ", "\u00a0")).join("\u00a0\u00b7 ");
   };
 
   const stateGlyph = (s) => {
+    if (s.kind === "receptor") return RECEPTOR_GLYPH(s.standing === "moving");
     const ring = s.standing === "asks" ? " m-asks" : s.standing === "stuck" ? " m-stuck" : "";
     const inner =
       s.standing === "dormant"
@@ -2782,6 +2864,12 @@
     const shown = moving.slice(0, DOINGS_SHOWN).map((s) => `${s.short}: ${(s.doing || "in a turn").replace(/[.\s]+$/, "")}`);
     const more = moving.length - shown.length;
     return `${plural(moving.length, "cell")} moving. ${shown.join("; ")}${more ? `; and ${more} more` : ""}.`;
+  };
+  // The receptors, each said in full, since there are only a few and each
+  // hears something different.
+  const sensesDoing = (cells) => {
+    const reading = cells.filter((s) => s.standing === "moving").length;
+    return `${reading ? `${plural(reading, "receptor")} reading` : "Nothing reading"}. ${cells.map((s) => `${s.short}: ${(s.doing || "listening").replace(/[.\s]+$/, "")}`).join("; ")}.`;
   };
   const cellDoing = (s) => {
     if (s.standing === "moving") return s.doing || "In a turn now";
@@ -3013,11 +3101,12 @@
     const m = current;
     const used = new Set(m.cells.map((s) => s.machine));
     const asks = m.cells.filter((s) => s.standing === "asks");
-    const tops = [...m.hubs.values()].filter((h) => !h.within && !h.alone);
+    const tops = [...m.hubs.values()].filter((h) => !h.within && !h.alone && !h.edge);
+    const sensing = m.hubs.get(OUTSIDE)?.cells.length || 0;
     const levels = m.machines.filter((x) => cellsOn(x.name).length).map((x) => healthRow(x.name, cellsOn(x.name), `machine=${x.name}`));
     return (
       `<h2 id="panel-title">Now</h2>` +
-      `<p class="carries">${esc(`Your whole network: ${plural(m.cells.length, "cell")} in ${plural(tops.length, "orchestration")}, on ${used.size} of ${plural(m.machines.length, "machine")}.`)}</p>` +
+      `<p class="carries">${esc(`Your whole network: ${plural(m.cells.length - sensing, "cell")} in ${plural(tops.length, "orchestration")}${sensing ? `, ${plural(sensing, "receptor")} at its edge` : ""}, on ${used.size} of ${plural(m.machines.length, "machine")}.`)}</p>` +
       glance(
         esc("Every cell you run, the networks they work in and the machines they run on."),
         esc(groupDoing(m.cells)),
@@ -3045,6 +3134,7 @@
       `<dl>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>A cell moving: in a turn now</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane" r="11"/><circle class="m-quiet" r="5.5"/></svg></dt><dd>Quiet: waiting for its next word</dd></div>` +
+      `<div><dt>${RECEPTOR_GLYPH(true)}</dt><dd>A receptor: a dish at the network's edge where mail, calls or the calendar come in, its dot filled while it is reading</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-dormant" r="11"/></svg></dt><dd>Dormant: parked, its place kept</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane m-asks" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>Needs you, or stuck: its ring says so, and its name shows as you come close</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-waits" r="13"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>A question waiting: a dashed ring round a cell asked something three minutes or more ago that ${m.judged ? "hasn't answered it yet" : "has said nothing since"}, wider the more questions and the older the first; a network holding any is ringed round its ground</dd></div>` +
@@ -3057,7 +3147,7 @@
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><g class="hub quiet"><circle class="m-hub" r="12"/><path class="m-hub-shape" d="${SHAPES.square(6)}"/></g></svg></dt><dd>A quiet network: none of its cells at work, so drawn lighter</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cord" d="M-13,0H13" style="--w:4px"/></svg></dt><dd>A cord: machine to hub, or hub to branch; thicker carries more</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-hypha" d="M-13,4Q0,-8 13,4"/></svg></dt><dd>Hyphae: a hub's cells, branching out from it</dd></div>` +
-      (WARMS ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-talk warm3" d="M-12,6Q0,-12 12,6"/></svg></dt><dd>Talk: an arc between two that messaged in the last ten minutes, thicker the more they said</dd></div>` : "") +
+      (WARMS ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-talk warm3" d="M-12,6Q0,-12 12,6"/></svg></dt><dd>${current?.ties ? "Talk: an arc between two cells that messaged each other today, thicker the more they said lately, and thinner the longer they have been quiet" : "Talk: an arc between two that messaged in the last ten minutes, thicker the more they said"}</dd></div>` : "") +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cross m-repository" d="M-13,4Q0,-8 13,4"/></svg></dt><dd>Dotted cross-hyphae: cells sharing a repository, group or quest</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-changed" r="13"/><circle class="m-membrane" r="11"/><circle class="m-quiet" r="5.5"/></svg></dt><dd>A faint outer ring: changed since you last looked</dd></div>` +
       (PULSES
@@ -3083,7 +3173,7 @@
     // Every network it feeds, most of its cells first: its cord runs to
     // each, weighted by what it runs there, and none of them is its own.
     const feeds = [...m.hubs.values()]
-      .filter((h) => !h.within && !h.alone)
+      .filter((h) => !h.within && !h.alone && !h.edge)
       .map((h) => [h, h.feeds.find(([x]) => x === name)?.[1] || 0])
       .filter(([, n]) => n)
       .sort((a, b) => b[1] - a[1] || collate(a[0].name, b[0].name));
@@ -3143,8 +3233,10 @@
     ].filter(([, v]) => v);
     const box = current.machines.find((x) => x.name === s.machine);
     const on = `${s.machine || "no machine"}${isSandbox(box) ? `, ${sandboxWords(box)}` : ""}`;
-    const home = s.hub ? `in the ${s.hub.name} network, on ${on}` : `working alone on ${on}`;
-    const purpose = s.purpose || NO_PURPOSE;
+    const home =
+      s.kind === "receptor" ? `at the network's edge, on ${on}, where ${s.purpose || "the outside"} comes in` : s.hub ? `in the ${s.hub.name} network, on ${on}` : `working alone on ${on}`;
+    const receptor = s.kind === "receptor";
+    const purpose = receptor ? `Brings ${s.purpose || "what it hears"} in from outside, for the cells that read it.` : s.purpose || NO_PURPOSE;
     const networks = s.networks.map((name) => {
       const h = m.hubs.get(name);
       if (h) return `<li><button type="button" class="row" data-go="net=${esc(h.key)}">${glyph(h.shape, 10)}<span class="what"><span class="name">${esc(h.name)}</span><span class="fact">${h === s.hub ? "its own" : "also on it"}${s.leads.includes(h.key) ? ", leads it" : ""}</span></span></button></li>`;
@@ -3152,6 +3244,28 @@
       if (n) return `<li><button type="button" class="row" data-go="net=${esc(n.key)}"><svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true"><path class="m-cross m-${n.shape}" d="M-11,4Q0,-8 11,4"/></svg><span class="what"><span class="name mono">${esc(n.short)}</span><span class="fact">${SHARED_WORD[n.shape]}, ${plural(n.cells.length, "cell")}</span></span></button></li>`;
       return "";
     });
+    // The networks its own sits within, the nearest first, so where it
+    // sits reads up to the top without the whole tree under each.
+    const above = [];
+    for (let h = s.hub?.within && m.hubs.get(s.hub.within); h; h = h.within && m.hubs.get(h.within)) above.push(hubRow(h));
+    // The cells it talks with, the most first, as the map's arcs draw them.
+    const own = `c:${s.address}`;
+    const talksWith = [...talk.entries()]
+      .map(([e, n]) => [e.split("|"), n])
+      .filter(([ends]) => ends.includes(own))
+      .map(([ends, n]) => [ends.find((end) => end !== own), n])
+      .filter(([end]) => end?.[0] === "c" && m.byAddress.has(end.slice(2)))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, TALKS_SHOWN)
+      .map(([end]) => cellRow(m.byAddress.get(end.slice(2))));
+    const where =
+      `<details class="fold where" data-keep="where"><summary>${TURN}<span>Where It Sits</span>` +
+      `<span class="sum mono">${esc(plural(networks.filter(Boolean).length, "network") + (talksWith.length ? `\u00a0\u00b7 talks with ${talksWith.length}` : ""))}</span></summary>` +
+      (box ? `<h3>Its Machine</h3><ul class="rows">${machineRow(box)}</ul>` : "") +
+      `<h3>Its Networks</h3><ul class="rows">${networks.join("")}${above.join("")}</ul>` +
+      `<h3>Talks With</h3>` +
+      (talksWith.length ? `<ul class="rows">${talksWith.join("")}</ul>` : `<p class="hint">No cell it has talked with lately.</p>`) +
+      `</details>`;
     const peer = `peer.${s.address.toLowerCase()}`;
     const lately = m.messages
       .filter((x) => x.from === s.address || (x.groups || []).includes(peer))
@@ -3168,13 +3282,13 @@
         return pair && talkEndsKnown(pair) ? `<li><button type="button" class="said" data-go="talk=${esc(pair)}">${said}</button></li>` : `<li>${said}</li>`;
       });
     return (
-      backButton(s.hub ? s.hub.name : "Now") +
+      backButton(netOf(s) ? netOf(s).name : "Now") +
       `<h2 id="panel-title">${esc(s.short)}</h2>` +
       `<p class="carries">${esc(`A cell ${home}.`)}</p>` +
       glance(esc(purpose), `<span class="doing">${stateGlyph(s)}<span>${esc(cellDoing(s))}</span></span>`, cellHealth(s)) +
-      launcherLink("cell", s.address, "Talk to It in the Launcher") +
+      (receptor ? "" : launcherLink("cell", s.address, "Talk to It in the Launcher")) +
       factList(facts) +
-      `<h3>Its Networks</h3><ul class="rows">${networks.join("")}</ul>` +
+      where +
       `<h3>Lately</h3>` +
       (lately.length ? `<ul class="lately">${lately.join("")}</ul>` : `<p class="hint">No message to or from it among the latest the node keeps.</p>`)
     );
@@ -3186,7 +3300,7 @@
   const talkWords = (id) => `talk between ${id.split("|").map(endName).join(" and ")}`;
   // What a click or a key opened, in the words #where says it in.
   const openedWords = (c) => {
-    if (c.kind === "talk") return `${talkWords(c.id)}: ${plural((talkSaid.get(c.id) || []).length, "message")} in ten minutes`;
+    if (c.kind === "talk") return tieOf.has(c.id) ? `${talkWords(c.id)}: ${plural(tieSum(tieOf.get(c.id).today), "message")} today` : `${talkWords(c.id)}: ${plural((talkSaid.get(c.id) || []).length, "message")} in ten minutes`;
     const key = keyOf(c);
     return key ? describe(key) : placeless(c);
   };
@@ -3195,9 +3309,24 @@
     const s = current.byAddress.get(end.slice(2));
     return s ? cellRow(s) : "";
   };
+  // How much a tie's two ends said, as the node counts each end's own.
+  const tieSum = (pair) => (Array.isArray(pair) ? pair.reduce((sum, n) => sum + (Number(n) || 0), 0) : 0);
+  // A tie said in words: how much passed today and in the last hour, who
+  // sent how much, and of what kinds, as the mesh names them.
+  const tieWords = (t) => {
+    const today = tieSum(t.today);
+    const hour = tieSum(t.hour);
+    const kinds = (Array.isArray(t.intents) ? t.intents : []).map(String);
+    const each = Array.isArray(t.today) ? t.ends.map((end, i) => `${endName(`c:${end}`)} sent ${Number(t.today[i]) || 0}`).join(", ") : "";
+    return (
+      `<p class="counts mono">${esc(`${plural(today, "message")} today\u00a0\u00b7 ${hour} in the last hour`)}</p>` +
+      `<p>${esc(`${each ? `${each}. ` : ""}${kinds.length ? `Of the kinds ${kinds.join(", ")}. ` : ""}Last at ${clock(t.at, false)}.`)}</p>`
+    );
+  };
   const talkPanel = (id) => {
     const ends = id.split("|");
     const said = talkSaid.get(id) || [];
+    const tied = tieOf.get(id);
     const asked = said.filter(({ msg }) => SIGNAL.has(msg.intent)).length;
     const rows = [...said]
       .reverse()
@@ -3211,11 +3340,13 @@
     return (
       backButton(from ? cut(endName(`c:${from.id}`), 32) : "Now") +
       `<h2 id="panel-title" class="ends"><span>${esc(endName(ends[0]))}</span><span class="and">and</span><span>${esc(endName(ends[1]))}</span></h2>` +
-      `<p class="carries">Talk on the mesh in the last ten minutes: who said what kind of thing to whom, never the words.</p>` +
-      `<p class="counts mono">${esc(`${plural(said.length, "message")}\u00a0\u00b7 ${asked} asked or found something`)}</p>` +
+      (tied
+        ? `<p class="carries">Talk on the mesh today, as the node ties the two: how much each said and of what kinds, never the words.</p>` + tieWords(tied)
+        : `<p class="carries">Talk on the mesh in the last ten minutes: who said what kind of thing to whom, never the words.</p>` +
+          `<p class="counts mono">${esc(`${plural(said.length, "message")}\u00a0\u00b7 ${asked} asked or found something`)}</p>`) +
       `<h3>Between Them</h3><ul class="rows">${ends.map(endRow).join("")}</ul>` +
       `<h3>What Passed</h3>` +
-      (rows.length ? `<ul class="lately">${rows.join("")}</ul>` : `<p class="hint">Nothing has passed between them lately: the page keeps ten minutes of what it heard, from the latest messages the node keeps.</p>`)
+      (rows.length ? `<ul class="lately">${rows.join("")}</ul>` : `<p class="hint">Nothing has passed between them in the last ten minutes: the page lists ten minutes of what it heard, from the latest messages the node keeps.</p>`)
     );
   };
   // What has no place of its own on the map, named in words.
@@ -3233,6 +3364,7 @@
     const more = all.length - h.cells.length;
     const branches = h.children.length ? `, with ${more ? `${NUMBER.format(more)} more` : "none"} in ${plural(h.children.length, "branch", "branches")}` : "";
     if (h.alone) return `${plural(all.length, "cell")} working alone on ${machinesOf(all)}, in no network.`;
+    if (h.edge) return `${plural(all.length, "receptor")} at the network's edge, on ${machinesOf(all)}: cells that hear the outside and work in no network.`;
     // Fed by, never on: a network belongs to no machine, and its drawer
     // lists every one that feeds it.
     const feeders = h.feeds?.length || 0;
@@ -3247,7 +3379,7 @@
   };
   // A network's health by level: its own cells, each branch, the whole.
   const networkHealth = (h) => {
-    if (!h.children.length) return `<ul class="rows health">${healthRow(`Its ${plural(h.cells.length, "cell")}`, h.cells)}</ul>`;
+    if (!h.children.length) return `<ul class="rows health">${healthRow(`Its ${plural(h.cells.length, kindWord(h.cells))}`, h.cells)}</ul>`;
     const all = allCells(h);
     return (
       `<ul class="rows health">${healthRow(`Its own ${plural(h.cells.length, "cell")}`, h.cells)}` +
@@ -3255,6 +3387,10 @@
       `${healthRow(`All ${NUMBER.format(all.length)} together`, all)}</ul>`
     );
   };
+  // A cell's machine, and what kind of machine it is.
+  const TALKS_SHOWN = 8;
+  const machineRow = (x) =>
+    `<li><button type="button" class="row" data-go="machine=${esc(x.name)}">${MACHINE_GLYPH}<span class="what"><span class="name mono">${esc(x.name)}</span><span class="fact">${esc(isSandbox(x) ? sandboxWords(x) : x.state || "")}</span></span></button></li>`;
   // A machine that feeds a network, and how many of its cells run there.
   const feederRow = ([x, n]) =>
     `<li><button type="button" class="row" data-go="machine=${esc(x)}">${MACHINE_GLYPH}<span class="what"><span class="name mono">${esc(x)}</span><span class="fact">${esc(`feeds it ${plural(n, "cell")}`)}</span></span></button></li>`;
@@ -3267,15 +3403,15 @@
         backButton(up ? up.name : "Now") +
         `<h2 id="panel-title" class="with-glyph">${glyph(h.shape, 12)}<span>${esc(h.name)}</span></h2>` +
         `<p class="carries">${esc(networkWords(h))}</p>` +
-        glance(esc(networkPurpose(h)), esc(groupDoing(allCells(h))), networkHealth(h)) +
+        glance(esc(networkPurpose(h)), esc(h.edge ? sensesDoing(h.cells) : groupDoing(allCells(h))), networkHealth(h)) +
         (h.lead ? `<p class="led">Led by <button type="button" class="inline" data-go="cell=${esc(h.lead.address)}">${esc(h.lead.short)}</button></p>` : "") +
-        (h.alone ? "" : launcherLink("network", h.key, "Open It in the Launcher")) +
+        (h.alone || h.edge ? "" : launcherLink("network", h.key, "Open It in the Launcher")) +
         heldUp(h.cells) +
         talkLine(touching(h.cells, h.key), true) +
         spendBlock(allCells(h), [["branch", ownSpendRow(h).concat(hubSpendRows(h.children))]]) +
         (h.alone || h.within ? "" : `<h3>Its Machines</h3><ul class="rows">${h.feeds.map(feederRow).join("")}</ul>`) +
         (h.children.length ? `<h3>Its Branches</h3><ul class="rows">${h.children.map((c) => hubRow(c)).join("")}</ul>` : "") +
-        `<h3>Its Cells</h3><ul class="rows">${[...h.cells].sort(worstFirst).map(cellRow).join("")}</ul>`
+        `<h3>Its ${h.edge ? "Receptors" : "Cells"}</h3><ul class="rows">${[...h.cells].sort(worstFirst).map(cellRow).join("")}</ul>`
       );
     }
     const n = m.shared.find((x) => x.key === key);
@@ -3531,12 +3667,18 @@
     drawer();
     for (const d of panelBody.querySelectorAll("details[data-keep]")) if (opened.includes(d.dataset.keep) && (same || d.dataset.keep === "legend")) d.open = true;
     shownKey = key;
+    // A cell is looked at alone: the whole network as a tree under it
+    // draws the eye away, so its drawer says only where it sits.
+    const alone = chosen?.kind === "cell";
+    if (alone && tree.contains(document.activeElement)) view.focus({ preventScroll: true });
+    tree.parentElement.hidden = alone;
     if (same) {
       treeSoon++;
-      renderTree({ keepScroll: false });
+      if (!alone) renderTree({ keepScroll: false });
       column.scrollTop = scroll;
     } else {
-      afterPaint(() => renderTree({ keepScroll: false }));
+      if (alone) treeSoon++;
+      else afterPaint(() => renderTree({ keepScroll: false }));
       if (columnTop) column.scrollTop = columnTop = 0;
     }
     if (same && held) panelBody.querySelector(`[data-go="${CSS.escape(held)}"]`)?.focus({ preventScroll: true });
@@ -3620,7 +3762,7 @@
     const id = key.slice(2);
     if (key[0] === "h") {
       const h = m.hubs.get(id);
-      return h ? (h.within ? `h:${h.within}` : h.machine ? `m:${h.machine}` : null) : null;
+      return h ? (h.within ? `h:${h.within}` : h.machine && machinesShown ? `m:${h.machine}` : null) : null;
     }
     if (key[0] === "c") {
       const s = m.byAddress.get(id);
@@ -3633,6 +3775,8 @@
   };
   // A machine's mark in small: its box, a cord leaving each side.
   const MACHINE_GLYPH = `<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true"><path class="m-cord" d="M-12,0H-7M7,0H12" style="--w:1.5px"/><rect class="m-box" x="-7" y="-5" width="14" height="10"/></svg>`;
+  const RECEPTOR_GLYPH = (hearing) =>
+    `<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true"><path class="m-receptor" d="M-9,-5.4Q0,14.4 9,-5.4"/>${hearing ? '<circle class="m-nucleus" r="4.5"/>' : '<circle class="m-quiet" r="4"/>'}</svg>`;
   const TWISTY = `<svg class="twisty" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.5L7 5L3 8.5"/></svg>`;
   const treeRow = perReading((key) => {
     const m = current;
@@ -3673,7 +3817,7 @@
         `</li>`
       );
     };
-    const roots = current.machines.length ? current.machines.map((x) => `m:${x.name}`) : [...current.hubs.values()].filter((h) => !h.within).map((h) => `h:${h.key}`);
+    const roots = shownMachines().length ? shownMachines().map((x) => `m:${x.name}`) : [...current.hubs.values()].filter((h) => !h.within).map((h) => `h:${h.key}`);
     tree.innerHTML = roots.map((key, i) => item(key, 1, i, roots.length)).join("");
     const find1 = (key) => key && tree.querySelector(`[data-key="${CSS.escape(key)}"]`);
     const active = find1(held) || find1(treeActive) || find1(pointed) || tree.querySelector("[role=treeitem]");
@@ -3768,6 +3912,11 @@
   const MAX_FANOUT = 6; // receivers drawn for a message to a shared network
   const MAX_FLIGHTS = 48;
   const WARM_AT = [1, 3, 8]; // messages over a link for each step warmer
+  // A tie's strength is a message's worth for each one sent, halving every
+  // two hours, so one message just now is 1, and one four hours ago a
+  // quarter: below that a tie is too faint to draw.
+  const TIE_WARM_AT = [0.25, 2, 6];
+  const MAX_TIES = 400; // the strongest drawn, so a busy day stays a map
   const WARMS = true;
   const PULSES = true;
   const ARC_BOW = 0.24; // how far an arc bows off the straight, over its length
@@ -3813,7 +3962,10 @@
   };
 
   const heard = new Map(); // a message's key: when it was sent, in ms
-  let talk = new Map(); // a pair's key: how many messages between them lately
+  // A pair's key: how much they talked, as a strength where the node ties
+  // its cells, and otherwise as the page's count of ten minutes' messages.
+  let talk = new Map();
+  let tieOf = new Map(); // a pair's key: the node's tie between them, where it ties
   let talkSaid = new Map(); // a pair's key: those messages, oldest first
   const msgKey = (msg) => `${msg.at}|${msg.from}|${(msg.groups || []).join(",")}`;
 
@@ -3840,6 +3992,21 @@
         talkSaid.get(e).push({ msg, to });
       }
     }
+    // The node's ties, where it serves them, say a day's talk between
+    // cells in place of the page's ten minutes, so two that talked this
+    // morning are still joined, fainter as they fall quiet.
+    tieOf = new Map();
+    if (current.ties) {
+      talk = new Map();
+      for (const t of current.ties) {
+        if (tieOf.size >= MAX_TIES || t.strength < TIE_WARM_AT[0]) break;
+        const [a, b] = t.ends.map((end) => `c:${end}`);
+        if (!spots.has(a) || !spots.has(b)) continue;
+        const e = pairKey(a, b);
+        tieOf.set(e, t);
+        talk.set(e, t.strength);
+      }
+    }
     paintTalk();
     for (const { at, msg } of arrived.sort((a, b) => a.at - b.at)) {
       const delay = Math.min(Math.max(at - (now - EVERY_MS), 0), EVERY_MS);
@@ -3847,7 +4014,7 @@
     }
   };
 
-  const warmLevel = (n) => WARM_AT.filter((t) => n >= t).length;
+  const warmLevel = (n) => (current.ties ? TIE_WARM_AT : WARM_AT).filter((t) => n >= t).length;
   // A redraw that frames the map straight after builds the layer and
   // leaves the painting to its frame, which would only paint it again.
   const paintTalk = ({ paint = true } = {}) => {
@@ -4127,6 +4294,9 @@
         first = false;
         apply(false);
         hear(false);
+        // A talk opened from the address was written before the ties were
+        // heard, so it is written again now that they are.
+        if (tieOf.size) panel();
       } else {
         if (chosen && !knows(chosen)) chosen = null;
         const was = spots;
@@ -4247,6 +4417,14 @@
   // ---- Keys and the switch, as on every one of his pages. ----
 
   const toggleKeys = () => (keys.open ? keys.close() : keys.showModal());
+  const toggleMachines = () => {
+    machinesShown = !machinesShown;
+    if (!machinesShown && chosen?.kind === "machine") letGo();
+    if (pointed?.[0] === "m" && !machinesShown) pointed = null;
+    draw();
+    if (!tree.parentElement.hidden) renderTree();
+    where.textContent = machinesShown ? "The machines are shown, with each network's cord to the machine it runs on; m hides them." : "The machines are hidden; m shows them.";
+  };
   document.addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target.closest("input, textarea, select")) return;
@@ -4280,6 +4458,9 @@
     } else if (e.key === ".") {
       e.preventDefault();
       toggleNow();
+    } else if (e.key === "m") {
+      e.preventDefault();
+      toggleMachines();
     } else if (e.key === "0") {
       e.preventDefault();
       fit();
