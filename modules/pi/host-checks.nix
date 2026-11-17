@@ -132,6 +132,8 @@ in
         && unit.Service.Slice == "agents.slice"
         && first unit.Service.RestartPreventExitStatus == "78"
         && unit.Service.WatchdogSec or null == "2min"
+        && unit.Service.KillMode or null == "mixed"
+        && unit.Service.TimeoutStopSec or null == "150s"
         && unit.Service.LimitCORE or null == "0"
         && unit.Unit.StartLimitIntervalSec or null == 600
         && unit.Unit.StartLimitBurst or null == 3
