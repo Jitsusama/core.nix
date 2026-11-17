@@ -9,7 +9,7 @@ use google::api::Google;
 use google::receptor::{Receptors, Spoke};
 use google::watch::Watch;
 
-use super::{StandIn, credentials, google, now};
+use super::{StandIn, credentials, folder, google, now};
 
 /// What mail and an invitation may say to reach mycelium: words aimed at
 /// its command line, a guest, a sender and an event's name.
@@ -71,23 +71,23 @@ fn planted(path: &str, body: &str) -> (u16, String) {
 /// A stand-in for mycelium, writing each word it's given on a line of its
 /// own, and a line of `--` after each run, to the file it returns.
 fn mycelium(test: &str) -> (PathBuf, PathBuf) {
-    use std::os::unix::fs::PermissionsExt;
-    let folder = std::env::temp_dir().join(format!("google-{test}-{}", std::process::id()));
-    fs::create_dir_all(&folder).unwrap();
+    let folder = folder(test);
     let said = folder.join("said");
-    // A run before this one's words are no part of it; none is fine.
-    let _ = fs::remove_file(&said);
     let program = folder.join("mycelium");
-    fs::write(
-        &program,
-        format!(
+    // Written by a shell of its own, never by this process, so no test
+    // forking meanwhile holds it open for writing and running it fails as
+    // a text file busy (account.rs).
+    let written = std::process::Command::new("/bin/sh")
+        .args(["-c", r#"printf '%s\n' "$2" > "$1" && chmod 700 "$1""#, "sh"])
+        .arg(&program)
+        .arg(format!(
             "#!/bin/sh\nfor word in \"$@\"; do printf '%s\\n' \"$word\"; done >> '{said}'\n\
-             echo -- >> '{said}'\n",
+             echo -- >> '{said}'",
             said = said.display()
-        ),
-    )
-    .unwrap();
-    fs::set_permissions(&program, fs::Permissions::from_mode(0o700)).unwrap();
+        ))
+        .status()
+        .expect("the stand-in's shell runs");
+    assert!(written.success(), "the stand-in mycelium wasn't written");
     (program, said)
 }
 

@@ -2,7 +2,6 @@
 //! or not, a sign-in refused or revoked, Google out of reach, and no file.
 
 use std::fs;
-use std::net::TcpListener;
 use std::path::PathBuf;
 
 use google::api::{Google, Origins};
@@ -231,11 +230,10 @@ fn an_unreachable_google_keeps_what_was_heard() {
     let path = credentials("unreachable", 0);
     let mut watch = Watch::new(Google::new(stand_in.origins()), path.clone(), None);
     let heard = watch.look(&now()).heard;
-    // A port nothing listens on, as Google is to a laptop offline.
-    let closed = TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap();
+    // A port nothing listens on, as Google is to a laptop offline. Port 1
+    // rather than one bound and let go, which a stand-in beside this test
+    // could be handed next: no test may bind one below 1024.
+    let closed = "127.0.0.1:1";
     watch.google = Google::new(Origins {
         token: format!("http://{closed}/token"),
         api: format!("http://{closed}"),
