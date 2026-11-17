@@ -129,10 +129,15 @@ in
     holds "update-to-main-opens-enough-files-on-a-mac"
       "A Mac's update-to-main daemon or follower keeps launchd's 256 open files, too few for git to read a checkout of many packs."
       (
-        lib.all (
-          job:
-          (job.SoftResourceLimits.NumberOfFiles or 0) >= 8192
-          && (job.HardResourceLimits.NumberOfFiles or 0) >= 8192
-        ) [ daemon follows ]
+        lib.all
+          (
+            job:
+            (job.SoftResourceLimits.NumberOfFiles or 0) >= 8192
+            && (job.HardResourceLimits.NumberOfFiles or 0) >= 8192
+          )
+          [
+            daemon
+            follows
+          ]
       );
 }

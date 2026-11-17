@@ -120,6 +120,10 @@ in
       # A switch it runs is its child, and launchd leaves it be if the
       # daemon itself stops.
       AbandonProcessGroup = true;
+      # launchd's 256 open files are too few for git reading a checkout of
+      # hundreds of packs, which fails saying it "Could not read" an object.
+      SoftResourceLimits.NumberOfFiles = 8192;
+      HardResourceLimits.NumberOfFiles = 8192;
       StandardOutPath = "/var/log/update-to-main.log";
       StandardErrorPath = "/var/log/update-to-main.log";
     };
@@ -138,6 +142,9 @@ in
         RunAtLoad = true;
         KeepAlive.SuccessfulExit = false;
         ThrottleInterval = 30;
+        # As the daemon's: git reads many packs at once.
+        SoftResourceLimits.NumberOfFiles = 8192;
+        HardResourceLimits.NumberOfFiles = 8192;
         StandardOutPath = "/Users/${cfg.follower}/Library/Logs/update-to-main-follows.log";
         StandardErrorPath = "/Users/${cfg.follower}/Library/Logs/update-to-main-follows.log";
       };
