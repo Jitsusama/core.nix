@@ -180,6 +180,23 @@ pub fn notice(shared: &Arc<Shared>, folders: &HashMap<i32, Heard>) {
         if marked {
             bookmarks::changed(shared, &mut lock(&shared.daemon));
         }
+        for at in sessions {
+            let opened = shared.sources[at].opened_key();
+            let mut daemon = lock(&shared.daemon);
+            let watching =
+                opened.is_some_and(|key| watched(&daemon, &key)) || tabs::wanted(&daemon);
+            // Unwatched, what it has open is held as it was, so the next
+            // watch of the tabs or the bookmarks reads it again, rather
+            // than serve pages gone or miss one opened. It's marked before
+            // the lists below start their reads, so one told of has it.
+            if !watching {
+                daemon.unmade.sessions.insert(at);
+            }
+            drop(daemon);
+            if watching {
+                start(shared, at, Run::Opened);
+            }
+        }
         for at in lists {
             let watching = {
                 let mut daemon = lock(&shared.daemon);
@@ -188,21 +205,6 @@ pub fn notice(shared: &Arc<Shared>, folders: &HashMap<i32, Heard>) {
             };
             if watching {
                 start(shared, at, Run::List);
-            }
-        }
-        for at in sessions {
-            let opened = shared.sources[at].opened_key();
-            let mut daemon = lock(&shared.daemon);
-            let watching =
-                opened.is_some_and(|key| watched(&daemon, &key)) || tabs::wanted(&daemon);
-            // Unwatched, what it has open is held as it was, so the next
-            // watch reads it again rather than serve what's gone.
-            if !watching {
-                daemon.unmade.sessions.insert(at);
-            }
-            drop(daemon);
-            if watching {
-                start(shared, at, Run::Opened);
             }
         }
     }

@@ -173,9 +173,10 @@ fn a_page_opened_while_nobody_watches_the_tabs_is_there_at_the_next_watch() {
     served(&mut client, &[LATER, KITTY, NOTES, EARLIER]);
     client.ask(&json!({"id": 1, "ask": "unwatch"}));
     // Chrome writes its session again, a page more, while nothing watches
-    // the tabs, as it does with the launcher shut. A list's file changes
-    // after it, and the daemon hears its changes in order, so once that
-    // one is told the session's was heard unwatched.
+    // the tabs, as while the shell is away, restarting at a switch. A
+    // list's file changes after it, and the daemon marks a session heard
+    // before it reads a list, so once that one is told the session's was
+    // heard unwatched.
     let mut commands = tab(1, 10, 0, "https://later.example.org/", 4_000_000_000_000);
     commands.extend(tab(1, 11, 1, "https://earlier.example.org/", 1_000));
     commands.extend(tab(
