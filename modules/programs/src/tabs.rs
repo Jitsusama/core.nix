@@ -10,6 +10,7 @@
 //! asks of this daemon, each answered at once and done on a thread of
 //! its own, so no other ask or watch waits on kitty.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use programs::interface::{TabAct, TabAsk};
@@ -23,11 +24,15 @@ use super::{Daemon, Run, Shared, agents, bookmarks, due, keep, lock, programs, s
 
 /// Which places' rows changed while nothing watched them (`changed`, and
 /// bookmarks.rs), for the next watch of each to make (`read`); each is
-/// cleared as its rows are made, wherever that is.
+/// cleared as its rows are made, wherever that is. With them, the sources
+/// whose session changed while nothing wanted what they have open, as
+/// while the shell is away (heard.rs), for the next watch to read again;
+/// each is taken as that read is started (`read`).
 #[derive(Default)]
 pub struct Unmade {
     pub tabs: bool,
     pub bookmarks: bool,
+    pub sessions: BTreeSet<usize>,
 }
 
 /// Whether a watch wants the tabs' rows, as a whole place: of it, or of
@@ -53,18 +58,18 @@ pub fn kitty(shared: &Shared) -> Option<usize> {
 
 /// Reads what each program reading Chrome's session has open, as a watch
 /// begins while the tabs or the bookmarks are watched, each on a thread
-/// of its own: only what isn't held yet, since what is was read again at
-/// every change of the session while they were watched, so a watch
-/// beginning reads nothing more. kitty's list is read as it's due, or
-/// never read yet, while the tabs are watched. Their rows and the
-/// bookmarks' are made where a read ended before this watch was held.
+/// of its own: only what isn't held yet, or whose session changed while
+/// nothing wanted it, since the rest was read again at every change of
+/// the session while they were watched. kitty's list is read as it's
+/// due, or never read yet, while the tabs are watched. Their rows and
+/// the bookmarks' are made where a read ended before this watch was held.
 pub fn read(shared: &Arc<Shared>) {
     let (unread, listed) = {
-        let daemon = lock(&shared.daemon);
+        let mut daemon = lock(&shared.daemon);
         if !wanted(&daemon) {
             return;
         }
-        let unread: Vec<usize> = shared
+        let unread: BTreeSet<usize> = shared
             .sources
             .iter()
             .enumerate()
@@ -75,12 +80,18 @@ pub fn read(shared: &Arc<Shared>) {
                     .is_some_and(|key| !daemon.held.contains_key(&key))
             })
             .map(|(at, _)| at)
+            .chain(daemon.unmade.sessions.iter().copied())
             .collect();
         let listed = kitty(shared).filter(|&at| {
             watched(&daemon)
                 && (due(shared, &daemon, at)
                     || !daemon.held.contains_key(&shared.sources[at].list_key()))
         });
+        // Each read started below begins after this, whether on a thread
+        // of its own or once the one under way ends, so the marks are
+        // taken here, under the lock they were read in, and a second watch
+        // beginning meanwhile doesn't read the session again.
+        daemon.unmade.sessions.clear();
         (unread, listed)
     };
     for at in unread {
@@ -90,7 +101,8 @@ pub fn read(shared: &Arc<Shared>) {
         start(shared, at, Run::List);
     }
     // What changed as this watch was asked, before it was held, made no
-    // rows for it, and a read of it is held, so it starts no read above.
+    // rows for it, and a read of it is held, so it starts no read above;
+    // a marked session's read above makes them again as it ends.
     // Only marked rows are made here: the launcher asks its watch again at
     // each opening, and the bookmarks are files read under the lock.
     // Each place is made only once it's watched, so a watch of the other
