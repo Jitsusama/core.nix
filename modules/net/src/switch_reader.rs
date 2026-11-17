@@ -574,7 +574,10 @@ mod tests {
         );
         let answered = journalled(&round(&agent(), &address, Some(PASSWORD), 10));
         assert_eq!(answered, "the switch reads answering");
-        assert!(!refused.contains("not it") && !answered.contains(PASSWORD));
+        assert!(
+            !refused.contains("not it") && !answered.contains(PASSWORD),
+            "the journal holds a password: {refused} / {answered}"
+        );
     }
 
     #[test]

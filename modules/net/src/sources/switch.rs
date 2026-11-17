@@ -576,9 +576,18 @@ mod tests {
     #[test]
     fn only_a_system_page_with_its_mac_holds_status() {
         let pages = contract();
-        assert!(holds_status(&pages["SystemInfoRpm"]));
-        assert!(!holds_status("<html><form action=logon.cgi></form></html>"));
-        assert!(!holds_status("var info_ds = {macStr:[]};"));
+        assert!(
+            holds_status(&pages["SystemInfoRpm"]),
+            "the contract's System Info read as signed out"
+        );
+        assert!(
+            !holds_status("<html><form action=logon.cgi></form></html>"),
+            "the sign-in form read as status"
+        );
+        assert!(
+            !holds_status("var info_ds = {macStr:[]};"),
+            "an empty MAC read as status"
+        );
     }
 
     #[test]
