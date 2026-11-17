@@ -58,19 +58,6 @@
     "test": "vm-desktop-looks-vi"
   },
   {
-    "at": 1794624729,
-    "commit": "467ec1a20da37f9e7ef094c4b9b7c72d9058c1fe",
-    "due": "2026-11-18",
-    "due_why": "Its owner, the disk guard's, reruns it three times on an idle builder by 2026-11-18 23:59 UTC and takes it off if all three hold, or fixes it: 1 of its 23 net runs from listing to 17 Nov 11:00 UTC failed, on 16 Nov",
-    "owner_pr": 4155,
-    "owner_session": "1DZYLJ",
-    "reason": "failed, then passed, at 467ec1a20da3",
-    "subtests": [
-      "test_with_its_store_pressed_the_machine_expires_generations_and_collects_a_dead_build"
-    ],
-    "test": "vm-disk-guard-keeps-the-disk"
-  },
-  {
     "at": 1794631096,
     "commit": "580dc8dbd5803c7bea2650e02ecb099ec1408af3",
     "due": "2026-11-18",
