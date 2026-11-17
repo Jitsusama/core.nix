@@ -8,8 +8,11 @@ for days after the last of their findings was gone, counted as lints switched
 off and ready to wave through the next one. This reads CONFIG, a ruff.toml in
 TREE, and runs ruff over TREE with the config as it is, then once with each
 code, a rule or a prefix of rules, taken off each of its per-file-ignores
-entries. Taking an exception off can only raise findings, so one that raises no
-more hides none, and fails, named with its pattern and code. Ruff decides which
+entries. One whose removal raises no finding the config as it is didn't hides
+none, and fails, named with its pattern and code. The findings themselves are
+compared, not their count, since taking an exception off can also end one: a
+noqa the exception left with nothing to match is unused (RUF100) until it goes,
+so a count could fall by that as it rose by a finding. Ruff decides which
 files each pattern covers, what each code selects and which rules the config
 runs at all, as treefmt's ruff does, so nothing here copies its rules. Two
 exceptions that hide the same findings each raise nothing when taken off
@@ -19,7 +22,10 @@ finding hidden that was.
 
 Each run replaces lint.per-file-ignores, so a config keeping exceptions where
 this doesn't read them is refused before ruff runs, each place said, rather
-than passing on what it skipped; ruff failing to check fails too.
+than passing on what it skipped, as is one code named twice for one pattern,
+since both copies go together and the one that hides nothing would pass. Ruff
+failing to check fails too, and no run fixes anything, so each reads the same
+tree.
 """
 
 import json
@@ -28,6 +34,10 @@ import sys
 import tomllib
 from pathlib import Path
 from typing import Any
+
+# A finding, as where it is and what it is: its file, its code, and its row
+# and column.
+type Finding = tuple[str, str, int, int]
 
 # Where ruff takes per-file exceptions from that this doesn't read, and where
 # to move each instead.
@@ -47,22 +57,43 @@ class RuffFailedError(Exception):
         super().__init__(f"exit {ran.returncode}: {ran.stderr.strip()}")
 
 
+def setting(read: dict[str, Any], *path: str) -> object:
+    """Give what the config sets at this path, or None where nothing is set."""
+    found: Any = read
+    for key in path:
+        found = found.get(key) if isinstance(found, dict) else None
+    return found
+
+
+def exceptions(read: dict[str, Any]) -> dict[str, list[str]]:
+    """Give the config's lint.per-file-ignores, the exceptions this judges."""
+    found = setting(read, "lint", "per-file-ignores")
+    return found if isinstance(found, dict) else {}
+
+
 def refused(read: dict[str, Any]) -> list[str]:
-    """Say each place the config keeps per-file exceptions that this doesn't read."""
-    said = []
-    for path, instead in UNREAD.items():
-        setting: Any = read
-        for key in path:
-            setting = setting.get(key) if isinstance(setting, dict) else None
-        if setting:
-            said.append(f"{'.'.join(path)} isn't read: {instead}.")
+    """Say each place the config keeps exceptions that this can't judge."""
+    said = [
+        f"{'.'.join(path)} isn't read: {instead}."
+        for path, instead in UNREAD.items()
+        if setting(read, *path)
+    ]
+    for pattern, codes in exceptions(read).items():
+        said.extend(
+            f"lint.per-file-ignores names {code} twice for {pattern}: keep one."
+            for code in sorted({code for code in codes if codes.count(code) > 1})
+        )
     return said
 
 
-def findings(tree: Path, config: Path, ignores: dict[str, list[str]]) -> int:
-    """Count what the ruff on the PATH finds over the tree, with these exceptions."""
+def findings(tree: Path, config: Path, ignores: dict[str, list[str]]) -> set[Finding]:
+    """Give what the ruff on the PATH finds over the tree, with these exceptions."""
+    # JSON's quoting of a string is TOML's for every character but a few
+    # control characters, which no pattern or code holds; one that did would
+    # make ruff refuse the override, failing the check rather than passing it.
     table = ", ".join(
-        f"{json.dumps(pattern)} = {json.dumps(codes)}" for pattern, codes in ignores.items()
+        f"{json.dumps(pattern, ensure_ascii=False)} = {json.dumps(codes)}"
+        for pattern, codes in ignores.items()
     )
     ran = subprocess.run(
         [
@@ -70,6 +101,8 @@ def findings(tree: Path, config: Path, ignores: dict[str, list[str]]) -> int:
             "check",
             "--no-cache",
             "--exit-zero",
+            "--no-fix",
+            "--no-unsafe-fixes",
             "--output-format",
             "json",
             "--config",
@@ -85,7 +118,10 @@ def findings(tree: Path, config: Path, ignores: dict[str, list[str]]) -> int:
     )
     if ran.returncode != 0:
         raise RuffFailedError(ran)
-    return len(json.loads(ran.stdout))
+    return {
+        (found["filename"], found["code"], found["location"]["row"], found["location"]["column"])
+        for found in json.loads(ran.stdout)
+    }
 
 
 def without(ignores: dict[str, list[str]], taken: set[tuple[str, str]]) -> dict[str, list[str]]:
@@ -103,7 +139,7 @@ def stale(tree: Path, config: Path, ignores: dict[str, list[str]]) -> list[tuple
     # the same findings, a prefix and its rule among them, one stays.
     taken: set[tuple[str, str]] = set()
     for entry in ((pattern, code) for pattern, codes in ignores.items() for code in codes):
-        if findings(tree, config, without(ignores, taken | {entry})) == held:
+        if findings(tree, config, without(ignores, taken | {entry})) <= held:
             taken.add(entry)
     return [entry for entry in ((p, c) for p, cs in ignores.items() for c in cs) if entry in taken]
 
@@ -114,12 +150,15 @@ def main() -> None:
         tree, config = (Path(arg) for arg in sys.argv[1:])
     except ValueError:
         sys.exit("usage: every-ruff-exception-hides-a-finding TREE CONFIG")
-    read = tomllib.loads(config.read_text())
+    try:
+        read = tomllib.loads(config.read_text())
+    except tomllib.TOMLDecodeError as unread:
+        sys.exit(f"{config.name} isn't TOML: {unread}")
     if said := refused(read):
         for reason in said:
             print(f"{config.name}: {reason}", file=sys.stderr)
         sys.exit(f"{config.name} is refused, so none of its exceptions is judged.")
-    ignores: dict[str, list[str]] = read.get("lint", {}).get("per-file-ignores", {})
+    ignores = exceptions(read)
     try:
         idle = stale(tree, config, ignores)
     except RuffFailedError as failed:
@@ -128,6 +167,12 @@ def main() -> None:
         print(
             f"{config.name}: {code} in {pattern} hides no finding another exception doesn't:"
             " take it off.",
+            file=sys.stderr,
+        )
+    if idle:
+        print(
+            f"Repositories on core lint with {config.name} too, unread here: check theirs"
+            " before taking one off.",
             file=sys.stderr,
         )
     total = sum(len(codes) for codes in ignores.values())

@@ -1,6 +1,7 @@
 # A ruff config every-ruff-exception-hides-a-finding.sh plants for the rule to
 # refuse before ruff runs: it keeps per-file exceptions in each place the rule
-# doesn't read, as the check's expected lines say.
+# doesn't read, and names one code twice for one pattern, as the check's
+# expected lines say.
 extend = "base.toml"
 
 [per-file-ignores]
@@ -13,4 +14,4 @@ extend = "base.toml"
 "a.py" = ["F401"]
 
 [lint.per-file-ignores]
-"b.py" = ["F401"]
+"b.py" = ["F401", "F401"]

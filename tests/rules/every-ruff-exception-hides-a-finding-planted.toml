@@ -1,7 +1,8 @@
 # The ruff config of the tree every-ruff-exception-hides-a-finding.nix plants
 # to see the rule fail. Each file it names holds what its comment says, and the
 # rule must name clean.py's exception, twice.py's (the first of the pair),
-# pair.py's F4 and printed.py's T201, as the check's expected lines say.
+# pair.py's F4, printed.py's T201 and noqa.py's, as the check's expected lines
+# say.
 [lint]
 select = ["ALL"]
 # Off everywhere, so an exception for it hides nothing.
@@ -21,3 +22,6 @@ ignore = ["T201"]
 "pair.py" = ["F4", "F401"]
 # A print, whose rule the config ignores everywhere.
 "printed.py" = ["T201"]
+# An unused import its line's noqa hides, so the exception hides nothing,
+# though with it the noqa is unused, a finding that goes with the exception.
+"noqa.py" = ["F401"]

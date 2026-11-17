@@ -1,8 +1,10 @@
-# A ruff config every-ruff-exception-hides-a-finding.nix plants that ruff
-# can't read, for the rule to fail on, saying ruff couldn't check.
+# A ruff config every-ruff-exception-hides-a-finding.sh plants that ruff
+# can't read, for the rule to fail on, saying ruff couldn't check. Its fault
+# is outside the exceptions the rule hands ruff again, so it's the config
+# ruff refuses, not the rule's own override.
 [lint]
-select = ["ALL"]
+# No rule has this code, so ruff refuses the config.
+select = ["ALL", "NOPE1"]
 
 [lint.per-file-ignores]
-# No rule has this code, so ruff refuses the config.
-"b.py" = ["NOPE1"]
+"b.py" = ["F401"]

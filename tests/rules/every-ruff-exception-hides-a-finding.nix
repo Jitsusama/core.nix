@@ -27,12 +27,15 @@ let
     ruff.toml: F401 in twice.py hides no finding another exception doesn't: take it off.
     ruff.toml: F4 in pair.py hides no finding another exception doesn't: take it off.
     ruff.toml: T201 in printed.py hides no finding another exception doesn't: take it off.
+    ruff.toml: F401 in noqa.py hides no finding another exception doesn't: take it off.
+    Repositories on core lint with ruff.toml too, unread here: check theirs before taking one off.
   '';
   refusals = writeText "refusals" ''
     ruff.toml: extend isn't read: fold the config it names in.
     ruff.toml: per-file-ignores isn't read: move it to lint.per-file-ignores.
     ruff.toml: extend-per-file-ignores isn't read: move it to lint.per-file-ignores.
     ruff.toml: lint.extend-per-file-ignores isn't read: move it to lint.per-file-ignores.
+    ruff.toml: lint.per-file-ignores names F401 twice for b.py: keep one.
     ruff.toml is refused, so none of its exceptions is judged.
   '';
 in
