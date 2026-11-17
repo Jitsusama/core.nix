@@ -1,7 +1,6 @@
 //! A daemon of the launcher's daemon interface, started for a test, and a
 //! client asking it over its socket, one line of JSON each way, for each
-//! daemon's tests (machine's, people's, programs', to-do's, tuple-call's
-//! and whereabouts's), which name this crate in their Cargo.toml as a
+//! daemon's tests, which name this crate in their Cargo.toml as a
 //! dev-dependency. The helpers were copied from one daemon's tests into
 //! the next; kept here, a fix to one reaches every test that asks a
 //! daemon.
@@ -27,15 +26,24 @@ pub struct Daemon {
 
 impl Daemon {
     /// Starts `command`, which serves `socket`, once the socket's there;
-    /// `folder` holds what the test made for it.
+    /// `folder` holds what the test made for it. A daemon that ends before
+    /// its socket comes says how it ended at once, rather than once the
+    /// test's patience is spent.
     pub fn start(command: &mut Command, socket: PathBuf, folder: PathBuf) -> Daemon {
         let child = command.spawn().expect("the daemon starts");
-        let daemon = Daemon {
+        let mut daemon = Daemon {
             child,
             socket,
             folder,
         };
-        until("the socket never came", || daemon.socket.exists());
+        let deadline = Instant::now() + PATIENCE;
+        while !daemon.socket.exists() {
+            if let Ok(Some(ended)) = daemon.child.try_wait() {
+                panic!("the daemon ended before its socket came: {ended}");
+            }
+            assert!(Instant::now() < deadline, "the socket never came");
+            std::thread::sleep(Duration::from_millis(20));
+        }
         daemon
     }
 
@@ -68,8 +76,29 @@ impl Client {
     /// A client of the daemon serving `socket`, for a test that starts
     /// and stops the daemon itself, as one restarting it over the same
     /// folder does, which a `Daemon` would take away.
+    ///
+    /// A socket on the disk may not be listened on yet, since a daemon
+    /// binds it a moment before it listens, so one refusing, or gone as
+    /// it's made again, is asked again within the test's patience.
     pub fn connect(socket: &Path) -> Client {
-        let stream = UnixStream::connect(socket).expect("the socket answers");
+        let deadline = Instant::now() + PATIENCE;
+        let stream = loop {
+            match UnixStream::connect(socket) {
+                Err(why)
+                    if matches!(
+                        why.kind(),
+                        std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound
+                    ) && Instant::now() < deadline =>
+                {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                Err(why) => panic!(
+                    "{} never answered within the test's patience: {why}",
+                    socket.display()
+                ),
+                Ok(stream) => break stream,
+            }
+        };
         stream
             .set_read_timeout(Some(PATIENCE))
             .expect("the socket takes a timeout");
@@ -147,5 +176,52 @@ pub fn until(why: &str, done: impl Fn() -> bool) {
     while !done() {
         assert!(Instant::now() < deadline, "{why}");
         std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::net::UnixListener;
+
+    /// A daemon's socket is on the disk from its bind, a moment before it
+    /// listens, so a test asking in between is refused: the case a daemon
+    /// starting under load gives, made here by a socket no one listens on
+    /// until a moment later.
+    #[test]
+    fn a_socket_not_listened_on_yet_is_waited_for() {
+        let folder = std::env::temp_dir().join(format!(
+            "daemon-client-not-listened-on-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("the folder is made");
+        let socket = folder.join("daemon.sock");
+        drop(UnixListener::bind(&socket).expect("the socket is bound"));
+        assert_eq!(
+            UnixStream::connect(&socket)
+                .map(drop)
+                .map_err(|why| why.kind()),
+            Err(std::io::ErrorKind::ConnectionRefused),
+            "the socket isn't refusing, so the case asks nothing"
+        );
+        let listening = {
+            let socket = socket.clone();
+            std::thread::spawn(move || {
+                // Refused this long, then gone this long, as a daemon
+                // making its socket again leaves it, so the client meets
+                // both before it's answered.
+                std::thread::sleep(Duration::from_millis(300));
+                std::fs::remove_file(&socket).expect("the old socket goes");
+                std::thread::sleep(Duration::from_millis(150));
+                let listener = UnixListener::bind(&socket).expect("the socket is listened on");
+                let (mut stream, _) = listener.accept().expect("the client is taken");
+                writeln!(stream, "{{\"id\": 1}}").expect("the answer is sent");
+            })
+        };
+        let mut client = Client::connect(&socket);
+        assert_eq!(client.heard()["id"], 1, "the client heard no answer");
+        listening.join().expect("the listener ends");
+        let _ = std::fs::remove_dir_all(&folder);
     }
 }

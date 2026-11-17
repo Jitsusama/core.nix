@@ -673,6 +673,10 @@
   daemon-client-passes-clippy = ''
     clippy finds nothing in daemon-client, the daemon and client the daemons' tests share
   '';
+  daemon-client-waits-for-its-daemon-to-listen = ''
+    a daemon's tests ask its socket again while it's on the disk but not yet listened on, or gone
+    while it's made again, rather than failing at once
+  '';
   daemon-serve-passes-clippy = ''
     clippy finds nothing in daemon-serve, the serving side the daemons share
   '';
