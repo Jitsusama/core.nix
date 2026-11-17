@@ -556,11 +556,6 @@ mod tests {
 
     #[test]
     fn a_crowded_folders_reason_is_read_anywhere_in_its_note_as_cores_rule_reads_it() {
-        let mut all = Vec::new();
-        for folder in ["late", "wrapped", "within"] {
-            all.extend((0..=CROWDED).map(|n| format!("{folder}/{n}.txt")));
-            all.push(format!("{folder}/README.md"));
-        }
         let late = format!(
             "{}Many entries because each is a case.\n",
             "A line.\n".repeat(OPENING)
@@ -569,15 +564,25 @@ mod tests {
             file("late/README.md", &late),
             file(
                 "wrapped/README.md",
-                "Here are cases. Many entries\nbecause each is one.\n",
+                "Here are cases:\n\n- Many entries\n  because each is one.\n",
             ),
-            file("within/README.md", "Too Many entries becausewords.\n"),
+            file("agents/AGENTS.md", "(Many entries because each is one.)\n"),
+            file("after/README.md", "Too Many entries becausewords.\n"),
+            file("before/README.md", "TooMany entries because each is one.\n"),
+            file("under/README.md", "_Many entries because_ each is one.\n"),
         ];
+        let mut all = Vec::new();
+        for note in &notes {
+            let (folder, _) = note.path.split_once('/').unwrap();
+            all.extend((0..=CROWDED).map(|n| format!("{folder}/{n}.txt")));
+            all.push(note.path.clone());
+        }
         let health = measure(&all, &notes);
         assert_eq!(
             health.named["crowded-folders"],
-            ["within"],
-            "a reason past the opening or wrapped was missed, or one inside a word was taken"
+            ["after", "before", "under"],
+            "a reason past the opening, wrapped or in AGENTS.md was missed, or one joined to a \
+             word was taken"
         );
     }
 
