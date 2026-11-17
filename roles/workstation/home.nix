@@ -14,6 +14,7 @@
     homeModules.github-broker
     homeModules.jobs-broker
     homeModules.gcloud-broker
+    homeModules.model-relay
     homeModules.mycelium
     homeModules.to-do
     homeModules.ergodox
