@@ -10,7 +10,11 @@ Qt's profiler on the shell (QMLPROFILER, the shell started with `--debug`), and 
 bindings, handlers and functions took the most of their own time in the launcher's searches and
 each of their parts, as the key's line splits them. Given LAB_STEP, it steps into that place
 from home after each round's words, and given LAB_PROGRAMS, it installs that many programs
-first, so a step into Programs is profiled over as many rows as Joel's. Given LAB_CHANGES, it
+first, so a step into Programs is profiled over as many rows as Joel's. Given LAB_NAMED, desktop
+ids and names as `google-chrome=Google Chrome`, comma between, it installs those too, each with
+two actions, so a program's own page, whose provider keys it by its id, is there to step into,
+by Tab as Joel goes into one given LAB_STEP_KEY=tab (Return, the default, starts a program).
+Given LAB_CHANGES, it
 leaves the first word typed at home each round while a window holding it in its title takes that
 many new titles, and prints what the shell says of those changes, as Joel's daemons change rows
 under his typed words at 17 to 35 ms in the shell (2026-11-15). It fails only when a key is never
@@ -129,7 +133,28 @@ def typed_from_home(shell: Shell, word: str) -> dict[str, str]:
     return said
 
 
-def stepped_from_home(shell: Shell, name: str) -> str | None:
+def named(given: str) -> None:
+    """Install each program given as `id=Name`, comma between, with two actions, as Chrome has.
+
+    Joel's "\u2192 Google Chrome" took a median 80 ms over 10 steps since 2026-11-10, its showing 12
+    to 24 of it, so its page is stepped into here under the profiler, as his is.
+    """
+    data = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
+    applications = data / "applications"
+    applications.mkdir(parents=True, exist_ok=True)
+    for one in filter(None, given.split(",")):
+        desktop, name = one.split("=", 1)
+        (applications / f"{desktop}.desktop").write_text(
+            f"[Desktop Entry]\nType=Application\nName={name}\nExec=true\n"
+            "Actions=new-window;new-private-window;\n\n"
+            # Each its own command, as the launcher lists no action that only starts it.
+            "[Desktop Action new-window]\nName=New Window\nExec=true --new-window\n\n"
+            "[Desktop Action new-private-window]\nName=New Incognito Window\n"
+            "Exec=true --incognito\n"
+        )
+
+
+def stepped_from_home(shell: Shell, name: str, key: str = "ret") -> str | None:
     """Open home, find the place by its name, step in with Return, and give the step's line.
 
     The step's line is a key's, typed as an arrow and the place's name, said only for a step
@@ -140,7 +165,7 @@ def stepped_from_home(shell: Shell, name: str) -> str | None:
     shell.launcher_ready()
     shell.type_in(name.lower(), selecting=name)
     since = shell.mark()
-    shell.step_in()
+    shell.step_in(key)
     step = f"\u2192 {name}"
     deadline = time.monotonic() + SAYING
     said = keys_said(shell, since)
@@ -426,7 +451,9 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
     profiler: subprocess.Popen[bytes] | None = None
     parts: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
     step = os.environ.get("LAB_STEP", "")
+    step_key = os.environ.get("LAB_STEP_KEY", "ret")
     launcher_on_niri.installed(int(os.environ.get("LAB_PROGRAMS", "0")))
+    named(os.environ.get("LAB_NAMED", ""))
     with launcher_on_niri.running() as shell:
         shell.launcher_until(lambda shown: shown.get("kept"))
         if os.environ.get("LAB_PROFILE"):
@@ -452,12 +479,12 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
         typed_from_home(shell, words[0])
         rounds = changed_instead(shell, words[0], rounds, tmp_path, capsys)
         if step:
-            stepped_from_home(shell, step)
+            stepped_from_home(shell, step, step_key)
         for round_ in range(rounds):
             for word in words[round_ % len(words) :] + words[: round_ % len(words)]:
                 tallied(round_, word, typed_from_home(shell, word), parts, capsys)
             if step:
-                line = stepped_from_home(shell, step)
+                line = stepped_from_home(shell, step, step_key)
                 with capsys.disabled():
                     print(f"lab-step {round_} {step}: {line or 'under the felt'}", flush=True)
         if profiler is not None:
