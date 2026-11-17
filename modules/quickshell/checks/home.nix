@@ -200,26 +200,10 @@
           *) echo "mycelium: no cell is named $4" >&2 && exit 1 ;;
         esac
       '';
-      niri = singleton "Niri.qml" "function spawn(command) {}";
-      sessions = singleton "Sessions.qml" ''
-        readonly property string home: Quickshell.env("HOME")
-        property var running: []
-        function tell(words, folder, program) {}
-      '';
     in
     pkgs.runCommandLocal "explain-it-shows-its-own-answer" { } ''
       mkdir -p launcher bin runtime && chmod 700 runtime
-      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      ${copied [
-        "Words.qml"
-        "launcher/Ask.qml"
-        "launcher/Explainer.qml"
-        "launcher/Order.js"
-        "launcher/Provider.qml"
-        "launcher/words.json"
-      ]}
-      cp ${niri} Niri.qml
-      cp ${sessions} Sessions.qml
+      ${copied [ "launcher/Explainer.qml" ]}
       cp ${mycelium} bin/mycelium
       cp ${../../../tests/explainer.qml} shell.qml
       touch asked

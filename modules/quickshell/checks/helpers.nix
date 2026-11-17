@@ -497,7 +497,6 @@ let
         "Location.qml"
         "Timekeeping.qml"
         "Words.qml"
-        "launcher/Ask.qml"
         "launcher/Explainer.qml"
         "launcher/Now.qml"
         "launcher/PastNotices.qml"

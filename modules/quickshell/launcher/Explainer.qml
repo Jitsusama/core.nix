@@ -28,9 +28,9 @@ Scope {
     // How long the node has to answer, in milliseconds: it says a cell at
     // once, so ten seconds without one is no answer.
     property int patience: 10000
-    // The pi that answers, its own once a row is explained; a test gives
-    // one standing in.
-    property var asker: answerer.item
+    // The pi that answers, its own once a row is first explained; a test
+    // gives one standing in.
+    property var asker: null
 
     // The row explained last, by its act's key, and how it stands, as
     // Explaining.js's shown reads it: { stage, message, at }, where stage is
@@ -59,14 +59,27 @@ Scope {
         changed();
         if (command === null)
             return;
-        // Its own pi is started only while nothing stands in for it.
-        if (asker === answerer.item)
-            answerer.active = true;
+        if (asker === null)
+            asker = own();
         if (reader.running || reader.settling) {
             next = command;
             return;
         }
         read(command);
+    }
+
+    // Its own Ask, made as the launcher makes each source, with the
+    // launcher's tool left out, or null where it can't be made.
+    function own() {
+        const file = Qt.createComponent("Ask.qml");
+        if (file.status !== Component.Ready) {
+            console.error(`Explain It's pi couldn't load: ${file.errorString()}`);
+            return null;
+        }
+        return file.createObject(explainer, {
+            settings: { name: "explain", command: ["pi-ask", "--exclude-tools", "launcher"] },
+            launcher: launcher
+        });
     }
 
     function read(command) {
@@ -134,15 +147,6 @@ Scope {
             const one = explainer.explained[explainer.explaining] ?? null;
             if (one?.stage === "asking" && explainer.asker?.posed === one.message)
                 explainer.changed();
-        }
-    }
-
-    LazyLoader {
-        id: answerer
-
-        Ask {
-            launcher: explainer.launcher
-            settings: ({ name: "explain", command: ["pi-ask", "--exclude-tools", "launcher"] })
         }
     }
 
