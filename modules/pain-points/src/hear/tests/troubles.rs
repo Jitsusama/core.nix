@@ -93,6 +93,23 @@ fn routes_that_cant_be_read_or_name_no_sender_are_troubles() {
 }
 
 #[test]
+fn a_provider_owner_never_to_send_to_is_a_trouble() {
+    let place = Place::new("provider-never");
+    fs::write(
+        place.root.join("state/routes.json"),
+        r#"{"from":"EAR001","fallback":"ORCH01","ledgers":"ORCH01","provider":"NEVER1",
+            "never":["NEVER1"]}"#,
+    )
+    .expect("routes");
+    a_day(&place);
+    let hour = hear(&place.ears(), CELLS, &mut |_, _| Ok(())).expect("a run");
+    assert!(
+        hour.troubles.iter().any(|t| t.contains("provider NEVER1")),
+        "{hour:?}"
+    );
+}
+
+#[test]
 fn routes_that_never_name_a_cell_never_to_send_nothing() {
     let place = Place::new("no-never");
     fs::write(
