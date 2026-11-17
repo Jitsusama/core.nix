@@ -2,6 +2,8 @@
 // element the markup holds, writing into one, marking where the cursor is,
 // and copying a folder. What the cursor is, and where, stays with site.ts.
 
+import { ago } from "./draw.ts";
+
 /** The element `selector` finds, which the page's markup always holds. */
 function element<T extends Element>(selector: string, kind: new () => T): T {
   const found = document.querySelector(selector);
@@ -51,6 +53,38 @@ function markTree(opened: HTMLElement, inner: string | null, focus: boolean): vo
   }
 }
 
+/**
+ * Tells every age on the page again against `now`, in place, and only where its words change, so
+ * the cursor, focus and a selection stay where they stood. What write last wrote is left as it
+ * was: the markup holds each age's moment, so the next write that differs draws it anew.
+ */
+function agesAgain(now: number): void {
+  for (const each of document.querySelectorAll<HTMLElement>(".when[data-at]")) {
+    const said = ago(Number(each.dataset["at"]), now);
+    if (each.textContent !== said) {
+      each.textContent = said;
+    }
+  }
+}
+
+/**
+ * Each minute tells the ages again in place, and once the day turns calls `redraw`, since what
+ * was written today is yesterday's then: the one time the page is drawn under a reader who did
+ * nothing. A tree passing a week unwritten rests at the next move.
+ */
+function keepTime(redraw: () => void): void {
+  let day = new Date().toDateString();
+  setInterval(() => {
+    const now = Date.now();
+    agesAgain(now);
+    const today = new Date(now).toDateString();
+    if (today !== day) {
+      day = today;
+      redraw();
+    }
+  }, 60_000);
+}
+
 /** Copies `path` and says so on `note`, or says it whole when it can't be copied. */
 function copyFolder(path: string, note: HTMLElement): void {
   navigator.clipboard.writeText(path).then(
@@ -63,4 +97,4 @@ function copyFolder(path: string, note: HTMLElement): void {
   );
 }
 
-export { copyFolder, element, markRows, markTree, write };
+export { copyFolder, element, keepTime, markRows, markTree, write };

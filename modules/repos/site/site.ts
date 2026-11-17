@@ -1,10 +1,8 @@
-// Code, live: every repository on the machine as the repos daemon holds it,
-// drawn as a grove above the list of them, with the one the cursor is on
-// open beside the list. It watches the daemon's reading, repositories,
-// checkouts, trees and changes over the sites' server, so the page moves the
-// moment git writes, and the cells at work from the machine's mycelium
-// node. Nothing under the reader moves unless they moved
-// it: each repository keeps its place, and the cursor stays where it was.
+// Code, live: every repository on the machine as the repos daemon holds it, drawn as a grove
+// above the list of them, with the cursor's open beside the list. It watches the daemon's records
+// over the sites' server, so the page moves the moment git writes, and the cells at work from the
+// machine's mycelium node. Nothing under the reader moves unless they moved it: each repository
+// keeps its place, and the cursor stays where it was.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
@@ -25,7 +23,7 @@ import {
   stepped,
 } from "./model.ts";
 import { type Mycelium, watchMycelium } from "./mycelium.ts";
-import { copyFolder, element, markRows, markTree, write } from "./page.ts";
+import { copyFolder, element, keepTime, markRows, markTree, write } from "./page.ts";
 
 const title = element("#title", HTMLHeadingElement);
 const lede = element("#lede", HTMLParagraphElement);
@@ -194,6 +192,8 @@ watchMycelium((now) => {
   mycelium = now;
   soon();
 });
+// Ages and seasons are told against now, so they're kept with the clock while nothing moves.
+keepTime(soon);
 
 // ---- Where the address lands, and where it follows the cursor. ----
 
