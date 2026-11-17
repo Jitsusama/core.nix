@@ -1232,11 +1232,11 @@
   home-builds-from-its-rows = ''
     the local sites' home lists each site from its row in sites.json, the settled apart and every
     name escaped, with a row Nix declares for a live site standing in for the record's at its path
-    or going first, strips each page that asks after its skip link, names each document loading a
-    script file of its own rather than the kit's, loads the kit's keys and switch and takes away
-    the scripts it used to copy, draws its mark in each look's tint or the other look's where one is
-    missing, leaves out and says a tint or ground that isn't a colour, and changes nothing on a
-    second run
+    or going first, says every row it lists in rows.json as written, strips each page that asks
+    after its skip link, names each document loading a script file of its own rather than the
+    kit's, loads the kit's keys and switch and takes away the scripts it used to copy, draws its
+    mark in each look's tint or the other look's where one is missing, leaves out and says a tint
+    or ground that isn't a colour, and changes nothing on a second run
   '';
   homes-probe-reads-as-the-reader = ''
     the web-design skill's homes probe, in headless Chromium over small sites of its own, learns a

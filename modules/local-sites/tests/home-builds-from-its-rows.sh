@@ -4,8 +4,7 @@
 # a settled one. The home lists the two growing ones in their beds in order
 # (live before on record) and the settled one under Kept, with every name
 # escaped, a contents line naming each bed and a standing line counting
-# them; llms.txt
-# and the twin list all three; each stripped page gets its strip after the
+# them; llms.txt and the twin list all three; each stripped page gets its strip after the
 # skip link, linking home from its depth; the home's own files are put
 # beside it, its mark drawn in each look's tint, and its old scripts
 # taken away, while its page loads the kit's script and switch; its
@@ -13,8 +12,10 @@
 # one; a look with no tint takes the other's, and a tint or ground that
 # isn't a colour is left out and said, never written in; a second
 # run changes no file; a broken record keeps the last build; a root with no
-# sites.json is left alone; and a row Nix declares stands in for the
-# record's, or goes first; and a
+# sites.json is left alone; a row Nix declares stands in for the record's,
+# or goes first, and rows.json says every row listed as it was written, in
+# the home's order; a row whose path leads off the sites is left out and
+# said; and a
 # document loading a script file of its own is named, on any of its pages,
 # however its tag is spelled and even past a byte that isn't UTF-8, while one
 # loading only the kit's, and an app loading its own, are not.
@@ -197,7 +198,8 @@ strips=$(grep -c 'sites strip: home.py' "$root/map/index.html")
 cat > "$work/declared.json" << 'EOF'
 {"sites": [
   {"path": "grove/", "name": "The grove", "what": "Trees.", "kind": "app", "when": "live"},
-  {"path": "old/", "name": "The old one, declared", "what": "Live.", "kind": "app", "when": "live"}
+  {"path": "old/", "name": "The old one, declared", "what": "Live.", "kind": "app", "when": "live",
+   "homes": ["tree", {"kind": "heron", "address": "#heron={name}"}]}
 ]}
 EOF
 said=$("$python" "$sources/home.py" "$sources" "$root" "$work/declared.json")
@@ -209,6 +211,15 @@ grep -q '<span class="name">The old one</span>' "$index" &&
 listed=$(grep -o '^- \[[^]]*\]' "$root/llms.txt" | tr '\n' ' ')
 [ "$listed" = "- [The grove] - [The map] - [Notes & such] - [The old one, declared] " ] ||
   fail "the declared rows aren't first and in place: $listed"
+# What reads each site's homes reads them in rows.json, each row whole.
+[ -f "$root/rows.json" ] || fail "the home wrote no rows.json"
+rows=$("$python" -c 'import json, sys
+for row in json.load(open(sys.argv[1]))["sites"]:
+    print(row["path"], json.dumps(row.get("homes")), json.dumps(row.get("pages")))' \
+  "$root/rows.json" | tr '\n' ' ')
+expected='grove/ null null map/ null {"tree.html": "test"} notes/ null {"more.html": "record"}'
+expected+=' old/ ["tree", {"kind": "heron", "address": "#heron={name}"}] null '
+[ "$rows" = "$expected" ] || fail "rows.json isn't every row as written: $rows"
 before=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)
 "$python" "$sources/home.py" "$sources" "$root" "$work/declared.json" > /dev/null
 after=$(cd "$root" && find . -type f -printf '%p %T@\n' | sort)

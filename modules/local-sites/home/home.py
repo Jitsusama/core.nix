@@ -15,11 +15,14 @@ does next.
 A live site's row comes from its declaration in Nix rather than the record,
 so what the home says of it changes as the site does. The rows the Nix
 config declares, as declared.json writes them, stand in for the record's row
-at the same path, however it is spelled, or go first if it has none.
+at the same path, however it is spelled, or go first if it has none. Every
+row the home lists, each as it was written, goes into rows.json beside it,
+for the pages that read what each site is home to, so they read a live
+site's row as its declaration says it rather than the record's.
 
 usage: home.py <sources> <root> [<declared>], where sources holds the home's
 page and its files, root is the sites' folder, and declared is the rows the
-Nix config declares. It rewrites index.html, index.md and
+Nix config declares. It rewrites index.html, index.md, rows.json and
 llms.txt whole, and in each stripped page only what sits between the strip's
 two markers, so a run with nothing changed leaves every file as it was.
 Without declared rows, a root with no sites.json yet is left alone; with
@@ -30,7 +33,7 @@ import html
 import json
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +77,8 @@ class Site:
     status: str
     strip: bool
     pages: dict[str, str]
+    # The row as it was written, every field kept, for rows.json.
+    row: dict[str, Any] = field(compare=False, repr=False)
 
     @classmethod
     def read(cls, row: dict[str, Any]) -> Site:
@@ -89,6 +94,7 @@ class Site:
             status=str(row.get("status") or "growing"),
             strip=bool(row.get("strip")),
             pages={str(page): str(kind) for page, kind in pages.items()},
+            row=row,
         )
 
     @property
@@ -408,6 +414,8 @@ def build(sources: Path, root: Path, declared: Path | None = None) -> str:
         (root / name).unlink(missing_ok=True)
     write(root / "llms.txt", llms(root, sites))
     write(root / "index.md", twin(sites))
+    listed = {"sites": [site.row for site in sites]}
+    write(root / "rows.json", json.dumps(listed, indent=2, ensure_ascii=False) + "\n")
 
     pages: dict[str, tuple[Site, str]] = {}
     for site in (site for site in sites if site.strip):

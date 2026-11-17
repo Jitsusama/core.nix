@@ -96,11 +96,12 @@ let
     };
   };
   # Each declared row as home.py reads it: an app, growing, and live. Its
-  # strip is the one its build writes, so the home writes none. The homes'
-  # readers (system's, the web-design skill's, Code's) still read sites.json,
-  # so its live rows stay there, and rolling this back stays safe, until
-  # they read these. A session's edit to a live row there no longer reaches
-  # the home, since the declaration stands in for it.
+  # strip is the one its build writes, so the home writes none. The home
+  # writes every row it lists into rows.json, these as declared, for the
+  # homes' readers (system's, the web-design skill's, Code's). Until each
+  # reads that, they read sites.json, so its live rows stay there, and
+  # rolling this back stays safe. A session's edit to a live row there no
+  # longer reaches the home, since the declaration stands in for it.
   declared = pkgs.writeText "local-sites-rows.json" (
     builtins.toJSON {
       sites = lib.mapAttrsToList (
@@ -305,6 +306,13 @@ in
           "from the networks it has joined, moving the moment one changes."
         ];
         asks = "Keep it open a while; say what you'd want to see that it doesn't show.";
+        # Each machine's address on the map, which system links to.
+        homes = [
+          {
+            kind = "machine";
+            address = "#machine={name}";
+          }
+        ];
       };
       web = {
         name = "What your sessions murmur";
