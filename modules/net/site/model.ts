@@ -274,7 +274,7 @@ function channelOf(value: Fields): Channel | undefined {
     : {
         channel,
         kind,
-        active: value.active !== false,
+        active: value["active"] !== false,
         powerDbmv: number(value, "power_dbmv"),
         snrDb: number(value, "snr_db"),
         uncorrectable: number(value, "uncorrectable"),

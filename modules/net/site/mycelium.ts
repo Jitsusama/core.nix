@@ -45,7 +45,7 @@ function pressureOf(value: Fields | undefined): Pressure | undefined {
  * Whether a cell runs on a machine: a session or a receptor. A machine is
  * a cell of its own too, and isn't one of those running on it.
  */
-const runs = (cell: Fields): boolean => cell.type === "session" || cell.type === "receptor";
+const runs = (cell: Fields): boolean => cell["type"] === "session" || cell["type"] === "receptor";
 
 /** How many of `running` stand each way on the machine `name`. */
 function standingOn(running: readonly Fields[], name: string): Map<string, number> {
