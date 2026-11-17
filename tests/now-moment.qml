@@ -1428,7 +1428,7 @@ ShellRoot {
         root.nowChanged = 0;
         now.changedTo(now.everything().concat([another]));
         said("For You held, another of Now's rows moving says none of it is shown", 1, true);
-        expect("and nothing once said", !now.changedUnseen, "it stayed unseen");
+        expect("and not unseen once said", !now.changedUnseen, "it stayed unseen");
         now.changedTo(forYouAs({ name: "For You Renamed" }));
         said("but For You's own line moving is shown", 2, false);
         now.changedTo(now.everything());
@@ -1441,6 +1441,8 @@ ShellRoot {
         // among its things, and its keys' acts went untimed.
         now.changedTo(now.everything().filter(row => row.key !== "on:waitingOnYou"));
         said("For You gone from Now's rows is shown", 6, false);
+        // This one pins the guard: the change before left nothing held to
+        // compare with, so a gone row read as "" would match it.
         now.changedTo(now.everything().filter(row => row.key !== "on:waitingOnYou")
             .concat([another]));
         said("and so is a change after, while it's still gone", 7, false);
@@ -1469,6 +1471,29 @@ ShellRoot {
         root.nowChanged = 0;
         now.changedTo(now.everything().concat([another]));
         said("with nothing held, any row moving is shown", 1, false);
+        const gone = () => now.everything().filter(row => row.key !== "on:waitingOnYou");
+        now.changedTo(gone());
+        root.nowChanged = 0;
+        theLauncher.held = into(now.waiting.verbs());
+        now.changedTo(gone().concat([another]));
+        said("stepped into For You while it's gone, another row moving is shown", 1, false);
+        // For You's rows are asked once a change, held or stepped into:
+        // waitingRows() is costly, and two asks could read across a turn.
+        let asks = 0;
+        const counted = forYouAs({ verbs: () => {
+            asks += 1;
+            return now.waiting.verbs();
+        } });
+        now.changedTo(now.everything());
+        asks = 0;
+        now.changedTo(counted);
+        expect("For You held, a change asks what it holds once", asks === 1, asks);
+        theLauncher.held = [];
+        now.changedTo(now.everything());
+        theLauncher.held = into(now.waiting.verbs());
+        asks = 0;
+        now.changedTo(counted);
+        expect("and stepped into, once too", asks === 1, asks);
         theLauncher.held = [];
         Facts.all = [];
         Notices.history = [];

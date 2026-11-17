@@ -199,9 +199,13 @@ Scope {
         const unseen = heldRow !== null && (stepped
             ? heldRow === shown[at] && ownEach[at] === lastOwnBy[keys[0]]
             : heldRow === lastHeldRow);
-        const ownBy = {};
+        // The first row by each key, as `at` finds it, and no key read as
+        // one of an object's own names.
+        const ownBy = Object.create(null);
         rows.forEach((row, index) => {
-            ownBy[row.key ?? ""] = ownEach[index];
+            const key = row.key ?? "";
+            if (!(key in ownBy))
+                ownBy[key] = ownEach[index];
         });
         lastSaid = now;
         lastOwn = own;
