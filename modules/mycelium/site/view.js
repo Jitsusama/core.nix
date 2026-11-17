@@ -4308,6 +4308,9 @@
       drawStatus();
       performance.clearMeasures("mycelium-redraw");
       performance.measure("mycelium-redraw", { start: started });
+      // What was made of the reading, once drawn whole, for reach.ts to
+      // judge beside it; a reading that fails to draw says nothing.
+      document.dispatchEvent(new CustomEvent("mycelium:modelled", { detail: { now, model: current } }));
     } catch (err) {
       // A reading that fails to draw says why in the console, so a page
       // stuck at "reading" can be told from a node that isn't answering.

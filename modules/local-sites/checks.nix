@@ -243,8 +243,9 @@ in
   # with the realm kept and live once it's back, stale once the server goes
   # with the realm kept, a cell's title drawn as words and never as markup,
   # the web-design skill's page checks and the map's own (site-checks.js)
-  # passing at two widths in both looks, and nothing logged but what a test
-  # causes. Chromium builds only on Linux.
+  # passing at two widths in both looks, nothing logged but what a test
+  # causes, and every cell reached (reach.ts) there and on a twin of 10,000.
+  # Chromium builds only on Linux.
   # The node's feed is the one home.nix declares for a machine in a realm, so
   # the server under test passes the page exactly what a machine's does.
   mycelium-site-reads-live =
