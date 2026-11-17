@@ -2501,7 +2501,8 @@ pub const NEARBY_AT_ONCE: u32 = 2;
 /// Mac's boot session's. Both are fixed for the whole boot, where a Mac's
 /// boot time moves when its clock is stepped.
 const BOOT_READ: &str = "cat /proc/sys/kernel/random/boot_id 2>/dev/null || \
-     sysctl -n kern.bootsessionuuid 2>/dev/null";
+     sysctl -n kern.bootsessionuuid 2>/dev/null || \
+     /usr/sbin/sysctl -n kern.bootsessionuuid 2>/dev/null";
 
 /// `command`, run once it holds one of [`NEARBY_AT_ONCE`] turns on the
 /// machine it's sent to, however many runs from however many machines
@@ -2512,8 +2513,8 @@ const BOOT_READ: &str = "cat /proc/sys/kernel/random/boot_id 2>/dev/null || \
 /// fails if the link is already there. The shell gives it back as it
 /// ends, unless another run has taken it since. One whose shell is gone,
 /// killed outright or in an earlier boot, or that names no shell or a
-/// pid of 11 digits or more, which no system reaches, is taken by the
-/// next to look. A run waiting says so at once and about
+/// pid of 8 digits or more, past Linux's highest and a Mac's, which zsh
+/// can read as -1 and so as live, is taken by the next to look. A run waiting says so at once and about
 /// every 5 minutes, or `NIX_OFFLOAD_TURN_EVERY` seconds, so it isn't read
 /// as hung. A turn that can't be made, as a folder in its place or a dead
 /// one in a folder that can't be written, is passed over for the others;
@@ -2547,7 +2548,7 @@ pub fn in_turn_nearby(command: &str) -> String {
          if ln -s \"$mine\" \"$turns/$n\" 2>/dev/null; then turn=\"$turns/$n\"; break; fi; \
          holder=$(readlink \"$turns/$n\" 2>/dev/null); \
          if [ -z \"$holder\" ]; then unmade=$((unmade + 1)); n=$((n + 1)); continue; fi; fi; \
-         pid=${{holder%% *}}; case \"$pid\" in ''|*[!0-9]*|0*|???????????*) pid=; esac; \
+         pid=${{holder%% *}}; case \"$pid\" in ''|*[!0-9]*|0*|????????*) pid=; esac; \
          if [ -z \"$pid\" ] || [ \"${{holder#* }}\" != \"$boot\" ] || [ \"$pid\" = \"$$\" ] || \
          ! kill -0 \"$pid\" 2>/dev/null; then \
          if rm -f \"$turns/$n\" 2>/dev/null; then continue; fi; unmade=$((unmade + 1)); fi; \
@@ -5139,8 +5140,9 @@ mod tests {
             // kill -0 0 asks of the whole group, so always answers.
             (format!("0 {boot}"), "naming no shell"),
             (format!("00 {boot}"), "naming no shell in two zeros"),
-            // No system's pids reach 11 digits, and zsh can read one that
-            // overflows as a live shell.
+            // No system's pids reach 8 digits, and zsh reads 4294967295
+            // as -1, which kill -0 answers for as live.
+            (format!("4294967295 {boot}"), "naming a pid zsh reads as -1"),
             (
                 format!("99999999999999999999 {boot}"),
                 "naming a pid past any system's",
@@ -5231,7 +5233,11 @@ mod tests {
             });
             told.recv_timeout(Duration::from_secs(30))
                 .unwrap_or_else(|_| panic!("{shell} never said it waited"));
-            fs::remove_dir_all(&turns).unwrap();
+            // Moved aside whole first, so the run can't make a turn in it
+            // as it's removed.
+            let aside = folder.path().join("aside");
+            fs::rename(&turns, &aside).unwrap();
+            fs::remove_dir_all(&aside).unwrap();
             let taker = waiting.id();
             let ran = ended(waiting);
             let said = reading.join().unwrap();
