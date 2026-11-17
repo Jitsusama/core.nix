@@ -53,6 +53,7 @@ pub fn compose(
         Class::Miss,
         Class::Slip,
         Class::Functional,
+        Class::Cells,
         Class::Clean,
     ] {
         let of_class: Vec<&Measure> = measures.iter().filter(|m| m.class == class).collect();

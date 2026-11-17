@@ -9,11 +9,13 @@ use serde_json::Value;
 
 mod balanced;
 mod broken;
+mod cells;
 mod locked;
 mod misses;
 
 pub use balanced::balanced;
 pub use broken::{Main, broken, failed_in};
+pub use cells::{Quest, Report, cells, mapped, quest, report, unasked};
 pub use locked::read as unlocked;
 pub use misses::{checked, said};
 
@@ -21,13 +23,15 @@ const DAY: i64 = 86_400;
 
 /// What a measure is about, in the order the drag is chosen from: a miss
 /// Joel found himself always comes first, then a date missed, then what
-/// broke, then how fast things shipped, then how clean the code is.
+/// broke, then how fast things shipped, then how the cells doing it
+/// stand, then how clean the code is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Class {
     Miss,
     Slip,
     Functional,
     Ship,
+    Cells,
     Clean,
 }
 
@@ -40,6 +44,7 @@ impl Class {
             Self::Slip => "slips",
             Self::Functional => "functional quality",
             Self::Ship => "ship",
+            Self::Cells => "cell health",
             Self::Clean => "clean zones",
         }
     }

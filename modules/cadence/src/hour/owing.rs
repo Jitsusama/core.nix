@@ -53,12 +53,17 @@ fn filed(m: &Measure) -> Vec<Filed> {
             .into_iter()
             .map(|(owner, files)| {
                 let files = files.join(", ");
+                let things = if m.class == Class::Cells {
+                    "cells"
+                } else {
+                    "files"
+                };
                 Filed {
                     key: format!("hour:{}:{owner}", m.key),
                     says: format!("{says}, yours: {files}"),
                     text: format!(
                         "cadence hour: the biggest drag this hour is {says}, and these of \
-                         its files are yours: {files}. Please reply with their cause and fix \
+                         its {things} are yours: {files}. Please reply with their cause and fix \
                          within a day, or why they can't move. It closes by itself once its \
                          figure is back in."
                     ),
@@ -79,11 +84,11 @@ fn filed(m: &Measure) -> Vec<Filed> {
     }]
 }
 
-/// A clean measure's files by the owner each is said with, where
-/// code-health said one; empty otherwise, and for every other class.
+/// A clean measure's files, or a cell measure's cells, by the owner each
+/// is said with; empty otherwise, and for every other class.
 pub fn by_owner(m: &Measure) -> BTreeMap<String, Vec<String>> {
     let mut owners: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    if m.class == Class::Clean {
+    if routed(m.class) {
         for (file, owner) in m.behind.iter().filter_map(|line| line.rsplit_once(" · ")) {
             owners
                 .entry(owner.to_owned())
@@ -92,6 +97,12 @@ pub fn by_owner(m: &Measure) -> BTreeMap<String, Vec<String>> {
         }
     }
     owners
+}
+
+/// Whether a class's lines each name their own owner, after ` · `, so its
+/// drag is filed with each of them rather than with the measure's owner.
+fn routed(class: Class) -> bool {
+    matches!(class, Class::Clean | Class::Cells)
 }
 
 /// Whether the drag filed as `key` is back in: its miss no longer open,
@@ -111,7 +122,7 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
         .iter()
         .find(|m| {
             m.key == key
-                || (m.class == Class::Clean
+                || (routed(m.class)
                     && key
                         .strip_prefix(m.key.as_str())
                         .is_some_and(|owner| owner.starts_with(':')))
@@ -214,6 +225,31 @@ mod tests {
         );
         suppressions.now = 10.0;
         file(&mut ledger, &[suppressions], "2026-11-15", 4600);
+        assert!(
+            ledger.iter().all(|e| !e.open),
+            "back in closes every owner's"
+        );
+    }
+
+    #[test]
+    fn a_cells_drag_goes_to_each_cells_owner_and_closes_once_back_in() {
+        let mut idle = measure("cells-idle", Class::Cells, 2.0, Some(0.0));
+        idle.behind = vec![
+            "AAAAAA idle 30 min: write it · ORCH".to_owned(),
+            "BBBBBB idle 40 min: merge it · PARENT".to_owned(),
+        ];
+        let mut ledger = Vec::new();
+        let told = file(&mut ledger, &[idle.clone()], "2026-11-17", 1000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(owners, ["ORCH", "PARENT"], "each cell's owner is told");
+        assert!(
+            told[0].1.contains("these of its cells are yours: AAAAAA idle 30 min: write it")
+                && !told[0].1.contains("BBBBBB"),
+            "each hears only of its own cells: {}",
+            told[0].1
+        );
+        idle.now = 0.0;
+        file(&mut ledger, &[idle], "2026-11-17", 4600);
         assert!(
             ledger.iter().all(|e| !e.open),
             "back in closes every owner's"

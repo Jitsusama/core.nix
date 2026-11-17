@@ -19,7 +19,8 @@ mod owing;
 
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
@@ -79,6 +80,28 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
             .filter_map(|realm| command("mycelium", &["--realm", realm, "machines"]).ok())
             .collect();
         measures.push(measures::crowded(&answers, NET_RULES));
+        // The cells are the orchestrator's to move where no orchestration
+        // or parent owns one; a look by hand names no orchestrator.
+        let sessions: Vec<(String, String)> = realms
+            .iter()
+            .filter_map(|realm| {
+                let answer = command("mycelium", &["--realm", realm, "sessions"]).ok()?;
+                Some((realm.clone(), answer))
+            })
+            .collect();
+        let fallback = to.unwrap_or_default();
+        let quests = quests();
+        measures.extend(measures::cells(&sessions, &quests, now, fallback));
+        let (exit, out) = exit_and_out("mycelium-map-check", &["--json"]);
+        measures.push(measures::mapped(exit, &out, fallback));
+        let looks = looks(&state_home.join("pi/agentic-harness.pi/looks"));
+        measures.push(measures::unasked(
+            &reports(),
+            looks.as_deref(),
+            &quests,
+            now,
+            fallback,
+        ));
     }
     let kept_at = folder.join("hour.json");
     let kept: Kept = fs::read_to_string(&kept_at)
@@ -175,6 +198,66 @@ fn gather(
     let minutes = [day(now - DAY), day(now)].join("\n");
     all.extend(measures::balanced(&minutes, now, NET_RULES));
     Ok(all)
+}
+
+/// Each quest's folder the harness keeps on this machine.
+fn quest_folders() -> Vec<PathBuf> {
+    let data = std::env::var_os("XDG_DATA_HOME").map_or_else(
+        || Path::new(&std::env::var_os("HOME").unwrap_or_default()).join(".local/share"),
+        PathBuf::from,
+    );
+    let store = data.join("pi/agentic-harness.pi/quest-workflow/quests");
+    fs::read_dir(store)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| Some(entry.ok()?.path()))
+        .collect()
+}
+
+/// Every quest the harness keeps on this machine, from its README.
+fn quests() -> Vec<measures::Quest> {
+    quest_folders()
+        .iter()
+        .filter_map(|folder| fs::read_to_string(folder.join("README.md")).ok())
+        .filter_map(|readme| measures::quest(&readme))
+        .collect()
+}
+
+/// Every report and review the quests keep, with when each file was last
+/// written, since the frontmatter dates it only by day.
+fn reports() -> Vec<measures::Report> {
+    quest_folders()
+        .iter()
+        .filter_map(|folder| fs::read_dir(folder.join("reports")).ok())
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            let written = fs::metadata(&path).ok()?.modified().ok()?;
+            let written = written.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+            measures::report(&fs::read_to_string(&path).ok()?, i64::try_from(written).ok()?)
+        })
+        .collect()
+}
+
+/// The looks put on Joel's list, each its own file; none where the list
+/// can't be read, so a missing folder doesn't read as nothing asked.
+fn looks(folder: &Path) -> Option<Vec<serde_json::Value>> {
+    let entries = fs::read_dir(folder).ok()?;
+    Some(
+        entries
+            .filter_map(|entry| fs::read_to_string(entry.ok()?.path()).ok())
+            .filter_map(|text| serde_json::from_str(&text).ok())
+            .collect(),
+    )
+}
+
+/// A program's exit and what it printed, its exit none where it didn't
+/// run, for a check whose failing exit still says something.
+fn exit_and_out(program: &str, args: &[&str]) -> (Option<i32>, String) {
+    Command::new(program).args(args).output().map_or_else(
+        |_| (None, String::new()),
+        |out| (out.status.code(), String::from_utf8_lossy(&out.stdout).into_owned()),
+    )
 }
 
 /// The date at `now` here, as `2026-11-14`.

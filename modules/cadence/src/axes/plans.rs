@@ -71,14 +71,14 @@ fn active(readme: &str) -> bool {
 }
 
 /// A document's frontmatter, between its opening `---` and the next.
-fn front(text: &str) -> &str {
+pub(crate) fn front(text: &str) -> &str {
     text.strip_prefix("---\n")
         .and_then(|rest| rest.split_once("\n---").map(|(front, _)| front))
         .unwrap_or_default()
 }
 
 /// A field at the frontmatter's top level, not one nested in a list.
-fn field<'a>(front: &'a str, key: &str) -> Option<&'a str> {
+pub(crate) fn field<'a>(front: &'a str, key: &str) -> Option<&'a str> {
     front
         .lines()
         .find_map(|line| line.strip_prefix(key)?.strip_prefix(": "))
