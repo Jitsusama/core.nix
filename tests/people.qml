@@ -374,13 +374,12 @@ ShellRoot {
                     && /^available \u00b7 Kolkata \u00b7 \d\d:\d\d$/u.test(ada[0].side),
                 `${names(ada)} ${ada[0]?.side}`);
         }),
-        // Among equals, the daemon's order: those found by a name before
-        // those found by an address alone, as gus is, then
-        // as Tuple lists them.
+        // Among equals, the daemon's order: each address finds them as
+        // well as the next, as gus's does, so as Tuple lists them.
         seeking("example", "those listed first, then the rest, as the daemon finds them", () => {
             const all = found("example");
             expect("in order", names(all) === "Ada Brook, Ben Carrow, Cal Dunmore, Dee Ellery, "
-                + "Gus, Eli Fenwick, Zo\u00eb \"Zed\" Quill", names(all));
+                + "Eli Fenwick, Gus, Zo\u00eb \"Zed\" Quill", names(all));
         }),
         seeking("ben", "the shell holds only those listed and those found", () => {
             expect("only those", people.persons().length === 4, names(people.persons()));
