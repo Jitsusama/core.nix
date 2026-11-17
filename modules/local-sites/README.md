@@ -39,6 +39,13 @@ carries no strip of its own; one that does fails its build. The home
 writes the same strip into the documents it may change, so both read
 alike.
 
+A document takes its keys and its theme switch from the kit, loading
+`/local-sites/kit/document.js` as a module rather than a copy of its own,
+so every document learns what the kit does next. Its parts are the `.part`
+sections, each opening with an h2, its list of keys the dialog `#keys`,
+and its switch the kit's radios. The home names, in what it says as it
+builds, each document still loading a script file of its own.
+
 | Path                     | What it holds                                           |
 | ------------------------ | ------------------------------------------------------- |
 | [`home.nix`][module]     | the server's unit, its options, the sites and the home  |

@@ -6,6 +6,7 @@ a site's compiled imports land.
 
 | File          | What it holds                                                 |
 | ------------- | ------------------------------------------------------------- |
+| `document.ts` | a document's parts, its keys and its switch, wired on load    |
 | `feed.ts`     | a watch of a daemon's feed: connecting, live, stale or broken |
 | `keys.ts`     | the keys a page answers, and its list of them on `?` and F1   |
 | `records.ts`  | a daemon's records, held as its watch tells them              |

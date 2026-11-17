@@ -11,6 +11,9 @@
  */
 type Action = () => unknown;
 
+/** Where Joel types: any field taking words, but not a radio or a checkbox. */
+const TYPED = 'input:not([type="radio"], [type="checkbox"]), textarea, [contenteditable]';
+
 /** What a page does for each key it answers. */
 type Actions = { readonly [key: string]: Action };
 
@@ -45,9 +48,12 @@ function chosen(press: Press, actions: Actions): Chosen {
   return Object.hasOwn(actions, press.key) ? actions[press.key] : undefined;
 }
 
-/** Whether `target` is somewhere Joel types. */
+/**
+ * Whether `target` is somewhere Joel types. A radio or a checkbox takes no
+ * letters, so the page's keys still answer there.
+ */
 function typing(target: Element): boolean {
-  return target.closest("input, textarea, [contenteditable]") !== null;
+  return target.closest(TYPED) !== null;
 }
 
 /** Whether `target` is a control whose own keys come before the page's. */
@@ -57,8 +63,11 @@ function hasOwnKeys(target: Element): boolean {
 
 /** What a page hands `listen`. */
 interface Listening {
-  /** The dialog listing the page's keys, which `?` and F1 open and close. */
-  readonly help: HTMLDialogElement;
+  /**
+   * The dialog listing the page's keys, which `?` and F1 open and close. A
+   * page without one still answers its own keys.
+   */
+  readonly help?: HTMLDialogElement;
   /** What the page's own keys do. */
   readonly actions: Actions;
   /**
@@ -93,11 +102,13 @@ function listen(listening: Listening): () => void {
       return;
     }
     if (choice === "help") {
-      toggle(listening.help);
-      event.preventDefault();
+      if (listening.help) {
+        toggle(listening.help);
+        event.preventDefault();
+      }
       return;
     }
-    if (listening.help.open || !answersAt(target) || choice() === false) {
+    if (listening.help?.open === true || !answersAt(target) || choice() === false) {
       return;
     }
     event.preventDefault();
