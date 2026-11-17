@@ -7327,11 +7327,11 @@ Scope {
         const timed = due.filter(key => key.untimed !== true);
         // A step in by a word and a space is a look, as one by Return or
         // Tab is (enter), so an opening that typed "network ", read it and
-        // left isn't kept as a miss; the key that took it is the last timed,
-        // heard where its press is unknown, as keyTimed reads it.
-        const took = timed.length > 0 ? timed[timed.length - 1] : null;
-        if (into !== "" && took)
-            trials.wentIn(took.pressed > 0 ? took.pressed : took.heard);
+        // left isn't kept as a miss. The key that took it is the last timed,
+        // and only its press counts: a change no key made, as an opening
+        // given its words, says no press and so isn't his look.
+        if (into !== "" && timed.length > 0)
+            trials.wentIn(timed[timed.length - 1].pressed);
         timed.forEach((key, at) => {
             const step = into !== "" && at === timed.length - 1 ? `\u2192 ${into}` : key.step;
             keyTimed(step || key.text, key.began, key.heard, key.pressed, key.collected, !!step,

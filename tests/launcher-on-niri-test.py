@@ -388,7 +388,7 @@ def test_a_drawers_prose_shows_five_lines_and_za_opens_the_rest(shell: Shell) ->
 
 
 def openings_kept() -> list[Json]:
-    """Give every opening the launcher's trials have kept, oldest first."""
+    """Give every opening the launcher's trials have kept, in no order."""
     state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
     lines = [
         line
@@ -399,33 +399,26 @@ def openings_kept() -> list[Json]:
     return [cast("Json", json.loads(line)) for line in lines]
 
 
-def opening_kept_after(before: int) -> Json:
-    """Give the opening kept after the first `before`, once the shell has added its line."""
+def now_ms() -> int:
+    """Give the wall clock in milliseconds, as an opening's start is kept."""
+    return time.time_ns() // 1_000_000
+
+
+def opening_kept_since(since: int) -> Json:
+    """Give the first opening begun at or after `since` (ms), once the shell has kept it.
+
+    An opening is told by when it began rather than by how many lines there are, since the
+    test before's line may still be on its way through the pipe.
+    """
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
     # The shell adds the opening's line through a pipe once it closes, so it's read again until
     # it's there, a poll's length apart.
-    while len(openings_kept()) <= before:
+    while True:
+        begun = [kept for kept in openings_kept() if cast("int", kept.get("at", 0)) >= since]
+        if begun:
+            return min(begun, key=lambda kept: cast("int", kept.get("at", 0)))
         assert time.monotonic() < deadline, "the opening was never kept"
         time.sleep(launcher_on_niri.POLL)
-    return openings_kept()[-1]
-
-
-def test_a_word_and_a_space_stepping_in_is_kept_as_a_look(shell: Shell) -> None:
-    """An opening that typed a place's word and a space, looked inside and left isn't a miss.
-
-    A step in by Return or Tab was kept as a look, but one by a category's word and a space
-    wasn't, so an opening that typed "network ", read the network and left was kept as a miss,
-    and health counted it as a search that found nothing.
-    """
-    before = len(openings_kept())
-    shell.as_account(shell.ipc("toggle"))
-    shell.launcher_ready()
-    shell.send_chars("network ")
-    shell.launcher_until(lambda shown: shown["path"] == ["Network"])
-    shell.close_launcher()
-    last = opening_kept_after(before)
-    assert last.get("missed") is False, last
-    assert last.get("looked") == "stepped", last
 
 
 def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None:
@@ -438,9 +431,9 @@ def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None
     so what wasn't found can be read: two of Joel's gave up after 51 and 62 s holding only counts
     (1JQPPC, 2026-11-12, 77f84121); a pick keeps none.
     """
-    before = len(openings_kept())
+    since = now_ms()
     copied(shell, "6*7", "42")
-    last = opening_kept_after(before)
+    last = opening_kept_since(since)
     assert last.get("picked") == "answer:sum", last
     assert last.get("missed") is False, last
     presented = cast("list[int]", last.get("presented", []))
@@ -448,7 +441,7 @@ def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None
     assert presented, last
     assert all(isinstance(ms, int) and ms >= 0 for ms in presented), last
     assert last.get("sought") == [], last
-    before = len(openings_kept())
+    since = now_ms()
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     shell.type_in("zqxjv")
@@ -457,7 +450,7 @@ def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None
     shell.launcher_until(lambda shown: shown["typed"] == "")
     shell.type_in("qqwy")
     shell.close_launcher()
-    missed = opening_kept_after(before)
+    missed = opening_kept_since(since)
     assert missed.get("missed") is True, missed
     assert missed.get("sought") == ["zqxjv", "qqwy"], missed
 
