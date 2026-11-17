@@ -10,8 +10,8 @@
 //! Each end of a shared quest looks once a second and files arrive in no
 //! set order, so each side lists what it left, with sizes and an end line
 //! written last, and the other waits until all of it is there. A share
-//! writes each file it receives whole, by a rename, so a file there is a
-//! file arrived.
+//! writes each file it receives to a hidden file renamed over its path
+//! (mycelium's `share/disk.rs`), so a file there is a file arrived.
 //!
 //! A shared quest keeps home any folder a build fills, `target` and
 //! `node_modules`, wherever it lies, which a tracked file can sit in as
@@ -261,32 +261,7 @@ pub fn script(
         .map(|word| quoted(word))
         .collect::<Vec<_>>()
         .join(" ");
-    // What comes back crosses under its number too, since a kind may
-    // bring back what lies under a folder a share keeps home. A hidden
-    // file is left, as this side would pass it over.
-    let bringing = if kind.brings_back.is_empty() {
-        format!(": > \"$job/{BROUGHT}\"\n")
-    } else {
-        let paths = kind
-            .brings_back
-            .iter()
-            .map(|path| quoted(path.trim_matches('/')))
-            .collect::<Vec<_>>()
-            .join(" ");
-        format!(
-            r#"for path in {paths}; do
-  [ -e "$path" ] && find "$path" -type f ! -path '*/.*' ! -name '.*'
-done | {{
-  n=0
-  while IFS= read -r file; do
-    cp "$file" "$job/{BACK}/$n" || continue
-    printf '%s\t%s\n' "$(($(wc -c < "$job/{BACK}/$n")))" "$file"
-    n=$((n + 1))
-  done
-}} > "$job/{BROUGHT}"
-"#
-        )
-    };
+    let bringing = bringing(kind);
     let setup = kind.setup.trim();
     format!(
         r#"job={job}
@@ -309,8 +284,20 @@ copied() {{
     esac
   done < "$job/{LEFT}"
   cp -R "$job/{TREE}/." "$work/" || return 1
-  find "$work" -depth -name '*{MARK}' -exec sh -c \
-    'for name; do mv "$name" "${{name%{MARK}}}" || exit 1; done' sh {{}} +
+  # Deepest first, so a folder's contents are named before it is, and
+  # shortest first within a folder, so target.elsewhere is target before
+  # target.elsewhere.elsewhere takes its name.
+  find "$work" -name '*{MARK}' |
+    awk -F/ '{{ print NF "\t" length($NF) "\t" $0 }}' |
+    sort -t "$tab" -k1,1nr -k2,2n | cut -f3- |
+    while IFS= read -r name; do
+      to=${{name%{MARK}}}
+      case "${{to##*/}}" in
+        ''|.|..) echo "the job's tree names $name, outside its folder" >&2; exit 1 ;;
+      esac
+      [ -e "$to" ] && {{ echo "the job's tree names $to twice" >&2; exit 1; }}
+      mv "$name" "$to" || exit 1
+    done
 }}
 waited=0
 until arrived; do
@@ -339,6 +326,35 @@ exit "$code"
 "#,
         started = quoted(&started(id)),
         setup = if setup.is_empty() { ":" } else { setup },
+    )
+}
+
+/// The far line's step leaving what `kind` brings back in the handover.
+/// What comes back crosses under its number, since a kind may bring back
+/// what lies under a folder a share keeps home. A hidden file is left, as
+/// the near side would pass it over.
+fn bringing(kind: &Kind) -> String {
+    if kind.brings_back.is_empty() {
+        return format!(": > \"$job/{BROUGHT}\"\n");
+    }
+    let paths = kind
+        .brings_back
+        .iter()
+        .map(|path| quoted(path.trim_matches('/')))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(
+        r#"for path in {paths}; do
+  [ -e "$path" ] && find "$path" -type f ! -path '*/.*' ! -name '.*'
+done | {{
+  n=0
+  while IFS= read -r file; do
+    cp "$file" "$job/{BACK}/$n" || {{ echo "elsewhere: $file didn't come back" >&2; continue; }}
+    printf '%s\t%s\n' "$(($(wc -c < "$job/{BACK}/$n")))" "$file"
+    n=$((n + 1))
+  done
+}} > "$job/{BROUGHT}"
+"#
     )
 }
 
@@ -633,7 +649,11 @@ mod tests {
     /// `files`, each a crossed path in the job's tree and its text, in a
     /// home of its own, and answers how it ended, what it said on stderr,
     /// and the home.
-    fn far_run(list: &str, files: &[(&str, &str)]) -> (Option<i32>, String, std::path::PathBuf) {
+    fn far_run(
+        list: &str,
+        files: &[(&str, &str)],
+        run: &str,
+    ) -> (Option<i32>, String, std::path::PathBuf) {
         static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let home = std::env::temp_dir().join(format!(
             "elsewhere-far-{}-{}",
@@ -652,8 +672,7 @@ mod tests {
             std::fs::write(into, text).unwrap();
         }
         std::fs::write(job.join(super::LEFT), list).unwrap();
-        let command =
-            ["sh", "-c", "cat lib/target/x.ts notes.elsewhere > ../seen"].map(str::to_owned);
+        let command = ["sh", "-c", run].map(str::to_owned);
         let line = script(
             "QEST-20261115-ABC123",
             "1",
@@ -677,12 +696,21 @@ mod tests {
 
     #[test]
     fn the_far_line_takes_the_marks_off_and_puts_nothing_outside() {
+        // Marks inside marks, and one name marked once beside it marked
+        // twice, each landing at its own name.
         let (code, err, home) = far_run(
-            "2\tlib/target.elsewhere/x.ts\n2\tnotes.elsewhere.elsewhere\nend\n",
+            "2\tlib/target.elsewhere/x.ts\n2\tnotes.elsewhere.elsewhere\n\
+             1\ta/target.elsewhere/node_modules.elsewhere/y\n\
+             1\ttarget.elsewhere.elsewhere/z\n1\ttarget.elsewhere/w\nend\n",
             &[
                 ("lib/target.elsewhere/x.ts", "ok"),
                 ("notes.elsewhere.elsewhere", "!"),
+                ("a/target.elsewhere/node_modules.elsewhere/y", "1"),
+                ("target.elsewhere.elsewhere/z", "2"),
+                ("target.elsewhere/w", "3"),
             ],
+            "cat lib/target/x.ts notes.elsewhere a/target/node_modules/y \
+             target.elsewhere/z target/w > ../seen",
         );
         assert_eq!(
             code,
@@ -691,12 +719,25 @@ mod tests {
         );
         assert_eq!(
             std::fs::read_to_string(home.join("s/seen")).ok().as_deref(),
-            Some("ok!"),
+            Some("ok!123"),
             "a marked file didn't land at its own name"
         );
         let _ = std::fs::remove_dir_all(&home);
+        // A tree no near side writes, naming one path twice, is refused
+        // rather than nesting one inside the other.
+        let (code, err, home) = far_run(
+            "1\tx/a\n1\tx.elsewhere/b\nend\n",
+            &[("x/a", "1"), ("x.elsewhere/b", "2")],
+            "true",
+        );
+        assert!(
+            code == Some(70) && err.contains("names") && err.contains("twice"),
+            "a tree naming x twice wasn't refused ({code:?}): {err}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
         for named in ["../out", "/abs/out", "a/./b", "..", "a/..", ""] {
-            let (code, err, home) = far_run(&format!("2\t{named}\nend\n"), &[("out", "no")]);
+            let (code, err, home) =
+                far_run(&format!("2\t{named}\nend\n"), &[("out", "no")], "true");
             assert!(
                 code == Some(70) && err.contains("outside its folder"),
                 "a list naming {named:?} wasn't refused ({code:?}): {err}"
