@@ -3,8 +3,8 @@
 //! checkouts of it lie on the disk, as `repos` reads them
 //! (modules/repos). The one written to last comes first, said beside it
 //! by how many changes are open on its remote, how far the checkout
-//! written to last is behind the branch it follows (as repos' timer last
-//! counted), how many trees are cut from it and when git last wrote in it; it's found by its name, its
+//! written to last is behind and ahead of the branch it follows (as repos'
+//! timer last counted), how many trees are cut from it and when git last wrote in it; it's found by its name, its
 //! owner and its key. Return opens its page where a remote keeps it on
 //! GitHub or GitLab, else copies its checkout's path; inside are Open Its
 //! Page, Open Its Open Changes (while any are), Copy Its Path, New
@@ -44,8 +44,10 @@ pub struct Words {
     change: String,
     changes: String,
     /// How far its checkout's branch has fallen behind the branch it
-    /// follows: `{count} behind`.
+    /// follows: `{count} behind`, and how many commits it has that branch
+    /// lacks, not yet pushed: `{count} ahead`.
     behind: String,
+    ahead: String,
     /// The labels of its drawer's facts.
     key: String,
     trunk: String,
@@ -106,6 +108,7 @@ impl Words {
             change: said("change"),
             changes: said("changes"),
             behind: said("behind"),
+            ahead: said("ahead"),
             key: name("code:key"),
             trunk: name("code:trunk"),
             checkout: name("code:checkout"),
@@ -130,17 +133,25 @@ impl Words {
         Words::count(&self.change, &self.changes, count)
     }
 
-    /// How far a head is behind the branch it follows, where it's been
-    /// counted and is: `100+` past the count's end; none when it's even
-    /// or only ahead.
-    fn behind(&self, head: &Head) -> Option<String> {
-        let count = head.upstream.as_ref()?.count?.behind;
-        let far = match count {
-            0 => return None,
-            COUNTED_TO.. => format!("{COUNTED_TO}+"),
-            count => count.to_string(),
+    /// How far a head is behind and ahead of the branch it follows, where
+    /// it's been counted, each only where it's apart: `100+` past the
+    /// count's end. Behind comes first, since it's what a Pull mends.
+    fn apart(&self, head: &Head) -> Vec<String> {
+        let Some(count) = head.upstream.as_ref().and_then(|upstream| upstream.count) else {
+            return Vec::new();
         };
-        Some(self.behind.replace("{count}", &far))
+        [(count.behind, &self.behind), (count.ahead, &self.ahead)]
+            .into_iter()
+            .filter(|(far, _)| *far > 0)
+            .map(|(far, words)| {
+                let far = if far >= COUNTED_TO {
+                    format!("{COUNTED_TO}+")
+                } else {
+                    far.to_string()
+                };
+                words.replace("{count}", &far)
+            })
+            .collect()
     }
 
     fn count(one: &str, many: &str, count: usize) -> String {
@@ -354,11 +365,13 @@ fn row(repository: &Repository, home: Option<&Path>, words: &Words) -> Value {
         side.push(json!({"said": words.changes_open(repository.changes.len())}));
     }
     let checkout = worked_in(repository);
-    if let Some(behind) = checkout
-        .and_then(|checkout| checkout.head.as_ref())
-        .and_then(|head| words.behind(head))
-    {
-        side.push(json!({"said": behind}));
+    if let Some(head) = checkout.and_then(|checkout| checkout.head.as_ref()) {
+        side.extend(
+            words
+                .apart(head)
+                .into_iter()
+                .map(|said| json!({"said": said})),
+        );
     }
     if trees > 0 {
         side.push(json!({"said": words.counted(trees)}));

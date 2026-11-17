@@ -29,7 +29,8 @@
       "said": {
         "change": "1 change",
         "changes": "{count} changes",
-        "behind": "{count} behind"
+        "behind": "{count} behind",
+        "ahead": "{count} ahead"
       }
     },
     {
