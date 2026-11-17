@@ -70,7 +70,7 @@ pub struct Measured {
     /// What the card moved both ways over the span, in Mbit/s, where the
     /// kernel says.
     pub moving: Option<u32>,
-    /// What the card's link last sent at in the span, in Mbit/s, where the
+    /// The most the card's link sent at in the span, in Mbit/s, where the
     /// kernel says.
     pub room: Option<u32>,
 }
