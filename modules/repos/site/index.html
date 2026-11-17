@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en-CA" data-kind="interface">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code</title>
+<meta name="description" content="Every repository on the machine as a grove: which trees are being written, which changes wait and on what, the cells at work in each, and what's worth a look, live from git's own files.">
+<meta property="og:title" content="Code">
+<meta property="og:description" content="Every repository on the machine as a grove: which trees are being written, which changes wait and on what, the cells at work in each, and what's worth a look, live from git's own files.">
+<meta property="og:type" content="website">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="@dark-ground@">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="@light-ground@">
+<script>"use strict";
+  document.documentElement.classList.add("js");
+  try {
+    const t = localStorage.getItem("theme");
+    if (t === "light" || t === "dark") {
+      document.documentElement.dataset.theme = t;
+    }
+  } catch (_error) {
+    // A browser that keeps nothing shows the system's theme, as it should.
+  }
+</script>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="kit/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="kit/fonts/fraunces-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="kit/fonts/monaspace.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="kit/theme.css">
+<link rel="stylesheet" href="kit/base.css">
+<link rel="stylesheet" href="../local-sites/kit/switch.css">
+<link rel="stylesheet" href="grove.css">
+<link rel="stylesheet" href="drawer.css">
+<link rel="stylesheet" href="site.css">
+<link rel="alternate" type="text/markdown" href="index.md">
+<link rel="describedby" type="text/plain" href="llms.txt">
+</head>
+<body>
+
+<a class="skip" href="#list">Skip to the repositories</a>
+
+
+<div class="over">
+<header class="head">
+  <p class="masthead">
+    <svg class="crest" viewBox="0 0 56 40" aria-hidden="true">
+      <circle class="canopy" cx="15" cy="13" r="10"/>
+      <circle class="canopy" cx="41" cy="15" r="8"/>
+      <path class="trunk" d="M15 23v7M41 23v7"/>
+      <path class="ground" d="M3 30h50"/>
+      <path class="thread" d="M15 30c2 6 8 7 13 7s11-1 13-7"/>
+      <ellipse class="leaf today" cx="12" cy="11" rx="3" ry="1.6" transform="rotate(-30 12 11)"/>
+      <ellipse class="leaf week" cx="19" cy="15" rx="3" ry="1.6" transform="rotate(25 19 15)"/>
+      <ellipse class="leaf today" cx="41" cy="13" rx="3" ry="1.6" transform="rotate(-20 41 13)"/>
+    </svg>
+    <span class="wordmark">Code</span>
+  </p>
+  <p class="eyebrow">the grove · every repository on this machine</p>
+  <h1 id="title" class="title" tabindex="-1">Walking the grove.</h1>
+  <p id="lede" class="lede" role="status">Reading every repository from git's own files.</p>
+  <div class="standing">
+    <p class="keys">Press <kbd data-key="j">j</kbd> and <kbd data-key="k">k</kbd> to step through the repositories, <kbd data-key="h">h</kbd> and <kbd data-key="l">l</kbd> to walk the grove, <kbd data-key="Enter">Return</kbd> to step in, and <kbd data-key="?">?</kbd> for every key.</p>
+    <div class="switch" role="radiogroup" aria-label="Theme">
+      <label title="Light"><input type="radio" name="theme" value="light"><span class="sr">Light</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </label>
+      <label title="Match System"><input type="radio" name="theme" value="system" checked><span class="sr">Match System</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor"/></svg>
+      </label>
+      <label title="Dark"><input type="radio" name="theme" value="dark"><span class="sr">Dark</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+      </label>
+    </div>
+  </div>
+</header>
+
+<section class="grove-place" aria-label="The grove">
+<figure class="grove-figure">
+  <div id="grove" class="grove" role="listbox" aria-orientation="horizontal" aria-label="The grove, a tree for each repository" tabindex="0"></div>
+  <figcaption class="caption">Each tree is a repository. Its crown grows with the trees cut from it; its leaves are those written today, filled, and this week, outlined; its buds are its changes; and each thread under the ground is a cell at work in it.</figcaption>
+</figure>
+</section>
+</div>
+
+<main class="work" id="main">
+  <section class="repositories" aria-labelledby="list-title">
+    <div class="list-head">
+      <h2 id="list-title" class="sr">The Repositories</h2>
+      <nav class="places" aria-label="Places">
+        <a href="#every" data-place="every" aria-current="true"><span class="nm">Every repository</span> <span class="n" id="n-every"></span></a>
+        <a href="#growing" data-place="growing" aria-current="false"><span class="nm">Growing</span> <span class="n" id="n-growing"></span></a>
+      </nav>
+      <label class="find"><span class="sr">Find a repository by its name</span><input id="find" type="search" placeholder="Find by name" autocomplete="off" spellcheck="false"></label>
+    </div>
+    <div id="list" class="list" role="listbox" aria-labelledby="list-title" tabindex="0"></div>
+    <noscript><p class="quiet">The grove is drawn in the browser, live from the repos daemon; without scripts, read <a href="index.md">the page as text</a>, or type <code>repos</code> in a terminal.</p></noscript>
+  </section>
+  <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: the drawer scrolls on its own, and a repository with no changes holds nothing else Tab reaches, so without it the keys couldn't scroll it (WCAG 2.1.1). -->
+  <aside class="drawer" aria-label="The repository open" tabindex="0">
+    <div id="open" class="drawer-body"></div>
+  </aside>
+</main>
+
+<footer class="foot">
+  <p id="asof" class="asof" data-state="connecting">Reaching the repos daemon.</p>
+</footer>
+
+<dialog class="keypanel" id="keys" aria-labelledby="keys-title">
+  <h2 id="keys-title">Keys</h2>
+  <h3>Getting Around</h3>
+  <dl>
+    <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Step to the next or the last repository in the list, or tree once stepped in</dd></div>
+    <div><dt><kbd>h</kbd> <kbd>l</kbd></dt><dd>Walk the grove to the repository beside this one</dd></div>
+    <div><dt><kbd>g</kbd> <kbd>G</kbd></dt><dd>Go to the first or the last</dd></div>
+    <div><dt><kbd>Return</kbd></dt><dd>Step into the repository open beside the list, to walk its trees</dd></div>
+    <div><dt><kbd>-</kbd></dt><dd>Step back out to the repositories</dd></div>
+    <div><dt><kbd>/</kbd></dt><dd>Find a repository by its name; Return goes to the first found</dd></div>
+    <div><dt><kbd>Esc</kbd></dt><dd>Let go of what was found, to see every repository again</dd></div>
+  </dl>
+  <h3>Doing</h3>
+  <dl>
+    <div><dt><kbd>o</kbd></dt><dd>Open the tree's change, or the repository where its remote keeps it</dd></div>
+    <div><dt><kbd>z</kbd></dt><dd>Open or fold the trees resting and gone</dd></div>
+    <div><dt><kbd>y</kbd></dt><dd>Copy the tree's folder, or the repository's checkout</dd></div>
+    <div><dt><kbd>?</kbd> <kbd>F1</kbd></dt><dd>This list, and again to close it; <kbd>Esc</kbd> closes it too</dd></div>
+  </dl>
+  <form method="dialog"><button type="submit" class="close">Close</button></form>
+</dialog>
+
+<script type="module" src="site.js"></script>
+</body>
+</html>

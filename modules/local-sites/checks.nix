@@ -138,6 +138,25 @@ in
     };
   };
 
+  # The code page typechecks on the kit and builds, its tests passing
+  # (modules/repos/site/tests), on the same plain theme as the system page's.
+  code-site-holds = sites.localSite {
+    name = "code";
+    src = ../repos/site;
+    webKit = pkgs.emptyDirectory;
+    tint = "success";
+    looks = {
+      dark = {
+        background = "black";
+        success = "white";
+      };
+      light = {
+        background = "white";
+        success = "black";
+      };
+    };
+  };
+
   # The home's builder lists each site from its row, settled ones apart,
   # strips each page that asks, and changes nothing on a second run
   # (tests/home-builds-from-its-rows.sh).
@@ -151,14 +170,17 @@ in
     touch $out
   '';
 
-  # The code site's writer keeps its last record while repos fails, and
-  # replaces it whole once repos answers
-  # (tests/code-site-keeps-its-last-record.sh).
-  code-site-keeps-its-last-record = pkgs.runCommandLocal "code-site-keeps-its-last-record" { } ''
-    ${lib.getExe pkgs.bash} ${./tests/code-site-keeps-its-last-record.sh} ${
+  # The code site's writer keeps its last homes while repos fails, and
+  # replaces them whole once repos answers, each at Code's address for it
+  # (tests/code-site-keeps-its-last-homes.sh).
+  code-site-keeps-its-last-homes = pkgs.runCommandLocal "code-site-keeps-its-last-homes" { } ''
+    ${lib.getExe pkgs.bash} ${./tests/code-site-keeps-its-last-homes.sh} ${
       lib.escapeShellArgs [
         ./code-site.sh
-        "${pkgs.coreutils}/bin"
+        (lib.makeBinPath [
+          pkgs.coreutils
+          pkgs.jq
+        ])
       ]
     }
     touch $out

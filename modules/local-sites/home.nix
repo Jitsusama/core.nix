@@ -33,10 +33,12 @@
 # (modules/mycelium/forage). A machine in no realm has no node to read, so
 # it has neither.
 #
-# One site still reads a file written beside it. code/ lists every
-# repository on the disk from a repos.json beside it that a timer rewrites
-# every minute from repos's record (code-site.sh), until Code reads a feed
-# of its own; a machine without repos (modules/repos) runs no timer.
+# code/ draws every repository on the disk, watched live from the repos
+# daemon (modules/repos), and the cells at work in them from the node. Its
+# homes.json, where each repository and tree is home on it, changes with
+# the disk, so a timer writes it from repos's record into the documents
+# (code-site.sh), which answer for the mount. A machine without repos has
+# none of it.
 {
   config,
   lib,
@@ -181,6 +183,17 @@ in
         inherit webKit;
         tint = "program";
       };
+    }
+    // lib.optionalAttrs (roots != null) {
+      # Every repository on the disk as a grove, live from the repos daemon
+      # (modules/repos/site). Its trees are leaves, so it wears the hue the
+      # theme gives what's well and growing.
+      code = sites.localSite {
+        name = "code";
+        src = ../repos/site;
+        inherit webKit;
+        tint = "success";
+      };
     };
     feeds = {
       # The system daemon's summary, its parts and their things
@@ -264,6 +277,21 @@ in
           balance = { };
         };
       };
+    }
+    // lib.optionalAttrs (roots != null) {
+      # The repos daemon's reading, repositories, checkouts, trees and
+      # changes (modules/repos/src/feed.rs), each told whole: Code draws all
+      # of each, and none holds more than git's heads and GitHub's checks.
+      repos = {
+        socket = "daemons/repos.sock";
+        kinds = {
+          reading = { };
+          repository = { };
+          checkout = { };
+          tree = { };
+          change = { };
+        };
+      };
     };
   };
 
@@ -313,7 +341,7 @@ in
     # repos reads git's own files alone, taking no lock and running no git, so
     # a reading never gets in the way of an agent's work in a checkout.
     code-site = {
-      Unit.Description = "Writes the code site's record from what repos reads on the disk";
+      Unit.Description = "Writes where each repository and tree is home on the code site";
       Service = {
         Type = "oneshot";
         Environment = [
@@ -322,6 +350,7 @@ in
             lib.makeBinPath [
               (pkgs.callPackage ../repos/package.nix { })
               pkgs.coreutils
+              pkgs.jq
             ]
           }"
         ];
@@ -330,17 +359,21 @@ in
           "${./code-site.sh}"
           "${config.xdg.dataHome}/jitsusama/sites/code"
         ];
+        # A reading takes about 60 ms, so one still going at the next minute
+        # is stuck, and ending it says so in the journal while the last homes
+        # stay.
+        TimeoutStartSec = "50s";
         Slice = "background.slice";
       };
     };
   };
 
-  # Every minute: a reading takes about 60 ms, and the page says how old
-  # its record is, so a minute keeps it current without the disk being read
-  # more than it changes.
+  # Every minute: a reading takes about 60 ms, and a link to a tree cut a
+  # minute ago landing on Code before its home is said is no harm, since
+  # Code itself draws live.
   config.systemd.user.timers = lib.optionalAttrs (roots != null) {
     code-site = {
-      Unit.Description = "Rewrites the code site's record every minute";
+      Unit.Description = "Rewrites the code site's homes every minute";
       Timer = {
         OnActiveSec = "5s";
         OnUnitActiveSec = "60s";

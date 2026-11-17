@@ -1,0 +1,174 @@
+/* The grove beside the sentence, and the marks it shares with the rows and
+   the drawer: each repository a tree whose crown holds its trees as leaves
+   and its changes as buds, with the mycelium's threads under the ground.
+   Loaded before site.css, whose narrower windows redraw it. */
+
+/* The marks, alike wherever they're drawn: the grove's crowns and the
+   gutter's 16px marks share one scale, a unit a pixel. */
+.canopy {
+  fill: color-mix(in oklab, var(--lichen) 9%, transparent);
+  stroke: color-mix(in oklab, var(--lichen) 55%, transparent);
+  stroke-width: 0.8;
+}
+
+.trunk {
+  stroke: var(--lichen);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.ground {
+  stroke: var(--edge);
+  stroke-width: 1;
+}
+
+.leaf.today {
+  fill: var(--leaf);
+}
+
+.leaf.week {
+  fill: none;
+  stroke: var(--leaf);
+  stroke-width: 0.9;
+}
+
+.vein {
+  stroke: var(--background);
+  stroke-width: 1;
+}
+
+.twig {
+  fill: none;
+  stroke: var(--lichen);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+}
+
+.stump,
+.rings {
+  fill: none;
+  stroke: var(--rust);
+  stroke-width: 1.2;
+}
+
+.bud {
+  stroke-width: 1.4;
+}
+
+.bud.passing {
+  fill: var(--leaf);
+  stroke: var(--leaf);
+}
+
+.bud.pending {
+  fill: none;
+  stroke: var(--sap);
+  stroke-dasharray: 2 1.6;
+}
+
+.bud.failing {
+  fill: none;
+  stroke: var(--rust);
+  stroke-width: 1.8;
+}
+
+.bud.none {
+  fill: none;
+  stroke: var(--lichen);
+}
+
+.heart {
+  fill: var(--background);
+}
+
+.asked {
+  fill: none;
+  stroke: var(--person);
+  stroke-width: 1;
+}
+
+.thread {
+  fill: none;
+  stroke: var(--hyphae);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+
+.mk {
+  inline-size: 16px;
+  block-size: 16px;
+  overflow: visible;
+}
+
+/* ---- The grove. ---- */
+
+.grove-figure {
+  inline-size: var(--page);
+  margin: 0 auto;
+  padding: var(--items) var(--inset) 0;
+  box-sizing: border-box;
+}
+
+.grove {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tie) 0;
+  border-radius: var(--radius);
+}
+
+.stand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  inline-size: 100px;
+  min-block-size: 44px;
+  padding-block-end: var(--tie);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.stand .crown {
+  inline-size: 80px;
+  block-size: 92px;
+}
+
+/* A long name wraps at its dots and dashes, never cut, since two names
+   alike differ at their ends. */
+.stand .nm {
+  max-inline-size: 96px;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 0.88rem;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--text);
+}
+
+.stand[aria-selected="true"] .nm {
+  font-weight: 600;
+  color: var(--strong);
+}
+
+.stand[aria-selected="true"] .canopy {
+  fill: color-mix(in oklab, var(--leaf) 22%, transparent);
+  stroke: var(--leaf);
+}
+
+.grove:focus-visible {
+  outline: none;
+}
+
+.grove:focus-visible .stand[aria-selected="true"] .nm {
+  text-decoration: underline var(--ring) var(--accent);
+  text-underline-offset: 0.25em;
+}
+
+.caption {
+  max-inline-size: 46rem;
+  margin: var(--tie) 0 0;
+  padding-inline-start: var(--gutter);
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: var(--step-small);
+  color: var(--muted);
+}

@@ -1,0 +1,191 @@
+/* The repository open beside the list: its checkouts, its changes and its
+   trees by season, each tree a row the cursor can step onto. Loaded before
+   site.css, whose narrower windows put it under the list. */
+
+.drawer {
+  position: sticky;
+  inset-block-start: var(--items);
+  max-block-size: calc(100dvh - 2 * var(--items));
+  overflow: auto;
+  padding-inline-start: var(--groups);
+  border-inline-start: 1px solid var(--rule);
+}
+
+/* Tab reaches the drawer so it can be scrolled by keys; its rule lights as the lantern. */
+.drawer:focus-visible {
+  outline: none;
+  box-shadow: inset var(--ring) 0 0 var(--accent);
+}
+
+.open-title {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 520;
+  font-size: var(--step-title);
+  line-height: 1.05;
+  font-variation-settings: "SOFT" 100, "WONK" 1, "opsz" 96;
+  color: var(--strong);
+}
+
+.open-lede,
+.joined {
+  margin: var(--tie) 0 0;
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--text);
+}
+
+.joined {
+  color: var(--hyphae-words);
+}
+
+.checkouts,
+.trees,
+.changes ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checkouts {
+  margin-block-start: var(--items);
+}
+
+.checkout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--mark);
+  padding-block: var(--tie);
+}
+
+.checkout .path,
+.tree .path {
+  font-size: 0.78rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.checkout .meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.group {
+  display: flex;
+  align-items: baseline;
+  gap: var(--mark);
+  margin: var(--groups) 0 var(--tie);
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 450;
+  font-size: var(--step-large);
+  color: var(--strong);
+}
+
+.group .n {
+  font-style: normal;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.tree,
+.change {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto auto;
+  gap: 2px 12px;
+  align-items: start;
+  padding: var(--tie) var(--mark);
+  border-block-end: 1px solid color-mix(in oklab, var(--rule) 50%, transparent);
+}
+
+.tree .mk,
+.change .mk {
+  margin-block-start: 3px;
+}
+
+.tree[aria-current="true"] {
+  background: var(--selection);
+}
+
+.tree[aria-current="true"] .row-keys {
+  display: block;
+  margin-block-start: 2px;
+}
+
+.tree:focus-visible {
+  outline: none;
+  box-shadow: inset var(--ring) 0 0 var(--accent);
+}
+
+.tree-body,
+.change-body {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.branch {
+  font-size: 0.82rem;
+  color: var(--strong);
+  overflow-wrap: anywhere;
+}
+
+.snap {
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--muted);
+}
+
+.at-work {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: var(--step-small);
+  color: var(--hyphae-words);
+}
+
+.cell-title {
+  color: var(--text);
+}
+
+.tree-change {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.change-body a {
+  font-family: var(--serif);
+}
+
+.change .stands {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: var(--step-small);
+  color: var(--muted);
+}
+
+.change.failing .stands,
+.failed {
+  color: var(--rust-words);
+}
+
+.change.pending .stands {
+  color: var(--sap-words);
+}
+
+.failed {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+.folded {
+  margin: 0;
+  padding-inline-start: calc(16px + 12px + var(--mark));
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: var(--step-small);
+  color: var(--muted);
+}

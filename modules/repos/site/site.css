@@ -1,0 +1,465 @@
+/* The Grove: bark-dark ground under an old wood, new leaf for what's being
+   written, sap for what waits, rust for what failed, lichen for what rests,
+   the mycelium's threads under the ground, and one lantern for where the
+   keys go.
+
+   Code is an interface to keep open: a sentence over the work, then the
+   grove drawn whole, then the repositories as rows with their marks hung in
+   a gutter, so every name starts on one edge, and the one the cursor is on
+   open beside them. The serif names and is read; the mono face counts.
+
+   The grove and its marks are in grove.css and the repository open in
+   drawer.css, both loaded before this, so the narrower windows here come
+   last and redraw them. */
+
+:root {
+  /* Each pigment has one job, taken from the kit's roles so both looks hold. */
+  --leaf: var(--success); /* New leaf: a tree written today or this week */
+  --sap: var(--warning); /* Sap: what waits, a check running or a review asked */
+  --rust: var(--alert); /* Rust: a failed check, a felled tree */
+  --lichen: var(--muted); /* Lichen: what rests */
+  --hyphae: var(--program); /* The mycelium's threads, and the cells at work */
+  --accent: var(--action); /* Lantern: only where the keys are */
+  --tint: var(--leaf);
+  /* Text clears 7:1, so a pigment set as words is deepened toward the
+     strong ink, as the other sites' tints are. */
+  --leaf-words: color-mix(in oklab, var(--leaf) 55%, var(--strong));
+  --sap-words: color-mix(in oklab, var(--sap) 60%, var(--strong));
+  --rust-words: color-mix(in oklab, var(--rust) 55%, var(--strong));
+  --hyphae-words: color-mix(in oklab, var(--hyphae) 55%, var(--strong));
+  /* The gutter's marks end here, and every name starts after them. */
+  --gutter: calc(16px + 40px + 16px + 3 * 12px);
+  --page: min(100%, 92rem);
+  --drawer: min(36rem, 40vw);
+}
+
+body {
+  margin: 0;
+}
+
+code,
+.path,
+.branch,
+.meta,
+.n,
+.when,
+.eyebrow,
+.cell-name,
+.num {
+  font-family: var(--mono);
+  font-feature-settings: var(--mono-features);
+}
+
+/* The kit sets code and keys a step smaller than the words around them, which inside the
+   page's small words would fall under ten pixels. */
+:is(code, kbd) {
+  font-size: max(0.8em, 10.5px);
+}
+
+/* ---- The sentence over the work, and the grove beside it. ---- */
+
+.over {
+  inline-size: var(--page);
+  margin-inline: auto;
+}
+
+/* On a wide window the grove stands beside the sentence rather than under
+   it, so the list starts high enough to read a screen of it at once. */
+@media (min-width: 75rem) {
+  .over {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 44rem);
+    align-items: end;
+  }
+
+  .over .grove-figure {
+    inline-size: auto;
+    padding-block-end: var(--items);
+  }
+
+  .over .caption {
+    padding-inline-start: 0;
+  }
+}
+
+.head {
+  padding: var(--groups) var(--inset) var(--items);
+  box-sizing: border-box;
+  padding-inline-start: calc(var(--inset) + var(--gutter));
+}
+
+.masthead {
+  display: flex;
+  align-items: center;
+  gap: var(--mark);
+  margin: 0 0 var(--groups) calc(-1 * var(--gutter));
+}
+
+.crest {
+  inline-size: 56px;
+  block-size: 40px;
+  flex: none;
+}
+
+.wordmark {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 420;
+  font-size: var(--step-section);
+  font-variation-settings: "SOFT" 100, "WONK" 1, "opsz" 72;
+  color: var(--strong);
+}
+
+.eyebrow {
+  margin: 0 0 var(--tie);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--leaf-words);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 540;
+  font-size: clamp(2.5rem, 1.5rem + 3.4vw, 4.5rem);
+  line-height: 0.98;
+  letter-spacing: -0.018em;
+  font-variation-settings: "SOFT" 100, "WONK" 1, "opsz" 144;
+  color: var(--strong);
+}
+
+/* Balanced and pretty wrapping are asked for where a browser has them; one without them
+   wraps the sentence as it always has. */
+@supports (text-wrap: balance) {
+  .title,
+  .eyebrow {
+    text-wrap: balance;
+  }
+}
+
+@supports (text-wrap: pretty) {
+  .lede {
+    text-wrap: pretty;
+  }
+}
+
+.title em {
+  font-weight: 400;
+  color: var(--leaf-words);
+}
+
+.title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.title a:hover {
+  text-decoration: underline 1px;
+  text-underline-offset: 0.12em;
+}
+
+.lede {
+  max-inline-size: 40rem;
+  margin: var(--items) 0 0;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: clamp(1.1rem, 1rem + 0.3vw, 1.25rem);
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.lede .rn {
+  font-style: normal;
+}
+
+/* A repository's name is said whole, never broken at its dash. */
+.lede a {
+  white-space: nowrap;
+}
+
+.standing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tie) var(--groups);
+  margin-block-start: var(--items);
+}
+
+.keys {
+  margin: 0;
+  font-size: var(--step-small);
+  color: var(--muted);
+}
+
+.keys kbd {
+  cursor: pointer;
+}
+
+/* ---- The work: the repositories, and the one open. ---- */
+
+.work {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--drawer);
+  gap: var(--groups);
+  inline-size: var(--page);
+  margin: var(--groups) auto 0;
+  padding-inline: var(--inset);
+  box-sizing: border-box;
+  align-items: start;
+}
+
+.list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--tie) var(--groups);
+  padding-inline-start: var(--gutter);
+  padding-block-end: var(--tie);
+  border-block-end: 1px solid var(--rule);
+}
+
+.places {
+  display: flex;
+  gap: var(--items);
+}
+
+/* A place switch changes colour and never width. */
+.places a {
+  display: inline-flex;
+  gap: var(--tie);
+  min-block-size: 44px;
+  align-items: center;
+  font-family: var(--serif);
+  font-size: var(--step-body);
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.places a[aria-current="true"] {
+  color: var(--strong);
+}
+
+.places a[aria-current="true"] .nm {
+  text-decoration: underline 1px;
+  text-underline-offset: 0.3em;
+}
+
+.places .n {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.find {
+  margin-inline-start: auto;
+}
+
+.find input {
+  inline-size: 12rem;
+  min-block-size: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: inset 0 -1px 0 var(--edge);
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: var(--step-body);
+  color: var(--text);
+}
+
+.find input:focus-visible {
+  outline: none;
+  box-shadow: inset 0 calc(-1 * var(--ring)) 0 var(--accent);
+}
+
+.list:focus-visible {
+  outline: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 16px 16px minmax(0, 1fr) auto 3rem;
+  align-items: center;
+  gap: 12px;
+  min-block-size: 44px;
+  padding: var(--tie) var(--mark);
+  border-block-end: 1px solid color-mix(in oklab, var(--rule) 60%, transparent);
+  color: var(--text);
+  text-decoration: none;
+  position: relative;
+}
+
+.row .t-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--mark);
+  min-inline-size: 0;
+}
+
+.row .t {
+  font-family: var(--serif);
+  font-weight: 430;
+  font-size: var(--step-body);
+  color: var(--strong);
+}
+
+.row .meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.row .cells {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tie);
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: var(--step-small);
+  color: var(--hyphae-words);
+}
+
+.row .when,
+.tree .when {
+  font-size: 0.75rem;
+  text-align: end;
+  color: var(--muted);
+}
+
+.row-keys {
+  display: none;
+  grid-column: 4 / -1;
+  font-size: var(--step-small);
+  color: var(--muted);
+}
+
+/* The cursor's ground is lighter than the page's, so the quiet words on it step up a tone to
+   keep 7:1. */
+.row[aria-selected="true"],
+.tree[aria-current="true"] {
+  --muted: color-mix(in oklab, var(--text) 50%, var(--strong));
+  --hyphae-words: color-mix(in oklab, var(--hyphae) 30%, var(--strong));
+}
+
+/* The cursor is a step of the ground and the name's weight, never a box. */
+.row[aria-selected="true"] {
+  background: var(--selection);
+}
+
+.row[aria-selected="true"] .t {
+  font-weight: 600;
+}
+
+/* Keys show on one row only: the tree's once the cursor has stepped into the drawer. A narrow
+   page has no room for the list's. */
+@media (width > 60rem) {
+  .work:not(:has(.drawer :focus)) .row[aria-selected="true"] .row-keys {
+    display: block;
+  }
+}
+
+.list:focus-visible .row[aria-selected="true"] {
+  box-shadow: inset var(--ring) 0 0 var(--accent);
+}
+
+.quiet {
+  padding: var(--items) 0 var(--items) var(--gutter);
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--muted);
+}
+
+/* ---- The standing line. ---- */
+
+.foot {
+  inline-size: var(--page);
+  margin: var(--groups) auto;
+  padding-inline: calc(var(--inset) + var(--gutter)) var(--inset);
+  box-sizing: border-box;
+}
+
+.asof {
+  margin: 0;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: var(--step-small);
+  color: var(--muted);
+}
+
+.asof[data-state="broken"],
+.asof[data-state="stale"] {
+  color: var(--sap-words);
+}
+
+/* ---- Narrower windows: the drawer follows the list, the gutter tightens. ---- */
+
+@media (max-width: 60rem) {
+  :root {
+    --gutter: calc(16px + 16px + 2 * 12px);
+  }
+
+  .work {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drawer {
+    position: static;
+    max-block-size: none;
+    padding-inline-start: 0;
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--rule);
+    padding-block-start: var(--items);
+  }
+
+  .row {
+    grid-template-columns: 16px 16px minmax(0, 1fr) 2.5rem;
+  }
+
+  .row .cells,
+  .row[aria-selected="true"] .row-keys {
+    display: none;
+  }
+}
+
+@media (max-width: 30rem) {
+  .head {
+    padding-inline-start: var(--inset);
+  }
+
+  .masthead {
+    margin-inline-start: 0;
+  }
+
+  .caption,
+  .list-head,
+  .quiet {
+    padding-inline-start: 0;
+  }
+
+  /* On a phone the grove stays one picture above the list, four trees to a
+     row, drawn at two thirds, so a long name without a dot or dash to wrap
+     at still fits its own; the list below says each name in full. */
+  .grove {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .stand {
+    inline-size: auto;
+  }
+
+  .stand .crown {
+    inline-size: 54px;
+    block-size: 62px;
+  }
+
+  .stand .nm {
+    max-inline-size: 64px;
+    font-size: 0.72rem;
+  }
+
+  .find,
+  .find input {
+    inline-size: 100%;
+  }
+}

@@ -21,7 +21,12 @@ page, so a site that doesn't hold never reaches the server. A site's
 source sits at `modules/<name>/site/`, served at `/<name>/`, and
 [`home.nix`][module] mounts it with the feed it watches. The system page
 ([`modules/system/site`][system]) is the first, and the mycelium map
-([`modules/mycelium/site`][map]) is fed live by the node. The forage page
+([`modules/mycelium/site`][map]) is fed live by the node. Code
+([`modules/repos/site`][code]) draws every repository live from the repos
+daemon; where each repository and tree is home on it changes with the
+disk, so `code-site.sh` writes its `homes.json` into the documents every
+minute, and a mount without its own `homes.json` answers with the
+documents' one under its name. The forage page
 ([`modules/mycelium/forage`][forage]), served at `/forage/`, sits
 beside the mycelium module it reads, since `/mycelium/` is the map's, and
 so does the murmurs page ([`modules/mycelium/murmurs`][murmurs]), served at
@@ -52,6 +57,7 @@ web-design skill's page checks (`live_page.py`, loaded as a pytest plugin
 for its `browser`). The system page's is `system-site-reads-live`, and the
 map's `mycelium-site-reads-live`.
 
+[code]: ../repos/site
 [daemons]: ../../docs/daemons.md
 [forage]: ../mycelium/forage
 [map]: ../mycelium/site

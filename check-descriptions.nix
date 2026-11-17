@@ -614,9 +614,15 @@
     code-health reads each hour, handed each repository's targets, its owner and each measure's
     own owner
   '';
-  code-site-keeps-its-last-record = ''
-    the code site's writer, while repos fails, ends well in one line and leaves the last record as
-    it was, and once repos answers replaces it whole, readable by the server
+  code-site-holds = ''
+    the code page typechecks on the kit at its strictest and builds, its tests passing: each
+    repository's trees by season then branch, a cursor stepping within the rows, and an address
+    landing on a place, a repository or a tree in its season
+  '';
+  code-site-keeps-its-last-homes = ''
+    the code site's writer, while repos fails, ends well in one line and leaves the last homes as
+    they were, and once repos answers replaces them whole with every repository and present tree at
+    its Code address, readable by the server
   '';
   collector-keeps-what-it-is-sent = ''
     the collector reads a span it was sent back at its moment and in its trace, and keeps what a
