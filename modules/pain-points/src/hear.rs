@@ -76,6 +76,9 @@ pub struct Ears {
     pub at: i64,
     /// His offset from UTC, in seconds, to say his own times.
     pub offset_s: i64,
+    /// Whether the offset was read, rather than taken as UTC because
+    /// `date` couldn't say it.
+    pub zone_known: bool,
 }
 
 /// How each session log stands between runs.
@@ -149,6 +152,9 @@ pub fn listen(
     let mission = take("--ledgers").map_or_else(|| state.join("mission"), PathBuf::from);
     let mycelium = take("--mycelium").map_or_else(|| "mycelium".into(), PathBuf::from);
     let date = take("--date").map_or_else(|| "date".into(), PathBuf::from);
+    let offset = output_within(Command::new(&date).arg("+%z"), ASK_AT_MOST)
+        .as_deref()
+        .and_then(crate::offset_of);
     let ears = Ears {
         sessions: take("--sessions").map_or_else(|| home.join(".pi/agent/sessions"), PathBuf::from),
         state: own,
@@ -157,10 +163,8 @@ pub fn listen(
         at: take("--at")
             .and_then(|at| at.parse().ok())
             .unwrap_or_else(crate::millis_now),
-        offset_s: output_within(Command::new(&date).arg("+%z"), ASK_AT_MOST)
-            .as_deref()
-            .and_then(crate::offset_of)
-            .unwrap_or(0),
+        offset_s: offset.unwrap_or(0),
+        zone_known: offset.is_some(),
     };
     // A node that never answers leaves the run with no cells, said as a
     // trouble, rather than holding every later run behind this one.

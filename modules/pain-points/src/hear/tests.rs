@@ -38,6 +38,7 @@ impl Place {
             void: self.root.join("void"),
             at: AT,
             offset_s: -5 * 3600,
+            zone_known: true,
         }
     }
 
