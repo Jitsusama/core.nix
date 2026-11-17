@@ -1110,53 +1110,9 @@ fn read_nowhere(setting: &Setting, id: &str, why: &str) {
     }
 }
 
-#[test]
-fn a_yes_after_an_ask_s_ten_minutes_reads_nothing() {
-    // An ask with a few seconds of its ten minutes left as the daemon starts:
-    // enough that a loaded machine still draws it waiting.
-    const LEFT_MS: i64 = 5_000;
-    let id = std::cell::RefCell::new(String::new());
-    let ends = std::cell::Cell::new(0_i64);
-    let setting = Setting::after("timed-out", |folder| {
-        let asked = put_up(folder, ITEM);
-        let file = folder.join("asks").join(format!("{asked}.ask.json"));
-        let mut said: Value =
-            serde_json::from_str(&std::fs::read_to_string(&file).expect("the ask reads"))
-                .expect("the ask is JSON");
-        let now = said["asked_ms"].as_i64().expect("the ask says when");
-        said["asked_ms"] = json!(now - secret_asks::ask::WAITS_MS + LEFT_MS);
-        ends.set(now + LEFT_MS);
-        std::fs::write(&file, said.to_string()).expect("the ask is written back");
-        *id.borrow_mut() = asked;
-    });
-    let id = id.into_inner();
-    let mut client = setting.watching();
-    let drawn = row(&mut client, &id);
-    assert_eq!(drawn["state"], "waiting", "the ask didn't wait: {drawn}");
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("the clock is past 1970")
-        .as_millis();
-    let left = ends.get() + 500 - i64::try_from(now).expect("the time fits");
-    // The ask's own end passes while this sleeps, to half a second past it,
-    // whether or not the daemon has ended it yet.
-    std::thread::sleep(std::time::Duration::from_millis(
-        u64::try_from(left).unwrap_or(0),
-    ));
-    let late = act(&mut client, &drawn, 0);
-    assert_eq!(
-        late["error"]["code"], "refused",
-        "a yes past ten minutes: {late}"
-    );
-    let answer = setting.answer(&id);
-    assert_eq!(
-        (&answer["state"], &answer["why"]),
-        (&json!("ended"), &json!("ended unanswered")),
-        "the ask didn't end unanswered: {answer}"
-    );
-    read_nowhere(&setting, &id, "an ask past its ten minutes");
-}
-
+// A yes past an ask's ten minutes is refused in tests/clock.rs, on a clock
+// the test holds, since a wall clock's few seconds are lost on a loaded
+// builder.
 #[test]
 fn a_yes_after_the_asker_took_its_ask_away_reads_nothing() {
     let setting = Setting::new("taken-away");
