@@ -208,4 +208,12 @@ fn github_answers_once_a_refresh_has_asked_it_saying_what_it_couldnt_see() {
         sources(&read)["github"],
         json!({"state": "answering", "reason": "github:someone/private: not found"})
     );
+    // A kept file no refresh wrote, or one that can't be read, was never
+    // GitHub's answer.
+    read.sources[1].read_at = None;
+    read.sources[1].unread = vec!["github.json couldn't be read: denied".to_owned()];
+    assert_eq!(
+        sources(&read)["github"],
+        json!({"state": "not answering", "reason": "github.json couldn't be read: denied"})
+    );
 }

@@ -7,6 +7,7 @@
 
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
+use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
@@ -53,7 +54,9 @@ impl Drop for Serving {
 /// The daemon, looking under `at`, serving in a runtime folder of its
 /// own, named for `at` as `place` names it, so no two tests share one.
 /// That folder is named short, and not past its link, since a socket's
-/// path stops at 108 bytes.
+/// path stops at 108 bytes. It's made afresh, readable by this account
+/// alone, so nothing else sharing the temporary folder reaches the socket
+/// or puts one of its own there first.
 fn serve(at: &Path) -> (Serving, PathBuf) {
     let name = at
         .file_name()
@@ -62,6 +65,10 @@ fn serve(at: &Path) -> (Serving, PathBuf) {
         .expect("a place of the test's own");
     let run = std::env::temp_dir().join(format!("repos-run-{}-{name}", std::process::id()));
     let _ = fs::remove_dir_all(&run);
+    fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&run)
+        .expect("a runtime folder of its own");
     let child = Command::new(env!("CARGO_BIN_EXE_repos"))
         .arg("serve")
         .env_clear()

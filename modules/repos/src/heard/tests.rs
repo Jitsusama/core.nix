@@ -6,7 +6,9 @@ use std::time::Duration;
 
 use std::ffi::OsStr;
 
-use super::{Folder, Folders, Heard, Of, Told, Watch, folders, told};
+use std::io;
+
+use super::{Folder, Folders, Heard, Of, SPENT, Told, Watch, because, folders, told, unwatchable};
 
 /// A folder of the test's own, emptied first, so no two tests share one.
 fn place(name: &str) -> PathBuf {
@@ -85,7 +87,9 @@ fn a_checkout_is_watched_by_its_git_folder_refs_and_trees_never_its_objects() {
 
 #[test]
 fn only_the_names_a_reading_reads_are_heeded() {
-    for name in ["HEAD", "packed-refs", "config", "worktrees"] {
+    // A tree's own folder in `worktrees/` is a git folder too, whose `gitdir`
+    // says where the tree is, as `git worktree move` and `repair` write it.
+    for name in ["HEAD", "packed-refs", "config", "worktrees", "gitdir"] {
         assert!(Folder::Git.heeds(name), "{name} is heeded");
     }
     for name in [
@@ -237,6 +241,106 @@ fn a_folder_made_again_in_its_place_is_heard_once_renewed() {
         "a branch in the folder made again is heard"
     );
     fs::remove_dir_all(&at).expect("cleaned");
+}
+
+#[test]
+fn a_folder_that_cant_be_watched_is_counted_until_its_watched_or_no_longer_named() {
+    let at = place("refused");
+    let git = checkout(&at, "core.nix");
+    let mut named = folders([&git], &[]);
+    let gone = at.join("core.nix/.git/refs/gone");
+    named.insert(
+        gone.clone(),
+        Watch {
+            folder: Folder::Refs,
+            of: Of::Checkout(git.clone()),
+        },
+    );
+    let (mut heard, _told) = hear(&named);
+    assert_eq!(heard.unwatched(), 1, "a folder gone before it's watched");
+    let because = heard.unwatched_because().unwrap_or_default();
+    assert!(
+        because.starts_with(&format!("{}: ", gone.display())),
+        "why it went unwatched doesn't name it: {because}"
+    );
+
+    fs::create_dir_all(&gone).expect("made after all");
+    heard.follow(&named, |_| true);
+    assert_eq!(heard.unwatched(), 0, "a folder watched at last");
+    let watched = heard.watched();
+
+    // Renewed once it's gone, its watch fails: it's counted once, as
+    // unwatched, its old watch given back.
+    fs::remove_dir_all(&gone).expect("gone again");
+    heard.follow(&named, |_| true);
+    assert_eq!(
+        (heard.watched(), heard.unwatched()),
+        (watched - 1, 1),
+        "a folder that failed its renewal is counted twice"
+    );
+    named.remove(&gone);
+    let missing = at.join("core.nix/.git/refs/never");
+    named.insert(
+        missing.clone(),
+        Watch {
+            folder: Folder::Refs,
+            of: Of::Checkout(git.clone()),
+        },
+    );
+    heard.follow(&named, |_| true);
+    assert_eq!(heard.unwatched(), 1);
+    named.remove(&missing);
+    heard.follow(&named, |_| true);
+    assert_eq!(heard.unwatched(), 0, "a folder no longer named");
+    assert_eq!(heard.unwatched_because(), None);
+    fs::remove_dir_all(&at).expect("cleaned");
+}
+
+#[test]
+fn the_timers_folder_before_their_first_write_is_nothing_unheard() {
+    let at = place("unkept");
+    let git = checkout(&at, "core.nix");
+    let kept = at.join("state/repos");
+    let named = folders([&git], &[kept.join("github.json")]);
+    let (mut heard, _told) = hear(&named);
+    assert_eq!(
+        (heard.unwatched(), heard.unwatched_because()),
+        (0, None),
+        "a timers' folder not yet made said as unheard"
+    );
+    let watched = heard.watched();
+    fs::create_dir_all(&kept).expect("the timers' first write");
+    heard.follow(&named, |_| true);
+    assert_eq!(
+        heard.watched(),
+        watched + 1,
+        "the timers' folder unwatched once made"
+    );
+    fs::remove_dir_all(&at).expect("cleaned");
+}
+
+#[test]
+fn spent_watches_are_said_for_what_they_are_before_any_other_reason() {
+    let spent = unwatchable(
+        Path::new("/home/joel/src/b/.git/refs"),
+        &io::Error::from(io::ErrorKind::StorageFull),
+    );
+    assert_eq!(
+        spent,
+        format!("/home/joel/src/b/.git/refs: {SPENT}"),
+        "spent watches said as a full disk"
+    );
+    let gone = "/home/joel/src/a/.git/refs: No such file or directory (os error 2)";
+    assert_eq!(
+        because([gone, spent.as_str()].into_iter()),
+        Some(spent.as_str()),
+        "a folder gone said before spent watches"
+    );
+    assert_eq!(
+        because([gone].into_iter()),
+        Some(gone),
+        "the only reason not said"
+    );
 }
 
 #[test]
