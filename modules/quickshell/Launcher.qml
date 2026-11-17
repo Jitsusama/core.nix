@@ -9805,8 +9805,10 @@ Scope {
         // Opened from what it kept, it was shown already, holding the keys
         // since then; what follows fills it in.
         const filling = open && opening;
-        if (open && !filling && openAsked >= 0 && openChord === ""
-            && (openingsDrawn > 0 || warmingDone))
+        // A viewer's command line opens no home, so it isn't one opened
+        // whole (viewerCommandLine).
+        if (open && !filling && openAsked >= 0 && openChord === "" && !viewing
+            && homeMeantKept)
             openedWholeSaid();
         const began = lapped;
         opening = false;
@@ -10134,6 +10136,11 @@ Scope {
     // and is held there and then from home as last kept, since that draws
     // as a kept opening does and is filled in after its frame all the same.
     property string homeUnheld: "the shell started"
+    // Whether home was meant to be kept by now: after an opening, or once
+    // warming's pass has ended, which keeps it for the first. An opening
+    // before that is made whole by design, so neither homeRescued nor
+    // openedWholeSaid speaks of it.
+    readonly property bool homeMeantKept: openingsDrawn > 0 || warmingDone
     function unhold(why) {
         homeHeld = false;
         homeUnheld = why;
@@ -10144,9 +10151,9 @@ Scope {
     // couldn't be held again (2026-11-14).
     function homeRescued() {
         if (homeKept.length === 0) {
-            // The first since a start too, once the pass has ended, which
-            // keeps home for it: one it left unheld opened whole unsaid.
-            if (openingsDrawn > 0 || warmingDone)
+            // The first since a start too, once the pass has ended: one it
+            // left unheld opened whole unsaid.
+            if (homeMeantKept)
                 console.warn("launcher: home wasn't held as its chord came, and none was"
                     + ` kept: ${homeUnheld}`);
             return false;
@@ -10157,9 +10164,8 @@ Scope {
             console.warn(`launcher: home couldn't be held again: ${homeUnheld}`);
         return homeHeld;
     }
-    // Home opened whole once it was meant to be kept, after an opening or
-    // once warming's pass has ended, says what opened it and how home
-    // stood: Joel's at 17:11 took 114 ms to its frame with neither line
+    // Home opened whole once it was meant to be kept (homeMeantKept) says
+    // what opened it and how home stood: Joel's at 17:11 took 114 ms to its frame with neither line
     // homeRescued says, though only it opens one whole (2026-11-14), and
     // his first after the 20:19 start, 224 ms presented, said nothing of
     // who opened it (2026-11-16). Its callers are read from the stack, by

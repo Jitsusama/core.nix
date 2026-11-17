@@ -400,7 +400,8 @@ def test_a_viewers_command_line_makes_no_rows(shell: Shell) -> None:
     The line hides every row, yet it opened finding home, and every source home names made its
     rows for it: Joel's two at 23:43 made 84 and 38, and took 110 and 75 ms to their frames
     (2026-11-14). A try a closing's spots landed in counts nothing of the opening's, so it's
-    closed, its own spots waited for, and made again.
+    closed, its own spots waited for, and made again. Nor does it say home opened whole, since it
+    opens no home: the line that names who opened one whole spoke of every viewer's line.
     """
     for _ in range(REOPENINGS_TRIED):
         began = shell.mark()
@@ -423,6 +424,12 @@ def test_a_viewers_command_line_makes_no_rows(shell: Shell) -> None:
     }
     assert not made, f"opening a viewer's command line, sources made rows: {made}: {opening}"
     assert opening["rows"] == 0, f"a viewer's command line made rows before its frame: {opening}"
+    whole = [
+        line
+        for line in shell.log.read_bytes()[began:].decode(errors="replace").splitlines()
+        if "launcher: home opened whole" in line
+    ]
+    assert not whole, f"a viewer's command line was said as home opened whole: {whole}"
 
 
 def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) -> None:
