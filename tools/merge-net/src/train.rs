@@ -40,8 +40,8 @@ use std::process::{Command, ExitCode};
 use serde_json::{Value, json};
 
 use crate::state::short;
-pub use right_of_way::gives_way;
 use right_of_way::Ended;
+pub use right_of_way::gives_way;
 
 /// A change waiting on the train.
 #[derive(Clone, Debug, PartialEq, Eq)]

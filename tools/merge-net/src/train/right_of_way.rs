@@ -47,15 +47,20 @@ pub enum Way {
 
 /// What a run that `ended` so does to the right of way.
 #[must_use]
-pub fn after(_ended: &Ended) -> Way {
-    Way::TakeBack
+pub fn after(ended: &Ended) -> Way {
+    match ended {
+        Ended::Moved => Way::Give,
+        Ended::Landed { left: true } => Way::Renew,
+        Ended::Landed { left: false } | Ended::Otherwise => Way::TakeBack,
+    }
 }
 
 /// Do to the right of way of the train under `root`, at `now`, what a
 /// run that `ended` so does, saying what that was for the train's log.
 pub fn follow(root: &Path, ended: &Ended, now: u64) -> Option<String> {
+    let held = fs::metadata(file(root)).is_ok();
     match after(ended) {
-        Way::Give if fs::metadata(file(root)).is_err() => {
+        Way::Give if !held => {
             give(root, now);
             Some(format!(
                 "the train holds the right of way for {} minutes, so changes that would \
@@ -63,17 +68,17 @@ pub fn follow(root: &Path, ended: &Ended, now: u64) -> Option<String> {
                 RIGHT_OF_WAY / 60
             ))
         }
-        Way::Give => None,
         Way::Renew => {
             take_back(root);
             give(root, now);
             Some("the train holds the right of way afresh for the riders still aboard".into())
         }
-        Way::TakeBack if fs::metadata(file(root)).is_ok() => {
+        Way::TakeBack if held => {
             take_back(root);
             Some("the train gives back the right of way".into())
         }
-        Way::TakeBack => None,
+        // Given while held, or taken back while not, nothing changes.
+        Way::Give | Way::TakeBack => None,
     }
 }
 
@@ -125,7 +130,8 @@ pub fn take_back(root: &Path) {
 #[must_use]
 pub fn holds(root: &Path, now: u64) -> Option<u64> {
     let since: u64 = fs::read_to_string(file(root)).ok()?.trim().parse().ok()?;
-    (now.saturating_sub(since) < RIGHT_OF_WAY).then_some(since)
+    let held = now.checked_sub(since)?;
+    (held < RIGHT_OF_WAY).then_some(since)
 }
 
 #[cfg(test)]
