@@ -53,10 +53,10 @@ fn filed(m: &Measure) -> Vec<Filed> {
             .into_iter()
             .map(|(owner, files)| {
                 let files = files.join(", ");
-                let things = if m.class == Class::Cells {
-                    "cells"
-                } else {
-                    "files"
+                let (things, closes) = match (m.class, m.key.as_str()) {
+                    (Class::Cells, "reports-unasked") => ("reports", "none of them is left"),
+                    (Class::Cells, _) => ("cells", "none of them is left"),
+                    _ => ("files", "its figure is back in"),
                 };
                 Filed {
                     key: format!("hour:{}:{owner}", m.key),
@@ -64,8 +64,8 @@ fn filed(m: &Measure) -> Vec<Filed> {
                     text: format!(
                         "cadence hour: the biggest drag this hour is {says}, and these of \
                          its {things} are yours: {files}. Please reply with their cause and fix \
-                         within a day, or why they can't move. It closes by itself once its \
-                         figure is back in."
+                         within a day, or why they can't move. It closes by itself once \
+                         {closes}."
                     ),
                     owner,
                 }
@@ -107,9 +107,11 @@ fn routed(class: Class) -> bool {
 
 /// Whether the drag filed as `key` is back in: its miss no longer open,
 /// or its measure read and within its target; a drag filed for each line's
-/// owner carries that owner after its measure's key, and is back in once
-/// none of the measure's lines names them. A measure that couldn't be read
-/// says nothing, so it closes none.
+/// owner carries that owner after its measure's key, and a cells one is
+/// back in once none of the measure's lines names them, since a cell's
+/// line goes only when it is fixed. A clean file's line can go as the day
+/// turns, so a clean one waits for its zone. A measure that couldn't be
+/// read says nothing, so it closes none.
 fn back_in(key: &str, measures: &[Measure]) -> bool {
     let key = key.strip_prefix("hour:").unwrap_or(key);
     if let Some(what) = key.strip_prefix("miss:") {
@@ -127,7 +129,7 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
                 return Some((m, None));
             }
             let owner = key.strip_prefix(m.key.as_str())?.strip_prefix(':')?;
-            routed(m.class).then_some((m, Some(owner)))
+            routed(m.class).then_some((m, (m.class == Class::Cells).then_some(owner)))
         })
         .is_some_and(|(m, owner)| {
             m.target.is_some()

@@ -194,38 +194,41 @@ pub fn cells(
     let (never, ended) = unrun(quests.unwrap_or_default(), &all, &realms, &|q| {
         owner(Some(q), None)
     });
-    let nodes = (parsed.is_empty()).then_some("no realm's node named its sessions");
-    let store = nodes.or(quests
-        .is_none()
-        .then_some("the quests' READMEs couldn't be read"));
+    // A realm that didn't answer would read as one whose cells all went,
+    // closing their owners' drags; and without the READMEs owners fall
+    // back and quests' statuses go stale. Either leaves every measure
+    // unjudged.
+    let unread = if parsed.is_empty() || parsed.len() < answers.len() {
+        Some("a realm's node didn't name its sessions")
+    } else if quests.is_none() {
+        Some("the quests' READMEs couldn't be read")
+    } else {
+        None
+    };
     [
         (
             "cells-idle",
             "cells idle 20 minutes or more with a next step no one else holds",
             idle,
-            nodes,
         ),
         (
             "cells-parked-done",
             "cells parked on a quest already concluded or retired",
             parked_done,
-            nodes,
         ),
         (
             "quests-without-cells",
             "driving and active quests no cell has taken up",
             never,
-            store,
         ),
         (
             "quests-cells-ended",
             "driving and active quests whose every cell has ended",
             ended,
-            store,
         ),
     ]
     .into_iter()
-    .map(|(key, says, behind, unread)| judged(key, says, behind, unread, fallback))
+    .map(|(key, says, behind)| judged(key, says, behind, unread, fallback))
     .collect()
 }
 
@@ -311,7 +314,14 @@ pub fn mapped(exit: Option<i32>, out: &str, fallback: &str) -> Measure {
         return Measure {
             key: "map-cells".to_owned(),
             class: Class::Cells,
-            says: format!("{says} (the map's check didn't read the node)"),
+            says: format!(
+                "{says} ({})",
+                if exit.is_none() {
+                    "the map's check isn't installed"
+                } else {
+                    "the map's check didn't read the node"
+                }
+            ),
             now: 0.0,
             target: None,
             owner: fallback.to_owned(),
@@ -641,7 +651,9 @@ pub(super) mod tests {
             "a clean map unjudged"
         );
         assert!(
-            mapped(None, "", "F").says.contains("(the map's check isn't installed)"),
+            mapped(None, "", "F")
+                .says
+                .contains("(the map's check isn't installed)"),
             "a missing check was said to have failed to read the node"
         );
         for (exit, out) in [(Some(2), out.as_str()), (None, ""), (Some(1), "not json")] {

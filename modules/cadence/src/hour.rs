@@ -82,11 +82,14 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         measures.push(measures::crowded(&answers, NET_RULES));
         // The cells are the orchestrator's to move where no orchestration
         // or parent owns one; a look by hand names no orchestrator.
+        // A realm whose node doesn't answer is kept, unread, so the cells
+        // aren't judged from the others alone.
         let sessions: Vec<(String, String)> = realms
             .iter()
-            .filter_map(|realm| {
-                let answer = command("mycelium", &["--realm", realm, "sessions"]).ok()?;
-                Some((realm.clone(), answer))
+            .map(|realm| {
+                let answer =
+                    command("mycelium", &["--realm", realm, "sessions"]).unwrap_or_default();
+                (realm.clone(), answer)
             })
             .collect();
         let fallback = to.unwrap_or_default();

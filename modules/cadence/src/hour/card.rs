@@ -160,7 +160,10 @@ fn follow(last: Option<&Held>, measures: &[Measure]) -> (Option<String>, u32) {
     let Some(last) = last else {
         return (None, 0);
     };
-    let now = measures.iter().find(|m| m.key == last.key);
+    // A measure that couldn't be read this hour says nothing of the drag.
+    let now = measures
+        .iter()
+        .find(|m| m.key == last.key && m.target.is_some());
     match now {
         Some(m) if m.past().is_none() => (
             Some(format!("Last hour's drag, {}, is back in.", last.says)),
