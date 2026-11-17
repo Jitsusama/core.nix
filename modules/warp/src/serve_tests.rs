@@ -403,6 +403,31 @@ fn an_ask_kind_or_act_it_doesnt_know_is_refused() {
 }
 
 #[test]
+fn a_client_asking_without_reading_is_hung_up_on() {
+    let mut client = Client::new(&serving("unread"));
+    client
+        .stream
+        .set_write_timeout(Some(Duration::from_secs(10)))
+        .expect("a timeout can be set");
+    // Each ask is answered, and the answers it never reads fill the socket,
+    // then the queue; once one can't be queued the daemon hangs up, so an
+    // ask after that fails as one to a closed socket does, rather than
+    // waiting on a daemon holding it open with nothing reading it.
+    let failed = (0..1_000_000)
+        .find_map(|id| {
+            writeln!(client.stream, "{}", json!({"id": id, "ask": "overclock"})).err()
+        })
+        .expect("the daemon stops taking asks");
+    assert!(
+        matches!(
+            failed.kind(),
+            std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset
+        ),
+        "the daemon hangs up rather than leaving the socket open: {failed}"
+    );
+}
+
+#[test]
 fn a_get_reads_afresh_what_isnt_held_fresh() {
     let mut client = Client::new(&serving("get"));
     client.say(&json!({"id": 1, "ask": "get", "keys": ["warp:link"]}));

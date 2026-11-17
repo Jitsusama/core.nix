@@ -628,6 +628,9 @@ fn answer_each<A: Ask>(shared: &Shared<A>, stream: UnixStream, connection: u64) 
         let Ok(line) = line else { break };
         let said: Value = serde_json::from_str(&line).unwrap_or(Value::Null);
         if !answer(shared, &said, connection, &told, &hangup) {
+            // Shut both ways, or the writer stays blocked on a client that
+            // never reads, holding the socket open until that client goes.
+            let _ = hangup.shutdown(Shutdown::Both);
             break;
         }
     }
