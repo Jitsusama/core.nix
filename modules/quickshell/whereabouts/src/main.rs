@@ -17,8 +17,10 @@
 //! signal. Each position far enough from the last one said (fix.rs) is
 //! named, its town, its country and the zone it keeps asked of the web
 //! (named.rs), and said to every watch. It's kept in KEPT, in the runtime
-//! folder, and read back as it starts, so a restart says nothing new of a
-//! laptop that hasn't moved; one whose name couldn't be asked, as when it
+//! folder, and read back as it starts, so a restart asks no name again of a
+//! laptop that hasn't moved. A position that isn't far enough still places
+//! here as of when GeoClue found it, so Located never reads days old for a
+//! laptop sitting still; one whose name couldn't be asked, as when it
 //! starts before a network does, is asked again whenever GeoClue next says
 //! anything. Should GeoClue refuse or leave the bus, it's asked again a
 //! minute on, and the socket goes on answering meanwhile.
@@ -413,7 +415,15 @@ async fn geoclue_followed(
                 tried = 0;
                 Some(now)
             } else {
-                last.clone().filter(Fix::unnamed)
+                // Found again where it was, it's placed as of now, so
+                // Located says when GeoClue last found the laptop rather
+                // than when it got here, days ago for one sitting still.
+                let again = last.as_ref().and_then(|was| was.still(&now));
+                if let Some(again) = again.clone().filter(|fix| !fix.unnamed()) {
+                    *last = Some(again.clone());
+                    say(shared, files, Some(again));
+                }
+                again.or_else(|| last.clone()).filter(Fix::unnamed)
             };
             if let Some(fix) = renamed {
                 let said = named::name(fix.latitude, fix.longitude, fix.accuracy).await;

@@ -170,8 +170,10 @@ impl Fix {
     /// than as of when it got here. None where `now` is no newer, or this
     /// fix was set by hand, which GeoClue never finds again.
     pub fn still(&self, now: &Fix) -> Option<Fix> {
-        let _ = now;
-        None
+        (now.when > self.when && !self.hand).then(|| Fix {
+            when: now.when,
+            ..self.clone()
+        })
     }
 
     /// The fix as Joel said it himself.
