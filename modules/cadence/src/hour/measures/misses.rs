@@ -4,8 +4,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
-
-use super::super::card::HELD;
 use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
@@ -308,6 +306,10 @@ const JUDGES: &[&str] = &[
     "reports-unasked",
 ];
 
+/// What a miss's card line carries after its owner once its check merged
+/// and a measure still holds it open; the card and the owner's note read it.
+pub const HELD: &str = ", though its check ";
+
 /// Holds open each miss whose check names one of the hour's measures by
 /// its key, until that measure is judged and within its target: a merged
 /// check that can't judge yet, or still finds the fault, hasn't fixed it.
@@ -316,11 +318,14 @@ const JUDGES: &[&str] = &[
 /// check merged. A key is one of `JUDGES`, or any hyphenated key the hour
 /// made, so a new measure holds its miss before the list names it, named
 /// whole in any case; one of `JUDGES` the hour didn't make, as on a look by
-/// hand with no realm, holds it too.
-pub fn held(text: &str, measures: &mut [Measure]) {
+/// hand with no realm, holds it too. A zone's keys, `clean:repo:measure`,
+/// are named by no check. A miss already told fixed, its words in `told`,
+/// was judged gone once and stays closed, so a later drift of its measure
+/// for another cause doesn't reopen it.
+pub fn held(text: &str, measures: &mut [Measure], told: &[String]) {
     let mut keys: Vec<String> = JUDGES.iter().map(|&key| key.to_owned()).collect();
     for m in measures.iter() {
-        if m.key.contains('-') && !keys.contains(&m.key) {
+        if m.key.contains('-') && !m.key.contains(':') && !keys.contains(&m.key) {
             keys.push(m.key.clone());
         }
     }
@@ -350,7 +355,8 @@ pub fn held(text: &str, measures: &mut [Measure]) {
         let already = open
             .behind
             .iter()
-            .any(|line| line.rsplit_once(" · ").map_or(line.as_str(), |(w, _)| w) == what);
+            .any(|line| line.rsplit_once(" · ").map_or(line.as_str(), |(w, _)| w) == what)
+            || told.iter().any(|t| *t == what);
         let check = check.to_lowercase();
         let found = judging.iter().find(|(key, _)| names_whole(&check, key));
         let (false, Some((key, why))) = (already, found) else {
@@ -578,7 +584,7 @@ mod tests {
                 misses(&text, &repos(), &merged, &BTreeSet::new()),
                 judged("map-cells", now, target),
             ];
-            held(&text, &mut hour);
+            held(&text, &mut hour, &[]);
             assert_eq!(
                 hour[0].behind,
                 [format!(
@@ -596,7 +602,7 @@ mod tests {
             misses(&text, &repos(), &merged, &BTreeSet::new()),
             judged("map-cells", 0.0, Some(0.0)),
         ];
-        held(&text, &mut hour);
+        held(&text, &mut hour, &[]);
         assert!(
             hour[0].behind.is_empty(),
             "a merged check whose measure judges and reads within target kept its miss: {:?}",
@@ -614,7 +620,7 @@ mod tests {
         );
         let merged = BTreeSet::from([change("core", 5252)]);
         let mut hour = vec![misses(&text, &repos(), &merged, &BTreeSet::new())];
-        held(&text, &mut hour);
+        held(&text, &mut hour, &[]);
         assert_eq!(
             hour[0].behind,
             ["the cat waits · XY9H5C, though its check reports-unasked wasn't read this hour"],
@@ -625,7 +631,7 @@ mod tests {
             misses(&shouted, &repos(), &merged, &BTreeSet::new()),
             judged("map-cells", 0.0, None),
         ];
-        held(&shouted, &mut hour);
+        held(&shouted, &mut hour, &[]);
         assert_eq!(
             hour[0].behind.len(),
             1,
@@ -641,11 +647,43 @@ mod tests {
             misses(&text, &repos(), &merged, &BTreeSet::new()),
             judged("pains-untaken", 2.0, Some(0.0)),
         ];
-        held(&text, &mut hour);
+        held(&text, &mut hour, &[]);
         assert_eq!(
             hour[0].behind,
             ["the cat waits · XY9H5C, though its check pains-untaken still finds it"],
             "a new measure's key, missing from the list, let its miss close on merge"
+        );
+    }
+
+    #[test]
+    fn a_miss_told_fixed_stays_closed_when_its_measure_drifts_later() {
+        let text = miss("core #5252 map-cells");
+        let merged = BTreeSet::from([change("core", 5252)]);
+        let mut hour = vec![
+            misses(&text, &repos(), &merged, &BTreeSet::new()),
+            judged("map-cells", 2.0, Some(0.0)),
+        ];
+        held(&text, &mut hour, &["the cat waits".to_owned()]);
+        assert!(
+            hour[0].behind.is_empty(),
+            "a miss told fixed was reopened by its measure's later drift: {:?}",
+            hour[0].behind
+        );
+    }
+
+    #[test]
+    fn a_zones_key_holds_no_miss() {
+        let text = miss("core #5252 clean:core-nix:long-files");
+        let merged = BTreeSet::from([change("core", 5252)]);
+        let mut hour = vec![
+            misses(&text, &repos(), &merged, &BTreeSet::new()),
+            judged("clean:core-nix:long-files", 9.0, Some(0.0)),
+        ];
+        held(&text, &mut hour, &[]);
+        assert!(
+            hour[0].behind.is_empty(),
+            "a zone's key, which no check names, held a miss: {:?}",
+            hour[0].behind
         );
     }
 
@@ -661,7 +699,8 @@ mod tests {
         for m in made {
             assert!(
                 JUDGES.contains(&m.key.as_str()),
-                "{} is made by the hour but a check naming it wouldn't be held",
+                "{} is made by the hour but a check naming it wouldn't be held on an hour \
+                 that couldn't make it",
                 m.key
             );
         }
@@ -680,7 +719,7 @@ mod tests {
             judged("map-cells", 3.0, Some(0.0)),
             judged("reports-unasked", 0.0, Some(0.0)),
         ];
-        held(&words, &mut hour);
+        held(&words, &mut hour, &[]);
         assert!(
             hour[0].behind.is_empty(),
             "a plain word, a key inside a longer word, or a judged key held a miss: {:?}",
@@ -691,7 +730,7 @@ mod tests {
             misses(&open, &repos(), &BTreeSet::new(), &BTreeSet::new()),
             judged("map-cells", 0.0, None),
         ];
-        held(&open, &mut hour);
+        held(&open, &mut hour, &[]);
         assert_eq!(
             hour[0].behind,
             ["the cat waits · XY9H5C"],

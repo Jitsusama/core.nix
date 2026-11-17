@@ -8,7 +8,7 @@ use std::fmt::Write;
 use serde::{Deserialize, Serialize};
 
 use super::lines::{figure, shown_lines};
-use super::measures::{Class, Measure, drag};
+use super::measures::{Class, HELD, Measure, drag};
 use super::owing::by_owner;
 
 /// How many hours a drag may stay unmoved before the orchestrator is
@@ -160,7 +160,13 @@ fn tell_fixed(
     let still: Vec<&str> = open.iter().map(|miss| miss_words(miss)).collect();
     let reopened: Vec<&str> = open
         .iter()
-        .filter(|miss| !miss.contains(HELD))
+        // Only the part after the owner's mark says it's held, since a
+        // miss's own words might hold the same phrase.
+        .filter(|miss| {
+            !miss
+                .rsplit_once(" · ")
+                .is_some_and(|(_, by)| by.contains(HELD))
+        })
         .map(|miss| miss_words(miss))
         .collect();
     let mut told: Vec<String> = kept
@@ -265,10 +271,6 @@ fn capitalised(words: &str) -> String {
 
 /// A miss's own words, as its card line holds them: only its owner, and a
 /// note after it, follow the last mark, since a miss's words may hold one.
-/// What a miss's line carries once its check merged and a measure still
-/// holds it, as misses.rs writes it.
-pub const HELD: &str = ", though its check ";
-
 fn miss_words(line: &str) -> &str {
     line.rsplit_once(" · ").map_or(line, |(what, _)| what)
 }
@@ -529,10 +531,27 @@ mod tests {
         let mut reopened = measure("misses", Class::Miss, 1.0, Some(0.0));
         reopened.behind = vec!["the map drew cells alone · WCJQSG".to_owned()];
         let (_, open) = compose("04:10", &[reopened], &next, &BTreeMap::new(), "");
-        let (third, _) = compose("05:10", &[none], &open, &BTreeMap::new(), "");
+        let (third, _) = compose(
+            "05:10",
+            std::slice::from_ref(&none),
+            &open,
+            &BTreeMap::new(),
+            "",
+        );
         assert!(
             third.contains("For Joel"),
             "a miss the ledger reopened was never told fixed again: {third}"
+        );
+        // An hour a measure holds it, its check merged, isn't a reopening.
+        let mut holding = measure("misses", Class::Miss, 1.0, Some(0.0));
+        holding.behind = vec![format!(
+            "the map drew cells alone · WCJQSG{HELD}map-cells wasn't read this hour"
+        )];
+        let (_, through) = compose("04:10", &[holding], &next, &BTreeMap::new(), "");
+        let (fourth, _) = compose("05:10", &[none], &through, &BTreeMap::new(), "");
+        assert!(
+            !fourth.contains("For Joel"),
+            "a miss held an hour by its measure was told fixed a second time: {fourth}"
         );
     }
 

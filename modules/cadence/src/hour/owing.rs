@@ -8,9 +8,8 @@ use crate::DAY;
 use crate::findings::Entry;
 use crate::owe::{self, Owed};
 
-use super::card::HELD;
 use super::lines::figure;
-use super::measures::{Class, Measure, drag};
+use super::measures::{Class, HELD, Measure, drag};
 
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
@@ -35,6 +34,13 @@ fn filed(m: &Measure) -> Vec<Filed> {
                 // address: it says the check merged and a measure still
                 // holds the miss, so the owner isn't asked for a check again.
                 let (owner, held) = owner.split_once(HELD).unwrap_or((owner, ""));
+                // A held miss is its own finding, so the owner hears of the
+                // hold though the ask for a check is still open.
+                let key = if held.is_empty() {
+                    format!("hour:miss:{what}")
+                } else {
+                    format!("hour:miss-held:{what}")
+                };
                 let text = if held.is_empty() {
                     format!(
                         "cadence hour: a miss Joel found himself is yours: {what}. Which \
@@ -49,7 +55,7 @@ fn filed(m: &Measure) -> Vec<Filed> {
                     )
                 };
                 Filed {
-                    key: format!("hour:miss:{what}"),
+                    key,
                     owner: owner
                         .split(',')
                         .next()
@@ -135,13 +141,18 @@ fn routed(class: Class) -> bool {
 /// read says nothing, so it closes none.
 fn back_in(key: &str, measures: &[Measure]) -> bool {
     let key = key.strip_prefix("hour:").unwrap_or(key);
-    if let Some(what) = key.strip_prefix("miss:") {
+    // The ask for a check closes once the check merged and only a measure
+    // holds the miss; that hold is its own finding, closing once judged.
+    let asked = key.strip_prefix("miss:").map(|what| (what, false));
+    if let Some((what, held)) = asked.or_else(|| key.strip_prefix("miss-held:").map(|w| (w, true)))
+    {
         let open = format!("{what} · ");
         return !measures
             .iter()
             .filter(|m| m.class == Class::Miss)
             .flat_map(|m| &m.behind)
-            .any(|line| line.starts_with(&open));
+            .filter_map(|line| line.strip_prefix(&open))
+            .any(|by| by.contains(HELD) == held);
     }
     measures
         .iter()
@@ -411,11 +422,41 @@ mod tests {
             "the map drew cells alone · WCJQSG, though its check map-cells still finds it"
                 .to_owned(),
         ];
-        let told = file(&mut Vec::new(), &[misses], "2026-11-17", 1000);
-        let text = &told[0].1;
+        // The owner was asked for a check before it merged, and that
+        // finding is still open; the hold is news to them all the same.
+        let mut ledger = Vec::new();
+        let mut asked = misses.clone();
+        asked.behind = vec!["the map drew cells alone · WCJQSG".to_owned()];
+        file(&mut ledger, &[asked], "2026-11-16", 0);
+        let told = file(&mut ledger, &[misses], "2026-11-17", 1000);
+        let text = told.first().map_or("nothing", |(_, text)| text.as_str());
         assert!(
             !text.contains("Which check would have caught it") && text.contains("map-cells"),
-            "a miss whose check merged asked its owner for a check again: {text}"
+            "a miss whose check merged asked its owner for a check again, or wasn't told: {text}"
+        );
+        let open: Vec<&str> = ledger
+            .iter()
+            .filter(|e| e.open)
+            .map(|e| e.key.as_str())
+            .collect();
+        assert_eq!(
+            open,
+            ["hour:miss-held:the map drew cells alone"],
+            "the ask for a check stayed open once it merged, or the hold wasn't filed"
+        );
+        let mut gone = measure("misses", Class::Miss, 1.0, Some(0.0));
+        gone.behind = vec!["another miss · WCJQSG".to_owned()];
+        file(&mut ledger, &[gone], "2026-11-17", 2000);
+        assert!(
+            ledger
+                .iter()
+                .all(|e| !e.open || e.key == "hour:miss:another miss"),
+            "a hold its measure judged gone stayed open: {:?}",
+            ledger
+                .iter()
+                .filter(|e| e.open)
+                .map(|e| &e.key)
+                .collect::<Vec<_>>()
         );
     }
 }
