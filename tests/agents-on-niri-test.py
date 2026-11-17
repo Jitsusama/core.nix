@@ -2712,6 +2712,8 @@ def test_a_link_to_the_void_opens_nothing_over_the_launcher_and_its_line_drops_k
     shell.launcher_until(lambda shown: shown["line"]["up"] and shown["line"]["keys"])
     try:
         was = shell.showing()["line"]["typed"]
+        # Under load the keys land past the quiet however soon they're sent, as they do here.
+        time.sleep(LINK_QUIET)
         shell.send_chars("hi")
         # Keys taken would show in the line at once; this gives them the time to.
         time.sleep(0.3)
