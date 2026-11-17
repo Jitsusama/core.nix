@@ -51,15 +51,17 @@ function viewersDue(kept, sessions, now, screen) {
         const viewable = session !== undefined && Array.isArray(session.attach)
             && session.attach.length > 0;
         if (place.slept === true) {
-            // A sleeper is any session of its id, held or hosted. Only
-            // Reopen Them All's opens a window as it wakes, and only
-            // within ASKED_FOR of the ask; one kept as it went to sleep,
-            // which nobody asked to see, is let go once it wakes, with no
-            // window (Joel, 16 November: a window opens only when asked
-            // for).
+            // A sleeper is any session of its id, held or hosted. Only a
+            // place Joel asked for, by Reopen Them All or by waking it
+            // himself (Sessions.qml's wake), opens a window as it wakes,
+            // and only within ASKED_FOR of the ask, or never when he
+            // asked can't be read; one kept as it went to sleep, which
+            // nobody asked to see, is let go once it wakes, with no window
+            // (Joel, 16 November: a window opens only when asked for).
             const sleeper = sessions.find(one => one.presence?.session === id);
             const asked = place.asked === true;
-            const woke = asked && now - place.at > ASKED_FOR ? { kept: null, into: null }
+            const stale = asked && !(now - place.at <= ASKED_FOR);
+            const woke = stale ? { kept: null, into: null }
                 : sleeperDue(place, sleeper, now, workspaces ?? {});
             if (woke.into !== null && asked && (sleeper.held || viewable)) {
                 open.push({ session: sleeper, into: woke.into });
@@ -89,7 +91,7 @@ function viewersDue(kept, sessions, now, screen) {
 // Of a place kept as its session went to sleep, in pi's host or in its
 // mycelium holder (`slept`, as Sessions.qml's keepPlaceAsleep keeps it),
 // what's still to keep and where its window would open now, if anywhere,
-// which viewersDue opens only for a place Reopen Them All kept (`asked`).
+// which viewersDue opens only for a place Joel asked for (`asked`).
 // Its window closed so a sleeper costs next to nothing, and anything that
 // needs it wakes it where it sleeps (Joel,
 // 14 November: sessions put to sleep have no windows, and are resumed

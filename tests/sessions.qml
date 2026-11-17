@@ -384,9 +384,18 @@ ShellRoot {
             && Sessions.keptPlaces["s-NAPPER"]?.slept === true,
             JSON.stringify(Sessions.keptPlaces));
         sleepsHosted();
-        Sessions.keepPlaces({});
+        // Woken by Joel, as a quest's Return or a Go To wakes it, its kept
+        // place is marked asked, so its window opens there as it wakes; a
+        // wake nobody asked for opens none (Viewers.viewersDue).
+        Sessions.keepPlaces({ "s-NAPPER": { workspace: 5, column: 1, at: 0, slept: true,
+            asleep: true } });
         wokeAt = Niri.spawns.length;
         Sessions.wake(napper);
+        const marked = Sessions.keptPlaces["s-NAPPER"] ?? null;
+        expect("a holder's sleeper Joel wakes has its place asked for, from now",
+            marked?.asked === true && marked.at > 0 && marked.workspace === 5,
+            JSON.stringify(marked));
+        Sessions.keepPlaces({});
         Sessions.talk("napper", "what now?");
     }
 

@@ -462,7 +462,8 @@ QtObject {
         // but never on his workspace, never while it sleeps, and only
         // within ASKED_FOR of his asking. Kept just before its window
         // closes, it waits to be seen asleep, and lapses in a day if it
-        // never is; once seen, it's kept however long it sleeps.
+        // never is; once seen, it's kept however long it sleeps, unless it
+        // was asked for, which lapses ASKED_FOR after the ask.
         const slept = { napper: { workspace: 4, column: 3, at: 0, slept: true } };
         const asleep = { napper: { workspace: 4, column: 3, at: 0, slept: true, asleep: true } };
         const reopened = { napper: { workspace: 4, column: 3, at: 0, slept: true, asleep: true,
@@ -498,6 +499,16 @@ QtObject {
             { open: [], kept: {} });
         expect("asked and still asleep past ASKED_FOR, it's let go", Viewers.viewersDue(reopened,
             [hostedNapping], Viewers.ASKED_FOR + 1, there), { open: [], kept: {} });
+        const askedLater = { napper: Object.assign({}, reopened.napper, { at: 5000 }) };
+        expect("asked later, ASKED_FOR runs from the ask, not from nothing",
+            Viewers.viewersDue(askedLater, [held(null, "listening")], 5000 + Viewers.ASKED_FOR,
+                there).open.length, 1);
+        expect("and past it from the ask, it's let go", Viewers.viewersDue(askedLater,
+            [held(null, "listening")], 5001 + Viewers.ASKED_FOR, there), { open: [], kept: {} });
+        const askedWhenUnread = { napper: Object.assign({}, reopened.napper, { at: "soon" }) };
+        expect("asked when nobody can read, it opens none and is let go",
+            Viewers.viewersDue(askedWhenUnread, [held(null, "listening")], 10, there),
+            { open: [], kept: {} });
         expect("woken while Joel is on its workspace, it waits", Viewers.viewersDue(reopened,
             [hosted("napper")], 10, gone(on(4, screens), { away: false })),
             { open: [], kept: reopened });

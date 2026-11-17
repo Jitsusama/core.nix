@@ -2999,7 +2999,11 @@ Singleton {
     // on 14 November had their wake file in the host's own folder, which
     // the node refuses. It opens where its window was as it went to sleep
     // (keepPlaceAsleep), on Joel's own workspace too since he asked for it,
-    // or where niri opens one when no place was kept.
+    // or where niri opens one when no place was kept. One a holder keeps
+    // has its place marked asked, since every caller here is Joel's own
+    // act (a quest's Return, a Go To), so its window opens there as it
+    // wakes (Viewers.viewersDue); a wake nobody here asked for, the node's
+    // or a restart's, opens none.
     function wake(session) {
         if (wokenByViewing(session)) {
             const id = String(session.presence?.session ?? "");
@@ -3012,6 +3016,10 @@ Singleton {
             view(session, into);
             return;
         }
+        const id = String(session?.presence?.session ?? "");
+        if (keptPlaces[id]?.slept === true)
+            keepPlaces(Object.assign({}, keptPlaces, { [id]: Object.assign({}, keptPlaces[id],
+                { at: Date.now(), asked: true }) }));
         if (session?.address)
             steer(session.address, { act: "wake" });
     }
