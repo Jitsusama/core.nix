@@ -155,6 +155,11 @@ let
   # memfd, and a shell holding 132 MB of heap held 159 MB more there
   # (qtdeclarative-heap-held-once.patch). A shared memfd held it once too,
   # but the launcher's first openings ran slower on it.
+  # The heap's free runs of 63 slots, about 2 KB, or more are kept in five
+  # bins by size, since in one list a request passed 32 too small for it
+  # and took a new chunk while runs that fit sat further on; over 130
+  # openings in a lab its hold grew from 25 to 40 MB around 18 live, and
+  # to 34 with them kept by size (qtdeclarative-large-runs-by-size.patch).
   # Its Wayland client focuses the window a sync asks for even while an
   # earlier change is still queued, since a leave and an enter close
   # together left the launcher holding the keys yet never active
@@ -187,6 +192,7 @@ let
             ./qtdeclarative-json-strings-at-their-length.patch
             ./qtdeclarative-uncached-pictures-let-go.patch
             ./qtdeclarative-heap-held-once.patch
+            ./qtdeclarative-large-runs-by-size.patch
           ];
         });
       }

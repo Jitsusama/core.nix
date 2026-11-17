@@ -1,0 +1,231 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] Keep the block allocator's large runs by their size
+
+The block allocator kept every free run of 63 slots or more in one
+list, and a request for one passed at most 32 runs too small before it
+took a new chunk. Collections run seldom while the shell leaves room
+for its openings, so the list filled with runs of 63 to 127 slots at
+its head, and requests passed them while runs that fit sat further on.
+Over 130 openings in a lab the shell's live heap stayed at 18 MB while
+it held 25 MB growing to 40, 12 MB of it free in that one list. Runs
+of 63 to 127 slots now share the first of five large bins, and each
+bin after it holds runs from a power of two to the next, the last
+every run of 1024 slots or more. A request passes at most 32 runs too
+small in its own bin, then takes the first run of a larger one, which
+always fits. It takes a new chunk only when no larger bin holds a run
+and its own holds none that fits within those 32. The same lab held
+25 MB growing to 34.
+
+---
+--- a/src/qml/memory/qv4mm.cpp
++++ b/src/qml/memory/qv4mm.cpp
+@@ -412,7 +412,9 @@
+             freeSlots += nSlots;
+             Q_ASSERT(freeEnd > freeStart && freeEnd <= NumSlots);
+             freeItem->freeData.availableSlots = nSlots;
+-            uint bin = qMin(nBins - 1, nSlots);
++            // Kept within the caller's bins even where asserts are compiled out.
++            uint bin = qMin(uint(BlockAllocator::binForSlots(nSlots)), nBins - 1);
++            Q_ASSERT(bin == BlockAllocator::binForSlots(nSlots));
+             freeItem->freeData.next = bins[bin];
+             bins[bin] = freeItem;
+         }
+@@ -431,7 +433,7 @@ HeapItem *BlockAllocator::allocate(size_t size, bool forceAllocation) {
+ 
+     HeapItem *m;
+ 
+-    if (slotsRequired < NumBins - 1) {
++    if (slotsRequired < NumExactBins) {
+         m = freeBins[slotsRequired];
+         if (m) {
+             freeBins[slotsRequired] = m->freeData.next;
+@@ -448,50 +450,55 @@ HeapItem *BlockAllocator::allocate(size_t size, bool forceAllocation) {
+         goto done;
+     }
+ 
+-    // search last bin for a large enough item, passing at most a few too small, since each pass
+-    // of a long list is paid again by every request that follows it
+-    last = &freeBins[NumBins - 1];
+-    for (size_t tries = 0; (m = *last); ++tries) {
+-        if (tries == LargeBinTries) {
+-            m = nullptr;
+-            break;
+-        }
+-        if (m->freeData.availableSlots >= slotsRequired) {
+-            *last = m->freeData.next; // take it out of the list
+-
+-            size_t remainingSlots = m->freeData.availableSlots - slotsRequired;
+-            if (remainingSlots == 0)
+-                goto done;
+-
+-            HeapItem *remainder = m + slotsRequired;
+-            if (remainingSlots > nFree) {
+-                if (nFree) {
+-                    size_t bin = binForSlots(nFree);
+-                    nextFree->freeData.next = freeBins[bin];
+-                    nextFree->freeData.availableSlots = nFree;
+-                    freeBins[bin] = nextFree;
+-                }
+-                nextFree = remainder;
+-                nFree = remainingSlots;
+-            } else {
+-                remainder->freeData.availableSlots = remainingSlots;
+-                size_t binForRemainder = binForSlots(remainingSlots);
+-                remainder->freeData.next = freeBins[binForRemainder];
+-                freeBins[binForRemainder] = remainder;
++    // search the large bins for a large enough item, from the one for this size up. Only the
++    // request's own bin holds runs too small for it, and it passes at most a few of them, since
++    // each pass of a long list is paid again by every request that follows it; the first run of
++    // any larger bin fits.
++    for (size_t bin = qMax(binForSlots(slotsRequired), size_t(NumExactBins)); bin < NumBins;
++         ++bin) {
++        last = &freeBins[bin];
++        for (size_t tries = 0; (m = *last); ++tries) {
++            if (tries == LargeBinTries) {
++                m = nullptr;
++                break;
+             }
+-            goto done;
++            if (m->freeData.availableSlots >= slotsRequired) {
++                *last = m->freeData.next; // take it out of the list
++
++                size_t remainingSlots = m->freeData.availableSlots - slotsRequired;
++                if (remainingSlots == 0)
++                    goto done;
++
++                HeapItem *remainder = m + slotsRequired;
++                if (remainingSlots > nFree) {
++                    if (nFree) {
++                        size_t bumpBin = binForSlots(nFree);
++                        nextFree->freeData.next = freeBins[bumpBin];
++                        nextFree->freeData.availableSlots = nFree;
++                        freeBins[bumpBin] = nextFree;
++                    }
++                    nextFree = remainder;
++                    nFree = remainingSlots;
++                } else {
++                    remainder->freeData.availableSlots = remainingSlots;
++                    size_t binForRemainder = binForSlots(remainingSlots);
++                    remainder->freeData.next = freeBins[binForRemainder];
++                    freeBins[binForRemainder] = remainder;
++                }
++                goto done;
++            }
++            last = &m->freeData.next;
+         }
+-        last = &m->freeData.next;
+     }
+ 
+-    if (slotsRequired < NumBins - 1) {
++    if (slotsRequired < NumExactBins) {
+         // check if we can split up another slot
+-        for (size_t i = slotsRequired + 1; i < NumBins - 1; ++i) {
++        for (size_t i = slotsRequired + 1; i < NumExactBins; ++i) {
+             m = freeBins[i];
+             if (m) {
+                 freeBins[i] = m->freeData.next; // take it out of the list
+                 size_t remainingSlots = i - slotsRequired;
+-                Q_ASSERT(remainingSlots < NumBins - 1);
++                Q_ASSERT(remainingSlots < NumExactBins);
+                 HeapItem *remainder = m + slotsRequired;
+                 remainder->freeData.availableSlots = remainingSlots;
+                 remainder->freeData.next = freeBins[remainingSlots];
+@@ -1298,14 +1305,19 @@ static size_t dumpBins(BlockAllocator *b, const char *title)
+             totalSlotMem += h->freeData.availableSlots;
+             h = h->freeData.next;
+         }
+-        if (title)
++        if (title && i < BlockAllocator::NumExactBins)
+             qDebug(stats) << "    number of entries in slot" << i << ":" << nEntries;
++        else if (title)
++            qDebug(stats) << "    number of entries in large bin" << i - BlockAllocator::NumExactBins
++                          << ":" << nEntries;
+     }
+     SDUMP() << "    large slot map";
+-    HeapItem *h = b->freeBins[BlockAllocator::NumBins - 1];
+-    while (h) {
+-        SDUMP() << "        " << Qt::hex << (quintptr(h)/32) << h->freeData.availableSlots;
+-        h = h->freeData.next;
++    for (uint i = BlockAllocator::NumExactBins; i < BlockAllocator::NumBins; ++i) {
++        HeapItem *h = b->freeBins[i];
++        while (h) {
++            SDUMP() << "        " << Qt::hex << (quintptr(h)/32) << h->freeData.availableSlots;
++            h = h->freeData.next;
++        }
+     }
+ 
+     if (title)
+@@ -1499,9 +1511,14 @@ void MemoryManager::dumpStats() const
+     qDebug(stats) << "Max memory used before a GC run:" << statistics->maxUsedBeforeGC;
+     qDebug(stats) << "Max memory used after a GC run:" << statistics->maxUsedAfterGC;
+     qDebug(stats) << "Requests for different item sizes:";
+-    for (int i = 1; i < BlockAllocator::NumBins - 1; ++i)
++    for (int i = 1; i < BlockAllocator::NumExactBins; ++i)
+         qDebug(stats) << "     <" << (i << Chunk::SlotSizeShift) << " bytes: " << statistics->allocations[i];
+-    qDebug(stats) << "     >=" << ((BlockAllocator::NumBins - 1) << Chunk::SlotSizeShift) << " bytes: " << statistics->allocations[BlockAllocator::NumBins - 1];
++    for (int i = BlockAllocator::NumExactBins; i < BlockAllocator::NumBins; ++i) {
++        const int from = i == BlockAllocator::NumExactBins
++                ? int(BlockAllocator::NumExactBins)
++                : 64 << (i - BlockAllocator::NumExactBins);
++        qDebug(stats) << "     >=" << (from << Chunk::SlotSizeShift) << " bytes: " << statistics->allocations[i];
++    }
+ }
+ 
+ void MemoryManager::collectFromJSStack(MarkStack *markStack) const
+--- a/src/qml/memory/qv4mm_p.h
++++ b/src/qml/memory/qv4mm_p.h
+@@ -178,16 +178,28 @@ struct BlockAllocator {
+         memset(freeBins, 0, sizeof(freeBins));
+     }
+ 
+-    // A bin for each size up to 2 KB, so the last one holds only runs that fit nearly anything
+-    // asked of it. With eight, every request of 224 bytes or more walked one list of every free
+-    // run that size or larger, passing each too small for it.
+-    enum { NumBins = 64 };
++    // A bin for each size under 63 slots, about 2 KB. With eight, every request of 224 bytes or
++    // more walked one list of every free run that size or larger, passing each too small for it.
++    enum { NumExactBins = 63 };
+ 
+-    // How many runs too small a request for the last bin passes before it takes a new chunk.
++    // Runs of 63 to 127 slots share the first large bin, and each bin after it holds runs from a
++    // power of two to the next, the last every run of 1024 slots or more. With one list for them
++    // all, a request passed its 32 tries on runs too small for it while runs that fit sat further
++    // on, and took a new chunk whenever its tries ran out.
++    enum { NumLargeBins = 5, NumBins = NumExactBins + NumLargeBins };
++
++    // How many runs too small a request passes in its own large bin before it looks in the larger
++    // ones, where the first run fits it. A request of 1024 slots or more, 32 KB, has no larger bin
++    // to look in, so it may still take a new chunk while a run that fits lies past its tries.
+     enum { LargeBinTries = 32 };
+ 
+-    static inline size_t binForSlots(size_t nSlots) {
+-        return nSlots >= NumBins ? NumBins - 1 : nSlots;
++    static constexpr size_t binForSlots(size_t nSlots) {
++        if (nSlots < NumExactBins)
++            return nSlots;
++        // 63 to 127 slots is the first large bin, 128 to 255 the second, and so on.
++        const size_t width = 64 - size_t(qCountLeadingZeroBits(quint64(nSlots)));
++        const size_t large = width < 8 ? 0 : qMin(size_t(NumLargeBins - 1), width - 7);
++        return NumExactBins + large;
+     }
+ 
+     HeapItem *allocate(size_t size, bool forceAllocation = false);
+@@ -221,6 +233,18 @@ struct BlockAllocator {
+     uint *allocationStats = nullptr;
+ };
+ 
++// Each large bin's runs fit every request of a smaller bin, and the largest run a chunk holds
++// lands in the last bin, so a request takes the first run of any bin above its own.
++static_assert(BlockAllocator::binForSlots(BlockAllocator::NumExactBins - 1)
++              == BlockAllocator::NumExactBins - 1);
++static_assert(BlockAllocator::binForSlots(BlockAllocator::NumExactBins)
++              == BlockAllocator::NumExactBins);
++static_assert(BlockAllocator::binForSlots(127) == BlockAllocator::NumExactBins);
++static_assert(BlockAllocator::binForSlots(128) == BlockAllocator::NumExactBins + 1);
++static_assert(BlockAllocator::binForSlots(1023) == BlockAllocator::NumBins - 2);
++static_assert(BlockAllocator::binForSlots(1024) == BlockAllocator::NumBins - 1);
++static_assert(BlockAllocator::binForSlots(Chunk::AvailableSlots) == BlockAllocator::NumBins - 1);
++
+ struct HugeItemAllocator {
+     HugeItemAllocator(ChunkAllocator *chunkAllocator, ExecutionEngine *engine)
+         : chunkAllocator(chunkAllocator), engine(engine)
