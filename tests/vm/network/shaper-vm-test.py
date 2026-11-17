@@ -67,6 +67,9 @@ HOLDING = dt.timedelta(seconds=10)
 # How long the client may take to boot to its first queues, or a tunnel or a
 # plugged-in link to come up.
 COMING_UP = dt.timedelta(seconds=30)
+# How soon a restarted recorder has the gateway's round trip, in ms: choosing
+# reflectors takes 1.5 s, and it mustn't keep the gateway unsampled meanwhile.
+SAMPLED_WITHIN_MS = 1_000
 # How long a device's queue may take to go still after a transfer.
 STILLING = dt.timedelta(seconds=30)
 # The least share of the connection agents' bulk beside a tunnel gets while bulk inside it
@@ -542,21 +545,55 @@ def test_each_direction_is_recorded(connection: Connection) -> None:
     The server's kernel answers ICMP timestamps itself, as a public resolver's does, and the
     router answers the recorder's echo; the recorder runs as its own user with a raw socket alone.
     The days are read as alice, since a controller is replayed over them by the machine's user.
+
+    A restart, as a switch makes beside the shaper's own, opens a new recording that names its
+    network first and has the gateway's round trip within a second of starting: choosing
+    reflectors takes 1.5 s, and the shaper's restart, the moment the record is kept to show,
+    falls inside it.
     """
+    client = connection.client
+
+    def heard() -> list[Json]:
+        """Give every line the recorder wrote."""
+        text = client.succeed(
+            "su alice -c 'cat /var/lib/shaper-record/*.jsonl' 2>/dev/null || true"
+        )
+        return [json.loads(line) for line in text.splitlines() if line.strip()]
 
     def recorded(_last_try: bool) -> bool:
         """Say whether a day's file holds the server's one-way delays and a gateway round trip."""
-        text = connection.client.succeed(
-            "su alice -c 'cat /var/lib/shaper-record/*.jsonl' 2>/dev/null || true"
-        )
-        heard: list[Json] = [json.loads(line) for line in text.splitlines() if line.strip()]
+        lines = heard()
         stamped = any(
-            h.get("reflector") == connection.far and "out" in h and "back" in h for h in heard
+            h.get("reflector") == connection.far and "out" in h and "back" in h for h in lines
         )
-        gateway = any(isinstance(h.get("gateway"), float) for h in heard)
+        gateway = any(isinstance(h.get("gateway"), float) for h in lines)
         return stamped and gateway
 
     retry(recorded, timeout=COMING_UP)
+    since = int(client.succeed("date +%s%3N").strip())
+    client.succeed("systemctl restart shaper-record.service")
+    # The restart returns once the new recorder runs: what it takes is counted against the
+    # machine rather than the recorder.
+    started = int(client.succeed("date +%s%3N").strip())
+
+    def opened() -> list[Json]:
+        """Give the new recording, from the line that opens it with its network.
+
+        The old recorder writes until it's stopped, which is after `since`.
+        """
+        after = [h for h in heard() if h["at"] > since]
+        first = next((n for n, h in enumerate(after) if "network" in h), len(after))
+        return after[first:]
+
+    def sampled(_last_try: bool) -> bool:
+        """Say whether the new recording has its gateway's round trip yet."""
+        return any(isinstance(h.get("gateway"), float) for h in opened())
+
+    retry(sampled, timeout=COMING_UP)
+    first = next(h["at"] for h in opened() if isinstance(h.get("gateway"), float))
+    assert first - started < SAMPLED_WITHIN_MS, (
+        f"the gateway went unsampled {first - started} ms after a restart"
+    )
 
 
 def test_slice_made_again(connection: Connection) -> None:
