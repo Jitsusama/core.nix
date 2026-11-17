@@ -117,19 +117,6 @@
     "test": "vm-screens-keep-the-launcher"
   },
   {
-    "at": 1794681104,
-    "commit": "1501fe1f285b10c05bad4246ffc29beae45dc2d4",
-    "due": "2026-11-16",
-    "due_why": "Its owner reruns it on an idle builder by 2026-11-16 23:59 UTC and takes it off if it holds, or fixes it",
-    "owner_pr": 4560,
-    "owner_session": "Y2YBTS",
-    "reason": "failed, then passed, at 1501fe1f285b",
-    "subtests": [
-      "test_super_v_pastes_into_the_window_it_opened_over_a_terminal_or_not"
-    ],
-    "test": "vm-desktop-keeps-copies"
-  },
-  {
     "at": 1794709157,
     "commit": "25e508c84df2ad15f66044c588f1529630a3b870",
     "due": "2026-11-17",
