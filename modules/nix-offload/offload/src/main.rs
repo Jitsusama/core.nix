@@ -1676,7 +1676,7 @@ fn not_taken(why: &str) -> ExitCode {
 const ROOM_ASKED: (&str, &str) = ("NIX_OFFLOAD_MAC_ROOM_ASKED", "1");
 
 /// How a changed-checks run with `arguments` ends when it waits rather
-/// than go to a busy Mac nearby, as [`changed::mac::waits`] decides from
+/// than go to a busy Mac nearby, as [`changed::mac::room`] decides from
 /// the first that answers, or none when it goes. It ends as one nothing
 /// built, which its callers try again later and never run here, where it
 /// would build nothing.
@@ -1698,9 +1698,20 @@ fn held_for_a_mac(arguments: &[String]) -> Option<ExitCode> {
         .into_iter()
         .filter(|machine| machine.systems.iter().any(|system| system == mac::SYSTEM))
         .find(|machine| machines::answers(&machine.address))?;
-    let why = mac::waits(&mac.host, there::load_of(&mac, &scratch(), "ssh"))?;
-    eprintln!("nix-offload: {why}, so a run for its system waits, ended as one nothing built");
-    Some(ExitCode::from(changed::UNBUILT))
+    // A run that goes says the load it went at, so a busy Mac that was
+    // sent one can be told from the gate that let it through.
+    match mac::room(&mac.host, there::load_of(&mac, &scratch(), "ssh")) {
+        Ok(room) => {
+            eprintln!("nix-offload: {room}, so a run for its system goes");
+            None
+        }
+        Err(why) => {
+            eprintln!(
+                "nix-offload: {why}, so a run for its system waits, ended as one nothing built"
+            );
+            Some(ExitCode::from(changed::UNBUILT))
+        }
+    }
 }
 
 /// How a Mac's comparison joined a changed-checks run that passed.
@@ -1812,19 +1823,14 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
     };
     // A Mac with no room waits rather than take more: its comparison is
     // owed, and the net runs it once the Mac has room.
-    match there::load_of(mac, &scratch(), "ssh") {
-        Ok(Some(load)) if load.over() => {
-            return skipped(format!(
-                "{} has no room, at load {:.0} on {} processors",
-                mac.host, load.minute, load.cores
-            ));
-        }
+    // One that says nothing a load reads from has none either, as a run
+    // for a Mac's system takes it (`held_for_a_mac`).
+    let room = match mac::room(&mac.host, there::load_of(mac, &scratch(), "ssh")) {
+        Ok(room) => room,
         Err(why) => return skipped(why),
-        Ok(_) => {}
-    }
+    };
     eprintln!(
-        "nix-offload: {read} is read by a Mac's checks, so they're compared on {} too",
-        mac.host
+        "nix-offload: {read} is read by a Mac's checks, so they're compared there too: {room}"
     );
     let longest = mac::longest();
     match compared_within(&mac::for_a_mac(arguments), waiting, longest) {
