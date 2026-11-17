@@ -50,7 +50,7 @@ let
           "repository"
         ];
         default = "folder";
-        description = "Whether the tracked files of the job's folder go with it, or those of the repository holding it. Hidden files, keys, certificates and build output never do.";
+        description = "Whether the tracked files of the job's folder go with it, or those of the repository holding it. Hidden files, keys and certificates never do; a tracked file under a folder named target or node_modules does, so exclude build output a repository tracks.";
       };
       excludes = lib.mkOption {
         type = lib.types.listOf lib.types.str;

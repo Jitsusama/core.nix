@@ -10,6 +10,12 @@
 //! Each end of a shared quest looks once a second and files arrive in no
 //! set order, so each side lists what it left, with sizes and an end line
 //! written last, and the other waits until all of it is there.
+//!
+//! A shared quest keeps home any folder a build fills, `target` and
+//! `node_modules`, wherever it lies, which a tracked file can sit in as
+//! source. So the job's files are left under their numbers in the list,
+//! names a share always carries, and the far side copies each one back
+//! to its path.
 
 use crate::settings::{Copies, Kind};
 use std::fmt::Write as _;
@@ -27,7 +33,8 @@ const LEFT: &str = "elsewhere-files";
 const BROUGHT: &str = "elsewhere-back";
 const END: &str = "end";
 
-/// The folders the job's files and what it brings back lie in.
+/// The folders the job's files, each named by its line in the list, and
+/// what it brings back lie in.
 const TREE: &str = "tree";
 const BACK: &str = "back";
 
@@ -87,18 +94,15 @@ pub fn root(kind: &Kind, folder: &Path) -> Result<PathBuf, String> {
 
 /// Whether a tracked `path` may travel: never a hidden file or one in a
 /// hidden folder, such as `.env` or `.git/config`, never a key or a
-/// certificate, never build output, and nothing the kind excludes.
-/// Mycelium keeps the hidden ones and build output home anyway; leaving
-/// them out here keeps the list of what's left to what can arrive.
+/// certificate, and nothing the kind excludes. A tracked file in a folder
+/// named as a build's is source, and travels; a kind excludes the build
+/// output it tracks.
 pub fn travels(path: &str, excludes: &[String]) -> bool {
-    let names: Vec<&str> = path.split('/').collect();
-    let kept_home = names
-        .iter()
-        .any(|name| name.starts_with('.') || matches!(*name, "target" | "node_modules"));
+    let hidden = path.split('/').any(|name| name.starts_with('.'));
     let secret = Path::new(path).extension().is_some_and(|extension| {
         extension.eq_ignore_ascii_case("pem") || extension.eq_ignore_ascii_case("key")
     });
-    !kept_home && !secret && !excludes.iter().any(|exclude| excluded(path, exclude))
+    !hidden && !secret && !excludes.iter().any(|exclude| excluded(path, exclude))
 }
 
 /// Whether `pattern` excludes `path`: one starting with `/` names a path
@@ -172,17 +176,14 @@ pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<(String, u64)>, String> 
 }
 
 /// Leaves `files`, from the tree at `root`, in the job's folder of the
-/// handover, listed last so the list is never ahead of its files.
+/// handover, each named by its line in the list, which is written last so
+/// it is never ahead of its files.
 pub fn left(root: &Path, files: &[(String, u64)], job: &Path) -> io::Result<()> {
     let tree = job.join(TREE);
     fs::create_dir_all(&tree)?;
     let mut list = String::new();
-    for (path, size) in files {
-        let into = tree.join(path);
-        if let Some(parent) = into.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::copy(root.join(path), into)?;
+    for (number, (path, size)) in files.iter().enumerate() {
+        fs::copy(root.join(path), tree.join(number.to_string()))?;
         // Writing to a String can't fail.
         let _ = writeln!(list, "{size}\t{path}");
     }
@@ -198,7 +199,8 @@ pub fn started(id: &str) -> String {
 }
 
 /// What the far machine runs for the job `id`, through `sh -c`: it waits
-/// for the job's files to cross, copies them to the far `scratch`, runs
+/// for the job's files to cross, copies each to its path in the far
+/// `scratch`, refusing one that would climb out of it, runs
 /// the kind's setup and then the job, its program found on the far path by
 /// its name, in the job's folder `within` the tree, then leaves what the
 /// kind brings back in the handover and takes its copy away.
@@ -255,10 +257,27 @@ work={work}
 tab=$(printf '\t')
 arrived() {{
   [ "$(tail -n 1 "$job/{LEFT}" 2>/dev/null)" = {END} ] || return 1
+  n=0
   while IFS="$tab" read -r size path; do
     [ "$size" = {END} ] && return 0
-    [ -f "$job/{TREE}/$path" ] || return 1
-    [ "$(($(wc -c < "$job/{TREE}/$path")))" -eq "$size" ] || return 1
+    [ -f "$job/{TREE}/$n" ] || return 1
+    [ "$(($(wc -c < "$job/{TREE}/$n")))" -eq "$size" ] || return 1
+    n=$((n + 1))
+  done < "$job/{LEFT}"
+  return 1
+}}
+copied() {{
+  n=0 made=
+  while IFS="$tab" read -r size path; do
+    [ "$size" = {END} ] && return 0
+    case "/$path/" in
+      //*|*/../*|*/./*) echo "the job's list names $path, outside its folder" >&2; return 1 ;;
+    esac
+    folder="$work"
+    case "$path" in */*) folder="$work/${{path%/*}}" ;; esac
+    if [ "$folder" != "$made" ]; then mkdir -p "$folder" || return 1; made=$folder; fi
+    cp "$job/{TREE}/$n" "$work/$path" || return 1
+    n=$((n + 1))
   done < "$job/{LEFT}"
   return 1
 }}
@@ -271,7 +290,7 @@ until arrived; do
   sleep 1
   waited=$((waited + 1))
 done
-rm -rf "$work" && mkdir -p "$work" && cp -R "$job/{TREE}/." "$work/" || exit 70
+rm -rf "$work" && mkdir -p "$work" && copied || exit 70
 cd {folder} || exit 70
 echo {started}
 (
@@ -426,15 +445,20 @@ mod tests {
             ".git/config",
             "keys/server.key",
             "cert.pem",
-            "target/debug/x",
-            "web/node_modules/a.js",
             "states/1.bin",
             "a/cache/b",
             "cache",
         ] {
             assert!(!travels(path, &excludes), "{path} travelled");
         }
-        for path in ["Spec.tla", "a/states/1.bin", "src/cached.rs", "keys.md"] {
+        for path in [
+            "Spec.tla",
+            "a/states/1.bin",
+            "src/cached.rs",
+            "keys.md",
+            "lib/target/x.ts",
+            "web/node_modules/a.js",
+        ] {
             assert!(travels(path, &excludes), "{path} was kept home");
         }
     }
@@ -524,5 +548,65 @@ mod tests {
             "'$HOME'",
             "a variable was left for the far shell"
         );
+    }
+
+    /// Runs the far line for a job whose handover lists `list` over the
+    /// numbered files `files`, in a home of its own, and answers how it
+    /// ended and the home.
+    fn far_run(list: &str, files: &[&str]) -> (Option<i32>, std::path::PathBuf) {
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let home = std::env::temp_dir().join(format!(
+            "elsewhere-far-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&home);
+        let job = home.join(format!(
+            ".cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/{}/1",
+            super::HANDOVER
+        ));
+        std::fs::create_dir_all(job.join(super::TREE)).unwrap();
+        for (number, text) in files.iter().enumerate() {
+            std::fs::write(job.join(super::TREE).join(number.to_string()), text).unwrap();
+        }
+        std::fs::write(job.join(super::LEFT), list).unwrap();
+        let command = ["sh", "-c", "cat lib/target/x.ts > ../seen"].map(str::to_owned);
+        let line = script(
+            "QEST-20261115-ABC123",
+            "1",
+            "s",
+            Path::new(""),
+            &kind(""),
+            &command,
+        );
+        let status = std::process::Command::new("sh")
+            .args(["-c", &line])
+            .env("HOME", &home)
+            .env_remove("XDG_CACHE_HOME")
+            .output()
+            .unwrap()
+            .status;
+        (status.code(), home)
+    }
+
+    #[test]
+    fn the_far_line_puts_each_numbered_file_at_its_path_and_none_outside() {
+        let (code, home) = far_run("2\tlib/target/x.ts\nend\n", &["ok"]);
+        assert_eq!(code, Some(0), "a job over a file under target didn't run");
+        assert_eq!(
+            std::fs::read_to_string(home.join("s/seen")).ok().as_deref(),
+            Some("ok"),
+            "the numbered file didn't land at its path"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+        for list in ["2\t../out\nend\n", "2\t/etc/out\nend\n", "2\ta/./b\nend\n"] {
+            let (code, home) = far_run(list, &["no"]);
+            assert_eq!(code, Some(70), "a list naming {list:?} wasn't refused");
+            assert!(
+                !home.join("s/out").exists() && !home.join("s/1/a/b").exists(),
+                "a file landed outside the job's folder for {list:?}"
+            );
+            let _ = std::fs::remove_dir_all(&home);
+        }
     }
 }

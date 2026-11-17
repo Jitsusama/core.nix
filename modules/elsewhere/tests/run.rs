@@ -21,8 +21,9 @@ const SCRATCHES: &str = ".cache/pi/agentic-harness.pi/quest-workspace";
 /// mycelium: `place` answers `placed.json`; `share` is taken; `run` on a
 /// machine named `gone` never runs, and otherwise the handover crosses to
 /// the far home, the command runs there through a login shell that says
-/// something of its own first, and the handover crosses back. Every ask
-/// is kept in `asked`, a line each.
+/// something of its own first, and the handover crosses back. Each
+/// crossing keeps home what a shared quest does: anything hidden and any
+/// folder a build fills. Every ask is kept in `asked`, a line each.
 const MYCELIUM: &str = r#"#!/bin/sh
 echo "$@" >> "$REALM/asked"
 case "$1" in
@@ -35,12 +36,16 @@ case " $* " in *" machine=gone "*) echo "no link reaches gone" >&2; exit 255 ;; 
 while [ "$1" != -- ]; do shift; done
 shift
 here="$HOME/$SCRATCHES" far="$REALM/far/$SCRATCHES"
-mkdir -p "$far"
-cp -R "$here/." "$far/"
+cross() {
+  mkdir -p "$2" && cp -R "$1/." "$2/"
+  find "$2" -mindepth 1 \( -name '.*' -o -name target -o -name node_modules \) \
+    -prune -exec rm -rf {} +
+}
+cross "$here" "$far"
 echo "a login shell's welcome"
 (cd "$REALM/far" && HOME="$REALM/far" "$@")
 code=$?
-cp -R "$far/." "$here/"
+cross "$far" "$here"
 exit $code
 "#;
 
@@ -287,6 +292,20 @@ fn nothing_travels_but_the_job_s_tracked_files() {
         out.trim(),
         "Spec.tla",
         "something but the tracked work reached the far machine: {out}"
+    );
+}
+
+#[test]
+fn tracked_files_in_folders_a_build_would_fill_still_travel() {
+    let realm = Realm::new(true);
+    realm.tracked("lib/target/x.ts", "source\n");
+    realm.tracked("web/node_modules/a.js", "vendored\n");
+    let output = realm.check(&[], "cat lib/target/x.ts web/node_modules/a.js");
+    let (out, err) = said(&output);
+    assert!(output.status.success(), "the far job failed: {err}");
+    assert_eq!(
+        out, "source\nvendored\n",
+        "tracked files under a folder named as a build's never reached the job"
     );
 }
 
