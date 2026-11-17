@@ -9615,16 +9615,20 @@ Scope {
         // shell started (warmLed) holds no rows. A plain place asked to list
         // now, as a margin mark opens Now, is listed whole with its rows
         // made as they stand (asItStands), since shut they're as last made
-        // and a mark lit since would have no row.
+        // and a mark lit since would have no row. Its step is made again
+        // too (placeStep), since what its collection says can change: Open
+        // With's asks what to open each file with, and the kept step would
+        // ask about the last.
+        const asNow = listedNow === true && plainPlace(source, name);
         const listed = source?.keptListed === true ? keptListing(source)
-            : listedNow === true && plainPlace(source, name)
-                ? source.asItStands(() => keptListing(source))
+            : asNow ? source.asItStands(() => keptListing(source))
             : listedNow === true || kept.led === true ? ledListing(name) : kept.matches;
         if (listed === null)
             return false;
+        const steps = asNow ? [placeStep(source)] : kept.held;
         keeping = true;
         try {
-            held = kept.held;
+            held = steps;
             homeDepth = kept.depth;
             listing = false;
             listedInDrawer = false;
@@ -11145,7 +11149,7 @@ Scope {
     function rowsSaid() {
         const seen = matches.slice(0, rows);
         return { keys: seen.map(row => pairedId(row)), sides: seen.map(row => row.side ?? ""),
-            at: current };
+            at: current, ask: held.length > 0 ? held[held.length - 1].row.ask ?? "" : "" };
     }
 
     // What filling an opening in took, said once it's done, with the rows

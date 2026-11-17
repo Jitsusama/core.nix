@@ -966,6 +966,50 @@ def test_a_place_its_chord_opened_is_drawn_as_it_stood(shell: Shell) -> None:
     assert shell.showing()["path"] == there, "filled in, it left the place its chord opened"
 
 
+def test_an_ask_to_open_with_is_drawn_from_what_was_kept_asking_its_own(shell: Shell) -> None:
+    """The portal's next ask what to open a file with is drawn as kept, saying what it asks.
+
+    Every ask opened Open With whole, its own rows made again: Joel's three took 51 to 104 ms to
+    the screen, 32 to 37 of it settling (2026-11-17, 08:4x). Kept, the place's step holds the
+    last ask's words, so the first frame must say the new file's.
+    """
+    folder = Path(os.environ["XDG_RUNTIME_DIR"]) / "open-with"
+    folder.mkdir(exist_ok=True)
+    # The chooser's sockets, listening as it does, so each answer has somewhere to go.
+    listening = [socket.socket(socket.AF_UNIX) for _ in range(2)]
+    try:
+        for number, each in enumerate(listening, start=1):
+            each.bind(str(folder / f"{number}.sock"))
+            each.listen()
+        asked_to_open_with(shell, folder / "1.sock", "/home/whimbrel/kiln.txt")
+        shell.launcher_ready()
+        shell.launcher_until(lambda shown: bool(shown["rows"]))
+        shell.close_launcher()
+        shell.launcher_until(lambda shown: shown.get("kept"))
+        timed = latest(openings(shell))
+        asked_to_open_with(shell, folder / "2.sock", "/home/whimbrel/godwit.txt")
+        shell.launcher_until(lambda _: latest(openings(shell)) > timed)
+        first = openings(shell)[-1]
+        assert first.get("kept"), f"the ask opened Open With whole: {first}"
+        opening = filled_after(shell, timed)
+        assert opening.get("into") == "openWith", f"the opening didn't say its place: {opening}"
+        asked = opening["shown"].get("ask")
+        assert asked == "open godwit.txt with?", f"its first frame asked {asked!r}: {opening}"
+        drawn, filled = opening["shown"]["keys"], opening["filled"]["keys"]
+        assert drawn == filled, f"kept, it drew {drawn}, then filled in {filled}"
+    finally:
+        for each in listening:
+            each.close()
+        for left in folder.glob("*.sock"):
+            left.unlink()
+
+
+def asked_to_open_with(shell: Shell, reply: Path, what: str) -> None:
+    """Ask what to open a file with, as the portal's chooser does, offering foot's two apps."""
+    words = ["qs", "-p", str(shell.folder), "ipc", "call", "open-with", "ask"]
+    shell.as_account(shlex.join([*words, str(reply), what, "file", "", "foot;footclient"]))
+
+
 def test_a_place_its_chord_opened_weighs_its_keys_once_before_its_frame(shell: Shell) -> None:
     """Closed by :q and its chord pressed again, a place weighs its rows' keys once, not twice.
 

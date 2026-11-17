@@ -94,12 +94,15 @@ Provider {
             Qt.callLater(provider.showNext);
     }
 
-    // Holds the oldest ask in the launcher, unless it already does.
+    // Holds the oldest ask in the launcher, unless it already does. Closed,
+    // it's drawn from what the last ask kept, listed and asked as it stands
+    // (intoOn), since each ask opened it whole: Joel's three took 51 to 104
+    // ms to the screen (2026-11-17).
     function showNext() {
         if (asking === null || (shown === asking.reply && launcher.open))
             return;
         shown = asking.reply;
-        launcher.into(settings.name);
+        launcher.intoOn(settings.name, null);
     }
 
     // One answer: connected, said, then gone.
