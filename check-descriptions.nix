@@ -2122,6 +2122,10 @@
   onepassword-brings-ops-zsh-completion = ''
     the account's zsh is given op's own completion, the file the op the system wraps was built with
   '';
+  onepassword-gives-its-manager-each-release = ''
+    1Password's manager for Passwords is given each op:// reference a secret ask may release, each
+    after its own --release, and no other manager's reference
+  '';
   onepassword-manager-passes-clippy = ''
     clippy finds nothing in 1Password's manager for Passwords or its tests
   '';
@@ -2707,6 +2711,11 @@
   record-window-passes-clippy = ''
     clippy finds nothing in record-window or its tests
   '';
+  releases-wait-for-the-passwords-place = ''
+    a release listed while the launcher's Passwords place is off leaves Asks out of the launcher,
+    and the machine is warned that releases need the place on; once it is on, Asks is drawn over
+    the place's daemon with the clock its yes is timed by, and nothing warns
+  '';
   reopening-finds-each-screen = ''
     Reopen Them All puts each session back on its own screen, found by its maker, model and serial
     rather than its connector, and on the one it was kept on of two alike, a gone screen's
@@ -3155,10 +3164,22 @@
     burst, never while notices are held or with no sound set, and his safe word knocks even while
     held
   '';
+  the-asks-say-how-long-each-was-shown = ''
+    a yes says how long since its line's frame reached the screen this opening, counted from the
+    first and again from a changed line's, and says no time for a line never presented, for the
+    line as it was or for another ask's, so the daemon refuses it unread; while the launcher is
+    walked from outside a yes is stamped as nothing to send; a no is sent as served
+  '';
+  the-asks-say-how-long-each-was-shown-over-passwords = ''
+    over Passwords' connection, a first Return on an ask only arms, a yes says how long since a
+    frame presented its line selected, noted again as the launcher reopens on it, a changed line
+    says no time until presented, and a yes walked from outside the launcher is never sent
+  '';
   the-asks-place-releases-through-its-daemon = ''
     the launcher's Asks lists what the secret-asks daemon serves, For You holds each waiting ask,
     a first Return arms it and a second releases it, r refuses, a yes while locked is refused in
-    the daemon's words, and Refuse It refuses
+    the daemon's words, Refuse It refuses, and a yes walked from outside is never sent and its
+    walk is told it was refused
   '';
   the-askpass-outlives-its-shell = ''
     the askpass asks a restarted shell again, never asks twice what's answered, and refuses about 20
@@ -4053,7 +4074,8 @@
     and keeps the kernel's with no account
   '';
   the-passwords-answer-no-ipc = ''
-    nothing of the Passwords place nor the daemon interface it asks through answers the shell's IPC
+    nothing of the Passwords place, the daemon interface it asks through, nor Asks, how it says a
+    line was shown and the ready rows it acts through answers the shell's IPC
   '';
   the-passwords-place-copies-through-its-daemon-on-niri = ''
     on a nested niri, the Passwords place runs the passwords daemon as the shell's own child and
@@ -4802,6 +4824,11 @@
     pulled out, and names it again when it's plugged back in; names a card not on USB by each of
     its devices, saying what one plays at only while it plays; and names a USB keyboard with its
     polling rate until it's pulled out
+  '';
+  vm-desktop-answers-secret-asks = ''
+    the passwords daemon the shell runs answers an agent's secret ask drawn in the launcher's Asks:
+    Joel's Return twice releases the stand-in value into the one command asked for, which no
+    journal holds, his r refuses it, and a yes walked through the launcher's IPC releases nothing
   '';
   vm-desktop-captures = ''
     the desktop takes a screen, a window, a region, a recording and the camera's pictures and

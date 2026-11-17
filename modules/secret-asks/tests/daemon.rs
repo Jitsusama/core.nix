@@ -1054,6 +1054,81 @@ fn a_no_refuses_and_reads_nothing() {
     assert_eq!(setting.op_ran(), 0, "op ran for a no");
 }
 
+/// Every reading the journal holds now, waiting for none.
+fn told(setting: &Setting) -> String {
+    let mut said = String::new();
+    let mut line = [0_u8; 4096];
+    setting
+        .journal
+        .set_nonblocking(true)
+        .expect("the journal stand-in reads without waiting");
+    while let Ok(length) = setting.journal.recv(&mut line) {
+        said.push_str(&String::from_utf8_lossy(&line[..length]));
+    }
+    setting
+        .journal
+        .set_nonblocking(false)
+        .expect("the journal stand-in waits again");
+    said
+}
+
+/// Asserts the value op would give was never read, and is in no answer,
+/// reading or file of the tree the ask would have run in.
+fn read_nowhere(setting: &Setting, id: &str, why: &str) {
+    assert_eq!(setting.op_ran(), 0, "op ran for {why}");
+    let answer = setting
+        .folder
+        .join("asks")
+        .join(format!("{id}.answer.json"));
+    let answered = std::fs::read_to_string(answer).unwrap_or_default();
+    assert!(
+        !answered.contains(VALUE),
+        "the value reached {why}'s answer"
+    );
+    let told = told(setting);
+    assert!(
+        !told.contains(VALUE),
+        "the journal was told the value for {why}: {told}"
+    );
+    let mut folders = vec![setting.folder.join("tree")];
+    while let Some(folder) = folders.pop() {
+        for entry in std::fs::read_dir(&folder)
+            .expect("the tree reads")
+            .flatten()
+        {
+            let path = entry.path();
+            if path.is_dir() {
+                folders.push(path);
+            } else if let Ok(bytes) = std::fs::read(&path) {
+                assert!(
+                    !String::from_utf8_lossy(&bytes).contains(VALUE),
+                    "the value reached {} for {why}",
+                    path.display()
+                );
+            }
+        }
+    }
+}
+
+// A yes past an ask's ten minutes is refused in tests/clock.rs, on a clock
+// the test holds, since a wall clock's few seconds are lost on a loaded
+// builder.
+#[test]
+fn a_yes_after_the_asker_took_its_ask_away_reads_nothing() {
+    let setting = Setting::new("taken-away");
+    let mut client = setting.watching();
+    let id = setting.ask(ITEM);
+    let drawn = row(&mut client, &id);
+    std::fs::remove_file(setting.folder.join("asks").join(format!("{id}.ask.json")))
+        .expect("the ask is taken away");
+    let late = act(&mut client, &drawn, 0);
+    assert_eq!(
+        late["error"]["code"], "refused",
+        "a yes to an ask taken away: {late}"
+    );
+    read_nowhere(&setting, &id, "an ask taken away");
+}
+
 #[test]
 fn a_tree_s_own_settings_start_no_program_as_it_is_read() {
     let setting = Setting::new("planted");

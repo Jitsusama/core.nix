@@ -2,12 +2,14 @@
 # its opening comment says what each kind of check proves.
 {
   account,
+  bareNixos,
   graphical,
   holds,
   lib,
   onLinux,
   passesClippy,
   pkgs,
+  self,
   ...
 }:
 onLinux {
@@ -135,6 +137,33 @@ onLinux {
 }
 # The manager is built for Linux alone, so a Mac can't evaluate its checks.
 // onLinux {
+  # Each 1Password reference a secret ask may release is given to the
+  # manager as its own --release, which the manager checks again before it
+  # reads one, and a reference of another manager's isn't. The VM test
+  # replaces the manager's command, so this is where the wiring is read.
+  onepassword-gives-its-manager-each-release =
+    let
+      released = [
+        "op://Private/Kiln/password"
+        "op://Keeping/Lighthouse Console/password"
+      ];
+      command =
+        (account (bareNixos [
+          self.nixosModules.graphical
+          {
+            home-manager.sharedModules = [
+              { jitsusama.passwords.releases = released ++ [ "bw://Kiln/password" ]; }
+            ];
+          }
+        ])).jitsusama.passwords.managers."1password".command;
+      releasedAt = lib.filter (at: lib.elemAt command at == "--release") (
+        lib.range 0 (lib.length command - 2)
+      );
+    in
+    holds "onepassword-gives-its-manager-each-release"
+      "1Password's manager isn't given each op:// release, alone, after its own --release."
+      (map (at: lib.elemAt command (at + 1)) releasedAt == released);
+
   # 1Password's manager for Passwords tests itself as it builds, against
   # op's own JSON: an entry carries no secret op gives, a password's
   # history included, a secret is read only for the detail asked,

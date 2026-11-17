@@ -181,6 +181,9 @@ pub struct Engine {
     /// What the forges say each repository's main is.
     forge: Forge,
     changed: Mutex<Sender<()>>,
+    /// The time it goes by, in milliseconds since 1970: the system's
+    /// own, unless a test hands it another ([`Engine::with_clock`]).
+    clock: Box<dyn Fn() -> i64 + Send + Sync>,
 }
 
 impl Engine {
@@ -199,7 +202,20 @@ impl Engine {
             grants: None,
             forge,
             changed: Mutex::new(changed),
+            clock: Box::new(now_ms),
         }
+    }
+
+    /// The engine going by `clock` rather than the system's, so a test
+    /// can set it past an ask's end without waiting ten minutes.
+    #[must_use]
+    pub fn with_clock(mut self, clock: impl Fn() -> i64 + Send + Sync + 'static) -> Engine {
+        self.clock = Box::new(clock);
+        self
+    }
+
+    fn now(&self) -> i64 {
+        (self.clock)()
     }
 
     /// The engine making a grant of each yes, which lets the same ask from
@@ -388,7 +404,7 @@ impl Engine {
                     .collect()
             })
             .unwrap_or_default();
-        let now = now_ms();
+        let now = self.now();
         let known: Vec<String> = {
             let mut held = self.held();
             held.retain(|id, one| one.state != State::Waiting || ids.contains(id));
@@ -454,7 +470,7 @@ impl Engine {
     /// him. Their trees are read, and the forge asked, with the asks let
     /// go, and each is released only if it still waits as it was read.
     fn release_covered(self: &Arc<Self>) {
-        let now = now_ms();
+        let now = self.now();
         let waiting: Vec<Ask> = self
             .held()
             .values()
@@ -485,7 +501,7 @@ impl Engine {
     /// Ends each ask past its ten minutes, and lets go of each row
     /// answered long enough ago; answers when next to look again.
     pub fn tidy(&self) -> Option<i64> {
-        let now = now_ms();
+        let now = self.now();
         let mut held = self.held();
         let ended: Vec<Ask> = held
             .values()
@@ -544,14 +560,16 @@ impl Engine {
             .ok()
             .filter(|ask| self.releaser.refused(ask).is_none())
             .map(|ask| {
-                let tree = self.tree_of(&ask, now_ms());
+                let tree = self.tree_of(&ask, self.now());
                 (ask, tree)
             });
         let mut held = self.held();
         let Some(one) = held.get_mut(&id) else {
             return self.refusal("refused", "no such ask", "gone");
         };
-        if one.state != State::Waiting {
+        // An ask past its ten minutes is ended, though tidy may not have
+        // marked it yet, since it runs only when the daemon next wakes.
+        if one.state != State::Waiting || !one.ask.waits_at(self.now()) {
             return self.refusal("refused", "it's already answered", "answered");
         }
         if self.releaser.locked() {
@@ -593,11 +611,11 @@ impl Engine {
             return refused;
         }
         one.state = State::Releasing;
-        one.since_ms = now_ms();
+        one.since_ms = self.now();
         let ask = one.ask.clone();
         let granted = match (self.releaser.program(&ask), self.grants()) {
             (Some(program), Some(mut grants)) => {
-                grants.grant(&ask, &tree, &program, now_ms()).is_some()
+                grants.grant(&ask, &tree, &program, self.now()).is_some()
             }
             _ => false,
         };
@@ -616,7 +634,7 @@ impl Engine {
     /// of it, whether a grant released it rather than a yes of its own,
     /// and what it can't have done where its tree is `kept`.
     fn run_released(&self, ask: &Ask, kept: &Checkout, granted: bool) {
-        let started = now_ms();
+        let started = self.now();
         let ran = self
             .releaser
             .read_value(ask)
@@ -650,7 +668,7 @@ impl Engine {
         said["version"] = json!(ask::VERSION);
         said["id"] = json!(ask.id);
         said["started"] = json!(started);
-        said["ended"] = json!(now_ms());
+        said["ended"] = json!(self.now());
         eprintln!(
             "<6>secret-asks: {} {} {}",
             ask.id,
@@ -660,7 +678,7 @@ impl Engine {
         self.answer(&ask.id, &said);
         if let Some(one) = self.held().get_mut(&ask.id) {
             one.state = state;
-            one.since_ms = now_ms();
+            one.since_ms = self.now();
         }
         self.changed();
     }
@@ -732,7 +750,7 @@ impl Engine {
             return self.refusal("refused", "it's already answered", "answered");
         };
         one.state = State::Refused;
-        one.since_ms = now_ms();
+        one.since_ms = self.now();
         let id = id.to_owned();
         let ask = one.ask.clone();
         drop(held);

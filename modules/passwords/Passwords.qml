@@ -82,7 +82,11 @@ Provider {
         // fenced off the clipboard; null keeps one out of its environment.
         command: provider.off ? [] : provider.settings.daemon ?? []
         environment: ({ PASSWORDS_COPIER: provider.settings.copier ?? null })
-        kind: "entry"
+        // Where secret asks are listed, its asks' rows come beside the
+        // entries, which Asks draws over this one connection (asksLink),
+        // so the asks folder is watched once, by this daemon.
+        kind: provider.answersAsks ? ["entry", "row"] : "entry"
+        watching: provider.answersAsks ? { place: "asks" } : ({})
         // Entries change as a manager is read, so each is kept by key and
         // a manager's standing told as it changes.
         onSourcesChanged: provider.changed()
@@ -97,6 +101,11 @@ Provider {
     // Joel reads it, the pattern of its own link to an entry, and the app
     // ids its program's windows carry.
     readonly property var managers: settings.managers ?? []
+
+    // Whether the daemon answers secret asks, as it does once any is
+    // listed, and the connection Asks draws them over, held by none else.
+    readonly property bool answersAsks: settings.answersAsks === true
+    readonly property var asksLink: answersAsks ? daemon : null
 
     // Whether the place is off, as it is until agents are fenced off Joel's
     // runtime folder and Wayland: every agent runs as his uid, so a daemon
@@ -125,7 +134,13 @@ Provider {
         const ids = DesktopEntries.applications.values.map(entry => entry.id);
         return managers.find(one => (one.fills ?? "") !== "" && ids.includes(one.fills)) ?? null;
     }
-    readonly property var offBrowser: offManager === null ? null : browserOf(offManager)
+    // Its browser, read from the same entries rather than through byId,
+    // which can answer null for an entry the list already holds, so a
+    // manager found here always has its browser.
+    readonly property var offBrowser: {
+        const fills = offManager?.fills ?? "";
+        return DesktopEntries.applications.values.find(entry => entry.id === fills) ?? null;
+    }
 
     // What the off row's drawer, and Home's row's, say: why it's off, and
     // what its Return opens meanwhile, where a manager's extension fills in.
@@ -133,7 +148,7 @@ Provider {
         // Sentences a drawer tells, so its words' tells rather than a said run.
         const words = Words.of("passwords").tells ?? {};
         const why = String(words.offWhy ?? "");
-        if (offManager === null)
+        if (offManager === null || offBrowser === null)
             return why;
         const fills = String(words.offFills ?? "").replace("{manager}", offManager.called)
             .replace("{browser}", offBrowser.name);
@@ -146,10 +161,11 @@ Provider {
     // open. Its drawer says why it's off, which its name alone doesn't, and
     // with nothing to open, why and what would. The entries are read as a
     // binding, so one read before they're loaded is read again once they
-    // are, which DesktopEntries.byId isn't.
+    // are, and from the list itself, as offBrowser is, so the row and its
+    // drawer always name the same browser; DesktopEntries.byId is neither.
     readonly property var offRow: {
-        const ids = DesktopEntries.applications.values.map(entry => entry.id);
-        const listed = id => (id ?? "") !== "" && ids.includes(id) ? DesktopEntries.byId(id) : null;
+        const entries = DesktopEntries.applications.values;
+        const listed = id => (id ?? "") !== "" ? entries.find(entry => entry.id === id) ?? null : null;
         const opens = Managers.offOpens(managers, one => listed(one.fills),
             one => listed(one.program));
         const name = Words.name("passwords:off");
@@ -249,7 +265,8 @@ Provider {
     // Every entry held, in the order the daemon holds them.
     readonly property var records: {
         const held = daemon.revision >= 0 ? daemon.held : {};
-        return Object.values(held).filter(record => record && record.gone !== true);
+        return Object.values(held).filter(record => record && record.gone !== true
+            && record.kind === "entry");
     }
 
     // Each entry's row, made again only when its record says something
