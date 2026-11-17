@@ -426,6 +426,16 @@ ShellRoot {
                 fade: 100
                 stopsAfter: 600
             }
+            // A modal line just typed in, whose caret holds lit and still
+            // for a fade before it blinks, so a run of keys draws only
+            // their own frames.
+            Prompt {
+                id: rester
+                width: root.panel
+                modal: true
+                fade: 300
+                stopsAfter: 5000
+            }
             // A list's gutter beside three rows in view, the cursor on the
             // second, as normal draws it, with a slot to spare.
             Gutter {
@@ -1703,6 +1713,30 @@ ShellRoot {
                     + `${root.dimmed}, blinking ${blinker.blinkingNow}, lit ${blinker.caretLight}`);
                 Qt.callLater(() => Qt.exit(1));
                 root.blinkHeld = true;
+            }
+        }
+    }
+
+    // Halfway through its rest, the just-typed line's caret is lit and asks
+    // for no frames; past it, it blinks.
+    Timer {
+        interval: 150
+        running: true
+        onTriggered: {
+            if (rester.blinkingNow || rester.caretLight !== 1) {
+                console.warn(`FAIL the caret blinked within a fade of its key: blinking `
+                    + `${rester.blinkingNow}, lit ${rester.caretLight}`);
+                Qt.callLater(() => Qt.exit(1));
+            }
+        }
+    }
+    Timer {
+        interval: 600
+        running: true
+        onTriggered: {
+            if (!rester.blinkingNow) {
+                console.warn("FAIL the caret never blinked once its rest was over");
+                Qt.callLater(() => Qt.exit(1));
             }
         }
     }
