@@ -99,14 +99,14 @@ own links, and none would meet.
   of its kinds. The address is a fragment on the site's own page, written
   from the page (`#machine={name}`) or from the sites' root
   (`mycelium/#machine={name}`), with the thing's name, percent-encoded,
-  for `{name}`. It is plain bytes as a record's is, and each `%` begins a
-  whole escape. A row homing anything has a plain path: steps of letters,
-  digits and `-._~`, none empty and none starting with a dot. A pattern
-  reads no `homes.json`, and a record never lists a kind its row gives a
-  pattern.
+  for `{name}`. It is plain bytes, as a record's is. A row homing anything
+  has a plain path: steps of letters, digits and `-._~`, none empty and
+  none starting with a dot. A pattern reads no `homes.json`, and a record
+  never lists a kind its row gives a pattern: the pattern outranks it.
 - **A mention links home.** Wherever a page names a thing that has a home,
   its first mention in each row, item, paragraph and heading is a link to
-  that home, its address taken from `homes.json`, never built by hand.
+  that home, its address taken from `homes.json` or made by its kind's
+  pattern, never built by hand.
   The link is the kit's link, with the name in its own face (a cell's
   address and a machine's name in Monaspace). On its own home, the thing's
   name needn't link: the view that is its home says so with `data-home`,

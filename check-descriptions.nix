@@ -1214,6 +1214,12 @@
     the scripts it used to copy, draws its mark in each look's accent, and changes nothing on a
     second run
   '';
+  homes-probe-reads-as-the-reader = ''
+    the web-design skill's homes probe, in headless Chromium over small sites of its own, learns a
+    pattern's names from the page's links on the sites alone, names each row and record the system
+    reader drops, keeps a kind's first claim, passes a page that links none of a pattern's things,
+    fails with no row home to anything, and reads a shortened name's tail as no mention
+  '';
   idle-pi-windows-yield = ''
     the sorter is given the folder where the harness marks pi sessions nobody is at, and weighs pi
     sessions started outside a terminal as it weighs windows
