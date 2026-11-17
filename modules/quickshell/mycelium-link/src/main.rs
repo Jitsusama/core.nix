@@ -4,13 +4,17 @@
 //! and `mycelium:network/<name>` opens Agents' Networks on that network's
 //! row, selected, as `qs ipc call launcher network` does. The realm's map
 //! links its cells and networks so (XUBK2E, 2026-11-15 [2b5c927a]).
+//! `mycelium:cell/<ADDRESS>/go` goes to that session instead, its window
+//! raised or one opened on it, as `qs ipc call launcher goTo` does, which a
+//! notice from a session offers as its Go To.
 //!
-//! Any page can write such a link, so it's trusted with a name and nothing
-//! more. Only the first step after its kind is read: a further step, a query
-//! or a fragment is let go, and a name of any letter an address or a
-//! network's name never holds is refused, so nothing else reaches the
-//! launcher. The launcher in turn reads only the name's first word and
-//! never types or sends anything for Joel. A link followed within `GAP` of
+//! Any page can write such a link, so it's trusted with a name and one word
+//! more. Only the step after a cell's address is read, and only `go` means
+//! anything: any other step, a query or a fragment is let go, and a name of
+//! any letter an address or a network's name never holds is refused, so
+//! nothing else reaches the launcher. The launcher in turn reads only the
+//! name's first word and never types or sends anything for Joel; going to a
+//! session moves Joel's focus and no more. A link followed within `GAP` of
 //! the last is let go too, so a page can't open the launcher over his work
 //! again and again; where when the last was followed can't be kept, none
 //! is followed at all.
@@ -40,11 +44,12 @@ const QS: &str = match option_env!("MYCELIUM_LINK_QS") {
     None => "qs",
 };
 
-/// What a link names: a cell, by its session's address, or a network, by
-/// its name, each as the mesh says it.
+/// What a link names: a cell to talk to or to go to, by its session's
+/// address, or a network, by its name, each as the mesh says it.
 #[derive(Debug, PartialEq, Eq)]
 enum Link {
     Cell(String),
+    GoTo(String),
     Network(String),
 }
 
@@ -53,6 +58,7 @@ impl Link {
     fn call(&self) -> [&str; 2] {
         match self {
             Self::Cell(address) => ["talkTo", address],
+            Self::GoTo(address) => ["goTo", address],
             Self::Network(name) => ["network", name],
         }
     }
@@ -74,8 +80,9 @@ fn named(name: &str) -> bool {
 }
 
 /// What `link` names, or what's wrong with it: its scheme in any case, with
-/// or without the slashes a page may add, then its kind and its name; what
-/// follows the name, a step, a query or a fragment, is let go.
+/// or without the slashes a page may add, then its kind and its name, and
+/// for a cell `go` after it; what else follows the name, a step, a query or
+/// a fragment, is let go.
 fn read(link: &str) -> Result<Link, Failure> {
     let wrong = |why: &str| {
         Failure::new(Exit::Usage, format!("{link:?} isn't a mycelium link"))
@@ -99,6 +106,7 @@ fn read(link: &str) -> Result<Link, Failure> {
         ));
     }
     match kind {
+        "cell" if steps.next() == Some("go") => Ok(Link::GoTo(name.to_owned())),
         "cell" => Ok(Link::Cell(name.to_owned())),
         "network" => Ok(Link::Network(name.to_owned())),
         _ => Err(wrong("its kind is neither cell nor network")),
@@ -155,12 +163,16 @@ fn help() -> Help {
         "opens Agents' Talk to DAHTNJ, its field empty",
     )
     .example(
+        "mycelium-link mycelium:cell/DAHTNJ/go",
+        "goes to DAHTNJ's window, opening one where it has none",
+    )
+    .example(
         "mycelium-link mycelium:network/repo.core-nix",
         "opens Agents' Networks on core.nix's network",
     )
     .argument(
         "<link>",
-        "mycelium:cell/<address> or mycelium:network/<name>",
+        "mycelium:cell/<address>[/go] or mycelium:network/<name>",
     )
     .exit(Exit::Usage, "the link names no cell or network")
     .exit(Exit::Failed, "qs couldn't be run")
@@ -214,6 +226,10 @@ mod tests {
         Link::Cell(address.to_owned())
     }
 
+    fn going_to(address: &str) -> Link {
+        Link::GoTo(address.to_owned())
+    }
+
     fn named_by(link: &str) -> Result<Link, String> {
         read(link).map_err(|failed| failed.what)
     }
@@ -230,6 +246,27 @@ mod tests {
         ] {
             assert_eq!(named_by(link), Ok(cell("DAHTNJ")), "{link} named another");
         }
+    }
+
+    #[test]
+    fn a_cell_links_go_step_goes_to_it_and_no_other_does() {
+        for link in [
+            "mycelium:cell/DAHTNJ/go",
+            "mycelium://cell/DAHTNJ/go?from=notice",
+            "mycelium:cell/DAHTNJ/go#now",
+            "mycelium:cell/DAHTNJ/go/type/this",
+        ] {
+            assert_eq!(named_by(link), Ok(going_to("DAHTNJ")), "{link}");
+        }
+        assert_eq!(going_to("DAHTNJ").call(), ["goTo", "DAHTNJ"]);
+        for link in ["mycelium:cell/DAHTNJ/GO", "mycelium:cell/DAHTNJ/gone"] {
+            assert_eq!(named_by(link), Ok(cell("DAHTNJ")), "{link} went");
+        }
+        assert_eq!(
+            named_by("mycelium:network/machines/go"),
+            Ok(Link::Network("machines".to_owned())),
+            "a network has no window to go to"
+        );
     }
 
     #[test]

@@ -1070,8 +1070,7 @@ Provider {
     // talkTo): `whom`, as TalkTo.js finds it, and `act`, the session's own Talk, as its row's
     // is, or the void's line; none for a network, which serves no Talk, or for nobody here.
     function talkFor(said) {
-        const held = address => Sessions.running.concat(Sessions.parked)
-            .find(one => String(one.address).toUpperCase() === address) ?? null;
+        const held = heldAt;
         const whom = TalkTo.whom(said, {
             isVoid: address => provider.isVoid(address),
             session: address => held(address) !== null,
@@ -1080,6 +1079,32 @@ Provider {
         const act = whom.to === "session" ? sessionAct(held(whom.address), "talk")
             : whom.to === "void" ? lineOpened("verb:agent:talk") : null;
         return { whom, act };
+    }
+
+    // The session running or parked at `address`, in capitals, as a link names it; null for
+    // none here.
+    function heldAt(address) {
+        return Sessions.running.concat(Sessions.parked)
+            .find(one => String(one.address).toUpperCase() === address) ?? null;
+    }
+
+    // Goes to the session whom `said` names, as `qs ipc call launcher goTo` asks it
+    // (Launcher.qml's goTo), as its row's Switch does: raises its window, or opens one on it
+    // where it has none, held here, hosted or on another machine (Sessions.goTo). Only the first
+    // word said names one (TalkTo.js), and nothing is typed or sent. Gives the session gone to,
+    // or null for nobody here: the void and a network have no window to go to.
+    function goToFor(said) {
+        const whom = TalkTo.whom(said, {
+            isVoid: () => false,
+            session: address => heldAt(address) !== null,
+            network: () => false
+        });
+        if (whom.to !== "session")
+            return null;
+        const session = heldAt(whom.address);
+        heard(session.address);
+        Sessions.goTo(sessionAt(session.address) ?? session);
+        return session;
     }
 
     // The key the daemon serves a network's row by, among the rows the Networks row holds

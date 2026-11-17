@@ -132,6 +132,12 @@ pub struct Notice {
     pub folds: u32,
 }
 
+/// How a session's link begins, as the mycelium names it.
+pub const CELL_LINK: &str = "mycelium:cell/";
+
+/// The most letters a mesh address runs to.
+const LONGEST_ADDRESS: usize = 12;
+
 impl Notice {
     /// Its key among the daemon's records.
     pub fn key(&self) -> String {
@@ -141,6 +147,20 @@ impl Notice {
     /// The hint a word names, as a word, or "".
     pub fn hint(&self, name: &str) -> &str {
         self.hints.get(name).and_then(Value::as_str).unwrap_or("")
+    }
+
+    /// The session it came from, by its mesh address, when its sender gave
+    /// one as `x-cell`, a link to it as `mycelium:cell/<ADDRESS>` (the
+    /// harness's away notices do). Any program here can send a hint, so it
+    /// names a cell only when shaped as an address, and is only ever a way
+    /// to that session, never a proof of who sent it.
+    pub fn cell(&self) -> Option<&str> {
+        let address = self.hint("x-cell").strip_prefix(CELL_LINK)?;
+        let shaped = (1..=LONGEST_ADDRESS).contains(&address.len())
+            && address
+                .bytes()
+                .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit());
+        shaped.then_some(address)
     }
 
     /// Whether it waits until it's read to leave the history: every one of
@@ -207,6 +227,7 @@ impl Notice {
         let mut notice = serde_json::to_value(self).unwrap_or_else(|_| json!({}));
         notice["low"] = json!(self.urgency == Urgency::Low);
         notice["waits"] = json!(self.hint("x-waiting"));
+        notice["cell"] = json!(self.cell());
         json!({ "key": self.key(), "kind": "notice", "notice": notice })
     }
 }
@@ -232,6 +253,38 @@ mod tests {
         assert_eq!(record["notice"]["waits"], "todo:7");
         assert_eq!(record["notice"]["urgency"], "low");
         assert_eq!(record["notice"]["readAt"], Value::Null);
+    }
+
+    fn hinted(cell: &str) -> Notice {
+        let mut hints = Map::new();
+        hints.insert("x-cell".into(), json!(cell));
+        Notice {
+            hints,
+            ..Notice::default()
+        }
+    }
+
+    #[test]
+    fn a_notice_from_a_session_names_its_cell_by_address() {
+        let from = hinted("mycelium:cell/1C8A2F0E");
+        assert_eq!(from.cell(), Some("1C8A2F0E"));
+        assert_eq!(from.record()["notice"]["cell"], "1C8A2F0E");
+        assert_eq!(Notice::default().record()["notice"]["cell"], Value::Null);
+    }
+
+    #[test]
+    fn a_cell_hint_not_shaped_as_a_link_to_one_names_none() {
+        for forged in [
+            "1C8A2F0E",
+            "mycelium:cell/",
+            "mycelium:cell/1c8a2f0e",
+            "mycelium:cell/1C8A/go",
+            "mycelium:cell/-help",
+            "mycelium:network/home",
+            "https://x.example/cell/1C8A2F0E",
+        ] {
+            assert_eq!(hinted(forged).cell(), None, "{forged}");
+        }
     }
 
     #[test]

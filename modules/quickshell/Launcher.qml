@@ -1506,6 +1506,23 @@ Scope {
         return { done: true, said: `${talk.act.name} \u203a ${talk.act.chip}` };
     }
 
+    // Goes to the session `said` names, as `qs ipc call launcher goTo` asks, the way a notice's
+    // Go To does for the session that sent it (mycelium-link's `go` step): its window raised,
+    // or one opened on it where it has none, held, hosted or on another machine (Agents'
+    // goToFor). Only the first word said names one, and nothing is typed or sent. Like talkTo,
+    // it does nothing over a launcher in use, which an open act has closed before its link
+    // reaches here. Says what it did as JSON, as talkTo does.
+    function goTo(said) {
+        const agents = collections.find(one => one.settings.name === "agents") ?? null;
+        console.info(`launcher: asked from outside to go to ${JSON.stringify(String(said ?? ""))}`);
+        if (inUse())
+            return inUseSaid;
+        const session = agents ? agents.goToFor(said) : null;
+        if (session === null)
+            return { error: `the launcher has no session called ${String(said ?? "").trim()}` };
+        return { done: true, said: String(session.title ?? "") };
+    }
+
     // Whether Joel has the launcher or the void's line up, which a mycelium: link, asking
     // talkTo or network, never opens over: what he's typed, and where he is, stay as they are,
     // and the link opens nothing (ISXEG8's ruling, 2026-11-15 [dd375f5e]). A link opens either
@@ -7672,6 +7689,12 @@ Scope {
         // opening is timed as a collection's is, by into.
         function talkTo(address: string): string {
             return JSON.stringify(root.talkTo(address));
+        }
+
+        // Goes to a session by its address, its window raised or opened,
+        // as Switch on its row does (root's goTo).
+        function goTo(address: string): string {
+            return JSON.stringify(root.goTo(address));
         }
 
         // Opens Agents' Networks on a network's row by its name, selected,

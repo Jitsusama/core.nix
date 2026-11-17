@@ -17,6 +17,14 @@
       "glyph": "windows"
     },
     {
+      "id": "verb:notice:talk",
+      "command": "talk",
+      "in": "notices",
+      "name": "Talk",
+      "verb": "talk",
+      "glyph": "reply"
+    },
+    {
       "id": "verb:notice:copy",
       "command": "yank",
       "in": "notices",
