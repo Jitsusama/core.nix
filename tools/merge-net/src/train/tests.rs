@@ -53,6 +53,37 @@ fn an_untaken_gate_whose_words_name_a_failed_check_is_red() {
     }
 }
 
+/// A builder's words can hold any byte, and nix-offload sets aside a
+/// replay onto a newer main that failed, running the change again on its
+/// own base: the gate is read by what its last run said.
+#[test]
+fn a_gate_is_read_by_what_its_last_run_said() {
+    let root = root("words");
+    fs::create_dir_all(&root).unwrap();
+    let log = root.join("candidate.log");
+    let failed = "error: Cannot build '/nix/store/x-a-check.drv'.\n       Reason: builder \
+                  failed with exit code 1.\n";
+    let mut odd = b"a builder said \xff\n".to_vec();
+    odd.extend_from_slice(failed.as_bytes());
+    fs::write(&log, odd).unwrap();
+    assert_eq!(
+        gated(Some(75), &words_of(&log)),
+        Gated::Red,
+        "a failed check beside a byte that isn't UTF-8 read as untaken"
+    );
+    let replayed = format!(
+        "{failed}nix-offload: 1234567 over main failed, so the change runs again on its \
+         own base\nnix-offload: no builder took it\n"
+    );
+    fs::write(&log, replayed).unwrap();
+    assert_eq!(
+        gated(Some(75), &words_of(&log)),
+        Gated::Unsent,
+        "a replay nix-offload set aside made an untaken run read as red"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
 #[test]
 fn riders_are_read_back_in_the_order_they_boarded() {
     let root = root("order");
