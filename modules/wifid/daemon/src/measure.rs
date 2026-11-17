@@ -48,6 +48,11 @@ pub struct Counts {
     pub retries: u32,
     pub failed: u32,
     pub signal: Option<i32>,
+    /// Bytes received and sent since the card joined, where the kernel
+    /// says both.
+    pub moved: Option<u64>,
+    /// What the link sends at, in kb/s, where the kernel says.
+    pub link: Option<u32>,
 }
 
 /// An access point's figures over the span.
@@ -62,6 +67,12 @@ pub struct Measured {
     pub retried: f64,
     pub failed: f64,
     pub signal: Option<i32>,
+    /// What the card moved both ways over the span, in Mbit/s, where the
+    /// kernel says.
+    pub moving: Option<u32>,
+    /// The most the card's link sent at in the span, in Mbit/s, where the
+    /// kernel says.
+    pub room: Option<u32>,
 }
 
 /// What's been measured of each access point, by its address.
@@ -118,6 +129,14 @@ impl Measures {
             retried: per_hundred(retries, sent),
             failed: per_hundred(failed, sent),
             signal: counts.last().and_then(|counts| counts.signal),
+            moving: moving(&kept.counts, now),
+            // The most it sent at, since rate control may drop a quiet
+            // link's for a moment, which isn't the room it has.
+            room: counts
+                .iter()
+                .filter_map(|counts| counts.link)
+                .max()
+                .map(|kbps| kbps / 1000),
         })
     }
 }
@@ -264,6 +283,12 @@ fn counted(station: &Station) -> Option<Counts> {
         retries: station.retries?,
         failed: station.failed?,
         signal: station.signal,
+        moved: station
+            .received
+            .bytes
+            .zip(station.sent.bytes)
+            .map(|(received, sent)| received.saturating_add(sent)),
+        link: station.send.kbps,
     })
 }
 
@@ -309,9 +334,14 @@ fn said(on: &Joined, measured: &Measured, call: bool) -> String {
     let signal = measured
         .signal
         .map_or("unread".into(), |signal| format!("{signal} dBm"));
+    let moving = match (measured.moving, measured.room) {
+        (Some(moving), Some(room)) => format!("; moving {moving} of {room} Mbit/s"),
+        (Some(moving), None) => format!("; moving {moving} Mbit/s"),
+        (None, _) => String::new(),
+    };
     format!(
         "{} on {}: gateway {} at p50, {} at p95, {:.1}% of {} echoes lost; \
-         {:.2} in 100 frames sent again, {:.2} lost; signal {signal}{}",
+         {:.2} in 100 frames sent again, {:.2} lost; signal {signal}{moving}{}",
         on.card,
         on.point,
         ms(measured.p50),
@@ -339,6 +369,45 @@ fn within<T: Copy>(kept: &VecDeque<(Instant, T)>, now: Instant) -> impl Iterator
     kept.iter()
         .filter(move |(at, _)| now.duration_since(*at) <= SPAN)
         .map(|(_, measured)| *measured)
+}
+
+/// How far apart two readings may be for what the card moved between them
+/// to count: further, and the card may have been on another point between.
+const APART: Duration = Duration::from_secs(5);
+
+/// How long the readings that count must cover for what the card moved to
+/// say anything, so a few seconds' burst isn't taken for the span's.
+const COUNTED: Duration = Duration::from_secs(30);
+
+/// What the card moved both ways together over the span, in Mbit/s: each
+/// rise in its byte counts from one reading to the next, over the time
+/// between them, where they're no more than `APART`. A reading lower than
+/// the one before is a new join, and the second before it counts nothing.
+fn moving(kept: &VecDeque<(Instant, Counts)>, now: Instant) -> Option<u32> {
+    let said: Vec<(Instant, u64)> = kept
+        .iter()
+        .filter(|(at, _)| now.duration_since(*at) <= SPAN)
+        .filter_map(|(at, counts)| Some((*at, counts.moved?)))
+        .collect();
+    let (bytes, counted) = said
+        .windows(2)
+        .filter_map(|pair| {
+            let [(was, before), (at, after)] = pair else {
+                return None;
+            };
+            let between = at.duration_since(*was);
+            (between <= APART).then_some((after.checked_sub(*before)?, between))
+        })
+        .fold((0, Duration::ZERO), |(bytes, counted), (more, between)| {
+            (u64::saturating_add(bytes, more), counted + between)
+        });
+    if counted < COUNTED {
+        return None;
+    }
+    // Bits a microsecond are megabits a second, rounded to the nearest.
+    let micros = counted.as_micros();
+    let megabits = (u128::from(bytes) * 8 + micros / 2) / micros;
+    Some(u32::try_from(megabits).unwrap_or(u32::MAX))
 }
 
 /// The time by which `percent` of the answered echoes had answered, by
@@ -396,7 +465,162 @@ pub(crate) mod tests {
             retries,
             failed,
             signal: Some(-47),
+            moved: None,
+            link: None,
         }
+    }
+
+    /// The station's counts at each second from `start` given, having
+    /// moved the bytes beside it by then since it joined.
+    fn moved(kept: &mut Measures, point: &str, start: Instant, moved: &[(u64, u64)]) {
+        for &(second, moved) in moved {
+            let counts = Counts {
+                moved: Some(moved),
+                ..counts(0, 0, 0)
+            };
+            kept.counted(point, start + Duration::from_secs(second), counts);
+        }
+    }
+
+    /// 12.5 MB a second, 100 Mbit/s, over the seconds given, from `bytes`.
+    fn steadily(seconds: std::ops::RangeInclusive<u64>, bytes: u64) -> Vec<(u64, u64)> {
+        let first = *seconds.start();
+        seconds
+            .map(|second| (second, bytes + (second - first) * 12_500_000))
+            .collect()
+    }
+
+    #[test]
+    fn what_a_card_moves_is_measured_in_megabits_a_second() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        moved(&mut kept, DESK, start, &steadily(0..=30, 0));
+        let measured = kept.of(DESK, start + Duration::from_secs(30));
+        let measured = measured.expect("a station counted on is measured");
+        assert_eq!(measured.moving, Some(100), "375 MB over 30 s");
+    }
+
+    #[test]
+    fn what_a_card_moved_before_it_joined_again_counts_nothing() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        let mut readings = steadily(0..=15, 900_000_000);
+        readings.extend(steadily(16..=40, 0));
+        moved(&mut kept, DESK, start, &readings);
+        let measured = kept.of(DESK, start + Duration::from_secs(40));
+        let measured = measured.expect("a station counted on is measured");
+        assert_eq!(measured.moving, Some(100), "the join's second says nothing");
+    }
+
+    #[test]
+    fn what_a_card_moves_counts_only_the_time_it_was_counted() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        // Its counts carry on past the gap, so only the gap's length keeps
+        // the 1.75 GB said to have moved over it from counting.
+        let mut readings = steadily(0..=20, 0);
+        readings.extend(steadily(80..=110, 2_000_000_000));
+        moved(&mut kept, DESK, start, &readings);
+        let measured = kept.of(DESK, start + Duration::from_secs(110));
+        let measured = measured.expect("a station counted on is measured");
+        assert_eq!(measured.moving, Some(100), "a minute away says nothing");
+    }
+
+    #[test]
+    fn a_few_seconds_counted_say_nothing_of_what_a_card_moves() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        moved(&mut kept, DESK, start, &steadily(0..=29, 0));
+        let measured = kept.of(DESK, start + Duration::from_secs(29));
+        let measured = measured.expect("a station counted on is measured");
+        assert_eq!(measured.moving, None, "29 s is short of 30");
+    }
+
+    #[test]
+    fn readings_saying_no_bytes_leave_what_a_card_moves_to_the_rest() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        for (second, bytes) in steadily(0..=40, 0) {
+            let moved = (second % 2 == 0).then_some(bytes);
+            let counts = Counts {
+                moved,
+                ..counts(0, 0, 0)
+            };
+            kept.counted(DESK, start + Duration::from_secs(second), counts);
+        }
+        let measured = kept.of(DESK, start + Duration::from_secs(40));
+        let measured = measured.expect("a station counted on is measured");
+        assert_eq!(measured.moving, Some(100), "every other one says it");
+    }
+
+    #[test]
+    fn what_a_link_has_room_for_is_the_most_it_sent_at_in_the_span() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        for (second, link) in [(0, 6_500), (1, 144_400), (2, 6_500)] {
+            let counts = Counts {
+                link: Some(link),
+                ..counts(0, 0, 0)
+            };
+            kept.counted(DESK, start + Duration::from_secs(second), counts);
+        }
+        let measured = kept.of(DESK, start + Duration::from_secs(2));
+        let measured = measured.expect("a station counted on is measured");
+        assert_eq!(measured.room, Some(144), "144.4 Mbit/s, the most");
+    }
+
+    #[test]
+    fn a_station_s_bytes_are_counted_both_ways_or_not_at_all() {
+        use crate::nl80211::{Rate, Traffic};
+        let traffic = |bytes| Traffic {
+            bytes,
+            packets: Some(1),
+        };
+        let rate = |kbps| Rate {
+            kbps: Some(kbps),
+            ..Rate::default()
+        };
+        let station = |sent| Station {
+            received: traffic(Some(5)),
+            sent: traffic(sent),
+            receive: rate(6_500),
+            send: rate(286_700),
+            retries: Some(0),
+            failed: Some(0),
+            ..Station::default()
+        };
+        let both = counted(&station(Some(7))).expect("all its counts are said");
+        let one = counted(&station(None)).expect("all its counts are said");
+        assert_eq!(both.moved, Some(12), "5 in and 7 out");
+        assert_eq!(one.moved, None, "one way unsaid");
+        assert_eq!(both.link, Some(286_700), "the link is what it sends at");
+    }
+
+    #[test]
+    fn what_a_card_moved_is_said_after_its_signal() {
+        let measured = Measured {
+            echoes: 0,
+            p50: None,
+            p95: None,
+            lost: 0.0,
+            retried: 0.0,
+            failed: 0.0,
+            signal: None,
+            moving: Some(12),
+            room: Some(286),
+        };
+        let line = said(&joined(DESK), &measured, true);
+        assert!(
+            line.ends_with("unread; moving 12 of 286 Mbit/s, during a call"),
+            "what it moved, and of what, is why it keeps to a band: {line}"
+        );
+        let unsaid = Measured {
+            room: None,
+            ..measured
+        };
+        let line = said(&joined(DESK), &unsaid, false);
+        let alone = "unread; moving 12 Mbit/s";
+        assert!(line.ends_with(alone), "no room: {line}");
     }
 
     /// One echo a second for the times given, in milliseconds, starting
@@ -478,6 +702,8 @@ pub(crate) mod tests {
             retried: 1.25,
             failed: 0.0,
             signal: Some(-47),
+            moving: None,
+            room: None,
         };
 
         assert_eq!(

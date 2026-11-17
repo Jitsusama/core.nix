@@ -304,6 +304,8 @@ mod tests {
             retried: 0.0,
             failed: 0.0,
             signal: None,
+            moving: Some(200),
+            room: None,
         }
     }
 

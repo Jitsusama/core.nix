@@ -6,13 +6,15 @@
 //! card is on is kept while it carries well, and another is tried only
 //! when it carries badly two minutes running, or fails, or when one
 //! measured lately carried far better.
-//! A wider band, 5 or 6 GHz, is kept to while it carries well and tried
-//! from 2.4 GHz whenever one is heard well enough: 2.4 GHz can be quicker
+//! A wider band, 5 or 6 GHz, is kept to while it carries well, and tried
+//! from 2.4 GHz when one heard well enough is known to answer no slower,
+//! or while the card moves enough to use its room: 2.4 GHz can be quicker
 //! to the gateway but carries far less.
 //! wpa_supplicant still roams on its own when the signal fades; this
 //! moves the card only between access points it can already hear, and
 //! has it look for what it doesn't, as often as it moves: another of its
-//! network when it carries badly, or one on a wider band from 2.4 GHz.
+//! network when it carries badly, or one on a wider band from 2.4 GHz
+//! while the card moves enough to use its room.
 //!
 //! The figures to beat are a desk's on 14 Nov 2026, one access point's
 //! two radios at 4 dB apart: the gateway's p95 was 15 ms on one and
@@ -95,6 +97,22 @@ const ACROSS: i16 = 10;
 /// Mbit/s, none under 400, against about 287 on 2.4 GHz.
 const STRONG: i16 = -50;
 
+/// How much a card must move, both ways together in Mbit/s over the span,
+/// for a wider band's room to count for more than how quickly it answers,
+/// or half what its link sends at where that's less, since a faint link
+/// can't carry this much however much is wanted of it. Over
+/// the night of 16 to 17 Nov 2026 at a desk, the access point's 2.4 GHz
+/// radio answered quicker than its 5 GHz one in four of five hours, and the
+/// card went back to 5 GHz four times for room it never used: no ten
+/// seconds passed 85 Mbit/s on 2.4 GHz, linked at 287, nor 181 on 5 GHz.
+const USED: u32 = 100;
+
+/// The least a card must move for a wider band's room to count, however
+/// slowly its link says it sends, so a rate read low isn't taken for a
+/// faint link. Over the same night, the card's two minutes passed 25
+/// Mbit/s in 4% of spans, and 10 Mbit/s in 85%.
+const LEAST: u32 = 25;
+
 /// How much quicker one measured lately must have been to be moved to:
 /// both, so neither a small figure's ratio nor a large one's few
 /// milliseconds moves the card.
@@ -167,8 +185,10 @@ struct Trial {
     from: String,
     to: String,
     before: Measured,
-    /// Whether the move was for a wider band, kept unless it carries badly
-    /// rather than unless it carries worse than the narrower one left.
+    /// Whether the move was for a wider band's room, the card using it,
+    /// kept unless it carries badly rather than unless it carries worse
+    /// than the narrower one left. One made idle, the wider band known no
+    /// slower, is judged as any other.
     banded: bool,
 }
 
@@ -221,7 +241,7 @@ impl Chooser {
         });
         let narrow = frequency != 0 && !wide(frequency);
         let banded = if narrow && !bad {
-            for_the_band(untried.clone(), (signal, frequency))
+            for_the_band(untried.clone(), (signal, frequency), measured)
         } else {
             None
         };
@@ -248,6 +268,7 @@ impl Chooser {
             let hemmed = hemmed_in(crowded, (signal, frequency), others);
             let unbanded = narrow
                 && !bad
+                && used(measured)
                 && !others
                     .iter()
                     .any(|other| in_band_reach(other, signal, frequency));
@@ -266,7 +287,7 @@ impl Chooser {
             from: point.to_owned(),
             to: chosen.point.clone(),
             before: measured.clone(),
-            banded: banded.is_some(),
+            banded: banded.is_some() && used(measured),
         });
         Choice::Try(chosen.point.clone())
     }
@@ -320,8 +341,8 @@ impl Chooser {
 
     /// Has a card look for what it doesn't hear, once a settle at most, so
     /// the next choice has it to choose from: another access point of its
-    /// network, carrying badly, one on a wider band, on 2.4 GHz, or one on a
-    /// quieter channel, on a busy one. A
+    /// network, carrying badly, one on a wider band, on 2.4 GHz using its
+    /// room, or one on a quieter channel, on a busy one. A
     /// heard access point is forgotten 180 s after the last look, so on 15
     /// Nov 2026 a card that tried 2.4 GHz and carried well soon heard no
     /// 5 GHz point to go back to, and kept to a third of the link rate.
@@ -391,22 +412,30 @@ fn crowding((point, frequency): (&str, u32), others: &[Other]) -> Option<u8> {
     (wide(frequency) && busy > BUSIEST).then_some(busy)
 }
 
-/// Where a card on a narrower band carrying well goes for a wider one:
-/// the quickest within reach known to carry well from here, else the
-/// loudest untried within reach and not too busy. One known wins over a
+/// Where a card on a narrower band carrying well, as `ours` says, goes for
+/// a wider one: the quickest within reach known to carry well from here,
+/// else the loudest untried within reach and not too busy. While the card
+/// moves less than `used` asks, the wider band's room goes unused, so only
+/// one known to answer no slower is gone to, as heard by wpa_supplicant's
+/// own look each hour or the shell's while Wi-Fi shows; it's then judged
+/// as any trial, so it goes back if it carries worse. One known wins over a
 /// louder one untried, since what it carried was learnt at this hour heard
 /// about this loud, and a banded trial goes back if it carries badly.
 fn for_the_band<'a>(
     untried: impl Iterator<Item = &'a Other> + Clone,
     (signal, frequency): (i16, u32),
+    ours: &Measured,
 ) -> Option<&'a Other> {
+    let using = used(ours);
     let on_it = untried.filter(|other| in_band_reach(other, signal, frequency));
     let known = on_it.clone().filter_map(|other| {
         let theirs = other.measured.as_ref()?;
-        (!badly(theirs)).then_some((slowness(theirs), other))
+        let worth = using || slowness(theirs) <= slowness(ours);
+        (!badly(theirs) && worth).then_some((slowness(theirs), other))
     });
-    let heard = on_it
-        .filter(|other| other.measured.is_none() && other.busy.is_none_or(|busy| busy <= BUSIEST));
+    let heard = on_it.filter(|other| {
+        using && other.measured.is_none() && other.busy.is_none_or(|busy| busy <= BUSIEST)
+    });
     known
         .min_by_key(|(slowness, _)| *slowness)
         .map(|(_, other)| other)
@@ -445,6 +474,14 @@ pub fn wider(to: u32, from: u32) -> bool {
 /// Whether an access point carries badly enough to try another.
 pub fn badly(measured: &Measured) -> bool {
     slowness(measured) > SLOW || measured.lost > LOSSY
+}
+
+/// Whether a card moves enough for a wider band's room to count, which a
+/// card whose kernel doesn't say what it moved isn't known to.
+fn used(measured: &Measured) -> bool {
+    let half = measured.room.map(|room| room / 2);
+    let bar = half.map_or(USED, |half| half.clamp(LEAST, USED));
+    measured.moving.is_some_and(|moving| moving >= bar)
 }
 
 /// An access point's p95, where nothing answered as slow as can be.
@@ -488,6 +525,8 @@ pub(crate) mod tests {
     const CH149: u32 = 5745;
     const CH6: u32 = 2437;
 
+    /// What a card in use carried, moving enough that a wider band's room
+    /// counts.
     fn carried(p95: u64, lost: f64) -> Measured {
         Measured {
             echoes: 120,
@@ -497,7 +536,16 @@ pub(crate) mod tests {
             retried: 1.0,
             failed: 0.0,
             signal: Some(-50),
+            moving: Some(200),
+            room: None,
         }
+    }
+
+    /// What a card carried moving just too little for a wider band's room
+    /// to count.
+    fn idle(mut measured: Measured) -> Measured {
+        measured.moving = Some(99);
+        measured
     }
 
     fn hall(signal: i16, busy: Option<u8>, measured: Option<Measured>) -> Other {
@@ -1507,5 +1555,144 @@ pub(crate) mod tests {
 
         assert_eq!(stayed, Choice::Stay, "25 ms on 5 GHz still carries well");
         assert_eq!(back, Choice::Back(NEAR.into()), "60 ms doesn't");
+    }
+
+    #[test]
+    fn an_idle_card_on_2_4_ghz_keeps_off_a_slower_5_ghz_radio() {
+        let mut chooser = Chooser::default();
+        let quick = idle(carried(15, 0.0));
+        let slower = [desk_at(-45, Some(carried(25, 0.0)))];
+
+        let choice = chooser.choose(Instant::now(), (NEAR, &quick, -36, CH6), &slower, false);
+
+        assert_eq!(choice, Choice::Stay, "its room goes unused");
+    }
+
+    #[test]
+    fn a_card_moving_100_mbit_s_on_2_4_ghz_takes_a_slower_5_ghz_radio() {
+        let mut chooser = Chooser::default();
+        let busy = Measured {
+            moving: Some(100),
+            ..carried(15, 0.0)
+        };
+        let slower = [desk_at(-45, Some(carried(25, 0.0)))];
+
+        let choice = chooser.choose(Instant::now(), (NEAR, &busy, -36, CH6), &slower, false);
+
+        assert_eq!(choice, Choice::Try(DESK.into()), "its room is used");
+    }
+
+    #[test]
+    fn an_idle_card_on_2_4_ghz_takes_a_5_ghz_radio_no_slower() {
+        let mut chooser = Chooser::default();
+        let quick = idle(carried(15, 0.0));
+        let as_quick = [desk_at(-45, Some(carried(15, 0.0)))];
+
+        let choice = chooser.choose(Instant::now(), (NEAR, &quick, -36, CH6), &as_quick, false);
+
+        assert_eq!(choice, Choice::Try(DESK.into()), "it costs nothing");
+    }
+
+    #[test]
+    fn an_idle_card_on_2_4_ghz_leaves_an_untried_5_ghz_radio() {
+        let mut chooser = Chooser::default();
+        let quick = idle(carried(15, 0.0));
+        let untried = [desk_at(-45, None)];
+
+        let choice = chooser.choose(Instant::now(), (NEAR, &quick, -36, CH6), &untried, false);
+
+        assert_eq!(choice, Choice::Stay, "it may be slower");
+    }
+
+    #[test]
+    fn an_idle_card_on_2_4_ghz_hearing_no_5_ghz_doesnt_look_for_it() {
+        let mut chooser = Chooser::default();
+        let quick = idle(carried(15, 0.0));
+
+        let choice = chooser.choose(Instant::now(), (NEAR, &quick, -36, CH6), &[], false);
+
+        assert_eq!(choice, Choice::Stay, "a look takes it off air");
+    }
+
+    #[test]
+    fn a_card_whose_kernel_says_nothing_moved_counts_as_idle() {
+        let mut chooser = Chooser::default();
+        let unsaid = Measured {
+            moving: None,
+            ..carried(15, 0.0)
+        };
+        let untried = [desk_at(-45, None)];
+
+        let choice = chooser.choose(Instant::now(), (NEAR, &unsaid, -36, CH6), &untried, false);
+
+        assert_eq!(choice, Choice::Stay, "nothing says its room is used");
+    }
+
+    #[test]
+    fn a_card_moving_half_a_faint_link_on_2_4_ghz_takes_5_ghz() {
+        let (mut half, mut less) = (Chooser::default(), Chooser::default());
+        let (busy, short) = (on_a_link(45, 90), on_a_link(44, 90));
+        let untried = [desk_at(-62, None)];
+        let now = Instant::now();
+
+        let took = half.choose(now, (NEAR, &busy, -60, CH6), &untried, false);
+        let kept = less.choose(now, (NEAR, &short, -60, CH6), &untried, false);
+
+        assert_eq!(took, Choice::Try(DESK.into()), "45 of 90 Mbit/s is used");
+        assert_eq!(kept, Choice::Stay, "44 isn't");
+    }
+
+    #[test]
+    fn a_card_on_a_fast_2_4_ghz_link_takes_5_ghz_once_it_moves_100_mbit_s() {
+        let (mut more, mut less) = (Chooser::default(), Chooser::default());
+        let (busy, short) = (on_a_link(100, 286), on_a_link(99, 286));
+        let untried = [desk_at(-45, None)];
+        let now = Instant::now();
+
+        let took = more.choose(now, (NEAR, &busy, -36, CH6), &untried, false);
+        let kept = less.choose(now, (NEAR, &short, -36, CH6), &untried, false);
+
+        assert_eq!(took, Choice::Try(DESK.into()), "100 is enough");
+        assert_eq!(kept, Choice::Stay, "99 isn't");
+    }
+
+    #[test]
+    fn a_card_on_a_link_said_to_send_slowly_still_moves_25_mbit_s_to_use_it() {
+        let (mut more, mut less) = (Chooser::default(), Chooser::default());
+        let (busy, short) = (on_a_link(25, 2), on_a_link(24, 2));
+        let untried = [desk_at(-62, None)];
+        let now = Instant::now();
+
+        let took = more.choose(now, (NEAR, &busy, -60, CH6), &untried, false);
+        let kept = less.choose(now, (NEAR, &short, -60, CH6), &untried, false);
+
+        assert_eq!(took, Choice::Try(DESK.into()), "25 Mbit/s is used");
+        assert_eq!(kept, Choice::Stay, "24 isn't, whatever the link says");
+    }
+
+    /// What a card on a link sending at `room` Mbit/s carried, moving this
+    /// much.
+    fn on_a_link(moving: u32, room: u32) -> Measured {
+        Measured {
+            moving: Some(moving),
+            room: Some(room),
+            ..carried(15, 0.0)
+        }
+    }
+
+    #[test]
+    fn an_idle_card_s_move_to_5_ghz_no_slower_goes_back_if_it_carries_worse() {
+        let start = Instant::now();
+        let mut chooser = Chooser::default();
+        let quick = idle(carried(15, 0.0));
+        let as_quick = [desk_at(-45, Some(carried(15, 0.0)))];
+        let tried = chooser.choose(start, (NEAR, &quick, -36, CH6), &as_quick, false);
+        assert_eq!(tried, Choice::Try(DESK.into()), "the move is made");
+        let near = [near_at(-36, Some(quick.clone()))];
+        let worse = idle(carried(30, 0.0));
+
+        let back = chooser.choose(start + TRIAL, (DESK, &worse, -45, CH52), &near, false);
+
+        assert_eq!(back, Choice::Back(NEAR.into()), "30 ms is worse than 15");
     }
 }
