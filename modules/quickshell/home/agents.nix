@@ -29,4 +29,5 @@
   "launcher/Holders.js"
   "launcher/TalkTo.js"
   "launcher/CarryBack.js"
+  "launcher/Sprouting.js"
 ]

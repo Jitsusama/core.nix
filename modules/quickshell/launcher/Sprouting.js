@@ -39,7 +39,9 @@ function folders(quests, home) {
     const seen = new Set();
     const found = [];
     for (const quest of quests ?? []) {
-        const folder = String(quest?.folder ?? "").replace(FOLDER_ENDING_SLASHES, "$<kept>");
+        // A function, since Qt's engine leaves `$<kept>` unexpanded.
+        const folder = String(quest?.folder ?? "")
+            .replace(FOLDER_ENDING_SLASHES, (_ending, kept) => kept);
         if (folder.startsWith("/") && folder !== homeAt && !seen.has(folder)) {
             seen.add(folder);
             const name = homeAt !== "" && folder.startsWith(`${homeAt}/`)
@@ -60,7 +62,8 @@ function ended(text, errors, said) {
     if (printed === "") {
         const lines = String(errors ?? "").split("\n").map(line => line.trim())
             .filter(line => line !== "");
-        const last = (lines.at(-1) ?? "").replace(SAID_BY_MYCELIUM, "");
+        // pop(), since Qt's engine has no at().
+        const last = (lines.pop() ?? "").replace(SAID_BY_MYCELIUM, "");
         return { started: false, why: last === "" ? said.unanswered ?? "" : last };
     }
     let answer;
