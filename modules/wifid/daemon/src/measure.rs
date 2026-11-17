@@ -48,6 +48,9 @@ pub struct Counts {
     pub retries: u32,
     pub failed: u32,
     pub signal: Option<i32>,
+    /// Bytes received and sent since the card joined, where the kernel
+    /// says both.
+    pub moved: Option<u64>,
 }
 
 /// An access point's figures over the span.
@@ -62,6 +65,9 @@ pub struct Measured {
     pub retried: f64,
     pub failed: f64,
     pub signal: Option<i32>,
+    /// What the card moved both ways over the span, in Mbit/s, where the
+    /// kernel says.
+    pub moving: Option<u32>,
 }
 
 /// What's been measured of each access point, by its address.
@@ -118,6 +124,7 @@ impl Measures {
             retried: per_hundred(retries, sent),
             failed: per_hundred(failed, sent),
             signal: counts.last().and_then(|counts| counts.signal),
+            moving: None,
         })
     }
 }
@@ -264,6 +271,11 @@ fn counted(station: &Station) -> Option<Counts> {
         retries: station.retries?,
         failed: station.failed?,
         signal: station.signal,
+        moved: station
+            .received
+            .bytes
+            .zip(station.sent.bytes)
+            .map(|(received, sent)| received.saturating_add(sent)),
     })
 }
 
@@ -396,7 +408,40 @@ pub(crate) mod tests {
             retries,
             failed,
             signal: Some(-47),
+            moved: None,
         }
+    }
+
+    /// The station's counts a second apart from `start`, having moved
+    /// each of `moved`'s bytes by then since it joined.
+    fn moved(kept: &mut Measures, point: &str, start: Instant, moved: &[u64]) {
+        for (second, &moved) in (0..).zip(moved) {
+            let counts = Counts {
+                moved: Some(moved),
+                ..counts(0, 0, 0)
+            };
+            kept.counted(point, start + Duration::from_secs(second), counts);
+        }
+    }
+
+    #[test]
+    fn what_a_card_moves_is_measured_in_megabits_a_second() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        moved(&mut kept, DESK, start, &[0, 12_500_000, 25_000_000]);
+        let measured = kept.of(DESK, start + Duration::from_secs(2));
+        let measured = measured.expect("a station counted on is measured");
+        assert_eq!(measured.moving, Some(100), "25 MB over 2 s");
+    }
+
+    #[test]
+    fn what_a_card_moved_before_it_joined_again_counts_nothing() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        moved(&mut kept, DESK, start, &[90_000_000, 0, 12_500_000]);
+        let measured = kept.of(DESK, start + Duration::from_secs(2));
+        let measured = measured.expect("a station counted on is measured");
+        assert_eq!(measured.moving, Some(50), "12.5 MB over 2 s");
     }
 
     /// One echo a second for the times given, in milliseconds, starting
@@ -478,6 +523,7 @@ pub(crate) mod tests {
             retried: 1.25,
             failed: 0.0,
             signal: Some(-47),
+            moving: None,
         };
 
         assert_eq!(

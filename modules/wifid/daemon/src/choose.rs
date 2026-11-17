@@ -488,6 +488,8 @@ pub(crate) mod tests {
     const CH149: u32 = 5745;
     const CH6: u32 = 2437;
 
+    /// What a card in use carried, moving enough that a wider band's room
+    /// counts.
     fn carried(p95: u64, lost: f64) -> Measured {
         Measured {
             echoes: 120,
@@ -497,6 +499,16 @@ pub(crate) mod tests {
             retried: 1.0,
             failed: 0.0,
             signal: Some(-50),
+            moving: Some(200),
+        }
+    }
+
+    /// What a card carried moving just too little for a wider band's room
+    /// to count.
+    fn idle(measured: Measured) -> Measured {
+        Measured {
+            moving: Some(99),
+            ..measured
         }
     }
 
@@ -1507,5 +1519,76 @@ pub(crate) mod tests {
 
         assert_eq!(stayed, Choice::Stay, "25 ms on 5 GHz still carries well");
         assert_eq!(back, Choice::Back(NEAR.into()), "60 ms doesn't");
+    }
+
+    #[test]
+    fn an_idle_card_on_2_4_ghz_keeps_off_a_slower_5_ghz_radio() {
+        let mut chooser = Chooser::default();
+        let quick = idle(carried(15, 0.0));
+        let slower = [desk_at(-45, Some(carried(25, 0.0)))];
+
+        let choice = chooser.choose(Instant::now(), (NEAR, &quick, -36, CH6), &slower, false);
+
+        assert_eq!(choice, Choice::Stay, "its room goes unused");
+    }
+
+    #[test]
+    fn a_card_moving_100_mbit_s_on_2_4_ghz_takes_a_slower_5_ghz_radio() {
+        let mut chooser = Chooser::default();
+        let busy = Measured {
+            moving: Some(100),
+            ..carried(15, 0.0)
+        };
+        let slower = [desk_at(-45, Some(carried(25, 0.0)))];
+
+        let choice = chooser.choose(Instant::now(), (NEAR, &busy, -36, CH6), &slower, false);
+
+        assert_eq!(choice, Choice::Try(DESK.into()), "its room is used");
+    }
+
+    #[test]
+    fn an_idle_card_on_2_4_ghz_takes_a_5_ghz_radio_no_slower() {
+        let mut chooser = Chooser::default();
+        let quick = idle(carried(15, 0.0));
+        let as_quick = [desk_at(-45, Some(carried(15, 0.0)))];
+
+        let choice = chooser.choose(Instant::now(), (NEAR, &quick, -36, CH6), &as_quick, false);
+
+        assert_eq!(choice, Choice::Try(DESK.into()), "it costs nothing");
+    }
+
+    #[test]
+    fn an_idle_card_on_2_4_ghz_leaves_an_untried_5_ghz_radio() {
+        let mut chooser = Chooser::default();
+        let quick = idle(carried(15, 0.0));
+        let untried = [desk_at(-45, None)];
+
+        let choice = chooser.choose(Instant::now(), (NEAR, &quick, -36, CH6), &untried, false);
+
+        assert_eq!(choice, Choice::Stay, "it may be slower");
+    }
+
+    #[test]
+    fn an_idle_card_on_2_4_ghz_hearing_no_5_ghz_doesnt_look_for_it() {
+        let mut chooser = Chooser::default();
+        let quick = idle(carried(15, 0.0));
+
+        let choice = chooser.choose(Instant::now(), (NEAR, &quick, -36, CH6), &[], false);
+
+        assert_eq!(choice, Choice::Stay, "a look takes it off air");
+    }
+
+    #[test]
+    fn a_card_whose_kernel_says_nothing_moved_counts_as_idle() {
+        let mut chooser = Chooser::default();
+        let unsaid = Measured {
+            moving: None,
+            ..carried(15, 0.0)
+        };
+        let untried = [desk_at(-45, None)];
+
+        let choice = chooser.choose(Instant::now(), (NEAR, &unsaid, -36, CH6), &untried, false);
+
+        assert_eq!(choice, Choice::Stay, "nothing says its room is used");
     }
 }
