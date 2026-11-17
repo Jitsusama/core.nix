@@ -495,7 +495,7 @@ fn the_sensors_zones_and_cooling_say_every_reading() {
     assert_eq!(fan["max_rpm"], json!(5900));
     assert_eq!(fan["target_rpm"], json!(2400));
     assert_eq!(fan["power_ratio"], json!(0.502), "128 of 255");
-    assert_eq!(fan["mode"], "automatic");
+    assert_eq!(fan["mode"], "firmware", "a Dell's chip is its firmware");
     assert_eq!(fans["fans"][1]["rpm"], json!(0), "a stopped fan says so");
     assert_eq!(fans["fans"][1]["label"], Value::Null, "no label made up");
     let port = record(records, "sensor:ucsi_source_psy_USBC000:001");
