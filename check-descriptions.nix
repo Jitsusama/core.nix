@@ -4505,7 +4505,7 @@
   '';
   update-to-main-opens-enough-files-on-a-mac = ''
     a Mac's update-to-main daemon and its follower may each open 8192 files, not launchd's 256, so
-    git can read a checkout holding hundreds of packs
+    git can read a checkout holding hundreds of packs, their hard limit left as launchd's
   '';
   update-to-main-passes-clippy = ''
     clippy finds nothing in update-to-main or its tests
