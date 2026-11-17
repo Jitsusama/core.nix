@@ -47,7 +47,7 @@ fn a_finding_the_node_never_takes_is_tried_three_times_then_said_as_a_trouble() 
 }
 
 #[test]
-fn a_pain_given_up_on_stays_a_trouble_through_its_day() {
+fn a_pain_given_up_on_is_a_trouble_while_fresh_and_then_in_its_days_count() {
     let place = Place::new("tries-later");
     place.routes();
     a_day(&place);
@@ -55,13 +55,24 @@ fn a_pain_given_up_on_stays_a_trouble_through_its_day() {
         hear(&place.ears(), CELLS, &mut |_, _| false).expect("a run");
     }
     let mut ears = place.ears();
-    // Past the two hours its owner had, but within its day.
+    // Past the two hours its owner had: a short outage of the node fails
+    // the listener no longer than that.
     ears.at = AT + 3 * 3_600_000;
     let hour = hear(&ears, CELLS, &mut |_, _| true).expect("a run");
     assert!(
-        hour.troubles.iter().any(|t| t.contains("gave up")),
+        !hour.troubles.iter().any(|t| t.contains("gave up")),
         "{hour:?}"
     );
+    ears.at = AT + 11 * 3_600_000;
+    let mut counted = String::new();
+    hear(&ears, CELLS, &mut |_, text| {
+        if text.starts_with("Joel's day") {
+            counted = text.to_string();
+        }
+        true
+    })
+    .expect("a run");
+    assert!(counted.contains("3 given up"), "{counted}");
 }
 
 #[test]
