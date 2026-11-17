@@ -1084,6 +1084,15 @@ Scope {
 
     // The rows whose words the clock has moved on since they were made,
     // let go of, so they're made again as they're next drawn.
+    // Lets go of every row made, so each is made again as it's next asked
+    // for, when what the place makes of a record has changed though no
+    // record has, as Copies' do while the screen is shared.
+    function remade() {
+        for (const key of Object.keys(made))
+            delete made[key];
+        placings += 1;
+    }
+
     function turned() {
         const today = Qt.formatDate(new Date(), "yyyy-MM-dd");
         const daily = today !== saidOn;

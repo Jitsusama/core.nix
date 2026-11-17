@@ -29,6 +29,7 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Order.js" as Order
+import "Shared.js" as Shared
 
 Provider {
     id: provider
@@ -61,6 +62,20 @@ Provider {
 
     // Newest first, as the history serves them.
     readonly property var all: ready.rows()
+
+    // Whether a copy's contents are hidden: while niri says a call or any
+    // other program streams the screen, a recording of one window aside,
+    // and until niri has said which casts there are. Joel shows people his
+    // desktop through the launcher (#5342), and a copy may be a token, a
+    // password or a private message (ISXEG8, 2026-11-17), so each row then
+    // says only its kind and how long ago it was copied. Copy and Paste
+    // still work, since the history pastes a copy by its number.
+    readonly property bool hiding: Shared.hidden(Niri.castsHeard, Niri.casts,
+        Recorder.windowSession)
+    onHidingChanged: {
+        ready.remade();
+        changed();
+    }
 
     // Whether the history is connected, to copy and paste for Pasting.qml.
     readonly property bool linked: (ready.link?.wire ?? null) !== null
@@ -105,7 +120,7 @@ Provider {
     // share (ReadyRows.qml's thing), each shutting the launcher as it asks.
     function made(served, key) {
         const was = makings[key];
-        if (was !== undefined && was.served === served) {
+        if (was !== undefined && was.served === served && was.hiding === hiding) {
             was.row.side = ready.sideOf(served);
             was.row.sideItems = ready.itemsOf(served);
             return was.row;
@@ -131,7 +146,13 @@ Provider {
             // As it was copied, lines and all, which the row cuts short.
             reads: held.reads
         };
-        const readied = ready.thing(served, key, Object.assign(fields, kept));
+        const hidden = !hiding ? {} : {
+            name: Words.name(picture ? "copies:hidden:picture" : "copies:hidden:text"),
+            note: "",
+            reads: "",
+            picture: ""
+        };
+        const readied = ready.thing(served, key, Object.assign(fields, kept, hidden));
         if (readied === null)
             return null;
         // What y joins with other rows' copies is the text, for a copy
@@ -141,7 +162,7 @@ Provider {
         const copying = (served.acts ?? []).find(one => one.key === "verb:copy:copy");
         const row = Pasting.served(provider.gotten(readied, { verb: () => Pasting.verb() }),
             "verb:copy:paste", copying, readied.text ?? "", one => ready.act(key, one));
-        makings[key] = { served, row };
+        makings[key] = { served, row, hiding };
         return row;
     }
 

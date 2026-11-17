@@ -22,6 +22,16 @@
       "name": "Forget the Clipboard",
       "verb": "forget",
       "glyph": "forget"
+    },
+    {
+      "id": "copies:hidden:text",
+      "in": "clipboard",
+      "name": "Text, Hidden While You Share"
+    },
+    {
+      "id": "copies:hidden:picture",
+      "in": "clipboard",
+      "name": "Picture, Hidden While You Share"
     }
   ]
 }

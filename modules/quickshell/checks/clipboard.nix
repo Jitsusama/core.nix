@@ -46,6 +46,26 @@
       touch $out
     '';
 
+  # Copies hide what each copy holds while niri streams the screen to a
+  # call or any program through the portal, and until niri has said its
+  # casts, but not for the shell's own recording of one window, as
+  # tests/copies-hidden.qml holds launcher/Shared.js to it in Qt's own
+  # engine.
+  copies-hide-while-the-screen-is-shared =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "copies-hide-while-the-screen-is-shared" { } ''
+      cp ${../../../tests/copies-hidden.qml} copies-hidden.qml
+      cp ${../launcher/Shared.js} Shared.js
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml copies-hidden.qml
+      touch $out
+    '';
+
   # clippy finds nothing in the clipboard's history, its tests included.
   clipboard-history-passes-clippy = passesClippy "clipboard-history-passes-clippy" (
     pkgs.callPackage ../clipboard/package.nix { }

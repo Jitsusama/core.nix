@@ -669,6 +669,10 @@
   console-font-passes-clippy = ''
     clippy finds nothing in the console's font tool or its tests
   '';
+  copies-hide-while-the-screen-is-shared = ''
+    Copies hide what each copy holds while niri streams the screen through the portal and until
+    niri has said its casts, but not for the shell's own recording of one window
+  '';
   crate-reach-finds-what-reads-what = ''
     what main moved in a crate a change's crate reads, or one reading it, however far, is
     beside the change, another file of its own crate is too, and crates that only read the same
@@ -1939,8 +1943,8 @@
     log filter
   '';
   niri-shares-the-launcher-but-no-password = ''
-    no layer rule in the account's niri keeps the launcher out of a shared screen, and polkit and
-    the notices are each kept out by one
+    no layer rule in the account's niri keeps the launcher out of a shared screen, and polkit,
+    askpass and the notices are each kept out by one, by a line not commented out
   '';
   niri-starts-able-to-go-first = ''
     the session's niri starts through its wrapper, which holds CAP_SYS_NICE

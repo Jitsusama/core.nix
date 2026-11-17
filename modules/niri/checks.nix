@@ -191,7 +191,8 @@ onLinux {
       (lib.length after == 2 && lib.elem "    always-center-single-column" (lib.splitString "\n" layout));
 
   # A shared screen shows the launcher, which Joel shows people his desktop
-  # through on a call, and never polkit's password or a notice: no layer
+  # through on a call, and never polkit's password, askpass's PIN or a
+  # notice: no layer
   # rule keeping a surface out of a share or a capture names the launcher's
   # namespace, and some rule names each of the others. niri draws what it
   # keeps out only into a PipeWire screencast, which no check here can
@@ -202,7 +203,14 @@ onLinux {
       rules = map (block: lib.head (lib.splitString "\n}\n" block)) (
         lib.tail (lib.splitString "\nlayer-rule {\n" text)
       );
-      keepingOut = lib.filter (lib.hasInfix "block-out-from") rules;
+      # A rule keeps a surface out by its own block-out-from line, never
+      # one commented out.
+      keepingOut = lib.filter (
+        rule:
+        lib.any (line: builtins.match " *block-out-from \"[a-z-]+\".*" line != null) (
+          lib.splitString "\n" rule
+        )
+      ) rules;
       patterns =
         rule:
         lib.concatMap (
@@ -219,8 +227,8 @@ onLinux {
         ) keepingOut;
     in
     holds "niri-shares-the-launcher-but-no-password"
-      "config.kdl keeps the launcher out of a share, or lets polkit or a notice into one."
-      (!keptOut "launcher" && keptOut "polkit" && keptOut "notifications");
+      "config.kdl keeps the launcher out of a share, or lets polkit, askpass or a notice in."
+      (!keptOut "launcher" && keptOut "polkit" && keptOut "askpass" && keptOut "notifications");
 
   # niri reads back the files an account gets and rejects anything it
   # wouldn't load, from a misspelt action to a colour it can't parse.
