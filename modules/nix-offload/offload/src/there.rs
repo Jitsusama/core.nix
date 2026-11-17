@@ -2528,15 +2528,16 @@ const BOOT_READ: &str = "cat /proc/sys/kernel/random/boot_id 2>/dev/null || \
 /// another took between the two: each run looks a second after taking its
 /// turn, or `NIX_OFFLOAD_TURN_LOOK` seconds (a second where `sleep`
 /// refuses that), and if it no longer holds it looks for a turn again as
-/// long after. A turn taken from it by a run in another boot shows the
-/// folder is shared by two boots, as a home two machines share makes it,
-/// where each reads the other's turns as dead and the turns bound nothing,
-/// so the run builds without one and says so rather than take turns back
-/// from the other boot for ever. Only a run stalled longer than that
-/// between its look
-/// and its remove lets an extra build in, until the one whose link it replaced
-/// ends; it never leaves a run waiting for a turn nobody holds. It bounds
-/// only runs that reach the machine as one account.
+/// long after. Only a run stalled longer than that look between its look
+/// and its remove lets an extra build in, until the one whose link it
+/// replaced ends; it never leaves a run waiting for a turn nobody holds.
+/// A turn taken from it by a run in another boot shows the folder is
+/// shared by two boots, as a home two machines share makes it, where each
+/// reads the other's turns as dead and the turns bound nothing, so the run
+/// builds without one and says so rather than take turns back from the
+/// other boot for ever. It bounds only runs that reach the machine as one
+/// account in one pid namespace: two namespaces of one boot sharing a home
+/// read each other's turns as dead too, and nothing here tells them apart.
 pub fn in_turn_nearby(command: &str) -> String {
     format!(
         "turns=\"${{NIX_OFFLOAD_TURNS:-$HOME/.cache/nix-offload/turns}}\"; \
@@ -2584,7 +2585,8 @@ pub fn in_turn_nearby(command: &str) -> String {
          so this builds without one\" >&2; \
          elif [ \"$turn\" = shared ]; then echo \"nix-offload: $turns on $here is shared \
          with another boot, which took this run's turn, so the turns can't bound its builds \
-         and this builds without one\" >&2; fi; {command}"
+         and this builds without one; NIX_OFFLOAD_TURNS naming a folder of each machine's \
+         own bounds them\" >&2; fi; {command}"
     )
 }
 
@@ -5459,20 +5461,14 @@ mod tests {
 
     #[test]
     fn a_run_whose_turn_a_run_in_another_boot_takes_builds_without_one_and_says_so() {
-        // Each reads the other's turn as an earlier boot's and takes it,
-        // so runs in two boots took turn 1 from each other for ever.
-        let bin = tempfile::tempdir().unwrap();
-        crate::testing::executable(
-            &bin.path().join("cat"),
-            &format!(
-                "#!/bin/sh\ncase $1 in /proc/sys/kernel/random/boot_id) \
-                 echo \"$TURN_BOOT\"; exit ;; esac\nexec {cat} \"$@\"\n",
-                cat = which("cat")
-            ),
-        );
+        // Each reads the other's turn as an earlier boot's and takes it.
+        let bin = booted_as_told();
         let started = |shell: &str, turns: &Path, boot: &str| {
             Command::new(shell)
-                .args(["-c", &first_on_path(bin.path(), &in_turn_nearby("true"))])
+                .args([
+                    "-c",
+                    &first_on_path(bin.path(), &in_turn_nearby("echo built")),
+                ])
                 .env("NIX_OFFLOAD_TURNS", turns)
                 .env("NIX_OFFLOAD_TURN_LOOK", "5")
                 .env("TURN_BOOT", boot)
@@ -5492,12 +5488,18 @@ mod tests {
                 .into_iter()
                 .map(|run| {
                     assert_eq!(run.status.code(), Some(0), "{shell}: {run:?}");
+                    assert_eq!(
+                        String::from_utf8_lossy(&run.stdout),
+                        "built\n",
+                        "{shell}: a run never built: {run:?}"
+                    );
                     String::from_utf8_lossy(&run.stderr).into_owned()
                 })
                 .collect();
             let shared = format!(
                 "nix-offload: {} on {} is shared with another boot, which took this run's \
-                 turn, so the turns can't bound its builds and this builds without one\n",
+                 turn, so the turns can't bound its builds and this builds without one; \
+                 NIX_OFFLOAD_TURNS naming a folder of each machine's own bounds them\n",
                 turns.display(),
                 this_machine()
             );
@@ -5506,6 +5508,107 @@ mod tests {
                 "{shell}: one run, and only one, loses its turn to the other boot: {said:?}"
             );
         }
+    }
+
+    #[test]
+    fn runs_in_two_boots_sharing_the_turns_all_end_however_they_interleave() {
+        // Four runs in two boots, each holding its turn a while, took turns
+        // from each other for ever before a turn another boot took ended it.
+        let bin = booted_as_told();
+        for shell in ["dash", "zsh"] {
+            let folder = tempfile::tempdir().unwrap();
+            let turns = folder.path().join("turns");
+            let runs: Vec<_> = ["one", "two", "one", "two"]
+                .into_iter()
+                .map(|boot| {
+                    let run = Command::new(shell)
+                        .args([
+                            "-c",
+                            &first_on_path(bin.path(), &in_turn_nearby("sleep 2; echo built")),
+                        ])
+                        .env("NIX_OFFLOAD_TURNS", &turns)
+                        .env("NIX_OFFLOAD_TURN_LOOK", "2")
+                        .env("TURN_BOOT", boot)
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .spawn()
+                        .unwrap();
+                    thread::sleep(Duration::from_millis(700));
+                    run
+                })
+                .collect();
+            for run in runs {
+                let run = ended(run);
+                assert_eq!(run.status.code(), Some(0), "{shell}: {run:?}");
+                assert_eq!(
+                    String::from_utf8_lossy(&run.stdout),
+                    "built\n",
+                    "{shell}: a run never built: {run:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_run_whose_turn_is_freed_during_its_look_takes_one_again_in_its_own_boot() {
+        // An empty link read is no other boot's: the turn was given back.
+        let bin = tempfile::tempdir().unwrap();
+        crate::testing::executable(
+            &bin.path().join("sleep"),
+            &format!(
+                "#!/bin/sh\ncase $1 in 4) [ -e \"$FREED\" ] || {{ : > \"$FREED\"; \
+                 rm -f \"$NIX_OFFLOAD_TURNS/1\"; }} ;; esac\nexec {sleep} \"$@\"\n",
+                sleep = which("sleep")
+            ),
+        );
+        for shell in ["dash", "zsh"] {
+            let folder = tempfile::tempdir().unwrap();
+            let turns = folder.path().join("turns");
+            let freed = folder.path().join("freed");
+            let run = Command::new(shell)
+                .args([
+                    "-c",
+                    &first_on_path(bin.path(), &in_turn_nearby("echo built")),
+                ])
+                .env("NIX_OFFLOAD_TURNS", &turns)
+                .env("NIX_OFFLOAD_TURN_LOOK", "4")
+                .env("FREED", &freed)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let run = ended(run);
+            assert!(
+                freed.exists(),
+                "{shell}: the turn was never freed during a look"
+            );
+            assert_eq!(run.status.code(), Some(0), "{shell}: {run:?}");
+            assert_eq!(
+                String::from_utf8_lossy(&run.stdout),
+                "built\n",
+                "{shell}: {run:?}"
+            );
+            assert_eq!(
+                String::from_utf8_lossy(&run.stderr),
+                "",
+                "{shell}: a freed turn read as another boot's: {run:?}"
+            );
+        }
+    }
+
+    /// A folder holding a `cat` that gives `$TURN_BOOT` as the boot id, so
+    /// runs on one machine can stand for runs in different boots.
+    fn booted_as_told() -> tempfile::TempDir {
+        let bin = tempfile::tempdir().unwrap();
+        crate::testing::executable(
+            &bin.path().join("cat"),
+            &format!(
+                "#!/bin/sh\ncase $1 in /proc/sys/kernel/random/boot_id) \
+                 echo \"$TURN_BOOT\"; exit ;; esac\nexec {cat} \"$@\"\n",
+                cat = which("cat")
+            ),
+        );
+        bin
     }
 
     #[test]
