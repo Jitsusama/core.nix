@@ -126,7 +126,7 @@ fn then_and_now(fix: &Entry, dated: &Dated, often: &Often) -> Option<String> {
     (*newest != fix.last).then(|| {
         format!(
             "{}, {} then, {} now{saving}",
-            measure.says,
+            measure.said(&fix.key),
             shown(*then, measure.unit),
             shown(*now, measure.unit)
         )

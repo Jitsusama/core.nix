@@ -28,7 +28,7 @@ pub fn launcher(journal: &str) -> BTreeMap<String, f64> {
             usable.extend(first_number(rest));
         } else if said.contains(" keys presented a median ") {
             keys.add(said);
-            if let Some(screen) = screen_of(said) {
+            if let Some(screen) = screens_of(said) {
                 screens.entry(screen).or_default().add(said);
             }
         } else if said.contains(" presented a median ") {
@@ -51,7 +51,11 @@ pub fn launcher(journal: &str) -> BTreeMap<String, f64> {
     put("launcher.opening.presented", median(&presented));
     put("launcher.opening.usable", median(&usable));
     put("launcher.keys.presented", median(&keys.medians));
-    put("launcher.keys.late", keys.late());
+    // A day across screens has no one share to judge, so only a day whose
+    // keys name no screen, as before the shell named them, keeps one.
+    if screens.is_empty() {
+        put("launcher.keys.late", keys.late());
+    }
     for (screen, keys) in &screens {
         put(&format!("launcher.keys.late.on.{screen}"), keys.late());
     }
@@ -114,15 +118,41 @@ impl Batches {
     }
 }
 
-/// The screen a summary of keys names in its "; on DP-4 at 60 Hz" tail,
-/// as `DP-4@60Hz`, so a key holds no space. A frame at 60 Hz is twice a
-/// frame at 120 Hz, so a day's share past the bar is told by the screen
-/// it was at as much as by the launcher.
-fn screen_of(said: &str) -> Option<String> {
+/// The screens a summary of keys names in its "; on DP-4 at 60 Hz" tail,
+/// or "; on eDP-1 at 120 Hz and DP-4 at 60 Hz" for a batch across two,
+/// as `DP-4@60Hz+eDP-1@120Hz`, in order, so a key holds no space and a
+/// batch names one series however its screens were said. A screen whose
+/// keys niri timed none of is named without its rate, as `DP-4`. A frame
+/// at 60 Hz is twice a frame at 120 Hz, so a day's share past the bar is
+/// told by the screen it was at as much as by the launcher. A tail that
+/// reads otherwise names none.
+fn screens_of(said: &str) -> Option<String> {
     let (_, on) = said.rsplit_once("; on ")?;
-    let (output, rate) = on.trim().split_once(" at ")?;
-    let hertz = rate.strip_suffix(" Hz")?;
-    (!output.is_empty() && !hertz.is_empty()).then(|| format!("{output}@{hertz}Hz"))
+    let mut screens = on
+        .trim()
+        .split(" and ")
+        .map(screen_of)
+        .collect::<Option<Vec<_>>>()?;
+    screens.sort();
+    screens.dedup();
+    Some(screens.join("+"))
+}
+
+/// One screen as the shell says it, "DP-4 at 60 Hz" or "DP-4", as
+/// `DP-4@60Hz` or `DP-4`, when its output is a name niri gives and its
+/// rate a whole number.
+fn screen_of(said: &str) -> Option<String> {
+    let (output, hertz) = match said.split_once(" at ") {
+        Some((output, rate)) => (output, Some(rate.strip_suffix(" Hz")?)),
+        None => (said, None),
+    };
+    let named = !output.is_empty()
+        && output
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    let rated = hertz.is_none_or(|hz| !hz.is_empty() && hz.chars().all(|c| c.is_ascii_digit()));
+    (named && rated)
+        .then(|| hertz.map_or_else(|| output.to_owned(), |hz| format!("{output}@{hz}Hz")))
 }
 
 fn first_number(text: &str) -> Option<f64> {

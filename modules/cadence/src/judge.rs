@@ -50,7 +50,7 @@ pub fn judge(day: &Day, before: &[Day]) -> Judged {
         measure
             .read(&day.figures)
             .into_iter()
-            .map(move |(key, _, now)| (measure, key, now))
+            .map(move |(key, now)| (measure, key, now))
     }) {
         judged.read += 1;
         let past: Vec<f64> = before

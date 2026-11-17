@@ -31,8 +31,9 @@ pub struct Day {
 
 /// A figure the loop reads each day, where more is always worse.
 pub struct Measure {
-    /// Its figure's key, or, with `*` in place of the repository, each
-    /// repository's: `code.*.long-files` holds `code.core.long-files`.
+    /// Its figure's key, or, with `*` in place of whose it is, each one's:
+    /// `code.*.long-files` holds `code.core.long-files`, a repository's,
+    /// and `launcher.keys.late.on.*` holds a screen's, as `DP-4@60Hz`.
     pub key: &'static str,
     /// Which of the loop's axes it reads: resources, time to done,
     /// quality, polish and the others the loop's research names.
@@ -54,20 +55,35 @@ const KILLS: &str = "journalctl -k --grep=oom-kill: over the day";
 const STALLS: &str = "lag-watch's day files, each slice's mean cpu_some and memory_full";
 const UPDATES: &str = "journalctl -u update-to-main.service over the day";
 
+/// The launcher's share of keys past the bar on each screen, or pair of
+/// screens, by `speed::launcher`'s `DP-4@60Hz+eDP-1@120Hz`.
+const SCREENS: &str = "launcher.keys.late.on.*";
+
+/// Screens as a note says them: `DP-4@60Hz+eDP-1` as "DP-4 at 60 Hz and
+/// eDP-1".
+fn on(screens: &str) -> String {
+    screens
+        .split('+')
+        .map(|screen| match screen.split_once('@') {
+            Some((output, hertz)) => {
+                format!("{output} at {} Hz", hertz.trim_end_matches("Hz"))
+            }
+            None => screen.to_owned(),
+        })
+        .collect::<Vec<_>>()
+        .join(" and ")
+}
+
 /// How much worse than its median a figure must be to be a regression.
 pub const WORSE: f64 = 1.2;
 
 impl Measure {
-    /// Each of a day's figures this measure holds, by its key, with whose
-    /// it is when the measure is each repository's.
-    pub fn read<'a>(
-        &self,
-        figures: &'a BTreeMap<String, f64>,
-    ) -> Vec<(&'a str, Option<&'a str>, f64)> {
+    /// Each of a day's figures this measure holds, by its key.
+    pub fn read<'a>(&self, figures: &'a BTreeMap<String, f64>) -> Vec<(&'a str, f64)> {
         figures
             .iter()
             .filter(|(key, _)| self.holds(key))
-            .map(|(key, now)| (key.as_str(), self.whose(key), *now))
+            .map(|(key, now)| (key.as_str(), *now))
             .collect()
     }
 
@@ -87,12 +103,7 @@ impl Measure {
             None => self.says.to_owned(),
             // A disk is whose by its mount, which reads as where, not whose.
             Some(mount) if mount.starts_with('/') => format!("{} at {mount}", self.says),
-            // A screen is whose by its output and rate, `DP-4@60Hz`.
-            Some(screen) if screen.ends_with("Hz") && screen.contains('@') => {
-                let (output, hertz) = screen.split_once('@').unwrap_or((screen, ""));
-                let hertz = hertz.trim_end_matches("Hz");
-                format!("{} on {output} at {hertz} Hz", self.says)
-            }
+            Some(screens) if self.key == SCREENS => format!("{} on {}", self.says, on(screens)),
             Some(whose) => format!("{whose}'s {}", self.says),
         }
     }
@@ -261,7 +272,7 @@ const MEASURES: &[Measure] = &[
     // Each screen's share apart, as `DP-4@60Hz`, so a day at the monitor is
     // judged against days at the monitor, its frames twice the panel's.
     Measure {
-        key: "launcher.keys.late.on.*",
+        key: SCREENS,
         axis: "responsiveness",
         evidence: LAUNCHER,
         says: "the launcher's keys past 50 ms",
