@@ -36,8 +36,8 @@
 # straight on the connection, the VPN's, and agents' bulk straight on the
 # connection, each a class of the connection's HTB at the controller's
 # rate. Joel comes first on both lanes; while agents have something
-# waiting, a quarter of the rate is theirs, split between the lanes by
-# their flows, and they take whatever Joel leaves.
+# waiting, a quarter of the rate is theirs, split evenly between the lanes
+# on which they wait, and they take whatever Joel leaves.
 #
 # Each time the shaper starts, the kernel warns "htb: cake qdisc 2: is
 # non-work-conserving?" for the IFB, and never again until the queues are
