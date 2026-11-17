@@ -13,8 +13,9 @@ const FLAGS: [&str; 6] = [
     "--repo", "--ref", "--under", "--target", "--owner", "--into",
 ];
 
-/// Every measure it reads (measure.rs and merges.rs).
-pub const MEASURES: [&str; 21] = [
+/// Every measure it reads (measure.rs, merges.rs, and main.rs's stray
+/// owners).
+pub const MEASURES: [&str; 22] = [
     "crowded-folders",
     "daemons-waiting",
     "duplicated-lines",
@@ -26,6 +27,7 @@ pub const MEASURES: [&str; 21] = [
     "quarantined-tests",
     "shared-files",
     "stale-paths",
+    hour::STRAY_OWNERS,
     "suppressions",
     "tf-invalid",
     "tf-undocumented",

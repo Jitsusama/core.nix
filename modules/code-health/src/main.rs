@@ -120,6 +120,38 @@ fn main() -> ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), run)
 }
 
+/// The folders a repository's owners are given that hold no file read,
+/// each warned of, since what they should own goes to another.
+fn stray_owners(
+    context: &Context,
+    name: &str,
+    repo: &options::Repo,
+    paths: &[String],
+) -> Vec<String> {
+    let read = match repo.under.as_slice() {
+        [] => repo.reference.clone(),
+        [under] => format!(
+            "{} under {under} (whose folders count from inside it)",
+            repo.reference
+        ),
+        unders => format!(
+            "{} under {} (whose folders count from the repository's top)",
+            repo.reference,
+            unders.join(", ")
+        ),
+    };
+    let stray = hour::astray(&repo.judged.folders, paths);
+    for folder in &stray {
+        let said = format!(
+            "{name}'s owner of {folder:?} owns nothing: no file read at {read} is given to \
+             it, so what it should own goes to the owner of a folder above it, else the \
+             measure's or {name}'s"
+        );
+        let _ = context.tell("caution", "warning", &said);
+    }
+    stray.into_iter().map(str::to_owned).collect()
+}
+
 fn run(context: &Context) -> Result<(), Failure> {
     let (repos, into) = options::parse(&context.args)
         .map_err(|what| Failure::new(Exit::Usage, what).try_this("code-health --help"))?;
@@ -130,8 +162,11 @@ fn run(context: &Context) -> Result<(), Failure> {
     for (name, repo) in &repos {
         match git::files_in(&repo.checkout, &repo.reference, &repo.under) {
             Ok((paths, files)) => {
+                let stray = stray_owners(context, name, repo, &paths);
                 let roots = git::roots(&repo.under);
                 let mut health = measure::measure(&paths, &files, &roots);
+                let count = stray.len();
+                health.put(hour::STRAY_OWNERS, stray, count);
                 put_terraform(&mut health, &paths, &files).unwrap_or_else(|error| {
                     let said = format!("{name}'s Terraform left out: {error}");
                     let _ = context.tell("caution", "warning", &said);
