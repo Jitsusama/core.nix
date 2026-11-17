@@ -955,6 +955,18 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_card_beside_its_access_point_on_2_4_ghz_tries_5_ghz_heard_at_50_dbm() {
+        let well = carried(11, 0.0);
+        let on = (NEAR, &well, -29, CH6);
+
+        let strong = Chooser::default().choose(Instant::now(), on, &[desk_at(-50, None)], false);
+        let weaker = Chooser::default().choose(Instant::now(), on, &[desk_at(-51, None)], false);
+
+        assert_eq!(strong, Choice::Try(DESK.into()), "-50 dBm is strong");
+        assert_eq!(weaker, Choice::LookWider, "-51 is past -29's reach");
+    }
+
+    #[test]
     fn a_card_on_2_4_ghz_carrying_well_keeps_off_5_ghz_known_quicker_30_db_fainter() {
         let mut chooser = Chooser::default();
         let well = carried(11, 0.0);
