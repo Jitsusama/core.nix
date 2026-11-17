@@ -950,7 +950,7 @@ fn the_boot_check_is_told_the_commit_flake_and_overrides_its_system_was_built_fr
     let head = world.signed_pinning("one", &pinned);
     let told = world.root.join("told");
     let check = format!(
-        "printf '%s\\n' \"$UPDATE_TO_MAIN_COMMIT\" \"$UPDATE_TO_MAIN_FLAKE\" > {told}; \
+        "printf '%s\\n' \"$UPDATE_TO_MAIN_COMMIT\" \"$UPDATE_TO_MAIN_FLAKE\" \"$PATH\" > {told}; \
          printf '%s' \"$UPDATE_TO_MAIN_OVERRIDES\" > {told}.overrides",
         told = told.display()
     );
@@ -973,6 +973,22 @@ fn the_boot_check_is_told_the_commit_flake_and_overrides_its_system_was_built_fr
             && flake.ends_with(&format!("rev={head}"))
             && !flake.contains('#'),
         "the boot check wasn't told a flake locked at the commit, with no output: {flake}"
+    );
+    // A nix it runs fetches a git+file flake with git, which the system's
+    // own path may hold none of, as update-to-main's own nix does.
+    let git = world
+        .config
+        .tools
+        .git
+        .parent()
+        .unwrap()
+        .display()
+        .to_string();
+    let path = said.get(2).copied().unwrap_or_default();
+    assert_eq!(
+        path.split(':').next(),
+        Some(git.as_str()),
+        "the boot check's PATH doesn't start with root's git: {path}"
     );
     let overrides = fs::read_to_string(told.with_extension("overrides")).unwrap_or_default();
     let overrides: Vec<&str> = overrides.lines().collect();
@@ -3526,14 +3542,20 @@ fn the_grant_switches_what_waited_for_it_though_main_moved_on() {
 }
 
 #[test]
-fn a_system_that_waited_for_a_hold_tells_its_boot_check_its_flake() {
-    // The grant's switch builds nothing, so the flake is worked out again
-    // from the commit that waited.
-    let mut world = World::new();
+fn a_system_that_waited_for_a_hold_tells_its_boot_check_its_flake_and_overrides() {
+    // The grant's switch builds nothing, so the flake and overrides are
+    // worked out again from the commit and inputs that waited.
+    let mut world = following();
     hold_the_daemon(&mut world, "old");
-    let head = world.signed("one");
+    let pinned = world.core_commit("pinned", true);
+    let newer = world.core_commit("newer", true);
+    let head = world.signed_pinning("one", &pinned);
     let told = world.root.join("told");
-    let check = format!("printf '%s' \"$UPDATE_TO_MAIN_FLAKE\" > {}", told.display());
+    let check = format!(
+        "printf '%s' \"$UPDATE_TO_MAIN_FLAKE\" > {told}; \
+         printf '%s' \"$UPDATE_TO_MAIN_OVERRIDES\" > {told}.overrides",
+        told = told.display()
+    );
     let system = a_new_initrd(&mut world, &head, &check);
     daemon_unit(&system, "new");
     assert!(
@@ -3550,6 +3572,43 @@ fn a_system_that_waited_for_a_hold_tells_its_boot_check_its_flake() {
     assert!(
         flake.ends_with(&format!("rev={head}")) && !flake.contains('#'),
         "the granted switch's boot check wasn't told its flake: {flake}"
+    );
+    let overrides = fs::read_to_string(told.with_extension("overrides")).unwrap_or_default();
+    let overrides: Vec<&str> = overrides.lines().collect();
+    assert!(
+        overrides.len() == 3 && overrides[2].ends_with(&format!("rev={newer}")),
+        "the granted switch's boot check wasn't told the inputs it followed: {overrides:?}"
+    );
+}
+
+#[test]
+fn a_hosted_grant_whose_system_boots_the_same_unpacks_nothing_again() {
+    // Only a boot check reads the flake, and it runs only for a system
+    // that boots differently, so a grant of one that doesn't fetches
+    // nothing while the person who granted it waits.
+    let mut world = World::hosted_from(World::new(), counted_token);
+    hold_the_daemon(&mut world, "old");
+    let head = world.hosted_commit("one", None);
+    fs::create_dir_all(world.root.join("booted")).unwrap();
+    let told = world.root.join("told");
+    let check = format!("printf ran > {}", told.display());
+    world.config.boot_check = Some(vec![shell(), "-c".to_owned(), check]);
+    daemon_unit(&world.system(&head), "new");
+    assert!(
+        matches!(world.update().1, Line::Refused { .. }),
+        "a switch restarting a held daemon didn't wait for a hold"
+    );
+    let _ = fs::remove_dir_all(world.config.source());
+    fs::write(world.root.join("given"), "").unwrap();
+    let (_, ending) = world.update();
+    assert!(
+        matches!(ending, Line::Done { .. }),
+        "the granted switch should end done: {ending:?}"
+    );
+    assert!(!told.exists(), "a system booting the same was boot-checked");
+    assert!(
+        !world.config.source().exists(),
+        "the grant unpacked main again, though no boot check reads it"
     );
 }
 
