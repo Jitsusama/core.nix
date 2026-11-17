@@ -161,11 +161,18 @@ let
   # Whether the map reaches every cell of the realm (modules/mycelium/site/
   # map-check.sh): the map's live-page test, pointed at the page this
   # machine serves, for a reader such as the hourly card to count with
-  # --json.
+  # --json. It drives Chromium alone, so it carries Chromium and the
+  # headless shell a headless launch opens, not Firefox or WebKit.
   mapCheck = pkgs.writeShellApplication {
     name = "mycelium-map-check";
     runtimeInputs = [ pkgs.jq ];
-    runtimeEnv.PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+    runtimeEnv.PLAYWRIGHT_BROWSERS_PATH = "${
+      pkgs.playwright-driver.passthru.selectBrowsers {
+        withFirefox = false;
+        withWebkit = false;
+        withFfmpeg = false;
+      }
+    }";
     text =
       builtins.replaceStrings
         [ "@python@" "@test@" "@live_page@" ]
