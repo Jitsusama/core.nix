@@ -70,22 +70,29 @@ Provider {
     property int noting: 0
 
     // Whether the place the asks are drawn in was stepped into by one of
-    // Joel's keys, as Passwords by his Return on its row, so the line he
-    // walked to is timed from its first frame; and the line, by its row's
-    // key, that one of his keys moving through what's shown armed, so it's
-    // timed from its next frame. Neither holds in a launcher opened, or
-    // stepped into Asks, from outside, as any process running as him may
-    // do while his own keys land there, typed into another window: its
-    // lines are timed only from a move of his (Shown.js's keyed; ISXEG8,
-    // 2026-11-17). The cost is one key more on an ask he lands on straight
-    // from an opening, by his chord or a notice.
+    // Joel's keys after another of his this opening, as Passwords by his
+    // Return on the row his letters found, so the line he walked to is
+    // timed from its first frame; and the line, by its row's key, that one
+    // of his keys moving through what's shown armed, so it's timed from its
+    // next frame. Neither holds in a launcher opened, or stepped into Asks,
+    // from outside, as any process running as him may do while his own
+    // keys land there, typed into another window, nor from his Returns
+    // alone, which are what those keys most often are: its lines are timed
+    // only from a move of his (Shown.js's keyed; ISXEG8, 2026-11-17). The
+    // cost is one key more on an ask he lands on straight from an opening,
+    // by his chord or a notice.
     property bool walkedIn: false
     property string armed: ""
     // Whether a key of his is being taken now, so a place it steps into is
-    // his walk; the place the asks were last drawn in; and how many keys
-    // the line had taken when the last ask from outside came, so a step
-    // that ask made isn't taken for one of his.
+    // his walk; the keys taken since Asks last read them, by name, oldest
+    // first; whether a key of his other than Return came since the opening
+    // and the last ask from outside, so a step after it is a walk; the
+    // place the asks were last drawn in; and how many keys the line had
+    // taken when the last ask from outside came, so a key read after that
+    // ask arms nothing it selected.
     property bool keyTaking: false
+    property var taken: []
+    property bool steered: false
     property string placed: ""
     property int keysAtOutside: 0
 
@@ -95,24 +102,39 @@ Provider {
         if (place === provider.placed)
             return;
         provider.placed = place;
-        provider.walkedIn = provider.keyTaking && !(launcher?.cataloguing ?? true)
-            && (launcher?.keysTaken ?? 0) !== provider.keysAtOutside;
+        provider.walkedIn = provider.keyTaking && provider.steered
+            && !(launcher?.cataloguing ?? true);
         if (!provider.walkedIn)
             provider.armed = "";
     }
 
-    // A key of his, once the launcher has done what it does: a move arms
-    // the line selected after it, Return leaves every line as it was, and
-    // any other starts every line's time again.
+    // Every line's time started again, and any frame asked for let go.
+    function forget() {
+        provider.walkedIn = false;
+        provider.armed = "";
+        provider.noting += 1;
+        provider.seen = {};
+    }
+
+    // The keys of his since the last read, once the launcher has done what
+    // they do: a move arms the line selected after it, Return leaves every
+    // line as it was, and any other starts every line's time again, as
+    // does an ask from outside that came after them.
     function keyed() {
+        const names = provider.taken;
+        provider.taken = [];
         provider.keyTaking = false;
-        const does = Shown.keyed(launcher?.keyTaken ?? "", launcher?.keyMoved ?? false);
+        if ((launcher?.keysTaken ?? 0) === provider.keysAtOutside) {
+            provider.forget();
+            return;
+        }
+        if (!names.every(Shown.answers))
+            provider.steered = true;
+        const does = Shown.keyed(names, launcher?.keyMoved ?? false);
         if (does === "passes")
             return;
         if (does === "resets") {
-            provider.walkedIn = false;
-            provider.armed = "";
-            provider.seen = {};
+            provider.forget();
             return;
         }
         const stepped = launcher?.held?.[launcher.held.length - 1]?.row?.shownKey;
@@ -187,6 +209,7 @@ Provider {
         function onOpenChanged() {
             provider.walkedIn = false;
             provider.armed = "";
+            provider.steered = false;
             provider.placed = provider.launcher.placeOf(provider.launcher.held ?? []);
             if (!provider.launcher.open) {
                 provider.noting += 1;
@@ -200,12 +223,19 @@ Provider {
         }
         // Read once the key's done what it does, as its name comes before
         // its count and whether it moved after (Prompt.qml's modalKey).
+        // Its name is read now, before the next key's replaces it, as keys
+        // typed fast can come in one turn and be read together.
         function onKeysTakenChanged() {
             provider.keyTaking = true;
+            provider.taken = provider.taken.concat([provider.launcher.keyTaken]);
             Qt.callLater(provider.keyed);
         }
+        // An ask from outside may select any line, so none stays his.
         function onToldFromOutsideChanged() {
             provider.keysAtOutside = provider.launcher.keysTaken;
+            provider.walkedIn = false;
+            provider.armed = "";
+            provider.steered = false;
         }
     }
 

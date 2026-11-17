@@ -3239,18 +3239,19 @@
   the-asks-say-how-long-each-was-shown = ''
     a yes says how long since its line's frame reached the screen this opening, counted from the
     first and again from a changed line's, and says no time for a line never presented, for the
-    line as it was or for another ask's, so the daemon refuses it unread; a line is timed from its
-    first frame only when Joel's key brought the place on screen, and otherwise from the first key
-    that moves through it, typing starting the time again and Return never starting it; while the
-    launcher is walked from outside a yes is stamped as nothing to send; a no is sent as served
+    line as it was or for another ask's, so the daemon refuses it unread; a line is timed from the
+    first frame after a key of Joel's that moves, Escape and Tab only where they move, typing or a
+    key read with the Return after it starting the time again and Return never starting it; while
+    the launcher is walked from outside a yes is stamped as nothing to send; a no is sent as served
   '';
   the-asks-say-how-long-each-was-shown-over-passwords = ''
     over Passwords' connection, a first Return on an ask only arms, a yes says how long since a
     frame presented its line selected, noted again as the launcher reopens on it, a changed line
-    says no time until presented, a launcher opened from outside times nothing until Joel's key
-    moves, typing starts the time again and Return never starts it, a withheld yes says why, the
-    entries told over the connection leave the asks' rows be, and a yes walked from outside the
-    launcher is never sent
+    says no time until presented, every opening being from outside, a line is timed only after
+    Joel's key moves or from the first frame of a place his keys stepped into, a lone Return or an
+    ask from outside being no step of his, typing or an ask from outside starts the time again and
+    lets a frame asked for go, a withheld yes says why, the entries told over the connection leave
+    the asks' rows be, and a yes walked from outside the launcher is never sent
   '';
   the-asks-place-releases-through-its-daemon = ''
     the launcher's Asks lists what the secret-asks daemon serves, For You holds each waiting ask,

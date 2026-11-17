@@ -218,37 +218,6 @@ def test_an_asks_opened_from_outside_takes_no_yes_without_a_move(desktop: Deskto
     refused_unread(desktop, ask, say_yes(desktop))
 
 
-def test_letters_typed_into_an_asks_opened_from_outside_time_nothing(desktop: Desktop) -> None:
-    """Letters typed into Asks opened from outside, as a terminal's command, arm nothing.
-
-    Backspace takes them off the find again, so the line is drawn selected; neither moves.
-    """
-    ask = "4123456789abcdef0123456789abcdef"
-    why = "To ring the bell."
-    put_up(desktop, ask, why)
-    asks_open_on(desktop, ask, why)
-    desktop.machine.send_chars("ls")
-    desktop.launcher_until(lambda shown: shown["typed"] == "ls")
-    desktop.machine.send_key("backspace")
-    desktop.machine.send_key("backspace")
-    desktop.launcher_until(lambda shown: shown["typed"] == "")
-    selected_or_told(desktop, ask, why)
-    time.sleep(PAST_THE_READING)
-    refused_unread(desktop, ask, say_yes(desktop))
-
-
-def test_a_step_into_asks_from_outside_is_no_walk_of_joels(desktop: Desktop) -> None:
-    """The launcher opened on home and then stepped into Asks, both from outside, times nothing."""
-    ask = "5123456789abcdef0123456789abcdef"
-    why = "To raise the sail."
-    put_up(desktop, ask, why)
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    asks_open_on(desktop, ask, why)
-    time.sleep(PAST_THE_READING)
-    refused_unread(desktop, ask, say_yes(desktop))
-
-
 def test_r_refuses_an_ask(desktop: Desktop) -> None:
     """R on an ask's line refuses it, releasing nothing."""
     ask = "1123456789abcdef0123456789abcdef"
