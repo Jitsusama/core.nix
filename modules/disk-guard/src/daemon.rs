@@ -213,6 +213,18 @@ const LISTING_RETRY_PRESSED: f64 = 300.0;
 /// ends, either way, since that needs no listing.
 const ROOT_LEFT_GAP: f64 = 30.0;
 const HELD_ENDED_GAP: f64 = 120.0;
+/// How long the garbage's own passes rest after one that left every path
+/// it was offered, doubling from the first to the longest until one takes
+/// some. From 21:59 to 22:07 on 16 November a machine's guard ran 16 such
+/// passes, one each time a process holding the store ended, each deleting
+/// the same 14,448 bytes that an evaluation registered again and freeing
+/// nothing, for 9 to 49 s of waiting on the disk's commits apiece. What's
+/// left is judged by the paths still there, not by the room measured,
+/// which other writers move. Garbage that pass wasn't offered still goes at
+/// once, as a build's result deleted on a filling disk, and a pass a band
+/// brings takes the garbage too.
+const COLLECT_FIRST_REST: f64 = 120.0;
+const COLLECT_LONGEST_REST: f64 = 1800.0;
 /// How many times its own length a listing rests after it ends before a
 /// relist brings another on a healthy disk, so listing takes at most a
 /// tenth of the guard's time, kept with the listing so a restart rests
@@ -337,12 +349,21 @@ pub struct Guard {
     answers_path: PathBuf,
     watched: BTreeMap<u64, Watched>,
     last: Option<LastPass>,
+    /// The pass whose failing still stands: kept through passes elsewhere
+    /// or ones that free nothing, until a pass on its disk frees some or
+    /// finds it no longer filling.
+    failed: Option<LastPass>,
     saved_at: Option<f64>,
     written: Option<(f64, Status)>,
     /// The status last written, which each beat writes again fresh.
     beaten: Arc<Mutex<Option<Status>>>,
     /// Whether what an earlier run left moved aside has been seen to.
     resumed: bool,
+    /// When this step began, as its tick was read, so what a step does
+    /// is timed from the tick's wall time by how long the step has run:
+    /// a pass after a long one in the same step, or after the survey, is
+    /// stamped when it ran, not when the step began.
+    stepped: Instant,
     /// Nix's garbage as last listed, for the system daemon, and where it's
     /// kept for the next guard.
     listing: Option<Listing>,
@@ -393,6 +414,11 @@ pub struct Guard {
     /// Whether the listing's garbage is to be looked at for a pass of its
     /// own, something having let some of it go.
     collect: bool,
+    /// Until when, in wall seconds, the garbage's own passes rest, and how
+    /// long the rest was, after one that left all it was offered.
+    collect_rest: Option<(f64, f64)>,
+    /// The paths such a pass left, which bring no pass while it rests.
+    left_by_collect: BTreeSet<String>,
     /// A run linking the store's identical files: when it began, what
     /// stops it, and where it tells how it ended.
     dedupe_out: Option<DedupeOut>,
@@ -499,6 +525,10 @@ pub struct Status {
     /// The last things cleared, newest first.
     pub cleared: Vec<ClearedStatus>,
     pub last: Option<LastPass>,
+    /// The pass whose clearing failed, while its failing stands: until a
+    /// pass on its disk frees some or finds it no longer filling.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failed: Option<LastPass>,
     /// The writers frozen now, for the desktop to offer to thaw.
     pub frozen: Vec<crate::writers::Frozen>,
     /// Who wrote most of the last minute's writes, while a disk is below
@@ -711,10 +741,12 @@ impl Guard {
             answers_path,
             watched: BTreeMap::new(),
             last: None,
+            failed: None,
             saved_at: None,
             written: None,
             beaten: Arc::default(),
             resumed: false,
+            stepped: Instant::now(),
             listing_begun: listing.as_ref().map(|listing| listing.listed_at),
             listing_ended: listing.as_ref().and_then(Listing::ended),
             listing,
@@ -733,6 +765,8 @@ impl Guard {
             root_left: false,
             held_ended: false,
             collect: false,
+            collect_rest: None,
+            left_by_collect: BTreeSet::new(),
             dedupe_out: None,
             dedupe_failed: None,
             uses: Arc::new(Mutex::new(uses)),
@@ -1079,6 +1113,7 @@ impl Guard {
     }
 
     pub fn step(&mut self, tick: &Tick, senses: &Senses) -> io::Result<()> {
+        self.stepped = Instant::now();
         // Once: what it resumes it journals as ended, so looking again
         // would only re-read the journal every step to find nothing.
         if !self.resumed {
@@ -1560,10 +1595,53 @@ impl Guard {
         let Some(listing) = &self.listing else {
             return;
         };
-        if self.batches(listing, now).iter().any(|batch| !batch.kept) {
+        let resting = self.collect_rest.is_some_and(|(until, _)| now < until);
+        let offered = |batch: &crate::garbage::Batch| {
+            !batch.kept
+                && (!resting
+                    || batch
+                        .paths
+                        .iter()
+                        .any(|path| !self.left_by_collect.contains(path)))
+        };
+        if self.batches(listing, now).iter().any(offered) {
             let thresholds = Thresholds::new(&self.config.bands, space.total);
             due.push((device, Decision::Collect, thresholds));
+        } else if resting {
+            // What let go meanwhile waits for the rest's end.
+            self.collect = true;
         }
+    }
+
+    /// The paths the garbage's own pass is offered, as it begins.
+    fn collect_offers(&self, now: f64) -> Vec<String> {
+        self.listing.as_ref().map_or_else(Vec::new, |listing| {
+            self.batches(listing, now)
+                .into_iter()
+                .filter(|batch| !batch.kept)
+                .flat_map(|batch| batch.paths)
+                .collect()
+        })
+    }
+
+    /// Rests the garbage's own passes once one left every path it was
+    /// offered, and ends the rest once one takes some.
+    fn rest_collect(&mut self, now: f64, offered: &[String]) {
+        let left: BTreeSet<String> = offered
+            .iter()
+            .filter(|path| Path::new(path).symlink_metadata().is_ok())
+            .cloned()
+            .collect();
+        if left.len() < offered.len() {
+            self.collect_rest = None;
+            self.left_by_collect.clear();
+            return;
+        }
+        let seconds = self.collect_rest.map_or(COLLECT_FIRST_REST, |(_, was)| {
+            (was * 2.0).min(COLLECT_LONGEST_REST)
+        });
+        self.collect_rest = Some((now + seconds, seconds));
+        self.left_by_collect = left;
     }
 
     /// Begins listing Nix's garbage on its own thread when it's due, once
@@ -2074,7 +2152,15 @@ impl Guard {
                 .filter(|offer| !self.taken(offer))
                 .cloned()
                 .collect();
+            let offered = if decision == Decision::Collect {
+                self.collect_offers(tick.wall)
+            } else {
+                Vec::new()
+            };
             let end = self.pass_on(tick, device, &here, aim(decision), thresholds, &mut scan)?;
+            if decision == Decision::Collect {
+                self.rest_collect(tick.wall + self.stepped.elapsed().as_secs_f64(), &offered);
+            }
             let Decision::Reach(band) = decision else {
                 continue;
             };
@@ -2284,6 +2370,7 @@ impl Guard {
         };
         let candidates: Vec<_> = here.iter().map(|offer| offer.candidate.clone()).collect();
         let started = Instant::now();
+        let since = self.stepped;
         let gentle = band < Band::NearlyFull;
         let pacer = Rc::new(RefCell::new(self.pacer(&path, band, thresholds)));
         let images = self.images(device, here);
@@ -2303,6 +2390,7 @@ impl Guard {
                 .map(|offer| (offer.candidate.path.clone(), offer.action.root().to_owned()))
                 .collect(),
             at: tick.wall,
+            since,
             band,
         };
         // A pass that can wait waits for the filesystem's own commits; one
@@ -2357,14 +2445,22 @@ impl Guard {
             freed: report.freed,
             seconds,
         })?;
-        self.last = Some(LastPass {
+        let last = LastPass {
             at: tick.wall,
             path,
             band: report.band,
             end,
             freed: report.freed,
             failing,
-        });
+        };
+        if last.failing.is_some() {
+            self.failed = Some(last.clone());
+        } else if self.failed.as_ref().is_some_and(|failed| {
+            failed.path == last.path && (last.freed > 0 || last.band < Band::Filling)
+        }) {
+            self.failed = None;
+        }
+        self.last = Some(last);
         Ok(report.end)
     }
 
@@ -2590,6 +2686,7 @@ impl Guard {
             filesystems,
             cleared,
             last: self.last.clone(),
+            failed: self.failed.clone(),
             frozen: self.memory.frozen.clone(),
             writer: self
                 .writers

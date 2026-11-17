@@ -74,7 +74,13 @@ or launchd, and [`home.nix`][2] the account's.
   What such a quest keeps beside its `tmp/`, its labs, clones and runs,
   goes the same way after a week, two days once the disk is nearly full
   and twelve hours once it's critically full, but for its handover and a
-  folder of GC roots, whose links keep what running programs read.
+  folder of GC roots, whose links keep what running programs read. A
+  quest a live session works on keeps all of it, in `tmp/` and beside it,
+  but its profiles at rest, whatever each entry's age: on 16 November a
+  laptop's guard took 188 entries of a working session's `tmp/`, a script
+  it wrote that evening among them. A session lives while its process
+  runs as the one that started then, told by its start ticks on Linux and
+  by the second it noted on a Mac, or while a pi host's roster holds it.
   A `store-roots` source names links a tool keeps to hold its builds from
   collection, as a development shell keeps its environment: those under
   its roots that Nix's indirect roots list and its pattern matches go once
@@ -110,7 +116,10 @@ or launchd, and [`home.nix`][2] the account's.
   unlinks for 30 seconds, past Btrfs's own commit, and longer while the
   guard's probe, a page beside its state synced once a second, comes back
   slow more than three times in two minutes, until two minutes pass
-  without. Before measuring, they wait for Btrfs's own commit rather than
+  without. Each item waits on that strain four minutes in all, then rests
+  only its 30 seconds, since strain others make never ends for its
+  waiting: one install of 40,000 files held a pass two hours on 16
+  November. Before measuring, they wait for Btrfs's own commit rather than
   ask for one, since a commit asked for holds up every save on the disk. A
   disk becoming nearly full ends the resting. Passes on a nearly or critically full disk never
   rest, and ask for their commits. Either keeps the status file's
@@ -131,8 +140,10 @@ or launchd, and [`home.nix`][2] the account's.
 - **Removal.** Everything is reached through directories opened beneath the
   source's root, never through a symlink, another filesystem or `..`. A
   target is renamed into a trash beside it, judged again, then emptied; a
-  disk too full to rename deletes in place. Each step is in the journal, and
-  a guard starting after a crash empties what was begun. `disk-guard
+  disk too full to rename deletes in place. Each step is in the journal,
+  stamped when it was done rather than when its pass began, since a pass
+  can run for hours, and a guard starting after a crash empties what was
+  begun. `disk-guard
   journal` shows the account's guard and the machine's together, by time,
   each line saying whose: the machine's guard owns the store and what lies
   outside every home, so the account's alone never said where most of a
@@ -161,6 +172,13 @@ or launchd, and [`home.nix`][2] the account's.
   experimental features, since content-addressed derivations made Nix parse
   and hash every derivation it met, five times the CPU; one that only a
   realisation keeps is listed dead, and Nix refuses it when it's deleted.
+  The garbage's own pass, which comes once something let go of some, rests
+  after one that left every path it was offered, two minutes doubling to
+  half an hour until one takes some, since an evaluation registering the
+  same paths again brought 16 passes freeing nothing in eight minutes.
+  What's left is judged by the paths still there, not by the room
+  measured, which other writers move, and garbage that pass wasn't
+  offered, as a root's leaving lets go, still goes at once.
   It deletes them oldest first,
   in a pass of their own once something has let some go. While the disk is healthy it keeps what
   was built in the last hour, up to 5% of the disk, unless a machine gives
@@ -273,7 +291,12 @@ or launchd, and [`home.nix`][2] the account's.
   exception is the guard itself failing: a pass on a filling disk whose
   tries failed and freed nothing, or where one timed out, is told once,
   with the failure's error line, and written to the system journal as an
-  error, since a guard that can't clear is otherwise silent. A notice the
+  error, since a guard that can't clear is otherwise silent. The status
+  keeps that pass as `failed` until a pass on that disk frees some, or
+  finds it no longer filling, whatever passed between; that pass takes
+  the notice away, a frozen writer's or a nearly full disk's notice going
+  back in its place, so it says how the guard stands now. A folder its owner wrote again
+  while the guard emptied it is kept, not failed. A notice the
   desktop didn't take, as when the notification server is still starting,
   is told again each step until it is. What stands to be told now, once
   a disk is filling, is the status file's `notice` too, for whoever looks after

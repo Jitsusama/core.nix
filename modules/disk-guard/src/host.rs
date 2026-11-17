@@ -489,6 +489,20 @@ impl<'a> Reclaim<'a> {
             None => Ok(work()),
         }
     }
+
+    /// What each unlink of a new item tells the pacer, which gives the
+    /// item its own time to wait on strain.
+    fn unlinking(&self) -> impl FnMut() + 'static {
+        let pacer = self.pacer.clone();
+        if let Some(pacer) = &pacer {
+            pacer.borrow_mut().begin();
+        }
+        move || {
+            if let Some(pacer) = &pacer {
+                pacer.borrow_mut().unlinked();
+            }
+        }
+    }
 }
 
 impl Reclaimer for Reclaim<'_> {
@@ -517,12 +531,7 @@ impl Reclaimer for Reclaim<'_> {
                 return Outcome::Failed(format!("opening {}: {error}", root_path.display()));
             }
         };
-        let pacer = self.pacer.clone();
-        let mut unlinked = move || {
-            if let Some(pacer) = &pacer {
-                pacer.borrow_mut().unlinked();
-            }
-        };
+        let mut unlinked = self.unlinking();
         match action {
             Action::Target { .. } => {
                 let checkout = candidate.checkout.clone();

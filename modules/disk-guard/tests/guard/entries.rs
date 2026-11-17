@@ -105,6 +105,28 @@ fn the_trash_an_earlier_pass_left_inside_goes_with_it() {
     assert_eq!(names(&dir), ["notes.txt", "run-2"]);
 }
 
+// On 16 November pnpm installed a worktree's node_modules again while the
+// guard emptied what it had moved aside, and the pass read as the guard
+// failing, though the owner had only written it again.
+#[test]
+fn an_entry_written_again_while_it_empties_is_kept_for_its_owner() {
+    let root = Sandbox::new();
+    let dir = scratch(root.path());
+    let anchor = Dir::open(root.path()).unwrap();
+    let again = dir.join("run-1/again");
+    let outcome = entry(
+        &anchor,
+        root.path(),
+        &candidate(&dir.join("run-1")),
+        &mut Script::default(),
+        &mut || {
+            let _ = fs::write(&again, "y");
+        },
+    );
+    assert!(matches!(outcome, Outcome::Kept(_)), "{outcome:?}");
+    assert_eq!(names(&dir.join("run-1")), ["again"]);
+}
+
 #[test]
 fn an_entry_that_outlives_its_reclaim_is_never_said_reclaimed() {
     let root = Sandbox::new();

@@ -83,11 +83,29 @@ fn a_scan_is_trusted_from_when_it_ended() {
         // Twice the scan's freshness, so a scan counted from its start is
         // already stale when it ends.
         std::thread::sleep(Duration::from_millis(600));
-        // Once for the scan, and once more for a second that shouldn't
-        // come; a failure is only the reader going.
-        for _ in 0..2 {
-            let _ = fs::write(&writing, stat(100, "sh", 0, 100));
+        // Once for the scan, waiting for it to read.
+        let _ = fs::write(&writing, stat(100, "sh", 0, 100));
+        // Then to any reader for a second, for a second scan that
+        // shouldn't come, so a failing one ends rather than hangs. A
+        // blocking open here hung the suite when, under load, the test's
+        // own reader came and went before it.
+        // A moment first, so the first scan has read to its end and the
+        // spare stat can't join its read.
+        std::thread::sleep(Duration::from_millis(100));
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        while std::time::Instant::now() < deadline {
+            let opened = fs::OpenOptions::new()
+                .write(true)
+                .custom_flags(libc::O_NONBLOCK)
+                .open(&writing);
+            if let Ok(mut fifo) = opened {
+                let _ = std::io::Write::write_all(&mut fifo, stat(100, "sh", 0, 100).as_bytes());
+            }
+            std::thread::sleep(Duration::from_millis(10));
         }
+        // A second scan later than that finds no stat and fails, rather
+        // than waiting on a fifo nobody writes.
+        let _ = fs::remove_file(&writing);
     });
     let mut scan = Scan::new(
         proc.path(),
@@ -103,13 +121,6 @@ fn a_scan_is_trusted_from_when_it_ended() {
     );
     sitting(proc.path(), 200, "/home/u/src/app/target/debug");
     let second = scan.judge(target, None).unwrap();
-    // Lets a writer waiting for a second reader finish.
-    drop(
-        fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NONBLOCK)
-            .open(&slow),
-    );
     writer.join().unwrap();
     assert_eq!(
         second,

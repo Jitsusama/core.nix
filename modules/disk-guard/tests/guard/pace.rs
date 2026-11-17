@@ -105,6 +105,39 @@ fn a_rest_lasts_while_the_disk_is_strained_until_two_minutes_pass_without_a_slow
     crate::assert_exactly(clock.at(), 221.0);
 }
 
+/// Slow for an hour, as builds kept the disk on 16 November.
+fn strained_for_an_hour(at: f64) -> Duration {
+    if at <= 3600.0 { SLOW } else { QUICK }
+}
+
+/// On 16 November builds kept the disk strained for two hours, and one
+/// install of 40,000 files rested about 370 s after each of its twenty
+/// batches, holding the whole pass. Strain from others never ends for
+/// waiting, so an item waits on it four minutes in all, and then rests
+/// only its pacing's rest.
+#[test]
+fn an_item_waits_on_a_strained_disk_four_minutes_in_all() {
+    let (mut pacer, clock, _) = paced(1, Some(strained_for_an_hour), never);
+    pacer.begin();
+    for _ in 0..5 {
+        pacer.rest();
+    }
+    // Five rests of 30 s, and 240 s of strain between them.
+    crate::assert_exactly(clock.at(), 390.0);
+}
+
+#[test]
+fn each_item_has_its_own_four_minutes_of_strain() {
+    let (mut pacer, clock, _) = paced(1, Some(strained_for_an_hour), never);
+    pacer.begin();
+    pacer.rest();
+    pacer.rest();
+    crate::assert_exactly(clock.at(), 300.0);
+    pacer.begin();
+    pacer.rest();
+    crate::assert_exactly(clock.at(), 570.0);
+}
+
 #[test]
 fn three_slow_syncs_in_two_minutes_dont_strain_the_disk() {
     let (mut pacer, clock, _) = paced(

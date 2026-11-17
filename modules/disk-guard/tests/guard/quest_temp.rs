@@ -307,3 +307,134 @@ fn old_scratch_is_sized_again_only_once_written_again() {
         "a run written since kept its old size"
     );
 }
+
+/// The wall seconds of a local time as a Mac's `ps -o lstart` and the
+/// harness's `startToken` give it, `Sun Nov 15 17:43:08 2026`.
+fn lstart_wall(year: i32, month: i32, day: i32, [hour, minute, second]: [i32; 3]) -> u64 {
+    // SAFETY: tm is plain data, zeroed is a valid value, and mktime reads
+    // only the struct it's given.
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    (tm.tm_year, tm.tm_mon, tm.tm_mday) = (year - 1900, month - 1, day);
+    (tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_isdst) = (hour, minute, second, -1);
+    // SAFETY: as above.
+    let seconds = unsafe { libc::mktime(&raw mut tm) };
+    u64::try_from(seconds).unwrap()
+}
+
+// On 16 November a laptop's guard took 188 entries of a quest's tmp/ while
+// its session worked in it, a script it had written that evening among
+// them: a pass begun hours before judged each entry by its own age. A
+// quest a live session works on keeps all it left, in tmp/ and beside it,
+// whatever each entry's age; its browser profiles at rest still go, as
+// their own lock says. A session lives while its process runs as the one
+// that started then: by its start ticks where the harness keeps them, as
+// on Linux, else by the start time it noted, as on a Mac. One whose
+// process ended keeps nothing.
+#[test]
+fn a_quest_a_live_session_works_on_keeps_what_it_left_whatever_its_age() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let quests = dir(&home.join("quests"));
+    let workspaces = dir(&home.join("workspaces"));
+    let sessions = dir(&home.join("sessions"));
+    let left = |id: &str, process: &str| {
+        file(
+            &quests.join(format!("{id}/README.md")),
+            &format!("---\nid: {id}\nstatus: active\nupdated: 2020-01-01\n---\n# At work\n"),
+        );
+        file(
+            &sessions.join(format!("{id}.json")),
+            &format!(r#"{{"quest":"{id}","process":{{{process}}}}}"#),
+        );
+        let workspace = dir(&workspaces.join(id));
+        let script = workspace.join("tmp/splice.sh");
+        file(&script, "x");
+        written_ago(&script, 8.0 * DAY);
+        let lab = dir(&workspace.join("lab"));
+        file(&lab.join("run.log"), "x");
+        written_ago(&lab.join("run.log"), 8.0 * DAY);
+        written_ago(&lab, 8.0 * DAY);
+        [script, lab]
+    };
+    let token = lstart_wall(2026, 11, 15, [17, 43, 8]);
+    let linux = left("QEST-20200101-LINUXA", r#""pid":41,"startTicks":500"#);
+    let mac = left(
+        "QEST-20200101-MACAAA",
+        r#""pid":43,"startToken":"Sun Nov 15 17:43:08 2026""#,
+    );
+    let ended = left("QEST-20200101-ENDEDA", r#""pid":42,"startTicks":500"#);
+    let reused = left("QEST-20200101-REUSED", r#""pid":44,"startTicks":500"#);
+    let config = config(&format!(
+        r#""workspaces": {{ "kind": "workspaces", "path": "{}", "quests": "{}",
+            "sessions": "{}" }}"#,
+        workspaces.display(),
+        quests.display(),
+        sessions.display()
+    ));
+    let running = |pid: u32, start_ticks: u64| Process {
+        pid,
+        uid: unsafe { libc::geteuid() },
+        start_ticks,
+        cwd: Some(home.clone()),
+        readable: true,
+        ..Process::default()
+    };
+    // The survey's boot counts 100 ticks a second from the epoch, so the
+    // Mac's session started at its token's second, its ticks a little in.
+    let processes = [
+        running(41, 500),
+        running(43, token * 100 + 40),
+        running(44, 900),
+    ];
+    let found = offers(&config, &processes, &|_| false);
+    let offered: Vec<_> = found.iter().map(|offer| &offer.candidate.path).collect();
+    for path in linux.iter().chain(&mac) {
+        assert!(
+            !offered.contains(&path),
+            "a live session's quest gave up {}: {offered:?}",
+            path.display()
+        );
+    }
+    for path in ended.iter().chain(&reused) {
+        assert!(
+            offered.contains(&path),
+            "an ended session's quest kept {}: {offered:?}",
+            path.display()
+        );
+    }
+}
+
+// Every machine's guard is now told where the harness keeps its session
+// records, so on one it never ran on, with no such folder, no session
+// lives and each quest's scratch still goes by its own age.
+#[test]
+fn with_no_sessions_folder_a_quest_scratch_goes_by_its_age() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let quests = dir(&home.join("quests"));
+    let workspaces = dir(&home.join("workspaces"));
+    let id = "QEST-20200101-NOHARN";
+    file(
+        &quests.join(format!("{id}/README.md")),
+        &format!("---\nid: {id}\nstatus: active\nupdated: 2020-01-01\n---\n# At work\n"),
+    );
+    let script = dir(&workspaces.join(id)).join("tmp/splice.sh");
+    file(&script, "x");
+    written_ago(&script, 8.0 * DAY);
+    let config = config(&format!(
+        r#""workspaces": {{ "kind": "workspaces", "path": "{}", "quests": "{}",
+            "sessions": "{}" }}"#,
+        workspaces.display(),
+        quests.display(),
+        home.join("no-sessions").display()
+    ));
+    let found = offers(&config, &[], &|_| false);
+    assert!(
+        found.iter().any(|offer| offer.candidate.path == script),
+        "a week-old entry was kept with no sessions folder: {:?}",
+        found
+            .iter()
+            .map(|offer| &offer.candidate.path)
+            .collect::<Vec<_>>()
+    );
+}

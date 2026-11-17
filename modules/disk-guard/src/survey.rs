@@ -18,7 +18,7 @@ use crate::{
     workspaces,
 };
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -222,6 +222,53 @@ pub fn within(config: &Config, folders: &[PathBuf]) -> Config {
     scoped
 }
 
+/// A producer's run, offered whatever it would free, since that is measured once it has run.
+fn offer_producer(name: &str, source: &Source, world: &World, offers: &mut Vec<Offer>) {
+    let Source::Producer {
+        command,
+        path,
+        every,
+        from,
+        watch,
+        timeout,
+    } = source
+    else {
+        return;
+    };
+    let Some(device) = device(path) else { return };
+    let idle = if changed(
+        watch,
+        world.ran.get(name).copied(),
+        world.said.get(name).copied(),
+    ) {
+        f64::INFINITY
+    } else {
+        since_ran(world, name)
+    };
+    offers.push(Offer {
+        candidate: Candidate {
+            path: named(path, name),
+            class: Class::Producer {
+                every: every.map(|span| span.0.as_secs_f64()),
+                from: *from,
+            },
+            idle,
+            // What it frees is measured once it has run.
+            size: 0,
+            occupied: false,
+            spent: false,
+            checkout: None,
+        },
+        action: Action::Run {
+            root: path.clone(),
+            source: name.to_owned(),
+            argv: command.clone(),
+            timeout: timeout.0,
+        },
+        device,
+    });
+}
+
 /// Every candidate the sources offer now.
 pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
     let mut offers = Vec::new();
@@ -266,8 +313,15 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                     offer_git(repo, world, &mut offers);
                 }
             }
-            Source::Workspaces { path, quests, .. } => {
-                offer_workspaces(path, quests, world, &mut offers);
+            Source::Workspaces {
+                path,
+                quests,
+                sessions,
+                rosters,
+                ..
+            } => {
+                let worked = Worked::read(sessions.as_deref(), rosters.as_deref(), world);
+                offer_workspaces(path, quests, &worked, world, &mut offers);
             }
             Source::Temp { path } => offer_temp(path, world, &mut offers),
             Source::Trash { path } => offer_trash(path, world, &mut offers),
@@ -279,47 +333,7 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                 unused,
             } => offer_store_roots(roots, pattern, *unused, &config.nix, world, &mut offers),
             Source::Logs { path } => offer_logs(path, &mut offers),
-            Source::Producer {
-                command,
-                path,
-                every,
-                from,
-                watch,
-                timeout,
-            } => {
-                let Some(device) = device(path) else { continue };
-                let idle = if changed(
-                    watch,
-                    world.ran.get(name).copied(),
-                    world.said.get(name).copied(),
-                ) {
-                    f64::INFINITY
-                } else {
-                    since_ran(world, name)
-                };
-                offers.push(Offer {
-                    candidate: Candidate {
-                        path: named(path, name),
-                        class: Class::Producer {
-                            every: every.map(|span| span.0.as_secs_f64()),
-                            from: *from,
-                        },
-                        idle,
-                        // What it frees is measured once it has run.
-                        size: 0,
-                        occupied: false,
-                        spent: false,
-                        checkout: None,
-                    },
-                    action: Action::Run {
-                        root: path.clone(),
-                        source: name.clone(),
-                        argv: command.clone(),
-                        timeout: timeout.0,
-                    },
-                    device,
-                });
-            }
+            Source::Producer { .. } => offer_producer(name, source, world, &mut offers),
             Source::Podman { command, path } => {
                 offer_podman(name, command, path, world, &mut offers);
             }
@@ -478,13 +492,40 @@ fn offer_git(repo: &Path, world: &World, offers: &mut Vec<Offer>) {
     }
 }
 
+/// Which quests live sessions work on, as a survey of workspaces knows it.
+enum Worked {
+    /// No session records are named, so each entry goes by its own age.
+    Unknown,
+    /// They're named but can't be read, so any quest may be.
+    Any,
+    These(HashSet<String>),
+}
+
+impl Worked {
+    fn read(sessions: Option<&Path>, rosters: Option<&Path>, world: &World) -> Self {
+        let Some(sessions) = sessions else {
+            return Worked::Unknown;
+        };
+        workspaces::worked_on(sessions, rosters, world.processes, &world.boot)
+            .map_or(Worked::Any, Worked::These)
+    }
+}
+
 /// The quest workspaces in `path`, judged by their quests' READMEs in
 /// `quests`, and in each one still at work the browser profiles its `tmp/`
 /// holds at rest and what else it left there unwritten, but for what a
 /// process works in. Use is judged only of an entry old enough to offer,
 /// and before it's sized, which walks all of it; where processes work is
 /// read once, as there can be tens of thousands of entries to ask of.
-fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<Offer>) {
+/// A quest a live session works on, as `worked` says, keeps all it left
+/// but its profiles at rest, whatever each entry's age.
+fn offer_workspaces(
+    path: &Path,
+    quests: &Path,
+    worked: &Worked,
+    world: &World,
+    offers: &mut Vec<Offer>,
+) {
     let Some(device) = device(path) else { return };
     let places = activity::Workplaces::new(world.processes, world.me);
     let worked_in = |path: &Path| places.work_in(path);
@@ -502,6 +543,15 @@ fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<
                 },
                 device,
             });
+        }
+        let id = workspace.path.file_name().and_then(|name| name.to_str());
+        let live = match worked {
+            Worked::Unknown => false,
+            Worked::Any => true,
+            Worked::These(quests) => id.is_some_and(|id| quests.contains(id)),
+        };
+        if live {
+            continue;
         }
         let a_profile = |path: &Path| profiles.iter().any(|profile| profile.path == path);
         for entry in scratch::entries(&tmp) {
