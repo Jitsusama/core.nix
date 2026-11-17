@@ -86,21 +86,33 @@ function stepped(inner, at) {
     const finding = inner ? inner.lists : 0;
     const answers = inner ? inner.answers : 0;
     const before = inner ? inner.before : 0;
+    // A walk's last step is timed from where the walk began, so the
+    // places it passed on the way, listed to step through, are said as
+    // passing among its lists, apart from this step's own making.
+    const passing = at.walked === undefined ? 0 : Math.max(0, at.began - at.walked);
     return {
-        lists: at.made - at.began + finding,
+        lists: at.made - at.began + finding + passing,
         rows: Math.max(0, at.ended - at.opened - finding - answers - before),
         before,
         beforeParts: inner?.beforeParts ?? null,
         answers,
-        // A walk's last step is timed from where the walk began, so the
-        // places it passed on the way are said as passing, apart from
-        // this step's own making.
         each: Object.assign({}, inner?.each, { making: at.made - at.began, finding,
-            holding: at.pushed - at.made, opening: at.opened - at.pushed,
-            passing: at.walked === undefined ? 0 : Math.max(0, at.began - at.walked) }),
+            holding: at.pushed - at.made, opening: at.opened - at.pushed, passing }),
         makingSplit: at.making ?? null,
         composing: inner?.composing ?? null
     };
+}
+
+// A walk's parts where it stopped short, as the search listing where it
+// stopped found them, with what it passed before as passing among its
+// lists, as a walk's last step says it (stepped). Kept as they were where
+// it passed nothing.
+function passed(parts, passing) {
+    if (!parts || !(passing > 0)) {
+        return parts;
+    }
+    return Object.assign({}, parts, { lists: (parts.lists ?? 0) + passing,
+        each: Object.assign({}, parts.each, { passing }) });
 }
 
 // What a step's making spent on, in parentheses, most first: making its

@@ -5021,6 +5021,11 @@ Scope {
         const walked = walk?.begun ? began : undefined;
         if (held.length > 0 && row.given) {
             ask(row);
+            // A walk that ends on an ask, as a terminal's go to a
+            // password's, is timed as where it ends, its last step's parts
+            // saying what it passed.
+            if (walked !== undefined && !passing && stepTimed())
+                keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread);
             return true;
         }
         // A step in that Joel's key made is a look, so an opening that
@@ -5045,7 +5050,7 @@ Scope {
         // into a kept place is its opening's too, though its frame is
         // drawn and the ask let go by then: a kept Super+N timed its fill
         // as "→ On Screen" (a gate, 2026-11-16).
-        const timed = openAsked < 0 && !fillingPlace && !passing;
+        const timed = stepTimed() && !passing;
         // A place found from the top that sits in another is stepped into
         // through it, so the path says where it lives. Its line says the
         // places it made as a step's does, beside the search that drew it.
@@ -5151,13 +5156,27 @@ Scope {
     // the walk is timed as that place from when it began, as one that
     // went all the way is as its last (enter). Without it, a walk
     // stopped short was timed nowhere (a council, 2026-11-17).
+    // Its parts are the search's that listed where it stopped, or, where
+    // the step it stopped at listed it, that step's, each with what the
+    // walk passed before. One whose first step was gone took Joel
+    // nowhere, so it's timed as nothing.
     function walkStopped(begun, list) {
-        searchParts = null;
-        if (list)
+        const stoppedAt = Date.now();
+        if (list) {
+            searchParts = null;
             listedAsStep(() => listHeld());
-        if (held.length > 0 && openAsked < 0 && !fillingPlace)
+            searchParts = trials.passed(searchParts, stoppedAt - begun.began);
+        }
+        if (held.length > 0 && stepTimed())
             keyTimed(`\u2192 ${held[held.length - 1].row.name}`, begun.began, begun.heard,
                 begun.pressed, begun.collected, true, begun.thread);
+    }
+
+    // Whether a step taken now is timed as its own: not while an opening
+    // is still timed, nor in the fill's walk into a kept place, each its
+    // opening's (enter).
+    function stepTimed() {
+        return openAsked < 0 && !fillingPlace;
     }
 
     // Lists what the step held holds, where a walk stopped at a step it

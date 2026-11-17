@@ -187,6 +187,11 @@ Scope {
         return Trials.stepped(inner, at);
     }
 
+    // A walk stopped short's parts, with what it passed (Trials.js).
+    function passed(parts, passing) {
+        return Trials.passed(parts, passing);
+    }
+
     // The three collections that took longest, if any took a millisecond,
     // a step's own making with what it went on (Trials.steppedMaking).
     function slowest(each, split) {
