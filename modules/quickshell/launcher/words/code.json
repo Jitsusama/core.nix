@@ -147,10 +147,11 @@
         "unknown": "not switched: there's no branch {branch} now",
         "unread": "not switched: git couldn't read it",
         "detached": "not switched: it's on no branch",
-        "midway": "not switched: a merge or rebase is under way",
+        "midway": "not switched: a merge, rebase, cherry-pick or revert is under way",
         "changed": "not switched: it has changes of its own",
         "elsewhere": "not switched: {tree} has it checked out",
         "intheway": "not switched: files git doesn't track are in the way",
+        "partway": "not switched: git stopped partway and left changes",
         "failed": "not switched: git refused the switch"
       }
     },

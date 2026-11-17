@@ -11,7 +11,9 @@
 //!
 //! Git runs as `git.rs` runs it, with Joel's config and asking at no
 //! terminal. A read past [`READ`] is stopped with all it started; the
-//! switch itself never is, which would leave it half written.
+//! switch itself never is, which would leave it half written. One git
+//! gives up on partway, as a filter it must run failing makes it, is
+//! said to have left changes, never that nothing changed.
 
 use std::path::Path;
 
@@ -54,6 +56,9 @@ pub enum Refused {
     /// Files git doesn't track, ignored ones included, stand where the
     /// branch has files of its own.
     InTheWay,
+    /// Git gave up partway through the switch, leaving its tracked files
+    /// unlike its branch.
+    Partway,
     /// Git refused the switch itself.
     Failed,
 }
@@ -70,6 +75,7 @@ impl Refused {
             Refused::Changed => "changed",
             Refused::Elsewhere(_) => "elsewhere",
             Refused::InTheWay => "intheway",
+            Refused::Partway => "partway",
             Refused::Failed => "failed",
         }
     }
@@ -273,9 +279,20 @@ pub fn switch(
     ];
     match tried(git, folder, &switching, None) {
         Ok(_) => Ok(Switched::Switched),
-        // Git says so in C's words, which `tried` has it speak.
-        Err(failure) if failure.said.contains("would be overwritten") => Err(Refused::InTheWay),
-        Err(_) => Err(Refused::Failed),
+        // Git says so in C's words, which `tried` has it speak, for one it
+        // would overwrite or remove; changes to tracked files read otherwise.
+        Err(failure)
+            if failure
+                .said
+                .contains("untracked working tree files would be") =>
+        {
+            Err(Refused::InTheWay)
+        }
+        // Clean before it, so any change now is what git left.
+        Err(_) => match read(&["status", "--porcelain", "--untracked-files=no"]) {
+            Ok(left) if left.trim().is_empty() => Err(Refused::Failed),
+            _ => Err(Refused::Partway),
+        },
     }
 }
 
@@ -435,7 +452,12 @@ mod tests {
     fn each_refusal_is_said_before_git_is_asked_to_switch() {
         let overwritten = "switch) echo 'error: The following untracked working tree files would be \
                            overwritten by checkout:' >&2; exit 1;;";
-        let cases: [(&str, &str, &str, Result<Switched, Refused>); 12] = [
+        let local = "switch) echo 'error: Your local changes to the following files would be \
+                     overwritten by checkout:' >&2; exit 1;;";
+        // A status of changes only once git has tried to switch.
+        let partway = "status) if [ -f \"$0.moved\" ]; then echo ' M a'; fi;; \
+                       switch) touch \"$0.moved\"; exit 128;;";
+        let cases: [(&str, &str, &str, Result<Switched, Refused>); 14] = [
             ("switched", "", "fix", Ok(Switched::Switched)),
             ("here", "", "main", Ok(Switched::Here)),
             (
@@ -488,15 +510,19 @@ mod tests {
             ),
             ("intheway", overwritten, "fix", Err(Refused::InTheWay)),
             ("failed", "switch) exit 128;;", "fix", Err(Refused::Failed)),
+            // Tracked changes git found itself, past the status read.
+            ("local", local, "fix", Err(Refused::Failed)),
+            ("partway", partway, "fix", Err(Refused::Partway)),
         ];
         for (name, answers, branch, expected) in cases {
             let (folder, git) = stubbed(name, answers);
             assert_eq!(switch(&git, &folder, branch, None), expected, "{name}");
             let asked = std::fs::read_to_string(folder.join("asked")).unwrap_or_default();
-            let switching = asked.lines().any(|run| run.contains("/dev/null switch "));
+            let switching = asked.lines().any(|run| run.contains(" switch --quiet "));
             let reached = matches!(
                 expected,
-                Ok(Switched::Switched) | Err(Refused::InTheWay | Refused::Failed)
+                Ok(Switched::Switched)
+                    | Err(Refused::InTheWay | Refused::Partway | Refused::Failed)
             );
             assert_eq!(switching, reached, "{name} asked git to switch: {asked}");
             let _ = std::fs::remove_dir_all(&folder);
@@ -504,8 +530,14 @@ mod tests {
     }
 
     #[test]
-    fn a_merge_or_rebase_under_way_is_left_to_end() {
-        for kept in ["MERGE_HEAD", "rebase-merge", "CHERRY_PICK_HEAD"] {
+    fn a_merge_rebase_cherry_pick_or_revert_under_way_is_left_to_end() {
+        for kept in [
+            "MERGE_HEAD",
+            "rebase-merge",
+            "rebase-apply",
+            "CHERRY_PICK_HEAD",
+            "REVERT_HEAD",
+        ] {
             let (folder, git) = stubbed("midway", "");
             std::fs::write(folder.join(".git").join(kept), "").unwrap();
             assert_eq!(

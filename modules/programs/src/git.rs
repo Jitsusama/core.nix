@@ -78,8 +78,9 @@ pub fn tried(
         .env("GIT_WORK_TREE", folder)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("SSH_ASKPASS_REQUIRE", "never")
-        // Its messages in C's words, which only they are read for; its
-        // other settings stay Joel's.
+        // Its messages in C's words, which only they are read for. LC_ALL
+        // would outrank them, so what it said becomes LANG's, and the rest
+        // of Joel's settings stay as he set them.
         .env("LC_MESSAGES", "C")
         .env_remove("LC_ALL")
         .env_remove("LANGUAGE")
@@ -88,6 +89,9 @@ pub fn tried(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if let Some(all) = std::env::var_os("LC_ALL").filter(|all| !all.is_empty()) {
+        command.env("LANG", all);
+    }
     // Nothing the daemon was started with points git at another repository.
     for elsewhere in [
         "GIT_COMMON_DIR",

@@ -2,10 +2,10 @@
 //! repository's row only while it's ahead, the one it's on first, then
 //! the newest, and one another tree holds naming that tree; a switch
 //! checking a branch out past a file git doesn't track, its branches and
-//! files listed again at once; and a switch refused, saying why, over
-//! changes of its own, over a file in the way, onto a branch another
-//! tree holds, in a tree cut from a checkout, and onto a branch there
-//! isn't.
+//! files listed again at once, and one onto a branch gone listing them
+//! without it; and a switch refused, saying why, over changes of its own,
+//! over a file in the way, onto a branch another tree holds, in a tree
+//! cut from a checkout, and onto a branch there isn't.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -116,6 +116,14 @@ fn a_checkouts_branches_are_served_while_ahead_the_one_its_on_first() {
     );
     watcher.send(&json!({"id": "ahead", "ask": "watch", "kind": ["row"], "keys": [SWITCH]}));
     let listed = pushed(&mut watcher, &[&main, &fix, &held]);
+    // The shell places rows by their order alone, never sorting them.
+    let mut placed = [&main, &fix, &held];
+    placed.sort_by_key(|key| listed[*key]["order"].as_i64());
+    assert_eq!(
+        placed,
+        [&main, &fix, &held],
+        "not the one it's on, then the newest: {listed:?}"
+    );
     assert_eq!(
         listed[&main]["side"][0],
         json!({"said": "checked out here"}),
@@ -131,12 +139,13 @@ fn a_checkouts_branches_are_served_while_ahead_the_one_its_on_first() {
         json!({"said": "in ~/trees/held"}),
         "a branch another tree holds doesn't name it: {listed:?}"
     );
-    let (newer, older) = (
-        &listed[&fix]["side"][0]["at"],
-        &listed[&held]["side"][1]["at"],
-    );
+    let at = |key: &str, slot: usize| {
+        listed[key]["side"][slot]["at"]
+            .as_u64()
+            .unwrap_or_else(|| panic!("{key} says no date: {listed:?}"))
+    };
     assert!(
-        newer.as_u64() > older.as_u64(),
+        at(&fix, 0) > at(&held, 1),
         "fix isn't said to be newer than held: {listed:?}"
     );
     watcher.send(&json!({"id": "ahead", "ask": "unwatch"}));
@@ -188,10 +197,27 @@ fn a_switch_checks_a_branch_out_and_its_branches_and_files_follow() {
     let said = client.ask(&json!({"id": 3, "ask": "code:switch",
         "path": branched.here, "branch": "fix"}));
     assert_eq!(said["said"], "already on fix", "{said}");
+
+    // A branch gone since it was listed is refused, and listed no more.
+    git_alone(
+        &branched.home,
+        &branched.here,
+        &["branch", "--quiet", "-D", "main"],
+    );
+    let said = client.ask(&json!({"id": 4, "ask": "code:switch",
+        "path": branched.here, "branch": "main"}));
+    assert_eq!(
+        said["error"]["said"],
+        "not switched: there's no branch main now"
+    );
+    assert!(
+        watcher.gone().contains(&json!(main)),
+        "a branch gone is still listed after a switch to it was refused"
+    );
 }
 
 #[test]
-fn a_switch_never_carries_changes_takes_anothers_branch_or_touches_a_tree() {
+fn a_switch_refuses_changes_files_in_the_way_trees_and_branches_unknown_or_held() {
     let running = Running::new("code-switch-refused");
     let branched = Branched::new(&running);
     let mut client = running.client();

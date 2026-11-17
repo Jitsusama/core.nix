@@ -125,8 +125,9 @@ QtObject {
             ["a disconnect", { verb: "disconnect", ends: "disconnects", run: does }],
             ["a setting's switch, by :set", { verb: "keep", command: "set", run: does }],
             ["a window moved, by :move", { verb: "move", run: does }],
-            // Code's Switch to It, as its words name it, so typing a
-            // branch and Return only lands on it.
+            // A row named :switch, as Code's Switch to It's words name it
+            // (words/code.json), so typing a branch and Return only lands
+            // on it.
             ["a branch switched to, by :switch", { verb: "switch", command: "switch",
                 run: does }],
             ["one asked to be sure of", { verb: "reboot", confirm: true, run: does }],

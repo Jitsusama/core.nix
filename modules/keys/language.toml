@@ -1054,7 +1054,7 @@ changes = true
 # A checkout put on another of its branches, as git's switch puts it:
 # Code's Switch to It. It refuses rather than carry changes across, and it
 # changes what the checkout holds, so Return from the find line lands on
-# it first rather than switching at once.
+# it first rather than switching at once. :sw is Neovim's :swapname.
 [acts.switch]
 command = "switch"
 short = "swi"

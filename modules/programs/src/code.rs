@@ -254,9 +254,11 @@ fn list(shared: &Shared, stale: &[String]) {
         .filter_map(|(key, path)| {
             let listed = match was.get(&key) {
                 Some(listed) => listed.clone(),
-                None if key.ends_with(code_rows::BRANCHES) => branches(shared, &path?)
-                    .or_else(|| before.get(&key).cloned())
-                    .unwrap_or_default(),
+                // None kept when git couldn't read them and none was
+                // before, so the next move of the watches asks again.
+                None if key.ends_with(code_rows::BRANCHES) => {
+                    branches(shared, &path?).or_else(|| before.get(&key).cloned())?
+                }
                 None => repositories::files(&path?),
             };
             Some((key, listed))
@@ -368,9 +370,11 @@ struct Holding<'a> {
 impl<'a> Holding<'a> {
     /// The checkout at `folder` held, or none when it's held already.
     fn take(code: &'a Code, folder: &'a str) -> Option<Holding<'a>> {
-        lock(&code.busy)
-            .insert(folder.to_owned())
-            .then_some(Holding { code, folder })
+        // The busy set let go before a hold is made, and one made only
+        // when it's taken: a hold made and dropped unused would lock the
+        // set again, and let the checkout go from under the hold before.
+        let taken = lock(&code.busy).insert(folder.to_owned());
+        taken.then(|| Holding { code, folder })
     }
 }
 
