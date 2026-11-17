@@ -252,5 +252,18 @@
       "test_sessions_reopened_while_every_screen_drops_and_comes_back_go_where_they_sat"
     ],
     "test": "vm-screens-keep-places"
+  },
+  {
+    "at": 1794870610,
+    "commit": "c344f6aa7f7a1dd0afdd31f15e9c20d18bce970a",
+    "due": "2026-11-17",
+    "due_why": "Its owner makes its wait for the lean steady and takes it off, by 2026-11-17 23:59 UTC",
+    "owner_pr": 4776,
+    "owner_session": "XY9H5C",
+    "reason": "failed 29 of 100 gate reruns that ran it, from 15 Nov 17:53 to 16 Nov 18:35 UTC, among them 18433e39, f21aa659 and 29a9251b, none touching the cat, passing when rerun",
+    "subtests": [
+      "test_a_pointer_resting_on_the_cat_leans_it_in"
+    ],
+    "test": "the-margin-cat-follows-the-keys-on-niri"
   }
 ]

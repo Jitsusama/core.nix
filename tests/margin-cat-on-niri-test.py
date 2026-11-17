@@ -91,6 +91,9 @@ TO_THE_CORNER = -10000
 # How long a pointer resting on the cat takes to pet it, and how long its lean holds after the
 # pointer goes (modules/margin-cat/MarginCat.js), in seconds.
 PETS, PETTED = 0.3, 0.6
+# How long the cat must have sat still before a pointer coming onto it can pet it
+# (MarginCat.SETTLED, 200 ms), with a frame's margin on a loaded builder, in seconds.
+PETTED_FROM = 0.3
 # What a PNG's header says of niri's screenshot: eight bits a channel, in red, green and
 # blue, with alpha or without.
 BYTE, RGB, RGBA = 8, 2, 6
@@ -1135,21 +1138,20 @@ def settled(shell: Shell, window: Json, away_from: float, since: int) -> Json:
     return at
 
 
-def test_a_pointer_resting_on_the_cat_leans_it_in_and_a_click_beside_it_reaches_the_window(
-    shell: Shell,
-) -> None:
-    """A pointer moved onto the cat leans it in toward its side, and its cells take no more.
+def test_a_pointer_resting_on_the_cat_leans_it_in(shell: Shell) -> None:
+    """A pointer moved onto the cat leans it in toward its side, and the lean ends as it goes.
 
     Joel, 2026-11-12: "i want to be able to also use my mouse to engage with my animals". The
     times and the drawing are held in Qt's engine (margin-cat.qml); here, that niri's pointer
-    reaches its cells on its layer, on either side, and that the lean ends once the pointer
-    goes. Its layer spans the screen, yet only its cells take the pointer, so a click on the
-    window beside its column focuses that window.
+    reaches its cells on its layer, on either side. A pet takes the cat at rest a moment
+    (MarginCat.strokes), and a pointer that comes sooner never pets it, as one it came to
+    under, so the pointer comes once it has rested that long. Coming sooner is the likeliest
+    reason it missed its lean in 29 of 100 gate runs (2026-11-16).
     """
     since = shell.mark()
-    beside = shell.opened("a column clicked into past the cat")
     petted = shell.opened("a column the cat is petted on")
     at = seat(shell, petted, since)
+    time.sleep(PETTED_FROM)
     middle = at["y"] + at["size"] / 2
     for across, way in ((1, -1), (at["size"] - 2, 1)):
         shell.send_key("F24")
@@ -1159,6 +1161,18 @@ def test_a_pointer_resting_on_the_cat_leans_it_in_and_a_click_beside_it_reaches_
         since = shell.mark()
         point(shell, TO_THE_CORNER, TO_THE_CORNER)
         heard(shell, lambda said: leaning(said) == 0, since)
+
+
+def test_a_click_beside_the_cat_reaches_the_window(shell: Shell) -> None:
+    """The cat's layer spans the screen, yet only its cells take the pointer.
+
+    So a click on the window beside its column focuses that window: the cat never takes a
+    click Joel meant for his work.
+    """
+    since = shell.mark()
+    beside = shell.opened("a column clicked into past the cat")
+    sat_on = shell.opened("a column the cat sits on as the pointer passes")
+    seat(shell, sat_on, since)
     # Where the window beside is now, since niri scrolled the view as the cat's column opened.
     now = next(window for window in shell.windows() if window["id"] == beside["id"])
     place = now["layout"]["tile_pos_in_workspace_view"]
