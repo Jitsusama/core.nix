@@ -872,7 +872,15 @@ Item {
     // kitty.conf): a key shows it whole, it fades out and back in over
     // `fade` each way, linearly, and `stopsAfter` with no key it holds
     // steady, so a line left still draws nothing more. A fade of 0 holds
-    // it steady throughout.
+    // it steady throughout. After each key it rests, lit and still, for a
+    // fade before it blinks, as GTK's and macOS's fields do, so a run of
+    // typing draws only its keys' own frames: a caret fading while he
+    // typed kept the shell drawing every frame, and a key then waited for
+    // niri's frame callback, a median 7.5 ms against 2 on a still shell
+    // (Joel's keys on his 60 Hz screen, 17 Nov). A Timer starts the blink
+    // rather than a pause leading it: Qt times a Timer alone apart from
+    // frames, while a pause inside the blink's animation keeps it ticking
+    // on every frame.
     property int fade: 800
     property int stopsAfter: 15000
     // Only a caret drawn blinks, so normal asks for no frames.
@@ -882,8 +890,10 @@ Item {
         blinking.stop();
         caretLight = 1;
         if (blinks) {
-            blinking.start();
+            resting.restart();
             stilled.restart();
+        } else {
+            resting.stop();
         }
     }
     onBlinksChanged: woken()
@@ -911,9 +921,16 @@ Item {
     }
 
     Timer {
+        id: resting
+        interval: prompt.fade
+        onTriggered: blinking.start()
+    }
+
+    Timer {
         id: stilled
         interval: prompt.stopsAfter
         onTriggered: {
+            resting.stop();
             blinking.stop();
             prompt.caretLight = 1;
         }

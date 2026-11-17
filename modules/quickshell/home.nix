@@ -1072,8 +1072,9 @@ in
       default = 800;
       description = ''
         How long the launcher's caret takes to fade out, and again to come
-        back, in milliseconds, as kitty's cursor_blink_interval; 0 holds it
-        steady.
+        back, in milliseconds, as kitty's cursor_blink_interval, after
+        resting lit for as long as the line opens and after each key; 0
+        holds it steady.
       '';
     };
     stopsAfter = lib.mkOption {

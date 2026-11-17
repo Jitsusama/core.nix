@@ -138,6 +138,10 @@ in
             given = given ++ [
               "QMLPROFILER=${lib.getExe' graphical.pkgs.qt6.qtdeclarative "qmlprofiler"}"
             ];
+            # Joel's caret rather than the checks' steady one, since what
+            # it draws while he types is part of what a key waits for
+            # (docs/testing.md).
+            shell.caret.fade = lib.mkForce (account graphical).jitsusama.quickshell.caret.fade;
           };
         };
       });

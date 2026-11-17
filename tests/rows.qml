@@ -426,6 +426,25 @@ ShellRoot {
                 fade: 100
                 stopsAfter: 600
             }
+            // A modal line just typed in, whose caret holds lit and still
+            // for a fade before it blinks, so a run of keys draws only
+            // their own frames.
+            Prompt {
+                id: rester
+                width: root.panel
+                modal: true
+                fade: 300
+                stopsAfter: 5000
+            }
+            // A modal line that stops blinking, as the launcher's does in
+            // normal, while its caret rests.
+            Prompt {
+                id: hider
+                width: root.panel
+                modal: true
+                fade: 300
+                stopsAfter: 5000
+            }
             // A list's gutter beside three rows in view, the cursor on the
             // second, as normal draws it, with a slot to spare.
             Gutter {
@@ -1707,6 +1726,45 @@ ShellRoot {
         }
     }
 
+    // Watches the resting line through a key in its rest: halfway through,
+    // its caret is lit and asks for no frames, and a key there, as the
+    // field's keys wake it, holds it a whole fade from that key; past
+    // that, it blinks. The line that stops blinking in its rest never
+    // blinks. Each step waits through part of the rester's 300 ms fade.
+    property bool rested: false
+    Timer {
+        id: restWatch
+        property int step: 0
+        readonly property var waits: [150, 250, 350]
+        interval: waits[step]
+        running: true
+        onTriggered: {
+            let failed = "";
+            if (step < 2 && (rester.blinkingNow || rester.caretLight !== 1))
+                failed = `the caret blinked within a fade of its key, at step ${step}: blinking `
+                    + `${rester.blinkingNow}, lit ${rester.caretLight}`;
+            else if (step === 2 && !rester.blinkingNow)
+                failed = "the caret never blinked once its rest was over";
+            else if (step === 2 && hider.blinkingNow)
+                failed = "a caret that stopped blinking in its rest blinked once it was over";
+            if (failed !== "") {
+                console.warn(`FAIL ${failed}`);
+                Qt.callLater(() => Qt.exit(1));
+                return;
+            }
+            if (step === 0) {
+                rester.woken();
+                hider.modal = false;
+            }
+            if (step === 2) {
+                root.rested = true;
+                return;
+            }
+            step += 1;
+            restart();
+        }
+    }
+
     // Watches the selected row with both cut, a little faster than a
     // frame's worth of rest, until its name has read on and then what it
     // is has, and fails if both are off their start at once or either
@@ -1791,7 +1849,8 @@ ShellRoot {
                 console.warn(`FAIL ${failed}: ${JSON.stringify(now)} from ${from}`);
                 turns.stop();
                 Qt.callLater(() => Qt.exit(1));
-            } else if (turns.named && turns.sided && turns.cleared && root.blinkHeld) {
+            } else if (turns.named && turns.sided && turns.cleared && root.blinkHeld
+                && root.rested) {
                 turns.stop();
                 Qt.callLater(() => Qt.exit(0));
             }

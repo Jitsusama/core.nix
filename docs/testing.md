@@ -500,7 +500,13 @@ shell says it, then each part's median by key. The line splits a search's
 time before searching by what it set, and its rows by matching, ordering,
 making and spots, with how many choices were looked at, so the part a key
 spends on more than its letters is named. Its sides run as the openings'
-do. A run given `LAB_PROFILE = "1"; QS_GIVEN = "--debug 3768";` holds Qt's
+do. Its caret is Joel's, where the other launcher checks hold it steady,
+since what the caret draws while he types is part of what a key waits for.
+While it faded from each key on, the shell drew every frame and a key
+waited for niri's frame callback: a median 21 ms for its frame in the lab,
+36 to its frame in all, and 7.5 against 2 for Joel's keys. Resting lit for
+a fade after each key, it waited 1, 16 to 18 in all (2026-11-17). A run given
+`LAB_PROFILE = "1"; QS_GIVEN = "--debug 3768";` holds Qt's
 profiler on the shell and prints the bindings, handlers and functions that
 took the most of their own time in the launcher's searches and in each of
 their parts, before, lists, rows and answers, as the key's line splits them.
