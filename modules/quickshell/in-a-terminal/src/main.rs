@@ -37,7 +37,9 @@
 //! nothing exits 66; a shell that doesn't answer 69; an act asked
 //! about and answered no, or with no terminal to ask on and no `--yes`,
 //! or a place the launcher didn't get into, as Passwords refuses a walk
-//! from outside, 77; an act the shell failed at 1.
+//! from outside, or an act the shell refused as it ran it, as a yes to a
+//! secret ask without Joel's own key press, 77; an act whose daemon had
+//! no answer to give 69 too; an act the shell failed at 1.
 
 mod asking;
 mod layout;
@@ -127,9 +129,15 @@ fn help() -> Help {
                 .option("--yes", "does an act that asks first, unasked")
                 .exit(Exit::Failed, "the shell failed at it")
                 .exit(Exit::NotFound, "a step named nothing")
-                .exit(Exit::Unavailable, "the shell isn't answering")
+                .exit(
+                    Exit::Unavailable,
+                    "the shell, or the act's daemon, isn't answering",
+                )
                 .exit(Exit::Bug, "the shell asked again once told yes")
-                .exit(Exit::Refused, "answered no, or no one to ask"),
+                .exit(
+                    Exit::Refused,
+                    "answered no, no one to ask, or the shell refused it",
+                ),
         )
         .subcommand(
             Help::new("completion", "writes a shell's completion")
@@ -336,10 +344,17 @@ fn done(qs: &str, steps: &[String], said: &str, yes: bool, words: &Words) -> Res
             let name = names.last().map_or("", String::as_str);
             return Err(Failure::new(Exit::Refused, words.unopened(name)));
         }
-        if let Some(why) = text("refused") {
-            let names = asking::strings(answer.get("in"));
-            let name = names.last().map_or("", String::as_str);
-            return Err(Failure::new(Exit::Refused, words.refused(name, &why)));
+        // An act the shell refused as it ran it, or whose daemon had no
+        // answer to give, which an agent may ask again (5GLTPH, 2026-11-16).
+        for (key, exit) in [
+            ("refused", Exit::Refused),
+            ("unavailable", Exit::Unavailable),
+        ] {
+            if let Some(why) = text(key) {
+                let names = asking::strings(answer.get("in"));
+                let name = names.last().map_or("", String::as_str);
+                return Err(Failure::new(exit, words.refused(name, &why)));
+            }
         }
         if answer.get("failed").and_then(Value::as_bool) == Some(true) {
             let name = steps.last().map_or("", String::as_str);
@@ -454,9 +469,25 @@ mod tests {
         .expect_err("a withheld act isn't done");
         assert_eq!(failure.exit, Exit::Refused);
         assert_eq!(
-            said.refused("Kiln", "not without your own key press"),
+            failure.what,
             "Kiln not done \u{b7} not without your own key press"
         );
+    }
+
+    #[test]
+    fn an_act_whose_daemon_had_no_answer_exits_unavailable() {
+        let said = Words::from_value(&serde_json::json!({"terminal": {
+            "refused": "{name} not done \u{b7} {why}"}}));
+        let failure = done(
+            &asking::stand_in::qs("unavailable"),
+            &words(&["Network", "Whimbrel"]),
+            "",
+            true,
+            &said,
+        )
+        .expect_err("an act nothing answered isn't done");
+        assert_eq!(failure.exit, Exit::Unavailable);
+        assert_eq!(failure.what, "Whimbrel not done \u{b7} no answer");
     }
 
     #[test]

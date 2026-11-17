@@ -379,7 +379,7 @@ pub mod stand_in {
     use std::{env, fs, process};
 
     /// Each stand-in's name and the answer it prints.
-    const ANSWERS: [(&str, &str); 7] = [
+    const ANSWERS: [(&str, &str); 8] = [
         (
             "missed-reading",
             r#"{"missing":"speed","near":[],"in":["Network","Office"],"reading":true}"#,
@@ -401,6 +401,10 @@ pub mod stand_in {
         (
             "refused",
             r#"{"refused":"not without your own key press","in":["Asks","Kiln"]}"#,
+        ),
+        (
+            "unavailable",
+            r#"{"unavailable":"no answer","in":["Network","Whimbrel"]}"#,
         ),
     ];
 

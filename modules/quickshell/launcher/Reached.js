@@ -22,3 +22,14 @@ function reached(held, ids) {
 function refused(told) {
     return told.find(why => why !== "") ?? "";
 }
+
+// What `launcher do` is answered for an act walked in `names`, from why it
+// was refused (`refused`): done; unavailable where its daemon had no
+// answer to give, `noAnswer` in the launcher's words, so the terminal
+// says the shell isn't answering and an agent may ask again; else refused.
+function answered(why, names, noAnswer) {
+    if (why === "") {
+        return { done: true, in: names };
+    }
+    return why === noAnswer ? { unavailable: why, in: names } : { refused: why, in: names };
+}

@@ -1603,7 +1603,7 @@ Scope {
         const act = returnOf(target);
         // Said done only where nothing it ran refused it (walkedRun).
         const ran = why => why === "" ? { done: true, said: said }
-            : { done: false, said: `${said} not done: ${why}` };
+            : { done: false, said: `${said}: ${why}` };
         if (act.given) {
             if ((words ?? "") === "")
                 return { error: `${said} takes words: ${act.ask ?? ""}` };
@@ -1631,6 +1631,10 @@ Scope {
     // act (toldNot), so the walk says why rather than that it was done, as
     // a yes to a secret ask walked so is withheld (launcher/Reached.js).
     property var walkTold: null
+    function walkRefused(why) {
+        if (walkTold !== null)
+            walkTold = walkTold.concat([why]);
+    }
     function walkedRun(run) {
         walkTold = [];
         try {
@@ -1856,9 +1860,9 @@ Scope {
                 path: ids
             };
         }
-        // Said done only where nothing it ran refused it, else `refused`
-        // and why, which the terminal says as a refusal (walkedRun).
-        const ran = why => why === "" ? { done: true, in: names } : { refused: why, in: names };
+        // Said done only where nothing it ran refused it, else why, which
+        // the terminal says as a refusal (walkedRun, Reached.answered).
+        const ran = why => Reached.answered(why, names, Words.field.becoming?.noAnswer ?? "");
         if (act.given) {
             if (words === "")
                 return { takes: act.ask ?? "", in: names };
@@ -5542,8 +5546,7 @@ Scope {
     // with none, that it hasn't been yet: said now while the launcher is
     // open, else as it next opens, as an act that shut it is told.
     function toldNot(name, act, why) {
-        if (walkTold !== null)
-            walkTold = walkTold.concat([why]);
+        walkRefused(why);
         const words = Words.field.becoming ?? {};
         const what = (why === "" ? words.late : words.refused) ?? "";
         toldThat(what.replace("{object}", name)

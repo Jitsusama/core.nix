@@ -122,6 +122,11 @@ export function outcome(printed: string): string {
     const row = ran.said ? ` (${ran.said})` : "";
     return `Not done yet: it's disruptive, so the launcher shows it as a row${row} and Return does it.`;
   }
+  // One the launcher ran and was refused, or one that didn't get where it
+  // went, as a yes to a secret ask it withholds without Joel's key press.
+  if (ran.done === false) {
+    return `Not done${ran.said ? `: ${ran.said}` : "."}`;
+  }
   return `The launcher answered something unexpected: ${printed}`;
 }
 
