@@ -130,7 +130,11 @@ impl Measures {
             failed: per_hundred(failed, sent),
             signal: counts.last().and_then(|counts| counts.signal),
             moving: moving(&kept.counts, now),
-            room: None,
+            room: counts
+                .iter()
+                .rev()
+                .find_map(|counts| counts.link)
+                .map(|kbps| kbps / 1000),
         })
     }
 }
@@ -328,9 +332,12 @@ fn said(on: &Joined, measured: &Measured, call: bool) -> String {
     let signal = measured
         .signal
         .map_or("unread".into(), |signal| format!("{signal} dBm"));
+    let moving = measured
+        .moving
+        .map_or(String::new(), |moving| format!("; moving {moving} Mbit/s"));
     format!(
         "{} on {}: gateway {} at p50, {} at p95, {:.1}% of {} echoes lost; \
-         {:.2} in 100 frames sent again, {:.2} lost; signal {signal}{}",
+         {:.2} in 100 frames sent again, {:.2} lost; signal {signal}{moving}{}",
         on.card,
         on.point,
         ms(measured.p50),
@@ -360,31 +367,41 @@ fn within<T: Copy>(kept: &VecDeque<(Instant, T)>, now: Instant) -> impl Iterator
         .map(|(_, measured)| *measured)
 }
 
-/// What the card moved both ways over the span, in Mbit/s: each rise in
-/// its byte counts from one reading to the next, over the time from the
-/// first reading saying them to the last. A reading lower than the one
-/// before is a new join, whose bytes before it count nothing.
+/// How far apart two readings may be for what the card moved between them
+/// to count: further, and the card may have been on another point between.
+const APART: Duration = Duration::from_secs(5);
+
+/// How long the readings that count must cover for what the card moved to
+/// say anything, so a few seconds' burst isn't taken for the span's.
+const COUNTED: Duration = Duration::from_secs(30);
+
+/// What the card moved both ways together over the span, in Mbit/s: each
+/// rise in its byte counts from one reading to the next, over the time
+/// between them, where they're no more than `APART`. A reading lower than
+/// the one before is a new join, and the second before it counts nothing.
 fn moving(kept: &VecDeque<(Instant, Counts)>, now: Instant) -> Option<u32> {
     let said: Vec<(Instant, u64)> = kept
         .iter()
         .filter(|(at, _)| now.duration_since(*at) <= SPAN)
         .filter_map(|(at, counts)| Some((*at, counts.moved?)))
         .collect();
-    let (first, last) = (said.first()?.0, said.last()?.0);
-    let micros = last.duration_since(first).as_micros();
-    if micros == 0 {
-        return None;
-    }
-    let bytes = said
+    let (bytes, counted) = said
         .windows(2)
         .filter_map(|pair| {
-            let [(_, before), (_, after)] = pair else {
+            let [(was, before), (at, after)] = pair else {
                 return None;
             };
-            after.checked_sub(*before)
+            let between = at.duration_since(*was);
+            (between <= APART).then_some((after.checked_sub(*before)?, between))
         })
-        .fold(0, u64::saturating_add);
+        .fold((0, Duration::ZERO), |(bytes, counted), (more, between)| {
+            (u64::saturating_add(bytes, more), counted + between)
+        });
+    if counted < COUNTED {
+        return None;
+    }
     // Bits a microsecond are megabits a second, rounded to the nearest.
+    let micros = counted.as_micros();
     let megabits = (u128::from(bytes) * 8 + micros / 2) / micros;
     Some(u32::try_from(megabits).unwrap_or(u32::MAX))
 }
