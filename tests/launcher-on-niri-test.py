@@ -3205,21 +3205,7 @@ def test_a_marks_click_draws_now_from_what_was_kept_on_its_row(shell: Shell) -> 
     only if Now's rows are listed as they stand rather than as last made. The Work Network's mark,
     alone in the margin once the look's is gone, is centred along the top.
     """
-    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
-    looks = state / "pi/agentic-harness.pi/looks"
-    looks.mkdir(parents=True, exist_ok=True)
-    look = looks / "kept-waiting.json"
-    # It came just now, since one three days old goes quiet (launcher/Looks.js).
-    told = {"v": 1, "id": "kept-waiting", "title": "Kept Waiting", "target": "/etc/hostname",
-            "kind": "file", "state": "waiting", "at": now("-u", "+%FT%TZ")}  # fmt: skip
-    launcher_on_niri.laid_whole(look, json.dumps(told))
-    assert "Kept Waiting" in looks_listed(shell, "Kept Waiting"), "the look was never heard"
-    # Now opened once by its chord and closed, so it's kept whatever the binds warm.
-    shell.as_account(shell.ipc("collection", "on"))
-    shell.launcher_ready()
-    shell.close_launcher()
-    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
-    launcher_on_niri.laid_whole(look, json.dumps(told | {"state": "cleared"}))
+    look = now_kept_while_a_look_waits(shell)
     said = Path(os.environ["HOME"]) / "warp-cli"
     contract = Path(os.environ["WARP_CONTRACT"])
     said.mkdir()
@@ -3262,11 +3248,9 @@ def test_a_marks_click_draws_now_from_what_was_kept_on_its_row(shell: Shell) -> 
             return came(shown) and "filled" in opened[0]
 
         shell.launcher_until(filled_in)
-        sides = [
-            dict(zip(each["keys"], each["sides"], strict=True))
-            for each in (first, opened[0]["filled"])
-        ]
-        told_first, told_filled = (each.get("on:waitingOnYou") for each in sides)
+        told_first, told_filled = (
+            side_of(each, "on:waitingOnYou") for each in (first, opened[0]["filled"])
+        )
         assert told_first == told_filled, f"For You's row said {told_first!r}, then {told_filled!r}"
         shell.launcher_until(
             lambda shown: (
@@ -3278,6 +3262,34 @@ def test_a_marks_click_draws_now_from_what_was_kept_on_its_row(shell: Shell) -> 
     finally:
         look.unlink()
         warp_forgotten(said)
+
+
+def now_kept_while_a_look_waits(shell: Shell) -> Path:
+    """Keep Now, by its chord, while a look waits, then clear the look shut; give its file."""
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    looks = state / "pi/agentic-harness.pi/looks"
+    looks.mkdir(parents=True, exist_ok=True)
+    look = looks / "kept-waiting.json"
+    # It came just now, since one three days old goes quiet (launcher/Looks.js).
+    told = {"v": 1, "id": "kept-waiting", "title": "Kept Waiting", "target": "/etc/hostname",
+            "kind": "file", "state": "waiting", "at": now("-u", "+%FT%TZ")}  # fmt: skip
+    launcher_on_niri.laid_whole(look, json.dumps(told))
+    try:
+        assert "Kept Waiting" in looks_listed(shell, "Kept Waiting"), "the look was never heard"
+        shell.as_account(shell.ipc("collection", "on"))
+        shell.launcher_ready()
+        shell.close_launcher()
+        shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    except BaseException:
+        look.unlink()
+        raise
+    launcher_on_niri.laid_whole(look, json.dumps(told | {"state": "cleared"}))
+    return look
+
+
+def side_of(rows: Json, key: str) -> str | None:
+    """Give what a row says at its right in rows said as an opening's are (rowsSaid)."""
+    return dict(zip(rows["keys"], rows["sides"], strict=True)).get(key)
 
 
 def healed_in(reports: list[str]) -> bool:
