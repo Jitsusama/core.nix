@@ -101,7 +101,12 @@ impl Shared {
 
     /// Has the daemon read what the watch `asked` wants now it's begun.
     pub(super) fn watch_begun(&self, asked: &Ask) {
-        let _ = asked;
+        let Some(begun) = self.begun.get() else {
+            return;
+        };
+        if let Some(wanted) = wanted_of(asked).filter(|wanted| wanted.watching) {
+            begun(&wanted);
+        }
     }
 
     /// What else health says for `asked`, when it's health.
@@ -114,31 +119,31 @@ impl Shared {
 /// What a get, a list or a watch names, or nothing for another ask.
 fn wanted_of(asked: &Ask) -> Option<Wanted<'_>> {
     let wanted = match asked {
-            Ask::Get { keys, .. } => Wanted {
-                kinds: &[],
-                keys: Some(keys),
-                places: None,
-                watching: false,
-            },
-            Ask::List { kinds, places, .. } => Wanted {
-                kinds,
-                keys: None,
-                places: places.as_deref(),
-                watching: false,
-            },
-            Ask::Watch {
-                kinds,
-                keys,
-                places,
-                ..
-            } => Wanted {
-                kinds,
-                keys: keys.as_deref(),
-                places: places.as_deref(),
-                watching: true,
-            },
-            _ => return None,
-        };
+        Ask::Get { keys, .. } => Wanted {
+            kinds: &[],
+            keys: Some(keys),
+            places: None,
+            watching: false,
+        },
+        Ask::List { kinds, places, .. } => Wanted {
+            kinds,
+            keys: None,
+            places: places.as_deref(),
+            watching: false,
+        },
+        Ask::Watch {
+            kinds,
+            keys,
+            places,
+            ..
+        } => Wanted {
+            kinds,
+            keys: keys.as_deref(),
+            places: places.as_deref(),
+            watching: true,
+        },
+        _ => return None,
+    };
     Some(wanted)
 }
 

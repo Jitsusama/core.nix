@@ -285,6 +285,19 @@ fn serve(given: &[String]) -> Result<(), Failure> {
             }
         }
     }));
+    // What a watch reads after its answer begins only once the watch is
+    // held, so each read that asks whether it's watched finds it: begun
+    // as it was asked, the session's read was skipped now and then, and an
+    // open page's bookmark stayed listed (RCTRF8, 2026-11-17).
+    shared.served().begun(Box::new({
+        let shared = Arc::downgrade(&shared);
+        move |wanted| {
+            if let Some(shared) = shared.upgrade() {
+                let (kinds, keys) = (wanted.kinds.to_vec(), wanted.keys.map(<[String]>::to_vec));
+                std::thread::spawn(move || begin(&shared, &kinds, keys.as_deref()));
+            }
+        }
+    }));
     shared.served().health_too(Box::new({
         let shared = Arc::downgrade(&shared);
         move || shared.upgrade().map_or(json!({}), |shared| health(&shared))
@@ -722,9 +735,6 @@ fn read_for(shared: &Arc<Shared>, wanted: &Wanted<'_>) {
             taken::make_ahead(shared, &mut daemon, keys);
         }
     }
-    let (shared, kinds) = (Arc::clone(shared), kinds.to_vec());
-    let keys = keys.map(<[String]>::to_vec);
-    std::thread::spawn(move || begin(&shared, &kinds, keys.as_deref()));
 }
 
 /// How each source stands, by its name: the entries, and each list's or
