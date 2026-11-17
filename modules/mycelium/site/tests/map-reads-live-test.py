@@ -13,10 +13,12 @@ since that is how the map froze on "reading" unseen. The server, the browser
 and the tab are modules/local-sites/tests/live_page.py's.
 """
 
+import copy
 import json
 import os
+import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from live_page import LOOKS, SIZES, Opened, Served, serving
@@ -39,8 +41,14 @@ BACK_MS = 12000
 REDRAWN_MS = 2500
 # What node.json's realm comes to on the map, every part of the count.
 COUNTED = "8 cells, 2 moving, 1 stuck"
+CELLS = 8
 # The browser's own line for a feed that couldn't connect, once the server is gone.
 UNREACHED = "WebSocket connection to"
+# The twin's size, past which the map once misdrew, and its orchestrations.
+TWIN_CELLS = 10_000
+TWIN_NETWORKS = 200
+# How long a twin of ten thousand cells may take to read and draw.
+TWIN_MS = 60_000
 
 
 @pytest.fixture
@@ -48,11 +56,81 @@ def mycelium_node(tmp_path: Path) -> Iterator[StandIn]:
     yield from standing_in(tmp_path / "node.sock", "node", HERE / "node.json")
 
 
+def twin() -> dict[str, list[dict[str, object]]]:
+    """Node.json's realm grown to TWIN_CELLS sessions in TWIN_NETWORKS orchestrations.
+
+    Every tenth orchestration nests in the one before it, and every seventh
+    has no leader, as a network does when its cells hear its group while
+    none answers to it, titled by its quest as the node titles one.
+    """
+    reading = json.loads((HERE / "node.json").read_text())["kinds"]
+    session = next(cell for cell in reading["cell"] if cell["type"] == "session")
+    network = next(each for each in reading["network"] if each["shape"] == "orchestration")
+    networks, cells = [], []
+    for n in range(TWIN_NETWORKS):
+        address = f"skf{n:03d}"
+        networks.append(
+            {
+                **copy.deepcopy(network),
+                "key": f"network:orchestration.{address}",
+                "name": f"orchestration.{address}",
+                "short": f"skiff-{n}",
+                "title": f"Rig Skiff {n} for the Season",
+                "within": f"orchestration.skf{n - 1:03d}" if n % 10 else None,
+                "cells": [],
+            }
+        )
+    per = TWIN_CELLS // TWIN_NETWORKS
+    for n in range(TWIN_CELLS):
+        hub = networks[n // per]
+        name = f"T{n:05d}"
+        leads = [hub["name"]] if n % per == 0 and (n // per) % 7 else []
+        hub["cells"].append(name)
+        cells.append(
+            {
+                **copy.deepcopy(session),
+                "key": f"cell:{name}",
+                "id": f"01a1a877-0000-7000-8000-{n:012d}",
+                "name": name,
+                "quest": f"QEST-20261116-{name}",
+                "leads": leads,
+                "networks": [hub["name"]],
+            }
+        )
+    machines = [each for each in reading["network"] if each["shape"] == "machines"]
+    return {**reading, "network": machines + networks, "cell": cells}
+
+
+def serve(folder: Path, node: StandIn) -> Iterator[Served]:
+    """Serve the map through the real server beside `node`, through its feed as home.nix declares it."""
+    feed = {"socket": str(node.path), "kinds": json.loads(os.environ["NODE_KINDS"])}
+    with serving(folder, {"mycelium": os.environ["MYCELIUM_SITE"]}, {"node": feed}) as served:
+        yield served
+
+
 @pytest.fixture
 def mycelium_served(tmp_path: Path, mycelium_node: StandIn) -> Iterator[Served]:
-    node = {"socket": str(mycelium_node.path), "kinds": json.loads(os.environ["NODE_KINDS"])}
-    with serving(tmp_path, {"mycelium": os.environ["MYCELIUM_SITE"]}, {"node": node}) as served:
-        yield served
+    yield from serve(tmp_path, mycelium_node)
+
+
+@pytest.fixture
+def twin_served(tmp_path: Path) -> Iterator[Served]:
+    stand_in = StandIn(tmp_path / "twin.sock", "node", twin()).start()
+    yield from serve(tmp_path, stand_in)
+    stand_in.leave()
+
+
+def reach(browser: Browser, root: str, timeout: int = PACE_MS) -> dict[str, Any]:
+    """Say what the map opened with `?reach` says of whether it reaches every cell."""
+    opened = Opened(browser, f"{root}mycelium/?reach", SIZES[-1], "dark")
+    expect(opened.page.locator("html"), "the map never said its reach").to_have_attribute(
+        "data-reach", re.compile("."), timeout=timeout
+    )
+    said: dict[str, Any] = json.loads(
+        opened.page.locator("html").get_attribute("data-reach") or "{}"
+    )
+    opened.close()
+    return said
 
 
 @pytest.fixture
@@ -86,6 +164,26 @@ def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_nod
     the_map_counts(page, COUNTED, "the map miscounted the realm")
     mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
     the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the moved cell wasn't drawn moving")
+
+
+def test_the_map_reaches_every_cell_but_the_receptor_it_draws_alone(
+    browser: Browser, mycelium_served: Served
+) -> None:
+    # The map draws calls@kestrel, a receptor, as working alone until
+    # receptors sit at the realm's edge; the change that puts them there
+    # expects no failure here.
+    root, _ = mycelium_served
+    said = reach(browser, root)
+    assert said["cells"] == CELLS, f"the map judged {said['cells']} of node.json's {CELLS} cells"
+    alone = {"cell": "calls@kestrel", "orchestration": None, "owner": "calls@kestrel"}
+    assert said["failures"] == [{**alone, "why": "alone"}], f"the map misses {said['failures']}"
+
+
+def test_the_map_reaches_every_cell_of_ten_thousand(browser: Browser, twin_served: Served) -> None:
+    root, _ = twin_served
+    said = reach(browser, root, TWIN_MS)
+    assert said["cells"] == TWIN_CELLS, f"the map judged {said['cells']} of {TWIN_CELLS} cells"
+    assert said["failures"] == [], f"the map misses {said['failures'][:5]} of {said['count']}"
 
 
 def test_a_cell_that_goes_leaves_the_map(mycelium_opened: Opened, mycelium_node: StandIn) -> None:

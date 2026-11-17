@@ -157,6 +157,28 @@ let
   # Rows naming a site nothing is mounted at.
   unmounted = lib.attrNames (removeAttrs cfg.rows (lib.attrNames cfg.mounts));
   roots = config.jitsusama.repos.roots or null;
+  # Whether the map reaches every cell of the realm (modules/mycelium/site/
+  # map-check.sh): the map's live-page test, pointed at the page this
+  # machine serves, which the hourly card counts.
+  mapCheck = pkgs.writeShellApplication {
+    name = "mycelium-map-check";
+    runtimeInputs = [ pkgs.jq ];
+    runtimeEnv.PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+    text =
+      builtins.replaceStrings
+        [ "@python@" "@test@" "@live_page@" ]
+        [
+          (lib.getExe (
+            pkgs.python3.withPackages (python: [
+              python.playwright
+              python.pytest
+            ])
+          ))
+          "${../mycelium/site/tests/live-reach-test.py}"
+          "${./tests}"
+        ]
+        (builtins.readFile ../mycelium/site/map-check.sh);
+  };
   build = lib.escapeShellArgs [
     (lib.getExe pkgs.python3)
     "${./home/home.py}"
@@ -452,6 +474,8 @@ in
       Install.WantedBy = [ "paths.target" ];
     };
   };
+
+  config.home.packages = lib.optional (realm != null) mapCheck;
 
   # The config the unit serves, where its help's example reads it, so
   # what it serves can be read without finding its path in the store.

@@ -4286,6 +4286,8 @@
       const started = performance.now();
       // model.ts has written every cut title's ellipsis as three full stops.
       current = model(now);
+      // What was made of the reading, for reach.ts to judge beside it.
+      document.dispatchEvent(new CustomEvent("mycelium:modelled", { detail: { now, model: current } }));
       sow(current);
       if (!findLine.hidden) refind({ keep: true });
       if (first) {
