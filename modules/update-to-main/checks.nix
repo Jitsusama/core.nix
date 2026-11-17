@@ -121,4 +121,24 @@ in
           refusesOnAMac "someone is at the machine"
         )
       );
+  # launchd gives a job 256 open files unless it says otherwise, and git
+  # opens every pack it reads: on 16 November a Mac's update failed with
+  # "Could not read" an object, its main's checkout holding about 489
+  # packs. So the daemon and the follower each open up to 8192, their hard
+  # limit left as launchd's unlimited one, so nothing they start gets less.
+  update-to-main-opens-enough-files-on-a-mac =
+    holds "update-to-main-opens-enough-files-on-a-mac"
+      "A Mac's update-to-main daemon or follower keeps launchd's 256 open files, too few for git to read a checkout of many packs."
+      (
+        lib.all
+          (
+            job:
+            (job.SoftResourceLimits.NumberOfFiles or 0) >= 8192
+            && (job.HardResourceLimits.NumberOfFiles or null) == null
+          )
+          [
+            daemon
+            follows
+          ]
+      );
 }
