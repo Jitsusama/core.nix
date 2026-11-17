@@ -103,3 +103,39 @@ fn one_watch_hears_the_entries_and_the_asks_but_not_the_entries_rows() {
     assert_eq!(answer["state"], "ran", "the answer: {answer}");
     nowhere(&running);
 }
+
+#[test]
+fn entries_listed_after_the_watch_opens_are_told_to_it() {
+    // The shell opens its watch as it starts, before any manager is
+    // listed, so on a machine entries reach the Passwords place only as
+    // changes told to that watch; were they kept from it, the place
+    // would show no entries wherever asks are on.
+    let running = Running::releasing("asks-entries-later", &[LISTED]);
+    let mut client = running.client();
+    client.say(&json!({"id": "all", "ask": "watch", "kind": ["entry", "row"], "place": "asks"}));
+    let first = client.hear();
+    assert!(
+        first.get("error").is_none(),
+        "the watch was refused: {first}"
+    );
+    let entry = |record: &Value| {
+        record["key"]
+            .as_str()
+            .is_some_and(|key| key.starts_with("entry:"))
+    };
+    assert!(
+        !first["records"].as_array().into_iter().flatten().any(entry),
+        "the entries were listed before the watch opened, so it can't show them told: {first}"
+    );
+    let listed = client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    assert!(
+        listed.get("error").is_none(),
+        "the list was refused: {listed}"
+    );
+    loop {
+        let heard = client.hear();
+        if heard["id"] == "all" && heard["changed"].as_array().into_iter().flatten().any(entry) {
+            break;
+        }
+    }
+}
