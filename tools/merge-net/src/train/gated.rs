@@ -37,7 +37,19 @@ fn names_a_failure(words: &str) -> bool {
         || words.contains("Reason: builder failed with exit code")
 }
 
-/// The words of the gate whose log is at `log` that speak for its run.
+/// What nix-offload says when it sets aside a replay of the change onto a
+/// newer main that failed, since the failure may be main's, and runs the
+/// change again on its own base.
+const RUNS_AGAIN: &str = "so the change runs again on its own base";
+
+/// The words of the gate whose log is at `log` that speak for its run:
+/// those after the last replay nix-offload set aside, any byte that isn't
+/// UTF-8 read as a stand-in rather than losing the rest.
 pub(super) fn words_of(log: &Path) -> String {
-    fs::read_to_string(log).unwrap_or_default()
+    let bytes = fs::read(log).unwrap_or_default();
+    let words = String::from_utf8_lossy(&bytes);
+    words
+        .rfind(RUNS_AGAIN)
+        .map_or(&*words, |at| &words[at + RUNS_AGAIN.len()..])
+        .to_owned()
 }
