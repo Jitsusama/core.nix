@@ -71,10 +71,12 @@ fn an_offline_run_goes_to_a_lent_builder_online_and_locked() {
             "cargo {line} wasn't sent as cargo {sent}, asked offline {offline}"
         );
     }
-    // CARGO_NET_OFFLINE here doesn't go there, so its run goes locked too.
+    // CARGO_NET_OFFLINE here doesn't go there, so a run it sets to true
+    // goes locked too. Any other value leaves the run's words as they are.
     for (value, sent, offline) in [
         (Some("true"), "test -p a --locked", true),
         (Some("false"), "test -p a", false),
+        (Some("yes"), "test -p a", false),
         (Some(""), "test -p a", false),
         (None, "test -p a", false),
     ] {
