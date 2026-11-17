@@ -387,7 +387,12 @@
     const orchestrations = now.networks.filter((n) => n.shape === "orchestration");
     const shapes = shapesFor(orchestrations.map((n) => n.name));
     const hubs = new Map();
-    for (const n of orchestrations) {
+    // An orchestration the node left untitled is named by its quest's
+    // network, the same id on the quest's side, so it never reads as a
+    // bare id where a title is known.
+    const questTitle = new Map(now.networks.filter((n) => n.title && n.name.startsWith("quest.")).map((n) => [n.name.slice("quest.".length), n.title]));
+    for (const o of orchestrations) {
+      const n = o.title ? o : { ...o, title: questTitle.get(o.name.slice(o.name.indexOf(".") + 1)) || null };
       const [name, carries] = splitTitle(n.title || n.short || n.name);
       hubs.set(n.name, {
         key: n.name,
@@ -459,6 +464,8 @@
       s.loose = loose.get(on);
       s.loose.cells.push(s);
     }
+    // Where they run is said only to tell two such groups apart.
+    if (loose.size === 1) for (const h of loose.values()) h.name = "Working alone";
     for (const h of loose.values()) hubs.set(h.key, h);
     for (const h of hubs.values()) h.lead = cells.find((s) => s.leads.includes(h.key)) || null;
     // A hub is placed by the machine most of its cells run on. That is
@@ -971,6 +978,11 @@
   let pos = new Map(); // each cell's place
   let near = null; // what the chosen thing touches: {ids, hubs, links}
   let hover = null;
+  // The machines the networks run on are a layer of their own, off until
+  // "m" or opening a machine puts it on: where a cell runs says nothing of
+  // the network it is part of, so the map is networks and cells alone.
+  let machinesShown = false;
+  const shownMachines = () => (machinesShown ? current.machines : []);
 
   // Each mark says which level the arrows walk it on and which network it
   // sits in, so a probe can judge the map by level from outside.
@@ -1142,14 +1154,16 @@
     pos = placed(m, L);
     near = chosen ? nearOf(chosen) : null;
     const folds = foldsNow();
-    if (drawnFor?.m === m && drawnFor.L === L && sameSet(folds, folded)) {
+    const same = drawnFor?.m === m && drawnFor.L === L && drawnFor.machines === machinesShown;
+    if (same && sameSet(folds, folded)) {
       restyle();
       drawnAgain();
       return;
     }
-    const marks = drawnFor?.m === m && drawnFor.L === L ? world.querySelector("g.nodes") : null;
+    const marks = same ? world.querySelector("g.nodes") : null;
     const was = folded;
-    drawnFor = { m, L };
+    drawnFor = { m, L, machines: machinesShown };
+    const machines = shownMachines();
     const cords = [];
     const hyphae = [];
     const cross = [];
@@ -1162,7 +1176,7 @@
     lineShapes = [];
     treeAdj = new Map();
     crossAdj = new Map();
-    for (const x of m.machines) {
+    for (const x of machines) {
       spots.set(`m:${x.name}`, L.machines.get(x.name));
       sizes.set(`m:${x.name}`, MACHINE_R);
     }
@@ -1206,6 +1220,8 @@
       if (h.within) {
         link(treeAdj, `h:${h.within}`, `h:${h.key}`);
         cords.push({ tag: "path", ...inked("m-cord", () => near.hubs.has(h.key) && near.hubs.has(h.within), quiet(h)), w: weight, line: opens(curve(L.at.get(h.within), at, 0.08), "net", h.key) });
+      } else if (!machinesShown) {
+        // With no machine drawn, a top network hangs from nothing.
       } else if ((tops.get(h.machine) || 0) > CORD_BUNDLE_OVER) {
         link(treeAdj, `m:${h.machine}`, `h:${h.key}`);
         const turn = (((L.angle.get(h.key) + Math.PI / 2) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
@@ -1221,7 +1237,7 @@
     // A machine feeding a network it isn't the root of draws its own cord
     // to the network's hub, weighted by the cells it runs there.
     for (const h of m.hubs.values()) {
-      if (h.within) continue;
+      if (h.within || !machinesShown) continue;
       for (const [machine, count] of h.feeds) {
         if (machine === h.machine || !L.machines.has(machine)) continue;
         link(crossAdj, `m:${machine}`, `h:${h.key}`);
@@ -1270,9 +1286,9 @@
       }
     }
     // Machines joined to each other: the link that keeps a realm one.
-    const machinesAt = m.machines.map((x) => L.machines.get(x.name));
+    const machinesAt = machines.map((x) => L.machines.get(x.name));
     for (let i = 1; i < machinesAt.length; i++) {
-      const [a, b] = [`m:${m.machines[i - 1].name}`, `m:${m.machines[i].name}`];
+      const [a, b] = [`m:${machines[i - 1].name}`, `m:${machines[i].name}`];
       link(treeAdj, a, b);
       const [p, q] = [machinesAt[i - 1], machinesAt[i]];
       const line = [p, [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2], q];
@@ -1280,7 +1296,7 @@
       cords.push({ tag: "path", ...inked("m-link", () => false), line });
     }
     if (!marks) {
-      m.machines.forEach((x) => nodes.push(machineMarkup(x, L.machines.get(x.name))));
+      machines.forEach((x) => nodes.push(machineMarkup(x, L.machines.get(x.name))));
       for (const h of m.hubs.values()) nodes.push(hubMarkup(h, L.at.get(h.key)));
       for (const s of m.cells) if (pos.has(s.id) && !isFolded(s)) nodes.push(cellMarkup(s, pos.get(s.id)));
     }
@@ -1340,7 +1356,7 @@
     // A machine's name is its mark, so it shows in full whatever is open,
     // as a hub's disc does; only when the choice touches it does it say
     // what it carries.
-    for (const x of m.machines) {
+    for (const x of shownMachines()) {
       const key = `m:${x.name}`;
       const far = near && !near.machines.has(x.name) && key !== pointed;
       const off = x.state !== "ready";
@@ -1739,7 +1755,7 @@
     if (c.kind === "machine") return `m:${c.id}`;
     return current?.hubs.has(c.id) ? `h:${c.id}` : null;
   };
-  const firstKey = () => (current.machines[0] ? `m:${current.machines[0].name}` : spots.keys().next().value);
+  const firstKey = () => (shownMachines()[0] ? `m:${shownMachines()[0].name}` : spots.keys().next().value);
   const pointing = () => view.contains(document.activeElement) || tree.contains(document.activeElement);
 
   // Where the keys rest, and the level they walk, said on the marks too.
@@ -1871,7 +1887,7 @@
   const topKeys = () => [...spots.keys()].filter((key) => key[0] !== "c");
   const levelWords = (key) => {
     const { hub } = levelOf(key);
-    if (key?.[0] !== "c") return "Arrows walk the machines and networks; Return goes in.";
+    if (key?.[0] !== "c") return `Arrows walk the ${machinesShown ? "machines and networks" : "networks"}; Return goes in.`;
     return `Arrows walk ${hub ? `the cells of ${hub.name}` : "the cells working alone"}; - comes back out.`;
   };
   // Into a network: the keys land on its cell nearest `around`, by
@@ -2091,7 +2107,7 @@
   };
 
   const wholeBox = () => {
-    const points = [...L.machines.values()];
+    const points = shownMachines().map((x) => L.machines.get(x.name));
     for (const h of current.hubs.values()) {
       const [x, y] = L.at.get(h.key);
       const r = L.disc.get(h.key);
@@ -2553,10 +2569,10 @@
         // The whole of the cord it hangs from comes into view too, out to
         // its machine or the network it branches from, so the line that was
         // clicked is never cut off at the edge.
-        const root = hub.within ? L.at.get(hub.within) : L.machines.get(hub.machine);
+        const root = hub.within ? L.at.get(hub.within) : machinesShown && L.machines.get(hub.machine);
         if (root) points.push(root);
         // So do the cords from every other machine feeding it.
-        if (!hub.within) for (const [x] of hub.feeds) if (L.machines.has(x)) points.push(L.machines.get(x));
+        if (!hub.within && machinesShown) for (const [x] of hub.feeds) if (L.machines.has(x)) points.push(L.machines.get(x));
       } else {
         const n = current.shared.find((x) => x.key === c.id);
         points = (n?.cells || []).map((s) => pos.get(s.id)).filter(Boolean);
@@ -2628,6 +2644,7 @@
   const apply = (animate) => {
     const c = fromHash();
     chosen = knows(c) ? c : null;
+    if (chosen?.kind === "machine") machinesShown = true;
     const key = keyOf(chosen);
     if (key) {
       pointed = key;
@@ -3152,6 +3169,28 @@
       if (n) return `<li><button type="button" class="row" data-go="net=${esc(n.key)}"><svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true"><path class="m-cross m-${n.shape}" d="M-11,4Q0,-8 11,4"/></svg><span class="what"><span class="name mono">${esc(n.short)}</span><span class="fact">${SHARED_WORD[n.shape]}, ${plural(n.cells.length, "cell")}</span></span></button></li>`;
       return "";
     });
+    // The networks its own sits within, the nearest first, so where it
+    // sits reads up to the top without the whole tree under each.
+    const above = [];
+    for (let h = s.hub?.within && m.hubs.get(s.hub.within); h; h = h.within && m.hubs.get(h.within)) above.push(hubRow(h));
+    // The cells it talks with, the most first, as the map's arcs draw them.
+    const own = `c:${s.address}`;
+    const talksWith = [...talk.entries()]
+      .map(([e, n]) => [e.split("|"), n])
+      .filter(([ends]) => ends.includes(own))
+      .map(([ends, n]) => [ends.find((end) => end !== own), n])
+      .filter(([end]) => end?.[0] === "c" && m.byAddress.has(end.slice(2)))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, TALKS_SHOWN)
+      .map(([end]) => cellRow(m.byAddress.get(end.slice(2))));
+    const where =
+      `<details class="fold where" data-keep="where"><summary>${TURN}<span>Where It Sits</span>` +
+      `<span class="sum mono">${esc(plural(networks.filter(Boolean).length, "network") + (talksWith.length ? `\u00a0\u00b7 talks with ${talksWith.length}` : ""))}</span></summary>` +
+      (box ? `<h3>Its Machine</h3><ul class="rows">${machineRow(box)}</ul>` : "") +
+      `<h3>Its Networks</h3><ul class="rows">${networks.join("")}${above.join("")}</ul>` +
+      `<h3>Talks With</h3>` +
+      (talksWith.length ? `<ul class="rows">${talksWith.join("")}</ul>` : `<p class="hint">No cell it has talked with lately.</p>`) +
+      `</details>`;
     const peer = `peer.${s.address.toLowerCase()}`;
     const lately = m.messages
       .filter((x) => x.from === s.address || (x.groups || []).includes(peer))
@@ -3174,7 +3213,7 @@
       glance(esc(purpose), `<span class="doing">${stateGlyph(s)}<span>${esc(cellDoing(s))}</span></span>`, cellHealth(s)) +
       launcherLink("cell", s.address, "Talk to It in the Launcher") +
       factList(facts) +
-      `<h3>Its Networks</h3><ul class="rows">${networks.join("")}</ul>` +
+      where +
       `<h3>Lately</h3>` +
       (lately.length ? `<ul class="lately">${lately.join("")}</ul>` : `<p class="hint">No message to or from it among the latest the node keeps.</p>`)
     );
@@ -3272,6 +3311,10 @@
       `${healthRow(`All ${NUMBER.format(all.length)} together`, all)}</ul>`
     );
   };
+  // A cell's machine, and what kind of machine it is.
+  const TALKS_SHOWN = 8;
+  const machineRow = (x) =>
+    `<li><button type="button" class="row" data-go="machine=${esc(x.name)}">${MACHINE_GLYPH}<span class="what"><span class="name mono">${esc(x.name)}</span><span class="fact">${esc(isSandbox(x) ? sandboxWords(x) : x.state || "")}</span></span></button></li>`;
   // A machine that feeds a network, and how many of its cells run there.
   const feederRow = ([x, n]) =>
     `<li><button type="button" class="row" data-go="machine=${esc(x)}">${MACHINE_GLYPH}<span class="what"><span class="name mono">${esc(x)}</span><span class="fact">${esc(`feeds it ${plural(n, "cell")}`)}</span></span></button></li>`;
@@ -3548,12 +3591,18 @@
     drawer();
     for (const d of panelBody.querySelectorAll("details[data-keep]")) if (opened.includes(d.dataset.keep) && (same || d.dataset.keep === "legend")) d.open = true;
     shownKey = key;
+    // A cell is looked at alone: the whole network as a tree under it
+    // draws the eye away, so its drawer says only where it sits.
+    const alone = chosen?.kind === "cell";
+    if (alone && tree.contains(document.activeElement)) view.focus({ preventScroll: true });
+    tree.parentElement.hidden = alone;
     if (same) {
       treeSoon++;
-      renderTree({ keepScroll: false });
+      if (!alone) renderTree({ keepScroll: false });
       column.scrollTop = scroll;
     } else {
-      afterPaint(() => renderTree({ keepScroll: false }));
+      if (alone) treeSoon++;
+      else afterPaint(() => renderTree({ keepScroll: false }));
       if (columnTop) column.scrollTop = columnTop = 0;
     }
     if (same && held) panelBody.querySelector(`[data-go="${CSS.escape(held)}"]`)?.focus({ preventScroll: true });
@@ -3637,7 +3686,7 @@
     const id = key.slice(2);
     if (key[0] === "h") {
       const h = m.hubs.get(id);
-      return h ? (h.within ? `h:${h.within}` : h.machine ? `m:${h.machine}` : null) : null;
+      return h ? (h.within ? `h:${h.within}` : h.machine && machinesShown ? `m:${h.machine}` : null) : null;
     }
     if (key[0] === "c") {
       const s = m.byAddress.get(id);
@@ -3690,7 +3739,7 @@
         `</li>`
       );
     };
-    const roots = current.machines.length ? current.machines.map((x) => `m:${x.name}`) : [...current.hubs.values()].filter((h) => !h.within).map((h) => `h:${h.key}`);
+    const roots = shownMachines().length ? shownMachines().map((x) => `m:${x.name}`) : [...current.hubs.values()].filter((h) => !h.within).map((h) => `h:${h.key}`);
     tree.innerHTML = roots.map((key, i) => item(key, 1, i, roots.length)).join("");
     const find1 = (key) => key && tree.querySelector(`[data-key="${CSS.escape(key)}"]`);
     const active = find1(held) || find1(treeActive) || find1(pointed) || tree.querySelector("[role=treeitem]");
@@ -4290,6 +4339,14 @@
   // ---- Keys and the switch, as on every one of his pages. ----
 
   const toggleKeys = () => (keys.open ? keys.close() : keys.showModal());
+  const toggleMachines = () => {
+    machinesShown = !machinesShown;
+    if (!machinesShown && chosen?.kind === "machine") letGo();
+    if (pointed?.[0] === "m" && !machinesShown) pointed = null;
+    draw();
+    if (!tree.parentElement.hidden) renderTree();
+    where.textContent = machinesShown ? "The machines are shown, with each network's cord to the machine it runs on; m hides them." : "The machines are hidden; m shows them.";
+  };
   document.addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target.closest("input, textarea, select")) return;
@@ -4323,6 +4380,9 @@
     } else if (e.key === ".") {
       e.preventDefault();
       toggleNow();
+    } else if (e.key === "m") {
+      e.preventDefault();
+      toggleMachines();
     } else if (e.key === "0") {
       e.preventDefault();
       fit();

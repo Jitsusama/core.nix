@@ -16,8 +16,10 @@
 //   cell of its own lie inside the map, left of the drawer;
 // - words: the first sentence of a network's drawer says "network", a
 //   machine's says "machine" and a cell's says "cell";
-// - names: on the whole map, no more names than machines and networks,
-//   branches included, past the one the keys rest on; once something is open, no faded name at all and at
+// - layer: the whole map draws no machine until "m" shows them, and "m"
+//   then draws at least one;
+// - names: on the whole map, no more names than networks, branches
+//   included, past the one the keys rest on; once something is open, no faded name at all and at
 //   most NAMES_OPEN names;
 // - parity: every drawer, Now, network, branch, machine and cell, opens
 //   with Purpose, Doing and Health, in that order, in a dl.glance, with no
@@ -125,20 +127,50 @@
     }
   };
 
-  // The whole map first: its name budget.
+  const pressM = async () => {
+    view.focus();
+    view.dispatchEvent(new KeyboardEvent("keydown", { key: "m", bubbles: true }));
+    await settle();
+  };
+  // The whole map as he first sees it: no machine, and a name per network.
+  const wholeMap = () => {
+    if (marks('[data-key^="m:"]').length > 0) {
+      faults.push("layer: the whole map draws machines before m asks for them; they are a layer of their own");
+    }
+    const hubs = marks('[data-key^="h:"]').length;
+    // The name the keys rest on is what he's engaged with, which keeps its
+    // name wherever it is, so it counts against no budget.
+    const whole = names().filter((el) => !el.classList.contains("strong")).length;
+    if (whole > hubs) {
+      faults.push(`names: the whole map shows ${whole} names, past one per network (${hubs})`);
+    }
+  };
+  // The machines' layer: "m" draws them, and each drawer reads as a
+  // machine's and opens as every drawer does; then they go away again.
+  const machineLayer = async () => {
+    await pressM();
+    const machines = marks('[data-key^="m:"]');
+    if (machines.length === 0) {
+      faults.push("layer: m drew no machine");
+    }
+    for (const m of machines) {
+      const id = m.dataset.key.slice(2);
+      await open(`#machine=${encodeURIComponent(id)}`);
+      wordsOf(`the machine ${id}`, "machine");
+      glanceOf(`the machine ${id}`);
+      namesOpen(`the machine ${id}`);
+    }
+    // Letting go of a machine keeps the layer on, so one more "m" hides it.
+    await open("");
+    await pressM();
+  };
+
   await open("");
-  const machines = marks('[data-key^="m:"]');
   const tops = marks('[data-key^="h:"]:not([data-branch-of])');
-  if (machines.length === 0 || tops.length === 0) {
-    return ["nothing to check: the map drew no machines or no networks"];
+  if (tops.length === 0) {
+    return ["nothing to check: the map drew no networks"];
   }
-  const hubs = marks('[data-key^="h:"]').length;
-  // The name the keys rest on is what he's engaged with, which keeps its
-  // name wherever it is, so it counts against no budget.
-  const whole = names().filter((el) => !el.classList.contains("strong")).length;
-  if (whole > machines.length + hubs) {
-    faults.push(`names: the whole map shows ${whole} names, past one per machine and network (${machines.length + hubs})`);
-  }
+  wholeMap();
 
   // Now: parity with the rest.
   const nowControl = document.getElementById("now-control");
@@ -148,14 +180,7 @@
   nowControl?.click();
   await settle();
 
-  // Machines: words and parity.
-  for (const m of machines) {
-    const id = m.dataset.key.slice(2);
-    await open(`#machine=${encodeURIComponent(id)}`);
-    wordsOf(`the machine ${id}`, "machine");
-    glanceOf(`the machine ${id}`);
-    namesOpen(`the machine ${id}`);
-  }
+  await machineLayer();
 
   // The largest networks, a branch among them when there is one.
   const sized = tops
