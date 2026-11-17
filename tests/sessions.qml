@@ -320,6 +320,12 @@ ShellRoot {
         Sessions.goTo(Object.assign({}, hosted, { address: "WORDLESS", attach: null }));
         expect("one with no words is said, never opened", root.unhosted === "WORDLESS"
             && Niri.spawns.length === before + 1, `${root.unhosted} ${Niri.spawned.join(" ")}`);
+        // pi run here in another terminal: no window, kitty or holder.
+        Sessions.goTo({ address: "ELSETERM", window: null, kitty: null, held: null,
+            here: true, presence: { session: "s-elsewhere-term" } });
+        expect("one in a terminal it can't reach is said, never a press that does nothing",
+            root.unreached === "ELSETERM" && Niri.spawns.length === before + 1,
+            `${root.unreached} ${Niri.spawned.join(" ")}`);
         holdsAlone();
     }
 
@@ -738,6 +744,8 @@ ShellRoot {
 
     property string unjoined: ""
     property string unhosted: ""
+    // The last that Go To couldn't open, in a terminal it can't reach.
+    property string unreached: ""
     property bool steered: false
     // Each steer the node was asked, and whether the one parked had been
     // woken by then.
@@ -753,6 +761,10 @@ ShellRoot {
 
         function onUnhosted(session) {
             root.unhosted = session.address;
+        }
+
+        function onUnopened(session) {
+            root.unreached = session.address;
         }
 
         function onUnsteered(session, why) {

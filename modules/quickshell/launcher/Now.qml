@@ -155,7 +155,7 @@ Provider {
             weather = row;
     }
 
-    // An item whose session has gone is said in the foot where Go To or
+    // An item with neither a window nor a session here is said in the foot where Go To or
     // Deal With It was pressed, never a press that does nothing (Joel,
     // 2026-11-17 00:12: "when i hit deal with it when a window is not
     // loaded from the launcher, nothing happens"). What goTo itself can't
@@ -723,8 +723,11 @@ Provider {
     // Go To opens one on (WaitingOnYou.go); "" when it has neither.
     function whereOf(each) {
         const window = WaitingOnYou.windowOf(each);
+        const own = WaitingOnYou.session(each);
         if (window === null)
-            return WaitingOnYou.session(each)?.title ?? "";
+            return own?.title ?? "";
+        if (own !== null && own.window?.id === window.id)
+            return own.title;
         // A session in no window, as one held or elsewhere is, isn't it.
         const session = Sessions.running.find(one => one.window?.id === window.id);
         return session ? session.title : window.title ?? "";

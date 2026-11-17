@@ -323,8 +323,7 @@ function asksJoel(presence, by) {
 }
 
 // Where dealing with an item takes Joel, from what the shell knows
-// (`known`: niri's open windows, the sessions running and parked, and
-// each presence by address): the window the item names by its exact
+// (`known`: niri's open windows and the sessions running and parked): the window the item names by its exact
 // title while it's open, else the session it's from, running, with a
 // window or none, held or hosted, or parked, to be woken first; nobody
 // when it's from no session the shell knows. Sessions start in no window,
@@ -342,19 +341,17 @@ function dealsIn(item, known) {
 }
 
 // The session an item is from, by its owner's address, else its file's,
-// matched in any case against each session's address, the others it goes
-// by, or the presence it shares: one running as { session, wake: false },
+// matched in any case against each session's address or the others it
+// goes by: one running as { session, wake: false },
 // else one parked as { session, wake: true }, else null.
 function sessionOf(item, known) {
     const address = item.owner?.address ?? item.from;
     if (typeof address !== "string" || address === "") {
         return null;
     }
-    const presence = known.present?.[address] ?? null;
     const wanted = address.toUpperCase();
     const goesBy = one => String(one.address ?? "").toUpperCase() === wanted
-        || (one.presence?.addresses ?? []).some(other => String(other).toUpperCase() === wanted)
-        || (presence !== null && one.presence === presence);
+        || (one.presence?.addresses ?? []).some(other => String(other).toUpperCase() === wanted);
     const running = (known.running ?? []).find(goesBy);
     if (running) {
         return { session: running, wake: false };

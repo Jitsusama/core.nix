@@ -409,18 +409,22 @@ QtObject {
             Waiting.dealsIn(Object.assign(fromOwner("HELD01"), { window: "gone" }), known),
             { to: "session", session: heldNoWindow, wake: false });
         // Joel's own, as he pressed it at 00:12: its window long shut.
-        const wjatin = { address: "WJATIN", window: null, held: "held-3",
+        const pressed = { address: "WJATIN", window: null, held: "held-3",
             presence: { session: "s-wjatin", addresses: ["WJATIN"] } };
-        const deploy = { quest: "QEST-20261112-WJATIN", owner: { address: "WJATIN" },
+        const asked = { quest: "QEST-20261112-WJATIN", owner: { address: "WJATIN" },
             where: { window: "\u03c0 - Deploy V3: Reimagine How Aquifer And Worldtree Ship - aquifer" } };
         expect("a parked one whose named window isn't open is woken and gone to",
-            Waiting.dealsIn(deploy, Object.assign({}, known, { parked: [resting, wjatin] })),
-            { to: "session", session: wjatin, wake: true });
+            Waiting.dealsIn(asked, Object.assign({}, known, { parked: [resting, pressed] })),
+            { to: "session", session: pressed, wake: true });
         expect("and one running in no window is gone to as it is",
-            Waiting.dealsIn(deploy, Object.assign({}, known,
-                { running: known.running.concat([wjatin]) })),
-            { to: "session", session: wjatin, wake: false });
-        expect("one whose session is gone goes nowhere, so the act isn't offered",
+            Waiting.dealsIn(asked, Object.assign({}, known,
+                { running: known.running.concat([pressed]) })),
+            { to: "session", session: pressed, wake: false });
+        expect("one running is never woken, though a record of it is parked too",
+            Waiting.dealsIn(fromOwner("HELD01"), Object.assign({}, known,
+                { parked: [Object.assign({}, heldNoWindow, { window: null })] })),
+            { to: "session", session: heldNoWindow, wake: false });
+        expect("one whose session is gone goes nowhere",
             Waiting.dealsIn(fromOwner("GONE01"), known), { to: "nobody" });
         expect("one from nobody goes nowhere",
             Waiting.dealsIn({ quest: "QEST-X" }, known), { to: "nobody" });

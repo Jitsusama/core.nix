@@ -216,8 +216,7 @@ Singleton {
     readonly property var knownNow: ({
             windows: Object.values(Niri.windows),
             running: Sessions.running,
-            parked: Sessions.parked ?? [],
-            present: Sessions.present
+            parked: Sessions.parked ?? []
         })
     function known() {
         return knownNow;
@@ -266,7 +265,10 @@ Singleton {
             unfound(item);
             return;
         }
-        if (deal.wake)
+        // One hosted that only viewing wakes is woken by goTo's own
+        // viewer, focused, since waking it first opens one unfocused
+        // where it slept and leaves goTo's waiting behind it.
+        if (deal.wake && !Sessions.wokenByViewing(deal.session))
             Sessions.wake(deal.session);
         Sessions.goTo(deal.session);
     }

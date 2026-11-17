@@ -463,6 +463,7 @@ let
         function questOf(each) { return ""; }
         function windowOf(each) { return null; }
         function settle(each, how) {}
+        signal unfound(var each)
         function go(each) {}
         property var asked: []
         property var settled: ({})

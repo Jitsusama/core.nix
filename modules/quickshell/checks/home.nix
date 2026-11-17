@@ -202,6 +202,7 @@
           property var running: []
           property var parked: []
           function wake(session) {}
+          function wokenByViewing(session) { return false; }
           function goTo(session) {}
         '';
         "Words.qml" = singleton "Words.qml" ''
