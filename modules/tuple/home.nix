@@ -221,10 +221,12 @@ in
 
   # Tuple's commands start a daemon of their own when tuple.service's isn't
   # running, outside it, and that one writes its entry over ours. Whatever
-  # writes there, ours is put back the moment it changes.
+  # writes there, ours is put back the moment it changes. The folder is
+  # watched, not the entry: a watch on our link follows it into the store,
+  # and misses a file moved over it.
   systemd.user.paths.tuple-entry = {
     Unit.Description = "Watches that Tuple's desktop entry stays ours";
-    Path.PathChanged = "${entries}/tuple.desktop";
+    Path.PathChanged = entries;
     Install.WantedBy = [ "default.target" ];
   };
   systemd.user.services.tuple-entry = {
