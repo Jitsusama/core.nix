@@ -55,7 +55,7 @@ def test_tuples_own_desktop_entry_never_stays_in_place_of_ours(desktop: Desktop)
     machine.wait_until_succeeds(
         desktop.in_session(
             "systemctl --user is-active tuple && grep -q"
-            " 'failed to install desktop files: error.AccessDenied'"
+            " 'failed to install desktop files: error.ReadOnlyFileSystem'"
             " ~/.local/share/tuple/0/log.txt"
         ),
         timeout=STARTING,
