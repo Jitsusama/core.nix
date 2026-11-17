@@ -25,7 +25,7 @@ const CUT: &str = "\u{2026}";
 
 /// How a path's steps are said in its head, as the launcher's field says
 /// them.
-const CRUMB: &str = " \u{203a} ";
+pub const CRUMB: &str = " \u{203a} ";
 
 /// The least room between what a row says and its side, and between a
 /// fact's label and its value.

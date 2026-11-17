@@ -26,7 +26,8 @@ function refused(told) {
 // What `launcher do` is answered for an act walked in `names`, from why it
 // was refused (`refused`): done; unavailable where its daemon had no
 // answer to give, `noAnswer` in the launcher's words, so the terminal
-// says the shell isn't answering and an agent may ask again; else refused.
+// exits 69, saying to see where it stands before asking again, since an
+// ask sent and never answered may have been done; else refused, 77.
 function answered(why, names, noAnswer) {
     if (why === "") {
         return { done: true, in: names };

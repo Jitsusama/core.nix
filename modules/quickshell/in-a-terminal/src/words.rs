@@ -44,16 +44,28 @@ impl Words {
     }
 
     /// A word by its key, its `{name}`s filled from `filled`.
+    /// Filled in one pass, so a name or a reason holding `{why}` is said
+    /// as it is rather than filled in again.
     fn word(&self, key: &str, filled: &[(&str, &str)]) -> String {
-        let mut said = self
-            .said
-            .get(key)
-            .and_then(Value::as_str)
-            .unwrap_or(key)
-            .to_string();
-        for (name, value) in filled {
-            said = said.replace(&format!("{{{name}}}"), value);
+        let mut rest = self.said.get(key).and_then(Value::as_str).unwrap_or(key);
+        let mut said = String::new();
+        while let Some(at) = rest.find('{') {
+            said.push_str(&rest[..at]);
+            rest = &rest[at..];
+            let fills = filled.iter().find(|(name, _)| {
+                rest.strip_prefix('{')
+                    .and_then(|after| after.strip_prefix(name))
+                    .is_some_and(|after| after.starts_with('}'))
+            });
+            if let Some((name, value)) = fills {
+                said.push_str(value);
+                rest = &rest[name.len() + 2..];
+            } else {
+                said.push('{');
+                rest = &rest[1..];
+            }
         }
+        said.push_str(rest);
         said
     }
 
@@ -82,6 +94,24 @@ impl Words {
     /// refuses a walk from outside, said as a refusal (Y2YBTS, 2026-11-13).
     pub fn unopened(&self, name: &str) -> String {
         self.word("unopened", &[("name", name)])
+    }
+
+    /// An act the shell refused while it ran, as a yes to a secret ask
+    /// it withholds without Joel's own key press, said as a refusal
+    /// naming why (5GLTPH, 2026-11-16).
+    pub fn refused(&self, name: &str, why: &str) -> String {
+        self.word("refused", &[("name", name), ("why", why)])
+    }
+
+    /// An act whose daemon had no answer, which may yet have been done,
+    /// said with what to do: see where it stands before asking again.
+    pub fn unanswered(&self, name: &str, why: &str) -> String {
+        self.word("unanswered", &[("name", name), ("why", why)])
+    }
+
+    /// An answer from the shell this program doesn't know, never done.
+    pub fn strange(&self) -> String {
+        self.word("strange", &[])
     }
 
     /// An argument it doesn't take.
@@ -238,6 +268,26 @@ mod tests {
     fn a_word_missing_from_the_file_is_said_as_its_key() {
         assert_eq!(Words::from_value(&Value::Null).silent(), "silent");
         assert_eq!(Words::from_value(&Value::Null).home(), "home");
+    }
+
+    #[test]
+    fn a_filled_word_is_said_as_given_never_filled_again() {
+        let said = Words::from_value(&serde_json::json!({"terminal": {
+            "refused": "{name} not done \u{b7} {why}"}}));
+        assert_eq!(
+            said.refused("Kiln {why}", "{name} said no"),
+            "Kiln {why} not done \u{b7} {name} said no"
+        );
+    }
+
+    #[test]
+    fn a_brace_naming_nothing_given_is_said_as_written() {
+        let said = Words::from_value(&serde_json::json!({"terminal": {
+            "refused": "{nam {name} {names} not done \u{b7} {why}"}}));
+        assert_eq!(
+            said.refused("Kiln", "no"),
+            "{nam Kiln {names} not done \u{b7} no"
+        );
     }
 
     #[test]
