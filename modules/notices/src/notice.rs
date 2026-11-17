@@ -139,6 +139,69 @@ pub const CELL_LINK: &str = "mycelium:cell/";
 /// one (lib/internal/notify.ts's ADDRESS): six or eight today, with room.
 const LONGEST_ADDRESS: usize = 12;
 
+/// The most letters a machine's name runs to, as a host name's one label.
+const LONGEST_MACHINE: usize = 63;
+
+/// The most letters an anchor runs to, room for a record's key.
+const LONGEST_ANCHOR: usize = 128;
+
+/// A session's cell, as a notice's `x-cell` names it:
+/// `mycelium:cell/<ADDRESS>[@<machine>][#<anchor>]`, the one form a cell
+/// is linked by wherever a record is made (6LU6ZM's design, item 3,
+/// agreed with 42P0R4 on 2026-11-16). The machine is the one the session
+/// runs on and the anchor what in it the notice is about.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Cell<'a> {
+    pub address: &'a str,
+    pub machine: Option<&'a str>,
+    pub anchor: Option<&'a str>,
+}
+
+impl Cell<'_> {
+    /// Its whole link, stamped where the notice was made: the machine its
+    /// sender named, else `host`, the one the daemon runs on, since a
+    /// notice reaches it only over that machine's own bus; and the anchor
+    /// its sender named, else `key`, the notice's own. A host not shaped as
+    /// a machine's name is left out rather than stamped.
+    pub fn link(&self, host: &str, key: &str) -> String {
+        let machine = self
+            .machine
+            .or_else(|| machine_shaped(host).then_some(host));
+        let at = machine
+            .map(|machine| format!("@{machine}"))
+            .unwrap_or_default();
+        let anchor = self.anchor.unwrap_or(key);
+        format!("{CELL_LINK}{}{at}#{anchor}", self.address)
+    }
+}
+
+/// Whether it's shaped as a mesh address: capitals and digits.
+fn address_shaped(address: &str) -> bool {
+    (1..=LONGEST_ADDRESS).contains(&address.len())
+        && address
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+}
+
+/// Whether it's shaped as a machine's name: a host name's one label.
+fn machine_shaped(machine: &str) -> bool {
+    (1..=LONGEST_MACHINE).contains(&machine.len())
+        && !machine.starts_with('-')
+        && machine
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+}
+
+/// Whether it's shaped as an anchor: a record's key, such as `notice:12`
+/// or `todo:7`, with nothing a link or a shell would read as its own.
+fn anchor_shaped(anchor: &str) -> bool {
+    (1..=LONGEST_ANCHOR).contains(&anchor.len())
+        && !anchor.starts_with('-')
+        && anchor
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b":._-".contains(&byte))
+}
+
 impl Notice {
     /// Its key among the daemon's records.
     pub fn key(&self) -> String {
@@ -150,18 +213,28 @@ impl Notice {
         self.hints.get(name).and_then(Value::as_str).unwrap_or("")
     }
 
-    /// The session it came from, by its mesh address, when its sender gave
-    /// one as `x-cell`, a link to it as `mycelium:cell/<ADDRESS>` (the
+    /// The session it came from, when its sender gave one as `x-cell`, a
+    /// link to it as `mycelium:cell/<ADDRESS>[@<machine>][#<anchor>]` (the
     /// harness's away notices do). Any program here can send a hint, so it
-    /// names a cell only when shaped as an address, and is only ever a way
-    /// to that session, never a proof of who sent it.
-    pub fn cell(&self) -> Option<&str> {
-        let address = self.hint("x-cell").strip_prefix(CELL_LINK)?;
-        let shaped = (1..=LONGEST_ADDRESS).contains(&address.len())
-            && address
-                .bytes()
-                .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit());
-        shaped.then_some(address)
+    /// names a cell only when each part is shaped as its own, and is only
+    /// ever a way to that session, never a proof of who sent it.
+    pub fn cell(&self) -> Option<Cell<'_>> {
+        let link = self.hint("x-cell").strip_prefix(CELL_LINK)?;
+        let (link, anchor) = match link.split_once('#') {
+            Some((link, anchor)) => (link, Some(anchor_shaped(anchor).then_some(anchor)?)),
+            None => (link, None),
+        };
+        let (address, machine) = match link.split_once('@') {
+            Some((address, machine)) => {
+                (address, Some(machine_shaped(machine).then_some(machine)?))
+            }
+            None => (link, None),
+        };
+        address_shaped(address).then_some(Cell {
+            address,
+            machine,
+            anchor,
+        })
     }
 
     /// Whether it waits until it's read to leave the history: every one of
@@ -223,12 +296,13 @@ impl Notice {
 
     /// The record served for it: `{ key, kind: "notice", notice }`, its
     /// fields with the two the shell's history read beside them, `low` and
-    /// the to-do it `waits` on.
-    pub fn record(&self) -> Value {
+    /// the to-do it `waits` on, and the whole link to its `cell`, stamped
+    /// as made on `host` (Cell's link).
+    pub fn record(&self, host: &str) -> Value {
         let mut notice = serde_json::to_value(self).unwrap_or_else(|_| json!({}));
         notice["low"] = json!(self.urgency == Urgency::Low);
         notice["waits"] = json!(self.hint("x-waiting"));
-        notice["cell"] = json!(self.cell());
+        notice["cell"] = json!(self.cell().map(|cell| cell.link(host, &self.key())));
         json!({ "key": self.key(), "kind": "notice", "notice": notice })
     }
 }
@@ -247,7 +321,7 @@ mod tests {
             hints,
             ..Notice::default()
         };
-        let record = notice.record();
+        let record = notice.record("optimus");
         assert_eq!(record["key"], "notice:12");
         assert_eq!(record["kind"], "notice");
         assert_eq!(record["notice"]["low"], true);
@@ -265,23 +339,70 @@ mod tests {
         }
     }
 
+    fn address(notice: &Notice) -> Option<&str> {
+        notice.cell().map(|cell| cell.address)
+    }
+
     #[test]
     fn a_notice_from_a_session_names_its_cell_by_address() {
         let from = hinted("mycelium:cell/1C8A2F0E");
-        assert_eq!(from.cell(), Some("1C8A2F0E"));
+        assert_eq!(address(&from), Some("1C8A2F0E"));
         let longest = hinted("mycelium:cell/ABCDEF123456");
         assert_eq!(
-            longest.cell(),
+            address(&longest),
             Some("ABCDEF123456"),
             "twelve, as the harness sends"
         );
         assert_eq!(
-            hinted("mycelium:cell/ABCDEF1234567").cell(),
+            address(&hinted("mycelium:cell/ABCDEF1234567")),
             None,
             "thirteen"
         );
-        assert_eq!(from.record()["notice"]["cell"], "1C8A2F0E");
-        assert_eq!(Notice::default().record()["notice"]["cell"], Value::Null);
+        assert_eq!(
+            Notice::default().record("optimus")["notice"]["cell"],
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn its_cell_is_served_whole_stamped_where_it_was_made() {
+        let record = |hint: &str, host: &str| {
+            let notice = Notice {
+                id: 12,
+                ..hinted(hint)
+            };
+            notice.record(host)["notice"]["cell"].clone()
+        };
+        assert_eq!(
+            record("mycelium:cell/1C8A2F0E", "optimus"),
+            "mycelium:cell/1C8A2F0E@optimus#notice:12",
+            "a bare address is stamped with this machine and the notice"
+        );
+        assert_eq!(
+            record("mycelium:cell/1C8A2F0E@mac-2#todo:7", "optimus"),
+            "mycelium:cell/1C8A2F0E@mac-2#todo:7",
+            "the sender's machine and anchor are kept"
+        );
+        assert_eq!(
+            record("mycelium:cell/1C8A2F0E#look:a1.b", "optimus"),
+            "mycelium:cell/1C8A2F0E@optimus#look:a1.b",
+            "an anchor with no machine is stamped with this one"
+        );
+        assert_eq!(
+            record("mycelium:cell/1C8A2F0E@mac-2", "optimus"),
+            "mycelium:cell/1C8A2F0E@mac-2#notice:12",
+            "a machine with no anchor takes the notice's"
+        );
+        assert_eq!(
+            record("mycelium:cell/1C8A2F0E", ""),
+            "mycelium:cell/1C8A2F0E#notice:12",
+            "no host to stamp leaves the machine out"
+        );
+        assert_eq!(
+            record("mycelium:cell/1C8A2F0E", "not a host"),
+            "mycelium:cell/1C8A2F0E#notice:12",
+            "nor does one not shaped as a machine's name"
+        );
     }
 
     #[test]
@@ -292,6 +413,17 @@ mod tests {
             "mycelium:cell/1c8a2f0e",
             "mycelium:cell/1C8A/go",
             "mycelium:cell/-help",
+            "mycelium:cell/1C8A@",
+            "mycelium:cell/1C8A#",
+            "mycelium:cell/1C8A@-help",
+            "mycelium:cell/1C8A@two words",
+            "mycelium:cell/1C8A@a/go",
+            "mycelium:cell/1C8A#-help",
+            "mycelium:cell/1C8A#a b",
+            "mycelium:cell/1C8A#a?say=merge",
+            "mycelium:cell/1C8A#a#b",
+            "mycelium:cell/1C8A@a@b",
+            "mycelium:cell/1C8A#a@b",
             "mycelium:network/home",
             "https://x.example/cell/1C8A2F0E",
         ] {

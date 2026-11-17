@@ -217,7 +217,9 @@ fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str, words: &Words
     };
     let mut acts = Vec::new();
     let opens = notice.live && notice.actions.iter().any(|action| action.id == "default");
-    let cell = notice.cell();
+    // Its acts link the cell by address alone, the form mycelium-link
+    // takes today; the record serves the whole link (notice.rs's Cell).
+    let cell = notice.cell().map(|cell| cell.address);
     let goes = |address: &str| {
         json!({
             "key": "verb:notice:goTo", "open": format!("{CELL_LINK}{address}/go"),
