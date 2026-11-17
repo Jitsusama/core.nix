@@ -84,10 +84,15 @@ Nothing on it acts on the network.
   a machine's cords bundle: one trunk each way, forking into a twig for
   each network, and the machine moves out from the middle to its own
   arc, so two machines' arcs read as two.
-- **The map has the screen; details come in a drawer.** Over the map,
-  the heading line says where the keys are, how things stand in Now's
-  own words (how many cells, how many moving, how many stuck), and who
-  needs Joel, which opens them; when nobody does it says nothing of it.
+- **The map has the screen; details come in a drawer.** Over it, one
+  sentence says how things stand: how many cells, how many moving and
+  stuck, and, last and in italic, who needs Joel, or that all is quiet.
+  The count of cells opens Now on the network as a tree, and who needs
+  him opens Now on the first of them. Under it, the keys are said once,
+  beside the look's switch, and a line says whether the map is live
+  from this machine's node and since when, its mark a disc while live
+  and a ring once it isn't. The line just over the map says where the
+  keys are, and its words zoom, show the map whole and open Now.
   A screen reader hears coarser words (a few at work, most at work),
   and only when those change. A
   drawer slides in from the right over an empty gutter the map keeps

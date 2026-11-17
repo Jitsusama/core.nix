@@ -1,9 +1,19 @@
 /* Your mycelium, now: the network drawn as it is, on one screen. The map
    takes the room the screen has and moves under the hand (drag, wheel,
    keys); the panel beside it says what is chosen, or how things stand. An
-   interface to keep open, so its words sit at the interface size. */
+   interface to keep open, so its words sit at the interface size.
+
+   Its world is forage's, the forest floor seen from above: loam for the
+   ground (--background), fresh-cap cream for what speaks (--strong and
+   --text), hyphae in their own pale ink for who hangs from what, and one
+   glow of foxfire, the kit's accent, only where the keys are. The serif
+   names and tells, its italic turning a sentence; the mono only counts
+   and keeps time. */
 
 :root {
+  /* The hyphae's ink: most of the way from the rule to the muted ink, so
+     a line of them still clears 3:1 as a mark against the map. */
+  --hyphae: color-mix(in oklab, var(--muted) 70%, var(--rule));
   /* Sea glass marks the site's emphasis, since gold is a session here and
      vermilion a machine: each glyph hue keeps the one meaning the map
      gives it. */
@@ -35,67 +45,132 @@ body {
   }
 }
 
+/* ---- The head: one sentence over the work, how things stand, with the
+   keys said once under it, small, beside the look's switch, and the line
+   saying whether all of it is live. The page's own ground, never a bar. */
 .head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--mark) var(--groups);
-  padding: var(--mark) var(--inset);
-  border-block-end: 1px solid var(--rule);
+  display: grid;
+  gap: 0;
+  padding: var(--mark) var(--inset) 0;
 }
 
-.mark {
+.sentence {
+  margin: 0;
+  color: var(--strong);
+  font: 400 var(--step-title) / 1.1 var(--serif);
+  font-variation-settings:
+    "SOFT" 100,
+    "WONK" 1;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+  padding-block-end: var(--tie);
+}
+
+/* The mark heads the sentence at the size of its letters, in the tint:
+   a network round its hub, one cell of it dormant. */
+.sentence .mark {
+  display: inline-block;
+  inline-size: 0.82em;
+  block-size: 0.82em;
+  margin-inline-end: 0.28em;
+  vertical-align: -0.08em;
   color: var(--tint);
-  flex: none;
-}
-
-.head h1 {
-  font-size: var(--step-large);
-  line-height: 1.2;
 }
 
 /* Every word on the page clears 7:1, the enhanced contrast, so words a
    step back are told apart by size and face rather than by fading: the
-   muted ink is kept for marks. The title's tint is deepened toward the
+   muted ink is kept for marks. The turn's tint is deepened toward the
    strong ink for the same reason. */
-.head h1 em {
+.sentence em {
   color: color-mix(in oklab, var(--tint) 60%, var(--strong));
+  font-style: italic;
 }
 
-.head .keys {
-  margin-inline-start: auto;
-  color: var(--text);
-  font-size: var(--step-small);
+/* A count is a way to what it counts: the sentence's own words, with an
+   underline that thickens under the hand, so the sentence never changes
+   width; its target is padded out to 44px without moving a letter. */
+.sentence .clause,
+.count {
+  white-space: nowrap;
 }
 
-.head .keys kbd {
+.count {
+  position: relative;
+  display: inline;
+  min-block-size: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline 1px;
+  text-decoration-color: color-mix(in oklab, currentColor 45%, transparent);
+  text-underline-offset: 0.14em;
   cursor: pointer;
 }
 
+.count::after {
+  content: "";
+  position: absolute;
+  inset: min(0px, calc(50% - 22px)) 0;
+}
+
+.count:hover {
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 2px;
+}
+
+.under {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--groups);
+}
+
+.head .keys {
+  margin: 0;
+  color: var(--text);
+  font: italic 400 var(--step-small) / 1.4 var(--serif);
+}
+
+/* A key is the glyph to press, upright in full ink among the italic, so
+   even a lone full stop reads as one. */
+.head .keys kbd {
+  color: var(--strong);
+  font-style: normal;
+  cursor: pointer;
+}
+
+/* The switch, small beside the keys: three marks, the chosen one in full
+   ink with a rule under it, so a choice changes colour and never width. */
 .switch {
   display: flex;
-  gap: var(--tie);
 }
 
 .switch button {
-  inline-size: 44px;
+  inline-size: 36px;
   block-size: 44px;
   display: grid;
   place-items: center;
   background: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
+  border: 0;
   color: var(--muted);
 }
 
 .switch button[aria-checked="true"] {
   color: var(--strong);
-  border-color: var(--rule);
 }
 
 .switch svg {
-  inline-size: 20px;
-  block-size: 20px;
+  inline-size: 16px;
+  block-size: 16px;
+  padding-block-end: 3px;
+  border-block-end: 1.5px solid transparent;
+  box-sizing: content-box;
+}
+
+.switch [aria-checked="true"] svg {
+  border-block-end-color: currentColor;
 }
 
 .sr {
@@ -218,17 +293,17 @@ body {
   cursor: pointer;
 }
 
-/* ---- The heading line: where the keys are, read from the machine down,
-   with the time the facts were read and the zoom at its end. Find takes
-   its place while it's open, so the line never grows a second row of
-   controls. ---- */
+/* ---- The line over the map: where the keys are, read from the machine
+   down, in quiet italic place words, and the map's own words at its end.
+   Find takes the trail's place while it's open, so the line never grows
+   a second row of controls. Its rule is the map's top edge. ---- */
 
 .headline {
   display: flex;
   align-items: center;
   gap: var(--items);
-  min-block-size: 52px;
-  padding: var(--tie) var(--tie) var(--tie) var(--items);
+  min-block-size: 48px;
+  padding: 0 var(--mark) 0 var(--inset);
   border-block-end: 1px solid var(--rule);
   background: var(--background);
 }
@@ -270,7 +345,7 @@ body {
   background: none;
   border: 0;
   color: var(--text);
-  font: 400 var(--step-base) / 1.25 var(--serif);
+  font: italic 400 var(--step-body) / 1.25 var(--serif);
   text-align: start;
   overflow-wrap: break-word;
   cursor: pointer;
@@ -278,16 +353,12 @@ body {
 
 .trail .step:hover {
   color: var(--strong);
+  text-decoration: underline 1px;
+  text-underline-offset: 0.2em;
 }
 
 .trail .step[aria-current] {
   color: var(--strong);
-  font-weight: 600;
-}
-
-.trail .step .mono {
-  font-family: var(--mono);
-  font-feature-settings: var(--mono-features);
 }
 
 .trail .glyph {
@@ -296,72 +367,71 @@ body {
   block-size: 16px;
 }
 
+/* The standing line: whether the map is live, from whose node and since
+   when, led by a mark told by its shape: a disc while live, a dashed ring
+   while it reaches the node, a ring once it isn't live, and a struck ring
+   when the node didn't answer. The words say it too. */
 .asof {
-  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--mark);
+  margin: 0 0 0 auto;
   color: var(--text);
-  font: 400 var(--step-small) / 1.4 var(--mono);
-  font-feature-settings: var(--mono-features);
-  white-space: nowrap;
+  font: 400 var(--step-small) / 1.4 var(--serif);
+}
+
+.asof::before {
+  content: "";
+  flex: none;
+  align-self: center;
+  inline-size: 0.55em;
+  block-size: 0.55em;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.asof[data-state="connecting"]::before {
+  border-style: dashed;
+  background: none;
 }
 
 .asof.stale {
   color: var(--strong);
 }
 
-/* How things stand, in a few words, and who needs him as the way to
-   them: nothing at all when nobody does. */
-.status {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--mark);
-  color: var(--text);
-  font-size: var(--step-small);
-  white-space: nowrap;
-}
-
-.needs {
-  min-block-size: 44px;
-  padding: 0 var(--tie);
+.asof.stale::before {
   background: none;
-  border: 0;
-  border-radius: var(--radius);
-  color: var(--strong);
-  font: 600 var(--step-small) / 1.2 var(--serif);
-  /* Underlined in the ink the map rings a cell that needs him with. */
-  text-decoration: underline;
-  text-decoration-color: var(--person);
-  text-decoration-thickness: 2px;
-  text-underline-offset: 0.25em;
-  cursor: pointer;
 }
 
-.needs:hover {
-  background: var(--sunken);
+.asof[data-state="broken"]::before {
+  background: linear-gradient(135deg, transparent 44%, currentColor 44% 56%, transparent 56%);
 }
 
-.needs[hidden] {
-  display: none;
-}
-
+/* The map's own words, zoom, the whole map and Now: quiet words, the
+   open one in full ink and underlined, so it changes colour and never
+   width. */
 .zoom {
   flex: none;
   display: flex;
 }
 
 .zoom button {
-  inline-size: 44px;
-  block-size: 44px;
-  display: grid;
-  place-items: center;
+  min-block-size: 44px;
+  padding: 0 var(--mark);
   background: none;
   border: 0;
-  border-radius: var(--radius);
-  color: var(--strong);
+  color: var(--text);
+  font: italic 400 var(--step-small) / 1 var(--serif);
+  white-space: nowrap;
+  cursor: pointer;
 }
 
-.zoom button:hover {
-  background: var(--sunken);
+.zoom button:hover,
+.zoom button[aria-expanded="true"] {
+  color: var(--strong);
+  text-decoration: underline 1px;
+  text-underline-offset: 0.25em;
 }
 
 @media (max-width: 30rem) {
@@ -375,15 +445,6 @@ body {
     flex-basis: 100%;
     order: 2;
   }
-}
-
-.zoom svg {
-  inline-size: 20px;
-  block-size: 20px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
 }
 
 /* ---- The drawing's inks, all roles, so it follows the look. ---- */
@@ -431,7 +492,7 @@ body {
    of the way to the muted ink does. */
 .m-hypha {
   fill: none;
-  stroke: color-mix(in oklab, var(--muted) 70%, var(--rule));
+  stroke: var(--hyphae);
   stroke-width: 1.25;
   vector-effect: non-scaling-stroke;
 }
@@ -499,7 +560,7 @@ body {
    side must still read as lines and not a wedge: the hyphae's ink, which
    still clears 3:1 as a mark. */
 .m-cord.m-twig {
-  stroke: color-mix(in oklab, var(--muted) 70%, var(--rule));
+  stroke: var(--hyphae);
 }
 
 .m-colony.quiet {
@@ -706,9 +767,11 @@ body {
   display: contents;
 }
 
+/* A label names, so it is set in the serif's italic, a step back by size
+   and face rather than by fading. */
 .glance dt {
   color: var(--text);
-  font-size: var(--step-small);
+  font: italic 400 var(--step-small) / 1.5 var(--serif);
   padding-block-start: 0.15em;
 }
 
@@ -867,7 +930,7 @@ body {
 
 .tree-title {
   padding: var(--items) var(--inset) var(--tie);
-  font-size: var(--step-base);
+  font-size: var(--step-body);
 }
 
 /* Too narrow for a gutter, the drawer takes the map's whole width. */
@@ -903,7 +966,7 @@ body {
   align-items: start;
   min-block-size: 44px;
   padding: var(--mark) var(--tie) var(--mark) calc(var(--tie) + var(--level) * 1.25rem);
-  border-radius: var(--radius);
+  border-block-start: 1px solid var(--edge);
   color: var(--text);
   cursor: pointer;
   /* A big network lists hundreds of rows; those out of sight skip layout,
@@ -912,13 +975,15 @@ body {
   contain-intrinsic-size: auto 62px;
 }
 
-.ti:hover {
-  background: var(--sunken);
+/* Rows are parted by hairlines and never filled: the hand underlines a
+   row's name, and what is open is told by its weight. */
+.ti:hover .name {
+  text-decoration: underline 1px;
+  text-underline-offset: 0.2em;
 }
 
-.ti.opened {
-  background: var(--sunken);
-  box-shadow: inset 3px 0 0 var(--accent);
+.ti.opened .name {
+  font-weight: 800;
 }
 
 .tree [role="treeitem"]:focus-visible > .ti {
@@ -966,8 +1031,6 @@ body {
 }
 
 .ti .fact {
-  font-family: var(--mono);
-  font-feature-settings: var(--mono-features);
   font-size: var(--step-small);
   overflow-wrap: anywhere;
 }
@@ -1059,13 +1122,11 @@ body {
 
 .panel-body h3 {
   margin-block-start: var(--groups);
-  font-size: var(--step-base);
+  font-size: var(--step-body);
 }
 
 .panel-body .mono,
 .panel-body .counts,
-.panel-body .fact,
-.panel-body dt,
 .lately .when {
   font-family: var(--mono);
   font-feature-settings: var(--mono-features);
@@ -1144,8 +1205,9 @@ body {
   cursor: pointer;
 }
 
-.row:hover {
-  background: var(--sunken);
+.row:hover .name {
+  text-decoration: underline 1px;
+  text-underline-offset: 0.2em;
 }
 
 /* A health row has no glyph, so its words take the whole row. */
@@ -1298,7 +1360,9 @@ body {
 }
 
 .lately .said:hover {
-  background: var(--sunken);
+  color: var(--strong);
+  text-decoration: underline 1px;
+  text-underline-offset: 0.2em;
 }
 
 .lately .when {

@@ -3940,34 +3940,63 @@
   };
   document.addEventListener("mycelium:now", (e) => take(e.detail));
 
-  // How things stand, in Now's own words and counts on screen. What is
-  // spoken is coarser, so the polite live region speaks only when the
-  // network changes, never on each reading. Who needs him is the way to
-  // them, and nothing at all when nobody does.
+  // How things stand, as one sentence over the work, its last clause the
+  // italic turn: who needs him, else what is stuck or moving, else that
+  // all is quiet. A count Now lists is the way to that list: the cells to
+  // the network as a tree, who needs him to the first of them. The
+  // sentence is rewritten only when its words change, so a count he is on
+  // keeps its focus. What is spoken is coarser, so the polite live region
+  // speaks only when the network changes, never on each reading.
+  // How the network stands and who needs him are two spans of the one
+  // sentence, so #status-words holds the counts alone, as the page's test
+  // reads them.
   const statusWords = document.getElementById("status-words");
+  const asksWords = document.getElementById("asks-words");
+  const sentenceLine = statusWords.closest("h1");
   const statusSaid = document.getElementById("status-said");
-  const needs = document.getElementById("needs");
   let statusShown = "";
+  let sentenceShown = "";
   const atWork = (moving, all) => (!moving ? "all quiet" : moving * 4 < all ? "a few at work" : moving * 2 < all ? "many at work" : "most at work");
+  const COUNTED = {
+    cells: () => focusItem(tree.querySelector('[role="treeitem"]')),
+    asks: () => panelBody.querySelector(".asks-line + .rows button")?.focus({ preventScroll: true }),
+  };
   const drawStatus = () => {
     if (!current) return;
     const n = countsOf(current.cells);
     const all = current.cells.length;
     const stuck = n.stuck ? `, ${NUMBER.format(n.stuck)} stuck` : "";
-    const words = `${plural(all, "cell")}, ${NUMBER.format(n.moving)} moving${stuck}`;
-    const asks = n.asks === 1 ? "One needs you" : n.asks ? `${n.asks} need you` : "";
-    const said = `${atWork(n.moving, all)}${stuck}${asks ? `; ${asks.toLowerCase()}` : ""}`;
-    if (statusWords.textContent !== words) statusWords.textContent = words;
-    if (`${said}|${asks}` === statusShown) return;
-    statusShown = `${said}|${asks}`;
+    const asks = n.asks === 1 ? "one needs you" : n.asks ? `${NUMBER.format(n.asks)} need you` : "";
+    const clauses = [["cells", plural(all, "cell")]];
+    if (n.moving) clauses.push(["", `${NUMBER.format(n.moving)} moving`]);
+    if (n.stuck) clauses.push(["", `${NUMBER.format(n.stuck)} stuck`]);
+    if (clauses.length === 1 && !asks) clauses.push(["", "all quiet"]);
+    // A clause is kept whole on its line, so a count never parts from what
+    // it counts, and the last clause of the sentence takes its turn.
+    const clause = ([what, words], last) => {
+      const shown = what ? `<button type="button" class="count" data-count="${what}" aria-controls="panel">${esc(words)}</button>` : `<span class="clause">${esc(words)}</span>`;
+      return last ? `<em>${shown}</em>` : shown;
+    };
+    const counted = clauses.map((c, i) => clause(c, !asks && i === clauses.length - 1)).join(", ");
+    const asked = asks ? `, ${clause(["asks", asks], true)}` : "";
+    if (counted + asked !== sentenceShown) {
+      const had = sentenceLine.contains(document.activeElement) ? document.activeElement.dataset.count : null;
+      sentenceShown = counted + asked;
+      statusWords.innerHTML = counted;
+      asksWords.innerHTML = asked;
+      if (had) (sentenceLine.querySelector(`[data-count="${had}"]`) || view).focus({ preventScroll: true });
+    }
+    const said = `${atWork(n.moving, all)}${stuck}${asks ? `; ${asks}` : ""}`;
+    if (said === statusShown) return;
+    statusShown = said;
     statusSaid.textContent = said;
-    needs.hidden = !asks;
-    if (needs.textContent !== asks) needs.textContent = asks;
   };
-  // Who needs him opens Now, with the keys on the first of them.
-  needs.addEventListener("click", () => {
+  // A count opens Now, with the keys on the first row of what it counts.
+  sentenceLine.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-count]");
+    if (!b) return;
     openNow();
-    panelBody.querySelector(".asks-line + .rows button")?.focus({ preventScroll: true });
+    COUNTED[b.dataset.count]?.();
   });
 
   // Idle means zero: site.ts hands nothing over while the tab is hidden,
