@@ -541,6 +541,27 @@ body {
   fill: var(--strong);
 }
 
+/* A network's spokes: what makes its hub a knot, so it never reads as a
+   cell's membrane however small the map draws it. */
+.m-spokes {
+  fill: none;
+  stroke: var(--strong);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.m-hub-dish {
+  fill: none;
+  stroke: var(--voice);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.hub.quiet .m-spokes {
+  stroke: var(--muted);
+  stroke-width: 1.75;
+}
+
 /* A network with no cell at work: its hub, cord and ground in the muted
    ink, which still clears 3:1 as a mark, so the live ones lead. */
 .hub.quiet .m-hub {
@@ -892,12 +913,23 @@ body {
   fill: var(--background);
 }
 
+.m-box.m-lent {
+  stroke-width: 2px;
+}
+
 .t-mark .t-plate {
   opacity: 1;
 }
 
 .t-mark.off .t-box {
   stroke-dasharray: 4 3;
+}
+
+/* A lent machine keeps only its box's corners, and a machine from a
+   cloud pool is a basin, open at the top; both drawn heavier, so the gaps read as meant. */
+.t-lent .t-box,
+.t-basin .t-box {
+  stroke-width: 2px;
 }
 
 .t-mark.strong .t-box {
