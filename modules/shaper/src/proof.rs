@@ -197,27 +197,21 @@ fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block
     // server refuses one of 10 MB or more once it has sent many.
     let up = repeated(
         &s,
-        &format!(
-            "head -c 4000000000 /dev/zero | curl -s -o /dev/null -X POST -T - \
-             --max-time $((end - SECONDS + 1)) -w '%{{http_code}} %{{size_upload}}\\n' \
-             \"$1/__up\""
-        ),
+        "head -c 4000000000 /dev/zero | curl -s -o /dev/null -X POST -T - \
+         --max-time $((end - SECONDS + 1)) -w '%{http_code} %{size_upload}\\n' \
+         \"$1/__up\"",
         "",
     );
     let down = repeated(
         &s,
-        &format!(
-            "curl -s -o /dev/null --max-time $((end - SECONDS + 1)) \
-             -w '%{{http_code}} %{{size_download}}\\n' \"$1/__down?bytes=5000000\""
-        ),
+        "curl -s -o /dev/null --max-time $((end - SECONDS + 1)) \
+         -w '%{http_code} %{size_download}\\n' \"$1/__down?bytes=5000000\"",
         "",
     );
     let first = repeated(
         &s,
-        &format!(
-            "curl -s -o /dev/null -w '%{{http_code}} %{{time_starttransfer}}\\n' \
-             \"$1/__down?bytes=0\""
-        ),
+        "curl -s -o /dev/null -w '%{http_code} %{time_starttransfer}\\n' \
+         \"$1/__down?bytes=0\"",
         // A fresh connection a second, as a page's would be.
         "sleep 1;",
     );
@@ -589,7 +583,7 @@ mod tests {
         for waits in [true, false] {
             let stopped = Arc::new(AtomicBool::new(false));
             let later = Arc::clone(&stopped);
-            let stopper = thread::spawn(move || {
+            let raiser = thread::spawn(move || {
                 thread::sleep(Duration::from_millis(300));
                 later.store(true, Ordering::Relaxed);
             });
@@ -602,7 +596,7 @@ mod tests {
             } else {
                 settle(&stopped);
             }
-            let _ = stopper.join();
+            let _ = raiser.join();
             assert!(
                 began.elapsed() < Duration::from_secs(2),
                 "a stop on the way waited {:?}",
