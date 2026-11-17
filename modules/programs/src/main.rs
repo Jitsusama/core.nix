@@ -555,8 +555,8 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
             if was != Some(answering) {
                 hand_over(&daemon);
             }
-            if taking && taken::watched(&daemon) {
-                taken::make(shared, &mut daemon);
+            if taking {
+                taken::changed(shared, &mut daemon);
             }
             tabs::heard(shared, &mut daemon, at, what);
             // A page opened or shut leaves its bookmark's row or brings it
@@ -633,7 +633,7 @@ fn names_programs(kinds: &[String], keys: Option<&[String]>) -> bool {
 /// program's reads, so Chrome's history is read as it's stepped into.
 fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
     let lists = sources_of(shared, Run::List, kinds, keys);
-    for at in lists.into_iter().chain(taken::lists(shared)) {
+    for at in lists.into_iter().chain(taken::begun(shared)) {
         if keys.is_none() && shared.sources[at].asked {
             continue;
         }
