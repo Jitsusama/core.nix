@@ -15,6 +15,8 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
+use repos::read::shown;
+
 use crate::git::ran;
 pub use crate::pull::READ;
 
@@ -90,8 +92,28 @@ impl Words {
     /// says.
     #[must_use]
     pub fn answer(&self, id: &Value, branch: &str, switched: Result<Switched, Refused>) -> Value {
-        let _ = (id, branch, switched);
-        Value::Null
+        let word = match &switched {
+            Ok(Switched::Switched) => "switched",
+            Ok(Switched::Here) => "here",
+            Err(why) => why.code(),
+        };
+        let tree = match &switched {
+            Err(Refused::Elsewhere(tree)) => tree.as_str(),
+            _ => "",
+        };
+        let said = self
+            .say(word)
+            .replace("{branch}", branch)
+            .replace("{tree}", tree);
+        match switched {
+            Ok(_) => json!({"id": id, "said": said}),
+            Err(why) => json!({"id": id, "error": {
+                "code": "refused",
+                "refused": why.code(),
+                "message": said,
+                "said": said,
+            }}),
+        }
     }
 }
 
@@ -112,16 +134,52 @@ pub struct Branch {
 /// the rest by the commit written to last; none when git can't read them.
 #[must_use]
 pub fn branches(git: &str, folder: &Path, home: Option<&Path>) -> Vec<Branch> {
-    let _ = (git, folder, home);
-    Vec::new()
+    let format = "--format=%(HEAD)%00%(refname)%00%(committerdate:unix)%00%(worktreepath)";
+    let args = [
+        "for-each-ref",
+        "--sort=-committerdate",
+        format,
+        "refs/heads",
+    ];
+    ran(git, folder, &args, Some(READ))
+        .map_or_else(|_| Vec::new(), |printed| listed(&printed, folder, home))
 }
 
 /// The branches as `for-each-ref` printed them, each `%(HEAD)`,
 /// `%(refname)`, `%(committerdate:unix)` and `%(worktreepath)` apart by
 /// a NUL, on a line of its own; the one `folder` is on first.
 fn listed(printed: &str, folder: &Path, home: Option<&Path>) -> Vec<Branch> {
-    let _ = (printed, folder, home);
-    Vec::new()
+    let mut branches: Vec<Branch> = printed
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split('\0');
+            let here = fields.next()? == "*";
+            let name = fields.next()?.strip_prefix("refs/heads/")?.to_owned();
+            let at_s = fields.next().and_then(|at| at.parse().ok());
+            let elsewhere = fields
+                .next()
+                .filter(|tree| !tree.is_empty() && !same(Path::new(tree), folder))
+                .map(|tree| shown(Path::new(tree), home));
+            Some(Branch {
+                name,
+                at_s,
+                here,
+                elsewhere: elsewhere.filter(|_| !here),
+            })
+        })
+        .collect();
+    // Stable, so the rest keep the order of the commit written to last.
+    branches.sort_by_key(|branch| !branch.here);
+    branches
+}
+
+/// Whether two paths name one folder, however each was reached.
+fn same(one: &Path, other: &Path) -> bool {
+    one == other
+        || matches!(
+            (one.canonicalize(), other.canonicalize()),
+            (Ok(one), Ok(other)) if one == other
+        )
 }
 
 /// Checks out `branch` in the checkout at `folder`, with the git at
@@ -136,8 +194,42 @@ pub fn switch(
     branch: &str,
     home: Option<&Path>,
 ) -> Result<Switched, Refused> {
-    let _ = (git, folder, branch, home, ran);
-    Err(Refused::Failed)
+    // As Pull: only a checkout's own folder holds `.git` as a folder.
+    let own = folder.join(".git");
+    if !own.is_dir() || !own.join("HEAD").is_file() {
+        return Err(Refused::Tree);
+    }
+    // Never handed to git as an option, whatever it says.
+    if branch.is_empty() || branch.starts_with('-') {
+        return Err(Refused::Gone);
+    }
+    let read = |args: &[&str]| ran(git, folder, args, Some(READ));
+    let named = format!("refs/heads/{branch}");
+    read(&["rev-parse", "--verify", "--quiet", &named]).map_err(|_| Refused::Gone)?;
+    // A head that's no branch exits 1, which is no branch it's on.
+    if read(&["symbolic-ref", "--quiet", "--short", "HEAD"]).is_ok_and(|on| on.trim() == branch) {
+        return Ok(Switched::Here);
+    }
+    let held =
+        read(&["for-each-ref", "--format=%(worktreepath)", &named]).map_err(|_| Refused::Unread)?;
+    let held = held.trim();
+    if !held.is_empty() && !same(Path::new(held), folder) {
+        return Err(Refused::Elsewhere(shown(Path::new(held), home)));
+    }
+    let changed =
+        read(&["status", "--porcelain", "--untracked-files=no"]).map_err(|_| Refused::Unread)?;
+    if !changed.trim().is_empty() {
+        return Err(Refused::Changed);
+    }
+    // Never stopped part way, which would leave it half written.
+    ran(
+        git,
+        folder,
+        &["switch", "--quiet", "--no-guess", branch],
+        None,
+    )
+    .map_err(|_| Refused::Failed)?;
+    Ok(Switched::Switched)
 }
 
 #[cfg(test)]
