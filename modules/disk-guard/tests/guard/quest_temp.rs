@@ -310,7 +310,7 @@ fn old_scratch_is_sized_again_only_once_written_again() {
 
 /// The wall seconds of a local time as a Mac's `ps -o lstart` and the
 /// harness's `startToken` give it, `Sun Nov 15 17:43:08 2026`.
-fn lstart_wall(year: i32, month: i32, day: i32, [hour, minute, second]: [i32; 3]) -> f64 {
+fn lstart_wall(year: i32, month: i32, day: i32, [hour, minute, second]: [i32; 3]) -> u64 {
     // SAFETY: tm is plain data, zeroed is a valid value, and mktime reads
     // only the struct it's given.
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
@@ -318,7 +318,7 @@ fn lstart_wall(year: i32, month: i32, day: i32, [hour, minute, second]: [i32; 3]
     (tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_isdst) = (hour, minute, second, -1);
     // SAFETY: as above.
     let seconds = unsafe { libc::mktime(&raw mut tm) };
-    f64::from(i32::try_from(seconds).unwrap())
+    u64::try_from(seconds).unwrap()
 }
 
 // On 16 November a laptop's guard took 188 entries of a quest's tmp/ while
@@ -383,7 +383,7 @@ fn a_quest_a_live_session_works_on_keeps_what_it_left_whatever_its_age() {
     // Mac's session started at its token's second, its ticks a little in.
     let processes = [
         running(41, 500),
-        running(43, (token * 100.0) as u64 + 40),
+        running(43, token * 100 + 40),
         running(44, 900),
     ];
     let found = offers(&config, &processes, &|_| false);
