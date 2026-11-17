@@ -57,9 +57,10 @@ let
     text = builtins.readFile ./host-down.sh;
   };
 
-  # How long systemd gives a host to stop, in seconds. The unit tells the
-  # host the same number (PI_HOST_STOP_USEC), which parks within three
-  # quarters of it, so its own limit always comes first.
+  # How long systemd gives a host to stop at a restart or a switch, in
+  # seconds. The unit tells the host the same number (PI_HOST_STOP_USEC),
+  # which parks within three quarters of it, so its own limit comes first
+  # there. At logout, reboot or poweroff the manager's 5 s comes first.
   stopSeconds = 150;
 
   kinds = {
