@@ -108,6 +108,12 @@ fn quarantine_owned(
 /// apart, before the round leaves it for the next.
 const SENDS: u32 = 15;
 
+/// How often a leaving net may cut one revert's comparison short before
+/// the next try waits it out. Each try starts over at a new commit, so
+/// builds installed more often than a comparison takes, about 50 minutes
+/// on a Mac on 17 November, would keep a needed revert from ever landing.
+const CUTS: u64 = 2;
+
 /// How many times a test fails at a commit, and passes not once, before
 /// it counts as broken there.
 const FAILURES: usize = 2;
@@ -1137,6 +1143,7 @@ fn keep_revert(
     }
     if let Some(hold) = hold.as_object_mut() {
         hold.remove("reverting");
+        hold.remove("cuts");
     }
     state.set_hold(hold)
 }
@@ -1173,7 +1180,7 @@ fn revert_again(world: &dyn World, state: &State) -> Result<(), String> {
         log: state.log(&commit, &test, 2).display().to_string(),
     };
     let failed_at = hold["failed_at"].as_str().map(str::to_owned);
-    let wanted = revert_wanted(world, state, &found, failed_at.as_deref());
+    let wanted = revert_wanted(world, state, &found, failed_at.as_deref(), true);
     let reverted = world.revert(&found, &wanted);
     keep_revert(state, &mut hold, &reverted)?;
     if dropped(state, &found, &reverted)? {
@@ -1593,12 +1600,16 @@ impl<'a, 's, F: Fn(&str) -> bool> Breaking<'a, 's, F> {
 /// The test of a hold with no revert on main, which a run at main's newest
 /// head may clear. One whose revert is under way is left to the job kept
 /// for it, whose place a forward run's job would take, there being one for
-/// each test, and then let go of with nothing reverted.
+/// each test, and then let go of with nothing reverted; with no job kept,
+/// as after a build that didn't know the hold's word, nothing else would.
 fn forwardable(state: &State) -> Option<String> {
     state
         .hold()
-        .filter(|hold| !hold["revert_commit"].is_string() && hold["reverting"] != true)
-        .and_then(|hold| hold["test"].as_str().map(str::to_owned))
+        .filter(|hold| !hold["revert_commit"].is_string())
+        .and_then(|hold| {
+            let test = hold["test"].as_str()?;
+            (hold["reverting"] != true || !state.keeps_settling(test)).then(|| test.to_owned())
+        })
 }
 
 /// Clear the hold if it still names `test`, which `passes` says how. A
@@ -2215,16 +2226,24 @@ fn revert_and_tell(
 ) -> Result<(), String> {
     let (commit, test, log) = (&found.commit, &found.test, &found.log);
     let already_runs = world.runs(commit);
+    // A hold still saying this revert is under way was left by a net that
+    // ended or was stopped before keeping its outcome.
+    let cuts = state
+        .hold()
+        .filter(|was| was["reverting"] == true && was["test"] == test.as_str())
+        .filter(|was| was["bad"] == commit.as_str())
+        .map_or(0, |was| was["cuts"].as_u64().unwrap_or(0) + 1);
     let mut hold = json!({
         "test": test, "bad": commit, "bad_pr": found.pr, "revert_pr": Value::Null,
         "revert_commit": Value::Null, "failed_at": head, "at": now(),
-        "already_runs": already_runs, "reverting": true,
+        "already_runs": already_runs, "reverting": true, "cuts": cuts,
     });
     state.set_hold(&hold)?;
     if already_runs {
         state.say(&running::lets_through(commit, test));
     }
-    let reverted = world.revert(found, &revert_wanted(world, state, found, Some(head)));
+    let wanted = revert_wanted(world, state, found, Some(head), cuts < CUTS);
+    let reverted = world.revert(found, &wanted);
     keep_revert(state, &mut hold, &reverted)?;
     if dropped(state, found, &reverted)? {
         return Ok(());
@@ -2273,15 +2292,17 @@ fn revert_and_tell(
 /// what #2705 draws, but the test never ran there or with the revert, so
 /// the revert broke the test it was for. Only a newest head building the
 /// test as `failed_at` does, where it ran and failed, isn't run again.
+/// A leaving net may end during the comparison only when `may_be_cut`.
 fn revert_wanted<'a>(
     world: &'a dyn World,
     state: &'a State,
     found: &'a Bad,
     failed_at: Option<&'a str>,
+    may_be_cut: bool,
 ) -> impl Fn(&str, &str) -> Result<bool, String> + 'a {
     move |newest: &str, reverted: &str| {
         let test = &found.test;
-        let (without, with) = state.building(|| {
+        let compare = || {
             std::thread::scope(|scope| {
                 let with = scope.spawn(|| attempt_together(world, state, reverted, test));
                 let without = match failed_at {
@@ -2290,7 +2311,12 @@ fn revert_wanted<'a>(
                 };
                 (without, with.join().unwrap_or(Outcome::Unsent))
             })
-        });
+        };
+        let (without, with) = if may_be_cut {
+            state.building(compare)
+        } else {
+            compare()
+        };
         if without == Outcome::Unsent || with == Outcome::Unsent {
             return Err(format!(
                 "{UNCHECKED}: no builder ran {test} at main's newest head {} with and \

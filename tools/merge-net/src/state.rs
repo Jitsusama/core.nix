@@ -414,6 +414,11 @@ impl State {
         write_json(&self.settling_file(test), job)
     }
 
+    /// Whether a job is kept for `test`.
+    pub fn keeps_settling(&self, test: &str) -> bool {
+        self.settling_file(test).exists()
+    }
+
     /// Let go of `test`'s job, settled.
     pub fn settled(&self, test: &str) -> Result<(), String> {
         let kept = self.settling_file(test);
