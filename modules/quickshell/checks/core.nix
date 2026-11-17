@@ -138,6 +138,10 @@ in
             given = given ++ [
               "QMLPROFILER=${lib.getExe' graphical.pkgs.qt6.qtdeclarative "qmlprofiler"}"
             ];
+            # Joel's caret, its option's default, rather than the checks'
+            # steady one, since a key typed under a fading caret waits for
+            # niri's frame callback as his do (docs/testing.md).
+            shell.caret.fade = lib.mkForce 800;
           };
         };
       });
