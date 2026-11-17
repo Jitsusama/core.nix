@@ -157,7 +157,14 @@ pub fn automated(text: &str) -> bool {
 /// The verbs a peer opens its note with when it starts, restarts or wakes
 /// a session in the user's place. Only these, so Joel writing "Fixed by
 /// ABC123, still broken" about a cell stays his.
-const PEERS_VERBS: [&str; 6] = ["Started", "Restarted", "Woken", "Resumed", "Reopened", "Spawned"];
+const PEERS_VERBS: [&str; 6] = [
+    "Started",
+    "Restarted",
+    "Woken",
+    "Resumed",
+    "Reopened",
+    "Spawned",
+];
 
 /// Whether a message is a peer's note in the user's place, as one starting,
 /// restarting or waking a session writes: "Woken by 1JQPPC on ...", one of
