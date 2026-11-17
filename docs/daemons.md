@@ -55,7 +55,8 @@ names it with that reason.
 ## The Interface
 
 Version 1, one JSON object a line in UTF-8, either side writing at any time.
-Every ask carries an `id`, which each answer to it repeats.
+Every ask carries an `id`, which each answer to it repeats. An ask runs to at
+most 16 MiB: a connection whose line runs past that unended is hung up on.
 
 - `hello` answers the version, the domain and its state.
 - `get` with `keys` answers the record held for each key.

@@ -86,6 +86,103 @@ fn a_connection_asking_without_reading_is_hung_up_on() {
 }
 
 #[test]
+fn a_connection_whose_ask_never_ends_is_hung_up_on_once_it_runs_past_its_longest() {
+    // A slow ask still waiting holds the connection's writer, so only its
+    // shutting ends it.
+    let (release, waiting) = channel::<()>();
+    let waiting = Mutex::new(waiting);
+    let own: Own = Box::new(move |said| {
+        (said["ask"] == "wait").then(|| {
+            let waiting = waiting
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let _ = waiting.recv_timeout(Duration::from_secs(30));
+            json!({})
+        })
+    });
+    let (shared, _client, folder) = served("unended", own);
+    shared.slow(&["wait"]);
+    let said = hearing(&shared);
+    let mut sending = UnixStream::connect(folder.0.join("daemon.sock")).expect("it connects");
+    let stuck = sending.try_clone().expect("its stream");
+    stuck
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("a timeout is set");
+    let mut stuck = std::io::BufReader::new(stuck);
+    // An ask at its longest, spaces before it, is answered, its end aside.
+    let hello = r#"{"id":1,"ask":"hello"}"#;
+    let longest = format!("{}{hello}\r\n", " ".repeat(LONGEST - hello.len()));
+    sending.write_all(longest.as_bytes()).expect("it's written");
+    let mut answer = String::new();
+    stuck.read_line(&mut answer).expect("it's answered");
+    let answer: Value = serde_json::from_str(&answer).expect("an answer");
+    assert_eq!(answer["id"], 1, "an ask at its longest was answered");
+    sending
+        .write_all(b"{\"id\":2,\"ask\":\"wait\"}\n")
+        .expect("it's written");
+    // Written whole, or cut off once the daemon shuts it.
+    std::thread::spawn(move || {
+        let _ = sending.write_all(&vec![b'x'; LONGEST + (64 << 10)]);
+    });
+    // Shut, its end reads as ended, or as reset with what it sent unread.
+    let mut left = Vec::new();
+    if let Err(why) = stuck.read_to_end(&mut left)
+        && why.kind() != std::io::ErrorKind::ConnectionReset
+    {
+        panic!("the one whose ask never ended was left open: {why}");
+    }
+    assert_eq!(
+        in_time(&said),
+        Some(format!(
+            "agents: hung up on connection 2 ({}), whose ask ran past the 16 MiB a line may hold",
+            this_process()
+        )),
+        "its hang-up was said"
+    );
+    drop(release);
+}
+
+#[test]
+fn a_line_is_read_whole_to_its_longest_and_past_that_is_overlong() {
+    let mut lines = std::io::Cursor::new(b"abc\r\ncd\nef".to_vec());
+    let read: Vec<Next> = (0..4).map(|_| next_line(&mut lines, 3)).collect();
+    assert_eq!(
+        read,
+        [
+            Next::Line("abc".to_owned()),
+            Next::Line("cd".to_owned()),
+            Next::Line("ef".to_owned()),
+            Next::Ended
+        ],
+        "each line without its end, the last as it ended"
+    );
+    let next = |bytes: &[u8]| next_line(&mut std::io::Cursor::new(bytes.to_vec()), 3);
+    assert_eq!(
+        next(b"abc\n"),
+        Next::Line("abc".to_owned()),
+        "one at its longest"
+    );
+    assert_eq!(
+        next(b"abc"),
+        Next::Line("abc".to_owned()),
+        "one ended at its longest"
+    );
+    assert_eq!(next(b"abcd\n"), Next::Overlong, "one past it");
+    assert_eq!(
+        next(b"abcd\r\n"),
+        Next::Overlong,
+        "one past it, its end aside"
+    );
+    assert_eq!(
+        next(b"ab\r"),
+        Next::Line("ab\r".to_owned()),
+        "a carriage return unended is its own"
+    );
+    assert_eq!(next(b"abcd"), Next::Overlong, "one past it, unended");
+    assert_eq!(next(b"\xff\n"), Next::Ended, "what isn't words ends it");
+}
+
+#[test]
 fn a_connection_asking_slowly_without_reading_is_hung_up_on() {
     let own: Own =
         Box::new(|said| (said["ask"] == "share").then(|| json!({"to": "x".repeat(LONG)})));
@@ -155,6 +252,11 @@ fn a_hang_up_is_said_once_a_connection_and_never_of_one_that_went() {
     // Its slow asks find it stopped reading after, and the other gone.
     shared.say_once(&stopped, Unqueued::Unread, "a slow ask was answered");
     shared.say_once(&went, Unqueued::Gone, "it was answered");
+    shared.say_overlong(&stopped);
+    // One hung up on for its ask's length isn't said again as unread.
+    let long = Peer::of(6, &ours);
+    shared.say_overlong(&long);
+    shared.say_once(&long, Unqueued::Unread, "it was answered");
     // Lines are written in turn, so what came before this one is all said.
     let last = Peer::of(5, &ours);
     shared.say_once(&last, Unqueued::Unread, "it was answered");
@@ -167,13 +269,20 @@ fn a_hang_up_is_said_once_a_connection_and_never_of_one_that_went() {
     }
     assert_eq!(
         heard,
-        [format!(
-            "agents: hung up on connection 4 ({}), which left {QUEUED} lines unread as a watch \
-             was told what moved",
-            this_process()
-        )],
-        "said once of the one that stopped reading, by whichever path found it first, and \
-         never of the one whose writer ended"
+        [
+            format!(
+                "agents: hung up on connection 4 ({}), which left {QUEUED} lines unread as a \
+                 watch was told what moved",
+                this_process()
+            ),
+            format!(
+                "agents: hung up on connection 6 ({}), whose ask ran past the 16 MiB a line may \
+                 hold",
+                this_process()
+            )
+        ],
+        "said once of each hung up on, by whichever path found it first, and never of the \
+         one whose writer ended"
     );
 }
 

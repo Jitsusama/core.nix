@@ -698,7 +698,8 @@
     asked again at once it's told at once what it held back, never everything whole; a
     connection that stops reading is hung up on once its queue fills, while the rest are
     still told; one that asks without reading, slowly or not, or whose pace finds its queue
-    full, is shut and its writer ended; each hang-up is said once on standard error, naming
+    full, is shut and its writer ended, as is one whose ask runs past the longest a line may
+    hold; each hang-up is said once on standard error, naming
     the connection, its process and how it was being told, while one whose writer ended goes
     unsaid, and lines past what waits to be written are counted rather than waited on; and the
     daemon answers its own asks
