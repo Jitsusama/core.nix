@@ -27,7 +27,9 @@
 //! preview only once it's got, is handed what each get, list or watch
 //! names before it's answered (`fresh`), and hands what it read to
 //! `change` like anything else, so every watch hears it and no answer
-//! says what a watch wasn't told. A record nothing should hold, as the
+//! says what a watch wasn't told. What a watch reads only after its
+//! answer, it starts once the watch is held (`begun`), so a read asking
+//! whether it's watched finds it. A record nothing should hold, as the
 //! clipboard's history serves the text highlighted now, is read instead
 //! as a get names its key (`read_on_get`), and never held, listed or
 //! told to a watch.

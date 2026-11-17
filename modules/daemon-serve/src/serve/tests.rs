@@ -636,9 +636,11 @@ fn a_daemon_hears_a_watch_begun_once_it_is_held() {
     let (telling, told) = channel();
     let this = Arc::downgrade(&shared);
     shared.begun(Box::new(move |wanted| {
+        let place = wanted.places.and_then(<[String]>::first);
         let held = this
             .upgrade()
-            .is_some_and(|shared| shared.watches("row", "agents"));
+            .zip(place)
+            .is_some_and(|(shared, place)| shared.watches("row", place));
         let _ = telling.send((asked(wanted), held));
     }));
     client.ask(&json!({"id": 1, "ask": "get", "keys": ["row:agents:a"]}));
@@ -650,6 +652,15 @@ fn a_daemon_hears_a_watch_begun_once_it_is_held() {
         Ok((r#"["row"] None Some(["agents"]) true"#.to_string(), true)),
         "a watch begun is said once it's held, and only a watch is"
     );
+    let again = client.ask(&json!({"id": 3, "ask": "watch", "kind": "row", "place": "people"}));
+    assert_eq!(again["id"], 3, "the watch asked again is answered: {again}");
+    assert_eq!(
+        told.recv_timeout(Duration::from_secs(10)),
+        Ok((r#"["row"] None Some(["people"]) true"#.to_string(), true)),
+        "a watch asked again under its id is said begun again"
+    );
+    client.ask(&json!({"id": 4, "ask": "health"}));
+    assert!(told.try_recv().is_err(), "each watch begun is said once");
 }
 
 #[test]

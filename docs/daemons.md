@@ -85,7 +85,10 @@ program asking one uses [daemon-client][daemon-client].
 A daemon that reads only what's asked for, as Programs makes a preview
 once it's got, hands daemon-serve a `fresh` that reads what each get, list
 or watch names before it's answered, and hands what it read on like any
-other change, so no answer says what a watch wasn't told. What else it
+other change, so no answer says what a watch wasn't told. What a watch
+reads only after its answer, as Programs reads Chrome's session for its
+tabs, it starts from `begun`, which daemon-serve calls once the watch is
+held, so a read that asks whether it's watched finds it. What else it
 counts joins health through `health_too`, never in place of daemon-serve's
 own fields, which the check reads alike for every daemon.
 

@@ -99,12 +99,13 @@ impl Shared {
         }
     }
 
-    /// Has the daemon read what the watch `asked` wants now it's begun.
+    /// Has the daemon read what the watch `asked` wants now it's begun;
+    /// the connection hands it only a watch it holds.
     pub(super) fn watch_begun(&self, asked: &Ask) {
         let Some(begun) = self.begun.get() else {
             return;
         };
-        if let Some(wanted) = wanted_of(asked).filter(|wanted| wanted.watching) {
+        if let Some(wanted) = wanted_of(asked) {
             begun(&wanted);
         }
     }
