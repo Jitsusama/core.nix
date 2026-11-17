@@ -237,14 +237,5 @@ themeSwitch();
 
 // A tap on a key the head shows does what typing it does, for a reader with
 // no keyboard, and leaves the list holding the keys as a typed one does.
-pressable(".hero .keys kbd", {
-  j: () => {
-    move(1);
-    list.focus();
-  },
-  k: () => {
-    move(-1);
-    list.focus();
-  },
-  "?": () => toggle(keys),
-});
+const taps = { j: () => move(1), k: () => move(-1), "?": () => toggle(keys) };
+pressable(".hero .keys kbd", taps, () => list.focus());
