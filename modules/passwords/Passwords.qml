@@ -87,6 +87,10 @@ Provider {
         // so the asks folder is watched once, by this daemon.
         kind: provider.answersAsks ? ["entry", "row"] : "entry"
         watching: provider.answersAsks ? { place: "asks" } : ({})
+        // Its watch's answer holds every ask's row whole, so one that went while the child
+        // was starting again is let go, rather than left waiting until the shell restarts.
+        // Entries aren't listed until a manager is read, so they're kept through it.
+        answersWholeFor: key => key.startsWith("row:asks:") || key === "summary:asks"
         // Entries change as a manager is read, so each is kept by key and
         // a manager's standing told as it changes.
         onSourcesChanged: provider.changed()
