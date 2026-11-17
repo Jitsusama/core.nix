@@ -1424,6 +1424,30 @@ mod tests {
         );
     }
 
+    /// A temperature is read to tenths, so it's said to tenths at most:
+    /// a drive's under-temperature limit of 273 K is "−0.2 °C", never
+    /// "−0.200 °C", and what's left to a limit is said the same way.
+    #[test]
+    fn a_temperature_near_freezing_is_said_to_tenths() {
+        let mut held = sensors(71.0, 79.0);
+        held[1]["temperatures"][0]["low_c"] = json!(-0.2);
+        held[1]["temperatures"][0]["temperature_c"] = json!(5.2);
+        let zones = zones();
+        let cpu = processor();
+        let ready = Heat::default().read(
+            Held {
+                sensors: &held,
+                zones: &zones,
+                processor: Some(&cpu),
+                ..Held::default()
+            },
+            1000,
+            &words(),
+        );
+        assert_eq!(row(&ready, "disk:0/low")["side"][0]["said"], "\u{2212}0.2 \u{b0}C");
+        assert_eq!(row(&ready, "disk:0")["side"][0]["said"], "5.2 \u{b0}C");
+    }
+
     /// A jitter of under a degree leaves each drawing as it was, so the
     /// bar and the cores' strip aren't sent again (Y2YBTS, 2026-11-10).
     #[test]

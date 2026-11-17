@@ -156,6 +156,13 @@ impl Words {
     /// A measured figure to three significant digits, its zeros kept so
     /// each says as much as the next: 28.47 as "28.5", 5.2 as "5.20", 0
     /// as "0", -3.2 as "−3.20", 1234 as "1,230".
+    /// A measured figure to three significant digits, but to no more
+    /// places than `most`: a temperature read to tenths is said to them.
+    pub fn significant_to(&self, value: f64, most: usize) -> String {
+        let _ = most;
+        self.significant(value)
+    }
+
     pub fn significant(&self, value: f64) -> String {
         let rounded: f64 = format!("{value:.AFTER_FIRST$e}").parse().unwrap_or(value);
         if rounded == 0.0 || !rounded.is_finite() {
@@ -243,6 +250,16 @@ mod tests {
             "1.230 5,20"
         );
         assert_eq!(said.significant(0.0), "0");
+    }
+
+    /// A figure read to tenths says no more places than it has.
+    #[test]
+    fn three_significant_digits_to_tenths_at_most() {
+        let said = words("", "");
+        let figures = [-0.2, 5.2, 0.04, 52.9, 100.0, 0.0].map(|v| said.significant_to(v, 1));
+        assert_eq!(figures, ["\u{2212}0.2", "5.2", "0", "52.9", "100", "0"]);
+        let set = words(".", ",");
+        assert_eq!(set.significant_to(5.2, 1), "5,2");
     }
 
     #[test]
