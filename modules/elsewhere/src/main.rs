@@ -296,6 +296,16 @@ fn run(context: &Context, settings: &Settings) -> Result<(), Failure> {
     let args = &context.args;
     let asked = parse(args)?;
     let kind = named(settings, &asked.kind)?;
+    if let Some(odd) = kind.odd_brings_back() {
+        return Err(Failure::new(
+            Exit::Config,
+            format!(
+                "{}'s brings_back names {odd}, which is hidden or outside the job's folder",
+                asked.kind
+            ),
+        )
+        .try_this("its brings_back in the machine's home-manager settings"));
+    }
     let program = Path::new(&asked.command[0])
         .file_name()
         .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
@@ -474,16 +484,26 @@ fn send(
         &kind.brings_back,
         far::CROSSES_WITHIN,
     );
-    if let Err(why) = brought {
-        eprintln!("couldn't bring back what it made on {machine}: {why}");
-        // Moved aside, so the handover's removal once the job ends leaves
-        // what it made for the person to take by hand.
-        let kept = job.handover.with_extension("kept");
-        if fs::rename(&job.handover, &kept).is_ok() {
-            eprintln!("what it made is kept in {}", kept.display());
-        }
+    let Err(why) = brought else {
+        return Ok(Sent::Ended(code));
+    };
+    match far::keep(&job.handover) {
+        Ok(kept) => eprintln!(
+            "what it made is kept in {}, to take and then remove",
+            kept.display()
+        ),
+        Err(error) => eprintln!("what it made couldn't be kept either: {error}"),
     }
-    Ok(Sent::Ended(code))
+    if code != 0 {
+        eprintln!("couldn't bring back what it made on {machine}: {why}");
+        return Ok(Sent::Ended(code));
+    }
+    // The job's work never reached the folder, so it isn't done here.
+    Err(Failure::new(
+        Exit::Failed,
+        format!("couldn't bring back what it made on {machine}"),
+    )
+    .because(why))
 }
 
 /// Whether mycelium, asked `words`, says yes.

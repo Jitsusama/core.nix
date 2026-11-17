@@ -129,14 +129,6 @@ fn kind(name: &str, value: &Value) -> Result<Kind, String> {
         return Err(format!("{name} names no program a job of it may start"));
     }
     let brings_back = list("brings_back")?;
-    // The far side passes over hidden files and the near side lands
-    // nothing outside the folder, so such a path could only cross for
-    // nothing or never come home.
-    if let Some(odd) = brings_back.iter().find(|path| !plain(path)) {
-        return Err(format!(
-            "{name}'s brings_back names {odd}, which is hidden or outside the job's folder"
-        ));
-    }
     Ok(Kind {
         description: text("description").to_owned(),
         programs,
@@ -149,6 +141,19 @@ fn kind(name: &str, value: &Value) -> Result<Kind, String> {
             .filter(|it| !it.is_empty())
             .map(str::to_owned),
     })
+}
+
+impl Kind {
+    /// The first path this kind brings back that names nothing that could
+    /// come home, since the far side passes over hidden files and the near
+    /// side lands nothing outside the folder. Asked as the kind runs, so
+    /// one kind set wrongly leaves the others to run.
+    pub fn odd_brings_back(&self) -> Option<&str> {
+        self.brings_back
+            .iter()
+            .map(String::as_str)
+            .find(|path| !plain(path))
+    }
 }
 
 /// Whether `path`, with its slashes at either end taken off, names some
@@ -213,20 +218,35 @@ mod tests {
                 "not disk",
             ),
             (r#"{"machines": "far"}"#, "machines is a list"),
-            (
-                r#"{"kinds": {"check": {"programs": ["x"], "brings_back": ["out/.cache"]}}}"#,
-                "names out/.cache, which is hidden",
-            ),
-            (
-                r#"{"kinds": {"check": {"programs": ["x"], "brings_back": ["../up"]}}}"#,
-                "names ../up",
-            ),
             ("{", "EOF"),
         ] {
             let problem = read(text).expect_err(&format!("{text} was taken"));
             assert!(
                 problem.contains(says),
                 "{text} was refused as {problem}, not {says}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_kind_bringing_back_what_can_t_come_home_is_refused_alone() {
+        let settings = read(
+            r#"{"kinds": {
+                "hidden": {"programs": ["x"], "brings_back": ["out", "out/.cache"]},
+                "up": {"programs": ["x"], "brings_back": ["../up"]},
+                "fine": {"programs": ["x"], "brings_back": ["/out/", "a/b"]}
+            }}"#,
+        )
+        .expect("one kind set wrongly stopped the settings loading");
+        for (name, odd) in [
+            ("hidden", Some("out/.cache")),
+            ("up", Some("../up")),
+            ("fine", None),
+        ] {
+            assert_eq!(
+                settings.kinds[name].odd_brings_back(),
+                odd,
+                "{name}'s brings_back was judged wrongly"
             );
         }
     }

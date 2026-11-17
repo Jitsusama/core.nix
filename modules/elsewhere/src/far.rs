@@ -26,8 +26,10 @@ use crate::settings::{Copies, Kind};
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
+use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Where a job's folder lies within a quest's scratch.
 pub const HANDOVER: &str = "handover/elsewhere";
@@ -357,7 +359,10 @@ fn bringing(kind: &Kind) -> String {
         .join(" ");
     format!(
         r#"for path in {paths}; do
-  [ -e "$path" ] && find "$path" -type f ! -path '*/.*' ! -name '.*'
+  [ -e "$path" ] || continue
+  find "$path" -type l ! -path '*/.*' ! -name '.*' \
+    -exec printf "elsewhere: %s is a link, so it stays here\n" {{}} \; >&2
+  find "$path" -type f ! -path '*/.*' ! -name '.*'
 done | {{
   n=0
   while IFS= read -r file; do
@@ -493,29 +498,81 @@ pub fn bring_back(
 }
 
 /// Puts `from` at `into` under a name of its own first and then moves it
-/// there, so a file already at `into`, a hard link to one elsewhere
-/// perhaps, is replaced rather than written through.
+/// there, so whatever is already at `into`, a hard link to a file
+/// elsewhere or a symbolic link, is replaced rather than written through.
 fn land(from: &Path, into: &Path) -> io::Result<()> {
+    static NEXT: AtomicU32 = AtomicU32::new(0);
     let parent = into.parent().unwrap_or(Path::new("."));
     fs::create_dir_all(parent)?;
-    let name = into.file_name().unwrap_or_default().to_string_lossy();
-    let landing = parent.join(format!(".{name}{MARK}-landing"));
-    fs::copy(from, &landing)?;
-    fs::rename(&landing, into).inspect_err(|_| {
+    // Made new, so nothing already at the name, a link perhaps, is opened,
+    // and short, so any name that fits its folder lands.
+    let landing = parent.join(format!(
+        "{MARK}-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    let mut to = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&landing)?;
+    let landed = opened_plain(from).and_then(|mut source| {
+        io::copy(&mut source, &mut to)?;
+        to.set_permissions(source.metadata()?.permissions())?;
+        fs::rename(&landing, into)
+    });
+    landed.inspect_err(|_| {
         // What's left would be in the person's folder; it's spent anyway.
         let _ = fs::remove_file(&landing);
     })
 }
 
-/// The first part of `path` under `folder` that is a symbolic link a file
-/// brought back mustn't be written through, and where it leads: out of
-/// `folder`, nowhere, which would make what it names, or into a hidden
-/// folder, where nothing brought back may go. Any other link within the
-/// folder is the person's own.
+/// Opens `path` only when it is a plain file, and the same file once open,
+/// so a link put there after the look is never followed.
+fn opened_plain(path: &Path) -> io::Result<fs::File> {
+    let looked = fs::symlink_metadata(path)?;
+    if !looked.is_file() {
+        return Err(io::Error::other("it isn't a plain file"));
+    }
+    let file = fs::File::open(path)?;
+    let opened = file.metadata()?;
+    if opened.dev() != looked.dev() || opened.ino() != looked.ino() {
+        return Err(io::Error::other("it changed as it was opened"));
+    }
+    Ok(file)
+}
+
+/// Moves the handover `job` aside once what it brought back can't land,
+/// with the job's own tree and list taken out, so the handover's removal
+/// leaves only what the job made, for the person to take by hand.
+pub fn keep(job: &Path) -> io::Result<PathBuf> {
+    for (gone, removed) in [
+        (TREE, fs::remove_dir_all(job.join(TREE))),
+        (LEFT, fs::remove_file(job.join(LEFT))),
+    ] {
+        if let Some(error) = removed
+            .err()
+            .filter(|error| error.kind() != io::ErrorKind::NotFound)
+        {
+            return Err(io::Error::other(format!("its {gone} stayed: {error}")));
+        }
+    }
+    let kept = job.with_extension("kept");
+    fs::rename(job, &kept)?;
+    Ok(kept)
+}
+
+/// The first folder on the way to `path` under `folder` that is a symbolic
+/// link a file brought back mustn't be written through, and where it
+/// leads: out of `folder`, nowhere, which would make what it names, or
+/// into a hidden folder, where nothing brought back may go. Any other link
+/// within the folder is the person's own. A link at the file's own name is
+/// replaced as it lands, never followed, so it isn't looked at.
 fn linked(folder: &Path, path: &str) -> Option<(PathBuf, &'static str)> {
     let home = fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
     let mut at = folder.to_path_buf();
-    Path::new(path).components().find_map(|part| {
+    let parts: Vec<_> = Path::new(path).components().collect();
+    let folders = parts.len().saturating_sub(1);
+    parts[..folders].iter().find_map(|part| {
         at.push(part);
         if !fs::symlink_metadata(&at).is_ok_and(|meta| meta.file_type().is_symlink()) {
             return None;
