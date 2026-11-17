@@ -941,6 +941,50 @@ fn a_new_initrd_runs_now_and_is_booted_next_once_its_boot_check_passes() {
 }
 
 #[test]
+fn the_boot_check_is_told_the_commit_flake_and_overrides_its_system_was_built_from() {
+    // A check that builds its own test of the system needs the tree the
+    // system came from, which the system's path alone doesn't name.
+    let mut world = following();
+    let pinned = world.core_commit("pinned", true);
+    let newer = world.core_commit("newer", true);
+    let head = world.signed_pinning("one", &pinned);
+    let told = world.root.join("told");
+    let check = format!(
+        "printf '%s\\n' \"$UPDATE_TO_MAIN_COMMIT\" \"$UPDATE_TO_MAIN_FLAKE\" > {told}; \
+         printf '%s' \"$UPDATE_TO_MAIN_OVERRIDES\" > {told}.overrides",
+        told = told.display()
+    );
+    a_new_initrd(&mut world, &head, &check);
+    let (_, ending) = world.update();
+    assert!(
+        matches!(ending, Line::Done { boots: None, .. }),
+        "the boot check should pass: {ending:?}"
+    );
+    let said = fs::read_to_string(&told).unwrap_or_default();
+    let said: Vec<&str> = said.lines().collect();
+    assert_eq!(
+        said.first().copied(),
+        Some(head.as_str()),
+        "the boot check wasn't told the commit it checks: {said:?}"
+    );
+    let flake = said.get(1).copied().unwrap_or_default();
+    assert!(
+        flake.starts_with("git+file://")
+            && flake.ends_with(&format!("rev={head}"))
+            && !flake.contains('#'),
+        "the boot check wasn't told a flake locked at the commit, with no output: {flake}"
+    );
+    let overrides = fs::read_to_string(told.with_extension("overrides")).unwrap_or_default();
+    let overrides: Vec<&str> = overrides.lines().collect();
+    assert!(
+        overrides.len() == 3
+            && overrides[..2] == ["--override-input", "core"]
+            && overrides[2].ends_with(&format!("rev={newer}")),
+        "the boot check wasn't told the inputs its system was built with: {overrides:?}"
+    );
+}
+
+#[test]
 fn a_new_initrd_whose_boot_check_fails_runs_but_isnt_booted_next() {
     let mut world = World::new();
     let first = world.running();
