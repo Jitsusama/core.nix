@@ -11231,6 +11231,10 @@ Scope {
             const live = Heap.census(12);
             console.info(`launcher: what's there before collecting, 5 s after a closing's`
                 + ` collection, ${found.said}`);
+            const lines = Hearing.heardMost(6);
+            console.info(`launcher: whose daemon lines held the most over ${lines.minutes} min,`
+                + ` of ${lines.lines} lines, ${lines.characters} characters: `
+                + (lines.said || "none"));
             console.info(`launcher: what's live once collected in ${took} ms, `
                 + (live.busy ? "not counted, a collection under way" : live.said));
         }

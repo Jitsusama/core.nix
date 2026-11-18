@@ -395,9 +395,11 @@ Scope {
     // Each line is marked as heard from when it's read until all it set
     // going has returned, so the launcher times a change from it
     // (Hearing.js).
-    // The daemon its lines are heard as from, by its socket's name:
-    // "machine" for machine.sock.
-    readonly property string heardAs: socket.split("/").pop().replace(/\.sock$/, "")
+    // The daemon its lines are heard as from, and counted under for the
+    // census: "machine" for daemons/machine.sock, "eero" for eero/socket,
+    // and one with no socket by its program (Hearing.js).
+    readonly property string heardAs: Hearing.nameOf(socket, command,
+        Quickshell.env("XDG_RUNTIME_DIR") ?? "")
 
     function said(line) {
         const was = Hearing.begun(Date.now(), heardAs);
@@ -410,6 +412,7 @@ Scope {
 
     function hear(line) {
         linesHeard += 1;
+        Hearing.counted(heardAs, line.length);
         let answer;
         try {
             answer = JSON.parse(line);
