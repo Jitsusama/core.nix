@@ -1657,7 +1657,7 @@ def test_spotify_signed_out_offers_sign_in_and_says_so(desktop: Desktop) -> None
 
     Stepping in runs the account's own spotify-recent, which finds no sign-in and says so by
     its exit status: the provider, its command and its words wired together, as only a machine
-    with Spotify's client shows. Its many cases are tests/spotify-program.qml's.
+    with Spotify's client shows. Its many cases are modules/spotify/tests/spotify-program.qml's.
     """
     desktop.answer("spotify")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Spotify")

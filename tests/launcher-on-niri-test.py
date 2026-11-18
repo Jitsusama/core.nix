@@ -2106,6 +2106,92 @@ def test_a_find_finding_nothing_keeps_the_rows_it_let_go(shell: Shell) -> None:
     assert built[1:] == [0], f"rows built taking back each miss in Desktop: {built}"
 
 
+# How many notices the far step out is taken among, and how far down them it stands.
+NOTICES_MANY = 30
+NOTICES_DOWN = 16
+
+
+def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> None:
+    """- back to a row far down a list draws no more rows than stood around it, where it stood.
+
+    The rows came back laid out from the list's top, then the selection's row was scrolled to
+    and its rows laid out again, so Joel's - out of a notice twenty rows down Desktop took 68
+    ms, 41 of it after the rows were shown (his journal, 2026-11-17 16:39:52). Sixteen down is
+    twice the rows a card shows, as far as the twenty rows the shell says of its list. The rows it
+    draws are counted the second time, as the first may build what the notices never showed, and
+    held to those drawn while the row was selected before, not to those it drew itself. The
+    selection moves down the drawer first, as a search coming back selects its first row and
+    showing that one scrolled to the list's top.
+    """
+    # Each rests at once, so the line has none left to show by the last.
+    with shell.told(f"rests Heron {NOTICES_MANY - 1:02}", timedelta(seconds=90)):
+        for at in range(NOTICES_MANY):
+            shell.as_account(f"notify-send --expire-time=1 'Heron {at:02}' 'one of many'")
+    shell.notices_gone()
+    drawn = []
+    for _ in range(2):
+        # For You's Desktop, which holds the notices rested off the screen.
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        typed_at_once(shell, "'for you' -k Return")
+        shell.launcher_until(
+            lambda shown: shown["path"][-1:] == ["For You"] and "Desktop" in shown["rows"]
+        )
+        shell.normal()
+        shell.down_to("Desktop")
+        shell.step_in()
+        shell.launcher_until(lambda shown: len(shown["rows"]) > NOTICES_DOWN)
+        shell.normal()
+        far = shell.showing()["rows"][NOTICES_DOWN]
+        shell.down_to(far)
+        standing = laid_out(shell)
+        # Else the list's top is in reach, and the case can't tell a split from none.
+        assert standing["firstAt"] is None, f"the first row was drawn with {far}: {standing}"
+        # Into its drawer, nothing that sent it being there to go to (PastNotices.qml).
+        shell.step_in()
+        inside = shell.showing()["rows"]
+        # Else the selection can't move off the drawer's first row.
+        assert len(inside) > 1, f"{far}'s drawer holds {inside}"
+        shell.down_to(inside[-1])
+        laid = laid_out(shell)
+        before = int(laid["drawn"])
+        depth = len(shell.showing()["held"])
+        shell.send_chars("-")
+        shell.launcher_until(functools.partial(stepped_back_to, depth=depth, far=far))
+        laid = laid_out(shell)
+        drawn.append(int(laid["drawn"]) - before)
+        # Fails loudly if the split is ever passed by, as the bound could hold without it.
+        assert (laid["stepped"] or {}).get("from", 0) > 0, f"- didn't split: {laid['stepped']}"
+        was, now = band_of(standing, far), band_of(laid, far)
+        assert was is not None, f"{far} wasn't drawn before stepping in"
+        assert now == was, f"- back put {far} at {now}, not at {was} where it stood"
+        assert (laid["selection"] or {}).get("row") == now, f"{far} isn't lit: {laid['selection']}"
+        for row in laid["rows"]:
+            name = row["reads"].split(" \u00b7 ")[0]
+            texts = {word["text"] for word in row["words"]}
+            assert name in texts, f"{row['is']} doesn't say {name}: {sorted(texts)}"
+        shell.close_launcher()
+    # The rows drawn around the row before, the one built ahead each way among them.
+    reach = len(standing["rows"])
+    assert drawn[1] <= reach, f"rows drawn by each - back to {far}: {drawn}, {reach} in reach"
+
+
+def band_of(laid: Json, name: str) -> int | None:
+    """Give where the row by this name is drawn on the card, its name drawn, or None."""
+    bands = [
+        row["band"]
+        for row in laid["rows"]
+        if row["reads"].split(" \u00b7 ")[0] == name
+        and any(word["text"] == name for word in row["words"])
+    ]
+    return cast("int", bands[0]) if bands else None
+
+
+def stepped_back_to(shown: Json, *, depth: int, far: str) -> bool:
+    """Say whether - has come back a step from this deep, to this row selected."""
+    return len(shown["held"]) == depth - 1 and (shown["selected"] or {}).get("name") == far
+
+
 def drawn_rows(laid: Json) -> Iterator[tuple[tuple[str, str], list[tuple[object, ...]]]]:
     """Give each row shown by what it is and reads, with its words as drawn, each in order.
 
