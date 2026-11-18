@@ -166,7 +166,10 @@ QtObject {
         // stands, then when it came, each with the width it keeps.
         Expect.same("an answered ask's side says how it stands and when it came",
             Ready.sideItems([{ said: "released", keep: 2 }, { at: morning, as: "came", keep: 1 }],
-                now, said).map(one => [one.said !== "", one.keep]), [[true, 2], [true, 1]]);
+                now, said), [{ said: "released", keep: 2 }, { said: "09:05", keep: 1 }]);
+        // The shape secret-asks once served, the time nested under a second
+        // key, is worded as nothing: the daemon's own test pins the flat
+        // shape, since the row can't tell a lost time from none.
         Expect.same("a time held inside an item says nothing",
             Ready.sideItems([{ at: { at: morning, as: "came" }, keep: 1 }], now, said), []);
         Expect.same("a time worded into its words",
