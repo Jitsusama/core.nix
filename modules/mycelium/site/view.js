@@ -922,7 +922,9 @@
         const alpha = s.key ? (finding && !foundSet.has(s.key) ? RECEDED : 1) : base;
         // The line under the pointer is drawn thicker, so what a click
         // would open is seen before it is clicked.
-        const w = s.line && s.line === touched ? (s.w || ink.width) + TOUCHED_GROWS : s.w;
+        // A line sized by what it carries still grows when lit.
+        const carries = s.w && LIT.test(s.cls || "") ? Math.max(s.w, ink.width) : s.w;
+        const w = s.line && s.line === touched ? (carries || ink.width) + TOUCHED_GROWS : carries;
         // Discs are filled one by one, so overlapping grounds don't merge.
         if (!open || open.ink !== ink || open.w !== w || s.tag === "circle") {
           finish();
@@ -989,6 +991,7 @@
   // ground itself still opens its network.
   const TOUCH_PX = 6;
   const TOUCHED_GROWS = 2;
+  const LIT = /\blit\b/;
   let touched = null;
   const lineAt = (x, y, onGround) => {
     let best = null;
@@ -1582,7 +1585,9 @@
       const strong = (chosen?.kind === "cell" && chosen.id === address) || (chosen?.kind === "talk" && chosen.id.split("|").includes(key)) || key === pointed;
       const sub = s.standing === "asks" ? "needs you" : s.standing === "stuck" ? "stuck" : s.owes.length ? waitingWords(s.owes) : s.holds.length ? "holding" : "";
       const sought = key === `c:${m.byId.get(hover)?.address}` || foundSet.has(key);
-      out.push({ key, kind: "cell", rank: strong ? 0 : sought ? 2 : 4, at: p, r: R, out: [1, 0], name: [clipped(s.short)], sub, strong });
+      // What he hovers is named beyond the cap, as what he points at is.
+      const hovered = key === `c:${m.byId.get(hover)?.address}`;
+      out.push({ key, kind: "cell", rank: strong || hovered ? 0 : sought ? 2 : 4, at: p, r: R, out: [1, 0], name: [clipped(s.short)], sub, strong });
     }
     const open = chosen && (chosen.kind === "net" && knotsAt.has(chosen.id) ? "n" : { cell: "c", net: "h", machine: "m" }[chosen.kind]);
     const openKey = open && `${open}:${chosen.id}`;
@@ -2219,6 +2224,8 @@
     const keep = new Set();
     if (chosen?.kind === "net") keep.add(chosen.id);
     if (chosen?.kind === "cell") keep.add(homeOf(m.byAddress.get(chosen.id)));
+    // A talk open keeps both its ends' networks open, so its line has cells to join.
+    if (chosen?.kind === "talk") for (const end of chosen.id.split("|")) if (end.startsWith("c:")) keep.add(homeOf(m.byAddress.get(end.slice(2))));
     if (pointed?.startsWith("c:")) keep.add(homeOf(m.byAddress.get(pointed.slice(2))));
     for (const key of foundSet) if (key[0] === "c") keep.add(homeOf(m.byAddress.get(key.slice(2))));
     const [w, h] = size();

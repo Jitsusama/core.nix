@@ -167,7 +167,9 @@
     if (marks('[data-key^="n:"]').length > 0 && painted.across === 0) {
       faults.push("lines: the whole map paints no line across networks, though knots stand on it");
     }
-    if (painted.said > 0 && painted.talk === 0) {
+    // Talk inside one folded network waits in its ground, so only a map
+    // with nothing folded must paint some.
+    if (painted.said > 0 && painted.talk === 0 && !painted.folded) {
       faults.push(`lines: the whole map paints none of the ${painted.said} talk arcs it holds`);
     }
   };
@@ -185,6 +187,10 @@
       faults.push(`screen: ${what} shows ${on.length} names, past ${NAMES_ON_SCREEN}`);
     }
     const cells = marks('circle.cell, [data-key^="c:"]').map((el) => el.getBoundingClientRect()).filter(inView);
+    // No cell drawn is a pass only when the map says it folded them.
+    if (cells.length === 0 && !document.getElementById("map-ground")?.painted?.().folded) {
+      faults.push(`screen: ${what} draws no cell, and nothing is folded`);
+    }
     const small = cells.filter((r) => r.width * MEMBRANE_SHARE < CELL_PX - SLACK_PX);
     if (small.length > 0) {
       faults.push(`screen: ${what} draws ${small.length} cells under ${CELL_PX} px across, the smallest ${Math.min(...small.map((r) => r.width * MEMBRANE_SHARE)).toFixed(1)}; their networks fold`);
@@ -200,8 +206,12 @@
     }
   };
   const zoomIn = async () => {
+    const was = document.getElementById("world")?.getAttribute("transform");
     document.querySelector('button[data-zoom="in"]')?.click();
     await settle();
+    if (document.getElementById("world")?.getAttribute("transform") === was) {
+      faults.push("screen: Zoom In left the view where it was");
+    }
   };
   const reach = async () => {
     const counted = Number((document.querySelector('[data-count="cells"]')?.textContent || "").replace(/\D/g, ""));

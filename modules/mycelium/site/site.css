@@ -702,8 +702,9 @@ body {
   opacity: 0.22;
 }
 
-/* A cross-hypha the choice doesn't touch, drawn faint beneath the cells. */
-.m-cross.faint {
+/* A cross-hypha the choice doesn't touch, drawn faint beneath the cells;
+   with something open, it steps back with the rest. */
+.m-cross.faint:not(.far) {
   opacity: 0.4;
 }
 
@@ -744,7 +745,7 @@ body {
 
 /* Talk the choice doesn't touch: faint and thinner, still as thick as it
    is warm, so the cells read first and no talk is lost. */
-.m-talk.faint {
+.m-talk.faint:not(.far) {
   opacity: 0.3;
 }
 
