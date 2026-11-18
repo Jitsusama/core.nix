@@ -3248,10 +3248,12 @@
     over Passwords' connection, a first Return on an ask only arms, a yes says how long since a
     frame presented its line selected, noted again as the launcher reopens on it, a changed line
     says no time until presented, every opening being from outside, a line is timed only after
-    Joel's key moves over the rows, never on the find nor from a step into a place, Release It
-    from its verbs counting from its line, typing or an ask from outside starts the time again and
-    lets a frame asked for go, each case reads a yes it sent, a withheld yes says why, the entries told over the connection leave
-    the asks' rows be, and a yes walked from outside the launcher is never sent
+    Joel's key moves over the rows they reached by his Escape, never on the find, from a step
+    into a place, nor over rows a landing Return, the command line or an ask from outside left,
+    Release It from its verbs counting from its line, typing or an ask from outside starts the
+    time again and lets a frame asked for go, each case reads a yes it sent, a withheld yes says
+    why, the entries told over the connection leave the asks' rows be, and a yes walked from
+    outside the launcher is never sent
   '';
   the-asks-place-releases-through-its-daemon = ''
     the launcher's Asks lists what the secret-asks daemon serves, For You holds each waiting ask,

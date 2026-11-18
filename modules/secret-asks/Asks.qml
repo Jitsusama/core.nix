@@ -88,6 +88,12 @@ Provider {
     property var taken: []
     property int keysAtOutside: 0
     property int depth: 0
+    // Whether the keys came over the rows by an Escape of his, read since
+    // the opening and the last ask from outside. A Return that lands, the
+    // command line, or an ask from outside while they're already there
+    // puts them over the rows too, as a terminal's keys could, so a move
+    // arms only after the Escape the refusal names.
+    property bool escaped: false
 
     // Every line's time started again, and any frame asked for let go.
     function forget() {
@@ -112,7 +118,9 @@ Provider {
             provider.forget();
             return;
         }
-        const moved = (launcher?.keyMoved ?? false) && (launcher?.keysOverRows ?? false);
+        const over = launcher?.keysOverRows ?? false;
+        const moved = (launcher?.keyMoved ?? false) && over && provider.escaped;
+        provider.escaped = over && (provider.escaped || names.includes("Escape"));
         const does = Shown.keyed(names, moved);
         const stepped = held[held.length - 1]?.row?.shownKey;
         if (does === "passes" || deeper && names.length === 1 && provider.armed !== ""
@@ -191,6 +199,7 @@ Provider {
         // Every opening may be asked from outside, so none arms a line.
         function onOpenChanged() {
             provider.armed = "";
+            provider.escaped = false;
             provider.depth = (provider.launcher.held ?? []).length;
             if (!provider.launcher.open) {
                 provider.noting += 1;
@@ -213,6 +222,7 @@ Provider {
         // An ask from outside may select any line, so none stays his.
         function onToldFromOutsideChanged() {
             provider.keysAtOutside = provider.launcher.keysTaken;
+            provider.escaped = false;
             provider.forget();
         }
     }

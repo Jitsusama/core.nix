@@ -40,8 +40,10 @@
   # a first Return only arms; a yes says how long since a frame presented
   # its line selected, its line noted again as the launcher opens on it;
   # a changed line says no time until presented; opened from outside, it
-  # times nothing until a key moves over the rows, never on the find nor
-  # from a step into a place, and a withheld yes says why; entries
+  # times nothing until a key moves over the rows his Escape reached, never
+  # on the find, from a step into a place, nor over rows a landing Return,
+  # the command line or an ask from outside left, and a withheld yes says
+  # why; entries
   # told over the connection leave the asks' rows be; a yes walked from
   # outside is never sent; a no goes as served.
   the-asks-say-how-long-each-was-shown-over-passwords =
