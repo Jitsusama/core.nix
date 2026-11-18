@@ -587,12 +587,11 @@ def test_a_reload_holds_no_room_for_a_name_it_forgets(code_page: Page) -> None:
     assert held["list"] == "", f"the reload held {held['list']} for a list it won't draw"
 
 
-def test_a_resize_before_the_feeds_arrive_lets_the_room_go(
-    code_page: Page, repos_daemon: StandIn
-) -> None:
+def test_a_resize_before_the_feeds_arrive_lets_the_room_go(code_page: Page) -> None:
     says_it_stands(code_page, "live")
-    # With the daemon away the repositories never draw, so the room stays held for its while.
-    repos_daemon.leave()
+    # Every feed answered by a socket that never speaks, so nothing draws and the room stays
+    # held for its while, as on a slow start; the server answers from what it holds otherwise.
+    code_page.route_web_socket("**", lambda _socket: None)
     code_page.add_init_script(HELD_ROOM)
     code_page.reload(wait_until="domcontentloaded")
     assert code_page.evaluate("() => globalThis.held.list") != "", "the reload held no room"
