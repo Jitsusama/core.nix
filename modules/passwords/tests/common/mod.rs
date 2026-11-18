@@ -86,9 +86,10 @@ done
 /// The fence's list as the harness publishes it, naming a file, a folder,
 /// a link to a file outside home and a file that isn't there, keeping
 /// SSH's settings and public keys, naming npm's settings, and emptying
-/// Docker's settings and another's only where they hold a credential.
+/// Docker's settings and another's only where they hold a credential, at
+/// version 2, the one that names emptied files.
 pub const FENCE_LIST: &str = r#"{
-  "version": 1,
+  "version": 2,
   "home": [".secret-file", ".secret-folder/", ".linked-secret", ".absent-file"],
   "sshKept": ["^(config|known_hosts(\\.old)?|.*\\.pub)$"],
   "npmrc": ".npmrc",

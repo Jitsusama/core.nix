@@ -65,7 +65,7 @@ def asking(desktop: Desktop) -> Iterator[None]:
     """
     fence = json.dumps(
         {
-            "version": 1,
+            "version": 2,
             "home": [],
             "sshKept": [],
             "npmrc": None,

@@ -364,11 +364,14 @@ mod tests {
 
     #[test]
     fn a_login_said_in_a_registrys_name_empties_the_file() {
-        // Docker reads no login from a registry's name, but cat reads it,
-        // as it reads a proxy's.
+        // Docker reads no login from a registry's name, or from the address
+        // older logins wrote beside it, but cat reads both, as it reads a
+        // proxy's.
         for text in [
             r#"{"auths": {"https://joel:made-up@registry.example": {}}}"#,
             r#"{"auths": {"joel:made-up@registry.example": {"email": "joel@example"}}}"#,
+            r#"{"auths": {"registry.example": {"serveraddress": "https://joel:made-up@r.example"}}}"#,
+            r#"{"auths": {"registry.example": {"ServerAddress": "joel:made-up@r.example"}}}"#,
         ] {
             assert!(
                 empties(text, &docker()),

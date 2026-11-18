@@ -35,6 +35,7 @@ fn a_fence_list_from_before_emptied_files_still_releases() {
     let running = Running::releasing("asks-docker-old-list", &[super::LISTED]);
     let mut list: Value = serde_json::from_str(FENCE_LIST).unwrap();
     list.as_object_mut().unwrap().remove("emptied");
+    list["version"] = 1.into();
     std::fs::write(running.fence_list(), list.to_string()).unwrap();
     let args = released_with(&running, "a223456789abcdef0123456789abcdef");
     let docker = docker_settings(&running);
@@ -52,16 +53,26 @@ fn settings_are_emptied_to_nothing_where_none_saying_nothing_can_be_written() {
     let runtime = running.folder.join("runtime");
     std::fs::create_dir_all(&runtime).unwrap();
     std::fs::write(runtime.join("passwords"), "").unwrap();
+    let other = running.folder.join("home/.kept-settings.json");
+    std::fs::write(&other, DOCKER_CONFIG).unwrap();
     let args = released_with(&running, "a523456789abcdef0123456789abcdef");
     let docker = docker_settings(&running);
+    let other = std::fs::canonicalize(other).unwrap();
     holds(&args, &emptying(Path::new("/dev/null"), &docker));
-    // Podman refuses /dev/null, so the journal says which file, and why.
+    holds(&args, &emptying(Path::new("/dev/null"), &other));
+    // Podman refuses /dev/null, so the journal says each file, and why,
+    // on its own line, since npm's says why too.
     let logged = running.logged();
-    assert!(
-        logged.contains(&format!("emptying {} with /dev/null", docker.display()))
-            && logged.contains("File exists"),
-        "the journal doesn't say what was emptied with /dev/null, or why: {logged}"
-    );
+    for emptied in [&docker, &other] {
+        assert!(
+            logged.lines().any(|line| {
+                line.contains(&format!("emptying {} with /dev/null", emptied.display()))
+                    && line.contains("File exists")
+            }),
+            "the journal doesn't say {} was emptied with /dev/null, or why: {logged}",
+            emptied.display()
+        );
+    }
 }
 
 /// A daemon whose list also empties `named` under ~/.ssh where it holds
