@@ -241,6 +241,7 @@ mod tests {
             r#"{"auths": {"registry.example": {}}}"#,
             r#"{"auths": {"registry.example": {"auth": ""}}}"#,
             r#"{"auths": {"registry.example": {"email": "joel@example"}}}"#,
+            r#"{"auths": {"r.example": {"serveraddress": "https://r.example", "username": "j@x"}}}"#,
             r#"{"auths": {}, "credsStore": "", "HttpHeaders": {}, "detachKeys": "ctrl-p"}"#,
             r#"{"auths": null}"#,
             r#"{"auths": []}"#,
@@ -373,8 +374,11 @@ mod tests {
         for text in [
             r#"{"auths": {"https://joel:made-up@registry.example": {}}}"#,
             r#"{"auths": {"joel:made-up@registry.example": {"email": "joel@example"}}}"#,
-            r#"{"auths": {"registry.example": {"serveraddress": "https://joel:made-up@r.example"}}}"#,
+            r#"{"auths": {"r.example": {"serveraddress": "https://joel:made-up@r.example"}}}"#,
             r#"{"auths": {"registry.example": {"ServerAddress": "joel:made-up@r.example"}}}"#,
+            // Said in a shape Docker can't read, as the other fields count.
+            r#"{"auths": {"r.example": {"serveraddress": ["https://joel:made-up@r.example"]}}}"#,
+            r#"{"auths": {"r.example": {"serveraddress": {"at": "joel:made-up@r.example"}}}}"#,
         ] {
             assert!(
                 empties(text, &docker()),

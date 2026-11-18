@@ -29,46 +29,38 @@ fn an_ask_is_refused_unseen_without_the_fences_list_or_with_one_it_cant_read() {
         !logged.contains("passwords: can't"),
         "a missing list was said to be unread: {logged}"
     );
-    std::fs::write(
-        running.fence_list(),
-        FENCE_LIST.replace("\"version\": 2", "\"version\": 3"),
-    )
-    .unwrap();
-    let unknown = "d123456789abcdef0123456789abcdef";
-    put_up(&running, unknown, LISTED, &argv);
-    let answered = answer(&running, unknown);
-    assert_eq!(answered["why"], UNREAD, "the answer: {answered}");
     // A list that's there but can't be read is told apart from one
     // missing, in the answer and in the journal: one of a version it
-    // doesn't know, one not JSON, one it can't open and one whose
-    // patterns don't make.
+    // doesn't know, said in a shape this can't read, one not JSON, one
+    // not that version's form, one it can't read at all and one whose
+    // patterns don't make. Each reads only what the journal says after
+    // its own ask, as the list's own line, since the refusal's says
+    // "can't read" too.
     let list = running.fence_list();
+    let unmade = FENCE_LIST.replacen("\"sshKept\": [", "\"sshKept\": [\"(\", ", 1);
     let cases = [
-        ("e123456789abcdef0123456789abcdef", "is version 3"),
-        ("f123456789abcdef0123456789abcdef", "can't read"),
-        ("0223456789abcdef0123456789abcdef", "can't open"),
-        ("1223456789abcdef0123456789abcdef", "can't make"),
+        ("d123456789abcdef0123456789abcdef", "is version 3", r#"{"version": 3, "home": [{}]}"#),
+        ("e123456789abcdef0123456789abcdef", "isn't a fence list", "{ not json"),
+        ("f123456789abcdef0123456789abcdef", "isn't version 2's form", r#"{"version": 2}"#),
+        ("0223456789abcdef0123456789abcdef", "can't be read", ""),
+        ("1223456789abcdef0123456789abcdef", "can't make", unmade.as_str()),
     ];
-    for (id, told) in cases {
-        match told {
-            "can't read" => std::fs::write(&list, "{ not json").unwrap(),
-            "can't open" => {
-                std::fs::remove_file(&list).unwrap();
-                std::fs::create_dir(&list).unwrap();
-            }
-            "can't make" => {
-                std::fs::remove_dir(&list).unwrap();
-                let unmade = FENCE_LIST.replacen("\"sshKept\": [", "\"sshKept\": [\"(\", ", 1);
-                std::fs::write(&list, unmade).unwrap();
-            }
-            _ => {}
+    for (id, told, text) in cases {
+        if text.is_empty() {
+            std::fs::remove_file(&list).unwrap();
+            std::fs::create_dir(&list).unwrap();
+        } else {
+            let _ = std::fs::remove_dir(&list);
+            std::fs::write(&list, text).unwrap();
         }
+        let before = running.logged().len();
         put_up(&running, id, LISTED, &argv);
         let answered = answer(&running, id);
         assert_eq!(answered["why"], UNREAD, "the answer: {answered}");
         let logged = running.logged();
+        let said = format!("passwords: {} {told}", list.display());
         assert!(
-            logged.contains(told),
+            logged[before..].contains(&said),
             "the journal doesn't say the list {told}: {logged}"
         );
     }
