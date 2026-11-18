@@ -53,20 +53,7 @@
         inherit bash zsh;
       }
       ''
-        # zsh keeps the agent it was given, and one given none points here.
-        export XDG_RUNTIME_DIR=/run/u
-        said='; print -r -- $SSH_AUTH_SOCK'
-        given=$(SSH_AUTH_SOCK=/given zsh -fc "$zsh$said")
-        unset SSH_AUTH_SOCK
-        none=$(zsh -fc "$zsh$said")
-        # The login's services are pointed here whatever the manager held.
-        service=$(SSH_AUTH_SOCK=/given bash -c "$bash"'; echo "$SSH_AUTH_SOCK"')
-        here=/run/u/ssh-tpm-agent.sock
-        if [ "$given" != /given ] || [ "$none" != "$here" ] || [ "$service" != "$here" ]; then
-          echo "SSH_AUTH_SOCK: zsh given one kept $given, zsh given none took $none," \
-            "and the login's services took $service" >&2
-          exit 1
-        fi
+        ${pkgs.bash}/bin/bash ${./agent-socket-check.sh} "$zsh" "$bash"
         touch $out
       '';
 }
