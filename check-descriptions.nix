@@ -5463,11 +5463,11 @@
   vm-pebble-speakers-are-tuned = ''
     a Pebble X Plus hears its tuning, again once it's plugged back in, and headphones don't
   '';
-  vm-cores-stay-from-their-owner = ''
-    an account aborts two of its own processes, a stand-in pi host named node and sleep, and can
-    neither open nor dump either core, the cores' folder being root's alone, while the journal
-    still shows it, in wheel, each crash's stack trace; six hours on the removal takes the node's core and
-    leaves the other's
+  vm-cores-kept-from-their-owner = ''
+    the cores' folder is root's alone from boot and after each crash, so an account that aborts
+    two of its own processes, a stand-in pi host named node and sleep, can neither open nor dump
+    either core, while the journal still shows it, in wheel, each crash's stack trace; the
+    removal keeps a node's core five hours on and takes it seven hours on, leaving the other's
   '';
   vm-a-wedged-pi-starts-again = ''
     a realm's background pi host, its unit as the module renders it on a stand-in node, is

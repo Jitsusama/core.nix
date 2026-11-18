@@ -72,7 +72,7 @@ onLinux {
   vm-a-wedged-pi-starts-again = import ./pi-hosts-recover.nix { inherit self pkgs; };
   # Whether a crash's core stays from its owner, and a node's goes six hours
   # on, shows only with systemd-coredump, the journal and tmpfiles there.
-  vm-cores-stay-from-their-owner = import ./cores-kept-from-their-owner.nix {
+  vm-cores-kept-from-their-owner = import ./cores-kept-from-their-owner.nix {
     inherit self pkgs;
   };
   # Whether a pi host gives back what it held after a kill -9 and a reboot

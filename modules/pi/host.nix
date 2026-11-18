@@ -211,15 +211,19 @@ let
         # (TimeoutStopSec below) unless set apart. A node without the listener
         # still aborts at once, and its core (LimitCORE below) is cut off by
         # the kill 10 s on, which loses little: the host's hold watcher has
-        # written what held the loop by then.
+        # written what held the loop by then. A crash's own core has longer,
+        # since the watchdog aborts only two minutes after the host's last
+        # word, at least a minute after it crashed: at 16 November's 70 MB/s
+        # that holds a core of about 5 GB, and a larger one is cut off, with
+        # no stack trace.
         TimeoutAbortSec = "10s";
         # A host keeps its core, for now. At 07:41 on 18 November the
         # background host died of a segmentation fault in native code, with
         # its heap at a third of its limit, and kept no core, since this was
         # 0; nothing else says where native code faults. systemd-coredump
         # writes the host's stack trace to the journal from the core, which
-        # is under its 32 GB ProcessSizeMax, and keeps the core itself, root's
-        # and readable by Joel's account alone, until the coredump module's
+        # is under its 32 GB ProcessSizeMax, and keeps the core itself where
+        # only root reads it (modules/coredump), until the coredump module's
         # timer removes it six hours on, since it holds every hosted
         # conversation's keys and tokens. Writing it takes time: on 16
         # November an out-of-memory abort streamed 12.5 GB for three minutes

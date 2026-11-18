@@ -1,5 +1,6 @@
 # A crash's core is kept where only root reads it, while its owner, in
-# wheel as Joel's account is, still reads its stack trace in the journal, and a node's is removed six hours on
+# wheel as Joel's account is, still reads its stack trace in the journal,
+# and a node's is removed six hours on
 # (modules/coredump). An account aborts its own process, as any program
 # running as it could abort a pi host, and then can't open or dump the core
 # that holds what the process held. A program named node that only waits

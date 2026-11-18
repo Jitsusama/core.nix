@@ -29,6 +29,11 @@ KEEPING = dt.timedelta(seconds=60)
 Cores = dict[str, tuple[str, str]]
 
 
+def mode(machine: BaseMachine) -> str:
+    """Give the cores' folder's mode and owners."""
+    return machine.succeed(f"stat -c '%a %U:%G' {CORES}").strip()
+
+
 def as_account(command: str) -> str:
     """Give a command that runs as the account, with no limit on its cores."""
     inner = f"ulimit -c unlimited; {command}"
@@ -49,9 +54,6 @@ def crash(machine: BaseMachine, program: str) -> tuple[str, str]:
     name = program.rsplit("/", 1)[-1]
     pattern = f"{CORES}/core.{name}.1000.*.{pid}.*"
     machine.wait_until_succeeds(f"ls {pattern}", timeout=KEEPING)
-    machine.wait_until_succeeds(
-        f"{stack_trace(pid)} | grep -q 'Stack trace of thread'", timeout=KEEPING
-    )
     core = machine.succeed(f"ls {pattern}").strip()
     return pid, core
 
@@ -60,6 +62,8 @@ def crash(machine: BaseMachine, program: str) -> tuple[str, str]:
 def cores(machine: BaseMachine) -> Cores:
     """Boot, then crash the stand-in host and sleep as the account, giving their pids and cores."""
     machine.wait_for_unit("multi-user.target")
+    booted = mode(machine)
+    assert booted == "700 root:root", f"the folder is {booted} before any crash"
     return {
         "node": crash(machine, "node"),
         "sleep": crash(machine, "sleep"),
@@ -69,9 +73,8 @@ def cores(machine: BaseMachine) -> Cores:
 @pytest.mark.usefixtures("cores")
 def test_only_root_enters_the_cores_folder(machine: BaseMachine) -> None:
     """The cores' folder is root's alone, whatever a core's own access list grants."""
-    mode = machine.succeed(f"stat -c '%a %U:%G' {CORES}").strip()
-    rules = machine.succeed(f"systemd-tmpfiles --cat-config | grep -n -F {CORES} || true")
-    assert mode == "700 root:root", f"the folder is {mode}, from the rules {rules}"
+    crashed = mode(machine)
+    assert crashed == "700 root:root", f"the folder is {crashed} after the crashes"
 
 
 def test_the_owner_can_neither_open_nor_dump_a_core(machine: BaseMachine, cores: Cores) -> None:
@@ -81,24 +84,31 @@ def test_the_owner_can_neither_open_nor_dump_a_core(machine: BaseMachine, cores:
     assert status != 0, f"the account read its core: {said}"
     assert "Permission denied" in said, f"the core failed some other way: {said}"
     status, said = machine.execute(
-        as_account(f"coredumpctl --no-pager dump {pid} --output=/tmp/core")
+        as_account(f"coredumpctl --no-pager dump {pid} --output=/tmp/core 2>&1")
     )
     assert status != 0, f"coredumpctl dumped the core for the account: {said}"
+    assert "Permission denied" in said, f"coredumpctl failed some other way: {said}"
 
 
 def test_the_owner_still_reads_the_stack_trace(machine: BaseMachine, cores: Cores) -> None:
     """The journal still shows the account, in wheel, each crash's stack trace."""
     for pid, _ in cores.values():
+        traced = f"{stack_trace(pid)} | grep -q 'Stack trace of thread'"
+        machine.wait_until_succeeds(traced, timeout=KEEPING)
         said = machine.succeed(stack_trace(pid))
         assert "Stack trace of thread" in said, f"no stack trace for {pid}: {said}"
 
 
 def test_a_nodes_core_goes_six_hours_on_and_no_other(machine: BaseMachine, cores: Cores) -> None:
     """Six hours after it was kept, the removal takes a node's core and leaves another's."""
-    assert machine.succeed("systemctl is-enabled coredump-forget-node.timer").strip() == "enabled"
+    machine.succeed("systemctl is-active coredump-forget-node.timer")
     _, node = cores["node"]
     _, other = cores["sleep"]
-    machine.succeed(f"touch -d '7 hours ago' {shlex.quote(node)} {shlex.quote(other)}")
+    both = f"{shlex.quote(node)} {shlex.quote(other)}"
+    machine.succeed(f"touch -d '5 hours ago' {both}")
+    machine.succeed("systemctl start coredump-forget-node.service")
+    machine.succeed(f"test -e {shlex.quote(node)}")
+    machine.succeed(f"touch -d '7 hours ago' {both}")
     machine.succeed("systemctl start coredump-forget-node.service")
     machine.fail(f"test -e {shlex.quote(node)}")
     machine.succeed(f"test -e {shlex.quote(other)}")
