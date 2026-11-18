@@ -27,6 +27,7 @@ and browser, and the fixtures that start them live here alone.
 import json
 import math
 import os
+import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -590,14 +591,18 @@ def test_focus_stays_in_the_drawer_when_the_tree_holding_it_goes(
     expect(home, "the cell's home wasn't linked").to_contain_text("E2ZIAQ", timeout=PACE_MS)
     row(code_page, "github:owl/core").click()
     code_page.keyboard.press("Enter")
+    expect(code_page, "the address didn't name the tree stepped into").to_have_url(
+        re.compile("#tree=")
+    )
     home.focus()
     repos_daemon.tell("tree", gone=["tree:/home/ada/trees/grove"])
     expect(home, "the tree stayed in the drawer").to_have_count(0, timeout=PACE_MS)
     held = code_page.evaluate("() => document.activeElement.closest('.drawer') !== null")
     assert held, "focus fell out of the drawer with the tree that held it"
+    expect(code_page, "the address still named the tree gone").not_to_have_url(re.compile("#tree="))
 
 
-def test_a_redraw_keeps_focus_on_the_same_of_two_alike_links(
+def test_a_redraw_keeps_focus_on_the_same_cells_link_when_two_share_a_home(
     code_page: Page, repos_daemon: StandIn, mycelium_node: StandIn, tmp_path: Path
 ) -> None:
     says_it_stands(code_page, "live")
@@ -611,7 +616,7 @@ def test_a_redraw_keeps_focus_on_the_same_of_two_alike_links(
         "networks": ["repo.core"],
     }
     mycelium_node.tell("cell", changed=[beside])
-    # Both cells say one home, so the drawer links it twice, alike in every name.
+    # Both cells say one home, so the drawer links it twice, told apart only by each cell's key.
     things = [
         {"kind": "cell", "key": key, "name": key, "address": CELL_HOME}
         for key in ("E2ZIAQ", "Q3NEWS")
@@ -626,7 +631,7 @@ def test_a_redraw_keeps_focus_on_the_same_of_two_alike_links(
     expect(code_page.locator('#open .tree[aria-current="true"]')).to_be_focused()
     alike.nth(1).focus()
     redrawn_drawer(code_page, repos_daemon)
-    expect(alike.nth(1), "a redraw moved focus to the first of two alike links").to_be_focused()
+    expect(alike.nth(1), "a redraw moved focus to the other cell's link").to_be_focused()
 
 
 def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
