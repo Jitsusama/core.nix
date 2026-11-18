@@ -153,9 +153,8 @@ in
   # others. So could keeping each pageblock (2 MB with 4 KB pages) to one
   # kind of page, movable or not, which the kernel calls defrag_mode (Johannes
   # Weiner's, in 6.15, its reclaim storms fixed by 7.3.4): from 15 to 17
-  # November a 128 KB
-  # allocation failed 15 times, Wi-Fi's block-ack start after a roam among
-  # them, stalling each roam a second. At the one at 17:03 on 17 November,
+  # November a 128 KB allocation failed 15 times, Wi-Fi's block-ack start
+  # after a roam among them, stalling each roam a second. At the one at 17:03 on 17 November,
   # 552 MB was free, over the high watermark, but none of it in a block of
   # 128 KB or more, and all of it in blocks holding unmovable or reclaimable
   # pages, where compaction can't move pages to, so 89% of the 5.5 million
@@ -171,8 +170,7 @@ in
   # `memory-lru-gen@n`, `memory-swappiness@100`, `memory-page-cluster@3`
   # (2^3 pages at most), `memory-compaction@40`,
   # `memory-min-free@131072` (in KiB) or `memory-defrag@1`. The most one can
-  # do is
-  # make reclaim worse until it's put back, never reach another setting. A
+  # do is make reclaim worse until it's put back, never reach another setting. A
   # switch that changes the sysctls writes them back; otherwise start the
   # unit again with the value this file sets. At boot huge pages return to
   # this file's choice, and the LRU to the kernel's own.
