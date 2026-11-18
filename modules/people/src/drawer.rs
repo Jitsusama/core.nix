@@ -125,9 +125,10 @@ pub fn key(person: &Person) -> String {
     format!("drawer:people:{known}")
 }
 
-/// A record as a search answers it, with the row it's found as, the one
-/// it's listed as, the drawer the row names, and how each source has them
-/// stand (listing.rs's `sourced`).
+/// A record as a search answers it, with the person it is, as a listing
+/// gives them, the row it's found as, the drawer the row names, and how
+/// each source has them stand (listing.rs's `sourced`), so the shell shows
+/// them as served and merges nobody's sources.
 #[must_use]
 pub fn found(
     record: &Record,
@@ -138,6 +139,7 @@ pub fn found(
     let mut said = record.json();
     said["sources"] = listing::sourced(record, sources);
     let one = listing::person(record, sources);
+    said["person"] = one.json();
     said["row"] = one.row();
     said["drawer"] = drawer(&one, record, sources, named, standings)["drawer"].take();
     said

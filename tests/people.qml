@@ -394,6 +394,12 @@ ShellRoot {
                     + "Dee Ellery, Eli Fenwick, Gus, Zo\u00eb \"Zed\" Quill", names(all));
                 expect("merging no one", people.merging.merges === root.mergedBefore,
                     `${people.merging.merges - root.mergedBefore} merges`);
+                // Each found comes as the person they are, so not even
+                // their own record's sources were merged here, by this
+                // search or any before it, since the only source here the
+                // daemon doesn't hold knows only Ada, who is listed.
+                expect("merging no one's sources", people.merging.each === 0,
+                    `${people.merging.each} merged`);
                 root.madeBefore = people.tally.rows;
             }
         },
