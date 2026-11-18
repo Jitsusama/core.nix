@@ -149,6 +149,118 @@ fn a_shutdown_runs_from_its_ask_to_the_boots_last_entry() {
 }
 
 #[test]
+fn a_resumed_day_keeps_only_the_faults_health_saw_of_a_thing_the_journals_say_too() {
+    let mut kept = Day::new("2026-11-12");
+    kept.take(&entry("disk-guard", 3, "can't read the status"));
+    kept.take(&entry("disk-guard", 3, "can't read the status"));
+    kept.fault("disk-guard", Kind::Services, "stopped saying it's there", 5);
+    assert_eq!(kept.things["disk-guard"].errors, 3, "two heard, one seen");
+    let mut day = Day::new("2026-11-12");
+    day.resume(kept);
+    let thing = &day.things["disk-guard"];
+    assert_eq!(
+        (thing.lines, thing.errors),
+        (1, 1),
+        "the journal's two lines, which its replay says again, were kept as well: {thing:?}"
+    );
+    let said: Vec<_> = thing
+        .signatures
+        .values()
+        .map(|said| (said.example.as_str(), said.count, said.priority, said.first))
+        .collect();
+    assert_eq!(
+        said,
+        [("stopped saying it's there", 1, 3, 5)],
+        "the fault, as it was seen"
+    );
+    day.take(&entry("disk-guard", 3, "can't read the status"));
+    assert_eq!(
+        day.things["disk-guard"].errors, 2,
+        "the replay's line counts beside the kept fault"
+    );
+}
+
+#[test]
+fn a_day_resumed_across_midnight_keeps_no_faults_and_sees_nothing_wrong() {
+    let mut kept = Day::new("2026-11-11");
+    kept.fault("lid", Kind::Devices, "the lid reads shut", 5);
+    kept.seeing = Seeing {
+        lid: true,
+        guards: vec![PathBuf::from("/run/user/1000/disk-guard/status.json")],
+    };
+    let mut day = Day::new("2026-11-12");
+    day.resume(kept);
+    assert!(
+        day.things.is_empty() && day.seen.is_empty(),
+        "yesterday's fault was kept"
+    );
+    assert_eq!(
+        day.seeing,
+        Seeing::default(),
+        "yesterday's lid or guard, still seen wrong, would go uncounted today"
+    );
+}
+
+#[test]
+fn every_fault_of_a_thing_is_kept_through_a_start() {
+    let mut kept = Day::new("2026-11-12");
+    kept.fault("lid", Kind::Devices, "the lid reads shut", 5);
+    kept.fault("lid", Kind::Devices, "the lid reads shut", 9);
+    let mut day = Day::new("2026-11-12");
+    day.resume(kept);
+    let mut again = Day::new("2026-11-12");
+    again.resume(day);
+    let thing = &again.things["lid"];
+    let said: Vec<_> = thing
+        .signatures
+        .values()
+        .map(|said| (said.count, said.first, said.last))
+        .collect();
+    assert_eq!(
+        (thing.errors, said, again.seen.len()),
+        (2, vec![(2, 5, 9)], 2),
+        "a start kept fewer of the lid's faults than it had: {thing:?}"
+    );
+}
+
+#[test]
+fn a_fault_in_a_thing_kept_whole_is_kept_and_not_counted_again() {
+    // A session's place may be named as a fault's thing is: a clone
+    // called disk-guard, say.
+    let mut kept = Day::new("2026-11-12");
+    kept.heard(
+        "disk-guard",
+        &Heard {
+            at: 4,
+            said: Said::Words {
+                text: "why is this so slow".to_owned(),
+            },
+        },
+    );
+    kept.fault("disk-guard", Kind::Services, "stopped saying it's there", 5);
+    let mut day = Day::new("2026-11-12");
+    day.resume(kept);
+    let mut again = Day::new("2026-11-12");
+    again.resume(day);
+    let thing = &again.things["disk-guard"];
+    assert_eq!(
+        (thing.lines, thing.errors, again.seen.len()),
+        (2, 2, 1),
+        "a start counted the fault again into the place that held it: {thing:?}"
+    );
+}
+
+#[test]
+fn a_day_written_before_faults_were_kept_reads_as_one_keeping_none() {
+    let day: Day = serde_json::from_str(r#"{"date": "2026-11-12", "to": 1, "things": {}}"#)
+        .expect("an older day reads");
+    assert!(
+        day.seen.is_empty() && day.seeing == Seeing::default(),
+        "an older day kept faults: {day:?}"
+    );
+}
+
+#[test]
 fn repeats_are_counted_under_one_signature() {
     let mut day = Day::new("2026-11-12");
     day.take(&entry("pebble-lights", 4, "light 3 answered in 812 ms"));
