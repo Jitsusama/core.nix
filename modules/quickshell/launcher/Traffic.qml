@@ -134,14 +134,30 @@ Provider {
     // its figures are from when they were last read, loads them again, and
     // is still reading (Provider.stillReading), so a terminal asks again,
     // until a rate of now has landed and every interface's files with it.
+    // A load stamped ahead of now, as a clock stepped back leaves it, isn't.
     function current() {
-        return reads !== null && Date.now() - reads.last.at <= stale;
+        const age = reads === null ? Infinity : Date.now() - reads.last.at;
+        return age >= 0 && age <= stale;
     }
 
+    // Reading ends once a rate of now has landed and every interface's
+    // files with it, though they took long enough that it's old again: an
+    // answer asked then reads afresh.
     function caughtUp() {
-        if (stillReading && current() && settled(reads) && probing === null
-            && asking.length === 0)
+        if (stillReading && settled(reads) && probing === null && asking.length === 0)
             stillReading = false;
+    }
+
+    // Whether the counters' last load failed, so an answer asked for
+    // figures loads again without reading on, as there's nothing coming to
+    // wait for.
+    property bool unreadable: false
+
+    // The seconds since the machine started, as last loaded, or 0 before
+    // they have been.
+    function uptime() {
+        const seconds = Number(up.text().trim().split(/\s+/)[0]);
+        return seconds > 0 ? seconds : 0;
     }
 
     // Where each file is, which its case points at files of its own
@@ -150,8 +166,9 @@ Provider {
     property string statusFile: "/run/shaper/status.json"
     property string uptimeFile: "/proc/uptime"
 
-    // When the load in flight was asked, or 0 with none.
-    property real asked: 0
+    // When the load in flight was asked, or 0 with none; each FileView
+    // starts one as it's made.
+    property real asked: Date.now()
 
     // Loads the counters and the shaper's status again, in the background.
     // A FileView asked again while it loads loads again, and both land a
@@ -176,6 +193,7 @@ Provider {
         const kept = reads;
         const age = kept ? now - kept.last.at : Infinity;
         asked = 0;
+        unreadable = false;
         const all = Traffic.counters(netdev.text());
         const known = {};
         for (const name of Object.keys(all)) {
@@ -201,6 +219,7 @@ Provider {
     // The counters couldn't be loaded: nothing more is coming to wait for.
     function uncounted() {
         asked = 0;
+        unreadable = true;
         stillReading = false;
     }
 
@@ -311,8 +330,7 @@ Provider {
     }
 
     function moved(kept, mirrors) {
-        const seconds = kept.before ? (kept.last.at - kept.before.at) / 1000
-            : Number(up.text().trim().split(/\s+/)[0]);
+        const seconds = kept.before ? (kept.last.at - kept.before.at) / 1000 : uptime();
         return Traffic.rates(described(kept.last.all, mirrors),
             kept.before ? countersOf(kept.before.all) : null, seconds);
     }
@@ -417,10 +435,17 @@ Provider {
     function told() {
         const kept = reads;
         if (!current()) {
-            stillReading = true;
+            stillReading = !unreadable;
             look();
         }
-        if (kept === null || Object.keys(kept.last.all).length === 0)
+        // A first read is a rate since the machine started, so it says
+        // nothing until the uptime has landed too, as before any load.
+        if (kept !== null && kept.before === null && uptime() === 0) {
+            stillReading = true;
+            up.reload();
+        }
+        if (kept === null || Object.keys(kept.last.all).length === 0
+            || kept.before === null && uptime() === 0)
             return null;
         const status = parsed(shaper.text());
         const now = moved(kept, Traffic.mirrors(status));

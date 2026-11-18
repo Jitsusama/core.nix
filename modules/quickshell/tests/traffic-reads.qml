@@ -37,7 +37,7 @@ ShellRoot {
     Launcher.Traffic {
         id: traffic
         interfaces: root.sys
-        counterFile: `${root.sys}/dev`
+        counterFile: ""
         statusFile: `${root.sys}/status.json`
         launcher: shown
     }
@@ -53,8 +53,11 @@ ShellRoot {
     property var atLoad: null
     property var atProbe: null
     property var firstSeen: null
-    // Where the reads stood as Traffic last stopped reading.
+    property var firstProbed: null
+    // Where the reads stood as Traffic last stopped reading, and how long
+    // each read's rate is over after each change, null with no read before.
     property var ended: null
+    property var spans: []
 
     Connections {
         target: traffic
@@ -64,6 +67,8 @@ ShellRoot {
         }
 
         function onReadsChanged() {
+            root.spans.push(traffic.reads.before === null ? null
+                : traffic.reads.last.at - traffic.reads.before.at);
             root.loads++;
             if (root.atLoad === null)
                 root.atLoad = root.kind();
@@ -80,6 +85,8 @@ ShellRoot {
         function onProbingChanged() {
             if (root.atProbe === null && traffic.probing?.name === "lo")
                 root.atProbe = root.kind();
+            if (root.firstProbed === null && traffic.probing?.name === "eth0")
+                root.firstProbed = traffic.interfaceKind("eth0");
         }
     }
 
@@ -133,11 +140,11 @@ ShellRoot {
     Component.onCompleted: {
         counted({ lo: [1000, 2000] });
         write(uptime, "1000.00 4000.00\n");
-        // Traffic loads the uptime as it's pointed at it, which it only is
-        // once there's one to load.
+        // Traffic loads the uptime and the counters as it's pointed at
+        // them, which it only is once there are some to load.
         traffic.uptimeFile = `${root.sys}/uptime`;
         made("INTERFACE=lo\nIFINDEX=1\n", "772\n");
-        traffic.look();
+        traffic.counterFile = `${root.sys}/dev`;
         waits.until("lo known", () => idle() && traffic.interfaceKinds.lo?.sure, root.first);
     }
 
@@ -168,6 +175,14 @@ ShellRoot {
             last: { at: kept.last.at + back, all: kept.last.all },
             before: kept.before ? { at: kept.before.at + back, all: kept.before.all } : null
         };
+    }
+
+    // Loads again, past the tenth of a second after the last load landed
+    // in which Traffic loads nothing.
+    function lookAgain() {
+        if (traffic.reads !== null)
+            aged(traffic.soonest);
+        traffic.look();
     }
 
     // Whether nothing is being asked of sysfs.
@@ -223,11 +238,11 @@ ShellRoot {
         counted({ lo: [1000, 2000], eth0: [1000000, 2000000] });
         write(status, JSON.stringify([{ name: "eth0", ifb: "ifb0", down: 100000, up: 20000,
             state: "climbing", baselines: [["one", 12]] }]));
-        traffic.look();
+        lookAgain();
         waits.until("eth0 counted", () => traffic.reads.last.all.eth0 !== undefined && idle(),
             () => {
                 Expect.expect("an interface first seen is left out until its files land",
-                    firstSeen === "", `${firstSeen}`);
+                    firstSeen === "" && firstProbed === "", `${firstSeen} then ${firstProbed}`);
                 traffic.interfaceKinds = Object.assign({}, traffic.interfaceKinds,
                     { eth0: { kind: "wired", uevent: "", sure: true } });
                 waits.until("the shaper's measure loaded", () => traffic.answer("speed").rows
@@ -259,7 +274,7 @@ ShellRoot {
         traffic.reads = kept;
 
         counted({ lo: [1000, 2000] });
-        traffic.look();
+        lookAgain();
         waits.until("eth0 gone", () => traffic.reads.last.all.eth0 === undefined && idle(),
             root.gapping);
     }
@@ -285,12 +300,10 @@ ShellRoot {
             read === 1, `${read}`);
         Expect.expect("it's sure of it again", traffic.interfaceKinds.lo.sure, "unsure");
         // The first load after a gap is a rate over the gap, so it reads
-        // on until a rate of now lands, over a tenth of a second at least,
-        // and every interface's files with it.
+        // on until a rate of now lands, over a tenth of a second at least.
         waits.until("a rate of now", () => !traffic.stillReading, () => {
-            Expect.expect("it reads until a rate of now and its files have landed",
-                ended.settled && ended.idle && ended.over >= traffic.soonest / 2,
-                JSON.stringify(ended));
+            Expect.expect("it reads until a rate of now has landed",
+                ended.settled && ended.over >= traffic.soonest / 2, JSON.stringify(ended));
             Expect.expect("once they have, it says so",
                 traffic.answer("speed").note === "just now", traffic.answer("speed").note);
             // As though a load had just landed: one asked now loads nothing.
@@ -362,8 +375,26 @@ ShellRoot {
             if (gap < 2)
                 unmade.running = true;
             else
-                unloadable();
+                steppedBack();
         });
+    }
+
+    // The clock stepped back past the last load, which is stamped ahead of
+    // now: it's old, and the read after it makes no rate over it.
+    function steppedBack() {
+        shown.open = false;
+        aged(-60000);
+        const landed = loads;
+        const next = spans.length;
+        Expect.expect("a load stamped ahead of now is old",
+            traffic.answer("speed").note === "when last read" && traffic.stillReading,
+            `${traffic.answer("speed").note}, reading ${traffic.stillReading}`);
+        waits.until("a rate of now after the clock stepped back",
+            () => loads > landed && !traffic.stillReading, () => {
+                Expect.expect("the read after it makes no rate over it", spans[next] === null,
+                    `${spans[next]} ms`);
+                unloadable();
+            });
     }
 
     // Counters that can't be loaded leave nothing to wait for, so a
@@ -374,7 +405,10 @@ ShellRoot {
         aged(60000);
         traffic.answer("speed");
         Expect.expect("asked after a gap, it's reading", traffic.stillReading, "not reading");
-        waits.until("a load that fails ends the reading", () => !traffic.stillReading,
-            () => Qt.exit(0));
+        waits.until("a load that fails ends the reading", () => !traffic.stillReading, () => {
+            traffic.answer("speed");
+            Expect.expect("asked again, it reads on no more", !traffic.stillReading, "reading");
+            Qt.exit(0);
+        });
     }
 }
