@@ -63,7 +63,7 @@ pub(super) fn copying() -> String {
 /// the near side waits it out and says it didn't come.
 pub(super) fn bringing(kind: &Kind) -> String {
     if kind.brings_back.is_empty() {
-        return format!("echo {END} > \"$job/{BROUGHT}\"\n");
+        return format!("{}echo {END} > \"$job/{BROUGHT}\"\n", freed());
     }
     // Each once, so a path a kind names twice is never lost twice.
     let mut paths = Vec::new();
@@ -142,10 +142,10 @@ else
   lose > "$job/{BROUGHT}"
 fi
 ) || wrote=$?
-# Freed before the list ends, as on a disk that filled, these are the
-# room its end needs.
+# Freed before the list ends, the job's copy and its tree with them, as
+# on a disk that filled, these are the room its end needs.
 rm -f "$names" "$names".*
-# Cut on a line of its own, so a line the full disk cut in half can't
+{freed}# Cut on a line of its own, so a line the full disk cut in half can't
 # hide it.
 if [ $wrote -ne 0 ]; then
   printf "elsewhere: couldn't write down all it brings back\n" >&2
@@ -154,6 +154,13 @@ elif ! echo {END} >> "$job/{BROUGHT}"; then
   printf "elsewhere: couldn't end the list of what it brings back\n" >&2
   printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"
 fi
-"#
+"#,
+        freed = freed(),
     )
+}
+
+/// Frees the job's copy, with what it made, and the tree it was made
+/// from, once nothing is brought back out of them.
+fn freed() -> String {
+    format!("cd \"$HOME\" && rm -rf \"$work\" \"$job/{TREE}\"\n")
 }

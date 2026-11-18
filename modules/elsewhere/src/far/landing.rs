@@ -8,7 +8,7 @@ use super::MARK;
 use std::collections::HashSet;
 use std::ffi::c_int;
 use std::fs;
-use std::io;
+use std::io::{self, Read};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -50,19 +50,43 @@ const LANDING_TRIES: usize = 64;
 /// Puts `from` at `into` under a name of its own first and then moves it
 /// there, so whatever is already at `into`, a hard link to a file
 /// elsewhere or a symbolic link, is replaced rather than written through.
+/// Only a file of the `size` its list says lands, as every byte of it.
 /// A folder named in `swept` was swept already by this bring-back.
-pub(super) fn land(from: &Path, into: &Path, swept: &mut HashSet<PathBuf>) -> io::Result<()> {
+pub(super) fn land(
+    from: &Path,
+    into: &Path,
+    size: u64,
+    swept: &mut HashSet<PathBuf>,
+) -> io::Result<()> {
     let parent = into.parent().unwrap_or(Path::new("."));
     fs::create_dir_all(parent)?;
     if swept.insert(parent.to_path_buf()) {
         sweep(parent);
     }
-    let mut source = opened_plain(from)?;
-    let bits = landing_bits(source.metadata()?.permissions().mode());
+    let source = opened_plain(from)?;
+    let opened = source.metadata()?;
+    // The size is the open file's, so another put at its name since the
+    // list was checked can't land, and no more than it is ever copied.
+    if opened.len() != size {
+        return Err(io::Error::other(format!(
+            "it is {} bytes, not the {size} listed",
+            opened.len()
+        )));
+    }
+    let bits = landing_bits(opened.permissions().mode());
     let (landing, mut to) = landing_name(parent, bits)?;
     let landed = held(&to)
-        .and_then(|()| io::copy(&mut source, &mut to))
-        .and_then(|_| synced(&to))
+        .and_then(|()| io::copy(&mut source.take(size), &mut to))
+        .and_then(|copied| {
+            if copied == size {
+                Ok(())
+            } else {
+                Err(io::Error::other(format!(
+                    "only {copied} of its {size} bytes could be read"
+                )))
+            }
+        })
+        .and_then(|()| synced(&to))
         .and_then(|()| fs::rename(&landing, into));
     landed.inspect_err(|_| {
         // What's left would be in the person's folder; it's spent anyway.

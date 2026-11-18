@@ -39,13 +39,8 @@ fn what_couldn_t_be_found_or_sorted_to_bring_back_is_lost_not_whole() {
     // Each failing only at the bring-back, having said all it would, as a
     // find stopped part way does, and passing the rest to the far
     // machine's own, the stand-in's folder first on the path.
-    let failing = |step: &str, when: &str| {
-        format!(
-            "PATH=${{PATH#*:}}\ncase \" $* \" in {when}) {step} \"$@\"; exit 1 ;; esac\nexec {step} \"$@\""
-        )
-    };
-    let find = failing("find", "*\" -type f \"*");
-    let sort = failing("sort", "*\" -u \"*");
+    let (_, find) = refusing("find", "*\" -type f \"*", "find \"$@\"; exit 1");
+    let (_, sort) = refusing("sort", "*\" -u \"*", "sort \"$@\"; exit 1");
     let cases: [(&str, &[(&str, &str)]); 3] = [
         ("find", &[("find", &find)]),
         ("sort", &[("sort", &sort)]),
@@ -184,6 +179,10 @@ fn a_list_that_couldn_t_be_written_whole_ends_cut() {
             matches!(&landed, Err(Missed::Lost(why)) if why.contains("couldn't write down all")),
             "a list missing a loss it couldn't write wasn't said cut ({refusal}): {landed:?}"
         );
+        assert!(
+            !home.join("near/out/a").exists(),
+            "a file landed from a list the far side cut ({refusal})"
+        );
         let _ = std::fs::remove_dir_all(&home);
     }
 }
@@ -197,9 +196,13 @@ fn a_list_on_a_full_disk_is_never_said_whole() {
     // A sort that leaves the list's own name on a full disk, so every line
     // of it fails as it's written. The far tree is two folders below home.
     let list = handover(Path::new("")).join(BROUGHT);
-    let sort = format!(
-        "PATH=${{PATH#*:}}\ncase \" $* \" in *\" -u \"*) sort \"$@\" && ln -sf /dev/full \"$PWD/../../{}\"; exit ;; esac\nexec sort \"$@\"",
-        list.display()
+    let sort = refusing(
+        "sort",
+        "*\" -u \"*",
+        &format!(
+            "sort \"$@\" && ln -sf /dev/full \"$PWD/../../{}\"; exit",
+            list.display()
+        ),
     );
     let (code, err, home) = far_line(
         "1\tx\nend\n",
@@ -207,7 +210,7 @@ fn a_list_on_a_full_disk_is_never_said_whole() {
         "mkdir out && printf a > out/a",
         &kind,
         None,
-        &[("sort", &sort)],
+        &[(sort.0, &sort.1)],
     );
     assert!(
         code == Some(0)
@@ -218,10 +221,93 @@ fn a_list_on_a_full_disk_is_never_said_whole() {
     // Nothing at the list's name but a plain file is read, so the near side
     // waits it out rather than read a device forever.
     let landed = bring_back(&handover(&home), &home.join("near"), &kind.brings_back, 1);
-    assert!(
-        matches!(&landed, Err(Missed::Lost(_))),
-        "a list that never got written read as whole: {landed:?}"
+    assert_eq!(
+        landed,
+        Err(Missed::Lost("it didn't cross home within 1s".into())),
+        "a list that never got written wasn't waited out"
     );
+    assert!(
+        !home.join("near/out/a").exists(),
+        "a file landed from a list never written"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_list_whose_end_can_t_be_written_is_said_and_ends_after_the_room_is_freed() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    assert!(Path::new("/dev/full").exists(), "no full disk to stand in");
+    // The free of the job's copy and tree, the last thing before the end,
+    // says if the end came first, and then leaves the list's name on a full
+    // disk, so only the end's write fails.
+    let rm = refusing(
+        "rm",
+        &format!("*\"/{} \"*", super::super::TREE),
+        &format!(
+            "for a; do job=${{a%/{tree}}}; done\n\
+             grep -qx end \"$job/{BROUGHT}\" && echo 'the list ended before its room was freed' >&2\n\
+             rm \"$@\"; ln -sf /dev/full \"$job/{BROUGHT}\"; exit 0",
+            tree = super::super::TREE
+        ),
+    );
+    let (code, err, home) = far_line(
+        "1\tx\nend\n",
+        &[("x", "x")],
+        "mkdir out && printf a > out/a",
+        &kind,
+        None,
+        &[(rm.0, &rm.1)],
+    );
+    assert!(
+        code == Some(0)
+            && err.contains("couldn't end the list")
+            && !err.contains("couldn't write down all")
+            && !err.contains("ended before"),
+        "the far line didn't free its room first, or say its end failed ({code:?}): {err}"
+    );
+    let landed = bring_back(&handover(&home), &home.join("near"), &kind.brings_back, 1);
+    assert_eq!(
+        landed,
+        Err(Missed::Lost("it didn't cross home within 1s".into())),
+        "a list with no end wasn't waited out"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_list_at_a_link_is_never_read() {
+    let home = scratch("linked-list");
+    let job = handover(&home);
+    std::fs::create_dir_all(job.join(BACK)).unwrap();
+    std::fs::write(job.join(BACK).join("0"), "a").unwrap();
+    std::fs::write(home.join("whole"), "1\tout/a\nend\n").unwrap();
+    std::os::unix::fs::symlink(home.join("whole"), job.join(BROUGHT)).unwrap();
+    assert_eq!(
+        bring_back(&job, &home.join("near"), &["out".into()], 1),
+        Err(Missed::Lost("it didn't cross home within 1s".into())),
+        "a list at a link, which no share leaves, was read"
+    );
+    assert!(!home.join("near/out/a").exists(), "a linked list landed");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_cut_after_half_a_line_is_cut() {
+    let home = scratch("half-cut");
+    let job = handover(&home);
+    std::fs::create_dir_all(job.join(BACK)).unwrap();
+    std::fs::write(job.join(BACK).join("0"), "a").unwrap();
+    std::fs::write(job.join(BROUGHT), "1\tout/a\n1\tou\ncut\n").unwrap();
+    assert_eq!(
+        bring_back(&job, &home.join("near"), &["out".into()], 1),
+        Err(Missed::Lost(
+            "the far side couldn't write down all it would bring back".into()
+        )),
+        "a cut after a half-written line wasn't read as cut"
+    );
+    assert!(!home.join("near/out/a").exists(), "a cut list landed");
     let _ = std::fs::remove_dir_all(&home);
 }
 

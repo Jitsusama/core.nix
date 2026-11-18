@@ -26,7 +26,7 @@ use crate::settings::{Copies, Kind};
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::fs;
-use std::io;
+use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use terminal_kit::Exit;
@@ -333,8 +333,7 @@ say {started}
 code=$?
 # Made fresh, so no copy is written through whatever sat at its number.
 rm -rf "$job/{BACK}" && mkdir -p "$job/{BACK}"
-{bringing}cd "$HOME" && rm -rf "$work" "$job/{TREE}"
-exit "$code"
+{bringing}exit "$code"
 "#,
         started = quoted(&Heard::Started.line(id)),
         refused = quoted(&Heard::Refused.line(id)),
@@ -519,15 +518,19 @@ pub fn bring_back(
     }
 }
 
-/// The far side's list in the handover folder `job`, read only as a plain
-/// file, as every file landed is: anything else at its name, which no
+/// The far side's list in the handover folder `job`, read only as the
+/// plain file it was opened as, as every file landed is, and no further
+/// than a share holds in one file: anything else at its name, which no
 /// share carries, reads as nothing yet.
 fn list(job: &Path) -> Vec<u8> {
-    let path = job.join(BROUGHT);
-    match fs::symlink_metadata(&path) {
-        Ok(meta) if meta.is_file() => fs::read(&path).unwrap_or_default(),
-        _ => Vec::new(),
+    let mut bytes = Vec::new();
+    if let Ok(file) = landing::opened_plain(&job.join(BROUGHT)) {
+        // Read part way, it is a list still crossing, which the wait answers.
+        if file.take(LARGEST_FILE).read_to_end(&mut bytes).is_err() {
+            bytes.clear();
+        }
     }
+    bytes
 }
 
 /// The far side's list in `bytes`, a line each, with a name that isn't
@@ -619,7 +622,7 @@ fn landed(
             continue;
         }
         let from = job.join(BACK).join(brought.number.to_string());
-        match landing::land(&from, &folder.join(&brought.path), &mut swept) {
+        match landing::land(&from, &folder.join(&brought.path), brought.size, &mut swept) {
             Ok(()) => landed += 1,
             Err(error) => {
                 lasting |= lasts(&error);
