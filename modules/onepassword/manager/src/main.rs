@@ -119,7 +119,8 @@ fn help() -> Help {
     )
     .exit(
         Exit::Usage,
-        "given a flag it doesn't know, or one without its value",
+        "given a flag it doesn't know or one without its value, a release that isn't \
+         an op:// reference, or where the app opens without --open-unit",
     )
     .exit(
         Exit::Failed,
@@ -259,6 +260,14 @@ fn given(args: &[String]) -> Result<Given, Failure> {
         std::env::var_os("XDG_RUNTIME_DIR")
             .map(|run| PathBuf::from(run).join("onepassword").join("open"))
     });
+    if unit.is_some() && opened.is_none() {
+        return Err(Failure::new(
+            Exit::Usage,
+            "--open-unit needs --opened where XDG_RUNTIME_DIR isn't set",
+        )
+        .because("without the file its unit keeps, it can't tell the app opened")
+        .try_this("passwords-1password --help"));
+    }
     Ok(Given {
         op,
         releases,
@@ -539,7 +548,8 @@ impl Manager {
         say(&json!({"state": "signed-out", "reason": OPENING}));
         let unopened = |why: String| Failed::only(format!("1Password didn't open: {why}"));
         let started = Command::new(&opener.systemctl)
-            .args(["--user", "start", &opener.unit])
+            // Flags end before the unit, so none it's named can read as one.
+            .args(["--user", "start", "--", &opener.unit])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())

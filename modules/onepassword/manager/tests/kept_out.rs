@@ -313,7 +313,7 @@ fn unlocking_while_the_app_is_closed_opens_it_first_and_says_so() {
     );
     assert_eq!(
         home.opens().trim(),
-        "--user start onepassword.service",
+        "--user start -- onepassword.service",
         "1Password's unit is started"
     );
     assert_eq!(

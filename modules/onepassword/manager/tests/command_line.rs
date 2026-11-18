@@ -71,6 +71,23 @@ fn a_release_that_isnt_a_1password_reference_is_refused() {
 }
 
 #[test]
+fn a_unit_with_nowhere_to_watch_it_open_is_refused() {
+    let out = Command::new(env!("CARGO_BIN_EXE_passwords-1password"))
+        .args(["--open-unit", "onepassword.service"])
+        .env_remove("JOURNAL_STREAM")
+        .env_remove("XDG_RUNTIME_DIR")
+        .stdin(Stdio::null())
+        .output()
+        .expect("the manager runs");
+    assert_eq!(out.status.code(), Some(64), "{out:?}");
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.contains("--open-unit needs --opened"),
+        "a unit it could never see open was taken: {said}"
+    );
+}
+
+#[test]
 fn where_the_app_opens_is_refused_without_its_unit() {
     for given in [["--opened", "/run/open"], ["--systemctl", "/bin/systemctl"]] {
         let out = ran(&given);
