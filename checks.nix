@@ -22,63 +22,11 @@
 let
   inherit (pkgs) lib;
 
-  # The least a machine needs to evaluate, plus home-manager and nixpkgs'
-  # settings, which every machine has, and one account for home-manager to
-  # configure, so that the home half of a role or module is evaluated too.
-  bareNixos =
-    modules:
-    nixpkgs.lib.nixosSystem {
-      modules = [
-        self.nixosModules.home-manager
-        self.nixosModules.nixpkgs
-        {
-          nixpkgs.hostPlatform = "x86_64-linux";
-          boot.loader.grub.enable = false;
-          # A module that lays out the disk replaces this.
-          fileSystems."/" = lib.mkDefault {
-            device = "none";
-            fsType = "tmpfs";
-          };
-          users.users.someone.isNormalUser = true;
-          home-manager.users.someone.home.stateVersion = "26.05";
-          system.stateVersion = "26.05";
-        }
-      ]
-      ++ modules;
-    };
-
-  bareDarwin =
-    modules:
-    nix-darwin.lib.darwinSystem {
-      modules = [
-        self.darwinModules.home-manager
-        self.darwinModules.nixpkgs
-        {
-          nixpkgs.hostPlatform = "aarch64-darwin";
-          system.primaryUser = "someone";
-          users.users.someone.home = "/Users/someone";
-          home-manager.users.someone.home.stateVersion = "26.05";
-          system.stateVersion = 6;
-        }
-      ]
-      ++ modules;
-    };
-
-  # A check that passes when the machine evaluates, and warns of nothing.
-  # Writing out the path of its derivation forces the whole configuration
-  # while building none of it. A warning is a setting doing nothing, or
-  # soon to, printed in every evaluation's log until someone reads it.
-  evaluates =
-    name: machine:
-    let
-      warned = machine.config.warnings;
-    in
-    if warned != [ ] then
-      failure name "${name} warns: ${lib.concatStringsSep "; " warned}"
-    else
-      pkgs.writeText name (
-        builtins.unsafeDiscardStringContext machine.config.system.build.toplevel.drvPath
-      );
+  # The least machine of each class, and the check that one evaluates and
+  # warns of nothing, as core gives them to a repository built on it
+  # (tests/lib/bare-machines.nix and tests/lib/evaluates.nix).
+  inherit (self.lib) bareNixos bareDarwin;
+  evaluates = self.lib.evaluates pkgs;
 
   # A check that passes when two machines evaluate to the same derivation.
   same =

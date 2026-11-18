@@ -43,6 +43,19 @@ set core's options rather than repeating what core does:
 }
 ```
 
+It checks each module alone, as core checks its own, so one that quietly
+needs another fails in its checks rather than on a machine.
+`core.lib.bareNixos` and `core.lib.bareDarwin` are the least machine of each
+class with the given modules added, with one account, `someone`, and
+`core.lib.evaluates` is a check that a machine evaluates and warns of
+nothing:
+
+```nix
+home-on-nixos-personal = core.lib.evaluates pkgs "home-on-nixos-personal" (
+  core.lib.bareNixos [ { home-manager.users.someone.imports = [ ./personal/home.nix ]; } ]
+);
+```
+
 ## The Machine's Own Directory
 
 It holds what belongs to that machine alone:

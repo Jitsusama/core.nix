@@ -660,6 +660,16 @@
       # script import vm_helpers, and core's linters read its types.
       lib.vmHelpers = pkgs: python: [ (pkgs.callPackage ./tests/lib/vm-helpers.nix { } python) ];
 
+      # The bare machines core's checks add a module to, for a repository
+      # built on core to check its own modules the same way:
+      # `core.lib.bareNixos [ module ]` and `core.lib.bareDarwin [ module ]`
+      # are the least machine of each class with them added, and
+      # `core.lib.evaluates pkgs name machine` is a check that the machine
+      # evaluates and warns of nothing.
+      lib.bareNixos = (import ./tests/lib/bare-machines.nix { inherit self nixpkgs nix-darwin; }).nixos;
+      lib.bareDarwin = (import ./tests/lib/bare-machines.nix { inherit self nixpkgs nix-darwin; }).darwin;
+      lib.evaluates = pkgs: pkgs.callPackage ./tests/lib/evaluates.nix { };
+
       # How a repository built on core formats and lints itself as core does,
       # imported into the module it gives treefmt-nix.
       treefmtModules = {
