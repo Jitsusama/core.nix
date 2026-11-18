@@ -306,10 +306,12 @@ grown() {{
   kb=${{kb%%[!0-9]*}}
   got=$((${{kb:-0}} + ${{names:-0}}))
 }}
-# The time in seconds, or where a date can't say it, one more each pass.
+# The time in seconds, or where a date can't say it, one more each pass,
+# the wait so far carried over when it can say it again.
 tick() {{
-  t=; [ -n "$counting" ] || t=$(date +%s 2>/dev/null)
-  case $t in ''|*[!0-9]*) now=$((now + 1)) ;; *) now=$t ;; esac
+  t=$(date +%s 2>/dev/null)
+  case $t in ''|*[!0-9]*) now=$((now + 1)) counting=yes ;; *)
+    [ -n "$counting" ] && began=$((t - now + began)) counting=; now=$t ;; esac
 }}
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
@@ -317,9 +319,7 @@ say() {{ printf '\n%s\n' "$1"; }}
 # By the clock, since a pass over a large tree takes long itself, and
 # from the last time more crossed, as the near side waits, or the clock
 # stepped back. A pass counts after its second, so passes are never short.
-now=$(date +%s 2>/dev/null) counting=
-case $now in ''|*[!0-9]*) now=0 counting=yes ;; esac
-grown
+now=0 began=0 counting=yes; tick; grown
 began=$now had=$got
 until arrived; do
   sleep 1

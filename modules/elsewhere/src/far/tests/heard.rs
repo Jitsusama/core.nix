@@ -95,33 +95,70 @@ fn the_far_wait_is_measured_by_the_clock_not_by_its_passes() {
 /// together past it.
 const A_GAP: std::time::Duration = std::time::Duration::from_secs(3);
 
-#[test]
-fn the_far_wait_runs_from_the_last_file_that_crossed() {
-    // Three files a gap apart, the last well past the wait from its start
-    // but inside it from the one before, as a large tree crosses, and the
-    // list's end crossing last of all, so only what crossed says it grows.
+/// Runs a far line over a tree that crosses in three steps a gap apart,
+/// the last well past the wait from its start but inside it from the one
+/// before, as a large tree crosses, with its list empty until all of it
+/// has crossed, so only what crossed can say the wait should go on.
+fn crossing_a_gap_apart(step: &dyn Fn(&Path, usize), list: &str) -> (bool, String) {
     let (code, err, home) = far_line(
-        "1\tx\n1\ty\n1\tz\n",
+        "",
         &[],
-        "cat x y z > ../ran",
+        "touch ../ran",
         &kind(""),
         Some(&|tree| {
             std::fs::create_dir_all(tree).unwrap();
-            for name in ["x", "y", "z"] {
-                std::fs::write(tree.join(name), name).unwrap();
+            for at in 0..3 {
+                step(tree, at);
                 std::thread::sleep(A_GAP);
             }
-            let list = tree.parent().unwrap().join(super::super::LEFT);
-            std::fs::write(&list, "1\tx\n1\ty\n1\tz\nend\n").unwrap();
+            let left = tree.parent().unwrap().join(super::super::LEFT);
+            std::fs::write(&left, list).unwrap();
         }),
         &[],
     );
-    assert!(
-        code == Some(0)
-            && std::fs::read_to_string(home.join("s/ran")).ok().as_deref() == Some("xyz"),
-        "files still crossing were given up on ({code:?}): {err}"
-    );
+    let ran = code == Some(0) && home.join("s/ran").exists();
     let _ = std::fs::remove_dir_all(&home);
+    (ran, format!("({code:?}): {err}"))
+}
+
+#[test]
+fn the_far_wait_runs_from_the_last_file_that_crossed() {
+    let (ran, why) = crossing_a_gap_apart(
+        &|tree, at| std::fs::write(tree.join(["x", "y", "z"][at]), "1").unwrap(),
+        "1\tx\n1\ty\n1\tz\nend\n",
+    );
+    assert!(ran, "files still crossing were given up on {why}");
+}
+
+#[test]
+fn the_far_wait_runs_from_the_last_of_a_file_that_crossed() {
+    // One file growing, as a large one crosses, so only its size moves.
+    let (ran, why) = crossing_a_gap_apart(
+        &|tree, _| {
+            let mut file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(tree.join("x"))
+                .unwrap();
+            std::io::Write::write_all(&mut file, &vec![0; A_PIECE]).unwrap();
+        },
+        &format!("{}\tx\nend\n", 3 * A_PIECE),
+    );
+    assert!(ran, "a file still crossing was given up on {why}");
+}
+
+/// What a file still crossing grows by in the test above: whole blocks, as
+/// the far side counts what crossed by its kilobytes.
+const A_PIECE: usize = 64 << 10;
+
+#[test]
+fn the_far_wait_runs_from_the_last_empty_file_that_crossed() {
+    // Files with nothing in them, so only their names say they crossed.
+    let (ran, why) = crossing_a_gap_apart(
+        &|tree, at| std::fs::write(tree.join(["x", "y", "z"][at]), "").unwrap(),
+        "0\tx\n0\ty\n0\tz\nend\n",
+    );
+    assert!(ran, "empty files still crossing were given up on {why}");
 }
 
 #[test]
@@ -151,43 +188,47 @@ fn a_far_date_that_can_t_say_the_time_still_ends_the_wait() {
 
 #[test]
 fn a_far_date_that_fails_once_doesn_t_end_the_wait() {
-    // The first reading lost, as a date can fail on a busy machine, and
-    // the rest the real time, so a wait that mixed a count of passes with
-    // the clock would read the next as the whole limit gone. One lost
-    // later is a pass counted from the reading before, as the shell says.
-    let date = "n=$(cat \"$HOME/clock\" 2>/dev/null || echo 0)\n\
-                echo $((n + 1)) > \"$HOME/clock\"\n\
-                [ \"$n\" -eq 0 ] && exit 1\n\
-                PATH=${PATH#*:}\nexec date \"$@\"";
-    let started = std::time::Instant::now();
-    let (code, err, home) = far_line(
-        "3\tx\nend\n",
-        &[("x", "x")],
-        "touch ../ran",
-        &kind(""),
-        None,
-        &[("date", date)],
-    );
-    assert!(
-        code == Some(75) && err.contains("didn't reach"),
-        "a file that never crossed wasn't waited out ({code:?}): {err}"
-    );
-    assert!(
-        started.elapsed() >= std::time::Duration::from_secs(super::WAITS),
-        "a date that failed once ended the wait early: {err}"
-    );
-    let _ = std::fs::remove_dir_all(&home);
+    // One reading lost, as a date can fail on a busy machine, and the rest
+    // the real time, so a wait that mixed a count of passes with the clock
+    // would read the next as the whole limit gone: the first, before the
+    // wait has a time, and the third, inside it.
+    for lost in [0, 2] {
+        let date = format!(
+            "n=$(cat \"$HOME/clock\" 2>/dev/null || echo 0)\n\
+             echo $((n + 1)) > \"$HOME/clock\"\n\
+             [ \"$n\" -eq {lost} ] && exit 1\n\
+             PATH=${{PATH#*:}}\nexec date \"$@\""
+        );
+        let started = std::time::Instant::now();
+        let (code, err, home) = far_line(
+            "3\tx\nend\n",
+            &[("x", "x")],
+            "touch ../ran",
+            &kind(""),
+            None,
+            &[("date", date.as_str())],
+        );
+        assert!(
+            code == Some(75) && err.contains("didn't reach"),
+            "a file that never crossed wasn't waited out ({code:?}): {err}"
+        );
+        assert!(
+            started.elapsed() >= std::time::Duration::from_secs(super::WAITS),
+            "a date that failed at reading {lost} ended the wait early: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }
 
 #[test]
 fn a_far_clock_that_steps_back_restarts_the_wait() {
     // Ten seconds back after its first reading, and on a second a pass
-    // from there, so a wait that measured from before the step would run
-    // fifteen passes rather than six.
+    // from there, so a wait that measured from before the step would read
+    // it sixteen times rather than seven. Counted by its readings, since
+    // this clock moves by them rather than by the time a busy machine took.
     let date = "n=$(cat \"$HOME/clock\" 2>/dev/null || echo 0)\n\
                 echo $((n + 1)) > \"$HOME/clock\"\n\
                 if [ \"$n\" -eq 0 ]; then echo 1000000; else echo $((999990 + n)); fi";
-    let started = std::time::Instant::now();
     let (code, err, home) = far_line(
         "3\tx\nend\n",
         &[("x", "x")],
@@ -196,16 +237,16 @@ fn a_far_clock_that_steps_back_restarts_the_wait() {
         None,
         &[("date", date)],
     );
-    let took = started.elapsed();
+    let readings = std::fs::read_to_string(home.join("clock")).unwrap_or_default();
     assert!(
         code == Some(75) && err.contains("didn't reach"),
         "a file that never crossed wasn't waited out ({code:?}): {err}"
     );
-    // Six passes of a second and a little, and the rest for a busy
-    // machine; fifteen would take past it.
-    assert!(
-        took < std::time::Duration::from_secs(super::WAITS + 6),
-        "a {}s wait over a clock that stepped back lasted {took:?}",
+    // The first, the one stepped back, and the wait's own from there.
+    assert_eq!(
+        readings.trim().parse::<u64>().ok(),
+        Some(super::WAITS + 2),
+        "a {}s wait over a clock that stepped back read it wrongly often",
         super::WAITS
     );
     let _ = std::fs::remove_dir_all(&home);
