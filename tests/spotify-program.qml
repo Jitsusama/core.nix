@@ -1,6 +1,6 @@
 // Drives Spotify's program in the launcher (modules/spotify/
 // SpotifyProgram.qml) through Quickshell itself, with spotify-recent stood
-// in (tests/spotify-recent-stand-in.sh), and niri and what's playing too.
+// in (tests/stand-ins/spotify-recent-stand-in.sh), and niri and what's playing too.
 // Nothing is read while the launcher is closed; stepped into, Spotify is
 // read once an opening, its six reads together, and again the next time
 // it opens. Its Recent is the playlists, albums and shows played lately,

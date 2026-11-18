@@ -31,7 +31,7 @@
   # holds, and a line from UPower that isn't a change does nothing. UPower and
   # the daemon are stand-ins: each time the service asks whether the machine
   # is on battery, UPower answers with the next of the states listed below
-  # (tests/battery-stand-ins). Its last choice is the one it says it chose,
+  # (tests/stand-ins/battery-stand-ins). Its last choice is the one it says it chose,
   # for the shell to tell a profile picked by hand from it.
   the-profile-saves-power-on-a-low-battery =
     let
@@ -43,7 +43,7 @@
         echo "UPower's low mark isn't the 20% the steps below expect." >&2
         exit 1
       ''}
-      WANTED=balanced ${lib.getExe pkgs.bash} ${../../tests/battery-stand-ins}/run.sh ${
+      WANTED=balanced ${lib.getExe pkgs.bash} ${../../tests/stand-ins/battery-stand-ins}/run.sh ${
         lib.escapeShellArgs [
           (unit.serviceConfig.ExecStart or "false")
           # On battery or not, and its percentage, as UPower gives them.
@@ -90,7 +90,7 @@
         .config.systemd.services.power-profile-follows-the-charger;
     in
     pkgs.runCommandLocal "a-refused-profile-is-said-once" { } ''
-      ${lib.getExe pkgs.bash} ${../../tests/battery-stand-ins}/run.sh ${
+      ${lib.getExe pkgs.bash} ${../../tests/stand-ins/battery-stand-ins}/run.sh ${
         lib.escapeShellArgs [
           (unit.serviceConfig.ExecStart or "false")
           (pkgs.writeText "steps" ''

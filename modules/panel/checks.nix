@@ -16,7 +16,7 @@ onLinux {
   # count, and a line from UPower that isn't a change does nothing. UPower and
   # niri are stand-ins: each time the service asks whether the machine is on
   # battery, UPower answers with the next of the states listed below
-  # (tests/battery-stand-ins).
+  # (tests/stand-ins/battery-stand-ins).
   the-panel-slows-on-a-low-battery =
     let
       xps = bareNixos [
@@ -25,6 +25,7 @@ onLinux {
       ];
       unit = xps.config.systemd.user.services.panel-refresh or null;
       started = unit != null && lib.elem "graphical-session.target" unit.wantedBy;
+      batteryStandIns = ../../tests/stand-ins/battery-stand-ins;
       mode = width: height: refresh_rate: { inherit width height refresh_rate; };
       outputs = builtins.toFile "outputs.json" (
         builtins.toJSON {
@@ -52,7 +53,7 @@ onLinux {
         echo "The XPS 14 has no panel-refresh service started with the session." >&2
         exit 1
       ''}
-      OUTPUTS=${outputs} ${lib.getExe pkgs.bash} ${../../tests/battery-stand-ins}/run.sh ${
+      OUTPUTS=${outputs} ${lib.getExe pkgs.bash} ${batteryStandIns}/run.sh ${
         lib.escapeShellArgs [
           (unit.serviceConfig.ExecStart or "false")
           # On battery or not, and its percentage, as UPower gives them.

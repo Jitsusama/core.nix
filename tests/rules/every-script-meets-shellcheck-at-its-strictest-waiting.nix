@@ -78,7 +78,7 @@
   "tests/desktop/tuple-stand-in.sh" = 2;
   "tests/nested-niri.sh" = 1;
   "tests/notices-on-niri.sh" = 1;
-  "tests/spotify-recent-stand-in.sh" = 1;
+  "tests/stand-ins/spotify-recent-stand-in.sh" = 1;
   "tests/vm/guide/asahi-shaped-disk.sh" = 2;
   "tools/shots-changed/shots-changed.sh" = 12;
 }
