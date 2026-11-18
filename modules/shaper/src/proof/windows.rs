@@ -115,7 +115,9 @@ fn put_back_or_stopped(back: bool, stopped: bool, found: Option<bool>) -> Result
     if stopped {
         let shaper = found.map_or_else(
             || "no window ran, so the shaper is as it was".to_string(),
-            |on| format!("the shaper was put back {}", state(on)),
+            // Said so, not "put back", since a window stopped before any
+            // arm moved the shaper left it where it was.
+            |on| format!("the shaper is {} as it was", state(on)),
         );
         return Err(Failure::new(Exit::Interrupted, "stopped")
             .because(format!("a signal asked it to; {shaper}, its load ended")));
@@ -291,11 +293,11 @@ mod tests {
         assert!(matches!(paid, Ok(Some(false))), "a debt paid unsaid");
         assert_eq!(asked, Some(false), "put back otherwise than owed");
         assert_eq!(pay(Some(true), |_| false).map_err(|f| f.code()), Err(69));
-        // A stop before any window, after paying, says how this proof put
-        // the shaper back.
+        // A stop before any window, after paying, says how this proof left
+        // the shaper.
         let stopped = ran(None).ending(Some(true), true).expect_err("a stop");
         assert!(
-            stopped.to_string().contains("put back on"),
+            stopped.to_string().contains("is on as it was"),
             "a stop after a debt said nothing moved: {stopped}"
         );
         // A window's finding is the later word.
@@ -303,7 +305,7 @@ mod tests {
             .ending(Some(true), true)
             .expect_err("a stop");
         assert!(
-            stopped.to_string().contains("put back off"),
+            stopped.to_string().contains("is off as it was"),
             "a stop said the debt's state over the window's: {stopped}"
         );
     }

@@ -2,10 +2,10 @@
 //! proof's word, or on its own once the proof is gone, so a proof stopped
 //! any way leaves nothing uploading.
 
-use super::stop::STOPPED;
+use super::stop::halted;
 use std::fs;
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -123,9 +123,9 @@ pub fn began_of(pid: &str) -> String {
 }
 
 /// Starts the agents' uploads, from jobs.slice, and waits until systemd
-/// has each one's scope, five seconds pass or a stop, so the load is on
-/// before the first block counts.
-pub fn start(uploads: u32, server: &str) {
+/// has each one's scope, five seconds pass or the window's `stop`, so the
+/// load is on before the first block counts.
+pub fn start(uploads: u32, server: &str, stop: &AtomicBool) {
     let script = script(std::process::id(), &began());
     let mut loads = LOADS.lock().unwrap_or_else(PoisonError::into_inner);
     for n in 0..uploads {
@@ -140,16 +140,13 @@ pub fn start(uploads: u32, server: &str) {
     drop(loads);
     let asked = Instant::now();
     let mut running = scopes("load*");
-    while running < uploads as usize
-        && asked.elapsed() < Duration::from_secs(5)
-        && !STOPPED.load(Ordering::Relaxed)
-    {
+    while running < uploads as usize && asked.elapsed() < Duration::from_secs(5) && !halted(stop) {
         thread::sleep(Duration::from_millis(100));
         running = scopes("load*");
     }
     // Said, since a block under a lighter load than asked compares the
     // shaper with the router under less than the agents' traffic.
-    if running < uploads as usize && !STOPPED.load(Ordering::Relaxed) {
+    if running < uploads as usize && !halted(stop) {
         super::stop::tell(&format!(
             "only {running} of {uploads} uploads started within 5 s; measuring on"
         ));

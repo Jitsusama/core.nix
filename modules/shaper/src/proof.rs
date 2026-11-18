@@ -503,6 +503,12 @@ fn window(
             *idle = idle_call(asked.seconds.min(15), &stop);
         }
     }
+    // The first window's settle and quiet take half a minute with no
+    // watch on the gate, so Joel coming back meanwhile is heard here,
+    // before any load starts.
+    if !halted(&stop) && !gate.open() {
+        stop.store(true, Ordering::Relaxed);
+    }
     if halted(&stop) {
         return (Vec::new(), !touched || put_back(was_on));
     }
@@ -526,7 +532,7 @@ fn window(
             }
         })
     };
-    load::start(asked.uploads, &asked.server);
+    load::start(asked.uploads, &asked.server, &stop);
     let pairs = run_pairs(asked, link, &stop, from, &mut touched);
     let closed = stop.swap(true, Ordering::Relaxed);
     stop_scopes();
