@@ -20,8 +20,8 @@
     a chord two layers claim, or one claims twice, is refused
   '';
   a-failed-boot-says-what-stopped-it = ''
-    a failed boot's shell names up to four failed units and their last lines inside 80 columns, and
-    the way out, and nothing when none failed
+    a failed boot's shell names up to four failed units and their last lines, in the account's
+    theme with the console's marks, and the way out, and nothing when none failed
   '';
   a-faint-theme-is-refused = ''
     a theme with text under WCAG's 4.5:1, or text roles under APCA's Lc 75 for text and strong or
@@ -429,6 +429,9 @@
   boot-lock-is-whole = ''
     the splash's lock, at each scale, holds all the ink its glyph has drawn with room to spare, and
     is a line of text tall
+  '';
+  boot-stopped-passes-clippy = ''
+    clippy finds nothing in what a failed boot's console says or its tests
   '';
   booted-generation-stays-installed = ''
     a switch never removes the generation the machine booted

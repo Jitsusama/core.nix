@@ -3,10 +3,6 @@
 # to agree. The check fails on a command breaking a point it doesn't wait on,
 # and on one waiting on a point it keeps, so the list only shrinks.
 {
-  boot-stopped = [
-    "inks"
-    "helps"
-  ];
   merge-net = [ "exits" ];
   nix-offload = [
     "kit"

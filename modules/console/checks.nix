@@ -12,6 +12,18 @@
   self,
   ...
 }:
+let
+  # The working copy's kit, for the clippy checks of the crates whose
+  # builds the initrd holds, which otherwise take the kit pinned to a
+  # commit of main.
+  todaysKit = lib.fileset.toSource {
+    root = ../terminal-kit;
+    fileset = lib.fileset.unions [
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
+    ];
+  };
+in
 {
   # The console wears the theme of the account the machine signs in, in the
   # console's order, and follows it when the theme changes. A machine that
@@ -168,14 +180,12 @@
   # built on today's kit rather than the pinned one the initrd takes, so a
   # kit change that would break it fails here rather than at the next bump.
   console-font-passes-clippy = passesClippy "console-font-passes-clippy" (
-    pkgs.callPackage ./font/package.nix {
-      terminalKit = lib.fileset.toSource {
-        root = ../terminal-kit;
-        fileset = lib.fileset.unions [
-          ../terminal-kit/Cargo.toml
-          ../terminal-kit/src
-        ];
-      };
-    }
+    pkgs.callPackage ./font/package.nix { terminalKit = todaysKit; }
+  );
+
+  # clippy finds nothing in what a failed boot's console says, its tests
+  # included, built on today's kit for the same reason.
+  boot-stopped-passes-clippy = passesClippy "boot-stopped-passes-clippy" (
+    pkgs.callPackage ./stopped/package.nix { terminalKit = todaysKit; }
   );
 }

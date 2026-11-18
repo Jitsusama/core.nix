@@ -13,7 +13,6 @@
   "modules/cargo/builds.sh" = 5;
   "modules/chrony/network-servers.sh" = 4;
   "modules/console/setup.sh" = 1;
-  "modules/console/stopped.sh" = 13;
   "modules/console/tests/boot-stopped.sh" = 1;
   "modules/console/tests/console-font.sh" = 7;
   "modules/console/tests/console-wears-the-face.sh" = 10;
