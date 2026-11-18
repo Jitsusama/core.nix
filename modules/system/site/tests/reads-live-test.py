@@ -85,7 +85,8 @@ def test_the_system_page_draws_every_machine_live(system_page: Page) -> None:
 
 def section_of_the_cursor(page: Page) -> str | None:
     """Say which section holds what has focus, by its id, or None."""
-    return page.evaluate("document.activeElement?.closest('section[id]')?.id ?? null")
+    held = page.evaluate("document.activeElement?.closest('section[id]')?.id ?? null")
+    return held if isinstance(held, str) else None
 
 
 def test_the_keys_and_places_move_the_cursor(system_page: Page) -> None:
@@ -96,6 +97,11 @@ def test_the_keys_and_places_move_the_cursor(system_page: Page) -> None:
     assert section_of_the_cursor(system_page) == "machine-1"
     keyboard.press("2")
     assert section_of_the_cursor(system_page) == "machine-2"
+    clear = system_page.evaluate(
+        "document.activeElement.getBoundingClientRect().top"
+        " >= document.querySelector('.mast').getBoundingClientRect().bottom"
+    )
+    assert clear is True, "the row the keys landed on sits under the masthead"
     keyboard.press("k")
     assert section_of_the_cursor(system_page) == "machine-1"
     place = system_page.locator('#places a[data-place="machine-2"]')
@@ -105,9 +111,16 @@ def test_the_keys_and_places_move_the_cursor(system_page: Page) -> None:
         "aria-current", "location"
     )
     keyboard.press("y")
-    # A headless browser may refuse the clipboard; either way y says what it did.
-    expect(system_page.locator("#note"), "y said nothing of its copy").to_have_text(
-        re.compile(r"^(Copied|Couldn't copy)")
+    # A headless browser may refuse the clipboard; either way y says what it
+    # did, and with the command of the machine the cursor is on.
+    expect(system_page.locator("#note"), "y didn't copy osprey's command").to_have_text(
+        re.compile(r"^(Copied|Couldn't copy).*mycelium sprout --on osprey\b")
+    )
+    # Off every machine, y copies nothing and says so.
+    system_page.evaluate("document.activeElement?.blur()")
+    keyboard.press("y")
+    expect(system_page.locator("#note"), "y off a machine didn't say why").to_have_text(
+        re.compile(r"^Nothing to copy here")
     )
 
 

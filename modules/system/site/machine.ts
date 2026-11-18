@@ -89,10 +89,12 @@ function howMany(count: number, all: number): string {
 /** The headline over the machines: how many there are, then how they stand. */
 function machineHeadline(system: System): MachineHeadline {
   const part = system.parts.find((each) => each.part === "machines");
-  if (part?.health === "unread") {
+  const things = part?.things ?? [];
+  // A part not told, or naming machines whose records haven't come, isn't none.
+  const awaited = part === undefined || (things.length === 0 && part.untold > 0);
+  if (awaited || part.health === "unread") {
     return { machines: "Your machines", stand: "not read", health: "unread" };
   }
-  const things = part?.things ?? [];
   const { length } = things;
   const machines = capital(`${numbered(length)} ${length === 1 ? "machine" : "machines"}`);
   if (length === 0) {
@@ -163,10 +165,11 @@ function kindOf(thing: Thing, here: string): string | undefined {
   const { model, system } = thing.ties.figures;
   const words = [model, systemSaid(system)];
   const said = words.filter((word) => word !== undefined);
+  const itself = thing.name === here;
   if (said.length === 0) {
-    return undefined;
+    return itself ? "This machine" : undefined;
   }
-  return [...said, ...(thing.name === here ? ["this machine"] : [])].join(", ");
+  return [...said, ...(itself ? ["this machine"] : [])].join(", ");
 }
 
 /** How a machine stands, in a line: its health's word, then what is worth a look. */
@@ -376,8 +379,9 @@ function dayOf(time: number): number {
 
 /**
  * A time as the ties say it, seen from `now`, locally: "at 02:19" today,
- * "yesterday at 23:05", or "on 12 Nov at 09:00" before then, so an update
- * from days ago never reads as this morning's.
+ * "yesterday at 23:05", or "on 12 Nov at 09:00" on any other day, so an
+ * update from days ago never reads as this morning's. A day of another
+ * year says its year.
  */
 function whenSaid(at: string, now: number): string {
   const time = Date.parse(at);
@@ -387,13 +391,16 @@ function whenSaid(at: string, now: number): string {
   const when = new Date(time);
   const clock = `${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}`;
   const today = dayOf(now);
-  if (time >= today) {
+  // Half a day past a day, so a day of 23 or 25 hours still lands on the next.
+  const tomorrow = dayOf(today + DAY + DAY / 2);
+  if (time >= today && time < tomorrow) {
     return `at ${clock}`;
   }
-  if (time >= dayOf(today - DAY / 2)) {
+  if (time < today && time >= dayOf(today - DAY / 2)) {
     return `yesterday at ${clock}`;
   }
-  return `on ${when.getDate()} ${MONTHS[when.getMonth()] ?? ""} at ${clock}`;
+  const year = when.getFullYear() === new Date(now).getFullYear() ? "" : ` ${when.getFullYear()}`;
+  return `on ${when.getDate()} ${MONTHS[when.getMonth()] ?? ""}${year} at ${clock}`;
 }
 
 export type { MachineHeadline, Said };

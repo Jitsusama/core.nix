@@ -11,7 +11,8 @@
 .across {
   padding-block: var(--groups);
   border-block-start: 1px solid var(--rule);
-  scroll-margin-block-start: 5rem;
+  /* The page's scroll padding keeps it under the masthead; this a breath more. */
+  scroll-margin-block-start: var(--mark);
 }
 
 .machine .name,
@@ -260,7 +261,7 @@ span.mark {
   outline-offset: 2px;
 }
 
-.more {
+.parts > .more {
   margin: 0;
   padding-block: var(--items);
   border-block-start: 1px solid var(--rule);

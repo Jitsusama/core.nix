@@ -115,6 +115,18 @@ it("counts every pier's dots on the one scale it says", () => {
   assert.ok(wide.includes("each dot is 3 cells"));
 });
 
+it("rounds a pier's cells up once, never busy and idle apart", () => {
+  // 144 cells fill a wide pier's 72 dots at two cells each; busy and idle
+  // rounded apart would make 73, a seventh row over the pier.
+  const { wide } = variants(
+    bridgeOf([machine("kestrel", 143, 1, "good"), machine("osprey", 1, 1, "good")]),
+  );
+  assert.ok(wide.includes("each dot is 2 cells"));
+  assert.equal(count(wide, "<circle "), 73);
+  const rows = new Set([...wide.matchAll(DOT_Y)].map((one) => one.groups?.["y"]));
+  assert.equal(rows.size, 6);
+});
+
 it("stacks the dots up from the deck, full rows lowest and a part row centred on them", () => {
   const { narrow } = variants(bridgeOf([machine("kestrel", 4, 5, "good")]));
   const dots = [...narrow.matchAll(DOT)].map((one) => ({

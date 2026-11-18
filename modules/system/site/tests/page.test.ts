@@ -10,8 +10,8 @@ import { test as it } from "node:test";
 
 const SITE = new URL("../", import.meta.url);
 // A type-only import is erased, so it fetches nothing.
-const OWN_IMPORT = /^import\s(?!type\s)[^;]*?from\s+"\.\/(?<module>[a-z]+)\.ts";/gmu;
-const PRELOAD = /<link rel="modulepreload" href="(?<module>[a-z]+)\.js">/gu;
+const OWN_IMPORT = /^import\s(?!type\s)[^;]*?from\s+"\.\/(?<module>[\w-]+)\.ts";/gmu;
+const PRELOAD = /<link rel="modulepreload" href="(?<module>[\w-]+)\.js">/gu;
 
 /** The page's own modules a module imports, by name. */
 function importsOf(module: string): string[] {

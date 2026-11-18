@@ -37,6 +37,14 @@ const bridge = element("#bridge", HTMLElement);
 const places = element("#places", HTMLElement);
 const note = element("#note", HTMLParagraphElement);
 const keys = element("#keys", HTMLDialogElement);
+const mast = element(".mast", HTMLElement);
+
+// Whatever the keys land on stays clear of the masthead, however many lines
+// it wraps to: on a phone its places and keys take three or four.
+const clearOfMast = new ResizeObserver(() => {
+  document.documentElement.style.scrollPaddingBlockStart = `${mast.offsetHeight}px`;
+});
+clearOfMast.observe(mast);
 
 const KINDS = ["summary", "part", "machine"] as const;
 // What each watch holds: the Held its follow keeps, which is the one it
@@ -61,6 +69,9 @@ let cursor: string | null = null;
 let drawnParts = "";
 let drawnBridge = "";
 let drawnPlaces = "";
+
+/** A minute's milliseconds, how often the ties' times are said again. */
+const MINUTE = 60_000;
 
 /** A time as the ties say it, from now. */
 function when(at: string): string {
@@ -214,6 +225,11 @@ for (const kind of KINDS) {
   ).held;
 }
 
+// The ties say their times from now, so a page left open past midnight
+// draws again each minute rather than saying yesterday's update as today's.
+// A draw changes only the regions whose markup moved.
+setInterval(draw, MINUTE);
+
 /** Moves the cursor `by` rows, to either end when `by` is infinite. */
 function move(by: number): void {
   const all = rows();
@@ -248,12 +264,23 @@ function copy(command: string): void {
   );
 }
 
-/** The first command of the section the cursor is in, or of the first section. */
+/**
+ * The first command of the section the cursor is in, and none outside one,
+ * so y never copies a machine's command the cursor isn't on.
+ */
 function commandHere(): string | undefined {
-  const section =
-    document.activeElement?.closest<HTMLElement>("[data-part]") ??
-    list.querySelector<HTMLElement>("[data-part]");
+  const section = document.activeElement?.closest<HTMLElement>("[data-part]");
   return section?.querySelector<HTMLButtonElement>("button.copy")?.dataset["command"];
+}
+
+/** Copies the command here, or says why there is none. */
+function copyHere(): void {
+  const command = commandHere();
+  if (command === undefined) {
+    note.textContent = "Nothing to copy here: y copies a command of the machine the cursor is on.";
+    return;
+  }
+  copy(command);
 }
 
 const machineJumps = Array.from({ length: Math.min(MACHINES_DRAWN, 9) }, (_, at) => [
@@ -272,12 +299,7 @@ listen({
     Home: () => move(Number.NEGATIVE_INFINITY),
     G: () => move(Number.POSITIVE_INFINITY),
     End: () => move(Number.POSITIVE_INFINITY),
-    y: () => {
-      const command = commandHere();
-      if (command !== undefined) {
-        copy(command);
-      }
-    },
+    y: copyHere,
     ...Object.fromEntries(machineJumps),
     "0": () => toSection("across"),
   },

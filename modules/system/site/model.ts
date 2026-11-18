@@ -41,6 +41,8 @@ interface Part {
   /** What it holds, counted in a few words; none when it wasn't read. */
   readonly holds: string | undefined;
   readonly things: readonly Thing[];
+  /** How many things it names whose records haven't arrived yet. */
+  readonly untold: number;
   readonly deeper: Deeper;
 }
 
@@ -160,15 +162,15 @@ function partOf(parts: Held, things: Held, name: string, unread: string[]): Part
     const value = deeper[field];
     return typeof value === "string" ? value : "";
   };
+  const keys = texts(record, "things") ?? [];
   return {
     part: name,
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
     side: texts(record, "side") ?? [],
     holds: text(record, "holds"),
-    things: (texts(record, "things") ?? [])
-      .map((key) => thingOf(things, key, unread))
-      .filter((thing) => thing !== undefined),
+    things: keys.map((key) => thingOf(things, key, unread)).filter((thing) => thing !== undefined),
+    untold: keys.filter((key) => things.get(key) === undefined).length,
     deeper: { command: says("command"), site: says("site"), launcher: says("launcher") },
   };
 }

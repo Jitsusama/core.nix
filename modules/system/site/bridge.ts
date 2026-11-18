@@ -93,8 +93,9 @@ function cellsAt(
   if (cells === undefined) {
     return { dots: "", top: DECK };
   }
-  const busy = Math.ceil(cells.busy / each);
-  const shown = busy + Math.ceil(cells.idle / each);
+  // Rounded up once over the whole, so a pier never draws more than it holds.
+  const shown = Math.ceil((cells.busy + cells.idle) / each);
+  const busy = Math.min(shown, Math.ceil(cells.busy / each));
   const rows = Math.ceil(shown / variant.across);
   // Rows stack up from the deck, so a row only part filled sits on full ones,
   // centred over the pier.

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
-import { escaped, legend, partsOf } from "../draw.ts";
+import { escaped, headlineOf, legend, partsOf, placesOf } from "../draw.ts";
 import { allTold, systemOf } from "../model.ts";
 
 /** The three watches, told `these` whole, each to its kind's. */
@@ -165,6 +165,7 @@ const TIE = /<section class="tie"><h3>(?<name>[^<]*)<\/h3>/gu;
 
 /** A row the keys step through, by its key. */
 const ROW = /data-row="(?<key>[^"]*)"/gu;
+const PLACE = /data-place="(?<place>[^"]*)"/gu;
 const HIDDEN_BRIDGE = /<figure class="bridge" id="bridge" aria-hidden="true">/u;
 
 /** A time, as the page says one. */
@@ -206,6 +207,32 @@ it("each machine has a section of its own, with its four ties in order", () => {
   const [first] = drawn.split('id="machine-2"');
   const ties = [...(first ?? "").matchAll(TIE)].map((each) => each.groups?.["name"]);
   assert.deepEqual(ties, ["Cells", "Network", "Code", "Itself"]);
+});
+
+it("turns the headline in its worst health's colour, and names each machine in the places", () => {
+  assert.equal(
+    headlineOf({ machines: "Two machines", stand: "both worth a look", health: "watch" }),
+    'Two machines, <em class="watch">both worth a look.</em>',
+  );
+  const places = placesOf(systemWith());
+  const targets = [...places.matchAll(PLACE)].map((each) => each.groups?.["place"]);
+  assert.deepEqual(targets, ["machine-1", "machine-2", "across"]);
+  assert.ok(places.includes("kestrel") && places.includes("osprey"));
+});
+
+it("says why there are no machines to draw when their part couldn't be read", () => {
+  const system = systemWith((record) =>
+    record.key === "part:machines"
+      ? { ...record, health: "not read", says: "the mycelium couldn't be reached", things: [] }
+      : record,
+  );
+  const drawn = partsOf(system, when);
+  assert.ok(
+    drawn.includes('<p class="bare health unread">'),
+    "the unread part drew no paragraph of its own",
+  );
+  assert.ok(drawn.includes(`The mycelium couldn${escaped("'")}t be reached`));
+  assert.ok(!drawn.includes('class="machine '), "a machine was drawn from an unread part");
 });
 
 it("steps through each machine's rows, then the parts across them", () => {

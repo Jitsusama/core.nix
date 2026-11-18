@@ -276,15 +276,15 @@ in
     # is there exactly when the site is.
     rows = {
       system = {
-        name = "Your system, now";
+        name = "Your machines, now";
         what = lib.concatStrings [
-          "How your whole system stands at once: every machine on your mycelium, the "
-          "mycelium itself, your home network and your code, each judged by its own "
-          "owner, with the way deeper into each."
+          "Every machine you have, drawn as a bridge: how each stands, and what it "
+          "carries of your mycelium, your home network and your code, with the way "
+          "deeper into each."
         ];
         asks = lib.concatStrings [
-          "Step through the four parts with j and k; say whether the sentence at the "
-          "top tells you enough at a glance."
+          "Step through the machines with j and k; say whether the first screen tells "
+          "you which machine is which and how each is doing."
         ];
       };
       network = {

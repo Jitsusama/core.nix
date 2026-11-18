@@ -65,6 +65,7 @@ function system(things: Thing[], others: Part[] = []): System {
     side: [],
     holds: undefined,
     things,
+    untold: 0,
     deeper,
   };
   return {
@@ -78,7 +79,7 @@ function system(things: Thing[], others: Part[] = []): System {
 }
 
 function part(name: string, health: Part["health"], side: string[]): Part {
-  return { part: name, health, says: "", side, holds: undefined, things: [], deeper };
+  return { part: name, health, says: "", side, holds: undefined, things: [], untold: 0, deeper };
 }
 
 it("the headline counts the machines, then how they stand", () => {
@@ -124,6 +125,13 @@ it("the lede says what each machine worth a look has, then the worst of the rest
   assert.equal(machineLede(system([machine("heron", "good")])), undefined);
 });
 
+it("the lede names three machines worth a look at most, however many there are", () => {
+  const many = Array.from({ length: 1000 }, (_, at) =>
+    machine(`m${at}`, "watch", ["filling disk"]),
+  );
+  assert.equal(machineLede(system(many)), "m0: filling disk. m1: filling disk. m2: filling disk.");
+});
+
 it("the lede ends each sentence once, keeping an owner's own mark", () => {
   const stopped = [machine("kestrel", "watch", ["out of reach, 20 hours ago."])];
   assert.equal(machineLede(system(stopped)), "kestrel: out of reach, 20 hours ago.");
@@ -155,6 +163,7 @@ it("a machine's kind is its model and its system, and says which is this one", (
   const mac = { ...here, ties: tiesOf({ figures: { system: "macos" } }) };
   assert.equal(kindOf(mac, "osprey"), "macOS");
   assert.equal(kindOf({ ...here, ties: tiesOf(undefined) }, "osprey"), undefined);
+  assert.equal(kindOf({ ...here, ties: tiesOf(undefined) }, "kestrel"), "This machine");
 });
 
 it("its cells are counted busy and idle, with those ended aside", () => {
@@ -305,6 +314,18 @@ it("a machines part that wasn't read says so, over the machines and in the lede"
   );
 });
 
+it("machines not told yet are said not read, never none known", () => {
+  const notRead = { machines: "Your machines", stand: "not read", health: "unread" };
+  const read = system([]);
+  const noPart: System = { ...read, parts: [], untold: ["machines"] };
+  assert.deepEqual(machineHeadline(noPart), notRead);
+  const awaited: System = {
+    ...read,
+    parts: read.parts.map((each) => ({ ...each, untold: 2 })),
+  };
+  assert.deepEqual(machineHeadline(awaited), notRead);
+});
+
 it("counts thousands of machines with their digits grouped", () => {
   const many = Array.from({ length: 1200 }, (_, at) => machine(`m${at}`, "good"));
   assert.equal(machineHeadline(system(many)).machines, "1,200 machines");
@@ -318,4 +339,10 @@ it("says a time on its clock today, yesterday by name, and earlier by its date",
   assert.equal(whenSaid(at(17, 23, 5), now), "yesterday at 23:05");
   assert.equal(whenSaid(at(12, 9, 0), now), "on 12 Nov at 09:00");
   assert.equal(whenSaid("soon", now), "at an unknown time");
+  // A clock ahead of this one says its day, and another year says its year.
+  assert.equal(whenSaid(at(19, 1, 0), now), "on 19 Nov at 01:00");
+  assert.equal(
+    whenSaid(new Date(2025, 10, 12, 9, 0).toISOString(), now),
+    "on 12 Nov 2025 at 09:00",
+  );
 });
