@@ -165,6 +165,14 @@ it("its cells are counted busy and idle, with those ended aside", () => {
     said: "None busy and 1 idle",
     aside: "None has ended.",
   });
+  assert.equal(
+    cellsSaid(tiesOf({ cells: { busy: 4, idle: 0, ended: 0 } })).said,
+    "4 busy and none idle",
+  );
+  assert.equal(
+    cellsSaid(tiesOf({ cells: { busy: 0, idle: 0, ended: 1 } })).said,
+    "None busy or idle",
+  );
   assert.equal(cellsSaid(tiesOf({ cells: null })).said, "Not read");
 });
 
@@ -180,11 +188,15 @@ it("its network says where it meets it, by band or by wire, and how well", () =>
       { device: "mac:66", by: "5 GHz", point: "Hall", bars: 3, room_mbps: 120 },
     ],
   });
-  assert.deepEqual(networkSaid(both), {
-    said: "Wired to the Den point, and Wi-Fi to the Hall point, on 5 GHz",
-    aside: "A fair signal, with 370 Mb/s of room.",
-    device: "mac:d0",
-  });
+  assert.deepEqual(
+    networkSaid(both),
+    {
+      said: "Wired to the Den point, and Wi-Fi to the Hall point, on 5 GHz",
+      aside: "370 Mb/s of room; a fair signal, with 120 Mb/s of room.",
+      device: "mac:d0",
+    },
+    "each place's figures stay with it, in the order the places are said",
+  );
   assert.deepEqual(networkSaid(tiesOf({ network: [] })), {
     said: "Not seen on the home network",
     aside: "No device on it carries this machine's name.",
@@ -194,16 +206,29 @@ it("its network says where it meets it, by band or by wire, and how well", () =>
 });
 
 it("its code is counted on this machine and said not read from another", () => {
-  assert.deepEqual(codeSaid(tiesOf(ties), "kestrel"), {
-    said: "18 repositories in 20 checkouts",
-    aside: "2,174 trees; 8 checkouts behind their upstream; 127 open changes.",
+  assert.deepEqual(codeSaid(tiesOf(ties), "kestrel", true), {
+    said: "20 checkouts of 18 repositories",
+    aside: "2,174 trees; 8 checkouts behind their upstreams; 127 open changes.",
     read: true,
   });
-  assert.deepEqual(codeSaid(tiesOf({ code: null }), "osprey"), {
+  const few = tiesOf({
+    code: { repositories: 1, checkouts: 1, trees: 0, behind: 1, changes: 0 },
+  });
+  assert.deepEqual(codeSaid(few, "kestrel", true), {
+    said: "1 checkout of 1 repository",
+    aside: "No tree; 1 checkout behind its upstream; no open change.",
+    read: true,
+  });
+  assert.deepEqual(codeSaid(tiesOf({ code: null }), "osprey", false), {
     said: "Not read from here",
     aside: "Its code is read on osprey itself.",
     read: false,
   });
+  assert.deepEqual(
+    codeSaid(tiesOf({ code: null }), "kestrel", true),
+    { said: "Not read", aside: "Repos couldn't be had.", read: false },
+    "on the machine it's read on, an unread code is a read that failed",
+  );
 });
 
 it("itself says its disk, then its processor, memory, power and update", () => {
@@ -239,5 +264,10 @@ it("itself says its disk, then its processor, memory, power and update", () => {
       said: "Its disk not said",
       aside: "12% charged, on battery.",
     },
+  );
+  assert.deepEqual(
+    itselfSaid(tiesOf({ figures: { charge: 40 } }), (at) => at),
+    { said: "Its disk not said", aside: "40% charged." },
+    "a charge whose node doesn't say its plug says no plug",
   );
 });

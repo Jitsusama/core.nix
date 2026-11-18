@@ -110,10 +110,13 @@ function tieOf(tie: Tie, key: string): string {
   return `<section class="tie"><h3>${escaped(tie.name)}</h3><p class="said">${escaped(tie.said.said)}</p><p class="aside">${escaped(tie.said.aside)}</p>${link}</section>`;
 }
 
-/** A machine's four ties: its cells, the network, its code and itself. */
-function tiesOf(thing: Thing, when: (at: string) => string): readonly Tie[] {
+/**
+ * A machine's four ties: its cells, the network, its code and itself, read
+ * on the machine `here` names.
+ */
+function tiesOf(thing: Thing, here: string, when: (at: string) => string): readonly Tie[] {
   const network = networkSaid(thing.ties);
-  const code = codeSaid(thing.ties, thing.name);
+  const code = codeSaid(thing.ties, thing.name, thing.name === here);
   return [
     {
       name: "Cells",
@@ -158,7 +161,7 @@ function machineOf(thing: Thing, at: number, here: string, when: (at: string) =>
   const name = escaped(thing.name);
   const kind = kindOf(thing, here);
   const kindLine = kind === undefined ? "" : `<p class="kind">${escaped(kind)}</p>`;
-  const ties = tiesOf(thing, when)
+  const ties = tiesOf(thing, here, when)
     .map((tie) => tieOf(tie, `${tie.name.toLowerCase()}:${thing.name}`))
     .join("");
   return `<section class="machine ${thing.health}" id="${id}" data-part="${id}" aria-labelledby="name-${id}">

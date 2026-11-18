@@ -170,10 +170,18 @@ function cellsSaid(ties: Ties): Said {
   if (cells === undefined) {
     return { said: NOT_READ, aside: "The mycelium's health couldn't be had." };
   }
-  const busy = cells.busy === 0 ? "None" : cells.busy.toLocaleString("en-CA");
+  const counted = (count: number): string =>
+    count === 0 ? "none" : count.toLocaleString("en-CA");
+  const said =
+    cells.busy === 0 && cells.idle === 0
+      ? "None busy or idle"
+      : capital(`${counted(cells.busy)} busy and ${counted(cells.idle)} idle`);
   return {
-    said: `${busy} busy and ${cells.idle.toLocaleString("en-CA")} idle`,
-    aside: cells.ended === 0 ? "None has ended." : `And ${cells.ended} that have ended.`,
+    said,
+    aside:
+      cells.ended === 0
+        ? "None has ended."
+        : `And ${cells.ended.toLocaleString("en-CA")} that have ended.`,
   };
 }
 
@@ -195,15 +203,30 @@ function meets(place: Place, leads: boolean): string {
 /** A radio's signal, said from its bars. */
 function signal(bars: number): string {
   if (bars >= STRONG_BARS) {
-    return "A strong signal";
+    return "a strong signal";
   }
-  return bars >= FAIR_BARS ? "A fair signal" : "A weak signal";
+  return bars >= FAIR_BARS ? "a fair signal" : "a weak signal";
+}
+
+/**
+ * How well one place reaches, as far as it's measured: a radio's signal,
+ * then its room, as a clause.
+ */
+function reach(place: Place): string | undefined {
+  const how = place.by === "wired" || place.bars === undefined ? undefined : signal(place.bars);
+  const room = place.room === undefined ? undefined : `${Math.round(place.room)} Mb/s of room`;
+  const said = how === undefined ? room : `${how}${room === undefined ? "" : `, with ${room}`}`;
+  if (said === undefined) {
+    return undefined;
+  }
+  return said;
 }
 
 /**
  * Where a machine meets the network, a clause for each place, wired first
- * as the network lists them, and how well: its radio's signal, and the
- * most room any place has. Its device is the first place's, to go to.
+ * as the network lists them, and how well each reaches, in the same order,
+ * so no place's figure is said as another's. Its device is the first
+ * place's, to go to.
  */
 function networkSaid(ties: Ties): Said & { readonly device: string | undefined } {
   const places = ties.network;
@@ -218,40 +241,41 @@ function networkSaid(ties: Ties): Said & { readonly device: string | undefined }
     };
   }
   const said = places.map((place, at) => meets(place, at === 0)).join(", and ");
-  const radio = places.find((place) => place.by !== "wired" && place.bars !== undefined);
-  const rooms = places.map((place) => place.room).filter((mbps) => mbps !== undefined);
-  const room = rooms.length === 0 ? undefined : `${Math.round(Math.max(...rooms))} Mb/s of room`;
-  const how = radio?.bars === undefined ? undefined : signal(radio.bars);
-  const aside = asideOf(how, room);
+  const reaches = places.map(reach).filter((reached) => reached !== undefined);
+  const aside =
+    reaches.length === 0
+      ? "How much room it has isn't measured."
+      : stopped(capital(reaches.join("; ")));
   return { said, aside, device: places[0]?.device };
 }
 
-/** The aside under a machine's network line: its signal, then its room, as known. */
-function asideOf(how: string | undefined, room: string | undefined): string {
-  if (how !== undefined) {
-    return `${how}${room === undefined ? "" : `, with ${room}`}.`;
-  }
-  return room === undefined ? "How much room it has isn't measured." : `With ${room}.`;
+/** `count` of a thing as `many` says it, and no `one` for none. */
+function noneOr(count: number, one: string, more = `${one}s`): string {
+  return count === 0 ? `no ${one}` : many(count, one, more);
 }
 
-/** A machine's code, counted where it was read, and said not read from another. */
-function codeSaid(ties: Ties, name: string): Said & { readonly read: boolean } {
+/**
+ * A machine's code, counted where it was read, and said not read from
+ * another; on the machine it's read on, `here`, no code is a read that
+ * failed.
+ */
+function codeSaid(ties: Ties, name: string, here: boolean): Said & { readonly read: boolean } {
   const { code } = ties;
   if (code === undefined) {
-    return {
-      said: "Not read from here",
-      aside: `Its code is read on ${name} itself.`,
-      read: false,
-    };
+    return here
+      ? { said: NOT_READ, aside: "Repos couldn't be had.", read: false }
+      : { said: "Not read from here", aside: `Its code is read on ${name} itself.`, read: false };
   }
-  const aside = [
-    many(code.trees, "tree"),
-    `${many(code.behind, "checkout")} behind their upstream`,
-    `${many(code.changes, "open change")}`,
-  ].join("; ");
+  const behind =
+    code.behind <= 1
+      ? `${noneOr(code.behind, "checkout")} behind its upstream`
+      : `${many(code.behind, "checkout")} behind their upstreams`;
+  const aside = [noneOr(code.trees, "tree"), behind, noneOr(code.changes, "open change")].join(
+    "; ",
+  );
   return {
-    said: `${many(code.repositories, "repository", "repositories")} in ${many(code.checkouts, "checkout")}`,
-    aside: `${aside}.`,
+    said: `${noneOr(code.checkouts, "checkout")} of ${noneOr(code.repositories, "repository", "repositories")}`,
+    aside: stopped(capital(aside)),
     read: true,
   };
 }
@@ -270,7 +294,8 @@ function power(charge: number, onBattery: boolean | undefined): string {
   if (onBattery === true) {
     return `${charge}% charged, on battery`;
   }
-  return charge >= FULL ? "fully charged and plugged in" : `${charge}% charged and plugged in`;
+  const charged = charge >= FULL ? "fully charged" : `${charge}% charged`;
+  return onBattery === false ? `${charged} and plugged in` : charged;
 }
 
 /** A machine's last update, as a sentence, when its node says one. */
