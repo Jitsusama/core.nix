@@ -248,9 +248,14 @@ class Taps:
         """Say whether the gap since the last tap sent has passed, as it has before the first."""
         return self.last is None or self.clock() - self.last >= self.gap
 
-    def send(self) -> None:
-        """Count a tap as sent now."""
+    def send(self, tap: Callable[[], object]) -> None:
+        """Send a tap through tap, counted as tried before it goes and timed from once it has.
+
+        Counted first, a tap whose write fails still counts as tried; timed after, a write that
+        takes seconds on a busy host doesn't eat into the gap it has to land in.
+        """
         self.sent += 1
+        tap()
         self.last = self.clock()
 
     def landed(self, heard: int) -> bool:

@@ -11,6 +11,7 @@ opening comment says what the test proves. Every test asks for the desktop, star
 from __future__ import annotations
 
 import json
+import shlex
 import time
 from datetime import timedelta
 from typing import TYPE_CHECKING, cast
@@ -263,25 +264,21 @@ class Touchscreen:
         taps = vm_helpers.Taps(HEARING.total_seconds() * vm_helpers.pace(vm_helpers.busyness()))
         began = time.monotonic()
 
-        def tapped(_: bool) -> bool:
+        def tapped(last: bool) -> bool:
             if self.touches("up"):
                 return True
-            if taps.due():
-                # Counted as it goes, so a tap whose write is cut off counts as tried.
-                taps.send()
-                self.told("1 tap 0.5")
+            # A tap on the last try would have no time to be heard, so none goes then.
+            if not last and taps.due():
+                taps.send(lambda: self.bid("1 tap 0.5"))
             return False
 
         try:
             retry(tapped, timeout=TAKING)
         except Exception as error:
-            # Whether the stand-in's unit still runs tells a dead stand-in from a Cage that
-            # never took the device; the error says what stopped the wait.
             took = time.monotonic() - began
-            _, standing = self.desktop.machine.execute("systemctl is-active touchscreen")
             message = (
                 f"wev heard none of {taps.sent} taps tried in {took:.0f} s, the stand-in"
-                f" {standing.strip()}: {error}"
+                f" {self.standing()}: {error}"
             )
             raise AssertionError(message) from error
         # The gap the taps were sent at, and a spare one, however quiet the host has grown: the
@@ -289,14 +286,23 @@ class Touchscreen:
         landing = timedelta(seconds=taps.gap) + HEARING
         retry(lambda _: taps.landed(self.touches("up")), timeout=landing)
 
-    def told(self, line: str) -> None:
-        """Tell the stand-in one thing to do, through its fifo.
+    def bid(self, line: str) -> None:
+        """Bid the stand-in do one thing, written to its fifo.
 
         A stand-in that died leaves its fifo with no reader, where a write would wait for ever,
-        so the write is cut off and fails rather than hanging the test.
+        so the write is cut off and fails, saying the stand-in's state, rather than hanging.
         """
         cut = int(SAYING.total_seconds())
-        self.desktop.machine.succeed(f"timeout {cut} sh -c \"echo '{line}' > /run/touchscreen\"")
+        write = shlex.quote(f"echo {shlex.quote(line)} > /run/touchscreen")
+        status, _ = self.desktop.machine.execute(f"timeout {cut} sh -c {write}")
+        if status != 0:
+            message = f"{line!r} wasn't taken in {cut} s, the stand-in {self.standing()}"
+            raise AssertionError(message)
+
+    def standing(self) -> str:
+        """Say whether the stand-in's unit runs, which tells a dead one from a deaf Cage."""
+        _, said = self.desktop.machine.execute("systemctl is-active touchscreen")
+        return said.strip()
 
     def settled(self) -> None:
         """Wait for the windows to stand still, whatever the margin cat does along their tops."""
@@ -308,7 +314,7 @@ class Touchscreen:
     ) -> None:
         """Swipe with so many fingers one way, as a person sees it, until something holds."""
         drawn = self.over.get(way, way)
-        self.told(f"{fingers} {drawn} {across}")
+        self.bid(f"{fingers} {drawn} {across}")
         try:
             retry(lambda _: bool(until()), timeout=GOING)
         except Exception:

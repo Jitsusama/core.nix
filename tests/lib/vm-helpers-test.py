@@ -457,7 +457,7 @@ def test_the_first_tap_goes_at_once_and_the_next_only_once_its_gap_has_passed() 
     clock = FadingGuest(frames=0, apart=1.0)
     taps = vm_helpers.Taps(5, clock=clock.clock)
     assert taps.due(), "the first tap waited for a gap no tap had opened"
-    taps.send()
+    taps.send(lambda: None)
     clock.now += 4.9
     assert not taps.due(), "a second tap was due 4.9 s into a 5 s gap"
     clock.now += 0.1
@@ -468,9 +468,9 @@ def test_a_tap_still_on_its_way_holds_the_count_until_its_gap_has_passed() -> No
     # Two taps sent and the first heard: the second may still land, after the count starts.
     clock = FadingGuest(frames=0, apart=1.0)
     taps = vm_helpers.Taps(5, clock=clock.clock)
-    taps.send()
+    taps.send(lambda: None)
     clock.now += 5
-    taps.send()
+    taps.send(lambda: None)
     clock.now += 1
     assert not taps.landed(1), "one of two taps heard counted as all landed 1 s after the last"
     clock.now += 4
@@ -480,5 +480,31 @@ def test_a_tap_still_on_its_way_holds_the_count_until_its_gap_has_passed() -> No
 def test_every_tap_sent_heard_is_landed_at_once() -> None:
     clock = FadingGuest(frames=0, apart=1.0)
     taps = vm_helpers.Taps(5, clock=clock.clock)
-    taps.send()
+    taps.send(lambda: None)
     assert taps.landed(1), "the one tap sent was heard, and still its gap was waited out"
+
+
+def test_a_taps_gap_starts_once_its_slow_write_has_gone() -> None:
+    # On a busy host the write itself takes seconds, and the tap can't land before it's gone.
+    clock = FadingGuest(frames=0, apart=1.0)
+    taps = vm_helpers.Taps(5, clock=clock.clock)
+
+    def slow() -> None:
+        clock.now += 3
+
+    taps.send(slow)
+    clock.now += 4
+    assert not taps.landed(0), "a tap 4 s past its 3 s write counted as landed in a 5 s gap"
+
+
+def test_a_tap_whose_write_fails_counts_as_tried() -> None:
+    clock = FadingGuest(frames=0, apart=1.0)
+    taps = vm_helpers.Taps(5, clock=clock.clock)
+
+    def cut_off() -> None:
+        message = "the write was cut off"
+        raise RuntimeError(message)
+
+    with pytest.raises(RuntimeError, match="cut off"):
+        taps.send(cut_off)
+    assert taps.sent == 1, f"a tap whose write failed counted as {taps.sent} tried"
