@@ -9,11 +9,14 @@
 //! beside the decision it proves, over private fixtures.
 
 use std::collections::BTreeMap;
+use std::io;
 
 use jiff::Timestamp;
 use jiff::civil::DateTime;
 use jiff::tz::TimeZone;
 use serde::{Deserialize, Serialize};
+
+use crate::mesh::Rosters;
 
 /// No second start of one session within this long, so a slow start
 /// isn't doubled.
@@ -73,12 +76,11 @@ pub struct Hosting {
 }
 
 /// Whether a host's unit, by its `ActiveState` and the jobs systemd has
-/// waiting on it, runs or is coming back, as pi-host-down judges it: one
-/// restarting after a crash is activating, or has a start waiting.
+/// waiting on it, runs or is coming back: as pi-host-down judges it, and
+/// deactivating too, since a host whose process died is deactivating
+/// while systemd stops what is left of it, before it starts again.
 #[must_use]
 pub fn back(state: &str, jobs: &str) -> bool {
-    // A host whose process died is deactivating while systemd stops what
-    // is left of it, before it starts again.
     matches!(
         state,
         "active" | "activating" | "reloading" | "deactivating"
@@ -86,12 +88,53 @@ pub fn back(state: &str, jobs: &str) -> bool {
 }
 
 /// Whether `id` is one pi or a pi host gives, letters, digits and
-/// hyphens, and so safe in a shell's words, a unit's name or a line sent
-/// under cadence's name: a presence is a file any of Joel's processes
-/// may write.
+/// hyphens after a letter or digit, and so safe in a shell's words, as
+/// an option's value, in a unit's name or a line sent under cadence's
+/// name: a presence is a file any of Joel's processes may write.
 #[must_use]
 pub fn plain(id: &str) -> bool {
-    !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    id.starts_with(|c: char| c.is_ascii_alphanumeric())
+        && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+/// What a host whose name isn't one pi gives is called in what cadence
+/// says, since the name itself mustn't reach a line sent under its name.
+pub const ODD_HOST: &str = "a host named oddly";
+
+/// The host a gone session is left to, if any, by the rosters, the host
+/// its presence `named`, and whether a host is `back`. A roster that
+/// holds it decides over the presence, a plain host's over an odd one's
+/// and one whose host is back over one whose host is down; then a roster
+/// torn now, which reads again within a look or two, so is waited on
+/// rather than advised past; then the presence. A host named oddly is
+/// never asked after, and is said as stranded for someone to look at.
+pub fn hosting(
+    rosters: &Rosters,
+    session: &str,
+    named: Option<&str>,
+    mut back: impl FnMut(&str) -> bool,
+) -> Option<Hosting> {
+    let listing = rosters.holders(session);
+    let host = listing
+        .iter()
+        .copied()
+        .find(|h| plain(h) && back(h))
+        .or_else(|| listing.iter().copied().find(|h| plain(h)))
+        .or_else(|| listing.first().copied())
+        .or_else(|| rosters.torn().first().copied())
+        .or(named)?;
+    if !plain(host) {
+        return Some(Hosting {
+            host: ODD_HOST.into(),
+            holds: false,
+            back: false,
+        });
+    }
+    Some(Hosting {
+        host: host.to_owned(),
+        holds: rosters.holds(host, session),
+        back: back(host),
+    })
 }
 
 /// How a session's pi ended on purpose, by the record pi keeps of each
@@ -189,6 +232,8 @@ pub struct Memory {
 /// noting it said when it is.
 pub fn strand(memory: &mut Memory, session: &str, now: i64) -> bool {
     let hour = now / 3600;
+    // An hour past a day is kept by nothing, so the memory stays small.
+    memory.stranded.retain(|_, said| hour - *said < 24);
     memory.stranded.insert(session.to_owned(), hour) != Some(hour)
 }
 
@@ -296,8 +341,15 @@ pub fn judge(
     if let Some(h) = &seen.hosted {
         // Started in a host while its own still holds it, it would run
         // twice once that host is back, so the host is what is asked for.
+        if h.host == ODD_HOST {
+            return Verdict::Stranded(
+                "its host's name isn't one pi gives, so cadence can't ask after it: \
+                 see whether a host still holds it"
+                    .into(),
+            );
+        }
         let why = if h.holds {
-            "is down: bring the host back, which resumes it"
+            "is down or gone: bring the host back, which resumes it"
         } else {
             "no longer holds it: start it in a host again"
         };
@@ -530,6 +582,46 @@ pub fn gathered(told: &[(String, String)], what: &str) -> Vec<(String, String)> 
             (to, text)
         })
         .collect()
+}
+
+/// What a look has to say: defects for the orchestrator, and the stranded
+/// and started-again lines, each with whom it is for.
+pub struct Said<'a> {
+    pub defects: &'a [String],
+    pub stranded: &'a [(String, String)],
+    pub told: &'a [(String, String)],
+}
+
+/// Sends what a look has to say, gathered per peer, the watcher's
+/// started-again lines marked as revivals. Every line is tried, so one
+/// that can't be sent keeps none of the others from their peers; the
+/// first failure is still said.
+///
+/// # Errors
+///
+/// The first send that failed.
+pub fn say(
+    orchestrator: &str,
+    watcher: Option<&str>,
+    said: &Said,
+    send: &dyn Fn(&str, &str, String) -> io::Result<()>,
+) -> io::Result<()> {
+    let mut failed = Ok(());
+    for line in said.defects {
+        failed = failed.and(send(orchestrator, "finding", line.clone()));
+    }
+    for (to, text) in gathered(said.stranded, "are left down in a host") {
+        failed = failed.and(send(&to, "finding", text));
+    }
+    for (to, text) in gathered(said.told, "were started again") {
+        let text = if watcher == Some(to.as_str()) {
+            format!("Revived: {text}")
+        } else {
+            text
+        };
+        failed = failed.and(send(&to, "fyi", text));
+    }
+    failed
 }
 
 #[cfg(test)]
@@ -812,7 +904,8 @@ mod tests {
         assert_eq!(
             judge(&hosted(true, false), Some(&q), |_| false, false),
             Verdict::Stranded(
-                "its host, work-background, is down: bring the host back, which resumes it".into()
+                "its host, work-background, is down or gone: bring the host back, which resumes it"
+                    .into()
             ),
             "a host left down resumes nothing, and no window opens for it"
         );
@@ -829,6 +922,20 @@ mod tests {
             Verdict::Left("its quest is concluded".into()),
             "one that would be left anyway isn't reported"
         );
+        let earlier = Seen {
+            this_boot: false,
+            ..hosted(true, false)
+        };
+        assert_eq!(
+            judge(&earlier, Some(&q), |_| false, false),
+            Verdict::Left("it ended with an earlier boot".into()),
+            "one an earlier boot ended is Joel's to reopen, not stranded"
+        );
+        assert_eq!(
+            judge(&hosted(true, false), Some(&q), |pid| pid == 9, false),
+            Verdict::Alive,
+            "one its quest's pid still runs is alive, wherever its host is"
+        );
     }
 
     #[test]
@@ -841,6 +948,7 @@ mod tests {
         assert!(plain("work-background"), "a host's name is plain");
         assert!(!plain("work-*"), "a glob isn't");
         assert!(!plain(""), "nor is nothing");
+        assert!(!plain("-c"), "nor an option");
         assert!(back("activating", ""), "systemd's restart after a crash");
         assert!(
             back("failed", "4 pi-host-work-background.service start waiting"),
@@ -848,6 +956,126 @@ mod tests {
         );
         assert!(!back("failed", ""), "left down past its start limit");
         assert!(!back("inactive", "\n"), "stopped, or no such unit");
+    }
+
+    #[test]
+    fn a_roster_names_the_host_over_a_presence_and_a_torn_one_rules_nothing_out() {
+        let rosters = |all: &[(&str, Option<&[&str]>)]| {
+            Rosters(
+                all.iter()
+                    .map(|(host, held)| {
+                        let held = held.map(|h| h.iter().map(|s| (*s).to_owned()).collect());
+                        ((*host).to_owned(), held)
+                    })
+                    .collect(),
+            )
+        };
+        let up = |h: &str| h != "down";
+        let host =
+            |r: &Rosters, named| hosting(r, "s", named, up).map(|h| (h.host, h.holds, h.back));
+        let listed = rosters(&[("work-background", Some(&["s"]))]);
+        assert_eq!(
+            host(&listed, None),
+            Some(("work-background".into(), true, true)),
+            "a roster holding it names its host when its presence names none"
+        );
+        assert_eq!(
+            host(&listed, Some("elsewhere")),
+            Some(("work-background".into(), true, true)),
+            "and over a host its presence names"
+        );
+        let both = rosters(&[("down", Some(&["s"])), ("work-background", Some(&["s"]))]);
+        assert_eq!(
+            host(&both, None),
+            Some(("work-background".into(), true, true)),
+            "of two rosters, the one whose host is back"
+        );
+        let torn = rosters(&[("work-background", None)]);
+        assert_eq!(
+            host(&torn, None),
+            Some(("work-background".into(), true, true)),
+            "a torn roster keeps it from a standalone start until it reads"
+        );
+        assert_eq!(
+            host(&torn, Some("elsewhere")),
+            Some(("work-background".into(), true, true)),
+            "and is waited on over a host a stale presence names"
+        );
+        let odd_first = rosters(&[("-odd", Some(&["s"])), ("down", Some(&["s"]))]);
+        assert_eq!(
+            host(&odd_first, None),
+            Some(("down".into(), true, false)),
+            "a plain host that is down is named over an odd one"
+        );
+        let none = rosters(&[("work-background", Some(&["t"]))]);
+        assert_eq!(host(&none, None), None, "one no host holds is standalone");
+        assert_eq!(
+            host(&none, Some("work-background")),
+            Some(("work-background".into(), false, true)),
+            "a presence a host left behind names a host that no longer holds it"
+        );
+        let mut asked = Vec::new();
+        assert_eq!(
+            hosting(&none, "s", Some("work-*"), |h| {
+                asked.push(h.to_owned());
+                true
+            })
+            .map(|h| (h.host, h.holds, h.back)),
+            Some((ODD_HOST.into(), false, false)),
+            "an odd name is never taken as resuming it"
+        );
+        assert!(asked.is_empty(), "nor is its unit asked after");
+    }
+
+    #[test]
+    fn a_send_that_fails_keeps_no_other_line_from_its_peer() {
+        let heard = std::cell::RefCell::new(Vec::new());
+        let send = |to: &str, intent: &str, text: String| {
+            heard.borrow_mut().push(format!("{to} {intent} {text}"));
+            if to == "O" {
+                Err(io::Error::other("the orchestrator's send failed"))
+            } else {
+                Ok(())
+            }
+        };
+        let said = Said {
+            defects: &["A died again".into()],
+            stranded: &[("Q".into(), "B is left down".into())],
+            told: &[("W".into(), "C was started".into())],
+        };
+        let failed = say("O", Some("W"), &said, &send);
+        assert_eq!(
+            failed.map_err(|e| e.to_string()),
+            Err("the orchestrator's send failed".into()),
+            "the failure is still said"
+        );
+        assert_eq!(
+            heard.into_inner(),
+            [
+                "O finding A died again",
+                "Q finding B is left down",
+                "W fyi Revived: C was started",
+            ],
+            "every line is tried after the first fails"
+        );
+    }
+
+    #[test]
+    fn a_session_whose_host_is_named_oddly_is_said_as_stranded() {
+        let mut odd = seen("A", None, false, "1");
+        odd.hosted = Some(Hosting {
+            host: ODD_HOST.into(),
+            holds: false,
+            back: false,
+        });
+        let q = quest_with("active", "active", None);
+        assert!(
+            matches!(
+                judge(&odd, Some(&q), |_| false, false),
+                Verdict::Stranded(why) if why.contains("isn't one pi gives")
+            ),
+            "someone is told, and the odd name isn't said"
+        );
     }
 
     #[test]
@@ -864,6 +1092,17 @@ mod tests {
             "it takes no defect's hour"
         );
         assert!(strand(&mut memory, "s", 10_800), "said again the next hour");
+        // t was said in hour 2 and s last in hour 3.
+        assert!(strand(&mut memory, "u", 25 * 3600), "u is its own");
+        assert!(
+            memory.stranded.contains_key("t"),
+            "an hour 23 hours gone is kept"
+        );
+        assert!(strand(&mut memory, "u", 26 * 3600), "u again a new hour");
+        assert!(
+            !memory.stranded.contains_key("t") && memory.stranded.contains_key("s"),
+            "an hour a day gone is forgotten, and one 23 hours gone isn't"
+        );
     }
 
     #[test]

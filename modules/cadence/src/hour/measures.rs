@@ -358,6 +358,21 @@ pub fn crowded(answers: &[String], owner: &str) -> Measure {
     }
 }
 
+/// How long a card stays the truth: three of the tick's five-minute runs.
+pub const CARD_FRESH_FOR: i64 = 15 * 60;
+
+/// The tick's `card`, drawn at `drawn` in seconds, if drawn within
+/// [`CARD_FRESH_FOR`] of `now`, else nothing, so the hour leaves out what
+/// it measures rather than repeat it. On 18 November, the tick stopped,
+/// the hour said at 05:10 that three merges a 04:21 switch carried weren't on.
+#[must_use]
+pub fn card_if_fresh(card: String, drawn: Option<i64>, now: i64) -> String {
+    match drawn {
+        Some(at) if (0..=CARD_FRESH_FOR).contains(&(now - at)) => card,
+        _ => String::new(),
+    }
+}
+
 /// The median the tick's card gives on the line opening with `label`,
 /// such as `Merge to on (target median 18): median 37.9, ...`, and the
 /// target it names.
@@ -685,6 +700,26 @@ mod tests {
             "median and target"
         );
         assert_eq!(card_median(card, "Last commit"), None, "a line it lacks");
+    }
+
+    #[test]
+    fn a_card_the_tick_stopped_drawing_measures_nothing() {
+        let card = "Merge to on (target median 18): none.\n  not on yet: #5452 133 min\n";
+        assert_eq!(
+            card_if_fresh(card.to_owned(), Some(1_000), 1_000 + CARD_FRESH_FOR),
+            card,
+            "a card three ticks old is still read"
+        );
+        let stale = card_if_fresh(card.to_owned(), Some(1_000), 1_001 + CARD_FRESH_FOR);
+        assert!(
+            merge_to_on(&stale, "80ECO2").is_none(),
+            "one older says nothing of merges, rather than its old waits"
+        );
+        assert!(
+            card_if_fresh(card.to_owned(), None, 1_000).is_empty()
+                && card_if_fresh(card.to_owned(), Some(1_001), 1_000).is_empty(),
+            "nor one with no time drawn, or drawn after now"
+        );
     }
 
     #[test]
