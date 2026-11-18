@@ -44,8 +44,10 @@ const mast = element(".mast", HTMLElement);
 // clear it there.
 const clearOfMast = new ResizeObserver(() => {
   const sticks = getComputedStyle(mast).position === "sticky";
+  // Its height rounded up, since offsetHeight rounds a fraction down and
+  // leaves a row that sliver under it.
   document.documentElement.style.scrollPaddingBlockStart = sticks
-    ? `${mast.offsetHeight}px`
+    ? `${Math.ceil(mast.getBoundingClientRect().height)}px`
     : "0px";
 });
 clearOfMast.observe(mast);
