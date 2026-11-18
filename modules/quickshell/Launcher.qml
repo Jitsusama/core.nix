@@ -7689,9 +7689,9 @@ Scope {
         if (!choice.run && enter(choice))
             return;
         // One with nothing to do, inside or opened, as an ask once
-        // answered, only says something, so Return only closes, as on a
-        // machine's facts (Machine.qml), where running it threw as it
-        // closed; one opened below another needs no run.
+        // answered, only says something, so Return only closes rather than
+        // throw on the run it hasn't, a place no longer giving each such
+        // row an empty run; one opened below another needs no run.
         if (!choice.run && !choice.opens && !(below && choice.below)) {
             learn(choice);
             open = false;

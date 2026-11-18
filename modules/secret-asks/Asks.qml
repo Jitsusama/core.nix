@@ -312,6 +312,7 @@ Provider {
         const drawn = !hiding ? served : Object.assign({}, served, {
             name: hidden,
             note: waits,
+            side: [],
             acts: [],
             keywords: [],
             drawer: { eyebrow: "", title: hidden, body: waits, facts: [] }
