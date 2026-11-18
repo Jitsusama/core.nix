@@ -7,14 +7,13 @@ nothing.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. It proves the wiring alone, one path through each
-connection: how long a line must be shown, a digest that changed, a command that ends first and
-what the fence hides are the passwords daemon's own tests' (modules/passwords/tests/asks), but for
-one file it empties, Docker's settings, here through bubblewrap itself where those run a stand-in,
-and
-what Asks sends for each press is asks-over's (tests/asks-over.qml). Every test asks for the
-desktop, started once a run (desktop_session.py), and gives each ask a why of its own, which its
-line's drawer says, so a line answered earlier is never taken for it. Each test's asks are taken
-away after it, passed or failed, so any test runs alone.
+connection. How long a line must be shown, a digest that changed, a command that ends first and
+what the fence hides are the passwords daemon's own tests' (modules/passwords/tests/asks), which
+run a stand-in bubblewrap; this test sends one file it empties, Docker's settings, through the
+real one. What Asks sends for each press is asks-over's (tests/asks-over.qml). Every test asks for
+the desktop, started once a run (desktop_session.py), and gives each ask a why of its own, which
+its line's drawer says, so a line answered earlier is never taken for it. Each test's asks are
+taken away after it, passed or failed, so any test runs alone.
 """
 
 from __future__ import annotations
