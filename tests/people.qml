@@ -60,9 +60,18 @@ ShellRoot {
         // Whether People's rows are wanted (Provider.qml's wanted), as
         // the launcher says from where it stands.
         property bool wanting: true
+        // Whether an opening's sources are still waking, as the
+        // launcher's are a slice a frame (Launcher.qml's wakeNext).
+        property bool waking: false
 
         function wants(source) {
             return wanting;
+        }
+
+        // The frame after this one, as the launcher's is, here the next
+        // turn of the event loop.
+        function afterFrame(then) {
+            Qt.callLater(then);
         }
 
         function enter(row) {
@@ -923,7 +932,43 @@ ShellRoot {
             expect("and nobody held",
                 !people.persons().some(person => person.key === "noone@example.com"),
                 names(people.persons()));
-        })
+        }),
+        {
+            // Those listed change while the launcher's shut, as how
+            // they stand does all day, and People makes no row unwanted,
+            // so the first letter made every one changed: 111 to 154
+            // rows, keys of 57 to 164 ms against 18 to 35 for letters
+            // that made none (Joel's journal, 2026-11-14 to 17). Opened
+            // at home, they're made the frame after, once its sources
+            // have woken. Cal, listed as called lately, favoured here
+            // stands for it.
+            what: "one listed who changed while shut is made as the launcher opens",
+            run: () => {
+                launcher.open = false;
+                launcher.wanting = false;
+                // Tuple's id for him (checks/people.nix's snapshot).
+                tuple().favoured = ({ "105": { wanted: true, key: "person:cal@example.com" } });
+                root.shutRows = people.tally.rows;
+                root.opensAt = Date.now();
+                launcher.open = true;
+            },
+            // A few frames' room for what's made after it opens.
+            holds: () => Date.now() - root.opensAt > 200,
+            check: () => {
+                const listed = people.listedPersons().map(person => person.key);
+                expect("he's listed", listed.includes("cal@example.com"), listed.join(", "));
+                expect("opening at home, unwanted, makes their rows ahead",
+                    people.tally.rows > root.shutRows,
+                    `${people.tally.rows - root.shutRows} rows made`);
+                const typed = people.tally.rows;
+                launcher.wanting = true;
+                void people.all;
+                people.gather("q");
+                expect("so the first letter makes none", people.tally.rows === typed,
+                    `${people.tally.rows - typed} rows made: `
+                    + people.tally.lately.slice(typed - people.tally.rows).join(", "));
+            }
+        }
     ]
 
     // What Slack told the daemon of an address, as People reads it, or
@@ -938,6 +983,8 @@ ShellRoot {
     // How many rows People had made once Slack was asked, the launcher
     // shut.
     property int shutRows: 0
+    // When the launcher opened over a listing changed while shut.
+    property real opensAt: 0
 
     // When the people daemon was stopped, and how many rows People had
     // made once it was gone.

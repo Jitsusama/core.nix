@@ -1620,15 +1620,49 @@ Provider {
         return listed.concat(lately.found.filter(row => !seen.has(row.key)));
     }
 
-    // A source that only follows what it knows while someone might look,
-    // as Tuple's does, is woken as the launcher opens.
+    // As the launcher opens at home, those listed are made the frame after
+    // its sources have woken, so one who changed while it was shut is made
+    // then, not by the first letter: unwanted, People makes no row, and
+    // how people stand changes all day, so first letters made 111 to 154
+    // rows and took 57 to 164 ms, against 18 to 35 for letters that made
+    // none (Joel's journal, 2026-11-14 to 17; ZINAWZ, 88718678). Waiting
+    // out the waking keeps it out of the slices the opening's rows fill
+    // in. Those that read the same keep their rows, so this makes only
+    // those that changed. Opened into a place, typing searches that place
+    // alone, so nothing is.
+    property bool listingAhead: false
+    function listAhead() {
+        const launcher = provider.launcher;
+        const home = () => !!launcher?.open && (launcher.held?.length ?? 0) === 0
+            && !launcher.entering && !provider.wanted && heardRevision >= 0;
+        listingAhead = false;
+        if (!home() || typeof launcher.afterFrame !== "function")
+            return;
+        if (launcher.waking) {
+            listingAhead = true;
+            return;
+        }
+        launcher.afterFrame(() => {
+            if (home())
+                listedNow();
+        });
+    }
+
     Connections {
         target: provider.launcher
 
+        // A source that only follows what it knows while someone might
+        // look, as Tuple's does, is woken as the launcher opens.
         function onOpenChanged() {
             if (provider.launcher.open)
                 for (const source of provider.sources)
                     source.woken();
+            provider.listAhead();
+        }
+
+        function onWakingChanged() {
+            if (provider.listingAhead)
+                provider.listAhead();
         }
     }
 }
