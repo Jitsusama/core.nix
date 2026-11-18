@@ -43,6 +43,13 @@
 //! night. A run that waited as long as it was let ends 75, as `turn`
 //! does, so its unit can say a later try goes on.
 //!
+//! A night job that has the turn pauses while a job Joel waits on, one
+//! started `turn --ahead`, takes it, and goes on once it's done
+//! (src/pause.rs says how). `--runs-at-most SECONDS` stops a job that has
+//! run that long, its pauses aside, and leaves a later try its turn, as a
+//! stop by pressure does; its unit's own limit counts the pauses too, so
+//! it is set well above.
+//!
 //! With `--hours`, a start outside them runs nothing and succeeds, as one
 //! on a busy machine does, since a switch can start a night job's timer,
 //! and the timer its job, by day (src/hours.rs says when it did).
@@ -50,14 +57,17 @@
 //! Its help, its failures and its exits take the terminal kit's shape
 //! (src/commands.rs); a failed job's run ends with the job's own code.
 
+mod ahead;
 mod cgroup;
 mod commands;
 mod hours;
+mod pause;
 mod pressure;
 mod turn;
 
 use cgroup::Limits;
 use hours::Hours;
+use pause::{Hold, Sharing};
 use pressure::Places;
 use std::fmt::Write as _;
 use std::fs::{self, File};
@@ -66,6 +76,7 @@ use std::os::fd::AsRawFd;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, ExitStatus};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 use terminal_kit::{Exit, Failure};
@@ -80,6 +91,7 @@ struct Job {
     stop_machine: f64,
     rests: Duration,
     wait_at_most: Option<Duration>,
+    runs_at_most: Option<Duration>,
     every: Duration,
     grace: Duration,
     limits: Limits,
@@ -117,6 +129,7 @@ fn parse(args: &[String]) -> Result<Job, String> {
         stop_machine: 25.0,
         rests: Duration::from_hours(12),
         wait_at_most: None,
+        runs_at_most: None,
         every: Duration::from_secs(5),
         grace: Duration::from_secs(60),
         limits: Limits::default(),
@@ -140,6 +153,9 @@ fn parse(args: &[String]) -> Result<Job, String> {
             "--rests" => job.rests = Duration::from_secs_f64(number(value)? * 3600.0),
             "--wait-at-most" => {
                 job.wait_at_most = Some(Duration::from_secs_f64(number(value)?));
+            }
+            "--runs-at-most" => {
+                job.runs_at_most = Some(Duration::from_secs_f64(number(value)?));
             }
             "--every" => job.every = Duration::from_secs_f64(number(value)?),
             "--grace" => job.grace = Duration::from_secs_f64(number(value)?),
@@ -229,7 +245,7 @@ fn run(job: &Job) -> Result<(), Failure> {
     if outside_its_hours(job) {
         return Ok(());
     }
-    let Some((_lock, at)) = may_start(job, &places)? else {
+    let Some((lock, at)) = may_start(job, &places)? else {
         return Ok(());
     };
     let pressures = Places::of_this_machine();
@@ -257,6 +273,8 @@ fn run(job: &Job) -> Result<(), Failure> {
     let mut own = pressures.own_dir();
     // The job's cgroup's procs, held open until it has moved in.
     let mut procs_open = None;
+    // The job's own cgroup, which pausing it freezes, when it has one.
+    let mut apart = None;
     if job.limits.any() {
         let Some(unit) = own.clone() else {
             return Err(failed(
@@ -267,6 +285,7 @@ fn run(job: &Job) -> Result<(), Failure> {
         match cgroup::split(&unit, &job.limits) {
             Ok((cgroup, procs)) => {
                 enter_on_start(&mut command, &procs);
+                apart = Some(cgroup.clone());
                 own = Some(cgroup);
                 procs_open = Some(procs);
             }
@@ -283,10 +302,21 @@ fn run(job: &Job) -> Result<(), Failure> {
         }
     }
     let own = own.map(|dir| dir.join("memory.pressure"));
+    // From here a stop is the watcher's to carry out, so a job paused
+    // meanwhile goes on to hear it. The job's own program starts with the
+    // signals as they were, since exec sets caught ones back.
+    hear_stops();
     let mut child = command.spawn().map_err(|error| {
         failed(job, &format!("can't start {}", job.command[0])).because(error.to_string())
     })?;
     drop(procs_open);
+    // It leads its own process group, which STOP holds when it has no
+    // cgroup apart to freeze.
+    let hold = apart.map_or_else(
+        || Hold::Group(i32::try_from(child.id()).unwrap_or(i32::MAX)),
+        Hold::Cgroup,
+    );
+    let mut sharing = Sharing::new(&lock, &places.runtime, &job.name, hold);
     say(
         job,
         &format!(
@@ -301,13 +331,17 @@ fn run(job: &Job) -> Result<(), Failure> {
         own.as_deref(),
         &watched,
         samples,
+        &mut sharing,
     ) {
+        drop(sharing);
         finish(
             job,
             status,
             &places.state.join(format!("{}.done", job.name)),
         )
     } else {
+        // A paused job goes on first, so it hears the TERM it is sent.
+        drop(sharing);
         stop(job, &mut child);
         Ok(())
     }
@@ -361,7 +395,7 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
                         thread::sleep(turn::LOOK_EVERY);
                         continue;
                     }
-                    let why = format!("the turn is left to {next}, which Joel waits on");
+                    let why = format!("the turn is left to {}", next.why());
                     (why.clone(), format!("waiting, as {why}"))
                 } else {
                     let who = turn::holder(&places.runtime);
@@ -433,7 +467,9 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
 }
 
 /// Samples the pressures until the job ends, giving its status, or until
-/// one passes its bar, giving None once it has said which.
+/// one passes its bar or the job has run its most, giving None once it
+/// has said which. Meanwhile it shares the turn, pausing the job for a
+/// job Joel waits on.
 fn watch(
     job: &Job,
     child: &mut Child,
@@ -441,9 +477,15 @@ fn watch(
     own: Option<&Path>,
     watched: &[(String, PathBuf, f64)],
     mut samples: File,
+    sharing: &mut Sharing,
 ) -> Option<ExitStatus> {
     let began = Instant::now();
+    let mut last_sample: Option<Instant> = None;
     loop {
+        if ASKED_TO_STOP.load(Ordering::Relaxed) {
+            say(job, "stopping: it was asked to stop");
+            return None;
+        }
         match child.try_wait() {
             Ok(Some(status)) => return Some(status),
             Ok(None) => {}
@@ -452,6 +494,39 @@ fn watch(
                 return None;
             }
         }
+        match sharing.look() {
+            Ok(Some(said)) => say(job, &said),
+            Ok(None) => {}
+            Err(error) => {
+                say(job, &format!("stopping: {error}"));
+                return None;
+            }
+        }
+        if let Some(most) = job.runs_at_most
+            && began.elapsed().saturating_sub(sharing.paused()) >= most
+        {
+            say(
+                job,
+                &format!(
+                    "stopping: it has run {} s, its most, its pauses aside",
+                    most.as_secs()
+                ),
+            );
+            return None;
+        }
+        // Paused, it looks for the turn as often as a job Joel waits on,
+        // so it takes the turn back ahead of those waiting meanwhile;
+        // running, at least each second, so one Joel waits on waits little.
+        let pace = if sharing.is_paused() {
+            turn::AHEAD_LOOKS_EVERY
+        } else {
+            job.every.min(turn::LOOK_EVERY)
+        };
+        if last_sample.is_some_and(|at| at.elapsed() < job.every) {
+            thread::sleep(pace);
+            continue;
+        }
+        last_sample = Some(Instant::now());
         let own_now = own.and_then(pressure::read).unwrap_or_default();
         let machine = pressure::read(&pressures.machine()).unwrap_or_default();
         let mut line = format!(
@@ -476,7 +551,8 @@ fn watch(
                 machine.avg10, job.stop_machine
             ));
         }
-        let _ = writeln!(samples, "{line} own {:.2}", own_now.avg10);
+        let paused = if sharing.is_paused() { " paused" } else { "" };
+        let _ = writeln!(samples, "{line} own {:.2}{paused}", own_now.avg10);
         if let Some(why) = past {
             say(
                 job,
@@ -484,7 +560,7 @@ fn watch(
             );
             return None;
         }
-        thread::sleep(job.every);
+        thread::sleep(pace);
     }
 }
 
@@ -512,6 +588,30 @@ fn finish(job: &Job, status: ExitStatus, done: &Path) -> Result<(), Failure> {
 unsafe extern "C" {
     fn kill(pid: i32, signal: i32) -> i32;
     fn write(fd: i32, buf: *const std::ffi::c_void, count: usize) -> isize;
+    // As src/turn.rs declares it, which takes SIG_DFL's 0 too.
+    fn signal(signal: i32, handler: usize) -> usize;
+}
+
+/// Set once night-shift is asked to stop, by systemd's TERM or a
+/// terminal's INT or HUP, for the watcher to stop the job.
+static ASKED_TO_STOP: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn asked_to_stop(_signal: i32) {
+    ASKED_TO_STOP.store(true, Ordering::Relaxed);
+}
+
+const SIGHUP: i32 = 1;
+const SIGINT: i32 = 2;
+
+/// Has a stop asked of night-shift set `ASKED_TO_STOP` rather than end
+/// it, which would leave a paused job held, deaf to the TERM sent beside
+/// it until systemd's KILL.
+fn hear_stops() {
+    for stop in [SIGHUP, SIGINT, SIGTERM] {
+        // SAFETY: the handler only stores to an atomic, which is safe in a
+        // signal handler.
+        unsafe { signal(stop, asked_to_stop as *const () as usize) };
+    }
 }
 
 /// Has the job write itself into its cgroup's `procs` before its program

@@ -23,7 +23,12 @@
 # `night-shift turn NAME -- COMMAND`: it waits for the turn a night job
 # holds, or another heavy job's, rather than starting beside it, and a
 # night job tried meanwhile leaves the turn to a later try. One Joel waits
-# on, such as a switch's build, adds `--ahead` and goes next. So
+# on, such as a switch's build, adds `--ahead` and goes next; a night job
+# running then pauses for it, its cgroup frozen, and goes on once it
+# ends, before any job that came to wait meanwhile. A pause holds only
+# the job's own processes, not a build it handed nix-daemon, and a stop
+# while paused lets it go on for its grace to hear it. A job that can run
+# long names `runsAtMost`, the time it may run, its pauses aside. So
 # night-shift is on every account's path.
 {
   config,
@@ -105,6 +110,10 @@ let
       ++ lib.optionals (job.waitsAtMost != null) [
         "--wait-at-most"
         (number job.waitsAtMost)
+      ]
+      ++ lib.optionals (job.runsAtMost != null) [
+        "--runs-at-most"
+        (number job.runsAtMost)
       ]
       ++ lib.optionals (job.memoryHigh != null) [
         "--memory-high"
@@ -218,8 +227,23 @@ let
         type = lib.types.nullOr lib.types.ints.positive;
         default = null;
       };
+      runsAtMost = lib.mkOption {
+        description = ''
+          How long the job may run, in seconds, not counting the time it
+          spends paused for a job Joel waits on. Past it, night-shift stops
+          the job and the try ends as a success with no `.done`, so a later
+          try runs it again. Leave it null to have no window but `longest`.
+        '';
+        type = lib.types.nullOr lib.types.ints.positive;
+        default = null;
+      };
       longest = lib.mkOption {
-        description = "How long one run may take before systemd stops it.";
+        description = ''
+          How long one run may take before systemd stops it as a failed
+          unit. It counts the wait for the turn and every pause, which
+          systemd can't leave out, so a job naming `runsAtMost` sets this
+          well above it and its wait.
+        '';
         type = lib.types.str;
         default = "1h";
       };

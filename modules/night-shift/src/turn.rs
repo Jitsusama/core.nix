@@ -36,18 +36,27 @@
 //! `--ahead` marks a job Joel waits on, such as a switch's build: while
 //! one waits, others leave a free turn to it for up to
 //! `AHEAD_IS_LEFT_AT_MOST`, so it goes next whoever asked first, and one
-//! that is stopped or stuck holds nobody back for long.
+//! that is stopped or stuck holds nobody back for long. src/ahead.rs
+//! keeps the marks that say who goes next.
+//!
+//! A night job holding the turn pauses for one too, since a night job can
+//! run two hours: on 18 November a switch's evaluation waited 17 minutes
+//! behind World's nightly roll and gave up. The night job is frozen where
+//! it is, leaves the turn, and marks itself paused beside the jobs Joel
+//! waits on (src/main.rs says how), so it takes the turn back once they
+//! are done, ahead of any job that came to wait meanwhile.
 //!
 //! The command's output is its own: what night-shift says goes to stderr,
 //! and its status is the command's. `--wait-at-most SECONDS` gives up
 //! waiting with status 75, so a caller can try again later.
 
+use crate::ahead::{self, Ahead, Waiter};
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::fs::{self, File, TryLockError};
 use std::io;
 use std::os::unix::process::{CommandExt, ExitStatusExt};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, ExitStatus};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
@@ -59,7 +68,7 @@ pub const LOOK_EVERY: Duration = Duration::from_secs(1);
 
 /// How often a job Joel waits on looks, so it takes a turn the moment
 /// it's free.
-const AHEAD_LOOKS_EVERY: Duration = Duration::from_millis(100);
+pub const AHEAD_LOOKS_EVERY: Duration = Duration::from_millis(100);
 
 /// How long a free turn is left to a job Joel waits on, in which it
 /// looks 30 times: one that hasn't taken it by then is stopped or stuck.
@@ -146,84 +155,14 @@ pub fn holder(runtime: &Path) -> String {
     format!("{name} (process {pid}, for {minutes} min)")
 }
 
-/// Where each job waiting `--ahead` leaves a file named by its process.
-fn aheads(runtime: &Path) -> PathBuf {
-    runtime.join("ahead")
-}
-
-/// The fields of `/proc/PID/stat` after the program's name, which may
-/// hold spaces and brackets of its own: the state first, then the parent.
-fn stat(pid: &str) -> Option<Vec<String>> {
-    let text = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-    let (_, after) = text.rsplit_once(") ")?;
-    Some(after.split(' ').map(str::to_owned).collect())
-}
-
-/// When a process started, in the kernel's ticks since boot, the 22nd
-/// field of its stat, which tells it apart from a later one given the
-/// same number.
-fn started(pid: &str) -> Option<u64> {
-    stat(pid)?.get(19)?.parse().ok()
-}
-
-/// The name of a job Joel waits on that waits for the turn, other than
-/// this process. A file whose process has gone, or that this process
-/// can't see, as from another PID namespace, is passed over but left,
-/// since it may be another's to remove.
-pub fn next(runtime: &Path) -> Option<String> {
-    let own = std::process::id().to_string();
-    let files = fs::read_dir(aheads(runtime)).ok()?;
-    for file in files.flatten() {
-        let pid = file.file_name().to_string_lossy().into_owned();
-        if pid == own || pid.starts_with('.') {
-            continue;
-        }
-        let noted = fs::read_to_string(file.path()).unwrap_or_default();
-        let Some((name, since)) = noted.trim().split_once('\t') else {
-            continue;
-        };
-        if started(&pid).is_some_and(|ticks| since.parse() == Ok(ticks)) {
-            return Some(name.to_owned());
-        }
-    }
-    None
-}
-
-/// A job waiting `--ahead`'s file, there from before its first look
-/// until it has the turn or gives up.
-struct Ahead(PathBuf);
-
-impl Ahead {
-    fn wait(runtime: &Path, name: &str) -> io::Result<Self> {
-        let pid = std::process::id().to_string();
-        let since = started(&pid).ok_or_else(|| io::Error::other("can't read its own start"))?;
-        fs::create_dir_all(aheads(runtime))?;
-        // Written whole beside it, then named, so a reader never finds
-        // half of it.
-        let writing = aheads(runtime).join(format!(".{pid}"));
-        fs::write(&writing, format!("{name}\t{since}\n"))?;
-        let file = aheads(runtime).join(&pid);
-        fs::rename(&writing, &file).inspect_err(|_| {
-            let _ = fs::remove_file(&writing);
-        })?;
-        Ok(Ahead(file))
-    }
-}
-
-impl Drop for Ahead {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
-    }
-}
-
 /// What one look at the turn found.
 pub enum Look {
     /// This process has the turn.
     Had,
     /// Another job has it.
     Taken,
-    /// It's free, and left to this job Joel waits on, which goes first.
-    Left(String),
+    /// It's free, and left to this job, which goes first.
+    Left(Waiter),
 }
 
 /// Looks once at the turn, taking it when it's free, unless a job Joel
@@ -246,7 +185,7 @@ pub fn look(
     if ahead {
         return Ok(Look::Had);
     }
-    let Some(next) = next(runtime) else {
+    let Some(next) = ahead::next(runtime) else {
         return Ok(Look::Had);
     };
     if left.get_or_insert_with(Instant::now).elapsed() >= AHEAD_IS_LEFT_AT_MOST {
@@ -366,7 +305,9 @@ fn descendants() -> Vec<i32> {
             let Ok(number) = pid.parse::<i32>() else {
                 continue;
             };
-            let Some(fields) = stat(&pid) else { continue };
+            let Some(fields) = ahead::stat(&pid) else {
+                continue;
+            };
             if fields.first().is_some_and(|state| state == "Z") {
                 continue;
             }
@@ -536,7 +477,7 @@ fn wait_for(turn: &Turn, runtime: &Path, lock: &File) -> Result<(), Failure> {
         let said = match look(lock, runtime, turn.ahead, &mut left) {
             Ok(Look::Had) => break,
             Ok(Look::Taken) => format!("waiting for the turn, which {} has", holder(runtime)),
-            Ok(Look::Left(next)) => format!("leaving the turn to {next}, which Joel waits on"),
+            Ok(Look::Left(next)) => format!("leaving the turn to {}", next.why()),
             Err(error) => return Err(failed(&turn.name, "can't take the lock", &error)),
         };
         if told.as_ref() != Some(&said) {
@@ -687,25 +628,6 @@ mod tests {
                 ahead: true,
                 command: vec!["nix".into(), "build".into()],
             }
-        );
-    }
-
-    #[test]
-    fn a_process_reads_its_own_start_as_the_kernel_counts_it() {
-        // The kernel counts 100 ticks a second, and this test's process
-        // started within the hour before uptime was read.
-        let ticks = started(&std::process::id().to_string()).unwrap();
-        let uptime: f64 = fs::read_to_string("/proc/uptime")
-            .unwrap()
-            .split(' ')
-            .next()
-            .unwrap()
-            .parse()
-            .unwrap();
-        let age = uptime - f64::from(u32::try_from(ticks / 100).unwrap());
-        assert!(
-            (0.0..3600.0).contains(&age),
-            "it read {ticks} ticks, {age} s ago"
         );
     }
 }

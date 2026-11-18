@@ -79,6 +79,30 @@ impl Account {
         child
     }
 
+    /// Starts the night job `repack` with `options` for the shell line
+    /// `job`, what it logs going to the file `night`.
+    fn night(&self, options: &[&str], job: &str) -> Child {
+        let mut args = vec![
+            "run",
+            "repack",
+            // The machine's memory needn't be quiet for this, nor stay
+            // so while it runs.
+            "--start-under",
+            "100",
+            "--stop-machine",
+            "100",
+            "--every",
+            "0.1",
+        ];
+        args.extend_from_slice(options);
+        args.extend_from_slice(&["--", "sh", "-c", job]);
+        self.command(&args)
+            .stdout(File::create(self.path("night")).unwrap())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap()
+    }
+
     /// Whether the file `said` holds `what`.
     fn says(&self, said: &str, what: &str) -> bool {
         fs::read_to_string(self.path(said)).is_ok_and(|text| text.contains(what))
@@ -542,6 +566,175 @@ fn a_night_job_leaves_the_turn_to_a_job_joel_waits_on() {
         String::from_utf8_lossy(&night.stdout)
     );
     assert!(account.path("ran").exists(), "the night job went first");
+}
+
+/// A night job that adds to `ticks` until a job Joel waits on is done,
+/// then says it ran.
+const TICKING: &str = "until [ -e switched ]; do echo . >> ticks; sleep 0.05; done; touch ran";
+
+/// A switch's build that says it ran alone if nothing added to `ticks`
+/// while it ran.
+const ALONE: &str = r#"a=$(wc -c < ticks); sleep 1; b=$(wc -c < ticks); [ "$a" = "$b" ] && touch alone; touch switched"#;
+
+#[test]
+fn a_running_night_job_pauses_for_a_job_joel_waits_on() {
+    // On 18 November a switch's evaluation waited 17 minutes behind
+    // World's nightly roll, then gave up.
+    let account = Account::new();
+    let mut night = account.night(&[], TICKING);
+    assert!(
+        within(AT_MOST, || account.path("ticks").exists()),
+        "the night job never ran"
+    );
+    let switch = account
+        .turn("switch", &["--ahead", "--wait-at-most", "10"], ALONE)
+        .output()
+        .unwrap();
+    assert!(switch.status.success(), "{}", warned(&switch));
+    assert!(
+        account.path("alone").exists(),
+        "the night job ran on beside the switch"
+    );
+    let status = night.wait().unwrap();
+    let said = fs::read_to_string(account.path("night")).unwrap();
+    assert!(status.success(), "{said}");
+    assert!(account.path("ran").exists(), "the night job never went on");
+    assert!(
+        said.contains("pauses, leaving the turn to switch, which Joel waits on"),
+        "{said}"
+    );
+    assert!(said.contains("goes on, having paused"), "{said}");
+}
+
+#[test]
+fn a_paused_night_job_goes_before_jobs_that_came_to_wait_meanwhile() {
+    let account = Account::new();
+    let mut night = account.night(&[], TICKING);
+    assert!(
+        within(AT_MOST, || account.path("ticks").exists()),
+        "the night job never ran"
+    );
+    let switch = account.saying(
+        "switch",
+        &["--ahead"],
+        "until [ -e go ]; do sleep 0.05; done; touch switched",
+        "said",
+    );
+    assert!(
+        within(AT_MOST, || account.says("night", "pauses")),
+        "the night job never paused"
+    );
+    let tests = account.saying("cargo", &[], "[ -e ran ] && touch after", "tests");
+    assert!(
+        within(AT_MOST, || account.says("tests", "waiting for the turn")),
+        "the tests never waited"
+    );
+    File::create(account.path("go")).unwrap();
+    let status = switch.wait_with_output().unwrap().status;
+    assert!(status.success(), "the switch failed: {status}");
+    assert!(night.wait().unwrap().success(), "the night job failed");
+    let status = tests.wait_with_output().unwrap().status;
+    assert!(status.success(), "the tests went before the night job");
+    assert!(account.path("after").exists(), "the tests never ran");
+}
+
+#[test]
+fn a_night_jobs_most_counts_not_its_pauses() {
+    let account = Account::new();
+    let mut night = account.night(
+        &["--runs-at-most", "3"],
+        "touch started; until [ -e switched ]; do sleep 0.05; done; touch ran",
+    );
+    assert!(
+        within(AT_MOST, || account.path("started").exists()),
+        "the night job never ran"
+    );
+    let switch = account
+        .turn(
+            "switch",
+            &["--ahead", "--wait-at-most", "10"],
+            "sleep 5; touch switched",
+        )
+        .output()
+        .unwrap();
+    assert!(switch.status.success(), "{}", warned(&switch));
+    let status = night.wait().unwrap();
+    let said = fs::read_to_string(account.path("night")).unwrap();
+    assert!(status.success(), "{said}");
+    assert!(
+        account.path("ran").exists(),
+        "the night job was stopped for the time it was paused: {said}"
+    );
+}
+
+#[test]
+fn a_night_job_stopped_while_paused_goes_on_to_hear_it() {
+    // systemd stops a unit by TERM; a watcher ended by it would leave its
+    // job paused, deaf to the TERM sent beside it.
+    let account = Account::new();
+    let mut night = account.night(
+        &["--grace", "10"],
+        "trap 'touch heard; exit 0' TERM; until [ -e switched ]; do echo . >> ticks; sleep 0.05; done",
+    );
+    assert!(
+        within(AT_MOST, || account.path("ticks").exists()),
+        "the night job never ran"
+    );
+    let switch = account.saying(
+        "switch",
+        &["--ahead"],
+        "until [ -e go ]; do sleep 0.05; done; touch switched",
+        "said",
+    );
+    assert!(
+        within(AT_MOST, || account.says("night", "pauses")),
+        "the night job never paused"
+    );
+    Command::new("kill")
+        .args(["-TERM", &night.id().to_string()])
+        .status()
+        .unwrap();
+    let heard = within(AT_MOST, || account.path("heard").exists());
+    File::create(account.path("go")).unwrap();
+    let _ = switch.wait_with_output();
+    let _ = night.wait();
+    let said = fs::read_to_string(account.path("night")).unwrap_or_default();
+    assert!(heard, "the paused job never heard its stop: {said}");
+    assert!(said.contains("stopping: it was asked to stop"), "{said}");
+}
+
+#[test]
+fn a_night_job_run_its_most_is_stopped_and_a_later_try_goes_on() {
+    let account = Account::new();
+    let began = Instant::now();
+    let night = account
+        .command(&[
+            "run",
+            "repack",
+            "--start-under",
+            "100",
+            "--runs-at-most",
+            "0.5",
+            "--grace",
+            "0.5",
+            "--",
+            "sleep",
+            "30",
+        ])
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&night.stdout);
+    assert!(night.status.success(), "{said}");
+    assert!(
+        began.elapsed() < Duration::from_secs(10),
+        "it ran {:?}",
+        began.elapsed()
+    );
+    assert!(said.contains("stopping: it has run"), "{said}");
+    assert!(
+        !account.path("state/night-shift/repack.done").exists(),
+        "a stopped job was marked done"
+    );
 }
 
 #[test]
