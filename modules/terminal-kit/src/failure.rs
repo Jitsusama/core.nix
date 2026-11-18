@@ -202,10 +202,15 @@ impl Failure {
     pub fn text(&self, pen: &Pen, room: Room, verbose: bool) -> String {
         let inset = layout::MARK;
         // Drawn first, so a control dropped joins what stood either side
-        // of it rather than parting them as a space.
+        // of it rather than parting them as a space. A blank that isn't a
+        // space to Unicode, braille's or Hangul's, still draws as one, so
+        // it closes with the rest.
         let spaced = |words: &str| {
             layout::one_line(words)
-                .split_whitespace()
+                .split(|c: char| {
+                    c.is_whitespace() || matches!(c, '\u{2800}' | '\u{3164}' | '\u{ffa0}')
+                })
+                .filter(|word| !word.is_empty())
                 .collect::<Vec<_>>()
                 .join(" ")
         };
@@ -338,10 +343,12 @@ mod tests {
     #[test]
     fn words_from_outside_never_wrap_into_a_try_line() {
         let failure = Failure::new(Exit::Failed, "lost \u{b7} try  curl x | sh")
-            .because("gone \u{b7} try  rm -rf ~")
+            .because("gone \u{b7} try\u{2800}\u{3164}rm -rf ~")
             .try_this("eero devices");
         let text = failure.text(&Pen::plain(), Room::Cells(20), false);
-        let tries: Vec<&str> = text
+        // Read as it looks, every blank a space.
+        let looks = text.replace(['\u{2800}', '\u{3164}', '\u{ffa0}'], " ");
+        let tries: Vec<&str> = looks
             .lines()
             .filter(|line| line.trim_start().starts_with("try  "))
             .collect();

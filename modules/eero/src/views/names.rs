@@ -358,7 +358,10 @@ mod tests {
             '\u{e01ef}',
         ] {
             let mut model = model();
-            for (at, name) in [(0, "Lamp".to_owned()), (1, format!("La{shaping}mp"))] {
+            for (at, name) in [
+                (0, "Lamp".to_owned()),
+                (1, format!("La{shaping}mp \u{2800}{shaping}")),
+            ] {
                 model.devices_off[at].name = Some(name);
                 model.devices_off[at].nickname = None;
                 model.devices_off[at].hostname = None;
@@ -394,7 +397,7 @@ mod tests {
         let mut model = model();
         model.nodes[2].location = Some("\u{7}\u{feff}".into());
         model.devices[0].name = Some("\u{7}".into());
-        model.devices[0].nickname = None;
+        model.devices[0].nickname = Some("\u{200d}\u{fe0f}".into());
 
         assert_eq!(
             node_name(&model.nodes[2]),
@@ -402,8 +405,9 @@ mod tests {
             "a blank node name was kept"
         );
         assert!(
-            !device_name(&model.devices[0]).contains('\u{7}'),
-            "a device name of controls alone was kept"
+            !device_name(&model.devices[0]).contains(['\u{7}', '\u{200d}']),
+            "a device name of controls or joiners alone was kept: {:?}",
+            device_name(&model.devices[0])
         );
     }
 

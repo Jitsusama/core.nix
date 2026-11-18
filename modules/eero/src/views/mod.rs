@@ -46,7 +46,7 @@ use std::borrow::Cow;
 
 use terminal_kit::{Room, layout};
 
-use crate::called;
+use crate::called::{self, spelled};
 use crate::model::{CloudState, Device, DeviceOff, HomeNetwork, Node, Profile};
 use figures::joined;
 use marks::marks;
@@ -432,32 +432,6 @@ pub fn listed(names: &[&str]) -> String {
 fn is_named(held: &str, asked: &str) -> bool {
     let held = spelled(held);
     !held.is_empty() && held.eq_ignore_ascii_case(&spelled(asked))
-}
-
-/// A name as it's compared: as it's shown, without the characters the
-/// kit keeps because they shape a word or an emoji but which draw
-/// nothing beside a plain letter, so `Lamp` and `Lamp` with a soft hyphen
-/// or a variation selector are one name, refused as two rather than one
-/// taken for the other. Look-alike letters from other scripts, and one
-/// letter spelled two ways, still differ.
-fn spelled(name: &str) -> String {
-    shown(name)
-        .chars()
-        .filter(|c| {
-            !matches!(
-                c,
-                '\u{ad}'
-                    | '\u{115f}'
-                    | '\u{1160}'
-                    | '\u{180b}'..='\u{180f}'
-                    | '\u{200c}'
-                    | '\u{200d}'
-                    | '\u{fe00}'..='\u{fe0f}'
-                    | '\u{e0020}'..='\u{e007f}'
-                    | '\u{e0100}'..='\u{e01ef}'
-            )
-        })
-        .collect()
 }
 
 /// A name as a page shows it and `is_named` reads it: held to one line,
