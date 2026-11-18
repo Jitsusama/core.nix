@@ -53,17 +53,20 @@ function offers(rows, places, empty) {
 // that row as the source offers it now, among `offered`, everything it
 // offers: kept as entered, its crumb and drawer said what it said then. It
 // is the source's row as it is now, with only what the launcher gave it
-// when found kept over it: `given`, its side, the verbs it found and the
-// rest, or else `from`, the source that gave it, which the launcher finds
-// the step by. Nothing else the row held then survives, so a field the
-// source no longer offers is gone. A row gone is kept, its rows made from it as it was; one
-// still offered that offers nothing now is left.
+// when found kept over it: `foundAs`, its side, the verbs it found and the
+// rest, kept with it for the next time, or else `from`, the source that
+// gave it, which the launcher finds the step by. It's never said in
+// `given`, a row's way of asking for words. Nothing else the row held then
+// survives, so a field the source no longer offers is gone. A row gone is
+// kept, its rows made from it as it was; one still offered that offers
+// nothing now is left.
 function own(steps, at, offered, ways) {
     const made = steps.slice();
     const step = made[at];
     const now = offered.find(one => ways.same(one, step.row));
-    const kept = step.row.given
-        ?? (step.row.from === undefined ? {} : { from: step.row.from });
+    const foundAs = step.row.foundAs;
+    const kept = foundAs !== undefined ? Object.assign({}, foundAs, { foundAs })
+        : step.row.from === undefined ? {} : { from: step.row.from };
     const row = now === undefined ? step.row : Object.assign({}, now, kept);
     const into = ways.into(row, at, made);
     if (into) {
