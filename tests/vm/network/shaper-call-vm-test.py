@@ -188,7 +188,9 @@ class Rig:
         They count every test's traffic, so a failure that needs this one's alone takes them
         before as well as after. Each machine's links give what it sent and took in, so what
         one sent and the next never took in is the host's, between them; nstat gives only
-        what a machine itself sent or took, never what the router forwards.
+        what a machine itself sent or took, never what the router forwards. Read while the
+        loads run, as a wait's last try reads them, a gap is also what's still in flight or
+        queued, so it counts as loss only once the loads have stopped.
         """
         gaps = "ip -s link; nstat -az Udp* Ip*Discards; cat /proc/net/softnet_stat"
         return "\n".join(
@@ -222,9 +224,13 @@ class Rig:
 
 
 def said(machine: BaseMachine, command: str) -> str:
-    """Give what a command printed, or that it failed and what it said, for a trace."""
+    """Give what a command printed, or that it failed and what it said, for a trace.
+
+    Each opens with the machine's name, since every machine's links print alike.
+    """
     status, output = machine.execute(f"( {command} ) 2>&1")
-    return output if status == 0 else f"{command} failed ({status}): {output.strip()}"
+    said = output if status == 0 else f"failed ({status}): {output.strip()}"
+    return f"{machine.name}: {command}\n{said}"
 
 
 @pytest.fixture(scope="module")
