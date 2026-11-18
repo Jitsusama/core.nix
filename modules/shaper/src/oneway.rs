@@ -3553,11 +3553,13 @@ mod tests {
         while at < to {
             let line = line(at);
             let rate = c.up.limit().map_or(line * 2.0, crate::rate::float);
-            sent.push_back(rate);
-            let heard = if sent.len() > late {
-                sent.pop_front().unwrap_or(rate)
+            // What the router dropped of a moment's rate, against its
+            // line then, comes back `late` moments on.
+            sent.push_back((rate - line).max(0.0));
+            let resent = if sent.len() > late {
+                sent.pop_front().unwrap_or(0.0)
             } else {
-                line
+                0.0
             };
             let dropped = rate * cake_drops;
             #[expect(
@@ -3572,7 +3574,7 @@ mod tests {
                 up_ours: Some(Ours {
                     queued: true,
                     waiting: true,
-                    resent: kbit((heard - line).max(0.0) + dropped),
+                    resent: kbit(resent + dropped),
                     dropped: kbit(dropped),
                     ..Ours::default()
                 }),
