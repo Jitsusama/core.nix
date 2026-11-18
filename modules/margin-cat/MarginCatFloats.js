@@ -336,17 +336,29 @@ function steps(way, to, at, { first = to, rises = RISES } = {}) {
 }
 
 // Whether a drop off a floating window's end with no room for a hop is
-// small enough to step down from its edge, paws moving, as the screen
-// draws it: no deeper than half its height. Walked clear of its end on
-// the air first, a body-length for 190 ms at the GPU rig's 120 Hz,
-// then dropped 3 pixels, it read as a bug (WCJQSG 1ee24751: "Stepping
-// down a small ledge with its paws moving is what a cat does"); its
-// step crosses the corner of the window's face, a few pixels for a
-// fraction of a second, the smaller break. Deeper, it walks clear and
-// drops, never across the face (VKCF3Z 13d5bf97).
+// small enough to step down from its edge, paws moving: whether its
+// step, from its edge to its landing as the screen draws it, crosses
+// the corner of the window's face no deeper than half its height.
+// Walked clear of its end on the air first, a body-length for 190 ms at
+// the GPU rig's 120 Hz, then dropped 3 pixels, it read as a bug (WCJQSG
+// 1ee24751: "Stepping down a small ledge with its paws moving is what a
+// cat does"); a few pixels of the corner for one stride is the smaller
+// break. Deeper, it walks clear and drops, never across the face
+// (VKCF3Z 13d5bf97).
+//
+// Drawn no higher than the screen's top, its feet already sit `sunk`
+// into the face as it stands at the top over it (its top is its air
+// under its feet, `way.y + tall + air`). Stepping, it goes a body's
+// width along as it goes `drop` down, so the depth inside the corner,
+// the lesser of how far it's across the edge and how far down the top,
+// is deepest where the two meet.
 function stepsDown(way, to, at) {
-    const drop = Math.max(to.y, 0) - Math.max(way.y, 0);
-    return drop >= 0 && drop <= at.tall / 2 + 1e-6;
+    const from = Math.max(way.y, 0);
+    const drop = Math.max(to.y, 0) - from;
+    const sunk = from - way.y - at.air;
+    const meets = (at.wide - sunk) / (at.wide + drop);
+    const deepest = Math.max(at.wide * (1 - meets), 0);
+    return drop >= 0 && deepest <= at.tall / 2 + 1e-6;
 }
 
 // Whether a leap's apex, `rises` cells (RISES, or a hop's half) over the
@@ -380,15 +392,13 @@ function follows(way, stop, now) {
         way.facing = Math.sign(stop.via.x - way.x) || way.facing;
         Ways.goes(way, stop.via.x - way.facing * at.wide, way.y);
         walks(way, landing.x, landing.y);
-    } else if ((stop.how === "leapsOn" || stop.how === "hopsOff")
-        && steps(way, landing, at,
-            { first: stop.via, rises: stop.how === "hopsOff" ? RISES / 2 : RISES })) {
-        // No arc to show: up or down within its walk, paws moving,
-        // beside its edge and on, or clear of its end and down.
-        // Up, it goes to its top's height beside its edge, where a leap's
-        // via is a cell under its landing.
+    } else if (stop.how === "leapsOn" && steps(way, landing, at, { first: stop.via })) {
+        // No arc to show: up within its walk, paws moving, to its top's
+        // height beside its edge, where a leap's via is a cell under its
+        // landing, and on. A hop off is only ever down (Routes'
+        // landsOn()), its step taken above.
         way.facing = Math.sign(stop.via.x - way.x) || Math.sign(stop.x - way.x) || way.facing;
-        walks(way, stop.via.x, stop.how === "leapsOn" ? landing.y : stop.via.y);
+        walks(way, stop.via.x, landing.y);
         walks(way, landing.x, landing.y);
     } else if (stop.how === "leapsOn") {
         // Straight up beside its edge till its paws are level with its
