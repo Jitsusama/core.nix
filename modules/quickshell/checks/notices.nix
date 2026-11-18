@@ -17,24 +17,24 @@
 }:
 {
   # The notices draw a notice a program sends on the arrival line, niri's
-  # notices layer, which takes no keys and stays mapped off the screen while
-  # it's quiet, and Super+Shift+N puts away one that stays
-  # (modules/quickshell/tests/notices-on-niri.sh). Away only after an hour,
-  # since nobody types here but the check.
+  # notices layer, which takes no keys and stays mapped off the screen
+  # while it's quiet, and Super+Shift+N puts away one that stays
+  # (tests/notices-on-niri.sh). Away only after an hour, since nobody types
+  # here but the check.
   the-notices-land-on-niri = noticesOnNiri {
     name = "the-notices-land-on-niri";
     away = 3600;
-    script = ../tests/notices-on-niri.sh;
+    script = ../../../tests/notices-on-niri.sh;
     given = spawnedBy "Super+Shift+N";
   };
 
-  # A notice that comes while Joel's away waits, past the time its sender gave
-  # it (modules/quickshell/tests/notices-wait-while-away.sh). Away after a
-  # second, so he is before it comes.
+  # A notice that comes while Joel's away waits, past the time its sender
+  # gave it (tests/notices-wait-while-away.sh). Away after a second, so he
+  # is before it comes.
   the-notices-wait-while-joel-is-away = noticesOnNiri {
     name = "the-notices-wait-while-joel-is-away";
     away = 1;
-    script = ../tests/notices-wait-while-away.sh;
+    script = ../../../tests/notices-wait-while-away.sh;
   };
 
   # Do not disturb holds notices while the screen is shared and lets them go

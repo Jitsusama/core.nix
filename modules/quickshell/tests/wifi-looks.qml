@@ -87,7 +87,7 @@ ShellRoot {
         () => {
             wireless.served.link.wire = { write: line => root.sent.push(JSON.parse(line)),
                 flush: () => {} };
-            root.at(true, [elsewhere], "", [elsewhere]);
+            at(true, [elsewhere], "", [elsewhere]);
             awhile.start();
         })
 
