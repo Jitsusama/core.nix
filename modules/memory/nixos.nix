@@ -4,7 +4,12 @@
 # reach the disk steadily rather than in stalls. The kernel's own
 # documentation gives each value's reasoning: Documentation/admin-guide/
 # sysctl/vm.rst and mm/multigen_lru.rst.
-{ pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   # A unit that sets one of the kernel's memory settings to its instance.
   tune = what: command: {
@@ -20,6 +25,11 @@ let
   pageCluster = "${pkgs.procps}/bin/sysctl -w vm.page-cluster=%i";
   compaction = "${pkgs.procps}/bin/sysctl -w vm.compaction_proactiveness=%i";
   minFree = "${pkgs.procps}/bin/sysctl -w vm.min_free_kbytes=%i";
+  defragMode = "${pkgs.procps}/bin/sysctl -w vm.defrag_mode=%i";
+  # Whether this kernel's defrag_mode can be tried safely: 7.3.4 carries
+  # both fixes for the reclaim storms it caused, which older kernels may
+  # not.
+  defragModeIsSafe = lib.versionAtLeast config.boot.kernelPackages.kernel.version "7.3.4";
   hugepages = "/sys/kernel/mm/transparent_hugepage/enabled";
   lruGen = "/sys/kernel/mm/lru_gen/enabled";
 in
@@ -107,6 +117,12 @@ in
     # memory no longer. Blocks of 64 KB never ran out at either, so the
     # free memory floor stays the kernel's.
     "vm.compaction_proactiveness" = 40;
+
+    # Let allocations take part of a block of another kind of page, as the
+    # kernel does by default, until a trial shows keeping blocks whole (below)
+    # costs Joel's apps less than it saves. Written, so a switch that changes
+    # these settings puts back a trial an agent left on, as for the others.
+    "vm.defrag_mode" = lib.mkIf defragModeIsSafe 0;
   };
 
   # Evict what reclaim reaches however recently it was used, as the kernel
@@ -131,7 +147,7 @@ in
   ];
 
   # The machine's administrators, agents included since they work as Joel's
-  # account, may change seven of the kernel's memory settings for as long as
+  # account, may change eight of the kernel's memory settings for as long as
   # the machine runs without a password (memory-tune.rules), so an A/B of
   # them under load waits for no one. On 30 October kswapd gave up on the
   # whole machine under builds, and the settings that might have caused it,
@@ -143,12 +159,27 @@ in
   # November. So could how hard the kernel compacts free memory ahead of
   # need, and the floor of free memory it keeps, once the kernel failed to
   # find 64 KB together eight times on 14 November, for Wi-Fi's queues among
-  # others. Each unit writes its instance and only a value the rules list:
+  # others. So could keeping each pageblock (2 MB with 4 KB pages) to one
+  # kind of page, movable or not, which the kernel calls defrag_mode
+  # (Johannes Weiner's, in 6.15), on a kernel that has both fixes for the
+  # reclaim storms it caused. From 15 to 17 November allocations of 64 KB
+  # and 128 KB failed 25 times, for Wi-Fi's block-ack start, ACPI and
+  # btrfs. At the one at 17:03 on 17 November, 552 MB was free, over the
+  # high watermark, but none of it in a block of 128 KB or more, and all of
+  # it in blocks holding unmovable or reclaimable pages, where compaction
+  # can't move pages to; 89% of the 5.5 million compactions since boot had
+  # failed. In a kernel build with bursts of huge pages his commits measured
+  # three quarters fewer allocation stalls, and over twice the swapping out,
+  # so it waits on a trial under agents' load weighing Joel's apps' swap-ins
+  # and kswapd's give-ups before it's the default. The kernel asks for it
+  # right after boot, since memory already fragmented recovers slowly, so a
+  # trial turned on mid-run pays its cost at once and reads its gain over
+  # hours. Each unit writes its instance and only a value the rules list:
   # `systemctl start memory-watermarks@100`, `memory-hugepages@madvise`,
   # `memory-lru-gen@n`, `memory-swappiness@100`, `memory-page-cluster@3`
-  # (2^3 pages at most), `memory-compaction@40` or
-  # `memory-min-free@131072` (in KiB). The most one can do is
-  # make reclaim worse until it's put back, never reach another setting. A
+  # (2^3 pages at most), `memory-compaction@40`, `memory-min-free@131072`
+  # (in KiB) or `memory-defrag-mode@1`. The most one can do is make reclaim
+  # worse until it's put back, never reach another setting. A
   # switch that changes the sysctls writes them back; otherwise start the
   # unit again with the value this file sets. At boot huge pages return to
   # this file's choice, and the LRU to the kernel's own.
@@ -161,6 +192,9 @@ in
   systemd.services."memory-page-cluster@" = tune "swap read-ahead" pageCluster;
   systemd.services."memory-compaction@" = tune "proactive compaction" compaction;
   systemd.services."memory-min-free@" = tune "free memory floor" minFree;
+  systemd.services."memory-defrag-mode@" = lib.mkIf defragModeIsSafe (
+    tune "pageblock defrag_mode" defragMode
+  );
 
   # When pressure lasts, systemd-oomd stops the whole runaway group, such as a
   # build, rather than whichever process the kernel picks.
