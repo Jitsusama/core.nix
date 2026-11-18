@@ -97,6 +97,10 @@
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
+  a-machine-that-warns-fails-to-evaluate = ''
+    core.lib.evaluates fails on a bare machine that warns, and its log names the machine and the
+    warning
+  '';
   a-notice-comes-forward = ''
     once a notice is opened, its sender's window comes forward, the one used last, unless one of
     its own is in front already or it has none open

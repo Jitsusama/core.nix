@@ -34,12 +34,15 @@ For other checks:
 | `says-what-it-has-open.sh`   | a program opened on a file, asked what it has open                |
 | `shell-says.sh`              | a check's wait for what the shell it started says in its log      |
 | `page.nix`                   | the smallest PDF a viewer opens, for checks that open documents   |
-| `bare-machines.nix`          | the least machine of each class, which a check adds a module to   |
+| `bare-nixos.nix`             | the least NixOS machine, as a module a check adds others to       |
+| `bare-darwin.nix`            | the least nix-darwin machine, as a module a check adds others to  |
 | `evaluates.nix`              | the check that a machine evaluates and warns of nothing           |
 
-`bare-machines.nix` and `evaluates.nix` are also core's exports
-`core.lib.bareNixos`, `core.lib.bareDarwin` and `core.lib.evaluates`, so a
-repository built on core checks its own modules on the same machines.
+Those three are also core's exports `core.lib.bareNixosModule`,
+`core.lib.bareDarwinModule` and `core.lib.evaluates`, so a repository built
+on core checks its own modules on the same machines. `checks.nix` here holds
+the one check `evaluates` has of its own, that a machine that warns fails
+it; the rest are proven by every machine core's checks evaluate.
 
 What belongs here is shared by more than one check. A helper one check needs
 stays in that check's own files.

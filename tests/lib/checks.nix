@@ -2,6 +2,8 @@
 # gathers with every other folder's; README.md beside this says what each
 # file here is.
 {
+  bareNixos,
+  evaluates,
   onLinux,
   pkgs,
   ...
@@ -23,6 +25,25 @@ in
           vm-helpers-test.py vm-pytest-test.py
         touch $out
       '';
+
+  # The other half of core.lib.evaluates, which every machine core checks
+  # passes: a machine that warns fails it, saying the warning.
+  a-machine-that-warns-fails-to-evaluate =
+    let
+      warning = "a setting here does nothing";
+      failed = pkgs.testers.testBuildFailure (
+        evaluates "warning-machine" (bareNixos [ { warnings = [ warning ]; } ])
+      );
+    in
+    pkgs.runCommandLocal "a-machine-that-warns-fails-to-evaluate" { } ''
+      if ! grep -qF ${pkgs.lib.escapeShellArg "warning-machine warns: ${warning}"} \
+        ${failed}/testBuildFailure.log; then
+        echo "evaluates failed without naming the warning; its log:"
+        cat ${failed}/testBuildFailure.log
+        exit 1
+      fi
+      touch $out
+    '';
 }
 # The qemu wrapper waits on its sockets with inotify, which only Linux has.
 // onLinux {
