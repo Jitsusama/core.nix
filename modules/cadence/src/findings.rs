@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::day::{self, Day};
 use crate::judge::Finding;
-use crate::{DAY, units, write_whole};
+use crate::{DAY, holders, write_whole};
 
 /// One finding as the ledger keeps it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -106,7 +106,7 @@ fn holder(key: &str, owners: &BTreeMap<String, String>) -> Option<String> {
     owner_of(key, owners).or_else(|| {
         key.strip_prefix("failed:")
             .or_else(|| key.strip_prefix("unstamped:"))
-            .and_then(units::address)
+            .and_then(holders::address)
     })
 }
 

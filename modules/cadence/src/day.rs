@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{builders, gate, health, machine, passed, phases, units};
+use crate::{builders, gate, health, holders, machine, passed, phases};
 
 mod switches;
 
@@ -425,7 +425,7 @@ pub fn failed_units(json_lines: &str) -> BTreeMap<String, u32> {
         let Some(unit) = entry.user_unit.or(entry.unit) else {
             continue;
         };
-        if units::a_run(&unit) {
+        if holders::a_run(&unit) {
             continue;
         }
         *named.entry(without_pids(&unit)).or_insert(0) += 1;

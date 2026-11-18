@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::day::Measure;
-use crate::units;
+use crate::holders;
 
 const EVIDENCE: &str = "health's ~/.local/state/health/<date>.json, its figures";
 
@@ -244,7 +244,7 @@ pub fn unstamped(json: &str) -> BTreeMap<String, u32> {
         .unwrap_or_default()
         .unstamped;
     // A run started once has no restarts to time, so no ready line to add.
-    named.retain(|unit, _| !units::a_run(unit));
+    named.retain(|unit, _| !holders::a_run(unit));
     named
 }
 

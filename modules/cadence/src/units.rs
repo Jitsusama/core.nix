@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::findings::owner_of;
+use crate::holders::a_run;
 
 /// How far back restarts are counted.
 pub const WITHIN: i64 = 15 * 60;
@@ -291,53 +291,6 @@ fn run(program: &str, args: &[&str]) -> io::Result<String> {
     } else {
         Err(io::Error::other(format!("{program} failed")))
     }
-}
-
-/// The owner of `unit`: whoever `owners` names for `unit:<unit>`, or,
-/// failing that, for `unstamped:<unit>`, since the session that owns a
-/// unit's readiness owns the unit.
-#[must_use]
-pub fn owner(unit: &str, owners: &BTreeMap<String, String>) -> Option<String> {
-    owner_of(&format!("unit:{unit}"), owners)
-        .or_else(|| owner_of(&format!("unstamped:{unit}"), owners))
-        .or_else(|| address(unit))
-}
-
-/// The session address a unit's name carries, as a session names the
-/// units it starts for itself (`garbage-bound-mon-2af2dh.service`): a
-/// part of six letters and digits, holding both, so a plain word such as
-/// `camera` is never taken for one.
-pub fn address(unit: &str) -> Option<String> {
-    let stem = unit.rsplit_once('.').map_or(unit, |(stem, _)| stem);
-    stem.split('-')
-        .find(|part| {
-            part.len() == 6
-                && part
-                    .bytes()
-                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
-                && part.bytes().any(|b| b.is_ascii_digit())
-                && part.bytes().any(|b| b.is_ascii_lowercase())
-        })
-        .map(str::to_ascii_uppercase)
-}
-
-/// Whether `unit` is one run started for whoever ran it, which reads its
-/// end itself: merge-net's reruns of a check, and pi's commands run as a
-/// transient unit, `run-p<pid>-i<id>.service`. On 17 November these
-/// were among the failed units nobody held, so they're never told.
-pub fn a_run(unit: &str) -> bool {
-    if unit.starts_with("merge-net-rerun-") {
-        return true;
-    }
-    let stem = unit.strip_suffix(".service").unwrap_or(unit);
-    stem.strip_prefix("run-p")
-        .and_then(|rest| rest.split_once("-i"))
-        .is_some_and(|(pid, id)| {
-            !pid.is_empty()
-                && !id.is_empty()
-                && pid.bytes().all(|b| b.is_ascii_digit())
-                && id.bytes().all(|b| b.is_ascii_digit())
-        })
 }
 
 /// One thing broken now: its key, its unit, when it began as far as this
@@ -655,43 +608,6 @@ mod tests {
         let tells = due(&read, &mut told, 400, |_| None, clock);
         let units: Vec<&str> = tells.iter().map(|t| t.unit.as_str()).collect();
         assert_eq!(units, ["camera.service"], "only the service that stays");
-        assert!(
-            !a_run("merge-net.service") && !a_run("run-parts.service"),
-            "the net itself, and a unit only beginning with run-p"
-        );
-    }
-
-    #[test]
-    fn a_unit_named_for_a_session_is_that_sessions() {
-        let owners: BTreeMap<String, String> = [(
-            "unit:world-cadence-mt-2af2dh.service".to_owned(),
-            "80ECO2".to_owned(),
-        )]
-        .into_iter()
-        .collect();
-        assert_eq!(
-            owner("garbage-bound-mon-2af2dh.service", &owners).as_deref(),
-            Some("2AF2DH"),
-            "its address last"
-        );
-        assert_eq!(
-            owner("b8rbnw-guard.service", &owners).as_deref(),
-            Some("B8RBNW"),
-            "its address first"
-        );
-        assert_eq!(
-            owner("world-cadence-mt-2af2dh.service", &owners).as_deref(),
-            Some("80ECO2"),
-            "an owner line comes before the name"
-        );
-        for plain in [
-            "camera.service",
-            "system.service",
-            "code-site.service",
-            "t-crash-probe.service",
-        ] {
-            assert_eq!(owner(plain, &owners), None, "{plain}: no address in it");
-        }
     }
 
     #[test]
@@ -805,28 +721,5 @@ mod tests {
             ],
             "each line's unit and moment, in seconds"
         );
-    }
-
-    #[test]
-    fn a_units_owner_is_its_own_or_its_readiness_owner() {
-        let owners: BTreeMap<String, String> = [
-            ("unit:google.service", "RTOIMQ"),
-            ("unstamped:google.service", "OTHER1"),
-            ("unstamped:slack-unreads.service", "RCTRF8"),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.to_owned(), v.to_owned()))
-        .collect();
-        assert_eq!(
-            owner("google.service", &owners).as_deref(),
-            Some("RTOIMQ"),
-            "its own"
-        );
-        assert_eq!(
-            owner("slack-unreads.service", &owners).as_deref(),
-            Some("RCTRF8"),
-            "its readiness owner"
-        );
-        assert_eq!(owner("people.service", &owners), None, "none named");
     }
 }
