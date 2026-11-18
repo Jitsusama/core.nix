@@ -8453,8 +8453,9 @@ Scope {
     // the drawer 200 ms and more behind his key against his 50 ms bar.
     // Closed, it's let go at once. One whose kind made cheaply of late comes
     // in the key's own frame instead (Pacing.js's drawerJoinsKey), unless
-    // letters still come, which it waits for as any drawer does, so typing
-    // never makes one on each letter.
+    // letters still come: then a drawer out of a kind that cheap follows
+    // in the frame after each letter, and any other waits for them to
+    // rest (Pacing.drawerRestsForLetters).
     property var drawerRow: null
     // Whether a follow waits for the next frame, so keys handled before one
     // comes follow once, for where they left the selection.
@@ -8541,8 +8542,11 @@ Scope {
             // (Pacing.typingRests). A cheap one follows in the frame after
             // the letter's, never in it, since up to 8 ms on every letter
             // would be the letters' cost (Pacing.drawerRestsForLetters).
+            // One not out yet rests too, since coming out costs more than
+            // the makings, timed only for drawers already out, measure.
             drawerJoined = false;
-            if (Pacing.drawerRestsForLetters(drawerMakings, drawerKindOf(selected))) {
+            if (!drawerOut
+                || Pacing.drawerRestsForLetters(drawerMakings, drawerKindOf(selected))) {
                 drawerFollowDue = false;
                 lettersResting.restart();
                 afterFrame(drawerWaits);
@@ -8626,9 +8630,14 @@ Scope {
     // field says a letter came, so whether letters still come is asked
     // again once its frame is begun.
     function drawerFollowOrRest() {
-        const typing = drawerFollowDue && !prompt.keyHeld
-            && Pacing.lettersComing(lettersAt, KeyTimes.now());
-        if (typing && Pacing.drawerRestsForLetters(drawerMakings, drawerKindOf(selected))) {
+        // A letter since, whose drawer rests, or a follow since, has taken
+        // it over, so a dear row a letter reached in the meantime is never
+        // made here.
+        if (!drawerFollowDue)
+            return;
+        const typing = !prompt.keyHeld && Pacing.lettersComing(lettersAt, KeyTimes.now());
+        if (typing && (!drawerOut
+            || Pacing.drawerRestsForLetters(drawerMakings, drawerKindOf(selected)))) {
             drawerFollowDue = false;
             lettersResting.restart();
             drawerWaits();

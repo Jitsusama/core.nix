@@ -3940,7 +3940,7 @@ def drawer_trace(said: list[str]) -> list[str]:
     """Give each drawer followed, and each showing as what's typed, selected and drawn beside."""
     trace = []
     for one in said:
-        if one.startswith("drawer follows "):
+        if one.startswith(("drawer follows ", CHEAP_AFTER_LETTER)):
             trace.append(one)
         elif one.startswith("showing "):
             shown = json.loads(one[len("showing ") :])
@@ -3972,15 +3972,15 @@ def drawers_under_the_rest(said: list[str]) -> list[str]:
     """
     wrong: list[str] = []
     waiting: list[str] = []
-    cheap = ""
+    cheap: str | None = None
     first = True
     for one in said:
         if one.startswith(CHEAP_AFTER_LETTER):
             cheap = one[len(CHEAP_AFTER_LETTER) :]
         elif one.startswith("drawer follows "):
-            if one != f"drawer follows {cheap}":
+            if cheap is None or one != f"drawer follows {cheap}":
                 waiting.append(one)
-            cheap = ""
+            cheap = None
         elif typed := LETTER_TYPED.fullmatch(one):
             # The first letter's gap is from whatever was typed before the mark.
             if first or int(typed[1]) < int(typed[2]):
