@@ -2,8 +2,8 @@
 //! lines can't say, kept as day files of its own: whose the upload's queue
 //! was, a call's round trip through the VPN, the rate it held the upload
 //! to, and the ceiling a trial held it under. A replay (src/replay.rs)
-//! puts these back into the recorded seconds, so a bite that came through our own queues or the VPN is
-//! replayed rather than passed as clean, and the rates the shaper really
+//! puts these back into the recorded seconds, so a bite that came
+//! through our own queues or the VPN is replayed rather than passed as clean, and the rates the shaper really
 //! held are scored beside any a controller would set.
 //!
 //! One short line a second, about 20 MB a day, kept for as many days as
@@ -177,10 +177,26 @@ pub fn merge(stays: &mut [Stay], lines: &BTreeMap<u64, Line>) -> Vec<Vec<Rates>>
         .collect()
 }
 
-/// Forgets the trials' ceilings `merge` put in, for a controller other
-/// than the live one: a trial held only the live shaper's rates, so the
-/// seconds a replayed controller holds are all its own.
-pub fn forget_trials(stays: &mut [Stay]) {
+/// Puts the trace's `lines` into `stays` as `merge` does, giving the
+/// rates the live shaper held. Replaying that shaper, `held`, only what
+/// the trace saw is kept, as `traced` says; replaying another
+/// controller, every trial's ceiling is forgotten, since a trial held
+/// only the live shaper's rates and the replayed seconds are all its own.
+pub fn heard_into(
+    mut stays: Vec<Stay>,
+    lines: &BTreeMap<u64, Line>,
+    held: bool,
+) -> (Vec<Stay>, Vec<Vec<Rates>>) {
+    let rates = merge(&mut stays, lines);
+    if held {
+        return traced(stays, rates, lines);
+    }
+    forget_trials(&mut stays);
+    (stays, rates)
+}
+
+/// Forgets the trials' ceilings `merge` put in.
+fn forget_trials(stays: &mut [Stay]) {
     for second in stays.iter_mut().flat_map(|s| s.seconds.iter_mut()) {
         second.ceiling = None;
     }
@@ -354,9 +370,37 @@ mod tests {
             "nothing heard, nothing put in: {:?}",
             s[3]
         );
-        forget_trials(&mut stays);
-        assert!(
-            stays[0].seconds.iter().all(|s| s.ceiling.is_none()),
+    }
+
+    #[test]
+    fn a_trial_s_ceiling_is_kept_only_for_the_live_shaper() {
+        let stays = || {
+            vec![Stay {
+                network: "home".into(),
+                began_ms: NOV16 * 1_000,
+                seconds: (0..4).map(second).collect(),
+            }]
+        };
+        let lines = BTreeMap::from([(
+            NOV16 + 1,
+            Line {
+                ceiling: Some(8_000),
+                ..line(NOV16 + 1, Some(8_000), None)
+            },
+        )]);
+        let ceilings = |held| {
+            let (stays, _) = heard_into(stays(), &lines, held);
+            stays[0]
+                .seconds
+                .iter()
+                .map(|s| s.ceiling)
+                .collect::<Vec<_>>()
+        };
+        // Replaying the live shaper, from the trace's first line on.
+        assert_eq!(ceilings(true), [Some(8_000)], "the live shaper's trial");
+        assert_eq!(
+            ceilings(false),
+            [None; 4],
             "a replayed controller held under the live one's trial"
         );
     }

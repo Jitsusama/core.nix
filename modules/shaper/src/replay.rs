@@ -827,15 +827,22 @@ pub fn summary(report: &Report) -> String {
 
 /// The upload against each network's anchor, then within each window.
 fn judged_lines(out: &mut String, judged: &bars::Judged) {
+    let bars = || judged.networks.iter().chain(&judged.windows);
     let _ = writeln!(
         out,
         "\nagainst the line: under {} of the anchor past {} s with no cut made on the \
-         upload's own delay over {CAUSE_MS} ms in the minute before; a trial's ceiling \
-         set aside",
+         upload's own delay over {CAUSE_MS} ms in the minute before{}",
         bars::UNDER,
-        bars::GRACE_S
+        bars::GRACE_S,
+        // Said only where a ceiling was set aside: a trace written before
+        // trials kept theirs, or another controller replayed, has none.
+        if bars().any(|(_, bar)| bar.trial_s > 0) {
+            "; a trial's ceiling set aside"
+        } else {
+            ""
+        }
     );
-    for (name, bar) in judged.networks.iter().chain(&judged.windows) {
+    for (name, bar) in bars() {
         let hold = bar
             .busy_hold
             .map_or_else(|| "-".to_owned(), |h| format!("{:.0}%", h * 100.0));
@@ -949,13 +956,7 @@ pub fn command(args: &[String], json: bool) -> Result<(), Failure> {
     let mut held = Vec::new();
     if let Some(folder) = &asked.heard {
         let lines = trace::read(folder).map_err(failed)?;
-        held = trace::merge(&mut stays, &lines);
-        if asked.controller == Choice::Held {
-            // Only what the trace saw was held by anything it can say.
-            (stays, held) = trace::traced(stays, held, &lines);
-        } else {
-            trace::forget_trials(&mut stays);
-        }
+        (stays, held) = trace::heard_into(stays, &lines, asked.controller == Choice::Held);
     }
     let windows = match &asked.windows {
         Some(path) => fs::read_to_string(path)
@@ -1030,6 +1031,15 @@ mod tests {
             .find(|l| l.starts_with("night,"))
             .expect("night");
         assert!(!night.contains("trial"), "a trial said with none: {night}");
+        // With no ceiling set aside anywhere, as in a trace written before
+        // trials kept theirs, the header claims none.
+        let none = bars::Judged {
+            networks: BTreeMap::from([("home".to_owned(), bar(0))]),
+            windows: BTreeMap::new(),
+        };
+        let mut out = String::new();
+        judged_lines(&mut out, &none);
+        assert!(!out.contains("trial"), "a ceiling claimed set aside: {out}");
     }
 
     /// Midnight in UTC on 3 November 2026, in ms.
