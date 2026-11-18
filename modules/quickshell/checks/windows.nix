@@ -23,7 +23,7 @@
     let
       # file-preview stood in, saying which process answered, and one that
       # stops before answering, each kept by a programs daemon of its own.
-      previewer = pkgs.writeShellScript "file-preview" (builtins.readFile ../../../tests/file-preview.sh);
+      previewer = pkgs.writeShellScript "file-preview" (builtins.readFile ../tests/file-preview.sh);
       silent = pkgs.writeShellScript "file-preview" "exec ${previewer} silent";
       programs = pkgs.callPackage ../../programs/package.nix { };
       sources = pkgs.writeText "sources.json" "[]";

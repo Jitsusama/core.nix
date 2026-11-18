@@ -52,13 +52,14 @@
 
   # The account's whole shell, a notice up, loses its only screen and is
   # given one back, and Quickshell never warns of a dangling screen, on
-  # sway, whose outputs can go (tests/shell-loses-its-screen.sh).
+  # sway, whose outputs can go
+  # (modules/quickshell/tests/shell-loses-its-screen.sh).
   the-shell-warns-of-no-dangling-screen-as-its-screen-goes = shellOnNiri {
     name = "the-shell-warns-of-no-dangling-screen-as-its-screen-goes";
     # Away only after an hour, so the notices are shown as they come.
     away = 3600;
     inputs = [ pkgs.libnotify ];
-    command = "${lib.getExe pkgs.bash} ${../../../tests/shell-loses-its-screen.sh} quickshell logs ${../../../tests/lib/shell-says.sh}";
+    command = "${lib.getExe pkgs.bash} ${../tests/shell-loses-its-screen.sh} quickshell logs ${../../../tests/lib/shell-says.sh}";
   };
 
   # A window drawn flat holds no depth or stencil buffer, and still draws what's
@@ -110,15 +111,16 @@
 
   # The wallpaper's picture follows its screen as it goes and comes back,
   # read once each time and without a binding loop, in the Quickshell the
-  # machine runs, as tests/screen-picture/shell.qml holds ScreenPicture.qml
-  # to, with a niri that never answers and a picture of 1 by 1.
+  # machine runs, as modules/quickshell/tests/screen-picture/shell.qml
+  # holds ScreenPicture.qml to, with a niri that never answers and a
+  # picture of 1 by 1.
   screen-picture-follows-its-screen =
     # Kept in Nix because each line copies a file Nix gives it beside the
     # case, or sets what Quickshell runs it with.
     pkgs.runCommandLocal "screen-picture-follows-its-screen" { } ''
       mkdir runtime && chmod 700 runtime
-      cp ${../../../tests/screen-picture/shell.qml} shell.qml
-      cp ${../../../tests/screen-picture/Niri.qml} Niri.qml
+      cp ${../tests/screen-picture/shell.qml} shell.qml
+      cp ${../tests/screen-picture/Niri.qml} Niri.qml
       ${copied [ "ScreenPicture.qml" ]}
       base64 -d > picture.png <<< \
         iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==
@@ -502,18 +504,18 @@
   # The shell's own files are compiled once and kept, and only a file that
   # changed is compiled again, though Quickshell serves them on its own qs:
   # scheme, which stock Qt never caches, and none of them waits for the disk
-  # as it is written (tests/compiled-once.sh, over
+  # as it is written (modules/quickshell/tests/compiled-once.sh, over
   # qtdeclarative-caches-what-is-served.patch and
   # qtdeclarative-caches-without-syncing.patch). Kept in Nix because each
   # line sets up the sandbox or hands the script a path Nix gives it, and
   # the script holds the test.
   the-shell-compiles-once = pkgs.runCommandLocal "the-shell-compiles-once" { } ''
     mkdir runtime && chmod 700 runtime
-    cp -r ${../../../tests/compiled-once} shell && chmod -R u+w shell
+    cp -r ${../tests/compiled-once} shell && chmod -R u+w shell
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export FONTCONFIG_FILE=${noFonts}
     (cd shell && ${shellFolderLint})
-    ${lib.getExe pkgs.bash} ${../../../tests/compiled-once.sh} ${qs} shell ${lib.getExe pkgs.strace}
+    ${lib.getExe pkgs.bash} ${../tests/compiled-once.sh} ${qs} shell ${lib.getExe pkgs.strace}
     touch $out
   '';
 

@@ -1,7 +1,8 @@
 // A shell whose files Qt should compile once and keep: the
-// `the-shell-compiles-once` check (tests/compiled-once.sh) starts it again
-// and again, and reads what Qt kept of it. It uses a type and a script of
-// its own folder, as the shell does, and exits once it has made them.
+// `the-shell-compiles-once` check (modules/quickshell/tests/compiled-once.sh)
+// starts it again and again, and reads what Qt kept of it. It uses a type
+// and a script of its own folder, as the shell does, and exits once it
+// has made them.
 import Quickshell
 import QtQuick
 import "kept.js" as Kept
