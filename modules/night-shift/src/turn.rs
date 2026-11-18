@@ -38,6 +38,13 @@
 //! `AHEAD_IS_LEFT_AT_MOST`, so it goes next whoever asked first, and one
 //! that is stopped or stuck holds nobody back for long.
 //!
+//! A night job holding the turn pauses for one too, since a night job can
+//! run two hours: on 18 November a switch's evaluation waited 17 minutes
+//! behind World's nightly roll and gave up. The night job is frozen where
+//! it is, leaves the turn, and marks itself paused beside the jobs Joel
+//! waits on (src/main.rs says how), so it takes the turn back once they
+//! are done, ahead of any job that came to wait meanwhile.
+//!
 //! The command's output is its own: what night-shift says goes to stderr,
 //! and its status is the command's. `--wait-at-most SECONDS` gives up
 //! waiting with status 75, so a caller can try again later.
@@ -59,7 +66,7 @@ pub const LOOK_EVERY: Duration = Duration::from_secs(1);
 
 /// How often a job Joel waits on looks, so it takes a turn the moment
 /// it's free.
-const AHEAD_LOOKS_EVERY: Duration = Duration::from_millis(100);
+pub const AHEAD_LOOKS_EVERY: Duration = Duration::from_millis(100);
 
 /// How long a free turn is left to a job Joel waits on, in which it
 /// looks 30 times: one that hasn't taken it by then is stopped or stuck.
@@ -166,42 +173,90 @@ fn started(pid: &str) -> Option<u64> {
     stat(pid)?.get(19)?.parse().ok()
 }
 
-/// The name of a job Joel waits on that waits for the turn, other than
-/// this process. A file whose process has gone, or that this process
-/// can't see, as from another PID namespace, is passed over but left,
-/// since it may be another's to remove.
-pub fn next(runtime: &Path) -> Option<String> {
+/// A job that goes before the others waiting for the turn.
+#[derive(Debug, PartialEq)]
+pub struct Waiter {
+    pub name: String,
+    /// Its process, which tells it from a later job of the same name.
+    pub pid: String,
+    /// Whether it is a night job paused for a job Joel waits on, rather
+    /// than one he waits on.
+    pub paused: bool,
+}
+
+impl Waiter {
+    /// Who it is and why it goes first, as a line says it.
+    pub fn why(&self) -> String {
+        if self.paused {
+            format!("{}, paused for a job Joel waits on", self.name)
+        } else {
+            format!("{}, which Joel waits on", self.name)
+        }
+    }
+}
+
+/// The first job going ahead that waits for the turn, other than this
+/// process: one Joel waits on before a night job paused for one. A file
+/// whose process has gone, or that this process can't see, as from
+/// another PID namespace, is passed over but left, since it may be
+/// another's to remove.
+pub fn next(runtime: &Path) -> Option<Waiter> {
     let own = std::process::id().to_string();
     let files = fs::read_dir(aheads(runtime)).ok()?;
+    let mut paused = None;
     for file in files.flatten() {
         let pid = file.file_name().to_string_lossy().into_owned();
         if pid == own || pid.starts_with('.') {
             continue;
         }
         let noted = fs::read_to_string(file.path()).unwrap_or_default();
-        let Some((name, since)) = noted.trim().split_once('\t') else {
+        let mut fields = noted.trim().split('\t');
+        let (Some(name), Some(since)) = (fields.next(), fields.next()) else {
             continue;
         };
-        if started(&pid).is_some_and(|ticks| since.parse() == Ok(ticks)) {
-            return Some(name.to_owned());
+        if !started(&pid).is_some_and(|ticks| since.parse() == Ok(ticks)) {
+            continue;
         }
+        let waiter = Waiter {
+            name: name.to_owned(),
+            pid,
+            paused: fields.next() == Some(PAUSED),
+        };
+        if !waiter.paused {
+            return Some(waiter);
+        }
+        paused.get_or_insert(waiter);
     }
-    None
+    paused
 }
 
-/// A job waiting `--ahead`'s file, there from before its first look
-/// until it has the turn or gives up.
-struct Ahead(PathBuf);
+/// What a paused night job's mark says after its start.
+const PAUSED: &str = "paused";
+
+/// A mark that a job goes ahead, named by its process, there until it
+/// has the turn or gives up.
+pub struct Ahead(PathBuf);
 
 impl Ahead {
+    /// Marks this process, a job Joel waits on, as waiting for the turn.
     fn wait(runtime: &Path, name: &str) -> io::Result<Self> {
+        Self::mark(runtime, name, "")
+    }
+
+    /// Marks this process, a night job paused for a job Joel waits on,
+    /// as waiting to take the turn back.
+    pub fn paused(runtime: &Path, name: &str) -> io::Result<Self> {
+        Self::mark(runtime, name, &format!("\t{PAUSED}"))
+    }
+
+    fn mark(runtime: &Path, name: &str, after: &str) -> io::Result<Self> {
         let pid = std::process::id().to_string();
         let since = started(&pid).ok_or_else(|| io::Error::other("can't read its own start"))?;
         fs::create_dir_all(aheads(runtime))?;
         // Written whole beside it, then named, so a reader never finds
         // half of it.
         let writing = aheads(runtime).join(format!(".{pid}"));
-        fs::write(&writing, format!("{name}\t{since}\n"))?;
+        fs::write(&writing, format!("{name}\t{since}{after}\n"))?;
         let file = aheads(runtime).join(&pid);
         fs::rename(&writing, &file).inspect_err(|_| {
             let _ = fs::remove_file(&writing);
@@ -222,8 +277,8 @@ pub enum Look {
     Had,
     /// Another job has it.
     Taken,
-    /// It's free, and left to this job Joel waits on, which goes first.
-    Left(String),
+    /// It's free, and left to this job, which goes first.
+    Left(Waiter),
 }
 
 /// Looks once at the turn, taking it when it's free, unless a job Joel
@@ -536,7 +591,7 @@ fn wait_for(turn: &Turn, runtime: &Path, lock: &File) -> Result<(), Failure> {
         let said = match look(lock, runtime, turn.ahead, &mut left) {
             Ok(Look::Had) => break,
             Ok(Look::Taken) => format!("waiting for the turn, which {} has", holder(runtime)),
-            Ok(Look::Left(next)) => format!("leaving the turn to {next}, which Joel waits on"),
+            Ok(Look::Left(next)) => format!("leaving the turn to {}", next.why()),
             Err(error) => return Err(failed(&turn.name, "can't take the lock", &error)),
         };
         if told.as_ref() != Some(&said) {
