@@ -290,45 +290,49 @@ pub fn script(
 work={work}
 tab=$(printf '\t')
 arrived() {{
-  waiting='its list of them' got=0
+  waiting='its list of them'
   [ "$(tail -n 1 "$job/{LEFT}" 2>/dev/null)" = {END} ] || return 1
-  waiting=
   while IFS="$tab" read -r size path; do
-    [ "$size" = {END} ] && break
+    [ "$size" = {END} ] && return 0
     case "/$path/" in //*|*/../*|*/./*) continue ;; esac
-    if [ -f "$job/{TREE}/$path" ] && [ "$(($(wc -c < "$job/{TREE}/$path")))" -eq "$size" ]; then
-      got=$((got + 1))
-    elif [ -z "$waiting" ]; then
-      waiting=$path
-    fi
+    waiting=$path
+    [ -f "$job/{TREE}/$path" ] && [ "$(($(wc -c < "$job/{TREE}/$path")))" -eq "$size" ] || return 1
   done < "$job/{LEFT}"
-  [ -z "$waiting" ]
+  return 1
 }}
-# The time in seconds, or where a date can't say it, the passes so far.
+# How much has crossed, list or not, as its names and kilobytes.
+grown() {{
+  kb=$(du -sk "$job" 2>/dev/null) names=$(find "$job" 2>/dev/null | wc -l)
+  kb=${{kb%%[!0-9]*}}
+  got=$((${{kb:-0}} + ${{names:-0}}))
+}}
+# The time in seconds, or where a date can't say it, one more each pass.
 tick() {{
-  now=$(date +%s 2>/dev/null)
-  case $now in ''|*[!0-9]*) ticks=$((ticks + 1)); now=$ticks ;; esac
+  t=; [ -n "$counting" ] || t=$(date +%s 2>/dev/null)
+  case $t in ''|*[!0-9]*) now=$((now + 1)) ;; *) now=$t ;; esac
 }}
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
 say() {{ printf '\n%s\n' "$1"; }}
 # By the clock, since a pass over a large tree takes long itself, and
 # from the last time more crossed, as the near side waits, or the clock
-# stepped back.
-ticks=0 had=0
-tick
-began=$now
+# stepped back. A pass counts after its second, so passes are never short.
+now=$(date +%s 2>/dev/null) counting=
+case $now in ''|*[!0-9]*) now=0 counting=yes ;; esac
+grown
+began=$now had=$got
 until arrived; do
+  sleep 1
   tick
+  grown
   if [ "$got" -gt "$had" ] || [ "$now" -lt "$began" ]; then
     began=$now had=$got
   fi
   if [ "$((now - began))" -ge {CROSSES_WITHIN} ]; then
-    printf "elsewhere: the job's files didn't reach %s within {CROSSES_WITHIN}s of the last that did, waiting on %s\n" "$(uname -n)" "$waiting" >&2
+    printf "elsewhere: the job's files didn't reach %s, none crossing for {CROSSES_WITHIN}s, waiting on %s\n" "$(uname -n)" "$waiting" >&2
     say {untaken}
     exit {UNTAKEN}
   fi
-  sleep 1
 done
 if rm -rf "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
 if [ "$why" -ne 0 ]; then
