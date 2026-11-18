@@ -14,9 +14,12 @@
 let
   sites = import ./site.nix { inherit lib pkgs; };
 
+  # The theme's own web kit, as a machine writes it.
+  webKit = (account workstation).xdg.dataFile."jitsusama/web".source;
+
   # What every live site shares, as a machine mounts it at /local-sites/:
   # the kit and the theme's own web kit, which each page reads.
-  shared = sites.shared (account workstation).xdg.dataFile."jitsusama/web".source;
+  shared = sites.shared webKit;
 
   # The system page, built as the server serves it, which the strip's
   # check reads as well as holding it.
@@ -68,6 +71,38 @@ in
         }
         touch $out
       '';
+
+  # The system page, laid out as a folder that stands alone, loads nothing
+  # from outside it and opens with no strip; a site that still loads
+  # something from outside fails its build, saying which file and address;
+  # and a link to another site stays
+  # (tests/a-live-site-stands-alone-as-a-folder.sh).
+  a-live-site-stands-alone-as-a-folder =
+    let
+      # Built on the real web kit, as a folder that leaves would be, so the
+      # one it carries in is the theme's own.
+      site = sites.localSite {
+        name = "system";
+        src = ../system/site;
+        inherit webKit;
+        tint = "action";
+      };
+    in
+    pkgs.runCommandLocal "a-live-site-stands-alone-as-a-folder" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/a-live-site-stands-alone-as-a-folder.sh} ${
+        lib.escapeShellArgs [
+          "${sites.standalone {
+            name = "system";
+            inherit site;
+          }}"
+          ./standalone.sh
+          "${site}"
+          "${sites.kit}/kit"
+          "${site.webKit}"
+        ]
+      }
+      touch $out
+    '';
 
   # The forage page typechecks on the kit and builds, its tests passing
   # (modules/mycelium/forage/tests), on the same plain looks.

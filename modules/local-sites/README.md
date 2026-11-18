@@ -48,6 +48,18 @@ carries no strip of its own; one that does fails its build. The home
 writes the same strip into the documents it may change, so both read
 alike.
 
+A live site can also be laid out as one folder that stands alone, for a
+host that serves a folder as it is: `site.nix`'s `standalone` puts its
+page at the root, copies the kit and the theme's web kit in beside it as
+`kit/` and `web/`, points every page, style and import at them, and
+leaves the strip out, since the home it leads to stays here. The two stay
+apart, unlike the one `kit/` a document carries. Anything the folder
+still loads from outside fails the build, naming the file and the
+address, while a link to another of the sites stays as drawn. Its feed is
+still asked of `/feed/<name>`, so on a host that bridges none the page
+says the sites' server can't be reached and keeps trying. How a folder
+reaches a host stays outside core.
+
 A document takes its keys and its theme switch from the kit, loading
 `/local-sites/kit/document.js` as a module rather than a copy of its own,
 so every document learns what the kit does next. Its parts are the `.part`
@@ -60,6 +72,7 @@ builds, each document still loading a script file of its own.
 | [`home.nix`][module]                | the server's unit, its options, the sites and the home  |
 | [`package.nix`][package]            | the server's build, its tests run as it builds          |
 | [`site.nix`][site]                  | how the kit and a live site are built and tested        |
+| [`standalone.sh`][standalone]       | a built live site laid out as a folder standing alone   |
 | [`headless-browsers.nix`][browsers] | the one browser a headless launch opens                 |
 | [`src/`][src]                       | the server: config, door, files, gate, feeds, pages     |
 | [`tests/`][tests]                   | the server run beside a stand-in daemon, and scripts'   |
@@ -86,6 +99,7 @@ map's `mycelium-site-reads-live`.
 [module]: ./home.nix
 [package]: ./package.nix
 [site]: ./site.nix
+[standalone]: ./standalone.sh
 [src]: ./src
 [system]: ../system/site
 [tests]: ./tests

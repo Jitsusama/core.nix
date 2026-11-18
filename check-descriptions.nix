@@ -51,6 +51,22 @@
     in the shell's own Qt, turning a field into a getter in objects whose shapes grow one from
     another leaves every other field of each reading what it was given
   '';
+  a-live-site-stands-alone-as-a-folder = ''
+    the system page, built on the real web kit and laid out as a folder that stands alone, has
+    its page at the root, reading the theme and the kit from its own web/ and kit/ with no strip
+    and the page whole; a site that still loads something from outside fails its build, naming
+    the file and the address, whether a page's link, image, object, poster, background or
+    xlink:href in any case, quoted or not and past a quoted >, a style's url() or @import in
+    any case, inline or in a stylesheet, a module's import, bare or dynamic, or its fetch, the
+    global one's too, spaced, holding the other quote or wrapped over lines, in its file or
+    inline, an address at a root, on another host, of data: or built whole as the module runs,
+    or a file the folder lacks, as does a srcset, an import map, an image-set(), a strip whose
+    ends don't pair, share a line or no longer read, a site with no index.html, or a folder
+    laid over one already there, which stays; a refused build leaves no folder; and a link to
+    another of the sites stays, as do a data-src, a query, a folder's index, an address built
+    from a start as a module runs in its file or inline, a page's new URL() and another
+    object's fetch method
+  '';
   a-long-name-reads-at-one-pace = ''
     a selected name too long for its row slides at one reading pace, gathering speed from rest and
     settling back to it in at most a fifth of a second at each end, never stepping back; and words
