@@ -849,6 +849,18 @@ fn target_frees(target: &Path, world: &World) -> u64 {
         .saturating_sub(working)
 }
 
+/// When a tree was last used. A cargo that finds a build fresh writes
+/// nothing in it, so a target is also dated by the last open its watch
+/// heard.
+fn last_used(tree: &discover::Found, uses: &Uses) -> f64 {
+    let written = trees::last_used(tree);
+    if tree.kind != Kind::Target {
+        return written;
+    }
+    uses.last_opened_in(&crate::replaced::watched_dirs(&tree.path))
+        .map_or(written, |opened| written.max(opened))
+}
+
 fn trees_under(
     root: &Path,
     device: u64,
@@ -889,7 +901,7 @@ fn trees_under(
             finished,
             pinned: checkout.is_some_and(|dir| (world.pinned)(dir)),
             size: frees,
-            last_used: trees::last_used(tree),
+            last_used: last_used(tree, world.uses),
         };
         let Some(candidate) = trees::candidate(tree, &seen, world.awake, world.now) else {
             continue;

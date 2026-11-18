@@ -9,7 +9,7 @@ use disk_guard::activity::Process;
 use disk_guard::config::Config;
 use disk_guard::plan::{self, Class, Group};
 use disk_guard::replaced::Uses;
-use disk_guard::survey::{Action, Sizes};
+use disk_guard::survey::{Action, BUDGET_RECENT, Sizes};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::Path;
@@ -510,20 +510,22 @@ fn a_budget_of_nothing_spends_nothing() {
     );
 }
 
+/// Hours a minute either side of the budget's floor, so a case pins the
+/// floor itself rather than anywhere in a wide gap.
+const JUST_INSIDE: f64 = (BUDGET_RECENT - 60.0) / 3600.0;
+const JUST_PAST: f64 = (BUDGET_RECENT + 60.0) / 3600.0;
+
 #[test]
 fn a_build_used_within_a_quarter_hour_or_sat_in_counts_but_stays() {
     // A run of checks reuses one build minutes apart, and a shell sits in
     // a build it will use again: both hold room, but neither is taken for
     // the budget, so the next least recently used goes in their place.
-    // One left 20 minutes goes: on 18 November the builds disk held 56
-    // GiB against its 20, 55 of it used within the hour.
     let (_home, made, config) = budgeted(
         &[
-            ("c-recent", 0.1),
+            ("c-fits", 0.05),
             ("a-sat-in", 5.0),
-            ("f-recent", 0.2),
+            ("f-recent", JUST_INSIDE),
             ("e-old", 4.0),
-            ("b-left", 20.0 / 60.0),
         ],
         1,
     );
@@ -537,12 +539,8 @@ fn a_build_used_within_a_quarter_hour_or_sat_in_counts_but_stays() {
     let found = offers(&config, &[shell], &|_| false);
     let offered = |app: &Path| find(&found, &app.join("target")).candidate.clone();
     assert!(
-        !offered(&made[0]).spent && !offered(&made[2]).spent,
-        "builds used within a quarter hour stay, even past the budget"
-    );
-    assert!(
-        offered(&made[4]).spent,
-        "a build left 20 minutes goes past the budget"
+        !offered(&made[2]).spent,
+        "a build used a minute inside the floor stays, even past the budget"
     );
     assert!(
         offered(&made[1]).occupied && !offered(&made[1]).spent,
@@ -551,5 +549,41 @@ fn a_build_used_within_a_quarter_hour_or_sat_in_counts_but_stays() {
     assert!(
         offered(&made[3]).spent,
         "the least recently used nobody sits in goes past the budget"
+    );
+}
+
+#[test]
+fn a_build_left_past_a_quarter_hour_goes_past_the_budget() {
+    // On 18 November the builds disk held 56 GiB against its 20, 55 of it
+    // used within the hour, so an hour's floor held almost nothing back.
+    let (_home, made, config) = budgeted(&[("c-fits", 0.05), ("b-left", JUST_PAST)], 1);
+    let found = offers(&config, &[], &|_| false);
+    assert!(
+        find(&found, &made[1].join("target")).candidate.spent,
+        "a build left a minute past the floor goes past the budget"
+    );
+}
+
+#[test]
+fn a_build_a_cargo_found_fresh_is_used_though_nothing_was_written() {
+    // A cargo that finds every unit fresh writes nothing in the build, but
+    // opens its profile's lock; a run of such checks minutes apart reuses
+    // a build last written long before, which the budget would otherwise
+    // take between two of them.
+    let (_home, made, config) = budgeted(&[("c-fits", 0.05), ("b-checked", 2.0)], 1);
+    let profile = made[1].join("target/debug");
+    let mut uses = Uses::default();
+    uses.watching(&profile, now() - 3.0 * 3600.0);
+    uses.opened(&profile.join(".cargo-build-lock"), now() - 120.0);
+    let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
+    let checked = find(&found, &made[1].join("target")).candidate.clone();
+    assert!(
+        !checked.spent,
+        "a build a cargo opened two minutes ago goes past the budget"
+    );
+    assert!(
+        checked.idle < BUDGET_RECENT,
+        "a build a cargo opened two minutes ago is dated by its last write, idle {}",
+        checked.idle
     );
 }

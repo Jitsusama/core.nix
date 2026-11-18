@@ -2105,8 +2105,12 @@ fn the_opens_a_watch_hears_are_kept_for_the_next_guard() {
     guard.listen(std::sync::Arc::new(watch));
     guard.step(&tick(), &CALM).unwrap();
     let rlib = deps.join(format!("libapp-{OLD}.rlib"));
+    // Every cargo opens its profile's lock, even one that writes nothing.
+    let lock = deps.parent().unwrap().join(".cargo-build-lock");
+    fs::write(&lock, "").unwrap();
     std::process::Command::new("cat")
         .arg(&rlib)
+        .arg(&lock)
         .output()
         .unwrap();
     // Each step late enough after the last that the guard saves.
@@ -2124,13 +2128,18 @@ fn the_opens_a_watch_hears_are_kept_for_the_next_guard() {
         let kept: Uses = disk_guard::state::load(&home.root.join("state/uses.json"))
             .unwrap()
             .unwrap_or_default();
-        if kept.opened.contains_key(&rlib) || std::time::Instant::now() > deadline {
+        let heard = kept.opened.contains_key(&rlib) && kept.opened.contains_key(&lock);
+        if heard || std::time::Instant::now() > deadline {
             break kept;
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     };
     assert!(kept.watched.contains_key(&deps), "{kept:?}");
     assert!(kept.opened.contains_key(&rlib), "{kept:?}");
+    assert!(
+        kept.opened.contains_key(&lock),
+        "a cargo opening its profile's lock went unheard: {kept:?}"
+    );
 }
 
 #[test]

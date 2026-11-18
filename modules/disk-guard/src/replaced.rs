@@ -61,6 +61,24 @@ impl Uses {
         self.watched.retain(|path, _| there(path));
     }
 
+    /// When anything right in one of `dirs` was last opened, which for a
+    /// target's [`watched_dirs`] is when a cargo last ran in it or a build
+    /// last read one of its libraries. Nothing deeper counts, so a
+    /// target kept inside, or rustc's incremental sessions, never date it.
+    pub fn last_opened_in(&self, dirs: &[PathBuf]) -> Option<f64> {
+        dirs.iter()
+            .flat_map(|dir| {
+                // Paths order by component, so whatever lies in `dir`
+                // follows it at once.
+                self.opened
+                    .range(dir.clone()..)
+                    .take_while(move |(path, _)| path.starts_with(dir))
+                    .filter(move |(path, _)| path.parent() == Some(dir.as_path()))
+                    .map(|(_, &at)| at)
+            })
+            .reduce(f64::max)
+    }
+
     /// When a build was last used: its newest open, when it was written if
     /// later, and never before its `deps` was watched, since an open before
     /// then went unseen. Nothing when nobody watches it.
@@ -101,6 +119,22 @@ pub fn deps_dirs(target: &Path) -> Vec<PathBuf> {
     }
     found.sort();
     found
+}
+
+/// What the watch marks in a target: each profile's `deps`, whose
+/// libraries later builds read, and the profile itself, whose
+/// `.cargo-build-lock` every cargo opens, even one that finds every unit
+/// fresh and writes nothing. On 18 November a fresh `cargo test` and
+/// `cargo clippy` each opened that lock and changed no time in the build.
+pub fn watched_dirs(target: &Path) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = deps_dirs(target)
+        .into_iter()
+        .flat_map(|deps| [deps.parent().map(Path::to_owned), Some(deps)])
+        .flatten()
+        .collect();
+    dirs.sort();
+    dirs.dedup();
+    dirs
 }
 
 /// Every build in `target` a newer build of its crate replaced.

@@ -1,9 +1,9 @@
-use crate::discover::file;
+use crate::discover::{CARGO_TAG, file};
 use disk_guard::anchor::Dir;
 use disk_guard::pass::Outcome;
 use disk_guard::plan::{Candidate, Class};
 use disk_guard::reclaim;
-use disk_guard::replaced::{Build, Uses, replaced};
+use disk_guard::replaced::{Build, Uses, replaced, watched_dirs};
 use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -137,6 +137,43 @@ fn a_build_is_used_when_last_opened_and_never_before_its_deps_was_watched() {
     // Events lost to an overflow could have been opens of anything.
     uses.lost(30_000.0);
     assert_eq!(uses.last_used(&build(deps, 1_000.0)), Some(30_000.0));
+}
+
+#[test]
+fn a_target_is_last_opened_when_its_lock_or_a_build_in_its_deps_was() {
+    // Every cargo opens its profile's lock, even one that finds all fresh
+    // and writes nothing, so the profile is watched beside its deps.
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("target");
+    let profile = target.join("debug");
+    let deps = profile.join("deps");
+    fs::create_dir_all(&deps).unwrap();
+    let kept = target.join("run");
+    fs::create_dir_all(kept.join("debug/deps")).unwrap();
+    fs::write(kept.join("CACHEDIR.TAG"), CARGO_TAG).unwrap();
+    assert_eq!(
+        watched_dirs(&target),
+        vec![profile.clone(), deps.clone()],
+        "a target's watch marks each profile and its deps, and nothing of a target kept in it"
+    );
+    let mut uses = Uses::default();
+    assert_eq!(
+        uses.last_opened_in(&watched_dirs(&target)),
+        None,
+        "a target nothing opened has no last open"
+    );
+    uses.opened(&deps.join(format!("libalpha-{OLD}.rlib")), 7_000.0);
+    uses.opened(&profile.join(".cargo-build-lock"), 9_000.0);
+    uses.opened(&kept.join("debug/.cargo-build-lock"), 20_000.0);
+    uses.opened(
+        &deps.join("incremental/alpha/s-1/query-cache.bin"),
+        30_000.0,
+    );
+    assert_eq!(
+        uses.last_opened_in(&watched_dirs(&target)),
+        Some(9_000.0),
+        "only what lies right in a target's watched folders dates it"
+    );
 }
 
 #[test]

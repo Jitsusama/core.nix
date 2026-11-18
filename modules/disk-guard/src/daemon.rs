@@ -1097,9 +1097,10 @@ impl Guard {
         }
     }
 
-    /// Marks every `deps` of the targets the cargo sources hold, at first
-    /// and hourly after, so a build made since is heard too. A `deps` that
-    /// was made anew loses its mark with the old one and gets one again.
+    /// Marks every profile and its `deps` in the targets the cargo sources
+    /// hold, at first and hourly after, so a build made since is heard too.
+    /// A folder that was made anew loses its mark with the old one and gets
+    /// one again.
     fn mark(&mut self, tick: &Tick) {
         let Some(watch) = &self.opens else { return };
         if self.marked_at.is_some_and(|at| tick.wall - at < MARK_EVERY) {
@@ -1124,17 +1125,17 @@ impl Guard {
                     if tree.kind != discover::Kind::Target {
                         continue;
                     }
-                    for deps in crate::replaced::deps_dirs(&tree.path) {
-                        if watch.watch(&deps).is_ok() {
-                            marked.push(deps);
+                    for dir in crate::replaced::watched_dirs(&tree.path) {
+                        if watch.watch(&dir).is_ok() {
+                            marked.push(dir);
                         }
                     }
                 }
             }
         }
         let mut uses = self.uses.lock().unwrap_or_else(PoisonError::into_inner);
-        for deps in marked {
-            uses.watching(&deps, tick.wall);
+        for dir in marked {
+            uses.watching(&dir, tick.wall);
         }
     }
 
