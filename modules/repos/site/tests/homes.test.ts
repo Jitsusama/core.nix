@@ -64,14 +64,20 @@ it("reads a row at ./code/ as the site at code/, its record and all", async () =
   assert.equal(homes("E2ZIAQ"), "code/#c=1");
 });
 
-it("refuses an address written from ./, as the system's homes do, on any row", async () => {
+it("refuses an address written from ./, as the system's homes do, on a ./ row", async () => {
   const sites = { sites: [{ path: "./code/", homes: ["cell"] }] };
-  const records = { "code/": cells({ key: "E2ZIAQ", address: "./code/#c=1" }) };
+  const records = {
+    "code/": cells(
+      { key: "E2ZIAQ", address: "./code/#c=1" },
+      { key: "Q3NEWS", address: "code/#c=2" },
+    ),
+  };
   const { homes } = await homesFrom(sites, "cell", reading(records));
   assert.equal(homes("E2ZIAQ"), undefined, "a record's ./code/ address was taken");
+  assert.equal(homes("Q3NEWS"), "code/#c=2", "the row itself was refused");
   const dotted = { ...machines, address: "./mycelium/#machine={name}" };
-  const claim = { sites: [{ path: "./mycelium/", homes: [dotted] }] };
-  assert.equal(holdingOf(claim, "machine"), undefined, "a pattern's ./ address was taken");
+  const claim = { sites: [{ path: "./mycelium/", homes: [dotted, machines] }] };
+  assert.deepEqual(holdingOf(claim, "machine"), held, "a pattern's ./ address was taken");
 });
 
 it("takes a pattern a row says, written from its page or from the sites' root", () => {
