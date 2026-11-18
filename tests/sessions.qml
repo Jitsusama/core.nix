@@ -273,13 +273,15 @@ ShellRoot {
         expect("Go To joins it by its node's words", inSessions(joined)
             === "sessions zsh -lic mycelium attach r-far", joined);
         // Its window opens on its orchestrator's workspace, never on the
-        // one Joel is on, and takes him there, since he asked for it (Joel,
+        // one Joel is on, keeping niri's token, since he asked for it (Joel,
         // 2026-11-15 18:45: one "materialize[d] on my main chrome workspace").
+        // The token alone never took him there; the shell focuses the window
+        // once niri lists it (tests/sessions-go-to-focuses.qml).
         const opened = Niri.acted?.OpenNextWindowOn;
         expect("one elsewhere opens on its orchestrator's workspace",
             opened?.reference?.Id === 8 && opened?.app_id === asked(joined)?.classed,
             JSON.stringify(Niri.acted));
-        expect("and takes Joel there", !joined.includes("XDG_ACTIVATION_TOKEN"), joined);
+        expect("and keeps niri's token", !joined.includes("XDG_ACTIVATION_TOKEN"), joined);
         Sessions.goTo(out);
         expect("one out of reach isn't joined", root.unjoined === "OUTRCH", root.unjoined);
         hosts();

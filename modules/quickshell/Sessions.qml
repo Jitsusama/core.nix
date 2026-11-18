@@ -207,8 +207,13 @@ Singleton {
     // scope in the slice it runs in, so every session goes with it. One
     // opened aside, or where it goes, goes without the activation token
     // niri hands what it spawns, which kitty would spend on taking the
-    // focus once its window shows; but one Go To opens `focused` keeps it,
-    // since taking Joel to it is what he asked.
+    // focus once its window shows. One Go To opens `focused` is focused by
+    // the shell itself once niri lists it (focusOpened), since taking Joel
+    // to it is what he asked, and the token can't take him: the kitty that
+    // draws the window was started long before, by its unit, and the token
+    // stays with the client asking it, so the window opened where it was
+    // told, unfocused (Joel, 2026-11-18 10:44: "it isn't coming to the
+    // forefront").
     // They're numbered on from the moment this shell started, in
     // milliseconds, not from nought: a shell started again, as every switch
     // does, would otherwise name its first window as one still open from
@@ -223,6 +228,32 @@ Singleton {
     // run by a case of its own (the-sessions-kitty-is-asked-only-its-own-way).
     readonly property string opening: String(Qt.resolvedUrl("opens-in-sessions.sh"))
         .replace(/^file:\/\//, "")
+    // The window the last Go To opened focused, until niri lists it: its
+    // app id, when it was asked, and the window that had the focus then.
+    // Only the last, so a later Go To takes the place of an earlier one
+    // still opening, which then opens where it was told and no more.
+    property var goingTo: null
+    // How long a Go To's window may take to list and still be focused:
+    // long enough for the sessions kitty to start again under it, since
+    // a Joel who moves the focus himself meanwhile stops it anyway. Cases
+    // shorten it to see one too late.
+    property int goToPatience: 30000
+    // Focuses the window Go To opened once niri lists it, unless the focus
+    // has moved since he asked, as when he went on to other work himself,
+    // or it came too late, either of which leaves it where it opened, said.
+    function focusOpened(window) {
+        const going = goingTo;
+        if (going === null || window.opened !== going.app)
+            return;
+        goingTo = null;
+        const waited = Date.now() - going.at;
+        if (Niri.focused !== going.from)
+            Report.say(`Go To's window ${window.id} left where it opened: the focus moved`);
+        else if (waited >= goToPatience)
+            Report.say(`Go To's window ${window.id} left where it opened: it took ${waited} ms`);
+        else
+            Niri.act({ FocusWindow: { id: window.id } });
+    }
     function inSessions(kind, rest, into, named) {
         openings++;
         const classed = named ?? `${kind}.${openings}`;
@@ -232,6 +263,8 @@ Singleton {
             if (into.column !== null)
                 asked.column = into.column;
             Niri.act({ OpenNextWindowOn: asked });
+            if (into.focused === true)
+                goingTo = { app: classed, at: Date.now(), from: Niri.focused };
         }
         const untold = kind === "pi-spawned" || (placed && into.focused !== true)
             ? ["env", "-u", "XDG_ACTIVATION_TOKEN", "-u", "DESKTOP_STARTUP_ID"] : [];
@@ -718,6 +751,7 @@ Singleton {
         // The window a session being reopened opens in, placed once niri
         // has laid it out, and the next begun; never a terminal of Joel's.
         function onWindowOpenedOrChanged(window) {
+            root.focusOpened(window);
             if (root.reopening && window.session === true)
                 root.reopenedWindow(window.id);
             root.placeOpened();

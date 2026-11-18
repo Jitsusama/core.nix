@@ -1159,6 +1159,10 @@
   github-broker-passes-clippy = ''
     clippy finds nothing in github-broker or its tests
   '';
+  go-to-brings-a-windowless-session-forward = ''
+    Go To on a session with no window here, one pi's host runs or one on another machine, opens
+    its window away from Joel's workspace and focuses it once niri lists it, and only once
+  '';
   google-answers-on-systemds-socket = ''
     google serves the daemon interface on %t/daemons/google.sock, a socket systemd holds, both
     starting at login without waiting on a file, and reads pi's sign-in from the keyring
