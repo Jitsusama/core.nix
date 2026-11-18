@@ -74,11 +74,12 @@ ShellRoot {
         "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n"
 
     // The routing table with a default route by each of `ways`, the first
-    // costing least, through 192.168.4.1.
-    function table(ways) {
+    // costing least, through 192.168.4.1, each used `used` times, as the
+    // kernel counts with every connection made.
+    function table(ways, used = 0) {
         return header + ways.map((name, i) =>
-            `${name}\t00000000\t0104A8C0\t0003\t0\t0\t${100 + 500 * i}\t00000000\t0\t0\t0\n`)
-            .join("");
+            `${name}\t00000000\t0104A8C0\t0003\t${used}\t${used}\t${100 + 500 * i}`
+            + "\t00000000\t0\t0\t0\n").join("");
     }
 
     function written(text) {
@@ -121,6 +122,13 @@ ShellRoot {
         }
     }
 
+    // Holds once `ms` have passed, for a load the case can't see to land:
+    // one reads a file in well under a millisecond here.
+    function after(ms) {
+        const began = Date.now();
+        return () => Date.now() - began >= ms;
+    }
+
     // Holds once a tell said `name`, failing past two seconds.
     function toldSoon(name) {
         const began = Date.now();
@@ -135,22 +143,31 @@ ShellRoot {
 
     function begun() {
         try {
-            // Never loaded since the provider was made, the routes are old,
-            // so the first answer sets off a load and says no way out yet.
+            // The provider's own load, as it was made, found no table yet;
+            // the links arriving load the routes again, and the first
+            // answer, its routes old, asks again too, so Wi-Fi is said
+            // once a load lands.
             written(table(["wlan0", "enp0s1"]));
             networks.links = links;
-            waits.until("Wi-Fi said as the way out once old routes are loaded again",
+            waits.until("Wi-Fi said as the way out once the routes are loaded",
                 soon("wlan0"), root.loaded);
         } catch (error) {
             Expect.fail(error.message ?? error);
         }
     }
 
+    // Both of those may have set off a load, and one still under way would
+    // read the next table, standing in for the opening's: each lands first.
+    function loaded() {
+        waits.until("the first loads landed", after(200), root.settled);
+    }
+
     // A cable plugged in, its route now costing least: an answer straight
     // after says what was loaded, since it reads nothing. Opened again, the
-    // routes load in the background, and once they land the launcher is
-    // told, so it asks again and shows the change.
-    function loaded() {
+    // routes load in the background, and an answer while they do says them
+    // as they were; once they land the launcher is told, so it asks again
+    // and shows the change.
+    function settled() {
         shown.open = false;
         written(table(["enp0s1", "wlan0"]));
         const out = wayOut();
@@ -158,14 +175,29 @@ ShellRoot {
             out === "wlan0", out);
         told = [];
         shown.open = true;
+        const loading = wayOut();
+        Expect.expect("an answer while the opening's load is under way waits on none of it",
+            loading === "wlan0", loading);
         waits.until("the launcher told of the cable as the way out once the opening's load lands",
             toldSoon("enp0s1"), root.opened);
+    }
+
+    // Each route used again, the gateways and their costs the same: a load
+    // of that tells the launcher nothing, as the kernel's counts change with
+    // every connection made.
+    function opened() {
+        told = [];
+        written(table(["enp0s1", "wlan0"], 7));
+        networks.reroute();
+        waits.until("the load of the same routes landed", after(200), root.used);
     }
 
     // The cable's route gone with its link, the launcher left open and the
     // routes loaded as it opened, not yet old: the links changing loads the
     // routes again.
-    function opened() {
+    function used() {
+        Expect.expect("a load that changes no gateway or cost tells nothing",
+            told.length === 0, JSON.stringify(told));
         written(table(["wlan0"]));
         networks.links = links.slice(0, 1);
         waits.until("a link changing loads the routes again", soon("wlan0"), () => Qt.exit(0));

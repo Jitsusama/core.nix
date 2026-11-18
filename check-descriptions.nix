@@ -956,9 +956,10 @@
     place as it changes
   '';
   address-waits-on-no-route-file = ''
-    Address answers from the routing tables as last loaded, reading no file as it answers;
-    loads them again in the background as the launcher opens, telling the launcher once that
-    load changes the way out; and loads them again as the links change
+    Address answers from the routing tables as last loaded, reading no file as it answers, even
+    while a load is under way; loads them again in the background as the launcher opens,
+    telling the launcher once that load changes the way out, and nothing for a load that
+    changes only the kernel's use counts; and loads them again as the links change
   '';
   traffic-reads-a-known-interface-once-after-a-gap = ''
     Traffic, asked after a gap as each step into Network asks it, reads one sysfs file for an

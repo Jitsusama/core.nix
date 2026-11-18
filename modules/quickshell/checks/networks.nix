@@ -159,8 +159,9 @@ in
 
   # Address answers from the routes as last loaded, waiting on no file, and
   # loads them again in the background as the launcher opens, as the links
-  # change and when they're old, telling the launcher once a load changes
-  # them (tests/network-routes.qml), since a step into Network asks Address
+  # change and when they're old, telling the launcher once a load changes a
+  # gateway or its cost and never for the kernel's use counts alone
+  # (tests/network-routes.qml), since a step into Network asks Address
   # and Ethernet, which each read both routing tables. The case writes its
   # own tables in net/, made here.
   address-waits-on-no-route-file = pkgs.runCommandLocal "address-waits-on-no-route-file" { } ''

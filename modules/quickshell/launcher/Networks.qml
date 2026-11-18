@@ -129,26 +129,34 @@ Provider {
     }
 
     // The routes loaded again in the background, said as they were until
-    // the load lands (routed). Each read waited on took a median 6 to 14 ms
-    // and up to 133 on Joel's laptop under load (2026-11-17), and Address and
-    // Ethernet each read both files as a step into Network made its rows:
-    // four of a step that has 50 ms for all of it.
+    // the load lands (routed); one asked while another is under way is
+    // that one. Each read waited on took a median 6 to 14 ms and up to 133
+    // on Joel's laptop under load (2026-11-17), and Address and Ethernet
+    // each read both files as a step into Network made its rows: four of a
+    // step that has 50 ms for all of it.
     function reroute() {
         route.reload();
         sixRoute.reload();
     }
 
-    // What the routes said when last loaded, so a load that changes them
-    // is told, and one that doesn't tells nothing.
-    property string routedText: ""
+    // Each interface's default gateway and its cost, IPv4's and IPv6's, as
+    // the routes said when last loaded, and empty before the first load
+    // lands, so an answer reads them, never a file.
+    property var routes: ({})
+    property var routes6: ({})
 
-    // A load landed: what changed is said again where it's shown, and the
-    // drawers made again, as a link that changes is (heard).
+    // A load landed: when the gateways or their costs changed, what
+    // changed is said again where it's shown, and the drawers made again,
+    // as a link that changes is (heard). The tables are compared as Address
+    // reads them, not as text, since each route's use counts change in
+    // them with every connection made.
     function routed() {
-        const now = route.text() + sixRoute.text();
-        if (now === routedText)
+        const now = Interfaces.gateways(route.text());
+        const now6 = Interfaces.gateways6(sixRoute.text());
+        if (JSON.stringify([now, now6]) === JSON.stringify([routes, routes6]))
             return;
-        routedText = now;
+        routes = now;
+        routes6 = now6;
         glanceSoon();
         if (provider.launcher?.open)
             answered();
@@ -319,8 +327,6 @@ Provider {
             waiting = true;
             return null;
         }
-        const routes = Interfaces.gateways(route.text());
-        const routes6 = Interfaces.gateways6(sixRoute.text());
         return {
             links: links,
             routes: routes,
@@ -939,19 +945,19 @@ Provider {
         };
     }
 
-    // Loaded once, waited on, as the provider is made, and in the
-    // background after (reroute).
+    // Loaded in the background as the provider is made and after
+    // (reroute), never waited on: one blocking until its first load finds
+    // the file waits again after each reload while none has, as
+    // ipv6_route would on a machine with IPv6 off.
     FileView {
         id: route
         path: `${provider.kernel}/route`
-        blockLoading: true
         printErrors: false
         onLoaded: provider.routed()
     }
     FileView {
         id: sixRoute
         path: `${provider.kernel}/ipv6_route`
-        blockLoading: true
         printErrors: false
         onLoaded: provider.routed()
     }
