@@ -29,8 +29,11 @@
 // links and their addresses from the kernel in ip's own names
 // (modules/machine/src/links.rs) and says again only what the kernel says
 // changed, watched while Network is wanted, so nothing is spawned and
-// nothing polls; the routes and name servers are read from the kernel's
-// files and resolv.conf when asked, so nothing blocks. A cable's link is
+// nothing polls. The routes are loaded from the kernel's files in the
+// background as the launcher opens, as the links change and when they're
+// old, and an answer says them as last loaded, so a step into Network
+// waits on no file for them. The name servers are read from resolv.conf
+// when a connection's parts are asked. A cable's link is
 // read from its folder in /sys/class/net, and read again each second
 // while it's shown. The leases and neighbours are asked of networkd over
 // its varlink socket as the launcher opens and when what it said is five
@@ -61,6 +64,9 @@ Provider {
     readonly property int minutes: 5 * 60 * 1000
     // How long what networkd said stands before it's asked again.
     readonly property int stands: 5000
+    // Where the kernel's routing tables are, its files route and
+    // ipv6_route, so a case can stand in its own.
+    property string kernel: "/proc/net"
 
     function grouped(value) {
         return Numbers.format(value, 0, settings.group, settings.point);
@@ -117,8 +123,35 @@ Provider {
 
     function look() {
         lookedAt = Date.now();
+        reroute();
         if (!networkd.connected)
             networkd.connected = true;
+    }
+
+    // The routes loaded again in the background, said as they were until
+    // the load lands (routed). Each read waited on took a median 6 to 14 ms
+    // and up to 133 on Joel's laptop under load (2026-11-17), and Address and
+    // Ethernet each read both files as a step into Network made its rows:
+    // four of a step that has 50 ms for all of it.
+    function reroute() {
+        route.reload();
+        sixRoute.reload();
+    }
+
+    // What the routes said when last loaded, so a load that changes them
+    // is told, and one that doesn't tells nothing.
+    property string routedText: ""
+
+    // A load landed: what changed is said again where it's shown, and the
+    // drawers made again, as a link that changes is (heard).
+    function routed() {
+        const now = route.text() + sixRoute.text();
+        if (now === routedText)
+            return;
+        routedText = now;
+        glanceSoon();
+        if (provider.launcher?.open)
+            answered();
     }
 
     // The links and their addresses, watched while Network is wanted, and
@@ -185,7 +218,11 @@ Provider {
         interval: provider.launcher?.open ? 250 : 1000
         onTriggered: provider.makeGlances()
     }
-    onLinksChanged: glanceSoon()
+    // A link that changes most often changes the routes with it.
+    onLinksChanged: {
+        reroute();
+        glanceSoon();
+    }
     // The calls to networkd not yet answered, in order: one is sent at a
     // time, the next once the last is answered.
     property var calling: []
@@ -270,10 +307,11 @@ Provider {
         }
     }
 
-    // The connections as they stand, asking networkd again when what it
-    // said is old, but for a cable's link read again while it's shown:
-    // { links, routes, routes6, out }, or null before the daemon first
-    // answers.
+    // The connections as they stand, asking networkd again and loading
+    // the routes again when what they said is old, but for a cable's link
+    // read again while it's shown: { links, routes, routes6, out }, or
+    // null before the daemon first answers. The routes are as last loaded,
+    // never waited on (reroute).
     function standing() {
         if (!ticking && Date.now() - lookedAt > stands)
             look();
@@ -281,8 +319,8 @@ Provider {
             waiting = true;
             return null;
         }
-        const routes = Interfaces.gateways(read(route));
-        const routes6 = Interfaces.gateways6(read(sixRoute));
+        const routes = Interfaces.gateways(route.text());
+        const routes6 = Interfaces.gateways6(sixRoute.text());
         return {
             links: links,
             routes: routes,
@@ -461,6 +499,7 @@ Provider {
         running: provider.watching
         onTriggered: {
             provider.ticking = true;
+            provider.reroute();
             try {
                 provider.answered();
             } finally {
@@ -900,17 +939,21 @@ Provider {
         };
     }
 
+    // Loaded once, waited on, as the provider is made, and in the
+    // background after (reroute).
     FileView {
         id: route
-        path: "/proc/net/route"
+        path: `${provider.kernel}/route`
         blockLoading: true
         printErrors: false
+        onLoaded: provider.routed()
     }
     FileView {
         id: sixRoute
-        path: "/proc/net/ipv6_route"
+        path: `${provider.kernel}/ipv6_route`
         blockLoading: true
         printErrors: false
+        onLoaded: provider.routed()
     }
     FileView {
         id: resolv

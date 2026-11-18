@@ -157,6 +157,32 @@ in
         touch $out
       '';
 
+  # Address answers from the routes as last loaded, waiting on no file, and
+  # loads them again in the background as the launcher opens, as the links
+  # change and when they're old, telling the launcher once a load changes
+  # them (tests/network-routes.qml), since a step into Network asks Address
+  # and Ethernet, which each read both routing tables. The case writes its
+  # own tables in net/, made here.
+  address-waits-on-no-route-file = pkgs.runCommandLocal "address-waits-on-no-route-file" { } ''
+    mkdir -p launcher runtime net && chmod 700 runtime
+    ${copied [
+      "Daemon.qml"
+      "Words.qml"
+      "launcher/Networks.qml"
+      "launcher/Provider.qml"
+      "launcher/words.json"
+    ]}
+    cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+    cp ${../../../tests/network-routes.qml} shell.qml
+    cp ${../../../tests/lib/Expect.js} Expect.js
+    cp ${../../../tests/lib/Until.qml} Until.qml
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+    export FONTCONFIG_FILE=${noFonts}
+    ${shellFolderLint}
+    timeout 60 ${qs} -p shell.qml
+    touch $out
+  '';
+
   # Wi-Fi joins a network by the acts wifid serves on its row, asking each
   # word a join needs in the field before it's sent (tests/wifi-acts.qml),
   # with the launcher's asking stood in.
