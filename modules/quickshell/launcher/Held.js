@@ -6,8 +6,8 @@
 // Each takes `ways`, the launcher's own answers: `same(row, was)` whether a
 // row offered now is the one a step holds, `into(thing, at, steps)` the
 // rows a thing stepped into at `at` offers now, or null for none, as
-// `offers` decides, and
-// `keep(step, into)` those rows kept in the order the step shows them.
+// `offers` decides, `keep(step, into)` those rows kept in the order the
+// step shows them, and `looked()` all a source searches (own's foundNow).
 // Each gives `steps` made again, `leave`, the first step to leave or -1,
 // and `all`, whether every step was made again.
 .pragma library
@@ -25,7 +25,8 @@ function remade(steps, from, rows, ways) {
     let offered = rows;
     for (let at = from; at < made.length; at++) {
         const step = made[at];
-        const now = offered.find(row => ways.same(row, step.row));
+        // A row the step above keeps as gone, dimmed, is the row gone.
+        const now = offered.find(row => !row.gone && ways.same(row, step.row));
         const thing = now ?? ((step.typed ?? "") !== "" ? step.row : undefined);
         const into = thing === undefined ? null : ways.into(thing, at, made);
         if (!into && (now !== undefined || thing === undefined)) {
