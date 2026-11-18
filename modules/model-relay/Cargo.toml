@@ -13,6 +13,9 @@ publish = false
 # connection carries many requests at once.
 hyper = { version = "1", features = ["client", "server", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
+# hyper's own HTTP/2, named only to tell the origin resetting a request
+# from the other ways one fails, which hyper's error doesn't say.
+h2 = "0.4"
 http-body-util = "0.1"
 bytes = "1"
 tokio = { version = "1.53", features = ["io-util", "macros", "net", "rt", "sync", "time"] }

@@ -632,7 +632,7 @@ async fn a_connection_the_origin_lets_go_is_opened_again() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn a_request_the_origin_resets_is_a_502_and_nothing_of_it_is_logged() {
+async fn a_request_the_origin_resets_sends_pi_direct_and_retires_its_connection() {
     let origin = origin().await;
     let host = origin.address.to_string();
     let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
@@ -643,11 +643,24 @@ async fn a_request_the_origin_resets_is_a_502_and_nothing_of_it_is_logged() {
 
     let got = ask(&relay.socket, asked).await;
 
-    assert_eq!(got.status, StatusCode::BAD_GATEWAY);
+    assert_eq!(
+        got.status,
+        StatusCode::MISDIRECTED_REQUEST,
+        "a request the origin reset wasn't sent direct"
+    );
+    for _ in 0..2 {
+        let again = ask(&relay.socket, request(&host, "/echo", b"again")).await;
+        assert_eq!(again.status, StatusCode::CREATED, "a request after a reset");
+    }
+    assert_eq!(
+        origin.connections.load(Ordering::SeqCst),
+        2,
+        "the connection that reset a request kept taking them, or more were opened"
+    );
     let said = relay.said();
     assert!(
-        said.contains("couldn't be carried"),
-        "the failure went unsaid: {said}"
+        said.contains("connection 0 had a request reset"),
+        "the reset went unsaid: {said}"
     );
     assert!(
         !said.contains("sekrit"),
