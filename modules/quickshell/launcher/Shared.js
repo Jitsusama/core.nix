@@ -29,6 +29,8 @@ function hidden(heard, casts, recording) {
 function shown(served) {
     return Object.assign({}, served, {
         glyph: served?.kind === "picture" ? "picture" : "clipboard",
-        side: (served?.side ?? []).filter(item => item?.at !== undefined)
+        // Only the item saying when it came, not any timed one, so an item
+        // the history adds later is hidden until it's named here.
+        side: (served?.side ?? []).filter(item => item?.as === "came")
     });
 }

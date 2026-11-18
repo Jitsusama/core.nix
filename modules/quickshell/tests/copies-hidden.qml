@@ -66,6 +66,10 @@ QtObject {
         const lines = { kind: "text", glyph: "lines", side: [{ said: "2 lines" }, came] };
         Expect.same("a hidden text's side keeps when it came, not its lines",
             JSON.stringify(Shared.shown(lines).side), JSON.stringify([came]));
+        Expect.same("and the side served is left whole", lines.side.length, 2);
+        const later = { kind: "text", side: [{ at: 900, as: "opened" }, came] };
+        Expect.same("a timed item other than when it came is hidden too",
+            JSON.stringify(Shared.shown(later).side), JSON.stringify([came]));
         const picture = { kind: "picture", glyph: "picture",
             side: [{ said: "PNG" }, { said: "1.52 MB" }, came] };
         Expect.same("a hidden picture is still a picture", Shared.shown(picture).glyph,
