@@ -170,9 +170,10 @@ pub struct Seeing {
     pub lid: bool,
     /// The disk guards' status files found stopped, until each beats.
     pub guards: Vec<PathBuf>,
-    /// Whose calls go unheard here, each the thing it's counted under: a
-    /// machine declaring no call probe or whose probe said nothing, and
-    /// the nodes here when one won't answer, until each is heard again.
+    /// Whose calls go unheard here, each the thing it's counted under, once
+    /// counted: a machine declaring no call probe, whose probe said nothing
+    /// or whose record's time can't be trusted, and the nodes here when one
+    /// won't answer, until each is heard again.
     pub unseen_calls: Vec<String>,
 }
 

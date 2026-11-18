@@ -17,9 +17,15 @@
 //! - a fresh one that declares no call probe, as a machine on a core
 //!   from before the probe or one declaring nothing, is unseen;
 //! - a record older than [`FRESH`], a machine asleep, off or away, is no
-//!   call, so a closed laptop holds nothing back.
+//!   call, so a closed laptop holds nothing back;
+//! - a record dated a minute or more ahead of this machine's clock, or
+//!   with no time it can read, is undated, since how old it is can't be
+//!   told.
 //!
-//! Untold and unseen machines, and a node here that won't answer, are
+//! A machine's name is kept without its control characters, so no record
+//! steers the terminal or the day it's named in.
+//!
+//! Untold, unseen and undated machines, and a node here that won't answer, are
 //! named rather than waited on: whatever asks counts can't tell as busy
 //! with no end, so one broken peer, or a wedged node, would hold every
 //! switch for ever, the one that would mend it included. Only this
@@ -49,6 +55,9 @@ pub struct Heard {
     pub untold: Vec<String>,
     /// Machines whose fresh record declares no call probe.
     pub unseen: Vec<String>,
+    /// Machines whose record is dated ahead of this machine's clock, or
+    /// carries no time it can read.
+    pub undated: Vec<String>,
     /// Why each node here that didn't answer couldn't, naming its socket.
     pub unanswered: Vec<String>,
 }
@@ -76,6 +85,7 @@ pub fn hear(runtimes: &std::path::Path) -> Heard {
 /// its realms' records wins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Said {
+    Undated,
     Unseen,
     Untold,
     NoCall,
@@ -87,13 +97,17 @@ enum Said {
 /// node's list of machines says nothing; the caller counts a node that
 /// couldn't answer.
 pub fn judge(answers: &[Value], here: &str, now: i64) -> Heard {
-    let mut machines: BTreeMap<&str, Said> = BTreeMap::new();
+    let mut machines: BTreeMap<String, Said> = BTreeMap::new();
     let records = answers
         .iter()
         .filter_map(|answer| answer["Ok"]["Machines"].as_array())
         .flatten();
     for record in records {
-        let Some(name) = record["name"].as_str().filter(|name| *name != here) else {
+        let Some(name) = record["name"]
+            .as_str()
+            .map(|name| name.chars().filter(|c| !c.is_control()).collect::<String>())
+            .filter(|name| !name.is_empty() && name != here)
+        else {
             continue;
         };
         let Some(said) = said(record, now) else {
@@ -108,17 +122,23 @@ pub fn judge(answers: &[Value], here: &str, now: i64) -> Heard {
             Said::Call => &mut heard.calls,
             Said::Untold => &mut heard.untold,
             Said::Unseen => &mut heard.unseen,
+            Said::Undated => &mut heard.undated,
             Said::NoCall => continue,
         };
-        list.push(name.to_owned());
+        list.push(name);
     }
     heard
 }
 
-/// What one machine's record says, or nothing when it isn't fresh.
+/// What one machine's record says, or nothing when it's gone stale.
 fn said(record: &Value, now: i64) -> Option<Said> {
-    let measured = record["measured_at"].as_str().and_then(seconds_of)?;
-    if !(now - FRESH..=now + 60).contains(&measured) {
+    let Some(measured) = record["measured_at"].as_str().and_then(seconds_of) else {
+        return Some(Said::Undated);
+    };
+    if measured > now + 60 {
+        return Some(Said::Undated);
+    }
+    if measured < now - FRESH {
         return None;
     }
     let reached = &record["reached"]["call"];
@@ -304,6 +324,49 @@ mod tests {
     fn a_record_gone_stale_is_no_call() {
         for (measured_at, why) in [
             ("2026-11-17T14:12:59Z", "a record past three minutes old"),
+            ("2026-11-17T14:00:00Z", "a record a quarter hour old"),
+        ] {
+            for declares_call in [true, false] {
+                let heard = judge(
+                    &[answer(&[record(
+                        "skiff",
+                        measured_at,
+                        declares_call,
+                        &json!({"call": false}),
+                    )])],
+                    HERE,
+                    AT,
+                );
+                assert_eq!(heard, Heard::default(), "{why} counted: {heard:?}");
+            }
+        }
+        let heard = judge(
+            &[answer(&[record(
+                "skiff",
+                "2026-11-17T14:12:59Z",
+                true,
+                &json!({"call": true}),
+            )])],
+            HERE,
+            AT,
+        );
+        assert_eq!(heard, Heard::default(), "a stale yes counted: {heard:?}");
+        let heard = judge(
+            &[answer(&[record(
+                "skiff",
+                "2026-11-17T14:13:00Z",
+                true,
+                &json!({"call": true}),
+            )])],
+            HERE,
+            AT,
+        );
+        assert_eq!(heard.calls, ["skiff"], "a yes just fresh wasn't a call");
+    }
+
+    #[test]
+    fn a_record_dated_ahead_or_with_no_time_is_undated() {
+        for (measured_at, why) in [
             ("2026-11-17T14:17:01Z", "a record from the future"),
             ("not a time", "a record with no time"),
         ] {
@@ -318,9 +381,44 @@ mod tests {
                     HERE,
                     AT,
                 );
-                assert_eq!(heard, Heard::default(), "{why} counted: {heard:?}");
+                assert_eq!(
+                    heard,
+                    Heard {
+                        undated: vec!["skiff".to_owned()],
+                        ..Heard::default()
+                    },
+                    "{why} wasn't undated alone"
+                );
             }
         }
+        let heard = judge(
+            &[answer(&[record(
+                "skiff",
+                "2026-11-17T14:17:00Z",
+                true,
+                &json!({"call": true}),
+            )])],
+            HERE,
+            AT,
+        );
+        assert_eq!(heard.calls, ["skiff"], "a yes a minute ahead wasn't a call");
+    }
+
+    #[test]
+    fn a_name_is_kept_without_its_control_characters() {
+        let heard = judge(
+            &[answer(&[
+                record("sk\u{1b}]52;c;aGk=\u{7}iff", NOW, false, &json!({})),
+                record("\u{1b}\u{7}", NOW, false, &json!({})),
+            ])],
+            HERE,
+            AT,
+        );
+        assert_eq!(
+            heard.unseen,
+            ["sk]52;c;aGk=iff"],
+            "a name kept a control character, or one of nothing but them was named"
+        );
     }
 
     #[test]

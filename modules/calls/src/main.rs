@@ -14,12 +14,13 @@
 //! On Linux a call on another of the person's machines is a call too, as
 //! the mycelium nodes under RUNTIMES hear it from their peers
 //! (src/nodes.rs, and src/elsewhere.rs for how a record is read). A node
-//! that won't answer, a peer whose probe said nothing lately and a peer
-//! declaring no call probe are each named on stderr, and none is a wait,
-//! since whatever asks would wait on it for ever. `--here` asks about this
-//! machine alone, as the node's own probe and the shaper must, or two
-//! machines would each hold up the other's call. A Mac's nodes keep their sockets where root can't find them, so a
-//! Mac hears only itself.
+//! that won't answer, a peer whose probe said nothing lately, a peer
+//! declaring no call probe and a peer whose record's time can't be read or
+//! trusted are each named on stderr, and none is a wait, since whatever
+//! asks would wait on it for ever. `--here` asks about this machine alone,
+//! as the node's own probe and the shaper must, or two machines would each
+//! hold up the other's call. A Mac's nodes keep their sockets where root
+//! can't find them, so a Mac hears only itself.
 
 #[cfg(target_os = "macos")]
 mod coreaudio;
@@ -115,11 +116,18 @@ fn cautions(peers: &calls::elsewhere::Heard) -> Vec<String> {
     let untold = peers.untold.iter().map(|machine| {
         format!("{machine}'s call probe said nothing lately, so a call there goes unseen")
     });
+    let undated = peers.undated.iter().map(|machine| {
+        format!("{machine}'s record is dated ahead of this clock or not at all, so a call there goes unseen")
+    });
     let unanswered = peers
         .unanswered
         .iter()
         .map(|why| format!("{why}, so its peers' calls go unheard"));
-    unseen.chain(untold).chain(unanswered).collect()
+    unseen
+        .chain(untold)
+        .chain(undated)
+        .chain(unanswered)
+        .collect()
 }
 
 #[cfg(target_os = "macos")]

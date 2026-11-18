@@ -12,7 +12,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -69,17 +69,41 @@ impl World {
 
     /// All a-call-is-on says when asked with `args`.
     fn told(&self, args: &[&str]) -> Output {
+        self.told_within(args, Duration::from_secs(60))
+            .expect("a-call-is-on answered within a minute")
+    }
+
+    /// All a-call-is-on says when asked with `args`, or none when it
+    /// hasn't answered `within` and is stopped.
+    fn told_within(&self, args: &[&str], within: Duration) -> Option<Output> {
         let path = format!(
             "{}:{}",
             self.stand_ins.display(),
             std::env::var("PATH").unwrap_or_default()
         );
-        Command::new(env!("CARGO_BIN_EXE_a-call-is-on"))
+        let mut asking = Command::new(env!("CARGO_BIN_EXE_a-call-is-on"))
             .args(args)
             .env("PATH", path)
             .env_remove("JOURNAL_STREAM")
-            .output()
-            .expect("a-call-is-on ran")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("a-call-is-on ran");
+        let started = Instant::now();
+        while asking.try_wait().expect("its state").is_none() {
+            if started.elapsed() > within {
+                let _ = asking.kill();
+                let _ = asking.wait();
+                return None;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        Some(asking.wait_with_output().expect("what it said"))
+    }
+
+    /// The runtime folders, as a-call-is-on is given them.
+    fn runtimes(&self) -> &str {
+        self.runtimes.to_str().expect("a folder as text")
     }
 }
 
@@ -223,14 +247,15 @@ fn serve(socket: &std::path::Path, peer: &str) {
     });
 }
 
-/// A peer's record, measured `ago` seconds since, declaring the call
-/// probe when `declares_call`, its probes saying `reached`.
-fn peer(ago: u64, declares_call: bool, reached: &str) -> String {
-    let at = SystemTime::now()
+/// A peer's record, measured `ago` seconds since, or ahead when it's
+/// less than none, declaring the call probe when `declares_call`, its
+/// probes saying `reached`.
+fn peer(ago: i64, declares_call: bool, reached: &str) -> String {
+    let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("after the epoch")
-        .as_secs()
-        - ago;
+        .as_secs();
+    let at = i64::try_from(now).expect("a time") - ago;
     let measured = Command::new("date")
         .args(["-u", "-d", &format!("@{at}"), "+%Y-%m-%dT%H:%M:%S.5Z"])
         .output()
@@ -396,12 +421,13 @@ fn a_node_that_wont_answer_is_named_and_no_wait() {
     );
 }
 
-/// A stand-in node for the account 1000 that takes each request and
-/// answers it with `says`, then holds the connection open for ten seconds.
-fn misbehaving(world: &World, says: Vec<u8>) {
+/// A stand-in node for the account 1000 in `realm` that takes each request
+/// and answers it with `says`, then holds the connection open for half a
+/// minute.
+fn misbehaving(world: &World, realm: &str, says: Vec<u8>) {
     let folder = world.runtimes.join("1000").join("mycelium");
     fs::create_dir_all(&folder).expect("a node's folder");
-    let listener = UnixListener::bind(folder.join("work.sock")).expect("a socket");
+    let listener = UnixListener::bind(folder.join(format!("{realm}.sock"))).expect("a socket");
     thread::spawn(move || {
         for stream in listener.incoming().flatten() {
             let says = says.clone();
@@ -409,7 +435,7 @@ fn misbehaving(world: &World, says: Vec<u8>) {
                 let mut asked = String::new();
                 let _ = BufReader::new(&stream).read_line(&mut asked);
                 let _ = (&stream).write_all(&says);
-                thread::sleep(Duration::from_secs(10));
+                thread::sleep(Duration::from_secs(30));
             });
         }
     });
@@ -419,14 +445,10 @@ fn misbehaving(world: &World, says: Vec<u8>) {
 fn a_node_that_never_answers_is_named_once_its_time_is_up() {
     let world = World::new();
     world.account("1000", "[]");
-    misbehaving(&world, Vec::new());
-    let started = Instant::now();
-    let told = world.told(&[world.runtimes.to_str().expect("a folder as text")]);
-    assert!(
-        started.elapsed() < Duration::from_secs(8),
-        "a node that never answered held it: {:?}",
-        started.elapsed()
-    );
+    misbehaving(&world, "work", Vec::new());
+    let told = world
+        .told_within(&[world.runtimes()], Duration::from_secs(15))
+        .expect("a node that never answered held it past its time");
     assert_eq!(
         told.status.code(),
         Some(1),
@@ -442,7 +464,7 @@ fn a_node_that_never_answers_is_named_once_its_time_is_up() {
 fn a_node_answering_without_end_is_named_past_its_limit() {
     let world = World::new();
     world.account("1000", "[]");
-    misbehaving(&world, vec![b'a'; 5 << 20]);
+    misbehaving(&world, "work", vec![b'a'; 5 << 20]);
     let told = world.told(&[world.runtimes.to_str().expect("a folder as text")]);
     assert_eq!(
         told.status.code(),
@@ -452,6 +474,102 @@ fn a_node_answering_without_end_is_named_past_its_limit() {
     assert!(
         String::from_utf8_lossy(&told.stderr).contains("answered more than"),
         "it didn't say the node answered too much: {told:?}"
+    );
+}
+
+#[test]
+fn the_nodes_are_asked_at_once_so_a_mute_one_starves_none() {
+    let world = World::new();
+    world.account("1000", "[]");
+    // Asked one after another, personal's silence would spend all the
+    // time work has to answer.
+    misbehaving(&world, "personal", Vec::new());
+    node(&world, "1000", "work", &peer(10, true, r#"{"call":true}"#));
+    let told = world
+        .told_within(&[world.runtimes()], Duration::from_secs(15))
+        .expect("a mute node held it past its time");
+    assert_eq!(
+        told.status.code(),
+        Some(0),
+        "a call heard after a mute node went unheard: {told:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("personal.sock"),
+        "it didn't name the mute node: {told:?}"
+    );
+}
+
+#[test]
+fn a_node_whose_queue_is_full_is_named_at_once() {
+    let world = World::new();
+    world.account("1000", "[]");
+    let folder = world.runtimes.join("1000").join("mycelium");
+    fs::create_dir_all(&folder).expect("a node's folder");
+    let socket = folder.join("work.sock");
+    let listener = UnixListener::bind(&socket).expect("a socket");
+    // A node that takes no connection, its queue holding one already.
+    rustix::net::listen(&listener, 0).expect("a queue of none");
+    let _queued = std::os::unix::net::UnixStream::connect(&socket).expect("one queued");
+    let told = world
+        .told_within(&[world.runtimes()], Duration::from_secs(5))
+        .expect("a node with a full queue held it");
+    assert_eq!(
+        told.status.code(),
+        Some(1),
+        "a full node was a wait: {told:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("work.sock"),
+        "it didn't name the full node: {told:?}"
+    );
+}
+
+#[test]
+fn an_account_offering_too_many_nodes_has_its_first_asked() {
+    let world = World::new();
+    world.account("1000", "[]");
+    let folder = world.runtimes.join("1000").join("mycelium");
+    fs::create_dir_all(&folder).expect("a node's folder");
+    node(&world, "1000", "a", &peer(10, true, r#"{"call":true}"#));
+    for realm in 0..20 {
+        drop(UnixListener::bind(folder.join(format!("z{realm:02}.sock"))).expect("a socket"));
+    }
+    let told = world.told(&[world.runtimes()]);
+    assert_eq!(
+        told.status.code(),
+        Some(0),
+        "its first node's call went unheard: {told:?}"
+    );
+    let said = String::from_utf8_lossy(&told.stderr);
+    assert!(
+        said.contains("offers 21 nodes, more than 16, and the last 5 aren't asked"),
+        "it didn't say how many went unasked: {told:?}"
+    );
+    assert!(
+        !said.contains("z19.sock"),
+        "it asked past its limit: {told:?}"
+    );
+}
+
+#[test]
+fn a_peer_dated_ahead_is_named_and_no_wait() {
+    let world = World::new();
+    world.account("1000", "[]");
+    node(
+        &world,
+        "1000",
+        "work",
+        &peer(-600, true, r#"{"call":true}"#),
+    );
+    let told = world.told(&[world.runtimes()]);
+    assert_eq!(
+        told.status.code(),
+        Some(1),
+        "an undated yes was a wait: {told:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("skiff's record is dated ahead"),
+        "it didn't name the undated peer: {told:?}"
     );
 }
 

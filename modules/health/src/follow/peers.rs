@@ -2,7 +2,9 @@
 //! mycelium nodes here list them: a-call-is-on names each machine whose
 //! calls it can't hear, and a node here that won't answer, only to
 //! whoever asked, and waits on none, so each stands here as a service's
-//! fault until it mends.
+//! fault until it mends. A thing counts once it's gone unheard for
+//! [`UNHEARD_FOR`], so a node restarting or one probe running late, each
+//! mended within a minute, isn't a fault.
 
 use std::path::{Path, PathBuf};
 
@@ -17,6 +19,16 @@ pub(super) const CALL_UNSEEN: &str = "it declares no call probe, so a call there
 /// What the day calls a machine whose call probe said nothing lately.
 pub(super) const CALL_UNTOLD: &str =
     "its call probe said nothing lately, so a call there goes unseen";
+
+/// What the day calls a machine whose record's time can't be read or
+/// trusted.
+pub(super) const CALL_UNDATED: &str =
+    "its record is dated ahead of this clock or not at all, so a call there goes unseen";
+
+/// How long a thing goes unheard, in microseconds, before it counts: a
+/// record's freshness, the three minutes a late measure or a node's
+/// restart is mended within.
+const UNHEARD_FOR: i64 = calls::elsewhere::FRESH * 1_000_000;
 
 /// What the day calls a node here that won't answer.
 pub(super) const NODE_SILENT: &str =
@@ -44,21 +56,28 @@ impl Follower {
     }
 
     /// Keep whose calls go `unheard` at `at`, each a thing and what's said
-    /// of it: each counts once as a service's fault, and again only after
-    /// it's heard again, a start between them or not.
+    /// of it: each counts once as a service's fault when it's gone unheard
+    /// on every look for [`UNHEARD_FOR`], and again only after it's heard
+    /// again, a start between them or not.
     pub fn see_unheard_calls(&mut self, unheard: Vec<(String, &str)>, at: i64) {
         if date_of(at, &self.zone) != self.day.date {
             return;
         }
-        for (thing, said) in &unheard {
-            if !self.day.seeing.unseen_calls.contains(thing) {
-                self.day.fault(thing, Kind::Services, said, at);
+        self.unheard_since
+            .retain(|thing, _| unheard.iter().any(|(unheard, _)| unheard == thing));
+        let mut counted = Vec::new();
+        for (thing, said) in unheard {
+            let since = *self.unheard_since.entry(thing.clone()).or_insert(at);
+            if self.day.seeing.unseen_calls.contains(&thing) {
+                counted.push(thing);
+            } else if at - since >= UNHEARD_FOR {
+                self.day.fault(&thing, Kind::Services, said, at);
                 self.changed = true;
+                counted.push(thing);
             }
         }
-        let things: Vec<String> = unheard.into_iter().map(|(thing, _)| thing).collect();
-        if self.day.seeing.unseen_calls != things {
-            self.day.seeing.unseen_calls = things;
+        if self.day.seeing.unseen_calls != counted {
+            self.day.seeing.unseen_calls = counted;
             self.changed = true;
         }
     }
@@ -78,6 +97,12 @@ pub(super) fn unheard(heard: &Heard) -> Vec<(String, &'static str)> {
                 .untold
                 .iter()
                 .map(|machine| (calls_on(machine), CALL_UNTOLD)),
+        )
+        .chain(
+            heard
+                .undated
+                .iter()
+                .map(|machine| (calls_on(machine), CALL_UNDATED)),
         )
         .collect();
     if !heard.unanswered.is_empty() {

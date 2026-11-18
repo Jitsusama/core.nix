@@ -1,18 +1,22 @@
 //! The mycelium nodes this machine runs, asked for every machine's record,
 //! on Linux: each account running one has a socket a realm,
 //! `mycelium/<realm>.sock`, in its runtime folder under RUNTIMES, and
-//! answers one JSON line, a `Machines` request, with another. Root reaches
-//! every account's; anyone else reaches their own, and another account's
-//! folder they can't read isn't theirs to ask.
+//! answers one JSON line, a `Machines` request, with another, the shape
+//! the mycelium node this core locks speaks (`mycelium machines --socket`
+//! says the same), so a lock bump that changes it shows here as every node
+//! named unanswered. Root reaches every account's; anyone else reaches
+//! their own, and another account's folder they can't read isn't theirs
+//! to ask.
 //!
-//! Root asks as root, so it opens only what an account can't point
+//! Root asks as root, so it lists only what an account can't point
 //! elsewhere: a socket itself, never a link, owned by the account whose
-//! runtime folder holds it, the folder owned by that account too; and it
-//! hears an answer only from a process of that account, which a link
-//! swapped in after those checks can't fake. Every node is asked at once,
-//! each connected without waiting and given [`WITHIN`] in all and
-//! [`AT_MOST`] bytes, so a node that won't take a connection, drips or
-//! floods, or a thousand of them, can't hold the asker past it.
+//! runtime folder holds it, the folder owned by that account too. The
+//! account could still swap a link in before the connect, so root asks
+//! nothing of a connection until its other end proves a process of that
+//! account. Every node is asked at once, at most [`EACH_ACCOUNT`] an
+//! account, each connected without waiting and given [`WITHIN`] in all
+//! and [`AT_MOST`] bytes, so a node that won't take a connection, drips or
+//! floods can't hold the asker past it.
 
 use rustix::net::{self, AddressFamily, SocketAddrUnix, SocketFlags, SocketType, sockopt};
 use serde_json::Value;
@@ -24,8 +28,15 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// How long the nodes have to take the request and answer it, in all.
-const WITHIN: Duration = Duration::from_secs(3);
+/// How long the nodes have to take the request and answer it, in all:
+/// jobs-sorter's ten seconds for the same request, so a node slowed by a
+/// build still answers, well inside the thirty update-to-main gives the
+/// whole question; a healthy node answers in milliseconds.
+const WITHIN: Duration = Duration::from_secs(10);
+
+/// The most nodes asked of one account, a realm each: an account offering
+/// more is told so, and its first ones asked.
+const EACH_ACCOUNT: usize = 16;
 
 /// The longest answer read: a realm's machines' records run to tens of
 /// kilobytes.
@@ -53,21 +64,30 @@ struct Node {
 #[must_use]
 pub fn answers(runtimes: &Path) -> Asked {
     let deadline = Instant::now() + WITHIN;
+    let (nodes, crowded) = nodes(runtimes);
     let said: Vec<Result<Value, String>> = thread::scope(|scope| {
-        let asking: Vec<_> = nodes(runtimes)
+        let asking: Vec<_> = nodes
             .into_iter()
-            .map(|node| scope.spawn(move || ask(&node, deadline)))
+            .map(|node| {
+                let socket = node.socket.clone();
+                thread::Builder::new()
+                    .spawn_scoped(scope, move || ask(&node, deadline))
+                    .map_err(|error| format!("the mycelium node at {}: {error}", socket.display()))
+            })
             .collect();
         asking
             .into_iter()
-            .map(|asked| {
-                asked
+            .map(|asking| {
+                asking?
                     .join()
                     .unwrap_or_else(|_| Err("a mycelium node's asker panicked".to_owned()))
             })
             .collect()
     });
-    let mut asked = Asked::default();
+    let mut asked = Asked {
+        unanswered: crowded,
+        ..Asked::default()
+    };
     for said in said {
         match said {
             Ok(answer) => asked.answers.push(answer),
@@ -78,12 +98,13 @@ pub fn answers(runtimes: &Path) -> Asked {
 }
 
 /// Each node under `runtimes`, in order: only sockets owned by the account
-/// whose runtime folder, itself the account's, holds them.
-fn nodes(runtimes: &Path) -> Vec<Node> {
+/// whose runtime folder, itself the account's, holds them, the first
+/// [`EACH_ACCOUNT`] of each; and what's said of each account offering more.
+fn nodes(runtimes: &Path) -> (Vec<Node>, Vec<String>) {
     let Ok(accounts) = fs::read_dir(runtimes) else {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     };
-    let mut nodes: Vec<Node> = accounts
+    let mut accounts: Vec<(u32, PathBuf, fs::ReadDir)> = accounts
         .flatten()
         .filter_map(|account| {
             let folder = fs::symlink_metadata(account.path()).ok()?;
@@ -92,19 +113,37 @@ fn nodes(runtimes: &Path) -> Vec<Node> {
             fs::symlink_metadata(&held)
                 .ok()
                 .filter(|held| held.is_dir() && held.uid() == owner)?;
-            Some((owner, fs::read_dir(&held).ok()?))
+            let entries = fs::read_dir(&held).ok()?;
+            Some((owner, held, entries))
         })
-        .flat_map(|(owner, entries)| entries.flatten().map(move |entry| (owner, entry.path())))
-        .filter(|(owner, path)| {
-            path.extension()
-                .is_some_and(|extension| extension == "sock")
-                && fs::symlink_metadata(path)
-                    .is_ok_and(|socket| socket.file_type().is_socket() && socket.uid() == *owner)
-        })
-        .map(|(owner, socket)| Node { socket, owner })
         .collect();
-    nodes.sort_by(|one, other| one.socket.cmp(&other.socket));
-    nodes
+    accounts.sort_by(|one, other| one.1.cmp(&other.1));
+    let mut nodes = Vec::new();
+    let mut crowded = Vec::new();
+    for (owner, held, entries) in accounts {
+        let mut sockets: Vec<PathBuf> = entries
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "sock")
+                    && fs::symlink_metadata(path)
+                        .is_ok_and(|socket| socket.file_type().is_socket() && socket.uid() == owner)
+            })
+            .collect();
+        sockets.sort();
+        if sockets.len() > EACH_ACCOUNT {
+            crowded.push(format!(
+                "{} offers {} nodes, more than {EACH_ACCOUNT}, and the last {} aren't asked",
+                held.display(),
+                sockets.len(),
+                sockets.len() - EACH_ACCOUNT
+            ));
+            sockets.truncate(EACH_ACCOUNT);
+        }
+        nodes.extend(sockets.into_iter().map(|socket| Node { socket, owner }));
+    }
+    (nodes, crowded)
 }
 
 /// The list of machines `node` gives by `deadline`.
@@ -132,11 +171,22 @@ fn ask(node: &Node, deadline: Instant) -> Result<Value, String> {
     if answer["Ok"]["Machines"].is_array() {
         Ok(answer)
     } else {
-        Err(format!(
-            "{} listed no machines: {}",
-            name(),
-            String::from_utf8_lossy(&line).trim()
-        ))
+        Err(format!("{} listed no machines: {}", name(), shown(&line)))
+    }
+}
+
+/// The start of what a node said, its control characters escaped, as an
+/// answer that isn't a list of machines is shown: enough to say what went
+/// wrong, none of it able to steer a terminal.
+fn shown(line: &[u8]) -> String {
+    let line = String::from_utf8_lossy(line);
+    let line = line.trim();
+    let start: String = line.chars().take(120).collect();
+    let start = start.escape_debug().to_string();
+    if line.chars().count() > 120 {
+        format!("{start}...")
+    } else {
+        start
     }
 }
 
