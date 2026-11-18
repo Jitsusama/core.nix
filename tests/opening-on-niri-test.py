@@ -1681,27 +1681,32 @@ def test_a_kept_opening_wakes_its_sources_a_frame_apart(shell: Shell) -> None:
     )
 
 
-def test_a_kept_opening_finds_home_again_in_a_slice_after_its_frame(shell: Shell) -> None:
-    """A kept home's fill finds home again, and joins, in the first slice after its frame.
+def test_a_kept_opening_finds_home_again_in_a_slice_of_its_own(shell: Shell) -> None:
+    """A kept home's fill finds home again, and joins, in a slice of its own after the fill.
 
     Inside `open` they were a third of the fill's 14 ms on a builder, and the fill's "opening"
     held a median 27 ms of 32 of Joel's 53 longest stalls before he could type (H6EDLC,
     2026-11-18). The card shows home as kept until then, and a key or a click before it finds
     home first, so it acts on home found now; with neither, the slice finds it.
     """
+    since = shell.mark()
     nth = opened_from_kept(shell)["nth"]
     woke: list[Json] = []
 
     def slept(_: Json) -> bool:
         woke[:] = [each for each in openings(shell) if each.get("nth") == nth]
-        # The fill says itself once niri has presented it, which can come after its slices.
-        return bool(woke) and "slices" in woke[0] and "fillJoined" in woke[0]
+        return bool(woke) and "slices" in woke[0]
 
     shell.launcher_until(slept)
     assert woke[0].get("fillJoined") == 0, f"the fill joined the choices inside `open`: {woke}"
     assert woke[0].get("foundBy") == "slice", f"home wasn't found in a slice of its own: {woke}"
-    after = settled(shell)
-    assert after["keys"], f"home found again listed nothing: {after}"
+    # Searched again, not only joined, as the kept rows it shows till then list keys either way.
+    said = shell.log.read_bytes()[since:].decode(errors="replace")
+    assert "home found again in" in said, f"the slice didn't find home again: {woke}"
+    # Its time is a slice's, so it's never read as the sources' first wait.
+    found = cast("int", woke[0]["foundTook"])
+    assert cast("int", woke[0]["longestSlice"]) >= found, f"the finding went uncounted: {woke}"
+    assert cast("int", woke[0]["foundFrom"]) >= 0, f"the finding ran before the fill: {woke}"
 
 
 def test_a_kept_openings_sources_wake_though_no_frame_comes(shell: Shell) -> None:
