@@ -45,7 +45,16 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
     let judged = judge::judge(&today, &before);
     let kept_at = folder.join("findings.jsonl");
     let mut ledger = findings::read(&kept_at);
-    findings::update(&mut ledger, &today, &judged.worse, &told.owners);
+    let mesh = Mesh {
+        root: state_home.join("pi/agentic-harness.pi"),
+    };
+    findings::update(
+        &mut ledger,
+        &today,
+        &judged.worse,
+        &told.owners,
+        &mesh.known(),
+    );
     // A typed run tells nobody, so it marks nobody told or late.
     let sending = told.orchestrator.is_some();
     let late = if sending {
@@ -70,9 +79,6 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
     write_whole(&days.join(format!("{}.txt", today.date)), &note)?;
     print!("{note}");
     if let Some(orchestrator) = &told.orchestrator {
-        let mesh = Mesh {
-            root: state_home.join("pi/agentic-harness.pi"),
-        };
         // Findings, so an owner reads them with its next turn rather than
         // being woken for them, which costs a cold start each.
         for (to, text) in asks {

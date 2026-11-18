@@ -24,7 +24,10 @@
 # doesn't answer, once for each spell, with since when and its last error:
 # on 13 November slack-unreads restarted 44 times and Google read signed out
 # for two hours before anyone knew. A unit's owner is the one `owners` names
-# for `unit:<unit>`, else for `unstamped:<unit>`, else the watcher.
+# for `unit:<unit>`, else for `unstamped:<unit>`, else the session whose mesh
+# address its name carries, else the watcher. One-off runs, merge-net's
+# reruns and systemd-run's unnamed units, are never told: whoever ran each
+# reads its end.
 #
 # Each evening at 18:00, `cadence day` reads the day just ended (crashes,
 # failed units, out-of-memory kills, pressure, switches, each
@@ -151,9 +154,12 @@ in
         The mesh address each finding of `cadence day` goes to, by the
         prefix of its key, the longest matching: `crashes:biome`,
         `failed:quickshell.service`, `pressure.cpu.jobs`, `oom.machine`,
-        `switch.minutes.longest`. A finding no prefix matches goes to the
-        watcher. A broken unit the tick finds goes to the owner of
-        `unit:<unit>`, else of `unstamped:<unit>`, as `unit:google.service`.
+        `switch.minutes.longest`. A unit's finding no prefix matches goes
+        to the owner of `unit:<unit>`, else of `unstamped:<unit>`, else to
+        the session whose mesh address is a dash-separated part of the
+        unit's name, as `garbage-bound-mon-2af2dh.service`; any other
+        goes to the watcher. A broken unit the tick finds goes the same
+        way, as `unit:google.service`.
         The key `review` names who gets Friday's `cadence review` beside the
         orchestrator.
       '';
