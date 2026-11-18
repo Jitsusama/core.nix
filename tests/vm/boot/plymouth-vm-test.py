@@ -19,7 +19,7 @@ import tempfile
 import time
 from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NoReturn, cast
 
 import pytest
 from test_driver.errors import RequestedAssertionFailed
@@ -391,42 +391,87 @@ def greeted_afresh(machine: QemuMachine) -> None:
     retry(greets, timeout=READING)
 
 
+NEVER_GREETED = "never greeted"
+# Three tries of three readings, and two restarts' short waits, keep a
+# run that waits each out inside the driver's hour, with the test's
+# other cases.
+TRIES = 3
+# A restarted kmscon starts its login in seconds, well before the
+# screen it draws is read.
+RESTARTING = timedelta(seconds=60)
+
+
 def signs_in(boot: Boot) -> None:
-    """Sign in at kmscon's console, on a fresh one again if login gave up without a shell."""
-    machine, account = boot.machine, boot.account
+    """Sign in at kmscon's console, on a fresh one again after a try that gave no shell."""
+    machine = boot.machine
     ended: list[str] = []
-    for _ in range(3):
-        refused = machine.succeed(REFUSALS).strip()
-        machine.wait_for_text("Hello", timeout=READING)
-        machine.send_chars(f"{account}\n", delay=TYPING)
-        machine.wait_for_text("Password", timeout=READING)
-        status, asking = machine.execute(ASKING)
-        machine.send_chars(f"{boot.password}\n", delay=TYPING)
-        # Login gives up either by refusing what arrived, which it
-        # counts, or by leaving with no shell, which it doesn't: its
-        # time runs out, or the last key is lost and it waits until it
-        # does. Either is tried again on a fresh console. A login not
-        # found asking is waited on as a refusal alone, rather than
-        # taken for gone and a good sign-in cut short.
-        gave_up = [f'[ "$({REFUSALS})" != {refused} ]']
-        if status == 0:
-            gave_up.append(f"! kill -0 {asking.strip()}")
-        try:
-            machine.wait_until_succeeds(
-                f"pgrep -u {account} -x zsh || {' || '.join(gave_up)}", timeout=READING
-            )
-        except RequestedAssertionFailed:
-            tried = ", ".join(ended) or "none"
-            pytest.fail(
-                f"login gave neither a shell nor an answer on try {len(ended) + 1}, after: {tried}"
-            )
-        if machine.execute(f"pgrep -u {account} -x zsh")[0] == 0:
-            return
-        counted = machine.succeed(REFUSALS).strip() != refused
-        ended.append("refused" if counted else "left with no shell")
+    while (how := tried(boot, afresh=bool(ended))) is not None:
+        ended.append(how)
+        # A console that never greets is what this test is for, not a
+        # stall to try past.
+        if how == NEVER_GREETED or len(ended) == TRIES:
+            gave_up(machine, f"the console gave no shell: {', '.join(ended)}")
         machine.succeed("systemctl restart kmsconvt@tty3.service")
-        greeted_afresh(machine)
-    pytest.fail(f"login gave up on the console's password three times: {', '.join(ended)}")
+        # The restart stops the old kmscon before it starts the new
+        # one, so a login found asking is the fresh console's.
+        try:
+            machine.wait_until_succeeds(ASKING, timeout=RESTARTING)
+        except RequestedAssertionFailed:
+            gave_up(machine, f"the restarted console started no login, after: {', '.join(ended)}")
+    if ended:
+        print(f"signed in on try {len(ended) + 1}, after: {', '.join(ended)}")
+
+
+def gave_up(machine: QemuMachine, why: str) -> NoReturn:
+    """Fail signing in, keeping the screen it stalled on to be seen after the run."""
+    machine.screenshot("sign-in-gave-up")
+    pytest.fail(why)
+
+
+def tried(boot: Boot, *, afresh: bool) -> str | None:
+    """Sign in once, saying how the try ended if it gave no shell."""
+    machine, account = boot.machine, boot.account
+    # A try ends at whichever wait runs out, rather than at the
+    # driver's bare timeout: a lost key on the account line leaves
+    # login never asking, and the first try's login, started before
+    # the console's other cases, can run out of time before it asks.
+    # A fresh console's greeting is read once, with no password asked
+    # for, rather than twice on its login's clock.
+    try:
+        if afresh:
+            greeted_afresh(machine)
+        else:
+            machine.wait_for_text("Hello", timeout=READING)
+    except RequestedAssertionFailed:
+        return NEVER_GREETED
+    # Refusals are counted from here, so one the last try's login
+    # logged late isn't taken for this one's.
+    refused = machine.succeed(REFUSALS).strip()
+    machine.send_chars(f"{account}\n", delay=TYPING)
+    try:
+        machine.wait_for_text("Password", timeout=READING)
+    except RequestedAssertionFailed:
+        return "never asked for the password"
+    status, asking = machine.execute(ASKING)
+    machine.send_chars(f"{boot.password}\n", delay=TYPING)
+    # Login gives up either by refusing what arrived, which it counts,
+    # or by leaving with no shell, which it doesn't: its time runs
+    # out, or the last key is lost and it waits until it does. A
+    # login not found asking is waited on as a refusal alone, rather
+    # than taken for gone and a good sign-in cut short.
+    gave_up = [f'[ "$({REFUSALS})" != {refused} ]']
+    if status == 0:
+        gave_up.append(f"! kill -0 {asking.strip()}")
+    try:
+        machine.wait_until_succeeds(
+            f"pgrep -u {account} -x zsh || {' || '.join(gave_up)}", timeout=READING
+        )
+    except RequestedAssertionFailed:
+        return "gave neither a shell nor an answer"
+    if machine.execute(f"pgrep -u {account} -x zsh")[0] == 0:
+        return None
+    counted = machine.succeed(REFUSALS).strip() != refused
+    return "refused" if counted else "left with no shell"
 
 
 def test_the_keys_the_greeting_gives_go_back_to_the_desktop(opened: Boot) -> None:
