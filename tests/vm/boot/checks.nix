@@ -15,6 +15,9 @@ onLinux {
   vm-bluetooth-types-at-the-disk-prompt = import ./bluetooth-disk-prompt.nix {
     inherit self pkgs;
   };
+  # Whether the firmware's tables reach an account shows only with firmware
+  # that hands the kernel one.
+  vm-firmware-records-reach-an-account = import ./firmware-errors.nix { inherit self pkgs; };
   # The greeter is all that stands between a logout and the desktop.
   vm-greeter-signs-in = import ./greeter.nix { inherit self pkgs; };
   vm-boot-asks-in-the-theme = import ./plymouth.nix { inherit self pkgs; };
