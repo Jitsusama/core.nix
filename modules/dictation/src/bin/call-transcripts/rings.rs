@@ -5,7 +5,7 @@
 //! when it rang, `since`, are read here. The rest of each line is passed
 //! over as it's parsed, and the file's bytes are zeroed once read, so who
 //! rang never reaches the receptor, its memory past the read, or mycelium.
-//! One bound on that: serde_json unescapes a string it parses into a typed
+//! One bound on that: `serde_json` unescapes a string it parses into a typed
 //! field or a key into scratch space of its own, freed unzeroed, which
 //! tuple-call's own lines never ask of it, since their keys are plain words
 //! and their two fields a flag and a number.
@@ -82,7 +82,7 @@ struct Wordless<T>(std::marker::PhantomData<T>);
 /// What every refusal says, so none quotes the value refused.
 const NOT_PLAIN: &str = "a field of a call holds what it shouldn't";
 
-impl<'de, T: Plain> Visitor<'de> for Wordless<T> {
+impl<T: Plain> Visitor<'_> for Wordless<T> {
     type Value = T;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
