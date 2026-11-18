@@ -22,8 +22,22 @@ pub enum Verdict {
     Ok,
     /// It waits for an earlier gate sharing its files.
     Hold,
-    /// It runs changed-checks again, or a list's own check.
-    Regate,
+    /// It runs changed-checks again, or a list's own check, as `Rerun`
+    /// says.
+    Regate(Rerun),
+}
+
+/// Why a change that passed earlier runs again: main moved files it
+/// shares since. On 17 November most of these turned on
+/// check-descriptions.nix alone, a minute's check, where a file
+/// changed-checks reads costs a whole run; a day's count of them can't
+/// tell the two apart without it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Rerun {
+    /// Main moved only lists each change adds to, so their own checks run.
+    Lists,
+    /// Main moved a file changed-checks reads, so it runs again whole.
+    Checks,
 }
 
 impl Verdict {
@@ -31,7 +45,7 @@ impl Verdict {
         match self {
             Self::Ok => "ok",
             Self::Hold => "hold",
-            Self::Regate => "regate",
+            Self::Regate(_) => "regate",
         }
     }
 }
@@ -80,7 +94,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("merge-net-answers-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let held = line(5, "abc", Verdict::Hold, &["flake.nix".to_owned()]);
-        let ran = line(6, "def", Verdict::Regate, &[]);
+        let ran = line(6, "def", Verdict::Regate(Rerun::Checks), &[]);
         keep_in(&root, &held).unwrap();
         keep_in(&root, &ran).unwrap();
         let kept = fs::read_to_string(root.join("answers.jsonl")).unwrap_or_default();
@@ -93,6 +107,24 @@ mod tests {
         assert_eq!(
             held, "{\"at\":5,\"files\":[\"flake.nix\"],\"head\":\"abc\",\"verdict\":\"hold\"}\n",
             "an answer was kept in another shape"
+        );
+    }
+
+    #[test]
+    fn a_run_again_says_whether_lists_or_changed_checks_run() {
+        let said = |rerun| {
+            let kept = line(7, "abc", Verdict::Regate(rerun), &["a.nix".to_owned()]);
+            serde_json::from_str::<serde_json::Value>(&kept).unwrap_or_default()["why"].clone()
+        };
+        assert_eq!(
+            said(Rerun::Lists),
+            "lists",
+            "a run again of lists' own checks didn't say so"
+        );
+        assert_eq!(
+            said(Rerun::Checks),
+            "changed-checks",
+            "a run again of changed-checks didn't say so"
         );
     }
 }
