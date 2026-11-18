@@ -17,14 +17,9 @@
 }:
 let
   pineapple = pkgs.callPackage ./package.nix { };
-  # Prints pi's Slack sign-in from the desktop's keyring, where pi has kept
-  # it since moving sign-ins there, or fails while it holds none, so the
-  # old file is read instead (../slack's `Account`), as slack-unreads
-  # reads it. secret-tool's output goes to the program alone.
-  keyring = pkgs.writeShellScript "pineapple-sign-in" ''
-    exec ${lib.getExe' pkgs.libsecret "secret-tool"} lookup \
-      service agentic-harness username slack-credentials
-  '';
+  # Prints pi's Slack sign-in from the desktop's keyring, or says the
+  # keyring is locked, as slack-unreads reads it (../slack/keyring.nix).
+  keyring = pkgs.callPackage ../slack/keyring.nix { };
   # Prints Joel's GitHub sign-in as gh keeps it, through gh itself, so
   # wherever gh keeps it stays gh's business; it fails while he has none.
   # Its output goes to the program alone.

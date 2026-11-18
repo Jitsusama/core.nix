@@ -393,13 +393,10 @@ fn run(how: &Run) -> Result<(), Failure> {
                 round(&github, how, &state, &mut judged);
             }
             SignIn::Missing => eprintln!("<4>no {name} sign-in yet, so nothing is read"),
-            SignIn::RanOver => {
-                // A locked keyring prompts each time it's asked (RAN_OVER_REST).
+            // A locked keyring prompts each time it's asked (RAN_OVER_REST).
+            waited @ (SignIn::RanOver | SignIn::Locked) => {
                 let rest = RAN_OVER_REST + how.every;
-                eprintln!(
-                    "<4>{}",
-                    sign_in::ran_over(&name, &how.site, sign_in::PATIENCE, rest)
-                );
+                eprintln!("<4>{}", sign_in::waited(&waited, &name, &how.site, rest));
                 std::thread::sleep(RAN_OVER_REST);
             }
         }

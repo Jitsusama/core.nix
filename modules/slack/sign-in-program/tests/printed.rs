@@ -118,6 +118,19 @@ fn sign_in_that_fails_gives_no_token() {
 }
 
 #[test]
+fn sign_in_from_a_locked_keyring_is_told_apart() {
+    let _turn = turn();
+    let (answer, _) = signed("locked", "exit 75", AMPLE);
+    assert_eq!(
+        answer,
+        SignIn::Locked,
+        "a locked keyring isn't one lacking it"
+    );
+    let (printed, _) = signed("locked-printing", "echo stand-in-token; exit 75", AMPLE);
+    assert_eq!(printed, SignIn::Locked, "nor are its words taken");
+}
+
+#[test]
 fn sign_in_that_prints_nothing_gives_no_token() {
     let _turn = turn();
     let (answer, _) = signed("nothing", "true", AMPLE);

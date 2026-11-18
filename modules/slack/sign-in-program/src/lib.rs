@@ -31,6 +31,13 @@ const LOOK_EVERY: Duration = Duration::from_millis(20);
 /// program printing for good filling memory before its patience runs out.
 pub const MOST: usize = 64 * 1024;
 
+/// What a program ends with to say the keyring holding its sign-in is
+/// locked, not lacking one: sysexits' `EX_TEMPFAIL`, as a keyring's unlock
+/// prompt dismissed, or with no prompter to show it, is a failure that
+/// passes. secret-tool alone ends 1 for both, saying nothing, so the
+/// programs the units run ask the keyring which it was.
+pub const LOCKED: i32 = 75;
+
 /// What a sign-in program gave.
 #[derive(Debug, PartialEq, Eq)]
 pub enum SignIn {
@@ -39,6 +46,8 @@ pub enum SignIn {
     /// None: it couldn't be run, failed, printed nothing, as a keyring
     /// lacking the item does, or printed what can't be a sign-in.
     Missing,
+    /// It ended [`LOCKED`]: the keyring holding the sign-in is locked.
+    Locked,
     /// It ran past its patience, and it and all it started were killed.
     RanOver,
 }
@@ -94,6 +103,7 @@ pub fn token(program: &OsStr, patience: Duration) -> SignIn {
     };
     match text.trim() {
         token if ended.success() && !token.is_empty() => SignIn::Token(token.to_owned()),
+        _ if ended.code() == Some(LOCKED) => SignIn::Locked,
         _ => SignIn::Missing,
     }
 }
