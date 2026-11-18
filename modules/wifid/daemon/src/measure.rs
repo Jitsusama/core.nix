@@ -21,7 +21,7 @@ use tokio::time::{Duration, Instant, MissedTickBehavior, interval};
 
 use crate::air::Heard;
 use crate::calling::Calling;
-use crate::choose::Chooser;
+use crate::choose::{self, Chooser};
 use crate::echo::Echoer;
 use crate::learn::{self, Here, Learned};
 use crate::moves;
@@ -339,9 +339,14 @@ fn said(on: &Joined, measured: &Measured, call: bool) -> String {
         (Some(moving), None) => format!("; moving {moving} Mbit/s"),
         (None, _) => String::new(),
     };
+    let own = if choose::slowed_by_its_own(measured) {
+        ", slowed by what it moves"
+    } else {
+        ""
+    };
     format!(
         "{} on {}: gateway {} at p50, {} at p95, {:.1}% of {} echoes lost; \
-         {:.2} in 100 frames sent again, {:.2} lost; signal {signal}{moving}{}",
+         {:.2} in 100 frames sent again, {:.2} lost; signal {signal}{moving}{own}{}",
         on.card,
         on.point,
         ms(measured.p50),
@@ -621,6 +626,32 @@ pub(crate) mod tests {
         let line = said(&joined(DESK), &unsaid, false);
         let alone = "unread; moving 12 Mbit/s";
         assert!(line.ends_with(alone), "no room: {line}");
+    }
+
+    #[test]
+    fn a_slow_end_from_what_a_card_moves_is_said_to_be_its_own() {
+        let downloading = Measured {
+            echoes: 121,
+            p50: Some(ms(6)),
+            p95: Some(ms(143)),
+            lost: 0.0,
+            retried: 0.0,
+            failed: 0.0,
+            signal: Some(-36),
+            moving: Some(52),
+            room: Some(1200),
+        };
+        let line = said(&joined(DESK), &downloading, false);
+        assert!(
+            line.ends_with("moving 52 of 1200 Mbit/s, slowed by what it moves"),
+            "why it stays is said: {line}"
+        );
+        let idle = Measured {
+            moving: Some(9),
+            ..downloading
+        };
+        let line = said(&joined(DESK), &idle, false);
+        assert!(line.ends_with("moving 9 of 1200 Mbit/s"), "idle: {line}");
     }
 
     /// One echo a second for the times given, in milliseconds, starting

@@ -25,6 +25,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tokio::time::Duration;
 
+use crate::choose;
 use crate::echo;
 use crate::measure::Measured;
 
@@ -96,9 +97,11 @@ impl Learned {
 
     /// Folds in what the access point a card is on carried over the span,
     /// keeping it on the disk where its network is trusted. An echo never
-    /// answered counts as slow as it was waited for.
+    /// answered counts as slow as it was waited for. A minute slowed by
+    /// what the card moves teaches nothing, as it's the card's own queue
+    /// and not what the access point carries.
     pub fn carried(&mut self, here: &Here, measured: &Measured) -> io::Result<()> {
-        if measured.echoes < ECHOES {
+        if measured.echoes < ECHOES || choose::slowed_by_its_own(measured) {
             return Ok(());
         }
         let p95 = measured.p95.unwrap_or(echo::LOST).as_secs_f64() * 1000.0;
@@ -331,6 +334,31 @@ mod tests {
             learnt.p95
         );
         assert!(learnt.lost > 99.0, "lost {}", learnt.lost);
+    }
+
+    #[test]
+    fn a_minute_slowed_by_what_the_card_moves_teaches_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join("carried"));
+        let downloading = Measured {
+            p50: Some(Duration::from_micros(5800)),
+            moving: Some(52),
+            ..carried(Some(143), 0.0)
+        };
+
+        minutes(
+            &mut learned,
+            &at(HALL, 20, -50),
+            &carried(Some(15), 0.0),
+            10,
+        );
+        learned.carried(&at(HALL, 20, -50), &downloading).unwrap();
+
+        assert_eq!(
+            p95_of(&learned, HALL, 20, -50),
+            Some(15),
+            "a download's queue says nothing of what the air carries"
+        );
     }
 
     #[test]
