@@ -55,6 +55,7 @@
   "launcher/Showing.js"
   "launcher/Seen.js"
   "launcher/Pacing.js"
+  "launcher/Flash.js"
   "launcher/Makings.js"
   "launcher/Presented.js"
   "launcher/Spots.js"

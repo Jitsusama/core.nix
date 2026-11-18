@@ -14,10 +14,13 @@
 // was presented is said by
 // place, each change timed from the earliest line not yet drawn
 // (launcher/Presented.js). A closing makes again only the spots of the
-// things whose stamp moved (launcher/Spots.js). Long because its cases
+// things whose stamp moved (launcher/Spots.js). y's flash starts its
+// time a turn after the frame that draws it, only for the newest yank
+// (launcher/Flash.js). Long because its cases
 // share one check's qml run, so each part split from it would need a check
 // and a run of its own.
 import QtQuick
+import "Flash.js" as Flash
 import "Makings.js" as Makings
 import "Pacing.js" as Pacing
 import "Presented.js" as Presented
@@ -798,6 +801,39 @@ QtObject {
     // timing it in the frame; otherwise the frame after, so the highlight
     // never waits long on it (VKCF3Z, 2026-11-12, d4c660a6; Y2YBTS,
     // 2026-11-16, from Joel's For You drawers made in 4 to 7 ms).
+    // y's flash is timed from the frame that draws it, a turn after the
+    // frame, and only the newest yank's frame starts it, so an earlier yank
+    // still waiting can't end a later flash before it's drawn (2026-11-18).
+    function flashing(failures) {
+        const turn = [];
+        const frame = [];
+        const drain = queue => {
+            for (const then of queue.splice(0))
+                then();
+        };
+        const started = [];
+        let yanks = 0;
+        const yank = () => {
+            const at = ++yanks;
+            Flash.fromItsFrame(then => turn.push(then), then => frame.push(then),
+                () => at === yanks, () => started.push(at));
+        };
+        yank();
+        drain(turn);
+        check(failures, "a yank's flash starts nothing before its frame", started.join(), "");
+        yank();
+        drain(turn);
+        drain(frame);
+        check(failures, "nor in its frame, only the turn after", started.join(), "");
+        drain(turn);
+        check(failures, "and only the newest yank's frame starts it", started.join(), "2");
+        yank();
+        drain(turn);
+        drain(frame);
+        drain(turn);
+        check(failures, "and a yank after starts it again", started.join(), "2,3");
+    }
+
     function drawers(failures) {
         check(failures, "a kind not yet made comes the frame after",
             Pacing.drawerJoinsKey({}, "home", false), false);
@@ -1074,6 +1110,7 @@ QtObject {
         weighing(failures);
         weighingPlaces(failures);
         spotting(failures);
+        flashing(failures);
 
         for (const failure of failures)
             console.warn(failure);

@@ -660,6 +660,15 @@ Floating {
         interval: drawer.flashFor
         onTriggered: drawer.flashing = []
     }
+    // y's flash is timed from the first frame that draws it, which only the
+    // launcher sees, so each yank says it waits, by its count, and the
+    // launcher starts its time once that frame is drawn, if no yank has come
+    // since (launcher/Flash.js).
+    property int yanks: 0
+    signal flashWaits(int yank)
+    function flashStarts() {
+        flash.restart();
+    }
     onShownChanged: relay()
     onWidthChanged: relay()
     Connections {
@@ -962,7 +971,10 @@ Floating {
                 .replace(/[\u200b\u2060]/g, "")).join("");
         flashedBy = lines || choosing === "lines" ? "lines" : "letters";
         flashing = took;
-        flash.restart();
+        // An earlier flash's time stops, so it can't end this one before
+        // it's drawn.
+        flash.stop();
+        flashWaits(++yanks);
         if (began !== null) {
             const at = { line: cursor.line, letter: cursor.letter };
             lastChosen = { began, at, by: choosing };

@@ -73,6 +73,7 @@ import "launcher/Catalogue.js" as Catalogue
 import "launcher/Member.js" as Member
 import "launcher/Rank.js" as Rank
 import "launcher/Showing.js" as Showing
+import "launcher/Flash.js" as Flash
 import "launcher/Spots.js" as Spots
 import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
@@ -7368,16 +7369,11 @@ Scope {
         // The flash is timed from the first frame that draws it, so a frame
         // held back past the flash's length still shows it. An earlier
         // flash's timer stops, and an earlier yank still waiting on its
-        // frame starts nothing, so neither ends this one before it's drawn.
-        // Its time is asked for the way the showing report is
-        // (showingTurnDue), a turn later on each side of the frame, so it
-        // never starts before the report that says it flashed is made.
+        // frame starts nothing, so neither ends this one before it's drawn
+        // (launcher/Flash.js).
         flash.stop();
         const yank = ++yanks;
-        Qt.callLater(() => afterFrame(() => Qt.callLater(() => {
-            if (yank === yanks)
-                flash.restart();
-        })));
+        flashFromItsFrame(() => yank === yanks, () => flash.restart());
         Report.say(`yanked ${copies.length}`);
     }
 
@@ -9768,6 +9764,11 @@ Scope {
         return showingMade.said;
     }
     property string shownSaid: ""
+    // Starts a yank's flash once a frame has drawn it, if `newest` says no
+    // yank has come since, for the rows and the drawer alike.
+    function flashFromItsFrame(newest, start) {
+        Flash.fromItsFrame(then => Qt.callLater(then), then => afterFrame(then), newest, start);
+    }
     function showingTurnDue() {
         afterFrame(() => Qt.callLater(showingTurnEnds));
     }
@@ -14717,6 +14718,9 @@ Scope {
             choosing: prompt.mode === "pageVisual" ? "letters"
                 : prompt.mode === "pageVisualLine" ? "lines" : ""
             flashFor: Options.keyTiming["yank-flash"]
+            // Its flash is timed as the rows' is, from the frame that draws it.
+            onFlashWaits: yank => root.flashFromItsFrame(() => yank === drawerCard.yanks,
+                () => drawerCard.flashStarts())
         }
     }
 }
