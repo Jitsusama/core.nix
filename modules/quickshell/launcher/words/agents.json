@@ -231,11 +231,13 @@
       "glyph": "agent",
       "also": "cell sprout quest link new work begin",
       "tells": {
-        "holding": "New work from a link or a few words, as a quest of its own. Its session starts in no window; Go To opens one when you want it."
+        "holding": "New work from a link or a few words, as a quest of its own. Its window opens for you as soon as its session is up."
       },
       "said": {
         "starting": "starting",
-        "started": "started on {machine}; it shows in Agents once it's up",
+        "started": "started on {machine}; its window opens once it's up",
+        "opened": "started on {machine} and opened",
+        "unopened": "started on {machine}, but not up within a minute; it shows in Agents once it is",
         "unanswered": "nothing answered in time; it may still start, so look in Agents before asking again",
         "unread": "its node's answer couldn't be read",
         "empty": "say what the work is: a link or a few words",

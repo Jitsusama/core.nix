@@ -125,11 +125,14 @@ fi
 # While a test leaves pi-stays, it stays, its window titled with all it was
 # told, so the test can find where it opened, and its process and kitty
 # window written down by its session, so a test can say its record as pi
-# would (desktop-reopens-under-orchestrators).
+# would (desktop-reopens-under-orchestrators); a sprouted one, told its
+# first words and no session, by the name sprouted.
 if [ -e "$XDG_RUNTIME_DIR/pi-stays" ]; then
   printf '\033]2;pi %s\007' "$*"
   if [ "${1:-}" = --session ]; then
     echo "$$ ${KITTY_LISTEN_ON:-} ${KITTY_WINDOW_ID:-}" >"$XDG_RUNTIME_DIR/pi-owner-$2"
+  elif [ -n "${QUEST_WORKFLOW_FIRST_TEXT:-}" ]; then
+    echo "$$" >"$XDG_RUNTIME_DIR/pi-owner-sprouted"
   fi
   # It stands in for a session's pi as long as a test keeps its window, ten
   # minutes at most, and a test's cleanup ends it sooner.

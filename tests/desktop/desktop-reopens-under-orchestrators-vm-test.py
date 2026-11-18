@@ -826,15 +826,16 @@ def test_ten_given_back_by_their_host_come_back_as_plain_pis_where_their_viewers
         desktop.as_account("rm -rf ~/reef")
 
 
-def test_new_work_from_a_link_starts_its_session_in_no_window(desktop: Desktop) -> None:
-    """Start New Work starts a session on a link, in its repository, with no window.
+def test_new_work_from_a_link_opens_its_session_focused(desktop: Desktop) -> None:
+    """Start New Work starts a session on a link, in its repository, and opens it for Joel.
 
     Joel, 2026-11-16: starting a session on incoming work took a hand-built chain of a quest,
     a folder and a start. Typed from the find, as his try-line says, From a Link asks for the
     link, and the agents daemon, taking it only from the shell, asks the realm's node for a
     Sprout, which starts pi held in the link's checkout, told to make the work a quest of its
-    own; no window opens while it runs (pivot of 16 November, 18:55: no session needs a
-    window of its own).
+    own. Once its session is up, its window opens and holds the keys, the launcher closed
+    for it (Joel, 18 November: "start new work does not seem to work from the launcher",
+    when it started in no window and this walk held that in place).
     """
     machine = desktop.machine
     link = "https://github.com/harbour/lighthouse/issues/7"
@@ -846,6 +847,7 @@ def test_new_work_from_a_link_starts_its_session_in_no_window(desktop: Desktop) 
         f"rm -f {opened} {first} && mkdir -p {folder} && touch $XDG_RUNTIME_DIR/pi-stays"
     )
     before = {window["id"] for window in desktop.windows()}
+    brought: list[dict[str, Any]] = []
     try:
         # Any program of Joel's can ask the shell's catalogue, an agent among them, so From a
         # Link asked that way starts nothing: only his own Return sprouts (#5456's council).
@@ -891,20 +893,34 @@ def test_new_work_from_a_link_starts_its_session_in_no_window(desktop: Desktop) 
         told = desktop.as_account(f"cat {first} 2>/dev/null; true")
         assert f"sprouted this session from {link}" in told, f"pi wasn't told the link: {told!r}"
         assert "quest create" in told, f"pi wasn't told to make a quest: {told!r}"
-        desktop.launcher_until(lambda shown: shown["stands"].startswith("started on machine"))
-        # Watched for a while, since a window a start brings maps a beat after pi begins.
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
+        # Its session says its record once it's up, as pi does, and the node, finding its
+        # holder by the process, names the holder's id on it, which the shell opens it by.
+        machine.wait_until_succeeds(
+            desktop.in_session("test -s $XDG_RUNTIME_DIR/pi-owner-sprouted"),
+            timeout=dt.timedelta(seconds=30),
+        )
+        presents(desktop, "sprouted", "SPROUT", {"cwd": folder})
+        # Up to the shell's minute, since it hears the session through the node and the
+        # agents daemon, then opens it.
+        deadline = time.monotonic() + 90
+        while True:
             brought = [one for one in desktop.windows() if one["id"] not in before]
-            assert not brought, f"Start New Work opened windows: {brought}"
-            # Each look at niri is cheap; a fifth of a second apart is enough to see one map.
-            time.sleep(0.2)
-        desktop.close_launcher()
+            focused = json.loads(desktop.as_account("niri msg --json focused-window"))
+            if len(brought) == 1 and (focused or {}).get("id") == brought[0]["id"]:
+                break
+            assert time.monotonic() < deadline, (
+                f"its window didn't open focused: brought {brought}, focused {focused}"
+            )
+            time.sleep(0.5)
+        assert desktop.showing()["open"] is False, "the launcher stayed open over it"
     finally:
         desktop.launcher_left_closed()
+        for window in brought:
+            desktop.close(window)
         # A pattern its own shell's words don't match, so pkill ends only the stand-in.
         desktop.as_account(
-            f"rm -f $XDG_RUNTIME_DIR/pi-stays {opened} {first}; pkill -f 'sleep 60[0-5]'; true"
+            f"rm -f $XDG_RUNTIME_DIR/pi-stays {opened} {first} $XDG_RUNTIME_DIR/pi-owner-sprouted"
+            f" {PI_PRESENCE}/sprout.json; pkill -f 'sleep 60[0-5]'; true"
         )
         desktop.as_account("rm -rf ~/src/github.com/harbour")
 

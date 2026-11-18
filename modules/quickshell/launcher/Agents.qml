@@ -745,6 +745,11 @@ Provider {
     Connections {
         target: Sessions
 
+        // New work Joel started opens as soon as its session is up.
+        function onRunningChanged() {
+            provider.openSprouted();
+        }
+
         function onUnjoined(session) {
             provider.launcher?.tellOnOpen([[session.address,
                 provider.elsewhere(session.reachable ? "unheld" : "unreached", session),
@@ -1450,8 +1455,8 @@ Provider {
     // work was too hard to do at all): From a Link, then one row for each
     // repository the open quests work in, each asking for a link or a few
     // words and asking the agents daemon to sprout them (Sprouting.js), a
-    // quest of its own whose session starts held in no window, which Go To
-    // opens. Folded, found by its name, as Start a Session is.
+    // quest of its own whose session starts held, its window opened for him
+    // once it's up (openSprouted). Folded, found by its name, as Start a Session is.
     // Its rows are made only when it's stepped into (inside), so it costs
     // the first letter typed at home one folded row.
     readonly property var startNewWork: {
@@ -1550,7 +1555,7 @@ Provider {
         return Words.of("agents:start-new-work").said ?? {};
     }
     // How the running act ended, said on it and in the journal; another
-    // may start from here.
+    // may start from here. One started opens once its session is up.
     function sprouted(how) {
         const key = sprouting;
         sprouting = "";
@@ -1558,6 +1563,50 @@ Provider {
         sproutSays(key, Sprouting.told(how, sproutWords()));
         Report.say(how.started ? `sprouted new work on ${how.machine}`
             : `couldn't sprout new work: ${how.why}`);
+        if (how.started && how.held !== "") {
+            opening = { key: key, held: how.held, machine: how.machine };
+            openPatience.restart();
+            openSprouted();
+        }
+    }
+
+    // The sprout whose window opens once its session is up, as `{ key,
+    // held, machine }`, or null: Joel asked for it, so it opens for him, on
+    // the workspace a session goes to and focused (Sessions.goTo), rather
+    // than in no window (Joel, 18 November: "start new work does not seem
+    // to work from the launcher"). The launcher closes for it only while
+    // it still stands on the act he pressed, so a search begun since keeps.
+    property var opening: null
+    function openSprouted() {
+        const it = opening;
+        const session = it === null ? null : Sprouting.sproutedOf(Sessions.running, it.held);
+        if (session === null)
+            return;
+        opening = null;
+        openPatience.stop();
+        sproutSays(it.key, String(sproutWords().opened ?? "").replace("{machine}", it.machine));
+        const launcher = provider.launcher ?? null;
+        if (launcher?.open === true && launcher.selected?.key === it.key)
+            launcher.open = false;
+        Sessions.goTo(session);
+        Report.say(`opened new work's session ${session.address}`);
+    }
+    // A session comes up in seconds; one not up within a minute is said in
+    // the foot, at once or when the launcher next opens, never as a notice,
+    // and opens no window later, when Joel may be at something else.
+    Timer {
+        id: openPatience
+        interval: 60000
+        onTriggered: {
+            const it = provider.opening;
+            if (it === null)
+                return;
+            provider.opening = null;
+            const text = String(provider.sproutWords().unopened ?? "")
+                .replace("{machine}", it.machine);
+            provider.sproutSays(it.key, text);
+            provider.launcher?.tellOnOpen([[it.machine, text]]);
+        }
     }
 
     // The sessions there are to reopen (Sessions.qml's toReopen): those the

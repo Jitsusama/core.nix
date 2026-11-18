@@ -53,10 +53,13 @@ QtObject {
             Sprouting.refused("tidy it", "/home/j/src/core", said), null);
 
         // How it ended, as the daemon answers (modules/agents/src/sprout.rs).
-        Expect.same("started, on the machine the node chose",
+        Expect.same("started, on the machine the node chose, held by the id it gave",
             Sprouting.ended({ id: "ask-3", sprouted: { machine: "kestrel", held: "h1",
                 folder: "/home/j/src/core", attach: ["mycelium", "join", "h1"] } }, said),
-            { started: true, machine: "kestrel" });
+            { started: true, machine: "kestrel", held: "h1" });
+        Expect.same("started with no holder id says no id",
+            Sprouting.ended({ sprouted: { machine: "kestrel" } }, said),
+            { started: true, machine: "kestrel", held: "" });
         Expect.same("refused, in the node's or the daemon's words",
             Sprouting.ended({ id: "ask-3", error: { code: "unsprouted",
                 message: "only the launcher starts new work here" } }, said),
@@ -69,6 +72,21 @@ QtObject {
         Expect.same("an error with no words is unread",
             Sprouting.ended({ error: { code: "unsprouted" } }, said),
             { started: false, why: "its node's answer couldn't be read" });
+
+        // Which running session is the one it started, to open for him (Joel, 18 November:
+        // "start new work does not seem to work from the launcher"): here, by its holder's
+        // id; on another machine, by the words that attach it, which name that id.
+        const here = { address: "ONE", held: "h1", attach: null };
+        const there = { address: "TWO", held: null,
+            attach: ["mycelium", "--realm", "work", "attach", "h2"] };
+        const other = { address: "THREE", held: "h3", attach: ["mycelium", "attach", "h3"] };
+        Expect.same("one held here is found by its holder's id",
+            Sprouting.sproutedOf([other, here], "h1")?.address, "ONE");
+        Expect.same("one on another machine is found by its attach words",
+            Sprouting.sproutedOf([other, there], "h2")?.address, "TWO");
+        Expect.same("none is found before it's up", Sprouting.sproutedOf([other], "h1"), null);
+        Expect.same("no id finds none, never the first held",
+            Sprouting.sproutedOf([{ address: "FOUR", held: "", attach: [] }], ""), null);
 
         // What the act that ran says.
         Expect.same("started names the machine",

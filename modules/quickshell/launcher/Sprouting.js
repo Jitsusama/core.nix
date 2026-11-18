@@ -6,8 +6,10 @@
 // asks the agents daemon, which asks the realm's node for a `Sprout`, the
 // request `mycelium sprout` makes, so the launcher and the command line
 // never choose differently: a quest of its own, seeded from what he said,
-// its session held in no window, which Go To opens when he wants it
-// (pivot of 16 November, 18:55: no session needs a window of its own).
+// its session held. He asked for it, so its window opens for him as soon
+// as it's up (Joel, 18 November: "start new work does not seem to work
+// from the launcher", when it started in no window and said so only on
+// the row he'd left); agents' own windows still go behind his.
 // The daemon asks only for the shell (modules/agents/src/asker.rs), since
 // the node takes it for Joel. The repositories come from the quests
 // daemon (modules/quests/src/folders.rs).
@@ -54,7 +56,8 @@ function refused(text, folder, said) {
 }
 
 // How it ended, from the daemon's `answer` (modules/agents/src/sprout.rs):
-// `{ started: true, machine }` once the node started it, else
+// `{ started: true, machine, held }` once the node started it, `held` the
+// id its holder keeps it by ("" where the node gave none), else
 // `{ started: false, why }` in the node's or the daemon's words, or
 // `said`'s where no daemon answered (null) or its answer can't be read.
 function ended(answer, said) {
@@ -63,13 +66,26 @@ function ended(answer, said) {
     }
     const begun = answer.sprouted;
     if (typeof begun?.machine === "string" && begun.machine !== "") {
-        return { started: true, machine: begun.machine };
+        return { started: true, machine: begun.machine,
+            held: typeof begun.held === "string" ? begun.held : "" };
     }
     const why = answer.error?.message;
     if (typeof why === "string" && why !== "") {
         return { started: false, why };
     }
     return { started: false, why: String(said.unread ?? "") };
+}
+
+// The session among `running` (Sessions.running) that the sprout held by
+// `held` started, or null before it's up: here by its holder's id, and on
+// another machine, which keeps no holder's id here, by the words that
+// attach it, which name that id.
+function sproutedOf(running, held) {
+    if (held === "") {
+        return null;
+    }
+    return running.find(one => one.held === held
+        || (Array.isArray(one.attach) && one.attach.includes(held))) ?? null;
 }
 
 // What the act that ran says of how it ended, in `said`'s words.
