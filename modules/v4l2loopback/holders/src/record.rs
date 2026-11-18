@@ -10,6 +10,7 @@
 //! that lowers its frame rate to gather light in a dim room shows here as
 //! fewer frames than were asked for, beside the exposure it chose.
 
+use std::fmt::Write;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -144,31 +145,36 @@ pub fn line(
     gave: &[Option<Gave>],
     controls: &[v4l2::Value],
 ) -> String {
+    // Writing to a String can't fail, so what write! returns is dropped.
     let mut said = format!("streams to {}", holders.join(", "));
     if let Some(format) = format {
-        said.push_str(&format!(
+        let _ = write!(
+            said,
             "; {} {}x{}",
             format.pixels, format.width, format.height
-        ));
+        );
     }
     if let Some(asked) = asked {
-        said.push_str(&format!(" at {asked:.1} fps asked"));
+        let _ = write!(said, " at {asked:.1} fps asked");
     }
     for stream in gave {
         match stream {
-            Some(stream) => said.push_str(&format!(
-                "; gave {:.1} fps, {} broken",
-                stream.rate, stream.broken
-            )),
+            Some(stream) => {
+                let _ = write!(
+                    said,
+                    "; gave {:.1} fps, {} broken",
+                    stream.rate, stream.broken
+                );
+            }
             None => said.push_str("; gave unknown"),
         }
     }
     if !controls.is_empty() {
         said.push(';');
         for control in controls {
-            said.push_str(&format!(" {}={}", called(&control.name), control.value));
+            let _ = write!(said, " {}={}", called(&control.name), control.reads);
             if let Some(item) = &control.item {
-                said.push_str(&format!(" ({item})"));
+                let _ = write!(said, " ({item})");
             }
         }
     }
@@ -212,9 +218,7 @@ impl Record {
             .iter()
             .map(|stats| counts(&fs::read_to_string(stats).ok()?))
             .collect();
-        let Some((then, before)) = self.last.replace((at, counted.clone())) else {
-            return None;
-        };
+        let (then, before) = self.last.replace((at, counted.clone()))?;
         let over = at.duration_since(then);
         let gave: Vec<Option<Gave>> = counted
             .iter()
@@ -303,12 +307,12 @@ mod tests {
         let controls = [
             v4l2::Value {
                 name: "Auto Exposure".to_owned(),
-                value: 3,
+                reads: 3,
                 item: Some("Aperture Priority Mode".to_owned()),
             },
             v4l2::Value {
                 name: "Exposure, Dynamic Framerate".to_owned(),
-                value: 1,
+                reads: 1,
                 item: None,
             },
         ];

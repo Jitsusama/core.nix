@@ -150,10 +150,11 @@ pub fn asked_rate(file: &File) -> io::Result<f64> {
     Ok(f64::from(asked.denominator) / f64::from(asked.numerator))
 }
 
-/// A control's value, and for a menu, the name of the item it's at.
+/// A control, the value it reads, and for a menu, the name of the item
+/// it's at.
 pub struct Value {
     pub name: String,
-    pub value: i32,
+    pub reads: i32,
     pub item: Option<String>,
 }
 
@@ -202,7 +203,7 @@ pub fn controls(file: &File) -> Vec<Value> {
         });
         values.push(Value {
             name: text(&queried.name),
-            value: control.value,
+            reads: control.value,
             item: item.flatten(),
         });
     }
