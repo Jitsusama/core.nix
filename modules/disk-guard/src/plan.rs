@@ -141,7 +141,8 @@ pub struct Candidate {
     /// A shell or agent sits in its tree.
     pub occupied: bool,
     /// Its tree is finished or gone, or it's a pinned snapshot's build
-    /// nobody has used for an hour.
+    /// nobody has used for an hour, one of its older builds an hour unused,
+    /// or its incremental session while nobody sits in it.
     pub spent: bool,
     /// The checkout it was built for, when known.
     pub checkout: Option<PathBuf>,
@@ -222,8 +223,13 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
             _ => (Group::Occupied, [NEVER, NEVER, NEVER, AT_ONCE]),
         },
         _ if tree && candidate.spent => (Group::Waste, [AT_ONCE; 4]),
-        // A leftover from before this boot has no maker left to come back.
-        Class::Temp if candidate.spent => (Group::Waste, [AT_ONCE; 4]),
+        // A pinned snapshot's incremental sessions while nobody builds
+        // there, and its older builds an hour unused, serve no one; nor
+        // does a leftover from before this boot, with no maker left to
+        // come back.
+        Class::Variant | Class::Replaced | Class::Temp if candidate.spent => {
+            (Group::Waste, [AT_ONCE; 4])
+        }
         // Even a healthy disk sheds a build or an install nobody has used
         // for a week or two of awake time: one wanted again costs a build,
         // and keeping every one ever made is how a disk fills.

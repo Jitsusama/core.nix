@@ -313,7 +313,7 @@ fn a_snapshot_is_known_by_its_record_being_shareable() {
     );
     // What a record is said to be is read only for this, so an identity
     // of another shape never costs a tree its holders.
-    let mut held = disk_guard::workspaces::held_trees(&records, |_, _| true);
+    let mut held = disk_guard::workspaces::held_trees(&records, None, |_, _| true);
     held.sort();
     assert_eq!(
         held,

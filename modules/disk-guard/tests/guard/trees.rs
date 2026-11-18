@@ -1,7 +1,7 @@
 use disk_guard::activity::Use;
 use disk_guard::clock::{Awake, Tick};
 use disk_guard::discover::{Checkout, Found, Kind};
-use disk_guard::plan::Class;
+use disk_guard::plan::{self, Class, Group};
 use disk_guard::trees::{Seen, candidate, last_used};
 use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
 use std::fs;
@@ -144,7 +144,12 @@ fn a_pinned_snapshots_build_is_spent_once_nobody_has_used_it_for_an_hour() {
         10_000.0,
     )
     .unwrap();
-    assert!(sat_in.occupied, "a gate sitting in it still keeps it");
+    assert!(sat_in.occupied && sat_in.spent);
+    assert_eq!(
+        plan::windows(&sat_in).0,
+        Group::Occupied,
+        "a gate sitting in it still keeps it, though its hour has passed"
+    );
 }
 
 #[test]

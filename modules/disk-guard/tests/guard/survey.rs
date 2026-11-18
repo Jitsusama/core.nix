@@ -99,6 +99,28 @@ pub fn surveyed(
     uses: &Uses,
     (at, sizes): (f64, Sizes),
 ) -> (Vec<Offer>, usize, Sizes) {
+    surveyed_pinned(
+        config,
+        processes,
+        finished,
+        &|_| false,
+        ran,
+        uses,
+        (at, sizes),
+    )
+}
+
+/// As `surveyed`, with the checkouts `pinned` says are snapshots a broker
+/// pinned at a commit.
+pub fn surveyed_pinned(
+    config: &Config,
+    processes: &[Process],
+    finished: &dyn Fn(&Path) -> bool,
+    pinned: &dyn Fn(&Path) -> bool,
+    ran: &BTreeMap<String, f64>,
+    uses: &Uses,
+    (at, sizes): (f64, Sizes),
+) -> (Vec<Offer>, usize, Sizes) {
     let awake = Awake::default();
     let mut finished = |dir: &Path| finished(dir);
     let said = BTreeMap::new();
@@ -111,7 +133,7 @@ pub fn surveyed(
         awake: &awake,
         now: at,
         finished: &mut finished,
-        pinned: &|_| false,
+        pinned,
         ran,
         said: &said,
         uses,

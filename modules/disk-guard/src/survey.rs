@@ -138,8 +138,7 @@ pub struct World<'a> {
     /// share, as trees cloned with their builds inside do, count once:
     /// deleting them all frees those once.
     pub counted: RefCell<Counted>,
-    /// What earlier surveys sized of quest workspaces and trees' builds and
-    /// installs, kept between them.
+    /// What earlier surveys sized of quest workspaces, kept between them.
     pub sizes: RefCell<Sizes>,
     /// How many times the survey walked a root for targets and installs.
     pub walked: usize,
@@ -149,13 +148,11 @@ pub struct World<'a> {
     pub stop: &'a dyn Fn() -> bool,
 }
 
-/// The sizes of quest workspaces and the entries they hold, and of trees'
-/// builds and installs, each by the last write it was sized at, kept by a
-/// daemon from one survey to the next. On 16 November 215 workspaces held
-/// 70,882 entries, 68,202 of them unwritten for six hours, and every pass
-/// of a filling disk walked each old one whole to size it again, reading
-/// 178 GB in four hours. On 17 November a laptop's guard spent five and a
-/// half hours sizing its trees' installs again, and no pass came meanwhile.
+/// The sizes of quest workspaces and the entries they hold, each by the
+/// last write it was sized at, kept by a daemon from one survey to the
+/// next. On 16 November 215 workspaces held 70,882 entries, 68,202 of them
+/// unwritten for six hours, and every pass of a filling disk walked each
+/// old one whole to size it again, reading 178 GB in four hours.
 ///
 /// A size only says what taking an entry would free: whether it may be
 /// taken is dated afresh each survey, so a size kept from an earlier one
@@ -787,7 +784,7 @@ impl Walks {
 /// benchmarks and the targets kept inside it, so what those hold doesn't
 /// count. The ones inside are offered first, so what each holds is counted
 /// already, but for one being worked in, which was never sized.
-fn target_frees(target: &Path, last_used: f64, world: &World) -> u64 {
+fn target_frees(target: &Path, world: &World) -> u64 {
     let working: u64 = world
         .kept
         .iter()
@@ -796,7 +793,7 @@ fn target_frees(target: &Path, last_used: f64, world: &World) -> u64 {
         .sum();
     crate::reclaim::KEEP
         .iter()
-        .fold(sized(target, last_used, world), |left, kept| {
+        .fold(size(target, world), |left, kept| {
             left.saturating_sub(whole(&target.join(kept)))
         })
         .saturating_sub(working)
@@ -829,12 +826,9 @@ fn trees_under(
             world.kept.push((tree.path.clone(), used));
             continue;
         }
-        // Sized by the use it's dated by, so a tree nobody has built in or
-        // installed into since an earlier survey isn't walked again.
-        let last_used = trees::last_used(tree);
         let frees = match kind {
-            Kind::Target => target_frees(&tree.path, last_used, world),
-            Kind::Install => sized(&tree.path, last_used, world),
+            Kind::Target => target_frees(&tree.path, world),
+            Kind::Install => size(&tree.path, world),
         };
         if kind == Kind::Target && frees == 0 {
             continue;
@@ -845,11 +839,15 @@ fn trees_under(
             finished,
             pinned: checkout.is_some_and(|dir| (world.pinned)(dir)),
             size: frees,
-            last_used,
+            last_used: trees::last_used(tree),
         };
         let Some(candidate) = trees::candidate(tree, &seen, world.awake, world.now) else {
             continue;
         };
+        // In a snapshot nobody edits, a crate's incremental sessions serve
+        // only a build running now, and rustc's locks keep the one it
+        // uses; so they go at once while nobody sits in the tree.
+        let snapshot_idle = seen.pinned && !candidate.occupied;
         let action = match kind {
             Kind::Target => Action::Target {
                 root: root.to_owned(),
@@ -872,9 +870,9 @@ fn trees_under(
                         .awake
                         .since(variant.last_used.min(world.now), world.now)
                         .max(0.0),
-                    size: sized(&variant.path, variant.last_used, world),
+                    size: size(&variant.path, world),
                     occupied: false,
-                    spent: false,
+                    spent: snapshot_idle,
                     checkout: checkout.map(Path::to_owned),
                 };
                 offers.push(Offer {
@@ -891,16 +889,21 @@ fn trees_under(
                 let Some(last_used) = world.uses.last_used(&build) else {
                     continue;
                 };
+                let idle = world
+                    .awake
+                    .since(last_used.min(world.now), world.now)
+                    .max(0.0);
                 let candidate = Candidate {
                     path: build.deps.join(format!("{}-{}", build.name, build.digest)),
                     class: Class::Replaced,
-                    idle: world
-                        .awake
-                        .since(last_used.min(world.now), world.now)
-                        .max(0.0),
+                    idle,
                     size: build.size,
                     occupied: false,
-                    spent: false,
+                    // A gate snapshot builds one commit after another, and
+                    // on 17 November one kept 89 builds of a single test
+                    // crate, 55 GiB in all: an older build an hour unused
+                    // there is an earlier gate's, even while the next runs.
+                    spent: seen.pinned && idle >= trees::SNAPSHOT_UNUSED,
                     checkout: checkout.map(Path::to_owned),
                 };
                 offers.push(Offer {

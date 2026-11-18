@@ -3,14 +3,15 @@
 
 use crate::discover::{checkout, dir, file};
 use crate::survey::{
-    DAY, config, find, now, offers, offers_sized, offers_using, real, src, surveyed, written_ago,
+    DAY, config, find, now, offers, offers_using, real, src, surveyed, surveyed_pinned, written_ago,
 };
 use disk_guard::activity::Process;
-use disk_guard::plan::Class;
+use disk_guard::plan::{self, Class, Group};
 use disk_guard::replaced::Uses;
 use disk_guard::survey::{Action, Sizes};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
+use std::path::Path;
 use std::path::PathBuf;
 
 #[test]
@@ -123,46 +124,6 @@ fn a_root_targets_and_installs_share_is_walked_once() {
 }
 
 #[test]
-fn a_tree_unbuilt_since_an_earlier_survey_keeps_the_size_it_found() {
-    // On 17 November a laptop's guard spent five and a half hours sizing
-    // installs one package at a time, and every survey sized each build
-    // and install whole again, so no pass came while its disk sat at 91%.
-    let home = tempfile::tempdir().unwrap();
-    let home = real(home.path());
-    let roots = dir(&home.join("src"));
-    let (_, target, modules) = src(&roots);
-    for old in [&modules, &modules.join("left-pad")] {
-        written_ago(old, 2.0 * 3600.0);
-    }
-    let config = config(&format!(
-        r#""cargo": {{ "kind": "cargo", "roots": ["{0}"] }},
-           "installs": {{ "kind": "installs", "roots": ["{0}"] }}"#,
-        roots.display()
-    ));
-    let (found, sizes) = offers_sized(&config, now(), Sizes::default());
-    let built = find(&found, &target).candidate.size;
-    let installed = find(&found, &modules).candidate.size;
-    assert_eq!(
-        sizes.walked, 2,
-        "the build and the install weren't each sized once"
-    );
-    let (found, sizes) = offers_sized(&config, now(), sizes);
-    assert_eq!(sizes.walked, 2, "a tree unchanged since was walked again");
-    assert_eq!(find(&found, &target).candidate.size, built);
-    assert_eq!(find(&found, &modules).candidate.size, installed);
-    file(&modules.join("right-pad/index.js"), &"y".repeat(20_000));
-    let (found, sizes) = offers_sized(&config, now(), sizes);
-    assert_eq!(
-        sizes.walked, 3,
-        "an install written since wasn't sized again"
-    );
-    assert!(
-        find(&found, &modules).candidate.size > installed,
-        "an install written since kept its old size"
-    );
-}
-
-#[test]
 fn a_root_named_through_a_link_holds_what_it_offers() {
     // A Mac's /var is a link to /private/var, so its temporary folder is
     // named through a link, and what's found there is named where it lives.
@@ -261,6 +222,122 @@ fn a_tree_a_build_runs_in_is_never_offered() {
         !found
             .iter()
             .any(|offer| offer.candidate.path.starts_with(&target))
+    );
+}
+
+#[test]
+fn a_pinned_snapshots_older_builds_go_once_an_hour_unused() {
+    // On 17 November a gate's snapshot, building one commit after
+    // another, kept 89 builds of one test crate among 55 GiB of them: an
+    // older build there an hour unused is an earlier gate's, while the
+    // next gate runs too.
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let roots = dir(&home.join("src"));
+    let (app, target, _) = src(&roots);
+    let deps = target.join("debug/deps");
+    for (name, ago) in [
+        ("libapp-1111111111111111.rlib", DAY),
+        ("libapp-0123456789abcdef.rlib", 0.0),
+    ] {
+        file(&deps.join(name), "built");
+        written_ago(&deps.join(name), ago);
+    }
+    let config = config(&format!(
+        r#""cargo": {{ "kind": "cargo", "roots": ["{}"] }}"#,
+        roots.display()
+    ));
+    let replaced = deps.join("app-1111111111111111");
+    let shell = Process {
+        pid: 4242,
+        name: "zsh".into(),
+        cwd: Some(app.clone()),
+        readable: true,
+        ..Default::default()
+    };
+    let snapshot = |dir: &Path| dir == app;
+    let spent = |ago: f64, pinned: &dyn Fn(&Path) -> bool| {
+        let mut uses = Uses::default();
+        uses.watching(&deps, now() - ago);
+        let (found, _, _) = surveyed_pinned(
+            &config,
+            std::slice::from_ref(&shell),
+            &|_| false,
+            pinned,
+            &BTreeMap::new(),
+            &uses,
+            (now(), Sizes::default()),
+        );
+        let older = find(&found, &replaced);
+        (older.candidate.spent, plan::windows(&older.candidate).0)
+    };
+    assert_eq!(
+        spent(7200.0, &snapshot),
+        (true, Group::Waste),
+        "an older build in a snapshot two hours unused is waste"
+    );
+    assert_eq!(
+        spent(1800.0, &snapshot),
+        (false, Group::Replaced),
+        "half an hour unused, it's kept for the gates that may share it"
+    );
+    assert_eq!(
+        spent(7200.0, &|_| false),
+        (false, Group::Replaced),
+        "in a checkout someone edits, the usual wait holds"
+    );
+}
+
+#[test]
+fn a_pinned_snapshots_incremental_goes_at_once_while_nobody_sits_there() {
+    // A gate builds with incremental off, so a snapshot's incremental
+    // sessions are a stray build's, and rustc's locks keep the one a
+    // build running there uses.
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let roots = dir(&home.join("src"));
+    let (app, target, _) = src(&roots);
+    let variant = dir(&target.join("debug/incremental/app-1a2b3c"));
+    dir(&variant.join("s-abcdefghi-0123456-0123456789abcdef"));
+    let config = config(&format!(
+        r#""cargo": {{ "kind": "cargo", "roots": ["{}"] }}"#,
+        roots.display()
+    ));
+    let shell = Process {
+        pid: 4242,
+        name: "zsh".into(),
+        cwd: Some(app.clone()),
+        readable: true,
+        ..Default::default()
+    };
+    let snapshot = |dir: &Path| dir == app;
+    let spent = |processes: &[Process], pinned: &dyn Fn(&Path) -> bool| {
+        let (found, _, _) = surveyed_pinned(
+            &config,
+            processes,
+            &|_| false,
+            pinned,
+            &BTreeMap::new(),
+            &Uses::default(),
+            (now(), Sizes::default()),
+        );
+        let offered = find(&found, &variant);
+        (offered.candidate.spent, plan::windows(&offered.candidate).0)
+    };
+    assert_eq!(
+        spent(&[], &snapshot),
+        (true, Group::Waste),
+        "nobody sits in the snapshot, so its incremental is waste"
+    );
+    assert_eq!(
+        spent(std::slice::from_ref(&shell), &snapshot),
+        (false, Group::Variants),
+        "with a session sitting there, the usual wait holds"
+    );
+    assert_eq!(
+        spent(&[], &|_| false),
+        (false, Group::Variants),
+        "in a checkout someone edits, the usual wait holds"
     );
 }
 
