@@ -3091,9 +3091,9 @@ Singleton {
     readonly property string unheld: "isn't parked with a holder to wake it this boot"
     // Each session reopened so, by its id, with when, so a second Wake
     // before pi is up opens no second: held until it runs here, or for
-    // reopenPatience, far past the slowest pi to load its log.
+    // unwokenPatience, far past the slowest pi to load its log.
     property var unwokenReopening: ({})
-    readonly property int reopenPatience: 300000
+    readonly property int unwokenPatience: 300000
     function reopensUnwoken(session, answer) {
         const id = String(session?.presence?.session ?? "");
         const why = String(answer?.error?.message ?? "");
@@ -3110,7 +3110,7 @@ Singleton {
             return true;
         }
         const asked = unwokenReopening[id];
-        if (asked !== undefined && Date.now() - asked < reopenPatience) {
+        if (asked !== undefined && Date.now() - asked < unwokenPatience) {
             Report.say(`left ${upper} alone, which is reopening`);
             return true;
         }
