@@ -6268,10 +6268,11 @@ Scope {
         backTo = left;
         list.steppedLast = null;
         let restarted = false;
-        // Words put back are timed as the field's key, within restart, so
-        // the foot is fitted as they're searched, in that key's own time,
-        // rather than after it was stamped.
-        if (stepOut !== null)
+        // Words put back are timed as the field's key, within restart,
+        // whether or not the step is timed as back's own, so the foot is
+        // fitted as they're searched, in that key's own time, rather than
+        // after it was stamped.
+        if (wordsBack)
             stepping = false;
         try {
             restart(words);

@@ -209,6 +209,7 @@ def chorded_out(shell: Shell, place: str) -> str | None:
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     shell.as_account(shell.ipc("collection", place))
     shell.launcher_until(lambda shown: shown["open"] and len(shown["held"]) > 0)
+    shell.launcher_ready()
     out = stepped_out(shell)
     shell.close_launcher()
     shell.launcher_until(lambda shown: not shown["open"])
