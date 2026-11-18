@@ -4968,11 +4968,11 @@ mod tests {
         let bin = folder.path().join("bin");
         fs::create_dir_all(&bin).unwrap();
         let sysctl = bin.join("sysctl");
-        // The fake goes first on PATH inside the command, since zsh on a
-        // Mac reads /etc/zshenv first, which sets PATH afresh: handed in,
-        // the Mac's own sysctl answered, and on 18 November nix-offload
-        // didn't build on a Mac.
-        let reading = format!("PATH='{}':\"$PATH\"; {}", bin.display(), load_read());
+        // The fake goes first on PATH inside the command: handed in, the
+        // Mac's own sysctl answered, and on 18 November nix-offload didn't
+        // build on a Mac. It says 7 processors, which no Mac here has, so
+        // the real one answering fails the first assertion too.
+        let reading = first_on_path(&bin, &load_read());
         for shell in ["dash", "zsh"] {
             let read = |says: &str| {
                 fs::write(&sysctl, format!("#!/bin/sh\n{says}\n")).unwrap();
@@ -4984,10 +4984,10 @@ mod tests {
                     .unwrap();
                 String::from_utf8(said.stdout).unwrap()
             };
-            let said = read("printf '{ 20.00 35.00 30.00 }\\n12\\n'");
+            let said = read("printf '{ 20.00 35.00 30.00 }\\n7\\n'");
             assert_eq!(
                 Load::parse(&said).map(|load| (load.cores, load.building)),
-                Some((12, 0)),
+                Some((7, 0)),
                 "{shell}: a Mac's whole answer didn't read as its load: {said:?}"
             );
             assert_eq!(
