@@ -11,16 +11,8 @@
 // plan has come is said in words beside its marks.
 
 import { clockTime } from "../../local-sites/kit/status.ts";
-import {
-  type Document,
-  type Forage,
-  grewFrom,
-  type Join,
-  joined,
-  keeps,
-  steps,
-  type Wait,
-} from "./model.ts";
+import { type Join, joined } from "./joins.ts";
+import { type Document, type Forage, grewFrom, keeps, steps, type Wait } from "./model.ts";
 
 const ESCAPES: { readonly [character: string]: string } = {
   "&": "&amp;",

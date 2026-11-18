@@ -3,12 +3,14 @@
 // works on a quest, keyed forage:<cell>, with the purpose its quest states,
 // the documents it keeps for it, what its quest waits on its person
 // for, and how it joins other forages: the needs it serves and relies
-// on, and the cell it split from or into. Nothing here touches the page,
-// so every case is proven in node, and a record the page couldn't make sense of is said rather than drawn as if
-// it were whole.
+// on, and the cell it split from or into, read in joins.ts. Nothing here
+// touches the page, so every case is proven in node, and a record the
+// page couldn't make sense of is said rather than drawn as if it were
+// whole.
 
 import type { Fields, Held } from "../../local-sites/kit/records.ts";
 import { isObject, number, object, text } from "../../local-sites/kit/records.ts";
+import { bothEnds, type Join, joinsOf, splitOf } from "./joins.ts";
 
 /** One document a cell keeps for its purpose: a plan, research, a brief or a report. */
 interface Document {
@@ -34,16 +36,6 @@ interface Wait {
   readonly when: string | undefined;
   /** Whether it can be done now. */
   readonly ready: boolean;
-}
-
-/**
- * One need joining two forages: the cell at its other end, what the need
- * was about, and since when, as an ISO time, when it says.
- */
-interface Join {
-  readonly cell: string;
-  readonly need: string;
-  readonly since: string | undefined;
 }
 
 /** One cell's forage, as the page draws its row and its panel. */
@@ -173,65 +165,6 @@ function waitsOf(record: Fields, cell: string, unread: string[]): readonly Wait[
   return read.filter((each) => !seen.has(each.id) && seen.add(each.id));
 }
 
-/** The join `value` describes for `self`, or none when it names no other cell. */
-function joinOf(value: unknown, self: string): Join | undefined {
-  if (!isObject(value)) {
-    return undefined;
-  }
-  const cell = text(value, "cell");
-  if (cell === undefined || cell === "" || cell === self) {
-    return undefined;
-  }
-  return { cell, need: text(value, "need") ?? "", since: text(value, "since") };
-}
-
-/**
- * The joins `record` keeps under `field`, serves or relies, saying any it
- * couldn't read while the rest still draw.
- */
-function joinsOf(
-  listed: unknown,
-  field: "serves" | "relies",
-  cell: string,
-  unread: string[],
-): readonly Join[] {
-  if (!Array.isArray(listed)) {
-    return [];
-  }
-  const read = listed.map((each) => joinOf(each, cell)).filter((each) => each !== undefined);
-  if (read.length < listed.length) {
-    unread.push(`${listed.length - read.length} of ${cell}'s ${field} named no other cell`);
-  }
-  return read;
-}
-
-/**
- * The cells `lineage` says `cell` split from and into, saying any address
- * it couldn't read while the rest still draw.
- */
-function splitOf(
-  lineage: Fields,
-  cell: string,
-  unread: string[],
-): { readonly splitFrom: string | undefined; readonly splitInto: readonly string[] } {
-  const from = lineage["split_from"];
-  const splitFrom = typeof from === "string" && from !== "" ? from : undefined;
-  if (from !== undefined && splitFrom === undefined) {
-    unread.push(`${cell}'s split_from named no cell`);
-  }
-  const into = lineage["split_into"];
-  const listed = Array.isArray(into) ? into : [];
-  const splitInto = listed.filter(
-    (each): each is string => typeof each === "string" && each !== "" && each !== cell,
-  );
-  if (into !== undefined && !Array.isArray(into)) {
-    unread.push(`${cell}'s split_into listed no cells`);
-  } else if (splitInto.length < listed.length) {
-    unread.push(`${listed.length - splitInto.length} of ${cell}'s split_into named no other cell`);
-  }
-  return { splitFrom, splitInto };
-}
-
 /** The forage in `record`, without its depth, or none when it names no cell. */
 function forageOf(record: Fields, unread: string[]): Omit<Forage, "depth"> | undefined {
   const cell = text(record, "cell");
@@ -271,63 +204,21 @@ function grewFrom(
 }
 
 /**
- * Each pair of cells among `forages` a need joins, once however both ends
- * keep it and however many needs or words they keep it by, since the
- * floor draws one arc a pair: the one relied on first, then the one
- * relying, then what the first need found was about. A join to a cell not
- * drawn here isn't a pair.
- */
-function joined(
-  forages: readonly Forage[],
-): readonly { readonly from: string; readonly to: string; readonly need: string }[] {
-  const here = new Set(forages.map((each) => each.cell));
-  const pairs = new Map<string, { from: string; to: string; need: string }>();
-  const add = (from: string, to: string, need: string): void => {
-    const key = from < to ? `${from}\n${to}` : `${to}\n${from}`;
-    if (from !== to && here.has(from) && here.has(to) && !pairs.has(key)) {
-      pairs.set(key, { from, to, need });
-    }
-  };
-  for (const forage of forages) {
-    for (const each of forage.serves) {
-      add(forage.cell, each.cell, each.need);
-    }
-    for (const each of forage.relies) {
-      add(each.cell, forage.cell, each.need);
-    }
-  }
-  return [...pairs.values()];
-}
-
-/**
  * Every forage `held` holds, each cell after the one it grew from (its
  * starter, else the cell it split from), as a tree is read: those that
  * grew from nothing here first, by address, and under each the cells that
  * grew from it, by address. A cell that grew from one not drawn here
- * stands at the top. A cell's split_into also takes in each cell here
- * naming it as split_from, so both ends say the same split.
+ * stands at the top, and a split is read from either end.
  */
 function foragesOf(held: Held): Forages {
   const unread: string[] = [];
-  const found = held
-    .all()
-    .map((record) => forageOf(record, unread))
-    .filter((each) => each !== undefined)
-    .sort((one, other) => one.cell.localeCompare(other.cell));
-  const splits = new Map<string, string[]>();
-  for (const each of found) {
-    if (each.splitFrom !== undefined && each.splitFrom !== each.cell) {
-      splits.set(each.splitFrom, [...(splits.get(each.splitFrom) ?? []), each.cell]);
-    }
-  }
-  const read = found.map((each) => {
-    const naming = splits.get(each.cell) ?? [];
-    if (naming.length === 0) {
-      return each;
-    }
-    const into = [...new Set([...each.splitInto, ...naming])];
-    return { ...each, splitInto: into.sort((one, other) => one.localeCompare(other)) };
-  });
+  const read = bothEnds(
+    held
+      .all()
+      .map((record) => forageOf(record, unread))
+      .filter((each) => each !== undefined)
+      .sort((one, other) => one.cell.localeCompare(other.cell)),
+  );
   const here = new Set(read.map((each) => each.cell));
   const started = new Map<string, (typeof read)[number][]>();
   const tops: (typeof read)[number][] = [];
@@ -536,4 +427,4 @@ function holds(forage: Forage, query: string): boolean {
 }
 
 export type { Document, Forage, Forages, Headline, Join, Wait };
-export { counted, foragesOf, grewFrom, headline, holds, joined, keeps, lede, startedFrom, steps };
+export { counted, foragesOf, grewFrom, headline, holds, keeps, lede, startedFrom, steps };
