@@ -47,6 +47,12 @@ pub struct Presence {
     /// a pi of its own.
     #[serde(default)]
     pub hosted: Option<Hosted>,
+    /// What it says it is doing, its next step under `next`.
+    #[serde(default)]
+    pub doing: serde_json::Value,
+    /// What it waits to be answered on, when it asked; null otherwise.
+    #[serde(default)]
+    pub wanting: serde_json::Value,
 }
 
 /// The pi hosts' rosters, by host: the sessions each holds, or none when
@@ -107,6 +113,15 @@ impl Presence {
         let began: jiff::Timestamp = last["at"].as_str()?.parse().ok()?;
         let took = last["duration_ms"].as_i64().unwrap_or_default();
         Some((began.as_millisecond() + took) / 1000)
+    }
+
+    /// The next step it says it has, when it names one.
+    #[must_use]
+    pub fn next_step(&self) -> Option<&str> {
+        self.doing["next"]
+            .as_str()
+            .map(str::trim)
+            .filter(|next| !next.is_empty())
     }
 
     /// Whether its process runs: a pi of its own, or the shared pi host
@@ -505,6 +520,8 @@ mod tests {
             groups: vec![],
             usage: serde_json::Value::Null,
             hosted: None,
+            doing: serde_json::Value::Null,
+            wanting: serde_json::Value::Null,
         };
         assert!(alive(Some(&parked), |_| false));
         let gone = Presence {

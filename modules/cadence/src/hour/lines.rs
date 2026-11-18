@@ -1,7 +1,8 @@
 //! How each measure reads on the hour's card: its mark, figure and target,
 //! and, for one past its target, the first few things behind the figure,
-//! so whoever steers the work reads which merges, checks or dates the
-//! count is made of without opening the files it came from.
+//! or every cell or quest behind a cell measure, so whoever steers the
+//! work reads which merges, checks, dates or quests the count is made of
+//! without opening the files it came from.
 
 use super::measures::{Class, Measure};
 
@@ -37,17 +38,25 @@ fn line(m: &Measure) -> String {
 /// The first few things behind a measure past its target, on a line of
 /// their own under it, the rest counted. Joel's misses are listed in full
 /// further down, and a clean zone's files go to their owners, so neither
-/// is named here.
-fn behind(m: &Measure) -> Option<String> {
+/// is named here. A cell measure's lines are each a cell or quest its
+/// owner must take up or park, so each is named on its own line, grouped
+/// by owner, for the orchestrator to send on without reading the mesh.
+fn behind(m: &Measure) -> Vec<String> {
     if matches!(m.class, Class::Miss | Class::Clean) || m.past().is_none() || m.behind.is_empty() {
-        return None;
+        return Vec::new();
+    }
+    if m.class == Class::Cells {
+        let mut lines: Vec<&String> = m.behind.iter().collect();
+        // Sorting is stable, so each owner's keep the order they were read in.
+        lines.sort_by_key(|line| line.rsplit_once(" · ").map_or("", |(_, owner)| owner));
+        return lines.into_iter().map(|line| format!("  {line}")).collect();
     }
     let mut named: Vec<String> = m.behind.iter().take(NAMED).cloned().collect();
     let rest = m.behind.len().saturating_sub(NAMED);
     if rest > 0 {
         named.push(format!("and {rest} more"));
     }
-    Some(format!("  {}", named.join("; ")))
+    vec![format!("  {}", named.join("; "))]
 }
 
 /// A class's lines on the card. Clean zones read some sixty measures, so
@@ -58,8 +67,7 @@ pub fn shown_lines(class: Class, of_class: &[&Measure]) -> Vec<String> {
     if class != Class::Clean {
         return of_class
             .iter()
-            .flat_map(|m| [Some(line(m)), behind(m)])
-            .flatten()
+            .flat_map(|m| std::iter::once(line(m)).chain(behind(m)))
             .collect();
     }
     let mut lines: Vec<String> = of_class
@@ -122,6 +130,32 @@ mod tests {
             shown_lines(Class::Slip, &[&two])[1],
             "  the pager · XY9H5C; a lock · 16V6F4",
             "every one of a few wasn't named"
+        );
+    }
+
+    #[test]
+    fn a_cell_measure_names_every_quest_behind_it_by_owner_one_a_line() {
+        let ended = measure(
+            Class::Cells,
+            5.0,
+            &[
+                "AAAAAA driving, every cell ended · WM4KSZ",
+                "BBBBBB active, every cell ended · 1GB1PI",
+                "CCCCCC driving, every cell ended · WM4KSZ",
+                "DDDDDD active, every cell ended · 1GB1PI",
+                "EEEEEE active, every cell ended · IHHRPH",
+            ],
+        );
+        assert_eq!(
+            shown_lines(Class::Cells, &[&ended])[1..],
+            [
+                "  BBBBBB active, every cell ended · 1GB1PI",
+                "  DDDDDD active, every cell ended · 1GB1PI",
+                "  EEEEEE active, every cell ended · IHHRPH",
+                "  AAAAAA driving, every cell ended · WM4KSZ",
+                "  CCCCCC driving, every cell ended · WM4KSZ",
+            ],
+            "a cell measure cut its quests short, or didn't group them by owner"
         );
     }
 

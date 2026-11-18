@@ -1,10 +1,16 @@
-//! Telling an orchestrator of a session of its that has sat idle. A
-//! session that finished its piece and waits to be told its next one does
-//! nothing all night unless someone notices, so each one listening, its
-//! pi running this boot, two hours past its last turn (or its start, when
-//! it has taken none since) is named to the orchestrator its presence
-//! names, once for each idle spell. Everything here is a decision over
-//! what was read; main.rs reads and sends.
+//! Waking a session of an orchestrator's that has sat idle, and telling
+//! the orchestrator when waking it didn't take. A session that finished
+//! its piece and waits to be told its next one does nothing all night
+//! unless someone notices. So each one listening, its pi running this
+//! boot, that names a next step of its own and runs no background work is
+//! asked itself twenty minutes past its last turn, with a question, which
+//! starts its turn; and each one still idle two hours past it is named to
+//! the orchestrator its presence names, once the question has had twenty
+//! minutes to take. A session is asked once for each step and told of
+//! once for each idle spell. On 18 November OX4WFV sat idle from 07:52 to
+//! 10:11 past a 09:00 due: only its orchestrator was ever to hear, after
+//! two hours, and each host restart began its spell again. Everything
+//! here is a decision over what was read; tell.rs reads and sends.
 
 use std::collections::BTreeMap;
 
@@ -12,10 +18,28 @@ use serde::{Deserialize, Serialize};
 
 use crate::mesh::Presence;
 
+mod tell;
+
+pub use tell::tell_idle;
+
+/// How long a session with a next step may sit idle before it is woken:
+/// the hour's cells measure names one idle this long, by its
+/// orchestrator's overnight rule of 16 November.
+pub const WAKE_AFTER: i64 = 20 * 60;
+
 /// How long a session may sit idle before its orchestrator hears of it.
 pub const IDLE_FOR: i64 = 2 * 3600;
 
-/// A session, as far as telling of its idleness needs.
+/// How many are woken in one tick. A host's restart brings dozens back at
+/// once, and each woken starts a turn, so the longest idle go first and
+/// the rest wait a tick: the background host ran out of memory at 03:23
+/// on 18 November.
+pub const WAKE_AT_MOST: usize = 4;
+
+/// How much of a next step a wake quotes back to its session.
+const QUOTED: usize = 160;
+
+/// A session, as far as waking it or telling of its idleness needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Quiet {
     pub address: String,
@@ -26,34 +50,51 @@ pub struct Quiet {
     pub listening: bool,
     /// Whether its pi runs, and ran during this boot.
     pub running: bool,
-    /// When its idle spell began, in seconds: the later of its last turn's
-    /// end and its pi's start.
+    /// When its last turn ended, in seconds, as its presence says; none
+    /// once the presence's day began again at midnight.
+    pub turned: Option<i64>,
+    /// When its idle spell began, as far as what was read says: its last
+    /// turn's end, else its log's last write, else its pi's start. A
+    /// restart begins no spell, since a session resumed idle is as idle as
+    /// before.
     pub since: Option<i64>,
+    /// When its pi started, in seconds.
+    pub started: Option<i64>,
     /// Whether it has taken no turn since its pi started.
     pub unstarted: bool,
+    /// The next step it names, the work it would wake to. None while
+    /// background work of its own runs, whose end starts its turn without
+    /// a word from anyone; while it waits on an answer it asked for; or
+    /// while its step names Joel, which only he can move, as the hour's
+    /// cells measure has it.
+    pub next: Option<String>,
 }
 
 impl Quiet {
     /// Reads one from a presence, given when its session's log was last
-    /// written, the boot running now and whether its process runs (see
-    /// `Presence::runs`). A
-    /// presence's last turn is gone once its day's usage starts again at
-    /// midnight, so the log, written at each turn, counts too: on 9
-    /// November one was said to have taken no turn since 22:32 when its
-    /// last ended at 23:57.
+    /// written, the boot running now, whether it is parked, whether its
+    /// background work runs and whether its process runs (see
+    /// `Presence::runs`). A presence's last turn is gone once its day's
+    /// usage starts again at midnight, so the log, written at each turn,
+    /// stands in then: on 9 November one was said to have taken no turn
+    /// since 22:32 when its last ended at 23:57. Only then, since a host
+    /// writes every log it resumes: at 10:18 on 18 November one whose
+    /// last turn was at 07:20 had its log written.
     #[must_use]
     pub fn from(
         p: &Presence,
         logged: Option<i64>,
         boot: Option<&str>,
-        parked: bool,
+        (parked, working): (bool, bool),
         runs: impl Fn(&Presence) -> bool,
     ) -> Option<Self> {
         let address = p.addresses.first()?.clone();
         let owner = p.owner.as_ref();
         let this_boot = boot.is_some() && owner.and_then(|o| o.boot_id.as_deref()) == boot;
         let started = owner.and_then(|o| o.started_at).map(|ms| ms / 1000);
-        let turned = p.last_turn_ended().max(logged);
+        let turned = p.last_turn_ended();
+        let ended = turned.or(logged);
+        let movable = !working && p.wanting.is_null();
         Some(Self {
             address,
             session: p.session.clone(),
@@ -61,30 +102,109 @@ impl Quiet {
             orchestrated_by: p.orchestrated_by.clone(),
             listening: p.state == "listening" && !parked,
             running: this_boot && runs(p),
-            since: turned.max(started),
-            unstarted: started.is_some() && turned < started,
+            turned,
+            since: ended.or(started),
+            started,
+            unstarted: started.is_some() && ended < started,
+            next: p
+                .next_step()
+                .filter(|next| movable && !next.contains("Joel"))
+                .map(str::to_owned),
         })
+    }
+
+    /// Its orchestrator, when it is one of an orchestrator's, listening
+    /// and running.
+    fn led(&self) -> Option<&str> {
+        let by = self.orchestrated_by.as_deref()?;
+        (!by.is_empty()
+            && !by.eq_ignore_ascii_case(&self.address)
+            && self.listening
+            && self.running)
+            .then_some(by)
+    }
+
+    /// How its spell, begun at `since`, began, with `whose` for its own or
+    /// its pi's.
+    fn how(&self, since: i64, whose: &str, clock: &impl Fn(i64) -> String) -> String {
+        match self.started.filter(|s| self.unstarted && *s != since) {
+            Some(started) => format!(
+                "{whose} last turn ended at {}, before {whose} pi started again at {}, \
+                 with none since",
+                clock(since),
+                clock(started)
+            ),
+            None if self.unstarted => format!(
+                "{whose} pi started at {} and has taken no turn since",
+                clock(since)
+            ),
+            None => format!("{whose} last turn ended at {}", clock(since)),
+        }
     }
 }
 
-/// The spells already told, by session, so each is told once.
+/// A step a session was asked to take up: the spell it was asked in, when,
+/// and the step, so it isn't asked of the same step twice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Woken {
+    pub since: i64,
+    pub at: i64,
+    #[serde(default)]
+    pub next: String,
+}
+
+/// The spells already told and steps already woken to, by session, so
+/// each is done once.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Told {
     #[serde(default)]
     pub spells: BTreeMap<String, i64>,
+    #[serde(default)]
+    pub woken: BTreeMap<String, Woken>,
 }
 
-/// A line for an orchestrator.
+/// A line for a session itself, to wake it, or for its orchestrator.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tell {
     pub session: String,
     pub to: String,
     pub text: String,
+    pub wakes: bool,
 }
 
-/// What to tell at `now`, minding what was told already and counting it
-/// told, with `clock` writing a moment for a person. A line that can't be
-/// sent is taken back out of `told` by its caller.
+/// When `s`'s spell began. Its own last turn says so when its presence
+/// names one. Without one, its day began again at midnight, or a host
+/// wrote its log on resuming it, and neither starts a spell: so the spell
+/// already told or woken in stands, unless what was read began later.
+fn spell(s: &Quiet, told: &Told) -> Option<i64> {
+    let since = s.since?;
+    if s.turned.is_some() {
+        return Some(since);
+    }
+    let kept = told
+        .spells
+        .get(&s.session)
+        .copied()
+        .into_iter()
+        .chain(told.woken.get(&s.session).map(|w| w.since))
+        .filter(|kept| *kept <= since)
+        .max();
+    Some(kept.unwrap_or(since))
+}
+
+/// Takes back what `tell` counted said, when it couldn't be sent, so the
+/// next tick says it again.
+pub fn unsay(told: &mut Told, tell: &Tell) {
+    if tell.wakes {
+        told.woken.remove(&tell.session);
+    } else {
+        told.spells.remove(&tell.session);
+    }
+}
+
+/// What to say at `now`, minding what was said already and counting it
+/// said, with `clock` writing a moment for a person. A line that can't be
+/// sent is taken back with `unsay` by its caller.
 pub fn due(
     sessions: &[Quiet],
     told: &mut Told,
@@ -92,206 +212,128 @@ pub fn due(
     clock: impl Fn(i64) -> String,
 ) -> Vec<Tell> {
     // A spell of a session no longer seen needn't be remembered.
-    told.spells
-        .retain(|session, _| sessions.iter().any(|s| &s.session == session));
-    let mut tells = Vec::new();
+    let seen = |session: &String| sessions.iter().any(|s| &s.session == session);
+    told.spells.retain(|session, _| seen(session));
+    told.woken.retain(|session, _| seen(session));
+    let mut tells = wakes(sessions, told, now, &clock);
     for s in sessions {
-        let (Some(by), Some(since)) = (&s.orchestrated_by, s.since) else {
+        let (Some(by), Some(since)) = (s.led(), spell(s, told)) else {
             continue;
         };
-        if by.is_empty()
-            || by.eq_ignore_ascii_case(&s.address)
-            || !s.listening
-            || !s.running
-            || now - since < IDLE_FOR
-            || told.spells.get(&s.session) == Some(&since)
-        {
+        if now - since < IDLE_FOR || told.spells.get(&s.session) == Some(&since) {
+            continue;
+        }
+        let woken = told
+            .woken
+            .get(&s.session)
+            .filter(|w| s.next.as_deref() == Some(w.next.as_str()))
+            .cloned();
+        // One with a step of its own is asked first, and its orchestrator
+        // hears only once the question has had time to take; one first seen
+        // past two hours is asked this tick and told of in twenty minutes.
+        if s.next.is_some() && woken.as_ref().is_none_or(|w| now - w.at < WAKE_AFTER) {
             continue;
         }
         told.spells.insert(s.session.clone(), since);
         let minutes = (now - since) / 60;
-        let how = if s.unstarted {
-            format!(
-                "its pi started at {} and has taken no turn since",
-                clock(since)
-            )
-        } else {
-            format!("its last turn ended at {}", clock(since))
-        };
         let on = s
             .quest
             .as_deref()
             .map_or_else(String::new, |q| format!(" on {q}"));
+        let woken = woken.map_or_else(String::new, |w| {
+            if w.since == since {
+                format!(
+                    " It was asked at {} to take up its next step, and has taken no turn \
+                     since.",
+                    clock(w.at)
+                )
+            } else {
+                format!(
+                    " It was asked at {} to take up its next step, and the turns since \
+                     haven't moved it.",
+                    clock(w.at)
+                )
+            }
+        });
         tells.push(Tell {
             session: s.session.clone(),
-            to: by.clone(),
+            to: by.to_owned(),
             text: format!(
-                "{address}{on} has sat idle {h} h {m:02} min: {how} (session {session}). \
+                "{address}{on} has sat idle {h} h {m:02} min: {how} (session {session}).{woken} \
                  Give it its next piece, or park it if it has none.",
                 address = s.address,
                 h = minutes / 60,
                 m = minutes % 60,
+                how = s.how(since, "its", &clock),
                 session = s.session,
             ),
+            wakes: false,
         });
     }
     tells
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const NOW: i64 = 100_000;
-
-    fn quiet(idle: i64) -> Quiet {
-        Quiet {
-            address: "8C7D8C31".into(),
-            session: "s-1".into(),
-            quest: Some("QEST-1".into()),
-            orchestrated_by: Some("VP50PC".into()),
-            listening: true,
-            running: true,
-            since: Some(NOW - idle),
-            unstarted: false,
-        }
-    }
-
-    fn clock(at: i64) -> String {
-        format!("t{at}")
-    }
-
-    #[test]
-    fn a_session_idle_two_hours_is_told_to_its_orchestrator_once() {
-        let mut told = Told::default();
-        let sessions = [quiet(IDLE_FOR + 5 * 60)];
-        let tells = due(&sessions, &mut told, NOW, clock);
-        assert_eq!(tells.len(), 1);
-        assert_eq!(tells[0].to, "VP50PC");
-        assert!(
-            tells[0]
-                .text
-                .starts_with("8C7D8C31 on QEST-1 has sat idle 2 h 05 min: its last turn ended at"),
-            "{}",
-            tells[0].text
+/// The sessions to wake now, the longest idle first, at most
+/// `WAKE_AT_MOST` of them. A session is asked once of each step: one that
+/// answers without moving it is its orchestrator's to hear of, at two
+/// hours, rather than asked again every twenty minutes all night.
+fn wakes(
+    sessions: &[Quiet],
+    told: &mut Told,
+    now: i64,
+    clock: &impl Fn(i64) -> String,
+) -> Vec<Tell> {
+    let mut idle: Vec<(&Quiet, &str, i64, &str)> = sessions
+        .iter()
+        .filter_map(|s| {
+            let by = s.led()?;
+            let since = spell(s, told)?;
+            let next = s.next.as_deref()?;
+            let asked = told.woken.get(&s.session).is_some_and(|w| w.next == next);
+            (!asked && now - since >= WAKE_AFTER).then_some((s, by, since, next))
+        })
+        .collect();
+    idle.sort_by_key(|(s, _, since, _)| (*since, s.session.clone()));
+    let mut tells = Vec::new();
+    for (s, by, since, next) in idle.into_iter().take(WAKE_AT_MOST) {
+        told.woken.insert(
+            s.session.clone(),
+            Woken {
+                since,
+                at: now,
+                next: next.to_owned(),
+            },
         );
-        assert!(tells[0].text.contains("(session s-1)"));
-        assert_eq!(
-            due(&sessions, &mut told, NOW + 3600, clock),
-            Vec::<Tell>::new()
-        );
+        let minutes = (now - since) / 60;
+        tells.push(Tell {
+            session: s.session.clone(),
+            to: s.address.clone(),
+            text: format!(
+                "{address}: this session has sat idle {h} h {m:02} min with a next step of \
+                 its own, \"{next}\": {how}. Take it up now. If it waits on someone, park \
+                 saying on whom; if it is another's, hand it to them by name. Answer this \
+                 with re, saying which. {by} hears of it at two hours idle.",
+                address = s.address,
+                h = minutes / 60,
+                m = minutes % 60,
+                next = quoted(next),
+                how = s.how(since, "its", clock),
+            ),
+            wakes: true,
+        });
     }
-
-    #[test]
-    fn a_new_turn_starts_a_new_spell() {
-        let mut told = Told::default();
-        assert_eq!(due(&[quiet(IDLE_FOR)], &mut told, NOW, clock).len(), 1);
-        let again = quiet(IDLE_FOR - 60);
-        assert_eq!(
-            due(std::slice::from_ref(&again), &mut told, NOW, clock),
-            Vec::<Tell>::new()
-        );
-        assert_eq!(due(&[again], &mut told, NOW + 60, clock).len(), 1);
-    }
-
-    #[test]
-    fn one_that_never_turned_since_its_start_says_so() {
-        let mut told = Told::default();
-        let s = Quiet {
-            unstarted: true,
-            ..quiet(IDLE_FOR)
-        };
-        let tells = due(&[s], &mut told, NOW, clock);
-        assert!(
-            tells[0]
-                .text
-                .contains("its pi started at t92800 and has taken no turn since")
-        );
-    }
-
-    #[test]
-    fn busy_parked_dead_unled_and_recent_sessions_are_not_told() {
-        let long = IDLE_FOR * 3;
-        let cases = [
-            quiet(IDLE_FOR - 1),
-            Quiet {
-                listening: false,
-                ..quiet(long)
-            },
-            Quiet {
-                running: false,
-                ..quiet(long)
-            },
-            Quiet {
-                orchestrated_by: None,
-                ..quiet(long)
-            },
-            Quiet {
-                orchestrated_by: Some("8c7d8c31".into()),
-                ..quiet(long)
-            },
-            Quiet {
-                since: None,
-                ..quiet(long)
-            },
-        ];
-        for case in cases {
-            let mut told = Told::default();
-            assert!(
-                due(std::slice::from_ref(&case), &mut told, NOW, clock).is_empty(),
-                "{case:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_presence_counts_from_the_later_of_its_last_turn_and_its_start() {
-        let presence = |turned: &str, started_ms: i64| -> Presence {
-            serde_json::from_value(serde_json::json!({
-                "session": "s-1",
-                "addresses": ["8C7D8C31"],
-                "state": "listening",
-                "orchestratedBy": "VP50PC",
-                "owner": {"pid": 7, "startedAt": started_ms, "bootId": "b"},
-                "usage": {"turns": {"last": {"at": turned, "duration_ms": 60_000}}},
-            }))
-            .unwrap()
-        };
-        // 1_000_000 s is 1970-01-12T13:46:40Z.
-        let turned_later = presence("1970-01-12T13:46:40Z", 900_000_000);
-        let seven = |p: &Presence| p.owner.as_ref().and_then(|o| o.pid) == Some(7);
-        let q = Quiet::from(&turned_later, None, Some("b"), false, seven).unwrap();
-        assert_eq!(q.since, Some(1_000_060));
-        assert!(!q.unstarted);
-        assert!(q.running && q.listening);
-
-        let started_later = presence("1970-01-12T13:46:40Z", 1_100_000_000);
-        let q = Quiet::from(&started_later, None, Some("b"), false, |_| true).unwrap();
-        assert_eq!(q.since, Some(1_100_000));
-        assert!(q.unstarted);
-
-        let other_boot = Quiet::from(&started_later, None, Some("c"), false, |_| true).unwrap();
-        assert!(!other_boot.running);
-        let parked = Quiet::from(&started_later, None, Some("b"), true, |_| true).unwrap();
-        assert!(!parked.listening);
-    }
-
-    #[test]
-    fn a_presence_whose_day_began_again_counts_from_its_log() {
-        // Past midnight a presence's usage holds no last turn.
-        let presence: Presence = serde_json::from_value(serde_json::json!({
-            "session": "s-1",
-            "addresses": ["1H56ZJ"],
-            "state": "listening",
-            "orchestratedBy": "WCJQSG",
-            "owner": {"pid": 7, "startedAt": 1_000_000_000, "bootId": "b"},
-            "usage": {"day": "1970-01-13", "turns": {"today": 0}},
-        }))
-        .unwrap();
-        let q = Quiet::from(&presence, Some(1_005_100), Some("b"), false, |_| true).unwrap();
-        assert_eq!(q.since, Some(1_005_100));
-        assert!(!q.unstarted, "it took turns after its start");
-        let q = Quiet::from(&presence, None, Some("b"), false, |_| true).unwrap();
-        assert!(q.unstarted);
-    }
+    tells
 }
+
+/// A next step as a wake quotes it: its first `QUOTED` characters, since
+/// it is the session's own words, sent back to it under cadence's name.
+fn quoted(next: &str) -> String {
+    let mut quoted: String = next.chars().take(QUOTED).collect();
+    if quoted.len() < next.len() {
+        quoted.push_str("...");
+    }
+    quoted
+}
+
+#[cfg(test)]
+mod tests;
