@@ -1,11 +1,13 @@
 Renders by the deadline only on screens refreshing at most as fast as
 NIRI_RENDER_DEADLINE_UP_TO_HZ says, in whole hertz, as niri starts, and
 at once on faster ones, even while the deadline is wanted. With nothing
-set, every rate defers as renders-by-the-deadline.patch had it. On Joel's
+set, every rate defers as renders-by-the-deadline.patch had it; one set
+but not whole hertz defers no rate, so a typo can't reach a fast screen,
+and niri logs the ceiling it read. On Joel's
 own GPU the deadline missed no vblank in 3 hours on a 60 Hz screen and
-took a median 6 ms off the launcher's frames' trip from swap to screen,
-but missed 8 in its first 20 s on the 120 Hz panel, whose refresh leaves
-too little room to render late in (18 November). Asked through the environment, as the
+took a median 6 ms off a launcher drawer's trip to it, but missed 8 in
+its first 20 s on the 120 Hz panel, whose refresh leaves too little room
+to render late in (18 November). Asked through the environment, as the
 deadline itself is, so it adds no setting a niri before it would refuse.
 Ours, made on the rest.
 
@@ -44,19 +46,35 @@ index 669cb38..e20a427 100644
          let target = state.frame_clock.next_presentation_time();
          let Some(deadline) = state.render_deadline.deadline(now, target, refresh) else {
 diff --git a/src/render_deadline.rs b/src/render_deadline.rs
-index 356c196..0bfe9dc 100644
+index 356c196..4b884dc 100644
 --- a/src/render_deadline.rs
 +++ b/src/render_deadline.rs
-@@ -181,12 +181,59 @@ fn budget_too_large(budget: Duration, refresh: Duration) -> bool {
+@@ -181,12 +181,99 @@ fn budget_too_large(budget: Duration, refresh: Duration) -> bool {
      budget * 4 >= refresh * 3
  }
  
 +/// The fastest refresh rate, in whole hertz, that renders by its deadline:
 +/// `NIRI_RENDER_DEADLINE_UP_TO_HZ` as niri starts, or every rate without it.
 +pub fn up_to_hz_from_env() -> Option<u32> {
-+    std::env::var("NIRI_RENDER_DEADLINE_UP_TO_HZ")
-+        .ok()
-+        .and_then(|hz| hz.parse().ok())
++    let value = std::env::var("NIRI_RENDER_DEADLINE_UP_TO_HZ").ok();
++    let up_to_hz = up_to_hz(value.as_deref());
++    if let Some(hz) = up_to_hz {
++        info!("render deadline: only on screens up to {hz} Hz");
++    }
++    up_to_hz
++}
++
++/// The ceiling a value names. One set but not whole hertz defers no rate rather than every rate,
++/// so a typo can't bring the deadline back to a screen too fast for it.
++fn up_to_hz(value: Option<&str>) -> Option<u32> {
++    let value = value?;
++    match value.trim().parse() {
++        Ok(hz) => Some(hz),
++        Err(_) => {
++            warn!("render deadline: {value:?} isn't whole hertz, so no screen renders by it");
++            Some(0)
++        }
++    }
 +}
 +
 +/// Whether a screen refreshing every `refresh` renders by its deadline when only rates up to
@@ -103,6 +121,30 @@ index 356c196..0bfe9dc 100644
 +        assert!(!defers_at(hz(75.0), Some(60)));
 +        assert!(!defers_at(hz(60.6), Some(60)));
 +        assert!(!defers_at(REFRESH_240, Some(60)));
++    }
++
++    #[test]
++    fn a_higher_ceiling_defers_up_to_its_own_rate() {
++        assert!(defers_at(REFRESH_120, Some(120)));
++        assert!(defers_at(hz(119.88), Some(120)));
++        assert!(!defers_at(hz(144.0), Some(120)));
++        assert!(!defers_at(REFRESH_240, Some(120)));
++    }
++
++    #[test]
++    fn a_ceiling_reads_whole_hertz() {
++        assert_eq!(up_to_hz(None), None);
++        assert_eq!(up_to_hz(Some("60")), Some(60));
++        assert_eq!(up_to_hz(Some(" 120\n")), Some(120));
++    }
++
++    #[test]
++    fn an_unreadable_ceiling_defers_no_rate() {
++        for value in ["sixty", "60.0", "", "-60"] {
++            let ceiling = up_to_hz(Some(value));
++            assert!(!defers_at(REFRESH_60, ceiling), "{value:?} deferred 60 Hz");
++            assert!(!defers_at(hz(24.0), ceiling), "{value:?} deferred 24 Hz");
++        }
 +    }
  
      fn ms(ms: u64) -> Duration {

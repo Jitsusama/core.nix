@@ -153,10 +153,10 @@ onLinux {
       );
 
   # niri's unit asks for the render deadline, and keeps it to screens of
-  # 60 Hz and slower, by the names the two patches read, so a rename on
-  # either side neither drops it nor lets it reach the 120 Hz panel, where
-  # it missed vblanks. Which rates defer is proven in niri's own tests, as
-  # it builds.
+  # 60 Hz and slower, by the names the two patches read, and niri is built
+  # with both, so neither a rename on either side nor a patch dropped from
+  # the list lets it reach the 120 Hz panel, where it missed vblanks. Which
+  # rates defer is proven in niri's own tests, as it builds.
   niri-renders-by-the-deadline-up-to-60-hz =
     let
       unit =
@@ -166,11 +166,14 @@ onLinux {
         ).text;
       deadline = builtins.readFile ./renders-by-the-deadline.patch;
       rate = builtins.readFile ./renders-by-the-deadline-up-to-a-rate.patch;
+      built = map (patch: baseNameOf (toString patch)) graphical.config.programs.niri.package.patches;
     in
     holds "niri-renders-by-the-deadline-up-to-60-hz"
-      "niri's unit doesn't ask for the render deadline, doesn't keep it to screens of 60 Hz and slower, or asks by a name the patches don't read."
+      "niri isn't built with both render deadline patches, or its unit doesn't ask for the deadline, doesn't keep it to screens of 60 Hz and slower, or asks by a name the patches don't read."
       (
-        lib.hasInfix ''var_os("NIRI_RENDER_DEADLINE")'' deadline
+        lib.elem "renders-by-the-deadline.patch" built
+        && lib.elem "renders-by-the-deadline-up-to-a-rate.patch" built
+        && lib.hasInfix ''var_os("NIRI_RENDER_DEADLINE")'' deadline
         && lib.hasInfix ''var("NIRI_RENDER_DEADLINE_UP_TO_HZ")'' rate
         && lib.hasInfix "Environment=NIRI_RENDER_DEADLINE=1\n" unit
         && lib.hasInfix "Environment=NIRI_RENDER_DEADLINE_UP_TO_HZ=60\n" unit
