@@ -214,6 +214,7 @@ mod tests {
             r#"{"auths": ["made-up"]}"#,
             r#"{"auths": {"registry.example": "made-up"}}"#,
             r#"{"auths": {"registry.example": {"auth": {"value": "made-up"}}}}"#,
+            r#"{"proxies": ["http://joel:made-up@proxy.example"]}"#,
         ] {
             assert!(
                 empties(text, &docker()),
@@ -229,6 +230,11 @@ mod tests {
             r#"{"auths": {"registry.example": {"auth": ""}}}"#,
             r#"{"auths": {"registry.example": {"email": "joel@example"}}}"#,
             r#"{"auths": {}, "credsStore": "", "HttpHeaders": {}, "detachKeys": "ctrl-p"}"#,
+            r#"{"auths": null}"#,
+            r#"{"auths": []}"#,
+            r#"{"auths": {"registry.example": null}}"#,
+            r#"{"auths": {"registry.example": ""}}"#,
+            r#"{"auths": {"registry.example": {"auth": null}}}"#,
             r#"{"proxies": {"default": {"httpProxy": "http://proxy.example:3128"}}}"#,
             r#"{"credHelpers": {"registry.example": "ecr-login"}}"#,
         ] {
