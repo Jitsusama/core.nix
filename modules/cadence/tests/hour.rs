@@ -84,6 +84,29 @@ fn a_look_by_hand_prints_the_card_and_keeps_and_tells_nothing() {
 /// hour after reads the ledger as it now stands, so one rename doesn't
 /// leave them unjudged for good.
 #[test]
+fn the_card_counts_the_pains_the_hearer_summed_up() {
+    let account = account();
+    let hearer = account.path().join("state/pain-points");
+    fs::create_dir_all(&hearer).expect("the hearer's folder");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("a clock past 1970")
+        .as_millis();
+    fs::write(
+        hearer.join("hour.json"),
+        format!(r#"{{"at": {now}, "open": 3, "worst": "the bar hides", "troubles": []}}"#),
+    )
+    .expect("the hearer's summary");
+
+    let ran = hour(account.path(), &[]);
+    let card = String::from_utf8_lossy(&ran.stdout);
+    assert!(
+        card.contains("His pains:\n  ✕ pains Joel said in the last day that nobody has taken up: 3"),
+        "the card didn't read the hearer's summary into its own row: {card}"
+    );
+}
+
+#[test]
 fn a_miss_gone_from_the_ledger_leaves_one_hour_unjudged() {
     let account = account();
     let kept = account.path().join("state/cadence");
