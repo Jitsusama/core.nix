@@ -52,8 +52,9 @@
 // or what its acts read changes. A step asked again, as a held one is at each
 // change, makes none of its Recent's rows again. Whether a closed program
 // starts only makes its step once, and again as a provider's acts for it
-// come or go, a notice of its own comes or goes or something of its own
-// starts or stops playing (who plays changing only asks that), or as
+// come or go, a notice of its own comes or goes, or a player, stream or
+// recorder comes to be its own or stops being so (who plays changing
+// only asks that; a track, its play state or volume asks nothing), or as
 // every answer is let go: the hidden programs, a walk from outside, a
 // giver joining or leaving, or an opening or closing. Nothing is held
 // while a giver can't say it changed, and a provider saying it changed
