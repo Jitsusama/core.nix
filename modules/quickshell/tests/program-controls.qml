@@ -626,34 +626,60 @@ ShellRoot {
 
     // The notices' collection says it changed as each notice comes, which
     // on Joel's came about every 48 s: only a program's own notice coming
-    // lets its answer go.
+    // or going lets its answer go. A notice counts read or not, as its
+    // Notifications row does (Applications' notices()).
+    property int noticeAsked: 0
     function noticeLone() {
         same("before a notice, it starts only", program("lone").actsOnly, true);
-        const noticeAsked = applications.stepsCounted.made;
+        root.noticeAsked = applications.stepsCounted.made;
         notices.changed();
         same("the notices' collection saying it changed leaves its answer held",
-            `${program("lone").actsOnly} ${applications.stepsCounted.made - noticeAsked}`,
+            `${program("lone").actsOnly} ${applications.stepsCounted.made - root.noticeAsked}`,
             "true 0");
-        root.waiting = "lone's notice";
-        Notices.history = Notices.history.concat([{ id: 4, at: Date.now(), app: "Lone",
+        root.waiting = "another's notice";
+        Notices.history = Notices.history.concat([{ id: 4, at: Date.now(), app: "Elsewhere",
             summary: "Done", body: "", read: false, missed: false }]);
     }
 
+    // Each step is asked once every handler of the change has heard it, as
+    // a key after it would be: this one may come before Applications'.
     function noticed() {
-        if (root.waiting !== "lone's notice" || !("Lone" in notices.sentCounts()))
+        const senders = notices.sentCounts();
+        const step = {
+            "another's notice": "Elsewhere" in senders,
+            "lone's notice": "Lone" in senders,
+            "lone's notice gone": !("Lone" in senders)
+        }[root.waiting];
+        if (!step)
             return;
-        root.waiting = "the end";
-        // Asked once every handler of the change has heard it, as a key
-        // after it would be: this one may come before Applications'.
+        const at = root.waiting;
+        root.waiting = `after ${at}`;
         Qt.callLater(() => {
             try {
-                same("and a notice of its own coming, it holds more",
-                    program("lone").actsOnly, false);
-                Qt.exit(0);
+                root.noticeStep(at);
             } catch (error) {
                 fail(error.message);
             }
         });
+    }
+
+    function noticeStep(at) {
+        if (at === "another's notice") {
+            same("another program's notice coming leaves its answer held",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - root.noticeAsked}`,
+                "true 0");
+            root.waiting = "lone's notice";
+            Notices.history = Notices.history.concat([{ id: 5, at: Date.now(), app: "Lone",
+                summary: "Done", body: "", read: true, missed: false }]);
+        } else if (at === "lone's notice") {
+            same("and a notice of its own coming, read, it holds more",
+                program("lone").actsOnly, false);
+            root.waiting = "lone's notice gone";
+            Notices.history = Notices.history.filter(one => one.id !== 5);
+        } else {
+            same("and that notice going, it starts only again", program("lone").actsOnly, true);
+            Qt.exit(0);
+        }
     }
 
     // Nothing here waits forever: a case that never comes fails, by name.

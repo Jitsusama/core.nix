@@ -2048,7 +2048,10 @@ Provider {
         optedAgain();
     }
     // And as the desktop entries are read, which a program's own acts are
-    // made again on, since an act's program is found by its entry.
+    // made again on, since an act's program is found by its entry. Held
+    // answers go then too: an entry read again is a new object, which a
+    // held answer already refuses, but what other sources take (taken())
+    // can change a closed program's step while its entry stays.
     onOwnActsChanged: {
         startsAgain();
         optedAgain();
