@@ -316,16 +316,9 @@ impl Mesh {
     #[must_use]
     pub fn sent_by(&self, address: &str) -> Vec<Message> {
         let mark = format!("-{address}-");
-        let folder = self.messages();
-        let days: Vec<PathBuf> = fs::read_dir(&folder)
+        let mut sent: Vec<Message> = self
+            .message_files()
             .into_iter()
-            .flatten()
-            .filter_map(Result::ok)
-            .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
-            .map(|entry| entry.path())
-            .collect();
-        let mut sent: Vec<Message> = json_files(&folder)
-            .chain(days.iter().flat_map(|day| json_files(day)))
             .filter(|p| {
                 p.file_name()
                     .is_some_and(|n| n.to_string_lossy().contains(&mark))
@@ -335,6 +328,37 @@ impl Mesh {
             .collect();
         sent.sort_by(|a, b| a.id.cmp(&b.id));
         sent
+    }
+
+    /// Every message sent at `from_ms` or later, by its id's stamp, so only
+    /// those are opened.
+    #[must_use]
+    pub fn sent_since(&self, from_ms: i64) -> Vec<Message> {
+        self.message_files()
+            .into_iter()
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| stamped_at(&n.to_string_lossy()))
+                    .is_some_and(|at| at >= from_ms)
+            })
+            .filter_map(|p| read_json::<Message>(&p))
+            .collect()
+    }
+
+    /// Every message's file, those the harness filed into a folder for
+    /// each day included.
+    fn message_files(&self) -> Vec<PathBuf> {
+        let folder = self.messages();
+        let days: Vec<PathBuf> = fs::read_dir(&folder)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+            .map(|entry| entry.path())
+            .collect();
+        json_files(&folder)
+            .chain(days.iter().flat_map(|day| json_files(day)))
+            .collect()
     }
 }
 

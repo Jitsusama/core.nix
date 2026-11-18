@@ -238,7 +238,36 @@ fn gather(
     let keeper = measures::keeper(routes.as_deref());
     let owner = keeper.as_deref().unwrap_or(measures::ASKS);
     all.push(measures::pains(pains.as_deref(), now, owner));
+    all.push(spent_beside_landed(state_home, now));
     Ok(all)
+}
+
+/// Each quest's spend today beside what it landed since midnight here,
+/// from spend-watch's collection and the mesh's landing notes, each
+/// sender taken to the quest its presence works on.
+fn spent_beside_landed(state_home: &Path, now: i64) -> Measure {
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
+    let collection = runtime
+        .and_then(|r| fs::read_to_string(r.join("spend-watch/collection.json")).ok())
+        .unwrap_or_default();
+    let mesh = Mesh {
+        root: state_home.join("pi/agentic-harness.pi"),
+    };
+    let midnight = Timestamp::from_second(now)
+        .and_then(|at| at.to_zoned(TimeZone::system()).start_of_day())
+        .map_or(now * 1000, |day| day.timestamp().as_millisecond());
+    let notes = mesh.sent_since(midnight);
+    let presences = mesh.all();
+    let quest_of = |address: &str| {
+        presences
+            .iter()
+            .find(|p| p.addresses.iter().any(|a| a == address))
+            .and_then(|p| p.quest.as_deref())
+            .map_or(address, |quest| quest.rsplit('-').next().unwrap_or(quest))
+            .to_owned()
+    };
+    let landed = measures::spent::landed_by(notes.iter().map(|m| m.text.as_str()), quest_of);
+    measures::spent::beside(&collection, &landed, measures::ASKS)
 }
 
 /// The tick's card in `folder`, by when its file was written, if fresh as
