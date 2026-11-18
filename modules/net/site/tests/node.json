@@ -1,0 +1,36 @@
+{
+  "domain": "node",
+  "kinds": {
+    "machine": [
+      {
+        "key": "machine:kestrel",
+        "name": "kestrel",
+        "state": "ready",
+        "memory": 68719476736,
+        "disk": 2000000000000,
+        "disk_free": 900000000000,
+        "room": {
+          "memory_available": 40000000000,
+          "pressure": { "cpu": 12.5, "memory": 0, "io": 0 },
+          "over": []
+        }
+      }
+    ],
+    "cell": [
+      {
+        "key": "cell:SKIFF1",
+        "name": "SKIFF1",
+        "type": "session",
+        "machine": "kestrel",
+        "standing": "moving"
+      },
+      {
+        "key": "cell:TERN01",
+        "name": "TERN01",
+        "type": "session",
+        "machine": "kestrel",
+        "standing": "needs-you"
+      }
+    ]
+  }
+}

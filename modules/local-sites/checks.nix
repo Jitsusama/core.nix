@@ -478,6 +478,60 @@ in
           --import-mode=importlib --basetemp="$TMPDIR/pytest" ${../repos/site/tests}/code-reads-live-test.py
         touch $out
       '';
+  # The network page, built on the theme's own web kit as a machine builds
+  # it, read in headless Chromium through the server beside a stand-in net
+  # and a stand-in node (modules/net/site/tests/network-reads-live-test.py):
+  # live with every device drawn in its tree and on its map, a name from
+  # the Wi-Fi drawn as words, one going with its link, a machine mycelium
+  # runs on following the node and linked to its place on the map, broken
+  # while net is away and live once it's back, stale once the server goes,
+  # within its budget, the web-design skill's page checks passing at two
+  # widths in both looks, and nothing logged. Both feeds are the ones
+  # home.nix declares for a machine in a realm, so the server under test
+  # passes the page what a machine's does. Chromium builds only on Linux.
+  network-site-reads-live =
+    let
+      inRealm = account (bareNixos [
+        self.nixosModules.workstation
+        {
+          home-manager.users.someone = {
+            imports = [ self.homeModules.local-sites ];
+            jitsusama.mycelium.realm = "harbour";
+          };
+        }
+      ]);
+      python = pkgs.python3.withPackages (python: [
+        python.playwright
+        python.pytest
+      ]);
+      page = sites.localSite {
+        name = "network";
+        src = ../net/site;
+        inherit webKit;
+        tint = "machine";
+      };
+    in
+    pkgs.runCommandLocal "network-site-reads-live"
+      {
+        env = {
+          LOCAL_SITES = lib.getExe' (pkgs.callPackage ./package.nix { }) "local-sites";
+          NETWORK_SITE = "${page}";
+          NET_KINDS = builtins.toJSON inRealm.jitsusama.local-sites.feeds.net.kinds;
+          NODE_KINDS = builtins.toJSON inRealm.jitsusama.local-sites.feeds.node.kinds;
+          LOCAL_SITES_SHARED = "${shared}";
+          STRIP = "${./home/strip.css}";
+          WEB_SKILL = "${../theme/web/skill}";
+          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.callPackage ./headless-browsers.nix { }}";
+          PYTHONPATH = "${./tests}";
+          PYTHONDONTWRITEBYTECODE = "1";
+        };
+      }
+      ''
+        HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider -p live_page \
+          --import-mode=importlib --basetemp="$TMPDIR/pytest" \
+          ${../net/site/tests}/network-reads-live-test.py
+        touch $out
+      '';
   # mycelium-map-check says the last reading's answer, and when, then that
   # it's looking again, before a stand-in for its browser test opens; it
   # keeps each answer whole for the next run, says nothing on the way as

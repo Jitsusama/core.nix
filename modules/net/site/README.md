@@ -25,4 +25,10 @@ note behind.
 | `index.md`    | its Markdown twin, with `llms.txt` for a model                 |
 | `tests/`      | the reading of the records, the words and the view, tried      |
 
+In `tests/`, `network-reads-live-test.py` is `network-site-reads-live`: the page
+Nix builds, read in a headless browser through the sites' server beside a
+stand-in net holding `net.json` and a stand-in node holding `node.json`, as
+the records change, stop and come back, within its budget and passing the
+web-design skill's page checks.
+
 [site]: ../../local-sites/site.nix
