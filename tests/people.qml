@@ -65,6 +65,12 @@ ShellRoot {
         property bool waking: false
         // Whether it's a viewer's command line (Launcher.qml's viewing).
         property bool viewing: false
+        // The place being stepped into, as Launcher.qml's entering.
+        property var entering: null
+        // How many frames were asked for, and whether they come: niri
+        // sends none to a surface it needn't draw.
+        property int framesAsked: 0
+        property bool framesCome: true
 
         function wants(source) {
             return wanting;
@@ -73,7 +79,9 @@ ShellRoot {
         // The frame after this one, as the launcher's is, here the next
         // turn of the event loop.
         function afterFrame(then) {
-            Qt.callLater(then);
+            framesAsked += 1;
+            if (framesCome)
+                Qt.callLater(then);
         }
 
         function enter(row) {
@@ -966,6 +974,36 @@ ShellRoot {
             }
         },
         {
+            what: "one listed who changed while shut isn't made inside a place",
+            run: () => {
+                launcher.held = [{ row: { key: "calendar:meeting:standup" } }];
+                root.opensAt = Date.now();
+                launcher.open = true;
+            },
+            holds: () => Date.now() - root.opensAt > 200,
+            check: () => {
+                launcher.open = false;
+                launcher.held = [];
+                expect("nobody made", people.tally.rows === root.shutRows,
+                    `${people.tally.rows - root.shutRows} rows made`);
+            }
+        },
+        {
+            what: "one listed who changed while shut isn't made stepping into a place",
+            run: () => {
+                launcher.entering = ({ key: "calendar:meeting:standup" });
+                root.opensAt = Date.now();
+                launcher.open = true;
+            },
+            holds: () => Date.now() - root.opensAt > 200,
+            check: () => {
+                launcher.open = false;
+                launcher.entering = null;
+                expect("nobody made", people.tally.rows === root.shutRows,
+                    `${people.tally.rows - root.shutRows} rows made`);
+            }
+        },
+        {
             // As the launcher keeps an opening, its sources wake a slice a
             // frame before it opens and until after, and nobody is made
             // until they have.
@@ -985,7 +1023,7 @@ ShellRoot {
         },
         {
             what: "one listed who changed while shut is made once the opening's woken",
-            holds: () => Date.now() - root.opensAt > 200,
+            holds: () => people.listedAhead(),
             check: () => {
                 const listed = people.listedPersons().map(person => person.key);
                 expect("he's listed", listed.includes("cal@example.com"), listed.join(", "));
@@ -999,6 +1037,53 @@ ShellRoot {
                 expect("so the first letter makes none", people.tally.rows === typed,
                     `${people.tally.rows - typed} rows made: `
                     + people.tally.lately.slice(typed - people.tally.rows).join(", "));
+            }
+        },
+        {
+            // With no budget, each slice makes one row, so the listing
+            // takes a frame for each of them and is still made whole.
+            what: "a listing longer than a slice is made a slice a frame",
+            run: () => {
+                launcher.open = false;
+                launcher.wanting = false;
+                tuple().favoured = ({});
+                root.shutRows = people.tally.rows;
+                people.aheadBudget = 0;
+                root.framesBefore = launcher.framesAsked;
+                launcher.open = true;
+            },
+            holds: () => people.listedAhead(),
+            check: () => {
+                people.aheadBudget = 8;
+                const listed = people.listedPersons().length;
+                const frames = launcher.framesAsked - root.framesBefore;
+                expect("a frame a row", listed > 1 && frames >= listed,
+                    `${frames} frames for ${listed} listed`);
+                expect("his row made", people.tally.rows > root.shutRows,
+                    `${people.tally.rows - root.shutRows} rows made`);
+                const typed = people.tally.rows;
+                launcher.wanting = true;
+                void people.all;
+                people.gather("q");
+                expect("so the first letter makes none", people.tally.rows === typed,
+                    `${people.tally.rows - typed} rows made`);
+            }
+        },
+        {
+            what: "a listing is made ahead where no frame comes",
+            run: () => {
+                launcher.open = false;
+                launcher.wanting = false;
+                tuple().favoured = ({ "105": { wanted: true, key: "person:cal@example.com" } });
+                root.shutRows = people.tally.rows;
+                launcher.framesCome = false;
+                launcher.open = true;
+            },
+            holds: () => people.listedAhead(),
+            check: () => {
+                launcher.framesCome = true;
+                expect("his row made", people.tally.rows > root.shutRows,
+                    `${people.tally.rows - root.shutRows} rows made`);
             }
         }
     ]
@@ -1015,8 +1100,10 @@ ShellRoot {
     // How many rows People had made once Slack was asked, the launcher
     // shut.
     property int shutRows: 0
-    // When the launcher opened over a listing changed while shut.
+    // When the launcher opened over a listing changed while shut, and
+    // how many frames had been asked for by then.
     property real opensAt: 0
+    property int framesBefore: 0
 
     // When the people daemon was stopped, and how many rows People had
     // made once it was gone.

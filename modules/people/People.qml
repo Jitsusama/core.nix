@@ -39,6 +39,7 @@ import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import KeyTimes
 import "../Fuzzy.js" as Fuzzy
 import "../Hearing.js" as Hearing
 import "../When.js" as When
@@ -1632,16 +1633,21 @@ Provider {
     // rows and took 57 to 164 ms, against 18 to 35 for letters that made
     // none (Joel's journal, 2026-11-14 to 17; ZINAWZ, 88718678). Waiting
     // out the waking keeps it out of the slices the opening's rows fill
-    // in, and it's made a slice a frame within the waking's own budget, so
-    // a key comes in at most one slice late. Those that read the same keep
-    // their rows, so this makes only those that changed, and the letter's
-    // listing finds every row it reached kept. Opened into a place or a
-    // viewer's command line, typing searches there alone, so nothing is.
+    // in, and it's made a slice a frame within the waking's own budget, on
+    // its clock, so a key comes in at most one slice late. A merge the
+    // waking left stale (26 to 38 ms) is the one thing a slice can't
+    // divide: it's paid here rather than by the letter, and the rows wait
+    // for the slice after it. Those that read the same keep their rows, so
+    // this makes only those that changed, and the letter's listing finds
+    // every row it reached kept. Opened into a place or a viewer's command
+    // line, typing searches there alone, so nothing is.
     property bool listingAhead: false
-    readonly property real aheadBudget: 8
-    // The listing being made ahead, how far it's got, and which opening's
-    // run is making it, so one shut and opened again runs once.
-    readonly property var ahead: ({ of: null, at: 0, run: 0 })
+    // Settable only so a check can make a row a slice.
+    property real aheadBudget: 8
+    // The listing being made ahead, how far it's got, and which wait for
+    // its next slice is the live one, so the frame and the fallback after
+    // it (aheadFallback) run it once, and a shut ends any wait.
+    readonly property var ahead: ({ of: null, at: 0, turn: 0 })
     function listingHome() {
         const launcher = provider.launcher;
         return !!launcher?.open && (launcher.held?.length ?? 0) === 0 && !launcher.entering
@@ -1649,35 +1655,71 @@ Provider {
     }
     function listAhead() {
         listingAhead = false;
+        ahead.turn += 1;
+        aheadFallback.stop();
         if (!listingHome() || typeof provider.launcher.afterFrame !== "function")
             return;
         if (provider.launcher.waking) {
             listingAhead = true;
             return;
         }
-        ahead.run += 1;
         ahead.of = null;
-        const run = ahead.run;
-        provider.launcher.afterFrame(() => listAheadNext(run));
+        listLater();
     }
-    function listAheadNext(run) {
-        if (run !== ahead.run || !listingHome())
+    // The next slice waits for a frame, or for aheadFallback where none
+    // comes, as the waking's do (Launcher.qml's wakeLater): niri sends no
+    // frame to a surface it needn't draw.
+    function listLater() {
+        const turn = ahead.turn + 1;
+        ahead.turn = turn;
+        provider.launcher.afterFrame(() => listAgain(turn));
+        aheadFallback.restart();
+    }
+    function listAgain(turn) {
+        if (turn !== ahead.turn)
             return;
+        ahead.turn = turn + 1;
+        aheadFallback.stop();
+        listAheadNext();
+    }
+    function listAheadNext() {
+        if (!listingHome())
+            return;
+        const began = KeyTimes.now();
         const listed = listedPersons();
         if (listed === listedRows.from)
             return;
-        if (ahead.of !== listed) {
+        const fresh = ahead.of !== listed;
+        if (fresh) {
             ahead.of = listed;
             ahead.at = 0;
         }
+        if (ahead.at >= listed.length)
+            return;
+        if (fresh && KeyTimes.now() - began >= aheadBudget) {
+            listLater();
+            return;
+        }
         const own = ownedHere();
-        const began = Date.now();
-        while (ahead.at < listed.length && Date.now() - began < aheadBudget) {
+        do {
             listedRow(listed[ahead.at], own);
             ahead.at += 1;
-        }
+        } while (ahead.at < listed.length && KeyTimes.now() - began < aheadBudget);
         if (ahead.at < listed.length)
-            provider.launcher.afterFrame(() => listAheadNext(run));
+            listLater();
+    }
+    // Whether the listing as it stands now has been made ahead, for the
+    // check that waits on it.
+    function listedAhead() {
+        const listed = listedPersons();
+        return ahead.of === listed && ahead.at >= listed.length;
+    }
+    // Two frames at 60 Hz, as the waking's wakeFallback.
+    Timer {
+        id: aheadFallback
+
+        interval: 33
+        onTriggered: provider.listAgain(provider.ahead.turn)
     }
 
     Connections {
