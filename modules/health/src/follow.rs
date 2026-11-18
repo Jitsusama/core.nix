@@ -8,7 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use jiff::tz::TimeZone;
@@ -37,10 +38,13 @@ const EVERY: Duration = Duration::from_secs(30);
 
 /// How long health runs before a follower's end ends it, for systemd or
 /// launchd to start it again with every follower and the day read again,
-/// which hears what went unheard meanwhile. A follower that ends at every
-/// start then costs a replay of the day every ten minutes, rather than
-/// one every few seconds.
-const SETTLED: Duration = Duration::from_secs(10 * 60);
+/// which hears what went unheard meanwhile that day, short of a start
+/// that falls past midnight, which reads only the new day. Followers that
+/// end at every start then cost a replay of the day every ten minutes,
+/// rather than one every few seconds. Each start also forgets the faults
+/// health saw itself rather than heard, such as a lid reading wrong, as
+/// every start does (`Day::resume`), and they then start that often.
+pub const SETTLED: Duration = Duration::from_mins(10);
 
 /// The day being tallied, and where it's written.
 pub struct Follower {
@@ -492,13 +496,14 @@ pub fn date_of(at: i64, zone: &TimeZone) -> String {
         .unwrap_or_default()
 }
 
-/// Follow the machine's own source into `into` until every follower ends,
-/// which only a fault does; then the day is written and systemd or launchd
-/// starts it again.
+/// Follow the machine's own source into `into` until a follower ends,
+/// which only a fault does (`run`); then the day is written and systemd or
+/// launchd starts it again, with every follower.
 ///
 /// # Errors
 ///
-/// When a follower can't start or the day can't be written.
+/// When a follower has ended or its followers couldn't start, no sooner than
+/// `SETTLED` after health started, or the day can't be written.
 pub fn follow(into: &Path) -> io::Result<()> {
     let source = Source::here();
     let zone = TimeZone::system();
@@ -556,31 +561,80 @@ pub fn follow(into: &Path) -> io::Result<()> {
         follower = follower.resuming(kept);
     }
     let (lines, read) = mpsc::channel();
-    // Counted as they start, so a follower added is waited on too.
-    let running = source.start(&now, &lines)?;
+    let ended = ended_by(source.start(&now, &lines), &lines, crate::source::fail);
     drop(lines);
-    run(&mut follower, &read, running, Instant::now, lid::look)?;
-    Err(io::Error::other("the followers ended"))
+    run(&mut follower, &read, Instant::now, thread::sleep, lid::look)?;
+    Err(ended)
 }
 
-/// Take the followers' lines until `running` of them end, and every half
-/// minute by `now`, however busy the journals are, look at the lid and
-/// write the day.
+/// What health ends on once `run` returns, given how its followers
+/// `started`. A start that failed is said through `say` at once, and
+/// taken as a follower's end on `lines`, since one that did start may
+/// still hold its sender, so a start that fails at every one costs a
+/// replay of the day every `SETTLED` rather than one every few seconds.
+fn ended_by(
+    started: io::Result<()>,
+    lines: &Sender<Option<String>>,
+    say: impl Fn(&str),
+) -> io::Error {
+    match started {
+        Ok(()) => io::Error::other("a follower ended, or the day's replay failed"),
+        Err(error) => {
+            // On a journal, only the day's start not being told fails
+            // here, so the words don't say a follower did.
+            say(&format!(
+                "health: can't start its followers: {error}, {}",
+                crate::source::starting_again()
+            ));
+            let _ = lines.send(None);
+            io::Error::other(format!("its followers couldn't start: {error}"))
+        }
+    }
+}
+
+/// Take the followers' lines until one has ended, which its `None` says,
+/// and health has run `SETTLED` by `now`, and every half minute, however
+/// busy the journals are, look at the lid and write the day. Each
+/// follows for as long as health runs, so an end is a fault, and health
+/// starting again follows every one again.
+///
+/// Health ends no sooner than `SETTLED` from its start, however its
+/// followers end, so the day isn't read again every few seconds where
+/// they end at every start: until then whatever is still heard is taken,
+/// and once nothing can be, health `wait`s out the rest, still looking
+/// every half minute. What went unheard that day is heard from the day's
+/// replay once health starts again.
 fn run(
     follower: &mut Follower,
     read: &Receiver<Option<String>>,
-    mut running: usize,
     mut now: impl FnMut() -> Instant,
+    mut wait: impl FnMut(Duration),
     mut look: impl FnMut() -> Looked,
 ) -> io::Result<()> {
-    let mut ticked = now();
-    while running > 0 {
-        let left = EVERY.saturating_sub(now().saturating_duration_since(ticked));
-        match read.recv_timeout(left) {
-            Ok(Some(line)) => follower.take(&line)?,
-            Ok(None) => running -= 1,
-            Err(RecvTimeoutError::Timeout) => {}
-            Err(RecvTimeoutError::Disconnected) => break,
+    let started = now();
+    let mut ticked = started;
+    let mut ended = false;
+    let mut hearing = true;
+    loop {
+        let at = now();
+        let ran = at.saturating_duration_since(started);
+        if ended && ran >= SETTLED {
+            break;
+        }
+        let left = EVERY.saturating_sub(at.saturating_duration_since(ticked));
+        if hearing {
+            match read.recv_timeout(left) {
+                Ok(Some(line)) => follower.take(&line)?,
+                Ok(None) => ended = true,
+                Err(RecvTimeoutError::Timeout) => {}
+                // Every sender is gone, so nothing more can be heard.
+                Err(RecvTimeoutError::Disconnected) => {
+                    hearing = false;
+                    ended = true;
+                }
+            }
+        } else {
+            wait(left.min(SETTLED.saturating_sub(ran)));
         }
         let at = now();
         if at.saturating_duration_since(ticked) >= EVERY {

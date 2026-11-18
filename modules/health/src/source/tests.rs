@@ -236,18 +236,21 @@ fn ends_of(follow_on: impl Fn(&usize, Option<&str>) -> Command) -> usize {
 }
 
 #[test]
-fn a_whole_replay_ends_once_for_each_follower_and_once_for_itself() {
+fn a_whole_replay_sends_no_end_of_its_own() {
+    // Each stand-in follower ends at once and sends its end; a whole
+    // replay's own would end health ten minutes into every start.
     assert_eq!(
         ends_of(|_, _| writing(&[])),
-        3,
-        "a replay's ends didn't match what it counts"
+        2,
+        "a whole replay sent an end of its own, or a follower's went unsent"
     );
 }
 
 #[test]
-fn a_replay_whose_follower_cant_follow_on_ends_every_count() {
+fn a_replay_whose_follower_cant_follow_on_sends_every_followers_end() {
     // The first follower ends at once, and says so as well; a real one
-    // follows for good, so the replay's own three must come whole.
+    // follows for good, so both followers' ends must come whole from the
+    // replay.
     let ends = ends_of(|at, _| {
         if *at == 0 {
             writing(&[])
@@ -256,17 +259,19 @@ fn a_replay_whose_follower_cant_follow_on_ends_every_count() {
         }
     });
     assert_eq!(
-        ends, 4,
-        "health would wait for good, with {ends} of 3 ends and the follower's"
+        ends, 3,
+        "with {ends} of 2 ends and the follower's, a follower that couldn't follow on would go \
+         unheard, with no start again, until another ended"
     );
 }
 
 #[test]
-fn a_replay_that_panics_ends_every_count() {
+fn a_replay_that_panics_sends_every_followers_end() {
     assert_eq!(
         ends_of(|_, _| panic!("a stand-in replay's panic")),
-        3,
-        "a replay that panicked would leave health waiting for good"
+        2,
+        "a replay that panicked didn't send every follower's end, which health hears at once \
+         rather than only once every sender is gone"
     );
 }
 
@@ -455,7 +460,7 @@ fn the_replay_asks_the_journals_last_line_first_off_healths_own_thread() {
 }
 
 #[test]
-fn a_replay_that_cant_start_ends_every_count() {
+fn a_replay_that_cant_start_sends_every_followers_end() {
     let nowhere = || Command::new("/nonexistent/journalctl");
     for (newest, reading) in [
         (nowhere(), None),
@@ -470,16 +475,18 @@ fn a_replay_that_cant_start_ends_every_count() {
         );
         drop(send);
         let heard = all_of(&heard);
+        assert!(count > 0, "the replay said it starts no followers");
         assert_eq!(
             heard,
             vec![None; count],
-            "a replay that couldn't start didn't end every count, so health would wait on it"
+            "a replay that couldn't start didn't send every follower's end, so health would rest \
+             on its every sender being gone"
         );
     }
 }
 
 #[test]
-fn a_replay_that_panics_as_it_starts_ends_every_count() {
+fn a_replay_that_panics_as_it_starts_sends_every_followers_end() {
     let (send, heard) = mpsc::channel();
     let count = replayed_by(
         writing(&[]),
@@ -489,10 +496,12 @@ fn a_replay_that_panics_as_it_starts_ends_every_count() {
     );
     drop(send);
     let heard = all_of(&heard);
+    assert!(count > 0, "the replay said it starts no followers");
     assert_eq!(
         heard,
         vec![None; count],
-        "a replay that panicked as it started would leave health waiting for good"
+        "a replay that panicked as it started didn't send every follower's end, so health would \
+         rest on its every sender being gone"
     );
 }
 
@@ -525,14 +534,17 @@ fn only_a_macs_log_show_ends_whole_by_design() {
     let [stream, show] = unified::commands("midnight", "now")
         .try_into()
         .expect("a Mac streams and shows");
-    assert!(ends_whole(&show), "log show's whole end was said");
     assert!(
-        !ends_whole(&stream),
+        !follows(&show),
+        "log show's whole end would end health ten minutes into every start"
+    );
+    assert!(
+        follows(&stream),
         "log stream, which follows for as long as health runs, could end unsaid"
     );
     for asked in journal::followed() {
         assert!(
-            !ends_whole(&journal::following(&asked, None, 1)),
+            follows(&journal::following(&asked, None, 1)),
             "{asked:?}'s follower, which follows for as long as health runs, could end unsaid"
         );
     }
@@ -540,47 +552,80 @@ fn only_a_macs_log_show_ends_whole_by_design() {
 
 #[test]
 fn a_follower_ending_is_said_by_name_unless_it_ends_whole_by_design() {
-    let ended = |script: &str| follower_ended("journalctl -k", sh(script).status(), true);
+    // A journal's follower follows for as long as health runs; a Mac's log
+    // show reads the day and ends whole by design.
+    let follower = |waited| follower_ended("journalctl -k", waited, true);
+    let reader = |waited| follower_ended("log show", waited, false);
+    let again = |said: &str| {
+        said.contains("starts again with every follower")
+            && said.contains(&format!("{} minutes", follow::SETTLED.as_secs() / 60))
+    };
     assert_eq!(
-        ended(":"),
+        reader(sh(":").status()),
         None,
-        "a follower that ends whole by design was said for ending so"
+        "a day's reader that ended whole by design was said for ending so"
     );
     assert!(
-        follower_ended("journalctl -k", sh(":").status(), false)
-            .is_some_and(|said| said.contains("journalctl -k")),
-        "a follower that follows for as long as health runs wasn't said for ending whole"
+        follower(sh(":").status())
+            .is_some_and(|said| said.contains("journalctl -k") && again(&said)),
+        "a follower that ended whole wasn't said by name with health starting again, and when"
     );
     assert!(
-        ended("exit 3").is_some_and(|said| said.contains("journalctl -k") && said.contains('3')),
-        "a follower ending in failure wasn't said by name and status"
+        follower(sh("exit 3").status()).is_some_and(|said| said.contains("journalctl -k")
+            && said.contains("exit status: 3")
+            && again(&said)),
+        "a follower ending in failure wasn't said by name and status with health starting again"
     );
     assert!(
-        ended("kill -9 $$").is_some_and(|said| said.contains("journalctl -k")),
-        "a follower ended by a signal wasn't said"
+        follower(sh("kill -9 $$").status())
+            .is_some_and(|said| said.contains("journalctl -k") && said.contains("signal: 9")),
+        "a follower ended by a signal wasn't said by name and signal"
     );
     assert!(
-        follower_ended("journalctl -k", Err(io::Error::other("gone")), true)
-            .is_some_and(|said| said.contains("journalctl -k") && said.contains("gone")),
-        "a follower that couldn't be waited on wasn't said"
+        follower(Err(io::Error::other("gone"))).is_some_and(|said| said.contains("journalctl -k")
+            && said.contains("gone")
+            && again(&said)),
+        "a follower that couldn't be waited on wasn't said with health starting again"
     );
-    if cfg!(target_os = "linux") {
-        assert!(
-            ended("exit 3").is_some_and(|said| said.contains("systemctl --user restart health")),
-            "a follower's end didn't say how health is started again, which nothing else does"
-        );
-    }
+    assert!(
+        reader(sh("exit 3").status()).is_some_and(|said| said.contains("log show")
+            && said.contains("exit status: 3")
+            && again(&said)),
+        "a day's reader that failed wasn't said by name and status with health starting again"
+    );
+    assert!(
+        reader(Err(io::Error::other("gone")))
+            .is_some_and(|said| said.contains("log show") && said.contains("gone") && again(&said)),
+        "a day's reader that couldn't be waited on wasn't said with health starting again"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_macs_log_that_cant_start_is_an_error_naming_it() {
+    // Off a Mac there's no /usr/bin/log, so its first command can't start.
+    let now = Timestamp::from_second(1_763_467_200)
+        .expect("a moment")
+        .to_zoned(TimeZone::UTC);
+    let first = named(&unified::commands("2025-11-18 00:00:00", "2025-11-18 12:00:00")[0]);
+    let (send, _heard) = mpsc::channel();
+    assert!(
+        Source::UnifiedLog
+            .start(&now, &send)
+            .is_err_and(|error| error.to_string().starts_with(&format!("{first}: "))),
+        "a Mac's log that couldn't start wasn't named"
+    );
 }
 
 #[test]
 fn a_follower_that_ends_is_said_before_its_end_is_sent() {
     // What's said goes on the follower's own channel, so its order with
-    // the follower's end is the order they were sent in: health ends at
-    // its last end, so a word sent after it could go unsaid.
+    // the follower's end is the order they were sent in: health may end
+    // at a follower's end, so a word sent after it could go unsaid.
     for script in ["echo a", "echo a; exit 3"] {
         let (send, heard) = mpsc::channel();
         let tell = send.clone();
-        spawn_saying(sh(script), send, move |words| {
+        spawn_saying(sh(script), send, true, move |words| {
             let _ = tell.send(Some(format!("said: {words}")));
         })
         .expect("the shell starts");
@@ -593,6 +638,32 @@ fn a_follower_that_ends_is_said_before_its_end_is_sent() {
                     if line == "a\n" && said.starts_with("said: ") && said.contains(&name)
             ),
             "{name} ended and wasn't said by name before its end was sent: {heard:?}"
+        );
+    }
+}
+
+#[test]
+fn a_reader_that_ends_whole_by_design_sends_an_end_only_once_it_fails() {
+    // A Mac's log show reads the day and ends, so its whole end mustn't
+    // count as a follower's, which would end health ten minutes into every
+    // start; one that fails sends one, so the day is read again.
+    for (script, failed) in [("echo a", false), ("echo a; exit 3", true)] {
+        let (send, heard) = mpsc::channel();
+        let tell = send.clone();
+        spawn_saying(sh(script), send, false, move |words| {
+            let _ = tell.send(Some(format!("said: {words}")));
+        })
+        .expect("the shell starts");
+        let heard = all_of(&heard);
+        let ok = match heard.as_slice() {
+            [Some(line)] => line == "a\n" && !failed,
+            [Some(line), Some(said), None] => line == "a\n" && said.starts_with("said: ") && failed,
+            _ => false,
+        };
+        assert!(
+            ok,
+            "a reader that ends whole by design sent an end, or its failure went unsaid or sent \
+             none: {heard:?}"
         );
     }
 }

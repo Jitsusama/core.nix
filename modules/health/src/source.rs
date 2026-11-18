@@ -51,16 +51,17 @@ impl Source {
     }
 
     /// Start each of this source's followers from the start of the day it
-    /// is `now`, their lines sent on, saying how many will end. The
-    /// journal's day so far is sent in the order it was written, then
-    /// each follower follows on (`replay.rs`).
+    /// is `now`, their lines sent on, each that follows for as long as
+    /// health runs sending a `None` if it ends. The journal's day so far
+    /// is sent in the order it was written, then each follower follows on
+    /// (`replay.rs`).
     ///
     /// # Errors
     ///
     /// When a Mac's log can't start, or the day's start can't be told. A
-    /// journal's history or follower that can't start is said, and ends
-    /// every count (`replayed_by`).
-    pub fn start(self, now: &Zoned, lines: &Sender<Option<String>>) -> io::Result<usize> {
+    /// journal's history or follower that can't start is said, and sends
+    /// every follower's end (`replayed_by`).
+    pub fn start(self, now: &Zoned, lines: &Sender<Option<String>>) -> io::Result<()> {
         let asked = match self {
             Self::Journal => return replayed(now, lines),
             Self::UnifiedLog => {
@@ -69,11 +70,12 @@ impl Source {
                 unified::commands(&midnight, &now)
             }
         };
-        let count = asked.len();
         for command in asked {
-            spawn(command, lines.clone())?;
+            let name = named(&command);
+            spawn(command, lines.clone())
+                .map_err(|error| io::Error::new(error.kind(), format!("{name}: {error}")))?;
         }
-        Ok(count)
+        Ok(())
     }
 
     /// When each boot before this one ended. A Mac's log marks no boot's
@@ -144,8 +146,7 @@ impl Source {
 
 /// Read each journal follower's day so far, the day it is `now`, and send
 /// it on in the order it was written, then start each following from where
-/// its history ended, a `None` sent for each that ends and one for the
-/// replay. Says how many `None`s will come.
+/// its history ended, each sending a `None` if it ends.
 ///
 /// Every history ends at the journal's last line as the replay begins,
 /// where journald numbered it (`replayed_by`), or reads to its own end
@@ -153,33 +154,35 @@ impl Source {
 /// once their followers follow on, each at its own pace, as every line
 /// after the replay is: a switch writes its reload before the restarts
 /// it asks for.
-fn replayed(now: &Zoned, lines: &Sender<Option<String>>) -> io::Result<usize> {
+fn replayed(now: &Zoned, lines: &Sender<Option<String>>) -> io::Result<()> {
     let since = day_of(now)?;
-    Ok(replayed_by(
+    replayed_by(
         journal::newest(),
         move |asked| journal::reading(asked, since),
         move |asked, after| journal::following(asked, after, since),
         lines,
-    ))
+    );
+    Ok(())
 }
 
 /// `replayed`, with the journalctls it asks made by `newest`, `reading`
 /// from what each history asks, and `following` from that and where its
 /// history ended, so a test can point them at a journal of its own. Says
-/// how many `None`s will come.
+/// how many followers it starts, each sending a `None` if it ends.
 ///
 /// All of it runs on the replay's own thread, so health's tick starts
 /// however long journalctl takes. `newest` answers before any history
 /// starts, so each reads past the line it named, and none can end before
-/// it, short of a line written meanwhile. One that can't start ends every
-/// count, so health ends, for systemd to start it again.
+/// it, short of a line written meanwhile. One that can't start sends every
+/// follower's end, so health ends once it has run `follow::SETTLED`, for
+/// systemd to start it again.
 fn replayed_by(
     newest: Command,
     reading: impl Fn(&[String]) -> Command + Send + 'static,
     following: impl Fn(&[String], Option<&str>) -> Command + Send + 'static,
     lines: &Sender<Option<String>>,
 ) -> usize {
-    let count = journal::followed().len() + 1;
+    let count = journal::followed().len();
     let lines = lines.clone();
     thread::spawn(move || {
         let mut ends = Ends {
@@ -203,7 +206,10 @@ fn replayed_by(
                     &lines,
                 );
             }
-            Err(error) => fail(&format!("health: the day's replay couldn't start: {error}")),
+            Err(error) => fail(&format!(
+                "health: the day's replay couldn't start: {error}, {}",
+                starting_again()
+            )),
         }
     });
     count
@@ -278,14 +284,12 @@ fn last_of(name: &str, said: io::Result<Output>, say: impl Fn(&str)) -> Option<r
     last
 }
 
-/// The replay, then one `None` for it, as `replayed` counts: `replay`'s
-/// followers each send their own.
+/// The replay, whose followers each send a `None` if they end.
 ///
 /// A follower that can't follow on after the replay, or a replay that
-/// fails any other way, a panic included, ends every follower's count
-/// instead, so health ends as when they all have rather than
-/// counting the day without their lines; a count ended twice is never
-/// read.
+/// fails any other way, a panic included, sends every follower's end
+/// instead, so health ends as when they all have rather than counting
+/// the day without their lines; an end sent twice says nothing more.
 fn replaying<A>(
     histories: Vec<(History, A)>,
     last: Option<&replay::Numbered>,
@@ -294,13 +298,14 @@ fn replaying<A>(
 ) {
     let mut ends = Ends {
         lines: lines.clone(),
-        left: histories.len() + 1,
+        left: histories.len(),
     };
     match replay(histories, last, follow_on, lines) {
-        Ok(()) => ends.left = 1,
+        Ok(()) => ends.left = 0,
         Err(error) => {
             fail(&format!(
-                "health: a follower couldn't follow on from the day's replay: {error}"
+                "health: a follower couldn't follow on from the day's replay: {error}, {}",
+                starting_again()
             ));
         }
     }
@@ -498,23 +503,26 @@ impl Drop for History {
     }
 }
 
-/// Start `command`, its output's lines sent on, and a `None` when it ends.
+/// Start `command`, its output's lines sent on, and a `None` when it ends
+/// if it `follows`, or if it failed, so health ends to start it again.
 ///
-/// Health says so when one ends, unless it `ends_whole` by design and
-/// did (`follower_ended`).
+/// Health says so when one ends, unless it ends whole by design and did
+/// (`follower_ended`).
 fn spawn(command: Command, lines: Sender<Option<String>>) -> io::Result<()> {
-    spawn_saying(command, lines, warn)
+    let following = follows(&command);
+    spawn_saying(command, lines, following, warn)
 }
 
 /// `spawn`, with what it says of its end said through `say`, before its
-/// `None`.
+/// `None`, sent if it `follows` for as long as health runs, or if it
+/// didn't end whole, so health starts again and reads it again.
 fn spawn_saying(
     mut command: Command,
     lines: Sender<Option<String>>,
+    follows: bool,
     say: impl Fn(&str) + Send + 'static,
 ) -> io::Result<()> {
     let name = named(&command);
-    let ends_whole = ends_whole(&command);
     let mut child = command.stdout(Stdio::piped()).spawn()?;
     let out = child
         .stdout
@@ -534,54 +542,61 @@ fn spawn_saying(
             }
             line.clear();
         }
-        if let Some(said) = follower_ended(&name, child.wait(), ends_whole) {
+        let waited = child.wait();
+        let whole = matches!(&waited, Ok(status) if status.success());
+        if let Some(said) = follower_ended(&name, waited, follows) {
             say(&said);
         }
-        let _ = lines.send(None);
+        if follows || !whole {
+            let _ = lines.send(None);
+        }
     });
     Ok(())
 }
 
-/// How health is started again where systemd runs it, on Linux: a
-/// follower's end doesn't end health while another still follows, so
-/// nothing else does it until a switch that changes health, the next
-/// boot, or the last follower's end, which systemd starts it again on.
-/// A Mac's agent is started again as launchd names it, which isn't told
-/// here.
-const STARTS_AGAIN: &str = if cfg!(target_os = "linux") {
-    ", as systemctl --user restart health does"
-} else {
-    ""
-};
-
-/// Whether `command` ends whole by design: only a Mac's `log show`, which
-/// reads the day and ends so on every start. Every other follower, a
-/// journal's or a Mac's `log stream`, follows for as long as health runs.
-fn ends_whole(command: &Command) -> bool {
-    command.get_program() == OsStr::new(unified::LOG)
-        && command.get_args().next() == Some(OsStr::new("show"))
+/// Whether `command` follows for as long as health runs: every follower,
+/// a journal's or a Mac's `log stream`, but a Mac's `log show`, which
+/// reads the day and ends whole by design on every start.
+fn follows(command: &Command) -> bool {
+    command.get_program() != OsStr::new(unified::LOG)
+        || command.get_args().next() != Some(OsStr::new("show"))
 }
 
 /// What health says of the follower named `name` that ended as `waited`
-/// says, or nothing of one that `ends_whole` by design and did.
+/// says, or nothing of one that doesn't follow for as long as health runs,
+/// such as a Mac's `log show`, when it ended whole.
 ///
-/// Health runs on until every follower has ended, so the lines one asked
-/// for would otherwise go unheard until health next starts, with nothing
-/// said. So any end of a follower that follows for as long as health runs
-/// is said, a whole one too: journalctl ends whole on a SIGTERM or SIGINT
-/// (systemd 262, 18 November). Of one that ends whole by design, only a
-/// failure is.
-fn follower_ended(name: &str, waited: io::Result<ExitStatus>, ends_whole: bool) -> Option<String> {
+/// The end of one that `follows`, or the failure of one that doesn't,
+/// ends health, for systemd or launchd to start it again with every
+/// follower, no sooner than `follow::SETTLED` after its start
+/// (`follow::run`), so it's said with when (`starting_again`), a whole
+/// end too: journalctl ends whole on a SIGTERM or SIGINT (systemd 262, 18
+/// November).
+fn follower_ended(name: &str, waited: io::Result<ExitStatus>, follows: bool) -> Option<String> {
+    let again = starting_again();
     match waited {
-        Ok(status) if ends_whole && status.success() => None,
+        Ok(status) if !follows && status.success() => None,
+        Ok(status) if !follows => Some(format!("health: {name} ended, {status}, {again}")),
+        Err(error) if !follows => Some(format!(
+            "health: {name} can't be waited on: {error}, {again}"
+        )),
         Ok(status) => Some(format!(
-            "health: the follower asking {name} ended, {status}, so what it asks goes unheard \
-             until health starts again{STARTS_AGAIN}"
+            "health: the follower asking {name} ended, {status}, {again}"
         )),
         Err(error) => Some(format!(
-            "health: the follower asking {name} can't be waited on: {error}"
+            "health: the follower asking {name} can't be waited on: {error}, {again}"
         )),
     }
+}
+
+/// What follows a follower's end, or a failure health ends on, said so
+/// it isn't taken for health being stuck or well.
+pub(crate) fn starting_again() -> String {
+    format!(
+        "so health starts again with every follower, no sooner than {} minutes after it \
+         started, and reads the day again",
+        follow::SETTLED.as_secs() / 60
+    )
 }
 
 /// Say `words` on stderr as a warning (`as_marked`).
@@ -590,8 +605,9 @@ fn warn(words: &str) {
 }
 
 /// Say `words` on stderr as a failure (`as_marked`): what health ends
-/// on, its own error line saying only that the followers ended.
-fn fail(words: &str) {
+/// on, its own error line saying only that a follower ended or couldn't
+/// start.
+pub(crate) fn fail(words: &str) {
     say_marked(words, ERROR);
 }
 
