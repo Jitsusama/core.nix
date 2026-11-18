@@ -81,7 +81,7 @@ fn told(journal: &UnixDatagram) -> String {
 }
 
 #[test]
-fn a_yes_a_moment_past_an_ask_s_ten_minutes_is_refused_before_any_tidy() {
+fn a_yes_a_moment_past_an_ask_s_ten_minutes_ends_it_before_any_tidy() {
     let folder = folder("clock");
     let journal =
         UnixDatagram::bind(folder.join("journal.sock")).expect("the journal stand-in binds");
@@ -91,7 +91,7 @@ fn a_yes_a_moment_past_an_ask_s_ten_minutes_is_refused_before_any_tidy() {
     let text = std::fs::read_to_string(VOCABULARY).expect("the vocabulary reads");
     let read = Arc::new(AtomicUsize::new(0));
     let now = Arc::new(AtomicI64::new(engine::now_ms()));
-    let (changed, _heard) = mpsc::channel();
+    let (changed, heard) = mpsc::channel();
     let clock = Arc::clone(&now);
     let engine = Arc::new(
         Engine::new(
@@ -133,11 +133,34 @@ fn a_yes_a_moment_past_an_ask_s_ten_minutes_is_refused_before_any_tidy() {
         .expect("the ask is JSON");
     let asked = said["asked_ms"].as_i64().expect("the ask says when");
     now.store(asked + WAITS_MS + 1, Ordering::SeqCst);
+    while heard.try_recv().is_ok() {}
     let answer = engine.release(&yes);
 
     assert_eq!(
         answer["error"]["code"], "refused",
         "a yes a moment past ten minutes: {answer}"
+    );
+    // Joel is told the ask ended unanswered, as it did, and its row says so at once, since
+    // the daemon's own wait to tidy runs on a clock that stands still while the lid is shut.
+    let words = Words::from_vocabulary(&text).expect("the vocabulary is JSON");
+    assert_eq!(
+        answer["error"]["said"].as_str(),
+        Some(words.fill("ended", &[]).as_str()),
+        "the refusal doesn't say the ask ended: {answer}"
+    );
+    assert!(
+        heard.try_recv().is_ok(),
+        "the ask's ending wasn't told to the watches"
+    );
+    let (rows, _) = engine.rows();
+    let ended = rows
+        .iter()
+        .find(|row| row["thing"] == format!("ask:{id}"))
+        .unwrap_or_else(|| panic!("the ended ask isn't drawn, among {rows:?}"));
+    // Only a waiting ask's row says its state, as only it can be answered.
+    assert!(
+        ended["state"].is_null() && ended["acts"].as_array().is_some_and(Vec::is_empty),
+        "the ask still reads waiting: {ended}"
     );
     assert_eq!(read.load(Ordering::SeqCst), 0, "the value was read");
     let answered = std::fs::read_to_string(folder.join("asks").join(format!("{id}.answer.json")))
@@ -145,6 +168,12 @@ fn a_yes_a_moment_past_an_ask_s_ten_minutes_is_refused_before_any_tidy() {
     assert!(
         !answered.contains(VALUE),
         "the value reached the answer: {answered}"
+    );
+    // The agent that asked reads its answer file, which says the ask ended.
+    let answer: Value = serde_json::from_str(&answered).expect("the ask's answer is JSON");
+    assert_eq!(
+        answer["state"], "ended",
+        "the answer doesn't say the ask ended: {answered}"
     );
     let told = told(&journal);
     assert!(

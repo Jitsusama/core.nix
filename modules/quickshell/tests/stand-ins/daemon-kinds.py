@@ -12,7 +12,10 @@ A watch of marks is answered whole,
 then told a change, so tests/daemon.qml can tell which of the two is heard under its line.
 A watch of what waits is answered with
 two records the first time, and the connection then dropped, and with one of them alone after,
-as the node's whole answer is once one went in a gap; one of verdicts with none. An ask of steps
+as the node's whole answer is once one went in a gap. A watch of what lapses is answered the
+same way with an ask's row and an entry, and with neither after, as the passwords child answers
+once it starts again, its asks' rows whole and its entries not yet listed. One of verdicts is
+answered with none. An ask of steps
 is answered in three, as wifid answers a join: two saying they aren't done, then the last.
 An unwatch is answered as wifid answers one, and each record says how many watches ahead its
 connection has unwatched, so the test can tell an emptied watch ahead was let go.
@@ -24,9 +27,22 @@ import sys
 import threading
 from pathlib import Path
 
-# How many watches of what waits have been answered, so the first is told both and the rest one.
-WAITED = {"count": 0}
+# How many watches of each kind that loses records in a gap have been answered, so the first is
+# told them all and the rest only what stood through it.
+WAITED = {"waiting": 0, "lapsing": 0}
 WAITED_LOCK = threading.Lock()
+
+# What each kind that loses records in a gap holds before it, and what it holds after.
+LAPSING = {
+    "waiting": (
+        ["waiting:a", "waiting:b"],
+        ["waiting:b"],
+    ),
+    "lapsing": (
+        ["lapsing:ask", "lapsing:entry"],
+        [],
+    ),
+}
 
 
 def kinds_of(asked: dict[str, object]) -> list[str]:
@@ -84,12 +100,14 @@ def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
     told = told_after_whole(asked)
     if told is not None:
         return told
-    if asked.get("kind") == "waiting":
+    kind = asked.get("kind")
+    if isinstance(kind, str) and kind in LAPSING:
         with WAITED_LOCK:
-            WAITED["count"] += 1
-            first = WAITED["count"] == 1
-        waits = ["waiting:a", "waiting:b"] if first else ["waiting:b"]
-        waiting = [{"key": key, "kind": "waiting", "heard": 1} for key in waits]
+            WAITED[kind] += 1
+            first = WAITED[kind] == 1
+        before, after = LAPSING[kind]
+        waits = before if first else after
+        waiting = [{"key": key, "kind": kind, "heard": 1} for key in waits]
         return [{"id": asked.get("id"), "records": waiting}]
     if asked.get("ask") == "steps":
         stages = ["joining", "gettingAddress", "online"]
@@ -138,8 +156,9 @@ def serve(client: socket.socket) -> None:
                 for said in answer(asked, unwatched):
                     lines.write(json.dumps(said) + "\n")
                 lines.flush()
-                # The first watch of what waits is followed by a gap.
-                if asked.get("kind") == "waiting" and WAITED["count"] == 1:
+                # The first watch of a kind that loses records is followed by a gap.
+                kind = asked.get("kind")
+                if isinstance(kind, str) and WAITED.get(kind) == 1:
                     return
 
 

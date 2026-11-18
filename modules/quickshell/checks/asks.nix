@@ -15,8 +15,10 @@
 {
   # A yes says how long its line was on the screen, from the first frame
   # niri presented it in this opening, and nothing where it wasn't, where
-  # the line changed since, or where the launcher is walked from outside,
-  # as tests/asks-shown.qml holds secret-asks/Shown.js to asks made up there.
+  # the line changed since, or where the launcher is walked from outside;
+  # opened from outside, a line is timed only from a key that moves over the
+  # rows, typing starts it again and Return never does, as tests/asks-shown.qml holds
+  # secret-asks/Shown.js to asks made up there.
   the-asks-say-how-long-each-was-shown =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -37,8 +39,13 @@
   # secret asks, stood in so each ask it sends is read (tests/asks-over.qml):
   # a first Return only arms; a yes says how long since a frame presented
   # its line selected, its line noted again as the launcher opens on it;
-  # a changed line says no time until presented; a yes walked from outside
-  # is never sent; a no goes as served.
+  # a changed line says no time until presented; opened from outside, it
+  # times nothing until a key moves over the rows his Escape reached, never
+  # on the find, from a step into a place, nor over rows a landing Return,
+  # the command line or an ask from outside left, and a withheld yes says
+  # why; entries
+  # told over the connection leave the asks' rows be; a yes walked from
+  # outside is never sent; a no goes as served.
   the-asks-say-how-long-each-was-shown-over-passwords =
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what the shell runs them with.

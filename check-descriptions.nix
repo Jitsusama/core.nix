@@ -2865,7 +2865,8 @@
   secret-asks-keeps-the-item-to-its-yes = ''
     a yes releases the one item to the checker alone, which says its length and never the value;
     an ask for another item reads nothing and draws no row; a yes for a line that changed since it
-    was drawn is refused and drawn again; a yes while locked reads nothing; and a no refuses
+    was drawn is refused and drawn again; a yes while locked reads nothing; a yes past the ask's
+    wait ends it as unanswered and tells its watchers; and a no refuses
   '';
   secret-asks-passes-clippy = ''
     clippy finds nothing in the secret-asks daemon or its tests
@@ -3241,13 +3242,21 @@
   the-asks-say-how-long-each-was-shown = ''
     a yes says how long since its line's frame reached the screen this opening, counted from the
     first and again from a changed line's, and says no time for a line never presented, for the
-    line as it was or for another ask's, so the daemon refuses it unread; while the launcher is
-    walked from outside a yes is stamped as nothing to send; a no is sent as served
+    line as it was or for another ask's, so the daemon refuses it unread; a line is timed from the
+    first frame after a key of Joel's that moves over the rows, typing or a key read with the
+    Return after it starting the time again and Return never starting it; while
+    the launcher is walked from outside a yes is stamped as nothing to send; a no is sent as served
   '';
   the-asks-say-how-long-each-was-shown-over-passwords = ''
     over Passwords' connection, a first Return on an ask only arms, a yes says how long since a
     frame presented its line selected, noted again as the launcher reopens on it, a changed line
-    says no time until presented, and a yes walked from outside the launcher is never sent
+    says no time until presented, every opening being from outside, a line is timed only after
+    Joel's key moves over the rows they reached by his Escape, never on the find, from a step
+    into a place, nor over rows a landing Return, the command line or an ask from outside left,
+    Release It from its verbs counting from its line, typing or an ask from outside starts the
+    time again and lets a frame asked for go, each case reads a yes it sent, a withheld yes says
+    why, the entries told over the connection leave the asks' rows be, and a yes walked from
+    outside the launcher is never sent
   '';
   the-asks-place-releases-through-its-daemon = ''
     the launcher's Asks lists what the secret-asks daemon serves, For You holds each waiting ask,
@@ -4332,8 +4341,9 @@
     key, what was held stays through a gap unless the client lets it go there, a client of two
     kinds names both in every watch, a field asked deep is mended with only what moved inside it
     while one not asked is replaced whole, a kind with none is known to hold none once answered, a
-    whole answer after a gap lets go what went in it, and a handler of a told change reads when its
-    line was heard while one of a watch's whole answer, or one it put off, reads none
+    whole answer after a gap lets go what went in it, one whole only of some keys lets go only those
+    that went, and a handler of a told change reads when its line was heard while one of a watch's
+    whole answer, or one it put off, reads none
   '';
   the-desktop-reads-the-spend-watch = ''
     the AI spend piece draws what the watch wrote, and the tokens piece is there only while the
@@ -4907,7 +4917,8 @@
   vm-desktop-answers-secret-asks = ''
     the passwords daemon the shell runs answers an agent's secret ask drawn in the launcher's Asks:
     Joel's Return twice releases the stand-in value into the one command asked for, which no
-    journal holds, his r refuses it, and a yes walked through the launcher's IPC releases nothing
+    journal holds, his r refuses it, a launcher opened from outside takes no yes until his key
+    moves over the rows, and a yes walked through the launcher's IPC releases nothing
   '';
   vm-desktop-captures = ''
     the desktop takes a screen, a window, a region, a recording and the camera's pictures and

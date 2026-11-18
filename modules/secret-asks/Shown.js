@@ -7,11 +7,44 @@
 // time at all; one made while the launcher is walked from outside, as its
 // IPC's do and run walk it, isn't sent, since only Joel's own key press on
 // the drawn line grants an ask, and any process running as him reaches the
-// IPC.
+// IPC. A process that can type into niri itself, through its virtual
+// keyboard, can give the key too; the agents' fence keeps them off it
+// (modules/pi/fence-display), and anything outside the fence can already
+// do whatever Joel can.
 .pragma library
 
 // What a yes says of its line, which only the launcher may say.
 const stampedFields = ["shown", "opening"];
+
+// Return, which answers a line rather than reads it.
+const answering = /^(.*\+)?(Return|Enter)$/;
+
+// Whether a key, by its name, answers a line rather than reads it.
+function answers(name) {
+    return answering.test(name);
+}
+
+// What the keys Joel pressed since they were last read, by name and oldest
+// first, do to the selected ask's line: "arms" where the last only moved
+// over the rows (`moved`, the launcher taking it as a move there, as j and
+// Down are, even where nothing can move, and never on the find, where Up
+// and Down are a terminal's history too), so the line is timed from its
+// next frame; "passes" for Return, which leaves it as it was; and "resets"
+// for any other, typing above all, and for any key but Return before the
+// last, whose move is no longer known, so its time starts again only from
+// a move after it. A line is timed only from his own key, since a launcher
+// opened from outside, as any process running as him may, could have its
+// next keys be his, typed into another window (ISXEG8, 2026-11-17).
+function keyed(names, moved) {
+    const last = names[names.length - 1] ?? "";
+    if (!names.slice(0, -1).every(answers)) {
+        return "resets";
+    }
+    if (answers(last)) {
+        return "passes";
+    }
+    return moved ? "arms" : "resets";
+}
 
 // The frames seen, by the row's key, each the line's digest and when the
 // first frame with it selected reached the screen; a new digest starts the

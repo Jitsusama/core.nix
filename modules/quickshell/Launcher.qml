@@ -1204,6 +1204,18 @@ Scope {
     // told, since only a key niri delivered is surely his.
     property string toldInto: ""
 
+    // The keys the line has taken, the last by name and whether it only
+    // moved through the rows (Prompt.qml's), whether keys land on the rows
+    // rather than the find, and how many asks to open or walk it came from
+    // outside, by its IPC, its socket or the shell, so Asks times a secret ask's line
+    // only from one of Joel's own keys: any process of the account's can
+    // open it, as niri's chord does.
+    readonly property int keysTaken: prompt.keysTaken
+    readonly property string keyTaken: prompt.keyTaken
+    readonly property bool keyMoved: prompt.keyMoved
+    readonly property bool keysOverRows: prompt.overRows
+    property int toldFromOutside: 0
+
     // The rows a terminal's `launcher show` last walked through (`walked`)
     // and listed (`listed`), held a few seconds after it asks, so a
     // provider that reads only while its rows are seen, as Machine reads
@@ -1463,6 +1475,9 @@ Scope {
     // the launcher's picks are.
     function catalogueRun(id, words) {
         cataloguing = true;
+        // A walk from outside is an ask from outside, so no key of Joel's
+        // read before it times a secret ask's line it lands on (Asks.qml).
+        toldFromOutside += 1;
         try {
             return catalogueRunWalked(id, words);
         } finally {
@@ -1801,6 +1816,7 @@ Scope {
     // in the launcher, as the catalogue's run opens one.
     function doneFromTerminal(asked) {
         cataloguing = true;
+        toldFromOutside += 1;
         try {
             const said = JSON.parse(asked);
             const steps = said.steps ?? [];
@@ -10209,6 +10225,7 @@ Scope {
     property var openingsTimed: []
     property int openingsDrawn: 0
     function askedToOpen() {
+        toldFromOutside += 1;
         if (!open && !opening) {
             Heap.leaveRoom(openingRoom);
             openAsked = KeyTimes.now();

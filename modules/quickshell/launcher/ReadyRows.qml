@@ -93,9 +93,12 @@ Scope {
     // id of that name inside its ReadyRows.
     property var maker: null
 
-    // Each record by its key, as the daemon last said it, and its state.
+    // Each record by its key, as the daemon last said it, and its state. Over another place's
+    // connection, only this place's own records, copied as they change (`tookOver`), so that
+    // place's records changing reads as nothing here.
     readonly property var link: over ?? daemon.item
-    readonly property var held: link?.held ?? ({})
+    readonly property var held: over === null ? (link?.held ?? ({})) : heldOver
+    property var heldOver: ({})
     readonly property string state: link?.state ?? "starting"
     // The rows' keys in their order, a new list each change.
     property var keys: []
@@ -154,18 +157,51 @@ Scope {
     Connections {
         target: ready.over
         function onHeard(changed, gone) {
-            ready.took(changed, gone);
+            ready.tookOver(changed, gone);
         }
     }
     // What the connection held before it was handed over is placed as it is, since no change
-    // will name it.
-    onOverChanged: {
+    // will name it. Put off a turn, since `over` can first be worked out inside a binding
+    // reading the rows, which would then take what this reads of the connection as its own.
+    onOverChanged: Qt.callLater(ready.placedOver)
+    function placedOver() {
         if (over !== null)
-            took(Object.keys(over.held ?? {}), []);
+            tookOver(Object.keys(over.held ?? {}), []);
     }
     Component.onCompleted: {
         if (over !== null)
-            took(Object.keys(over.held ?? {}), []);
+            tookOver(Object.keys(over.held ?? {}), []);
+    }
+
+    // Of what another place's connection heard, only this place's own records: its rows, what
+    // it watches beside them, and the drawers they name. The rest is that place's, as the
+    // entries Passwords' manager lists in batches, and taking it would place the rows again
+    // for nothing, each time pushing back the frame a selected line waits on.
+    function ownOf(keys) {
+        const own = [];
+        for (let at = 0; at < keys.length; at += 1) {
+            const key = keys[at];
+            if (key.startsWith(`row:${place}:`) || key in drawers
+                || beside.some(kind => key === `${kind}:${place}`)) {
+                own.push(key);
+            }
+        }
+        return own;
+    }
+
+    function tookOver(changed, gone) {
+        const said = ownOf(changed);
+        const dropped = ownOf(gone);
+        if (said.length === 0 && dropped.length === 0) {
+            return;
+        }
+        const all = over.held ?? {};
+        const own = {};
+        for (const key of ownOf(Object.keys(all))) {
+            own[key] = all[key];
+        }
+        heldOver = own;
+        took(said, dropped);
     }
 
     // An act's ask as it's sent, stamped where the place says.

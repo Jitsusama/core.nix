@@ -196,6 +196,12 @@ Scope {
     // stood. A daemon whose watch is narrowed, and whose gets hold more,
     // leaves it false.
     property bool answersWhole: false
+    // Which keys the watch's answer holds whole, when it holds only some so,
+    // as the passwords child's holds its asks' rows and not its entries,
+    // which it lists only once a manager is read. A key it says yes to,
+    // held and not in the answer, is let go as answersWhole lets one go;
+    // every other is kept. Null when answersWhole says it for every key.
+    property var answersWholeFor: null
     // Whether the watch of its kind has been answered once, so a kind with
     // no records is known to hold none, rather than not yet said.
     property bool answered: false
@@ -436,12 +442,14 @@ Scope {
             Hearing.begun(0);
         if (answer.id in apart)
             delete apart[answer.id];
-        else if (whole && answersWhole) {
+        else if (whole && (answersWhole || typeof answersWholeFor === "function")) {
             // What's watched ahead is told by its own watch, which a whole answer of the kind never
             // names, so it isn't let go with what went: a drawer served apart, held ahead, went at
             // each opening whose whole answer came after the ahead one's (FEH1HE, 2026-11-12).
             const holds = new Set(answer.records.map(record => record?.key).concat(ahead));
-            took(answer.records, Object.keys(held).filter(key => !holds.has(key)), false);
+            const speaksFor = key => answersWhole || answersWholeFor(key);
+            took(answer.records, Object.keys(held).filter(key => !holds.has(key) && speaksFor(key)),
+                false);
         } else
             took(answer.records ?? answer.changed, answer.gone, answer.records === undefined,
                 answer.id === "all" ? deepBy : null);

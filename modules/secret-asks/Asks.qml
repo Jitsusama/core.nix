@@ -69,6 +69,72 @@ Provider {
     // asked for before the move notes nothing: it drew a line since left.
     property int noting: 0
 
+    // The line, by its row's key, that one of Joel's keys moving over the
+    // rows armed, so it's timed from its next frame. Every opening may be
+    // asked from outside, as any process running as him may ask one while
+    // his own keys land there, typed into another window, and those keys
+    // are mostly Returns, letters, arrows and Escape: a Return, a step into
+    // a place, or an Up or Down on the find, where a terminal's history
+    // would take it, times nothing, so only a move of his over the rows does
+    // (Shown.js's keyed; ISXEG8, 2026-11-17). The cost is two keys more on
+    // an ask he lands on from the find, Escape and j, said in the refusal
+    // of a yes that comes without them.
+    property string armed: ""
+    // The keys taken since Asks last read them, by name, oldest first; how
+    // many keys the line had taken when the last ask from outside came, so
+    // a key read after that ask arms nothing it selected; and how many rows
+    // were stepped into when the keys were last read, so a key stepping
+    // into the armed ask's verbs is known.
+    property var taken: []
+    property int keysAtOutside: 0
+    property int depth: 0
+    // Whether the keys came over the rows by an Escape of his, read since
+    // the opening and the last ask from outside. A Return that lands, the
+    // command line, or an ask from outside while they're already there
+    // puts them over the rows too, as a terminal's keys could, so a move
+    // arms only after the Escape the refusal names.
+    property bool escaped: false
+
+    // Every line's time started again, and any frame asked for let go.
+    function forget() {
+        provider.armed = "";
+        provider.noting += 1;
+        provider.seen = {};
+    }
+
+    // The keys of his since the last read, once the launcher has done what
+    // they do: a move over the rows arms the line selected after it, Return
+    // leaves every line as it was, as does one key stepping into the armed
+    // ask's verbs, whose Release It is that ask's yes, and any other starts
+    // every line's time again, as does an ask from outside that came after
+    // them.
+    function keyed() {
+        const names = provider.taken;
+        provider.taken = [];
+        const held = launcher?.held ?? [];
+        const deeper = held.length > provider.depth;
+        provider.depth = held.length;
+        if ((launcher?.keysTaken ?? 0) === provider.keysAtOutside) {
+            provider.forget();
+            return;
+        }
+        const over = launcher?.keysOverRows ?? false;
+        const moved = (launcher?.keyMoved ?? false) && over && provider.escaped;
+        provider.escaped = over && (provider.escaped || names.includes("Escape"));
+        const does = Shown.keyed(names, moved);
+        const stepped = held[held.length - 1]?.row?.shownKey;
+        if (does === "passes" || deeper && names.length === 1 && provider.armed !== ""
+            && stepped === provider.armed)
+            return;
+        if (does === "resets") {
+            provider.forget();
+            return;
+        }
+        const key = launcher?.selected?.shownKey ?? stepped;
+        provider.armed = typeof key === "string" ? key : "";
+        provider.noteSelected();
+    }
+
     // The selected row, if it's an ask's, noted from the next frame niri
     // presents, the first that draws it selected; again when its line
     // changes. Nothing is noted where frames can't be timed, so no yes
@@ -93,6 +159,10 @@ Provider {
         provider.seen = Shown.kept(provider.seen, key);
         if (typeof key !== "string")
             return;
+        if (provider.armed !== key) {
+            provider.seen = {};
+            return;
+        }
         // The digest of the row as it's drawn, which a frame presents, not
         // of the ask as served since, before the row is made again.
         const digest = selected.digest;
@@ -126,13 +196,34 @@ Provider {
         // An ask still selected as the launcher opens again changes no
         // selection, so its first frame is noted here or its yes would
         // go with no time shown.
+        // Every opening may be asked from outside, so none arms a line.
         function onOpenChanged() {
+            provider.armed = "";
+            provider.escaped = false;
+            provider.depth = (provider.launcher.held ?? []).length;
             if (!provider.launcher.open) {
                 provider.noting += 1;
                 provider.seen = {};
             } else {
                 provider.noteSelected();
             }
+        }
+        function onHeldChanged() {
+            provider.noteSelected();
+        }
+        // Read once the key's done what it does, as its name comes before
+        // its count and whether it moved after (Prompt.qml's modalKey).
+        // Its name is read now, before the next key's replaces it, as keys
+        // typed fast can come in one turn and be read together.
+        function onKeysTakenChanged() {
+            provider.taken = provider.taken.concat([provider.launcher.keyTaken]);
+            Qt.callLater(provider.keyed);
+        }
+        // An ask from outside may select any line, so none stays his.
+        function onToldFromOutsideChanged() {
+            provider.keysAtOutside = provider.launcher.keysTaken;
+            provider.escaped = false;
+            provider.forget();
         }
     }
 
