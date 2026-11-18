@@ -529,16 +529,23 @@ mod tests {
     #[test]
     fn a_network_met_again_starts_as_one_never_met() {
         let mut follow = waiting();
-        let mut lines = flow_queued(NOV3);
-        lines.push(pool(NOV3 + 11_000, Some("hotel")));
-        lines.push(pool(NOV3 + 12_000, Some("home")));
-        for line in &lines {
+        for line in &flow_queued(NOV3) {
             follow.take(&parse(line).expect("a sample"));
+        }
+        assert!(
+            follow.controller.up.plateau().is_some(),
+            "home's first stay learned no plateau"
+        );
+        for line in [
+            pool(NOV3 + 11_000, Some("hotel")),
+            pool(NOV3 + 12_000, Some("home")),
+        ] {
+            follow.take(&parse(&line).expect("a pool"));
         }
         assert_eq!(follow.controller.up.limit(), None, "home started held");
         assert_eq!(
-            follow.heard().map(|(_, h)| h.plateau),
-            Some(None),
+            follow.controller.up.plateau(),
+            None,
             "home started under the plateau it learned"
         );
     }
@@ -795,10 +802,13 @@ mod tests {
         let mut follow = Follow::new();
         follow.from_ms = NOV3 + 20_000;
         let mut lines = vec![pool(NOV3, Some("home"))];
+        // The upload queues after its first two seconds, so a second
+        // stepped would cut it.
         for i in 0..100_u64 {
             let at = NOV3 + 100 * (i + 1);
+            let out = if i < 20 { 10.0 } else { 60.0 };
             lines.push(
-                json!({"at": at, "reflector": "9.9.9.9", "operator": "Quad9", "out": 10.0,
+                json!({"at": at, "reflector": "9.9.9.9", "operator": "Quad9", "out": out,
                        "back": 10.0, "rtt": 20.0, "rx": 1_000 * i, "tx": 3_750_000 * (i + 1)})
                 .to_string(),
             );

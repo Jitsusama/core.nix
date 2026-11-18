@@ -448,8 +448,8 @@ pub struct Way {
 }
 
 impl Way {
-    /// A direction on a network whose base is `base`, if one was learned,
-    /// starting there; with none, it starts with no limit. A known base
+    /// A direction starting at `base`, where a test gives one; the shaper
+    /// starts each stay with none, and so with no limit. A known base
     /// counts as one of the connection's rates, so a single cut under
     /// another machine's flow doesn't replace it.
     pub fn new(base: Option<f64>) -> Way {
@@ -1244,8 +1244,8 @@ pub struct Controller {
 }
 
 impl Controller {
-    /// A controller for a network whose bases, up and down, were learned
-    /// before, or not.
+    /// A controller starting at bases `up` and `down`, where a test gives
+    /// them; the shaper starts each stay with none.
     pub fn new(up: Option<f64>, down: Option<f64>) -> Controller {
         Controller {
             up: Way::new(up),
@@ -1286,7 +1286,7 @@ impl Controller {
     }
 
     /// Starts a stay on an anchored network at the anchor's hold, whatever
-    /// the network learned: what it learned may be the cuts' own doing, as
+    /// it holds now: a plateau held under cuts may be their own doing, as
     /// home's 4,586 was on 16 November, and the guard takes a minute to
     /// undo it. A controller already stepping is left as it is.
     pub fn start_at_the_anchor(&mut self) {
@@ -4026,7 +4026,7 @@ mod tests {
         unanchored.start_at_the_anchor();
         assert!(
             unanchored.up.limit().is_some_and(|l| l < 5_000),
-            "with no anchor: {:?}",
+            "a start with no anchor moved the hold: {:?}",
             unanchored.up.limit()
         );
     }
