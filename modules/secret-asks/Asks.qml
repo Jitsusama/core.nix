@@ -26,6 +26,7 @@ import Quickshell
 import QtQuick
 import KeyTimes
 import "../Fuzzy.js" as Fuzzy
+import "Shared.js" as Shared
 import "Shown.js" as Shown
 
 Provider {
@@ -54,6 +55,23 @@ Provider {
     }
 
     readonly property string summaryKey: "summary:asks"
+
+    // Whether each ask hides what it asks for: while niri says a call or
+    // any other program streams the screen, a recording of one window
+    // aside, and until niri has said which casts there are (Shared.js, as
+    // Copies hides a copy). Joel shows people his desktop through the
+    // launcher, and an ask names the secret, the tree and the why, so each
+    // row then says only that it's hidden. It has no act, since a yes for
+    // a line he can't read would release what he never saw, and no frame
+    // of it is timed, so shown again it counts nothing until his next
+    // move. It still waits in For You, hidden there too.
+    readonly property bool hiding: Shared.hidden(Niri.castsHeard, Niri.casts,
+        Recorder.windowSession)
+    onHidingChanged: {
+        forget();
+        ready.remade();
+        changed();
+    }
 
     // Whether the passwords daemon answers the asks, and the connection
     // Passwords holds to it, once it has one.
@@ -241,18 +259,27 @@ Provider {
     // An ask's row, from the one the daemon serves, with what For You
     // reads of it: whether it waits on Joel, and since when.
     function made(served, key) {
-        return ready.thing(served, key, {
+        const hidden = Words.name("asks:hidden");
+        const drawn = !hiding ? served : Object.assign({}, served, {
+            name: hidden,
+            note: "",
+            acts: [],
+            keywords: [],
+            drawer: { eyebrow: "", title: hidden, body: "", facts: [] }
+        });
+        return ready.thing(drawn, key, {
             thing: true,
             key: served.thing,
             // The record's key, by which a frame presenting it is noted.
             shownKey: key,
             // The ask as this row draws it, which a frame of it presents.
-            digest: served.digest,
+            digest: hiding ? null : served.digest,
             waiting: served.state === "waiting",
             asked: served.attention ?? null,
             // A waiting ask arms on its first Return, saying what a second
             // does; an answered one has no act to arm.
-            arms: served.state === "waiting" ? Words.of("verb:release").said?.arms ?? "" : "",
+            arms: served.state === "waiting" && !hiding
+                ? Words.of("verb:release").said?.arms ?? "" : "",
             // What it is and where it's from, which For You filters by.
             forYou: { kind: "do", source: "asks" }
         });

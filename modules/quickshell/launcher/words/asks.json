@@ -1,6 +1,11 @@
 {
   "things": [
     {
+      "id": "asks:hidden",
+      "in": "asks",
+      "name": "Ask, Hidden While You Share"
+    },
+    {
       "id": "asks:fact:runs",
       "in": "asks",
       "name": "Runs"
