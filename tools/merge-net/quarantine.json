@@ -56,19 +56,6 @@
     "test": "vm-a-call-keeps-its-packets"
   },
   {
-    "at": 1794644284,
-    "commit": "fb51cf3f90b06cfa8db754e4275e9faaf6b05190",
-    "due": "2026-11-18",
-    "due_why": "Its owner, the launcher's, fixes it by 2026-11-18 23:59 UTC: 64 of its 110 net runs from listing to 17 Nov 11:00 UTC ended nonzero, 63 of them naming its subtest",
-    "owner_pr": 4266,
-    "owner_session": "Y2YBTS",
-    "reason": "failed, then passed, at fb51cf3f90b0",
-    "subtests": [
-      "test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_once"
-    ],
-    "test": "vm-screens-keep-the-launcher"
-  },
-  {
     "at": 1794709157,
     "commit": "25e508c84df2ad15f66044c588f1529630a3b870",
     "due": "2026-11-17",
@@ -121,7 +108,7 @@
     "at": 1794849317,
     "commit": "8213d198a802746ea1634186cd295d7b71ca88e7",
     "due": "2026-11-18",
-    "due_why": "Its owner, the launcher's, fixes it with this test's other entry by 2026-11-18 23:59 UTC",
+    "due_why": "Its owner, the launcher's, fixes it by 2026-11-18 23:59 UTC: Quickshell warns of a dangling screen as every screen goes",
     "owner_pr": 4953,
     "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at 8213d198a802",
