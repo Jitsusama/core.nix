@@ -2016,9 +2016,16 @@ def test_a_letter_keeping_some_rows_builds_none_but_takes_those_let_go(shell: Sh
         assert not laid["laying"], "a laying still listens for rows once it's done"
         last = laid["kept"] or {}
         if "laidBy" in last:
-            by = {kind: int(each["rows"]) for kind, each in last["laidBy"].items()}
-            assert all(by), f"a row tallied under no kind: {by}"
-            tallied.append((sum(by.values()), int(last["built"]) + int(last["reused"])))
+            by = last["laidBy"]
+            unnamed = [kind for kind in by if kind in ("", "undefined", "null")]
+            assert not unnamed, f"rows tallied under no kind: {by}"
+            # Each row's time is its own, so together they're no more than the laying's.
+            took = [float(each["ms"]) for each in by.values()]
+            assert min(took, default=0) >= 0, f"a kind's rows took less than nothing: {by}"
+            laying = float(last["laying"])
+            assert sum(took) <= laying + 0.5, f"rows took {took} of a {laying} ms laying"
+            rows = sum(int(each["rows"]) for each in by.values())
+            tallied.append((rows, int(last["built"]) + int(last["reused"])))
         now = set(shell.showing()["rows"])
         kept.append(len(now & was))
         new.append(len(now - was))

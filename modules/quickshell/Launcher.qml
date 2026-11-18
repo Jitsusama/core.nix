@@ -13534,11 +13534,12 @@ Scope {
                             // row it built or took back, `{ kind: { rows, ms
                             // } }` (RowsKept.tallied), or null outside one,
                             // so no other row's drawing adds to it; and when
-                            // it began, so a row begun before it, such as one
-                            // made ahead and only finished now, counts only
-                            // what it took within it.
+                            // its last row was done, or it began, so a row
+                            // begun before, such as one made ahead and only
+                            // finished now, counts only what it took since
+                            // (RowsKept.ownTime).
                             property var laidBy: null
-                            property real laidFrom: 0
+                            property real laidUntil: 0
                             // Whether keeping them last put every row in
                             // again (RowsKept.afresh), so they stand from
                             // the list's start, whatever it was scrolled to.
@@ -14125,10 +14126,12 @@ Scope {
                                 // answer's part, is said by how it's drawn
                                 // (sort), never as an answer it isn't.
                                 function laid(from, to) {
-                                    if (list.laidBy !== null)
-                                        RowsKept.tallied(list.laidBy,
-                                            entry.modelData.what || entry.sort,
-                                            to - Math.max(from, list.laidFrom));
+                                    if (list.laidBy === null)
+                                        return;
+                                    RowsKept.tallied(list.laidBy,
+                                        entry.modelData.what || entry.sort,
+                                        RowsKept.ownTime(from, to, list.laidUntil));
+                                    list.laidUntil = to;
                                 }
                                 // Its own glyph, or the glyph of what it's
                                 // inside (rowsGlyph), for an act.

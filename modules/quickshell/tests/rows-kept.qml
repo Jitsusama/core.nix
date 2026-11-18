@@ -63,8 +63,12 @@ QtObject {
         RowsKept.tallied(tally, "agent", 30.5);
         RowsKept.tallied(tally, "run", 2);
         RowsKept.tallied(tally, "agent", 59.5);
-        Expect.same("a tally counts each kind's rows and their time", JSON.stringify(tally),
-            JSON.stringify({ agent: { rows: 2, ms: 90 }, run: { rows: 1, ms: 2 } }));
+        Expect.same("a tally counts each kind's rows and their time", tally,
+            { agent: { rows: 2, ms: 90 }, run: { rows: 1, ms: 2 } });
+        Expect.same("a row begun in the laying took from its beginning",
+            RowsKept.ownTime(5, 8, 3), 3);
+        Expect.same("a row begun before the laying's last row took only since it",
+            RowsKept.ownTime(1, 8, 6), 2);
         const ownNamed = RowsKept.untallied();
         RowsKept.tallied(ownNamed, "constructor", 4);
         Expect.same("a kind named as one of Object's own is tallied as any other",

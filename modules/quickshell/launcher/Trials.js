@@ -216,21 +216,29 @@ function madeOfKinds(took) {
     return each.length > 0 ? ` (${each.map(([kind, ms]) => `${kind} ${ms}`).join(", ")})` : "";
 }
 
-// Whose rows a laying spent on, built or taken back alike, in parentheses:
-// each kind whose rows took a millisecond once rounded, so half of one or
-// more, most first then by name, with how many it laid: " (by kind, built
-// or taken back: run 3 in 90, agent 5 in 20)". Joel's "aq" took 8 rows
-// back in 112 ms, where the keys lab's rows take 0.9 ms each
-// (2026-11-18), so his own rows are dear and this says which. Nothing
-// where none took one.
+// The rows a laying drew (`kept`, the list's keptLast), where it drew any,
+// and whose rows it spent on: ": 3 rows built, 8 taken back; both by kind:
+// run 3 in 90, agent 5 in 20". Nothing where it drew none.
+function laid(kept) {
+    return (kept?.built ?? 0) + (kept?.reused ?? 0) > 0
+        ? `: ${kept.built} rows built, ${kept.reused} taken back${laidOfKinds(kept.laidBy)}`
+        : "";
+}
+
+// Whose rows a laying spent on, built or taken back alike: each kind whose
+// rows took a millisecond once rounded, so half of one or more, most first
+// then by name, with how many it laid: "; both by kind: run 3 in 90, agent
+// 5 in 20". Joel's "aq" took 8 rows back in 112 ms, where the keys lab's
+// rows take 0.9 ms each (2026-11-18), so his own rows are dear and this
+// says which. Nothing where none took one.
 function laidOfKinds(tally) {
     const each = Object.entries(tally ?? {})
-        .map(([kind, laid]) => [kind, laid.rows, Math.round(laid.ms)])
+        .map(([kind, spent]) => [kind, spent.rows, Math.round(spent.ms)])
         .filter(([, , ms]) => ms >= 1)
         .sort((one, other) => other[2] - one[2] || (one[0] < other[0] ? -1 : 1));
     return each.length > 0
-        ? ` (by kind, built or taken back: ${each.map(([kind, rows, ms]) =>
-            `${kind} ${rows} in ${ms}`).join(", ")})`
+        ? `; both by kind: ${each.map(([kind, rows, ms]) => `${kind} ${rows} in ${ms}`)
+            .join(", ")}`
         : "";
 }
 

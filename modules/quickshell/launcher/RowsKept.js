@@ -328,6 +328,15 @@ function untallied() {
     return bare();
 }
 
+// What of a laying a row done at `to` took: from `from`, when it began, or
+// from `since`, where the laying's previous row was done or it began,
+// whichever is later. A row made ahead and only finished in the laying
+// began before it, and the laying's earlier rows were laid since, so
+// from its own beginning it would be given theirs again.
+function ownTime(from, to, since) {
+    return to - Math.max(from, since);
+}
+
 // Adds one more row of `kind` that took `ms` to `tally`, in place, as
 // `{ kind: { rows, ms } }`, so a laying long for the rows it drew says
 // whose rows it spent on. Added in place, since a row adds to it as it's
