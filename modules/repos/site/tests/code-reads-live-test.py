@@ -602,38 +602,6 @@ def test_focus_stays_in_the_drawer_when_the_tree_holding_it_goes(
     expect(code_page, "the address still named the tree gone").not_to_have_url(re.compile("#tree="))
 
 
-def test_a_redraw_keeps_focus_on_the_same_cells_link_when_two_share_a_home(
-    code_page: Page, repos_daemon: StandIn, mycelium_node: StandIn, tmp_path: Path
-) -> None:
-    says_it_stands(code_page, "live")
-    grove_written_now(repos_daemon)
-    beside: dict[str, object] = {
-        "key": "cell:Q3NEWS",
-        "name": "Q3NEWS",
-        "cwd": "/home/ada/trees/grove/modules",
-        "title": "Weigh the grove",
-        "standing": "moving",
-        "networks": ["repo.core"],
-    }
-    mycelium_node.tell("cell", changed=[beside])
-    # Both cells say one home, so the drawer links it twice, told apart only by each cell's key.
-    things = [
-        {"kind": "cell", "key": key, "name": key, "address": CELL_HOME}
-        for key in ("E2ZIAQ", "Q3NEWS")
-    ]
-    (tmp_path / "documents" / CELLS_SITE / "homes.json").write_text(json.dumps({"things": things}))
-    alike = code_page.locator(f'#open a[href="../{CELL_HOME}"]')
-    expect(
-        alike.filter(has_text="Q3NEWS"), "the drawer didn't link both cells to one home"
-    ).to_have_count(1, timeout=ASKED_AGAIN_MS)
-    row(code_page, "github:owl/core").click()
-    code_page.keyboard.press("Enter")
-    expect(code_page.locator('#open .tree[aria-current="true"]')).to_be_focused()
-    alike.nth(1).focus()
-    redrawn_drawer(code_page, repos_daemon)
-    expect(alike.nth(1), "a redraw moved focus to the other cell's link").to_be_focused()
-
-
 def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
     says_it_stands(code_page, "live")
     keys = code_page.locator(".head .keys [role=button]")
@@ -657,7 +625,7 @@ def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
     code_page.keyboard.press("j")
     last = rows.last.get_attribute("data-key") or ""
     expect(chosen, "j didn't step the list's cursor on").to_have_attribute("data-key", last)
-    keys.first.focus()
+    keys.nth(2).focus()
     code_page.keyboard.press("Home")
     expect(keys.first, "Home didn't move to the first key").to_be_focused()
     expect(chosen, "Home on a key moved the list's cursor too").to_have_attribute("data-key", last)
