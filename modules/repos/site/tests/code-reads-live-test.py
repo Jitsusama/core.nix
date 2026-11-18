@@ -19,6 +19,9 @@ web-design skill's page checks and its homes check at a phone's width and
 a desk's in both looks. Anything the page logs fails it, but for the browser's
 own lines once the test takes the server away. The server, the browser and the
 tab are modules/local-sites/tests/live_page.py's.
+
+Long because each case is one thing the page does, on the same server, stand-ins
+and browser, and the fixtures that start them live here alone.
 """
 
 import json
@@ -601,7 +604,10 @@ def test_a_redraw_keeps_focus_on_the_same_of_two_alike_links(
     alike = code_page.locator(f'#open a[href="../{CELL_HOME}"]')
     expect(
         alike.filter(has_text="Q3NEWS"), "the drawer didn't link both cells to one home"
-    ).to_be_visible(timeout=ASKED_AGAIN_MS)
+    ).to_have_count(1, timeout=ASKED_AGAIN_MS)
+    row(code_page, "github:owl/core").click()
+    code_page.keyboard.press("Enter")
+    expect(code_page.locator('#open .tree[aria-current="true"]')).to_be_focused()
     alike.nth(1).focus()
     redrawn_drawer(code_page, repos_daemon)
     expect(alike.nth(1), "a redraw moved focus to the first of two alike links").to_be_focused()
