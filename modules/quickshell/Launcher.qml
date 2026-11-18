@@ -2566,7 +2566,10 @@ Scope {
             // What it belongs to leads, as a session ranked flat says whom
             // it's under, the depth that showed it gone (Agents.qml), and its
             // noun only where no kind says it (Rank.gatheredSide).
-            const gathered = Object.assign({}, best, {
+            // What the launcher gives the row is said in `given` too, so a
+            // step held in it keeps these over the source's row as it is
+            // now, and nothing else the row held then (Held.js's own).
+            const given = {
                 side: Rank.gatheredSide(best.belongs ?? "", found.length, noun,
                     kindOf(best) !== ""),
                 chip: noun,
@@ -2581,20 +2584,21 @@ Scope {
                 tier: Rank.gatheredTier(best, letters, Fuzzy.match(best.prepared
                     ?? Fuzzy.prepare(best.name ?? ""), Fuzzy.words(letters), false).score >= 0),
                 verbs: () => found
-            });
+            };
+            const gathered = Object.assign({}, best, given);
             // One with no act of its own, only more inside (an
             // orchestrator, a device), lands inside it on Return, its
             // collection's crumb before its own, as the approved proposal's
             // one feel has it, and the right arrow lands there too, so
             // Return never goes further in than it (Joel, 2026-10-26).
             if (part !== null)
-                Object.assign(gathered, {
+                Object.assign(given, {
                     stays: true,
                     lands: true,
                     run: () => root.searchIn(source, part.into, letters)
                 });
             else if (!best.run && (best.verbs || best.targets))
-                Object.assign(gathered, {
+                Object.assign(given, {
                     stays: true,
                     lands: true,
                     run: () => root.landInside(gathered, best)
@@ -2603,8 +2607,8 @@ Scope {
             // where it lives, whatever its Return does (VKCF3Z, 2026-10-29:
             // "the crumbs are where it lives").
             else if (best.verbs || best.targets)
-                gathered.landsIn = best;
-            rows.push(gathered);
+                given.landsIn = best;
+            rows.push(Object.assign(gathered, given, { given }));
         }
         if (Object.keys(made).length > 0)
             Report.say(`texts made ready on a key ${JSON.stringify(made)}`);
@@ -5195,7 +5199,7 @@ Scope {
         // saying what it holds when empty, as Waiting on You does, is a
         // place stepped into however little it holds.
         const places = things && row.from ? partsOf(row.from).length : 0;
-        if ((!into || into.length === 0) && places === 0 && !row.empty)
+        if (Held.offers(into, places, row.empty) === null)
             return false;
         if (meant)
             learnAfterFrame(typed, row.key);
@@ -5963,8 +5967,11 @@ Scope {
     function heldWays() {
         return {
             same: sameRow,
-            into: (thing, at, steps) => inside(thing,
-                asThing(thing, at === 0 || collects(steps[at - 1]))),
+            into: (thing, at, steps) => {
+                const things = asThing(thing, at === 0 || collects(steps[at - 1]));
+                return Held.offers(inside(thing, things),
+                    things && thing.from ? partsOf(thing.from).length : 0, thing.empty);
+            },
             keep: (step, into) => Steady.kept(step.rows, into, pairedId)
         };
     }
@@ -5983,6 +5990,10 @@ Scope {
         // showed (canGoUp).
         const outermost = steps[0]?.row.from?.collection?.outermost === true;
         const leave = Math.max(made.leave, outermost ? 1 : 0);
+        // Said in the journal, so a step that closes under Joel by itself
+        // can be told from one his key left.
+        console.info(`launcher: left ${steps.length - leave} steps from `
+            + `${JSON.stringify(steps[made.leave]?.row.name ?? "")}, as it offers nothing now`);
         held = steps;
         while (held.length > leave)
             back();
