@@ -14,21 +14,6 @@
     "test": "vm-desktop-launcher-goes-places"
   },
   {
-    "at": 1794409299,
-    "commit": "6e396fae765b7bee38c3af3a418e0ff73ad7d294",
-    "due": "2026-11-18",
-    "due_why": "Its owner, the launcher's, fixes it by 2026-11-18 23:59 UTC: 41 of its 130 net runs from listing to 17 Nov 11:00 UTC ended nonzero, 19 of them naming a listed subtest",
-    "owner_pr": 3176,
-    "owner_session": "Y2YBTS",
-    "reason": "failed, then passed, at 6e396fae765b",
-    "subtests": [
-      "test_every_name_a_thing_had_still_finds_it",
-      "test_no_answer_raised_an_error",
-      "test_quickshell_warned_of_nothing_it_drew_all_along"
-    ],
-    "test": "vm-desktop-launcher-finds-by-name"
-  },
-  {
     "at": 1794421209,
     "commit": "042387bc604aa8b10fbf53100b0230c1f552e504",
     "due": "2026-11-17",
