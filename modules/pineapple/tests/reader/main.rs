@@ -17,6 +17,7 @@ mod live;
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -30,6 +31,53 @@ const PATIENCE: Duration = Duration::from_secs(20);
 
 /// How often the reader searches in a case, in milliseconds.
 const PACE: &str = "100";
+
+/// Where in its home a reader's journal is kept.
+const JOURNAL: &str = "journal";
+
+/// A reader a case started, stopped once the case is done with it, whether
+/// the case passes or fails part way, so a failed case leaves no reader
+/// still asking its stand-in.
+struct Running(Child);
+
+impl Deref for Running {
+    type Target = Child;
+
+    fn deref(&self) -> &Child {
+        &self.0
+    }
+}
+
+impl DerefMut for Running {
+    fn deref_mut(&mut self) -> &mut Child {
+        &mut self.0
+    }
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        // A case that stopped its reader itself has already reaped it, and
+        // one failing part way has its own panic to say; either way there
+        // is nothing more to tell from a kill or a wait that goes wrong.
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// The journal in a reader's `home`, opened to be added to, so a
+/// reader started again in the same home keeps what the one before it said.
+fn journal_of(home: &Path) -> std::fs::File {
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(home.join(JOURNAL))
+        .expect("its journal is opened")
+}
+
+/// What the readers started in `home` have said to its journal so far.
+fn said_to_journal(home: &Path) -> String {
+    std::fs::read_to_string(home.join(JOURNAL)).unwrap_or_default()
+}
 
 /// The stand-in's Joel, and the colleagues who tag him.
 const JOEL: &str = "U0JOEL0001";
@@ -319,20 +367,20 @@ fn each<'a>(said: &'a [Value], field: &str) -> Vec<&'a str> {
     said.iter().filter_map(|one| one[field].as_str()).collect()
 }
 
-fn reader(home: &Path, origin: &str) -> Child {
+fn reader(home: &Path, origin: &str) -> Running {
     reader_with(home, origin, &[])
 }
 
 /// The reader, given `more` on its line after the stand-in and pace.
-fn reader_with(home: &Path, origin: &str, more: &[&str]) -> Child {
+fn reader_with(home: &Path, origin: &str, more: &[&str]) -> Running {
     reading(home, origin, more, None)
 }
 
 /// The reader, telling For You in `waiting` when it names one, as its
 /// unit does, and finding its own file otherwise, whatever the run's
 /// own environment names. It runs in its home, so a relative name lands
-/// there rather than in the crate.
-fn reading(home: &Path, origin: &str, more: &[&str], waiting: Option<&Path>) -> Child {
+/// there rather than in the crate, and says to its journal there.
+fn reading(home: &Path, origin: &str, more: &[&str], waiting: Option<&Path>) -> Running {
     let mut reader = Command::new(env!("CARGO_BIN_EXE_pineapple-slack"));
     reader.current_dir(home).env_remove("SAFE_WORD_WAITING");
     if let Some(waiting) = waiting {
@@ -345,8 +393,9 @@ fn reading(home: &Path, origin: &str, more: &[&str], waiting: Option<&Path>) -> 
         .env("XDG_CONFIG_HOME", home.join("config"))
         .env("XDG_STATE_HOME", home.join("state"))
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(journal_of(home))
         .spawn()
+        .map(Running)
         .expect("the reader starts")
 }
 
@@ -365,8 +414,9 @@ fn until_decided(home: &Path, count: usize) {
     while decisions(home).len() < count {
         assert!(
             began.elapsed() < PATIENCE,
-            "the reader wrote {} decisions, not {count}",
-            decisions(home).len()
+            "the reader wrote {} decisions, not {count}, and said:\n{}",
+            decisions(home).len(),
+            said_to_journal(home)
         );
         // The reader searches every tenth of a second, so a short wait
         // sees each round without spinning.

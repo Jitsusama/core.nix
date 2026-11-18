@@ -16,7 +16,7 @@
 mod standing;
 
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
@@ -26,8 +26,8 @@ use pineapple::github::stamp;
 use serde_json::{Value, json};
 
 use super::{
-    Answered, PACE, PATIENCE, a_stop, answering, answering_whole, decisions, each, home, resumed,
-    until_decided,
+    Answered, JOURNAL, PACE, PATIENCE, Running, a_stop, answering, answering_whole, decisions,
+    each, home, journal_of, resumed, until_decided,
 };
 
 /// The stand-in's Joel on GitHub.
@@ -129,14 +129,7 @@ fn joel_resumes(line: &str, now: u64) -> Value {
 
 /// The GitHub reader, signed in with a stand-in token, in shadow unless
 /// `more` says otherwise, its journal kept in `home` for [`journal`].
-fn github_reader(home: &Path, origin: &str, more: &[&str]) -> Child {
-    // Added to, so a reader started again in the same home keeps what the
-    // one before it said.
-    let journal = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(home.join(JOURNAL))
-        .expect("its journal is opened");
+fn github_reader(home: &Path, origin: &str, more: &[&str]) -> Running {
     Command::new(env!("CARGO_BIN_EXE_pineapple-github"))
         .args(["run", "--origin", origin, "--every", PACE])
         .args(more)
@@ -144,13 +137,11 @@ fn github_reader(home: &Path, origin: &str, more: &[&str]) -> Child {
         .env("XDG_STATE_HOME", home.join("state"))
         .env("SIGN_IN_KEYRING", keyring(home))
         .stdout(Stdio::null())
-        .stderr(journal)
+        .stderr(journal_of(home))
         .spawn()
+        .map(Running)
         .expect("the reader starts")
 }
-
-/// Where in its home a reader's journal is kept.
-const JOURNAL: &str = "journal";
 
 /// What the reader started in `home` has said to its journal so far.
 fn journal(home: &Path) -> String {

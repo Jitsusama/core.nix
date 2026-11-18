@@ -4,18 +4,20 @@
 //! leaves Slack read with the sign-in last read.
 
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::json;
 
-use super::{JOEL, PACE, PATIENCE, decisions, each, home, stand_in, until_decided};
+use super::{
+    JOEL, PACE, PATIENCE, Running, decisions, each, home, journal_of, stand_in, until_decided,
+};
 
 /// The reader started in `home` against `origin`, its keyring a stand-in
 /// secret-tool running `script`, which `{sign_in}` in prints the sign-in
 /// of, and its journal written to home/journal.
-pub(super) fn reading_with_keyring(home: &Path, origin: &str, script: &str) -> Child {
+pub(super) fn reading_with_keyring(home: &Path, origin: &str, script: &str) -> Running {
     let sign_in = json!({"token": {
         "accessToken": "xoxc-stand-in", "cookie": "stand-in", "teamId": "T0TEAM0001",
         "userId": JOEL,
@@ -35,7 +37,6 @@ pub(super) fn reading_with_keyring(home: &Path, origin: &str, script: &str) -> C
         .status()
         .expect("the keyring's shell runs");
     assert!(written.success(), "the keyring wasn't written");
-    let journal = std::fs::File::create(home.join("journal")).expect("the journal");
     Command::new(env!("CARGO_BIN_EXE_pineapple-slack"))
         .args(["run", "--origin", origin, "--every", PACE])
         .env_remove("SAFE_WORD_WAITING")
@@ -44,8 +45,9 @@ pub(super) fn reading_with_keyring(home: &Path, origin: &str, script: &str) -> C
         .env("XDG_STATE_HOME", home.join("state"))
         .env("SIGN_IN_KEYRING", &keyring)
         .stdout(Stdio::null())
-        .stderr(journal)
+        .stderr(journal_of(home))
         .spawn()
+        .map(Running)
         .expect("the reader starts")
 }
 

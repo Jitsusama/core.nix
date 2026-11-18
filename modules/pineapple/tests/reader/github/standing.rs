@@ -182,7 +182,9 @@ fn github_a_maintainers_stop_where_joel_opened_an_issue_he_cant_push_to_stands()
 }
 
 /// An issue in example/shop, a repository Joel works in, opened by a
-/// stranger naming example/other#3, and a colleague's stop on it.
+/// stranger naming example/other#3, and a stop on it from a colleague
+/// GitHub names as the repository's collaborator, which is why the stop
+/// stands in both cases that read it.
 fn steered_by_a_stranger() -> Issue {
     Issue {
         repo: "example/shop",
