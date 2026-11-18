@@ -35,32 +35,52 @@ const PACE: &str = "100";
 /// Where in its home a reader's journal is kept.
 const JOURNAL: &str = "journal";
 
-/// A reader a case started, stopped once the case is done with it, whether
-/// the case passes or fails part way, so a failed case leaves no reader
-/// still asking its stand-in.
-struct Running(Child);
+/// A reader a case started in `home`, stopped once the case is done with
+/// it, whether the case passes or fails part way, so a failed case leaves
+/// no reader still asking its stand-in. A case failing while it runs is
+/// shown its home's journal too, whichever wait or check gave up.
+struct Running {
+    reader: Child,
+    home: PathBuf,
+}
+
+impl Running {
+    /// The guard over `reader`, started in `home`.
+    fn over(home: &Path) -> impl FnOnce(Child) -> Self {
+        let home = home.to_owned();
+        move |reader| Self { reader, home }
+    }
+}
 
 impl Deref for Running {
     type Target = Child;
 
     fn deref(&self) -> &Child {
-        &self.0
+        &self.reader
     }
 }
 
 impl DerefMut for Running {
     fn deref_mut(&mut self) -> &mut Child {
-        &mut self.0
+        &mut self.reader
     }
 }
 
 impl Drop for Running {
     fn drop(&mut self) {
-        // A case that stopped its reader itself has already reaped it, and
-        // one failing part way has its own panic to say; either way there
-        // is nothing more to tell from a kill or a wait that goes wrong.
-        let _ = self.0.kill();
-        let _ = self.0.wait();
+        // std reaps a child once and never signals one it has reaped, so a
+        // case that stopped its reader itself makes these do nothing; and
+        // one failing part way has its own panic to say, so there is
+        // nothing more to tell from a kill or a wait that goes wrong.
+        let _ = self.reader.kill();
+        let _ = self.reader.wait();
+        if thread::panicking() {
+            eprintln!(
+                "what the readers in {} said to their journal:\n{}",
+                self.home.display(),
+                journal(&self.home)
+            );
+        }
     }
 }
 
@@ -75,7 +95,7 @@ fn journal_of(home: &Path) -> std::fs::File {
 }
 
 /// What the readers started in `home` have said to its journal so far.
-fn said_to_journal(home: &Path) -> String {
+fn journal(home: &Path) -> String {
     std::fs::read_to_string(home.join(JOURNAL)).unwrap_or_default()
 }
 
@@ -382,7 +402,10 @@ fn reader_with(home: &Path, origin: &str, more: &[&str]) -> Running {
 /// there rather than in the crate, and says to its journal there.
 fn reading(home: &Path, origin: &str, more: &[&str], waiting: Option<&Path>) -> Running {
     let mut reader = Command::new(env!("CARGO_BIN_EXE_pineapple-slack"));
-    reader.current_dir(home).env_remove("SAFE_WORD_WAITING");
+    reader
+        .current_dir(home)
+        .env_remove("SAFE_WORD_WAITING")
+        .env_remove("SIGN_IN_KEYRING");
     if let Some(waiting) = waiting {
         reader.env("SAFE_WORD_WAITING", waiting);
     }
@@ -395,7 +418,7 @@ fn reading(home: &Path, origin: &str, more: &[&str], waiting: Option<&Path>) -> 
         .stdout(Stdio::null())
         .stderr(journal_of(home))
         .spawn()
-        .map(Running)
+        .map(Running::over(home))
         .expect("the reader starts")
 }
 
@@ -414,14 +437,31 @@ fn until_decided(home: &Path, count: usize) {
     while decisions(home).len() < count {
         assert!(
             began.elapsed() < PATIENCE,
-            "the reader wrote {} decisions, not {count}, and said:\n{}",
-            decisions(home).len(),
-            said_to_journal(home)
+            "the reader wrote {} decisions, not {count}",
+            decisions(home).len()
         );
         // The reader searches every tenth of a second, so a short wait
         // sees each round without spinning.
         thread::sleep(Duration::from_millis(50));
     }
+}
+
+#[test]
+fn a_case_failing_part_way_leaves_no_reader_running() {
+    let (origin, _) = stand_in();
+    let home = home();
+    let running = reader(&home, &origin);
+    let pid = running.id();
+    let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        let _held = running;
+        panic!("the case fails while its reader runs");
+    }));
+    assert!(failed.is_err(), "the case failed");
+    assert!(
+        !Path::new(&format!("/proc/{pid}")).exists(),
+        "the failed case's reader still runs"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
 #[test]

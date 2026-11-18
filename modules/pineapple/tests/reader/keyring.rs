@@ -11,7 +11,8 @@ use std::time::{Duration, Instant};
 use serde_json::json;
 
 use super::{
-    JOEL, PACE, PATIENCE, Running, decisions, each, home, journal_of, stand_in, until_decided,
+    JOEL, PACE, PATIENCE, Running, decisions, each, home, journal, journal_of, stand_in,
+    until_decided,
 };
 
 /// The reader started in `home` against `origin`, its keyring a stand-in
@@ -47,7 +48,7 @@ pub(super) fn reading_with_keyring(home: &Path, origin: &str, script: &str) -> R
         .stdout(Stdio::null())
         .stderr(journal_of(home))
         .spawn()
-        .map(Running)
+        .map(Running::over(home))
         .expect("the reader starts")
 }
 
@@ -79,7 +80,7 @@ fn a_keyring_that_never_answers_holds_the_stops_back_only_its_patience_and_rest(
         ["stop", "stop", "stop-asked", "stop"],
         "every stop said while the keyring hung is heard"
     );
-    let said = std::fs::read_to_string(home.join("journal")).expect("the journal");
+    let said = journal(&home);
     // Twenty rounds' patience; the rest, at this pace, under a minute.
     assert!(
         said.contains("Slack's sign-in ran past 2 seconds and was stopped")
@@ -108,7 +109,7 @@ fn a_keyring_locked_after_answering_is_asked_once_a_rest_while_slack_is_read() {
             .filter(|line| line.contains("search.messages"))
             .count()
     };
-    let said = || std::fs::read_to_string(home.join("journal")).unwrap_or_default();
+    let said = || journal(&home);
     let began = Instant::now();
     while !said().contains("is locked") && began.elapsed() < PATIENCE {
         thread::sleep(Duration::from_millis(20));
@@ -162,7 +163,7 @@ fn a_keyring_that_hangs_after_answering_leaves_slack_read_with_the_last_sign_in(
             .filter(|line| line.contains("search.messages"))
             .count()
     };
-    let said = || std::fs::read_to_string(home.join("journal")).unwrap_or_default();
+    let said = || journal(&home);
     let began = Instant::now();
     while !said().contains("so the one last read is used") && began.elapsed() < PATIENCE {
         thread::sleep(Duration::from_millis(20));

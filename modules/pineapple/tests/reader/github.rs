@@ -26,8 +26,8 @@ use pineapple::github::stamp;
 use serde_json::{Value, json};
 
 use super::{
-    Answered, JOURNAL, PACE, PATIENCE, Running, a_stop, answering, answering_whole, decisions,
-    each, home, journal_of, resumed, until_decided,
+    Answered, PACE, PATIENCE, Running, a_stop, answering, answering_whole, decisions, each, home,
+    journal, journal_of, resumed, until_decided,
 };
 
 /// The stand-in's Joel on GitHub.
@@ -139,13 +139,8 @@ fn github_reader(home: &Path, origin: &str, more: &[&str]) -> Running {
         .stdout(Stdio::null())
         .stderr(journal_of(home))
         .spawn()
-        .map(Running)
+        .map(Running::over(home))
         .expect("the reader starts")
-}
-
-/// What the reader started in `home` has said to its journal so far.
-fn journal(home: &Path) -> String {
-    std::fs::read_to_string(home.join(JOURNAL)).expect("its journal is read")
 }
 
 /// A keyring program printing a stand-in token, as gh's would print his.
