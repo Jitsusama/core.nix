@@ -5,11 +5,14 @@
 //! the settings that make it hold one, so the harness's fence and this
 //! daemon's read the same words and hide the same files. The rules for
 //! each setting follow `fence-docker.ts`'s, and go past them where
-//! Docker's reader does: a setting under any spelling, and a proxy's
-//! login with no scheme before it.
+//! Docker's reader does: a setting under any spelling it folds to, a key
+//! said twice, and a proxy's login with no scheme before it or a slash in
+//! its password.
+
+use std::fmt;
 
 use serde::Deserialize;
-use serde_json::{Map, Value};
+use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
 
 /// A file the list empties where it holds a credential: its path from
 /// home, and the top-level settings that make it hold one.
@@ -22,12 +25,81 @@ pub struct Emptied {
 /// What a login in `auths` carries when it carries one.
 const LOGIN_FIELDS: [&str; 4] = ["auth", "identitytoken", "password", "registrytoken"];
 
+/// Settings as they're written: every key kept, in its order, and a key
+/// said twice kept twice, since Docker's reader merges a setting said
+/// twice where a map of `serde_json`'s keeps only the last saying.
+enum Said {
+    Nothing,
+    Something,
+    Text(String),
+    Listed(Vec<Said>),
+    Named(Vec<(String, Said)>),
+}
+
+impl<'de> Deserialize<'de> for Said {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(Reading)
+    }
+}
+
+/// Reads JSON into what it says, keeping every key.
+struct Reading;
+
+impl<'de> Visitor<'de> for Reading {
+    type Value = Said;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("settings in JSON")
+    }
+
+    fn visit_unit<E: de::Error>(self) -> Result<Said, E> {
+        Ok(Said::Nothing)
+    }
+
+    fn visit_bool<E: de::Error>(self, _: bool) -> Result<Said, E> {
+        Ok(Said::Something)
+    }
+
+    fn visit_i64<E: de::Error>(self, _: i64) -> Result<Said, E> {
+        Ok(Said::Something)
+    }
+
+    fn visit_u64<E: de::Error>(self, _: u64) -> Result<Said, E> {
+        Ok(Said::Something)
+    }
+
+    fn visit_f64<E: de::Error>(self, _: f64) -> Result<Said, E> {
+        Ok(Said::Something)
+    }
+
+    fn visit_str<E: de::Error>(self, said: &str) -> Result<Said, E> {
+        Ok(Said::Text(said.to_owned()))
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Said, A::Error> {
+        let mut listed = Vec::new();
+        while let Some(one) = seq.next_element()? {
+            listed.push(one);
+        }
+        Ok(Said::Listed(listed))
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Said, A::Error> {
+        let mut named = Vec::new();
+        while let Some(entry) = map.next_entry::<String, Said>()? {
+            named.push(entry);
+        }
+        Ok(Said::Named(named))
+    }
+}
+
 /// Whether settings reading `text` hold a credential by any setting
-/// `when` names, under any spelling of it, since Docker's own reader
-/// takes every spelling. Settings that don't parse, or aren't an
-/// object, are held to hold one, since what they hold can't be told.
+/// `when` names, under any spelling of it and any saying of it, since
+/// Docker's own reader takes every spelling and merges every saying.
+/// Settings that don't parse, or aren't an object, are held to hold one,
+/// since what they hold can't be told.
 pub fn empties(text: &str, when: &[String]) -> bool {
-    let Ok(Value::Object(settings)) = serde_json::from_str::<Value>(text) else {
+    let Ok(Said::Named(settings)) = serde_json::from_str::<Said>(text) else {
         return true;
     };
     when.iter()
@@ -37,61 +109,77 @@ pub fn empties(text: &str, when: &[String]) -> bool {
 /// Whether one setting, by its name, holds a credential: a login in
 /// `auths`, an address in `proxies` carrying a name and password, and
 /// any other named setting by being there at all.
-fn holds(name: &str, value: &Value) -> bool {
-    match name.to_lowercase().as_str() {
-        "auths" => value.as_object().is_some_and(|logins| {
-            logins.values().any(|login| {
-                login.as_object().is_some_and(|login| {
-                    LOGIN_FIELDS.iter().any(|field_name| {
-                        spelled(login, field_name)
-                            .any(|said| matches!(said, Value::String(said) if !said.is_empty()))
-                    })
+fn holds(name: &str, value: &Said) -> bool {
+    match folded(name).as_str() {
+        "auths" => {
+            let Said::Named(logins) = value else {
+                return false;
+            };
+            logins.iter().any(|(_, login)| {
+                let Said::Named(login) = login else {
+                    return false;
+                };
+                LOGIN_FIELDS.iter().any(|field_name| {
+                    spelled(login, field_name)
+                        .any(|said| matches!(said, Said::Text(said) if !said.is_empty()))
                 })
             })
-        }),
+        }
         "proxies" => addresses(value).any(carries_login),
         _ => !is_empty(value),
     }
 }
 
 /// Every string a setting holds, however deep.
-fn addresses(value: &Value) -> Box<dyn Iterator<Item = &str> + '_> {
+fn addresses(value: &Said) -> Box<dyn Iterator<Item = &str> + '_> {
     match value {
-        Value::String(said) => Box::new(std::iter::once(said.as_str())),
-        Value::Array(listed) => Box::new(listed.iter().flat_map(addresses)),
-        Value::Object(named) => Box::new(named.values().flat_map(addresses)),
-        Value::Null | Value::Bool(_) | Value::Number(_) => Box::new(std::iter::empty()),
+        Said::Text(said) => Box::new(std::iter::once(said.as_str())),
+        Said::Listed(listed) => Box::new(listed.iter().flat_map(addresses)),
+        Said::Named(named) => Box::new(named.iter().flat_map(|(_, said)| addresses(said))),
+        Said::Nothing | Said::Something => Box::new(std::iter::empty()),
     }
 }
 
 /// Whether an address carries a name and password of its own: an `@`
-/// before its path, with or without a scheme, as a proxy's reader takes
-/// `joel:pw@proxy:3128` and `http://joel:pw@proxy:3128` alike.
+/// anywhere past its scheme, or in all of it with none, as a proxy's
+/// reader takes `joel:pw@proxy:3128` and `http://joel:pw@proxy:3128`
+/// alike. A password may hold a slash, so an `@` in what looks like a
+/// path counts too, which only ever hides settings holding no login.
 fn carries_login(address: &str) -> bool {
-    let past_scheme = address.split_once("://").map_or(address, |(_, rest)| rest);
-    past_scheme
-        .split('/')
-        .next()
-        .is_some_and(|host| host.contains('@'))
+    address
+        .split_once("://")
+        .map_or(address, |(_, rest)| rest)
+        .contains('@')
 }
 
 /// Whether a setting says nothing: null, or an empty string, list or
 /// object.
-fn is_empty(value: &Value) -> bool {
+fn is_empty(value: &Said) -> bool {
     match value {
-        Value::Null => true,
-        Value::String(said) => said.is_empty(),
-        Value::Array(listed) => listed.is_empty(),
-        Value::Object(named) => named.is_empty(),
-        Value::Bool(_) | Value::Number(_) => false,
+        Said::Nothing => true,
+        Said::Text(said) => said.is_empty(),
+        Said::Listed(listed) => listed.is_empty(),
+        Said::Named(named) => named.is_empty(),
+        Said::Something => false,
     }
 }
 
-/// A setting under each of its spellings.
-fn spelled<'a>(settings: &'a Map<String, Value>, name: &'a str) -> impl Iterator<Item = &'a Value> {
+/// A key as Docker's reader matches it, folded as Go folds: past case,
+/// the long s is an s and the Kelvin sign a k. Folding more than Go does
+/// only ever hides more.
+fn folded(key: &str) -> String {
+    key.chars()
+        .flat_map(char::to_uppercase)
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// A setting under each of its spellings and each time it's said.
+fn spelled<'a>(settings: &'a [(String, Said)], name: &str) -> impl Iterator<Item = &'a Said> {
+    let name = folded(name);
     settings
         .iter()
-        .filter(move |(key, _)| key.eq_ignore_ascii_case(name))
+        .filter(move |(key, _)| folded(key) == name)
         .map(|(_, value)| value)
 }
 
