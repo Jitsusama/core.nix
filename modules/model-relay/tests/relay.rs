@@ -501,6 +501,36 @@ async fn a_request_passes_whole_and_nothing_of_it_is_logged() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn a_body_of_many_pieces_passes_whole() {
+    // Longer than a piece the relay hands h2 and than the stream's window,
+    // as a conversation's request is, and not a whole number of either.
+    const LONG: usize = 200 * 1024 + 7;
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 2);
+    let body: Vec<u8> = (0..=u8::MAX).cycle().take(LONG).collect();
+    let asked = Request::builder()
+        .method("POST")
+        .uri("/v1/messages")
+        .header("host", &host)
+        .header("content-length", LONG.to_string())
+        .body(Full::new(Bytes::from(body.clone())))
+        .expect("a request");
+
+    let got = ask(&relay.socket, asked).await;
+
+    assert_eq!(got.status, StatusCode::CREATED);
+    let handed = origin.handed.lock().expect("the record").clone();
+    assert_eq!(handed.len(), 1);
+    assert!(
+        handed[0].body == body,
+        "the origin was handed {} bytes, not the {LONG} sent, or not the same ones",
+        handed[0].body.len()
+    );
+    assert!(got.body == body, "the answer came back changed");
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn only_its_origin_is_reached() {
     let origin = origin().await;
     let relay = Relay::start(&format!("https://{}", origin.address), &origin.roots, 2);

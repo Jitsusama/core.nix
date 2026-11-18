@@ -1606,14 +1606,16 @@
   '';
   model-relay-carries-requests-whole = ''
     model-relay, against an HTTP/2 origin of its tests' own, forwards a request's method, path,
-    headers and body as they came, refuses any other host, carries many requests at once on a few
-    connections, streams an answer as it comes, opens again a connection the origin lets go, says
+    headers and body as they came, a body of many pieces whole, refuses any other host, carries many
+    requests at once on a few connections, streams an answer as it comes, opens again a connection the origin lets go, says
     an origin out of reach as a 502 or a 504 without queueing, doesn't ask for a connection that
     won't open on every request, forgets a failure once the origin is back, sends pi direct with a
     421 when it can't trust the origin, answers beside an answer longer than its idle time, leaves
     once idle even while refusing other hosts, held open by a kept connection or knocked on as it
     goes, keeps its socket to its account, from a second relay and off a file or a link that isn't
-    a socket, and logs nothing of a header or a body, a failure included
+    a socket, and logs nothing of a header or a body, a failure included; and its own cases hold a
+    ping from behind an upload, with little held unsent in its sockets and short frames, and say an
+    error with its causes, cut to a line
   '';
   model-relay-passes-clippy = ''
     clippy finds nothing in model-relay or its tests

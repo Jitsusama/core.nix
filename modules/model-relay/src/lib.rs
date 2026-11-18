@@ -110,7 +110,8 @@ const PING_ANSWERED_WITHIN: Duration = Duration::from_secs(40);
 /// 17 November, 128 KB waited on a connection moving 70 kbit/s, the ping
 /// went unanswered within 20 s, and hyper closed the connection with every
 /// request on it. At 16 KiB a layer, 48 KiB at most is ahead of a ping,
-/// about six seconds at that rate.
+/// about six seconds at that rate, besides what is already in flight,
+/// which the connection's window bounds and a lossy uplink keeps small.
 const HELD_AHEAD_AT_MOST: usize = 16 * 1024;
 /// The most of an error's account the journal keeps for one line, since
 /// the origin's goodbye carries debug data of its choosing.
@@ -143,14 +144,14 @@ type Sent = InPieces<Incoming>;
 /// A body handed on in pieces of at most `HELD_AHEAD_AT_MOST`, so that no
 /// DATA frame h2 writes is longer, since h2 cuts a frame from one piece
 /// and never joins two.
-pub struct InPieces<B> {
+struct InPieces<B> {
     body: B,
     rest: Bytes,
 }
 
 impl<B> InPieces<B> {
     /// `body`, to be handed on in pieces.
-    pub fn new(body: B) -> Self {
+    fn new(body: B) -> Self {
         Self {
             body,
             rest: Bytes::new(),
@@ -204,9 +205,9 @@ where
         let left = self.body.size_hint();
         let held = self.rest.len() as u64;
         let mut hint = SizeHint::new();
-        hint.set_lower(left.lower() + held);
+        hint.set_lower(left.lower().saturating_add(held));
         if let Some(upper) = left.upper() {
-            hint.set_upper(upper + held);
+            hint.set_upper(upper.saturating_add(held));
         }
         hint
     }
@@ -1109,6 +1110,7 @@ mod tests {
 
     use bytes::Bytes;
     use http_body_util::{BodyExt, Full};
+    use hyper::body::Body as _;
 
     use super::{
         HELD_AHEAD_AT_MOST, InPieces, Origin, SAID_AT_MOST, SLEPT_AT_LEAST, reach, reach_any,
@@ -1231,7 +1233,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn a_body_goes_on_in_pieces_no_frame_may_be_longer_than() {
+    async fn a_body_goes_on_in_pieces_no_longer_than_a_frame_may_be() {
         let whole: Vec<u8> = (0..=u8::MAX)
             .cycle()
             .take(2 * HELD_AHEAD_AT_MOST + 99)
@@ -1239,17 +1241,24 @@ mod tests {
         let mut body = InPieces::new(Full::new(Bytes::from(whole.clone())));
         let mut pieces = Vec::new();
         let mut sent = Vec::new();
+        let mut ended = Vec::new();
 
         while let Some(frame) = body.frame().await {
             let piece = frame.expect("a frame").into_data().expect("data");
             pieces.push(piece.len());
             sent.extend_from_slice(&piece);
+            ended.push(body.is_end_stream());
         }
 
         assert_eq!(
             pieces,
             [HELD_AHEAD_AT_MOST, HELD_AHEAD_AT_MOST, 99],
             "a frame would hold more ahead of a ping"
+        );
+        assert_eq!(
+            ended,
+            [false, false, true],
+            "h2 would end the stream with pieces still held, or never end it"
         );
         assert!(sent == whole, "the body would change on its way");
     }
@@ -1278,8 +1287,17 @@ mod tests {
         let said = with_causes(&why);
 
         assert!(
-            said.len() <= SAID_AT_MOST + "...".len() && said.ends_with("..."),
+            said.len() <= SAID_AT_MOST + "...".len(),
             "the origin's goodbye would fill the journal: {} bytes",
+            said.len()
+        );
+        assert!(
+            said.starts_with("http2 error: \u{e9}") && said.ends_with("\u{e9}..."),
+            "the line would lose the error's kind, or not say it was cut: {said}"
+        );
+        assert!(
+            said.len() > SAID_AT_MOST - "\u{e9}".len(),
+            "the line would keep less than it may: {} bytes",
             said.len()
         );
     }
