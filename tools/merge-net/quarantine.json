@@ -171,5 +171,14 @@
       "test_stopping"
     ],
     "test": "vm-the-network-keeps-its-order"
+  },
+  {
+    "at": 1795022147,
+    "commit": "28d1e29f9bd69c9661b0ae2dc85309c626bdf43a",
+    "due": "2026-11-20",
+    "owner_pr": 5520,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 28d1e29f9bd6",
+    "test": "vm-guide-recovers"
   }
 ]
