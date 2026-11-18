@@ -28,8 +28,11 @@ let
     }:
     let
       glyphs = import ./glyphs.nix { inherit lib; };
-      drawn = lib.filter (name: (glyphs.${name}.pixels or [ ]) != [ ]) poses;
-      missing = lib.subtractLists drawn poses;
+      # The sitting is named among the undrawn when it's missing or misnamed,
+      # rather than every pose being called unlike a sitting of nothing.
+      named = lib.unique (poses ++ [ sitting ]);
+      drawn = lib.filter (name: (glyphs.${name}.pixels or [ ]) != [ ]) named;
+      missing = lib.subtractLists drawn named;
       # Each lit pixel, as its column and row.
       lit =
         rows:
@@ -55,13 +58,15 @@ let
       sat = lib.length (lit (glyphs.${sitting}.pixels or [ ]));
       # Within 15% of sitting's, in whole pixels: 100 times the gap at most 15
       # times sitting's.
-      unlike = lib.filter (
-        name:
-        let
-          gap = lib.length (lit glyphs.${name}.pixels) - sat;
-        in
-        100 * lib.max gap (-gap) > 15 * sat
-      ) drawn;
+      unlike = lib.optionals (sat > 0) (
+        lib.filter (
+          name:
+          let
+            gap = lib.length (lit glyphs.${name}.pixels) - sat;
+          in
+          100 * lib.max gap (-gap) > 15 * sat
+        ) drawn
+      );
       said = "stray ${builtins.toJSON stray}, unlike ${builtins.toJSON unlike}, undrawn ${builtins.toJSON missing}";
     in
     holds check "The ${animal}'s poses must read as one ${animal}: ${said}." (
@@ -84,7 +89,8 @@ in
   # "icon pairs: we need them to be obvious and not require memory"). Heat
   # and temperature both say how hot, so they share the thermometer, and the
   # margin's cat's own poses are all the margin's cat, so they share the paw,
-  # as its yarn's drawings, lying and rolling, are all its yarn.
+  # as its yarn's drawings, lying and rolling, are all its yarn, and the
+  # margin's puppy's poses are all the puppy, sharing the dog.
   each-mark-means-one-thing =
     let
       glyphs = import ./glyphs.nix { inherit lib; };
@@ -114,6 +120,8 @@ in
           "puppySitting"
           "puppyWalkingA"
           "puppyWalkingB"
+          "puppyWalkingC"
+          "puppyWalkingD"
         ]
         [
           "heat"
@@ -137,12 +145,13 @@ in
   # Every mark drawn in pixels (the empty places' cat) stands as level as a
   # glyph does (docs/design.md, Marks one height): square, its ink touching
   # its top and bottom rows, and centred across to within a cell, so each
-  # pose of the cat stands on the same middle line at the same height. The
+  # pose of the cat, and of the puppy, stands on the same middle line at the
+  # same height. The
   # cat's yarn is a thing on the ground beside it, not a mark, so it's held
   # to that instead: drawn in the sitting cat's own square of cells, and
   # standing on their bottom row, the cat's ground line, however low it
-  # lies. The three empty places' marks, the margin's cat's own poses and
-  # its yarn are drawn, so it can't pass on none.
+  # lies. The three empty places' marks, the margin's cat's and puppy's own
+  # poses and its yarn are drawn, so it can't pass on none.
   every-pixel-mark-stands-level =
     let
       glyphs = import ./glyphs.nix { inherit lib; };
@@ -189,6 +198,8 @@ in
         "puppySitting"
         "puppyWalkingA"
         "puppyWalkingB"
+        "puppyWalkingC"
+        "puppyWalkingD"
         "scruffed"
         "stretching"
         "tailSwish"
@@ -213,25 +224,25 @@ in
     animal = "cat";
     sitting = "nothingHere";
     poses = [
-        "batting"
-        "blinking"
-        "curled"
-        "earFlick"
-        "falling"
-        "grooming"
-        "leaning"
-        "leaping"
-        "lookingAbout"
-        "nothingHere"
-        "pouncing"
-        "scruffed"
-        "stretching"
-        "tailSwish"
-        "tucked"
-        "walkingA"
-        "walkingB"
-        "walkingC"
-        "walkingD"
+      "batting"
+      "blinking"
+      "curled"
+      "earFlick"
+      "falling"
+      "grooming"
+      "leaning"
+      "leaping"
+      "lookingAbout"
+      "nothingHere"
+      "pouncing"
+      "scruffed"
+      "stretching"
+      "tailSwish"
+      "tucked"
+      "walkingA"
+      "walkingB"
+      "walkingC"
+      "walkingD"
     ];
   };
 
@@ -246,6 +257,8 @@ in
       "puppySitting"
       "puppyWalkingA"
       "puppyWalkingB"
+      "puppyWalkingC"
+      "puppyWalkingD"
     ];
   };
 

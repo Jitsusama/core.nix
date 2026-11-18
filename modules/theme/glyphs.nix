@@ -1437,8 +1437,8 @@ in
   # The margin's puppy, a second animal beside the cat, which nothing draws
   # yet: its poses come first, its own answers to the mouse after the cat
   # peeks in (WCJQSG, d62dc771). Sitting faces him: a flat crown, its ears
-  # flaring off it and hanging past the muzzle either side where the cat's
-  # stand in points, and its tail up beside it. It's stockier than the cat,
+  # flaring off it and hanging down to the muzzle either side where the
+  # cat's stand in points, and its tail up beside it. It's stockier than the cat,
   # so its poses are held to its own sitting. Its glyph is the dog's, its
   # poses sharing it as the cat's share the paw.
   puppySitting = {
@@ -1473,9 +1473,12 @@ in
       "#####.##"
     ];
   };
-  # Walking as the cat's stride does, legs apart (A) then gathered (B), its
-  # round head and hanging ear keeping it from reading as the cat, on
-  # stubbier legs.
+  # Walking in the cat's four strides, so its paws are seen moving as the
+  # cat's are: both pairs apart (A), the forelegs gathered (C), both
+  # gathered (B), then the forelegs apart again (D), the hind pair stepping
+  # a stride behind the fore, and its tail's tip swaying a cell every two.
+  # Its round head and hanging ear, on stubbier legs, keep it from reading
+  # as the cat.
   puppyWalkingA = {
     glyph = nerd "f0a43";
     console = "d";
@@ -1504,6 +1507,36 @@ in
       ".######."
       ".##..##."
       ".##..##."
+    ];
+  };
+  puppyWalkingC = {
+    glyph = nerd "f0a43";
+    console = "d";
+    means = "the margin's puppy, in one of its own poses";
+    pixels = [
+      "......#."
+      "###...#."
+      "####.#.."
+      "#.######"
+      "#######."
+      ".######."
+      ".##..##."
+      ".##.#..#"
+    ];
+  };
+  puppyWalkingD = {
+    glyph = nerd "f0a43";
+    console = "d";
+    means = "the margin's puppy, in one of its own poses";
+    pixels = [
+      ".......#"
+      "###...#."
+      "####.#.."
+      "#.######"
+      "#######."
+      ".######."
+      ".##..##."
+      "#..#.##."
     ];
   };
   # The padlock, as locked's is, beside anything typed that stays hidden.
