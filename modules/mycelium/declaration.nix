@@ -25,13 +25,19 @@ builtins.toJSON (
     # server whether a program records (Core Audio's process list on a
     # Mac), opens no device and needs no microphone grant, and the node
     # publishes its yes or no alone. Another of the person's machines
-    # brakes its builds by it (modules/slices, jobs-sorter's elsewhere.rs).
+    # brakes its builds by it (modules/slices, jobs-sorter's elsewhere.rs),
+    # and its a-call-is-on counts it a call there too, so the probe asks
+    # about this machine alone (`--here`): asking its peers as well, two
+    # machines would each hold up the other's call for ever.
     probes =
       lib.mapAttrs (
         _: probe: if builtins.isList probe then { run = probe; } else { connect = probe; }
       ) cfg.declares.probes
       // {
-        call.run = [ callIsOn ];
+        call.run = [
+          callIsOn
+          "--here"
+        ];
       };
     costs_money = cfg.declares.costsMoney;
   }
