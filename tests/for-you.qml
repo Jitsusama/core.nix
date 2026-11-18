@@ -114,6 +114,28 @@ QtObject {
             { kind: "look", since: now - hour }), ["try"]);
         expect("a kind with no row of its own needs him now", band("notice",
             { kind: "look" }), ["now"]);
+        // What agents ask stands together in Agents Asking, never loose
+        // among the to-dos, however it presses, once two ask (Joel,
+        // 2026-11-18 10:18); one alone stands as itself, so Super+O,
+        // Return, Return still reaches it (docs/design.md).
+        const asks = (...others) => ForYou.banded([
+            { kind: "agent", thing: { kind: "todo", blocks: 1, since: now - hour }, name: "a" },
+            { kind: "agent", thing: { kind: "todo", blocks: 1, since: now - 9 * hour,
+                due: now - hour }, name: "c" }
+        ].concat(others), now);
+        const placed = bands => [bands.now.map(one => one.name), bands.agent.map(one =>
+            one.name), bands.agentAt];
+        expect("two asks go in Agents Asking, even overdue, heaviest first",
+            placed(asks()), [[], ["c", "a"], 0]);
+        expect("one alone stands as itself", placed(ForYou.banded([{ kind: "agent",
+            thing: { kind: "todo", blocks: 1 }, name: "a" }], now)), [["a"], [], 1]);
+        // It stands where its heaviest weighs among what needs him now, so a
+        // to-do blocking more still leads, as Reopen Them All does after a
+        // boot, and a lighter one follows.
+        expect("where its heaviest weighs", placed(asks(
+            { kind: "do", thing: { kind: "todo", blocks: 9 }, name: "reopen" },
+            { kind: "do", thing: { kind: "todo" }, name: "b" })),
+            [["reopen", "b"], ["c", "a"], 1]);
         // A look that asks nothing stands To Read, never lifted, since it
         // asks nothing of him however long it's been (VKCF3Z, 2026-11-12).
         expect("a look that asks nothing goes in To Read", band("read",
@@ -136,8 +158,8 @@ QtObject {
             [25, 25, 10, 10, 5]);
         expect("the rest in their own band", [looked.now.map(one => one.name),
             looked.try.length], [["f"], 0]);
-        expect("no items, four empty bands", ForYou.banded(undefined, now),
-            { now: [], look: [], try: [], read: [] });
+        expect("no items, five empty bands", ForYou.banded(undefined, now),
+            { now: [], agent: [], agentAt: 0, look: [], try: [], read: [] });
         // The next moment time alone lifts a row into what needs him now, as
         // its due comes within the day, so For You bands again then: banded
         // only as its items changed, a look due tomorrow stayed in To Look
