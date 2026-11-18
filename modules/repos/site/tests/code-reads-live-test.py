@@ -14,10 +14,12 @@ nothing is written, make today's growth yesterday's once the day turns, move no
 row or tree as the cursor steps, keep focus where it was through a redraw, let
 Tab reach the head's keys once, not shift as its feeds arrive on a reload, nor
 hold room for what a reload forgets or at another width, draw a
-second's burst of records a few times rather than each, and pass the
-web-design skill's page checks and its homes check at a phone's width and
-a desk's in both looks. Anything the page logs fails it, but for the browser's
-own lines once the test takes the server away. The server, the browser and the
+second's burst of records a few times rather than each, draw a thread for
+each cell joining two repositories on the map under the work and walk it by
+keys, and pass the web-design skill's page checks, its homes check and its
+walked map's check at a phone's width and a desk's in both looks. Anything
+the page logs fails it, but for the browser's own lines once the test takes
+the server away. The server, the browser and the
 tab are modules/local-sites/tests/live_page.py's.
 
 Long because each case is one thing the page does, on the same server, stand-ins
@@ -190,6 +192,23 @@ def grove_written_now(repos_daemon: StandIn, at: str | None = None) -> None:
     repos_daemon.tell(
         "tree", changed=[{"key": "tree:/home/ada/trees/grove", "written_at": written}]
     )
+
+
+# The rows of the map of how the repositories join.
+TIE_ROWS = "#ties-map .tie-row"
+
+
+def spanning(mycelium_node: StandIn) -> None:
+    """Start a cell at work in core whose networks name notes too, so the map ties the two."""
+    cell: dict[str, object] = {
+        "key": "cell:W9TIES",
+        "name": "W9TIES",
+        "cwd": "/home/ada/trees/grove",
+        "title": "Join the notes to the grove",
+        "standing": "moving",
+        "networks": ["repo.core", "repo.notes"],
+    }
+    mycelium_node.tell("cell", changed=[cell])
 
 
 def clocked(browser: Browser, root: str, at: str) -> tuple[BrowserContext, Page, list[str]]:
@@ -785,8 +804,10 @@ def test_a_burst_of_records_draws_the_list_a_few_times(
     assert writes <= allowed, f"21 records in {lasted:.1f} s drew the list {writes} times"
 
 
-def test_code_keeps_to_its_budget(code_opened: Opened) -> None:
+def test_code_keeps_to_its_budget(code_opened: Opened, mycelium_node: StandIn) -> None:
     says_it_stands(code_opened.page, "live")
+    spanning(mycelium_node)
+    expect(code_opened.page.locator(TIE_ROWS), "the map wasn't drawn").to_have_count(2)
     # Counted once every part the feeds draw is there, so the count is the page's
     # whole and not how far it got.
     for key in ["github:owl/core", "local:~/src/notes"]:
@@ -798,18 +819,23 @@ def test_code_keeps_to_its_budget(code_opened: Opened) -> None:
     says_it_stands(code_opened.page, "live")
 
 
+@pytest.fixture
+def code_whole(repos_daemon: StandIn, mycelium_node: StandIn) -> None:
+    """Open a tree in the drawer with its cell named, not every tree folded, and draw the map."""
+    grove_written_now(repos_daemon)
+    spanning(mycelium_node)
+
+
+@pytest.mark.usefixtures("code_whole")
 @pytest.mark.parametrize("look", LOOKS)
 @pytest.mark.parametrize("size", SIZES)
 def test_code_passes_the_skills_page_checks(
     browser: Browser,
     code_served: Served,
-    repos_daemon: StandIn,
     size: tuple[int, int],
     look: str,
 ) -> None:
     root, _ = code_served
-    # Checked with a tree open in the drawer and its cell named, not every tree folded.
-    grove_written_now(repos_daemon)
     opened = Opened(browser, f"{root}code/", size, look)
     try:
         says_it_stands(opened.page, "live")
@@ -820,6 +846,79 @@ def test_code_passes_the_skills_page_checks(
         # homes can pass it: every repository, tree and cell Code names links home.
         unlinked = opened.page.evaluate((Path(os.environ["WEB_SKILL"]) / "homes.js").read_text())
         assert unlinked == [], f"homes.js at {size} in the {look} look found {unlinked}"
+        # The skill's check for a walked map, last since it presses keys on it: every name
+        # clear of the others and of every thread, and the keys walking as a map's do.
+        expect(opened.page.locator(TIE_ROWS), "the map wasn't drawn").to_have_count(2)
+        unwalked = opened.page.evaluate((Path(os.environ["WEB_SKILL"]) / "map.js").read_text())
+        assert unwalked == [], f"map.js at {size} in the {look} look found {unwalked}"
     finally:
         # Closed whatever failed, so what the page logged is said too.
         opened.close()
+
+
+def test_the_map_draws_a_thread_for_each_cell_joining_two_repositories(
+    code_page: Page, mycelium_node: StandIn
+) -> None:
+    says_it_stands(code_page, "live")
+    # The one cell the stand-in holds names only its own repository, which joins nothing.
+    expect(code_page.locator("#ties"), "a map with nothing joined was shown").to_be_hidden()
+    spanning(mycelium_node)
+    rows = code_page.locator(TIE_ROWS)
+    expect(rows, "the map drew no row for each joined repository").to_have_count(2)
+    expect(code_page.locator("#ties"), "the map wasn't shown").to_be_visible()
+    expect(rows.first, "core wasn't the first row, in the grove's order").to_have_attribute(
+        "data-key", "github:owl/core"
+    )
+    threads = code_page.locator("#ties-map [data-line]")
+    expect(threads, "the map drew a thread other than the cell's one").to_have_count(1)
+    here = code_page.locator("#ties-here")
+    expect(here, "the map didn't say what core joins").to_contain_text("Joined to notes by 1")
+    expect(here.locator("a", has_text="notes"), "notes wasn't linked home").to_have_attribute(
+        "href", "#repo=notes"
+    )
+    mycelium_node.tell("cell", gone=["cell:W9TIES"])
+    expect(code_page.locator("#ties"), "the map stayed once nothing joined").to_be_hidden()
+
+
+def test_the_maps_keys_walk_its_rows_and_open_one(code_page: Page, mycelium_node: StandIn) -> None:
+    says_it_stands(code_page, "live")
+    spanning(mycelium_node)
+    rows = code_page.locator(TIE_ROWS)
+    expect(rows, "the map wasn't drawn").to_have_count(2)
+    chosen = code_page.locator("#list .row[aria-selected='true']")
+    listed = chosen.get_attribute("data-key")
+    tied = code_page.locator("#ties-map")
+    tied.focus()
+    code_page.keyboard.press("j")
+    expect(rows.last, "j didn't step down the map").to_have_attribute("aria-selected", "true")
+    expect(rows.last, "the row the keys rest on wasn't marked").to_have_attribute("data-here", "")
+    expect(tied, "the reader wasn't told the row").to_have_attribute(
+        "aria-activedescendant", "tie-1"
+    )
+    expect(chosen, "the map's j stepped the list too").to_have_attribute("data-key", listed or "")
+    code_page.keyboard.press("k")
+    expect(rows.first, "k didn't step back up").to_have_attribute("aria-selected", "true")
+    # Sideways lies nothing, since the rows stand in one column: the keys stay, and say so in
+    # other words when asked again, so a repeat is heard too.
+    said = code_page.locator("#ties-said")
+    code_page.keyboard.press("ArrowLeft")
+    expect(said, "the left arrow said nothing").to_have_text(
+        "Nothing lies to the left of core on the map."
+    )
+    code_page.keyboard.press("ArrowLeft")
+    expect(said, "a second left arrow said the same").to_have_text(
+        "Still nothing to the left of core."
+    )
+    expect(rows.first, "the left arrow moved the keys").to_have_attribute("aria-selected", "true")
+    code_page.keyboard.press("Escape")
+    expect(rows.first, "Escape moved the map").to_have_attribute("aria-selected", "true")
+    code_page.keyboard.press("End")
+    code_page.keyboard.press("Enter")
+    expect(code_page, "Return didn't open notes").to_have_url(re.compile(r"#repo=notes$"))
+    expect(chosen, "notes wasn't the repository opened").to_have_attribute(
+        "data-key", "local:~/src/notes"
+    )
+    tied.focus()
+    code_page.keyboard.press("Tab")
+    left = code_page.evaluate("() => document.activeElement.id !== 'ties-map'")
+    assert left, "Tab didn't leave the map"
