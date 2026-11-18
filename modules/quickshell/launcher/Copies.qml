@@ -76,11 +76,23 @@ Provider {
         ready.remade();
         changed();
     }
+    // Why they hide, "" while they show, said as it starts and whenever it
+    // changes, hidden or not, so a copy kept hidden for want of niri's word
+    // reads apart from one hidden by a share in Joel's journal.
+    readonly property string hidingWhy: Shared.why(Niri.castsHeard, Niri.casts,
+        Recorder.windowSession)
+    onHidingWhyChanged: tellHiding()
+    function tellHiding() {
+        console.info(hidingWhy !== "" ? `copies: hidden, since ${hidingWhy}` : "copies: shown");
+    }
 
     // Whether the history is connected, to copy and paste for Pasting.qml.
     readonly property bool linked: (ready.link?.wire ?? null) !== null
 
-    Component.onCompleted: Pasting.helper = provider
+    Component.onCompleted: {
+        Pasting.helper = provider;
+        tellHiding();
+    }
 
     // Asks the history, as Daemon.qml asks; `then` is given its answer, or
     // null while it isn't there to ask.

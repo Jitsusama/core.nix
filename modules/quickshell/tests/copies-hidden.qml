@@ -49,7 +49,38 @@ QtObject {
         Expect.same("even beside the shell's own recording of one window",
             Shared.hidden(true, Object.assign(cast(4, "PipeWire", 9, true),
                 cast(5, "WlrScreencopy", 12, true)), 9), true);
+        whyCases();
         shownCases();
+    }
+
+    // Why they hide, as the journal says it, agreeing with hidden().
+    function whyCases() {
+        Expect.same("before niri says its casts, the journal says so",
+            Shared.why(false, {}, null), "niri hasn't said its casts yet");
+        Expect.same("nothing cast, nothing to say", Shared.why(true, {}, null), "");
+        Expect.same("nor for the shell's own recording alone",
+            Shared.why(true, cast(4, "PipeWire", 9, true), 9), "");
+        Expect.same("a share says what sees the screen, the recording left out",
+            Shared.why(true, Object.assign(cast(4, "PipeWire", 9, true),
+                cast(5, "WlrScreencopy", 12, true)), 9), "1 cast sees the screen (WlrScreencopy)");
+        Expect.same("and counts each",
+            Shared.why(true, Object.assign(cast(4, "PipeWire", 9, true),
+                cast(5, "WlrScreencopy", 12, true)), null),
+            "2 casts see the screen (PipeWire, WlrScreencopy)");
+        Expect.same("a kind is said only as a plain word",
+            Shared.why(true, cast(4, "Pipe\nWire", 9, true), null),
+            "1 cast sees the screen (Pipe?Wire)");
+        // And says something exactly when hidden() hides, over every case.
+        const both = Object.assign(cast(4, "PipeWire", 9, true),
+            cast(5, "WlrScreencopy", 12, true));
+        const inputs = [[false, {}, null], [undefined, undefined, null], [true, {}, null],
+            [true, cast(4, "PipeWire", 9, true), null], [true, cast(4, "PipeWire", 9, false), null],
+            [true, cast(4, "PipeWire", 9, true), 9], [true, cast(4, "PipeWire", 9, true), 12],
+            [true, cast(4, "WlrScreencopy", 9, true), 9], [true, cast(4, "Mirror", 9, true), 9],
+            [true, both, 9], [true, both, null], [false, both, 9]];
+        const disagree = inputs.filter(one => (Shared.why(one[0], one[1], one[2]) !== "")
+            !== Shared.hidden(one[0], one[1], one[2]));
+        Expect.same("why() speaks exactly when hidden() hides", disagree.length, 0);
     }
 
     // What a hidden copy's row is made of, from copies as the history

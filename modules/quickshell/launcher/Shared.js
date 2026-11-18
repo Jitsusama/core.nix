@@ -18,8 +18,32 @@ function hidden(heard, casts, recording) {
     if (heard !== true) {
         return true;
     }
-    return Object.values(casts ?? {}).some(cast => cast.kind !== "PipeWire"
-        || !recording || cast.session_id !== recording);
+    return Object.values(casts ?? {}).some(cast => seen(cast, recording));
+}
+
+// Whether `cast` sees more of the screen than the shell's own recording.
+function seen(cast, recording) {
+    return cast.kind !== "PipeWire" || !recording || cast.session_id !== recording;
+}
+
+// What a cast's kind may say in the journal, since it's niri's word.
+const NOT_PLAIN = /[^A-Za-z0-9]/gu;
+
+// Why copies hide, for the journal, or "" while they show, with the same
+// arguments as hidden(): a copy kept hidden for want of niri's word looks
+// the same on screen as one hidden by a share, so Joel's journal says which
+// (#5399's council, 2026-11-18).
+function why(heard, casts, recording) {
+    if (heard !== true) {
+        return "niri hasn't said its casts yet";
+    }
+    const kinds = Object.values(casts ?? {}).filter(cast => seen(cast, recording))
+        .map(cast => String(cast.kind).replace(NOT_PLAIN, "?"));
+    if (kinds.length === 0) {
+        return "";
+    }
+    const counted = kinds.length === 1 ? "1 cast sees" : `${kinds.length} casts see`;
+    return `${counted} the screen (${kinds.join(", ")})`;
 }
 
 // A copy as the history `served` it, saying only its kind and when it was
