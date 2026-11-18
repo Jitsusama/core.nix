@@ -35,7 +35,7 @@ in
   # from the meaning daemon's stand-in, which loads no model
   # (tests/desktop/stand-in-meaning.py). WARP stands in as warp-cli
   # answering from the files a test writes, the real warp reading them
-  # (tests/warp-cli-stand-in.sh), and warp holds its link on the socket
+  # (tests/stand-ins/warp-cli-stand-in.sh), and warp holds its link on the socket
   # the account's systemd would, as WARP, the shaper's status what a test
   # writes in ~/shaper, and the clipboard's history serves Copies' rows and
   # Emoji's. The home network is the eero daemon's stand-in, holding the
@@ -44,7 +44,7 @@ in
   the-launcher-answers-whats-typed-on-niri =
     let
       warpCli = pkgs.writeShellScript "warp-cli" ''
-        exec ${lib.getExe pkgs.bash} ${../../../tests/warp-cli-stand-in.sh} "$@"
+        exec ${lib.getExe pkgs.bash} ${../../../tests/stand-ins/warp-cli-stand-in.sh} "$@"
       '';
       warp = lib.getExe (pkgs.callPackage ../../warp/package.nix { });
     in

@@ -147,7 +147,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
 
       environment.systemPackages = [
         # pi, as the shell opens a session it reopens, since the VM has none.
-        (import ./pi-stand-in.nix { inherit pkgs; })
+        (import ./stand-ins/pi-stand-in.nix { inherit pkgs; })
         # wtype, to type as dictation does, and a swayidle of the script's
         # own to say whether niri took the session as idle meanwhile.
         pkgs.wtype
@@ -225,11 +225,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       };
 
       # The second screen is the laptop's own panel, which the stand-in lid
-      # (tests/stand-in-lid) shuts: shut from the start, as a laptop started
+      # (tests/stand-ins/stand-in-lid) shuts: shut from the start, as a laptop started
       # on a dock is, until the script opens it. logind is to leave the lid
       # to niri, as it does at a desk.
       boot.extraModulePackages = [
-        (config.boot.kernelPackages.callPackage ./stand-in-lid { })
+        (config.boot.kernelPackages.callPackage ./stand-ins/stand-in-lid { })
       ];
       boot.kernelModules = [ "stand-in-lid" ];
       boot.extraModprobeConfig = ''

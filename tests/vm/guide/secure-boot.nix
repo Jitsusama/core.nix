@@ -21,7 +21,7 @@ let
     text = ''
       exec ${
         pkgs.python3.withPackages (python: [ python.dbus-fast ])
-      }/bin/python3 ${../../stand-in-notices.py} "$@"
+      }/bin/python3 ${../../stand-ins/stand-in-notices.py} "$@"
     '';
   };
 in

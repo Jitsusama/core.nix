@@ -1,5 +1,5 @@
 # pi, as the shell opens it, for the VM tests, which have no pi: the
-# program is tests/pi-stand-in.sh.
+# program is pi-stand-in.sh beside it.
 { pkgs }:
 pkgs.writeShellApplication {
   name = "pi";

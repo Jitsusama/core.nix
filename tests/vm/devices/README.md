@@ -17,9 +17,10 @@ test's opening comment says what stands in for the device a VM lacks.
 | `ir-camera.nix`, `-vm-test.py`           | a stand-in IR camera relayed only to the programs reading   |
 | `loopback-holders.nix`, `-vm-test.py`    | which programs hold a loopback camera open                  |
 
-Two stand-ins stay in the tests folder, since the desktop's tests take them
-too: both lid tests take their lid from `../../stand-in-lid/`, and the
-desk-lights test its light from `../../desk-light-stand-in.py`.
+Two stand-ins sit in the tests folder's `stand-ins/`, since the desktop's
+tests take them too: both lid tests take their lid from
+`../../stand-ins/stand-in-lid/`, and the desk-lights test its light from
+`../../stand-ins/desk-light-stand-in.py`.
 
 - `ir-camera/`: the stand-in infrared camera, and the reader that names each
   frame it saved.

@@ -3078,7 +3078,7 @@ def test_warp_says_how_its_link_stands_in_network_and_when_it_isnt_answering(
     It's Joel's word for his link to work (2026-11-11), so typing work finds it too.
 
     The shell runs the real warp, given the check's stand-in for warp-cli, which answers with
-    the contract's files as they're written here (tests/warp-cli-stand-in.sh). What each
+    the contract's files as they're written here (tests/stand-ins/warp-cli-stand-in.sh). What each
     figure reads as, a step in, is tests/answers.qml's, over the record warp prints.
     """
     said = Path(os.environ["HOME"]) / "warp-cli"
@@ -3372,7 +3372,7 @@ def test_warps_disconnect_runs_warp_and_says_when_it_comes_back(shell: Shell) ->
     """WARP's :disconnect has warp disconnect it, and says when WARP, always on, comes back.
 
     The stand-in warp-cli writes each question it's asked, so the check sees the switch reach
-    warp-cli through warp (tests/warp-cli-stand-in.sh).
+    warp-cli through warp (tests/stand-ins/warp-cli-stand-in.sh).
     """
     said = warp_said()
     try:

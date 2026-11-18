@@ -516,7 +516,7 @@ let
   };
 
   # pi, as the launcher opens it, since the VM has no pi.
-  piStandIn = import ./pi-stand-in.nix { inherit pkgs; };
+  piStandIn = import ./stand-ins/pi-stand-in.nix { inherit pkgs; };
 
   # Stands in for Inkscape where keeps-copies opens a new drawing in it
   # (desktop/inkscape-stand-in.sh), adding it to the list of files opened
@@ -527,14 +527,14 @@ let
   '';
 
   # spotify-recent signed in, as the-launcher-plays-from-spotify stands it
-  # in (spotify-recent-stand-in.sh), for looks-programs to shoot Spotify's page;
+  # in (stand-ins/spotify-recent-stand-in.sh), for looks-programs to shoot Spotify's page;
   # with a show kept, so Podcasts holds one.
   spotifyStandIn = pkgs.writeShellScript "spotify-recent" ''
     if [ "''${1:-}" = shows ]; then
       printf 'spotify:show:s1\tshow\tThe Show\tA Publisher\t\t1212\n'
       exit
     fi
-    PATH=${pkgs.coreutils}/bin exec ${pkgs.lib.getExe pkgs.bash} ${./spotify-recent-stand-in.sh} well "$@"
+    PATH=${pkgs.coreutils}/bin exec ${pkgs.lib.getExe pkgs.bash} ${./stand-ins/spotify-recent-stand-in.sh} well "$@"
   '';
 in
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
@@ -617,10 +617,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # Landlock than the stock kernel's, as Joel's machines' kernel has. Only there, so no other area moves with it.
       boot.kernelPackages = lib.mkIf (area == "keeps-copies") pkgs.linuxPackages_latest;
       boot.extraModulePackages = [
-        (config.boot.kernelPackages.callPackage ./stand-in-backlight { })
-        (config.boot.kernelPackages.callPackage ./stand-in-light { })
-        (config.boot.kernelPackages.callPackage ./stand-in-lid { })
-        (config.boot.kernelPackages.callPackage ./stand-in-monitor { })
+        (config.boot.kernelPackages.callPackage ./stand-ins/stand-in-backlight { })
+        (config.boot.kernelPackages.callPackage ./stand-ins/stand-in-light { })
+        (config.boot.kernelPackages.callPackage ./stand-ins/stand-in-lid { })
+        (config.boot.kernelPackages.callPackage ./stand-ins/stand-in-monitor { })
         config.boot.kernelPackages.v4l2loopback
       ];
       boot.kernelModules = [
@@ -1274,13 +1274,13 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         };
         # WARP's warp-cli isn't in the VM, so where WARP is shown a stand-in
         # answers with what the test writes, as the contract's files say it
-        # (warp-cli-stand-in.sh), the real warp reading it.
+        # (stand-ins/warp-cli-stand-in.sh), the real warp reading it.
         jitsusama.quickshell.launcher.providers.warp = lib.mkIf standsInForWarp {
           enable = lib.mkForce true;
           warpCli = lib.mkForce (
             toString (
               pkgs.writeShellScript "warp-cli" ''
-                PATH=${pkgs.coreutils}/bin exec ${lib.getExe pkgs.bash} ${./warp-cli-stand-in.sh} "$@"
+                PATH=${pkgs.coreutils}/bin exec ${lib.getExe pkgs.bash} ${./stand-ins/warp-cli-stand-in.sh} "$@"
               ''
             )
           );
@@ -1488,8 +1488,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             copilot_key = copilotKey;
             ergodox_layout = ergodoxLayout;
             # A stand-in Litra, plugged in for as long as it runs
-            # (desk-light-stand-in.py).
-            desk_light = "${pkgs.python3}/bin/python3 ${./desk-light-stand-in.py}";
+            # (stand-ins/desk-light-stand-in.py).
+            desk_light = "${pkgs.python3}/bin/python3 ${./stand-ins/desk-light-stand-in.py}";
             # A crowd of pi's sessions, a few changing each beat
             # (desktop/stand-in-sessions.py).
             stand_in_sessions = "${pkgs.python3}/bin/python3 ${./desktop/stand-in-sessions.py}";

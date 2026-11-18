@@ -23,7 +23,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       imports = [ self.nixosModules.lid ];
 
       boot.extraModulePackages = [
-        (config.boot.kernelPackages.callPackage ../../stand-in-lid { })
+        (config.boot.kernelPackages.callPackage ../../stand-ins/stand-in-lid { })
       ];
       boot.kernelModules = [
         "stand-in-lid"

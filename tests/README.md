@@ -16,14 +16,14 @@ and why.
 | a check reading the repository as a whole   | `repository/`                             |
 | what several checks are built from          | `lib/`                                    |
 | a test on a nested niri, in the sandbox     | beside the shell, or here if a VM reads it |
-| a stand-in for a program or a device        | beside its test, or a folder of its own   |
+| a stand-in for a program or a device        | beside its test, or `stand-ins/`          |
 | a patch a test's machine takes              | here, `<what>.patch`                      |
 | a shell QML case a VM test reads too        | here, `<case>.qml`, until it moves        |
 
 ## Its Folders
 
-- `battery-stand-ins/`, `lib/`, `repository/`, `rules/` and `vm/` say what
-  they hold in their own READMEs.
+- `lib/`, `repository/`, `rules/`, `stand-ins/` and `vm/` say what they hold
+  in their own READMEs.
 - `compiled-once/`: a shell of three files, started three times by
   `compiled-once.sh` to show Qt compiles each once and keeps it.
 - `desktop/`: the desktop VM test's areas, one `-vm-test.py` each, with the
@@ -33,9 +33,6 @@ and why.
   looks-rows, looks-vi, looks-plates and looks-file-picker.
 - `screens/`: the screens test's areas, as screens come and go, keep their
   places and keep the launcher, and the session they share.
-- `stand-in-backlight/`, `stand-in-lid/`, `stand-in-light/` and
-  `stand-in-monitor/`: kernel modules standing in for a device, each built by
-  its `default.nix`.
 
 ## Moving Out
 

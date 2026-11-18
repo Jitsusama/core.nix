@@ -68,7 +68,7 @@ onLinux {
         }
       '';
       standIn = pkgs.writeShellScript "spotify-recent" ''
-        exec ${lib.getExe pkgs.bash} ${../../tests/spotify-recent-stand-in.sh} "$@"
+        exec ${lib.getExe pkgs.bash} ${../../tests/stand-ins/spotify-recent-stand-in.sh} "$@"
       '';
     in
     pkgs.runCommandLocal "the-launcher-plays-from-spotify" { } ''
