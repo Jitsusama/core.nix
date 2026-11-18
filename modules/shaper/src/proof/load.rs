@@ -290,7 +290,7 @@ mod tests {
         let server = format!("http://{}", held.local_addr().expect("its address"));
         let (pid, began) = a_proof_for("1");
         assert!(
-            ends_within_on(&script(pid, &began), &server, Duration::from_secs(4)),
+            ends_within_on(&script(pid, &began), &server, ENDS),
             "its upload ran on after its proof ended"
         );
     }

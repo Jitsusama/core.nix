@@ -119,7 +119,11 @@ impl Gate {
         idle.args(["timeout", &IDLE_S.to_string(), &format!("touch {shown}")])
             .args(["resume", &format!("rm -f {shown}")])
             .stdin(Stdio::null())
-            .stdout(Stdio::null());
+            .stdout(Stdio::null())
+            // In a group of its own, so a Ctrl-C or a closed terminal
+            // reaches the proof alone, which then ends it, rather than
+            // ending it first and reading as a swayidle lost.
+            .process_group(0);
         // SAFETY: prctl(2) and getppid(2) are async-signal-safe, and an
         // error from a raw errno allocates nothing, so fit to run between
         // fork and exec. It ends swayidle once the thread

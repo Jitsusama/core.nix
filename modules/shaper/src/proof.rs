@@ -388,8 +388,9 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
             })
         },
     );
-    // Asked before the gate ends, since ending it ends swayidle.
-    let lost = gate.lost();
+    // Asked before the gate ends, since ending it ends swayidle; a stopped
+    // proof's swayidle may have been ended by the same signal.
+    let lost = gate.lost() && !STOPPED.load(Ordering::Relaxed);
     // Ended here, since a watch left unjoined still holds the gate.
     gate.end();
     let stopped = STOPPED.load(Ordering::Relaxed);
