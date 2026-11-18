@@ -59,10 +59,13 @@ pub use right_of_way::gives_way;
 
 mod gated;
 mod hub;
+mod installed;
 mod landing;
 mod splitting;
 use gated::{Gated, gated, words_of};
 use hub::GitHub;
+pub use installed::install;
+use installed::{build, hand_over, handed, newer};
 use landing::{Landing, land};
 use splitting::{After, Splitting, UNTAKEN_FOR};
 
@@ -337,57 +340,6 @@ fn going() -> bool {
     state == "active" || state == "activating"
 }
 
-/// The file under the net's state folder `root` naming where the watch
-/// follows the merge-net installed.
-fn installed_file(root: &Path) -> PathBuf {
-    root.join("installed")
-}
-
-/// Say, under the net's state folder `root`, that the merge-net installed
-/// is at `path`, for the train to start as and follow. The watch says so
-/// as it starts.
-///
-/// # Errors
-///
-/// When the file can't be written.
-pub fn install(root: &Path, path: &Path) -> io::Result<()> {
-    fs::write(installed_file(root), format!("{}\n", path.display()))
-}
-
-/// The build installed where the watch follows, as it is now, when the
-/// watch named one that can be read.
-fn installed(root: &Path) -> Option<PathBuf> {
-    let named = fs::read_to_string(installed_file(root)).ok()?;
-    fs::canonicalize(named.trim()).ok()
-}
-
-/// The build the train starts as: the one installed, rather than the
-/// asker's own, which may be a tree's or a profile's from before the last
-/// switch; the asker's own only when the watch named none.
-fn build(root: &Path, running: io::Result<PathBuf>) -> Option<PathBuf> {
-    installed(root).or_else(|| running.ok())
-}
-
-/// The build installed when it is another than the `running` one, for the
-/// train to go on as.
-fn newer(root: &Path, running: io::Result<PathBuf>) -> Option<PathBuf> {
-    let installed = installed(root)?;
-    crate::world::replaced(Ok(installed.clone()), running).then_some(installed)
-}
-
-/// What a ride sets for the build it hands over to, which then keeps the
-/// right of way the ride held.
-const HANDED_OVER: &str = "MERGE_NET_HANDED_OVER";
-
-/// Go on riding as the build at `newer`, in this process and so this
-/// unit: the riders and the right of way are on disk, but the search a
-/// split was in starts afresh. Only says why, when it couldn't.
-fn hand_over(newer: &Path) -> String {
-    use std::os::unix::process::CommandExt;
-    let why = Command::new(newer).arg("ride").env(HANDED_OVER, "1").exec();
-    format!("the train couldn't go on as {}: {why}", newer.display())
-}
-
 /// Start the train's unit, beside the asker in its slice: whether systemd
 /// took it.
 fn start(root: &Path) -> bool {
@@ -451,15 +403,20 @@ const UNTAKEN_PAUSE: Duration = Duration::from_mins(1);
 /// When its checkout can't be made.
 pub fn ride(url: &str) -> Result<ExitCode, String> {
     let root = crate::state::State::from_env().root;
-    // A train that was killed left its right of way behind, so one
-    // starting afresh holds none, and however it stops, changes merge
-    // alone again. One a ride handed over to holds what the ride held.
-    if std::env::var_os(HANDED_OVER).is_none() {
-        way(&root, &Ended::Otherwise);
-    }
+    begin(&root, handed().is_some());
     let ridden = ride_from(&root, url);
     way(&root, &Ended::Otherwise);
     ridden
+}
+
+/// Begin a ride under `root`. A train that was killed left its right of
+/// way behind, so one starting afresh holds none, and however it stops,
+/// changes merge alone again; one a ride was `handed_over` from holds
+/// what that ride held.
+fn begin(root: &Path, handed_over: bool) {
+    if !handed_over {
+        way(root, &Ended::Otherwise);
+    }
 }
 
 /// Ride the train whose state is under `root` from the repository at
@@ -487,13 +444,14 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         // it: on 18 November one pushed #5426, #5460 and #5321 to main
         // itself, under Joel's key, after the switch that made the train
         // merge through GitHub. Between candidates it goes on as the build
-        // installed instead.
-        if let Some(newer) = newer(&root, std::env::current_exe()) {
+        // installed instead; when that build won't run, it goes on as it
+        // is rather than leave its riders waiting on an asker.
+        if let Some(newer) = newer(&root, std::env::current_exe(), handed().as_deref()) {
             println!(
                 "merge-net: another merge-net is installed, so the train goes on as {}",
                 newer.display()
             );
-            return Err(hand_over(&newer));
+            println!("merge-net: {}, so it goes on as it is", hand_over(&newer));
         }
         let mut mergings = aboard(&root, &git, &slug, &owner, &waiting);
         mergings.truncate(splitting.take());

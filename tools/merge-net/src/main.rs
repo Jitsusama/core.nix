@@ -144,10 +144,12 @@ fn watching(
     let state = State::from_env();
     state.make()?;
     // The train starts as, and follows, the build the watch follows, not
-    // whichever build asked for it.
-    if let Some(installed) = &follow {
-        train::install(&state.root, installed)
-            .map_err(|error| format!("saying where merge-net is installed: {error}"))?;
+    // whichever build asked for it. A watch that can't say so still
+    // watches: the train then starts as the asker's build, as before.
+    if let Some(installed) = &follow
+        && let Err(error) = train::install(&state.root, installed)
+    {
+        eprintln!("merge-net: couldn't say where merge-net is installed: {error}");
     }
     let world = Real {
         state: state.root.clone(),

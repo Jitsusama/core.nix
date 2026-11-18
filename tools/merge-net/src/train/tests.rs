@@ -56,24 +56,78 @@ fn a_ride_goes_on_as_the_build_a_switch_installed() {
     let root = root("goes-on-installed");
     let (old, new, link) = builds(&root);
     assert_eq!(
-        newer(&root, Ok(old.clone())),
+        newer(&root, Ok(old.clone()), None),
         None,
         "with no installed build named, a ride went on as another"
     );
     install(&root, &link).unwrap();
     assert_eq!(
-        newer(&root, Ok(old.clone())),
+        newer(&root, Ok(old.clone()), None),
         None,
         "a ride as the installed build went on as another"
     );
     fs::remove_file(&link).unwrap();
     std::os::unix::fs::symlink(&new, &link).unwrap();
     assert_eq!(
-        newer(&root, Ok(old)),
-        Some(new),
+        newer(&root, Ok(old), None),
+        Some(new.clone()),
         "a ride from before the switch didn't go on as the build it installed"
     );
+    let unreadable = Err(io::Error::other("no exe"));
+    assert_eq!(
+        newer(&root, unreadable, Some(&new)),
+        None,
+        "a ride handed over to the installed build, unable to read its own path, handed over again"
+    );
     fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_ride_handed_over_keeps_the_right_of_way_a_fresh_one_takes_back() {
+    let root = root("handed-way");
+    fs::create_dir_all(folder(&root)).unwrap();
+    right_of_way::give(&root, crate::state::now());
+    begin(&root, true);
+    assert!(
+        right_of_way::holds(&root, crate::state::now()).is_some(),
+        "a ride handed over gave back the right of way its riders held"
+    );
+    begin(&root, false);
+    assert!(
+        right_of_way::holds(&root, crate::state::now()).is_none(),
+        "a train starting afresh kept a right of way a killed one left"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn the_watch_names_its_build_absolute_keeping_the_link() {
+    let root = root("names-absolute");
+    let (old, new, link) = builds(&root);
+    let cwd = std::env::current_dir().unwrap();
+    install(&root, &pathdiff(&link, &cwd)).unwrap();
+    let named = fs::read_to_string(root.join("installed")).unwrap();
+    assert!(
+        Path::new(named.trim()).is_absolute(),
+        "the watch named its build by a path relative to its own folder: {named}"
+    );
+    fs::remove_file(&link).unwrap();
+    std::os::unix::fs::symlink(&new, &link).unwrap();
+    assert_eq!(
+        build(&root, Ok(old)),
+        Some(new),
+        "the named build didn't follow the link a switch moved"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+/// `path` relative to `from`, by as many `..` as `from` is deep.
+fn pathdiff(path: &Path, from: &Path) -> PathBuf {
+    let mut relative = PathBuf::new();
+    for _ in from.components().skip(1) {
+        relative.push("..");
+    }
+    relative.join(path.strip_prefix("/").unwrap())
 }
 
 fn rider(head: &str, at: u64) -> Rider {
