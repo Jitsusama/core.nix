@@ -233,7 +233,9 @@ ShellRoot {
             returnedInto, returnedIntoShown, steeredOut, walkedInto, walkedIntoShown,
             walkedThenEscaped, walkedThenMoved, walkedThenMovedShown, toldInPlace, typing,
             typedAfter, movedAgain, typedBeforeItsFrame, typedThenShown, movedOnceMore, typedWithReturn,
-            typedWithReturnShown, movedThenOpened, movedThenOpenedShown]);
+            typedWithReturnShown, movedThenOpened, movedThenOpenedShown, overRowsThenTold,
+            toldOverRows, toldOverRowsShown, landed, landedThenMoved, landedThenShown, commanded,
+            commandedThenRun, commandedThenMoved, commandedThenShown]);
     }
 
     function arming() {
@@ -530,5 +532,61 @@ ShellRoot {
     function movedThenOpenedShown() {
         stage.present(600);
         same("a move an ask from outside follows arms nothing", shownNow(), undefined);
+    }
+
+    // His Escape, then an ask from outside that leaves the keys over the rows.
+    function overRowsThenTold() {
+        stage.toRows();
+    }
+
+    function toldOverRows() {
+        stage.toldFromOutside += 1;
+        stage.press("k", true);
+    }
+
+    function toldOverRowsShown() {
+        stage.present(600);
+        same("a move after an ask from outside times nothing until his Escape", shownNow(),
+            undefined);
+    }
+
+    // An opening, then a Return that lands, which puts the keys over the rows unescaped.
+    function landed() {
+        stage.open = false;
+        stage.opened();
+        stage.press("Return", false, () => {
+            stage.keysOverRows = true;
+        });
+    }
+
+    function landedThenMoved() {
+        stage.press("Up", true);
+    }
+
+    function landedThenShown() {
+        stage.present(600);
+        same("a move over rows a landing Return reached times nothing", shownNow(), undefined);
+    }
+
+    // An opening, then the command line, which leaves the keys over the rows once run.
+    function commanded() {
+        stage.open = false;
+        stage.opened();
+        stage.press(":", false);
+    }
+
+    function commandedThenRun() {
+        stage.press("Return", false, () => {
+            stage.keysOverRows = true;
+        });
+    }
+
+    function commandedThenMoved() {
+        stage.press("j", true);
+    }
+
+    function commandedThenShown() {
+        stage.present(600);
+        same("a move over rows the command line left times nothing", shownNow(), undefined);
     }
 }
