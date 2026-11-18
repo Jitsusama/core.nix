@@ -4,13 +4,23 @@
 //!
 //! A name is offered only when it finds the thing it names, so where two
 //! devices share one, each is offered by its hardware address instead,
-//! which is what the view would ask for.
+//! which is what the view would ask for. So is one holding a character
+//! the terminal kit keeps from the terminal, since the name a view draws
+//! without it isn't the name it finds.
 
 use super::{
     VIEWS, device_name, find_device, find_node, find_profile, location, node_name, off_device,
     off_name, on_now_answers_to, profile_name,
 };
+use terminal_kit::layout;
+
 use crate::model::HomeNetwork;
+
+/// Whether `name` can be offered as it's drawn: nothing in it is kept
+/// from the terminal.
+fn drawn_whole(name: &str) -> bool {
+    *layout::one_line(name) == *name
+}
 
 /// A name to offer and what it is.
 pub type Named = (String, String);
@@ -30,7 +40,8 @@ pub fn nodes(model: &HomeNetwork) -> Vec<Named> {
         .iter()
         .map(|node| {
             let name = node_name(node);
-            let found = find_node(model, name).is_ok_and(|found| found.id == node.id);
+            let found =
+                drawn_whole(name) && find_node(model, name).is_ok_and(|found| found.id == node.id);
             let what = [node.model.clone(), node.gateway.then(|| "gateway".into())]
                 .into_iter()
                 .flatten()
@@ -47,7 +58,8 @@ pub fn nodes(model: &HomeNetwork) -> Vec<Named> {
 pub fn devices(model: &HomeNetwork) -> Vec<Named> {
     let on = model.devices.iter().map(|device| {
         let name = device_name(device);
-        let found = find_device(model, &name, None).is_ok_and(|found| found.mac == device.mac);
+        let found = drawn_whole(&name)
+            && find_device(model, &name, None).is_ok_and(|found| found.mac == device.mac);
         let on = location(model, device.node.as_deref());
         if found {
             (name.into_owned(), format!("on {on}"))
@@ -57,7 +69,8 @@ pub fn devices(model: &HomeNetwork) -> Vec<Named> {
     });
     let off = model.devices_off.iter().map(|device| {
         let name = off_name(device);
-        let found = !on_now_answers_to(model, &name)
+        let found = drawn_whole(&name)
+            && !on_now_answers_to(model, &name)
             && off_device(model, &name).is_some_and(|found| found.mac == device.mac);
         let last = match device.node.as_deref() {
             Some(node) => format!("not on now, last on {}", location(model, Some(node))),
@@ -79,7 +92,8 @@ pub fn profiles(model: &HomeNetwork) -> Vec<Named> {
         .iter()
         .map(|profile| {
             let name = profile_name(profile);
-            let found = find_profile(model, name).is_ok_and(|found| found.id == profile.id);
+            let found = drawn_whole(name)
+                && find_profile(model, name).is_ok_and(|found| found.id == profile.id);
             (
                 if found { name } else { &profile.id }.to_owned(),
                 super::counted(profile.devices.len(), "device"),
@@ -89,13 +103,15 @@ pub fn profiles(model: &HomeNetwork) -> Vec<Named> {
 }
 
 /// The names as zsh's `_describe` reads them, one a line: the name, its
-/// colons escaped, since a colon ends it, then a colon and what it is.
+/// colons escaped, since a colon ends it, then a colon and what it is,
+/// each held to one line, so a name from the network can't add a line
+/// zsh reads as a name of its own.
 pub fn for_zsh(names: &[Named]) -> String {
     let mut out = String::new();
     for (name, what) in names {
-        out.push_str(&name.replace(':', "\\:"));
+        out.push_str(&layout::one_line(name).replace(':', "\\:"));
         out.push(':');
-        out.push_str(what);
+        out.push_str(&layout::one_line(what));
         out.push('\n');
     }
     out
@@ -154,6 +170,33 @@ mod tests {
         assert_eq!(
             names(&nodes(&model)),
             ["Hall", "Study", model.nodes[2].id.as_str()]
+        );
+    }
+
+    #[test]
+    fn a_name_holding_a_control_is_offered_as_what_finds_it() {
+        let mut model = model();
+        model.nodes[2].location = Some("Den\nevil".into());
+
+        let offered = nodes(&model);
+        assert_eq!(
+            names(&offered),
+            ["Hall", "Study", model.nodes[2].id.as_str()],
+            "a name drawn without its line break was offered, though it finds nothing"
+        );
+    }
+
+    #[test]
+    fn zsh_is_given_one_line_for_each_name_whatever_the_network_named_it() {
+        let named = vec![(
+            "02:00:00:00:00:03".to_owned(),
+            "phone\nevil on Study".to_owned(),
+        )];
+
+        assert_eq!(
+            for_zsh(&named),
+            "02\\:00\\:00\\:00\\:00\\:03:phone evil on Study\n",
+            "a line break in what a name is added a name zsh would offer"
         );
     }
 

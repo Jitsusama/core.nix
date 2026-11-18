@@ -278,9 +278,11 @@ fn conferencing(context: &Context, on: bool) -> Result<(), Failure> {
             .collect();
         return said(context.answer(&json!({"schema": "eero.sqm/1", "networks": networks})));
     }
+    // A network's name is anyone's to set, so each line is drawn without
+    // what the terminal kit keeps from the terminal, as a page is.
     let mut lines: Vec<String> = networks
         .iter()
-        .map(|network| status::line(network, None))
+        .map(|network| terminal_kit::layout::one_line(&status::line(network, None)).into_owned())
         .collect();
     lines.push(String::new());
     said(context.say(&lines.join("\n")))
