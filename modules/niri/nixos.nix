@@ -240,6 +240,13 @@
     # offers a selection holding such a mark to no wp-security-context-v1
     # client, as the clipboard door judges the mark, while ordinary copies
     # and Joel's own windows are served as before. It adds no setting.
+    #
+    # niri draws each bottom layer surface once on every workspace, moved
+    # with it, so as a switch began a second margin cat rode in on the
+    # incoming workspace before the shell had heard of the switch. The
+    # patch (fixed-to-output.patch) draws a bottom surface whose namespace
+    # NIRI_FIXED_TO_OUTPUT names once on its screen, where it is, outside
+    # the overview; home.nix's unit names the cat's. It adds no setting.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -279,6 +286,7 @@
         ./sandbox-sees-no-idle.patch
         ./says-a-frames-steps-after-idle.patch
         ./keeps-secret-copies-from-sandboxes.patch
+        ./fixed-to-output.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.

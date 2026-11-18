@@ -257,6 +257,15 @@ let
         # (modules/niri's on-demand-when-asked.patch), set here since the
         # shell starts beside this niri rather than under it.
         NIRI_ON_DEMAND_WHEN_ASKED = 1;
+        # And the surfaces the account's niri unit draws once on their
+        # screen (modules/niri's fixed-to-output.patch), the margin cat's,
+        # read from the unit, so the cat is drawn here as it is there.
+        NIRI_FIXED_TO_OUTPUT =
+          let
+            asked = "Environment=NIRI_FIXED_TO_OUTPUT=";
+            unit = home.xdg.configFile."systemd/user/niri.service.d/fixed-to-output.conf".text;
+          in
+          lib.removePrefix asked (lib.findFirst (lib.hasPrefix asked) "" (lib.splitString "\n" unit));
         NOTICES_DAEMON = home.systemd.user.services.notices.Service.ExecStart;
         NOTICES_LOG = "logs/notices.log";
         # The step a switch runs before it restarts the shell, as the
