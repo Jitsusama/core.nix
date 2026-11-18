@@ -14,6 +14,7 @@ mod locked;
 mod misses;
 mod pains;
 mod reports;
+pub mod spent;
 
 pub use balanced::balanced;
 pub use broken::{Main, broken, failed_in};
@@ -441,8 +442,7 @@ pub fn merge_to_on(card: &str, owner: &str) -> Option<Measure> {
     })
 }
 
-/// How many first-parent merges `log`, as `%H %ct %s` lines, holds from
-/// the hour before `now`.
+/// How many first-parent merges `log`, as `%H %ct %s` lines, holds from the hour before `now`.
 #[must_use]
 pub fn landed(log: &str, now: i64) -> usize {
     log.lines()

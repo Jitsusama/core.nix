@@ -4,7 +4,7 @@
 //! work reads which merges, checks, dates or quests the count is made of
 //! without opening the files it came from.
 
-use super::measures::{Class, Measure};
+use super::measures::{Class, Measure, spent};
 
 /// How many of the things behind a figure the card names before it
 /// counts the rest.
@@ -41,7 +41,13 @@ fn line(m: &Measure) -> String {
 /// is named here. A cell measure's lines are each a cell or quest its
 /// owner must take up or park, so each is named on its own line, grouped
 /// by owner, for the orchestrator to send on without reading the mesh.
+/// The spend measure's lines each end with a quest instead, in its own
+/// order, and are named though it is never judged, since they are what
+/// it is for.
 fn behind(m: &Measure) -> Vec<String> {
+    if m.key == spent::KEY {
+        return m.behind.iter().map(|line| format!("  {line}")).collect();
+    }
     if matches!(m.class, Class::Miss | Class::Clean) || m.past().is_none() || m.behind.is_empty() {
         return Vec::new();
     }
@@ -156,6 +162,39 @@ mod tests {
                 "  CCCCCC driving, every cell ended · WM4KSZ",
             ],
             "a cell measure cut its quests short, or didn't group them by owner"
+        );
+    }
+
+    #[test]
+    fn the_spend_measure_names_its_quests_unjudged_in_its_own_order() {
+        let spent = Measure {
+            key: spent::KEY.to_owned(),
+            target: None,
+            ..measure(
+                Class::Cells,
+                1.0,
+                &[
+                    "$206 today, landed nothing · ZZZZZZ",
+                    "$90 today, landed a#1 · AAAAAA",
+                ],
+            )
+        };
+        assert_eq!(
+            shown_lines(Class::Cells, &[&spent])[1..],
+            [
+                "  $206 today, landed nothing · ZZZZZZ",
+                "  $90 today, landed a#1 · AAAAAA"
+            ],
+            "the spend measure hid its quests, or sorted them as if each named an owner"
+        );
+        let unread = Measure {
+            target: None,
+            ..measure(Class::Cells, 1.0, &["AAAAAA idle · WM4KSZ"])
+        };
+        assert_eq!(
+            shown_lines(Class::Cells, &[&unread]).len(),
+            1,
+            "a cell measure left unjudged, its read untrusted, named what's behind it"
         );
     }
 

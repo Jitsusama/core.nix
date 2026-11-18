@@ -134,6 +134,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
             now,
             fallback,
         ));
+        measures.push(spent_beside_landed(&state_home, now));
     }
     // Once every measure is read, a miss whose check names one stays open
     // until it judges, so Joel isn't told it's fixed before it is; one
@@ -239,6 +240,45 @@ fn gather(
     let owner = keeper.as_deref().unwrap_or(measures::ASKS);
     all.push(measures::pains(pains.as_deref(), now, owner));
     Ok(all)
+}
+
+/// Each quest's spend today beside what it landed since midnight here,
+/// from spend-watch's collection and the mesh's landing notes, each
+/// sender taken to the quest its presence works on. spend-watch writes
+/// the collection every few minutes and dates nothing in it, so one not
+/// written within the hour, or written before midnight, is yesterday's or
+/// stuck, and isn't read as today's.
+fn spent_beside_landed(state_home: &Path, now: i64) -> Measure {
+    let midnight = midnight_ms(now, &TimeZone::system());
+    let at = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(|r| PathBuf::from(r).join("spend-watch/collection.json"));
+    let written = at
+        .as_ref()
+        .and_then(|at| fs::metadata(at).and_then(|m| m.modified()).ok())
+        .and_then(|when| when.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|since| i64::try_from(since.as_millis()).ok());
+    let fresh = written.is_some_and(|ms| ms >= midnight && ms >= (now - 3600) * 1000);
+    let collection = at
+        .filter(|_| fresh)
+        .and_then(|at| fs::read_to_string(at).ok());
+    let mesh = Mesh {
+        root: state_home.join("pi/agentic-harness.pi"),
+    };
+    let notes = mesh.sent_since(midnight);
+    let presences = mesh.all();
+    let landed = measures::spent::landed_by(
+        notes.iter().map(|m| (m.from.as_str(), m.text.as_str())),
+        |address| measures::spent::quest_of(&presences, address),
+    );
+    measures::spent::beside(collection.as_deref(), &landed, measures::ASKS)
+}
+
+/// The last midnight in `zone` at or before `now`, in milliseconds; `now`
+/// itself where it can't be told.
+fn midnight_ms(now: i64, zone: &TimeZone) -> i64 {
+    Timestamp::from_second(now)
+        .and_then(|at| at.to_zoned(zone.clone()).start_of_day())
+        .map_or(now * 1000, |day| day.timestamp().as_millisecond())
 }
 
 /// The tick's card in `folder`, by when its file was written, if fresh as
@@ -366,5 +406,28 @@ fn landed(core: &str, harness: &str, machine: &str, now: i64) -> Measure {
         target: None,
         owner: String::new(),
         behind: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn today_starts_at_midnight_where_the_machine_is() {
+        let toronto = TimeZone::fixed(jiff::tz::offset(-5));
+        // 19:48:16 UTC on 18 November, 14:48 in Toronto.
+        let now = 1_795_031_296;
+        assert_eq!(
+            midnight_ms(now, &toronto),
+            1_794_978_000_000,
+            "not 05:00 UTC, Toronto's midnight"
+        );
+        // 03:00 UTC on 19 November is still the 18th in Toronto.
+        assert_eq!(
+            midnight_ms(1_795_057_200, &toronto),
+            1_794_978_000_000,
+            "the day turned at midnight UTC rather than here"
+        );
     }
 }
