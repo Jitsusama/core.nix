@@ -177,17 +177,19 @@ Provider {
     // A player's names and a stream's are in it too, since they may be
     // heard only once it's listed or bound, and they say whose it is
     // (playerOf, streamsOf, recordersOf).
-    readonly property string playingNow: Playing.players.map(player => [player.dbusName,
-        player.desktopEntry, player.identity, player.isPlaying, player.canPlay,
-        player.canPause, player.canGoNext, player.canGoPrevious, player.trackTitle,
-        player.trackArtist].join("\u241f"))
-        .concat((Playing.streams.concat(Playing.recorders ?? [])).map(node => [node.id,
-            node.name, node.properties?.["application.name"],
+    // JSON, since the names are other processes' and could hold any
+    // separator, and one change that moved a name across it would say
+    // nothing.
+    readonly property string playingNow: JSON.stringify([
+        Playing.players.map(player => [player.dbusName, player.desktopEntry, player.identity,
+            player.isPlaying, player.canPlay, player.canPause, player.canGoNext,
+            player.canGoPrevious, player.trackTitle, player.trackArtist]),
+        Playing.streams.concat(Playing.recorders ?? []).map(node => [node.id, node.name,
+            node.properties?.["application.name"],
             node.properties?.["application.process.binary"],
-            node.properties?.["node.link-group"], node.properties?.["stream.monitor"]]
-            .join("\u241f")
-            + (node.audio ? ` ${node.audio.volume} ${node.audio.muted}` : "")))
-        .join("\u241e")
+            node.properties?.["node.link-group"], node.properties?.["stream.monitor"],
+            node.audio?.volume, node.audio?.muted])
+    ])
 
     onPlayingNowChanged: {
         const who = playingWho();
@@ -199,15 +201,15 @@ Provider {
         redrawHeld();
     }
 
-    // Who plays: each player's and stream's names, and whether a stream
-    // has its sound, all a closed program's Media and Sound need to be
-    // there (startsOnly), not what plays or how loud. A radio's titles
+    // Who plays: each player's and stream's names, all a closed program's
+    // Media and Sound need to be there (startsOnly), not what plays or how
+    // loud; a node's audio is there from the start for every audio node,
+    // bound or not (Quickshell's PwNode, CONSTANT). A radio's titles
     // came every few seconds and would let every held answer go between
     // keys. Each change of who turns `turn`, which has each held answer
     // ask again only whether anything plays for its program (playsAsHeld),
     // since a chime's stream, an agent's done or a timer's ring, is no
-    // program's. Plain, kept as last heard; JSON, since the names are
-    // other processes' and could hold any separator.
+    // program's. Plain, kept as last heard; JSON, as playingNow is.
     readonly property var playingHeard: ({ who: "", turn: 0 })
     function playingWho() {
         return JSON.stringify([
@@ -216,8 +218,7 @@ Provider {
             Playing.streams.concat(Playing.recorders ?? []).map(node => [node.id, node.name,
                 node.properties?.["application.name"],
                 node.properties?.["application.process.binary"],
-                node.properties?.["node.link-group"], node.properties?.["stream.monitor"],
-                !!node.audio])
+                node.properties?.["node.link-group"], node.properties?.["stream.monitor"]])
         ]);
     }
 
@@ -1768,11 +1769,9 @@ Provider {
             })] : []).concat([said("verb:start", "", { run: start }),
             said("verb:below", "", { chord: provider.launcher?.belowChord ?? [], run: below })]);
         const taken = provider.taken();
-        const player = part("the player", () => playerOf(same));
-        const streams = part("its sound", () => streamsOf(same));
-        const recorders = part("its sound", () => recordersOf(same));
+        const { player, streams, recorders, plays } = heardOf(same, part);
         if (told)
-            told.plays = !!player || streams.length > 0 || recorders.length > 0;
+            told.plays = plays;
         return acts.slice(0, 1).concat(leading, acts.slice(1),
             part("its menu", () => menu(entry, taken)), doing, open(),
             part("its windows", () => windowsOf(entry, heldWindows(entry))), lately(), sent(),
@@ -1780,6 +1779,21 @@ Provider {
             player ? [media(player)] : [],
             streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : [],
             copies);
+    }
+
+    // A program's player, streams and recorders, and whether any is there,
+    // which its Media and Sound are made of (controlsMade) and a held
+    // answer asks again (playsOf), each part timed as `part` says.
+    function heardOf(same, part) {
+        const player = part("the player", () => playerOf(same));
+        const streams = part("its sound", () => streamsOf(same));
+        const recorders = part("its sound", () => recordersOf(same));
+        return {
+            player,
+            streams,
+            recorders,
+            plays: !!player || streams.length > 0 || recorders.length > 0
+        };
     }
 
     // Whether a program's step would hold only New Window and New Window
@@ -1805,8 +1819,10 @@ Provider {
         // are let go.
         void provider.startsTurn;
         const held = provider.startsHeld.by.get(entry.id);
-        if (held !== undefined && held.entry === entry && provider.givesAsHeld(held, entry.id)
-            && provider.playsAsHeld(held, entry))
+        // holdsSafely is read here too, since a giver with no changed may
+        // join as an answer is held, and nothing would let that one go.
+        if (held !== undefined && held.entry === entry && provider.holdsSafely
+            && provider.givesAsHeld(held, entry.id) && provider.playsAsHeld(held, entry))
             return held.only;
         const told = { gave: new Map(), plays: false };
         const only = provider.controls(entry, start, below, told)
@@ -1838,12 +1854,17 @@ Provider {
     // Media and Sound are found (controlsMade); one that steps in has
     // neither.
     function playsOf(entry) {
+        playsCounted.asked += 1;
         if (stepsIn(entry))
             return false;
         const looked = {};
         const same = given => provider.names(entry, given, looked);
-        return !!playerOf(same) || streamsOf(same).length > 0 || recordersOf(same).length > 0;
+        return heardOf(same, (named, find) => find()).plays;
     }
+    // How often a held answer asked whether its program plays, for the
+    // check that each asks once a change of who plays; plain, as
+    // stepsCounted is.
+    readonly property var playsCounted: ({ asked: 0 })
 
     // Whether anything plays for a held program as it did, asked again
     // only once who plays changed since.
@@ -1986,9 +2007,7 @@ Provider {
         .map(other => other === provider ? [] : other.foundActs ?? []))
     property var optedIn: []
     onOptedSaidChanged: optedAgain()
-    Component.onCompleted: {
-        optedAgain();
-    }
+    Component.onCompleted: optedAgain()
     // And as the desktop entries are read, which a program's own acts are
     // made again on, since an act's program is found by its entry.
     onOwnActsChanged: {

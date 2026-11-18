@@ -68,6 +68,8 @@ ShellRoot {
     property int heard: 0
     // What the repositories have said changed, counted.
     property int repositoriesSaid: 0
+    // What GIMP's newest screenshot has said changed, counted.
+    property int screenshotSaid: 0
 
     Connections {
         target: Launcher.Repositories
@@ -219,6 +221,14 @@ ShellRoot {
 
         launcher: theLauncher
         settings: ({ gimp: "gimp", paste: "wl-paste" })
+    }
+
+    Launcher.Screenshot {
+        id: screenshot
+
+        launcher: theLauncher
+        settings: ({ folder: "/shots" })
+        onChanged: root.screenshotSaid += 1
     }
 
     // A copy as the watcher sets it.
@@ -472,6 +482,21 @@ ShellRoot {
                 root.copy([], "");
                 expect("nothing once it's gone", gimp.programActs("gimp").length === 0
                     && gimp.foundActs.length === 0, "");
+                // The newest screenshot's act comes and goes with what was
+                // taken, each said once what it gives has caught up, since
+                // Programs holds what a closed GIMP was given until then.
+                const saidBefore = root.screenshotSaid;
+                Taken.files = [{ path: "/shots/one.png", folder: "/shots", at: 0, size: 1 }];
+                expect("a screenshot taken is said, and given to GIMP",
+                    root.screenshotSaid > saidBefore
+                    && keys(screenshot.programActs("gimp")).join() === "gimp:screenshot",
+                    `${root.screenshotSaid - saidBefore} `
+                    + keys(screenshot.programActs("gimp")).join());
+                const saidTaken = root.screenshotSaid;
+                Taken.files = [];
+                expect("and gone, it's said, and GIMP given none",
+                    root.screenshotSaid > saidTaken && screenshot.programActs("gimp").length === 0,
+                    `${root.screenshotSaid - saidTaken}`);
             }
         }, {
             what: "the repositories, as Open a File by Name is stepped into",

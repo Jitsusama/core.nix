@@ -988,19 +988,14 @@ ShellRoot {
                 playing.name = "Other";
                 playing.properties = playingWas;
             }
-            // A stream is listed before its sound is bound, as PipeWire
-            // gives a node its audio a moment after: a program's own as it
-            // starts to play, so it's seen as it gets its sound.
+            // A program's own stream is listed as it starts to play, after
+            // its answer was held.
             const streamsWere = Launcher.Playing.streams;
             Launcher.Playing.streams = streamsWere.filter(node => node !== playing);
             same("held while a stream isn't listed, it starts only", program("lone").actsOnly, true);
-            playing.audio = null;
             owning("application.name", "Lone");
             Launcher.Playing.streams = streamsWere;
-            same("a stream of its own listed with no sound yet, it starts only",
-                program("lone").actsOnly, true);
-            playing.audio = playing;
-            same("and as its sound is bound, it asks again, and its Sound holds more",
+            same("a stream of its own listed asks again, and its Sound holds more",
                 holds("Sound"), "false true");
             playing.properties = playingWas;
             // And a recorder: a level meter's monitor records nothing, so a
@@ -1031,24 +1026,31 @@ ShellRoot {
             // program's answer reads: a radio's titles came every few
             // seconds.
             const titled = applications.stepsCounted.made;
+            const titledTurn = applications.playingHeard.turn;
             const playerTitled = Launcher.Playing.players[0];
             const title = playerTitled.trackTitle;
             const volumeWas = playing.volume;
             playerTitled.trackTitle = "Another song of the test";
             playerTitled.isPlaying = !playerTitled.isPlaying;
             playing.volume = 0.2;
-            same("a track changing lets nothing go, nor its volume",
-                `${program("lone").actsOnly} ${applications.stepsCounted.made - titled}`,
-                "true 0");
+            same("a track changing lets nothing go, nor its volume, nor says who plays changed",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - titled} `
+                + `${applications.playingHeard.turn - titledTurn}`, "true 0 0");
             playerTitled.trackTitle = title;
             playerTitled.isPlaying = !playerTitled.isPlaying;
             playing.volume = volumeWas;
             // A stream of no program's coming and going, as an agent's done
             // chime's does, asks each held answer only whether it plays.
             const chimed = applications.stepsCounted.made;
+            const chimeAsked = applications.playsCounted.asked;
             playing.name = "A chime";
-            same("a stream of no program's lets nothing go",
-                `${program("lone").actsOnly} ${applications.stepsCounted.made - chimed}`, "true 0");
+            same("a stream of no program's lets nothing go, asked once whether it plays",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - chimed} `
+                + `${applications.playsCounted.asked - chimeAsked}`, "true 0 1");
+            const chimeAgain = applications.playsCounted.asked;
+            same("and asked again, it isn't asked whether it plays",
+                `${program("lone").actsOnly} ${applications.playsCounted.asked - chimeAgain}`,
+                "true 0");
             playing.name = "Other";
             // A giver saying it changed asks again only of what it gives:
             // kitty says so as any window of its is retitled, which an

@@ -121,15 +121,14 @@
           property string trackArtist: ""
         }
         // A stream is its own audio, as a PipeWire node's volume and mute
-        // are its audio's; a case may take it away, as a node has none
-        // until it's bound.
+        // are its audio's.
         component Stream: QtObject {
           id: stream
           property string name
           property var properties: ({})
           property real volume: 0.4
           property bool muted: false
-          property var audio: stream
+          readonly property var audio: stream
         }
         Stream { id: first; name: "Tester"; properties: ({ "application.name": "Tester" }) }
         Stream { id: second; name: "stream-2"; properties: ({ "application.process.binary": "tester" }) }
