@@ -323,6 +323,11 @@ def test_second_link(returned: Rig) -> None:
         return any(link["name"] == "eth2" and link.get("follows") == "eth1" for link in status)
 
     retry(follows, timeout=FOLLOWING)
+    # The recorder counts eth2 beside eth1, by its router, and says so.
+    rig.client.wait_until_succeeds(
+        "journalctl -u shaper-record -o cat | grep -qF 'counting eth1, eth2'",
+        timeout=int(FOLLOWING.total_seconds()),
+    )
     # eth1's controller judges by its last second or so of traffic, so it
     # must have none of its own left before only eth2 carries the uploads:
     # then it sees the connection fill only if it counts what eth2 sends.

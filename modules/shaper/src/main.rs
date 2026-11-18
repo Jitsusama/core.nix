@@ -122,6 +122,12 @@ struct Options {
     turn_download: bool,
 }
 
+/// Whether `SHAPER_TURN_DOWNLOAD`'s value turns every download through its
+/// IFB: only `1` does, so `0` or an empty value reads as off.
+fn turns_download(value: Option<&str>) -> bool {
+    value == Some("1")
+}
+
 /// Reads the flags `run`, `status` and `record` take, refusing any other
 /// as `shaper {command}` asked wrongly.
 fn options(command: &str, args: &[String]) -> Result<Options, Failure> {
@@ -142,7 +148,7 @@ fn options(command: &str, args: &[String]) -> Result<Options, Failure> {
         record: "/var/lib/shaper-record".into(),
         trial: "/run/shaper-trial/upload.json".into(),
         networks: None,
-        turn_download: std::env::var("SHAPER_TURN_DOWNLOAD").is_ok_and(|turn| turn == "1"),
+        turn_download: turns_download(std::env::var("SHAPER_TURN_DOWNLOAD").ok().as_deref()),
     };
     // A network of its own, a test's among them, names its own distant hosts.
     if let Ok(hosts) = std::env::var("SHAPER_HOSTS") {
@@ -1631,6 +1637,23 @@ fn sweep(kept: &BTreeSet<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_1_turns_every_download() {
+        for (value, turns) in [
+            (Some("1"), true),
+            (Some("0"), false),
+            (Some(""), false),
+            (Some("true"), false),
+            (None, false),
+        ] {
+            assert_eq!(
+                turns_download(value),
+                turns,
+                "SHAPER_TURN_DOWNLOAD={value:?}"
+            );
+        }
+    }
 
     // On 18 November the rate test's uploads over a second link to the
     // router crossed the connection without the first link's line hearing

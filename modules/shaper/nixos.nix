@@ -117,7 +117,9 @@ in
       (src/oneway.rs), from each direction's own delay as shaper-record
       measures it, the controller `shaper replay` scores, and the only one
       left. Left null, the shaper is installed and nothing starts it, as a
-      machine that never named the one-way controller had it before. Setting
+      machine that never named the one-way controller had it before; the
+      recorder runs either way, so a machine's week can be replayed before
+      it shapes. Setting
       it back to null takes the start at boot away but leaves a running
       shaper shaping until `systemctl stop shaper` or the next boot. The
       round trip's, from pings to distant resolvers, went on 18 November.

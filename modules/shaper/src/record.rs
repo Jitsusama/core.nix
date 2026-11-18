@@ -461,10 +461,14 @@ pub fn record(
                 return;
             }
             let counting = links(beside());
-            // The record's rx and tx are these links' together, so the
-            // journal says when the set changes.
+            // The record's rx and tx are these links' together, so both
+            // the record and systemd's journal say when the set changes; a
+            // line with no sample in it is one replay passes over.
             if counting != recorder.links {
                 eprintln!("recording {link}, counting {}", counting.join(", "));
+                recorder
+                    .journal
+                    .write(&json!({ "at": now_ms(), "link": link, "counting": counting }));
                 recorder.links = counting;
             }
             checked = now;
