@@ -130,6 +130,7 @@ let
             host.node
             # The harness's package.json names no module type, on purpose.
             "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
+            "--max-old-space-size=${toString host.heapMb}"
             entry
             kind
           ]
@@ -212,7 +213,7 @@ let
         # lost by killing the rest 10 s on. The host's hold watcher has
         # written what held the loop by then.
         TimeoutAbortSec = "10s";
-        # A host keeps no core. Its heap runs to 4 GB and holds every hosted
+        # A host keeps no core. Its heap runs to heapMb and holds every hosted
         # conversation's keys and tokens. On 16 November V8 aborted it out of
         # memory at 20:44:47, and it couldn't exit while the kernel streamed
         # 4.4 GB into systemd-coredump: the watchdog killed it at 20:47:38,
@@ -289,6 +290,20 @@ in
               realm's launcher finds on a shell's PATH and a user service's
               lacks: those the host runs for its credential, and those its
               conversations' tools run.
+            '';
+          };
+          heapMb = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 8192;
+            description = ''
+              The most JavaScript heap each of the realm's hosts may hold, in MB.
+              node's own limit is about 4 GB, and on 18 November the background
+              host, holding some sixty conversations, ran out of it and aborted,
+              ending every one of their turns. A realm's two hosts share
+              agents.slice, which slows past 42% of the machine's memory, so both
+              together stay under it: 8 GB each fits a 64 GB machine, and a
+              machine with less memory sets less. A host past its limit still
+              aborts alone, rather than slowing every agent beside it.
             '';
           };
           environment = lib.mkOption {

@@ -104,6 +104,7 @@ in
         };
         two = {
           inherit pi node proof;
+          heapMb = 3072;
           path = [
             "/first/bin"
             "/second/bin"
@@ -161,6 +162,10 @@ in
         && unit.Unit.X-SwitchMethod == "keep-old"
         && unit.Install.WantedBy == [ "default.target" ]
         && lib.hasPrefix "${node} " (first unit.Service.ExecStart)
+        # Room for the heap of every conversation it holds, past node's 4 GB,
+        # given before the entry, as node reads only flags there; quoted for
+        # its =, which systemd unquotes.
+        && lib.hasInfix " '--max-old-space-size=8192' /" (first unit.Service.ExecStart)
         && lib.hasSuffix "/scripts/pi-host.ts ${kind}" (first unit.Service.ExecStart)
         && lib.hasSuffix "/scripts/pi-host.ts" (first unit.Unit.ConditionPathExists)
         && lib.elem ''"MYCELIUM_REALM=one"'' environment
@@ -180,7 +185,11 @@ in
         kind:
         lib.hasPrefix
           "${pkgs.coreutils}/bin/env 'PATH=/first/bin:/second/bin:/100%%/$$HOME:\${PATH}' ${node} "
-          (first services."pi-host-two-${kind}".Service.ExecStart);
+          (first services."pi-host-two-${kind}".Service.ExecStart)
+        # A realm's own heap reaches both its hosts.
+        && lib.hasInfix " '--max-old-space-size=3072' /" (
+          first services."pi-host-two-${kind}".Service.ExecStart
+        );
       # The notice a host left down starts is a template, not a host.
       hostsIn =
         services:
@@ -197,7 +206,7 @@ in
         && lib.hasSuffix "/bin/pi-host-down %i" (first (unit.Service.ExecStart or ""));
     in
     holds "pi-hosts-start-with-the-session"
-      "A realm's pi host isn't started with the session, runs another pi or node, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, points its conversations at no SSH agent where pi's proxy runs, or leaves its commands' processes behind, can dump a core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
+      "A realm's pi host isn't started with the session, runs another pi or node, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, has only node's default heap rather than its realm's, points its conversations at no SSH agent where pi's proxy runs, or leaves its commands' processes behind, can dump a core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
       (
         starts "attended"
         && starts "background"
