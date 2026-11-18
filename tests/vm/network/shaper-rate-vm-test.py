@@ -203,8 +203,9 @@ class Rig:
         rows = []
         last = None
         for second, (sent, delays) in sorted(seconds.items()):
-            kbit = (max(sent) - last) * 8 // 1000 if last is not None else 0
-            last = max(sent)
+            # A second the recorder skipped shares what crossed with the ones beside it.
+            kbit = (max(sent) - last[1]) * 8 // 1000 // (second - last[0]) if last else 0
+            last = (second, max(sent))
             median = sorted(delays)[len(delays) // 2] if delays else None
             rows.append(f"{second % 1000:03d} {kbit:6d} kbit/s up, out {median}")
         _, said = self.client.execute("journalctl -u shaper -u shaper-record -o cat --no-pager")

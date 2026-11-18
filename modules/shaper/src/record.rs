@@ -82,13 +82,18 @@ pub fn expired(names: &[String]) -> Vec<String> {
 
 /// What the link carried in total, received and sent, in bytes.
 fn carried(link: &str) -> (u64, u64) {
+    counters(link).unwrap_or_default()
+}
+
+/// What the link carried in total, received and sent, in bytes, or None
+/// when either count can't be read, as when the link went.
+fn counters(link: &str) -> Option<(u64, u64)> {
     let read = |which: &str| {
         fs::read_to_string(format!("/sys/class/net/{link}/statistics/{which}_bytes"))
             .ok()
             .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(0)
     };
-    (read("rx"), read("tx"))
+    Some((read("rx")?, read("tx")?))
 }
 
 /// What this machine's links to one connection carried together, received
@@ -126,9 +131,16 @@ impl Counted {
         self.total
     }
 
-    /// Reads `links`' counters and adds what they carried.
+    /// Reads `links`' counters and adds what they carried. A link whose
+    /// counters can't be read is left out, as one that left is, so it
+    /// counts again from its next read rather than from nothing.
     fn read(&mut self, links: &[String]) -> (u64, u64) {
-        self.add(links.iter().map(|l| (l.clone(), carried(l))).collect())
+        self.add(
+            links
+                .iter()
+                .filter_map(|l| Some((l.clone(), counters(l)?)))
+                .collect(),
+        )
     }
 }
 

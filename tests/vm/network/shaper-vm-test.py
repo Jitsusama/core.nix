@@ -698,10 +698,13 @@ def test_route_moves(on_eth2: Connection) -> None:
 
 def test_status(on_eth2: Connection) -> None:
     """Its status says what it holds the link to."""
+    # A host's quiet round trip is only said once eth2's pings were heard.
+    on_eth2.client.wait_until_succeeds(
+        "shaper status | grep -E 'quiet round trips: [^ ]+ [0-9]+ ms'", timeout=SHAPING
+    )
     status = on_eth2.client.succeed("shaper status")
     assert "eth2" in status, status
     assert " Mb/s, down " in status, status
-    # A host's quiet round trip is only said once its pings were heard.
     assert re.search(r"quiet round trips: \S+ \d+ ms", status), status
     assert "cpu: the shaper" in status, status
 

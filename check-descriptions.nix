@@ -2994,8 +2994,8 @@
   '';
   shaper-finds-the-rate = ''
     the shaper reads sets, routes and queues from what the kernel prints; counts what every link to
-    the same router carried, and what a follower's queues sent and dropped, on its leader's line;
-    replays recorded days as one stay per network across midnight, each
+    the same router carried, and what a follower's queues sent, dropped and held, on its leader's
+    line; replays recorded days as one stay per network across midnight, each
     second's carried rate from the counters and each direction's own delay voted from its
     reflectors, and names a cut with no queue of its own, a rate held low on an idle connection and
     one starved under a full one; the one-way controller cuts a direction only once its own delay

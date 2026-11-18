@@ -86,8 +86,8 @@ enum State {
 
 /// Where a network nobody has measured starts, in kbit/s: under most home
 /// connections both ways, so its first seconds of load don't queue at the
-/// modem, and climbing from there within seconds when the connection takes
-/// more.
+/// modem, until the controller's first second leaves it unlimited while
+/// no queue stands.
 const FIRST: Held = Held {
     up: 10_000,
     down: 50_000,
@@ -958,10 +958,13 @@ fn crossing(seen: &mut BTreeMap<String, oneway::Ours>, follows: &BTreeMap<String
             *total += sent;
         }
         ours.dropped += theirs.dropped;
+        // Only a VPN's queue stood on the line while none stood of a link's
+        // own, on either.
         if theirs.queued {
+            ours.in_vpn = theirs.in_vpn && (ours.in_vpn || !ours.queued);
             ours.queued = true;
-            ours.in_vpn = false;
         }
+        ours.vpn_queued |= theirs.vpn_queued;
     }
 }
 
@@ -1645,24 +1648,53 @@ mod tests {
         ]);
         let follows = BTreeMap::from([("eth2".to_owned(), "eth1".to_owned())]);
         seen.get_mut("eth2").expect("eth2").dropped = 400;
-        seen.get_mut("eth2").expect("eth2").queued = true;
-        seen.get_mut("eth1").expect("eth1").in_vpn = true;
         crossing(&mut seen, &follows);
         assert_eq!(seen["eth1"].sent, Some(7_300), "{seen:?}");
         // TCP's resends are the machine's, so what the follower's CAKE
         // dropped is no router's either.
         assert_eq!(seen["eth1"].dropped, 400, "{seen:?}");
-        assert!(
-            seen["eth1"].queued,
-            "the follower's queue is ours: {seen:?}"
-        );
-        assert!(!seen["eth1"].in_vpn, "a link's own queue stood: {seen:?}");
         assert_eq!(seen["eth2"].sent, Some(7_000), "a follower keeps its own");
         assert_eq!(
             seen["wlan0"].sent,
             Some(50),
             "a link nobody follows keeps its own"
         );
+    }
+
+    #[test]
+    fn a_follower_s_queue_is_its_leader_s_and_only_a_vpn_s_stays_the_vpn_s() {
+        // Whether a queue stood, and whether only a VPN's did: the leader's
+        // and the follower's, and what the leader reads after.
+        let cases = [
+            ((false, false), (false, false), (false, false)),
+            ((false, false), (true, true), (true, true)),
+            ((false, false), (true, false), (true, false)),
+            ((true, true), (false, false), (true, true)),
+            ((true, true), (true, true), (true, true)),
+            ((true, true), (true, false), (true, false)),
+            ((true, false), (true, true), (true, false)),
+        ];
+        for (leader, follower, after) in cases {
+            let ours = |(queued, in_vpn): (bool, bool)| oneway::Ours {
+                queued,
+                in_vpn,
+                vpn_queued: in_vpn,
+                ..oneway::Ours::default()
+            };
+            let mut seen = BTreeMap::from([
+                ("eth1".to_owned(), ours(leader)),
+                ("eth2".to_owned(), ours(follower)),
+            ]);
+            let follows = BTreeMap::from([("eth2".to_owned(), "eth1".to_owned())]);
+            crossing(&mut seen, &follows);
+            let read = (seen["eth1"].queued, seen["eth1"].in_vpn);
+            assert_eq!(read, after, "leader {leader:?}, follower {follower:?}");
+            assert_eq!(
+                seen["eth1"].vpn_queued,
+                leader.1 || follower.1,
+                "a VPN's queue on either: leader {leader:?}, follower {follower:?}"
+            );
+        }
     }
 
     /// A wired link's most, from its speed: 50 Mb/s up and 2 Gb/s down.
