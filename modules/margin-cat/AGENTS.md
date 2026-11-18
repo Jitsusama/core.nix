@@ -205,9 +205,11 @@ stride, the smaller break than walking a body-length on the air (WCJQSG 1ee24751
 - Held by `margin-cat-floats.qml`: "crossing the corner of its face 3 deep, for a stride at
   its walk's pace"
 - Held by `margin-cat-floats.qml`: "its own height down off one at the screen's top, it
-  steps off its end"
+  steps off; a pixel more, drops"
 - Held by `margin-cat-floats.qml`: "off a seat its own height down, it steps; a pixel more,
   it walks clear and drops"
+- Held by `margin-cat-floats.qml`: "at a cell of 2, its own height down off a seat it steps;
+  a pixel more, it drops"
 - Held by `margin-cat-floats.qml`: "one across the tops on its way, it walks over its top"
 - Held by `margin-cat-floats.qml`: "a floating window a leap up on its way is a step"
 - Held by `margin-cat-floats.qml`: "a floating window off its way changes nothing"
