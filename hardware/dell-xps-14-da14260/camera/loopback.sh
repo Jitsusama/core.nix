@@ -25,12 +25,12 @@
 case ${1:-} in
 -h | --help)
   cat << 'EOF'
-camera-loopback  make the camera's loopback, or take the one there
+camera-loopback  take the camera's loopback, or make one
 
 EXAMPLES
-  camera-loopback 'Built-in Camera' /run/camera/device -b 4 -x 1
-      take the Built-in Camera loopback there, or add one with
-      those options, and write its node to the file
+  camera-loopback 'Built-in Camera' FILE -b 4 -x 1
+      take Built-in Camera's loopback, or add one with
+      those options; its node goes in FILE
 
 EXIT
   0   taken or added
@@ -70,15 +70,17 @@ for number in "${!found[@]}"; do
   nodes+=("/dev/video$number")
 done
 
-# Deletes a loopback, saying so, and fails with v4l2loopback-ctl's reason
-# when the module refuses.
+# Deletes a loopback, saying so, or says v4l2loopback-ctl's reason when the
+# module refuses; deleted says which. It never fails, so set -e still holds
+# wherever it's called.
 delete() {
   local why
   if why=$(v4l2loopback-ctl delete "$1" 2>&1); then
     echo "Deleted $1, a $name left from before."
+    deleted=yes
   else
     echo "Couldn't delete $1, a $name left from before ($why); trying again next start."
-    return 1
+    deleted=no
   fi
 }
 
@@ -87,11 +89,13 @@ if [ "${#nodes[@]}" -eq 0 ]; then
 else
   held=()
   for node in "${nodes[@]:1}"; do
-    delete "$node" || held+=("$node")
+    delete "$node"
+    if [ "$deleted" = no ]; then held+=("$node"); fi
   done
   kept=${nodes[0]}
-  if [ "${#held[@]}" -gt 0 ] && delete "$kept"; then
-    kept=${held[0]}
+  if [ "${#held[@]}" -gt 0 ]; then
+    delete "$kept"
+    if [ "$deleted" = yes ]; then kept=${held[0]}; fi
   fi
   echo "Taking $name at $kept, already there."
 fi
