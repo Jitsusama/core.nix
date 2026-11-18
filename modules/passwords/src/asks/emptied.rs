@@ -168,6 +168,54 @@ mod tests {
     }
 
     #[test]
+    fn a_credential_under_a_key_said_twice_empties_the_file() {
+        // Docker's reader merges a setting said twice rather than keeping
+        // the last, so a credential under either saying counts.
+        for text in [
+            r#"{"auths": {"registry.example": {"auth": "made-up"}}, "auths": {}}"#,
+            r#"{"auths": {"registry.example": {"auth": "made-up"}, "registry.example": {}}}"#,
+            r#"{"auths": {"registry.example": {"auth": "made-up", "auth": ""}}}"#,
+            r#"{"credsStore": "secretservice", "credsStore": ""}"#,
+        ] {
+            assert!(
+                empties(text, &docker()),
+                "a credential said before its key's second saying was left: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_credential_under_a_key_docker_folds_empties_the_file() {
+        // Docker's reader folds the long s to s and the Kelvin sign to k.
+        for text in [
+            r#"{"auth\u017f": {"registry.example": {"auth": "made-up"}}}"#,
+            r#"{"cred\u017fStore": "secretservice"}"#,
+            r#"{"auths": {"registry.example": {"identityto\u212aen": "made-up"}}}"#,
+        ] {
+            assert!(
+                empties(text, &docker()),
+                "a credential under a folded key was left: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_proxys_login_with_a_slash_in_its_password_empties_the_file() {
+        // An @ anywhere past the scheme counts as a login, so a password
+        // holding a slash is never read as a path; an @ that is a path's
+        // only empties a file holding no login, which fails safe.
+        for text in [
+            r#"{"proxies": {"default": {"httpProxy": "http://joel:made/up@proxy.example"}}}"#,
+            r#"{"proxies": {"default": {"httpProxy": "joel:made/up@proxy.example:3128"}}}"#,
+        ] {
+            assert!(
+                empties(text, &docker()),
+                "a proxy's login holding a slash was left: {text}"
+            );
+        }
+    }
+
+    #[test]
     fn a_proxys_login_with_no_scheme_empties_the_file() {
         let text = r#"{"proxies": {"default": {"httpProxy": "joel:made-up@proxy.example:3128"}}}"#;
         assert!(
@@ -177,9 +225,9 @@ mod tests {
     }
 
     #[test]
-    fn an_at_past_a_proxys_address_is_no_login() {
+    fn a_proxy_with_no_at_is_no_login() {
         for text in [
-            r#"{"proxies": {"default": {"httpProxy": "http://proxy.example:3128/at@path"}}}"#,
+            r#"{"proxies": {"default": {"httpProxy": "http://proxy.example:3128/path"}}}"#,
             r#"{"proxies": {"default": {"noProxy": "*.example,localhost"}}}"#,
         ] {
             assert!(
