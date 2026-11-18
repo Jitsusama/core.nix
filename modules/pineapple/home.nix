@@ -173,10 +173,12 @@ in
           ExecStart = "@${lib.getExe pineapple} pineapple-slack run --live";
           # The keyring's reader, run each round, so a sign-in made or renewed
           # while it runs is read without a restart. With none, it says so in
-          # the journal and reads nothing until there is one.
+          # the journal and reads nothing until there is one. And the file it
+          # tells For You in, the one its stop removes, quoted as systemd
+          # reads a setting, as the stop's paths are.
           Environment = [
             "SIGN_IN_KEYRING=${keyring}"
-            "SAFE_WORD_WAITING=${waiting}"
+            ''"SAFE_WORD_WAITING=${waiting}"''
           ];
           Restart = "on-failure";
           RestartSec = 30;

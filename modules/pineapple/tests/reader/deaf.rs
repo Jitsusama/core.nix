@@ -3,7 +3,6 @@
 //! again takes it away, and a Slack that can't be reached writes none.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
@@ -12,7 +11,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 
 use super::keyring::reading_with_keyring;
-use super::{Answered, PACE, PATIENCE, answer, answering_whole, home, reader};
+use super::{Answered, PATIENCE, answer, answering_whole, home, reader, reading};
 
 /// Where For You reads what the safe word waits on Joel for.
 fn waiting(home: &Path) -> PathBuf {
@@ -85,16 +84,7 @@ fn the_row_goes_where_the_unit_names_it() {
         answering_whole(|_, _| Answered::ok(json!({"ok": false, "error": "invalid_auth"})));
     let home = home();
     let named = home.join("named/pineapple.json");
-    let mut reader = Command::new(env!("CARGO_BIN_EXE_pineapple-slack"))
-        .args(["run", "--origin", &origin, "--every", PACE])
-        .env("HOME", &home)
-        .env("XDG_CONFIG_HOME", home.join("config"))
-        .env("XDG_STATE_HOME", home.join("state"))
-        .env("SAFE_WORD_WAITING", &named)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("the reader starts");
+    let mut reader = reading(&home, &origin, &[], Some(&named));
     let told = until(&named, true);
     reader.kill().expect("the reader stops");
     reader.wait().expect("the reader is gone");
@@ -104,6 +94,21 @@ fn the_row_goes_where_the_unit_names_it() {
         "and not where the reader would find its own"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn a_name_that_isnt_a_whole_path_is_no_name() {
+    let (origin, _) =
+        answering_whole(|_, _| Answered::ok(json!({"ok": false, "error": "invalid_auth"})));
+    for named in ["", "named/pineapple.json"] {
+        let home = home();
+        let mut reader = reading(&home, &origin, &[], Some(Path::new(named)));
+        let told = until(&waiting(&home), true);
+        reader.kill().expect("the reader stops");
+        reader.wait().expect("the reader is gone");
+        assert!(told, "named {named:?}, the reader tells For You in its own");
+        std::fs::remove_dir_all(&home).expect("the case's home goes");
+    }
 }
 
 #[test]

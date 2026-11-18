@@ -325,7 +325,19 @@ fn reader(home: &Path, origin: &str) -> Child {
 
 /// The reader, given `more` on its line after the stand-in and pace.
 fn reader_with(home: &Path, origin: &str, more: &[&str]) -> Child {
-    Command::new(env!("CARGO_BIN_EXE_pineapple-slack"))
+    reading(home, origin, more, None)
+}
+
+/// The reader, telling For You in `waiting` when it names one, as its
+/// unit does, and finding its own file otherwise, whatever the run's
+/// own environment names.
+fn reading(home: &Path, origin: &str, more: &[&str], waiting: Option<&Path>) -> Child {
+    let mut reader = Command::new(env!("CARGO_BIN_EXE_pineapple-slack"));
+    reader.env_remove("SAFE_WORD_WAITING");
+    if let Some(waiting) = waiting {
+        reader.env("SAFE_WORD_WAITING", waiting);
+    }
+    reader
         .args(["run", "--origin", origin, "--every", PACE])
         .args(more)
         .env("HOME", home)
