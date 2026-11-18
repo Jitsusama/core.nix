@@ -146,6 +146,19 @@ pub fn update(
             });
         }
     }
+    // The owners are Joel's config as it reads today, so an owner named
+    // after a finding opened takes it, with a day of its own to answer,
+    // rather than the watcher keeping it for as long as it stays open. A
+    // must keeps the quest that filed it.
+    for entry in ledger.iter_mut().filter(|e| e.open && e.kind.is_none()) {
+        let owner = owner_of(&entry.key, owners);
+        if owner.is_some() && owner != entry.owner {
+            entry.owner = owner;
+            entry.due = day.to + DAY;
+            entry.told = None;
+            entry.late = false;
+        }
+    }
     // Two runs a day apart without it, with a little slack for a timer
     // that fired late; a run again the same evening closes nothing. A
     // must its owner filed no day's read finds, so only its owner closes it.
@@ -385,6 +398,65 @@ pub(crate) mod tests {
         assert!(
             tell(&mut ledger, "d1", Some("W")).is_empty(),
             "a run again the same day told an owner twice"
+        );
+    }
+
+    #[test]
+    fn an_owner_named_after_a_finding_opened_takes_it_and_is_told_afresh() {
+        let mut ledger = Vec::new();
+        update(
+            &mut ledger,
+            &day("d1", DAY),
+            &[found("oom.machine")],
+            &owners(),
+        );
+        tell(&mut ledger, "d1", Some("W"));
+        late(&mut ledger, 2 * DAY + 1);
+        let mut named = owners();
+        named.insert("oom.".to_owned(), "D".to_owned());
+        // Not found that day, so only the new owner line can move it.
+        update(&mut ledger, &day("d2", 2 * DAY + 3600), &[], &named);
+        let entry = &ledger[0];
+        assert_eq!(
+            (
+                entry.owner.as_deref(),
+                entry.told.as_deref(),
+                entry.late,
+                entry.due
+            ),
+            (Some("D"), None, false, 3 * DAY + 3600),
+            "a finding kept the owner it opened with, or its new owner got no day: {entry:?}"
+        );
+        let told = tell(&mut ledger, "d2", Some("W"));
+        assert_eq!(
+            told.iter().map(|(to, _)| to.as_str()).collect::<Vec<_>>(),
+            vec!["D"],
+            "the new owner wasn't told of what it now owns"
+        );
+        update(&mut ledger, &day("d2", 2 * DAY + 7200), &[], &named);
+        assert_eq!(
+            ledger[0].told.as_deref(),
+            Some("d2"),
+            "an owner that didn't change was told again"
+        );
+    }
+
+    #[test]
+    fn a_must_keeps_the_owner_that_filed_it() {
+        let mut ledger = Vec::new();
+        update(
+            &mut ledger,
+            &day("d1", DAY),
+            &[found("crashes:tec")],
+            &owners(),
+        );
+        ledger[0].kind = Some("hole".to_owned());
+        ledger[0].owner = Some("Q".to_owned());
+        update(&mut ledger, &day("d2", 2 * DAY), &[], &owners());
+        assert_eq!(
+            ledger[0].owner.as_deref(),
+            Some("Q"),
+            "a must was given to the prefix's owner rather than the quest that owes it"
         );
     }
 
