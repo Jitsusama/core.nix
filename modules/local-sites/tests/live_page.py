@@ -9,7 +9,9 @@ page holds. A test loads this as a pytest plugin (`-p live_page`), which gives
 it the `browser` fixture. The server and the kit come from LOCAL_SITES and
 LOCAL_SITES_SHARED (what every site shares: the kit, and the theme's web kit
 as web/), the home's strip styles from STRIP and the skill from
-WEB_SKILL, as the check running the test sets them.
+WEB_SKILL, as the check running the test sets them. Each page also keeps to
+a budget (Budget, Opened.keeps_to), so the cost Joel asked to be cut on 17
+November can't creep back unseen.
 """
 
 import json
@@ -19,8 +21,10 @@ import subprocess
 import time
 import warnings
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 import pytest
 from playwright.sync_api import (
@@ -29,6 +33,8 @@ from playwright.sync_api import (
     ConsoleMessage,
     Error,
     Page,
+    Request,
+    WebSocket,
     sync_playwright,
 )
 
@@ -44,10 +50,37 @@ CRASHED = "Page crashed"
 # A phone's width and a desk's, the two the skill's checks are held at.
 SIZES = [(390, 844), (1440, 900)]
 LOOKS = ["dark", "light"]
+KILOBYTE = 1024
+# What the server answers a file the browser already holds unchanged.
+NOT_MODIFIED = 304
+OK = 200
+# The tags a page draws most of, most first, to say what grew past a budget.
+MOST_DRAWN = """() => {
+  const counts = {};
+  for (const each of document.getElementsByTagName('*')) {
+    counts[each.localName] = (counts[each.localName] ?? 0) + 1;
+  }
+  return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+}"""
 # The web-design skill's checks a published page passes, each answering [] when it does.
 PAGE_CHECKS = ["gate.js", "layout.js", "svgtext.js"]
 
 type Served = tuple[str, subprocess.Popen[bytes]]
+
+
+@dataclass(frozen=True)
+class Budget:
+    """What a page may cost a first visit: the files and bytes it asks for, the elements it draws.
+
+    Each is set a little above what the page costs now, measured under its test's
+    stand-in, so a page that grows past it says so and its owner decides whether
+    the cost is worth it, raising the budget in the same change if it is. Bytes
+    are the bodies the server sent, which a build fixes, so they don't vary.
+    """
+
+    files: int
+    kilobytes: int
+    elements: int
 
 
 def a_free_port() -> int:
@@ -151,9 +184,22 @@ class Opened:
             color_scheme="dark" if self.look == "dark" else "light",
         )
         self.page = self.context.new_page()
+        self.address = address
+        # Every file the tab asks for, and every socket it opens, from its first
+        # load on, which keeps_to reads.
+        self.asked: list[Request] = []
+        self.sockets: list[str] = []
+        self.page.on("request", self._asked)
+        self.page.on("websocket", self._opened)
         self.page.on("console", self._heard)
         self.page.on("pageerror", lambda error: self.logged.append(f"thrown: {error}"))
         self.page.goto(address)
+
+    def _asked(self, request: Request) -> None:
+        self.asked.append(request)
+
+    def _opened(self, socket: WebSocket) -> None:
+        self.sockets.append(socket.url)
 
     def _heard(self, message: ConsoleMessage) -> None:
         if message.type in {"error", "warning"}:
@@ -179,6 +225,70 @@ class Opened:
         for check in PAGE_CHECKS:
             found = self.page.evaluate((skill / check).read_text())
             assert found == [], f"{check} at {self.size} in the {self.look} look found {found}"
+
+    def keeps_to(self, budget: Budget) -> None:
+        """Hold the drawn page to `budget`, then visit it again and find nothing sent twice.
+
+        A first visit asks only the sites' server, files and sockets alike, for
+        no more files and bytes than the budget says, and draws no more
+        elements. A second visit asks only that server too, and the server
+        answers every file it asks for as unchanged (304), so no body comes
+        again. Each visit is counted once the network has gone quiet, so a file
+        asked for late is counted, and none of the first visit's runs into the
+        second's. Call it once the page is drawn.
+        """
+        self.page.wait_for_load_state("networkidle")
+        self._stays_home("a first visit")
+        asked = [request.url for request in self.asked]
+        assert len(asked) <= budget.files, (
+            f"a first visit asked for {len(asked)} files, past its budget of {budget.files}: "
+            f"{asked}"
+        )
+        sent = sum(
+            request.sizes()["responseBodySize"] for request in self.asked if request.response()
+        )
+        assert sent <= budget.kilobytes * KILOBYTE, (
+            f"a first visit was sent {sent / KILOBYTE:.1f} KB, past its budget of "
+            f"{budget.kilobytes} KB"
+        )
+        elements = self.page.evaluate("document.getElementsByTagName('*').length")
+        assert elements <= budget.elements, (
+            f"the page drew {elements} elements, past its budget of {budget.elements}, "
+            f"most of them {self.page.evaluate(MOST_DRAWN)}"
+        )
+        self.asked.clear()
+        self.sockets.clear()
+        self.page.reload(wait_until="load")
+        self.page.wait_for_load_state("networkidle")
+        self._stays_home("a second visit")
+        assert self.asked, "a second visit asked for nothing, so it can't say what came again"
+        again = [answer for request in self.asked if (answer := self._sent_again(request))]
+        assert again == [], (
+            f"a second visit had these files answered other than as unchanged: {again}"
+        )
+
+    @staticmethod
+    def _sent_again(request: Request) -> tuple[str, int | None, int] | None:
+        """Say a file the server answered other than as unchanged, with its status and body.
+
+        The server answers 304, which Chromium reports as it is for a page's own
+        files, but as the 200 it holds for the page itself and for a fetch that
+        asks again, with no body come over the wire. So a 304, or a 200 with no
+        body, is unchanged; a file unanswered, or sent with a body, is not.
+        """
+        answer = request.response()
+        if answer is None:
+            return (request.url, None, 0)
+        body = request.sizes()["responseBodySize"]
+        if answer.status == NOT_MODIFIED or (answer.status == OK and body == 0):
+            return None
+        return (request.url, answer.status, body)
+
+    def _stays_home(self, visit: str) -> None:
+        origin = urlsplit(self.address).netloc
+        files = [request.url for request in self.asked]
+        elsewhere = [url for url in files + self.sockets if urlsplit(url).netloc != origin]
+        assert elsewhere == [], f"{visit} reached beyond the sites' server for {elsewhere}"
 
     def close(self) -> None:
         """Close the tab, failing if the page logged anything while it was open."""

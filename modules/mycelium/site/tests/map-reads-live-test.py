@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from live_page import LOOKS, SIZES, Opened, Served, serving
+from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
 from playwright.sync_api import Browser, Page, expect
 from stand_in_daemon import StandIn, standing_in
 
@@ -42,6 +42,8 @@ REDRAWN_MS = 2500
 # What node.json's realm comes to on the map, every part of the count.
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
+# What a first visit to the map may cost, drawn from the stand-in's cells.
+BUDGET = Budget(files=17, kilobytes=700, elements=590)
 # The browser's own line for a feed that couldn't connect, once the server is gone.
 UNREACHED = "WebSocket connection to"
 # The twin's size, past which the map once misdrew, and its orchestrations.
@@ -258,6 +260,18 @@ def test_a_records_words_are_drawn_as_words(
     page.wait_for_timeout(REDRAWN_MS)
     drawn = page.locator('b:has-text("Hull"), img[src="x"], [onmouseover]')
     expect(drawn, "a cell's title was drawn as markup somewhere on the map").to_have_count(0)
+
+
+def test_the_map_keeps_to_its_budget(browser: Browser, mycelium_served: Served) -> None:
+    root, _ = mycelium_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    try:
+        the_map_stands(opened.page, "live")
+        the_map_counts(opened.page, COUNTED, "the map didn't draw")
+        opened.keeps_to(BUDGET)
+        the_map_stands(opened.page, "live")
+    finally:
+        opened.close()
 
 
 @pytest.mark.parametrize("look", LOOKS)

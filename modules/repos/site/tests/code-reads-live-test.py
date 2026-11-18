@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from live_page import LOOKS, SIZES, Opened, Served, serving
+from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
 from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect
 from stand_in_daemon import StandIn, standing_in
 
@@ -55,6 +55,8 @@ BACK_MS = 15000
 UNREACHED = ["WebSocket connection to", "Failed to load resource: net::ERR_"]
 # The kinds the repos daemon serves, each told whole, as home.nix declares them.
 KINDS = ["reading", "repository", "checkout", "tree", "change"]
+# What a first visit to Code may cost, drawn from the stand-in's repositories.
+BUDGET = Budget(files=31, kilobytes=565, elements=260)
 CELLS_SITE = "cells/"
 
 
@@ -535,6 +537,19 @@ def test_a_burst_of_records_draws_the_list_a_few_times(
     writes = code_page.evaluate("() => globalThis.writes")
     allowed = math.ceil(lasted * DRAWS_A_SECOND) + 2
     assert writes <= allowed, f"21 records in {lasted:.1f} s drew the list {writes} times"
+
+
+def test_code_keeps_to_its_budget(code_opened: Opened) -> None:
+    says_it_stands(code_opened.page, "live")
+    # Counted once every part the feeds draw is there, so the count is the page's
+    # whole and not how far it got.
+    for key in ["github:owl/core", "local:~/src/notes"]:
+        expect(row(code_opened.page, key), f"Code drew no row for {key}").to_be_visible()
+    expect(
+        row(code_opened.page, "github:owl/core"), "the cell at work wasn't drawn"
+    ).to_contain_text("1 cell", timeout=PACE_MS)
+    code_opened.keeps_to(BUDGET)
+    says_it_stands(code_opened.page, "live")
 
 
 @pytest.mark.parametrize("look", LOOKS)
