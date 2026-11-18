@@ -368,7 +368,7 @@ pub const CARD_FRESH_FOR: i64 = 15 * 60;
 #[must_use]
 pub fn card_if_fresh(card: String, drawn: Option<i64>, now: i64) -> String {
     match drawn {
-        Some(at) if now - at <= CARD_FRESH_FOR => card,
+        Some(at) if (0..=CARD_FRESH_FOR).contains(&(now - at)) => card,
         _ => String::new(),
     }
 }
@@ -716,8 +716,9 @@ mod tests {
             "one older says nothing of merges, rather than its old waits"
         );
         assert!(
-            card_if_fresh(card.to_owned(), None, 1_000).is_empty(),
-            "nor does one with no time drawn"
+            card_if_fresh(card.to_owned(), None, 1_000).is_empty()
+                && card_if_fresh(card.to_owned(), Some(1_001), 1_000).is_empty(),
+            "nor one with no time drawn, or drawn after now"
         );
     }
 

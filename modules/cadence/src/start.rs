@@ -62,12 +62,13 @@ pub fn revive(
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
-    let seen = seen(mesh);
+    let seen = seen(mesh, now);
     let windows = windows();
     let node = node_holders(revive::realm_of(&reviving.restart));
     let mut said = Vec::new();
     let mut told = Vec::new();
     let mut stranded = Vec::new();
+    let mut defects = Vec::new();
     for s in revive::watched(
         &seen,
         &reviving.orchestrators,
@@ -137,7 +138,7 @@ pub fn revive(
                 );
                 if report {
                     memory.defects.insert(s.session.clone(), now / 3600);
-                    send(&reviving.orchestrator, "finding", line.clone())?;
+                    defects.push(line.clone());
                 }
                 line
             }
@@ -145,31 +146,18 @@ pub fn revive(
         said.push(line);
     }
     fs::write(&path, serde_json::to_vec_pretty(&memory)?)?;
-    say(reviving, &stranded, &told, send).map(|()| said)
-}
-
-/// Sends the stranded and started-again lines, gathered per peer. Every
-/// line is tried, so one that can't be sent keeps none of the others from
-/// their peers; the first failure is still said.
-fn say(
-    reviving: &Reviving,
-    stranded: &[(String, String)],
-    told: &[(String, String)],
-    send: &dyn Fn(&str, &str, String) -> io::Result<()>,
-) -> io::Result<()> {
-    let mut failed = Ok(());
-    for (to, text) in revive::gathered(stranded, "are left down in a host") {
-        failed = failed.and(send(&to, "finding", text));
+    // What was done this look is said in the journal whether or not its
+    // peers could be told.
+    let watcher = reviving.watcher.as_deref();
+    let lines = revive::Said {
+        defects: &defects,
+        stranded: &stranded,
+        told: &told,
+    };
+    if let Err(err) = revive::say(&reviving.orchestrator, watcher, &lines, send) {
+        eprintln!("cadence: telling of revivals: {err}");
     }
-    for (to, text) in revive::gathered(told, "were started again") {
-        let text = if reviving.watcher.as_ref() == Some(&to) {
-            format!("Revived: {text}")
-        } else {
-            text
-        };
-        failed = failed.and(send(&to, "fyi", text));
-    }
-    failed
+    Ok(said)
 }
 
 /// Whom `line`, of `s` started again, is for: the orchestrator, the session's
@@ -223,7 +211,10 @@ fn start(reviving: &Reviving, mesh: &Mesh, s: &Seen, cwd: &str, home: Option<u32
     let old = s.at.clone();
     let mut back = None;
     for _ in 0..COMING_UP {
-        back = seen(mesh)
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |since| i64::try_from(since.as_secs()).unwrap_or(0));
+        back = seen(mesh, now)
             .into_iter()
             .find(|n| n.session == s.session && n.running && n.at != old);
         if back.is_some() {
@@ -335,7 +326,7 @@ fn unit_processes(runtime: &Path) -> PathBuf {
 }
 
 /// Every session's presence, with whether its process runs.
-fn seen(mesh: &Mesh) -> Vec<Seen> {
+fn seen(mesh: &Mesh, now: i64) -> Vec<Seen> {
     // A boot that can't be read leaves every session ended with one, so
     // nothing is reopened that Joel didn't ask for.
     let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
@@ -345,7 +336,7 @@ fn seen(mesh: &Mesh) -> Vec<Seen> {
     let records = mesh.root.join("quest-workflow/sessions");
     // A host's unit is asked once a look, and only for a session that
     // doesn't run.
-    let rosters = mesh.rostered();
+    let rosters = mesh.rostered(now);
     let mut hosts_back: BTreeMap<String, bool> = BTreeMap::new();
     let mut hosting = |p: &Presence, running: bool| -> Option<Hosting> {
         revive::hosting(&rosters, &p.session, p.host(), |host| {

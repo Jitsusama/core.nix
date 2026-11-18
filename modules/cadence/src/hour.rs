@@ -195,13 +195,7 @@ fn gather(
         ],
     )
     .unwrap_or_default();
-    let card = folder.join("card.txt");
-    let drawn = fs::metadata(&card)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .and_then(|d| i64::try_from(d.as_secs()).ok());
-    let card_text = measures::card_if_fresh(text(&card), drawn, now);
+    let card_text = fresh_card(folder, now);
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
     let mut all = vec![
         measures::checked(misses, folder, checkouts)?,
@@ -245,6 +239,19 @@ fn gather(
     let owner = keeper.as_deref().unwrap_or(measures::ASKS);
     all.push(measures::pains(pains.as_deref(), now, owner));
     Ok(all)
+}
+
+/// The tick's card in `folder`, by when its file was written, if fresh as
+/// [`measures::card_if_fresh`] says, else nothing: the hour and the axes
+/// both read it, and neither may repeat a stopped tick's waits.
+pub fn fresh_card(folder: &Path, now: i64) -> String {
+    let card = folder.join("card.txt");
+    let drawn = fs::metadata(&card)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|d| i64::try_from(d.as_secs()).ok());
+    measures::card_if_fresh(fs::read_to_string(&card).unwrap_or_default(), drawn, now)
 }
 
 /// Each quest's folder the harness keeps on this machine.

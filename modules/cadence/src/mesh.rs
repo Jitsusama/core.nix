@@ -54,6 +54,10 @@ pub struct Presence {
 #[derive(Debug, Clone, Default)]
 pub struct Rosters(pub BTreeMap<String, Option<BTreeSet<String>>>);
 
+/// How long a roster that can't be read is taken as torn mid-rewrite, in
+/// seconds: three of the tick's looks, as long as a session settles.
+pub const TORN_AT_MOST: i64 = 15 * 60;
+
 impl Rosters {
     /// The hosts whose readable rosters hold `session`.
     #[must_use]
@@ -181,9 +185,12 @@ impl Mesh {
 
     /// Each pi host's roster, by the host's name, its file's stem: what
     /// the host resumes when it starts again, whatever a presence it left
-    /// behind still says.
+    /// behind still says. One that can't be read is torn only while it was
+    /// written in the last `TORN_AT_MOST` seconds before `now`: a host
+    /// writes its roster whole, so one unreadable longer is broken, and
+    /// kept as torn it would keep every standalone session from reviving.
     #[must_use]
-    pub fn rostered(&self) -> Rosters {
+    pub fn rostered(&self, now: i64) -> Rosters {
         #[derive(Deserialize)]
         struct Roster {
             #[serde(default)]
@@ -200,12 +207,26 @@ impl Mesh {
                 .filter_map(|e| e["sessionId"].as_str());
             Some(held.map(str::to_owned).collect())
         };
+        let torn_now = |path: &Path| {
+            fs::metadata(path)
+                .and_then(|meta| meta.modified())
+                .ok()
+                .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+                .and_then(|at| i64::try_from(at.as_secs()).ok())
+                .is_some_and(|at| (0..TORN_AT_MOST).contains(&(now - at)))
+        };
         Rosters(
             entries
                 .filter_map(Result::ok)
                 .map(|entry| entry.path())
                 .filter(|path| path.extension().is_some_and(|e| e == "json"))
-                .filter_map(|path| Some((path.file_stem()?.to_str()?.to_owned(), read(&path))))
+                .filter_map(|path| {
+                    let host = path.file_stem()?.to_str()?.to_owned();
+                    match read(&path) {
+                        Some(held) => Some((host, Some(held))),
+                        None => torn_now(&path).then_some((host, None)),
+                    }
+                })
                 .collect(),
         )
     }
@@ -555,7 +576,15 @@ mod tests {
         .unwrap();
         fs::write(rosters.join("work-attended.json"), "{\"sessi").unwrap();
         fs::write(rosters.join("work-background.json.lock"), "pid 5").unwrap();
-        let rostered = mesh.rostered();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| i64::try_from(d.as_secs()).unwrap())
+            .unwrap();
+        assert!(
+            mesh.rostered(now + TORN_AT_MOST).torn().is_empty(),
+            "a roster unreadable this long is broken, and rules nothing out"
+        );
+        let rostered = mesh.rostered(now);
         assert_eq!(rostered.holders("a"), ["work-background"]);
         assert!(
             rostered.holders("b").is_empty(),
@@ -584,8 +613,8 @@ mod tests {
         )
         .unwrap();
         assert!(
-            mesh.rostered().holds("work-background", "a")
-                && !mesh.rostered().holds("work-background", "7"),
+            mesh.rostered(now).holds("work-background", "a")
+                && !mesh.rostered(now).holds("work-background", "7"),
             "one badly typed entry doesn't drop the rest"
         );
     }

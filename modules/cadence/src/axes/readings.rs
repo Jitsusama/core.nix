@@ -624,7 +624,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
     Sources {
         often: often_on(state_home, &days),
         measures,
-        card: text(folder.join("card.txt")),
+        card: crate::hour::fresh_card(folder, now),
         dated: days
             .iter()
             .map(|d| (d.date.clone(), d.figures.clone()))
