@@ -576,22 +576,18 @@ pub fn run(
         sending
     });
     let reached = reached.and_then(|sending| {
+        let cuts = Cuts::default();
         let ran = loop {
             let mut tried = std::time::Instant::now();
-            // Copied to each builder that stands, since one stood again
-            // after a loss holds none of them.
-            let copied = match all_up(asked, &inputs, &lent, scratch, [ssh, nix]) {
+            // Copied to each builder that stands: one stood again holds none.
+            let copied = match all_up(asked, &inputs, &lent, scratch, [ssh, nix], &cuts) {
                 Err(untaken) => break Err(untaken),
                 Ok(copied) => copied,
             };
             let building = copied.is_ok();
             let ran = match copied {
                 Ok(()) => {
-                    let bring = match (&asked.out, asked.print) {
-                        (Some(out), _) => Bring::Folder(out),
-                        (None, true) => Bring::Store(nix, signatures),
-                        (None, false) => Bring::Nothing,
-                    };
+                    let bring = Bring::asked(asked, nix, signatures);
                     tried = std::time::Instant::now();
                     let ran = on_with(&lent, &sending, bring, scratch, ssh, asked.alone.wrap());
                     if !matches!(&ran, Ok(ran) if ran.status == UNREACHED) {
@@ -601,6 +597,7 @@ pub fn run(
                 }
                 Err(uncopied) => {
                     eprintln!("nix-offload: {}", uncopied.why);
+                    cuts.heard(&uncopied);
                     Ok(Ran {
                         on: Some(lent.host.clone()),
                         status: UNREACHED,
@@ -677,14 +674,16 @@ fn all_up(
     lent: &Builder,
     scratch: &Path,
     [ssh, nix]: [&str; 2],
+    cuts: &Cuts,
 ) -> Result<Result<(), Uncopied>, Untaken> {
+    let alive = &cuts.alive();
     match asked
         .derivations
-        .then(|| up(asked, lent, scratch, [ssh, nix]))
+        .then(|| up(asked, lent, scratch, [ssh, nix], alive))
     {
         Some(Err(uncopied)) if !uncopied.lost => Err(Untaken::Waits(uncopied.why)),
         Some(Err(uncopied)) => Ok(Err(uncopied)),
-        _ => match inputs_up(inputs, lent, nix) {
+        _ => match inputs_up(inputs, lent, nix, alive) {
             Err(uncopied) if !uncopied.lost => Err(Untaken::Stays(uncopied.why)),
             copied => Ok(copied),
         },
@@ -723,8 +722,13 @@ fn held_here(fetched: &[(String, String)], nix: &str) -> Vec<String> {
 }
 
 /// Sends `lent` the store paths the flake takes from this machine alone,
-/// when it takes any.
-fn inputs_up(inputs: &kept::Inputs, lent: &Builder, nix: &str) -> Result<(), Uncopied> {
+/// when it takes any, its ssh given the keepalive `alive`.
+fn inputs_up(
+    inputs: &kept::Inputs,
+    lent: &Builder,
+    nix: &str,
+    alive: &str,
+) -> Result<(), Uncopied> {
     if inputs.sent.is_empty() {
         return Ok(());
     }
@@ -739,7 +743,7 @@ fn inputs_up(inputs: &kept::Inputs, lent: &Builder, nix: &str) -> Result<(), Unc
         inputs.sent.join(", "),
         lent.host
     );
-    sent_up(&inputs.sent, lent, nix, send_within(0))
+    sent_up(&inputs.sent, lent, nix, send_within(0), alive)
 }
 
 /// What the builder's shell is sent to build `asked`: its command, and the
@@ -794,15 +798,16 @@ const UPLOAD_MEMORY: &str = "MemoryHigh=1G";
 /// held 5.6 to 12 GB of it, which its windows' memory then paid for. Each
 /// upload runs in a scope of its own beside its caller, where
 /// [`UPLOAD_MEMORY`] reclaims that cache as it goes. With no systemd or no
-/// user manager to ask, it runs as it is.
-fn upload(nix: &str) -> Command {
+/// user manager to ask, it runs as it is. Its ssh has the keepalive
+/// `alive` after what the run's own `NIX_SSHOPTS` says.
+fn upload(nix: &str, alive: &str) -> Command {
     let bus = std::env::var_os("XDG_RUNTIME_DIR")
         .is_some_and(|runtime| Path::new(&runtime).join("bus").exists());
-    uploading(nix, SYSTEMD_RUN.filter(|_| bus))
+    uploading(nix, SYSTEMD_RUN.filter(|_| bus), alive)
 }
 
 /// [`upload`], through `systemd_run` where one may be asked.
-fn uploading(nix: &str, systemd_run: Option<&str>) -> Command {
+fn uploading(nix: &str, systemd_run: Option<&str>, alive: &str) -> Command {
     // A scope runs its command in systemd-run's own process, so ending it
     // ends the copy, as when the copy runs alone.
     let mut command = systemd_run.map_or_else(
@@ -821,68 +826,109 @@ fn uploading(nix: &str, systemd_run: Option<&str>) -> Command {
             command
         },
     );
-    command.env("NIX_SSHOPTS", copy_sshopts());
+    command.env(
+        "NIX_SSHOPTS",
+        ahead_of_alive(std::env::var("NIX_SSHOPTS").ok().as_deref(), alive),
+    );
     command
 }
 
 /// What a copy up tells its ssh after what `NIX_SSHOPTS` says, unless
 /// that says otherwise: give the builder up once nothing at all has come
 /// back from it for 15 s. A builder taking what it's sent says so as it goes,
-/// ssh's window opening as its side reads, so one nothing reaches is cut.
-/// ssh's keepalive waits in the stream behind what it already wrote, up to
-/// its window of about 2 MB, so a copy moving faster than about 1 Mbit/s
-/// (2 MB in 15 s) is never cut, and a slower one is cut and sent again
-/// like one nothing reaches. On 13 November copies up
+/// ssh's window opening as its side reads, so one nothing reaches is cut,
+/// and so is one stalled 15 s, however it would have gone on. On 13
+/// November copies up
 /// to both lent builders stalled behind a full uplink and waited out the
 /// 60 s of keepalives the builder's ssh entry gives, while ssh's window
-/// and the relay's buffers held what Nix said it had sent.
+/// and the relay's buffers held what Nix said it had sent. That is a
+/// run's first copy's; one sent again after a cut waits longer
+/// ([`copy_alive`]).
 pub const COPY_ALIVE: &str = "-o ServerAliveInterval=5 -o ServerAliveCountMax=3";
 
-/// What `NIX_SSHOPTS` says here and then [`COPY_ALIVE`].
-fn copy_sshopts() -> String {
-    ahead_of_alive(std::env::var("NIX_SSHOPTS").ok().as_deref())
+/// The keepalive a run's copy up has after `cuts` of its copies went
+/// unanswered: 15 s for the first, then a minute. A copy up an uplink
+/// that's lossy and full can stall past 15 s and then move again: on 17
+/// November a 24 MB base sent beside a run copying to every lender was
+/// cut at 15 s on each try, while a 9.8 MB one reached its builder whole
+/// at 18 to 45 KB/s. A minute, not more, since a run waits at most four
+/// for a builder to stand again after a loss.
+fn copy_alive(cuts: u32) -> String {
+    format!(
+        "-o ServerAliveInterval={ALIVE_EVERY} -o ServerAliveCountMax={}",
+        alive_count(cuts)
+    )
 }
 
-/// `given` ahead of [`COPY_ALIVE`], since ssh keeps the first value it
+/// Seconds between a copy up's keepalives.
+const ALIVE_EVERY: u32 = 5;
+
+/// How many keepalives in a row a copy up may have go unanswered after
+/// `cuts` ([`copy_alive`]).
+fn alive_count(cuts: u32) -> u32 {
+    if cuts == 0 { 3 } else { 12 }
+}
+
+/// How long, in seconds, a copy up waits on an unanswered keepalive after
+/// `cuts` of its run's copies were cut ([`copy_alive`]).
+fn alive_for(cuts: u32) -> u32 {
+    ALIVE_EVERY * alive_count(cuts)
+}
+
+/// `given` ahead of the copy's keepalive `alive`, since ssh keeps the first value it
 /// reads for each option: a run whose copy is too slow for 15 s, behind
 /// an uplink others fill, can then give it longer. On 16 November a
 /// 267 MB copy up was cut four times that way, its run's own
 /// `ServerAliveCountMax` read second and ignored.
-fn ahead_of_alive(given: Option<&str>) -> String {
+fn ahead_of_alive(given: Option<&str>, alive: &str) -> String {
     match given {
-        Some(given) if !given.trim().is_empty() => format!("{given} {COPY_ALIVE}"),
-        _ => COPY_ALIVE.to_owned(),
+        Some(given) if !given.trim().is_empty() => format!("{given} {alive}"),
+        _ => alive.to_owned(),
     }
 }
+
+/// What ssh says when its keepalive goes unanswered, as `Timeout, server
+/// localhost not responding.`: a stall, which waiting longer may outlast,
+/// rather than a connection refused or reset, which it can't.
+const CUT_SAID: &str = "not responding";
 
 /// What Nix, or the ssh under it, says when ssh lost the builder midway
 /// through a copy, rather than the copy failing on its own account.
 const LOST_SAID: [&str; 5] = [
-    "not responding",
+    CUT_SAID,
     "Nix daemon disconnected",
     "cannot open connection to remote store",
     "Connection closed",
     "Connection reset",
 ];
 
-/// Why a copy up failed, and whether ssh lost the builder under it, which
-/// a builder standing again, or the one beside, may take instead.
+/// Why a copy up failed, whether ssh lost the builder under it, which a
+/// builder standing again, or the one beside, may take instead, and
+/// whether that was ssh's keepalive going unanswered, after which the
+/// copy sent again waits longer ([`copy_alive`]).
 struct Uncopied {
     why: String,
     lost: bool,
+    cut: bool,
 }
 
 impl Uncopied {
     fn failed(why: String) -> Self {
-        Self { why, lost: false }
+        Self {
+            why,
+            lost: false,
+            cut: false,
+        }
     }
 
     /// `why`, or why and that ssh lost the builder, as `copying` heard.
     fn of(why: String, copying: &Copying) -> Self {
-        if copying.lost() {
+        let (lost, cut) = copying.heard();
+        if lost {
             Self {
                 why: format!("{why}, since ssh lost it"),
-                lost: true,
+                lost,
+                cut,
             }
         } else {
             Self::failed(why)
@@ -891,10 +937,38 @@ impl Uncopied {
 }
 
 /// A copy running, whose standard error is passed on as it comes, heard
-/// for whether it says ssh lost the builder.
+/// for whether it says ssh lost the builder, and whether its keepalive
+/// went unanswered.
 struct Copying {
     child: std::process::Child,
-    heard: std::sync::mpsc::Receiver<bool>,
+    heard: std::sync::mpsc::Receiver<(bool, bool)>,
+}
+
+/// How many of a run's copies up went unanswered by ssh's keepalive, so
+/// its later copies wait longer ([`copy_alive`]): kept by each run, as one
+/// process sends to several builders.
+#[derive(Default)]
+pub struct Cuts(std::cell::Cell<u32>);
+
+impl Cuts {
+    /// The keepalive the run's next copy up has.
+    pub fn alive(&self) -> String {
+        copy_alive(self.0.get())
+    }
+
+    /// Counts `uncopied` when its keepalive went unanswered, and says how
+    /// long the next copy waits.
+    fn heard(&self, uncopied: &Uncopied) {
+        if uncopied.cut {
+            self.0.set(self.0.get().saturating_add(1));
+            eprintln!(
+                "nix-offload: its keepalive went unanswered, so a copy sent again in this run \
+                 waits up to {} s for the builder, where NIX_SSHOPTS gives no keepalive of its \
+                 own",
+                alive_for(self.0.get())
+            );
+        }
+    }
 }
 
 impl Copying {
@@ -904,26 +978,28 @@ impl Copying {
         let (said, heard) = std::sync::mpsc::channel();
         if let Some(errors) = child.stderr.take() {
             std::thread::spawn(move || {
-                let mut lost = false;
+                let (mut lost, mut cut) = (false, false);
                 for line in std::io::BufReader::new(errors)
                     .split(b'\n')
                     .map_while(Result::ok)
                 {
                     let line = String::from_utf8_lossy(&line);
                     lost |= LOST_SAID.iter().any(|said| line.contains(said));
+                    cut |= line.contains(CUT_SAID);
                     eprintln!("{line}");
                 }
-                let _ = said.send(lost);
+                let _ = said.send((lost, cut));
             });
         }
         Ok(Self { child, heard })
     }
 
-    /// Whether it said ssh lost the builder, once it has ended.
-    fn lost(&self) -> bool {
+    /// Whether it said ssh lost the builder, and whether its keepalive
+    /// went unanswered, once it has ended. It's read once.
+    fn heard(&self) -> (bool, bool) {
         self.heard
             .recv_timeout(std::time::Duration::from_secs(1))
-            .unwrap_or(false)
+            .unwrap_or((false, false))
     }
 }
 
@@ -932,7 +1008,7 @@ impl Copying {
 /// elsewhere, since no cache holds it.
 pub fn carried_up(path: &str, lent: &Builder, nix: &str, within: std::time::Duration) -> bool {
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
-    uploading(nix, None)
+    uploading(nix, None, COPY_ALIVE)
         .args(["copy", "--to", &lent.store, path])
         .env("TMPDIR", "/tmp")
         .stdin(Stdio::null())
@@ -950,28 +1026,36 @@ pub fn carried_up(path: &str, lent: &Builder, nix: &str, within: std::time::Dura
 /// or content-addressed, since the builder trusts no account: the source
 /// a lock pins is named by its content, and what this machine builds it
 /// signs. Where one can't go, nothing that reads it is sent.
+/// Its ssh has the keepalive the run's `cuts` give, and a cut is counted
+/// there.
 pub fn paths_up(
     sent: &[String],
     lent: &Builder,
     nix: &str,
     within: std::time::Duration,
+    cuts: &Cuts,
 ) -> Result<(), String> {
-    sent_up(sent, lent, nix, within).map_err(|uncopied| uncopied.why)
+    sent_up(sent, lent, nix, within, &cuts.alive()).map_err(|uncopied| {
+        cuts.heard(&uncopied);
+        uncopied.why
+    })
 }
 
-/// [`paths_up`], saying whether ssh lost the builder when it fails.
+/// [`paths_up`], its ssh given the keepalive `alive`, saying whether ssh
+/// lost the builder when it fails.
 fn sent_up(
     sent: &[String],
     lent: &Builder,
     nix: &str,
     within: std::time::Duration,
+    alive: &str,
 ) -> Result<(), Uncopied> {
     if sent.is_empty() {
         return Ok(());
     }
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let mut copying = Copying::start(
-        upload(nix)
+        upload(nix, alive)
             .args(["copy", "--to", &lent.store, "--substitute-on-destination"])
             .args(sent)
             .env("TMPDIR", "/tmp"),
@@ -1140,13 +1224,14 @@ fn up(
     lent: &Builder,
     scratch: &Path,
     [ssh, nix]: [&str; 2],
+    alive: &str,
 ) -> Result<(), Uncopied> {
     let paths: Vec<&str> = asked
         .attributes
         .iter()
         .map(|path| path.split('^').next().unwrap_or(path))
         .collect();
-    derivations_up(&paths, lent, scratch, rank(asked), [ssh, nix])?;
+    derivations_up(&paths, lent, scratch, rank(asked), [ssh, nix], alive)?;
     held_up(asked, &paths, lent, scratch, [ssh, nix]);
     Ok(())
 }
@@ -1167,8 +1252,9 @@ fn derivations_up(
     scratch: &Path,
     rank: Rank,
     [ssh, nix]: [&str; 2],
+    alive: &str,
 ) -> Result<(), Uncopied> {
-    let mut copying = upload(nix);
+    let mut copying = upload(nix, alive);
     match closure(paths, nix).and_then(|closure| lacking(lent, &closure, scratch, ssh)) {
         Some(lacking) if lacking.is_empty() => return Ok(()),
         Some(lacking) => {
@@ -1493,7 +1579,7 @@ fn sent_held(
     );
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let within = send_within(size);
-    let sent = upload(nix)
+    let sent = upload(nix, COPY_ALIVE)
         .args(["copy", "--to", &lent.store, "--substitute-on-destination"])
         .args(&sending)
         .env("TMPDIR", "/tmp")
@@ -2660,6 +2746,19 @@ pub enum Bring<'a> {
     /// Its output paths, copied into this machine's store by this nix,
     /// their signatures taken so.
     Store(&'a str, Signatures),
+}
+
+impl<'a> Bring<'a> {
+    /// What `asked` wants back: its output in the folder it named, its
+    /// output paths in this store through `nix`, taken by `signatures`,
+    /// when it prints them, or else nothing.
+    fn asked(asked: &'a Asked, nix: &'a str, signatures: Signatures) -> Self {
+        match (&asked.out, asked.print) {
+            (Some(out), _) => Bring::Folder(out),
+            (None, true) => Bring::Store(nix, signatures),
+            (None, false) => Bring::Nothing,
+        }
+    }
 }
 
 /// Whether what a builder built is checked for a signature Nix here
@@ -4538,7 +4637,7 @@ fn copy_pinned(folder: &Path, host: &str, nix: &str) {
     // socket's path may be. What this machine built before it signed, or
     // on a machine that doesn't sign, carries no signature the machine
     // nearby trusts, so it takes the copy on its account's trust.
-    let copied = upload(nix)
+    let copied = upload(nix, COPY_ALIVE)
         .args([
             "copy",
             "--no-check-sigs",
@@ -4761,19 +4860,43 @@ mod tests {
     fn a_runs_own_ssh_options_come_before_the_copys_keepalive() {
         let given = "-o ServerAliveCountMax=40 -o Compression=yes";
         assert_eq!(
-            ahead_of_alive(Some(given)),
+            ahead_of_alive(Some(given), COPY_ALIVE),
             format!("{given} {COPY_ALIVE}"),
             "the run's own options came after the copy's, where ssh ignores them"
         );
         assert_eq!(
-            ahead_of_alive(Some(" ")),
+            ahead_of_alive(Some(" "), COPY_ALIVE),
             COPY_ALIVE,
             "blank options weren't left out"
         );
         assert_eq!(
-            ahead_of_alive(None),
+            ahead_of_alive(None, COPY_ALIVE),
             COPY_ALIVE,
             "with none given, the keepalive was lost"
+        );
+    }
+
+    #[test]
+    fn a_copy_sent_again_after_its_keepalive_went_unanswered_waits_a_minute() {
+        let waits = |cuts: u32| {
+            let alive = copy_alive(cuts);
+            let count: u64 = alive.rsplit('=').next().unwrap().parse().unwrap();
+            assert!(
+                alive.starts_with("-o ServerAliveInterval=5 "),
+                "the keepalive's interval moved: {alive}"
+            );
+            5 * count
+        };
+        assert_eq!(copy_alive(0), COPY_ALIVE, "the first copy's cut moved");
+        assert_eq!(
+            [1, 2, 40].map(waits),
+            [60, 60, 60],
+            "a copy sent again wasn't given a minute"
+        );
+        assert_eq!(
+            [0, 1, 40].map(waits),
+            [0, 1, 40].map(|cuts| u64::from(alive_for(cuts))),
+            "what the run says it waits isn't what ssh is given"
         );
     }
 
@@ -4785,7 +4908,7 @@ mod tests {
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect()
         };
-        let scoped = uploading("/bin/nix", Some("/bin/systemd-run"));
+        let scoped = uploading("/bin/nix", Some("/bin/systemd-run"), COPY_ALIVE);
         assert_eq!(scoped.get_program(), "/bin/systemd-run");
         assert_eq!(
             args(&scoped),
@@ -4802,7 +4925,7 @@ mod tests {
             ],
             "beside its caller, its cache bounded"
         );
-        let alone = uploading("/bin/nix", None);
+        let alone = uploading("/bin/nix", None, COPY_ALIVE);
         assert_eq!(alone.get_program(), "/bin/nix");
         assert_eq!(
             args(&alone),
