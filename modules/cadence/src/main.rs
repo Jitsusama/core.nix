@@ -652,7 +652,8 @@ fn gather(
 /// Each realm's other machines whose newest update failed, as the node
 /// keeping it says; none from a realm whose node doesn't answer.
 fn failing_elsewhere(realms: &[String]) -> Vec<elsewhere::Failing> {
-    // A Mac keeps no /proc, so the name comes from the kit's reader.
+    // Read as the kit reads it, so it matches mycelium's names as the
+    // other tools' readings do.
     let this = terminal_kit::environment::machine();
     realms
         .iter()
