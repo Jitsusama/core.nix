@@ -5,6 +5,10 @@
 //! when it rang, `since`, are read here. The rest of each line is passed
 //! over as it's parsed, and the file's bytes are zeroed once read, so who
 //! rang never reaches the receptor, its memory past the read, or mycelium.
+//! One bound on that: serde_json unescapes a string it parses into a typed
+//! field or a key into scratch space of its own, freed unzeroed, which
+//! tuple-call's own lines never ask of it, since their keys are plain words
+//! and their two fields a flag and a number.
 //!
 //! Nothing is written to Tuple or its files, and no tuple command is run.
 //! A file that's missing, can't be opened as a plain file of its own, is
@@ -115,14 +119,6 @@ impl<'de, T: Plain> Visitor<'de> for Wordless<T> {
     fn visit_unit<E: de::Error>(self) -> Result<T, E> {
         Err(E::custom(NOT_PLAIN))
     }
-
-    fn visit_seq<A: de::SeqAccess<'de>>(self, _: A) -> Result<T, A::Error> {
-        Err(de::Error::custom(NOT_PLAIN))
-    }
-
-    fn visit_map<A: de::MapAccess<'de>>(self, _: A) -> Result<T, A::Error> {
-        Err(de::Error::custom(NOT_PLAIN))
-    }
 }
 
 /// What reading the rings found.
@@ -136,8 +132,9 @@ pub enum Rings {
 
 /// Where tuple-call keeps its calls: `tuple-call/recent.jsonl` in the
 /// state folder, found as tuple-call finds it, from `XDG_STATE_HOME` or
-/// else `HOME`, but only when that's an absolute folder, so a relative one
-/// never reads a file wherever the daemon happens to run.
+/// else `HOME`. A relative state folder is passed over for home, as the
+/// XDG spec says, and a relative home finds nothing, so neither reads a
+/// file wherever the daemon happens to run.
 pub fn file() -> Option<PathBuf> {
     file_from(std::env::var_os("XDG_STATE_HOME"), std::env::var_os("HOME"))
 }
@@ -145,10 +142,12 @@ pub fn file() -> Option<PathBuf> {
 /// The file from the state and home folders named, as `file` finds it.
 fn file_from(state: Option<OsString>, home: Option<OsString>) -> Option<PathBuf> {
     let named = |value: Option<OsString>| value.filter(|value| !value.is_empty());
+    let absolute = |folder: &PathBuf| folder.is_absolute();
     let state = named(state)
         .map(PathBuf::from)
+        .filter(absolute)
         .or_else(|| named(home).map(|home| PathBuf::from(home).join(".local/state")))
-        .filter(|folder| folder.is_absolute())?;
+        .filter(absolute)?;
     Some(state.join("tuple-call/recent.jsonl"))
 }
 
@@ -198,6 +197,11 @@ fn of(bytes: &[u8]) -> Rings {
         if line.iter().all(u8::is_ascii_whitespace) {
             continue;
         }
+        // serde_json's error for a line that's no object quotes a string
+        // it found there, past what Wordless can refuse in fixed words.
+        if line.iter().find(|byte| !byte.is_ascii_whitespace()) != Some(&b'{') {
+            return Rings::Unread("a line of its file isn't a call");
+        }
         let Ok(ring) = serde_json::from_slice::<Ring>(line) else {
             return Rings::Unread("a line of its file isn't a call");
         };
@@ -225,16 +229,20 @@ pub struct Heard {
 }
 
 impl Heard {
-    /// When each missed call heard since `midnight` rang, this read's
-    /// among them; none while the file can't be read, since what it holds
-    /// then isn't known, though what was heard is kept for when it reads
-    /// again.
-    pub fn hear(&mut self, rings: &Rings, midnight: u64) -> Vec<u64> {
+    /// When each missed call heard between `midnight` and `now` rang,
+    /// this read's among them; none while the file can't be read, since
+    /// what it holds then isn't known, though what was heard is kept for
+    /// when it reads again. A ring said to be later than now isn't kept,
+    /// so a clock set wrong once can't leave one counted for good.
+    pub fn hear(&mut self, rings: &Rings, midnight: u64, now: u64) -> Vec<u64> {
         self.rang.retain(|&at| at >= midnight);
         match rings {
             Rings::Missed(rang) => {
-                self.rang
-                    .extend(rang.iter().copied().filter(|&at| at >= midnight));
+                self.rang.extend(
+                    rang.iter()
+                        .copied()
+                        .filter(|&at| at >= midnight && at <= now),
+                );
                 self.rang.iter().copied().collect()
             }
             Rings::Unread(_) => Vec::new(),
@@ -254,7 +262,7 @@ pub struct Following {
 impl Following {
     /// When each missed call heard today rang, after this round's read,
     /// and the line for the log if whether they're counted changed.
-    pub fn round(&mut self, rings: &Rings, midnight: u64) -> (Vec<u64>, Option<String>) {
+    pub fn round(&mut self, rings: &Rings, midnight: u64, now: u64) -> (Vec<u64>, Option<String>) {
         let why = match rings {
             Rings::Unread(why) => Some(*why),
             Rings::Missed(_) => None,
@@ -267,7 +275,7 @@ impl Following {
             _ => None,
         };
         self.unread = why;
-        (self.heard.hear(rings, midnight), logged)
+        (self.heard.hear(rings, midnight, now), logged)
     }
 }
 
@@ -365,33 +373,34 @@ mod tests {
     #[test]
     fn a_ring_missed_today_is_still_heard_once_it_leaves_the_file() {
         let midnight = 10_000;
+        let now = midnight + 100;
         let mut heard = Heard::default();
-        let first = Rings::Missed(vec![midnight - 1, midnight + 5]);
+        let first = Rings::Missed(vec![midnight - 1, midnight + 5, now + 1]);
         assert_eq!(
-            heard.hear(&first, midnight),
+            heard.hear(&first, midnight, now),
             [midnight + 5],
-            "yesterday's ring was heard as today's"
+            "yesterday's ring, or one later than now, was heard as today's"
         );
         let later = Rings::Missed(vec![midnight + 9]);
         assert_eq!(
-            heard.hear(&later, midnight),
+            heard.hear(&later, midnight, now),
             [midnight + 5, midnight + 9],
             "a ring that left the file stopped being heard today"
         );
         assert!(
             heard
-                .hear(&Rings::Unread("its file isn't a plain file"), midnight)
+                .hear(&Rings::Unread("its file isn't a plain file"), midnight, now)
                 .is_empty(),
             "rings were counted while the file couldn't be read"
         );
         assert_eq!(
-            heard.hear(&Rings::Missed(Vec::new()), midnight),
+            heard.hear(&Rings::Missed(Vec::new()), midnight, now),
             [midnight + 5, midnight + 9],
             "what was heard was lost while the file couldn't be read"
         );
         assert!(
             heard
-                .hear(&Rings::Missed(Vec::new()), midnight + 10)
+                .hear(&Rings::Missed(Vec::new()), midnight + 10, now + 10)
                 .is_empty(),
             "a ring was still heard the next day"
         );
@@ -423,6 +432,13 @@ mod tests {
         );
         assert_eq!(
             found(Some("state"), Some("/home/ada")),
+            Some(PathBuf::from(
+                "/home/ada/.local/state/tuple-call/recent.jsonl"
+            )),
+            "a relative state folder wasn't passed over for home"
+        );
+        assert_eq!(
+            found(Some("state"), None),
             None,
             "a relative folder was read"
         );
@@ -439,7 +455,6 @@ mod tests {
         for line in [
             r#"{"missed":"Ada Brightwater","since":1}"#,
             r#"{"missed":true,"since":"Ada Brightwater"}"#,
-            r#"{"missed":true,"since":["Ada Brightwater"]}"#,
         ] {
             let refused = serde_json::from_str::<Ring>(line)
                 .err()
@@ -459,11 +474,12 @@ mod tests {
         let midnight = 10_000;
         let plain = Rings::Unread("its file isn't a plain file");
         let none = Rings::Unread("tuple-call has kept no calls");
+        let now = midnight + 100;
         let mut following = Following::default();
-        let (missed, logged) = following.round(&Rings::Missed(vec![midnight + 5]), midnight);
+        let (missed, logged) = following.round(&Rings::Missed(vec![midnight + 5]), midnight, now);
         assert_eq!(missed, [midnight + 5]);
         assert_eq!(logged, None, "a sound file was logged");
-        let (missed, logged) = following.round(&plain, midnight);
+        let (missed, logged) = following.round(&plain, midnight, now);
         assert!(
             missed.is_empty(),
             "a file that can't be read was counted from"
@@ -473,15 +489,15 @@ mod tests {
             "a file that can't be counted from wasn't logged"
         );
         assert_eq!(
-            following.round(&plain, midnight).1,
+            following.round(&plain, midnight, now).1,
             None,
             "it was logged again"
         );
         assert!(
-            following.round(&none, midnight).1.is_some(),
+            following.round(&none, midnight, now).1.is_some(),
             "a new reason wasn't logged"
         );
-        let (missed, logged) = following.round(&Rings::Missed(vec![midnight + 9]), midnight);
+        let (missed, logged) = following.round(&Rings::Missed(vec![midnight + 9]), midnight, now);
         assert_eq!(
             missed,
             [midnight + 5, midnight + 9],

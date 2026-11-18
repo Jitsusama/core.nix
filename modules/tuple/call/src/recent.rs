@@ -18,6 +18,8 @@ use serde_json::{Value, json};
 /// How many calls are kept, ended and missed together: as many as the
 /// launcher's Recent lists, nine, so 1 to 9 pick one (Recents.qml), and
 /// nothing else lists them, so a longer history would be kept for nobody.
+/// call-transcripts bounds the file it reads from this (rings.rs's
+/// LARGEST_FILE), so a larger number must raise that bound too.
 pub const KEPT: usize = 9;
 
 /// Someone a call was with, as Tuple knew them then.

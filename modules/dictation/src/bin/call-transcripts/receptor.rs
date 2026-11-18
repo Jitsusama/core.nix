@@ -174,7 +174,7 @@ pub fn keep(receptor: &Receptor, book: &book::Shared) {
             Rings::Unread("no absolute folder names where tuple-call keeps its calls"),
             rings::read,
         );
-        let (missed, logged) = following.round(&rang, midnight);
+        let (missed, logged) = following.round(&rang, midnight, now);
         if let Some(line) = logged {
             eprintln!("call-transcripts: {line}");
         }
@@ -425,7 +425,7 @@ mod tests {
         )
         .unwrap();
         let held = book::Book::read(&calls);
-        let (missed, _) = rings::Following::default().round(&rings::read(&recent), MIDNIGHT);
+        let (missed, _) = rings::Following::default().round(&rings::read(&recent), MIDNIGHT, NOW);
         let counts = counted(&held, &missed, NOW, MIDNIGHT);
         assert_eq!(
             counts,
