@@ -29,6 +29,7 @@ use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+use terminal_kit::Exit;
 
 /// Where a job's folder lies within a quest's scratch.
 pub const HANDOVER: &str = "handover/elsewhere";
@@ -62,6 +63,21 @@ pub const CROSSES_WITHIN: u64 = 300;
 /// How many seconds the near side waits for what comes home before it
 /// says it is waiting: past a few looks, so a share keeping pace is quiet.
 const SAYS_IT_WAITS: u64 = 10;
+
+/// What the far line ends with when it refuses the job's tree before the
+/// job starts, as it would again on another try.
+pub const REFUSES: u8 = 77;
+
+/// What the far line ends with when the job's files never reached it
+/// before the job starts, which another try may not meet.
+pub const NEVER_REACHED: u8 = 75;
+
+/// What marks a name in the far list that isn't UTF-8, in place of its
+/// size.
+const UNREADABLE: &str = "?";
+
+/// How many of a kind of miss are named, before the rest are counted.
+const NAMED: usize = 10;
 
 /// Whether `quest` is a quest's id as the harness mints it, so it names a
 /// folder and nothing more.
@@ -321,16 +337,16 @@ waited=0
 until arrived; do
   if [ "$waited" -ge {CROSSES_WITHIN} ]; then
     printf "elsewhere: the job's files didn't reach %s within {CROSSES_WITHIN}s, waiting on %s\n" "$(uname -n)" "$waiting" >&2
-    exit 75
+    exit {NEVER_REACHED}
   fi
   sleep 1
   waited=$((waited + 1))
 done
 rm -rf "$work" && mkdir -p "$work" && copied || {{
   cd "$HOME" && rm -rf "$work" "$job/{TREE}"
-  exit 70
+  exit {REFUSES}
 }}
-cd {folder} || exit 70
+cd {folder} || exit {REFUSES}
 echo {started}
 (
   {{ {setup}
@@ -368,7 +384,8 @@ fn bringing(kind: &Kind) -> String {
   find "$path" -type l ! -path '*/.*' ! -name '.*' \
     -exec printf "elsewhere: %s is a link, so it isn't brought back\n" {{}} \; >&2
   find "$path" -type f ! -path '*/.*' ! -name '.*'
-done | {{
+# A file two of the paths hold crosses once, and counts once.
+done | LC_ALL=C sort -u | {{
   n=0 files=0 bytes=0 most_files={MOST_FILES} most_bytes={MOST_BYTES}
   # One that can't be read or copied keeps its number, listed with no
   # size, so the near side lands the rest and says it's missing.
@@ -431,6 +448,18 @@ pub fn relay(out: impl Read, id: &str) -> bool {
     true
 }
 
+/// How a far run that ended `code` before the job started ends here, and
+/// what the far machine did: the far line's own refusal meets the next
+/// try again, files that never reached it may not, and anything else is
+/// mycelium's.
+pub fn unstarted(code: u8) -> (Exit, &'static str) {
+    match code {
+        REFUSES => (Exit::Refused, "refused its tree"),
+        NEVER_REACHED => (Exit::TryAgain, "never received its files"),
+        _ => (Exit::Unavailable, "wasn't reached through mycelium"),
+    }
+}
+
 /// A file brought back: its number in the far list, which names it in
 /// the handover, its path in the job's folder, and its size.
 #[derive(Debug, PartialEq, Eq)]
@@ -445,7 +474,7 @@ pub struct Brought {
 /// of it, is passed over, since the far side doesn't choose what lands
 /// here.
 pub fn listed(text: &str, brings_back: &[String]) -> Option<Vec<Brought>> {
-    let lines: Vec<&str> = text.lines().collect();
+    let lines: Vec<&str> = lines(text).collect();
     let (last, files) = lines.split_last()?;
     if *last != END {
         return None;
@@ -483,7 +512,7 @@ fn brought_back(path: &str, brings_back: &[String]) -> bool {
 /// What the far side's list `text` says it kept back as past what a share
 /// holds, each its size and path, of what the kind brings back.
 fn kept<'a>(text: &'a str, brings_back: &'a [String]) -> impl Iterator<Item = (u64, &'a str)> {
-    text.lines().filter_map(move |line| {
+    lines(text).filter_map(move |line| {
         let (size, path) = line.strip_prefix('>')?.split_once('\t')?;
         let size = size.parse().ok()?;
         brought_back(path, brings_back).then_some((size, path))
@@ -542,34 +571,35 @@ pub fn bring_back(
     if brings_back.is_empty() {
         return Ok(0);
     }
-    let (mut waited, mut most, mut seen) = (0, 0, None);
+    let (mut waited, mut most, mut seen, mut said) = (0, 0, None, false);
     loop {
-        let text = fs::read_to_string(job.join(BROUGHT)).unwrap_or_default();
+        let text = readable(&fs::read(job.join(BROUGHT)).unwrap_or_default());
         if let Some(files) = listed(&text, brings_back) {
             if let Some(why) = too_many(&files) {
                 return Err(Missed::Refused(why));
             }
-            let crossed: u64 = files
-                .iter()
-                .map(|brought| crossing_so_far(job, brought))
-                .sum();
             let (whole, short): (Vec<_>, Vec<_>) = files
                 .into_iter()
-                .partition(|brought| crossing_so_far(job, brought) == brought.size);
+                .partition(|brought| crossed(job, brought) == Some(brought.size));
             if short.is_empty() {
                 return landed(job, folder, brings_back, &text, &whole, &[]);
             }
-            // A share still carrying it is no share that lost it.
-            if crossed > most {
-                (most, waited) = (crossed, 0);
-            }
             seen = Some((text, whole, short));
+        }
+        // A share still carrying it is no share that lost it, whether or
+        // not its list has crossed yet.
+        let arrived = arrived(job);
+        if arrived > most {
+            (most, waited) = (arrived, 0);
         }
         if waited >= within {
             break;
         }
-        if waited == SAYS_IT_WAITS {
-            eprintln!("waiting up to {within}s for what it made to come home");
+        if waited == SAYS_IT_WAITS && !said {
+            eprintln!(
+                "waiting for what it made to come home, until {within}s pass with none of it crossing"
+            );
+            said = true;
         }
         // Each end of a shared quest looks once a second, so looking more
         // often finds nothing new.
@@ -584,14 +614,67 @@ pub fn bring_back(
     }
 }
 
+/// The far side's list in `bytes`, a line each, with a name that isn't
+/// UTF-8 marked `?` in place of its size, so the line keeps its number
+/// and the rest still reads.
+fn readable(bytes: &[u8]) -> String {
+    let mut text = String::new();
+    for line in bytes.split_inclusive(|&byte| byte == b'\n') {
+        if let Ok(line) = std::str::from_utf8(line) {
+            text.push_str(line);
+            continue;
+        }
+        let line = String::from_utf8_lossy(line);
+        text.push_str(UNREADABLE);
+        text.push('\t');
+        text.push_str(line.split_once('\t').map_or(&*line, |(_, path)| path));
+    }
+    text
+}
+
+/// The lines of `text`, each just as the far side wrote it, a carriage
+/// return at its end included, since a name may end in one.
+fn lines(text: &str) -> impl Iterator<Item = &str> {
+    text.split_terminator('\n')
+}
+
 /// How much of `brought` has crossed into the handover folder `job`, up
-/// to its listed size: none unless it's a plain file, since a link
-/// crossing would be followed.
-fn crossing_so_far(job: &Path, brought: &Brought) -> u64 {
+/// to its listed size, or nothing while none of it has: a plain file
+/// only, since a link crossing would be followed.
+fn crossed(job: &Path, brought: &Brought) -> Option<u64> {
     fs::symlink_metadata(job.join(BACK).join(brought.number.to_string()))
         .ok()
         .filter(fs::Metadata::is_file)
-        .map_or(0, |meta| meta.len().min(brought.size))
+        .map(|meta| meta.len().min(brought.size))
+}
+
+/// How much has reached the handover folder `job`: its list and every
+/// plain file in its back folder, under whatever name a share carries one,
+/// so a share still carrying is told from one that stopped.
+fn arrived(job: &Path) -> u64 {
+    let list = fs::symlink_metadata(job.join(BROUGHT))
+        .ok()
+        .filter(fs::Metadata::is_file)
+        .map_or(0, |meta| meta.len());
+    fs::read_dir(job.join(BACK))
+        .into_iter()
+        .flatten()
+        .flatten()
+        // An entry's metadata is its own, a link's never what it leads to.
+        .filter_map(|entry| entry.metadata().ok())
+        .filter(fs::Metadata::is_file)
+        .fold(list, |arrived, meta| arrived.saturating_add(meta.len()))
+}
+
+/// At most `NAMED` of `said`, and how many more, so one line can't name
+/// thousands.
+fn some_of(mut said: Vec<String>, more: &str) -> Vec<String> {
+    if said.len() > NAMED {
+        let rest = said.len() - NAMED;
+        said.truncate(NAMED);
+        said.push(format!("{rest} more{more}"));
+    }
+    said
 }
 
 /// Lands `files`, all crossed whole into the handover folder `job`, in
@@ -630,21 +713,26 @@ fn landed(
             format!("{path} is past the {MOST_FILES} files or {MOST_BYTES} bytes a share carries")
         }
     }));
+    refused.extend(
+        marked(text, UNREADABLE, brings_back)
+            .map(|path| format!("{path} isn't named in UTF-8, so it can't land here")),
+    );
+    let refused = some_of(refused, " like them");
+    let unlanded = some_of(unlanded, " like them");
     let mut missed: Vec<String> = refused.iter().chain(&unlanded).cloned().collect();
-    let lost: Vec<&str> = text
-        .lines()
-        .filter_map(|line| line.strip_prefix("-\t"))
-        .filter(|path| brought_back(path, brings_back))
-        .collect();
+    let lost: Vec<String> = marked(text, "-", brings_back).map(str::to_owned).collect();
     if !lost.is_empty() {
         missed.push(format!(
             "{} didn't come back from the far side",
-            lost.join(", ")
+            some_of(lost, "").join(", ")
         ));
     }
     if !short.is_empty() {
-        let short: Vec<&str> = short.iter().map(|brought| brought.path.as_str()).collect();
-        missed.push(format!("{} didn't cross home", short.join(", ")));
+        let short = short.iter().map(|brought| brought.path.clone()).collect();
+        missed.push(format!(
+            "{} didn't cross home",
+            some_of(short, "").join(", ")
+        ));
     }
     if missed.is_empty() {
         return Ok(landed);
@@ -662,6 +750,19 @@ fn landed(
         Missed::Unlanded(missed)
     } else {
         Missed::Lost(missed)
+    })
+}
+
+/// The paths the far side's list `text` marks with `mark` in place of a
+/// size, of what the kind brings back.
+fn marked<'a>(
+    text: &'a str,
+    mark: &'a str,
+    brings_back: &'a [String],
+) -> impl Iterator<Item = &'a str> {
+    lines(text).filter_map(move |line| {
+        let (marks, path) = line.split_once('\t')?;
+        (marks == mark && brought_back(path, brings_back)).then_some(path)
     })
 }
 

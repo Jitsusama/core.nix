@@ -2,6 +2,7 @@
 # its shape from the terminal kit (../terminal-kit), so the source is cut
 # from the modules folder holding both, and built from this one.
 {
+  dash,
   git,
   lib,
   rustPlatform,
@@ -24,6 +25,9 @@ rustPlatform.buildRustPackage rec {
   cargoLock.lockFile = ./Cargo.lock;
   # The tests track a job's files, since only tracked files travel.
   nativeCheckInputs = [ git ];
+  # The far line runs under dash as the tests check it, the strictest sh a
+  # far machine may have, so a bash-only word in it fails here.
+  env.ELSEWHERE_FAR_SH = lib.getExe dash;
   meta = {
     description = "Runs a heavy job wherever mycelium places it";
     license = lib.licenses.mit;

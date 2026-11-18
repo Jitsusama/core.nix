@@ -2,6 +2,14 @@ use super::{SHARE_BYTES, SHARE_FILES, WAITS, far_line, handover, kind, scratch};
 use crate::far::{BACK, BROUGHT, Missed, bring_back};
 use std::time::{Duration, Instant};
 
+/// How long the tests of a share still carrying give it with nothing
+/// crossing, in seconds.
+const A_WAIT: u64 = 3;
+
+/// How long such a test's share takes over each step, well inside the
+/// wait, so only a wait that never restarts gives up on it.
+const HALF_A_WAIT: Duration = Duration::from_millis(1500);
+
 #[test]
 fn the_far_side_counts_only_what_crossed_toward_a_share_s_totals() {
     // One file a folder, so the far side meets them in the order the kind
@@ -14,7 +22,7 @@ fn the_far_side_counts_only_what_crossed_toward_a_share_s_totals() {
         "for f in 1 2 3 4 5 6 7 8; do mkdir f$f; done && \
          printf '%300s' '' > f1/a && printf '%300s' '' > f2/b && \
          printf '%300s' '' > f3/c && printf '%300s' '' > f4/d && \
-         printf '%200s' '' > f5/e && printf x > f6/f && printf x > f7/g",
+         printf '%101s' '' > f5/e && printf '%100s' '' > f6/f && printf x > f7/g",
         &kind,
         None,
         &[
@@ -103,23 +111,159 @@ fn a_share_still_carrying_is_waited_for_past_the_wait() {
     std::fs::create_dir_all(job.join(BACK)).unwrap();
     std::fs::write(job.join(BACK).join("0"), "a").unwrap();
     std::fs::write(job.join(BROUGHT), "1\tout/a\n4\tout/b\nend\n").unwrap();
-    // Half of out/b crosses at the end of the wait, and the rest as long
-    // again after it.
-    let slow = job.join(BACK).join("1");
+    // out/b crosses a byte at a time under a hidden name beside its own,
+    // as mycelium writes what it receives, and is renamed over its path
+    // once whole, so it ends well past the wait.
+    let (back, slow) = (job.join(BACK), job.join(BACK).join(".1.crossing"));
     let carrying = std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(2500));
-        std::fs::write(&slow, "bb").unwrap();
-        std::thread::sleep(Duration::from_millis(2500));
-        std::fs::write(&slow, "bbbb").unwrap();
+        for crossed in ["b", "bb", "bbb", "bbbb"] {
+            std::thread::sleep(HALF_A_WAIT);
+            std::fs::write(&slow, crossed).unwrap();
+        }
+        std::fs::rename(&slow, back.join("1")).unwrap();
     });
     let into = home.join("near");
-    let landed = bring_back(&job, &into, &["out".into()], 3);
+    let started = Instant::now();
+    let landed = bring_back(&job, &into, &["out".into()], A_WAIT);
     carrying.join().unwrap();
     assert_eq!(landed, Ok(2), "a share still carrying was given up on");
+    assert!(
+        started.elapsed() > Duration::from_secs(A_WAIT),
+        "it ended inside the wait, so it never waited past it"
+    );
     assert_eq!(
         std::fs::read_to_string(into.join("out/b")).ok().as_deref(),
         Some("bbbb"),
         "what crossed slowly didn't land whole"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn an_empty_file_listed_is_waited_for_until_it_crosses() {
+    let home = scratch("empty");
+    let job = handover(&home);
+    std::fs::create_dir_all(job.join(BACK)).unwrap();
+    std::fs::write(job.join(BROUGHT), "0\tout/e\nend\n").unwrap();
+    assert_eq!(
+        bring_back(&job, &home.join("near"), &["out".into()], 1),
+        Err(Missed::Lost("out/e didn't cross home".to_owned())),
+        "an empty file still crossing was taken for crossed"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_name_that_isn_t_utf_8_is_refused_and_the_rest_lands() {
+    let home = scratch("unnamed");
+    let job = handover(&home);
+    std::fs::create_dir_all(job.join(BACK)).unwrap();
+    std::fs::write(job.join(BACK).join("0"), "z").unwrap();
+    std::fs::write(job.join(BACK).join("1"), "a").unwrap();
+    std::fs::write(job.join(BROUGHT), b"1\tout/\xff\n1\tout/a\nend\n").unwrap();
+    let into = home.join("near");
+    let started = Instant::now();
+    let landed = bring_back(&job, &into, &["out".into()], WAITS);
+    assert!(
+        started.elapsed() < Duration::from_secs(WAITS),
+        "it waited on a list it couldn't read"
+    );
+    assert_eq!(
+        landed,
+        Err(Missed::Refused(
+            "out/\u{fffd} isn't named in UTF-8, so it can't land here; the other 1 landed"
+                .to_owned()
+        ))
+    );
+    assert_eq!(
+        std::fs::read_to_string(into.join("out/a")).ok().as_deref(),
+        Some("a"),
+        "one name that isn't UTF-8 kept the rest from landing"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_name_ending_in_a_carriage_return_lands_under_that_name() {
+    let home = scratch("return");
+    let job = handover(&home);
+    std::fs::create_dir_all(job.join(BACK)).unwrap();
+    std::fs::write(job.join(BACK).join("0"), "a").unwrap();
+    std::fs::write(job.join(BROUGHT), "1\tout/a\r\nend\n").unwrap();
+    let into = home.join("near");
+    assert_eq!(bring_back(&job, &into, &["out".into()], 1), Ok(1));
+    assert!(
+        into.join("out/a\r").exists() && !into.join("out/a").exists(),
+        "out/a\\r landed under another name"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn files_crossing_ahead_of_their_list_keep_the_wait_going() {
+    let home = scratch("listless");
+    let job = handover(&home);
+    std::fs::create_dir_all(job.join(BACK)).unwrap();
+    let (back, list) = (job.join(BACK), job.join(BROUGHT));
+    // Each crosses half a wait after the last, so the list ends past it.
+    let carrying = std::thread::spawn(move || {
+        std::thread::sleep(HALF_A_WAIT);
+        std::fs::write(back.join("0"), "a").unwrap();
+        std::thread::sleep(HALF_A_WAIT);
+        std::fs::write(back.join("1"), "bb").unwrap();
+        std::thread::sleep(HALF_A_WAIT);
+        std::fs::write(list, "1\tout/a\n2\tout/b\nend\n").unwrap();
+    });
+    let landed = bring_back(&job, &home.join("near"), &["out".into()], A_WAIT);
+    carrying.join().unwrap();
+    assert_eq!(
+        landed,
+        Ok(2),
+        "files still crossing ahead of their list were given up on"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn past_the_totals_a_handful_is_named_and_the_rest_counted() {
+    let home = scratch("many");
+    let job = handover(&home);
+    std::fs::create_dir_all(job.join(BACK)).unwrap();
+    let list: Vec<String> = (0..12).map(|n| format!(">1\tout/k{n:02}")).collect();
+    let list = format!("{}\nend\n", list.join("\n"));
+    std::fs::write(job.join(BROUGHT), list).unwrap();
+    let Err(Missed::Refused(why)) = bring_back(&job, &home.join("near"), &["out".into()], 1) else {
+        panic!("what passed the totals wasn't refused");
+    };
+    assert!(
+        why.contains("out/k09 is past"),
+        "the first ten weren't named: {why}"
+    );
+    assert!(!why.contains("out/k10"), "more than ten were named: {why}");
+    assert!(
+        why.ends_with("; 2 more like them"),
+        "the rest weren't counted: {why}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_file_two_brought_back_paths_both_hold_crosses_once() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into(), "out/a".into()];
+    let (code, err, home) = far_line(
+        "1\tx\nend\n",
+        &[("x", "x")],
+        "mkdir out && printf x > out/a",
+        &kind,
+        None,
+        &[],
+    );
+    assert_eq!(code, Some(0), "the job didn't run: {err}");
+    assert_eq!(
+        std::fs::read_to_string(handover(&home).join(BROUGHT)).unwrap(),
+        "1\tout/a\nend\n",
+        "a file both paths hold was listed twice"
     );
     let _ = std::fs::remove_dir_all(&home);
 }

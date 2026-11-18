@@ -62,7 +62,7 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
         "/quest-workspace/QEST-20261115-ABC123/handover/elsewhere/7-9\n",
         "work=\"$HOME\"/.cache/e/7-9\n",
         "until arrived; do",
-        "cd \"$work\"/'a b' || exit 70\necho 'elsewhere: running 7-9'\n",
+        "cd \"$work\"/'a b' || exit 77\necho 'elsewhere: running 7-9'\n",
         "{ export PATH=/far/bin:$PATH\n  } && exec tla-rs -config 'it'\\''s.cfg'\n",
         "for path in out; do",
         "exit \"$code\"",
@@ -82,7 +82,7 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
             &kind(""),
             &command
         )
-        .contains("cd \"$work\" || exit 70\necho 'elsewhere: running 1'\n(\n  { :\n"),
+        .contains("cd \"$work\" || exit 77\necho 'elsewhere: running 1'\n(\n  { :\n"),
         "a job at the tree's top or with no setup wasn't run there plainly"
     );
 }
@@ -259,7 +259,9 @@ pub(super) fn far_line(
         &most,
         &format!("most_files={SHARE_FILES} most_bytes={SHARE_BYTES}"),
     );
-    let far = std::process::Command::new("sh")
+    // The gate names dash, the strictest sh a far machine may have.
+    let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
+    let far = std::process::Command::new(sh)
         .args(["-c", &line])
         .env("HOME", &home)
         .env("PATH", path)
@@ -327,6 +329,12 @@ fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
         code,
         Some(75),
         "a file short of its listed size was taken: {err}"
+    );
+    let ends = super::unstarted(75).0;
+    assert_eq!(
+        ends,
+        terminal_kit::Exit::TryAgain,
+        "files that never reached it read as {ends:?}"
     );
     assert!(
         err.contains("didn't reach") && err.contains("waiting on x"),
@@ -752,14 +760,21 @@ fn the_far_line_takes_the_marks_off_and_puts_nothing_outside() {
         "true",
     );
     assert!(
-        code == Some(70) && err.contains("names") && err.contains("twice"),
+        code == Some(77) && err.contains("names") && err.contains("twice"),
         "a tree naming x twice wasn't refused ({code:?}): {err}"
+    );
+    // So --there ends refused, not as a far side mycelium never reached.
+    let ends = super::unstarted(77).0;
+    assert_eq!(
+        ends,
+        terminal_kit::Exit::Refused,
+        "a far refusal read as {ends:?}"
     );
     let _ = std::fs::remove_dir_all(&home);
     for named in ["../out", "/abs/out", "a/./b", "..", "a/..", ""] {
         let (code, err, home) = far_run(&format!("2\t{named}\nend\n"), &[("out", "no")], "true");
         assert!(
-            code == Some(70) && err.contains("outside its folder"),
+            code == Some(77) && err.contains("outside its folder"),
             "a list naming {named:?} wasn't refused ({code:?}): {err}"
         );
         assert!(
@@ -774,7 +789,7 @@ fn the_far_line_takes_the_marks_off_and_puts_nothing_outside() {
     for named in ["..elsewhere", "...elsewhere"] {
         let (code, err, home) = far_run(&format!("1\t{named}\nend\n"), &[(named, "x")], "true");
         assert!(
-            code == Some(70) && err.contains(&format!("/{named}, outside its folder")),
+            code == Some(77) && err.contains(&format!("/{named}, outside its folder")),
             "a tree naming {named} wasn't refused ({code:?}): {err}"
         );
         let _ = std::fs::remove_dir_all(&home);

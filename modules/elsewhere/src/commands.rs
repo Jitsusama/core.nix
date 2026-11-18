@@ -53,13 +53,16 @@ fn run() -> Help {
     .exit(Exit::NotFound, "no kind goes by that name")
     .exit(
         Exit::Refused,
-        "the job's program isn't one its kind may start; --there can't carry its files; or what it made would land through a link, is past what a share holds, or couldn't land here",
+        "the job's program isn't one its kind may start; --there can't carry its files, or the far machine refused them; or what it made would land through a link, is past what a share holds, or couldn't land here",
     )
     .exit(
         Exit::Unavailable,
         "--there couldn't get mycelium to carry it, so it wasn't made here instead",
     )
-    .exit(Exit::TryAgain, "what it made didn't all cross home")
+    .exit(
+        Exit::TryAgain,
+        "what it made didn't all cross home, or under --there its files never reached the far machine",
+    )
     .exit(
         Exit::Config,
         "its settings can't be read, or --there can't send it: no machine, no quest to carry it, or what it makes couldn't come home",

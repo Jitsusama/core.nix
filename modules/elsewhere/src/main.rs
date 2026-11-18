@@ -504,9 +504,10 @@ fn send(
     })?;
     let code = ended(status);
     if !started {
+        let (exit, why) = far::unstarted(code);
         return Ok(Sent::Stayed(
-            Exit::Unavailable,
-            format!("mycelium didn't run it on {machine}, ending {code}"),
+            exit,
+            format!("{machine} {why} before it started, ending {code}"),
         ));
     }
     let brought = far::bring_back(
