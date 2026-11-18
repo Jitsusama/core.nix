@@ -104,8 +104,9 @@ let
   # the to-do daemon, as a workstation does (modules/to-do).
   clearsToDos = area == "launcher-waits-on-joel";
   # The same area's For You holds the safe word's stops, so its machine runs
-  # pineapple's daemon, which serves a stop the test writes as live, and
-  # its Slack reader, which finds no sign-in and reads nothing.
+  # pineapple's daemon, which serves a stop the test writes as live. Not its
+  # Slack reader: with no sign-in to read it would rightly tell For You it
+  # can't hear Slack, and Now would lead with that rather than the test's.
   servesTheSafeWord = area == "launcher-waits-on-joel";
   # The areas that show pi's sessions, whose machine runs the realm's
   # mycelium node, as a workstation does, since the shell knows sessions
@@ -973,6 +974,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             self.homeModules.mycelium
             { jitsusama.mycelium.realm = "harbour"; }
           ];
+        # The safe word's Slack reader stays down, as servesTheSafeWord says.
+        systemd.user.services.pineapple-slack.Install.WantedBy = lib.mkIf servesTheSafeWord (
+          lib.mkForce [ ]
+        );
         # And Slack's own desktop entry, as the machine's Slack brings it,
         # so Programs has the row whose note says why Slack can't be
         # checked. It starts nothing, since nothing here opens it.
