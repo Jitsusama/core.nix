@@ -211,7 +211,7 @@ impl Recorder<'_> {
         if over >= IDLE_FOR {
             self.window = (total, now);
         }
-        let reflectors = &self.pool.reflectors;
+        let reflectors = self.pool.reflectors();
         if let Some(&reflector) = reflectors.get(self.turn % reflectors.len().max(1)) {
             self.seq = self.seq.wrapping_add(1);
             let request =
@@ -316,7 +316,7 @@ impl Recorder<'_> {
     /// mid-stay (src/live.rs) learns within the hour which link it holds,
     /// a kept pool's choice included, which says so.
     fn write_pool(&mut self) {
-        let mut line = pool_line(&self.pool.reflectors, self.pool.kept);
+        let mut line = pool_line(self.pool.reflectors(), self.pool.kept());
         line["link"] = json!(self.link);
         self.journal.write(&line);
     }
@@ -374,7 +374,7 @@ pub fn record(
         id,
         socket,
         journal,
-        pool: Pool::new(Instant::now(), operators(&candidates())),
+        pool: Pool::new(Instant::now(), &candidates()),
         outstanding: BTreeMap::new(),
         seq: 0,
         turn: 0,
