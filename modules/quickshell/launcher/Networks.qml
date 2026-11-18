@@ -155,44 +155,66 @@ Provider {
     // forty reads where it waited on each. Until they and every cable
     // have landed, a terminal's show asks again, so it prints what they
     // say now rather than what was loaded as the launcher last opened.
+    // A fact already loading isn't asked again, so its load keeps the
+    // time it was asked (factsSince, by its path), and one given up is
+    // passed over while it's held off.
     property var factsAsked: []
+    property var factsSince: Object.create(null)
     function reloadFacts() {
-        const views = [resolv, resolved, up].filter(view => String(view.path) !== "");
-        factsAsked = views.filter(view => !factsHung.includes(view));
-        if (factsAsked.length > 0) {
-            stillReading = true;
-            if (!factsWatch.running)
-                factsWatch.start();
-        }
-        for (const view of factsAsked)
+        const fresh = [resolv, resolved, up].filter(view => String(view.path) !== ""
+            && !factsAsked.includes(view) && !holding(factsStuck[String(view.path)]));
+        if (fresh.length === 0)
+            return;
+        const since = Object.assign(Object.create(null), factsSince);
+        for (const view of fresh)
+            since[String(view.path)] = Date.now();
+        factsSince = since;
+        factsAsked = factsAsked.concat(fresh);
+        stillReading = true;
+        for (const view of fresh)
             view.reload();
     }
-    // A fact still loading two seconds after it was first asked, since
-    // the tick asks again each second while a cable is shown, is said as
-    // last loaded and warned of, and isn't asked or waited on again until
-    // it lands, so a terminal isn't kept asking on a file that never does.
-    // The watch ends once every fact asked has landed, so a later ask
-    // has its own two seconds.
-    property var factsHung: []
+    // A fact still loading two seconds after it was asked, or asked
+    // before the clock stepped back, is said as last loaded, warned of,
+    // and held off as a card is (holdAfter), so a terminal isn't kept
+    // asking on a file that never lands, nor a thread taken on it each
+    // tick. Each is given up on its own two seconds, so a fact asked
+    // just before another is given up isn't given up with it.
+    property var factsStuck: Object.create(null)
     Timer {
         id: factsWatch
 
-        interval: 2000
+        interval: 250
+        repeat: true
+        running: provider.factsAsked.length > 0
         onTriggered: provider.factsGivenUp()
     }
     function factsGivenUp() {
-        for (const view of factsAsked)
-            console.warn(`Networks: ${view.path} took two seconds to load, so it's said as`
-                + " last loaded");
-        factsHung = factsHung.concat(factsAsked);
-        factsAsked = [];
+        const late = factsAsked.filter(view => {
+            const since = Date.now() - (factsSince[String(view.path)] ?? 0);
+            return since >= 2000 || since < 0;
+        });
+        if (late.length === 0)
+            return;
+        const stuck = Object.assign(Object.create(null), factsStuck);
+        for (const view of late) {
+            const path = String(view.path);
+            stuck[path] = holdAfter(factsStuck[path]);
+            console.warn(`Networks: ${path} took two seconds to load, so it's said as last`
+                + ` loaded, and asked again in ${stuck[path].wait / 60000} min`);
+        }
+        factsStuck = stuck;
+        factsAsked = factsAsked.filter(view => !late.includes(view));
         settled();
     }
     function factLanded(view) {
         factsAsked = factsAsked.filter(each => each !== view);
-        factsHung = factsHung.filter(each => each !== view);
-        if (factsAsked.length === 0)
-            factsWatch.stop();
+        const path = String(view.path);
+        if (factsStuck[path] !== undefined) {
+            const stuck = Object.assign(Object.create(null), factsStuck);
+            delete stuck[path];
+            factsStuck = stuck;
+        }
         settled();
     }
     // Read once nothing loading for an answer is still under way.
@@ -404,13 +426,28 @@ Provider {
     // loads isn't kept.
     property var cablesAsked: []
     property var cableLoading: null
-    // Each card whose files last took too long, by its name: { at, wait },
-    // when it was given up and how long until it's asked again
-    // (cableGivenUp). A clock stepped back asks it again rather than
-    // holding it off longer.
+    // Each card whose files last took too long, by its name, held off as
+    // holdAfter says.
     property var cablesStuck: Object.create(null)
     function stuck(name) {
-        const given = cablesStuck[name];
+        return holding(cablesStuck[name]);
+    }
+
+    // A hold on a file given up, { at, wait }: when, and how long until
+    // it's asked again, a minute, then twice as long each time it's given
+    // up again, to an hour, since a read that hangs holds one of the
+    // threads every view in the shell loads on for as long as it does.
+    // It's kept until the file lands, whatever its link does, so a card
+    // that flaps or comes and goes on a hung driver can't take another
+    // thread each time; a clock stepped back ends it rather than holding
+    // it off longer.
+    function holdAfter(before) {
+        return {
+            at: Date.now(),
+            wait: Math.min(before === undefined ? 60000 : before.wait * 2, 3600000)
+        };
+    }
+    function holding(given) {
         if (given === undefined)
             return false;
         const since = Date.now() - given.at;
@@ -523,9 +560,7 @@ Provider {
     // daemon says has changed since their files began to load, forgotten,
     // so its newer word is said until they're loaded again; and a card
     // gone, or changed, under way or waiting, isn't kept once loaded. One
-    // given up stays held off though its link changes, so a link that
-    // flaps can't take another thread on a hung file each time, but is
-    // let go once it's gone, so a card plugged in again is asked anew.
+    // given up stays held off through either (holdAfter).
     function forgetCables() {
         const cards = Object.create(null);
         for (const link of links ?? [])
@@ -543,12 +578,6 @@ Provider {
             cableStates = states;
         }
         cablesAsked = cablesAsked.filter(name => cards[name] !== undefined);
-        const held = Object.create(null);
-        for (const name of Object.keys(cablesStuck))
-            if (cards[name] !== undefined)
-                held[name] = cablesStuck[name];
-        if (Object.keys(held).length !== Object.keys(cablesStuck).length)
-            cablesStuck = held;
         if (cableLoading !== null && cards[cableLoading.name] !== cableLoading.state)
             cableLoading.stale = true;
     }
@@ -559,10 +588,7 @@ Provider {
     // that said nothing, and warned of, and its drawer made as the daemon
     // says it. Pointed at no file, the view lets go of the load, so one
     // landing late is dropped rather than taken for another file's. The
-    // card is asked again a minute on, then twice as long each time it's
-    // given up again, to an hour, not each second, since a read that
-    // hangs holds one of the threads every view in the shell loads on for
-    // as long as it does.
+    // card is held off (holdAfter), not asked again each second.
     Timer {
         id: cableWatch
 
@@ -573,14 +599,12 @@ Provider {
         const loading = cableLoading;
         if (loading === null)
             return;
-        const before = cablesStuck[loading.name];
-        const wait = Math.min(before === undefined ? 60000 : before.wait * 2, 3600000);
         const still = Object.assign(Object.create(null), cablesStuck);
-        still[loading.name] = { at: Date.now(), wait: wait };
+        still[loading.name] = holdAfter(cablesStuck[loading.name]);
         cablesStuck = still;
         console.warn(`Networks: ${loading.name}'s ${cableFiles[loading.at]} took two seconds`
-            + ` to load, so its cable is said as last loaded, and asked again in ${wait / 60000}`
-            + " min");
+            + " to load, so its cable is said as last loaded, and asked again in"
+            + ` ${still[loading.name].wait / 60000} min`);
         cableProbe.path = "";
         nextCable();
         glanceSoon();

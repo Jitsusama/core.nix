@@ -178,8 +178,27 @@ ShellRoot {
     }
     function askHung() {
         networks.reloadFacts();
-        if (!networks.factsHung.includes(hungFact))
-            networks.factsAsked = networks.factsAsked.concat([hungFact]);
+        if (networks.factsAsked.includes(hungFact)
+            || networks.factsStuck[hungFact.path] !== undefined)
+            return;
+        const since = Object.assign(Object.create(null), networks.factsSince);
+        since[hungFact.path] = Date.now();
+        networks.factsSince = since;
+        networks.factsAsked = networks.factsAsked.concat([hungFact]);
+    }
+
+    // Every fact under way taken as asked `at`, as two seconds back or
+    // before the clock stepped back.
+    function askedAt(at) {
+        const since = Object.create(null);
+        for (const path of Object.keys(networks.factsSince))
+            since[path] = at;
+        networks.factsSince = since;
+    }
+
+    // Every fact's hold, as it stands.
+    function factHolds() {
+        return Object.values(networks.factsStuck);
     }
 
     Until {
@@ -384,13 +403,7 @@ ShellRoot {
                 JSON.stringify(networks.cables.enp0s2));
             Expect.expect("a card held up leaves nothing reading",
                 !networks.stillReading, String(networks.stillReading));
-            networks.reloadFacts();
-            networks.factsGivenUp();
-            Expect.expect("facts given up leave nothing reading",
-                !networks.stillReading, String(networks.stillReading));
-            networks.reloadFacts();
-            Expect.expect("facts given up aren't waited on again until they land",
-                !networks.stillReading, String(networks.stillReading));
+            root.factsHeld();
             networks.recable();
             Expect.expect("a card held up isn't loaded again at once",
                 networks.cableLoading?.name !== "enp0s2"
@@ -401,13 +414,57 @@ ShellRoot {
         });
     }
 
-    // Facts given up are waited on again once they land; one that never
-    // does, asked again as the tick asks, is given up two seconds after
-    // it was first asked, and leaves nothing reading.
+    // The facts asked, and asked again while they load, then given up as
+    // they would be two seconds on, before any lands: they're held off a
+    // minute, asked again once it's over, held twice as long if given up
+    // again, and given up once the clock steps back.
+    function factsHeld() {
+        networks.reloadFacts();
+        const asked = networks.factsAsked.length;
+        networks.reloadFacts();
+        Expect.expect("a fact already loading isn't asked again",
+            asked > 0 && networks.factsAsked.length === asked,
+            JSON.stringify(networks.factsAsked.map(view => String(view.path))));
+        root.askedAt(Date.now() - 2000);
+        networks.factsGivenUp();
+        Expect.expect("facts given up leave nothing reading",
+            !networks.stillReading, String(networks.stillReading));
+        Expect.expect("a fact held up waits a minute", root.factHolds().length === asked
+            && root.factHolds().every(held => held.wait === 60000),
+            JSON.stringify(networks.factsStuck));
+        networks.reloadFacts();
+        Expect.expect("a fact held up isn't asked again at once",
+            networks.factsAsked.length === 0 && !networks.stillReading,
+            JSON.stringify(networks.factsAsked.map(view => String(view.path))));
+        for (const held of root.factHolds())
+            held.at -= 61000;
+        networks.reloadFacts();
+        Expect.expect("a fact held up is asked again once its wait is over",
+            networks.factsAsked.length === asked,
+            JSON.stringify(networks.factsAsked.map(view => String(view.path))));
+        root.askedAt(Date.now() - 2000);
+        networks.factsGivenUp();
+        Expect.expect("a fact held up again waits twice as long",
+            root.factHolds().every(held => held.wait === 120000),
+            JSON.stringify(networks.factsStuck));
+        for (const held of root.factHolds())
+            held.at -= 121000;
+        networks.reloadFacts();
+        root.askedAt(Date.now() + 3600000);
+        networks.factsGivenUp();
+        Expect.expect("a fact asked before the clock stepped back is given up",
+            networks.factsAsked.length === 0, JSON.stringify(networks.factsStuck));
+    }
+
+    // Facts held up are asked again once they land; one that never does,
+    // asked late beside facts that do, is given up two seconds after it
+    // was asked, alone, and leaves nothing reading.
     function watched() {
-        waits.until("facts given up are waited on again once they land",
-            within(2000, () => networks.factsHung.length === 0), () => {
+        waits.until("facts held up are let go once they land",
+            within(2000, () => root.factHolds().length === 0), () => {
             networks.reloadFacts();
+            Expect.expect("facts that landed are asked again", networks.factsAsked.length > 0,
+                JSON.stringify(networks.factsAsked.map(view => String(view.path))));
             const first = Date.now();
             waits.until("the facts asked land",
                 within(1000, () => networks.factsAsked.length === 0), () => {
@@ -418,13 +475,16 @@ ShellRoot {
                     waits.until("two and a half seconds on",
                         within(2000, () => Date.now() - first >= 2500), () => {
                         Expect.expect("a fact asked late isn't given up on an earlier ask's watch",
-                            !networks.factsHung.includes(hungFact),
-                            JSON.stringify(networks.factsHung.map(view => view.path)));
-                        waits.until("a fact that never lands is given up as it's asked again",
-                            within(3000, () => networks.factsHung.includes(hungFact)
+                            networks.factsStuck[hungFact.path] === undefined,
+                            JSON.stringify(networks.factsStuck));
+                        waits.until("a fact that never lands is given up two seconds on",
+                            within(3000, () => networks.factsStuck[hungFact.path] !== undefined
                                 && !networks.stillReading), () => {
                             asking.stop();
-                            networks.factsHung = [];
+                            Expect.expect("facts that land beside one that hangs aren't given up",
+                                Object.keys(networks.factsStuck).join() === hungFact.path,
+                                JSON.stringify(networks.factsStuck));
+                            networks.factsStuck = Object.create(null);
                             root.retried();
                         });
                     });
@@ -490,8 +550,9 @@ ShellRoot {
                 && networks.cablesStuck.enp0s2 === undefined), root.replugged);
     }
 
-    // Held up once more, then unplugged and plugged in again: it's let
-    // go, and loaded anew.
+    // Held up once more, then unplugged and plugged in again, as a hung
+    // driver's card may come and go: it stays held, so it takes no more
+    // threads.
     function replugged() {
         networks.recable();
         Expect.expect("the second card's load is under way again",
@@ -499,8 +560,13 @@ ShellRoot {
         networks.cableGivenUp();
         networks.links = [docked];
         networks.links = [second, docked];
-        waits.until("a card held up and plugged in again is loaded anew", within(2000, () =>
-            root.swept() && networks.cables.enp0s2 !== undefined), root.unplugged);
+        networks.recable();
+        waits.until("the other card loaded after the replug", within(2000, root.swept), () => {
+            Expect.expect("a card held up stays held though it's plugged in again",
+                networks.cables.enp0s2 === undefined && networks.cablesStuck.enp0s2 !== undefined,
+                JSON.stringify([networks.cables.enp0s2, networks.cablesStuck.enp0s2]));
+            root.unplugged();
+        });
     }
 
     // The cards pulled out as the first's files load again: what they

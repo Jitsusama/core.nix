@@ -1022,10 +1022,11 @@
     the load begun before not kept; a card whose load is given up is said as the daemon tells
     it, drawer and all, leaves nothing reading, and isn't loaded again at once, though waiting
     its turn, but a minute on, then twice as long if held up again, to an hour, held though its
-    link changes, asked again once the clock steps back or it's plugged in again, and held up
-    no more once loaded; facts given up leave nothing reading and aren't waited on again until
-    they land, then are; a fact that never lands, asked each tick, is given up two seconds after
-    it was first asked, not on an earlier ask's two seconds; and a card gone is forgotten,
+    link changes or it's plugged in again, asked again once the clock steps back, and held up
+    no more once loaded; a fact loading isn't asked again, and one given up leaves nothing
+    reading and is held off as a card is, a minute, then twice as long, or given up once the
+    clock steps back, and let go once it lands; a fact that never lands, asked late beside facts
+    that do, is given up alone, two seconds after its own ask; and a card gone is forgotten,
     though its load was under way
   '';
   traffic-reads-a-known-interface-once-after-a-gap = ''
