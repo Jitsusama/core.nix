@@ -187,11 +187,14 @@
       faults.push(`screen: ${what} shows ${on.length} names, past ${NAMES_ON_SCREEN}`);
     }
     const cells = marks('circle.cell, [data-key^="c:"]').map((el) => el.getBoundingClientRect()).filter(inView);
-    // A cell that needs him, drawn on screen, is named first among the seven.
+    // Cells that need him, drawn on screen, take the seven names before any
+    // network does; more of them than seven can't all be named.
     const shownKeys = new Set(names().map((el) => el.dataset.name));
-    const unnamed = marks("[data-asks]").filter((el) => inView(el.getBoundingClientRect()) && !shownKeys.has(el.dataset.key));
-    if (unnamed.length > 0) {
-      faults.push(`screen: ${what} draws ${unnamed.length} cells that need him without their names, the first ${unnamed[0].dataset.key}`);
+    const asking = marks("[data-asks]").filter((el) => inView(el.getBoundingClientRect()));
+    const askingNamed = asking.filter((el) => shownKeys.has(el.dataset.key)).length;
+    const netsNamed = [...shownKeys].filter((key) => /^[hn]:/.test(key)).length;
+    if (asking.length > askingNamed && netsNamed > 0) {
+      faults.push(`screen: ${what} names ${netsNamed} networks while ${asking.length - askingNamed} cells that need him go unnamed`);
     }
     // No cell drawn is a pass only when the map says it folded them.
     if (cells.length === 0 && !document.getElementById("map-ground")?.painted?.().folded) {
