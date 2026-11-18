@@ -303,15 +303,15 @@ arrived() {{
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
 say() {{ printf '\n%s\n' "$1"; }}
-waited=0
+# By the clock, since a pass over a large tree takes long itself.
+began=$(date +%s)
 until arrived; do
-  if [ "$waited" -ge {CROSSES_WITHIN} ]; then
+  if [ "$(($(date +%s) - began))" -ge {CROSSES_WITHIN} ]; then
     printf "elsewhere: the job's files didn't reach %s within {CROSSES_WITHIN}s, waiting on %s\n" "$(uname -n)" "$waiting" >&2
     say {untaken}
     exit {UNTAKEN}
   fi
   sleep 1
-  waited=$((waited + 1))
 done
 if rm -rf "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
 if [ "$why" -ne 0 ]; then

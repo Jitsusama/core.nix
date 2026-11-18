@@ -246,10 +246,10 @@ fn freeing_first(then: &str) -> (&'static str, String) {
         "rm",
         &format!("*\"/{} \"*", super::super::TREE),
         &format!(
-            "for a; do job=${{a%/{tree}}}; done\n\
+            "for a; do case $a in */{tree}) job=${{a%/{tree}}} ;; esac; done\n\
              case \" $* \" in *\" $HOME/s/1 \"*) ;; *) echo 'the copy was not freed with its tree' >&2 ;; esac\n\
              grep -qxE 'end|cut' \"$job/{BROUGHT}\" && echo 'the list ended before its room was freed' >&2\n\
-             rm \"$@\"; echo 'the tree was freed' >&2; {then}; exit 0",
+             rm \"$@\" && echo 'the tree was freed' >&2; {then}; exit 0",
             tree = super::super::TREE
         ),
     )

@@ -80,6 +80,7 @@ fn a_copy_takes_only_the_size_listed_and_a_failed_write_is_the_folder_s() {
     // A folder with no room, as the full disk stands in for.
     #[cfg(target_os = "linux")]
     {
+        assert!(Path::new("/dev/full").exists(), "no full disk to stand in");
         let mut full = std::fs::OpenOptions::new()
             .write(true)
             .open("/dev/full")

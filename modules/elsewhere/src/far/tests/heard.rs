@@ -60,6 +60,36 @@ fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
 }
 
 #[test]
+fn the_far_wait_is_measured_by_the_clock_not_by_its_passes() {
+    // A wc that takes two seconds, as a pass over a large tree takes
+    // long, so a wait that counted its passes would last three times as
+    // long as its limit says.
+    let started = std::time::Instant::now();
+    let (code, err, home) = far_line(
+        "3\tx\nend\n",
+        &[("x", "x")],
+        "touch ../ran",
+        &kind(""),
+        None,
+        &[("wc", "PATH=${PATH#*:}\nsleep 2\nexec wc \"$@\"")],
+    );
+    let took = started.elapsed();
+    assert!(
+        code == Some(75) && err.contains("didn't reach"),
+        "a file that never crossed wasn't waited out ({code:?}): {err}"
+    );
+    // Its limit, a last pass that began just inside it, and a second's
+    // slack for a busy machine; counted passes would take fifteen.
+    let most = std::time::Duration::from_secs(super::WAITS + 2 + 3);
+    assert!(
+        took < most,
+        "a {}s wait lasted {took:?}, so it counts passes",
+        super::WAITS
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
 fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
     // Each step of making the tree failing, as a full disk, a fenced
     // scratch or a program missing would, ahead of the far machine's own
