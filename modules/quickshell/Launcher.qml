@@ -1593,6 +1593,25 @@ Scope {
         return { done: true, said: `opened ${walk.rows.map(row => row.name).join(" \u203a ")}` };
     }
 
+    // Opens Machines on the row of the machine `said` names, selected, as `qs ipc call launcher
+    // machine` asks, the way a machine's Open in the Launcher on the system page does: its
+    // row's own acts, Start a Session Here and Update It, are Joel's to pick there, since a page
+    // can't act (BMDYSH and XUBK2E, 2026-11-17). Only the first word said names one. Says what
+    // it did as JSON, as talkTo does, a name no node lists opening nothing.
+    function showMachine(said) {
+        const machines = collections.find(one => one.settings.name === "machines") ?? null;
+        const [name] = String(said ?? "").trim().split(/\s+/u);
+        console.info(`launcher: asked from outside to show the machine ${name}`);
+        if (machines === null || !machines.records.some(record => record.name === name))
+            return { error: `the launcher has no machine called ${name}` };
+        if (inUse())
+            return inUseSaid;
+        const key = `machines:${name}`;
+        intoOn("machines", row => row.key === key);
+        prompt.linked();
+        return { done: true, said: `opened Machines \u203a ${name}` };
+    }
+
     function catalogueRunWalked(id, words) {
         freshen();
         const path = catalogued(id);
@@ -7983,6 +8002,12 @@ Scope {
         // as a step in and down to it would (root's showNetwork).
         function network(name: string): string {
             return JSON.stringify(root.showNetwork(name));
+        }
+
+        // Opens Machines on a machine's row by its name, selected, its
+        // acts a step in (root's showMachine).
+        function machine(name: string): string {
+            return JSON.stringify(root.showMachine(name));
         }
 
         // What a place or a row shows, its drawer and the rows inside it,
