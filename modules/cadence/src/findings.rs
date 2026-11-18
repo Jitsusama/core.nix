@@ -8,7 +8,7 @@
 //! quest owes, filed with `cadence owe` (owe.rs), is kept here too, and
 //! stays open until its owner says it's done.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::day::{self, Day};
 use crate::judge::Finding;
-use crate::{DAY, write_whole};
+use crate::{DAY, holders, write_whole};
 
 /// One finding as the ledger keeps it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -99,15 +99,33 @@ pub fn owner_of(key: &str, owners: &BTreeMap<String, String>) -> Option<String> 
         .map(|(_, address)| address.clone())
 }
 
+/// Who holds `key`: its owner line, or, for a unit that failed or
+/// restarted with no ready line, whoever holds the unit as the unit
+/// watch asks (holders.rs), so one unit has one holder wherever it's
+/// found.
+fn holder(
+    key: &str,
+    owners: &BTreeMap<String, String>,
+    known: &BTreeSet<String>,
+) -> Option<String> {
+    owner_of(key, owners).or_else(|| {
+        key.strip_prefix("failed:")
+            .or_else(|| key.strip_prefix("unstamped:"))
+            .and_then(|unit| holders::owner(unit, owners, known))
+    })
+}
+
 /// Brings `ledger` up to `day`, whose worse findings are `worse`: one
 /// found again is kept open with the day's words, a new one is opened
 /// with its owner and due a day on, and an open one not found for two
-/// days closes, its figure back.
+/// days closes, its figure back. `known` are the sessions the mesh knows,
+/// whose addresses a unit's name may carry.
 pub fn update(
     ledger: &mut Vec<Entry>,
     day: &Day,
     worse: &[Finding],
     owners: &BTreeMap<String, String>,
+    known: &BTreeSet<String>,
 ) {
     for finding in worse {
         // A fix of cadence's own that comes back reopens its line, counted,
@@ -132,7 +150,7 @@ pub fn update(
                 axis: axis.to_owned(),
                 evidence: evidence.to_owned(),
                 fell_when: FELL_WHEN.to_owned(),
-                owner: owner_of(&finding.key, owners),
+                owner: holder(&finding.key, owners, known),
                 first: day.date.clone(),
                 last: day.date.clone(),
                 last_to: day.to,
@@ -151,7 +169,7 @@ pub fn update(
     // rather than the watcher keeping it for as long as it stays open. A
     // must keeps the quest that filed it.
     for entry in ledger.iter_mut().filter(|e| e.open && e.kind.is_none()) {
-        let owner = owner_of(&entry.key, owners);
+        let owner = holder(&entry.key, owners, known);
         if owner.is_some() && owner != entry.owner {
             entry.owner = owner;
             entry.due = day.to + DAY;
@@ -248,6 +266,17 @@ pub(crate) mod tests {
         }
     }
 
+    /// The ledger brought up to `day`, the mesh knowing the sessions
+    /// holders.rs's tests do.
+    fn update(
+        ledger: &mut Vec<Entry>,
+        day: &Day,
+        worse: &[Finding],
+        owners: &BTreeMap<String, String>,
+    ) {
+        super::update(ledger, day, worse, owners, &holders::tests::known());
+    }
+
     fn owners() -> BTreeMap<String, String> {
         [("crashes", "A"), ("crashes:chrome", "B"), ("switch", "C")]
             .map(|(k, v)| (k.to_owned(), v.to_owned()))
@@ -265,6 +294,69 @@ pub(crate) mod tests {
             ],
             [Some("B".to_owned()), Some("A".to_owned()), None],
             "a finding went to the wrong owner"
+        );
+    }
+
+    #[test]
+    fn a_unit_named_for_a_session_is_held_by_it_when_no_line_names_it() {
+        let mut ledger = Vec::new();
+        let mut named = owners();
+        named.insert(
+            "failed:world-cadence-mt-2af2dh".to_owned(),
+            "80ECO2".to_owned(),
+        );
+        named.insert("unit:google.service".to_owned(), "RTOIMQ".to_owned());
+        update(
+            &mut ledger,
+            &day("d1", DAY),
+            &[
+                found("failed:garbage-bound-mon-2af2dh.service"),
+                found("unstamped:s99ia2-relink-watch.service"),
+                found("failed:world-cadence-mt-2af2dh.service"),
+                found("failed:camera.service"),
+                found("crashes:2af2dh"),
+                found("unstamped:google.service"),
+            ],
+            &named,
+        );
+        let held: Vec<(&str, Option<&str>)> = ledger
+            .iter()
+            .map(|e| (e.key.as_str(), e.owner.as_deref()))
+            .collect();
+        assert_eq!(
+            held,
+            [
+                ("failed:garbage-bound-mon-2af2dh.service", Some("2AF2DH")),
+                ("unstamped:s99ia2-relink-watch.service", Some("S99IA2")),
+                ("failed:world-cadence-mt-2af2dh.service", Some("80ECO2")),
+                ("failed:camera.service", None),
+                ("crashes:2af2dh", Some("A")),
+                ("unstamped:google.service", Some("RTOIMQ")),
+            ],
+            "a unit's address didn't hold it, or came before an owner line"
+        );
+    }
+
+    #[test]
+    fn a_unit_found_before_its_session_was_known_is_held_once_it_is() {
+        let mut ledger = Vec::new();
+        let unit = "failed:garbage-bound-mon-2af2dh.service";
+        super::update(
+            &mut ledger,
+            &day("d1", DAY),
+            &[found(unit)],
+            &owners(),
+            &BTreeSet::new(),
+        );
+        assert_eq!(
+            ledger[0].owner, None,
+            "no session known, so nobody holds it"
+        );
+        update(&mut ledger, &day("d2", 2 * DAY), &[found(unit)], &owners());
+        assert_eq!(
+            (ledger[0].owner.as_deref(), ledger[0].due),
+            (Some("2AF2DH"), 3 * DAY),
+            "an open finding didn't go to the session its unit names, with a day of its own"
         );
     }
 

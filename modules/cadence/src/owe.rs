@@ -161,7 +161,7 @@ pub fn run(args: impl Iterator<Item = String>, now: i64) -> Result<(), Failure> 
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
 
     use super::*;
     use crate::DAY;
@@ -232,7 +232,13 @@ mod tests {
         let mut ledger = Vec::new();
         owe(&mut ledger, owed("security:s2", DUE), "d1", DAY);
         for at in 2..6 {
-            findings::update(&mut ledger, &day("d", at * DAY), &[], &BTreeMap::new());
+            findings::update(
+                &mut ledger,
+                &day("d", at * DAY),
+                &[],
+                &BTreeMap::new(),
+                &BTreeSet::new(),
+            );
         }
         assert!(
             ledger[0].open,
@@ -255,7 +261,13 @@ mod tests {
             now: 1.0,
             words: "tec crashed".to_owned(),
         };
-        findings::update(&mut ledger, &day("d1", DAY), &[found], &BTreeMap::new());
+        findings::update(
+            &mut ledger,
+            &day("d1", DAY),
+            &[found],
+            &BTreeMap::new(),
+            &BTreeSet::new(),
+        );
         assert!(
             !settle(&mut ledger, "crashes:tec") && ledger[0].open,
             "a finding of cadence's own was closed by hand"

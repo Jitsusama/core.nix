@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::findings::owner_of;
+use crate::holders::a_run;
 
 /// How far back restarts are counted.
 pub const WITHIN: i64 = 15 * 60;
@@ -293,15 +293,6 @@ fn run(program: &str, args: &[&str]) -> io::Result<String> {
     }
 }
 
-/// The owner of `unit`: whoever `owners` names for `unit:<unit>`, or,
-/// failing that, for `unstamped:<unit>`, since the session that owns a
-/// unit's readiness owns the unit.
-#[must_use]
-pub fn owner(unit: &str, owners: &BTreeMap<String, String>) -> Option<String> {
-    owner_of(&format!("unit:{unit}"), owners)
-        .or_else(|| owner_of(&format!("unstamped:{unit}"), owners))
-}
-
 /// One thing broken now: its key, its unit, when it began as far as this
 /// tick knows, how long it must hold before it's told, and what it is.
 struct Broken {
@@ -367,7 +358,7 @@ fn broken(read: &Read, told: &Told, now: i64, clock: &impl Fn(i64) -> String) ->
     for r in read
         .restarts
         .iter()
-        .filter(|r| r.at > now - WITHIN && r.at <= now)
+        .filter(|r| r.at > now - WITHIN && r.at <= now && !a_run(&r.unit))
     {
         looping.entry(&r.unit).or_default().push(r.at);
     }
@@ -394,7 +385,7 @@ fn broken(read: &Read, told: &Told, now: i64, clock: &impl Fn(i64) -> String) ->
             reason: None,
         });
     }
-    for f in &read.failed {
+    for f in read.failed.iter().filter(|f| !a_run(&f.unit)) {
         broken.push(Broken {
             key: format!("failed:{}", f.unit),
             unit: f.unit.clone(),
@@ -595,6 +586,31 @@ mod tests {
     }
 
     #[test]
+    fn a_run_the_net_or_pi_started_is_never_told() {
+        let mut told = Told::default();
+        let failed = |unit: &str| Failed {
+            unit: unit.into(),
+            since: Some(50),
+        };
+        // Two kinds of unit failed on 17 November that no one held, each
+        // a run its starter already reads the end of, beside a service.
+        let read = Read {
+            failed: vec![
+                failed(
+                    "merge-net-rerun-worktree-github-Jitsusama-core-nix-jitsusama-repos-serve.service",
+                ),
+                failed("run-p178036-i50400995.service"),
+                failed("camera.service"),
+            ],
+            restarts: of("run-p958215-i38676451.service", &[100, 200, 300]),
+            ..Read::default()
+        };
+        let tells = due(&read, &mut told, 400, |_| None, clock);
+        let units: Vec<&str> = tells.iter().map(|t| t.unit.as_str()).collect();
+        assert_eq!(units, ["camera.service"], "only the service that stays");
+    }
+
+    #[test]
     fn a_daemon_signed_out_is_told_at_once_with_its_reason() {
         let mut told = Told::default();
         let read = Read {
@@ -705,28 +721,5 @@ mod tests {
             ],
             "each line's unit and moment, in seconds"
         );
-    }
-
-    #[test]
-    fn a_units_owner_is_its_own_or_its_readiness_owner() {
-        let owners: BTreeMap<String, String> = [
-            ("unit:google.service", "RTOIMQ"),
-            ("unstamped:google.service", "OTHER1"),
-            ("unstamped:slack-unreads.service", "RCTRF8"),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.to_owned(), v.to_owned()))
-        .collect();
-        assert_eq!(
-            owner("google.service", &owners).as_deref(),
-            Some("RTOIMQ"),
-            "its own"
-        );
-        assert_eq!(
-            owner("slack-unreads.service", &owners).as_deref(),
-            Some("RCTRF8"),
-            "its readiness owner"
-        );
-        assert_eq!(owner("people.service", &owners), None, "none named");
     }
 }

@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::day::Measure;
+use crate::holders;
 
 const EVIDENCE: &str = "health's ~/.local/state/health/<date>.json, its figures";
 
@@ -239,9 +240,12 @@ pub fn unstamped(json: &str) -> BTreeMap<String, u32> {
     struct Written {
         unstamped: BTreeMap<String, u32>,
     }
-    serde_json::from_str::<Written>(json)
+    let mut named = serde_json::from_str::<Written>(json)
         .unwrap_or_default()
-        .unstamped
+        .unstamped;
+    // A run started once has no restarts to time, so no ready line to add.
+    named.retain(|unit, _| !holders::a_run(unit));
+    named
 }
 
 #[cfg(test)]
@@ -306,6 +310,18 @@ mod tests {
                 "restarts with no ready line from google.service, new, 2 times".to_owned()
             )],
             "a service new to saying no ready line wasn't named, or one named before was again"
+        );
+    }
+
+    #[test]
+    fn a_rerun_of_the_nets_isnt_named_for_its_ready_line() {
+        let named = unstamped(
+            r#"{"unstamped": {"merge-net-rerun-worktree-github-Jitsusama-core-nix-jitsusama-cadence-says-one-stall-once.service": 1, "tuple.service": 2}}"#,
+        );
+        assert_eq!(
+            named,
+            BTreeMap::from([("tuple.service".to_owned(), 2)]),
+            "a one-time rerun was asked for a ready line"
         );
     }
 

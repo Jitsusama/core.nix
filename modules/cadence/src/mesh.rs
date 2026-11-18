@@ -151,6 +151,17 @@ impl Mesh {
             .collect()
     }
 
+    /// Every address a session on the mesh goes by, living or left
+    /// behind, upper case, as a unit named for one carries it.
+    #[must_use]
+    pub fn known(&self) -> std::collections::BTreeSet<String> {
+        self.all()
+            .into_iter()
+            .flat_map(|p| p.addresses)
+            .map(|a| a.to_ascii_uppercase())
+            .collect()
+    }
+
     /// Whether `session` is parked, its holder waiting to start it again.
     #[must_use]
     pub fn is_parked(&self, session: &str) -> bool {

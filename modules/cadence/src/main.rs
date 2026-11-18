@@ -51,6 +51,7 @@ mod elsewhere;
 mod findings;
 mod gate;
 mod health;
+mod holders;
 mod hour;
 mod idle;
 mod judge;
@@ -388,8 +389,10 @@ fn tell_units(
     let runtime = env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
     let read = units::read(now, true, runtime.as_deref());
     let mut failed = None;
+    let known = mesh.known();
     for tell in units::due(&read, &mut told, now, units::last_error, clock) {
-        let owner = units::owner(&tell.unit, &args.owners).or_else(|| args.watcher.clone());
+        let owner =
+            holders::owner(&tell.unit, &args.owners, &known).or_else(|| args.watcher.clone());
         let mut to = vec![orchestrator.to_owned()];
         to.extend(owner.filter(|o| !o.eq_ignore_ascii_case(orchestrator)));
         // A finding: each acts on it in its next turn, and nothing waits
