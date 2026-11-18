@@ -104,6 +104,10 @@ fn replay() -> Help {
             "--anchor NETWORK=UP",
             "the line a network carries up, in kbit/s",
         )
+        .option(
+            "--most NETWORK=UP",
+            "the most a network's upload is held to, in kbit/s",
+        )
         .option("--windows FILE", "NAME FROM TO lines, judged apart")
         .exit(Exit::Usage, WRONGLY)
         .exit(Exit::Failed, "a file couldn't be read")

@@ -9,7 +9,7 @@
 //! Long because its tests replay recorded days through every path a stay
 //! takes, which only reads whole beside the follower they step.
 
-use crate::networks::Anchors;
+use crate::networks::{Anchors, Ceilings};
 use crate::oneway::{self, Ours, Tuning};
 use crate::record::day_file;
 use crate::replay::{Controller as _, Rates, Reading, Sample, parse};
@@ -54,6 +54,11 @@ pub struct Heard {
     /// second's limit and delay are to be judged as.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trial: Option<Tuning>,
+    /// The ceiling the upload is held under, a trial's or its network's,
+    /// in kbit/s, while one holds it: the rate a trace sets apart as the
+    /// ceiling's, not the controller's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ceiling: Option<f64>,
     /// What each of the VPN's tins sent up over the last second, in
     /// kbit/s: each class's share of the upload, read where the tunnel's
     /// classes still show. The shaper fills it in, beside what the
@@ -124,6 +129,8 @@ pub struct Follow {
     trial: Option<Tuning>,
     /// Each network's anchor, which a stay on it is guarded by.
     anchors: Anchors,
+    /// Each network's ceiling, which a stay on it is held under.
+    ceilings: Ceilings,
 }
 
 impl Follow {
@@ -142,6 +149,30 @@ impl Follow {
             from_ms: 0,
             trial: None,
             anchors: Anchors::new(),
+            ceilings: Ceilings::new(),
+        }
+    }
+
+    /// Holds each network's upload under its ceiling, the stay's from now.
+    pub fn ceil(&mut self, ceilings: Ceilings) {
+        self.ceilings = ceilings;
+        self.controller
+            .ceil(self.ceilings.get(&self.network).copied());
+        self.controller.up.tune(self.tuning());
+    }
+
+    /// How the stay's upload is tuned: by the trial, under the lower of its
+    /// ceiling and the network's, so a trial may try under a network's
+    /// ceiling but never past it.
+    fn tuning(&self) -> Tuning {
+        let tuning = self.trial.unwrap_or_default();
+        let network = self.ceilings.get(&self.network).copied();
+        Tuning {
+            most_kbit: match (tuning.most_kbit, network) {
+                (Some(trial), Some(network)) => Some(trial.min(network)),
+                (trial, network) => trial.or(network),
+            },
+            ..tuning
         }
     }
 
@@ -160,7 +191,7 @@ impl Follow {
         self.trial = trial
             .map(Tuning::bounded)
             .filter(|t| *t != Tuning::default());
-        self.controller.up.tune(self.trial.unwrap_or_default());
+        self.controller.up.tune(self.tuning());
     }
 
     /// Takes whose a link's upload queue is now, for the seconds to come.
@@ -184,10 +215,14 @@ impl Follow {
             if let Some(network) = network {
                 self.reading = Reading::new(network.clone());
                 self.controller = oneway::Controller::new(None, None);
-                self.controller.up.tune(self.trial.unwrap_or_default());
+                // Ceiled and tuned before the start, which begins at the
+                // hold of the line the network's ceiling leaves, and whose
+                // plateau reads the trial's hold.
+                self.network.clone_from(network);
+                self.controller.ceil(self.ceilings.get(network).copied());
+                self.controller.up.tune(self.tuning());
                 self.controller.anchor(self.anchors.get(network).copied());
                 self.controller.start_at_the_anchor();
-                self.network.clone_from(network);
                 self.rates = Rates::default();
                 return;
             }
@@ -212,8 +247,8 @@ impl Follow {
             self.rates = self.controller.second(&second);
             if self.controller.guarded > guarded {
                 eprintln!(
-                    "the upload was held under {:.0}% of {}'s anchor for a minute with no cut \
-                     that drained a queue, so it's back to the anchor's hold",
+                    "the upload was held under {:.0}% of {}'s line for a minute with no cut \
+                     that drained a queue, so it's back to the line's hold",
                     oneway::ANCHOR_LOW * 100.0,
                     self.network
                 );
@@ -243,6 +278,7 @@ impl Follow {
             up_limit: self.controller.up.limit(),
             plateau: self.controller.up.plateau(),
             trial: self.trial,
+            ceiling: self.tuning().most_kbit,
             up_tins_kbit: None,
             why: Some(self.controller.why()),
         };
@@ -286,12 +322,18 @@ impl Follow {
     /// moment in ms since 1970: no limit once the recorder has gone silent.
     pub fn now(&self, at_ms: u64) -> Option<(&str, Rates)> {
         let link = self.link.as_deref()?;
-        if self.silent(at_ms) {
-            // A trial's ceiling still holds what nothing else does.
-            let up = self.trial.and_then(|t| t.most_kbit).map(crate::rate::whole);
-            return Some((link, Rates { up, down: None }));
-        }
-        Some((link, self.rates))
+        let rates = if self.silent(at_ms) {
+            Rates::default()
+        } else {
+            self.rates
+        };
+        // A ceiling, a trial's or the network's, still holds what nothing
+        // else does: a recorder gone silent, or a stay not yet stepped on.
+        let most = self.tuning().most_kbit.map(crate::rate::whole);
+        let up = rates
+            .up
+            .map_or(most, |up| Some(most.map_or(up, |most| up.min(most))));
+        Some((link, Rates { up, ..rates }))
     }
 }
 
@@ -338,6 +380,11 @@ impl Live {
     /// Guards each network's upload by its anchor.
     pub fn anchor(&mut self, anchors: Anchors) {
         self.follow.anchor(anchors);
+    }
+
+    /// Holds each network's upload under its ceiling, the stay's from now.
+    pub fn ceil(&mut self, ceilings: Ceilings) {
+        self.follow.ceil(ceilings);
     }
 
     /// The link the controller holds, and what it last heard of it.
@@ -520,6 +567,85 @@ mod tests {
             },
         );
         follow
+    }
+
+    // On 16 November the eero's own shaper, past ours, was the narrow
+    // point at home, so the queue and its drops stood there, where nothing
+    // sorts agents' from Joel's. A network's ceiling holds the upload under
+    // it on that network alone, and a trial may try lower but not higher.
+    #[test]
+    fn a_network_s_ceiling_holds_its_stays_and_a_trial_only_lowers_it() {
+        let mut follow = waiting();
+        follow.ceil(Ceilings::from([("home".to_string(), 9_500.0)]));
+        for line in &flow_queued(NOV3) {
+            follow.take(&parse(line).expect("a sample"));
+        }
+        assert_eq!(follow.controller.up.limit(), Some(9_500), "home's ceiling");
+        let ceiling = || follow.heard().and_then(|(_, heard)| heard.ceiling);
+        assert_eq!(ceiling(), Some(9_500.0), "the ceiling heard");
+        let trial = |most| {
+            Some(Tuning {
+                most_kbit: Some(most),
+                ..Tuning::default()
+            })
+        };
+        follow.tune(trial(8_000.0));
+        assert_eq!(
+            follow.controller.up.limit(),
+            Some(8_000),
+            "a trial under it"
+        );
+        let heard = follow.heard().and_then(|(_, heard)| heard.ceiling);
+        assert_eq!(heard, Some(8_000.0), "the trial's heard");
+        follow.tune(trial(11_000.0));
+        let most = follow.controller.up.tuning().most_kbit;
+        assert_eq!(most, Some(9_500.0), "a trial past it");
+        follow.take(&parse(&pool(NOV3 + 11_000, Some("hotel"))).expect("a sample"));
+        let most = follow.controller.up.tuning().most_kbit;
+        assert_eq!(
+            most,
+            Some(11_000.0),
+            "another network keeps only the trial's"
+        );
+        follow.tune(None);
+        assert_eq!(
+            follow.controller.up.tuning(),
+            Tuning::default(),
+            "nor any after"
+        );
+    }
+
+    // A network's ceiling holds its upload from a stay's first line, with
+    // its anchor beside it and before the controller has stepped, through
+    // a recorder's silence, and on coming back to it from another network.
+    #[test]
+    fn a_network_s_ceiling_holds_from_a_stay_s_start_through_a_silence() {
+        let mut follow = waiting();
+        follow.anchor(Anchors::from([("home".to_string(), 12_000.0)]));
+        follow.ceil(Ceilings::from([("home".to_string(), 9_500.0)]));
+        let up = |follow: &Follow, at| follow.now(at).and_then(|(_, r)| r.up);
+        let lines = flow_queued(NOV3);
+        follow.take(&parse(&lines[0]).expect("a sample"));
+        assert_eq!(up(&follow, NOV3), Some(9_500), "the stay's first line");
+        assert_eq!(follow.controller.up.limit(), Some(9_500), "its start");
+        for line in &lines[1..] {
+            follow.take(&parse(line).expect("a sample"));
+        }
+        let silent = follow.last_ms + SILENT_MS + 1;
+        assert_eq!(up(&follow, silent), Some(9_500), "a silent recorder");
+        follow.take(&parse(&pool(NOV3 + 11_000, Some("hotel"))).expect("a sample"));
+        assert_eq!(up(&follow, NOV3 + 11_000), None, "another network");
+        follow.take(&parse(&pool(NOV3 + 12_000, Some("home"))).expect("a sample"));
+        assert_eq!(up(&follow, NOV3 + 12_000), Some(9_500), "home again");
+        let limit = follow.controller.up.limit();
+        assert_eq!(limit, Some(9_500), "its start again");
+        follow.ceil(Ceilings::from([("home".to_string(), 9_000.0)]));
+        let (limit, line) = (follow.controller.up.limit(), follow.controller.up.line());
+        assert_eq!(limit, Some(9_000), "a ceiling set during the stay");
+        assert_eq!(line, Some(10_000.0), "the line it leaves");
+        follow.ceil(Ceilings::new());
+        let line = follow.controller.up.line();
+        assert_eq!(line, Some(12_000.0), "the anchor, with no ceiling");
     }
 
     // What a stay learned of a network that isn't declared starts nothing

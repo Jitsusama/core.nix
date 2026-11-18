@@ -16,10 +16,11 @@
 //!
 //! A trial (src/live.rs) may hold the upload under a ceiling of its own,
 //! as the ceiling arms at 01:12 on 17 November held it at 9.5 and then
-//! 8.0 Mb/s, which read as two breaches of the controller's. A second
-//! held at a trial's ceiling, and a fall to it, are the trial's: counted
-//! apart and judged no further. A cut under the ceiling is still the
-//! controller's.
+//! 8.0 Mb/s, which read as two breaches of the controller's, and a
+//! network's own ceiling holds it so for good. A second held at a
+//! ceiling, a trial's or its network's, and a fall to it, are the
+//! ceiling's: counted apart and judged no further. A cut under the
+//! ceiling is still the controller's.
 
 use crate::oneway::ANCHOR_HOLD;
 use crate::rate::{float, whole};
@@ -66,6 +67,8 @@ pub struct Breach {
 /// How the upload did against its anchor.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Bar {
+    /// The line it was judged against, in kbit/s: the anchor, or the
+    /// line a network's ceiling leaves under it where a replay says so.
     pub anchor: u64,
     /// Seconds judged: held to a rate or not.
     pub seconds: u64,
@@ -83,9 +86,9 @@ pub struct Bar {
     /// holds the whole anchor.
     pub busy_s: u64,
     pub busy_hold: Option<f64>,
-    /// Seconds the upload was held at a trial's ceiling: the trial's
-    /// doing, so none of the rest counts them.
-    pub trial_s: u64,
+    /// Seconds the upload was held at a ceiling, a trial's or its
+    /// network's: the ceiling's doing, so none of the rest counts them.
+    pub ceiling_s: u64,
 }
 
 /// The bar over every stay with an anchor, and over each window.
@@ -148,7 +151,7 @@ impl Bar {
         self.cuts += other.cuts;
         self.earned += other.earned;
         self.busy_s += other.busy_s;
-        self.trial_s += other.trial_s;
+        self.ceiling_s += other.ceiling_s;
     }
 }
 
@@ -187,7 +190,7 @@ impl Spells {
                     // The rate a second is held to was answered at the
                     // second before, under that second's trial.
                     if at_the_ceiling(holding, last.ceiling) {
-                        spells.bar.trial_s += 1;
+                        spells.bar.ceiling_s += 1;
                         spells.end();
                     } else {
                         spells.second(at, s, holding, anchor);
@@ -271,8 +274,8 @@ impl Spells {
     }
 }
 
-/// Whether `rate` is held at a trial's `ceiling`, or over it, which a
-/// trial's ceiling never lets: either way the trial holds it there.
+/// Whether `rate` is held at a `ceiling`, or over it, which a ceiling
+/// never lets: either way the ceiling holds it there.
 fn at_the_ceiling(rate: Option<u64>, ceiling: Option<u64>) -> bool {
     ceiling.is_some_and(|most| rate.is_none_or(|rate| rate >= most))
 }
@@ -478,7 +481,7 @@ mod tests {
         );
         let bar = at_home(&s, &rates, 12_000);
         assert_eq!(
-            bar.trial_s, 290,
+            bar.ceiling_s, 290,
             "each second at the trial's ceiling: {bar:?}"
         );
         assert_eq!(bar.breached_s, 0, "none is the controller's: {bar:?}");
@@ -503,7 +506,10 @@ mod tests {
             10,
         );
         let bar = at_home(&s, &rates, 12_000);
-        assert_eq!(bar.trial_s, 2, "seconds 1 and 6 were the trial's: {bar:?}");
+        assert_eq!(
+            bar.ceiling_s, 2,
+            "seconds 1 and 6 were the trial's: {bar:?}"
+        );
         assert_eq!(bar.seconds, 7, "the rest the controller's: {bar:?}");
     }
 
@@ -517,7 +523,7 @@ mod tests {
             111,
         );
         let bar = at_home(&s, &rates, 12_000);
-        assert_eq!(bar.trial_s, 10, "the trial's seconds: {bar:?}");
+        assert_eq!(bar.ceiling_s, 10, "the trial's seconds: {bar:?}");
         assert_eq!(bar.breached_s, 0, "two short spells, not one: {bar:?}");
     }
 
@@ -528,7 +534,7 @@ mod tests {
         let bar = at_home(&s, &rates, 12_000);
         assert_eq!(bar.cuts, 1, "8.0 to 4.5, under the ceiling: {bar:?}");
         assert_eq!(
-            bar.trial_s, 10,
+            bar.ceiling_s, 10,
             "held at the ceiling until the cut: {bar:?}"
         );
         assert_eq!(

@@ -35,7 +35,8 @@ pub enum Why {
     /// Sent back to the anchor's hold, after a minute under the guard's
     /// share of it with no cut that drained a queue.
     Guarded,
-    /// Held at a trial's ceiling, under what it would otherwise be given.
+    /// Held at a trial's ceiling or its network's, under what it would
+    /// otherwise be given.
     Ceiling,
 }
 
@@ -102,7 +103,7 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
                 |a| mbit(a * crate::oneway::ANCHOR_LOW)
             )
         ),
-        Why::Ceiling => format!("Upload {rate}: held at a trial's ceiling; {held}."),
+        Why::Ceiling => format!("Upload {rate}: held at its ceiling; {held}."),
     }
 }
 
@@ -159,13 +160,14 @@ pub fn holding(link: &str, up: Option<u64>, down: Option<u64>, reason: Option<&R
     }
 }
 
-/// The journal's line when a trial's ceiling alone holds `link`'s upload,
-/// at `up` kbit/s: the recorder has gone silent, or the controller lets
-/// the upload go, so nothing it judged holds it.
+/// The journal's line when a ceiling alone, a trial's or its network's,
+/// holds `link`'s upload, at `up` kbit/s: the recorder has gone silent,
+/// the controller lets the upload go or hasn't stepped yet, so nothing it
+/// judged holds it.
 pub fn ceiling(link: &str, up: u64) -> String {
     format!(
-        "{link}: held to {} up by a trial's ceiling alone, while the controller holds \
-         nothing.",
+        "{link}: held to {} up by its ceiling alone, a trial's or its network's, while the \
+         controller holds nothing.",
         mbit(lossless(up))
     )
 }
@@ -340,8 +342,8 @@ mod tests {
     fn a_ceiling_holding_alone_says_the_controller_holds_nothing() {
         assert_eq!(
             ceiling("wlp0s20f3", 8_500),
-            "wlp0s20f3: held to 8.5 Mb/s up by a trial's ceiling alone, while the controller \
-             holds nothing."
+            "wlp0s20f3: held to 8.5 Mb/s up by its ceiling alone, a trial's or its network's, \
+             while the controller holds nothing."
         );
     }
 

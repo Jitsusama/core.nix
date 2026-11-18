@@ -1,7 +1,8 @@
 //! What the live shaper heard and held each second that the recorder's
 //! lines can't say, kept as day files of its own: whose the upload's queue
 //! was, a call's round trip through the VPN, the rate it held the upload
-//! to, and the ceiling a trial held it under. A replay (src/replay.rs)
+//! to, and the ceiling, a trial's or its network's, it was held under.
+//! A replay (src/replay.rs)
 //! puts these back into the recorded seconds, so a bite that came
 //! through our own queues or the VPN is replayed rather than passed as
 //! clean, and the rates the shaper really held are scored beside any a
@@ -46,8 +47,9 @@ pub struct Line {
     /// The plateau the upload holds under, in kbit/s.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plateau: Option<u64>,
-    /// The ceiling a trial held the upload under, in kbit/s, while one
-    /// did: a rate held there is the trial's, not the controller's.
+    /// The ceiling the upload was held under, a trial's or its network's,
+    /// in kbit/s, while one did: a rate held there is the ceiling's, not
+    /// the controller's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ceiling: Option<u64>,
 }
@@ -65,10 +67,7 @@ impl Line {
             vpn_ms: heard.vpn_ms.map(tenth),
             vpn_base_ms: heard.vpn_base_ms.map(tenth),
             plateau: heard.plateau.map(crate::rate::whole),
-            ceiling: heard
-                .trial
-                .and_then(|t| t.most_kbit)
-                .map(crate::rate::whole),
+            ceiling: heard.ceiling.map(crate::rate::whole),
         }
     }
 }
@@ -146,7 +145,7 @@ pub fn read(folder: &Path) -> Result<BTreeMap<u64, Line>, String> {
 
 /// Puts what the shaper heard back into each stay's seconds, and gives
 /// the rates it held at each, in the stays' order: a second with no line
-/// holds the last rate, and the trial's ceiling over it, for up to
+/// holds the last rate, and the ceiling over it, for up to
 /// `STANDS_S`, and no limit after.
 pub fn merge(stays: &mut [Stay], lines: &BTreeMap<u64, Line>) -> Vec<Vec<Rates>> {
     stays
@@ -181,8 +180,8 @@ pub fn merge(stays: &mut [Stay], lines: &BTreeMap<u64, Line>) -> Vec<Vec<Rates>>
 /// Puts the trace's `lines` into `stays` as `merge` does, giving the
 /// rates the live shaper held. Replaying that shaper, `held`, only what
 /// the trace saw is kept, as `traced` says; replaying another
-/// controller, every trial's ceiling is forgotten, since a trial held
-/// only the live shaper's rates and the replayed seconds are all its own.
+/// controller, every ceiling the trace kept is forgotten, since it held
+/// only the live shaper's rates; that replay sets its own (`--most`).
 pub fn heard_into(
     mut stays: Vec<Stay>,
     lines: &BTreeMap<u64, Line>,
@@ -196,7 +195,7 @@ pub fn heard_into(
     (stays, rates)
 }
 
-/// Forgets the trials' ceilings `merge` put in.
+/// Forgets the ceilings `merge` put in.
 fn forget_trials(stays: &mut [Stay]) {
     for second in stays.iter_mut().flat_map(|s| s.seconds.iter_mut()) {
         second.ceiling = None;
@@ -276,19 +275,15 @@ mod tests {
     }
 
     #[test]
-    fn a_line_says_the_ceiling_a_trial_holds_the_upload_under() {
-        let heard = |most_kbit| crate::live::Heard {
+    fn a_line_says_the_ceiling_the_upload_is_held_under() {
+        let heard = |ceiling| crate::live::Heard {
             up_limit: Some(9_500),
-            trial: Some(crate::oneway::Tuning {
-                most_kbit,
-                ..crate::oneway::Tuning::default()
-            }),
+            ceiling,
             ..crate::live::Heard::default()
         };
         let at = |h: &crate::live::Heard| Line::of(NOV16, "wlan0", h).ceiling;
-        assert_eq!(at(&heard(Some(9_500.4))), Some(9_500), "a trial's ceiling");
-        assert_eq!(at(&heard(None)), None, "a trial with no ceiling");
-        assert_eq!(at(&crate::live::Heard::default()), None, "no trial");
+        assert_eq!(at(&heard(Some(9_500.4))), Some(9_500), "a ceiling");
+        assert_eq!(at(&heard(None)), None, "no ceiling");
         // Written only when there is one, so a day's lines stay short.
         let line = serde_json::to_string(&Line::of(NOV16, "wlan0", &heard(None)));
         assert!(
