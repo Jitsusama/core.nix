@@ -6766,7 +6766,8 @@ Scope {
 
     // A key's drawing said apart by the render thread's own times of its
     // frame (frame-presentation.patch's timesOf): from the frame's start to
-    // the end of its sync, the polish and sync the GUI thread does; then its
+    // the end of its sync, the GUI thread's wait for the render thread and
+    // the sync (Awaited.syncSplit tells them apart for a held key); then its
     // render and swap; then how long the GUI thread, busy with other work,
     // took to hear the swap, which the frame never waited on. Its swap is
     // sent from the render thread and heard queued, so Joel's "meet" said
@@ -7563,6 +7564,10 @@ Scope {
         answersWaited.stop();
         if (waited === null || !open) {
             heldSpans = [];
+            // Closed, no frame of its keys will be said, so what each
+            // held key waited behind is let go.
+            if (!open)
+                heldBehind = [];
             return;
         }
         searchedNow(waited.due, waited);

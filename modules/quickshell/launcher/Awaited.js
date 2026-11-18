@@ -123,7 +123,8 @@ function heldOpen(frame, held, at) {
 // The render thread's steps of each frame in `frames`, as
 // FramePresentation's timesOf says them with the frame's number, that
 // held the shell's thread from `from` to `to`: its render, then its swap,
-// which waits on the compositor.
+// which waits on the compositor, and can wait on the GPU drawing what the
+// render handed it.
 function drawingHeld(frames, from, to) {
     const steps = [];
     for (const frame of frames) {
@@ -143,12 +144,17 @@ function drawingHeld(frames, from, to) {
 // then posts the sync and waits (qsgthreadedrenderloop.cpp's
 // polishAndSync), so until the render thread takes the sync the shell's
 // thread waits on it: on a frame before's render or swap where that ran,
-// else on the thread itself. Then the sync, then what the shell's thread
-// ran after it let go (its animations advanced, and what was queued ahead
-// of the call ending the span); on a loop rendering on the shell's thread,
-// as in a sandbox, that also holds the frame's own render and swap. Where
-// no frame's sync began within it, as one whose slot a newer frame took,
-// what no step names is said as untimed syncing.
+// else on the thread itself, which begins the frame before it syncs and
+// can wait there for a buffer (syncAndRender's beginFrame), with the
+// shell's own handlers of animating run after the span opened. Then the
+// sync itself, then what the shell's thread ran after it let go (its
+// animations advanced, and what was queued ahead of the call ending the
+// span); on a loop rendering on the shell's thread, as in a sandbox, that
+// also holds the frame's own render and swap. Where no frame's sync began
+// within it, as one whose window wasn't ready to render or whose slot a
+// newer frame took, what no step names is said as untimed syncing. Its own
+// step isn't said as syncing, which names the whole span where it isn't
+// told apart, as an opening's stall does (Pacing.stallSpent).
 function syncSplit(span, frames) {
     const own = frames.filter(frame => frame.synchronizing >= span.from
         && frame.synchronizing <= span.to)
@@ -172,9 +178,11 @@ function syncSplit(span, frames) {
     if (own === undefined) {
         return parts;
     }
-    const synced = own.synchronized > took ? Math.min(own.synchronized, span.to) : span.to;
+    // A sync with no end said is said as taking none, so the time after
+    // isn't put back under the sync.
+    const synced = own.synchronized > took ? Math.min(own.synchronized, span.to) : took;
     if (synced > took) {
-        parts.push({ name: "syncing", from: took, to: synced });
+        parts.push({ name: "the sync itself", from: took, to: synced });
     }
     if (span.to > synced) {
         parts.push({ name: "after the sync", from: synced, to: span.to });
@@ -203,16 +211,18 @@ function behindSplit(behind, frames, bound) {
 }
 
 // The frames FramePresentation still has the times of, oldest first, each
-// with its number, read back from `last`, the newest begun. One begun but
-// not yet rendered has no times, so the newest two may be passed over;
-// below them the read ends at the first a newer frame's slot took, as
-// Trials.begunBefore's does, so it needs no count of the ring's slots.
+// with its number, read back from `last`, the newest begun. The newest
+// may be begun and not yet rendered, so has no times, and is passed over;
+// below it the read ends at the first a newer frame's slot took, as
+// Trials.begunBefore's does, or at FRAMES_READ, should timesOf ever give
+// a slot's times for a frame not its own.
+const FRAMES_READ = 32;
 function framesTimed(last, timesOf) {
     const frames = [];
-    for (let frame = last; frame > 0; frame--) {
+    for (let frame = last; frame > 0 && last - frame < FRAMES_READ; frame--) {
         const times = timesOf(frame);
         if (!(times.rendered > 0)) {
-            if (frames.length > 0 || last - frame >= 2) {
+            if (frames.length > 0 || frame < last) {
                 break;
             }
             continue;
