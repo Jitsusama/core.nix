@@ -94,12 +94,15 @@ Provider {
             Qt.callLater(provider.showNext);
     }
 
-    // Holds the oldest ask in the launcher, unless it already does.
+    // Holds the oldest ask in the launcher, unless it already does. Closed,
+    // it's drawn from what the last ask kept, listed and asked as it stands
+    // (intoOn), since each ask opened it whole: Joel's three took 51 to 104
+    // ms to the screen (2026-11-17).
     function showNext() {
-        if (asking === null || (shown === asking.reply && launcher.open))
+        if (asking === null || (shown === asking.reply && (launcher.open || launcher.opening)))
             return;
         shown = asking.reply;
-        launcher.into(settings.name);
+        launcher.intoOn(settings.name, null);
     }
 
     // One answer: connected, said, then gone.
@@ -126,18 +129,21 @@ Provider {
 
     // Closing the launcher on an ask, or leaving it for something else,
     // opens nothing. The launcher closes before it runs the row picked, so
-    // the refusal waits a turn, by when a pick has answered the ask.
+    // the refusal waits a turn, by when a pick has answered the ask. Shown
+    // at all is heard (cardUp), not open alone: drawn from what it kept,
+    // the launcher isn't open until it's filled in, so one shut before
+    // that left the program, and every ask after it, waiting.
     Connections {
         target: provider.launcher
 
-        function onOpenChanged() {
-            if (!provider.launcher.open && provider.shown !== "")
+        function onCardUpChanged() {
+            if (!provider.launcher.cardUp && provider.shown !== "")
                 Qt.callLater(provider.refuse, provider.shown);
         }
     }
 
     function refuse(reply) {
-        if (!launcher.open && shown === reply)
+        if (!launcher.open && !launcher.opening && shown === reply)
             settle(reply, "");
     }
 
@@ -182,7 +188,7 @@ Provider {
             if (provider.asking !== null)
                 provider.showNext();
             else
-                provider.launcher.open = false;
+                provider.launcher.shut();
         }
     }
 }

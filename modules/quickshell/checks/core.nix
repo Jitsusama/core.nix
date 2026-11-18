@@ -116,6 +116,12 @@ in
       name = "the-launcher-opens-on-what-it-kept-on-niri";
       tests = ../../../tests/opening-on-niri-test.py;
       inherit given;
+      # The portal's ask what to open a file with, as the account's shell
+      # holds it (../../open-with/home.nix), asked by a case.
+      shell.launcher.providers.openWith = {
+        order = 5;
+        source = ../../open-with/OpenWith.qml;
+      };
       parts = [
         "test_a_first_letter_after_a_restart_is_drawn_on_the_rows_it_lets_go"
         "test_home_kept_with_a_word_typed_fills_in_where_it_stood"

@@ -8969,6 +8969,8 @@ Scope {
         const lines = drawerCard.baselines();
         return JSON.stringify({
             open: root.open,
+            // Whether it's drawn from what it kept, not yet filled in.
+            opening: root.opening,
             keys: root.open && prompt.Window.active,
             // Super+S's talk line (TalkLine.qml).
             line: talkLine.shown(),
@@ -9615,16 +9617,20 @@ Scope {
         // shell started (warmLed) holds no rows. A plain place asked to list
         // now, as a margin mark opens Now, is listed whole with its rows
         // made as they stand (asItStands), since shut they're as last made
-        // and a mark lit since would have no row.
+        // and a mark lit since would have no row. Its step is made again
+        // too (placeStep), since what its collection says can change: Open
+        // With's asks what to open each file with, and the kept step would
+        // ask about the last.
+        const asNow = listedNow === true && plainPlace(source, name);
         const listed = source?.keptListed === true ? keptListing(source)
-            : listedNow === true && plainPlace(source, name)
-                ? source.asItStands(() => keptListing(source))
+            : asNow ? source.asItStands(() => keptListing(source))
             : listedNow === true || kept.led === true ? ledListing(name) : kept.matches;
         if (listed === null)
             return false;
+        const steps = asNow ? [placeStep(source)] : kept.held;
         keeping = true;
         try {
-            held = kept.held;
+            held = steps;
             homeDepth = kept.depth;
             listing = false;
             listedInDrawer = false;
@@ -10975,6 +10981,17 @@ Scope {
             + ` them ${waited} ms (${said})`);
     }
 
+    // Shuts it however it's shown, for a source done with it: shut again
+    // unfilled while drawn from what it kept, closed once open. Closing
+    // alone left a kept opening standing, to be filled in on what no one
+    // waited on any more, as Open With's withdrawn ask.
+    function shut() {
+        if (opening && !open)
+            unopened();
+        else
+            open = false;
+    }
+
     // Shut again before it was filled in, as a second press of the chord
     // does: nothing woke for it, so nothing has to settle.
     function unopened() {
@@ -11140,12 +11157,13 @@ Scope {
     }
 
     // The rows the card shows, by what each is, what each says at its
-    // right, and where the cursor is, for the check that rows filled in
-    // land where the kept ones stood.
+    // right, where the cursor is and what the field asks, for the check
+    // that rows filled in land where the kept ones stood, under the ask
+    // of the place drawn.
     function rowsSaid() {
         const seen = matches.slice(0, rows);
         return { keys: seen.map(row => pairedId(row)), sides: seen.map(row => row.side ?? ""),
-            at: current };
+            at: current, ask: prompt.hint };
     }
 
     // What filling an opening in took, said once it's done, with the rows
