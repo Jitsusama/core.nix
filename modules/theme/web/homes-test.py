@@ -24,7 +24,7 @@ from playwright.sync_api import Browser, sync_playwright
 
 if TYPE_CHECKING:
     import socket
-    from collections.abc import Collection, Iterator, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
     from socketserver import BaseServer
 
 PROBE = Path(os.environ["WEB_SKILL"]) / "homes.js"
@@ -50,15 +50,17 @@ class Quiet(SimpleHTTPRequestHandler):
         server: BaseServer,
         *,
         directory: str,
-        failing: Collection[str],
+        failing: Mapping[str, HTTPStatus],
     ) -> None:
+        """Serve `directory`, answering each file `failing` names with its status."""
         self.failing = failing
         super().__init__(request, client_address, server, directory=directory)
 
     def do_GET(self) -> None:
-        """Answer a failing file with a server error, and the rest from the folder."""
-        if self.path.removeprefix("/") in self.failing:
-            self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR)
+        """Answer a failing file with its status, and the rest from the folder."""
+        status = self.failing.get(self.path.removeprefix("/"))
+        if status is not None:
+            self.send_error(status)
             return
         super().do_GET()
 
@@ -80,21 +82,20 @@ def probed(
     root: Path,
     sites: Sequence[object] | str | None,
     page: str,
-    rows: str | None = None,
-    *,
-    failing: Collection[str] = (),
+    rows: str | HTTPStatus | None = None,
     **homes: object,
 ) -> object:
     """Run the probe on `page`, served beside any `sites`, `rows` as written, and homes.json.
 
-    `sites` written as a string is served as written, and each file named in
-    `failing` answers a server error.
+    `sites` written as a string is served as written, and `rows` given as a
+    status is what the server answers for rows.json.
     """
     if isinstance(sites, str):
         (root / "sites.json").write_text(sites)
     elif sites is not None:
         (root / "sites.json").write_text(json.dumps({"sites": sites}))
-    if rows is not None:
+    failing = {"rows.json": rows} if isinstance(rows, HTTPStatus) else {}
+    if isinstance(rows, str):
         (root / "rows.json").write_text(rows)
     for site, things in homes.items():
         (root / site).mkdir()
@@ -236,8 +237,8 @@ def test_rows_that_wont_read_are_a_fault(browser: Browser, tmp_path: Path, rows:
 
 def test_rows_the_server_fails_are_a_fault(browser: Browser, tmp_path: Path) -> None:
     """Only a rows.json that isn't there falls back; one the server fails is named."""
-    rows = json.dumps({"sites": [CODE]})
-    found = probed(browser, tmp_path, [CODE], NOTHING, rows, failing={"rows.json"})
+    failing = HTTPStatus.INTERNAL_SERVER_ERROR
+    found = probed(browser, tmp_path, [CODE], NOTHING, failing, code=[NOTEBOOK])
     assert found == [rows_fault("answered 500 from the sites' server")]
 
 
@@ -246,7 +247,7 @@ def test_a_record_that_wont_read_beside_rows_is_named(browser: Browser, tmp_path
     rows = json.dumps({"sites": [CODE]})
     assert probed(browser, tmp_path, '{"sites": [', NOTHING, rows, code=[NOTEBOOK]) == [
         (
-            'sites.json at the sites\' root won\'t read as rows, {"sites": [...]}, so the home '
+            "sites.json at the sites' root won't read as rows, {\"sites\": [...]}, so the home "
             "kept its last rows.json: fix sites.json"
         ),
     ]
@@ -270,7 +271,7 @@ def test_a_row_the_home_has_not_built_is_named(browser: Browser, tmp_path: Path)
     rows = json.dumps({"sites": [CODE]})
     assert probed(browser, tmp_path, [CODE, notes], NOTHING, rows, code=[NOTEBOOK]) == [
         (
-            '"notes/" in sites.json isn\'t in rows.json, so the home hasn\'t built since it '
+            "\"notes/\" in sites.json isn't in rows.json, so the home hasn't built since it "
             "was written: read `journalctl --user -u local-sites-home`"
         ),
     ]
