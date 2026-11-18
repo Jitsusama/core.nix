@@ -252,18 +252,7 @@ def test_each_chord_opening_is_timed(
                 pytest.fail(f"{place}'s opening closed unpresented: {opening}")
             timed[place].append(opening["presented"])
             took[place].append(cast("int", opening["took"]))
-            # Said once it's usable, which presented alone doesn't wait for.
-            usable = usable_after(shell, cast("int", opening["nth"]))
-            if isinstance(usable.get("stalled"), int):
-                stalled[place].append(cast("int", usable["stalled"]))
-            # Its line names what the longest stall was spent on.
-            for line in said_after(shell, mark, "opening usable")[:1]:
-                with capsys.disabled():
-                    print(
-                        f"lab-usable {os.environ.get('LAB_RUN', '')} {place}: "
-                        f"{line.split('launcher: ', 1)[-1]}",
-                        flush=True,
-                    )
+            stalled[place].extend(stall_of(shell, opening, mark, place, capsys))
             shell.close_launcher()
             shell.launcher_until(lambda shown: not shown["open"])
     for place, spans in timed.items():
@@ -273,6 +262,26 @@ def test_each_chord_opening_is_timed(
                 said_of(place, spans, took[place], stalled[place]),
                 flush=True,
             )
+
+
+def stall_of(
+    shell: Shell, opening: Json, mark: int, place: str, capsys: pytest.CaptureFixture[str]
+) -> list[int]:
+    """Give an opening's longest stall once it's usable, printing the line that names its parts.
+
+    It's said once the opening is usable, which presented alone doesn't wait for, and given as
+    a list of one, or none where the opening's record never said it.
+    """
+    usable = usable_after(shell, cast("int", opening["nth"]))
+    for line in said_after(shell, mark, "opening usable")[:1]:
+        with capsys.disabled():
+            print(
+                f"lab-usable {os.environ.get('LAB_RUN', '')} {place}: "
+                f"{line.split('launcher: ', 1)[-1]}",
+                flush=True,
+            )
+    stalled = usable.get("stalled")
+    return [stalled] if isinstance(stalled, int) else []
 
 
 def said_after(shell: Shell, mark: int, *wanted: str) -> list[str]:
