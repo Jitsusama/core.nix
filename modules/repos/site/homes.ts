@@ -29,6 +29,7 @@ const NAME = "{name}";
 const UNRESERVED = /^[A-Za-z0-9\-._~]*$/u;
 const VISIBLE = /^[\x21-\x7e]*$/u;
 const BREAKING = /[\\"<>`]/u;
+const HERE = /^\.\//u;
 
 /**
  * Whether an address's bytes are visible ASCII with no backslash, double quote, angle bracket or
@@ -75,7 +76,8 @@ function holdingOf(rows: unknown, kind: string): Holding | undefined {
   const listed = isObject(rows) && Array.isArray(rows["sites"]) ? rows["sites"] : [];
   const sites: string[] = [];
   for (const row of listed) {
-    const path = isObject(row) ? text(row, "path") : undefined;
+    // One leading ./ names the sites' root itself, as the system's homes take it.
+    const path = isObject(row) ? text(row, "path")?.replace(HERE, "") : undefined;
     const claims = isObject(row) && Array.isArray(row["homes"]) ? row["homes"] : [];
     if (path === undefined || !inside(path)) {
       continue;
