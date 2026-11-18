@@ -370,3 +370,49 @@ fn the_day_takes_the_daemons_timings_and_counts_its_warnings_as_ever() {
         "the daemon's warning wasn't counted, or its timing was"
     );
 }
+
+#[test]
+fn a_program_reloading_over_and_over_costs_health_only_the_reloads_it_keeps() {
+    let mut launches = Launches::default();
+    let reload = |since_boot: i64| Entry {
+        at: since_boot,
+        since_boot,
+        origin: Origin::Systemd,
+        ..entry(
+            "systemd",
+            5,
+            "Reload requested from client PID 1520947 ('systemctl') (unit x.service)...",
+        )
+    };
+    // A reload a minute for twenty minutes keeps only the last ten
+    // minutes' of them, and a flood a few milliseconds apart only the
+    // most.
+    for minute in 0..20 {
+        launches.heard(&reload(minute * 60_000_000));
+    }
+    let lately = launches.reloaded.get(&false).map_or(0, Vec::len);
+    for flood in 0..1_000 {
+        launches.heard(&reload(1_200_000_000 + flood * 5_000));
+    }
+    let flooded = launches.reloaded.get(&false).map_or(0, Vec::len);
+    // Still, the flood's last reload makes a stop the tool's own when only
+    // it is near enough, though one more reload after the stop is heard
+    // first: the cap lets the oldest go, not the recent ones.
+    launches.heard(&reload(1_225_000_000));
+    let stop = Entry {
+        at: 1_213_000_000,
+        since_boot: 1_213_000_000,
+        job: Some(Job::Stopping),
+        ..entry("backend.service", 6, "")
+    };
+    launches.heard(&stop);
+    assert_eq!(
+        (
+            lately,
+            flooded,
+            launches.stopping.contains_key("backend.service")
+        ),
+        (11, MOST_RELOADS, false),
+        "the reloads kept grew past their bounds, or the newest was lost"
+    );
+}
