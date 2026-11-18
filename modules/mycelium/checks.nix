@@ -516,7 +516,7 @@ in
 
   mycelium-serves-the-harness-files =
     holds "mycelium-serves-the-harness-files"
-      "A realm's node doesn't serve its realm's open and ended quests, restore list, runs, landings and talks from that realm's folders, the machine's waiting, verdicts, queue, the void's answers and the balance's latest reading aren't served by the home realm's node alone, a node reads its cells' waits from any folder but the waiting one the home realm's node serves, or a node doesn't restart when what it serves changes."
+      "A realm's node doesn't serve its realm's open and ended quests, restore list, runs, landings and talks from that realm's folders, the machine's waiting, verdicts, queue, the void's answers and the balance's latest reading aren't served by the home realm's node alone, a node reads its cells' waits from any folder but the waiting one the home realm's node serves, or a node, on Linux or a Mac, doesn't restart when what it serves changes."
       (
         let
           state = "/home/someone/.local/state";
@@ -553,6 +553,7 @@ in
             folder = "${state}/mission/waiting";
             records = "items";
             key = "id";
+            or = "title";
             by = "quest";
           };
           verdict = {
@@ -631,6 +632,21 @@ in
                 node = bothLinux.mycelium-other;
                 realm = "other";
               }
+            ]
+        # On a Mac, launchd reloads an agent only when its own file
+        # changes, so what the node serves is written into it.
+        &&
+          lib.all
+            (
+              realm:
+              (mac both).launchd.agents.${
+                if realm == "home" then "mycelium" else "mycelium-${realm}"
+              }.config.EnvironmentVariables.MYCELIUM_SERVES or null
+              == builtins.hashString "sha256" (mac both).xdg.configFile."mycelium/serves-${realm}.json".text
+            )
+            [
+              "home"
+              "other"
             ]
       );
 

@@ -1743,8 +1743,8 @@
     from the realm's own folders, and the home realm's alone the machine's waiting, verdicts and
     queue, the queue's jobs and the queue whole from the login's runtime folder, the void's
     answers whole, a line each, and the balance service's latest reading whole, each keyed as
-    the launcher reads it; and each node restarts when what it serves changes, since it reads
-    that only as it starts
+    the launcher reads it, a wait with no id by its title; and each node, on Linux or a Mac,
+    restarts when what it serves changes, since it reads that only as it starts
   '';
   mycelium-says-how-its-machine-stands = ''
     each of a machine's mycelium nodes, in its home realm or a further one, is given the system

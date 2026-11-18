@@ -23,8 +23,9 @@ const ENDED = ["concluded", "retired"];
 const QUEST = /^QEST-/;
 // The front of each kind's keys, as the node gives them (mycelium's
 // PROTOCOL.md, The Daemon Interface): `waiting:<quest>:<id>`, a folder's
-// file keying its records by its `quest`; `verdict:<quest>:<id>`; and
-// `quest:<id>`.
+// file keying its records by its `quest`, and by the title of one with
+// no id (serves.nix); `verdict:<quest>:<id>`; and `quest:<id>`. Only the
+// key's quest is read here, so which names the rest doesn't matter.
 const WAITING = "waiting:";
 const VERDICT = "verdict:";
 const QUEST_KEY = "quest:";

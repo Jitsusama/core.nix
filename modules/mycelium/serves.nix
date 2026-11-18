@@ -55,7 +55,10 @@ in
   waiting = {
     folder = "${state}/mission/waiting";
     records = "items";
+    # A wait without an id, or with an empty one, is keyed by its title,
+    # so it no longer hides its quest's whole file.
     key = "id";
+    or = "title";
     by = "quest";
   };
   verdict = {
