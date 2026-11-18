@@ -133,13 +133,19 @@ fn merge(hub: &dyn Hub, merging: &Merging) -> Merge {
 /// Whether GitHub reads pull request `number` merged, asked three times
 /// before its silence counts as not knowing.
 fn merged(hub: &dyn Hub, number: u64) -> Result<Option<String>, String> {
-    let mut asked = hub.merged(number);
+    thrice(|| hub.merged(number))
+}
+
+/// What `ask` answers, asked up to three times while it fails, as one
+/// failed call to GitHub says nothing of what it holds.
+fn thrice<T>(ask: impl Fn() -> Result<T, String>) -> Result<T, String> {
+    let mut asked = ask();
     for _ in 1..3 {
         if asked.is_ok() {
             break;
         }
         std::thread::sleep(PAUSE);
-        asked = hub.merged(number);
+        asked = ask();
     }
     asked
 }
@@ -189,7 +195,7 @@ fn through(
         return reverted(hub, &made, why);
     }
     let tested = git(&["rev-parse", &format!("{candidate}^{{tree}}")]);
-    let why = match (hub.tree(last), tested) {
+    let why = match (thrice(|| hub.tree(last)), tested) {
         (Ok(merged), Ok(tested)) if merged == tested => return Landing::Landed(last.clone()),
         (Ok(_), _) => format!(
             "GitHub's merge {} doesn't hold the tree the train tested at {}",
