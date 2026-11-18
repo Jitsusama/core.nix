@@ -71,7 +71,8 @@ const REACHING_AGAIN: Duration = Duration::from_secs(1);
 fn main() -> ExitCode {
     // Hardened before the kit reads anything, theme.json among it, which
     // another process of the account could make block while this one is
-    // still open to it; the kit only says a failure to.
+    // still open to it. Only a failure to harden goes through the kit,
+    // which says it.
     let hardened = harden();
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
         hardened.map_err(|error| {
@@ -207,15 +208,17 @@ const FLAGS: [&str; 5] = [
 ];
 
 /// What the manager was started with, read from the words the kit left,
-/// each flag with its value, or why it can't start. A flag's value is
-/// never another flag, so a value left out mid-line is refused under the
-/// flag that wanted it.
+/// each flag with its value, or why it can't start. The kit has taken its
+/// own flags, wherever they stood, before this. A value never starts with
+/// `--`, so one left out mid-line is refused under the flag that wanted
+/// it; a release is a 1Password reference, as home.nix keeps only those;
+/// and where the app's opened and what starts it go only with its unit.
 fn given(args: &[String]) -> Result<Given, Failure> {
     let mut args = args.iter().cloned();
     let mut op = "op".to_owned();
     let mut opened = None;
     let mut unit = None;
-    let mut systemctl = "systemctl".to_owned();
+    let mut systemctl = None;
     let mut releases = Vec::new();
     while let Some(flag) = args.next() {
         let mut value = || {
@@ -228,10 +231,10 @@ fn given(args: &[String]) -> Result<Given, Failure> {
         };
         match flag.as_str() {
             "--op" => op = value()?,
-            "--release" => releases.push(value()?),
+            "--release" => releases.push(reference(value()?)?),
             "--opened" => opened = Some(PathBuf::from(value()?)),
             "--open-unit" => unit = Some(value()?),
-            "--systemctl" => systemctl = value()?,
+            "--systemctl" => systemctl = Some(value()?),
             _ => {
                 let failure = Failure::new(Exit::Usage, format!("it doesn't know {flag}"));
                 let failure = match flags::nearest(&flag, &FLAGS) {
@@ -241,6 +244,14 @@ fn given(args: &[String]) -> Result<Given, Failure> {
                 return Err(failure.try_this("passwords-1password --help"));
             }
         }
+    }
+    if unit.is_none() && (opened.is_some() || systemctl.is_some()) {
+        return Err(Failure::new(
+            Exit::Usage,
+            "--opened and --systemctl go only with --open-unit",
+        )
+        .because("without a unit to open, the app is never opened")
+        .try_this("passwords-1password --help"));
     }
     // The unit's own runtime folder, %t to systemd, which a command given
     // to Passwords can't say.
@@ -254,9 +265,23 @@ fn given(args: &[String]) -> Result<Given, Failure> {
         opener: unit.zip(opened).map(|(unit, opened)| Opener {
             opened,
             unit,
-            systemctl,
+            systemctl: systemctl.unwrap_or_else(|| "systemctl".to_owned()),
         }),
     })
+}
+
+/// A release's reference, refused unless it's 1Password's own, so op is
+/// never handed a word it could read as one of its flags.
+fn reference(value: String) -> Result<String, Failure> {
+    if value.starts_with("op://") {
+        Ok(value)
+    } else {
+        Err(Failure::new(
+            Exit::Usage,
+            format!("--release takes an op:// reference, not {value}"),
+        )
+        .try_this("passwords-1password --help"))
+    }
 }
 
 /// Whether a release may read `reference`: only as Joel's own ask, never

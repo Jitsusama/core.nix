@@ -44,6 +44,46 @@ fn a_flag_without_its_value_is_refused_as_usage() {
 }
 
 #[test]
+fn a_flag_near_none_of_its_own_is_refused_naming_them_all() {
+    let out = ran(&["--zzzzzzzz"]);
+    assert_eq!(out.status.code(), Some(64), "{out:?}");
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.contains("its flags are --op, --release, --open-unit, --opened and --systemctl"),
+        "its flags aren't named: {said}"
+    );
+}
+
+#[test]
+fn a_release_that_isnt_a_1password_reference_is_refused() {
+    let out = ran(&["--release", "-x"]);
+    assert_eq!(out.status.code(), Some(64), "{out:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "",
+        "it said how it stands"
+    );
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.contains("--release takes an op:// reference, not -x"),
+        "{said}"
+    );
+}
+
+#[test]
+fn where_the_app_opens_is_refused_without_its_unit() {
+    for given in [["--opened", "/run/open"], ["--systemctl", "/bin/systemctl"]] {
+        let out = ran(&given);
+        assert_eq!(out.status.code(), Some(64), "{given:?}: {out:?}");
+        let said = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            said.contains("--opened and --systemctl go only with --open-unit"),
+            "{given:?}: {said}"
+        );
+    }
+}
+
+#[test]
 fn a_value_left_out_mid_line_is_refused_under_its_own_flag() {
     let out = ran(&["--release", "--op", "op"]);
     assert_eq!(out.status.code(), Some(64), "{out:?}");
