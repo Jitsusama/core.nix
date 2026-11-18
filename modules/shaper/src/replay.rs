@@ -67,6 +67,9 @@ pub struct Second {
     /// A call's round trip through the VPN riding the link, in ms, as only
     /// the live shaper hears it (src/vpndelay.rs); a replay leaves it None.
     pub vpn_ms: Option<f64>,
+    /// The ceiling a trial held the upload under, in kbit/s, as only the
+    /// live shaper knows it (src/live.rs); a replay leaves it None.
+    pub ceiling: Option<u64>,
 }
 
 /// The rates a controller sets each way, in kbit/s; None holds no limit.
@@ -369,6 +372,7 @@ impl Reading {
                 gateway_ms: median(tick.gateway.iter().copied()),
                 up_ours: None,
                 vpn_ms: None,
+                ceiling: None,
             });
         }
         self.done = self.done.max(second);
@@ -823,28 +827,41 @@ pub fn summary(report: &Report) -> String {
 
 /// The upload against each network's anchor, then within each window.
 fn judged_lines(out: &mut String, judged: &bars::Judged) {
+    let bars = || judged.networks.iter().chain(&judged.windows);
     let _ = writeln!(
         out,
         "\nagainst the line: under {} of the anchor past {} s with no cut made on the \
-         upload's own delay over {CAUSE_MS} ms in the minute before",
+         upload's own delay over {CAUSE_MS} ms in the minute before{}",
         bars::UNDER,
-        bars::GRACE_S
+        bars::GRACE_S,
+        // Said only where a ceiling was set aside: a trace written before
+        // trials kept theirs, or another controller replayed, has none.
+        if bars().any(|(_, bar)| bar.trial_s > 0) {
+            "; a trial's ceiling set aside"
+        } else {
+            ""
+        }
     );
-    for (name, bar) in judged.networks.iter().chain(&judged.windows) {
+    for (name, bar) in bars() {
         let hold = bar
             .busy_hold
             .map_or_else(|| "-".to_owned(), |h| format!("{:.0}%", h * 100.0));
         let _ = writeln!(
             out,
             "{name}, against {} Mb/s up for {}: breached {} in {} spells, longest {}; \
-             {} cuts, {} on its own delay; held {hold} of it while busy",
+             {} cuts, {} on its own delay; held {hold} of it while busy{}",
             mbit(bar.anchor),
             span(bar.seconds),
             span(bar.breached_s),
             bar.breaches.len(),
             span(bar.longest_breach_s),
             bar.cuts,
-            bar.earned
+            bar.earned,
+            if bar.trial_s > 0 {
+                format!("; {} at a trial's ceiling", span(bar.trial_s))
+            } else {
+                String::new()
+            }
         );
     }
 }
@@ -939,11 +956,7 @@ pub fn command(args: &[String], json: bool) -> Result<(), Failure> {
     let mut held = Vec::new();
     if let Some(folder) = &asked.heard {
         let lines = trace::read(folder).map_err(failed)?;
-        held = trace::merge(&mut stays, &lines);
-        if asked.controller == Choice::Held {
-            // Only what the trace saw was held by anything it can say.
-            (stays, held) = trace::traced(stays, held, &lines);
-        }
+        (stays, held) = trace::heard_into(stays, &lines, asked.controller == Choice::Held);
     }
     let windows = match &asked.windows {
         Some(path) => fs::read_to_string(path)
@@ -992,6 +1005,42 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::fs;
+
+    #[test]
+    fn a_bar_says_the_time_a_trial_held_it_and_only_then() {
+        let bar = |trial_s| bars::Bar {
+            anchor: 12_000,
+            seconds: 600,
+            trial_s,
+            ..bars::Bar::default()
+        };
+        let judged = bars::Judged {
+            networks: BTreeMap::from([("home".to_owned(), bar(290))]),
+            windows: BTreeMap::from([("night".to_owned(), bar(0))]),
+        };
+        let mut out = String::new();
+        judged_lines(&mut out, &judged);
+        assert!(out.contains("; a trial's ceiling set aside\n"), "{out}");
+        let home = out.lines().find(|l| l.starts_with("home,")).expect("home");
+        assert!(
+            home.ends_with("; 4 min 50 s at a trial's ceiling"),
+            "{home}"
+        );
+        let night = out
+            .lines()
+            .find(|l| l.starts_with("night,"))
+            .expect("night");
+        assert!(!night.contains("trial"), "a trial said with none: {night}");
+        // With no ceiling set aside anywhere, as in a trace written before
+        // trials kept theirs, the header claims none.
+        let none = bars::Judged {
+            networks: BTreeMap::from([("home".to_owned(), bar(0))]),
+            windows: BTreeMap::new(),
+        };
+        let mut out = String::new();
+        judged_lines(&mut out, &none);
+        assert!(!out.contains("trial"), "a ceiling claimed set aside: {out}");
+    }
 
     /// Midnight in UTC on 3 November 2026, in ms.
     const NOV3: u64 = 1_793_664_000_000;

@@ -1,10 +1,11 @@
 //! What the live shaper heard and held each second that the recorder's
 //! lines can't say, kept as day files of its own: whose the upload's queue
-//! was, a call's round trip through the VPN, and the rate it held the
-//! upload to. A replay (src/replay.rs) puts these back into the recorded
-//! seconds, so a bite that came through our own queues or the VPN is
-//! replayed rather than passed as clean, and the rates the shaper really
-//! held are scored beside any a controller would set.
+//! was, a call's round trip through the VPN, the rate it held the upload
+//! to, and the ceiling a trial held it under. A replay (src/replay.rs)
+//! puts these back into the recorded seconds, so a bite that came
+//! through our own queues or the VPN is replayed rather than passed as
+//! clean, and the rates the shaper really held are scored beside any a
+//! controller would set.
 //!
 //! One short line a second, about 20 MB a day, kept for as many days as
 //! the recorder keeps.
@@ -45,6 +46,10 @@ pub struct Line {
     /// The plateau the upload holds under, in kbit/s.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plateau: Option<u64>,
+    /// The ceiling a trial held the upload under, in kbit/s, while one
+    /// did: a rate held there is the trial's, not the controller's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ceiling: Option<u64>,
 }
 
 impl Line {
@@ -60,6 +65,10 @@ impl Line {
             vpn_ms: heard.vpn_ms.map(tenth),
             vpn_base_ms: heard.vpn_base_ms.map(tenth),
             plateau: heard.plateau.map(crate::rate::whole),
+            ceiling: heard
+                .trial
+                .and_then(|t| t.most_kbit)
+                .map(crate::rate::whole),
         }
     }
 }
@@ -137,33 +146,61 @@ pub fn read(folder: &Path) -> Result<BTreeMap<u64, Line>, String> {
 
 /// Puts what the shaper heard back into each stay's seconds, and gives
 /// the rates it held at each, in the stays' order: a second with no line
-/// holds the last rate for up to `STANDS_S`, and no limit after.
+/// holds the last rate, and the trial's ceiling over it, for up to
+/// `STANDS_S`, and no limit after.
 pub fn merge(stays: &mut [Stay], lines: &BTreeMap<u64, Line>) -> Vec<Vec<Rates>> {
     stays
         .iter_mut()
         .map(|stay| {
             let began = stay.began_ms / 1_000;
-            let mut last: Option<(u64, Option<u64>)> = None;
+            let mut last: Option<(u64, &Line)> = None;
             stay.seconds
                 .iter_mut()
                 .map(|second| {
                     let at = began + crate::rate::whole(second.t_s);
-                    let up = match lines.get(&at) {
-                        Some(line) => {
-                            second.up_ours = line.ours;
-                            second.vpn_ms = line.vpn_ms;
-                            last = Some((at, line.up));
-                            line.up
-                        }
-                        None => last
-                            .filter(|(then, _)| at - then <= STANDS_S)
-                            .and_then(|(_, up)| up),
+                    let up = if let Some(line) = lines.get(&at) {
+                        second.up_ours = line.ours;
+                        second.vpn_ms = line.vpn_ms;
+                        second.ceiling = line.ceiling;
+                        last = Some((at, line));
+                        line.up
+                    } else {
+                        let standing = last.filter(|(then, _)| at - then <= STANDS_S);
+                        // A step that missed a write held the same trial,
+                        // so its seconds are the trial's too.
+                        second.ceiling = standing.and_then(|(_, l)| l.ceiling);
+                        standing.and_then(|(_, l)| l.up)
                     };
                     Rates { up, down: None }
                 })
                 .collect()
         })
         .collect()
+}
+
+/// Puts the trace's `lines` into `stays` as `merge` does, giving the
+/// rates the live shaper held. Replaying that shaper, `held`, only what
+/// the trace saw is kept, as `traced` says; replaying another
+/// controller, every trial's ceiling is forgotten, since a trial held
+/// only the live shaper's rates and the replayed seconds are all its own.
+pub fn heard_into(
+    mut stays: Vec<Stay>,
+    lines: &BTreeMap<u64, Line>,
+    held: bool,
+) -> (Vec<Stay>, Vec<Vec<Rates>>) {
+    let rates = merge(&mut stays, lines);
+    if held {
+        return traced(stays, rates, lines);
+    }
+    forget_trials(&mut stays);
+    (stays, rates)
+}
+
+/// Forgets the trials' ceilings `merge` put in.
+fn forget_trials(stays: &mut [Stay]) {
+    for second in stays.iter_mut().flat_map(|s| s.seconds.iter_mut()) {
+        second.ceiling = None;
+    }
 }
 
 /// Keeps, of each stay and the rates `merge` gave it, only the stretch
@@ -220,6 +257,7 @@ mod tests {
             gateway_ms: None,
             up_ours: None,
             vpn_ms: None,
+            ceiling: None,
         }
     }
 
@@ -235,6 +273,28 @@ mod tests {
             vpn_ms,
             ..Line::default()
         }
+    }
+
+    #[test]
+    fn a_line_says_the_ceiling_a_trial_holds_the_upload_under() {
+        let heard = |most_kbit| crate::live::Heard {
+            up_limit: Some(9_500),
+            trial: Some(crate::oneway::Tuning {
+                most_kbit,
+                ..crate::oneway::Tuning::default()
+            }),
+            ..crate::live::Heard::default()
+        };
+        let at = |h: &crate::live::Heard| Line::of(NOV16, "wlan0", h).ceiling;
+        assert_eq!(at(&heard(Some(9_500.4))), Some(9_500), "a trial's ceiling");
+        assert_eq!(at(&heard(None)), None, "a trial with no ceiling");
+        assert_eq!(at(&crate::live::Heard::default()), None, "no trial");
+        // Written only when there is one, so a day's lines stay short.
+        let line = serde_json::to_string(&Line::of(NOV16, "wlan0", &heard(None)));
+        assert!(
+            !line.expect("a line").contains("ceiling"),
+            "wrote no ceiling"
+        );
     }
 
     #[test]
@@ -278,7 +338,13 @@ mod tests {
         }];
         let lines = BTreeMap::from([
             (NOV16 + 1, line(NOV16 + 1, Some(5_000), Some(120.0))),
-            (NOV16 + 2, line(NOV16 + 2, Some(4_800), None)),
+            (
+                NOV16 + 2,
+                Line {
+                    ceiling: Some(4_800),
+                    ..line(NOV16 + 2, Some(4_800), None)
+                },
+            ),
         ]);
         let held = merge(&mut stays, &lines);
         let ups: Vec<Option<u64>> = held[0].iter().map(|r| r.up).collect();
@@ -293,10 +359,50 @@ mod tests {
             "our queue: {:?}",
             s[2]
         );
+        assert_eq!(s[2].ceiling, Some(4_800), "a trial's ceiling: {:?}", s[2]);
+        assert_eq!(s[1].ceiling, None, "none, with no trial: {:?}", s[1]);
+        let ceilings: Vec<Option<u64>> = s.iter().map(|s| s.ceiling).collect();
+        let mut want = vec![None, None];
+        want.extend([Some(4_800); 6]);
+        want.extend([None; 4]);
+        assert_eq!(ceilings, want, "the trial standing with its rate");
         assert_eq!(
             s[3].up_ours, None,
             "nothing heard, nothing put in: {:?}",
             s[3]
+        );
+    }
+
+    #[test]
+    fn a_trial_s_ceiling_is_kept_only_for_the_live_shaper() {
+        let stays = || {
+            vec![Stay {
+                network: "home".into(),
+                began_ms: NOV16 * 1_000,
+                seconds: (0..4).map(second).collect(),
+            }]
+        };
+        let lines = BTreeMap::from([(
+            NOV16 + 1,
+            Line {
+                ceiling: Some(8_000),
+                ..line(NOV16 + 1, Some(8_000), None)
+            },
+        )]);
+        let ceilings = |held| {
+            let (stays, _) = heard_into(stays(), &lines, held);
+            stays[0]
+                .seconds
+                .iter()
+                .map(|s| s.ceiling)
+                .collect::<Vec<_>>()
+        };
+        // Replaying the live shaper, from the trace's first line on.
+        assert_eq!(ceilings(true), [Some(8_000)], "the live shaper's trial");
+        assert_eq!(
+            ceilings(false),
+            [None; 4],
+            "a replayed controller held under the live one's trial"
         );
     }
 

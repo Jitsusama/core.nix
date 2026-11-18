@@ -1874,6 +1874,7 @@ mod tests {
             gateway_ms: Some(3.0),
             up_ours: None,
             vpn_ms: None,
+            ceiling: None,
         };
         // Two seconds full with a queue standing, as a cut drains it, then
         // five minutes idle.
@@ -1922,6 +1923,7 @@ mod tests {
             gateway_ms: Some(3.0),
             up_ours: None,
             vpn_ms: None,
+            ceiling: None,
         };
         let seconds = (0..60)
             .map(|t| second(t, 1.0, 100_000.0))

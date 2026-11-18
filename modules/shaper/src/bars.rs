@@ -13,6 +13,13 @@
 //! the day carried what the rates of the day let through. So a cut counts
 //! as earned when the upload's own delay was over `CAUSE_MS` as it was
 //! made: the nearest to proof a record allows, and said as such.
+//!
+//! A trial (src/live.rs) may hold the upload under a ceiling of its own,
+//! as the ceiling arms at 01:12 on 17 November held it at 9.5 and then
+//! 8.0 Mb/s, which read as two breaches of the controller's. A second
+//! held at a trial's ceiling, and a fall to it, are the trial's: counted
+//! apart and judged no further. A cut under the ceiling is still the
+//! controller's.
 
 use crate::oneway::ANCHOR_HOLD;
 use crate::rate::{float, whole};
@@ -76,6 +83,9 @@ pub struct Bar {
     /// holds the whole anchor.
     pub busy_s: u64,
     pub busy_hold: Option<f64>,
+    /// Seconds the upload was held at a trial's ceiling: the trial's
+    /// doing, so none of the rest counts them.
+    pub trial_s: u64,
 }
 
 /// The bar over every stay with an anchor, and over each window.
@@ -138,6 +148,7 @@ impl Bar {
         self.cuts += other.cuts;
         self.earned += other.earned;
         self.busy_s += other.busy_s;
+        self.trial_s += other.trial_s;
     }
 }
 
@@ -173,8 +184,17 @@ impl Spells {
                     if s.t_s - last.t_s >= JOINED_S {
                         spells.end();
                     }
-                    spells.second(at, s, holding, anchor);
-                    spells.cut(at, (holding, answered.up), s.up_delay_ms, anchor);
+                    // The rate a second is held to was answered at the
+                    // second before, under that second's trial.
+                    if at_the_ceiling(holding, last.ceiling) {
+                        spells.bar.trial_s += 1;
+                        spells.end();
+                    } else {
+                        spells.second(at, s, holding, anchor);
+                    }
+                    if !at_the_ceiling(answered.up, s.ceiling) {
+                        spells.cut(at, (holding, answered.up), s.up_delay_ms, anchor);
+                    }
                 }
                 _ => spells.end(),
             }
@@ -249,6 +269,12 @@ impl Spells {
         self.bar.busy_hold = self.holds.get(self.holds.len() / 2).copied();
         self.bar
     }
+}
+
+/// Whether `rate` is held at a trial's `ceiling`, or over it, which a
+/// trial's ceiling never lets: either way the trial holds it there.
+fn at_the_ceiling(rate: Option<u64>, ceiling: Option<u64>) -> bool {
+    ceiling.is_some_and(|most| rate.is_none_or(|rate| rate >= most))
 }
 
 /// A moment written `2026-11-16T00:30Z`, in UTC, as seconds since 1970.
@@ -346,9 +372,18 @@ mod tests {
                     gateway_ms: None,
                     up_ours: None,
                     vpn_ms: None,
+                    ceiling: None,
                 })
                 .collect(),
         }
+    }
+
+    /// `s` with a trial's ceiling of `most` kbit/s over its `seconds`.
+    fn under_a_trial(mut s: Stay, most: u64, seconds: std::ops::Range<usize>) -> Stay {
+        for second in &mut s.seconds[seconds] {
+            second.ceiling = Some(most);
+        }
+        s
     }
 
     fn held(rates: impl Fn(usize) -> Option<u64>, n: usize) -> Vec<Rates> {
@@ -423,6 +458,85 @@ mod tests {
             NOV16 + 70,
             "from when the excuse ran out: {bar:?}"
         );
+    }
+
+    /// At 01:12 on 17 November a trial held the upload at 9.5 Mb/s for
+    /// 240 s, then at 8.0, under a plateau of 11.4: the trial's arms, not
+    /// the controller's doing, which read as two breaches.
+    #[test]
+    fn a_trial_s_ceiling_is_set_aside_rather_than_breached() {
+        let s = under_a_trial(stay(400, 7_000.0, |_| 2.0), 8_000, 10..300);
+        let rates = held(
+            |t| {
+                Some(if (10..300).contains(&t) {
+                    8_000
+                } else {
+                    10_800
+                })
+            },
+            400,
+        );
+        let bar = at_home(&s, &rates, 12_000);
+        assert_eq!(
+            bar.trial_s, 290,
+            "each second at the trial's ceiling: {bar:?}"
+        );
+        assert_eq!(bar.breached_s, 0, "none is the controller's: {bar:?}");
+        assert_eq!(bar.cuts, 0, "a fall to the ceiling is the trial's: {bar:?}");
+        assert_eq!(bar.seconds, 109, "only the controller's seconds: {bar:?}");
+        assert_eq!(bar.busy_hold, Some(0.9), "its 10.8 of 12: {bar:?}");
+    }
+
+    #[test]
+    fn a_trial_is_read_under_the_ceiling_its_rate_was_answered_in() {
+        // A rate answered in one second holds through the next, so the
+        // ceiling it's judged by is that of the second it was answered in:
+        // here a second's alone, at 0 with no limit and at 5 over it.
+        let mut s = under_a_trial(stay(10, 7_000.0, |_| 2.0), 8_000, 0..1);
+        s.seconds[5].ceiling = Some(8_000);
+        let rates = held(
+            |t| match t {
+                0 => None,
+                5 => Some(9_000),
+                _ => Some(10_800),
+            },
+            10,
+        );
+        let bar = at_home(&s, &rates, 12_000);
+        assert_eq!(bar.trial_s, 2, "seconds 1 and 6 were the trial's: {bar:?}");
+        assert_eq!(bar.seconds, 7, "the rest the controller's: {bar:?}");
+    }
+
+    #[test]
+    fn a_trial_ends_a_spell_rather_than_bridging_two() {
+        // Held low with no cause for 50 s either side of a trial: neither
+        // stretch is past the grace alone, and the trial joins neither.
+        let s = under_a_trial(stay(111, 4_500.0, |_| 2.0), 8_000, 50..60);
+        let rates = held(
+            |t| Some(if (50..60).contains(&t) { 8_000 } else { 4_500 }),
+            111,
+        );
+        let bar = at_home(&s, &rates, 12_000);
+        assert_eq!(bar.trial_s, 10, "the trial's seconds: {bar:?}");
+        assert_eq!(bar.breached_s, 0, "two short spells, not one: {bar:?}");
+    }
+
+    #[test]
+    fn a_cut_under_a_trial_s_ceiling_is_still_the_controller_s() {
+        let s = under_a_trial(stay(400, 4_500.0, |_| 2.0), 8_000, 0..400);
+        let rates = held(|t| Some(if t < 10 { 8_000 } else { 4_500 }), 400);
+        let bar = at_home(&s, &rates, 12_000);
+        assert_eq!(bar.cuts, 1, "8.0 to 4.5, under the ceiling: {bar:?}");
+        assert_eq!(
+            bar.trial_s, 10,
+            "held at the ceiling until the cut: {bar:?}"
+        );
+        assert_eq!(
+            bar.breaches.len(),
+            1,
+            "held under it with no cause: {bar:?}"
+        );
+        assert_eq!(bar.breached_s, 389, "from the cut on: {bar:?}");
     }
 
     #[test]
