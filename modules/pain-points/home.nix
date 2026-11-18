@@ -15,7 +15,9 @@
 # in mycelium's command line while it runs. It reads the asks and
 # misses ledgers and never writes them, never sends to the void, and
 # sends nothing until routes.json, beside its state, names who it sends
-# as.
+# as. It reads the mesh's messages for who took each pain up, and asks
+# git, of the core cadence keeps fetched, whether the landing that
+# answered one is in the core integration last switched to.
 {
   config,
   lib,
@@ -68,6 +70,7 @@ in
         # The account's own mycelium, the one its node and sessions run.
         "--mycelium ${config.home.profileDirectory}/bin/mycelium"
         "--date ${pkgs.coreutils}/bin/date"
+        "--git ${lib.getExe pkgs.git}"
       ];
       # Findings go to the realm his sessions are in.
       Environment = lib.optional (realm != null) "MYCELIUM_REALM=${toString realm}";

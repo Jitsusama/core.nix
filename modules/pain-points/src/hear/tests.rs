@@ -6,6 +6,7 @@ use serde_json::json;
 use std::fs;
 use std::io::Write;
 
+mod standing;
 mod troubles;
 
 /// 20:00 UTC on 16 November 2026.
@@ -35,6 +36,10 @@ impl Place {
             state: self.root.join("state"),
             ledgers: vec![self.root.join("asks.jsonl"), self.root.join("misses.jsonl")],
             void: self.root.join("void"),
+            messages: self.root.join("messages"),
+            switches: self.root.join("switches.jsonl"),
+            core: self.root.join("core.git"),
+            git: "git".into(),
             at: AT,
             offset_s: -5 * 3600,
         }
@@ -374,7 +379,7 @@ fn a_first_run_sends_each_new_pain_to_its_owner_once() {
     );
     assert_eq!(hour.heard, 4);
     assert_eq!(hour.routed, 3);
-    assert_eq!(hour.open, 3);
+    assert_eq!(hour.open, 2, "the void's pain is open to no cell");
     let kept: Hour = serde_json::from_str(
         &fs::read_to_string(place.root.join("state/hour.json")).expect("hour.json"),
     )
@@ -435,7 +440,7 @@ fn a_pain_that_did_not_go_is_sent_on_the_next_run() {
     a_day(&place);
     let hour = hear(&place.ears(), CELLS, &mut |_, _| false).expect("a run");
     assert_eq!(hour.routed, 0);
-    assert_eq!(hour.open, 3);
+    assert_eq!(hour.open, 2, "the void's pain is open to no cell");
     let mut to: Vec<String> = Vec::new();
     hear(&place.ears(), CELLS, &mut |t, _| {
         to.push(t.into());
@@ -452,7 +457,7 @@ fn with_no_routes_nothing_is_sent_and_every_pain_waits() {
     let hour = hear(&place.ears(), CELLS, &mut |to, _| panic!("sent to {to}")).expect("a run");
     assert_eq!(hour.heard, 4);
     assert_eq!(hour.routed, 0);
-    assert_eq!(hour.open, 3);
+    assert_eq!(hour.open, 2, "the void's pain is open to no cell");
 }
 
 #[test]

@@ -197,6 +197,10 @@ fn quoted(words: &str) -> String {
     format!("\"{cut}...\"")
 }
 
+/// What the keeper's note of new pains asks of it, so its thread is told
+/// from a cell's: it asks nothing of an owner.
+pub const FOR_THE_KEEPER: &str = "for you to carry into asks or misses";
+
 /// The finding a cell is sent for its pains, worst first, each with the
 /// link to where it was heard.
 pub fn finding(pains: &[&Heard], cells: &BTreeMap<String, Cell>, offset_s: i64) -> String {
@@ -277,8 +281,8 @@ pub fn ledger_note(pains: &[&Heard], cells: &BTreeMap<String, Cell>, offset_s: i
     let mut ranked = pains.to_vec();
     ranked.sort_by_key(|pain| (std::cmp::Reverse(pain.hits), pain.at));
     let mut said = format!(
-        "{count} new {} heard from Joel, for you to carry into asks or misses where they \
-         belong; each sent to its owner says so:",
+        "{count} new {} heard from Joel, {FOR_THE_KEEPER} where they belong; each sent to \
+         its owner says so:",
         if count == 1 { "pain" } else { "pains" }
     );
     for (n, pain) in ranked.iter().take(NOTED_AT_MOST).enumerate() {
@@ -323,6 +327,8 @@ mod tests {
             to: None,
             routed_at: None,
             tries: 0,
+            taken_by: None,
+            closed_by: None,
         }
     }
 

@@ -21,6 +21,7 @@
 //! the one he hit most, and the turns that stalled him.
 
 pub mod heard;
+pub mod landed;
 pub mod route;
 pub mod said;
 pub mod sore;
@@ -69,6 +70,13 @@ pub struct Ears {
     pub ledgers: Vec<PathBuf>,
     /// The void's folder: a session begun there is the void.
     pub void: PathBuf,
+    /// The mesh's messages, for the threads of the questions it sent.
+    pub messages: PathBuf,
+    /// Integration's switches, for the core the machine runs, and a git
+    /// of core to ask whether a landing's commit is in it.
+    pub switches: PathBuf,
+    pub core: PathBuf,
+    pub git: PathBuf,
     pub at: i64,
     /// His offset from UTC, in seconds, to say his own times.
     pub offset_s: i64,
@@ -90,7 +98,15 @@ pub struct Hour {
     pub at: i64,
     pub heard: usize,
     pub routed: usize,
+    /// Pains of the last day nobody has taken up, said where he wasn't in
+    /// the void.
     pub open: usize,
+    /// Those a peer took up whose fix isn't on the machine yet.
+    #[serde(default)]
+    pub taken: usize,
+    /// Those a landing a switch carried closed.
+    #[serde(default)]
+    pub closed: usize,
     pub worst: Option<String>,
     pub worst_hits: usize,
     /// Turns that stalled him in the hour, heard though he said nothing.
@@ -100,6 +116,10 @@ pub struct Hour {
     /// as a quiet hour.
     #[serde(default)]
     pub troubles: Vec<String>,
+    /// Why no pain can close, when the core the machine runs or the git
+    /// to ask of it can't be read: said, though it fails no run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unclosed: Option<String>,
 }
 
 /// Hears what's new since the last run, sends each new pain to its owner
@@ -146,6 +166,14 @@ pub fn listen(
         state: own,
         ledgers: vec![mission.join("asks.jsonl"), mission.join("misses.jsonl")],
         void: take("--void").map_or_else(|| state.join("void"), PathBuf::from),
+        messages: take("--messages").map_or_else(
+            || state.join("pi/agentic-harness.pi/mesh-workflow/messages"),
+            PathBuf::from,
+        ),
+        switches: take("--switches")
+            .map_or_else(|| state.join("integration/switches.jsonl"), PathBuf::from),
+        core: take("--core").map_or_else(|| state.join("cadence/core.git"), PathBuf::from),
+        git: take("--git").map_or_else(|| "git".into(), PathBuf::from),
         at: take("--at")
             .and_then(|at| at.parse().ok())
             .unwrap_or_else(crate::millis_now),
@@ -179,7 +207,7 @@ pub fn listen(
     drop(lock);
     let said = format!(
         "pain-points: {} pains heard and {} routed in the hour, {} turns stalled him, {} open \
-         in the day{}{}",
+         in the day{}{}{}",
         hour.heard,
         hour.routed,
         hour.stalled,
@@ -191,7 +219,10 @@ pub fn listen(
         hour.troubles
             .iter()
             .map(|t| ["; ", t].concat())
-            .collect::<String>()
+            .collect::<String>(),
+        hour.unclosed.as_ref().map_or(String::new(), |why| format!(
+            "; no pain can close, as {why}"
+        ))
     );
     Ok((said, !hour.troubles.is_empty()))
 }
@@ -330,8 +361,10 @@ pub fn hear(
         &mut guarded,
         &heard_at,
     );
+    let unclosed = landed::stand(ears, routes.from.as_deref(), &mut kept);
     keep(&heard_at, &kept)?;
     let mut hour = hour_of(&kept, ears.at);
+    hour.unclosed = unclosed;
     let (waiting, given_up) = unsent(&kept, ears.at);
     hour.troubles = troubles(
         &ears.state,
@@ -392,6 +425,8 @@ fn hear_logs(
                 to: None,
                 routed_at: None,
                 tries: 0,
+                taken_by: None,
+                closed_by: None,
             });
         }
     }
@@ -603,14 +638,18 @@ fn note_for_keeper(
     let _ = keep(heard_at, kept);
 }
 
-/// The hour as cadence's card says it.
+/// The hour as cadence's card says it. A pain said in the void counts in
+/// none of the day's: no cell was asked of it.
 fn hour_of(kept: &[Heard], at: i64) -> Hour {
     let in_hour = |t: i64| t >= at - HOUR_MS;
     let said: Vec<&Heard> = kept.iter().filter(|h| !stalled::is(h)).collect();
-    let worst = said
+    let day: Vec<&Heard> = said
         .iter()
-        .filter(|h| h.at >= at - DAY_MS && !h.carried)
-        .max_by_key(|h| (h.hits, h.at));
+        .copied()
+        .filter(|h| h.at >= at - DAY_MS && !h.carried && !h.void)
+        .collect();
+    let open = |h: &&&Heard| h.closed_by.is_none() && h.taken_by.is_none();
+    let worst = day.iter().filter(open).max_by_key(|h| (h.hits, h.at));
     Hour {
         at,
         heard: said.iter().filter(|h| in_hour(h.at)).count(),
@@ -622,13 +661,16 @@ fn hour_of(kept: &[Heard], at: i64) -> Hour {
             .iter()
             .filter(|h| h.routed_at.is_some_and(in_hour))
             .count(),
-        open: said
-            .iter()
-            .filter(|h| h.at >= at - DAY_MS && !h.carried)
-            .count(),
+        open: day.iter().filter(open).count(),
         worst: worst.map(|h| h.words.clone()),
         worst_hits: worst.map_or(0, |h| h.hits),
+        taken: day
+            .iter()
+            .filter(|h| h.closed_by.is_none() && h.taken_by.is_some())
+            .count(),
+        closed: day.iter().filter(|h| h.closed_by.is_some()).count(),
         troubles: Vec::new(),
+        unclosed: None,
     }
 }
 
