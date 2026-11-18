@@ -190,6 +190,31 @@ QtObject {
         expect("a recording lands in its folder alone",
             Captured.landsIn("/home/joel/Videos/Recordings/", ""), "Recordings");
 
+        // What a screenshot's words found is listed by its name, among the
+        // names found, wherever its name finds it too, whichever daemon
+        // answered first: the launcher holds rows still once they're shown,
+        // so one listed below by its words stayed there once the names came.
+        const plan = `${shots}/wombat plan.png`;
+        const standup = `${shots}/2026-10-01 09-00-00.png`;
+        const read = [{ path: standup, line: "The wombat review moved to Friday" },
+            { path: plan, line: "Wombat" }];
+        const findsWombat = path => path.includes("wombat");
+        expect("a name found among the words is listed by its name, first",
+            Captured.readFound(read, new Set(), findsWombat, 10),
+            [{ path: plan, line: "" }, { path: standup, line: "The wombat review moved to Friday" }]);
+        expect("one its name already listed is passed over",
+            Captured.readFound(read, new Set([plan]), findsWombat, 10),
+            [{ path: standup, line: "The wombat review moved to Friday" }]);
+        expect("those found only by their words keep the order they were read in",
+            Captured.readFound(read, new Set(), () => false, 10), read);
+        // Room is for what only words found: one its name finds is listed
+        // however full the rows are, as the daemon's names would list it.
+        expect("what only words found stops at the room left",
+            Captured.readFound(read, new Set(), findsWombat, 0), [{ path: plan, line: "" }]);
+        const listed = new Set();
+        Captured.readFound(read, listed, findsWombat, 1);
+        expect("each listed is counted listed", [...listed].sort(), [standup, plan].sort());
+
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)
             console.warn(failure);
