@@ -139,6 +139,8 @@ in
   # case writes lo's folder in sys/lo, made here.
   traffic-reads-a-known-interface-once-after-a-gap =
     pkgs.runCommandLocal "traffic-reads-a-known-interface-once-after-a-gap" { }
+      # Kept in Nix because each line copies a file Nix gives it beside the
+      # case, or sets what the shell runs it with.
       ''
         mkdir -p launcher runtime sys/lo && chmod 700 runtime
         ${copied [
