@@ -45,7 +45,8 @@ fn a_user_config_is_read() {
         config.sources["trees"],
         Source::Cargo {
             roots: vec![PathBuf::from("/home/u/trees")],
-            depth: Some(3)
+            depth: Some(3),
+            budget: None,
         }
     );
     assert_eq!(

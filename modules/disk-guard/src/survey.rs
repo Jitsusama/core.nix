@@ -12,6 +12,7 @@ use crate::git;
 use crate::plan::{Candidate, Class};
 use crate::replaced::Uses;
 use crate::snapshots::Boot;
+use crate::units::Size;
 use crate::units::Span;
 use crate::{
     age, caches, coredumps, logs, nix_builds, scratch, snapshots, store_roots, temp, trash, trees,
@@ -282,11 +283,19 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
             return offers;
         }
         match source {
-            Source::Cargo { roots, depth } => {
+            Source::Cargo {
+                roots,
+                depth,
+                budget,
+            } => {
+                let start = offers.len();
                 for root in roots {
                     if let Some((root, device, found)) = walks.under(root, *depth, world) {
                         trees_under(&root, device, &found, Kind::Target, world, &mut offers);
                     }
+                }
+                if let Some(bytes) = budget_bytes(*budget, roots) {
+                    hold_to_budget(&mut offers[start..], bytes);
                 }
             }
             Source::Installs { roots, depth } => {
@@ -917,6 +926,61 @@ fn trees_under(
             }
         }
     }
+}
+
+/// How long a build stays after its last use, whatever the budget, since
+/// a run of checks reuses one build minutes apart and a cap that took it
+/// the moment its cargo ended would have every check rebuild it.
+pub const BUDGET_RECENT: f64 = 3600.0;
+
+/// The bytes a cargo source's budget allows, in its first root's disk.
+/// A share of a disk that can't be measured, and a budget that comes to
+/// nothing, hold nothing to a budget, rather than everything to none.
+pub fn budget_bytes(budget: Option<Size>, roots: &[PathBuf]) -> Option<u64> {
+    let bytes = match (budget?, roots.first()) {
+        (Size::Bytes(bytes), _) => bytes,
+        (share, Some(root)) => share.of(crate::sys::space(root).ok()?.total),
+        (_, None) => return None,
+    };
+    (bytes > 0).then_some(bytes)
+}
+
+/// Spends the builds past `budget`, counting the most recently used
+/// first, so the least recently used go in any band. A build a cargo is
+/// running in was never offered, so it is never taken; one a shell sits
+/// in, or used within [`BUDGET_RECENT`], counts against the budget but
+/// stays. One already spent goes anyway, so it takes no room. On 17
+/// November a shared builds folder held 63 GiB in 3,298 builds, 59 GiB of
+/// it written within a day, which no idle window reaches.
+fn hold_to_budget(offers: &mut [Offer], budget: u64) {
+    let mut builds: Vec<&mut Candidate> = offers
+        .iter_mut()
+        .map(|offer| &mut offer.candidate)
+        .filter(|candidate| candidate.class == Class::Target && !candidate.spent)
+        .collect();
+    builds.sort_by(|a, b| a.idle.total_cmp(&b.idle));
+    let mut held: u64 = 0;
+    for build in builds {
+        held = held.saturating_add(build.size);
+        if held > budget && !build.occupied && build.idle >= BUDGET_RECENT {
+            build.spent = true;
+        }
+    }
+}
+
+/// Whether a cargo source's disk holds more than its budget, read from
+/// the disk's own count, so a builds disk filling on a healthy root is
+/// seen within a minute, without a survey.
+pub fn past_budget(config: &Config) -> bool {
+    config.sources.values().any(|source| match source {
+        Source::Cargo { roots, budget, .. } => budget_bytes(*budget, roots).is_some_and(|bytes| {
+            roots.first().is_some_and(|root| {
+                crate::sys::space(root)
+                    .is_ok_and(|space| space.total.saturating_sub(space.free) > bytes)
+            })
+        }),
+        _ => false,
+    })
 }
 
 /// How long podman's prunes may take.

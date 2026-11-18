@@ -159,7 +159,10 @@ in
         # Each workspace's intermediates, on the filesystem cargo has to
         # itself where a machine gives it one, in a folder named by two
         # levels of a hash of where the workspace is. Each is judged as a
-        # target is, by its checkout and whether any process holds it.
+        # target is, by its checkout and whether any process holds it. Past
+        # 20 GiB the least recently used go in any band: on 17 November it
+        # held 63 GiB, 59 of it written within a day, which no idle window
+        # reached while the disk it lies on was 83% used.
         cargo-builds = lib.mkDefault (
           if cargoBuilds == null then
             null
@@ -168,6 +171,7 @@ in
               kind = "cargo";
               roots = [ "${cargoBuilds}/${config.home.username}" ];
               depth = 2;
+              budget = "20GiB";
             }
         );
         installs = lib.mkDefault {

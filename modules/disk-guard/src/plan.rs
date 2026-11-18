@@ -142,7 +142,8 @@ pub struct Candidate {
     pub occupied: bool,
     /// Its tree is finished or gone, or it's a pinned snapshot's build
     /// nobody has used for an hour, one of its older builds an hour unused,
-    /// or its incremental session while nobody sits in it.
+    /// its incremental session while nobody sits in it, or a build past
+    /// its source's budget, counting the most recently used first.
     pub spent: bool,
     /// The checkout it was built for, when known.
     pub checkout: Option<PathBuf>,

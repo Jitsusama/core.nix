@@ -73,10 +73,19 @@ or launchd, and [`home.nix`][2] the account's.
   a snapshot a crate's older build goes once an hour unused, even while
   the next gate builds, and its incremental sessions go while nobody sits
   in the tree, since rustc's locks keep the one a build uses. The guard
-  makes upkeep due the moment the soonest of these passes its hour. So
-  does a temp
-  entry nothing has changed since the last boot, whatever its name, since
-  whatever made it ended with that boot. A browser profile in the `tmp/`
+  makes upkeep due the moment the soonest of these passes its hour. A
+  `cargo` source given a `budget` (a size, or a share of the disk its
+  first root is on) keeps its builds newest first while they fit; past
+  it, the least recently used go whatever the band. A build a session
+  sits in, or one used within the hour, counts but stays, a build
+  already spent takes no room, and a build a cargo runs in is never
+  offered. A budget that comes to nothing, as a share of a disk that
+  can't be measured does, is none. While the first root's disk holds
+  more than the budget, the guard makes upkeep due, at most once an
+  hour. Cargo's shared builds folder held 63 GiB on 17 November, 59 of
+  it written within a day, which no idle window reached. A temp entry
+  nothing has changed since the last boot goes whatever the band and
+  whatever its name, since whatever made it ended with that boot. A browser profile in the `tmp/`
   of a quest still at work goes once nothing has changed in it for an
   hour: a browser run for one job makes a fresh one and leaves it, and a
   browser still running it keeps it in use. Anything else in that `tmp/`

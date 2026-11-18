@@ -152,6 +152,10 @@ pub enum Source {
         roots: Vec<PathBuf>,
         #[serde(default)]
         depth: Option<u32>,
+        /// The most its builds nobody is running may hold, newest first;
+        /// past it, the least recently used go in any band.
+        #[serde(default)]
+        budget: Option<Size>,
     },
     /// Roots holding `node_modules` and `.venv` installs.
     Installs {
