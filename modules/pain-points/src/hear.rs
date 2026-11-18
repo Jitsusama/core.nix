@@ -116,6 +116,10 @@ pub struct Hour {
     /// as a quiet hour.
     #[serde(default)]
     pub troubles: Vec<String>,
+    /// Why no pain can close, when the core the machine runs or the git
+    /// to ask of it can't be read: said, though it fails no run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unclosed: Option<String>,
 }
 
 /// Hears what's new since the last run, sends each new pain to its owner
@@ -203,7 +207,7 @@ pub fn listen(
     drop(lock);
     let said = format!(
         "pain-points: {} pains heard and {} routed in the hour, {} turns stalled him, {} open \
-         in the day{}{}",
+         in the day{}{}{}",
         hour.heard,
         hour.routed,
         hour.stalled,
@@ -215,7 +219,10 @@ pub fn listen(
         hour.troubles
             .iter()
             .map(|t| ["; ", t].concat())
-            .collect::<String>()
+            .collect::<String>(),
+        hour.unclosed.as_ref().map_or(String::new(), |why| format!(
+            "; no pain can close, as {why}"
+        ))
     );
     Ok((said, !hour.troubles.is_empty()))
 }
@@ -354,9 +361,10 @@ pub fn hear(
         &mut guarded,
         &heard_at,
     );
-    stand(ears, routes.from.as_deref(), &mut kept);
+    let unclosed = landed::stand(ears, routes.from.as_deref(), &mut kept);
     keep(&heard_at, &kept)?;
     let mut hour = hour_of(&kept, ears.at);
+    hour.unclosed = unclosed;
     let (waiting, given_up) = unsent(&kept, ears.at);
     hour.troubles = troubles(
         &ears.state,
@@ -630,47 +638,6 @@ fn note_for_keeper(
     let _ = keep(heard_at, kept);
 }
 
-/// Who took up each pain of the last day not yet closed, and whether a
-/// landing the machine runs closed it, from the threads of the questions
-/// `asker` sent (landed.rs). Only the messages since the first of those
-/// questions are read, and each commit is asked of git once.
-fn stand(ears: &Ears, asker: Option<&str>, kept: &mut [Heard]) {
-    let standing = |h: &Heard| h.closed_by.is_none() && !stalled::is(h) && h.at >= ears.at - DAY_MS;
-    let (Some(asker), Some(since)) = (
-        asker,
-        kept.iter()
-            .filter(|h| standing(h))
-            .filter_map(|h| h.routed_at)
-            .min(),
-    ) else {
-        return;
-    };
-    let messages = landed::messages(&ears.messages, since - 60_000);
-    let core = landed::core_on(&fs::read_to_string(&ears.switches).unwrap_or_default());
-    let entries: Vec<String> = kept.iter().map(|h| h.entry.clone()).collect();
-    let held: Vec<&str> = entries.iter().map(String::as_str).collect();
-    let mut known = BTreeMap::new();
-    let mut on = |commit: &str| {
-        let Some(core) = &core else { return false };
-        *known.entry(commit.to_owned()).or_insert_with(|| {
-            Command::new(&ears.git)
-                .arg("--git-dir")
-                .arg(&ears.core)
-                .args(["merge-base", "--is-ancestor", commit, core])
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .is_ok_and(|mut child| ended_within(&mut child, ASK_AT_MOST))
-        })
-    };
-    for h in kept.iter_mut().filter(|h| standing(h)) {
-        let found = landed::standing(h, asker, &held, &messages, &mut on);
-        h.taken_by = h.taken_by.take().or(found.taken_by);
-        h.closed_by = found.closed_by;
-    }
-}
-
 /// The hour as cadence's card says it. A pain said in the void counts in
 /// none of the day's: no cell was asked of it.
 fn hour_of(kept: &[Heard], at: i64) -> Hour {
@@ -703,6 +670,7 @@ fn hour_of(kept: &[Heard], at: i64) -> Hour {
             .count(),
         closed: day.iter().filter(|h| h.closed_by.is_some()).count(),
         troubles: Vec::new(),
+        unclosed: None,
     }
 }
 

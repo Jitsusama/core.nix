@@ -148,11 +148,15 @@ pub fn same(a: &str, b: &str) -> bool {
     agree > 0.5
 }
 
-/// Words too common to say what a pain is about.
+/// Words too common to say what a pain is about, his frustration's among
+/// them: "broken again" is said of anything, so it can't make two pains
+/// one.
 const NO_MEANING: &[&str] = &[
     "the", "and", "but", "for", "with", "are", "was", "this", "that", "not", "does", "have", "has",
     "just", "can", "how", "what", "when", "its", "it's", "i'm", "all", "any", "from", "then",
-    "there", "their", "them", "they", "too", "very", "our", "you",
+    "there", "their", "them", "they", "too", "very", "our", "you", "again", "still", "why",
+    "doesn't", "don't", "didn't", "isn't", "can't", "won't", "work", "works", "working", "broken",
+    "please", "now",
 ];
 
 /// A message's words that carry meaning: lowered, past two letters, and
@@ -271,7 +275,18 @@ mod tests {
             "the same words, said differently"
         );
         assert!(!same("", "the launcher"), "nothing says nothing");
-        assert!(!same("it is so", "it is so"), "nor do words of no meaning");
+        assert!(
+            !same("it is so", "it is so"),
+            "nor do words too short to mean"
+        );
+        assert!(
+            !same("the launcher is broken again", "the bar is broken again"),
+            "his frustration is no meaning of its own"
+        );
+        assert!(
+            !same("it still doesn't work", "why doesn't this work"),
+            "nor is a complaint with nothing in it"
+        );
     }
 
     #[test]

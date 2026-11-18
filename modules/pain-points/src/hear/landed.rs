@@ -1,20 +1,31 @@
 //! Whether a pain was taken up, and whether what answered it is on the
-//! machine. Each pain goes to its cell as a question naming its log entry;
-//! a peer that answers it, or names it, has taken the pain up, and so has
-//! each peer the answer was passed to. A landing in that thread ("merged
-//! at" a commit) closes the pain once a switch carries the commit, since
-//! only then does Joel have the fix. A question that held several pains
-//! says nothing of any one of them, so its answers take none up.
+//! machine. Each pain goes to its cell as a question naming its log entry.
+//! A peer that replies to it, or names it to a peer, has taken the pain
+//! up; a reply to that reply carries the thread on, as when the
+//! orchestrator passes a pain to the cell that fixes it. A landing in the
+//! thread ("merged at" one commit) closes the pain once a switch carries
+//! the commit, since only then does Joel have the fix.
 //!
-//! The thread grows only through what peers sent to peers: a note to a
-//! group names many messages, and following it would close pains its
-//! landings never touched.
+//! The thread grows only by replies, and a note to a group takes nothing
+//! up: a status note names many messages, and following one would close
+//! pains its landings never touched. A question that held several pains
+//! is taken up by an answer but closed by no landing, since one rarely
+//! fixes them all; and the keeper's note of new pains asks nothing of
+//! anyone, so says nothing of any.
 
 use super::heard::Heard;
+use super::route::FOR_THE_KEEPER;
+use super::{ASK_AT_MOST, DAY_MS, Ears, ended_within, stalled};
 use serde::Deserialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
+use std::process::{Command, Stdio};
+use std::time::UNIX_EPOCH;
+
+/// The most of a message file read: the mesh's are a few kilobytes, and a
+/// run is held to 256 megabytes.
+const READ_AT_MOST: u64 = 256 * 1024;
 
 /// A message on the mesh, as its file says it.
 #[derive(Debug, Clone, Deserialize)]
@@ -36,6 +47,67 @@ pub struct Standing {
     pub closed_by: Option<String>,
 }
 
+/// Takes up and closes, from the mesh and the machine, each pain of the
+/// last day still open to it; `asker` is who sent the questions. Says why
+/// none can close when the core the machine runs, or the git to ask of
+/// it, can't be read, so a fix that never closes doesn't read as one not
+/// on the machine yet.
+pub(super) fn stand(ears: &Ears, asker: Option<&str>, kept: &mut [Heard]) -> Option<String> {
+    let still = |h: &Heard| h.closed_by.is_none() && !stalled::is(h) && h.at >= ears.at - DAY_MS;
+    let since = kept
+        .iter()
+        .filter(|h| still(h))
+        .filter_map(|h| h.routed_at)
+        .min();
+    let (Some(asker), Some(since)) = (asker, since) else {
+        return None;
+    };
+    let messages = messages(&ears.messages, since - 60_000);
+    let core = core_on(&fs::read_to_string(&ears.switches).unwrap_or_default());
+    let mut unclosed = match &core {
+        None => Some(format!(
+            "no switch's core is in {}",
+            ears.switches.display()
+        )),
+        Some(_) if !ears.core.is_dir() => Some(format!("no core is at {}", ears.core.display())),
+        Some(_) => None,
+    };
+    let entries: Vec<String> = kept.iter().map(|h| h.entry.clone()).collect();
+    let held: Vec<&str> = entries.iter().map(String::as_str).collect();
+    let mut known = BTreeMap::new();
+    let mut on = |commit: &str| {
+        let (Some(core), None) = (&core, &unclosed) else {
+            return false;
+        };
+        *known.entry(commit.to_owned()).or_insert_with(|| {
+            let git = Command::new(&ears.git)
+                .arg("--git-dir")
+                .arg(&ears.core)
+                .args(["merge-base", "--is-ancestor", commit, core])
+                // The core's own settings alone, never the user's.
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
+            match git {
+                Ok(mut child) => ended_within(&mut child, ASK_AT_MOST),
+                Err(e) => {
+                    unclosed = Some(format!("{} wouldn't run: {e}", ears.git.display()));
+                    false
+                }
+            }
+        })
+    };
+    for h in kept.iter_mut().filter(|h| still(h)) {
+        let found = standing(h, asker, &held, &messages, &mut on);
+        h.taken_by = h.taken_by.take().or(found.taken_by);
+        h.closed_by = found.closed_by;
+    }
+    unclosed
+}
+
 /// How a pain stands from the thread of the question `asker` sent of it.
 /// `held` are the entries of every pain kept, to tell a question that held
 /// this one alone; `messages` are in the order they were sent; `on` says
@@ -48,51 +120,75 @@ pub fn standing(
     on: &mut dyn FnMut(&str) -> bool,
 ) -> Standing {
     let names = |text: &str, entry: &str| text.contains(&format!("#{entry}"));
-    let Some(at) = messages.iter().position(|m| {
-        m.from == asker
+    let Some((at, first)) = messages.iter().enumerate().find_map(|(at, m)| {
+        let question = m.from.eq_ignore_ascii_case(asker)
             && names(&m.text, &pain.entry)
-            && held.iter().filter(|e| names(&m.text, e)).count() == 1
+            && !m.text.contains(FOR_THE_KEEPER);
+        question.then(|| short(&m.id).map(|id| (at, id)))?
     }) else {
         return Standing::default();
     };
-    let mut thread = BTreeSet::from([short(&messages[at].id).to_owned()]);
+    let alone = held.iter().filter(|e| names(&messages[at].text, e)).count() == 1;
+    let mut thread = BTreeSet::from([first]);
     let mut standing = Standing::default();
     for m in &messages[at + 1..] {
-        let links = m.re.as_deref().is_some_and(|re| thread.contains(short(re)))
-            || thread.iter().any(|id| m.text.contains(id.as_str()));
-        if m.from == asker || !links {
+        if m.from.eq_ignore_ascii_case(asker) {
             continue;
         }
-        standing.taken_by.get_or_insert_with(|| m.from.clone());
-        if let Some(commit) = merged_at(&m.text) {
-            if standing.closed_by.is_none() && on(commit) {
-                standing.closed_by = Some(commit.to_owned());
-            }
-        } else if m.to.iter().any(|to| to.starts_with('@')) {
-            thread.insert(short(&m.id).to_owned());
+        let replies =
+            m.re.as_deref()
+                .and_then(short)
+                .is_some_and(|re| thread.contains(re));
+        let names_it = thread.iter().any(|id| m.text.contains(id));
+        if replies || (names_it && m.to.iter().any(|to| to.starts_with('@'))) {
+            standing.taken_by.get_or_insert_with(|| m.from.clone());
+        }
+        // A note of two landings says which fixed nothing in particular.
+        if let [commit] = merged_at(&m.text)[..]
+            && alone
+            && (replies || names_it)
+            && standing.closed_by.is_none()
+            && on(commit)
+        {
+            standing.closed_by = Some(commit.to_owned());
+        }
+        if let (true, Some(id)) = (replies, short(&m.id)) {
+            thread.insert(id);
         }
     }
     standing
 }
 
-/// A message id's short form, its last eight letters, as peers name it.
-fn short(id: &str) -> &str {
-    id.rsplit('-').next().unwrap_or(id)
+/// A message id's short form, its last eight hex letters, as peers name
+/// it; an id of another shape is none, since a short form of a letter or
+/// two would be found in every message.
+fn short(id: &str) -> Option<&str> {
+    let last = id.rsplit('-').next()?;
+    (last.len() == 8 && last.bytes().all(|b| b.is_ascii_hexdigit())).then_some(last)
 }
 
-/// The commit a landing says it merged at.
-fn merged_at(text: &str) -> Option<&str> {
-    let (_, after) = text.split_once("merged at ")?;
-    let commit = after
-        .split(|c: char| !c.is_ascii_hexdigit())
-        .next()
-        .filter(|c| c.len() >= 7)?;
-    Some(commit)
+/// Whether text is shaped as a commit, so nothing else reaches git.
+fn commit_like(text: &str) -> bool {
+    (7..=40).contains(&text.len()) && text.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// Each commit a message says something merged at; a time said the same
+/// way ("merged at 20:28") is no commit.
+fn merged_at(text: &str) -> Vec<&str> {
+    text.match_indices("merged at ")
+        .filter_map(|(i, said)| {
+            text[i + said.len()..]
+                .split(|c: char| !c.is_ascii_hexdigit())
+                .next()
+                .filter(|c| commit_like(c))
+        })
+        .collect()
 }
 
 /// The messages sent from `since_ms` on, in the order they were sent:
 /// the folder's own and its days', by the time each file's name opens
-/// with, skipping what's being written.
+/// with. What's being written, a link and a file too big to be a message
+/// are passed over, and so is a day's folder last written to before.
 pub fn messages(folder: &Path, since_ms: i64) -> Vec<Message> {
     let mut found = Vec::new();
     let mut gather = |dir: &Path| {
@@ -103,8 +199,12 @@ pub fn messages(folder: &Path, since_ms: i64) -> Vec<Message> {
             if name.starts_with('.') || !json || sent < Some(since_ms) {
                 continue;
             }
-            if let Some(m) = fs::read(entry.path())
-                .ok()
+            // A dir entry's type and size are its own, never a link's.
+            let plain = entry.file_type().is_ok_and(|t| t.is_file())
+                && entry.metadata().is_ok_and(|m| m.len() <= READ_AT_MOST);
+            if let Some(m) = plain
+                .then(|| fs::read(entry.path()).ok())
+                .flatten()
                 .and_then(|bytes| serde_json::from_slice::<Message>(&bytes).ok())
             {
                 found.push((sent, m));
@@ -114,7 +214,14 @@ pub fn messages(folder: &Path, since_ms: i64) -> Vec<Message> {
     gather(folder);
     for entry in fs::read_dir(folder).into_iter().flatten().flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        if entry.path().is_dir() && name.starts_with("20") {
+        let written = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .and_then(|d| i64::try_from(d.as_millis()).ok());
+        let day = entry.file_type().is_ok_and(|t| t.is_dir()) && name.starts_with("20");
+        if day && written >= Some(since_ms) {
             gather(&entry.path());
         }
     }
@@ -122,210 +229,20 @@ pub fn messages(folder: &Path, since_ms: i64) -> Vec<Message> {
     found.into_iter().map(|(_, m)| m).collect()
 }
 
-/// The core the machine switched to last, from integration's switches.
+/// The core the machine switched to last, from integration's switches; a
+/// rev not shaped as a commit is passed over.
 pub fn core_on(switches: &str) -> Option<String> {
     switches
         .lines()
         .rev()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .find_map(|v| v["revs"]["core"].as_str().map(str::to_owned))
+        .find_map(|v| {
+            v["revs"]["core"]
+                .as_str()
+                .filter(|c| commit_like(c))
+                .map(str::to_owned)
+        })
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn heard(entry: &str) -> Heard {
-        serde_json::from_value(serde_json::json!({
-            "key": format!("s/{entry}"), "session": "s", "entry": entry, "at": 0,
-            "words": "i can't show the launcher", "kinds": ["corrected"], "hits": 1,
-            "carried": false
-        }))
-        .expect("a pain")
-    }
-
-    fn message(id: &str, from: &str, to: &str, re: Option<&str>, text: &str) -> Message {
-        Message {
-            id: id.into(),
-            from: from.into(),
-            to: vec![to.into()],
-            re: re.map(Into::into),
-            text: text.into(),
-        }
-    }
-
-    /// The Tuple pain of 17 November, as the mesh carried it to its fix.
-    fn tuple() -> Vec<Message> {
-        vec![
-            message(
-                "1-6LU6ZM-1-186eeb39",
-                "6LU6ZM",
-                "@WCJQSG",
-                None,
-                "Joel hit something in mycelium:cell/LR3WMN#f7da717c: \"i am not able\"",
-            ),
-            message(
-                "2-WCJQSG-1-1adf6d68",
-                "WCJQSG",
-                "@Y2YBTS",
-                Some("186eeb39"),
-                "Show the launcher in a shared screen",
-            ),
-            message(
-                "3-X-1-aaaaaaaa",
-                "X",
-                "#orchestration/wcjqsg",
-                None,
-                "1adf6d68 and more",
-            ),
-            message(
-                "4-Y-1-bbbbbbbb",
-                "Y",
-                "#orchestration/wcjqsg",
-                Some("aaaaaaaa"),
-                "Y landed core #1, merged at 99999999abcd",
-            ),
-            message(
-                "5-Y2YBTS-1-a85417d8",
-                "Y2YBTS",
-                "#orchestration/wcjqsg",
-                None,
-                "Y2YBTS landed core #5342, merged at 255494bb414c (12:38), for WCJQSG's pivot \
-                 1adf6d68",
-            ),
-        ]
-    }
-
-    #[test]
-    fn a_pain_closes_once_a_switch_carries_the_landing_its_thread_led_to() {
-        let mut asked = Vec::new();
-        let mut on = |commit: &str| {
-            asked.push(commit.to_owned());
-            commit == "255494bb414c"
-        };
-        assert_eq!(
-            standing(
-                &heard("f7da717c"),
-                "6LU6ZM",
-                &["f7da717c"],
-                &tuple(),
-                &mut on
-            ),
-            Standing {
-                taken_by: Some("WCJQSG".into()),
-                closed_by: Some("255494bb414c".into())
-            },
-            "the pivot took it up and its landing closed it"
-        );
-        assert_eq!(
-            asked,
-            ["255494bb414c"],
-            "a landing re a note to a group is no landing of this pain"
-        );
-    }
-
-    #[test]
-    fn a_landing_no_switch_carries_leaves_it_taken() {
-        assert_eq!(
-            standing(
-                &heard("f7da717c"),
-                "6LU6ZM",
-                &["f7da717c"],
-                &tuple(),
-                &mut |_| false
-            ),
-            Standing {
-                taken_by: Some("WCJQSG".into()),
-                closed_by: None
-            },
-            "taken, not closed"
-        );
-    }
-
-    #[test]
-    fn an_unanswered_or_shared_question_takes_nothing_up() {
-        let asked_alone = &tuple()[..1];
-        assert_eq!(
-            standing(
-                &heard("f7da717c"),
-                "6LU6ZM",
-                &["f7da717c"],
-                asked_alone,
-                &mut |_| true
-            ),
-            Standing::default(),
-            "nobody answered"
-        );
-        let mut shared = tuple();
-        shared[0]
-            .text
-            .push_str(" and mycelium:cell/OMNOJW#0badc0de");
-        assert_eq!(
-            standing(
-                &heard("f7da717c"),
-                "6LU6ZM",
-                &["f7da717c", "0badc0de"],
-                &shared,
-                &mut |_| true
-            ),
-            Standing::default(),
-            "a question holding two pains says nothing of either"
-        );
-        assert_eq!(
-            standing(
-                &heard("feedf00d"),
-                "6LU6ZM",
-                &["feedf00d"],
-                &tuple(),
-                &mut |_| true
-            ),
-            Standing::default(),
-            "a pain never asked of anyone"
-        );
-    }
-
-    #[test]
-    fn a_landing_names_the_commit_it_merged_at() {
-        assert_eq!(
-            merged_at("landed core #5486, merged at 5b05e833e36c (06:45)"),
-            Some("5b05e833e36c"),
-            "the commit"
-        );
-        assert_eq!(merged_at("merged at abc"), None, "too short to be a commit");
-        assert_eq!(merged_at("landed it"), None, "no commit");
-    }
-
-    #[test]
-    fn the_core_on_is_the_last_switchs() {
-        let switches = concat!(
-            r#"{"at":"a","generation":1,"revs":{"core":"aaa"}}"#,
-            "\n",
-            r#"{"at":"b","generation":2,"revs":{"core":"bbb","world":"w"}}"#,
-            "\nnot json\n"
-        );
-        assert_eq!(core_on(switches).as_deref(), Some("bbb"), "the newest");
-        assert_eq!(core_on(""), None, "no switch yet");
-    }
-
-    #[test]
-    fn messages_are_read_from_the_folder_and_its_days_in_order_sent() {
-        let dir = std::env::temp_dir().join(format!("landed-{}", std::process::id()));
-        let day = dir.join("2026-11-17");
-        fs::create_dir_all(&day).expect("a day folder");
-        let write = |path: std::path::PathBuf, id: &str| {
-            let text = format!(r#"{{"id":"{id}","from":"A","to":["@B"],"text":"t"}}"#);
-            fs::write(path, text).expect("a message");
-        };
-        write(day.join("20-A-1-bbbbbbbb.json"), "20-A-1-bbbbbbbb");
-        write(dir.join("30-A-1-cccccccc.json"), "30-A-1-cccccccc");
-        write(dir.join("5-A-1-aaaaaaaa.json"), "5-A-1-aaaaaaaa");
-        write(dir.join(".read-A.json"), "x");
-        let ids: Vec<String> = messages(&dir, 10).into_iter().map(|m| m.id).collect();
-        fs::remove_dir_all(&dir).expect("cleaned up");
-        assert_eq!(
-            ids,
-            ["20-A-1-bbbbbbbb", "30-A-1-cccccccc"],
-            "since 10, in order, no dotfiles"
-        );
-    }
-}
+mod tests;
