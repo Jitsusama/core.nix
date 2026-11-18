@@ -7674,6 +7674,11 @@ Scope {
         // One with nothing to do of its own, only more inside, steps in.
         if (!choice.run && enter(choice))
             return;
+        // One with neither, as an ask once answered, does nothing and keeps
+        // the launcher, where running it threw and closed it; one opened
+        // below another needs no run of its own.
+        if (!choice.run && !(below && choice.below))
+            return;
         // One that changes something, or whose outcome takes a while, keeps
         // the launcher, its row saying how it stands now; the right arrow
         // then Return does it and closes (stepRows).
