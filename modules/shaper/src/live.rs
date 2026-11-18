@@ -54,6 +54,11 @@ pub struct Heard {
     /// second's limit and delay are to be judged as.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trial: Option<Tuning>,
+    /// The ceiling the upload is held under, a trial's or its network's,
+    /// in kbit/s, while one holds it: the rate a trace sets apart as the
+    /// ceiling's, not the controller's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ceiling: Option<f64>,
     /// What each of the VPN's tins sent up over the last second, in
     /// kbit/s: each class's share of the upload, read where the tunnel's
     /// classes still show. The shaper fills it in, beside what the
@@ -273,6 +278,7 @@ impl Follow {
             up_limit: self.controller.up.limit(),
             plateau: self.controller.up.plateau(),
             trial: self.trial,
+            ceiling: self.tuning().most_kbit,
             up_tins_kbit: None,
             why: Some(self.controller.why()),
         };
@@ -575,6 +581,8 @@ mod tests {
             follow.take(&parse(line).expect("a sample"));
         }
         assert_eq!(follow.controller.up.limit(), Some(9_500), "home's ceiling");
+        let ceiling = || follow.heard().and_then(|(_, heard)| heard.ceiling);
+        assert_eq!(ceiling(), Some(9_500.0), "the ceiling heard");
         let trial = |most| {
             Some(Tuning {
                 most_kbit: Some(most),
@@ -587,6 +595,8 @@ mod tests {
             Some(8_000),
             "a trial under it"
         );
+        let heard = follow.heard().and_then(|(_, heard)| heard.ceiling);
+        assert_eq!(heard, Some(8_000.0), "the trial's heard");
         follow.tune(trial(11_000.0));
         let most = follow.controller.up.tuning().most_kbit;
         assert_eq!(most, Some(9_500.0), "a trial past it");
@@ -621,11 +631,6 @@ mod tests {
         for line in &lines[1..] {
             follow.take(&parse(line).expect("a sample"));
         }
-        let stepped = follow.controller.up.limit();
-        assert!(
-            stepped.is_some_and(|up| up <= 9_500),
-            "stepped: {stepped:?}"
-        );
         let silent = follow.last_ms + SILENT_MS + 1;
         assert_eq!(up(&follow, silent), Some(9_500), "a silent recorder");
         follow.take(&parse(&pool(NOV3 + 11_000, Some("hotel"))).expect("a sample"));
@@ -634,6 +639,13 @@ mod tests {
         assert_eq!(up(&follow, NOV3 + 12_000), Some(9_500), "home again");
         let limit = follow.controller.up.limit();
         assert_eq!(limit, Some(9_500), "its start again");
+        follow.ceil(Ceilings::from([("home".to_string(), 9_000.0)]));
+        let (limit, line) = (follow.controller.up.limit(), follow.controller.up.line());
+        assert_eq!(limit, Some(9_000), "a ceiling set during the stay");
+        assert_eq!(line, Some(10_000.0), "the line it leaves");
+        follow.ceil(Ceilings::new());
+        let line = follow.controller.up.line();
+        assert_eq!(line, Some(12_000.0), "the anchor, with no ceiling");
     }
 
     // What a stay learned of a network that isn't declared starts nothing

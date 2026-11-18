@@ -67,8 +67,9 @@ pub struct Second {
     /// A call's round trip through the VPN riding the link, in ms, as only
     /// the live shaper hears it (src/vpndelay.rs); a replay leaves it None.
     pub vpn_ms: Option<f64>,
-    /// The ceiling a trial held the upload under, in kbit/s, as only the
-    /// live shaper knows it (src/live.rs); a replay leaves it None.
+    /// The ceiling the upload was held under, a trial's or its network's,
+    /// in kbit/s, as the live shaper's trace says it or a replay's `--most`
+    /// sets it; None while none held it.
     pub ceiling: Option<u64>,
 }
 
@@ -835,9 +836,10 @@ fn judged_lines(out: &mut String, judged: &bars::Judged) {
         bars::UNDER,
         bars::GRACE_S,
         // Said only where a ceiling was set aside: a trace written before
-        // trials kept theirs, or another controller replayed, has none.
-        if bars().any(|(_, bar)| bar.trial_s > 0) {
-            "; a trial's ceiling set aside"
+        // trials kept theirs, or another controller replayed with no
+        // network's ceiling, has none.
+        if bars().any(|(_, bar)| bar.ceiling_s > 0) {
+            "; a ceiling, a trial's or its network's, set aside"
         } else {
             ""
         }
@@ -857,8 +859,8 @@ fn judged_lines(out: &mut String, judged: &bars::Judged) {
             span(bar.longest_breach_s),
             bar.cuts,
             bar.earned,
-            if bar.trial_s > 0 {
-                format!("; {} at a trial's ceiling", span(bar.trial_s))
+            if bar.ceiling_s > 0 {
+                format!("; {} at its ceiling", span(bar.ceiling_s))
             } else {
                 String::new()
             }
@@ -889,6 +891,9 @@ pub struct Asked {
     pub heard: Option<PathBuf>,
     /// The line each network carries up, which the upload is judged by.
     pub anchors: bars::Anchors,
+    /// The most each network's upload is held to, as its ceiling holds it
+    /// live, in kbit/s.
+    pub ceilings: bars::Anchors,
     /// A file of windows to judge apart.
     pub windows: Option<PathBuf>,
 }
@@ -900,6 +905,7 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
         files: Vec::new(),
         heard: None,
         anchors: bars::Anchors::new(),
+        ceilings: bars::Anchors::new(),
         windows: None,
     };
     let mut it = args.iter();
@@ -930,6 +936,12 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
                 let (network, up) = bars::anchor(it.next().map_or("", String::as_str))?;
                 asked.anchors.insert(network, up);
             }
+            "--most" => {
+                let text = it.next().map_or("", String::as_str);
+                let (network, up) = bars::anchor(text)
+                    .map_err(|_| format!("--most takes NETWORK=UP in kbit/s, not {text:?}"))?;
+                asked.ceilings.insert(network, up);
+            }
             "--windows" => asked.windows = Some(it.next().map_or("", String::as_str).into()),
             file => asked.files.push(file.into()),
         }
@@ -940,10 +952,41 @@ pub fn asked(args: &[String]) -> Result<Asked, String> {
     if asked.controller == Choice::Held && asked.heard.is_none() {
         return Err("--controller held needs --heard, the trace it plays".into());
     }
+    if asked.controller != Choice::OneWay && !asked.ceilings.is_empty() {
+        return Err("--most holds only the one-way controller; held reads its own".into());
+    }
     if asked.windows.is_some() && asked.anchors.is_empty() {
         return Err("--windows needs an --anchor to judge them by".into());
     }
     Ok(asked)
+}
+
+/// Plays each stay through the rebuilt controller, guarded by its
+/// network's anchor and held under its network's ceiling, as the live
+/// shaper holds it, and marks each second the ceiling held, so the bars
+/// set it aside as the ceiling's.
+fn one_way(
+    stays: &mut [Stay],
+    anchors: &bars::Anchors,
+    ceilings: &bars::Anchors,
+) -> Vec<Vec<Rates>> {
+    stays
+        .iter_mut()
+        .map(|s| {
+            let most = ceilings.get(&s.network).copied();
+            let mut controller = oneway::Controller::new(None, None);
+            controller.ceil(most.map(float));
+            controller.anchor(anchors.get(&s.network).map(|&up| float(up)));
+            controller.up.tune(oneway::Tuning {
+                most_kbit: most.map(float),
+                ..oneway::Tuning::default()
+            });
+            for second in &mut s.seconds {
+                second.ceiling = most;
+            }
+            play(s, &mut controller)
+        })
+        .collect()
 }
 
 /// `shaper replay`: replays the files through the controller chosen, the
@@ -966,15 +1009,7 @@ pub fn command(args: &[String], json: bool) -> Result<(), Failure> {
         None => Vec::new(),
     };
     let rates: Vec<Vec<Rates>> = match asked.controller {
-        Choice::OneWay => stays
-            .iter()
-            .map(|s| {
-                // Guarded by the network's anchor, as slice 1 guards it live.
-                let mut controller = oneway::Controller::new(None, None);
-                controller.anchor(asked.anchors.get(&s.network).map(|&up| float(up)));
-                play(s, &mut controller)
-            })
-            .collect(),
+        Choice::OneWay => one_way(&mut stays, &asked.anchors, &asked.ceilings),
         Choice::Unlimited => stays.iter().map(|s| play(s, &mut Unlimited)).collect(),
         Choice::Held => held,
     };
@@ -1007,11 +1042,11 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn a_bar_says_the_time_a_trial_held_it_and_only_then() {
-        let bar = |trial_s| bars::Bar {
+    fn a_bar_says_the_time_a_ceiling_held_it_and_only_then() {
+        let bar = |ceiling_s| bars::Bar {
             anchor: 12_000,
             seconds: 600,
-            trial_s,
+            ceiling_s,
             ..bars::Bar::default()
         };
         let judged = bars::Judged {
@@ -1020,17 +1055,20 @@ mod tests {
         };
         let mut out = String::new();
         judged_lines(&mut out, &judged);
-        assert!(out.contains("; a trial's ceiling set aside\n"), "{out}");
-        let home = out.lines().find(|l| l.starts_with("home,")).expect("home");
         assert!(
-            home.ends_with("; 4 min 50 s at a trial's ceiling"),
-            "{home}"
+            out.contains("; a ceiling, a trial's or its network's, set aside\n"),
+            "{out}"
         );
+        let home = out.lines().find(|l| l.starts_with("home,")).expect("home");
+        assert!(home.ends_with("; 4 min 50 s at its ceiling"), "{home}");
         let night = out
             .lines()
             .find(|l| l.starts_with("night,"))
             .expect("night");
-        assert!(!night.contains("trial"), "a trial said with none: {night}");
+        assert!(
+            !night.contains("ceiling"),
+            "a ceiling said with none: {night}"
+        );
         // With no ceiling set aside anywhere, as in a trace written before
         // trials kept theirs, the header claims none.
         let none = bars::Judged {
@@ -1039,7 +1077,10 @@ mod tests {
         };
         let mut out = String::new();
         judged_lines(&mut out, &none);
-        assert!(!out.contains("trial"), "a ceiling claimed set aside: {out}");
+        assert!(
+            !out.contains("ceiling"),
+            "a ceiling claimed set aside: {out}"
+        );
     }
 
     /// Midnight in UTC on 3 November 2026, in ms.
@@ -1661,6 +1702,41 @@ mod tests {
         assert!(text.contains(&table.join("\n")), "{table:#?} in:\n{text}");
     }
 
+    // A network's ceiling holds a replayed stay under it, as it holds the
+    // live shaper, so its seconds there are the ceiling's and no breach of
+    // the controller's; a network with none is left to the controller.
+    #[test]
+    fn a_one_way_replay_holds_a_stay_under_its_network_s_ceiling() {
+        let lines = [
+            vec![pool(NOV3, "home")],
+            connection(NOV3, 120, constant(12_000, 0), quiet),
+        ]
+        .concat();
+        let anchors = bars::Anchors::from([("home".to_owned(), 12_000)]);
+        let ceilings = bars::Anchors::from([("home".to_owned(), 9_500)]);
+        let mut stays = read_lines(&lines);
+        let rates = one_way(&mut stays, &anchors, &ceilings);
+        let ups: Vec<_> = rates[0].iter().map(|r| r.up).collect();
+        assert!(
+            ups.iter().all(|up| up.is_none_or(|up| up <= 9_500)),
+            "past the ceiling: {ups:?}"
+        );
+        assert_eq!(ups.last(), Some(&Some(9_500)), "held at it: {ups:?}");
+        let held = stays[0].seconds.iter().all(|s| s.ceiling == Some(9_500));
+        assert!(held, "a second not marked as the ceiling's");
+        let pairs = [(&stays[0], rates[0].as_slice())];
+        let bar = &bars::judge(&pairs, &anchors, &[]).networks["home"];
+        assert!(bar.ceiling_s > 100, "the ceiling's seconds: {bar:?}");
+        assert_eq!(bar.breached_s, 0, "a breach at the ceiling: {bar:?}");
+        let mut free = read_lines(&lines);
+        let rates = one_way(&mut free, &anchors, &bars::Anchors::new());
+        assert!(
+            rates[0].iter().any(|r| r.up.is_none_or(|up| up > 9_500)),
+            "held with no ceiling"
+        );
+        assert!(free[0].seconds.iter().all(|s| s.ceiling.is_none()));
+    }
+
     #[test]
     fn the_command_takes_a_base_and_files() {
         let args = |words: &str| words.split(' ').map(String::from).collect::<Vec<_>>();
@@ -1672,8 +1748,23 @@ mod tests {
                 files: vec!["a.jsonl".into(), "b.jsonl".into()],
                 heard: None,
                 anchors: bars::Anchors::new(),
+                ceilings: bars::Anchors::new(),
                 windows: None,
             })
+        );
+        let most = asked(&args("--most 6C:AE:F6:C2:D6:B2=9500 a.jsonl")).expect("a ceiling");
+        assert_eq!(
+            most.ceilings.get("6c:ae:f6:c2:d6:b2"),
+            Some(&9_500),
+            "the ceiling, by the network's name in lower case: {most:?}"
+        );
+        assert!(asked(&args("--most home a.jsonl")).is_err(), "no rate");
+        assert!(
+            asked(&args(
+                "--controller held --heard t --most home=9500 a.jsonl"
+            ))
+            .is_err(),
+            "a ceiling the trace already holds"
         );
         let judged = asked(&args(
             "--controller held --heard t --anchor 6C:AE:F6:C2:D6:B2=12000 --windows w a.jsonl",

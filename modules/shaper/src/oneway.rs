@@ -527,7 +527,7 @@ impl Way {
     /// upload held at that ceiling is at the line's hold, not held low, and
     /// a queue past it can still be the router's. A trial's ceiling is an
     /// experiment and says nothing of the line.
-    fn line(&self) -> Option<f64> {
+    pub(crate) fn line(&self) -> Option<f64> {
         let ceiling = self
             .network_most
             .map_or(f64::INFINITY, |most| most / ANCHOR_HOLD);
@@ -3783,31 +3783,93 @@ mod tests {
     fn under_a_network_s_ceiling_a_router_s_queue_is_found_and_outgrown() {
         let mut c = ceiled(anchored(12_000.0), 9_500.0);
         let mut at = 0.0;
-        let mut step = |c: &mut Controller, until: f64, most: f64, queued: bool| {
-            while at < until {
-                let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
-                c.step(&Seen {
-                    at_s: at,
-                    up_kbit: rate.min(most),
-                    up_ours: Some(Ours {
-                        waiting: true,
-                        queued,
-                        ..Ours::default()
-                    }),
-                    ..quiet(0.0, 300.0)(at)
-                });
-                at += 0.1;
-            }
-        };
-        step(&mut c, 70.0, 9_100.0, false);
+        carrying(&mut c, &mut at, 70.0, 9_100.0, false);
         let plateau = c.up.plateau;
         assert!(
             plateau.is_some_and(|p| p < 9_400.0),
             "the router's queue under the ceiling, plateau {plateau:?}"
         );
         assert_eq!(c.guarded, 0, "the guard took the hold for one too low");
-        step(&mut c, 200.0, f64::INFINITY, true);
+        carrying(&mut c, &mut at, 200.0, f64::INFINITY, true);
         assert_eq!(c.up.limit(), Some(9_500), "back at the ceiling");
+    }
+
+    /// Steps `c` from `at` to `until`, a tenth of a second at a time, on a
+    /// link that carries what the upload is held to up to `most` kbit/s,
+    /// with our queue standing as `queued` says.
+    fn carrying(c: &mut Controller, at: &mut f64, until: f64, most: f64, queued: bool) {
+        while *at < until {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            c.step(&Seen {
+                at_s: *at,
+                up_kbit: rate.min(most),
+                up_ours: Some(Ours {
+                    waiting: true,
+                    queued,
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(*at)
+            });
+            *at += 0.1;
+        }
+    }
+
+    // A probe a network's ceiling held finds the line at the ceiling only
+    // when the link carried it with our queue standing. A router drifted
+    // under the ceiling, a probe with no queue of ours, and a trial's lower
+    // ceiling each leave the plateau where it was, or every minute's probe
+    // would hand the queue back to the router.
+    #[test]
+    fn a_probe_at_a_network_s_ceiling_finds_the_line_there_only_when_it_carried_it_queued() {
+        let probed = |most: f64, queued: bool, trial: Option<f64>, plateau: f64| {
+            let mut c = Controller::from_learned(
+                Learned {
+                    base: None,
+                    plateau: Some(plateau),
+                },
+                Learned::default(),
+            );
+            c = ceiled(c, 9_500.0);
+            if let Some(most) = trial {
+                c.up.tune(Tuning {
+                    most_kbit: Some(most),
+                    ..Tuning::default()
+                });
+            }
+            carrying(&mut c, &mut 0.0, 200.0, most, queued);
+            c.up.plateau
+        };
+        let line = Some(9_500.0 / Tuning::default().hold);
+        assert_eq!(
+            probed(f64::INFINITY, true, None, 9_100.0),
+            line,
+            "carried queued"
+        );
+        let drifted = probed(9_100.0, true, None, 9_100.0);
+        assert!(
+            drifted.is_some_and(|p| p <= 9_100.0),
+            "a router under the ceiling: {drifted:?}"
+        );
+        assert_eq!(
+            probed(f64::INFINITY, false, None, 9_100.0),
+            Some(9_100.0),
+            "with no queue of ours"
+        );
+        assert_eq!(
+            probed(f64::INFINITY, true, Some(8_000.0), 8_000.0),
+            Some(8_000.0),
+            "at a trial's ceiling under the network's"
+        );
+    }
+
+    // The guard's figure is the line's under a network's ceiling, since
+    // that is the share it found the upload held under.
+    #[test]
+    fn under_a_network_s_ceiling_the_guard_names_the_line_s_share() {
+        let mut c = ceiled(anchored(4_069.0), 9_500.0);
+        filling(&mut c, 70.0, &[]);
+        assert_eq!(c.guarded, 1, "the guard never returned it");
+        assert!(c.why().contains("under 8.4 Mb/s"), "{}", c.why());
     }
 
     fn anchored(plateau: f64) -> Controller {
