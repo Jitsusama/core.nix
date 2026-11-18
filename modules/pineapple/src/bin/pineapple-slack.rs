@@ -360,7 +360,7 @@ fn run(how: &Run) -> Result<(), Failure> {
         match &signed {
             Signed::Out => eprintln!("<4>no Slack sign-in yet, so nothing is read"),
             // Said once, as the sign-in last read is let go.
-            Signed::RanOver | Signed::Resting if last.lapsed(now) => {
+            Signed::RanOver | Signed::Refused | Signed::Resting if last.lapsed(now) => {
                 eprintln!("<4>{}", slack_people::no_longer_stands());
             }
             // A locked keyring prompts each time it's asked, so it rests.
@@ -372,6 +372,11 @@ fn run(how: &Run) -> Result<(), Failure> {
             Signed::RanOver => eprintln!(
                 "<4>{}",
                 ran_over("Slack", "slack", patience, rest + how.every)
+            ),
+            // A dismissed unlock prompt answers as no sign-in at all.
+            Signed::Refused => eprintln!(
+                "<4>{}",
+                slack_people::refused(last.stands(now), rest + how.every)
             ),
             // Said as it began, or by what follows.
             Signed::In(_) | Signed::Resting => {}

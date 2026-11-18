@@ -56,15 +56,15 @@ struct File {
     token: Account,
 }
 
-/// How long a program rests from the keyring once its sign-in ran over:
-/// long enough that a keyring's unlock prompt isn't raised again each
+/// How long a program rests from the keyring once its sign-in ran over,
+/// or the keyring gave none: long enough that a keyring's unlock prompt isn't raised again each
 /// round, and with the 30 seconds it ran and pineapple's Slack reader's
 /// 30-second round, four minutes, leaving one of the five a stop said in
 /// Slack is to land in for its search and the enforcer.
 pub const REST: Duration = Duration::from_mins(3);
 
-/// When this program's keyring sign-in last ran over, shared by every
-/// read of it, so no caller asks again during the rest.
+/// When this program's keyring sign-in last ran over or was refused,
+/// shared by every read of it, so no caller asks again during the rest.
 static RAN_OVER_AT: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
 
 /// The sign-in this program's `read` last read.
@@ -119,10 +119,10 @@ impl LastSignIn {
                 self.last = Some((account.clone(), now));
                 Some(account)
             }
-            Signed::RanOver | Signed::Resting if self.stands(now) => {
+            Signed::RanOver | Signed::Refused | Signed::Resting if self.stands(now) => {
                 self.last.as_ref().map(|(account, _)| account.clone())
             }
-            Signed::RanOver | Signed::Resting | Signed::Out => {
+            Signed::RanOver | Signed::Refused | Signed::Resting | Signed::Out => {
                 self.last = None;
                 None
             }
@@ -139,7 +139,14 @@ pub enum Signed {
     /// The keyring's program ran past [`sign_in_program::PATIENCE`] and
     /// was stopped, just now.
     RanOver,
-    /// It ran over less than [`REST`] ago, so the keyring wasn't asked.
+    /// The keyring's program answered with none, and the file holds none.
+    /// A keyring locked with its unlock prompt dismissed, or with no
+    /// prompter to show it, answers so, just as one lacking the sign-in
+    /// does: secret-tool ended 1 saying nothing, after 11.5 seconds, on a
+    /// locked keyring with no prompter (17 Nov).
+    Refused,
+    /// It ran over or was refused less than [`REST`] ago, so the keyring
+    /// wasn't asked.
     Resting,
 }
 
@@ -151,6 +158,7 @@ impl std::fmt::Debug for Signed {
             Signed::In(_) => "In(..)",
             Signed::Out => "Out",
             Signed::RanOver => "RanOver",
+            Signed::Refused => "Refused",
             Signed::Resting => "Resting",
         })
     }
@@ -159,26 +167,54 @@ impl std::fmt::Debug for Signed {
 impl Account {
     /// The harness's sign-in, as `signed` reads it, or none. While the
     /// keyring runs over or rests, the one this program last read, while
-    /// it stands; a run-over is said in the journal.
+    /// it stands; a run-over or a refusal is said in the journal.
     pub fn read(path: &Path) -> Option<Account> {
-        let signed = Account::signed(path, sign_in_program::PATIENCE, REST);
+        let keyring = std::env::var_os("SIGN_IN_KEYRING").map(PathBuf::from);
+        let (account, said) = Account::read_from(
+            keyring.as_deref(),
+            path,
+            &RAN_OVER_AT,
+            &LAST_READ,
+            sign_in_program::PATIENCE,
+        );
+        if let Some(said) = said {
+            eprintln!("<4>{said}");
+        }
+        account
+    }
+
+    /// As `read`, the keyring's program `keyring` given `patience`, resting
+    /// under `at` and keeping the last sign-in in `last`: the sign-in, and
+    /// the line to say of how the keyring answered, if any.
+    fn read_from(
+        keyring: Option<&Path>,
+        path: &Path,
+        at: &std::sync::Mutex<Option<Instant>>,
+        last: &std::sync::Mutex<LastSignIn>,
+        patience: Duration,
+    ) -> (Option<Account>, Option<String>) {
+        let signed = rested(at, REST, || Account::kept_within(keyring, path, patience));
         let now = Instant::now();
-        let mut kept = LAST_READ
+        let mut kept = last
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let waits = matches!(signed, Signed::RanOver | Signed::Resting);
-        if waits && kept.lapsed(now) {
-            eprintln!("<4>{}", no_longer_stands());
-        } else if matches!(signed, Signed::RanOver) {
-            eprintln!("<4>{}", ran_over(kept.stands(now)));
-        }
-        kept.heard(signed, now)
+        let waits = matches!(signed, Signed::RanOver | Signed::Refused | Signed::Resting);
+        let said = if waits && kept.lapsed(now) {
+            Some(no_longer_stands())
+        } else {
+            match signed {
+                Signed::RanOver => Some(ran_over(kept.stands(now))),
+                Signed::Refused => Some(refused(kept.stands(now), REST)),
+                Signed::In(_) | Signed::Out | Signed::Resting => None,
+            }
+        };
+        (kept.heard(signed, now), said)
     }
 
     /// The harness's sign-in, as `kept` reads it, the keyring's printed by
     /// the program `SIGN_IN_KEYRING` names, as each program's unit says,
     /// its program given `patience`, and never asked for during the `rest`
-    /// after it ran over.
+    /// after it ran over or was refused.
     pub fn signed(path: &Path, patience: Duration, rest: Duration) -> Signed {
         let keyring = std::env::var_os("SIGN_IN_KEYRING").map(PathBuf::from);
         rested(&RAN_OVER_AT, rest, || {
@@ -193,30 +229,36 @@ impl Account {
     pub fn kept(keyring: Option<&Path>, path: &Path) -> Option<Account> {
         match Account::kept_within(keyring, path, sign_in_program::PATIENCE) {
             Signed::In(account) => Some(account),
-            Signed::Out | Signed::RanOver | Signed::Resting => None,
+            Signed::Out | Signed::RanOver | Signed::Refused | Signed::Resting => None,
         }
     }
 
     /// As `kept`, the keyring's program given `patience`. One that ran over
     /// isn't read past to the file, whose sign-in is older, so the caller
-    /// hears it ran over.
+    /// hears it ran over; one that gave none, with no file, is refused.
     fn kept_within(keyring: Option<&Path>, path: &Path, patience: Duration) -> Signed {
         use sign_in_program::SignIn;
-        let printed =
+        let (printed, gave_none) =
             match keyring.map(|program| sign_in_program::token(program.as_os_str(), patience)) {
-                Some(SignIn::Token(text)) => Some(text),
+                Some(SignIn::Token(text)) => (Some(text), false),
                 Some(SignIn::RanOver) => return Signed::RanOver,
-                Some(SignIn::Missing) | None => None,
+                Some(SignIn::Missing) => (None, true),
+                None => (None, false),
             };
         let Some(text) = printed.or_else(|| std::fs::read_to_string(path).ok()) else {
-            return Signed::Out;
+            return if gave_none {
+                Signed::Refused
+            } else {
+                Signed::Out
+            };
         };
         serde_json::from_str::<File>(&text).map_or(Signed::Out, |file| Signed::In(file.token))
     }
 }
 
-/// What `ask` gives, unless its last answer under `at` ran over less than
-/// `rest` ago; one that runs over now starts the rest. `at` is held across
+/// What `ask` gives, unless its last answer under `at` ran over or was
+/// refused less than `rest` ago; one that does now starts the rest, so a
+/// dismissed unlock prompt isn't raised again each round. `at` is held across
 /// the ask, so a locked keyring is asked once however many callers want
 /// it, each prompting for its unlock; the others wait, at most a sign-in's
 /// patience, then rest.
@@ -230,7 +272,7 @@ fn rested(
         return Signed::Resting;
     }
     let signed = ask();
-    *at = matches!(signed, Signed::RanOver).then(Instant::now);
+    *at = matches!(signed, Signed::RanOver | Signed::Refused).then(Instant::now);
     signed
 }
 
@@ -247,6 +289,24 @@ fn ran_over(stands: bool) -> String {
          again for {} minutes, and {meanwhile}",
         sign_in_program::PATIENCE.as_secs(),
         REST.as_secs().div_ceil(60)
+    )
+}
+
+/// The line said when the keyring gave no sign-in and the file holds
+/// none, as a locked keyring whose unlock prompt was dismissed does:
+/// whether the sign-in last read `stands` meanwhile, and the `rest` till
+/// it's asked again.
+#[must_use]
+pub fn refused(stands: bool, rest: Duration) -> String {
+    let meanwhile = if stands {
+        "the sign-in last read stands meanwhile"
+    } else {
+        "with no sign-in standing, Slack reads as signed out till then"
+    };
+    format!(
+        "the keyring gave no Slack sign-in, as one locked with its unlock prompt dismissed \
+         does, so it isn't asked again for {} minutes, and {meanwhile}",
+        rest.as_secs().div_ceil(60)
     )
 }
 
@@ -1515,5 +1575,107 @@ mod tests {
                 && !none.contains("stands"),
             "none read, so none is said to stand: {none}"
         );
+    }
+
+    #[test]
+    fn a_keyring_that_gives_none_with_no_file_is_refused_and_rests() {
+        let (keyring, _) = kept_in("gives-none", "", "exit 1");
+        let missing = Path::new("/nonexistent/credentials.json");
+        let signed = Account::kept_within(Some(&keyring), missing, Duration::from_secs(5));
+        assert!(
+            matches!(signed, Signed::Refused),
+            "a keyring giving none, with no file, is refused, not {signed:?}"
+        );
+        assert!(
+            matches!(
+                Account::kept_within(None, missing, Duration::from_secs(5)),
+                Signed::Out
+            ),
+            "with no keyring and no file, nobody is signed in"
+        );
+        let at = std::sync::Mutex::new(None);
+        let _ = rested(&at, REST, || Signed::Refused);
+        let again = rested(&at, REST, || Signed::Out);
+        assert!(
+            matches!(again, Signed::Resting),
+            "a refusal rests the keyring, not {again:?}"
+        );
+        let said = refused(true, REST);
+        assert!(
+            said.contains("unlock prompt dismissed")
+                && said.contains("isn't asked again for 3 minutes")
+                && said.ends_with("the sign-in last read stands meanwhile"),
+            "the refusal says why, the rest and what stands: {said}"
+        );
+    }
+
+    #[test]
+    fn a_sign_in_read_stands_while_the_keyring_refuses() {
+        let read = Instant::now();
+        let mut last = LastSignIn::new();
+        assert!(last.heard(Signed::Refused, read).is_none(), "none read yet");
+        let _ = last.heard(Signed::In(account("xoxc-keyring")), read);
+        let kept = last.heard(Signed::Refused, read + Duration::from_secs(30));
+        assert_eq!(
+            kept.map(|account| account.token).as_deref(),
+            Some("xoxc-keyring"),
+            "a dismissed unlock prompt doesn't end the sign-in"
+        );
+        assert!(
+            last.heard(Signed::Refused, read + STANDS).is_none(),
+            "nor stands past its bound"
+        );
+    }
+
+    /// A keyring reader in `test`'s folder that prints a sign-in the first
+    /// time it's run and runs `after` every time since.
+    fn answers_once_then(test: &str, after: &str) -> PathBuf {
+        let folder = std::env::temp_dir().join(format!("slack-account-{test}"));
+        let asked = folder.join("asked");
+        let reader = format!(
+            "if [ -e '{asked}' ]; then {after}; fi\n: > '{asked}'\ncat <<'END'\n{}\nEND",
+            signed_in("xoxc-keyring"),
+            asked = asked.display(),
+        );
+        kept_in(test, "", &reader).0
+    }
+
+    #[test]
+    fn read_keeps_its_last_sign_in_and_says_so_while_the_keyring_runs_over_or_refuses() {
+        let missing = Path::new("/nonexistent/credentials.json");
+        let token = |read: &(Option<Account>, Option<String>)| {
+            read.0.as_ref().map(|account| account.token.clone())
+        };
+        for (test, after, line) in [
+            ("read-runs-over", "exec sleep 60", "ran past"),
+            ("read-refused", "exit 1", "gave no Slack sign-in"),
+        ] {
+            let keyring = answers_once_then(test, after);
+            let at = std::sync::Mutex::new(None);
+            let last = std::sync::Mutex::new(LastSignIn::new());
+            let patience = Duration::from_millis(300);
+            let read = || Account::read_from(Some(&keyring), missing, &at, &last, patience);
+            let first = read();
+            assert_eq!(token(&first).as_deref(), Some("xoxc-keyring"), "{test}");
+            assert_eq!(first.1, None, "{test}: an answer says nothing");
+            let second = read();
+            assert_eq!(
+                token(&second).as_deref(),
+                Some("xoxc-keyring"),
+                "{test}: the sign-in last read stands"
+            );
+            let said = second.1.unwrap_or_default();
+            assert!(
+                said.contains(line) && said.ends_with("the sign-in last read stands meanwhile"),
+                "{test}: the journal says how it answered and what stands: {said}"
+            );
+            let third = read();
+            assert_eq!(
+                token(&third).as_deref(),
+                Some("xoxc-keyring"),
+                "{test}: and stands as it rests"
+            );
+            assert_eq!(third.1, None, "{test}: a rest is said once, as it begins");
+        }
     }
 }
