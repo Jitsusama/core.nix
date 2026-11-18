@@ -226,7 +226,10 @@ fn sign_in(context: &Context, login: &str) -> Result<(), Failure> {
         return Err(
             Failure::new(Exit::Refused, "sign-in asks for the code eero sends")
                 .because("stdin isn't a terminal to type it in, so run it in one")
-                .try_this(format!("eero sign-in {login}")),
+                .try_this(format!(
+                    "eero sign-in {}",
+                    terminal_kit::failure::shell_word(login)
+                )),
         );
     }
     let refused = |why: String| Failure::new(Exit::Failed, "eero didn't sign you in").because(why);

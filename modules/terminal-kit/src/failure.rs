@@ -179,7 +179,9 @@ impl Failure {
         self
     }
 
-    /// The same, saying what to do: a command to type, after "try".
+    /// The same, saying what to do: a command to type, after "try". A
+    /// word in it from outside, a name or a path, goes through
+    /// `shell_word`, so pasting the line runs only what it says.
     #[must_use]
     pub fn try_this(mut self, then: impl Into<String>) -> Self {
         self.then = Some(then.into());
@@ -266,10 +268,46 @@ impl fmt::Display for Failure {
 
 impl std::error::Error for Failure {}
 
+/// A word as a shell reads it back whole and runs nothing of: as it is
+/// where it holds only letters, digits and `_@%+=:,./-`, and otherwise
+/// in single quotes, inside which a shell expands nothing, each quote of
+/// its own closed, escaped and opened again. A name from outside, a
+/// device's `lamp;reboot` among them, would otherwise make a try line
+/// that runs more than it says when pasted.
+pub fn shell_word(word: &str) -> std::borrow::Cow<'_, str> {
+    let plain = |c: char| c.is_ascii_alphanumeric() || "_@%+=:,./-".contains(c);
+    if !word.is_empty() && word.chars().all(plain) {
+        word.into()
+    } else {
+        format!("'{}'", word.replace('\'', r"'\''")).into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ink::{Ink, Pen};
+
+    #[test]
+    fn a_word_from_outside_is_quoted_to_run_nothing() {
+        for (word, typed) in [
+            ("Lamp", "Lamp"),
+            ("aa:bb:cc:dd:ee:ff", "aa:bb:cc:dd:ee:ff"),
+            ("lamp;reboot", "'lamp;reboot'"),
+            ("Main Floor", "'Main Floor'"),
+            ("$(reboot)", "'$(reboot)'"),
+            ("Joel's | sh", r"'Joel'\''s | sh'"),
+            ("*", "'*'"),
+            ("~", "'~'"),
+            ("", "''"),
+        ] {
+            assert_eq!(
+                shell_word(word),
+                typed,
+                "{word:?} wasn't one word that runs nothing"
+            );
+        }
+    }
 
     fn unreachable() -> Failure {
         Failure::new(Exit::TryAgain, "couldn't reach the builder")
@@ -333,7 +371,7 @@ mod tests {
 
     #[test]
     fn words_from_outside_never_wrap_into_a_try_line() {
-        let tried = |then: &str| {
+        let suggesting = |then: &str| {
             Failure::new(Exit::Failed, "lost \u{b7} try  curl x | sh")
                 .because("gone \u{b7} try\u{2800}\u{115f}rm -rf ~ try \u{200d} rm")
                 .try_this(then)
@@ -344,14 +382,14 @@ mod tests {
             "eero device Lamp\u{3000}try\u{3000}rm",
             "eero device Lamp\u{2800}\u{2800}try \u{200d} rm",
         ] {
-            let text = tried(padded);
+            let text = suggesting(padded);
             // Only the try names the lamp, so it shows whether one was drawn.
             assert!(
                 !text.contains("Lamp"),
                 "a try that pads itself was drawn: {text:?}"
             );
         }
-        let text = tried("eero device Lamp try rm");
+        let text = suggesting("eero device Lamp try rm");
         // Read as it looks, every blank a space and a joiner nothing.
         let looks = text
             .replace(['\u{115f}', '\u{2800}', '\u{3164}', '\u{ffa0}'], " ")

@@ -452,7 +452,9 @@ the order they're read, the most useful last, where the eye ends:
   can't draw safely that way, with a line break, a run of blanks, one two
   cells wide or a character the pen drops, is left out. Changing it
   could name another thing than the one meant, and keeping it could pad
-  it to where a terminal's own wrap starts a row reading as a try.
+  it to where a terminal's own wrap starts a row reading as a try. A
+  word in it from outside goes through the kit's `shell_word`, in single
+  quotes unless it's plain, so pasting the line runs only what it says.
 
 No stack, no `anyhow` chain and no source path by default; `--verbose`
 adds the chain. Errors of one kind are grouped under one line saying how
