@@ -33,6 +33,19 @@ use super::{
 /// The stand-in's Joel on GitHub.
 const LOGIN: &str = "joel.example";
 
+/// The words that make a reader the stand-in site "code"'s, searching
+/// example/shop for what Joel's address wrote.
+const CODE_SITE: [&str; 8] = [
+    "--site",
+    "code",
+    "--authored-by",
+    "joel@example.com",
+    "--login",
+    LOGIN,
+    "--repo",
+    "example/shop",
+];
+
 /// One comment on example/shop#12, said `ago` seconds before `now` by a
 /// collaborator on it.
 fn comment(id: u64, by: &str, body: &str, now: u64, ago: u64) -> Value {
@@ -339,17 +352,7 @@ fn by_address(line: &str, now: u64) -> Value {
 fn github_a_site_with_no_notifications_is_read_by_what_joel_opened() {
     let (origin, asked) = answering(by_address);
     let home = home();
-    let site = [
-        "--site",
-        "code",
-        "--authored-by",
-        "joel@example.com",
-        "--login",
-        LOGIN,
-        "--repo",
-        "example/shop",
-    ];
-    let mut reading = github_reader(&home, &origin, &site);
+    let mut reading = github_reader(&home, &origin, &CODE_SITE);
     until_decided(&home, 4);
     reading.kill().expect("the reader stops");
     reading.wait().expect("the reader is gone");
@@ -405,17 +408,7 @@ fn github_a_site_is_searched_from_ten_minutes_before_its_last_round() {
     std::fs::create_dir_all(&state).expect("the state folder");
     let judged = json!({"since": last, "keys": []});
     std::fs::write(state.join("judged-code.json"), judged.to_string()).expect("the mark");
-    let site = [
-        "--site",
-        "code",
-        "--authored-by",
-        "joel@example.com",
-        "--login",
-        LOGIN,
-        "--repo",
-        "example/shop",
-    ];
-    let mut reading = github_reader(&home, &origin, &site);
+    let mut reading = github_reader(&home, &origin, &CODE_SITE);
     until_asked(&asked, 0, 1);
     reading.kill().expect("the reader stops");
     reading.wait().expect("the reader is gone");
@@ -432,17 +425,7 @@ fn github_a_site_is_searched_from_ten_minutes_before_its_last_round() {
 /// What the reader of the site "code" at `origin` says to its journal
 /// once it has said `failed`, or gives up waiting for it.
 fn journal_of_code_once(origin: &str, failed: &str) -> String {
-    let site = [
-        "--site",
-        "code",
-        "--authored-by",
-        "joel@example.com",
-        "--login",
-        LOGIN,
-        "--repo",
-        "example/shop",
-    ];
-    journal_once(origin, &site, failed)
+    journal_once(origin, &CODE_SITE, failed)
 }
 
 /// That `said` names the site "code" as the one that failed, in `failed`,
