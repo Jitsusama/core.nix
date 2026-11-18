@@ -41,8 +41,9 @@ For other checks:
 Those three are also core's exports `core.lib.bareNixosModule`,
 `core.lib.bareDarwinModule` and `core.lib.evaluates`, so a repository built
 on core checks its own modules on the same machines. `checks.nix` here holds
-the checks `evaluates` has of its own, that a machine that warns fails it and
-one that doesn't evaluate does too; the rest are proven by every machine
+the checks these exports have of their own: that a machine that warns fails
+`evaluates` and one whose assertion fails does too, and that a module's own
+defaults win over the bare machine's. The rest are proven by every machine
 core's checks evaluate.
 
 What belongs here is shared by more than one check. A helper one check needs

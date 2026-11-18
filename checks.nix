@@ -26,9 +26,9 @@ let
   # check that one evaluates and no module warns, from what core gives a
   # repository built on it (tests/lib/bare-nixos.nix, bare-darwin.nix and
   # evaluates.nix).
-  bareNixos = modules: nixpkgs.lib.nixosSystem { modules = [ self.lib.bareNixosModule ] ++ modules; };
-  bareDarwin =
-    modules: nix-darwin.lib.darwinSystem { modules = [ self.lib.bareDarwinModule ] ++ modules; };
+  inherit (self.lib) bareNixosModule bareDarwinModule;
+  bareNixos = modules: nixpkgs.lib.nixosSystem { modules = [ bareNixosModule ] ++ modules; };
+  bareDarwin = modules: nix-darwin.lib.darwinSystem { modules = [ bareDarwinModule ] ++ modules; };
   evaluates = self.lib.evaluates pkgs;
 
   # A check that passes when two machines evaluate to the same derivation.
