@@ -51,9 +51,11 @@
 // no program's own again, and none again as the same list is given anew
 // or what its acts read changes. A step asked again, as a held one is at each
 // change, makes none of its Recent's rows again. Whether a closed program
-// starts only makes its step once while nothing it reads says it changed,
-// and again as a provider giving it acts does. Typed inside Programs,
-// the rows holding its letters stand at once and the programs daemon's
+// starts only makes its step once, and again only as what it reads
+// changes its answer: a provider's acts for it coming or going, a notice
+// of its own, who plays, the hidden programs, or an opening or closing;
+// a provider saying it changed while giving as it did makes none. Typed
+// inside Programs, the rows holding its letters stand at once and the programs daemon's
 // answer takes its own order; where the daemon can't search, typing on
 // looks only through what the last key found, and finds what looking
 // through everything would. It exits 0 once every case holds, and
@@ -1212,6 +1214,11 @@ ShellRoot {
             joiner.gives = true;
             joiner.changed();
             same("held as its giver gives, it holds more", program("lone").actsOnly, false);
+            const stillGiving = applications.stepsCounted.made;
+            joiner.changed();
+            same("its giver saying it changed, giving as it did, makes no step",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - stillGiving}`,
+                "false 0");
             theLauncher.sources = theLauncher.sources.filter(source => source !== joiner);
             same("and once it's gone, giving still, it starts only again",
                 program("lone").actsOnly, true);
