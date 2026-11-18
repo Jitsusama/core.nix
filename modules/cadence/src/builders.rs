@@ -123,8 +123,14 @@ pub fn flaky(runs: &[Run], from: i64, to: i64) -> BTreeMap<String, u32> {
 /// How many checks failed at a commit within the day, and which of those
 /// passed there too. Only a run of one check counts, since a run of several
 /// doesn't say which failed, and only one pinned to a commit, since a
-/// checkout as it stood may have changed between its runs. A builder that
-/// ran short (75) or a run that never started is no check's failure.
+/// checkout as it stood may have changed between its runs, and only a run of
+/// an attribute under `checks`, since a package such as run-subtests'
+/// `subtests` builds a different part of a test each run under one name. A
+/// builder that ran short (75) or a run that never started is no check's
+/// failure. A check is named by the first part after its system, so an
+/// area's gallery, which fails as its test does, reads as its test,
+/// `vm-desktop-looks`, as quarantine names it, not as every gallery's
+/// `gallery`.
 fn flakes(runs: &[Run], from: i64, to: i64) -> (usize, BTreeMap<String, u32>) {
     // Whether each check passed and whether it failed, at each commit.
     let mut seen: BTreeMap<(&str, &str), (bool, bool)> = BTreeMap::new();
@@ -132,6 +138,9 @@ fn flakes(runs: &[Run], from: i64, to: i64) -> (usize, BTreeMap<String, u32>) {
         let [check] = run.attributes.as_slice() else {
             continue;
         };
+        if !check.starts_with("checks.") {
+            continue;
+        }
         if !(from..to).contains(&run.at) || !run.flake.starts_with("github:") {
             continue;
         }
@@ -150,7 +159,7 @@ fn flakes(runs: &[Run], from: i64, to: i64) -> (usize, BTreeMap<String, u32>) {
         .iter()
         .filter(|(_, (passed, failed))| *passed && *failed)
     {
-        let name = check.rsplit_once('.').map_or(*check, |(_, name)| name);
+        let name = check.split('.').nth(2).unwrap_or(check);
         *flaky.entry(name.to_owned()).or_insert(0) += 1;
     }
     (failed, flaky)
@@ -213,7 +222,46 @@ mod tests {
             checked(220, b, &["short"], 0),
             checked(5_000, b, &["late"], 1),
             checked(5_010, b, &["late"], 0),
+            // run-subtests builds a different part of a test each run
+            // under one name, so a bad pick and the next good one aren't
+            // one check failing and passing.
+            subtests(230, a, 1),
+            subtests(240, a, 0),
+            // Nor is a package built from a commit a check.
+            built(250, a, "packages.x86_64-linux.kernel", 1),
+            built(260, a, "packages.x86_64-linux.kernel", 0),
+            // A gallery is its test's, named for its test.
+            checked(270, b, &["vm-desktop-looks.gallery"], 1),
+            checked(280, b, &["vm-desktop-looks.gallery"], 0),
+            // A check is named whatever its system.
+            built(290, b, "checks.aarch64-darwin.mail-reads", 1),
+            built(300, b, "checks.aarch64-darwin.mail-reads", 0),
         ]
+    }
+
+    /// A run of the one `attribute` built from `flake`.
+    fn built(at: i64, flake: &str, attribute: &str, status: i64) -> Run {
+        Run {
+            at,
+            on: "nix-offload".to_owned(),
+            status,
+            flake: flake.to_owned(),
+            attributes: vec![attribute.to_owned()],
+            ..Run::default()
+        }
+    }
+
+    /// A run of `subtests`, the package run-subtests builds a subset of a
+    /// VM test as, from `flake`.
+    fn subtests(at: i64, flake: &str, status: i64) -> Run {
+        Run {
+            at,
+            on: "nix-offload-vm".to_owned(),
+            status,
+            flake: flake.to_owned(),
+            attributes: vec!["legacyPackages.x86_64-linux.subtests".to_owned()],
+            ..Run::default()
+        }
     }
 
     #[test]
@@ -221,14 +269,20 @@ mod tests {
         let runs = checks();
         assert_eq!(
             figures(&runs, 0, 1_000).get("checks.flaky"),
-            Some(&(200.0 / 3.0)),
-            "of the three failed checks at a commit, two passed there too"
+            Some(&80.0),
+            "of the five failed checks at a commit, four passed there too"
         );
         assert_eq!(
             flaky(&runs, 0, 1_000),
-            BTreeMap::from([("fickle".to_owned(), 2)]),
+            BTreeMap::from([
+                ("fickle".to_owned(), 2),
+                ("mail-reads".to_owned(), 1),
+                ("vm-desktop-looks".to_owned(), 1),
+            ]),
             "a check only failing, one unpinned, one of several, one cut \
-             short or one outside the day was named flaky"
+             short, one outside the day, a run of subtests or a package was \
+             named flaky, or a gallery or a Mac's check wasn't named for \
+             its test"
         );
     }
 
