@@ -10481,6 +10481,8 @@ Scope {
             // walked from outside or a closed launcher's check finds it as
             // ever; shut, none of its rows are wanted, so none are made.
             wakeRest();
+            // Nor is home found for a fill that's shut before its slice.
+            fillFinding = false;
             // What waits on a frame runs, since no frame of the launcher's
             // is coming.
             afterFramesDue();
@@ -10519,7 +10521,15 @@ Scope {
             // home would open saying the count of the last join.
             choicesStale = true;
             lap("marking");
-            freshen();
+            // A fill joins, and finds home, in a slice of its own after its
+            // frame (fillFound), since the card already shows what was
+            // kept: inside `open` they were a third of the fill's 14 ms on
+            // a builder, and the fill's "opening" held a median 27 ms of
+            // 32 of Joel's 53 longest stalls (2026-11-18).
+            fillFinding = filling;
+            fillFoundBy = "";
+            if (!filling)
+                freshen();
             lap("joining");
             trials.opened(KeyTimes.now());
             lap("trials");
@@ -10555,7 +10565,8 @@ Scope {
             // kept yet it's found, since the card's height is home's. Over a
             // viewer no row is shown at all (over), so neither is home.
             const homeFound = !(openingInto || viewing) || homeKept.length === 0;
-            if (homeFound) {
+            fillFindsHome = filling && homeFound;
+            if (homeFound && !filling) {
                 restart("");
                 homeKept = matches;
             }
@@ -11271,6 +11282,7 @@ Scope {
     // the key acts on what's there and nothing moves the cursor after it.
     function keyPressing() {
         filled("key");
+        fillFound("key");
         landOn = Steady.landing(landOn, { key: true }).waiting;
     }
 
@@ -11383,6 +11395,13 @@ Scope {
     function wakeNext() {
         if (!open || !waking)
             return;
+        // The fill's own finding is the first slice, alone.
+        if (fillFinding) {
+            fillFound("slice");
+            wakeBegan = KeyTimes.now();
+            wakeLater();
+            return;
+        }
         const budget = typed === "" ? wakeBudget : Infinity;
         const began = KeyTimes.now();
         const slice = [];
@@ -11404,6 +11423,35 @@ Scope {
         wokeSaid(KeyTimes.now() - wakeBegan);
         if (choicesStale)
             afterFrame(freshen);
+    }
+
+    // Whether a fill has still to join the choices, and find home again
+    // where it fills home, which the first slice after its frame does
+    // (wakeNext), or a key or a click before that, so each acts on home
+    // found now rather than as it was kept. Home is found from what each
+    // source made last, as it was inside `open` before, and a row held
+    // as it will be that now reads so is let go (heldAgreed), as a
+    // source's change would, so none waits on becameLate.
+    property bool fillFinding: false
+    property bool fillFindsHome: false
+    // What ran it, and what it took, said with the sources' waking.
+    property string fillFoundBy: ""
+    property real fillFoundTook: 0
+    function fillFound(by) {
+        if (!fillFinding)
+            return;
+        fillFinding = false;
+        fillFoundBy = by;
+        const began = KeyTimes.now();
+        freshen();
+        // A step taken, or a word typed, before it ran has found its own.
+        if (fillFindsHome && held.length === 0 && prompt.text === "") {
+            restart("");
+            homeKept = matches;
+        }
+        heldAgreed(sources);
+        fillFoundTook = KeyTimes.now() - began;
+        feltSpan("finding home", began);
     }
 
     // Every source still asleep woken at once, as a closing wants none.
@@ -11431,13 +11479,17 @@ Scope {
         const last = openingsTimed[openingsTimed.length - 1];
         if (last?.kept && last.slices === undefined) {
             openingsTimed = openingsTimed.slice(0, -1).concat([Object.assign({}, last,
-                { slices, longestSlice: longest, longestWake: waited })]);
+                { slices, longestSlice: longest, longestWake: waited, foundBy: fillFoundBy })]);
         }
         const said = wakeSlices.map(one => one.woke.map(each =>
             `${each.name} ${Math.round(each.took)}`).join(", ")).join("; ");
+        const found = fillFoundBy === "" ? ""
+            : `, ${fillFindsHome ? "home found again" : "joined again"} in`
+                + ` ${Math.round(fillFoundTook)} ms`
+                + (fillFoundBy === "slice" ? " in a slice of its own" : ` for a ${fillFoundBy}`);
         console.info(`launcher: woke the opening's sources in ${slices.length} slices over`
             + ` ${Math.round(span)} ms, the longest ${longest} ms, the longest wait between`
-            + ` them ${waited} ms (${said})`);
+            + ` them ${waited} ms (${said})${found}`);
     }
 
     // Shuts it however it's shown, for a source done with it: shut again
@@ -12684,9 +12736,10 @@ Scope {
             MouseArea {
                 anchors.fill: cardBands
                 z: 1
-                enabled: root.opening
+                enabled: root.opening || root.fillFinding
                 onPressed: mouse => {
                     root.filled("click");
+                    root.fillFound("click");
                     mouse.accepted = false;
                 }
             }
