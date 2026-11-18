@@ -178,8 +178,15 @@ impl Shared {
                 // back, so an opening a moment later holds it in its place:
                 // heard after the opening's first frame, the launcher keeps
                 // what it shows still and puts it last (finds-sessions,
-                // 2026-11-13). Only what moves waits for the pace.
-                if arrived && let Some(line) = watch.held_back(now) {
+                // 2026-11-13). Only what moves waits for the pace. So is
+                // all that was held back when the sources stand anew, as
+                // the line saying so follows it: a watcher told niri
+                // answers again takes what it holds as current, so a
+                // record moved meanwhile would stay stale for a pace
+                // (ISXEG8, 2026-11-18).
+                if (arrived || standing.is_some())
+                    && let Some(line) = watch.held_back(now)
+                {
                     lines.push(line);
                 } else if !watch.moved.is_empty() && watch.due.is_none() {
                     watch.due = Some(Instant::now() + every);
