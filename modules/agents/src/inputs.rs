@@ -1072,6 +1072,18 @@ mod tests {
             (json!("listening"), json!("working")),
             "For You's heading over a cell says this, never its spend"
         );
+        let mut inputs = inputs();
+        inputs
+            .sessions
+            .took(&json!({"changed": [{"key": "session:p",
+            "presence": {"addresses": ["P"], "session": "s-p", "orchestratedBy": "O",
+                "wants": {"kind": "approval"}}}]}));
+        let needing = served(&inputs);
+        assert_eq!(
+            needing.get("row:agents:P").expect("its row")["row"]["held"]["doing"],
+            json!("needs your yes"),
+            "one waiting on Joel says what it wants of him, not its standing's id"
+        );
     }
 
     #[test]

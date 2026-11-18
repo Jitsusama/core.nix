@@ -2020,10 +2020,11 @@ Provider {
 
     // A cell's heading, its name and how it stands as the agents daemon
     // words them for Agents' own row (ForYouCells.js's headingName), and
-    // Joel's own heading where no cell is. Kept while it says the same.
+    // Joel's own heading where no cell is. Kept while it says the same. Its
+    // key sits outside on:waiting's, where a to-do's quest could be "cell".
     function cellHeading(cell) {
         const name = cellSaid(cell);
-        const key = `on:waiting:cell:${cell === null ? "yours"
+        const key = `on:heading:cell:${cell === null ? "yours"
             : String(cell.address).toUpperCase()}`;
         return keptAlike(cellsKept, key, [name], () => member({ key, name, heading: true }));
     }
