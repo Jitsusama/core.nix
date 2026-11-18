@@ -2979,6 +2979,14 @@
     shutdown-status reads only the last stage's steps, says forced once when it begins unmarked, and
     leftovers after three quiet seconds
   '';
+  sign-in-program-never-waits-for-good = ''
+    a sign-in program's token is taken trimmed, slow or ending after its output; one failing,
+    printing nothing, missing, printing what isn't text or past 64 KiB is none; one hanging,
+    lingering or printing for good runs over within its patience, killed with what it started
+  '';
+  sign-in-program-passes-clippy = ''
+    clippy finds nothing in sign-in-program, which runs a reader's sign-in, or its tests
+  '';
   slack-finds-who-it-knows = ''
     slack-people says who Slack knows by an email address with their time zone, presence and
     status, on a grid by a search their profile confirms, and one it knows nobody by; finds each

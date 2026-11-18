@@ -18,14 +18,9 @@ let
   # what in Slack wants Joel (slack-unreads).
   lookUp = pkgs.callPackage ./package.nix { };
   credentials = "${config.xdg.configHome}/agentic-harness/slack/credentials.json";
-  # Prints pi's Slack sign-in from the desktop's keyring, where pi has kept
-  # it since moving sign-ins there, or fails while it holds none, so the
-  # file is read instead (lib's `Account`). secret-tool's output goes to
-  # the program alone.
-  keyring = pkgs.writeShellScript "slack-sign-in" ''
-    exec ${lib.getExe' pkgs.libsecret "secret-tool"} lookup \
-      service agentic-harness username slack-credentials
-  '';
+  # Prints pi's Slack sign-in from the desktop's keyring, or says the
+  # keyring is locked (keyring.nix).
+  keyring = pkgs.callPackage ./keyring.nix { };
   # Where Slack's ask of Joel waits, beside each quest's in For You
   # (WaitingOnYou.qml), named so no quest's address is it.
   waiting = "${config.xdg.stateHome}/mission/waiting/slack.json";

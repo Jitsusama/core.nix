@@ -21,6 +21,8 @@ rustPlatform.buildRustPackage rec {
       ./tests
       ../slack/Cargo.toml
       ../slack/src
+      ../slack/sign-in-program/Cargo.toml
+      ../slack/sign-in-program/src
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
       ../daemon-client/Cargo.toml

@@ -1,0 +1,19 @@
+# sign-in-program: runs the program a reader is given for Joel's sign-in
+# to a site, and never waits on it for good, nor holds more than a
+# sign-in prints: a library Slack's module, beside it, and pineapple's
+# readers name by path, so a safe word's reader can't stall on a keyring or a sign-in
+# tool that hangs (src/lib.rs says how).
+[package]
+name = "sign-in-program"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# poll on the pipe, and a kill of the whole process group the program
+# was started in.
+libc = "0.2"

@@ -40,6 +40,16 @@ onLinux {
   slack-finds-who-it-knows = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in slack-people, its tests included.
   slack-passes-clippy = passesClippy "slack-passes-clippy" (pkgs.callPackage ./package.nix { });
+  # sign-in-program's tests run as it builds: a sign-in's token is taken
+  # trimmed, slow or ending after its output; one failing, printing
+  # nothing, missing, printing what isn't text or past the most is none;
+  # one hanging, lingering or printing for good runs over, and what it
+  # started is killed with it.
+  sign-in-program-never-waits-for-good = pkgs.callPackage ./sign-in-program/package.nix { };
+  # clippy finds nothing in sign-in-program, its tests included.
+  sign-in-program-passes-clippy = passesClippy "sign-in-program-passes-clippy" (
+    pkgs.callPackage ./sign-in-program/package.nix { }
+  );
   # slack-unreads starts at login, reads pi's sign-in from the keyring,
   # comes back as the new one after a switch, is restarted once its
   # watchdog hears nothing, and takes its ask in For You with it however
