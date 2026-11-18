@@ -49,15 +49,31 @@ let
     ]
     ++ config.jitsusama.mypy.packages python
   );
-  # Only a folder's Python, so an edit to anything else in it rebuilds no
-  # mypy; a fileset takes only a path, so a folder named as a string, which
-  # the sandboxed check couldn't read, is refused as Nix reads it.
+  # Only a folder's Python, or the one module named, so an edit to anything
+  # else beside it rebuilds no mypy; a fileset takes only a path, so a place
+  # named as a string, which the sandboxed check couldn't read, is refused
+  # as Nix reads it, and so is anything but a folder or a .py or .pyi file.
   pythonOf =
-    folder:
-    "${lib.fileset.toSource {
-      root = folder;
-      fileset = lib.fileset.fileFilter (file: file.hasExt "py") folder;
-    }}";
+    place:
+    "${lib.fileset.toSource (
+      if !builtins.pathExists place then
+        throw "jitsusama.mypy.paths names ${toString place}, which isn't there"
+      else if lib.pathIsDirectory place then
+        {
+          root = place;
+          fileset = lib.fileset.fileFilter (file: file.hasExt "py") place;
+        }
+      else if
+        lib.pathIsRegularFile place
+        && (lib.hasSuffix ".py" (toString place) || lib.hasSuffix ".pyi" (toString place))
+      then
+        {
+          root = dirOf place;
+          fileset = place;
+        }
+      else
+        throw "jitsusama.mypy.paths takes folders and .py or .pyi files, not ${toString place}"
+    )}";
   mypy = pkgs.callPackage ./mypy.nix {
     inherit python;
     typesPath = lib.concatStringsSep ":" (
@@ -84,9 +100,11 @@ in
     default = [ ];
     description = ''
       Folders of a repository's own Python modules that its scripts import
-      by name from outside their own folder, put on mypy's path. treefmt
-      hands mypy only the files that changed, so a script that changed
-      alone still finds what it imports.
+      by name from outside their own folder, or single modules of a folder
+      holding much else, put on mypy's path. A module named alone brings
+      none of the others beside it, so what it imports from there is named
+      too. treefmt hands mypy only the files that changed, so a script that
+      changed alone still finds what it imports.
     '';
   };
 
@@ -99,8 +117,8 @@ in
 
     # mypy reads the scripts treefmt hands it, every one or only those that
     # changed, from a Python carrying the libraries they import, with the
-    # test driver's types and the folders a repository names on its path,
-    # so what a script imports is checked too.
+    # test driver's types and the folders and modules a repository names on
+    # its path, so what a script imports is checked too.
     settings.formatter.mypy = {
       command = lib.getExe mypy;
       options = [

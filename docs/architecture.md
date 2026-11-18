@@ -192,7 +192,7 @@ The last two rows exist only until no machine repository imports them;
 | `jitsusama.keys.*`                 | every layer's shortcuts, checked for clashes             |
 | `jitsusama.niri.binds`             | niri's shortcuts: chord, plain words and action          |
 | `jitsusama.mypy.packages`          | the libraries a repository's Python imports, for mypy    |
-| `jitsusama.mypy.paths`             | a repository's own module folders, on mypy's path        |
+| `jitsusama.mypy.paths`             | a repository's modules or folders, on mypy's path        |
 | `jitsusama.kitty.keys`             | kitty's shortcuts: chord, plain words and action         |
 | `jitsusama.keys.neovim`            | Neovim's keys, from `modules/neovim/keys.nix`            |
 | `jitsusama.keys.pi`                | pi's keys, from `modules/pi/keys.nix`                    |
