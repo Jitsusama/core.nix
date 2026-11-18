@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { forageRow, panelOf } from "../draw.ts";
+import { floorOf, forageRow, panelOf } from "../draw.ts";
 import type { Forage } from "../model.ts";
 
 /** A forage of kestrel's on `quest`, with `more` over its fields. */
@@ -29,6 +29,10 @@ function forage(more: Partial<Forage> = {}): Forage {
     waits: [],
     startedBy: undefined,
     parent: undefined,
+    splitFrom: undefined,
+    splitInto: [],
+    serves: [],
+    relies: [],
     depth: 0,
     ...more,
   };
@@ -242,4 +246,72 @@ it("says the words are a quest's when the record names none", () => {
   assert.deepEqual(saidBy(forageRow(forage({ quest: "" })), "its quest"), [
     "Kestrel learns to hover over ~/.fields.",
   ]);
+});
+
+it("draws no joins on the floor and says none in the panel when the node sends none", () => {
+  const panel = panelOf(forage(), new Set(["KESTRL"]), []);
+  for (const label of ["Split from", "Split into", "Serves", "Relies on"]) {
+    assert.ok(!panel.includes(`<dt>${label}</dt>`), label);
+  }
+  assert.ok(!floorOf([forage()], null, "kestrel").includes('class="join"'));
+});
+
+/** The panel's line for the cell TERNAA split from, linked to its row. */
+const SPLIT_FROM = /<dt>Split from<\/dt><dd><a href="#cell=TERNAA" data-cell="TERNAA">/u;
+
+/** The panel's line for the two cells a cell split into, one here and one away. */
+const SPLIT_INTO =
+  /<dt>Split into<\/dt><dd><span>2 cells: <a href="#cell=TERNAA"[^>]*><code>TERNAA<\/code><\/a> and <span><code>FARAWAY<\/code>, on another machine<\/span><\/span>/u;
+
+/** The panel's first need a cell serves, linked to the row of OSPREY, which asked it. */
+const SERVES = /<dt>Serves<\/dt><dd class="needs"><span class="need"><a href="#cell=OSPREY"/u;
+
+/** Since when a need was taken, as a clock says it. */
+const SINCE = /, since <time datetime="2026-11-18T13:05:00Z">\d\d:\d\d<\/time>/u;
+
+/** A need relied on of a cell on another machine, said with what it was for. */
+const AWAY_FOR = /<code>FARAWAY<\/code>, on another machine<\/span>, for /u;
+
+it("says the cell a cell split from and the cells it split into, linked when here", () => {
+  const here = new Set(["KESTRL", "TERNAA"]);
+  const split = panelOf(
+    forage({ splitFrom: "TERNAA", splitInto: ["TERNAA", "FARAWAY"] }),
+    here,
+    [],
+  );
+  assert.match(split, SPLIT_FROM);
+  assert.match(split, SPLIT_INTO);
+});
+
+it("says each need a cell serves and relies on, in the asking cell's words, escaped", () => {
+  const here = new Set(["KESTRL", "OSPREY"]);
+  const panel = panelOf(
+    forage({
+      serves: [{ cell: "OSPREY", need: "a <b>review</b>", since: "2026-11-18T13:05:00Z" }],
+      relies: [{ cell: "FARAWAY", need: "a plan", since: "not a time" }],
+    }),
+    here,
+    [],
+  );
+  assert.match(panel, SERVES);
+  assert.deepEqual(saidBy(panel, "OSPREY"), ["a &lt;b&gt;review&lt;/b&gt;"]);
+  assert.match(panel, SINCE);
+  assert.deepEqual(saidBy(panel, "QEST-20261116-KESTRL").at(-1), "a plan");
+  assert.match(panel, AWAY_FOR);
+  assert.ok(!panel.includes("not a time"));
+});
+
+it("draws one dotted arc for each pair a need joins on the floor, and a branch for a split", () => {
+  const floor = floorOf(
+    [
+      forage({ cell: "KESTRL", serves: [{ cell: "OSPREY", need: "", since: undefined }] }),
+      forage({ cell: "OSPREY", relies: [{ cell: "KESTRL", need: "", since: undefined }] }),
+      forage({ cell: "TERNAA", splitFrom: "KESTRL", depth: 1 }),
+    ],
+    null,
+    "kestrel",
+  );
+  assert.equal(floor.match(/class="join"/gu)?.length, 1);
+  // The main line, then the split's branch.
+  assert.equal(floor.match(/class="hypha"/gu)?.length, 2);
 });

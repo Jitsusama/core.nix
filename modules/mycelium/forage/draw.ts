@@ -3,13 +3,23 @@
 // the floor each cell is a compartment along its hypha, whole when its
 // purpose is written and hollow when it isn't, so a cell without purpose
 // is told by its shape and never by colour alone; a cell started by
-// another branches below it, and a cap rises over a cell whose plans have
+// another, or split from it, branches below it; a dotted arc joins a cell
+// to one serving a need of its; and a cap rises over a cell whose plans have
 // landed steps, its gills lit as they land. What a cell's quest waits on its
 // person for leads its panel and is counted in its row. Every word read from a record
 // is escaped before it reaches the page, and how far a plan has come is
 // said in words beside its marks.
 
-import { type Document, type Forage, keeps, steps, type Wait } from "./model.ts";
+import {
+  type Document,
+  type Forage,
+  grewFrom,
+  type Join,
+  joined,
+  keeps,
+  steps,
+  type Wait,
+} from "./model.ts";
 
 const ESCAPES: { readonly [character: string]: string } = {
   "&": "&amp;",
@@ -210,14 +220,28 @@ function floorOf(forages: readonly Forage[], cursor: string | null, substrate: s
   const deepest = cells.reduce((most: number, each) => Math.max(most, each.y), FLOOR.hypha);
   const height = deepest + 40;
   const at = new Map(cells.map((each) => [each.forage.cell, each]));
+  const here = new Set(forages.map((each) => each.cell));
   const main = `<path class="hypha" d="M${FLOOR.margin / 2} ${FLOOR.hypha}H${width - FLOOR.margin / 2}"/>`;
   const branches = cells
     .map(({ forage, x, y }) => {
-      const from = forage.startedBy === undefined ? undefined : at.get(forage.startedBy);
+      const by = grewFrom(forage, here);
+      const from = by === undefined ? undefined : at.get(by);
       if (from === undefined || forage.depth === 0) {
         return "";
       }
       return `<path class="hypha" d="M${from.x} ${from.y}C${from.x} ${y} ${x - FLOOR.room / 2} ${y} ${x} ${y}"/>`;
+    })
+    .join("");
+  const joins = joined(cells.map((each) => each.forage))
+    .map(({ from, to }) => {
+      const one = at.get(from);
+      const other = at.get(to);
+      if (one === undefined || other === undefined) {
+        return "";
+      }
+      // It bows below both cells, under the branches, so it never reads as one.
+      const low = Math.max(one.y, other.y) + FLOOR.drop;
+      return `<path class="join" d="M${one.x} ${one.y + 6}Q${(one.x + other.x) / 2} ${low} ${other.x} ${other.y + 6}"/>`;
     })
     .join("");
   const caps = cells
@@ -239,7 +263,7 @@ function floorOf(forages: readonly Forage[], cursor: string | null, substrate: s
       : "";
   return `<svg viewBox="0 0 ${width} ${height}" style="--w:${width * FLOOR.scale}px" aria-hidden="true">
 <path class="ground" d="M0 ${FLOOR.ground}H${width}"/>
-${main}${branches}${caps}${compartments}
+${main}${branches}${joins}${caps}${compartments}
 <text class="substrate" x="${FLOOR.margin / 2}" y="${height - 12}">${escaped(substrate)}</text>${more}
 </svg>`;
 }
@@ -287,9 +311,7 @@ function startedBy(forage: Forage, here: ReadonlySet<string>): string {
   if (by === undefined) {
     return "Nothing; it started on its own";
   }
-  return here.has(by)
-    ? cellLink(by)
-    : `<span><code>${escaped(by)}</code>, on another machine</span>`;
+  return cellOrAway(by, here);
 }
 
 /**
@@ -301,19 +323,86 @@ function startedBy(forage: Forage, here: ReadonlySet<string>): string {
  * flexed items, and ties each comma to the address before it, so no line
  * starts with one.
  */
-function cellsStarted(started: readonly string[]): string {
+function cellsStarted(
+  started: readonly string[],
+  name: (cell: string) => string = cellLink,
+): string {
   if (started.length === 0) {
     return "None here yet";
   }
   const count = started.length === 1 ? "One cell" : `${started.length} cells`;
   const named = started.length > MOST_STARTED + 1 ? MOST_STARTED : started.length;
-  const links = started.slice(0, named).map(cellLink);
+  const links = started.slice(0, named).map(name);
   const rest = started.length - links.length;
   const last = rest === 0 ? links.pop() : `${rest} more`;
   const before = links
     .map((link, at) => (at < links.length - 1 ? `<span class="tie">${link},</span>` : link))
     .join(" ");
   return before === "" ? `${count}: ${last}` : `${count}: ${before} and ${last}`;
+}
+
+/** `cell` linked to its row when it is drawn here, else said to stand on another machine. */
+function cellOrAway(cell: string, here: ReadonlySet<string>): string {
+  return here.has(cell)
+    ? cellLink(cell)
+    : `<span><code>${escaped(cell)}</code>, on another machine</span>`;
+}
+
+/** When `since` was, as a clock says it, or nothing when it isn't a time. */
+function sinceOf(since: string | undefined): string {
+  const at = since === undefined ? Number.NaN : Date.parse(since);
+  if (Number.isNaN(at)) {
+    return "";
+  }
+  const when = new Date(at);
+  const two = (part: number) => String(part).padStart(2, "0");
+  const clock = `${two(when.getHours())}:${two(when.getMinutes())}`;
+  return `, since <time datetime="${escaped(since ?? "")}">${clock}</time>`;
+}
+
+/**
+ * The needs `joins` holds, one line each: the cell at the other end, what
+ * the need was about in the asking cell's own words, and since when.
+ * `asker` names who said each need's words: the cell at the other end of
+ * one this cell serves, or this cell's own quest for one it relies on.
+ */
+function needsOf(
+  joins: readonly Join[],
+  here: ReadonlySet<string>,
+  asker: (join: Join) => string,
+): string {
+  const lines = joins.map((join) => {
+    const need =
+      join.need === "" ? "" : `, for <span${saidBy(asker(join))}>${escaped(join.need)}</span>`;
+    return `<span class="need">${cellOrAway(join.cell, here)}${need}${sinceOf(join.since)}</span>`;
+  });
+  return lines.join("");
+}
+
+/**
+ * The facts of how `forage` joins other forages, beside who started it:
+ * the cell it split from, the cells it split into, and the needs it serves
+ * and relies on. Each is said only when it holds, since most cells split
+ * from none and a need fades once it's done.
+ */
+function joinsOf(forage: Forage, here: ReadonlySet<string>): string {
+  const facts: string[] = [];
+  if (forage.splitFrom !== undefined) {
+    facts.push(`<div><dt>Split from</dt><dd>${cellOrAway(forage.splitFrom, here)}</dd></div>`);
+  }
+  if (forage.splitInto.length > 0) {
+    const into = cellsStarted(forage.splitInto, (cell) => cellOrAway(cell, here));
+    facts.push(`<div><dt>Split into</dt><dd><span>${into}</span></dd></div>`);
+  }
+  if (forage.serves.length > 0) {
+    const said = needsOf(forage.serves, here, (join) => join.cell);
+    facts.push(`<div><dt>Serves</dt><dd class="needs">${said}</dd></div>`);
+  }
+  if (forage.relies.length > 0) {
+    const said = needsOf(forage.relies, here, () => forage.quest);
+    facts.push(`<div><dt>Relies on</dt><dd class="needs">${said}</dd></div>`);
+  }
+  return facts.map((fact) => `\n    ${fact}`).join("");
 }
 
 /** `cell`'s address, linked to its row, where a press moves the cursor to it. */
@@ -339,7 +428,7 @@ ${waitsOf(forage)}${documentsOf(forage)}
   <dl class="facts">
     <div><dt>Its quest</dt><dd><code>${escaped(forage.quest)}</code>${forage.status === "" ? "" : ` ${escaped(forage.status)}`}</dd></div>
     <div><dt>Started by</dt><dd>${startedBy(forage, here)}</dd></div>
-    <div><dt>Started</dt><dd><span>${cellsStarted(started)}</span></dd></div>
+    <div><dt>Started</dt><dd><span>${cellsStarted(started)}</span></dd></div>${joinsOf(forage, here)}
     <div><dt>Under the quest</dt><dd>${forage.parent === undefined ? "None" : `<code>${escaped(forage.parent)}</code>`}</dd></div>
     <div><dt>Stands on</dt><dd>${escaped(forage.machine)}</dd></div>
     <div><dt>In a terminal</dt><dd><code><a href="${MYCELIUM_HOME}">mycelium</a> forage ${escaped(forage.cell)}</code> <button type="button" class="copy" data-copy="${said}">Copy <kbd>y</kbd></button></dd></div>

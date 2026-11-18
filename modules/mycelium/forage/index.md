@@ -15,7 +15,8 @@ a terminal, `mycelium forage` gathers the realm's.
 - **The floor, cut through:** the ground line, the hyphae under it and
   each cell a compartment along them. A cell with its purpose written is
   whole; one without is hollow, told by its shape. A cell started by
-  another branches down from it, and a cap rises over a cell whose plans
+  another, or split from it, branches down from it. A dotted arc, bowing
+  below both, joins a cell to one serving a need of its. A cap rises over a cell whose plans
   have landed steps, its gills lit as they land. The machine the cells
   stand on is named under the ground. The first 48 cells are drawn; the
   list holds every one.
@@ -37,8 +38,10 @@ a terminal, `mycelium forage` gathers the realm's.
   document it keeps with its kind, its stage (Thinking, Drafting,
   Building, Done or Put down) and how many of its steps are done, said
   in words beside gills. Under them, where it grows: its quest, the cell
-  that started it, the cells it started, the quest above its own, the
-  machine it stands on and the command that says its forage in a
+  that started it, the cells it started, the cell it split from and the
+  cells it split into, the needs it serves and relies on, each with the
+  cell at its other end, what it was about and since when, the quest
+  above its own, the machine it stands on and the command that says its forage in a
   terminal. Each cell named there opens when pressed.
 - **Under the sentence, whether what it shows is live:** when the node
   or the sites' server can't be reached, it says since when and why,
@@ -50,7 +53,7 @@ a terminal, `mycelium forage` gathers the realm's.
 | --------- | ------------------------------------------------------------- |
 | j, k      | Step to the next or the last cell                             |
 | g, G      | Go to the first or the last                                   |
-| -, h      | Step up to the cell that started the one you're on            |
+| -, h      | Step up to the cell that started the one you're on, or it split from |
 | /         | Find by name, quest, purpose, or a document's or wait's title |
 | Return    | Open the cell on the map                                      |
 | y         | Copy the command that says the cell's forage                  |
@@ -62,10 +65,16 @@ The node serves one `forage` record for each of its live cells that
 works on a quest, keyed `forage:<cell>` and gone with the cell. Each
 has `cell` (its address), `session`, `machine`, `quest` (its id),
 `purpose` (cut at 280 characters), `status`, `documents`, `waits`
-(only when its quest waits on its person) and `lineage`. Each wait
+(only when its quest waits on its person), `lineage`, and `serves` and
+`relies` (only when it serves or relies on a need). Each wait
 has `id` and `title`, and may have `why`, `minutes`, `when`, `ready`
 and `raised`. Each document has `id`, `kind` (plan, research, brief or
 report), `title`, `stage` (think, draft, build, concluded or retired),
 `ticked` and `open`, its steps done and still to do. The `lineage`
-has `started_by`, the cell that started this one, and `parent`, the
-quest above its own.
+has `started_by`, the cell that started this one, `parent`, the
+quest above its own, and, when its purpose was split, `split_from`, the
+cell it split from, or `split_into`, the cells it split into as it
+ended. Each of `serves` (needs it took from other cells) and `relies`
+(needs it handed other cells) is a list of `cell`, the cell at the
+other end, `need`, what the need was about, and `since`, an ISO time.
+The page draws each only once the node sends it.

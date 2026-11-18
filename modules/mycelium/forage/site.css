@@ -183,6 +183,16 @@ code {
   stroke-linecap: round;
 }
 
+/* A need joining two cells is a dotted arc in the hyphae's ink, bowing
+   below both, so it's told from a branch by its dots and its bow. */
+.join {
+  fill: none;
+  stroke: var(--hyphae);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 0 4;
+}
+
 /* A cell whose purpose is written is a whole compartment; one without is
    hollow and dashed, so the fault is told by shape before colour. */
 rect.whole {
