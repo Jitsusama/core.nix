@@ -127,7 +127,11 @@ fn help() -> Help {
             Help::new("follow", "asks for an update whenever main moves")
                 .example("update-to-main follow", "as an account's service")
                 .option("--config FILE", "the system's, unless given")
-                .option("--every SECONDS", "asks at least this often, 600"),
+                .option("--every SECONDS", "asks at least this often, 600")
+                .exit(
+                    Exit::Failed,
+                    "a newer update-to-main couldn't start in its place",
+                ),
         )
         .subcommand(
             Help::new("job", "runs a command in a Mac's login session")
@@ -318,19 +322,18 @@ fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
 /// Starts the system's newer update-to-main in this one's place, with the
 /// same arguments and in the same process, so its service never stands
 /// stopped between them for a switch to leave stopped. It returns only
-/// when that couldn't be done, and then ends for the service to start the
-/// newest.
+/// when that couldn't be done, as a failure its service starts the newest
+/// again after.
 fn started_in_place(program: &Path) -> Result<(), Failure> {
     println!("the system holds another update-to-main; starting it in this one's place");
     let e = Command::new(program)
         .args(std::env::args_os().skip(1))
         .exec();
-    eprintln!(
-        "update-to-main: {} couldn't start in its place, so it ends for its service \
-         to start the newest: {e}",
-        program.display()
-    );
-    Ok(())
+    Err(Failure::new(
+        Exit::Failed,
+        "the newer update-to-main couldn't start in its place",
+    )
+    .because(format!("{}: {e}", program.display())))
 }
 
 /// Asks for an update at `heads` and hears it to its ending, looking at
