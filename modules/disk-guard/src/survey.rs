@@ -309,7 +309,7 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                     }
                 }
                 if let Some(bytes) = budget_bytes(*budget, roots) {
-                    hold_to_budget(&mut offers[start..], bytes);
+                    hold_to_budget(&mut offers[start..], bytes, world.uses, world.now);
                 }
             }
             Source::Installs { roots, depth } => {
@@ -849,18 +849,6 @@ fn target_frees(target: &Path, world: &World) -> u64 {
         .saturating_sub(working)
 }
 
-/// When a tree was last used. A cargo that finds a build fresh writes
-/// nothing in it, so a target is also dated by the last open its watch
-/// heard.
-fn last_used(tree: &discover::Found, uses: &Uses) -> f64 {
-    let written = trees::last_used(tree);
-    if tree.kind != Kind::Target {
-        return written;
-    }
-    uses.last_opened_in(&crate::replaced::watched_dirs(&tree.path))
-        .map_or(written, |opened| written.max(opened))
-}
-
 fn trees_under(
     root: &Path,
     device: u64,
@@ -901,7 +889,7 @@ fn trees_under(
             finished,
             pinned: checkout.is_some_and(|dir| (world.pinned)(dir)),
             size: frees,
-            last_used: last_used(tree, world.uses),
+            last_used: trees::last_used(tree),
         };
         let Some(candidate) = trees::candidate(tree, &seen, world.awake, world.now) else {
             continue;
@@ -990,6 +978,11 @@ fn trees_under(
 /// build someone is at, however long ago it was last written.
 pub const BUDGET_RECENT: f64 = 900.0;
 
+/// How long a build stays after its last use where the watch may have
+/// missed a cargo opening it in the last [`BUDGET_RECENT`], as the floor
+/// was before opens were heard.
+pub const BUDGET_UNHEARD: f64 = 3600.0;
+
 /// How often a builds disk still past its budget makes upkeep due, since
 /// one whose builds are all recent stays past it after the pass, and a
 /// survey reads every build.
@@ -1010,23 +1003,54 @@ pub fn budget_bytes(budget: Option<Size>, roots: &[PathBuf]) -> Option<u64> {
 /// Spends the builds past `budget`, counting the most recently used
 /// first, so the least recently used go in any band. A build a cargo is
 /// running in was never offered, so it is never taken; one a shell sits
-/// in, or used within [`BUDGET_RECENT`], counts against the budget but
-/// stays. One already spent goes anyway, so it takes no room. On 17
-/// November a shared builds folder held 63 GiB in 3,298 builds, 59 GiB of
-/// it written within a day, which no idle window reaches.
-fn hold_to_budget(offers: &mut [Offer], budget: u64) {
-    let mut builds: Vec<&mut Candidate> = offers
+/// in, or used within its floor, counts against the budget but stays.
+/// One already spent goes anyway, so it takes no room. On 17 November a
+/// shared builds folder held 63 GiB in 3,298 builds, 59 GiB of it
+/// written within a day, which no idle window reaches.
+fn hold_to_budget(offers: &mut [Offer], budget: u64, uses: &Uses, now: f64) {
+    let mut builds: Vec<(Used, &mut Candidate)> = offers
         .iter_mut()
         .map(|offer| &mut offer.candidate)
         .filter(|candidate| candidate.class == Class::Target && !candidate.spent)
+        .map(|candidate| (Used::of(candidate, uses, now), candidate))
         .collect();
-    builds.sort_by(|a, b| a.idle.total_cmp(&b.idle));
+    builds.sort_by(|(a, _), (b, _)| a.idle.total_cmp(&b.idle));
     let mut held: u64 = 0;
-    for build in builds {
+    for (used, build) in builds {
         held = held.saturating_add(build.size);
-        if held > budget && !build.occupied && build.idle >= BUDGET_RECENT {
+        if held > budget && !build.occupied && used.idle >= used.floor {
             build.spent = true;
         }
+    }
+}
+
+/// How long ago a build was last used, as the budget reads it, and how
+/// long it stays after that.
+struct Used {
+    idle: f64,
+    floor: f64,
+}
+
+impl Used {
+    /// A cargo that finds a build fresh writes nothing in it but opens its
+    /// profile's lock, so a build is used when last written or when the
+    /// watch last heard anything right in its profile or `deps` opened.
+    /// Only the budget reads opens: a reader such as a backup would
+    /// otherwise hold back every other window. The quarter-hour floor
+    /// stands only where the watch has heard those folders for a whole
+    /// one, since an open it missed would make a build in use look old:
+    /// one not yet marked, one past an overflow or a start, or anywhere
+    /// without a watch, as on macOS, keeps its hour.
+    fn of(build: &Candidate, uses: &Uses, now: f64) -> Self {
+        let dirs = crate::replaced::watched_dirs(&build.path);
+        let idle = uses
+            .last_opened_in(&dirs)
+            .map_or(build.idle, |opened| build.idle.min(now - opened));
+        let floor = match uses.heard_since(&dirs) {
+            Some(since) if now - since >= BUDGET_RECENT => BUDGET_RECENT,
+            _ => BUDGET_UNHEARD,
+        };
+        Self { idle, floor }
     }
 }
 

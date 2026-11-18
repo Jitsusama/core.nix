@@ -26,13 +26,18 @@ pub struct Build {
     pub size: u64,
 }
 
-/// When each library artifact was last opened, as the watch on its `deps`
-/// saw it, and since when each `deps` has been watched. Kept across
-/// restarts, since a build replaced a week ago is judged by a week of it.
+/// When each file the watch marks was last opened, as it saw it, and since
+/// when each folder it marks has been watched. Kept across restarts,
+/// since a build replaced a week ago is judged by a week of it.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Uses {
     pub opened: BTreeMap<PathBuf, f64>,
     pub watched: BTreeMap<PathBuf, f64>,
+    /// The last moment the watch may have missed an open anywhere: an
+    /// overflow, or the guard starting, since nothing heard the opens
+    /// while it was stopped, nor those it heard and never saved.
+    #[serde(default)]
+    pub unheard: f64,
 }
 
 impl Uses {
@@ -41,9 +46,9 @@ impl Uses {
         *last = last.max(at);
     }
 
-    /// Notes that `deps` is watched from `at`, unless it already was.
-    pub fn watching(&mut self, deps: &Path, at: f64) {
-        self.watched.entry(deps.to_owned()).or_insert(at);
+    /// Notes that `dir` is watched from `at`, unless it already was.
+    pub fn watching(&mut self, dir: &Path, at: f64) {
+        self.watched.entry(dir.to_owned()).or_insert(at);
     }
 
     /// The watch lost events at `at`, which could have been opens of
@@ -52,6 +57,24 @@ impl Uses {
         for since in self.watched.values_mut() {
             *since = since.max(at);
         }
+        self.started(at);
+    }
+
+    /// The guard starts hearing again at `at`, having heard nothing
+    /// before it since it last saved.
+    pub fn started(&mut self, at: f64) {
+        self.unheard = self.unheard.max(at);
+    }
+
+    /// Since when every one of `dirs` has been heard without a gap, or
+    /// nothing when one isn't watched, or there are none.
+    pub fn heard_since(&self, dirs: &[PathBuf]) -> Option<f64> {
+        if dirs.is_empty() {
+            return None;
+        }
+        dirs.iter()
+            .map(|dir| self.watched.get(dir).copied())
+            .try_fold(self.unheard, |since, watched| Some(since.max(watched?)))
     }
 
     /// Drops what's no longer there, so the store holds only what's built.

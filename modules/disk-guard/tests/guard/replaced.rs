@@ -163,16 +163,63 @@ fn a_target_is_last_opened_when_its_lock_or_a_build_in_its_deps_was() {
         "a target nothing opened has no last open"
     );
     uses.opened(&deps.join(format!("libalpha-{OLD}.rlib")), 7_000.0);
+    assert_eq!(
+        uses.last_opened_in(&watched_dirs(&target)),
+        Some(7_000.0),
+        "a library a build read in its deps didn't date the target"
+    );
     uses.opened(&profile.join(".cargo-build-lock"), 9_000.0);
     uses.opened(&kept.join("debug/.cargo-build-lock"), 20_000.0);
     uses.opened(
-        &deps.join("incremental/alpha/s-1/query-cache.bin"),
+        &profile.join("incremental/alpha-1/s-1/query-cache.bin"),
         30_000.0,
     );
     assert_eq!(
         uses.last_opened_in(&watched_dirs(&target)),
         Some(9_000.0),
-        "only what lies right in a target's watched folders dates it"
+        "something deeper than a target's watched folders dated it"
+    );
+}
+
+#[test]
+fn a_target_is_heard_since_its_folders_all_were_and_the_guard_last_started() {
+    // An open the watch missed would make a build in use look old, so
+    // what it says is trusted only from when it last heard everything.
+    let dirs = [PathBuf::from("/t/debug"), PathBuf::from("/t/debug/deps")];
+    let mut uses = Uses::default();
+    assert_eq!(
+        uses.heard_since(&dirs),
+        None,
+        "an unwatched target was heard"
+    );
+    uses.watching(&dirs[0], 100.0);
+    assert_eq!(
+        uses.heard_since(&dirs),
+        None,
+        "a target with an unwatched deps was heard"
+    );
+    uses.watching(&dirs[1], 300.0);
+    assert_eq!(
+        uses.heard_since(&dirs),
+        Some(300.0),
+        "a target isn't heard from when its last folder was first watched"
+    );
+    uses.started(500.0);
+    assert_eq!(
+        uses.heard_since(&dirs),
+        Some(500.0),
+        "a target isn't heard from when the guard last started"
+    );
+    uses.lost(700.0);
+    assert_eq!(
+        uses.heard_since(&dirs),
+        Some(700.0),
+        "a target isn't heard from when the watch last lost events"
+    );
+    assert_eq!(
+        uses.heard_since(&[]),
+        None,
+        "a target with no profile was heard"
     );
 }
 

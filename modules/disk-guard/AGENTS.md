@@ -79,11 +79,17 @@ or launchd, and [`home.nix`][2] the account's.
   it, the least recently used go whatever the band. A build a session
   sits in, or one used within the last 15 minutes, counts but stays, a
   build already spent takes no room, and a build a cargo runs in, which
-  holds its lock, is never offered. A build is used when a cargo last
-  wrote it or last opened its profile's `.cargo-build-lock`, which the
-  watch on opens hears: a cargo that finds every unit fresh writes
-  nothing, so a run of checks over an unchanged crate would otherwise
-  look idle between them. A budget that comes to nothing, as a share of
+  holds its lock, is never offered. For the budget alone, a build is
+  used when a cargo last wrote it or when the watch on opens last heard
+  anything right in its profile or `deps` opened, as every cargo opens
+  its profile's `.cargo-build-lock`: a cargo that finds every unit fresh
+  writes nothing, so a run of checks over an unchanged crate would
+  otherwise look idle between them. Other windows read writes alone,
+  so a reader such as a backup holds none of them back. The 15 minutes
+  hold only where the watch has heard a build's folders for 15 minutes
+  without a gap; one not yet marked, one after an overflow or the
+  guard's start, and every build where nothing watches, as on macOS,
+  keeps the hour. A budget that comes to nothing, as a share of
   a disk that can't be measured does, is none. While the first root's
   disk holds more than the budget, the guard makes upkeep due, at most
   once an hour, so a build stays until the first look after its 15

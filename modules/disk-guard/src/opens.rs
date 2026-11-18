@@ -1,7 +1,8 @@
 //! Watching who opens a build's artifacts, with fanotify. Under noatime
 //! a read leaves no trace on disk, so a build read by every test run looks
-//! as old as one nobody needs; an inode mark on each `deps` hears every
-//! open of what's in it instead, by any process of any account.
+//! as old as one nobody needs; an inode mark on each profile and its `deps`
+//! hears every open of what's in it instead, by any process of any
+//! account.
 //!
 //! An account gets fanotify without privilege when events name files by
 //! handle (`FAN_REPORT_DFID_NAME`) and marks are on inodes, which is all

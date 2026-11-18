@@ -100,8 +100,9 @@ const PASS_WEIGHT: f64 = 0.3;
 /// How often what was learned is saved when no pass has run.
 const SAVE_EVERY: f64 = 300.0;
 
-/// How often the targets are walked for a `deps` to watch: one built since
-/// goes unheard until then, and is dated from when it's first watched.
+/// How often the targets are walked for a profile and its `deps` to watch:
+/// one built since goes unheard until then, and is dated from when it's
+/// first watched.
 const MARK_EVERY: f64 = 3600.0;
 
 /// How far back writes are weighed when choosing what to freeze.
@@ -738,6 +739,13 @@ impl Guard {
         let uses_path = state.join("uses.json");
         let mut uses: Uses = state::load(&uses_path).ok().flatten().unwrap_or_default();
         uses.forget_gone();
+        // What was opened while it was stopped, or heard and never saved,
+        // went unheard, so the budget waits an hour before trusting it.
+        uses.started(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0.0, |since| since.as_secs_f64()),
+        );
         let home = matches!(config.scope, crate::config::Scope::User)
             .then(|| std::env::var_os("HOME").map(PathBuf::from))
             .flatten();
@@ -2245,12 +2253,19 @@ impl Guard {
     }
 
     /// When each build's artifacts were last opened: a copy, so a long
-    /// survey never holds up what hears the opens.
+    /// survey never holds up what hears the opens. A guard that doesn't
+    /// listen hears nothing from now on, so the copy says so, whatever an
+    /// earlier guard watched.
     fn uses_now(&self) -> Uses {
-        self.uses
+        let mut uses = self
+            .uses
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+            .clone();
+        if self.opens.is_none() {
+            uses.started(f64::MAX);
+        }
+        uses
     }
 
     /// What reads this machine's processes for `me`, vouched for by the

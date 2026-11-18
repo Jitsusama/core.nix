@@ -8,7 +8,7 @@ use crate::survey::{
 use disk_guard::activity::Process;
 use disk_guard::config::Config;
 use disk_guard::plan::{self, Class, Group};
-use disk_guard::replaced::Uses;
+use disk_guard::replaced::{Uses, watched_dirs};
 use disk_guard::survey::{Action, BUDGET_RECENT, Sizes};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -557,11 +557,49 @@ fn a_build_left_past_a_quarter_hour_goes_past_the_budget() {
     // On 18 November the builds disk held 56 GiB against its 20, 55 of it
     // used within the hour, so an hour's floor held almost nothing back.
     let (_home, made, config) = budgeted(&[("c-fits", 0.05), ("b-left", JUST_PAST)], 1);
-    let found = offers(&config, &[], &|_| false);
+    let uses = heard(&made, 3.0);
+    let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
     assert!(
         find(&found, &made[1].join("target")).candidate.spent,
-        "a build left a minute past the floor goes past the budget"
+        "a build the watch heard nothing of for a minute past the floor stays past the budget"
     );
+}
+
+#[test]
+fn a_build_the_watch_may_have_missed_keeps_its_hour() {
+    // A fresh check's only sign is an open, so where one in the last
+    // quarter hour could have gone unheard, a build stays the hour it
+    // stayed before opens were heard.
+    let (_home, made, config) = budgeted(&[("c-fits", 0.05), ("b-left", JUST_PAST)], 1);
+    let watched_lately = heard(&made, 0.1);
+    let mut restarted = heard(&made, 3.0);
+    restarted.started(now() - 600.0);
+    let mut overflowed = heard(&made, 3.0);
+    overflowed.lost(now() - 600.0);
+    for (why, uses) in [
+        ("nothing watches it", Uses::default()),
+        ("it was first watched minutes ago", watched_lately),
+        ("the guard started minutes ago", restarted),
+        ("the watch lost events minutes ago", overflowed),
+    ] {
+        let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
+        assert!(
+            !find(&found, &made[1].join("target")).candidate.spent,
+            "a build left a minute past the floor went past the budget though {why}"
+        );
+    }
+}
+
+/// What the watch says of `apps`' builds when it has heard their profiles
+/// and `deps` for `hours` and nothing was opened in them.
+fn heard(apps: &[PathBuf], hours: f64) -> Uses {
+    let mut uses = Uses::default();
+    for app in apps {
+        for dir in watched_dirs(&app.join("target")) {
+            uses.watching(&dir, now() - hours * 3600.0);
+        }
+    }
+    uses
 }
 
 #[test]
@@ -572,18 +610,19 @@ fn a_build_a_cargo_found_fresh_is_used_though_nothing_was_written() {
     // take between two of them.
     let (_home, made, config) = budgeted(&[("c-fits", 0.05), ("b-checked", 2.0)], 1);
     let profile = made[1].join("target/debug");
-    let mut uses = Uses::default();
-    uses.watching(&profile, now() - 3.0 * 3600.0);
+    let mut uses = heard(&made, 3.0);
     uses.opened(&profile.join(".cargo-build-lock"), now() - 120.0);
     let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
     let checked = find(&found, &made[1].join("target")).candidate.clone();
     assert!(
         !checked.spent,
-        "a build a cargo opened two minutes ago goes past the budget"
+        "a build a cargo opened two minutes ago went past the budget"
     );
+    // Only the budget reads opens: a reader such as a backup would
+    // otherwise hold back every other window.
     assert!(
-        checked.idle < BUDGET_RECENT,
-        "a build a cargo opened two minutes ago is dated by its last write, idle {}",
+        checked.idle > 3600.0,
+        "an open moved the build's idle time, {}, which only the budget reads",
         checked.idle
     );
 }
