@@ -202,6 +202,10 @@ pub struct Thing {
     pub lines: u64,
     /// Those at error or graver.
     pub errors: u64,
+    /// Those of its errors an agent or its commands said, which were
+    /// never put to Joel.
+    #[serde(default)]
+    pub agents_errors: u64,
     /// Its stack traces.
     pub traces: u64,
     /// Its restarts, as systemd scheduled them.
@@ -286,6 +290,9 @@ impl Day {
         thing.lines += 1;
         if entry.priority <= 3 && !sign::is_probe(&entry.message) {
             thing.errors += 1;
+            if entry.agents {
+                thing.agents_errors += 1;
+            }
         }
         if entry.crashed.is_some() {
             thing.crashes += 1;
@@ -420,6 +427,18 @@ impl Thing {
         signature.last = signature.last.max(at);
     }
 
+    /// The errors its kind's figure counts: a crash is said at an error's
+    /// priority but counted once, as a crash, and what agents' commands
+    /// said was never put to Joel. On 16 November these were 93 of
+    /// programs' 179: tec aborting 66 times in agents' jobs, and the
+    /// merge-garden labs failing on purpose 27.
+    #[must_use]
+    pub const fn figured_errors(&self) -> u64 {
+        self.errors
+            .saturating_sub(self.crashes)
+            .saturating_sub(self.agents_errors)
+    }
+
     /// How bad it is, for putting the worst first.
     #[must_use]
     pub const fn badness(&self) -> Badness {
@@ -431,6 +450,7 @@ impl Thing {
             restarts: self.restarts,
             lines: self.lines,
             events: self.events,
+            agents_errors: self.agents_errors,
         }
     }
 }
@@ -438,7 +458,8 @@ impl Thing {
 /// How bad a thing, or things together, were. Its fields are in order of
 /// gravity, so one is worse than another by its first field that differs:
 /// Joel's crashes, then any crash, traces, errors, restarts, warnings, and
-/// last the devices' events, which are often only a cable pulled.
+/// the devices' events, which are often only a cable pulled, and last how
+/// many of its errors agents' commands said.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Badness {
     /// The crashes that were Joel's.
@@ -455,6 +476,8 @@ pub struct Badness {
     pub lines: u64,
     /// Devices' events.
     pub events: u64,
+    /// The errors agents' commands said.
+    pub agents_errors: u64,
 }
 
 impl std::ops::Add for Badness {
@@ -469,6 +492,7 @@ impl std::ops::Add for Badness {
             restarts: self.restarts + other.restarts,
             lines: self.lines + other.lines,
             events: self.events + other.events,
+            agents_errors: self.agents_errors + other.agents_errors,
         }
     }
 }
@@ -512,6 +536,7 @@ pub(crate) mod tests {
             ran_in: Some(format!("{thing}.service")),
             crashed: None,
             whose: None,
+            agents: false,
             restart: false,
             kernel: false,
             boot: "b".to_owned(),
@@ -635,6 +660,40 @@ pub(crate) mod tests {
             "two crashes, one his"
         );
         assert_eq!(chrome.traces, 0, "a crash isn't counted again as a trace");
+        assert_eq!(
+            chrome.figured_errors(),
+            0,
+            "a crash is counted once, as a crash, not again as an error"
+        );
+    }
+
+    #[test]
+    fn what_an_agents_command_said_is_kept_but_left_out_of_the_figure() {
+        let mut day = Day::new("2026-11-16");
+        let scope = |agents, message| Entry {
+            ran_in: Some("work-9-1.scope".to_owned()),
+            agents,
+            ..entry("mg-lab", 3, message)
+        };
+        day.take(&scope(true, "TMPDIR is not writable: /proc"));
+        day.take(&scope(true, "awk: command not found"));
+        day.take(&scope(false, "could not open the display"));
+        let lab = &day.things["mg-lab"];
+        assert_eq!(
+            (lab.lines, lab.errors, lab.agents_errors),
+            (3, 3, 2),
+            "every line is kept, and the agents' are told apart"
+        );
+        assert_eq!(
+            lab.figured_errors(),
+            1,
+            "only the one not an agent's counts"
+        );
+        assert_eq!(
+            lab.signatures.len(),
+            3,
+            "what agents said is still there to read"
+        );
     }
 
     #[test]

@@ -108,6 +108,7 @@ pub fn parse(report: &str) -> Option<Entry> {
         ran_in: None,
         crashed: Some(program),
         whose: Some(whose),
+        agents: false,
         restart: false,
         kernel: false,
         boot: String::new(),

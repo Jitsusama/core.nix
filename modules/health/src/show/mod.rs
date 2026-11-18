@@ -245,7 +245,7 @@ fn total(things: &[(&String, &Thing)]) -> Badness {
 }
 
 /// Badness in words, gravest first, leaving out what's none: "3 crashes
-/// (1 yours), 12 errors, 1,470 warnings from 21".
+/// (1 yours), 12 errors (7 agents'), 1,470 warnings from 21".
 pub(super) fn counted(bad: &Badness, things: usize) -> String {
     let Badness {
         his_crashes: his,
@@ -255,6 +255,7 @@ pub(super) fn counted(bad: &Badness, things: usize) -> String {
         restarts,
         lines,
         events,
+        agents_errors: agents,
     } = *bad;
     let mut parts = Vec::new();
     if crashes > 0 {
@@ -272,7 +273,15 @@ pub(super) fn counted(bad: &Badness, things: usize) -> String {
     // crash.
     let other_errors = errors.saturating_sub(crashes);
     if other_errors > 0 {
-        parts.push(plural(other_errors, "error", "errors"));
+        let agents = if agents > 0 {
+            format!(" ({agents} agents')")
+        } else {
+            String::new()
+        };
+        parts.push(format!(
+            "{}{agents}",
+            plural(other_errors, "error", "errors")
+        ));
     }
     if restarts > 0 {
         parts.push(plural(restarts, "restart", "restarts"));
@@ -401,6 +410,19 @@ mod tests {
             "a kind's worst is its gravest, not its loudest"
         );
         assert_eq!(lines.len(), 4, "a kind with nothing isn't shown");
+    }
+
+    #[test]
+    fn errors_say_how_many_were_agents() {
+        let tec = Thing {
+            agents_errors: 7,
+            ..thing(Kind::Programs, 20, 12, 0, 0)
+        };
+        assert_eq!(
+            counted(&tec.badness(), 0),
+            "12 errors (7 agents'), 8 warnings",
+            "what agents' commands said is told apart, as Joel's crashes are"
+        );
     }
 
     #[test]

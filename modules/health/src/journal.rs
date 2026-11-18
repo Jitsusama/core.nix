@@ -70,6 +70,9 @@ pub struct Entry {
     pub crashed: Option<String>,
     /// Whose a core dump's program was, when it's one.
     pub whose: Option<Whose>,
+    /// Whether an agent or one of its commands wrote it, from the slice
+    /// it ran in: what it says was never put to Joel.
+    pub agents: bool,
     /// Whether it's systemd scheduling a unit's restart.
     pub restart: bool,
     /// Whether the kernel said it.
@@ -140,12 +143,12 @@ pub fn parse(line: &str) -> Option<Entry> {
     };
     let text = |name: &str| fields.get(name).and_then(said);
     let at = text("__REALTIME_TIMESTAMP")?.parse().ok()?;
+    let agents = agents_ran(&text("_SYSTEMD_CGROUP").unwrap_or_default());
     let priority = text("PRIORITY").and_then(|p| p.parse().ok()).unwrap_or(6);
     let message = text("MESSAGE").unwrap_or_default();
     let identifier = text("SYSLOG_IDENTIFIER").or_else(|| text("_COMM"));
     let unit = text("USER_UNIT").or_else(|| text("UNIT"));
-    let asked_joel = identifier.as_deref() == Some(asks::IDENTIFIER)
-        && !agents_ran(&text("_SYSTEMD_CGROUP").unwrap_or_default());
+    let asked_joel = identifier.as_deref() == Some(asks::IDENTIFIER) && !agents;
     let ask = asked_joel.then(|| asks::of(text)).flatten();
     let thing = match (identifier.as_deref(), unit) {
         (Some("systemd") | None, Some(unit)) => unit,
@@ -186,6 +189,7 @@ pub fn parse(line: &str) -> Option<Entry> {
         ran_in: text("_SYSTEMD_USER_UNIT").or_else(|| text("_SYSTEMD_UNIT")),
         crashed,
         whose,
+        agents,
         restart: text("MESSAGE_ID").as_deref() == Some(RESTART_SCHEDULED),
         kernel: text("_TRANSPORT").as_deref() == Some("kernel"),
         boot: text("_BOOT_ID").unwrap_or_default(),
@@ -387,6 +391,31 @@ mod tests {
             agents.whose,
             Some(Whose::Agents),
             "a job's program is agents'"
+        );
+    }
+
+    #[test]
+    fn a_line_says_whether_an_agents_command_wrote_it() {
+        let from = |slice: &str| {
+            let line = format!(
+                r#"{{"__REALTIME_TIMESTAMP":"1","PRIORITY":"3","SYSLOG_IDENTIFIER":"tec",
+                "_SYSTEMD_CGROUP":"/user.slice/user-1000.slice/user@1000.service/{slice}",
+                "MESSAGE":"could not reach the daemon"}}"#
+            )
+            .replace('\n', "");
+            parse(&line).expect("a journal line is an entry").agents
+        };
+        assert!(
+            !from("app.slice/app-niri-kitty-1.scope"),
+            "a line from his own terminal is his"
+        );
+        assert!(
+            from("jobs.slice/jobs-work.slice/work-9-1.scope"),
+            "a line from an agent's command is agents'"
+        );
+        assert!(
+            from("agents.slice/pi-1.scope"),
+            "a line from an agent itself is agents'"
         );
     }
 
