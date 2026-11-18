@@ -54,6 +54,31 @@ function on(floats, place, at) {
         && Math.abs(place.y - Routes.stands(one.top, at)) <= at.cell) ?? null;
 }
 
+// The floating window of `floats` whose face's corner its box at `place`
+// covers part past its end, head over its top, feet under it, as a step
+// off it from its edge has it (stepOff()), or null.
+function cornered(floats, place, at) {
+    return (floats ?? []).find(one => {
+        const across = Math.min(place.x + at.wide, one.right) - Math.max(place.x, one.left);
+        return across > 0.5 && across < at.wide - 0.5 && place.y < one.top
+            && place.y + at.tall > one.top + 0.5;
+    }) ?? null;
+}
+
+// Replanned partway down such a step, it goes on clear of the end over
+// the tiled windows before it settles: under them, the part over the
+// corner went behind the window for 740 ms as it fell and turned.
+function clears(way, at) {
+    const it = cornered(at.floats, way, at);
+    if (it !== null) {
+        const began = way.legs.length;
+        const x = way.x < it.left ? it.left - at.wide : it.right;
+        way.facing = Math.sign(x - way.x) || way.facing;
+        Ways.goes(way, x, way.y);
+        aboard(way, began);
+    }
+}
+
 // The ledge of `cols` straight over `x`, all of its box on it, the
 // nearest above `y` and no more than `reach` above it: { x, y }, or null.
 function over(cols, x, y, reach) {
@@ -370,11 +395,9 @@ function steps(way, to, at, { first = to, rises = RISES } = {}) {
 // top at once, as walks() goes, so what it stood over the top is a jump
 // at its edge, as its drop off it is (falls()). Deeper, it walks clear and
 // drops (VKCF3Z 13d5bf97), its feet in the face only as deep as they
-// stood on it. With room for its hop, a drop of a step (aStep()) steps
-// from its edge too: walked clear first, its feet a cell or two over
-// the tops, it walked a body-length on the air as the cramped one did
-// (WCJQSG 3697e429), crossing the corner instead a cell or two deep. A
-// deeper one, with room, hops clear and falls.
+// stood on it. With room for its hop, a step down (aStep()) goes from
+// its edge too, not a body-length on the air first (WCJQSG 3697e429); a
+// deeper one hops clear and falls.
 function stepsDown(way, to, at) {
     const drop = Math.max(to.y, 0) - Math.max(way.y, 0);
     return drop >= 0 && drop <= at.tall + 1e-6;
@@ -427,10 +450,9 @@ function follows(way, stop, now) {
     } else if (stop.how === "hopsOff"
         && (cramped(way, stop.via, RISES / 2, at) || aStep(way, landing, at))
         && stepsDown(way, landing, at)) {
-        // A step down, or any drop stepsDown() allows with no room for
-        // its hop: down off its end from its edge within its walk, paws
-        // moving, its front paws landing as its back ones leave the
-        // corner.
+        // A step down, or with no room for its hop, down off its end from
+        // its edge within its walk, paws moving, its front paws landing
+        // as its back ones leave the corner.
         way.facing = Math.sign(stop.via.x - way.x) || way.facing;
         Ways.goes(way, stop.via.x - way.facing * at.wide, way.y);
         stepOff(way, landing.x, landing.y, at);

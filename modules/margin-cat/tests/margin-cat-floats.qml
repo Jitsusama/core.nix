@@ -615,6 +615,38 @@ QtObject {
             world({ cols: tilesAt(17), floats: [dropsTop] }));
         expect("its own height down off it on a short way, it steps off as slowly as it ambles",
             corner(shortDeep, dropsTop), crossed(5, 500));
+        // Its walk replanned partway down its step, as a focus change can,
+        // over the corner of the face: drawn under the tiled windows
+        // there, the part of it over the corner went behind the floating
+        // window for its fall, and stood there as it landed, shook it off
+        // and turned, 740 ms. The ms of `way` it's drawn over `it`'s face,
+        // as the screen draws it, while it's not aboard, till it turns to
+        // set off: on its way on, under it on the tiled windows, it goes
+        // behind it as it should.
+        const behindIt = (way, it) => Array.from({
+            length: Math.floor(way.beats.find(beat => beat.name === "turns").begins) + 1
+        }, (_, t) => Paths.frame(way, t)).filter(frame => frame.aboard !== true
+                && Math.round(frame.x) + 8 > it.left && Math.round(frame.x) < it.right
+                && Math.max(Math.round(frame.y), 0) + 8 > it.top
+                && Math.round(frame.y) < it.bottom).length;
+        const midStep = way => {
+            const step = way.beats.find(beat => beat.name === "goes"
+                && beat.to.y > beat.from.y && beat.to.x !== beat.from.x);
+            const frame = Paths.frame(way, (step.begins + step.ends) / 2);
+            return { x: frame.x, y: frame.y };
+        };
+        const eightWorld = world({ cols: tilesAt(17), floats: [dropsTop] });
+        const fromOff = midStep(offEight);
+        const fromOver = midStep(overEight);
+        expect("replanned partway down its step, it's never behind the window it stepped off",
+            [Paths.walk(fromOff, { x: 100, y: 8 }, eightWorld),
+                Paths.walk(fromOff, { x: 900, y: 8 }, eightWorld),
+                Paths.walk(fromOver, { x: 1000, y: 8 },
+                    world({ cols: stairs(12, 17), floats: [dropsTop] })),
+                Paths.walk(fromOver, { x: 100, y: 3 },
+                    world({ cols: stairs(12, 17), floats: [dropsTop] }))]
+                .map(way => behindIt(way, dropsTop)),
+            [0, 0, 0, 0]);
         // At a laptop's ratio of 1.5, a cell of 4/3, as the shell draws it
         // (margin-cat-journeys.qml): its own height down, 15 of its 16
         // pixels, and all 16 of them, it steps; a pixel more, it drops. Its
