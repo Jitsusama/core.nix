@@ -2,7 +2,9 @@
 // JavaScript engine, the one the shell runs it in. The
 // `the-margin-cat-sits-above-its-column` check copies
 // modules/margin-cat's scripts beside this file and runs
-// `qml -platform offscreen margin-cat-floats.qml`.
+// `qml -platform offscreen margin-cat-floats.qml`. Long because
+// every way on and off a float is judged in the one world its
+// helpers build, and a split would copy them into each half.
 import QtQuick
 import "MarginCat.js" as MarginCat
 import "MarginCatPaths.js" as Paths
