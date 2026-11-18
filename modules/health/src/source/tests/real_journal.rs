@@ -463,7 +463,7 @@ fn a_replay_hears_a_real_day_in_written_order_through_a_clock_stepped_back() {
             heard.recv_timeout(FOLLOWING),
             Err(mpsc::RecvTimeoutError::Disconnected)
         ),
-        "the replay said more than it counted, once every count had ended"
+        "the replay said more once every follower's end had come"
     );
     assert_eq!(
         heard_said,

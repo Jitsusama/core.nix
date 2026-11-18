@@ -43,9 +43,9 @@ pub type Numbered = (String, u64);
 /// every history end at one moment, however many are written meanwhile,
 /// and a clock stepped back can't move it, as it moves a time
 /// (`journal::reading`). A history is cut only at a line it gives,
-/// though: one asking `--grep` reads on
-/// through lines it doesn't match until it finds one past `last` or
-/// reaches the journal's end, and the merge waits on it meanwhile.
+/// though: one asking `--grep` reads on through lines it doesn't match
+/// until it finds one past `last` or reaches the journal's end, and the
+/// merge waits on it meanwhile.
 /// A line of another counter, or none, is heard whatever `last` is.
 ///
 /// The merge holds each history in journald's order, as journalctl writes

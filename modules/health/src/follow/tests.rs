@@ -1,3 +1,5 @@
+use std::cell::{Cell, RefCell};
+
 use super::*;
 use crate::journal;
 
@@ -122,6 +124,235 @@ fn a_shutdown_seen_is_timed_to_its_boots_end() {
     );
 }
 
+/// How far a test's wait goes past what it asks, as a sleep may, which
+/// leaves health's ticks off the half minute.
+const OVERSLEPT: Duration = Duration::from_secs(1);
+
+/// A run of health over followers that send `before` lines, `ends` ends
+/// and `after` lines, all at once, every sender then gone unless one is
+/// held, as a quiet follower holds it, until the clock passes `held_for`.
+/// Each look at the clock moves it on `step`, and each wait as far as it
+/// asks and `OVERSLEPT` more. While a sender is held `run` never waits,
+/// so only a `step` of a half minute or more moves the clock past each
+/// half minute for it to hear at once, rather than in real time.
+#[derive(Default)]
+struct Ran {
+    before: i64,
+    ends: usize,
+    after: i64,
+    held_for: Duration,
+    step: Duration,
+}
+
+impl Ran {
+    /// What `run` left unread, how long health ran, from its first look
+    /// at the clock to its last, and how often it looked at the lid. A
+    /// run that would never end fails at two hours, or at ten thousand
+    /// looks at the clock, for one that spins with the clock still.
+    fn ran(&self) -> (usize, Duration, usize) {
+        assert!(
+            self.held_for.is_zero() || self.step >= EVERY,
+            "a held sender with a step under the half minute waits in real time"
+        );
+        let into = tempfile::tempdir().expect("a folder");
+        let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+        let (send, read) = mpsc::channel();
+        let line = |second| Some(warning(NOON + second));
+        for second in 0..self.before {
+            send.send(line(second)).expect("a line sent");
+        }
+        for _ in 0..self.ends {
+            send.send(None).expect("a follower's end sent");
+        }
+        for second in 0..self.after {
+            send.send(line(self.before + second)).expect("a line sent");
+        }
+        let held = RefCell::new((self.held_for > Duration::ZERO).then(|| send.clone()));
+        drop(send);
+        let start = Instant::now();
+        let clock = Cell::new(start);
+        let first = Cell::new(None);
+        let looks = Cell::new(0);
+        let times = Cell::new(0);
+        let moved = |by: Duration| {
+            times.set(times.get() + 1);
+            assert!(
+                times.get() < 10_000,
+                "health looked at the clock ten thousand times, so it would spin for ever"
+            );
+            clock.set(clock.get() + by);
+            let gone = clock.get().saturating_duration_since(start);
+            if gone >= self.held_for {
+                held.borrow_mut().take();
+            }
+            assert!(
+                gone < SETTLED * 12,
+                "health ran two hours, so it would never have ended"
+            );
+            first.set(first.get().or(Some(clock.get())));
+            clock.get()
+        };
+        let now = || moved(self.step);
+        let wait = |time| {
+            moved(time + OVERSLEPT);
+        };
+        let look = || {
+            looks.set(looks.get() + 1);
+            Looked::default()
+        };
+        run(&mut follower, &read, now, wait, look).expect("the run");
+        let started = first.get().expect("a look at the clock");
+        (
+            read.try_iter().count(),
+            clock.get().saturating_duration_since(started),
+            looks.get(),
+        )
+    }
+}
+
+#[test]
+fn a_follower_that_ends_ends_health_once_it_has_run_long_enough() {
+    // The end comes first and every look finds a minute gone, so health
+    // has run long enough a few lines later, within a loop of two looks.
+    // Until then it still takes what the other followers say.
+    let (unread, ran, _) = Ran {
+        ends: 1,
+        after: 30,
+        step: Duration::from_mins(1),
+        ..Ran::default()
+    }
+    .ran();
+    assert!(
+        unread < 30,
+        "health stopped taking the other followers' lines once one had ended"
+    );
+    assert!(
+        ran >= SETTLED && ran <= SETTLED + Duration::from_mins(2),
+        "health ran {ran:?} after a follower ended, so it forgot it had"
+    );
+}
+
+#[test]
+fn a_follower_that_ends_after_health_has_run_long_enough_ends_it_at_once() {
+    // As a journalctl dying hours in: 30 lines at two looks a line, each
+    // a minute on, so the end is read 61 minutes in, and health ends
+    // within a few looks of it.
+    let (unread, ran, _) = Ran {
+        before: 30,
+        ends: 1,
+        held_for: SETTLED * 11,
+        step: Duration::from_mins(1),
+        ..Ran::default()
+    }
+    .ran();
+    assert!(
+        unread == 0 && ran <= Duration::from_mins(61 + 3),
+        "health ran {ran:?}, leaving {unread} unread, after a follower ended an hour in"
+    );
+}
+
+#[test]
+fn health_ends_once_it_has_run_long_enough_while_its_other_followers_are_quiet() {
+    // As on a journal, one follower ends and the rest hold their senders
+    // and say nothing. Every look finds a half minute gone, so health
+    // never waits on the quiet ones in real time, and a loop of two looks
+    // can carry it a minute past. It still looks at the lid every loop.
+    let (_, ran, looks) = Ran {
+        ends: 1,
+        held_for: SETTLED * 11,
+        step: EVERY,
+        ..Ran::default()
+    }
+    .ran();
+    assert!(
+        ran >= SETTLED && ran <= SETTLED + EVERY * 2 && looks >= 9,
+        "health ran {ran:?}, looking {looks} times, after a follower ended while the others \
+         were quiet"
+    );
+}
+
+#[test]
+fn quiet_followers_never_end_health() {
+    // Every follower holds its sender and says nothing for half an hour,
+    // health hearing only that nothing came, then they all go.
+    let (_, ran, _) = Ran {
+        held_for: SETTLED * 3,
+        step: EVERY,
+        ..Ran::default()
+    }
+    .ran();
+    assert!(
+        ran >= SETTLED * 3,
+        "health ended {ran:?} in, while its followers were only quiet"
+    );
+}
+
+#[test]
+fn health_runs_on_while_no_follower_ends() {
+    let (unread, _, _) = Ran {
+        before: 30,
+        step: Duration::from_mins(1),
+        ..Ran::default()
+    }
+    .ran();
+    assert_eq!(
+        unread, 0,
+        "health ended past ten minutes though no follower had"
+    );
+}
+
+#[test]
+fn health_ends_no_sooner_than_it_has_run_long_enough_however_its_followers_end() {
+    // Each with no time gone as lines are read, and every sender gone
+    // once they are: no follower ending, as when the replay's thread lets
+    // go of its senders having sent no end; one ending; and two, as when
+    // the replay can't start. The last wait is cut short to end health on
+    // time, though the oversleeping waits leave it off the half minute,
+    // and health still looks about every half minute as it waits, 19
+    // times as the waits fall.
+    for ends in [0, 1, 2] {
+        let (unread, ran, looks) = Ran {
+            ends,
+            after: 3,
+            ..Ran::default()
+        }
+        .ran();
+        assert!(
+            unread == 0 && ran >= SETTLED && ran <= SETTLED + OVERSLEPT && looks >= 18,
+            "health ran {ran:?}, leaving {unread} unread and looking {looks} times as it waited, \
+             after {ends} followers ended at its start"
+        );
+    }
+}
+
+#[test]
+fn a_start_that_fails_is_said_at_once_and_taken_as_an_end() {
+    // On a Mac, log stream may start and log show then fail, so a follower
+    // still holds its sender: only the end sent here ends health.
+    let (lines, read) = mpsc::channel();
+    let said = RefCell::new(Vec::new());
+    let say = |words: &str| said.borrow_mut().push(words.to_owned());
+    let ended = ended_by(Err(io::Error::other("log show: no room")), &lines, say);
+    let heard: Vec<_> = read.try_iter().collect();
+    assert!(
+        heard == [None]
+            && ended.to_string() == "its followers couldn't start: log show: no room"
+            && said
+                .borrow()
+                .iter()
+                .any(|words| words.contains("log show: no room")
+                    && words.contains("starts again with every follower")),
+        "a failed start wasn't said with what follows, taken as an end, or named in the exit: \
+         {heard:?}, {ended}, {said:?}"
+    );
+    let ended = ended_by(Ok(()), &lines, say);
+    assert!(
+        read.try_iter().next().is_none()
+            && ended.to_string() == "a follower ended, or the day's replay failed",
+        "a start that worked sent an end, or ended health saying otherwise: {ended}"
+    );
+}
+
 #[test]
 fn a_busy_journal_still_ticks_every_half_minute() {
     let into = tempfile::tempdir().expect("a folder");
@@ -133,6 +364,7 @@ fn a_busy_journal_still_ticks_every_half_minute() {
             .expect("a line sent");
     }
     lines.send(None).expect("its end sent");
+    drop(lines);
     // Each look at the clock finds ten seconds gone, so the lines come
     // far faster than the half minute a quiet journal would wait.
     let start = Instant::now();
@@ -141,11 +373,22 @@ fn a_busy_journal_still_ticks_every_half_minute() {
         asked += 1;
         start + Duration::from_secs(10 * asked)
     };
+    // Only the looks taken as the lines are read count, not those taken
+    // as health waits out its start once its follower has ended.
+    let waiting = Cell::new(false);
     let mut looks = 0;
-    run(&mut follower, &read, 1, now, || {
-        looks += 1;
-        Looked::default()
-    })
+    run(
+        &mut follower,
+        &read,
+        now,
+        |_| waiting.set(true),
+        || {
+            if !waiting.get() {
+                looks += 1;
+            }
+            Looked::default()
+        },
+    )
     .expect("the run");
     assert!(
         looks >= 3,
