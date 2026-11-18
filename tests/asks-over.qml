@@ -44,10 +44,10 @@ ShellRoot {
         return { key: root.key, kind: "row", row: {
             key: root.key, thing, place: "asks", kind: "ask", state: "waiting",
             name: "op://Private/Kiln/password", glyph: "passwords", hue: "action",
-            note: "S1", side: [], attention: 1000, digest, order: 1024,
-            acts: [act("release"), act("refuse")],
+            note: "S1", side: [{ said: "from S1", keep: 2 }], attention: 1000, digest,
+            order: 1024, acts: [act("release"), act("refuse")],
             drawer: { eyebrow: "S1", title: "op://Private/Kiln/password",
-                body: "To fire the kiln.", facts: [] }
+                body: "To fire the kiln.", facts: [{ name: "Runs", said: "make kiln" }] }
         } };
     }
 
@@ -643,7 +643,7 @@ ShellRoot {
         const hidden = "Ask, Hidden While You Share";
         same("while the screen is shared an ask's row names only that it's hidden",
             row()?.name, hidden);
-        same("and says nothing of where it's from", row()?.note, "");
+        same("and says nothing of where it's from", [row()?.note, row()?.side], ["", ""]);
         // A ready row's drawer is made as it's drawn (ReadyRows.qml's drawing).
         const drawer = row()?.drawer?.() ?? {};
         same("its drawer says neither what it asks for, where from, nor why",
