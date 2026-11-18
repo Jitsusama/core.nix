@@ -72,6 +72,15 @@ const RESTART_WITHIN: i64 = 120_000_000;
 /// tool that updates itself.
 const RELOADED_WITHIN: i64 = 10_000_000;
 
+/// How long a reload is kept after a newer one in its boot, in
+/// microseconds of the boot's clock: five times the longest a stop can be
+/// a reload's restart, for a follower that lags.
+const RELOADS_KEPT_FOR: i64 = 5 * RESTART_WITHIN;
+
+/// The most reloads of a kind kept at once, so a program reloading
+/// systemd over and over costs health no more than this.
+const MOST_RELOADS: usize = 100;
+
 /// How long after its start a ready line is still its restart's.
 const READY_WITHIN: i64 = 60_000_000;
 
@@ -104,9 +113,19 @@ pub struct Launches {
     /// Each service that said it was ready soon after a restart.
     #[serde(skip)]
     stamped: BTreeSet<String>,
-    /// When systemd last reloaded for a switch, and for anything else.
+    /// The reloads systemd made lately for a switch, and for anything else,
+    /// at most [`MOST_RELOADS`] of each.
     #[serde(skip)]
-    reloaded: BTreeMap<bool, i64>,
+    reloaded: BTreeMap<bool, Vec<Reload>>,
+}
+
+/// A reload systemd made: in which boot, how long into it, and by the wall
+/// clock. A reload's restarts are in its own boot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Reload {
+    boot: String,
+    since_boot: i64,
+    at: i64,
 }
 
 /// How one of the two went over the day.
@@ -142,7 +161,7 @@ impl Launches {
     pub fn heard(&mut self, entry: &Entry) -> bool {
         let unit = &entry.thing;
         match entry.job {
-            Some(Job::Stopping) if self.restarts_itself(entry.at) => {}
+            Some(Job::Stopping) if self.restarts_itself(entry) => {}
             Some(Job::Stopping) => {
                 self.stopping
                     .insert(unit.clone(), (entry.boot.clone(), entry.at));
@@ -171,7 +190,7 @@ impl Launches {
                 if let Some(asker) =
                     reloads::asker(&entry.message).filter(|_| entry.origin == Origin::Systemd)
                 {
-                    self.reloaded.insert(asker == Asker::Switch, entry.at);
+                    self.keep_reload(asker == Asker::Switch, entry);
                 } else if (unit != IDENTIFIER || entry.ran_in.as_deref() == Some(UNIT))
                     && self.took(unit, &entry.message)
                 {
@@ -184,14 +203,54 @@ impl Launches {
         true
     }
 
-    /// Whether a service stopping `at` is one something other than a
-    /// switch restarts: it had systemd reload within [`RELOADED_WITHIN`],
-    /// and no switch did within [`RESTART_WITHIN`].
-    fn restarts_itself(&self, at: i64) -> bool {
+    /// Keep the reload `entry` says, a switch's or not. Heard live, a
+    /// reload's follower can run ahead of the jobs', so a later reload may
+    /// come before a stop written earlier: the recent ones are kept, not
+    /// only the newest, for the stop to find the one before it. Another
+    /// boot's are kept as they are, since a replay ordered by the wall
+    /// clock can mix two boots' lines. A flood of more than [`MOST_RELOADS`]
+    /// heard before a stop that lags behind them can cost the stop its
+    /// reload, and its tool's restart then counts as a switch's: one
+    /// misfiled restart, rather than a list a loop could grow for ever.
+    fn keep_reload(&mut self, switch: bool, entry: &Entry) {
+        let kept = self.reloaded.entry(switch).or_default();
+        kept.retain(|reload| {
+            reload.boot != entry.boot
+                || entry.since_boot.saturating_sub(reload.since_boot) <= RELOADS_KEPT_FOR
+        });
+        if kept.len() >= MOST_RELOADS {
+            kept.remove(0);
+        }
+        kept.push(Reload {
+            boot: entry.boot.clone(),
+            since_boot: entry.since_boot,
+            at: entry.at,
+        });
+    }
+
+    /// Whether the service `stopping` is one something other than a
+    /// switch restarts: it had systemd reload within [`RELOADED_WITHIN`]
+    /// before it in its boot, and no switch did within [`RESTART_WITHIN`].
+    /// A reload from the boot before counts for neither, however quick the
+    /// reboot, and one before the day's start isn't heard. Within the boot,
+    /// both clocks must put it near enough: the boot's, which no step of
+    /// the wall clock moves, to put it before the stop, and the wall
+    /// clock's, since the boot's stands still while the machine sleeps, so
+    /// a reload before a suspend would seem just before a stop after it. A
+    /// wall clock stepped back may put the reload any way after the stop.
+    /// One stepped forward past the window between the two reads as a
+    /// sleep, which the journal's two clocks can't tell apart, so that
+    /// rare restart counts as it did before either clock was kept.
+    fn restarts_itself(&self, stopping: &Entry) -> bool {
         let within = |switch: bool, longest: i64| {
-            self.reloaded
-                .get(&switch)
-                .is_some_and(|reloaded| at.saturating_sub(*reloaded) <= longest)
+            self.reloaded.get(&switch).is_some_and(|kept| {
+                kept.iter().any(|reload| {
+                    reload.boot == stopping.boot
+                        && (0..=longest)
+                            .contains(&stopping.since_boot.saturating_sub(reload.since_boot))
+                        && stopping.at.saturating_sub(reload.at) <= longest
+                })
+            })
         };
         within(false, RELOADED_WITHIN) && !within(true, RESTART_WITHIN)
     }
