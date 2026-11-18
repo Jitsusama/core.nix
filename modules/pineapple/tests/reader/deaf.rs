@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 
 use super::keyring::reading_with_keyring;
-use super::{Answered, PATIENCE, answer, answering_whole, home, reader};
+use super::{Answered, PATIENCE, answer, answering_whole, home, reader, reading};
 
 /// Where For You reads what the safe word waits on Joel for.
 fn waiting(home: &Path) -> PathBuf {
@@ -74,6 +74,41 @@ fn a_refused_sign_in_is_told_in_for_you_until_slack_is_heard_again() {
     );
     assert!(untold, "and untold once Slack is heard again");
     std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn the_row_goes_where_the_unit_names_it() {
+    // The unit names the file its stop removes (home.nix), so the reader
+    // writes there rather than finding its own.
+    let (origin, _) =
+        answering_whole(|_, _| Answered::ok(json!({"ok": false, "error": "invalid_auth"})));
+    let home = home();
+    let named = home.join("named/pineapple.json");
+    let mut reader = reading(&home, &origin, &[], Some(&named));
+    let told = until(&named, true);
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+    assert!(told, "the row is written where the unit names it");
+    assert!(
+        !waiting(&home).exists(),
+        "and not where the reader would find its own"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn a_name_that_isnt_a_whole_path_is_no_name() {
+    let (origin, _) =
+        answering_whole(|_, _| Answered::ok(json!({"ok": false, "error": "invalid_auth"})));
+    for named in ["", "named/pineapple.json"] {
+        let home = home();
+        let mut reader = reading(&home, &origin, &[], Some(Path::new(named)));
+        let told = until(&waiting(&home), true);
+        reader.kill().expect("the reader stops");
+        reader.wait().expect("the reader is gone");
+        assert!(told, "named {named:?}, the reader tells For You in its own");
+        std::fs::remove_dir_all(&home).expect("the case's home goes");
+    }
 }
 
 #[test]

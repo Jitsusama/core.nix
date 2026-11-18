@@ -38,6 +38,7 @@ pub(super) fn reading_with_keyring(home: &Path, origin: &str, script: &str) -> C
     let journal = std::fs::File::create(home.join("journal")).expect("the journal");
     Command::new(env!("CARGO_BIN_EXE_pineapple-slack"))
         .args(["run", "--origin", origin, "--every", PACE])
+        .env_remove("SAFE_WORD_WAITING")
         .env("HOME", home)
         .env("XDG_CONFIG_HOME", home.join("config"))
         .env("XDG_STATE_HOME", home.join("state"))
