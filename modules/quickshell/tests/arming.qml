@@ -84,18 +84,35 @@ QtObject {
             "armed armed | armed");
 
         // Return held still, as on an ask hidden while Joel shares: a row
-        // that stays with no run, never one with a run, one that opens a
-        // place, or one that closes.
+        // saying it has nothing to do yet, with no run; never a still row
+        // that runs, nor one with no run whose Return does something else.
+        const nothing = () => {};
         const still = [
-            ["a hidden ask, staying with no run", { stays: true, changes: false }, true],
-            ["one that stays and does something", { stays: true, run: () => {} }, false],
-            ["one that stays and opens a place", { stays: true, opens: {} }, false],
+            ["a hidden ask, still with no run", { still: true }, true],
+            ["a still row that runs, as the file chooser's", { still: true, stays: true,
+                run: nothing }, false],
+            ["one staying with no run that asks for words", { stays: true, given: nothing },
+                false],
+            ["one staying with no run that starts a command", { stays: true, start: "x" },
+                false],
+            ["one staying with no run that holds rows", { stays: true, category: {} }, false],
+            ["one staying with no run that opens a place", { stays: true, opens: {} }, false],
             ["one with no run that closes", { name: "Ended" }, false],
             ["no row", null, false]
         ];
         for (const [what, row, held] of still)
             expect(`Return on ${what} ${held ? "is" : "isn't"} held still`,
                 Arming.holdsStill(row), held);
+        // Asked from a terminal, a row held still is refused, saying why:
+        // its own reason, or the launcher's when it gives none; any other
+        // row isn't refused for it.
+        expect("a row held still is refused for its own reason",
+            Arming.heldWhy({ still: true, held: "not while shared" }, "nothing sent"),
+            "not while shared");
+        expect("or the launcher's, giving none",
+            Arming.heldWhy({ still: true }, "nothing sent"), "nothing sent");
+        expect("while a row that acts isn't refused for it",
+            Arming.heldWhy({ still: true, run: nothing, held: "x" }, "nothing sent"), "");
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

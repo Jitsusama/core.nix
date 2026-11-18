@@ -665,15 +665,24 @@ ShellRoot {
             [hidden, "", "", 0]);
         same("nor anything else the daemon serves, only what it may show",
             [row()?.reads, row()?.graph], ["", null]);
+        const kept = one => [one?.glyph, one?.hue, one?.place, one?.kind, one?.asked];
+        same("while keeping what says it's an ask and where it's listed",
+            kept(row()), kept(root.madeBefore));
         same("it has no act, so no key answers it unseen",
             [row()?.arms, row()?.verbs ?? null], ["", null]);
         // The launcher closes on a Return with no run, so his second
         // Return, meant for a yes, would reach the window behind. It's
-        // held still instead, with no run for the right arrow to step
-        // into, nor taken for a change a Return from the find lands on.
+        // held still instead, the foot naming no Return, with no run for
+        // the right arrow to step into, nor taken for a change a Return
+        // from the find lands on.
         same("a Return on it keeps the launcher open, doing nothing",
-            [Arming.holdsStill(row()), typeof row()?.run, Catalogue.changesState(row())],
-            [true, "undefined", false]);
+            [Arming.holdsStill(row()), row()?.still, typeof row()?.run,
+                Catalogue.changesState(row())],
+            [true, true, "undefined", false]);
+        // Walked to from a terminal, it's refused, saying why, rather than
+        // said done for nothing or thrown on the run it hasn't.
+        same("asked from outside, it's refused while the screen is shared",
+            Arming.heldWhy(row(), "nothing sent"), "not while your screen is shared");
         same("it still waits for him in For You, hidden there too",
             asks.forYou.map(one => one.row.name), [hidden]);
         same("and its line's time starts again", asks.seen, {});
@@ -739,6 +748,8 @@ ShellRoot {
         const waiting = "not until it's known whether your screen is shared";
         same("saying on the row that it waits on knowing, not on a share",
             [row()?.note, row()?.drawer?.()?.body], [waiting, waiting]);
+        same("and asked from outside, it's refused as waiting on knowing",
+            Arming.heldWhy(row(), "nothing sent"), waiting);
         const told = stage.toldWhys.length;
         root.madeBefore.run();
         same("and a yes then is told it waits on knowing, not on a share",
@@ -820,7 +831,7 @@ ShellRoot {
         same("an ask ended while the screen is shared is hidden", row()?.name,
             "Ask, Hidden While You Share");
         same("and its Return closes the launcher, as an ended ask's does",
-            [Arming.holdsStill(row()), row()?.stays === true], [false, false]);
+            [Arming.holdsStill(row()), row()?.still === true], [false, false]);
         Niri.casts = {};
     }
 }
