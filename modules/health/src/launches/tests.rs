@@ -304,8 +304,9 @@ fn a_stop_at_shutdown_and_a_start_in_the_next_boot_are_no_restart() {
     day.take(&ready("after", 42_000_000));
     day.take(&job("after", 50_000_000, Job::Stopping));
     day.take(&job("after", 50_300_000, Job::Started));
-    // The followers replay the day each at its own pace, so a ready from
-    // the boot before can come after this boot's start.
+    // The day is replayed in the order it was written (`replay.rs`), but a
+    // ready heard late, from the boot before, still mustn't end this
+    // boot's restart: the pairing doesn't rest on the order.
     day.take(&ready("before", 1_500_000));
     day.take(&ready("after", 50_400_000));
     assert_eq!(

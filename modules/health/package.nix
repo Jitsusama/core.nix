@@ -1,5 +1,9 @@
 # health, built from this directory, its tests run as it builds.
-{ lib, rustPlatform }:
+{
+  lib,
+  runtimeShell,
+  rustPlatform,
+}:
 rustPlatform.buildRustPackage rec {
   pname = "health";
   version = "0.1.0";
@@ -15,6 +19,9 @@ rustPlatform.buildRustPackage rec {
   };
   sourceRoot = "${src.name}/health";
   cargoLock.lockFile = ./Cargo.lock;
+  # The shell the replay's tests start their stand-in journalctls on, which
+  # a build's sandbox has where it has no /bin/sh.
+  env.STAND_IN_SHELL = runtimeShell;
   meta = {
     description = "Keeps the day's tally of what the machine's journals said";
     license = lib.licenses.mit;

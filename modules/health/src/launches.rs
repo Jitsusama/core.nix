@@ -200,9 +200,10 @@ impl Launches {
     /// restart lasted until now.
     pub fn served(&mut self, entry: &Entry) {
         let Some(unit) = &entry.ran_in else { return };
-        // Each follower replays the day at its own pace, so a ready from
-        // the boot before can come late: it leaves this boot's restart
-        // waiting for its own.
+        // The day is replayed in the order it was written (`replay.rs`), so
+        // a ready from the boot before comes before this boot's starts; a
+        // ready from another boot still leaves this boot's restart waiting
+        // for its own, so the pairing doesn't rest on that order.
         if self
             .restarting
             .get(unit)

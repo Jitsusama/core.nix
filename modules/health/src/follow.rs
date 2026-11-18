@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
-use jiff::Timestamp;
 use jiff::tz::TimeZone;
+use jiff::{Timestamp, Zoned};
 
 use crate::agents;
 use crate::busy;
@@ -495,7 +495,10 @@ pub fn date_of(at: i64, zone: &TimeZone) -> String {
 pub fn follow(into: &Path) -> io::Result<()> {
     let source = Source::here();
     let zone = TimeZone::system();
-    let today = date_of(Timestamp::now().as_microsecond(), &zone);
+    // One moment for the day resumed and the day the journals replay, so a
+    // start just before midnight can't resume one and replay the next.
+    let now = Zoned::now().with_time_zone(zone.clone());
+    let today = date_of(now.timestamp().as_microsecond(), &zone);
     let mut follower = Follower::new(&today, into, zone.clone())
         .reading(source)
         .knowing(source.ends()?);
@@ -547,7 +550,7 @@ pub fn follow(into: &Path) -> io::Result<()> {
     }
     let (lines, read) = mpsc::channel();
     // Counted as they start, so a follower added is waited on too.
-    let running = source.start(&zone, &lines)?;
+    let running = source.start(&now, &lines)?;
     drop(lines);
     run(&mut follower, &read, running, Instant::now, lid::look)?;
     Err(io::Error::other("the followers ended"))
