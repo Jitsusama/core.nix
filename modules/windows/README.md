@@ -127,12 +127,13 @@ the window gone, not from the ask.
 ## A Window an Agent Opened
 
 Agents run in agents.slice and the jobs slices, so a window whose process
-sits there was opened by an agent over Joel's work. The daemon says each
+sits there was opened by an agent over Joel's work. What Joel starts at a
+terminal runs in jobs-awaited.slice and is his, as polkit's rules take it. The daemon says each
 one to the journal as it opens, as a warning (src/unasked.rs):
 
 ```text
-an agent opened a window over Joel's work: org.kde.heaptrack "Heaptrack", from
-pi-host-work-background.service in /home/joel/src/tree
+an agent opened a window over Joel's work: "org.kde.heaptrack" "Heaptrack", from
+pi-host-work-background.service in "/home/joel/src/tree"
 ```
 
 The sessions' own windows, in kitty's one instance in agents.slice, are
@@ -147,10 +148,14 @@ id each names itself with. On 2026-11-17 an agent's test started a keyring
 of its own, whose prompt opened on Joel's screen, and he typed his real
 password into it. The daemon asks niri to close the window, says so in the
 journal, and puts up a notice naming the scope and folder it came from,
-through libnotify's notify-send, once a minute for a scope at most. Where
-niri refuses, the notice says the window is open and to type no password
-there. A prompt is weighed whenever niri says it, so one open as the daemon
-starts again, as after a switch, or one naming itself late, is closed too.
+through libnotify's notify-send. niri asks the window to close as its own
+close key does, so the notice says it was asked to; a prompter could
+ignore it. An agent rerunning its test makes a fresh scope each time, so
+Joel is told once a minute for a folder at most. Where niri refuses, the
+notice says the window couldn't be closed and to type no password there,
+and the prompt is asked again when niri next says it. A prompt is weighed
+whenever niri says it, so one open as the daemon starts again, as after a
+switch, or one naming itself late, is closed too.
 Joel's own prompts come from his services and stay. The installed daemon
 reads processes from /proc alone; only the check's build reads a stand-in.
 

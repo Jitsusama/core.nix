@@ -155,13 +155,24 @@ impl Watched {
         }
         found
     }
+
+    /// Weighs the prompt `window` again when niri next says it, as niri
+    /// refused to close it and it's still open.
+    pub fn ask_again(&mut self, window: u64) {
+        self.closing.remove(&window);
+    }
 }
 
 /// The unit of a process in agents.slice or a jobs slice, from its cgroup
-/// file's unified line, or none for any other.
+/// file's unified line, or none for any other. What Joel starts at a
+/// terminal runs in jobs-awaited.slice, so it's his, as polkit's rules
+/// take it (modules/slices/agents-ask-first.rules).
 #[must_use]
 pub fn agents_unit(cgroup: &str) -> Option<&str> {
     let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
+    if path.split('/').any(|part| part == "jobs-awaited.slice") {
+        return None;
+    }
     let agents = path.split('/').any(|part| {
         part == "agents.slice"
             || part
@@ -175,15 +186,17 @@ pub fn agents_unit(cgroup: &str) -> Option<&str> {
 }
 
 /// The journal's line for an agent's window: a warning, so health keeps
-/// it among the daemon's lines, though not as an error of its own.
+/// it among the daemon's lines, though not as an error of its own. The
+/// app id, title and folder are quoted, as an agent names each, so none
+/// can start a journal line of its own.
 #[must_use]
 pub fn line(unasked: &Unasked) -> String {
-    let folder = unasked
-        .folder
-        .as_deref()
-        .unwrap_or("a folder /proc didn't say");
+    let folder = unasked.folder.as_deref().map_or_else(
+        || "a folder /proc didn't say".to_owned(),
+        |folder| format!("{folder:?}"),
+    );
     format!(
-        "<4>an agent opened a window over Joel's work: {} {:?}, from {} in {folder}",
+        "<4>an agent opened a window over Joel's work: {:?} {:?}, from {} in {folder}",
         unasked.app, unasked.title, unasked.unit
     )
 }
@@ -225,8 +238,10 @@ pub fn closed(unasked: &Unasked) -> String {
 }
 
 /// What Joel is told of an agent's password prompt, its summary and its
-/// body, naming where it came from: that it was closed, or, when niri
-/// refused, that it's open and nothing should be typed there. It says
+/// body, naming where it came from: that it was asked to close, since
+/// niri asks the window as its own close key does and a prompter could
+/// ignore it, or, when niri refused, that it couldn't be. Either way
+/// nothing should be typed there. It says
 /// window, the glossary's word, since a prompt there is the shell's line
 /// (H2VYOB). The unit and folder are said as they are, escaped, since the
 /// notices draw markup and an agent names its own folder.
@@ -237,15 +252,16 @@ pub fn notice(unasked: &Unasked, shut: bool) -> (String, String) {
         .as_deref()
         .map_or_else(String::new, |folder| format!(", in {}", escaped(folder)));
     let from = format!("It came from {}{folder}", escaped(&unasked.unit));
+    let summary = "An agent opened a password window".to_owned();
     if shut {
         (
-            "An agent's password window was closed".to_owned(),
-            format!("{from}, so a password typed there would have reached the agent."),
+            summary,
+            format!("{from}, and was asked to close. A password typed there reaches the agent."),
         )
     } else {
         (
-            "An agent's password window is open".to_owned(),
-            format!("{from}, and it couldn't be closed: type no password there."),
+            summary,
+            format!("{from}, and couldn't be closed: type no password there."),
         )
     }
 }
@@ -424,18 +440,18 @@ mod tests {
         assert_eq!(
             notice(&unasked, true),
             (
-                "An agent's password window was closed".to_owned(),
-                "It came from run-r1.scope, in /trees/keyring, so a password typed there would \
-                 have reached the agent."
+                "An agent opened a password window".to_owned(),
+                "It came from run-r1.scope, in /trees/keyring, and was asked to close. A \
+                 password typed there reaches the agent."
                     .to_owned()
             )
         );
         assert_eq!(
             notice(&unasked, false),
             (
-                "An agent's password window is open".to_owned(),
-                "It came from run-r1.scope, in /trees/keyring, and it couldn't be closed: type \
-                 no password there."
+                "An agent opened a password window".to_owned(),
+                "It came from run-r1.scope, in /trees/keyring, and couldn't be closed: type no \
+                 password there."
                     .to_owned()
             ),
             "a prompt niri didn't close was told as closed"
@@ -514,6 +530,12 @@ mod tests {
             vec![8],
             "a prompt naming itself after it mapped wasn't closed"
         );
+        watched.ask_again(8);
+        assert_eq!(
+            prompting(&mut watched, &opened(8, "pinentry-qt", 1)),
+            vec![8],
+            "a prompt niri refused to close wasn't asked again"
+        );
         prompting(&mut watched, &event(r#"{"WindowClosed":{"id":8}}"#));
         assert_eq!(
             prompting(&mut watched, &opened(8, "pinentry-qt", 1)),
@@ -533,8 +555,24 @@ mod tests {
         };
         assert_eq!(
             line(&unasked),
-            "<4>an agent opened a window over Joel's work: org.kde.heaptrack \"Heaptrack\", \
+            "<4>an agent opened a window over Joel's work: \"org.kde.heaptrack\" \"Heaptrack\", \
              from pi-host-work-background.service in a folder /proc didn't say"
+        );
+    }
+
+    #[test]
+    fn what_joel_starts_at_a_terminal_is_his_though_it_runs_in_a_jobs_slice() {
+        let awaited = "0::/user.slice/user-1000.slice/user@1000.service/jobs.slice/\
+                       jobs-awaited.slice/work-40-5.scope\n";
+        assert_eq!(
+            agents_unit(awaited),
+            None,
+            "Joel's terminal work was taken for an agent's"
+        );
+        assert_eq!(
+            agents_unit(JOB),
+            Some("run-r1.scope"),
+            "an agent's job wasn't known"
         );
     }
 }

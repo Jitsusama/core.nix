@@ -369,7 +369,9 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
             eprintln!("{}", unasked::line(&unasked));
         }
         for prompt in watched.prompting(&event, cgroup, folder) {
-            closing::shut(niri, &prompt, &mut told);
+            if !closing::shut(niri, &prompt, &mut told) {
+                watched.ask_again(prompt.window);
+            }
         }
         // A screen coming or going changes the workspaces, so its outputs
         // are asked again then, before the lock is taken, so no ask waits

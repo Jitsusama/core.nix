@@ -14,8 +14,16 @@ before each window, and its notices go to a stand-in notify-send that keeps what
 3. A terminal from the same scope isn't closed, once the journal shows the daemon weighed it:
    only what asks for a password is.
 4. A second prompt from the scope within a minute is closed, and Joel isn't told twice.
-5. A prompt from the scope already open as the daemon starts again, as after a switch, is
-   closed once it hears niri.
+5. An agent's prompt from another scope, already open as the daemon starts again, as after a
+   switch, is closed once it hears niri, and Joel's own from case 1 still isn't. The agent's is
+   opened by a process of its own, `--prompt`, so the two are weighed by their own cgroups.
+
+Case 4's count is read once case 5's notice is written, so a second notice for case 4's scope,
+which would go up as the second prompt closed, has had time to land.
+
+The daemon's stand-in /proc gives every window of this process one cgroup, so case 5's
+agent's prompt runs in a child, this file with `--prompt`: it opens the prompt, says so, and
+says whether niri asked it to close within its patience.
 
 Every case is checked and reported before the stand-in fails.
 
@@ -29,8 +37,12 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from stand_in import PATIENCE, Connection
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 APP = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/app-gcr-prompter-1.scope\n"
 JOB = (
@@ -39,6 +51,8 @@ JOB = (
 )
 # How long niri and the daemon have to close an agent's prompt, as the guard promises.
 CLOSING = 1.0
+# The prompts case 4 has the scope open: case 2's, and its own.
+SCOPES_PROMPTS = 2
 
 
 def answering(daemon: Path) -> bool:
@@ -81,10 +95,9 @@ def written(path: Path, words: str, times: int) -> str:
     return path.read_text()
 
 
-def prompts_close(joel: Connection, cgroup: Path, lines: Path, told: Path) -> list[str]:
+def prompts_close(joel: Connection, cgroup: Path, lines: Path, told: Path, own: int) -> list[str]:
     """Cases 1 and 2: Joel's own prompt stays, and the job's is closed, journalled and told."""
     failures: list[str] = []
-    own = joel.window("gcr-prompter")
     if joel.asked_to_close(own, CLOSING):
         failures.append("1: Joel's own password prompt was closed")
 
@@ -100,7 +113,7 @@ def prompts_close(joel: Connection, cgroup: Path, lines: Path, told: Path) -> li
     return failures
 
 
-def only_prompts_close(joel: Connection, lines: Path, told: Path) -> list[str]:
+def only_prompts_close(joel: Connection, lines: Path) -> list[str]:
     """Cases 3 and 4: the job's terminal stays, and a second prompt is closed but not told."""
     failures: list[str] = []
     terminal = joel.window("foot")
@@ -112,15 +125,72 @@ def only_prompts_close(joel: Connection, lines: Path, told: Path) -> list[str]:
     again = joel.window("gcr-prompter")
     if not joel.asked_to_close(again, CLOSING):
         failures.append(f"4: a second prompt wasn't closed within {CLOSING} s")
-    written(lines, "close a password prompt", 2)
+    closing = 'close a password prompt an agent opened: "gcr-prompter" "", from run-r1.scope'
+    if written(lines, closing, SCOPES_PROMPTS).count(closing) < SCOPES_PROMPTS:
+        failures.append(f"4: the journal didn't say the second was closed: {lines.read_text()!r}")
+    return failures
+
+
+def prompt_elsewhere() -> None:
+    """As `--prompt`: open an agent's prompt, say so, and say whether niri asked it to close."""
+    agents = Connection(Path(os.environ["XDG_RUNTIME_DIR"]) / os.environ["WAYLAND_DISPLAY"])
+    prompt = agents.window("gcr-prompter")
+    print("open", flush=True)
+    print("closed" if agents.asked_to_close(prompt, PATIENCE) else "stayed", flush=True)
+
+
+def restarted(
+    started: Callable[[], subprocess.Popen[bytes]], placed: Path
+) -> tuple[list[str], subprocess.Popen[bytes] | None]:
+    """Case 5: with the daemon gone, an agent's prompt opens, and closes once the daemon is back.
+
+    `started` starts the daemon and `placed` is the stand-in /proc. Answers what failed, and the
+    daemon started, if it was.
+    """
+    failures: list[str] = []
+    agents = subprocess.Popen(
+        [sys.executable, __file__, "--prompt"], stdout=subprocess.PIPE, text=True
+    )
+    if agents.stdout is None:
+        sys.exit("the agent's prompt gave nothing to read")
+    its = placed / str(agents.pid)
+    its.mkdir()
+    (its / "cwd").symlink_to(Path.cwd())
+    (its / "cgroup").write_text(JOB.replace("run-r1", "run-r2"))
+    if agents.stdout.readline().strip() != "open":
+        agents.kill()
+        return ["5: the agent's prompt never opened"], None
+    running = started()
+    begun = time.monotonic()
+    try:
+        if agents.stdout.readline().strip() != "closed":
+            failures.append("5: a prompt open as the daemon started again wasn't closed")
+        elif time.monotonic() - begun > CLOSING:
+            failures.append(f"5: a prompt open as the daemon started again took over {CLOSING} s")
+    finally:
+        agents.wait()
+    return failures, running
+
+
+def told_once(told: Path, lines: Path) -> list[str]:
+    """Case 4's count, read once case 5's prompt was told, so a second notice had its time."""
+    written(told, "run-r2.scope", 1)
     notices = told.read_text()
-    if notices.count("An agent's password window was closed") != 1:
+    failures = []
+    if "run-r2.scope" not in notices:
+        failures.append(f"5: Joel wasn't told of the prompt: {notices!r}")
+    if notices.count("run-r1.scope") != 1:
         failures.append(f"4: Joel wasn't told once of the scope: {notices!r}")
+    if "from app-gcr-prompter" in lines.read_text():
+        failures.append("1: Joel's own prompt was taken for an agent's")
     return failures
 
 
 def main() -> None:
     """Run the five cases against the daemon, and fail naming each that didn't hold."""
+    if sys.argv[1] == "--prompt":
+        prompt_elsewhere()
+        return
     program = sys.argv[1]
     here = Path.cwd()
     processes = here / "proc"
@@ -135,24 +205,35 @@ def main() -> None:
     lines = here / "logs" / "windows.log"
     journal = lines.open("w")
     env = {**os.environ, "WINDOWS_PROC": str(processes), "WINDOWS_TOLD": str(told)}
-    # The daemon under test, named by the check.
-    running = subprocess.Popen([program, str(daemon)], env=env, stderr=journal)
+
+    def started() -> subprocess.Popen[bytes]:
+        """Start the daemon under test, named by the check, and wait until it hears niri."""
+        daemon.unlink(missing_ok=True)
+        begun = subprocess.Popen([program, str(daemon)], env=env, stderr=journal)
+        heard_niri(daemon)
+        return begun
+
+    running = started()
     failures: list[str] = []
     try:
-        heard_niri(daemon)
         joel = Connection(Path(os.environ["XDG_RUNTIME_DIR"]) / os.environ["WAYLAND_DISPLAY"])
-        failures += prompts_close(joel, cgroup, lines, told)
-        failures += only_prompts_close(joel, lines, told)
+        own = joel.window("gcr-prompter")
+        failures += prompts_close(joel, cgroup, lines, told, own)
+        failures += only_prompts_close(joel, lines)
 
-        # Case 5: the daemon goes, a prompt opens, and the daemon comes back, as at a switch.
+        # Case 5: the daemon goes, an agent's prompt opens, and the daemon comes back, as at a
+        # switch. This process's windows are Joel's again, so his prompt from case 1 must stay.
         running.terminate()
         running.wait()
-        daemon.unlink(missing_ok=True)
-        waiting = joel.window("gcr-prompter")
-        running = subprocess.Popen([program, str(daemon)], env=env, stderr=journal)
-        heard_niri(daemon)
-        if not joel.asked_to_close(waiting, CLOSING):
-            failures.append("5: a prompt open as the daemon started again wasn't closed")
+        cgroup.write_text(APP)
+        found, again = restarted(started, processes)
+        failures += found
+        if again is None:
+            sys.exit("\n".join(failures))
+        running = again
+        if joel.asked_to_close(own, CLOSING):
+            failures.append("5: Joel's own prompt was closed as the daemon started again")
+        failures += told_once(told, lines)
     finally:
         running.terminate()
         running.wait()
