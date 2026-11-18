@@ -190,8 +190,29 @@ Provider {
         .join("\u241e")
 
     onPlayingNowChanged: {
-        startsAgain();
+        const who = playingWho();
+        if (who !== playingHeard.who) {
+            playingHeard.who = who;
+            startsAgain();
+        }
         redrawHeld();
+    }
+
+    // Who plays: each player's and stream's names, and whether a stream
+    // has its sound, all a closed program's Media and Sound need to be
+    // there (startsOnly), not what plays or how loud. A radio's titles
+    // came every few seconds and would let every held answer go between
+    // keys. Plain, kept as last heard.
+    readonly property var playingHeard: ({ who: "" })
+    function playingWho() {
+        return Playing.players.map(player => [player.dbusName, player.desktopEntry,
+            player.identity].join("\u241f"))
+            .concat((Playing.streams.concat(Playing.recorders ?? [])).map(node => [node.id,
+                node.name, node.properties?.["application.name"],
+                node.properties?.["application.process.binary"],
+                node.properties?.["node.link-group"], node.properties?.["stream.monitor"],
+                !!node.audio].join("\u241f")))
+            .join("\u241e");
     }
 
     // And a program found from the top, which lists what it holds under
@@ -978,6 +999,9 @@ Provider {
             required property var modelData
 
             target: modelData
+            // A giver may have no changed to say (holdsSafely holds nothing
+            // then), and that's no fault to warn of.
+            ignoreUnknownSignals: true
 
             function onChanged() {
                 provider.redrawHeld();

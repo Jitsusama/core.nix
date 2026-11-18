@@ -196,6 +196,16 @@ ShellRoot {
         }
     }
 
+    // A source made by hand that gives Lone nothing and can't say it
+    // changed, as no Provider is.
+    QtObject {
+        id: unheard
+
+        function programActs(program) {
+            return [];
+        }
+    }
+
     // Shortcuts as a program's row asks it: Quiet and Keyed have keys of
     // their own.
     QtObject {
@@ -950,33 +960,61 @@ ShellRoot {
             windowsChanged();
             // And what it can read asks again, each the only thing that
             // would: a stream or a player turning out to be its own, a
-            // walk from outside, the programs others hide, a notice's
-            // sender saying it changed, and an opening.
+            // walk from outside and its end, the programs others hide, a
+            // notice's sender saying it changed, and an opening and a
+            // closing.
+            const holds = row => `${program("lone").actsOnly} ${names(program("lone").verbs())
+                .split(", ").includes(row)}`;
             const playing = Launcher.Playing.streams[3];
-            playing.properties = { "application.name": "Lone" };
-            same("a stream named its own asks again, and its Sound holds more",
-                `${program("lone").actsOnly} ${names(program("lone").verbs()).split(", ")
-                    .includes("Sound")}`, "false true");
-            playing.properties = { "application.name": "Other" };
-            same("and named another's again, it starts only", program("lone").actsOnly, true);
+            for (const name of ["application.name", "application.process.binary"]) {
+                playing.properties = { [name]: "Lone" };
+                same(`a stream whose ${name} is its own asks again, and its Sound holds more`,
+                    holds("Sound"), "false true");
+                playing.properties = { [name]: "Lone", "node.link-group": "filter" };
+                same(`and as it turns out a filter's, it starts only (${name})`,
+                    program("lone").actsOnly, true);
+                playing.properties = { [name]: "Other" };
+            }
             const playerNamed = Launcher.Playing.players[1];
-            playerNamed.identity = "Lone";
-            same("a player named its own asks again, and its Media holds more",
-                `${program("lone").actsOnly} ${names(program("lone").verbs()).split(", ")
-                    .includes("Media")}`, "false true");
-            playerNamed.identity = "Radio";
-            same("and named another's again, it starts only", program("lone").actsOnly, true);
+            for (const name of ["identity", "desktopEntry"]) {
+                const was = playerNamed[name];
+                playerNamed[name] = name === "identity" ? "Lone" : "lone";
+                same(`a player whose ${name} is its own asks again, and its Media holds more`,
+                    holds("Media"), "false true");
+                playerNamed[name] = was;
+                same(`and named another's again, it starts only (${name})`,
+                    program("lone").actsOnly, true);
+            }
+            // What's playing changes its title, its state and its volume
+            // far more often than whose it is, which is all a closed
+            // program's answer reads: a radio's titles came every few
+            // seconds.
+            const titled = applications.stepsCounted.made;
+            const playerTitled = Launcher.Playing.players[0];
+            const title = playerTitled.trackTitle;
+            playerTitled.trackTitle = "Another song of the test";
+            playerTitled.isPlaying = !playerTitled.isPlaying;
+            same("a track changing lets nothing go",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - titled}`,
+                "true 0");
+            playerTitled.trackTitle = title;
+            playerTitled.isPlaying = !playerTitled.isPlaying;
             for (const [said, change] of [
                 ["a walk from outside asks again", () => {
-                    theLauncher.cataloguing = !theLauncher.cataloguing;
+                    theLauncher.cataloguing = true;
+                }],
+                ["and so does its end", () => {
+                    theLauncher.cataloguing = false;
                 }],
                 ["as do the programs others hide", () => {
                     giver.hiddenPrograms = giver.hiddenPrograms.concat(["elsewhere"]);
                 }],
                 ["as does a notice's sender saying it changed", () => notices.changed()],
                 ["as does each opening", () => {
-                    theLauncher.open = false;
                     theLauncher.open = true;
+                }],
+                ["and each closing", () => {
+                    theLauncher.open = false;
                 }]
             ]) {
                 change();
@@ -984,8 +1022,17 @@ ShellRoot {
                 same(said, `${program("lone").actsOnly} ${applications.stepsCounted.made - asked}`,
                     "true 1");
             }
-            theLauncher.cataloguing = false;
             giver.hiddenPrograms = ["pair"];
+            // A source made by hand that can't say it changed couldn't let
+            // an answer go, so none is held while it's among them.
+            theLauncher.sources = theLauncher.sources.concat([unheard]);
+            same("a giver that gives it nothing leaves it starting only",
+                program("lone").actsOnly, true);
+            const unheardAsked = applications.stepsCounted.made;
+            same("with a giver that can't say it changed, nothing is held",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - unheardAsked}`,
+                "true 1");
+            theLauncher.sources = theLauncher.sources.filter(source => source !== unheard);
             // Which providers hold each hook is found as the launcher's
             // sources change, so one joining later is asked, and one gone
             // isn't.
@@ -1005,9 +1052,9 @@ ShellRoot {
             joiner.gives = false;
             same("a giver's change it didn't say is held through the opening",
                 program("lone").actsOnly, false);
-            theLauncher.open = false;
             theLauncher.open = true;
             same("and asked afresh as the launcher opens again", program("lone").actsOnly, true);
+            theLauncher.open = false;
             joiner.gives = true;
             joiner.changed();
             // The selection holds its answer in a binding, as Launcher's
@@ -1018,8 +1065,11 @@ ShellRoot {
             same("and a binding over it is woken as its giver changes",
                 root.loneStartsOnly, true);
             root.loneRow = null;
+            joiner.gives = true;
+            joiner.changed();
             theLauncher.sources = theLauncher.sources.filter(source => source !== joiner);
-            same("and once it's gone, it starts only again", program("lone").actsOnly, true);
+            same("and once it's gone, giving still, it starts only again",
+                program("lone").actsOnly, true);
 
             const quiet = program("quiet").verbs();
             same("a program with keys of its own holds them, and only its new windows besides",
