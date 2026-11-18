@@ -673,8 +673,9 @@
     clippy finds nothing in the console's font tool or its tests
   '';
   copies-hide-while-the-screen-is-shared = ''
-    Copies hide what each copy holds while niri streams the screen through the portal and until
-    niri has said its casts, but not for the shell's own recording of one window
+    Copies hide what each copy holds while niri says any cast, a share through the portal or a
+    recorder's screencopy, and until niri has said its casts, but not for the shell's own
+    recording of one window
   '';
   crate-reach-finds-what-reads-what = ''
     what main moved in a crate a change's crate reads, or one reading it, however far, is
