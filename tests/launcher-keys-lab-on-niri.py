@@ -179,8 +179,9 @@ def stepped_from_home(shell: Shell, name: str, key: str = "ret") -> tuple[str | 
 
     The step's line is a key's, typed as an arrow and the place's name, said only for a step
     Joel could feel (launcher/Trials.js's felt); one quicker gives none. Given LAB_BACK, it then
-    steps back out with -, and gives that step's line second, as Joel's out of Windows took 53
-    and 58 ms to their frames (his journal, 2026-11-17 23:05 and 2026-11-18 10:43); else None.
+    steps back out with -, and gives that step's line second; else None. That step puts back
+    the words typed to find the place, so it searches them as a key: Joel's out of Windows put
+    none back, which LAB_CHORD steps as.
     """
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     shell.as_account(shell.ipc("toggle"))
@@ -606,6 +607,9 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
     profiler: subprocess.Popen[bytes] | None = None
     parts: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
     step = os.environ.get("LAB_STEP", "")
+    if os.environ.get("LAB_BACK") and not step:
+        refused = "LAB_BACK steps out of LAB_STEP's place, and none was given"
+        raise AssertionError(refused)
     step_key = os.environ.get("LAB_STEP_KEY", "ret")
     launcher_on_niri.installed(int(os.environ.get("LAB_PROGRAMS", "0")))
     named(os.environ.get("LAB_NAMED", ""), step, step_key)

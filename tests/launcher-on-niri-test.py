@@ -5009,11 +5009,12 @@ def test_a_step_out_fits_the_foot_once(shell: Shell) -> None:
     """- out of a place a chord opened fits the foot's keys and facts once, where it lands.
 
     Fitted again as held changed, as the mode came back and as the rows were found, Joel's - out
-    of Windows spent 13 to 20 ms of its 53 and 58 ms before it searched anything (his journal,
-    2026-11-17 23:05:23 and 2026-11-18 10:43:47). Fitted for each, they were fitted three times.
-    Held, the keys must still read as the row they land on fits them, moved off and back. The
-    facts read nothing of the row: fitted as the hold ends, from what they read then, any later
-    change to it fits them again, which the count would show.
+    of Windows spent 20 and 19 ms of its 58 and 53 ms holding, before it searched anything (his
+    journal, 2026-11-17 23:05:23 and 2026-11-18 10:43:47). Fitted for each, they were fitted three
+    times. Held, the keys must still read as the row they land on fits them, moved off and back.
+    The facts read nothing of the row: fitted as the hold ends, from what they read then, and
+    fitted again live by any later change to it, they can't stay stale. The count says only how
+    often the step itself fitted them, not what came after it.
     """
     shell.launcher_until(lambda shown: not shown["open"])
     shell.as_account(shell.ipc("collection", "windows"))

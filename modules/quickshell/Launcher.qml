@@ -6193,7 +6193,7 @@ Scope {
     // Windows fitted the keys three times, and the status line laid out
     // its keys about seven, most of it as held changed, before any row
     // was found (the keys lab's profile, 2026-11-18).
-    property bool stepping: false
+    property bool steppingOut: false
     // How many times the last step out fitted the foot's keys and its
     // facts, for the check that it's once.
     property var stepFits: null
@@ -6222,17 +6222,17 @@ Scope {
         const thread = threadNow();
         const leaving = held[held.length - 1].row;
         const left = held[held.length - steps];
-        // The foot is fitted as stepping ends, before the step's parts
+        // The foot is fitted as the step out ends, before the step's parts
         // are stamped, so its one fitting is timed with them.
-        const outer = stepping;
+        const outer = steppingOut;
         const fits = Object.assign({}, footFitted);
-        stepping = true;
+        steppingOut = true;
         let stepped = null;
         try {
             stepped = stepBack(left, steps, timed, { began, heard, pressed, collected, thread,
                 name: leaving.name });
         } finally {
-            stepping = outer;
+            steppingOut = outer;
             stepFits = { keys: footFitted.keys - fits.keys,
                 facts: footFitted.facts - fits.facts };
         }
@@ -6273,7 +6273,7 @@ Scope {
         // fitted as they're searched, in that key's own time, rather than
         // after it was stamped.
         if (wordsBack)
-            stepping = false;
+            steppingOut = false;
         try {
             restart(words);
             restarted = true;
@@ -14365,13 +14365,13 @@ Scope {
                         readonly property real keysRoom: width - card.inset
                             - statusLine.factsAt - standing.least - Theme.space.rung.groups
                             - (prompt.mode === "find" ? 0 : modeWord.room)
-                        // Fitted once a step out has landed (root.stepping):
+                        // Fitted once a step out has landed (root.steppingOut):
                         // while it's under way, this reads nothing else, so
                         // nothing it reads changing fits them again. Kept
                         // by its handler, which passes by the step's null:
                         // a Binding's `when` turned after its value did, so
                         // it set kept to null first.
-                        readonly property var keptNow: root.stepping ? null
+                        readonly property var keptNow: root.steppingOut ? null
                             : root.keysFittedIn(told, foot.loose, keysRoom)
                         property var kept: []
                         onKeptNowChanged: {
@@ -14655,7 +14655,7 @@ Scope {
                             // Fitted once a step out has landed, as the
                             // keys are (foot.keptNow).
                             readonly property var fitNow: {
-                                if (root.stepping)
+                                if (root.steppingOut)
                                     return null;
                                 root.footFitted.facts += 1;
                                 const wide = facts => facts.reduce((sum, fact) => sum + place(fact), 0)
