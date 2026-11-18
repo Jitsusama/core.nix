@@ -2,7 +2,8 @@
 
 use super::*;
 
-/// A line of `thing`'s at `priority`, saying `message`.
+/// A line of `thing`'s at `priority`, saying `message`, from its own unit:
+/// his shell's own when it's the launcher's, elsewhere when not.
 pub(crate) fn entry(thing: &str, priority: u8, message: &str) -> Entry {
     Entry {
         at: 1,
@@ -13,6 +14,11 @@ pub(crate) fn entry(thing: &str, priority: u8, message: &str) -> Entry {
         crashed: None,
         whose: None,
         agents: false,
+        origin: if thing == launcher::IDENTIFIER {
+            Origin::Shell
+        } else {
+            Origin::Elsewhere
+        },
         restart: false,
         kernel: false,
         boot: "b".to_owned(),
@@ -21,6 +27,67 @@ pub(crate) fn entry(thing: &str, priority: u8, message: &str) -> Entry {
         ask: None,
         job: None,
     }
+}
+
+#[test]
+fn a_programs_ready_is_never_taken_from_the_jobs_slice_nor_from_nowhere() {
+    let mut day = Day::new("2026-11-17");
+    let ready = "notices: ready in 12 ms";
+    for origin in [Origin::Jobs, Origin::Unknown] {
+        day.take(&Entry {
+            origin,
+            ..entry("notices", 6, ready)
+        });
+    }
+    assert!(
+        day.launches.ready.is_empty(),
+        "a ready a test or a lab said was taken as his program's"
+    );
+    day.take(&Entry {
+        origin: Origin::Elsewhere,
+        ..entry("notices", 6, ready)
+    });
+    assert_eq!(
+        day.launches.ready.get("notices"),
+        Some(&vec![12]),
+        "his program's ready is taken"
+    );
+}
+
+#[test]
+fn a_windows_opening_is_taken_only_from_the_windows_daemon() {
+    let mut day = Day::new("2026-11-17");
+    let opened = "opened foot 212 ms after its process started";
+    day.take(&Entry {
+        ran_in: Some("run-u9.service".to_owned()),
+        ..entry(launches::IDENTIFIER, 6, opened)
+    });
+    assert!(
+        day.launches.opened.is_empty(),
+        "a command writing itself as windows timed an opening"
+    );
+    day.take(&entry(launches::IDENTIFIER, 6, opened));
+    assert_eq!(
+        day.launches.opened.get("foot"),
+        Some(&vec![212]),
+        "the windows daemon's own opening is taken"
+    );
+}
+
+#[test]
+fn a_pis_start_is_taken_wherever_it_ran() {
+    let mut day = Day::new("2026-11-17");
+    for origin in [Origin::Jobs, Origin::Unknown, Origin::Elsewhere] {
+        day.take(&Entry {
+            origin,
+            ..entry("pi", 6, "pi: ready in 889 ms, session 01a1d0f7")
+        });
+    }
+    assert_eq!(
+        day.launches.pi.get("pi"),
+        Some(&vec![889, 889, 889]),
+        "a council's pi, a busy session moved to the jobs slice and a quick one are all pi starts"
+    );
 }
 
 #[test]

@@ -8,7 +8,7 @@ use std::path::Path;
 use jiff::Timestamp;
 use serde_json::Value;
 
-use crate::journal::Entry;
+use crate::journal::{Entry, Origin};
 
 /// Where macOS keeps `log`, named whole since a launchd agent's PATH is
 /// short and zsh has a `log` of its own.
@@ -83,6 +83,7 @@ pub fn parse(line: &str) -> Option<Entry> {
         crashed: None,
         whose: None,
         agents: false,
+        origin: Origin::Elsewhere,
         restart: false,
         kernel,
         boot: text("bootUUID").unwrap_or_default().to_owned(),

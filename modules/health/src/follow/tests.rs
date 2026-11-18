@@ -107,12 +107,14 @@ fn a_shutdown_seen_is_timed_to_its_boots_end() {
     let into = tempfile::tempdir().expect("a folder");
     let mut follower =
         Follower::new("1970-01-01", into.path(), TimeZone::UTC).knowing(ends_of(boots));
-    follower
-            .take(&format!(
-                r#"{{"__REALTIME_TIMESTAMP":"10000000","_BOOT_ID":"old","MESSAGE_ID":"{}","MESSAGE":"System is rebooting."}}"#,
-                journal::SHUTTING_DOWN
-            ))
-            .expect("taken");
+    let said = format!(
+        r#"{{"__REALTIME_TIMESTAMP":"10000000","_BOOT_ID":"old","_SYSTEMD_CGROUP":"{}",
+        "MESSAGE_ID":"{}","MESSAGE":"System is rebooting."}}"#,
+        journal::LOGIND,
+        journal::SHUTTING_DOWN
+    )
+    .replace('\n', "");
+    follower.take(&said).expect("taken");
     assert_eq!(
         follower.day.boots["old"].shutdown(),
         Some(30_000_000),

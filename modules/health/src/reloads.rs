@@ -43,7 +43,7 @@ mod tests {
     use super::*;
     use crate::day::Day;
     use crate::day::tests::entry;
-    use crate::journal::{Entry, Job};
+    use crate::journal::{Entry, Job, Origin};
 
     fn requested(program: &str, unit: &str) -> String {
         format!("Reload requested from client PID 1520947 ('{program}') (unit {unit})...")
@@ -80,6 +80,7 @@ mod tests {
         };
         let reload = |at, program: &str| Entry {
             at,
+            origin: Origin::Systemd,
             ..entry("systemd", 5, &requested(program, "x.service"))
         };
         day.take(&reload(1_000_000, "systemctl"));
@@ -104,6 +105,30 @@ mod tests {
         assert!(
             day.things.is_empty(),
             "a reload's lines were counted as warnings"
+        );
+    }
+
+    #[test]
+    fn a_reload_only_systemd_tells() {
+        let mut day = Day::new("2026-11-17");
+        let job = |at, job| Entry {
+            at,
+            job: Some(job),
+            ..entry("google.service", 6, "")
+        };
+        // Said under systemd's name by anything but systemd's manager: the
+        // timed work's run of a test, say.
+        day.take(&Entry {
+            at: 1_000_000,
+            origin: Origin::Elsewhere,
+            ..entry("systemd", 5, &requested("systemctl", "x.service"))
+        });
+        day.take(&job(1_800_000, Job::Stopping));
+        day.take(&job(1_864_000, Job::Started));
+        assert_eq!(
+            day.launches.restarted,
+            BTreeMap::from([("google.service".to_owned(), vec![64])]),
+            "a job's made-up reload hid a restart as a tool's own"
         );
     }
 }

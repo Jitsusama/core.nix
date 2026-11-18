@@ -38,12 +38,22 @@ pub const UNIT_STOPPING: &str = "de5b426a63be47a7b6ac3eaac82e2f6f";
 /// shell started", or with no places, as `journalctl --grep` finds it.
 pub const LAUNCHER_READY: &str = "launcher: home (and [0-9]+ places )?kept as the shell started";
 
+/// His shell's unit, as modules/quickshell/home.nix names it, in his
+/// session's slice.
+pub const SHELL: &str = "quickshell.service";
+
 /// Whether `message` is the launcher come ready.
 fn is_ready(message: &str) -> bool {
     message
         .split_once("launcher: home ")
         .is_some_and(|(_, rest)| rest.contains("kept as the shell started"))
 }
+
+/// Where logind runs, the only teller of the machine going down.
+pub(crate) const LOGIND: &str = "/system.slice/systemd-logind.service";
+
+/// Where systemd-coredump runs, a unit for each crash it tells.
+const COREDUMP_SLICE: &str = "/system.slice/system-systemd\\x2dcoredump.slice/";
 
 /// The unit Plymouth runs once a disk asks for its password.
 const PASSWORD_ASKED: &str = "systemd-ask-password-plymouth.service";
@@ -73,6 +83,8 @@ pub struct Entry {
     /// Whether an agent or one of its commands wrote it, from the slice
     /// it ran in: what it says was never put to Joel.
     pub agents: bool,
+    /// Where it was written, as far as what it may tell goes.
+    pub origin: Origin,
     /// Whether it's systemd scheduling a unit's restart.
     pub restart: bool,
     /// Whether the kernel said it.
@@ -125,10 +137,32 @@ pub enum Mark {
     Stopping,
 }
 
+/// Where a line was written, which says what it may tell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    /// A manager of systemd's, in its own init.scope: the only teller of a
+    /// unit's restart, stop or start, a boot's stages and a reload.
+    Systemd,
+    /// His shell's own unit in his session's slice: the only teller of the
+    /// launcher's timings and its being ready. A unit a job starts can't
+    /// take that name while the shell's unit file is there.
+    Shell,
+    /// The jobs slice, where every command is run that agents start, that
+    /// he waits on or that the timed work runs, and the builds' cache: none
+    /// of them is his launcher or a program he opened.
+    Jobs,
+    /// Anywhere else with a cgroup: his programs, the agents themselves,
+    /// the system's services.
+    Elsewhere,
+    /// No cgroup at all: the kernel's own lines, and those whose writer was
+    /// gone before journald looked, which anything could have said.
+    Unknown,
+}
+
 /// Whose a program is, from where systemd ran it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Whose {
-    /// Joel's: in his programs' or his session's slice.
+    /// Joel's: in his programs', his session's or his awaited work's slice.
     His,
     /// Agents' and their tools', test browsers' included.
     Agents,
@@ -151,23 +185,46 @@ pub fn parse(line: &str) -> Option<Entry> {
     let unit = text("USER_UNIT").or_else(|| text("UNIT"));
     let asked_joel = identifier.as_deref() == Some(asks::IDENTIFIER) && !agents_ran(&cgroup);
     let ask = asked_joel.then(|| asks::of(text)).flatten();
-    let thing = match (identifier.as_deref(), unit) {
-        (Some("systemd") | None, Some(unit)) => unit,
-        (Some(identifier), _) => identifier.to_owned(),
-        (None, None) => "unnamed".to_owned(),
+    // What systemd and logind tell (a unit's restart, stop or start, a
+    // boot's stages, the machine going down) is taken only from where they
+    // write it. Any command can write those fields, and a job can name the
+    // slice a unit it starts runs in, but no unit it starts runs in a
+    // manager's own init.scope or as logind. A process of his account can
+    // still write itself into that init.scope's cgroup, and nothing here
+    // stops that: this keeps out what commands say from where they run.
+    let systemd = told_by_systemd(&cgroup);
+    let origin = match in_account(&cgroup).map(|mut below| (below.next(), below.next())) {
+        _ if systemd => Origin::Systemd,
+        _ if cgroup.is_empty() => Origin::Unknown,
+        Some((Some("session.slice"), Some(SHELL))) => Origin::Shell,
+        Some((Some("jobs.slice"), _)) => Origin::Jobs,
+        _ => Origin::Elsewhere,
     };
-    let job = match text("MESSAGE_ID").as_deref() {
+    let told = text("MESSAGE_ID").filter(|id| systemd || (id == SHUTTING_DOWN && cgroup == LOGIND));
+    let thing = match (identifier.as_deref(), unit) {
+        (Some("systemd") | None, Some(unit)) if systemd => unit,
+        (Some(identifier), _) => identifier.to_owned(),
+        (None, _) => "unnamed".to_owned(),
+    };
+    let job = match told.as_deref() {
         _ if !thing.ends_with(".service") => None,
         Some(UNIT_STOPPING) => Some(Job::Stopping),
         Some(UNIT_STARTED) => Some(Job::Started),
         _ => None,
     };
-    // A real crash is told by systemd-coredump, which never runs in agents'
-    // work, so a crash said from there is a forgery and only a line.
-    let crashed = text("COREDUMP_COMM").filter(|_| !agents);
+    // A real crash is told by systemd-coredump, a unit of the system's that
+    // only root starts, so a crash said from anywhere else is a forgery and
+    // only a line. A report can come with no cgroup at all, when it's gone
+    // before journald looks (62 of 177 from 15 to 17 November), so that's
+    // kept, though a command that ends at once can forge one the same way.
+    // Should journald write the root cgroup, as the kernel's helper's for a
+    // crash of the manager or journald itself, that's kept too: no process
+    // of an account's can enter it.
+    let crashed = text("COREDUMP_COMM")
+        .filter(|_| matches!(cgroup.as_str(), "" | "/") || cgroup.starts_with(COREDUMP_SLICE));
     let whose = crashed.as_ref().map(|_| whose(&fields));
     let micros = |name: &str| text(name).and_then(|value| value.parse().ok());
-    let mark = match text("MESSAGE_ID").as_deref() {
+    let mark = match told.as_deref() {
         Some(STARTUP_FINISHED) => micros("KERNEL_USEC").map(|kernel| Mark::Started {
             firmware: stage(&message, "(firmware)").unwrap_or_default(),
             loader: stage(&message, "(loader)").unwrap_or_default(),
@@ -181,7 +238,7 @@ pub fn parse(line: &str) -> Option<Entry> {
             Some(unit) if unit.starts_with(DISK_OPENER) => Some(Mark::Opened),
             _ => None,
         },
-        _ if is_ready(&message) => Some(Mark::Ready),
+        _ if origin == Origin::Shell && is_ready(&message) => Some(Mark::Ready),
         _ => None,
     };
     Some(Entry {
@@ -193,7 +250,8 @@ pub fn parse(line: &str) -> Option<Entry> {
         crashed,
         whose,
         agents,
-        restart: text("MESSAGE_ID").as_deref() == Some(RESTART_SCHEDULED),
+        origin,
+        restart: told.as_deref() == Some(RESTART_SCHEDULED),
         kernel: text("_TRANSPORT").as_deref() == Some("kernel"),
         boot: text("_BOOT_ID").unwrap_or_default(),
         since_boot: micros("__MONOTONIC_TIMESTAMP").unwrap_or_default(),
@@ -242,17 +300,40 @@ fn said(value: &Value) -> Option<String> {
     }
 }
 
-/// Whose a crashed program was, from the slice it ran in: his programs and
-/// his session are his, everything else (jobs, the background) is agents'.
+/// Whether a line came from a manager of systemd's: the machine's, in
+/// `/init.scope`, or an account's, in its `user@N.service/init.scope`.
+fn told_by_systemd(cgroup: &str) -> bool {
+    cgroup == "/init.scope"
+        || in_account(cgroup)
+            .is_some_and(|mut below| below.next() == Some("init.scope") && below.next().is_none())
+}
+
+/// The cgroups below an account's manager that `cgroup` sits in, outermost
+/// first, or none when it isn't below one. A delegated unit can make
+/// cgroups of any name below itself, so a slice counts only where its
+/// manager puts it.
+fn in_account(cgroup: &str) -> Option<std::str::Split<'_, char>> {
+    let (uid, rest) = cgroup
+        .strip_prefix("/user.slice/user-")?
+        .split_once(".slice/user@")?;
+    let below = rest.strip_prefix(uid)?.strip_prefix(".service/")?;
+    Some(below.split('/'))
+}
+
+/// Whose a crashed program was, from the slice it ran in: his programs,
+/// his session and what he waits on at a terminal are his; everything else
+/// (agents' work, the timed work, the background) is agents'.
 fn whose(fields: &Map<String, Value>) -> Whose {
     let cgroup = fields
         .get("COREDUMP_CGROUP")
         .and_then(said)
         .unwrap_or_default();
-    if cgroup.contains("/app.slice") || cgroup.contains("/session.slice") {
-        Whose::His
-    } else {
-        Whose::Agents
+    let mut below = in_account(&cgroup);
+    let mut next = || below.as_mut().and_then(Iterator::next);
+    match (next(), next()) {
+        (Some("app.slice" | "session.slice"), _)
+        | (Some("jobs.slice"), Some("jobs-awaited.slice")) => Whose::His,
+        _ => Whose::Agents,
     }
 }
 
@@ -271,13 +352,12 @@ fn agents_ran(cgroup: &str) -> bool {
 /// reads its sessions in, run in agents.slice, and what they say is the
 /// machine's to answer for, so it counts.
 fn agents_work(cgroup: &str) -> bool {
-    let mut below = cgroup
-        .split('/')
-        .skip_while(|segment| *segment != "jobs.slice")
-        .skip(1);
-    below
-        .next()
-        .is_some_and(|kind| matches!(kind, "jobs.service" | "jobs-work.slice"))
+    in_account(cgroup).is_some_and(|mut below| {
+        below.next() == Some("jobs.slice")
+            && below
+                .next()
+                .is_some_and(|kind| matches!(kind, "jobs.service" | "jobs-work.slice"))
+    })
 }
 
 /// What each journal follower asks journalctl for.
@@ -348,284 +428,4 @@ pub fn following(asked: &[String]) -> Command {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_warning_is_its_programs() {
-        let line = r#"{"__REALTIME_TIMESTAMP":"1794450621321755","PRIORITY":"4",
-            "SYSLOG_IDENTIFIER":"pebble-lights","_SYSTEMD_USER_UNIT":"pebble-lights.service",
-            "MESSAGE":"light 3 answered in 812 ms"}"#
-            .replace('\n', "");
-        let entry = parse(&line).expect("a journal line is an entry");
-        assert_eq!(
-            entry.thing, "pebble-lights",
-            "the identifier names the thing"
-        );
-        assert_eq!(entry.priority, 4, "the priority is read");
-        assert_eq!(entry.at, 1_794_450_621_321_755, "the time is read");
-        assert_eq!(
-            entry.ran_in.as_deref(),
-            Some("pebble-lights.service"),
-            "its unit"
-        );
-        assert!(
-            !entry.restart && !entry.kernel,
-            "it's neither a restart nor the kernel's"
-        );
-    }
-
-    #[test]
-    fn systemd_speaking_of_a_unit_is_the_units() {
-        let line = r#"{"__REALTIME_TIMESTAMP":"1","PRIORITY":"6","SYSLOG_IDENTIFIER":"systemd",
-            "USER_UNIT":"merge-net.service","MESSAGE_ID":"5eb03494b6584870a536b337290809b3",
-            "MESSAGE":"merge-net.service: Scheduled restart job, restart counter is at 1."}"#
-            .replace('\n', "");
-        let entry = parse(&line).expect("a journal line is an entry");
-        assert_eq!(
-            entry.thing, "merge-net.service",
-            "the unit spoken of is the thing"
-        );
-        assert!(entry.restart, "systemd's restart message is a restart");
-    }
-
-    #[test]
-    fn a_crash_says_whose_program_it_was() {
-        let his = r#"{"__REALTIME_TIMESTAMP":"1","PRIORITY":"2",
-            "SYSLOG_IDENTIFIER":"systemd-coredump","COREDUMP_COMM":"1password",
-            "COREDUMP_CGROUP":"/user.slice/user-1000.slice/app.slice/app-1password.scope",
-            "MESSAGE":"Process 4169227 (1password) of user 1000 dumped core."}"#
-            .replace('\n', "");
-        let agents = his
-            .replace("1password", "chrome")
-            .replace("/app.slice/", "/jobs.slice/jobs-timed.slice/");
-        let his = parse(&his).expect("a crash is an entry");
-        let agents = parse(&agents).expect("a crash is an entry");
-        assert_eq!(
-            his.crashed.as_deref(),
-            Some("1password"),
-            "the program is named"
-        );
-        assert_eq!(his.whose, Some(Whose::His), "a program in his slice is his");
-        assert_eq!(
-            agents.whose,
-            Some(Whose::Agents),
-            "a job's program is agents'"
-        );
-    }
-
-    #[test]
-    fn a_crash_said_from_agents_work_is_only_a_line() {
-        let line = r#"{"__REALTIME_TIMESTAMP":"1","PRIORITY":"2",
-            "SYSLOG_IDENTIFIER":"systemd-coredump","COREDUMP_COMM":"kitty",
-            "COREDUMP_CGROUP":"/user.slice/user-1000.slice/user@1000.service/app.slice/k.scope",
-            "_SYSTEMD_CGROUP":"/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs.service",
-            "MESSAGE":"Process 1 (kitty) of user 1000 dumped core."}"#
-            .replace('\n', "");
-        let entry = parse(&line).expect("a journal line is an entry");
-        assert_eq!(
-            (entry.crashed, entry.agents),
-            (None, true),
-            "an agent's command can't make up a crash of his"
-        );
-    }
-
-    #[test]
-    fn a_line_says_whether_an_agents_command_wrote_it() {
-        let from = |slice: &str| {
-            let line = format!(
-                r#"{{"__REALTIME_TIMESTAMP":"1","PRIORITY":"3","SYSLOG_IDENTIFIER":"tec",
-                "_SYSTEMD_CGROUP":"/user.slice/user-1000.slice/user@1000.service/{slice}",
-                "MESSAGE":"could not reach the daemon"}}"#
-            )
-            .replace('\n', "");
-            parse(&line).expect("a journal line is an entry").agents
-        };
-        assert!(
-            !from("app.slice/app-niri-kitty-1.scope"),
-            "a line from his own terminal is his"
-        );
-        assert!(
-            from("jobs.slice/jobs-work.slice/jobs-work-delta.slice/work-9-1.scope"),
-            "a line from an agent's command is agents'"
-        );
-        assert!(
-            from("jobs.slice/jobs.service"),
-            "a line from an agent's shell is agents'"
-        );
-        assert!(
-            !from("jobs.slice/jobs-awaited.slice/awaited.service"),
-            "what he waits on at a terminal is his"
-        );
-        assert!(
-            !from("jobs.slice/jobs-timed.slice/keeps.service"),
-            "the machine's timed work is the machine's"
-        );
-        assert!(
-            !from("jobs.slice/sccache.service"),
-            "the compile cache every build reads is the machine's"
-        );
-        assert!(
-            !from("agents.slice/sessions-kitty.service"),
-            "the terminal he reads sessions in, and the agents themselves, answer to him"
-        );
-        assert!(
-            !from("app.slice/notjobs.slice/x.scope"),
-            "a slice is matched whole, not by its name's end"
-        );
-    }
-
-    #[test]
-    fn a_message_in_bytes_is_read_as_far_as_it_goes() {
-        let line = r#"{"__REALTIME_TIMESTAMP":"1","PRIORITY":"3","_TRANSPORT":"kernel",
-            "SYSLOG_IDENTIFIER":"kernel","MESSAGE":[110,118,109,101,255]}"#
-            .replace('\n', "");
-        let entry = parse(&line).expect("a kernel line is an entry");
-        assert!(
-            entry.message.starts_with("nvme"),
-            "the bytes are read: {}",
-            entry.message
-        );
-        assert!(entry.kernel, "the kernel's transport is the kernel's");
-    }
-
-    #[test]
-    fn a_service_stopping_or_started_is_followed_whatever_its_description_says() {
-        // systemd says a service with a description by it, as in "Stopping
-        // Quickshell, which draws the launcher...", so a follower that
-        // greps the message for a unit's name hears no restart of one.
-        let stopping = format!("MESSAGE_ID={UNIT_STOPPING}");
-        let follower = followed()
-            .into_iter()
-            .find(|asked| asked.contains(&stopping))
-            .expect("a service stopping is followed");
-        assert_eq!(
-            follower,
-            [stopping, format!("MESSAGE_ID={UNIT_STARTED}")],
-            "a service's stop and start are followed only where the message names its unit"
-        );
-    }
-
-    #[test]
-    fn a_service_stopping_or_started_is_its_job_and_a_scope_is_none() {
-        let line = |id: &str, unit: &str| {
-            format!(
-                r#"{{"__REALTIME_TIMESTAMP":"1","PRIORITY":"6","SYSLOG_IDENTIFIER":"systemd",
-                "MESSAGE_ID":"{id}","USER_UNIT":"{unit}","MESSAGE":"Started {unit}"}}"#
-            )
-            .replace('\n', "")
-        };
-        let job = |id, unit| parse(&line(id, unit)).expect("systemd's line is an entry");
-        let stopping = job(UNIT_STOPPING, "google.service");
-        assert_eq!(
-            (stopping.thing.as_str(), stopping.job),
-            ("google.service", Some(Job::Stopping)),
-            "a service stopping wasn't its job"
-        );
-        assert_eq!(
-            job(UNIT_STARTED, "google.service").job,
-            Some(Job::Started),
-            "a service started wasn't its job"
-        );
-        assert_eq!(
-            job(UNIT_STARTED, "work-1-2.scope").job,
-            None,
-            "a scope started was taken for a service's"
-        );
-    }
-
-    #[test]
-    fn a_boot_says_how_long_each_stage_took() {
-        let line = r#"{"__REALTIME_TIMESTAMP":"1","PRIORITY":"6","SYSLOG_IDENTIFIER":"systemd",
-            "_BOOT_ID":"382e94","__MONOTONIC_TIMESTAMP":"55725000",
-            "MESSAGE_ID":"b07a249cd024414a82dd00cd181378ff","KERNEL_USEC":"432199",
-            "INITRD_USEC":"24362468","USERSPACE_USEC":"20671351",
-            "MESSAGE":"Startup finished in 9.709s (firmware) + 549ms (loader) + 432ms (kernel) + 24.362s (initrd) + 20.671s (userspace) = 55.725s."}"#
-            .replace('\n', "");
-        let entry = parse(&line).expect("a boot's line is an entry");
-        assert_eq!(
-            entry.mark,
-            Some(Mark::Started {
-                firmware: 9_709_000,
-                loader: 549_000,
-                kernel: 432_199,
-                initrd: 24_362_468,
-                userspace: 20_671_351,
-            }),
-            "each stage is read"
-        );
-        assert_eq!(
-            (entry.boot.as_str(), entry.since_boot),
-            ("382e94", 55_725_000),
-            "its boot and when in it"
-        );
-        let user = line.replace(r#""KERNEL_USEC":"432199","#, "");
-        assert_eq!(
-            parse(&user).expect("an entry").mark,
-            None,
-            "an account's manager starting isn't the machine's boot"
-        );
-    }
-
-    #[test]
-    fn the_password_the_launcher_and_a_shutdown_are_marked() {
-        let unit = |name: &str| {
-            format!(
-                r#"{{"__REALTIME_TIMESTAMP":"1","MESSAGE_ID":"39f53479d3a045ac8e11786248231fbf","UNIT":"{name}","MESSAGE":"Finished."}}"#
-            )
-        };
-        let mark = |line: &str| parse(line).expect("an entry").mark;
-        assert_eq!(
-            mark(&unit("systemd-ask-password-plymouth.service")),
-            Some(Mark::Asked),
-            "Plymouth asking is the password asked"
-        );
-        assert_eq!(
-            mark(&unit("systemd-cryptsetup@system.service")),
-            Some(Mark::Opened),
-            "any disk opening"
-        );
-        assert_eq!(
-            mark(&unit("nix-daemon.service")),
-            None,
-            "other units aren't marks"
-        );
-        let said = |message: &str, id: &str| {
-            format!(r#"{{"__REALTIME_TIMESTAMP":"1","MESSAGE_ID":"{id}","MESSAGE":"{message}"}}"#)
-        };
-        assert_eq!(
-            mark(&said(
-                "launcher: home and 7 places kept as the shell started, 7054 rows made in 213 ms",
-                ""
-            )),
-            Some(Mark::Ready),
-            "the launcher's rows made is it ready"
-        );
-        assert_eq!(
-            mark(&said(
-                "launcher: home kept as the shell started, 7989 rows made in 35 ms",
-                ""
-            )),
-            Some(Mark::Ready),
-            "the launcher's rows made with no places kept is it ready"
-        );
-        assert_eq!(
-            mark(&said(
-                "System is rebooting.",
-                "98268866d1d54a499c4e98921d93bc40"
-            )),
-            Some(Mark::Stopping),
-            "logind's rebooting is the shutdown asked"
-        );
-    }
-
-    #[test]
-    fn a_line_that_isnt_an_entry_is_none() {
-        assert_eq!(parse("-- No entries --"), None, "words aren't an entry");
-        assert_eq!(
-            parse(r#"{"MESSAGE":"no time"}"#),
-            None,
-            "an entry needs its time"
-        );
-    }
-}
+mod tests;
