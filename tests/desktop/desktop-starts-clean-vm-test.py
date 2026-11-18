@@ -260,31 +260,27 @@ class Touchscreen:
         tap sent, unless every tap sent is heard, so one still on its way lands before the
         subtest counts what wev heard.
         """
-        pace = vm_helpers.pace(vm_helpers.busyness())
-        taps = vm_helpers.Taps(HEARING.total_seconds() * pace)
+        taps = vm_helpers.Taps(HEARING.total_seconds() * vm_helpers.pace(vm_helpers.busyness()))
+        began = time.monotonic()
 
         def tapped(_: bool) -> bool:
             if self.touches("up"):
                 return True
             if taps.due():
-                # A stand-in that died leaves its fifo with no reader, where a write would wait
-                # for ever; cut off, it fails the wait, which then says the stand-in's state.
-                cut = int(SAYING.total_seconds())
-                self.desktop.machine.succeed(
-                    f"timeout {cut} sh -c \"echo '1 tap 0.5' > /run/touchscreen\""
-                )
+                # Counted as it goes, so a tap whose write is cut off counts as tried.
                 taps.send()
+                self.told("1 tap 0.5")
             return False
 
         try:
             retry(tapped, timeout=TAKING)
         except Exception as error:
-            # Whether the stand-in still reads its taps tells a dead stand-in from a Cage that
+            # Whether the stand-in's unit still runs tells a dead stand-in from a Cage that
             # never took the device; the error says what stopped the wait.
-            given = TAKING.total_seconds() * pace
+            took = time.monotonic() - began
             _, standing = self.desktop.machine.execute("systemctl is-active touchscreen")
             message = (
-                f"wev heard none of {taps.sent} taps in about {given:.0f} s, the stand-in"
+                f"wev heard none of {taps.sent} taps tried in {took:.0f} s, the stand-in"
                 f" {standing.strip()}: {error}"
             )
             raise AssertionError(message) from error
@@ -292,6 +288,15 @@ class Touchscreen:
         # wait's own pace only stretches it.
         landing = timedelta(seconds=taps.gap) + HEARING
         retry(lambda _: taps.landed(self.touches("up")), timeout=landing)
+
+    def told(self, line: str) -> None:
+        """Tell the stand-in one thing to do, through its fifo.
+
+        A stand-in that died leaves its fifo with no reader, where a write would wait for ever,
+        so the write is cut off and fails rather than hanging the test.
+        """
+        cut = int(SAYING.total_seconds())
+        self.desktop.machine.succeed(f"timeout {cut} sh -c \"echo '{line}' > /run/touchscreen\"")
 
     def settled(self) -> None:
         """Wait for the windows to stand still, whatever the margin cat does along their tops."""
@@ -303,7 +308,7 @@ class Touchscreen:
     ) -> None:
         """Swipe with so many fingers one way, as a person sees it, until something holds."""
         drawn = self.over.get(way, way)
-        self.desktop.machine.succeed(f"echo '{fingers} {drawn} {across}' > /run/touchscreen")
+        self.told(f"{fingers} {drawn} {across}")
         try:
             retry(lambda _: bool(until()), timeout=GOING)
         except Exception:

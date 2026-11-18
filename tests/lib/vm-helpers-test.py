@@ -423,16 +423,28 @@ def test_a_change_over_several_rows_read_is_boxed_from_its_first_to_its_last() -
     assert said == " from 0,1 to 3,4", f"changes in rows 1 and 3 were said as {said!r}"
 
 
-def test_pictures_of_other_sizes_are_said_to_differ_in_size() -> None:
+def test_pictures_of_other_sizes_holding_the_rows_read_are_said_to_differ_in_size() -> None:
     where = vm_helpers.changed_between_rows(1, 3)
     said = where(picture("..", "ww", "ww", ".."), picture("..", "ww", "ww", "..", ".."))
     assert said == " in its size", f"a picture 4 high against one 5 high was said as {said!r}"
 
 
-def test_a_picture_grown_too_short_for_the_rows_read_is_said_to_differ_in_size() -> None:
-    where = vm_helpers.changed_between_rows(1, 4)
-    said = where(picture("..", "ww", "ww", ".."), picture("..", "ww"))
-    assert said == " in its size", f"a picture 4 high against one 2 high was said as {said!r}"
+def test_a_wait_on_rows_a_picture_grows_too_short_for_says_so() -> None:
+    # The rows can't be read in a picture that no longer holds them, so the wait refuses on
+    # the look that brings it, naming the rows and the height, rather than passing.
+    guest = FadingGuest(frames=0, apart=1.0)
+    shots = iter([picture("..", "ww", "ww", "..")])
+
+    def shrinking() -> bytes:
+        guest.now += FadingGuest.LOOKING
+        return next(shots, picture("..", "ww"))
+
+    def nothing_counted() -> dict[str, int]:
+        return {}
+
+    alike = vm_helpers.alike_between_rows(1, 4)
+    with pytest.raises(ValueError, match="rows 1 to 4 aren't in a picture 2 high"):
+        vm_helpers.settled(shrinking, nothing_counted, 0.5, 5, clock=guest.clock, alike=alike)
 
 
 def test_a_change_only_outside_the_rows_read_is_said_as_none() -> None:
