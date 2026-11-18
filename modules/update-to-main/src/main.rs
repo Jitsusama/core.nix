@@ -21,8 +21,10 @@
 //!   holds now, and exits 0, or 77 when the daemon refused the ask.
 //! - `update-to-main follow [--config FILE] [--every SECONDS]`: an
 //!   account's service that asks whenever main moves (src/follow.rs), and
-//!   at least every SECONDS, 600 unless given. It runs until the system's
-//!   path holds another update-to-main, so its service starts the newest.
+//!   at least every SECONDS, 600 unless given. Once the system's path
+//!   holds another update-to-main, it starts that one in its place, in the
+//!   same process. A config it can't read it waits out, looking again
+//!   every half minute, since a switch writes a newer one's config first.
 //! - `update-to-main job FOLDER`: a job the daemon starts in an account's
 //!   login session on a Mac, running the command written in FOLDER
 //!   (src/session.rs). Root reads how the command ended from the folder;
@@ -31,6 +33,7 @@
 //! Each takes the terminal kit's shape, its help its own (`help()`).
 
 use std::fs;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::sync::mpsc;
@@ -125,7 +128,10 @@ fn help() -> Help {
                 .example("update-to-main follow", "as an account's service")
                 .option("--config FILE", "the system's, unless given")
                 .option("--every SECONDS", "asks at least this often, 600")
-                .exit(Exit::Config, "its config couldn't be read"),
+                .exit(
+                    Exit::Failed,
+                    "a newer update-to-main couldn't start in its place",
+                ),
         )
         .subcommand(
             Help::new("job", "runs a command in a Mac's login session")
@@ -219,27 +225,44 @@ fn follow_args(mut rest: &[&str]) -> Option<(PathBuf, u64)> {
     }
 }
 
-/// Follows main until the system's path holds another update-to-main, or
-/// the config can't be read. The config is read again each time, since a
-/// switch may change it.
+/// Follows main until the system's path holds another update-to-main,
+/// which it then starts in its place. The config is read again each time,
+/// since a switch may change it, and one it can't read is waited out
+/// rather than ended on: a switch writes a newer update-to-main's config
+/// before the system's path holds it, and a follower that ended there
+/// waited 30 seconds to start again, long enough for the switch to stop
+/// it for good (switch 1036 on 18 November).
 fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
     let started = std::env::current_exe().and_then(fs::canonicalize).ok();
     let mut follower = Follower::default();
+    let mut unreadable = None;
     let mut unread = None;
     let mut unanswered = None;
     let mut seen = None;
     loop {
         let config = match Config::read(file) {
-            Ok(config) => config,
+            Ok(config) => {
+                unreadable = None;
+                config
+            }
             Err(e) => {
-                return Err(Failure::new(Exit::Config, "its config couldn't be read").because(e));
+                if let Some(program) =
+                    follow::newer(Config::program_in(file).as_deref(), started.as_deref())
+                {
+                    return started_in_place(&program);
+                }
+                // Said once until it changes, since a switch may take a
+                // while to give the system its newer update-to-main.
+                if unreadable.as_ref() != Some(&e) {
+                    eprintln!("update-to-main: its config couldn't be read, so it waits: {e}");
+                    unreadable = Some(e);
+                }
+                thread::sleep(follow::LOOK_EVERY);
+                continue;
             }
         };
-        if let Some(program) = &config.program
-            && fs::canonicalize(program).ok() != started
-        {
-            println!("the system holds another update-to-main; starting again");
-            return Ok(());
+        if let Some(program) = follow::newer(config.program.as_deref(), started.as_deref()) {
+            return started_in_place(&program);
         }
         match follow::heads(&config, seen.as_ref()) {
             Ok(heads) => {
@@ -291,6 +314,23 @@ fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
         }
         thread::sleep(follow::LOOK_EVERY);
     }
+}
+
+/// Starts the system's newer update-to-main in this one's place, with the
+/// same arguments and in the same process, so its service never stands
+/// stopped between them for a switch to leave stopped. It returns only
+/// when that couldn't be done, as a failure its service starts the newest
+/// again after.
+fn started_in_place(program: &Path) -> Result<(), Failure> {
+    println!("the system holds another update-to-main; starting it in this one's place");
+    let e = Command::new(program)
+        .args(std::env::args_os().skip(1))
+        .exec();
+    Err(Failure::new(
+        Exit::Failed,
+        "the newer update-to-main couldn't start in its place",
+    )
+    .because(format!("{}: {e}", program.display())))
 }
 
 /// Asks for an update at `heads` and hears it to its ending, looking at

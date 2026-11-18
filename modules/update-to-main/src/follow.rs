@@ -26,7 +26,7 @@ use crate::line::Line;
 use crate::tell::Telling;
 use crate::update::NEEDS_HOLD;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -281,6 +281,18 @@ impl Follower {
 pub fn profile_changed(profile: &Path, now: Instant) -> Option<Instant> {
     let made = fs::symlink_metadata(profile).ok()?.modified().ok()?;
     now.checked_sub(SystemTime::now().duration_since(made).ok()?)
+}
+
+/// The update-to-main a follower started as `started` should start in its
+/// place: the config's `program` where it is one that exists and isn't
+/// this one. A program that leads nowhere yet, as midway through a switch,
+/// or a follower that can't name itself, starts nothing, since starting a
+/// missing file would end the follower and starting itself again would
+/// never pause. It's the program as resolved, so what was compared is what
+/// runs.
+pub fn newer(program: Option<&Path>, started: Option<&Path>) -> Option<PathBuf> {
+    let program = fs::canonicalize(program?).ok()?;
+    (program != started?).then_some(program)
 }
 
 /// Where main and each followed input's branch are, as their hosts say,
@@ -710,5 +722,46 @@ pub(crate) mod tests {
         assert!(!f.should_ask(&at("b"), "refused", t + FAILED_AGAIN, EVERY));
         // A person's ask, with a hold sent, ended some other way.
         assert!(f.should_ask(&at("b"), "done", t + FAILED_AGAIN, EVERY));
+    }
+
+    /// Two programs in a folder, as a switch leaves an older and a newer
+    /// update-to-main in the store, and a link to the newer, as the
+    /// system's path gives it.
+    fn programs() -> (tempfile::TempDir, PathBuf, PathBuf, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let older = dir.path().join("older");
+        let newer = dir.path().join("newer");
+        let linked = dir.path().join("linked");
+        fs::write(&older, "").unwrap();
+        fs::write(&newer, "").unwrap();
+        std::os::unix::fs::symlink(&newer, &linked).unwrap();
+        let (older, newer) = (older.canonicalize().unwrap(), newer.canonicalize().unwrap());
+        (dir, older, newer, linked)
+    }
+
+    #[test]
+    fn a_follower_starts_the_newer_program_the_system_links_to() {
+        let (_dir, older, newer_one, linked) = programs();
+        assert_eq!(newer(Some(&linked), Some(&older)), Some(newer_one));
+    }
+
+    #[test]
+    fn a_follower_starts_nothing_when_the_system_holds_it_already() {
+        let (_dir, _older, newer_one, linked) = programs();
+        assert_eq!(newer(Some(&linked), Some(&newer_one)), None);
+    }
+
+    #[test]
+    fn a_follower_starts_nothing_from_a_program_that_leads_nowhere() {
+        let (dir, older, _newer, _linked) = programs();
+        let missing = dir.path().join("not-yet");
+        assert_eq!(newer(Some(&missing), Some(&older)), None);
+        assert_eq!(newer(None, Some(&older)), None);
+    }
+
+    #[test]
+    fn a_follower_that_cant_name_itself_starts_nothing() {
+        let (_dir, _older, _newer, linked) = programs();
+        assert_eq!(newer(Some(&linked), None), None);
     }
 }

@@ -366,6 +366,16 @@ impl Config {
         serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
     }
 
+    /// The program a config names, read from a config `read` refuses: a
+    /// switch can write a newer update-to-main's config, with fields an
+    /// older one doesn't know, while the older one still follows, and
+    /// this is how it finds the newer one to start in its place.
+    pub fn program_in(path: &Path) -> Option<PathBuf> {
+        let text = fs::read_to_string(path).ok()?;
+        let config: serde_json::Value = serde_json::from_str(&text).ok()?;
+        config.get("program")?.as_str().map(PathBuf::from)
+    }
+
     /// The bare repository root keeps its copy of main in.
     pub fn repository_copy(&self) -> PathBuf {
         self.state.join("repository.git")
@@ -419,5 +429,48 @@ impl Config {
     /// The file holding the commit of each input it last followed.
     pub fn followed_file(&self) -> PathBuf {
         self.state.join("followed.json")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn written(text: &str) -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().expect("a folder for the config");
+        let path = dir.path().join("config.json");
+        fs::write(&path, text).expect("the config written");
+        (dir, path)
+    }
+
+    #[test]
+    fn a_config_with_a_field_this_one_does_not_know_still_names_its_program() {
+        let (_dir, path) =
+            written(r#"{"program": "/run/current-system/sw/bin/update-to-main", "newer": 1}"#);
+        assert!(
+            Config::read(&path).is_err(),
+            "read refuses this config, as an older update-to-main refuses a newer's"
+        );
+        assert_eq!(
+            Config::program_in(&path),
+            Some(PathBuf::from("/run/current-system/sw/bin/update-to-main")),
+            "the program is read from it all the same"
+        );
+    }
+
+    #[test]
+    fn a_config_that_names_no_program_or_is_not_json_names_none() {
+        let (_dir, path) = written(r#"{"newer": 1}"#);
+        assert_eq!(Config::program_in(&path), None, "no program field");
+        let (_dir, path) = written("half a config {");
+        assert_eq!(Config::program_in(&path), None, "not JSON");
+        let (_dir, path) = written(r#"{"program": null}"#);
+        assert_eq!(Config::program_in(&path), None, "a program of none");
+    }
+
+    #[test]
+    fn a_config_that_is_not_there_names_no_program() {
+        let dir = tempfile::tempdir().expect("a folder");
+        assert_eq!(Config::program_in(&dir.path().join("gone.json")), None);
     }
 }

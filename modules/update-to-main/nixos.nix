@@ -98,8 +98,9 @@ in
       wantedBy = [ "default.target" ];
       unitConfig.ConditionUser = cfg.follower;
       serviceConfig = {
-        # It ends once the system's path holds another update-to-main, so
-        # coming back starts the newest.
+        # It starts the system's newer update-to-main in its own place,
+        # and waits out a config it can't read, so it ends only when that
+        # start fails; coming back then starts the newest.
         ExecStart = "/run/current-system/sw/bin/update-to-main follow";
         Restart = "always";
         RestartSec = 30;
