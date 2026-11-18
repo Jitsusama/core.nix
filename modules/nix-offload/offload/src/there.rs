@@ -2494,7 +2494,13 @@ const GRACE: u32 = 300;
 /// claimer has lived for the grace period. The run sent again waits on
 /// what the first is building through Nix's lock on each derivation.
 /// Once the command itself has ended, the watcher ends too, as there's
-/// nothing left to wait for.
+/// nothing left to wait for, ending what the command left. However the
+/// shell ends, whether the command returns, calls exit, fails under
+/// `set -e` or is hung up, it takes its own claim on the way out, and the
+/// folder once no other claims it, keeping the command's status: a claim
+/// left behind names a pid that the machine gives out again, and on 18
+/// November three of one Mac's 516 such claims named its daemons, so a
+/// watcher would hold that run for callers long gone.
 pub fn far(command: &str) -> String {
     far_within(command, &format!("${{NIX_OFFLOAD_GRACE:-{GRACE}}}"), false)
 }
@@ -2561,8 +2567,16 @@ fn far_within(command: &str, grace: &str, outlives: bool) -> String {
     } else {
         ("", "")
     };
+    // A run ending as another sends it again can take the folder between
+    // the new one's mkdir and its claim, so a claim that finds no folder
+    // is made once more.
+    let claim = "mkdir -p \"$claims\" && : > \"$claims/$PPID\"";
+    // What says the builder is full holds the shell's stderr, and reads a
+    // shell its caller hasn't reaped yet as still there, so a caller
+    // reading to the end before it reaps would wait on it for ever: the
+    // shell ends it on the way out.
     format!(
-        "{named}claims=\"{claims}\"; mkdir -p \"$claims\" && : > \"$claims/$PPID\"; \
+        "{named}claims=\"{claims}\"; {{ {claim}; }} 2>/dev/null || {{ {claim}; }}; \
          (gone=0; while [ \"$gone\" -lt \"{grace}\" ]; do sleep 1; \
          kill -0 $$ 2>/dev/null || break; \
          held=; for caller in $(ls \"$claims\" 2>/dev/null); do \
@@ -2570,9 +2584,10 @@ fn far_within(command: &str, grace: &str, outlives: bool) -> String {
          done; if [ -n \"$held\" ]; then gone=0; else gone=$((gone + 1)); fi; done; \
          {unnamed}rmdir \"$claims\" 2>/dev/null; kill -TERM 0) \
          </dev/null >/dev/null 2>&1 & \
-         {ROOM_SAID} watching=$!; \
-         trap 'kill $watching 2>/dev/null; exit 143' HUP TERM; {command}; \
-         ended=$?; kill $watching 2>/dev/null; exit $ended"
+         {ROOM_SAID} saying=$!; \
+         nix_offload_given() {{ kill $saying 2>/dev/null; {unnamed}rm -f \"$claims/$PPID\"; rmdir \"$claims\" 2>/dev/null; }}; \
+         trap 'ended=$?; nix_offload_given || :; exit $ended' EXIT; \
+         trap 'exit 143' HUP TERM; {command}"
     )
 }
 
@@ -5360,6 +5375,104 @@ mod tests {
             .unwrap();
         assert_eq!(ran.status.code(), Some(1), "{ran:?}");
         assert_eq!(String::from_utf8_lossy(&ran.stdout), "ran\n");
+    }
+
+    #[test]
+    fn a_run_that_ends_takes_its_claim_away_in_dash_and_zsh() {
+        // On 18 November a Mac held 130 claim folders, one with 516
+        // claims of runs long ended, three of them pids reused since by
+        // daemons, which a watcher reads as callers still there: a run
+        // killed watcher and all as its command ended never took its own.
+        // A command that returns, exits itself or fails under `set -e`
+        // ends each way, and keeps its status.
+        let endings = [
+            ("true", 0),
+            ("exit 3", 3),
+            ("set -e; false; echo unreached", 1),
+        ];
+        for shell in ["dash", "zsh"] {
+            let folder = tempfile::tempdir().unwrap();
+            for (command, status) in endings {
+                for sent in [far(command), outliving(command)] {
+                    let ran = Command::new(shell)
+                        .args(["-c", &sent])
+                        .env("TMPDIR", folder.path())
+                        .process_group(0)
+                        .output()
+                        .unwrap();
+                    assert_eq!(
+                        ran.status.code(),
+                        Some(status),
+                        "{shell} {command}: {ran:?}"
+                    );
+                    assert_eq!(
+                        String::from_utf8_lossy(&ran.stdout),
+                        "",
+                        "{shell} {command}"
+                    );
+                }
+            }
+            let left: Vec<_> = fs::read_dir(folder.path())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            assert!(left.is_empty(), "{shell} left {left:?}");
+        }
+    }
+
+    #[test]
+    fn a_run_hung_up_takes_its_claim_away() {
+        // sshd hangs up the whole group when the connection drops, the
+        // command with it.
+        for shell in ["dash", "zsh"] {
+            let folder = tempfile::tempdir().unwrap();
+            let mut ran = Command::new(shell)
+                .args(["-c", &outliving("echo started; sleep 30")])
+                .env("TMPDIR", folder.path())
+                .process_group(0)
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let mut said = BufReader::new(ran.stdout.take().unwrap());
+            let mut line = String::new();
+            said.read_line(&mut line).unwrap();
+            let group = i32::try_from(ran.id()).unwrap();
+            Command::new("kill")
+                .args(["-HUP", "--", &format!("-{group}")])
+                .status()
+                .unwrap();
+            let status = ran.wait().unwrap();
+            let left: Vec<_> = fs::read_dir(folder.path())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            assert_eq!(status.code(), Some(143), "{shell}: {status:?}");
+            assert!(left.is_empty(), "{shell} left {left:?}");
+        }
+    }
+
+    #[test]
+    fn a_run_that_ends_leaves_another_callers_claim() {
+        // The same command sent by another run still running there.
+        let mut other = Command::new("sleep").arg("30").spawn().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        let digest = crate::running::stable_digest(&[b"true"]);
+        let claims = folder.path().join(format!("nix-offload-run-{digest:016x}"));
+        fs::create_dir(&claims).unwrap();
+        fs::write(claims.join(other.id().to_string()), "").unwrap();
+        let ran = Command::new("dash")
+            .args(["-c", &far("true")])
+            .env("TMPDIR", folder.path())
+            .process_group(0)
+            .output()
+            .unwrap();
+        let left: Vec<_> = fs::read_dir(&claims)
+            .map(|entries| entries.map(|entry| entry.unwrap().file_name()).collect())
+            .unwrap_or_default();
+        other.kill().unwrap();
+        other.wait().unwrap();
+        assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+        assert_eq!(left, [std::ffi::OsString::from(other.id().to_string())]);
     }
 
     #[test]
