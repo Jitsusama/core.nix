@@ -557,6 +557,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         *,
         shell_only: bool = False,
         ticking: bool = False,
+        between: tuple[int, int] | None = None,
     ) -> str | None:
         """Wait for the screen to stand still, giving None once it has, or why it never did.
 
@@ -568,10 +569,23 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         only reads the count in place of the picture, for a screen where something else
         always moves: still is then the shell drawing the same between looks. Ticking allows
         a running clock's figures to change, the rest of the picture holding still
-        (but_the_ticks), since a clock's own frames would change the count with it.
+        (but_the_ticks), since a clock's own frames would change the count with it. Between
+        reads only the picture's rows from the first up to the second (alike_between_rows),
+        for a wait on windows the margin cat walks along the tops of; it goes with neither
+        shell only, which reads no picture, nor ticking, which reads the whole of one.
         """
+        if between and (shell_only or ticking):
+            message = "a wait on a band of rows takes neither shell_only nor ticking"
+            raise ValueError(message)
         pace = vm_helpers.pace(vm_helpers.busyness())
         began = time.monotonic()
+        alike: Callable[[bytes, bytes], bool] = operator.eq
+        where: Callable[[bytes, bytes], str] = vm_helpers.nowhere if shell_only else changed_where
+        if between:
+            alike = vm_helpers.alike_between_rows(*between)
+            where = vm_helpers.changed_between_rows(*between)
+        elif ticking:
+            alike = but_the_ticks
         with tempfile.TemporaryDirectory() as folder:
             shot = Path(folder) / "shot.ppm"
 
@@ -598,8 +612,8 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
                     drawn,
                     span * pace,
                     timeout.total_seconds() * pace,
-                    where=(vm_helpers.nowhere if shell_only else changed_where),
-                    alike=(but_the_ticks if ticking else operator.eq),
+                    where=where,
+                    alike=alike,
                 )
             finally:
                 # Counting stops, so a shell between checks pays nothing for it.

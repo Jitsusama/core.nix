@@ -11,11 +11,13 @@ opening comment says what the test proves. Every test asks for the desktop, star
 from __future__ import annotations
 
 import json
+import shlex
 import time
 from datetime import timedelta
 from typing import TYPE_CHECKING, cast
 
 import pytest
+import vm_helpers
 from desktop_session import (
     CAP_SYS_NICE,
     PICTURE_COLOURS,
@@ -36,6 +38,23 @@ SAYING = timedelta(seconds=30)
 # the test says its time never ended it: 2 seconds paced at most four
 # times, with room for su to start and end.
 CUT_OFF = timedelta(seconds=60)
+# How long Cage may take to take a new input device, which it does once udev hands it on: on a
+# busy host on 2026-11-16 that came 21 s after the stand-in touchscreen started.
+TAKING = timedelta(seconds=60)
+# How long a tap Cage has may take to reach wev before another goes, paced by how busy the
+# host is, so a slow tap isn't heard twice: a tap reaches it in well under a second on a busy
+# host.
+HEARING = timedelta(seconds=5)
+# The rows of QEMU's picture a wait on the swipes' windows reads: below their tops, which the
+# margin cat walks along, and above the screen's foot, where it sits otherwise. Every window
+# the swipes move stands the screen's full height, so each edge they move crosses these rows.
+# The cat crosses them only climbing a side or falling as a column narrows, which ends, so a
+# wait outlasts it rather than passing over it.
+BELOW_THE_CAT = (100, 700)
+# How long those rows have to stand still in: the cat climbing a side across all 600 of them,
+# at its hurry of 80 cells a second and a pixel a cell, takes 7.5 s, and the wait wants two
+# still spans after it.
+OUTLASTING = timedelta(seconds=20)
 
 
 def test_the_machine_boots_without_an_ordering_cycle(desktop: Desktop) -> None:
@@ -233,12 +252,69 @@ class Touchscreen:
         window = json.loads(self.desktop.as_account("niri msg --json focused-window"))
         return cast("int", window["id"])
 
+    def heard(self) -> None:
+        """Tap until wev hears a finger let go, which it can only once Cage has the touchscreen.
+
+        The stand-in makes its device at once, but Cage takes it only once udev hands it on, and
+        a tap before that reaches nobody: on a busy host, a tap a few seconds after the device
+        was made went before Cage had it. Once one is heard, it waits out the gap after the last
+        tap sent, unless every tap sent is heard, so one still on its way lands before the
+        subtest counts what wev heard.
+        """
+        taps = vm_helpers.Taps(HEARING.total_seconds() * vm_helpers.pace(vm_helpers.busyness()))
+        began = time.monotonic()
+
+        def tapped(last: bool) -> bool:
+            if self.touches("up"):
+                return True
+            # A tap on the last try would have no time to be heard, so none goes then.
+            if not last and taps.due():
+                taps.send(lambda: self.bid("1 tap 0.5"))
+            return False
+
+        try:
+            retry(tapped, timeout=TAKING)
+        except Exception as error:
+            took = time.monotonic() - began
+            message = (
+                f"wev heard none of {taps.sent} taps tried in {took:.0f} s, the stand-in"
+                f" {self.standing()}: {error}"
+            )
+            raise AssertionError(message) from error
+        # The gap the taps were sent at, and a spare one, however quiet the host has grown: the
+        # wait's own pace only stretches it.
+        landing = timedelta(seconds=taps.gap) + HEARING
+        retry(lambda _: taps.landed(self.touches("up")), timeout=landing)
+
+    def bid(self, line: str) -> None:
+        """Bid the stand-in do one thing, written to its fifo.
+
+        A stand-in that died leaves its fifo with no reader, where a write would wait for ever,
+        so the write is cut off and fails, saying the stand-in's state, rather than hanging.
+        """
+        cut = int(SAYING.total_seconds())
+        write = shlex.quote(f"echo {shlex.quote(line)} > /run/touchscreen")
+        status, _ = self.desktop.machine.execute(f"timeout {cut} sh -c {write}")
+        if status != 0:
+            message = f"{line!r} wasn't taken in {cut} s, the stand-in {self.standing()}"
+            raise AssertionError(message)
+
+    def standing(self) -> str:
+        """Say whether the stand-in's unit runs, which tells a dead one from a deaf Cage."""
+        _, said = self.desktop.machine.execute("systemctl is-active touchscreen")
+        return said.strip()
+
+    def settled(self) -> None:
+        """Wait for the windows to stand still, whatever the margin cat does along their tops."""
+        why = self.desktop.unsettled(OUTLASTING, between=BELOW_THE_CAT)
+        assert why is None, f"the view never settled: {why}"
+
     def swiped(
         self, fingers: int, way: str, until: Callable[[], object], across: float = 0.5
     ) -> None:
         """Swipe with so many fingers one way, as a person sees it, until something holds."""
         drawn = self.over.get(way, way)
-        self.desktop.machine.succeed(f"echo '{fingers} {drawn} {across}' > /run/touchscreen")
+        self.bid(f"{fingers} {drawn} {across}")
         try:
             retry(lambda _: bool(until()), timeout=GOING)
         except Exception:
@@ -250,24 +326,49 @@ class Touchscreen:
 def touchscreen(desktop: Desktop) -> Iterator[Touchscreen]:
     """Give the stand-in touchscreen, with wev's window maximized over a workspace above another.
 
-    The workspace below holds a window, as it does once others have run. The touchscreen goes
-    as the test ends.
+    The workspace below holds a window, as it does once others have run. Cage has the touchscreen
+    by then, since wev has heard it tapped. The touchscreen goes as the test ends.
     """
     machine = desktop.machine
     values = desktop.values
-    desktop.opened("Below the swipes")
-    desktop.as_account("niri msg action move-window-to-workspace-down")
-    desktop.as_account("niri msg action focus-workspace-up")
-    machine.succeed(f"systemd-run --unit=touchscreen {values['touchscreen']}")
-    machine.wait_for_file("/run/touchscreen", timeout=SAYING)
+    below = desktop.opened("Below the swipes")
+    # Moved by its id rather than as the focused window, which left it beside wev in three of
+    # the net's failed runs on 2026-11-16; by id the move doesn't hang on what niri focused.
+    workspaces = json.loads(desktop.as_account("niri msg --json workspaces"))
+    under = next(w["idx"] for w in workspaces if w["id"] == below["workspace_id"])
     desktop.as_account(
-        "systemd-run --user --collect --quiet --unit=wev -- sh -c "
-        f"'{values['coreutils']}/bin/stdbuf -oL {values['wev']}/bin/wev > /tmp/wev.log 2>&1'"
+        f"niri msg action move-window-to-workspace --window-id {below['id']} --focus false"
+        f" {under + 1}"
     )
-    retry(lambda _: any(window["title"] == "wev" for window in desktop.windows()), timeout=SAYING)
-    desktop.as_account("niri msg action maximize-column")
-    yield Touchscreen(desktop)
-    machine.succeed("systemctl stop touchscreen")
+    retry(
+        lambda _: (
+            desktop.window_titled("Below the swipes")["workspace_id"] != below["workspace_id"]
+        ),
+        timeout=SAYING,
+    )
+    machine.succeed(f"systemd-run --unit=touchscreen {values['touchscreen']}")
+    try:
+        machine.wait_for_file("/run/touchscreen", timeout=SAYING)
+        desktop.as_account(
+            "systemd-run --user --collect --quiet --unit=wev -- sh -c "
+            f"'{values['coreutils']}/bin/stdbuf -oL {values['wev']}/bin/wev > /tmp/wev.log 2>&1'"
+        )
+        retry(
+            lambda _: any(window["title"] == "wev" for window in desktop.windows()),
+            timeout=SAYING,
+        )
+        desktop.as_account("niri msg action maximize-column")
+        screen = Touchscreen(desktop)
+        screen.heard()
+        yield screen
+    finally:
+        # The touchscreen first, which needs only the machine, then wev, should the test end
+        # before its own stop. Neither stop raises, so a failure says what the test saw.
+        machine.execute("systemctl stop touchscreen")
+        machine.execute(
+            desktop.in_session("systemctl --user stop wev wev-right"),
+            timeout=int(SAYING.total_seconds()),
+        )
 
 
 def test_the_screens_warmth_starts_only_when_asked(desktop: Desktop) -> None:
@@ -295,7 +396,8 @@ def test_swipes_on_the_touchscreen_move_through_the_workspaces_not_the_window(
     """
     screen = touchscreen
     # One finger is the window's: wev hears it touched and let go.
-    screen.swiped(1, "tap", lambda: screen.touches("up") == 1)
+    taps = screen.touches("up") + 1
+    screen.swiped(1, "tap", lambda: screen.touches("up") == taps)
     first = screen.focused_workspace()
     screen.swiped(3, "DU", lambda: screen.focused_workspace() == first + 1)
     # The two fingers wev already had are cancelled, not let go.
@@ -316,10 +418,10 @@ def test_swipes_on_the_touchscreen_move_through_the_workspaces_not_the_window(
     )
     retry(lambda _: screen.focused() != left, timeout=SAYING)
     right = screen.focused()
-    assert desktop.held_still(), "the view never settled"
+    screen.settled()
     screen.swiped(3, "LR", lambda: screen.focused() == left)
     screen.swiped(3, "RL", lambda: screen.focused() == right)
-    assert screen.touches("up") == 1, "a swipe reached the window as a tap"
+    assert screen.touches("up") == taps, "a swipe reached the window as a tap"
 
     # Side by side, with the right one focused: a swipe over the left one leaves the focus
     # where it was, as a tap would not. The left one hears the swipe's first two fingers land,
@@ -328,7 +430,7 @@ def test_swipes_on_the_touchscreen_move_through_the_workspaces_not_the_window(
     desktop.as_account("niri msg action set-column-width 50%")
     desktop.as_account("niri msg action focus-column-right")
     desktop.as_account("niri msg action set-column-width 50%")
-    assert desktop.held_still(), "the view never settled"
+    screen.settled()
     # niri drops the workspace the column left only once its switch has ended, which
     # renumbers those below, so where the view is is read once it holds still.
     first = screen.focused_workspace()

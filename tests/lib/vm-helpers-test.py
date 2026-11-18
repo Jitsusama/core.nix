@@ -337,3 +337,174 @@ def test_the_reason_says_where_the_picture_last_changed() -> None:
 
     why = settled(FadingGuest(frames=0, apart=1.0, other=True), 0.5, 5, at_the_corner) or ""
     assert why.endswith("it last changed at 0,0 to 8,8, the shell drawing nothing meanwhile"), why
+
+
+def picture(*rows: str) -> bytes:
+    """Give a picture as QEMU's screendump writes one, a PPM, a pixel a letter, grey as it."""
+    width = len(rows[0])
+    pixels = b"".join(bytes([ord(letter)] * 3) for row in rows for letter in row)
+    return f"P6\n{width} {len(rows)}\n255\n".encode() + pixels
+
+
+def test_pictures_changed_only_above_and_below_the_rows_read_are_alike() -> None:
+    # The margin cat walking along the windows' tops, then sitting at the screen's foot.
+    alike = vm_helpers.alike_between_rows(1, 3)
+    assert alike(picture("c.", "ww", "ww", ".."), picture(".c", "ww", "ww", "c.")), (
+        "the cat moving outside rows 1 to 3 read as a change"
+    )
+
+
+def test_pictures_changed_within_the_rows_read_differ() -> None:
+    # A column's edge moving, which crosses every row a full-height window stands in.
+    alike = vm_helpers.alike_between_rows(1, 3)
+    assert not alike(picture("..", "ww", "ww", ".."), picture("..", "w.", "ww", "..")), (
+        "an edge moving in row 1 read as no change"
+    )
+
+
+def test_pixels_that_read_as_whitespace_are_still_pixels() -> None:
+    # A picture opening on a row of bytes that read as spaces, which mustn't count as the
+    # header's end, or every row after it is read short.
+    alike = vm_helpers.alike_between_rows(1, 2)
+    assert not alike(picture("  ", "ww"), picture("  ", "w ")), (
+        "a first row of spaces was read as the header, so row 1's change was missed"
+    )
+
+
+def test_pictures_of_other_sizes_differ_however_alike_their_rows() -> None:
+    # The same rows read, only the screen's height between them changed.
+    alike = vm_helpers.alike_between_rows(1, 3)
+    assert not alike(picture("..", "ww", "ww", ".."), picture("..", "ww", "ww", "..", "..")), (
+        "a picture 4 high read as alike to one 5 high"
+    )
+
+
+@pytest.mark.parametrize(("top", "bottom"), [(1, 5), (3, 3), (-1, 2)])
+def test_a_band_the_picture_doesnt_hold_is_refused(top: int, bottom: int) -> None:
+    # Read as alike every time, it would let a wait pass without looking at anything.
+    alike = vm_helpers.alike_between_rows(top, bottom)
+    with pytest.raises(ValueError, match="aren't in a picture 4 high"):
+        alike(picture("..", "ww", "ww", ".."), picture("..", "ww", "ww", ".."))
+
+
+def test_a_wait_on_the_rows_read_settles_while_the_cat_walks_above_them() -> None:
+    # The cat walks along the tops each look, which keeps a wait on the whole picture from
+    # ever settling, while the windows below it stand still.
+    looked = iter(range(1000))
+
+    def walking(clock: FadingGuest) -> Callable[[], bytes]:
+        def screen() -> bytes:
+            clock.now += FadingGuest.LOOKING
+            return picture("c." if next(looked) % 2 else ".c", "ww", "ww", "..")
+
+        return screen
+
+    def nothing_counted() -> dict[str, int]:
+        return {}
+
+    whole, rows = FadingGuest(frames=0, apart=1.0), FadingGuest(frames=0, apart=1.0)
+    alike = vm_helpers.alike_between_rows(1, 3)
+    assert vm_helpers.settled(walking(whole), nothing_counted, 0.5, 5, clock=whole.clock), (
+        "the whole picture settled though the cat moved every look"
+    )
+    why = vm_helpers.settled(walking(rows), nothing_counted, 0.5, 5, clock=rows.clock, alike=alike)
+    assert why is None, f"the cat walking above rows 1 to 3 kept the wait from settling: {why}"
+
+
+def test_where_the_rows_read_changed_is_said_in_the_screens_own_rows() -> None:
+    where = vm_helpers.changed_between_rows(1, 3)
+    said = where(picture("...", "...", "...", "..."), picture("c..", "...", ".ww", "..."))
+    assert said == " from 1,2 to 3,3", f"the edge in row 2, columns 1 and 2, was said as {said!r}"
+
+
+def test_a_change_over_several_rows_read_is_boxed_from_its_first_to_its_last() -> None:
+    where = vm_helpers.changed_between_rows(1, 4)
+    said = where(picture("...", "...", "...", "..."), picture("...", "..w", "...", "w.."))
+    assert said == " from 0,1 to 3,4", f"changes in rows 1 and 3 were said as {said!r}"
+
+
+def test_pictures_of_other_sizes_holding_the_rows_read_are_said_to_differ_in_size() -> None:
+    where = vm_helpers.changed_between_rows(1, 3)
+    said = where(picture("..", "ww", "ww", ".."), picture("..", "ww", "ww", "..", ".."))
+    assert said == " in its size", f"a picture 4 high against one 5 high was said as {said!r}"
+
+
+def test_a_wait_on_rows_a_picture_grows_too_short_for_says_so() -> None:
+    # The rows can't be read in a picture that no longer holds them, so the wait refuses on
+    # the look that brings it, naming the rows and the height, rather than passing.
+    guest = FadingGuest(frames=0, apart=1.0)
+    shots = iter([picture("..", "ww", "ww", "..")])
+
+    def shrinking() -> bytes:
+        guest.now += FadingGuest.LOOKING
+        return next(shots, picture("..", "ww"))
+
+    def nothing_counted() -> dict[str, int]:
+        return {}
+
+    alike = vm_helpers.alike_between_rows(1, 4)
+    with pytest.raises(ValueError, match="rows 1 to 4 aren't in a picture 2 high"):
+        vm_helpers.settled(shrinking, nothing_counted, 0.5, 5, clock=guest.clock, alike=alike)
+
+
+def test_a_change_only_outside_the_rows_read_is_said_as_none() -> None:
+    where = vm_helpers.changed_between_rows(1, 3)
+    said = where(picture("c.", "ww", "ww", ".."), picture(".c", "ww", "ww", "c."))
+    assert not said, f"the cat outside rows 1 to 3 was said as a change {said!r}"
+
+
+def test_the_first_tap_goes_at_once_and_the_next_only_once_its_gap_has_passed() -> None:
+    clock = FadingGuest(frames=0, apart=1.0)
+    taps = vm_helpers.Taps(5, clock=clock.clock)
+    assert taps.due(), "the first tap waited for a gap no tap had opened"
+    taps.send(lambda: None)
+    clock.now += 4.9
+    assert not taps.due(), "a second tap was due 4.9 s into a 5 s gap"
+    clock.now += 0.1
+    assert taps.due(), "a second tap wasn't due once the 5 s gap had passed"
+
+
+def test_a_tap_still_on_its_way_holds_the_count_until_its_gap_has_passed() -> None:
+    # Two taps sent and the first heard: the second may still land, after the count starts.
+    clock = FadingGuest(frames=0, apart=1.0)
+    taps = vm_helpers.Taps(5, clock=clock.clock)
+    taps.send(lambda: None)
+    clock.now += 5
+    taps.send(lambda: None)
+    clock.now += 1
+    assert not taps.landed(1), "one of two taps heard counted as all landed 1 s after the last"
+    clock.now += 4
+    assert taps.landed(1), "the last tap's 5 s gap passed and still it wasn't counted landed"
+
+
+def test_every_tap_sent_heard_is_landed_at_once() -> None:
+    clock = FadingGuest(frames=0, apart=1.0)
+    taps = vm_helpers.Taps(5, clock=clock.clock)
+    taps.send(lambda: None)
+    assert taps.landed(1), "the one tap sent was heard, and still its gap was waited out"
+
+
+def test_a_taps_gap_starts_once_its_slow_write_has_gone() -> None:
+    # On a busy host the write itself takes seconds, and the tap can't land before it's gone.
+    clock = FadingGuest(frames=0, apart=1.0)
+    taps = vm_helpers.Taps(5, clock=clock.clock)
+
+    def slow() -> None:
+        clock.now += 3
+
+    taps.send(slow)
+    clock.now += 4
+    assert not taps.landed(0), "a tap 4 s past its 3 s write counted as landed in a 5 s gap"
+
+
+def test_a_tap_whose_write_fails_counts_as_tried() -> None:
+    clock = FadingGuest(frames=0, apart=1.0)
+    taps = vm_helpers.Taps(5, clock=clock.clock)
+
+    def cut_off() -> None:
+        message = "the write was cut off"
+        raise RuntimeError(message)
+
+    with pytest.raises(RuntimeError, match="cut off"):
+        taps.send(cut_off)
+    assert taps.sent == 1, f"a tap whose write failed counted as {taps.sent} tried"
