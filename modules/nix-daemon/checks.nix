@@ -59,16 +59,29 @@
           < (systemd.slices.user.sliceConfig.CPUWeight or 100)
       );
 
-  # A machine's builders trust its root, so each keeps the sandbox setting
-  # its daemon forwards. Exactly true, never "relaxed", where a derivation
-  # may ask its way out, and no fallback, which would build bare without one.
+  # A builder over ssh-ng that trusts a machine's root keeps the sandbox
+  # setting its daemon sends. Exactly true, never "relaxed", where a
+  # derivation may ask its way out, and no fallback, which would build bare
+  # without one. extraOptions and the daemon's NIX_CONFIG come after the
+  # settings and win, so neither may name the sandbox.
   nix-builds-only-in-its-sandbox =
     let
-      inherit (workstation.config.nix.settings) sandbox sandbox-fallback;
+      inherit (workstation.config) nix systemd;
+      inherit (nix.settings) sandbox sandbox-fallback;
+      later = nix.extraOptions + (systemd.services.nix-daemon.environment.NIX_CONFIG or "");
     in
     holds "nix-builds-only-in-its-sandbox"
-      "The Nix daemon builds outside its sandbox: sandbox is ${builtins.toJSON sandbox}, sandbox-fallback ${builtins.toJSON sandbox-fallback}."
-      (builtins.isBool sandbox && sandbox && builtins.isBool sandbox-fallback && !sandbox-fallback);
+      (
+        "The Nix daemon builds outside its sandbox: sandbox is ${builtins.toJSON sandbox}, "
+        + "sandbox-fallback ${builtins.toJSON sandbox-fallback}, or a later line names it."
+      )
+      (
+        builtins.isBool sandbox
+        && sandbox
+        && builtins.isBool sandbox-fallback
+        && !sandbox-fallback
+        && !lib.hasInfix "sandbox" later
+      );
 
   # Nix collects garbage during a build once free space falls under min-free,
   # and stops at max-free. A max-free at or under min-free stops it before it

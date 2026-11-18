@@ -2044,8 +2044,9 @@
     Nix's builds run at a lower weight than the person's programs
   '';
   nix-builds-only-in-its-sandbox = ''
-    every build the machine's Nix runs or sends to a builder that trusts it is sandboxed, never
-    relaxed, and fails rather than build bare when no sandbox can be had
+    a NixOS workstation's Nix daemon is set to sandbox every build, never relaxed, and to fail
+    rather than build bare when no sandbox can be had, with no later line in its config saying
+    otherwise
   '';
   nix-collects-before-the-disk-fills = ''
     Nix collects garbage during a build that fills the disk
