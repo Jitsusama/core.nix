@@ -3,7 +3,10 @@
 # does, reaches the launcher's entry and is run as the entry runs it.
 # xdg-open must find the entry by what it says it opens, beside a list of
 # defaults a browser wrote, which names none for these links; gio, and so
-# the portal, must find it only through niri's own list. The entry's
+# the portal, must find it only through niri's own list. The portal opens
+# a link straight in its app only when exactly one is registered for the
+# scheme, so the entry must be, in the profile's applications, whose
+# mimeinfo.cache is written as the home's is. The entry's
 # program then runs, built to ask a stand-in qs, over links like the map's
 # and ones it mustn't pass on, and a second link within a few seconds of
 # the first.
@@ -18,16 +21,19 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 cd "$work"
 
-mkdir -p data/applications config
+mkdir -p data/applications profile/share/applications config
 mkdir -m 700 runtime
-cp "$entry" data/applications/mycelium-link.desktop
+cp "$entry" profile/share/applications/mycelium-link.desktop
+# As Home Manager writes the profile's cache.
+update-desktop-database profile/share/applications
 printf '[Default Applications]\nx-scheme-handler/https=browser.desktop\n' > config/mimeapps.list
 cp "$defaults" config/niri-mimeapps.list
 
 # Runs a command as the account's desktop would, with only these files to
 # read.
 desktop() {
-  HOME=$work XDG_DATA_HOME=$work/data XDG_DATA_DIRS=$work/none XDG_CONFIG_HOME=$work/config \
+  HOME=$work XDG_DATA_HOME=$work/data XDG_DATA_DIRS=$work/profile/share \
+    XDG_CONFIG_HOME=$work/config \
     XDG_CONFIG_DIRS=$work/none XDG_CURRENT_DESKTOP=niri XDG_RUNTIME_DIR=$work/runtime "$@"
 }
 
@@ -40,6 +46,13 @@ said=$(desktop gio mime x-scheme-handler/mycelium 2>&1)
 if ! grep -qxF 'Default application for “x-scheme-handler/mycelium”: mycelium-link.desktop' \
   <<< "$said" || grep -q WARNING <<< "$said"; then
   echo "gio opens mycelium links with: $said"
+  exit 1
+fi
+# The portal counts the apps gio recommends; with none, it asks Open With
+# rather than opening the link.
+recommended=$(sed -n '/^Recommended applications:$/,$p' <<< "$said" | sed -n 's/^\t//p')
+if [ "$recommended" != mycelium-link.desktop ]; then
+  echo "the portal would offer '$recommended' for mycelium links, not mycelium-link alone: $said"
   exit 1
 fi
 # The entry runs the home's own build, asking the shell's qs, so it's

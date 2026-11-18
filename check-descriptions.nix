@@ -3199,7 +3199,8 @@
     anything else as nobody, and a network is named by the first word alone
   '';
   mycelium-links-open-in-the-launcher = ''
-    xdg-open and gio send mycelium: links to mycelium-link's entry, which asks the launcher to talk
+    xdg-open and gio send mycelium: links to mycelium-link's entry, registered for them in the
+    profile's applications so the portal opens them without asking, which asks the launcher to talk
     to the cell or show the network a link names, by its name alone, a notice's whole cell link
     by its address wherever it says the cell runs, and asks nothing for a link naming neither, an
     address not in capitals, a name qs could take for a flag, or a second link within a few seconds
