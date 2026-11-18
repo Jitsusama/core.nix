@@ -88,28 +88,44 @@ fn heading(unit: &Failed, pen: &Pen, room: Room) -> String {
 }
 
 /// A line a unit said, wrapped between words to what's left of the room
-/// past its inset, each line without the space it broke at. A word too
-/// long for a line of its own is broken across lines, as `fold -s` broke
-/// it, rather than shortened, since any of its characters, a device's
-/// path among them, may be what says why the unit failed. Into a pipe it
-/// stays one line.
+/// past its inset, each line without the space it broke at. A line that
+/// fits keeps its own spacing, an indent or aligned columns among it. A
+/// word too long for a line of its own is broken across lines, as `fold
+/// -s` broke it, rather than shortened, since any of its characters, a
+/// device's path among them, may be what says why the unit failed. The
+/// pieces are laid greedily, each already fitting, rather than through
+/// the kit's `wrapped`, which would join a piece that starts with a
+/// figure to the next as its unit, and shorten them. Into a pipe it
+/// stays one line. A blank line says nothing, so it's left out.
 fn under(said: &str, room: Room) -> Vec<String> {
     let said = clean(said);
     let said = said.trim_end();
-    match room {
-        Room::Cells(width) => {
-            let measure = width.saturating_sub(UNDER.len()).max(1);
-            let pieces: Vec<&str> = said
-                .split_whitespace()
-                .flat_map(|word| broken(word, measure))
-                .collect();
-            layout::wrapped(&pieces.join(" "), measure)
-                .into_iter()
-                .map(|line| line.trim_end().to_owned())
-                .collect()
-        }
-        Room::Unbounded => vec![said.to_owned()],
+    if said.trim_start().is_empty() {
+        return Vec::new();
     }
+    let measure = match room {
+        Room::Cells(width) => width.saturating_sub(UNDER.len()).max(1),
+        Room::Unbounded => return vec![said.to_owned()],
+    };
+    if layout::width(said) <= measure {
+        return vec![said.to_owned()];
+    }
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    for piece in said
+        .split_whitespace()
+        .flat_map(|word| broken(word, measure))
+    {
+        if !line.is_empty() && layout::width(&line) + 1 + layout::width(piece) > measure {
+            lines.push(std::mem::take(&mut line));
+        }
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line.push_str(piece);
+    }
+    lines.push(line);
+    lines
 }
 
 /// A word in pieces each at most `measure` cells wide, the last holding
@@ -141,16 +157,29 @@ fn way_out(pen: &Pen) -> String {
 }
 
 /// Words from a unit, without what would steer the console rather than
-/// be read: every control character, a tab read as a space.
+/// be read: a colour or cursor sequence whole, its parameters with it,
+/// so a program that colours its own log leaves no `[31m` behind, and
+/// every other control character, a tab read as a space.
 fn clean(words: &str) -> String {
-    words
-        .chars()
-        .filter_map(|c| match c {
-            '\t' => Some(' '),
-            c if c.is_control() => None,
-            c => Some(c),
-        })
-        .collect()
+    let mut out = String::new();
+    let mut chars = words.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\u{1b}' if chars.peek() == Some(&'[') => {
+                chars.next();
+                // Parameters and intermediates run until a final byte.
+                for c in chars.by_ref() {
+                    if ('\u{40}'..='\u{7e}').contains(&c) {
+                        break;
+                    }
+                }
+            }
+            '\t' => out.push(' '),
+            c if c.is_control() => {}
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -316,6 +345,54 @@ mod tests {
     }
 
     #[test]
+    fn a_broken_figure_is_never_joined_to_its_unit_and_shortened() {
+        // A figure just the width of the line, with its unit after it,
+        // which the kit's own wrap would hold together and shorten.
+        let said = format!("{} MB", "9".repeat(35));
+        let summary = text(
+            &[unit("a.service", "A", &[&said])],
+            1,
+            &console(),
+            Room::Cells(40),
+        );
+        says(&summary, &format!("     {}", "9".repeat(35)));
+        says(&summary, "     MB");
+    }
+
+    #[test]
+    fn a_line_that_fits_keeps_its_own_spacing() {
+        let said = "  sda1    ext4    /home";
+        let summary = text(
+            &[unit("a.service", "A", &[said])],
+            1,
+            &console(),
+            Room::Cells(80),
+        );
+        says(&summary, &format!("     {said}"));
+    }
+
+    #[test]
+    fn a_coloured_line_loses_its_sequences_whole_and_a_blank_one_goes() {
+        let summary = text(
+            &[unit("a.service", "A", &["\u{1b}[1;31mred\u{1b}[0m", "", "  \u{7}"])],
+            1,
+            &console(),
+            Room::Cells(80),
+        );
+        let under: Vec<&str> = lines(&summary)
+            .into_iter()
+            .skip_while(|line| !line.starts_with("  x  "))
+            .skip(1)
+            .take_while(|line| !line.is_empty())
+            .collect();
+        assert_eq!(
+            under,
+            ["     red"],
+            "a sequence's words or a blank line reached the console: {summary:?}"
+        );
+    }
+
+    #[test]
     fn four_units_are_shown_and_the_rest_counted() {
         let failed: Vec<Failed> = ["a", "b", "c", "d", "e", "f"]
             .iter()
@@ -348,7 +425,7 @@ mod tests {
             !summary.chars().any(|c| c.is_control() && c != '\n'),
             "a control character reached the console: {summary:?}"
         );
-        says(&summary, "  x  bell.service  Rings[2J");
+        says(&summary, "  x  bell.service  Rings");
         says(&summary, "     reading its label");
         says(&summary, "     a gap]0;title");
     }
