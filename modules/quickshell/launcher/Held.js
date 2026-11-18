@@ -65,11 +65,15 @@ function offers(rows, places, empty) {
 // it offers, is when its last row leaves, though what its search found is
 // still each as offered now; one still offered that offers nothing now is
 // left. `ways.looked` gives all the source searches, read only when a
-// match isn't among `offered`.
+// match isn't among `offered`. A row with no key, the step a place opened
+// straight holds (Launcher.qml's placeStep), is the place itself, never
+// one of its members, which the launcher's same would tell it from only by
+// name: a session titled as the place's noun would take it over.
 function own(steps, at, offered, ways) {
     const made = steps.slice();
     const step = made[at];
-    const now = offered.find(one => ways.same(one, step.row));
+    const now = (step.row.key ?? "") === "" ? undefined
+        : offered.find(one => ways.same(one, step.row));
     const foundAs = step.row.foundAs === undefined ? undefined
         : foundNow(step.row.foundAs, offered, ways);
     const kept = foundAs !== undefined ? Object.assign({}, foundAs, { foundAs })
@@ -88,9 +92,12 @@ function own(steps, at, offered, ways) {
 // `offered`, or else among all it searches, `ways.looked`, as Sound's
 // found by ear are: an ask hidden as a share begins is then listed hidden,
 // never as it was found. A match ranked flat, as Agents' search gives its
-// sessions, is ranked as it stands. One found in neither is kept as found, never
-// dropped, since a source can find past both: Notices past its page,
-// People with a search Joel has typed past, or Agents inside a fold.
+// sessions, is ranked as it stands, but only where ranking gives the same
+// row: a copy under a key of its own, as For You's want row copies an
+// Agents session, would rank to the session it was copied from. One found
+// in neither is kept as found, never dropped, since a source can find past
+// both: Notices past its page, People with a search Joel has typed past,
+// or Agents inside a fold.
 function foundNow(foundAs, offered, ways) {
     let lookedNow = null;
     const inLooked = was => {
@@ -98,7 +105,10 @@ function foundNow(foundAs, offered, ways) {
         return lookedNow.find(one => ways.same(one, was));
     };
     const asNow = was => offered.find(one => ways.same(one, was)) ?? inLooked(was);
-    const ranked = one => typeof one.ranked === "function" ? one.ranked() : one;
+    const ranked = one => {
+        const flat = typeof one.ranked === "function" ? one.ranked() : one;
+        return flat?.key === one.key ? flat : one;
+    };
     const found = typeof foundAs.verbs !== "function" ? null
         : foundAs.verbs().map(was => { const now = asNow(was);
             return now === undefined ? was : ranked(now); });
