@@ -19,8 +19,9 @@ impl Shared {
     /// those that changed and the keys that went, and, on a line of its
     /// own as the shell's Daemon.qml reads it, how the sources stand once
     /// that changes. A paced watch is told how the sources stand at once
-    /// too, and holds back the keys that moved until its pace is up, or
-    /// until a record new to it comes, which is told at once with them. A
+    /// too, and holds back the keys that moved until its pace is up, until
+    /// a record new to it comes, which is told at once with them, or until
+    /// the sources stand anew, when they're told on the line before. A
     /// connection whose lines aren't being read is hung up on, and its
     /// watches dropped, rather than told less than it asked for.
     ///
@@ -178,8 +179,15 @@ impl Shared {
                 // back, so an opening a moment later holds it in its place:
                 // heard after the opening's first frame, the launcher keeps
                 // what it shows still and puts it last (finds-sessions,
-                // 2026-11-13). Only what moves waits for the pace.
-                if arrived && let Some(line) = watch.held_back(now) {
+                // 2026-11-13). Only what moves waits for the pace. So is
+                // all that was held back when the sources stand anew, as
+                // the line saying so follows it: a watcher told niri
+                // answers again takes what it holds as current, so a
+                // record moved meanwhile would stay stale for a pace
+                // (ISXEG8, 2026-11-18).
+                if (arrived || standing.is_some())
+                    && let Some(line) = watch.held_back(now)
+                {
                     lines.push(line);
                 } else if !watch.moved.is_empty() && watch.due.is_none() {
                     watch.due = Some(Instant::now() + every);

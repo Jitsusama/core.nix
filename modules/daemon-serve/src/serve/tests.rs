@@ -681,6 +681,60 @@ fn health_says_what_else_a_daemon_counts_but_never_in_place_of_its_own() {
 }
 
 #[test]
+fn a_paced_watch_is_told_what_it_held_back_before_how_the_sources_stand() {
+    let (shared, mut client, _folder) = served("standing", Box::new(|_| None));
+    shared.change(
+        vec![row("agents", "O", "kelp")],
+        json!({"niri": "answering"}),
+    );
+    client.ask(&json!({"id": "all", "ask": "watch", "kind": "row", "every": 60_000}));
+    shared.change(
+        vec![row("agents", "O", "harbour")],
+        json!({"niri": "answering"}),
+    );
+    // niri hanging up: a watcher told how its sources stand takes what it
+    // holds as current for them, so what was held back for the pace comes
+    // first, or a record that moved meanwhile stays stale for a whole pace
+    // (ISXEG8, 2026-11-18). Answering again goes the same path.
+    shared.change(
+        vec![row("agents", "O", "harbour")],
+        json!({"niri": "starting"}),
+    );
+    let told = client.heard();
+    assert_eq!(
+        (&told["id"], &told["changed"]),
+        (&json!("all"), &json!([row("agents", "O", "harbour")])),
+        "what moved was held back past the sources' change: {told}"
+    );
+    assert_eq!(
+        client.heard(),
+        json!({"id": "all", "sources": {"niri": "starting"}}),
+        "then how the sources stand"
+    );
+    // What was told isn't held back again: the next move waits its pace,
+    // so the sources standing anew tell it alone, once.
+    shared.change(
+        vec![row("agents", "O", "tide")],
+        json!({"niri": "starting"}),
+    );
+    shared.change(
+        vec![row("agents", "O", "tide")],
+        json!({"niri": "answering"}),
+    );
+    let again = client.heard();
+    assert_eq!(
+        &again["changed"],
+        &json!([row("agents", "O", "tide")]),
+        "the flush told something twice or lost the next move: {again}"
+    );
+    assert_eq!(
+        client.heard(),
+        json!({"id": "all", "sources": {"niri": "answering"}}),
+        "niri answering again tells its line after what moved"
+    );
+}
+
+#[test]
 fn a_watch_hears_how_the_sources_stand_when_they_moved_since_its_hello() {
     let (shared, mut client, _folder) = served("since-hello", Box::new(|_| None));
     shared.change(Vec::new(), json!({"tuple": "starting"}));

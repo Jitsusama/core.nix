@@ -15,7 +15,9 @@
 //! line, so the rows stay held for a fast opening while the shut shell
 //! wakes for one line in ten seconds rather than one in three. A record
 //! new to it is told at once, with all that was held back, so a row that
-//! arrived while the launcher was shut is there as it opens. Asked
+//! arrived while the launcher was shut is there as it opens, and so is
+//! all that was held back just before a line saying the sources stand
+//! anew, which a watcher reads as its records being current. Asked
 //! again under its id for the same records, a watch keeps on at its new
 //! pace, telling at once what it held back rather than everything whole,
 //! as mycelium's node does (its PROTOCOL.md, The Daemon Interface).
