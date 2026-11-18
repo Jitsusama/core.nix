@@ -624,6 +624,16 @@ ShellRoot {
             sound.spotsStamp().includes('["clarity"]'), sound.spotsStamp());
         expect("and each fact its card says, in the daemon's order",
             sound.spotsStamp().includes('["playing","offers"]'), sound.spotsStamp());
+        expect("and each port it can be moved to, in the daemon's order",
+            sound.spotsStamp().includes('["Speakers","Headphones"]'), sound.spotsStamp());
+        // Asked at each slice of a closing, they look through the keys once
+        // for as long as no record changes, not once a device or a part.
+        const passes = sound.insideKept.made;
+        sound.spotsStamp();
+        sound.spotsStampOf(sound.everything()[0]);
+        sound.spotsStamp();
+        expect("what its spots are made of is found in one pass over the keys",
+            sound.insideKept.made - passes <= 1, `${sound.insideKept.made - passes} passes`);
     }
 
     function louderChoice() {
