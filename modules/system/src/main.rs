@@ -87,7 +87,7 @@ pub(crate) fn read() -> System {
         machine: terminal_kit::environment::machine(),
         read_at: terminal_kit::time::rfc3339(now()),
         parts: vec![
-            parts::machines(&machines, &health),
+            parts::machines(&machines, &health, net.as_ref().ok(), repos.as_ref().ok()),
             parts::mycelium(&health),
             parts::network(&net),
             parts::code(&repos),

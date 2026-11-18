@@ -58,6 +58,10 @@ pub struct Thing {
     /// Its home on the local sites, from their root, as the site that is
     /// home to it says (homes.rs); none when no site is.
     pub address: Option<String>,
+    /// What ties it to the other parts, for a view to draw it whole: a
+    /// machine's cells, network, code, figures and acts (parts/ties.rs).
+    /// Null for a thing with none.
+    pub ties: Value,
 }
 
 /// One of the system's four parts.
@@ -156,6 +160,7 @@ impl System {
                     "says": thing.says,
                     "side": thing.side,
                     "address": thing.address,
+                    "ties": thing.ties,
                 })
             })
         });
@@ -186,6 +191,7 @@ fn part_json(part: &Part) -> Value {
             "says": thing.says,
             "side": thing.side,
             "address": thing.address,
+            "ties": thing.ties,
         })).collect::<Vec<_>>(),
         "deeper": {
             "command": part.deeper.command,
@@ -231,7 +237,22 @@ mod tests {
             says: format!("{name} says so"),
             side: Vec::new(),
             address: None,
+            ties: Value::Null,
         }
+    }
+
+    #[test]
+    fn a_machine_record_carries_its_ties_to_the_other_parts() {
+        let mut machines = part("machines", Health::Good);
+        let mut laptop = machine("laptop", Health::Good);
+        laptop.ties = json!({"cells": {"busy": 1, "idle": 0, "ended": 0}});
+        machines.things = vec![laptop];
+        let system = system(vec![machines]);
+        assert_eq!(system.records()[2]["ties"]["cells"]["busy"], 1);
+        assert_eq!(
+            system.json()["parts"][0]["things"][0]["ties"]["cells"]["busy"],
+            1
+        );
     }
 
     #[test]

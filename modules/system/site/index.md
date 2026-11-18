@@ -79,7 +79,9 @@ code), `health`, `says`, `side` (what is worth a look, an item each),
 `holds` (what it holds, or null when it wasn't read), `things` (the
 keys of its things) and `deeper`: `command`, `site` (from the sites'
 root) and `launcher` (its path there). Each `machine:<name>` has
-`name`, `health`, `says` and, where its home publishes one, `address`.
+`name`, `health`, `says`, where its home publishes one, `address`, and
+`ties`: its cells, network, code, figures and acts, as the system skill
+says them.
 `system --json` says the same as one record.
 
 The system asks each owner rather than reading their sources:

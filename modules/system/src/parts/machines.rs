@@ -6,6 +6,7 @@
 
 use serde_json::Value;
 
+use super::ties::ties;
 use super::{Answer, and, count, side_of, unread};
 use crate::record::{Deeper, Health, Part, Thing};
 
@@ -22,8 +23,15 @@ const LOW_CHARGE: u64 = 20;
 const ITS_OWN: [&str; 1] = ["code"];
 
 /// The machines of the realm, from `mycelium machines`, each with its
-/// sessions from `mycelium health` where that was read.
-pub fn machines(machines: &Answer, health: &Answer) -> Part {
+/// sessions from `mycelium health` where that was read, and its ties to
+/// the network and the code from `net --json` and `repos --json` where
+/// those were.
+pub fn machines(
+    machines: &Answer,
+    health: &Answer,
+    net: Option<&Value>,
+    repos: Option<&Value>,
+) -> Part {
     let deeper = Deeper {
         command: "mycelium machines",
         site: "mycelium/",
@@ -47,11 +55,12 @@ pub fn machines(machines: &Answer, health: &Answer) -> Part {
         .enumerate()
         .map(|(at, said)| {
             let others = (at > 0).then(|| said.get("health")).flatten();
-            machine(
-                said,
-                sessions.and_then(|all| all.get(name_of(said))),
-                others,
-            )
+            let its = sessions.and_then(|all| all.get(name_of(said)));
+            let (mut thing, looks) = machine(said, its, others);
+            // A health read that lists none on a machine says none there.
+            let cells = sessions.map(|_| its.unwrap_or(&Value::Null));
+            thing.ties = ties(said, cells, net, repos);
+            (thing, looks)
         })
         .collect();
     // The worst first, then by name, so the line a look wants leads.
@@ -220,6 +229,7 @@ fn machine(said: &Value, sessions: Option<&Value>, own: Option<&Value>) -> (Thin
         says: line.join(", "),
         side,
         address: None,
+        ties: Value::Null,
     };
     (thing, named)
 }
@@ -265,12 +275,64 @@ mod tests {
     }
 
     #[test]
+    fn each_machine_carries_its_ties_to_the_other_parts() {
+        let net = json!({"devices": [
+            {"id": "mac:1", "name": "laptop", "detail": {"eero": {"ethernet": true}}},
+            {"id": "mac:2", "name": "studio",
+             "detail": {"eero": {"ethernet": false, "band": "5 GHz"}}}]});
+        let repos = json!({"machine": "studio", "repositories": []});
+        let studio = json!({"name": "studio", "state": "ready", "disk_band": "healthy",
+                            "power": {"charge": 100}, "room": {"over": []}});
+        let spare = json!({"name": "spare", "state": "ready", "disk_band": "healthy",
+                           "room": {"over": []}});
+        let part = machines(
+            &Ok(realm(&[studio, laptop(&[], "filling"), spare])),
+            &Ok(said_health()),
+            Some(&net),
+            Some(&repos),
+        );
+        let of = |name: &str| {
+            let thing = part.things.iter().find(|thing| thing.name == name);
+            &thing.expect("each machine is a thing").ties
+        };
+        assert_eq!(
+            part.things[0].name, "laptop",
+            "sorted worst first, ties kept"
+        );
+        assert_eq!(
+            of("laptop")["cells"],
+            json!({"busy": 55, "idle": 33, "ended": 27})
+        );
+        assert_eq!(
+            of("studio")["cells"],
+            json!({"busy": 2, "idle": 1, "ended": 0})
+        );
+        assert_eq!(
+            of("spare")["cells"],
+            json!({"busy": 0, "idle": 0, "ended": 0}),
+            "a machine the health read lists none on says none, not unread"
+        );
+        assert_eq!(of("laptop")["network"][0]["by"], "wired");
+        assert_eq!(of("studio")["network"][0]["by"], "5 GHz");
+        assert_eq!(of("studio")["code"]["repositories"], 0);
+        assert_eq!(of("laptop")["code"], Value::Null);
+        assert_eq!(of("laptop")["figures"]["charge"], 76);
+        assert_eq!(of("studio")["figures"]["charge"], 100);
+        assert_eq!(
+            of("spare")["acts"]["link"],
+            "mycelium:machine/spare?from=system"
+        );
+    }
+
+    #[test]
     fn a_machine_short_of_room_leads_with_what_it_lacks() {
         let studio = json!({"name": "studio", "state": "ready", "disk_band": "healthy",
                             "room": {"over": []}});
         let part = machines(
             &Ok(realm(&[studio, laptop(&["memory", "cpu"], "filling")])),
             &Ok(said_health()),
+            None,
+            None,
         );
         assert_eq!(part.health, Health::Watch);
         assert_eq!(
@@ -309,6 +371,8 @@ mod tests {
         let part = machines(
             &Ok(realm(&[laptop(&["memory", "cpu", "io"], "healthy")])),
             &Err(String::new()),
+            None,
+            None,
         );
         assert_eq!(
             part.health,
@@ -333,6 +397,8 @@ mod tests {
         let part = machines(
             &Ok(realm(&[laptop(&[], "healthy"), studio])),
             &Err(String::new()),
+            None,
+            None,
         );
         assert_eq!(part.things[0].name, "studio");
         assert_eq!(
@@ -350,7 +416,7 @@ mod tests {
     fn a_side_of_many_machines_says_how_many_more() {
         let away = |name: &str| json!({"name": name, "state": "unreachable"});
         let many: Vec<Value> = ["a", "b", "c", "d", "e"].into_iter().map(away).collect();
-        let part = machines(&Ok(realm(&many)), &Err(String::new()));
+        let part = machines(&Ok(realm(&many)), &Err(String::new()), None, None);
         assert_eq!(
             part.side,
             [
@@ -366,6 +432,8 @@ mod tests {
         let part = machines(
             &Ok(realm(&[laptop(&[], "healthy")])),
             &Err("no node".into()),
+            None,
+            None,
         );
         assert_eq!(part.health, Health::Good);
         assert_eq!(part.says, "1 machine ready");
@@ -383,6 +451,8 @@ mod tests {
         let part = machines(
             &Ok(realm(&[away, laptop(&[], "nearly-full")])),
             &Ok(said_health()),
+            None,
+            None,
         );
         assert_eq!(part.health, Health::Bad);
         assert_eq!(part.things[0].name, "laptop", "two bad machines go by name");
@@ -398,10 +468,15 @@ mod tests {
     fn a_low_battery_counts_only_off_the_charger() {
         let mut low = laptop(&[], "healthy");
         low["power"] = json!({"on_battery": true, "charge": 12});
-        let part = machines(&Ok(realm(std::slice::from_ref(&low))), &Err(String::new()));
+        let part = machines(
+            &Ok(realm(std::slice::from_ref(&low))),
+            &Err(String::new()),
+            None,
+            None,
+        );
         assert_eq!(part.things[0].says, "is on battery at 12%");
         low["power"]["on_battery"] = json!(false);
-        let charging = machines(&Ok(realm(&[low])), &Err(String::new()));
+        let charging = machines(&Ok(realm(&[low])), &Err(String::new()), None, None);
         assert_eq!(charging.health, Health::Good);
     }
 
@@ -412,6 +487,8 @@ mod tests {
         let part = machines(
             &Ok(realm(&[laptop(&[], "healthy"), studio.clone()])),
             &Err(String::new()),
+            None,
+            None,
         );
         assert_eq!(part.health, Health::Watch, "its code is worth a look");
         assert_eq!(part.things[0].name, "studio");
@@ -420,6 +497,8 @@ mod tests {
         let part = machines(
             &Ok(realm(&[laptop(&[], "healthy"), studio])),
             &Err(String::new()),
+            None,
+            None,
         );
         assert_eq!(part.health, Health::Bad);
         assert_eq!(part.things[0].says, "says its code is failing");
@@ -432,7 +511,7 @@ mod tests {
         let mut studio = json!({"name": "studio", "state": "ready"});
         studio["health"] = json!({"health": "bad", "parts": {
             "machines": "bad", "mycelium": "bad", "network": "bad", "code": "good"}});
-        let part = machines(&Ok(realm(&[here, studio])), &Err(String::new()));
+        let part = machines(&Ok(realm(&[here, studio])), &Err(String::new()), None, None);
         assert_eq!(
             part.health,
             Health::Good,

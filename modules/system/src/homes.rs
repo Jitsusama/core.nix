@@ -779,6 +779,7 @@ mod tests {
             says: String::new(),
             side: Vec::new(),
             address: Some("stale/".to_owned()),
+            ties: serde_json::Value::Null,
         };
         let mut system = System {
             machine: "laptop".to_owned(),

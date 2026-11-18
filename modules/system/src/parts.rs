@@ -10,6 +10,7 @@ use serde_json::Value;
 use crate::record::{Deeper, Health, Part};
 
 mod machines;
+mod ties;
 
 pub use machines::machines;
 
@@ -332,7 +333,12 @@ mod tests {
 
     #[test]
     fn an_owner_that_fails_leaves_its_part_not_read_with_why() {
-        let part = machines(&Err("mycelium isn't installed".into()), &Ok(said_health()));
+        let part = machines(
+            &Err("mycelium isn't installed".into()),
+            &Ok(said_health()),
+            None,
+            None,
+        );
         assert_eq!(part.health, Health::Unread);
         assert_eq!(part.says, "mycelium isn't installed");
         assert_eq!(
