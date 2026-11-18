@@ -345,10 +345,16 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
     let began = Instant::now();
     let mut told: Option<String> = None;
     loop {
-        match lock.try_lock() {
+        // A free turn is left to a job Joel waits on, waiting for it too.
+        let tried = if turn::next(&places.runtime).is_some() {
+            Err(TryLockError::WouldBlock)
+        } else {
+            lock.try_lock()
+        };
+        match tried {
             Ok(()) => break,
             Err(TryLockError::WouldBlock) => {
-                let who = turn::holder(&places.runtime);
+                let who = turn::whose(&places.runtime);
                 let Some(most) = job.wait_at_most else {
                     say(
                         job,

@@ -22,8 +22,9 @@
 # A heavy job by day, a test suite or a machine's evaluation, runs as
 # `night-shift turn NAME -- COMMAND`: it waits for the turn a night job
 # holds, or another heavy job's, rather than starting beside it, and a
-# night job tried meanwhile leaves the turn to a later try. So night-shift
-# is on every account's path.
+# night job tried meanwhile leaves the turn to a later try. One Joel waits
+# on, such as a switch's build, adds `--ahead` and goes next. So
+# night-shift is on every account's path.
 {
   config,
   lib,
