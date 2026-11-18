@@ -109,14 +109,18 @@ pub fn empties(text: &str, when: &[String]) -> bool {
 /// Whether one setting, by its name, holds a credential: a login in
 /// `auths`, an address in `proxies` carrying a name and password, and
 /// any other named setting by being there at all. What `auths` says in a
-/// shape Docker can't read counts by being there, since cat reads it.
+/// shape Docker can't read counts by being there, and a registry's name
+/// carrying a login counts as a proxy's does, since cat reads both.
 fn holds(name: &str, value: &Said) -> bool {
     match folded(name).as_str() {
         "auths" => {
             let Said::Named(logins) = value else {
                 return !is_empty(value);
             };
-            logins.iter().any(|(_, login)| {
+            logins.iter().any(|(registry, login)| {
+                if carries_login(registry) {
+                    return true;
+                }
                 let Said::Named(login) = login else {
                     return !is_empty(login);
                 };
@@ -167,10 +171,10 @@ fn is_empty(value: &Said) -> bool {
 }
 
 /// A key as Docker's reader matches it, folded as Go folds: past case,
-/// the long s is an s, the Kelvin sign a k, and the dotted capital I an
-/// i, since Go lowers each letter to one letter first, where Rust's full
-/// lowering makes the dotted I two. Folding more than Go does only ever
-/// hides more.
+/// the long s is an s, the Kelvin sign a k and the dotless i an i. The
+/// dotted capital I is folded to i too, by its one-letter lower case,
+/// where Rust's full lowering makes it two; Go may not match it, and
+/// folding more than Go does only ever hides more.
 fn folded(key: &str) -> String {
     key.chars()
         .filter_map(|letter| letter.to_lowercase().next())
@@ -301,9 +305,9 @@ mod tests {
 
     #[test]
     fn a_credential_under_a_key_docker_folds_empties_the_file() {
-        // Docker's reader folds the long s to s, the Kelvin sign to k, the
-        // dotted capital I to i, by its single-letter lower case, and the
-        // dotless i to i, by its upper case then lower.
+        // Docker's reader folds the long s to s, the Kelvin sign to k and
+        // the dotless i to i, by its upper case then lower; the dotted
+        // capital I is folded to i too, which hides more if Go doesn't.
         for text in [
             r#"{"auths": {"registry.example": {"\u0131dentitytoken": "made-up"}}}"#,
             r#"{"auth\u017f": {"registry.example": {"auth": "made-up"}}}"#,
@@ -356,6 +360,21 @@ mod tests {
             empties(text, &docker()),
             "a proxy's login said as a name was left: {text}"
         );
+    }
+
+    #[test]
+    fn a_login_said_in_a_registrys_name_empties_the_file() {
+        // Docker reads no login from a registry's name, but cat reads it,
+        // as it reads a proxy's.
+        for text in [
+            r#"{"auths": {"https://joel:made-up@registry.example": {}}}"#,
+            r#"{"auths": {"joel:made-up@registry.example": {"email": "joel@example"}}}"#,
+        ] {
+            assert!(
+                empties(text, &docker()),
+                "a login said in a registry's name was left: {text}"
+            );
+        }
     }
 
     #[test]

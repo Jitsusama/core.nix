@@ -38,8 +38,17 @@ impl Passwords {
         let Some(kept) = without_npm_credentials(&text) else {
             return Vec::new();
         };
-        let copy = self.written("npmrc", &kept);
-        let source: OsString = copy.map_or_else(|| "/dev/null".into(), Into::into);
+        let source: OsString = self.written("npmrc", &kept).map_or_else(
+            |why| {
+                // npm then reads no settings at all, so the journal says why.
+                eprintln!(
+                    "<4>passwords: hiding {} with /dev/null, unwritten: {why}",
+                    over.display()
+                );
+                "/dev/null".into()
+            },
+            Into::into,
+        );
         vec!["--ro-bind".into(), source, over.into()]
     }
 }
