@@ -7375,7 +7375,7 @@ Scope {
         // yet noted (Awaited.frameOpen).
         if (waited && searchParts)
             Object.assign(searchParts, Awaited.heldFor(waited, { at: listedAt, collected,
-                spans: heldSpans.concat(Awaited.frameOpen(feltFrame, waited.firedAt ?? listedAt)) },
+                spans: heldSpans.concat(Awaited.heldOpen(feltFrame, waited, listedAt)) },
                 answersWaitedFor));
         heldSpans = [];
         if (asking)
@@ -11616,6 +11616,9 @@ Scope {
     property real feltFrom: -1
     property bool feltFromChord: false
     function feltBegin(from, fromChord) {
+        // An opening felt over one still felt, or over a held key, goes on
+        // noting the frame in flight, so it's asked before feltSaid ends it.
+        const listening = spansHeard;
         if (feltTicking.running)
             feltSaid();
         feltTicks = Pacing.feltBegun(KeyTimes.now(), feltClocks());
@@ -11623,7 +11626,7 @@ Scope {
         feltFrom = from;
         feltFromChord = fromChord;
         feltSpans = [];
-        feltFrame = Awaited.frameHeld(feltFrame, answersAwaited !== null);
+        feltFrame = Awaited.frameHeld(feltFrame, listening);
         feltTicking.start();
     }
     // The named work run while an opening is felt, `{ name, from, to }`, so

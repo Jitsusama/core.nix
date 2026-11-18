@@ -112,3 +112,10 @@ function frameOpen(frame, at) {
     }
     return open;
 }
+
+// What a held key's frame still had open when its wait ended: said up to
+// the bound's timer firing, where the bound ended it, since the timer's
+// own work after that isn't the sync; else up to the listing `at`.
+function heldOpen(frame, held, at) {
+    return frameOpen(frame, held.firedAt ?? at);
+}

@@ -86,7 +86,8 @@ Scope {
                     + ` answers ${parts.answers}${composed(parts.composing)}`
                     + `${parts.before ? `, before ${parts.before}${setting(parts.beforeParts)}`
                         : ""}`
-                    + `${parts.waited ? `, waiting ${parts.waited} on answers${Trials.behindSaid(parts)}`
+                    + `${parts.waited
+                        ? `, waiting ${parts.waited} on answers${Trials.behindSaid(parts)}`
                         : ""})` : "")
                 + (frame ? `, then ${frame.waiting} waiting for its frame and ${frame.drawing}`
                     + " drawing it" + drawingApart(frame) + collecting(frame, drawn)

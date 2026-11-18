@@ -127,7 +127,7 @@ QtObject {
         // A bound can end on the timer queued behind a frame's sync, ahead
         // of the call that notes it, as Pacing.feltFramed's frame then holds
         // it: begun, not yet heard to end.
-        Expect.same("a sync not yet heard to end runs to the listing, beside rows laid out since",
+        Expect.same("a sync not yet heard to end runs to the time asked, beside rows laid out",
             Awaited.frameOpen({ rows: { from: 30, to: 34 }, syncFrom: 20 }, 50), [
                 { name: "syncing", from: 20, to: 50 }, { name: "laying out", from: 30, to: 34 }]);
         Expect.same("a frame all said has nothing open",
@@ -137,6 +137,11 @@ QtObject {
             Awaited.heldFor({ began: 0, from: 1000, collected: 50, timedOut: true },
                 { at: 1060, collected: 50, spans: Awaited.frameOpen(syncing, 1050) }, 8),
             { waited: 60, behind: 52, behindOn: "syncing 40, 12 unnamed" });
+        Expect.same("a held key's open sync ends where its bound's timer fired",
+            Awaited.heldOpen(syncing, { firedAt: 1050 }, 1060),
+            [{ name: "syncing", from: 1010, to: 1050 }]);
+        Expect.same("a held key all answered has its open sync run to the listing",
+            Awaited.heldOpen(syncing, {}, 1060), [{ name: "syncing", from: 1010, to: 1060 }]);
 
         // A key typed over a held one, or an opening felt while a key is
         // held, goes on noting the frame in flight; one held with nothing
