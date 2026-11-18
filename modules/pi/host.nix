@@ -176,6 +176,16 @@ let
         # of work in 96 s, and two minutes leaves the loop that slowdown five
         # times over.
         WatchdogSec = "2min";
+        # The watchdog's abort is a SIGABRT, which a JavaScript listener can
+        # catch: pi bundles signal-exit, which adds one, and node then only
+        # queues the signal for a loop that may never turn. At 16:46 on 17
+        # November the background host's main thread spun on a CPU for four
+        # minutes; the watchdog aborted it at 120 s and systemd waited its
+        # default 150 s more before the kill. A node without the listener
+        # still aborts at once, and with no core (LimitCORE below) nothing is
+        # lost by killing the rest 10 s on. The host's hold watcher has
+        # written what held the loop by then.
+        TimeoutAbortSec = "10s";
         # A host keeps no core. Its heap runs to 4 GB and holds every hosted
         # conversation's keys and tokens. On 16 November V8 aborted it out of
         # memory at 20:44:47, and it couldn't exit while the kernel streamed
