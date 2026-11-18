@@ -69,6 +69,7 @@ in
         "Daemon.qml"
         "Fuzzy.js"
         "Words.qml"
+        "launcher/Catalogue.js"
         "launcher/Provider.qml"
         "launcher/ReadyRows.qml"
         "launcher/Shared.js"

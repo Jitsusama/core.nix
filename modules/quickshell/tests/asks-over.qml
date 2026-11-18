@@ -24,6 +24,7 @@ import QtQuick
 import KeyTimes
 import "launcher" as Launcher
 import "Arming.js" as Arming
+import "launcher/Catalogue.js" as Catalogue
 import "Expect.js" as Expect
 
 ShellRoot {
@@ -45,8 +46,8 @@ ShellRoot {
             key: root.key, thing, place: "asks", kind: "ask", state: "waiting",
             name: "op://Private/Kiln/password", glyph: "passwords", hue: "action",
             note: "S1", side: [{ said: "from S1", keep: 2 }], attention: 1000, digest,
-            // A field no hidden row draws, as a daemon may serve more later.
-            reads: "op://Private/Kiln/password",
+            // Fields no hidden row draws, as a daemon may serve more later.
+            reads: "op://Private/Kiln/password", graph: { shape: "bar", values: [1] },
             order: 1024, acts: [act("release"), act("refuse")],
             drawer: { eyebrow: "S1", title: "op://Private/Kiln/password",
                 body: "To fire the kiln.", facts: [{ name: "Runs", said: "make kiln" }] }
@@ -71,6 +72,17 @@ ShellRoot {
         function tell(digest) {
             const next = Object.assign({}, held);
             next[root.key] = root.record(digest);
+            held = next;
+            heard([root.key], []);
+        }
+
+        // The ask ended, as the daemon serves it then: no state, no acts.
+        function tellEnded() {
+            const next = Object.assign({}, held);
+            const was = held[root.key] ?? root.record("");
+            next[root.key] = Object.assign({}, was, {
+                row: Object.assign({}, was.row, { state: undefined, acts: [] })
+            });
             held = next;
             heard([root.key], []);
         }
@@ -268,7 +280,7 @@ ShellRoot {
             landedThenShown, commanded, commandedThenRun, commandedThenMoved,
             commandedThenShown, timedBeforeSharing, timedMove, sharing, sharedYes,
             sharingMoved, sharingMovedAsked, unshared, unsharedShown, unsharedMoved,
-            unsharedMovedShown, unheard, ownRecording, sharedNo, heldThenShared]);
+            unsharedMovedShown, unheard, ownRecording, sharedNo, heldThenShared, sharedEnded]);
     }
 
     function arming() {
@@ -656,12 +668,12 @@ ShellRoot {
         same("it has no act, so no key answers it unseen",
             [row()?.arms, row()?.verbs ?? null], ["", null]);
         // The launcher closes on a Return with no run, so his second
-        // Return, meant for a yes, would reach the window behind.
-        same("a Return on it keeps the launcher open",
-            [row()?.stays, typeof row()?.run], [true, "function"]);
-        const sentBefore = link.sent.length;
-        row()?.run?.();
-        same("and answers nothing", link.sent.length, sentBefore);
+        // Return, meant for a yes, would reach the window behind. It's
+        // held still instead, with no run for the right arrow to step
+        // into, nor taken for a change a Return from the find lands on.
+        same("a Return on it keeps the launcher open, doing nothing",
+            [Catalogue.holdsStill(row()), typeof row()?.run, Catalogue.changesState(row())],
+            [true, "undefined", false]);
         same("it still waits for him in For You, hidden there too",
             asks.forYou.map(one => one.row.name), [hidden]);
         same("and its line's time starts again", asks.seen, {});
@@ -798,5 +810,17 @@ ShellRoot {
         same("the share ended holds it again as itself", [held().name, held().row?.name],
             [real, real]);
         same("still saying when it's done after, as it did", held().done === done, true);
+    }
+
+    // An ask ended while the screen is shared is hidden too, and its
+    // Return closes the launcher, as an ended ask's does unshared.
+    function sharedEnded() {
+        Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
+        link.tellEnded();
+        same("an ask ended while the screen is shared is hidden", row()?.name,
+            "Ask, Hidden While You Share");
+        same("and its Return closes the launcher, as an ended ask's does",
+            [Catalogue.holdsStill(row()), row()?.stays === true], [false, false]);
+        Niri.casts = {};
     }
 }
