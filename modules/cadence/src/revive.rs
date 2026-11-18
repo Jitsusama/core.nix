@@ -3,6 +3,10 @@
 //! now. The orchestrators and every orchestrator's sessions are watched,
 //! so a crash overnight costs minutes, not the night. Everything here is a
 //! decision over what was read; main.rs reads and starts.
+//!
+//! Long because its cases are over a third of it: each way a gone session
+//! is judged (crashed, ended, hosted, stranded, held, gated) is proven
+//! beside the decision it proves, over private fixtures.
 
 use std::collections::BTreeMap;
 
@@ -55,7 +59,25 @@ pub struct Seen {
     /// session (`ended_on_purpose`), if it did.
     pub ended: Option<String>,
     /// The shared pi host its presence says it runs in, if one does.
-    pub hosted: Option<String>,
+    pub hosted: Option<Hosting>,
+}
+
+/// A hosted session's host, as far as reviving asks of it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hosting {
+    pub host: String,
+    /// Whether the host's roster holds it, so the host resumes it.
+    pub holds: bool,
+    /// Whether the host runs, or is starting again or waits to.
+    pub back: bool,
+}
+
+/// Whether a host's unit, by its `ActiveState` and the jobs systemd has
+/// waiting on it, runs or is coming back, as pi-host-down judges it: one
+/// restarting after a crash is activating, or has a start waiting.
+#[must_use]
+pub fn back(state: &str, jobs: &str) -> bool {
+    matches!(state, "active" | "activating" | "reloading") || !jobs.trim().is_empty()
 }
 
 /// How a session's pi ended on purpose, by the record pi keeps of each
@@ -115,6 +137,9 @@ pub enum Verdict {
     Died {
         cwd: String,
     },
+    /// Died in a host that won't bring it back, for the reason given, and
+    /// left for its orchestrator to start in a host again, never here.
+    Stranded(String),
 }
 
 /// Whether a died session may be started now.
@@ -206,11 +231,11 @@ pub fn judge(
     if seen.running || seen.parked {
         return Verdict::Alive;
     }
-    // A host resumes its own conversations when it starts again, so one
-    // started here as well runs twice on one log, in a window Joel ruled
-    // out for them: on 18 November nine did, after the host's 03:23 end.
-    if let Some(host) = &seen.hosted {
-        return Verdict::Left(format!("its host, {host}, resumes it"));
+    // A host resumes what its roster holds when it starts again, so one
+    // started here as well runs twice on one log: on 18 November nine
+    // did, after the background host's 03:23 end.
+    if let Some(h) = seen.hosted.as_ref().filter(|h| h.holds && h.back) {
+        return Verdict::Left(format!("its host, {}, resumes it", h.host));
     }
     let Some(quest) = quest else {
         return Verdict::Left("it has no quest".into());
@@ -238,6 +263,16 @@ pub fn judge(
     if !seen.this_boot {
         return Verdict::Left("it ended with an earlier boot".into());
     }
+    // Joel ruled that a hosted conversation comes back in a host with no
+    // window, so one its host won't resume is its orchestrator's to place.
+    if let Some(h) = &seen.hosted {
+        let why = if h.holds {
+            "is down"
+        } else {
+            "no longer holds it"
+        };
+        return Verdict::Stranded(format!("its host, {}, {why}", h.host));
+    }
     Verdict::Died {
         cwd: entry.cwd.clone(),
     }
@@ -258,14 +293,18 @@ pub fn gate(memory: &Memory, session: &str, now: i64) -> Gate {
         return Gate::TooSoon((now - last) / 60);
     }
     if starts.len() >= PER_HOUR {
-        let hour = now / 3600;
-        let report = memory.defects.get(session) != Some(&hour);
         return Gate::Defect {
             starts: starts.len(),
-            report,
+            report: report_due(memory, session, now),
         };
     }
     Gate::Go
+}
+
+/// Whether what keeps `session` down is still to be said this hour.
+#[must_use]
+pub fn report_due(memory: &Memory, session: &str, now: i64) -> bool {
+    memory.defects.get(session) != Some(&(now / 3600))
 }
 
 /// Notes a start of `session` at `now`, keeping only the last hour's.
@@ -712,16 +751,48 @@ mod tests {
         // cadence started 33 of its conversations again as pi processes of
         // their own, in windows, and the host's own restart resumed them
         // too, so nine had two writers on one log.
-        let gone = Seen {
-            hosted: Some("work-background".into()),
+        let hosted = |holds, back| Seen {
+            hosted: Some(Hosting {
+                host: "work-background".into(),
+                holds,
+                back,
+            }),
             ..seen("A", None, false, "1")
         };
         let q = quest_with("active", "active", Some(9));
         assert_eq!(
-            judge(&gone, Some(&q), |_| false, false),
+            judge(&hosted(true, true), Some(&q), |_| false, false),
             Verdict::Left("its host, work-background, resumes it".into()),
-            "a host that died or restarts resumes its own conversations"
+            "a host that runs or restarts resumes what its roster holds"
         );
+        assert_eq!(
+            judge(&hosted(true, false), Some(&q), |_| false, false),
+            Verdict::Stranded("its host, work-background, is down".into()),
+            "a host left down resumes nothing, and no window opens for it"
+        );
+        assert_eq!(
+            judge(&hosted(false, true), Some(&q), |_| false, false),
+            Verdict::Stranded("its host, work-background, no longer holds it".into()),
+            "a presence the host left behind isn't what it resumes"
+        );
+        let done = quest_with("concluded", "active", None);
+        assert_eq!(
+            judge(&hosted(false, false), Some(&done), |_| false, false),
+            Verdict::Left("its quest is concluded".into()),
+            "one that would be left anyway isn't reported"
+        );
+    }
+
+    #[test]
+    fn a_host_restarting_after_a_crash_is_coming_back() {
+        assert!(back("active", ""));
+        assert!(back("activating", ""), "systemd's restart after a crash");
+        assert!(
+            back("failed", "4 pi-host-work-background.service start waiting"),
+            "a start is waiting"
+        );
+        assert!(!back("failed", ""), "left down past its start limit");
+        assert!(!back("inactive", "\n"), "stopped, or no such unit");
     }
 
     #[test]

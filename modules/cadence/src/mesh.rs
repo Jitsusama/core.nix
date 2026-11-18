@@ -1,11 +1,11 @@
 //! The sessions' mesh, as the pi harness keeps it on disk: what each
 //! session says of itself (presence), the messages between them, and the
-//! markers of parked ones. cadence reads them to know whether the session
+//! markers of parked ones, and the rosters of the pi hosts. cadence reads them to know whether the session
 //! keeping the cycle fast is there and answering, and writes a question
 //! the way the harness's own folder transport does: one JSON file per
 //! message, renamed into place whole.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -78,11 +78,18 @@ impl Presence {
         let Some(pid) = self.owner.as_ref().and_then(|o| o.pid) else {
             return false;
         };
-        let held = self
-            .hosted
+        is_pi(pid) || (self.host().is_some() && is_host(pid))
+    }
+
+    /// The shared pi host it says it runs in, only when that host's
+    /// conversation is this session: a presence a host wrote for another
+    /// conversation says nothing of this one.
+    #[must_use]
+    pub fn host(&self) -> Option<&str> {
+        self.hosted
             .as_ref()
-            .is_some_and(|h| h.conversation == self.session);
-        is_pi(pid) || (held && is_host(pid))
+            .filter(|h| h.conversation == self.session)
+            .map(|h| h.host.as_str())
     }
 }
 
@@ -132,6 +139,37 @@ impl Mesh {
 
     fn parked(&self) -> PathBuf {
         self.root.join("park-workflow/parked")
+    }
+
+    /// The sessions each pi host's roster holds, by the host's name, its
+    /// file's stem: what the host resumes when it starts again, whatever
+    /// a presence it left behind still says. A torn roster holds none.
+    #[must_use]
+    pub fn rostered(&self) -> BTreeMap<String, BTreeSet<String>> {
+        #[derive(Deserialize)]
+        struct Roster {
+            #[serde(default)]
+            sessions: Vec<Entry>,
+        }
+        #[derive(Deserialize)]
+        struct Entry {
+            #[serde(rename = "sessionId")]
+            session: Option<String>,
+        }
+        let Ok(entries) = fs::read_dir(self.root.join("host-rosters")) else {
+            return BTreeMap::new();
+        };
+        entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|e| e == "json"))
+            .filter_map(|path| {
+                let host = path.file_stem()?.to_str()?.to_owned();
+                let roster: Roster = serde_json::from_slice(&fs::read(&path).ok()?).ok()?;
+                let held = roster.sessions.into_iter().filter_map(|e| e.session);
+                Some((host, held.collect()))
+            })
+            .collect()
     }
 
     /// The newest presence going by `address`, if any session does.
@@ -461,6 +499,34 @@ mod tests {
         assert!(
             unhosted.runs(|pid| pid == 1_784_702, |_| false),
             "a pi of its own runs"
+        );
+        assert_eq!(held.host(), Some("work-background"));
+        assert_eq!(unhosted.host(), None, "it says no host");
+        assert_eq!(another.host(), None, "its host holds another conversation");
+    }
+
+    #[test]
+    fn each_hosts_roster_is_read_by_its_name_and_a_torn_one_holds_none() {
+        let (dir, mesh) = mesh();
+        let rosters = dir.path().join("host-rosters");
+        fs::create_dir_all(&rosters).unwrap();
+        fs::write(
+            rosters.join("work-background.json"),
+            r#"{"v":1,"sessions":[{"sessionId":"a","cwd":"/w"},{"cwd":"/x"}]}"#,
+        )
+        .unwrap();
+        fs::write(rosters.join("work-attended.json"), "{\"sessi").unwrap();
+        fs::write(rosters.join("work-background.json.lock"), "{}").unwrap();
+        let rostered = mesh.rostered();
+        assert_eq!(
+            rostered.keys().collect::<Vec<_>>(),
+            ["work-background"],
+            "a torn roster and a lock are left out: {rostered:?}"
+        );
+        assert_eq!(
+            rostered["work-background"].iter().collect::<Vec<_>>(),
+            ["a"],
+            "an entry naming no session holds none"
         );
     }
 
