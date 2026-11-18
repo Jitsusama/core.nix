@@ -164,14 +164,19 @@ function off(way, cols, to, at) {
     way.facing = end.dir;
     Ways.goes(way, end.dir > 0 ? from.right - at.wide : from.left, way.y);
     const ground = Falls.under({ x: end.x, y: way.y }, cols, at);
+    const noRoom = cramped(way, { x: end.x, y: way.y }, RISES, at);
+    if (noRoom && stepsDown(way, ground, at)) {
+        stepOff(way, end.x, ground.y, at);
+        return done();
+    }
     if (aStep(way, ground, at)) {
         Ways.goes(way, end.x, way.y);
         walks(way, end.x, ground.y);
         return done();
     }
     // A hop clear of it, then a fall; with no room over it for the hop's
-    // arc, walked off its end and dropped (VKCF3Z 13d5bf97).
-    if (cramped(way, { x: end.x, y: way.y }, RISES, at)) {
+    // arc, walked clear of its end and dropped (VKCF3Z 13d5bf97).
+    if (noRoom) {
         Ways.goes(way, end.x, way.y);
     } else {
         Ways.leap(way, { x: end.x, y: way.y }, RISES, "hops");
@@ -329,11 +334,68 @@ function aStep(way, to, at) {
 // walk instead, paws moving. Only up to its own height: a taller one
 // keeps its leap, held at the edge, rather than walk up a wall. Down,
 // past a step, it drops off rather than walk down through the air
-// (VKCF3Z 13d5bf97).
+// (VKCF3Z 13d5bf97), but where there's no room for its hop
+// (stepsDown()).
 function steps(way, to, at, { first = to, rises = RISES } = {}) {
     const rise = way.y - to.y;
     return aStep(way, to, at)
         || (rise > 0 && rise <= at.tall + 1e-6 && cramped(way, first, rises, at));
+}
+
+// Whether a drop off a floating window's end with no room for a hop is
+// small enough to step down from its edge, paws moving, as steps() takes
+// one up: down, as up, no more than its own height as the screen draws
+// it, no higher than its top, as aStep() measures. Walked clear of its
+// end on the air first, a body-length for 190 ms at the GPU rig's
+// 120 Hz, then dropped 3 pixels, it read as a bug (WCJQSG 1ee24751:
+// "Stepping down a small ledge with its paws moving is what a cat
+// does"); measured from where it stands over the top, not where it's
+// drawn, a float 3 pixels under the top still did it. Stepping, it
+// crosses the corner of the window's face for a body-length's walk, the
+// one break of never over its face, and the smaller: a body as wide as
+// it's tall goes a body's width along as it goes down, so for a drop no
+// more than its height it goes no more than half its height deeper into
+// the corner than its feet sit on it. Drawn no higher than the screen's
+// top, on a window whose top is under its own height down they already
+// sit in the face; lower, up to its air over it, so the crossing is
+// fresh, and still the smaller break than the walk on the air. Its walk
+// is timed by the ground it covers along and down, so the deeper the
+// step the longer: under 200 ms on a long way over it, under 300 ms off
+// a seat on a long way, where it eases to its stop before it turns, and
+// up to 500 ms on a short one, ambling. For that walk its
+// cells take the pointer over the corner, often the window's title bar,
+// as they do wherever it stands. Standing over the top, as a workspace
+// move can draw it sliding with the screen, its step starts from the
+// top at once, as walks() goes, so what it stood over the top is a jump
+// at its edge, as its drop off it is (falls()). Deeper, it walks clear and
+// drops (VKCF3Z 13d5bf97), its feet in the face only as deep as they
+// stood on it. With room for its hop, a drop within steps() still walks
+// clear of its end, its feet a cell or two over the tops, and steps
+// down, as it did before the ruling: only a cramped one steps from its
+// edge.
+function stepsDown(way, to, at) {
+    const drop = Math.max(to.y, 0) - Math.max(way.y, 0);
+    return drop >= 0 && drop <= at.tall + 1e-6;
+}
+
+// Down off a floating window's end from its edge to `x`, `y`, as
+// stepsDown() allows. Its moves are drawn on whole cells from where
+// each ends (MarginCatWays.js's onCells()), so a drop not whole cells,
+// as a cell of 4/3 at a ratio of 1.5 gives, or an odd one at a cell of
+// 2, takes its part-cell down first, while it's wholly over the face,
+// its body as wide as the step is long: a pixel sunk into it for a
+// frame or more at 120 Hz. A cell along first and it goes down with its
+// body already past the edge. Its drop is measured from where walks()
+// starts it, the screen's top when it stands over it. From a seat at
+// the very end, that cell is the walk's first leg, and its ease-in is
+// held to it (timed()), as on any walk whose first leg is that short.
+function stepOff(way, x, y, at) {
+    const from = way.y < 0 ? Math.min(y, 0) : way.y;
+    const cells = (y - from) / at.cell;
+    if (Math.abs(cells - Math.round(cells)) > 1e-6) {
+        Ways.goes(way, way.x + Math.sign(x - way.x) * at.cell, way.y);
+    }
+    walks(way, x, y);
 }
 
 // Whether a leap's apex, `rises` cells (RISES, or a hop's half) over the
@@ -360,6 +422,14 @@ function follows(way, stop, now) {
     if (stop.how === "goes") {
         way.facing = Math.sign(stop.x - way.x) || way.facing;
         Ways.goes(way, stop.x, stop.y);
+    } else if (stop.how === "hopsOff" && cramped(way, stop.via, RISES / 2, at)
+        && stepsDown(way, landing, at)) {
+        // With no room for its hop, down off its end from its edge
+        // within its walk, paws moving, its front paws landing as its
+        // back ones leave the corner.
+        way.facing = Math.sign(stop.via.x - way.x) || way.facing;
+        Ways.goes(way, stop.via.x - way.facing * at.wide, way.y);
+        stepOff(way, landing.x, landing.y, at);
     } else if ((stop.how === "leapsOn" || stop.how === "hopsOff")
         && steps(way, landing, at,
             { first: stop.via, rises: stop.how === "hopsOff" ? RISES / 2 : RISES })) {
