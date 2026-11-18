@@ -22,7 +22,17 @@ struct Frame {
 
 impl Spawner {
     fn start() -> Self {
+        Self::started(&[])
+    }
+
+    /// One started as a pi host starts it, naming the session it serves.
+    fn start_for(session: &str) -> Self {
+        Self::started(&["for", session])
+    }
+
+    fn started(words: &[&str]) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_pi-spawner"))
+            .args(words)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
@@ -276,6 +286,48 @@ fn says_it_keeps() {
 
     assert!(answer.status.success(), "it exits 0");
     assert_eq!(String::from_utf8_lossy(&answer.stdout), "keeps\n");
+}
+
+#[test]
+fn serves_for_the_session_it_names() {
+    let mut spawner = Spawner::start_for("s-one");
+    spawner.run("7", "/", &["-c", "echo served"], &[]);
+    let frames = spawner.until_done();
+
+    assert_eq!(output(&frames, 1), "served\n");
+    assert_eq!(exit_of(&frames), (0, 0));
+}
+
+#[test]
+fn ends_for_a_session_when_stdin_ends() {
+    // How the harness asks whether a spawner takes the word: one from
+    // before refuses it, and one that takes it serves nothing and ends.
+    let answer = Command::new(env!("CARGO_BIN_EXE_pi-spawner"))
+        .args(["for", "s-one"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("the spawner runs");
+
+    assert!(answer.status.success(), "it exits 0");
+    assert!(answer.stdout.is_empty(), "it sent nothing");
+}
+
+#[test]
+fn refuses_for_without_one_session() {
+    for words in [&["for"][..], &["for", ""], &["for", "s-one", "s-two"]] {
+        let answer = Command::new(env!("CARGO_BIN_EXE_pi-spawner"))
+            .args(words)
+            .stdin(Stdio::null())
+            .output()
+            .expect("the spawner runs");
+
+        assert_eq!(
+            answer.status.code(),
+            Some(64),
+            "{words:?} is refused with a usage exit"
+        );
+        assert!(answer.stdout.is_empty(), "{words:?} serves nothing");
+    }
 }
 
 #[test]

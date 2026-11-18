@@ -487,7 +487,8 @@ import ./host-checks.nix args
   # pi-spawner builds with its tests run (spawner/tests/spawner.rs): what a
   # command says and how it ends passed on, its folder and variables kept,
   # a group of its own, a failure to start said, a drop honoured, every
-  # group killed once pi goes but a kept one, and `keeps` answered.
+  # group killed once pi goes but a kept one, `keeps` answered, and
+  # `for <session>` served and refused without one session.
   pi-spawner-starts-commands-for-pi = pkgs.callPackage ./spawner/package.nix { };
 
   # clippy finds nothing in pi-spawner, its tests included.

@@ -23,6 +23,15 @@
 //! `pi-spawner keeps` says this spawner spares them; one from before
 //! refuses the word, so the harness keeps no command it starts.
 //!
+//! A pi host starts one spawner for each session it holds, as
+//! `pi-spawner for <session>`, so the session stands in the spawner's
+//! own command line. The mycelium node reads it there to say which of a
+//! host's sessions asked for a run: the spawner can't be dumped (see
+//! `serve`), so nothing it starts can rewrite its memory, and its
+//! environment can't be read by the node at all. The spawner itself
+//! does nothing with the session. One from before refuses the word, and
+//! the harness then starts it bare.
+//!
 //! Its help and its refusal of words it doesn't take are the terminal
 //! kit's (docs/commands.md); stdout is the protocol's alone, written
 //! straight, never through the kit.
@@ -37,7 +46,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 
-use terminal_kit::Help;
+use terminal_kit::{Exit, Failure, Help};
 
 /// A command's process id, sent once it has started: four bytes.
 const STARTED: u8 = b'p';
@@ -94,16 +103,28 @@ fn help() -> Help {
             Help::new("keeps", "says it leaves kept commands running when pi goes")
                 .example("pi-spawner keeps", "keeps, where it does"),
         )
+        .subcommand(
+            Help::new(
+                "for",
+                "serves as it does bare, naming the session it serves",
+            )
+            .argument("<session>", "the pi session whose commands it starts")
+            .example("pi-spawner for s-one", "serves session s-one's commands"),
+        )
 }
 
 fn main() -> std::process::ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
-        // The kit refuses any other word, since keeps is its only one.
-        if context.args.first().is_some_and(|word| word == "keeps") {
-            println!("keeps");
-            return Ok(());
+        // The kit refuses any other word, and a second word after
+        // either: keeps takes none, and for takes the one session.
+        match context.args.as_slice() {
+            [word] if word == "keeps" => println!("keeps"),
+            [word, session] if word == "for" && !session.is_empty() => serve(),
+            [word, ..] if word == "for" => {
+                return Err(Failure::new(Exit::Usage, "for needs the session it serves"));
+            }
+            _ => serve(),
         }
-        serve();
         Ok(())
     })
 }
