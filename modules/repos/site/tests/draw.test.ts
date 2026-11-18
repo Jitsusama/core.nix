@@ -107,6 +107,17 @@ it("holds each number in a row to the word it counts, so a row never wraps betwe
   }
 });
 
+it("holds a count to its own word only, never a part ending in a digit to the next", () => {
+  const head = { branch: "v2", commit: "a1", upstream: { count: { behind: 3, ahead: 0 } } };
+  const told2 = records.map((each) => (each.kind === "checkout" ? { ...each, head } : each));
+  const whole = groveOf(told(told2), cells, NOW);
+  const [opened] = whole?.repositories ?? [];
+  assert.ok(whole !== undefined && opened !== undefined, "the records drew no repository");
+  const context = { now: NOW, home: "/home/ada", homes: () => HOSTILE };
+  const markup = drawer(opened, whole, context, new Set());
+  assert.ok(markup.includes("v2 · 3\u00a0behind"), `a branch was held to the separator: ${markup}`);
+});
+
 it("puts what was searched for as words when nothing is named like it", () => {
   const markup = rows([], NOW, HOSTILE);
   assert.ok(asWords(markup), `the list put what was searched for in as markup: ${markup}`);

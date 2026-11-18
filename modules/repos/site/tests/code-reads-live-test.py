@@ -581,6 +581,22 @@ def test_a_redraw_keeps_focus_on_a_link_in_a_tree(code_page: Page, repos_daemon:
     expect(home, "a redraw took focus off the link to the tree").to_be_focused()
 
 
+def test_focus_stays_in_the_drawer_when_the_tree_holding_it_goes(
+    code_page: Page, repos_daemon: StandIn
+) -> None:
+    says_it_stands(code_page, "live")
+    grove_written_now(repos_daemon)
+    home = code_page.locator(f'#open a[href="../{CELL_HOME}"]').first
+    expect(home, "the cell's home wasn't linked").to_contain_text("E2ZIAQ", timeout=PACE_MS)
+    row(code_page, "github:owl/core").click()
+    code_page.keyboard.press("Enter")
+    home.focus()
+    repos_daemon.tell("tree", gone=["tree:/home/ada/trees/grove"])
+    expect(home, "the tree stayed in the drawer").to_have_count(0, timeout=PACE_MS)
+    held = code_page.evaluate("() => document.activeElement.closest('.drawer') !== null")
+    assert held, "focus fell out of the drawer with the tree that held it"
+
+
 def test_a_redraw_keeps_focus_on_the_same_of_two_alike_links(
     code_page: Page, repos_daemon: StandIn, mycelium_node: StandIn, tmp_path: Path
 ) -> None:
@@ -617,19 +633,29 @@ def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
     says_it_stands(code_page, "live")
     keys = code_page.locator(".head .keys [role=button]")
     expect(keys, "the head's keys weren't made pressable").to_have_count(6)
+    # The list's cursor stands on its first row for End and on its last for Home, so a key that
+    # let either through to the list would move it.
+    rows = code_page.locator("#list .row")
+    expect(rows, "the list didn't draw both repositories").to_have_count(2)
     chosen = code_page.locator('#list .row[aria-selected="true"]')
-    cursor = chosen.get_attribute("data-key") if chosen.count() == 1 else None
+    expect(chosen, "the list's cursor didn't stand on its first row").to_have_attribute(
+        "data-key", rows.first.get_attribute("data-key") or ""
+    )
     keys.first.focus()
     code_page.keyboard.press("ArrowRight")
     expect(keys.nth(1), "the right arrow didn't move to the next key").to_be_focused()
     code_page.keyboard.press("End")
     expect(keys.last, "End didn't move to the last key").to_be_focused()
-    after_end = chosen.get_attribute("data-key") if chosen.count() == 1 else None
-    assert after_end == cursor, "End on a key moved the list's cursor too"
+    first = rows.first.get_attribute("data-key") or ""
+    expect(chosen, "End on a key moved the list's cursor too").to_have_attribute("data-key", first)
+    code_page.locator("#list").focus()
+    code_page.keyboard.press("j")
+    last = rows.last.get_attribute("data-key") or ""
+    expect(chosen, "j didn't step the list's cursor on").to_have_attribute("data-key", last)
+    keys.first.focus()
     code_page.keyboard.press("Home")
     expect(keys.first, "Home didn't move to the first key").to_be_focused()
-    now_chosen = chosen.get_attribute("data-key") if chosen.count() == 1 else None
-    assert now_chosen == cursor, "Home on a key moved the list's cursor too"
+    expect(chosen, "Home on a key moved the list's cursor too").to_have_attribute("data-key", last)
     # A chord is the browser's or the reader's, never a step between the keys, nor the page's.
     code_page.keyboard.press("Alt+ArrowRight")
     expect(keys.first, "a key took Alt with the arrow as its own step").to_be_focused()

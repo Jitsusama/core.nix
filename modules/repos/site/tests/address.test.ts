@@ -135,8 +135,11 @@ it("forgets no unfolding that draws nothing more", () => {
   const old = addressed(core, "/home/ada/trees/old");
   const both = unfolding("resting", "gone");
   assert.deepEqual(forgotten(old, grove, both), [], "core has no gone tree to fold");
-  const elsewhere = { ...both, cursor: "github:owl/notes" };
-  assert.deepEqual(forgotten(here, grove, elsewhere), [], "core's seasons aren't the cursor's");
+  // A twin with core's trees is the cursor, so only reading core's unfoldings would forget it.
+  const twin = { ...core, key: "github:owl/twin" };
+  const elsewhere = { ...unfolding("resting"), cursor: twin.key };
+  const twins = { ...grove, repositories: [core, twin] };
+  assert.deepEqual(forgotten(here, twins, elsewhere), [], "core's seasons aren't the cursor's");
 });
 
 it("forgets the list a name or a place narrowed, and seasons only a key unfolded", () => {
