@@ -416,17 +416,43 @@ pub fn followed() -> Vec<Vec<String>> {
     ]
 }
 
-/// One journalctl following from the day's start, as `asked`, through
-/// every boot of the day: journalctl follows only this boot unless told
-/// otherwise, so after a reboot the day would be counted from the reboot
-/// alone. `-k` chooses this boot too: systemd 262's journalctl reads
-/// every boot with `--boot=all` either side of it (checked on 17
-/// November), and asking last keeps it so where the last choice wins.
+/// One journalctl reading the day, as `asked`, from `since`, the day's
+/// start, until `until`, in seconds since 1970, and ending: the histories
+/// are merged in the order their lines were written (`replay.rs`) before
+/// each follows on. Every history is given the same two, rather than
+/// each working out "today" and "now" as it starts, so all read one day
+/// to one moment however long the others take.
 #[must_use]
-pub fn following(asked: &[String]) -> Command {
+pub fn reading(asked: &[String], since: i64, until: i64) -> Command {
+    journalctl(
+        &[&format!("--since=@{since}"), &format!("--until=@{until}")],
+        asked,
+    )
+}
+
+/// One journalctl following, as `asked`, from just after `after`, the
+/// cursor its history ended at, or from `since`, the day's start its
+/// history read from, when its history had no lines.
+#[must_use]
+pub fn following(asked: &[String], after: Option<&str>, since: i64) -> Command {
+    let from = after.map_or_else(
+        || format!("--since=@{since}"),
+        |cursor| format!("--after-cursor={cursor}"),
+    );
+    journalctl(&["--follow", &from], asked)
+}
+
+/// One journalctl, from where `from` says, as `asked`, through every boot
+/// of the day: journalctl follows only this boot unless told otherwise, so
+/// after a reboot the day would be counted from the reboot alone. `-k`
+/// chooses this boot too: systemd 262's journalctl reads every boot with
+/// `--boot=all` either side of it (checked on 17 November), and asking
+/// last keeps it so where the last choice wins.
+fn journalctl(from: &[&str], asked: &[String]) -> Command {
     let mut journalctl = Command::new("journalctl");
     journalctl
-        .args(["--follow", "--output=json", "--no-pager", "--since=today"])
+        .args(["--output=json", "--no-pager"])
+        .args(from)
         .arg(format!("--output-fields={FIELDS}"))
         .args(asked)
         .arg("--boot=all");
