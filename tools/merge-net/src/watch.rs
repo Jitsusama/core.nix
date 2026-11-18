@@ -1254,11 +1254,18 @@ fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, String>
     settler.error().map_or(Ok(round), Err)
 }
 
-/// Remove the logs of runs over three days old, saying how many went.
+/// Remove the logs of runs over three days old, and the oldest past the
+/// budget, saying how many went.
 fn age_out_logs(state: &State) {
-    let aged = state.age_out_logs(std::time::SystemTime::now());
-    if aged > 0 {
-        state.say(&format!("removed {aged} logs of runs over three days old"));
+    let budget = crate::state::LOGS_BUDGET;
+    let aged = state.age_out_logs(std::time::SystemTime::now(), budget);
+    if aged.old + aged.over > 0 {
+        state.say(&format!(
+            "removed {} logs over three days old and {} past the {} GiB the net keeps",
+            aged.old,
+            aged.over,
+            budget >> 30
+        ));
     }
 }
 

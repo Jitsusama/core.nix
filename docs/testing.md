@@ -322,7 +322,9 @@ look every five minutes runs the other checks main's newest head moved since
 the last head it looked at, and searches for and reverts a merge that breaks
 one as a round does; it keeps that head in `~/.local/state/net/quick.json`.
 Each round removes the runs' logs in `~/.local/state/net/logs` over three days
-old, leaving `net.log`, so the folder no longer grows by gigabytes a day.
+old, and the oldest past 3 GiB, leaving `net.log`, any log under a day old and
+those of the heads the net still holds, so the folder no longer grows by
+gigabytes a day.
 The net starts nothing while a hold on the whole machine stands, or while
 `~/.local/state/net/pause` is there, and `merge-net status` says where it
 is.

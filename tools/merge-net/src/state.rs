@@ -19,8 +19,8 @@
 //! - `answers.jsonl`: a line for each hold, run again and pass `ready`
 //!   answered, with the files it turned on (`answers.rs`).
 //! - `findings/`: a file for each failure, for a session to tell its owner.
-//! - `logs/`: each run's log, kept three days, and the net's own in
-//!   `net.log`.
+//! - `logs/`: each run's log, kept three days within a budget of bytes,
+//!   and the net's own in `net.log`.
 //! - `core/`: the net's own checkout of the repository it watches.
 //! - `drv/`: the derivation each check builds at a commit, named
 //!   `<commit>-<check>`, so a search evaluates each once.
@@ -180,24 +180,56 @@ impl State {
     /// Remove each run's log last written more than `LOGS_KEPT` before
     /// `now`, leaving `net.log`, and say how many went. Nothing removed
     /// them before: by 11 November the folder held 8,737 logs, 12 GiB,
-    /// growing by about 2 GiB a day on a disk three quarters full.
-    pub fn age_out_logs(&self, now: SystemTime) -> usize {
+    /// growing by about 2 GiB a day on a disk three quarters full. Of
+    /// those left, the newest are kept while they fit in `budget` bytes
+    /// and the rest go too, since three days alone grew to 14 GiB; but
+    /// never a log under `LOGS_READ` old, nor one of a head the net
+    /// still holds, which it reads back to judge a test at a round's base
+    /// or to tell an owner what a search found.
+    pub fn age_out_logs(&self, now: SystemTime, budget: u64) -> Aged {
+        let mut aged = Aged::default();
         let Ok(entries) = fs::read_dir(self.root.join("logs")) else {
-            return 0;
+            return aged;
         };
-        entries
+        let (passed, seen) = self.heads();
+        let held: Vec<String> = [passed, seen, self.under_way()]
+            .into_iter()
             .flatten()
-            .filter(|entry| entry.file_name() != "net.log")
-            .filter(|entry| {
-                entry
-                    .metadata()
-                    .and_then(|meta| meta.modified())
-                    .is_ok_and(|written| {
-                        now.duration_since(written).is_ok_and(|age| age > LOGS_KEPT)
-                    })
-            })
-            .filter(|entry| fs::remove_file(entry.path()).is_ok())
-            .count()
+            .map(|head| format!("{}-", short(&head)))
+            .collect();
+        let mut kept = Vec::new();
+        for entry in entries.flatten() {
+            if entry.file_name() == "net.log" {
+                continue;
+            }
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
+            let Ok(written) = meta.modified() else {
+                continue;
+            };
+            if now.duration_since(written).is_ok_and(|age| age > LOGS_KEPT) {
+                aged.old += usize::from(fs::remove_file(entry.path()).is_ok());
+            } else {
+                kept.push((written, meta.len(), entry.path()));
+            }
+        }
+        kept.sort_by_key(|(written, _, _)| std::cmp::Reverse(*written));
+        let mut size = 0;
+        for (written, bytes, path) in kept {
+            size += bytes;
+            let young = !now
+                .duration_since(written)
+                .is_ok_and(|age| age >= LOGS_READ);
+            let named = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| held.iter().any(|head| name.starts_with(head)));
+            if size > budget && !young && !named {
+                aged.over += usize::from(fs::remove_file(path).is_ok());
+            }
+        }
+        aged
     }
 
     /// The head the next is compared with, and the last one looked at.
@@ -491,8 +523,29 @@ pub fn runs_in(text: &str, commit: &str, check: &str) -> Vec<Ran> {
 
 /// How long a run's log is kept. A finding names its log for a session to
 /// read, which it does within the day, and a search reads only the logs of
-/// the runs it made; three days leaves a weekend's findings readable.
+/// the runs it made; three days leaves a weekend's findings readable
+/// while they fit in `LOGS_BUDGET`.
 const LOGS_KEPT: Duration = Duration::from_hours(72);
+
+/// How long a run's log is kept whatever the budget. A search reads the
+/// logs of its merges and their parents, and a settle queued behind
+/// others reads those of its head and base, each within hours of the
+/// runs; a day covers them, at the cost of a busy day's logs, about
+/// 6.5 GiB on 16 November, outgrowing the budget.
+const LOGS_READ: Duration = Duration::from_hours(24);
+
+/// How many bytes of runs' logs are kept, the newest first. Three days
+/// of logs grew to 14 GiB by 17 November on a disk 83% full, 13 GiB of
+/// them a day or more old, which a session reads seldom.
+pub const LOGS_BUDGET: u64 = 3 * 1024 * 1024 * 1024;
+
+/// How many runs' logs a round removed: those over `LOGS_KEPT` old, and
+/// those past `LOGS_BUDGET`.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Aged {
+    pub old: usize,
+    pub over: usize,
+}
 
 /// A commit's first twelve characters, as names and logs give it.
 pub fn short(commit: &str) -> &str {
@@ -545,161 +598,4 @@ pub fn now() -> u64 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A state of the test's own. The tests run side by side, so a number
-    /// counted for each keeps two that chose the same name from emptying
-    /// each other's folder.
-    fn state(name: &str) -> State {
-        static MADE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-        let made = MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let root =
-            std::env::temp_dir().join(format!("merge-net-{name}-{}-{made}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        let state = State::at(root);
-        state.make().expect("made");
-        state
-    }
-
-    #[test]
-    fn what_is_said_over_several_lines_is_one_line_of_the_log() {
-        let state = state("said-once");
-        state.say(
-            "couldn't revert abc: git failed: error: could not revert\nhint: after resolving\n",
-        );
-        let log = fs::read_to_string(state.root.join("logs/net.log")).expect("the log");
-        assert_eq!(
-            log.lines().count(),
-            1,
-            "one thing said took several lines: {log:?}"
-        );
-        assert!(
-            log.ends_with("could not revert / hint: after resolving\n"),
-            "its lines weren't joined on: {log:?}"
-        );
-    }
-
-    #[test]
-    fn logs_past_three_days_go_and_the_nets_own_and_newer_ones_stay() {
-        let state = state("aged");
-        let now = SystemTime::now();
-        let written = |name: &str, age: Duration| {
-            let path = state.root.join("logs").join(name);
-            let file = fs::File::create(&path).expect("a log");
-            file.set_modified(now - age).expect("its time");
-            path
-        };
-        let day = Duration::from_hours(24);
-        let old = written("aaaa-vm-a-1.log", 4 * day);
-        let new = written("aaaa-vm-a-2.log", 2 * day);
-        let own = written("net.log", 9 * day);
-        assert_eq!(state.age_out_logs(now), 1, "not one log went");
-        assert!(!old.exists(), "a log four days old stayed");
-        assert!(new.exists(), "a log two days old went");
-        assert!(own.exists(), "the net's own log went");
-    }
-
-    #[test]
-    fn a_check_lasts_as_long_as_its_newest_pass() {
-        let state = state("lasted");
-        let log = state.log("aaaa", "vm-a", 1);
-        let runs = [
-            ("aaaa", "vm-a", Ran::Passed, Some(0), 600),
-            ("aaaa", "vm-a", Ran::Failed, Some(1), 30),
-            ("bbbb", "vm-a", Ran::Passed, Some(0), 500),
-            ("bbbb", "vm-b", Ran::Stalled, None, 3000),
-        ];
-        for (commit, check, ran, code, seconds) in runs {
-            state
-                .record(commit, check, ran, code, &log, seconds)
-                .unwrap();
-        }
-        let lasted = state.lasted();
-        assert_eq!(
-            lasted.get("vm-a"),
-            Some(&500),
-            "vm-a's newest pass took 500 seconds: {lasted:?}"
-        );
-        assert_eq!(
-            lasted.get("vm-b"),
-            None,
-            "a stalled run says nothing of how long vm-b takes"
-        );
-    }
-
-    #[test]
-    fn a_run_is_kept_by_its_commit_and_check() {
-        let state = state("runs");
-        let log = state.log("aaaa", "vm-a", 1);
-        state
-            .record("aaaa", "vm-a", Ran::Failed, Some(1), &log, 0)
-            .unwrap();
-        state
-            .record("aaaa", "vm-a", Ran::Passed, Some(0), &log, 0)
-            .unwrap();
-        state
-            .record("bbbb", "vm-a", Ran::Passed, Some(0), &log, 0)
-            .unwrap();
-        assert_eq!(state.runs("aaaa", "vm-a"), vec![Ran::Failed, Ran::Passed]);
-        state
-            .record("cccc", "vm-a", Ran::Stalled, None, &log, 0)
-            .unwrap();
-        assert_eq!(state.runs("cccc", "vm-a"), vec![Ran::Stalled]);
-        assert_eq!(state.runs("aaaa", "vm-b"), vec![]);
-        fs::remove_dir_all(&state.root).unwrap();
-    }
-
-    #[test]
-    fn runs_ending_together_are_each_kept_whole() {
-        let state = state("together");
-        let checks = ["vm-a", "vm-b", "vm-c", "vm-d"];
-        std::thread::scope(|scope| {
-            for check in checks {
-                let state = &state;
-                scope.spawn(move || {
-                    let log = state.log("aaaa", check, 1);
-                    for _ in 0..200 {
-                        state
-                            .record("aaaa", check, Ran::Passed, Some(0), &log, 0)
-                            .unwrap();
-                    }
-                });
-            }
-        });
-        for check in checks {
-            assert_eq!(state.runs("aaaa", check).len(), 200, "{check}'s runs");
-        }
-        fs::remove_dir_all(&state.root).unwrap();
-    }
-
-    #[test]
-    fn the_heads_and_the_hold_outlast_the_program() {
-        let state = state("heads");
-        assert_eq!(state.heads(), (None, None));
-        state.set_heads("aaaa", "bbbb").unwrap();
-        assert_eq!(
-            State::at(state.root.clone()).heads(),
-            (Some("aaaa".to_owned()), Some("bbbb".to_owned()))
-        );
-        state.set_hold(&json!({ "bad": "cccc" })).unwrap();
-        assert_eq!(state.hold().unwrap()["bad"], "cccc");
-        state
-            .set_hold(&json!({ "bad": "cccc", "already_runs": true }))
-            .unwrap();
-        assert!(
-            !state.hold_file().exists(),
-            "a switch reads no hold on a merge the machine runs"
-        );
-        assert_eq!(state.hold().unwrap()["already_runs"], true);
-        state.set_hold(&json!({ "bad": "dddd" })).unwrap();
-        assert!(
-            !state.already_runs_file().exists(),
-            "one hold stands at a time"
-        );
-        state.clear_hold().unwrap();
-        assert!(state.hold().is_none());
-        state.clear_hold().unwrap();
-        fs::remove_dir_all(&state.root).unwrap();
-    }
-}
+mod tests;
