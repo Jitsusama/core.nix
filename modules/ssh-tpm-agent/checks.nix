@@ -35,6 +35,7 @@
       told = holds "ssh-tpm-agent-is-told-of-its-gate" "ssh-tpm-agent isn't told of core's gate." (
         user.xdg.configFile."ssh-tpm-agent/gate".source == ./gate.conf
         && builtins.elem gate user.systemd.user.services.ssh-tpm-agent.Service.Environment
+        && user.systemd.user.services.ssh-tpm-agent.Service.LimitCORE or null == 0
         && builtins.elem ./refuses-agents.patch agent.patches
         && agent.doCheck
       );

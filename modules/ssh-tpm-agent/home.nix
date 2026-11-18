@@ -74,6 +74,12 @@
       "SSH_TPM_AGENT_GATE=${config.xdg.configHome}/ssh-tpm-agent/gate"
     ];
 
+    # The agent holds the login key's PIN, and a core of it would put that
+    # PIN in a file Joel's account may read, as anything running as him
+    # may: so it keeps none, with a hard limit no process of his can raise
+    # with prlimit.
+    systemd.user.services.ssh-tpm-agent.Service.LimitCORE = 0;
+
     # The login key, which the agent loads from ~/.ssh when it starts and
     # which asks for its PIN once a session.
     jitsusama.tpmKeys = [
