@@ -17,7 +17,7 @@
 //!
 //! `shaper --help`, and each command's, say what each takes
 //! (src/commands.rs); `SHAPER_HOSTS` stands for `--hosts`, and
-//! `SHAPER_TURN_DOWNLOAD`, set to anything, keeps every download turned
+//! `SHAPER_TURN_DOWNLOAD`, set to `1`, keeps every download turned
 //! through its IFB, so a test can count what each class received.
 
 mod bars;
@@ -142,7 +142,7 @@ fn options(command: &str, args: &[String]) -> Result<Options, Failure> {
         record: "/var/lib/shaper-record".into(),
         trial: "/run/shaper-trial/upload.json".into(),
         networks: None,
-        turn_download: std::env::var_os("SHAPER_TURN_DOWNLOAD").is_some(),
+        turn_download: std::env::var("SHAPER_TURN_DOWNLOAD").is_ok_and(|turn| turn == "1"),
     };
     // A network of its own, a test's among them, names its own distant hosts.
     if let Ok(hosts) = std::env::var("SHAPER_HOSTS") {

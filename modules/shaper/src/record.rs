@@ -414,7 +414,12 @@ pub fn record(
         }
     };
     let _ = fs::create_dir_all(folder);
-    eprintln!("recording {link} on {network}, choosing reflectors");
+    let links = |beside: Vec<String>| [vec![link.to_owned()], beside].concat();
+    let counting = links(beside());
+    eprintln!(
+        "recording {link} on {network}, counting {}, choosing reflectors",
+        counting.join(", ")
+    );
     let mut journal = Journal {
         folder: folder.to_path_buf(),
         file: None,
@@ -426,13 +431,13 @@ pub fn record(
     first["choosing"] = json!(true);
     first["link"] = json!(link);
     first["network"] = json!(network);
+    first["counting"] = json!(counting);
     journal.write(&first);
-    let links = |beside: Vec<String>| [vec![link.to_owned()], beside].concat();
     let counted = Counted::new(link, counters(link));
     let window = (counted.total, Instant::now());
     let mut recorder = Recorder {
         link,
-        links: links(beside()),
+        links: counting,
         counted,
         gateway,
         id,

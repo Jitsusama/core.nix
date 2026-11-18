@@ -117,7 +117,9 @@ in
       (src/oneway.rs), from each direction's own delay as shaper-record
       measures it, the controller `shaper replay` scores, and the only one
       left. Left null, the shaper is installed and nothing starts it, as a
-      machine that never named the one-way controller had it before. The
+      machine that never named the one-way controller had it before. Setting
+      it back to null takes the start at boot away but leaves a running
+      shaper shaping until `systemctl stop shaper` or the next boot. The
       round trip's, from pings to distant resolvers, went on 18 November.
     '';
   };
@@ -221,17 +223,16 @@ in
 
   config.systemd.services.shaper = {
     description = "Keep the network's queue here, sorted by the slices";
-    # It starts at boot: a day of the one-way controller on against off
-    # on a real link, eighteen pairs overnight, found it as good or better
-    # on every bar, and a boot that left it off left agents' uploads
-    # filling the router's queue until someone started it. A switch never
-    # starts a shaper someone stopped, so `systemctl stop shaper` stays
-    # the way to turn it off. The round trip's controller, which set rates
-    # from pings, is gone: five faults in four days came from guessing
-    # whose queue a round trip shows, and on 3 November it held a
-    # 312 Mbit/s download at 81.
-    # Only a machine that names the controller has it at boot, so one that
-    # never asked isn't shaped by an update.
+    # A machine that names the controller has it at boot: a day of the
+    # one-way controller on against off on a real link, eighteen pairs
+    # overnight, found it as good or better on every bar, and a boot that
+    # left it off left agents' uploads filling the router's queue until
+    # someone started it. One that never named it isn't shaped by an
+    # update. A switch never starts a shaper someone stopped, so
+    # `systemctl stop shaper` stays the way to turn it off. The round
+    # trip's controller, which set rates from pings, is gone: five faults
+    # in four days came from guessing whose queue a round trip shows, and
+    # on 3 November it held a 312 Mbit/s download at 81.
     wantedBy = lib.optional (config.jitsusama.shaper.controller != null) "multi-user.target";
     # The table must be there before the shaper fills its sets, and its
     # queues must be on a link before the first connection leaves by it.

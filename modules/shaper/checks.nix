@@ -48,8 +48,10 @@ onLinux {
   # Only a machine that names the controller shapes from boot: every
   # graphical machine imports the module, and one that never asked for
   # the one-way controller was never shaped before it was the only one.
-  shaper-starts-when-asked =
-    holds "shaper-starts-when-asked"
-      "The shaper would start at boot on a machine that never asked, or not on one that did."
-      (unasked && asked);
+  shaper-starts-when-asked = holds "shaper-starts-when-asked" (
+    if !unasked then
+      "The shaper would start at boot on a machine that never named its controller."
+    else
+      "The shaper wouldn't start at boot on a machine that named its controller."
+  ) (unasked && asked);
 }
