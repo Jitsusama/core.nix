@@ -598,8 +598,34 @@ mod tests {
         );
         assert_eq!(
             spaced(&[Some(1), None, Some(2)]),
-            [1024, 2048, 3072],
-            "no room between"
+            [-2046, -1022, 2],
+            "no room between, so the row below lets go of its order to make some"
+        );
+    }
+
+    #[test]
+    fn a_full_gap_moves_only_the_rows_it_widens_over() {
+        // Every row whole was told again each time one gap filled, about
+        // every 100 s on Joel's laptop: 460 rows, 405 KB, for one row placed
+        // (agents-top, 2026-11-18).
+        assert_eq!(
+            spaced(&[Some(1024), Some(2048), None, Some(2049), Some(4096), Some(5120)]),
+            [1024, 1365, 1706, 2049, 4096, 5120],
+            "only the row below the full gap moves with the one placed"
+        );
+        assert_eq!(
+            spaced(&[Some(1024), Some(2048), None, None, Some(2050), Some(4096)]),
+            [1024, 1280, 1536, 1792, 2050, 4096],
+            "two placed in a full gap move only the row below it too"
+        );
+    }
+
+    #[test]
+    fn spacing_again_is_left_for_when_no_widening_fits() {
+        assert_eq!(
+            spaced(&[Some(i64::MAX - 1), None]),
+            [1024, 2048],
+            "past the last order there's no room, and no row to let go of but it"
         );
     }
 }
