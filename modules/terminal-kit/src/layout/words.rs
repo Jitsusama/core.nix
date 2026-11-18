@@ -46,6 +46,20 @@ pub fn drawn(words: &str) -> Cow<'_, str> {
     })
 }
 
+/// Words from outside on one line, each run of space closed to one, so
+/// none can wrap into a line reading as a failure's try line, whose `try`
+/// two spaces mark. Drawn first, so a control dropped joins what stood
+/// either side of it rather than parting them. A blank that isn't a space
+/// to Unicode, braille's or the Hangul filler the pen keeps to shape a
+/// syllable, still draws as one, so it closes with the rest.
+pub fn spaced(words: &str) -> String {
+    one_line(words)
+        .split(|c: char| c.is_whitespace() || matches!(c, '\u{115f}' | '\u{2800}'))
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Whether a character parts words without a line break of its own.
 fn parts(c: char) -> bool {
     matches!(

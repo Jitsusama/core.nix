@@ -155,8 +155,11 @@ impl Context {
             io::stderr().lock(),
             "{}{}",
             self.err.marked(mark, role),
-            self.err
-                .role("text", &layout::hung(words, layout::MARK, self.err_room))
+            // Spaced as a failure's words are, so none reads as a try line.
+            self.err.role(
+                "text",
+                &layout::hung(&layout::spaced(words), layout::MARK, self.err_room)
+            )
         )
     }
 

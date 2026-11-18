@@ -38,13 +38,12 @@ const FORMS: [&str; 11] = [
 /// one taken for the other. Look-alike letters from other scripts, and
 /// one letter spelled two ways, still differ.
 pub fn spelled(name: &str) -> String {
-    let folded: String = terminal_kit::layout::one_line(name)
+    let folded: String = name
         .chars()
         .filter(|c| {
             !matches!(
                 c,
                 '\u{ad}'
-                    | '\u{115f}'
                     | '\u{1160}'
                     | '\u{180b}'..='\u{180f}'
                     | '\u{200c}'
@@ -54,15 +53,9 @@ pub fn spelled(name: &str) -> String {
                     | '\u{e0100}'..='\u{e01ef}'
             )
         })
-        .map(|c| {
-            if matches!(c, '\u{2800}' | '\u{3164}' | '\u{ffa0}') {
-                ' '
-            } else {
-                c
-            }
-        })
         .collect();
-    folded.split_whitespace().collect::<Vec<_>>().join(" ")
+    // Blanks read as the kit's failure words read them, as spaces.
+    terminal_kit::layout::spaced(&folded)
 }
 
 /// What a device on now is called, a maker said as `made` says one.

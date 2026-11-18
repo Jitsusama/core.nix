@@ -344,7 +344,6 @@ mod tests {
         // One of each folded range, by its ends.
         for shaping in [
             '\u{ad}',
-            '\u{115f}',
             '\u{1160}',
             '\u{180b}',
             '\u{180f}',
@@ -373,6 +372,25 @@ mod tests {
                     .is_err_and(|why| why.starts_with("2 devices that aren't on now")),
                 "with {shaping:?}, one of two names drawn alike was taken for the other: \
                  {found:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn names_that_differ_only_by_which_blank_parts_them_are_refused_as_two() {
+        for blank in ['\u{115f}', '\u{2800}'] {
+            let mut model = model();
+            for (at, name) in [(0, "Den Lamp".to_owned()), (1, format!("Den{blank}Lamp"))] {
+                model.devices_off[at].name = Some(name);
+                model.devices_off[at].nickname = None;
+                model.devices_off[at].hostname = None;
+            }
+            let found = find_device(&model, "den lamp", None).map(|device| &device.mac);
+            assert!(
+                found
+                    .as_ref()
+                    .is_err_and(|why| why.starts_with("2 devices")),
+                "with {blank:?}, one of two names drawn alike was taken for the other: {found:?}"
             );
         }
     }

@@ -15,7 +15,7 @@ use crate::ink::Pen;
 mod words;
 
 pub(crate) use words::unseen;
-pub use words::{cut, drawn, hung, one_line, paragraph, shortened, wrapped};
+pub use words::{cut, drawn, hung, one_line, paragraph, shortened, spaced, wrapped};
 
 /// Whether `words` hold anything the kit keeps from the terminal, so a
 /// layout copies only the rare table, list or row that has to be held

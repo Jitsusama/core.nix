@@ -5,6 +5,20 @@
 use super::*;
 
 #[test]
+fn spaced_words_close_every_blank_to_one_space() {
+    assert_eq!(
+        spaced(" try \u{2800}\u{115f}rm\u{2800}-rf\t\n~ \u{7}"),
+        "try rm -rf ~",
+        "a run of blanks stayed open, so words could read as a try line"
+    );
+    assert_eq!(
+        spaced("lo\rst"),
+        "lost",
+        "a dropped control parted the words it stood in"
+    );
+}
+
+#[test]
 fn a_table_cell_from_outside_stays_on_its_line_and_in_its_column() {
     let pen = Pen::plain();
     let rows = vec![
