@@ -161,7 +161,8 @@ in
   # adding one beside it, which a program holding the last one through a stop
   # left in every list of cameras with no picture. Its start runs over a
   # v4l2loopback-ctl stand-in (tests/camera-takes-its-loopback.sh), and the
-  # service is checked to start with it.
+  # service is checked to start with it. The service is read as text, not
+  # depended on, so the check never builds the machine's kernel.
   the-camera-takes-its-loopback =
     let
       stand-in = pkgs.writeShellApplication {
@@ -172,12 +173,16 @@ in
       inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.systemd.services.camera)
         preStart
         ;
+      startsWithIt =
+        builtins.match "/nix/store/[^ ]*/bin/camera-loopback 'Built-in Camera' .*" (
+          builtins.unsafeDiscardStringContext preStart
+        ) != null;
     in
     pkgs.runCommandLocal "the-camera-takes-its-loopback" { } ''
-      case ${lib.escapeShellArg preStart} in
-        */bin/camera-loopback" "*) ;;
-        *) echo "The camera service doesn't start with camera-loopback."; exit 1 ;;
-      esac
+      ${lib.optionalString (!startsWithIt) ''
+        echo "The camera service doesn't start with camera-loopback."
+        exit 1
+      ''}
       ${lib.getExe pkgs.bash} ${./tests/camera-takes-its-loopback.sh} ${lib.getExe start}
       touch $out
     '';
