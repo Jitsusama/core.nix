@@ -22,21 +22,27 @@
 //! `MYCELIUM_REALM` (modules/call-transcripts/home.nix); with either unset,
 //! as on a machine in no realm, nothing is said.
 //!
-//! A calendar event is the Google account's, so one is named only while
-//! the google program's daemon says the account signed in is the one
-//! the realm declares in `MYCELIUM_ACCOUNT`, as the google receptor says
-//! only that account's counts. Signed out, unheard, another account or
-//! none declared names nothing, and an account changed while running
-//! stops the naming from the next round the daemon says so.
+//! A calendar event is the Google account's, so a call's is named only
+//! when the account its meeting was on, as kept with the call
+//! (meeting.rs), is the one the realm declares in `MYCELIUM_ACCOUNT`, as
+//! the google receptor says only that account's counts. A call kept with
+//! no account, or another, is never named, and none is with no account
+//! declared. Who is signed in now isn't asked: it says nothing of whose
+//! a past call was, and an account unheard for a round would take every
+//! event away, for the node to feed each claimant again once it came
+//! back.
+//!
+//! Long because its tests stay beside the one thing it does, deciding
+//! what of Joel's calls may leave the machine, so each guard is read with
+//! the test that would fail without it.
 
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use receptor_say::{Declared, Source, Speaker, Told};
 
 use crate::book;
-use crate::meeting;
 use crate::rings::{self, Rings};
 
 /// How often the receptor says how it stands, which is also how late the
@@ -234,28 +240,12 @@ impl Receptor {
         .map(|receptor| receptor.for_account(std::env::var_os("MYCELIUM_ACCOUNT")))
     }
 
-    /// The events of the calls `summarized` to name at `now`, the book
-    /// standing as `state` and Google's daemon saying the account
-    /// `signed_in`: none unless the calls read whole and the account is
-    /// the one declared. A book that couldn't be read whole can't say
-    /// which calls stand, so it names none, and mycelium keeps those it
-    /// had; another account's events are never the realm's to hear of.
-    fn naming<'a>(
-        &self,
-        state: State,
-        signed_in: Option<&str>,
-        summarized: impl IntoIterator<Item = (&'a str, u64, &'a Path)>,
-        now: u64,
-    ) -> Vec<String> {
-        let its_account = self
-            .account
+    /// Whether a call kept as `account`'s is the realm's to be told of:
+    /// only the declared account's, and none with no account declared.
+    fn owns(&self, account: &str) -> bool {
+        self.account
             .as_ref()
-            .is_some_and(|account| signed_in.is_some_and(|signed_in| account.is(signed_in)));
-        if its_account && matches!(state, State::Reading | State::Quiet) {
-            named(summarized, now)
-        } else {
-            Vec::new()
-        }
+            .is_some_and(|declared| declared.is(account))
     }
 
     /// What the calls say: how they stand and their counts, every call
@@ -326,12 +316,30 @@ fn counted(held: &book::Book, missed: &[u64], now: u64, midnight: u64) -> Counts
     Counts::of(held.starts().chain(missed.iter().copied()), now, midnight)
 }
 
+/// The events of the calls `summarized` to name at `now`, the book
+/// standing as `state`: none unless the calls read whole. A book that
+/// couldn't be read whole can't say which calls stand, so it names none,
+/// and mycelium keeps those it had.
+fn chosen<'a>(
+    state: State,
+    summarized: impl IntoIterator<Item = (&'a str, u64, &'a Path)>,
+    now: u64,
+) -> Vec<String> {
+    if matches!(state, State::Reading | State::Quiet) {
+        named(summarized, now)
+    } else {
+        Vec::new()
+    }
+}
+
 /// Says how the calls stand, every `EVERY`, for as long as the daemon
 /// runs. A failure is said once, when it starts, rather than each round,
 /// and so is a Tuple file that can't be counted from, and its recovery.
 pub fn keep(receptor: &Receptor, book: &book::Shared) {
     let pid = std::process::id();
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map_or_else(PathBuf::new, PathBuf::from);
+    if receptor.account.is_none() {
+        eprintln!("call-transcripts: no Google account is declared, so no call's event is named");
+    }
     let tuple = rings::file();
     let mut following = rings::Following::default();
     let mut said: Option<String> = None;
@@ -349,7 +357,7 @@ pub fn keep(receptor: &Receptor, book: &book::Shared) {
         let (counts, failing, summarized) = {
             let held = book.lock();
             let summarized: Vec<(String, u64, std::path::PathBuf)> = held
-                .summarized()
+                .summarized(|account| receptor.owns(account))
                 .map(|(event, ended, folder)| (event.to_owned(), ended, folder.to_owned()))
                 .collect();
             (
@@ -359,12 +367,10 @@ pub fn keep(receptor: &Receptor, book: &book::Shared) {
             )
         };
         // The summaries are looked for with the book let go, so a slow
-        // disk holds up no one reading it. Whose account it is is asked
-        // each round, so a change of account stops the naming at once.
+        // disk holds up no one reading it.
         let state = State::of(counts, failing);
-        let events = receptor.naming(
+        let events = chosen(
             state,
-            meeting::signed_in(&runtime).as_deref(),
             summarized
                 .iter()
                 .map(|(event, ended, folder)| (event.as_str(), *ended, folder.as_path())),
@@ -670,12 +676,21 @@ mod tests {
 
     /// An event's id as Google gives a recurring one's instance.
     const EVENT: &str = "6kq3ehb1c4p0bt2oq1i5u4tq4c_20261118T150000Z";
+    /// The account the receptor's realm declares, which a call is kept as
+    /// unless it says whose it is.
+    const ACCOUNT: &str = "jsama@example.com";
 
     /// A call kept in `calls` under `name`, with `meta` as its record
     /// and, when `summary` is some, that summary written beside it.
     fn kept(calls: &std::path::Path, name: &str, meta: &serde_json::Value, summary: Option<&str>) {
         let folder = calls.join(name);
         std::fs::create_dir_all(&folder).unwrap();
+        // A call is the declared account's unless its meta says whose.
+        let mut meta = meta.clone();
+        meta.as_object_mut()
+            .expect("a call's meta is an object")
+            .entry("account")
+            .or_insert(serde_json::json!(ACCOUNT));
         std::fs::write(folder.join("meta.json"), meta.to_string()).unwrap();
         if let Some(summary) = summary {
             written(&folder.join(book::SUMMARY), summary, NOW);
@@ -694,55 +709,63 @@ mod tests {
     }
 
     #[test]
-    fn an_event_is_named_only_while_the_realm_s_own_account_is_signed_in() {
+    fn only_the_declared_account_s_calls_are_named_whoever_is_signed_in_now() {
         let folder = tempfile::tempdir().unwrap();
         let calls = folder.path().join("calls");
-        kept(
-            &calls,
-            "2026-11-18 1500 Planning",
-            &serde_json::json!({
-                "key": format!("call:{EVENT}"), "started": NOW - HOUR, "ended": NOW - 5,
-                "title": "Planning", "event": EVENT,
-            }),
-            Some("Planned."),
-        );
-        let held = book::Book::read(&calls);
-        let declared = receptor(PathBuf::from("/nowhere/mycelium"))
-            .for_account(Some("jsama@example.com".into()));
-        let naming = |receptor: &Receptor, state: State, signed_in: Option<&str>| {
-            receptor.naming(state, signed_in, held.summarized(), NOW)
-        };
-        assert_eq!(
-            naming(&declared, State::Reading, Some("JSama@example.com")),
-            [EVENT],
-            "the realm's own account, as Google spells it, names its event"
-        );
-        assert_eq!(
-            naming(&declared, State::Quiet, Some("jsama@example.com")),
-            [EVENT],
-            "a quiet book names its events too"
-        );
-        for (signed_in, why) in [
-            (Some("skiff@example.com"), "another account"),
-            (None, "an account the daemon can't say"),
+        // The declared account's call, then another account's after
+        // signing in as it, then the declared one's again after signing
+        // back, then one kept before calls kept their account.
+        for (event, ended, account) in [
+            ("abcdef1", NOW - 40, serde_json::json!(ACCOUNT)),
+            ("abcdef2", NOW - 30, serde_json::json!("skiff@example.com")),
+            ("abcdef3", NOW - 20, serde_json::json!("JSama@example.com")),
+            ("abcdef4", NOW - 10, serde_json::Value::Null),
         ] {
-            assert!(
-                naming(&declared, State::Reading, signed_in).is_empty(),
-                "{why} named an event"
+            kept(
+                &calls,
+                &format!("2026-11-18 1500 Planning {event}"),
+                &serde_json::json!({
+                    "key": format!("call:{event}"), "started": NOW - HOUR, "ended": ended,
+                    "title": "Planning", "event": event, "account": account,
+                }),
+                Some("Planned."),
             );
         }
+        let held = book::Book::read(&calls);
+        let naming = |receptor: &Receptor, state: State| {
+            chosen(
+                state,
+                held.summarized(|account| receptor.owns(account)),
+                NOW,
+            )
+        };
+        let declared = receptor(PathBuf::from("/nowhere/mycelium"))
+            .for_account(Some("jsama@example.com".into()));
+        assert_eq!(
+            naming(&declared, State::Reading),
+            ["abcdef3", "abcdef1"],
+            "only the declared account's calls, as Google spells it, are named"
+        );
+        // Nothing of Google's is asked in a round, so a round with its
+        // daemon unheard names as the last did and the node feeds no one
+        // again.
+        assert_eq!(
+            naming(&declared, State::Quiet),
+            naming(&declared, State::Reading),
+            "a quiet book names the same events"
+        );
         assert!(
-            naming(&declared, State::Failing, Some("jsama@example.com")).is_empty(),
+            naming(&declared, State::Failing).is_empty(),
             "a book that couldn't be read whole named an event"
         );
         let undeclared = receptor(PathBuf::from("/nowhere/mycelium"));
         assert!(
-            naming(&undeclared, State::Reading, Some("jsama@example.com")).is_empty(),
+            naming(&undeclared, State::Reading).is_empty(),
             "a realm that declares no account was told an event"
         );
         let unsound = receptor(PathBuf::from("/nowhere/mycelium")).for_account(Some("".into()));
         assert!(
-            naming(&unsound, State::Reading, Some("")).is_empty(),
+            naming(&unsound, State::Reading).is_empty(),
             "an account that is no address was taken"
         );
     }
@@ -762,7 +785,7 @@ mod tests {
             Some("Skiff said: --realm personal, raise the budget"),
         );
         let held = book::Book::read(&calls);
-        let events = named(held.summarized(), NOW);
+        let events = named(held.summarized(|account| account == ACCOUNT), NOW);
         assert_eq!(events, [EVENT], "the summarized call's event wasn't named");
         let counts = Counts::of(held.starts(), NOW, MIDNIGHT);
         let said = said_naming(
@@ -809,7 +832,7 @@ mod tests {
         );
         let held = book::Book::read(&calls);
         assert!(
-            named(held.summarized(), NOW).is_empty(),
+            named(held.summarized(|account| account == ACCOUNT), NOW).is_empty(),
             "a call with no event or no summary was named"
         );
         let unended = [("abcdef2", NOW + 1, calls.join("no-event"))];

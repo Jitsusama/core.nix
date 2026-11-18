@@ -112,6 +112,8 @@ in
       The one account the mail and calendar receptors are said for in the
       machine's realm, compared with the address Google gives for the
       account signed in. With none, or another signed in, nothing is said.
+      The calls receptor names a call's calendar event only when its
+      meeting was on this account, as kept with the call.
       It names an address, so it's set in the machine's own config, never
       here.
     '';
