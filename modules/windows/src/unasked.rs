@@ -15,7 +15,12 @@
 //!
 //! One that asks for a password is closed as well, and Joel told why
 //! (`prompts`): an agent's test put a keyring's prompt on his screen twice
-//! on 2026-11-17, and he typed his real password into it (ISXEG8).
+//! on 2026-11-17, and he typed his real password into it (ISXEG8). Unlike
+//! the line, it's weighed whenever niri says a window, there as the stream
+//! begins or changed since, as a prompt's app id may come late, and a
+//! daemon restarted by a switch would otherwise leave one open. The
+//! cgroup is a label an agent could change, not a boundary, so this stops
+//! an agent's accident, not an agent set on getting past it.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -40,10 +45,12 @@ pub struct Unasked {
     pub folder: Option<String>,
 }
 
-/// The windows niri has said, by id.
+/// The windows niri has said, by id, and the agents' password prompts
+/// niri was asked to close.
 #[derive(Default)]
 pub struct Watched {
     windows: BTreeSet<u64>,
+    closing: BTreeSet<u64>,
 }
 
 impl Watched {
@@ -93,6 +100,61 @@ impl Watched {
             _ => None,
         }
     }
+
+    /// The agents' password prompts in one event of niri's stream, each
+    /// once until it closes: those listed as the stream begins, and one
+    /// opened or changed since, so a prompter naming itself only after
+    /// it maps is weighed again then.
+    pub fn prompting(
+        &mut self,
+        event: &Value,
+        cgroup: impl Fn(u32) -> Option<String>,
+        folder: impl Fn(u32) -> Option<String>,
+    ) -> Vec<Unasked> {
+        let Some((name, said)) = event.as_object().and_then(|said| said.iter().next()) else {
+            return Vec::new();
+        };
+        let windows: Vec<&Value> = match name.as_str() {
+            "WindowsChanged" => said["windows"].as_array().into_iter().flatten().collect(),
+            "WindowOpenedOrChanged" => vec![&said["window"]],
+            "WindowClosed" => {
+                if let Some(id) = said["id"].as_u64() {
+                    self.closing.remove(&id);
+                }
+                Vec::new()
+            }
+            _ => Vec::new(),
+        };
+        let mut found = Vec::new();
+        for window in windows {
+            let Some(id) = window["id"].as_u64() else {
+                continue;
+            };
+            let app = window["app_id"].as_str().unwrap_or_default();
+            if self.closing.contains(&id) || !prompts(app) {
+                continue;
+            }
+            let Some(pid) = window["pid"]
+                .as_u64()
+                .and_then(|pid| u32::try_from(pid).ok())
+            else {
+                continue;
+            };
+            let Some(unit) = cgroup(pid).and_then(|said| agents_unit(&said).map(str::to_owned))
+            else {
+                continue;
+            };
+            self.closing.insert(id);
+            found.push(Unasked {
+                window: id,
+                app: app.to_owned(),
+                title: window["title"].as_str().unwrap_or_default().to_owned(),
+                unit,
+                folder: folder(pid),
+            });
+        }
+        found
+    }
 }
 
 /// The unit of a process in agents.slice or a jobs slice, from its cgroup
@@ -129,58 +191,86 @@ pub fn line(unasked: &Unasked) -> String {
 /// Whether an agent's window asks for a password, by the app id it names
 /// itself with: a keyring's prompter (gcr-prompter, gnome-keyring's
 /// `SystemPrompter`), gpg's pinentry, ssh's askpass in each of its kinds, or
-/// a polkit agent. polkit already refuses an agent's asks (ISXEG8, #3548),
-/// but an agent can start its own agent, as it started its own keyring.
+/// a polkit agent, or `KWallet`'s. polkit already refuses an agent's asks
+/// (ISXEG8, #3548), but an agent can start its own agent, as it started
+/// its own keyring. An X11 prompter is missed: niri gives the pid of
+/// xwayland-satellite, which runs in niri's own unit.
 #[must_use]
 pub fn prompts(app: &str) -> bool {
     let app = app.to_lowercase();
     PROMPTERS.iter().any(|prompter| app.contains(prompter))
 }
 
-const PROMPTERS: [&str; 6] = [
+const PROMPTERS: [&str; 7] = [
     "askpass",
     "gcr-prompter",
+    "kwallet",
     "pinentry",
     "policykit",
     "polkit",
     "systemprompter",
 ];
 
-/// The journal's line for an agent's password prompt closed: a warning,
-/// as the window's own line is.
+/// The journal's line for an agent's password prompt niri took the ask to
+/// close: a warning, as the window's own line is. niri asks the window to
+/// close, as its own close key does, so a prompter that ignored it would
+/// stay; gcr-prompter, pinentry and askpass close. The app id and title
+/// are quoted, so no window's name can start a journal line of its own.
 #[must_use]
 pub fn closed(unasked: &Unasked) -> String {
     format!(
-        "<4>closed a password prompt an agent opened: {} {:?}, from {}",
+        "<4>asked niri to close a password prompt an agent opened: {:?} {:?}, from {}",
         unasked.app, unasked.title, unasked.unit
     )
 }
 
-/// What Joel is told of an agent's password prompt closed, its summary
-/// and its body, naming where it came from. It says window, the
-/// glossary's word, since a prompt there is the shell's line (H2VYOB).
-/// The unit and folder are said as they are.
+/// What Joel is told of an agent's password prompt, its summary and its
+/// body, naming where it came from: that it was closed, or, when niri
+/// refused, that it's open and nothing should be typed there. It says
+/// window, the glossary's word, since a prompt there is the shell's line
+/// (H2VYOB). The unit and folder are said as they are, escaped, since the
+/// notices draw markup and an agent names its own folder.
 #[must_use]
-pub fn notice(unasked: &Unasked) -> (String, String) {
+pub fn notice(unasked: &Unasked, shut: bool) -> (String, String) {
     let folder = unasked
         .folder
         .as_deref()
-        .map_or_else(String::new, |folder| format!(", in {folder}"));
-    (
-        "An agent's password window was closed".to_owned(),
-        format!(
-            "It came from {}{folder}, so a password typed there would have reached the agent.",
-            unasked.unit
-        ),
-    )
+        .map_or_else(String::new, |folder| format!(", in {}", escaped(folder)));
+    let from = format!("It came from {}{folder}", escaped(&unasked.unit));
+    if shut {
+        (
+            "An agent's password window was closed".to_owned(),
+            format!("{from}, so a password typed there would have reached the agent."),
+        )
+    } else {
+        (
+            "An agent's password window is open".to_owned(),
+            format!("{from}, and it couldn't be closed: type no password there."),
+        )
+    }
 }
 
-/// Where processes are read: /proc, or the folder `WINDOWS_PROC` names,
-/// which only a test sets, so a stand-in's process can sit in an agent's
+/// `text` with what notices read as markup written as text.
+fn escaped(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// Whether this build reads processes where `WINDOWS_PROC` says, which
+/// only the check's own build does, so nothing in Joel's account can blind
+/// the installed daemon by setting it in the user manager.
+const READS_A_STAND_IN: bool = option_env!("WINDOWS_TEST_PROC").is_some();
+
+/// Where processes are read: /proc, or, in the check's build, the folder
+/// `WINDOWS_PROC` names, so a stand-in's process can sit in an agent's
 /// scope the build sandbox has no cgroups for.
 #[must_use]
 pub fn processes() -> PathBuf {
-    std::env::var_os("WINDOWS_PROC").map_or_else(|| PathBuf::from("/proc"), PathBuf::from)
+    let stand_in = READS_A_STAND_IN
+        .then(|| std::env::var_os("WINDOWS_PROC"))
+        .flatten();
+    stand_in.map_or_else(|| PathBuf::from("/proc"), PathBuf::from)
 }
 
 /// A process's cgroup file.
@@ -302,6 +392,7 @@ mod tests {
             "org.kde.ksshaskpass",
             "polkit-gnome-authentication-agent-1",
             "lxqt-policykit-agent",
+            "org.kde.kwalletd6",
         ] {
             assert!(prompts(app), "{app} wasn't known for a password prompt");
         }
@@ -327,17 +418,107 @@ mod tests {
         };
         assert_eq!(
             closed(&unasked),
-            "<4>closed a password prompt an agent opened: gcr-prompter \"Unlock Keyring\", \
-             from run-r1.scope"
+            "<4>asked niri to close a password prompt an agent opened: \"gcr-prompter\" \
+             \"Unlock Keyring\", from run-r1.scope"
         );
         assert_eq!(
-            notice(&unasked),
+            notice(&unasked, true),
             (
                 "An agent's password window was closed".to_owned(),
                 "It came from run-r1.scope, in /trees/keyring, so a password typed there would \
                  have reached the agent."
                     .to_owned()
             )
+        );
+        assert_eq!(
+            notice(&unasked, false),
+            (
+                "An agent's password window is open".to_owned(),
+                "It came from run-r1.scope, in /trees/keyring, and it couldn't be closed: type \
+                 no password there."
+                    .to_owned()
+            ),
+            "a prompt niri didn't close was told as closed"
+        );
+    }
+
+    #[test]
+    fn a_folder_an_agent_names_is_told_as_text_and_an_app_id_starts_no_line() {
+        let unasked = Unasked {
+            window: 7,
+            app: "gcr-prompter\n<0>forged".to_owned(),
+            title: String::new(),
+            unit: "run-r1.scope".to_owned(),
+            folder: Some("/trees/<a href=\"x\">a&b</a>".to_owned()),
+        };
+        assert!(
+            notice(&unasked, true)
+                .1
+                .contains("/trees/&lt;a href=\"x\"&gt;a&amp;b&lt;/a&gt;"),
+            "the folder went to the notice as markup: {}",
+            notice(&unasked, true).1
+        );
+        assert!(
+            !closed(&unasked).contains('\n'),
+            "an app id started a journal line: {}",
+            closed(&unasked)
+        );
+    }
+
+    /// Weighs `event` for prompts with processes placed as `hear` does.
+    fn prompting(watched: &mut Watched, event: &Value) -> Vec<u64> {
+        watched
+            .prompting(
+                event,
+                |pid| {
+                    let cgroup = match pid {
+                        1 => HOST,
+                        2 => JOB,
+                        _ => APP,
+                    };
+                    Some(cgroup.to_owned())
+                },
+                |_| None,
+            )
+            .into_iter()
+            .map(|prompt| prompt.window)
+            .collect()
+    }
+
+    #[test]
+    fn an_agents_prompt_is_closed_once_whenever_niri_says_it() {
+        let mut watched = Watched::default();
+        let listed = event(
+            r#"{"WindowsChanged":{"windows":[
+                {"id":4,"app_id":"gcr-prompter","pid":2},
+                {"id":5,"app_id":"gcr-prompter","pid":40},
+                {"id":6,"app_id":"kitty","pid":2}]}}"#,
+        );
+        assert_eq!(
+            prompting(&mut watched, &listed),
+            vec![4],
+            "an agent's prompt open as the stream began wasn't closed, or Joel's was"
+        );
+        assert_eq!(
+            prompting(&mut watched, &opened(4, "gcr-prompter", 2)),
+            Vec::<u64>::new(),
+            "a prompt already asked to close was asked again"
+        );
+        assert_eq!(
+            prompting(&mut watched, &opened(8, "", 1)),
+            Vec::<u64>::new(),
+            "a window with no app id yet was taken for a prompt"
+        );
+        assert_eq!(
+            prompting(&mut watched, &opened(8, "pinentry-qt", 1)),
+            vec![8],
+            "a prompt naming itself after it mapped wasn't closed"
+        );
+        prompting(&mut watched, &event(r#"{"WindowClosed":{"id":8}}"#));
+        assert_eq!(
+            prompting(&mut watched, &opened(8, "pinentry-qt", 1)),
+            vec![8],
+            "a prompt again under a closed one's id wasn't closed"
         );
     }
 

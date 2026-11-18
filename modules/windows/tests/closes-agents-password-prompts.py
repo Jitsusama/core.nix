@@ -11,7 +11,11 @@ before each window, and its notices go to a stand-in notify-send that keeps what
 1. A prompt of Joel's own, gcr-prompter from app.slice, isn't closed.
 2. The same prompt from an agent's job scope is asked to close within a second, the journal
    says so, and Joel is told it came from that scope.
-3. A terminal from the same scope isn't closed: only what asks for a password is.
+3. A terminal from the same scope isn't closed, once the journal shows the daemon weighed it:
+   only what asks for a password is.
+4. A second prompt from the scope within a minute is closed, and Joel isn't told twice.
+5. A prompt from the scope already open as the daemon starts again, as after a switch, is
+   closed once it hears niri.
 
 Every case is checked and reported before the stand-in fails.
 
@@ -50,8 +54,73 @@ def answering(daemon: Path) -> bool:
     return bool(said.get("sources", {}).get("niri") == "answering")
 
 
+def said(journal: Path, words: str) -> bool:
+    """Whether the daemon's journal says `words` within its patience, as it writes lines late."""
+    until = time.monotonic() + PATIENCE
+    while words not in journal.read_text():
+        if time.monotonic() > until:
+            return False
+        time.sleep(0.05)
+    return True
+
+
+def heard_niri(daemon: Path) -> None:
+    """Wait until the daemon has heard niri's desktop, or end the check."""
+    until = time.monotonic() + PATIENCE
+    while not answering(daemon):
+        if time.monotonic() > until:
+            sys.exit("the windows daemon never heard niri")
+        time.sleep(0.1)
+
+
+def written(path: Path, words: str, times: int) -> str:
+    """Read `path` once it says `words` `times` times, or once patience runs out."""
+    until = time.monotonic() + PATIENCE
+    while path.read_text().count(words) < times and time.monotonic() < until:
+        time.sleep(0.05)
+    return path.read_text()
+
+
+def prompts_close(joel: Connection, cgroup: Path, lines: Path, told: Path) -> list[str]:
+    """Cases 1 and 2: Joel's own prompt stays, and the job's is closed, journalled and told."""
+    failures: list[str] = []
+    own = joel.window("gcr-prompter")
+    if joel.asked_to_close(own, CLOSING):
+        failures.append("1: Joel's own password prompt was closed")
+
+    cgroup.write_text(JOB)
+    agents = joel.window("gcr-prompter")
+    if not joel.asked_to_close(agents, CLOSING):
+        failures.append(f"2: an agent's password prompt wasn't closed within {CLOSING} s")
+    if not said(lines, 'close a password prompt an agent opened: "gcr-prompter"'):
+        failures.append(f"2: the journal didn't say it was closed: {lines.read_text()!r}")
+    notices = written(told, "run-r1.scope", 1)
+    if f"in {Path.cwd()}" not in notices or "run-r1.scope" not in notices:
+        failures.append(f"2: Joel wasn't told its scope and folder: {notices!r}")
+    return failures
+
+
+def only_prompts_close(joel: Connection, lines: Path, told: Path) -> list[str]:
+    """Cases 3 and 4: the job's terminal stays, and a second prompt is closed but not told."""
+    failures: list[str] = []
+    terminal = joel.window("foot")
+    if not said(lines, "an agent opened a window over Joel's work: foot"):
+        failures.append(f"3: the journal never said the terminal: {lines.read_text()!r}")
+    if joel.asked_to_close(terminal, CLOSING):
+        failures.append("3: an agent's terminal was closed")
+
+    again = joel.window("gcr-prompter")
+    if not joel.asked_to_close(again, CLOSING):
+        failures.append(f"4: a second prompt wasn't closed within {CLOSING} s")
+    written(lines, "close a password prompt", 2)
+    notices = told.read_text()
+    if notices.count("An agent's password window was closed") != 1:
+        failures.append(f"4: Joel wasn't told once of the scope: {notices!r}")
+    return failures
+
+
 def main() -> None:
-    """Run the three cases against the daemon, and fail naming each that didn't hold."""
+    """Run the five cases against the daemon, and fail naming each that didn't hold."""
     program = sys.argv[1]
     here = Path.cwd()
     processes = here / "proc"
@@ -63,48 +132,34 @@ def main() -> None:
     told = here / "told"
     told.touch()
     daemon = here / "windows.sock"
-    journal = (here / "logs" / "windows.log").open("w")
-    running = subprocess.Popen(  # The daemon under test, named by the check.
-        [program, str(daemon)],
-        env={**os.environ, "WINDOWS_PROC": str(processes), "WINDOWS_TOLD": str(told)},
-        stderr=journal,
-    )
+    lines = here / "logs" / "windows.log"
+    journal = lines.open("w")
+    env = {**os.environ, "WINDOWS_PROC": str(processes), "WINDOWS_TOLD": str(told)}
+    # The daemon under test, named by the check.
+    running = subprocess.Popen([program, str(daemon)], env=env, stderr=journal)
     failures: list[str] = []
     try:
-        until = time.monotonic() + PATIENCE
-        while not answering(daemon):
-            if time.monotonic() > until:
-                sys.exit("the windows daemon never heard niri")
-            time.sleep(0.1)
+        heard_niri(daemon)
         joel = Connection(Path(os.environ["XDG_RUNTIME_DIR"]) / os.environ["WAYLAND_DISPLAY"])
+        failures += prompts_close(joel, cgroup, lines, told)
+        failures += only_prompts_close(joel, lines, told)
 
-        own = joel.window("gcr-prompter")
-        if joel.asked_to_close(own, CLOSING):
-            failures.append("1: Joel's own password prompt was closed")
-
-        cgroup.write_text(JOB)
-        agents = joel.window("gcr-prompter")
-        if not joel.asked_to_close(agents, CLOSING):
-            failures.append(f"2: an agent's password prompt wasn't closed within {CLOSING} s")
-        said = (here / "logs" / "windows.log").read_text()
-        if "closed a password prompt an agent opened: gcr-prompter" not in said:
-            failures.append(f"2: the journal didn't say the prompt was closed: {said!r}")
-        until = time.monotonic() + PATIENCE
-        while "run-r1.scope" not in told.read_text() and time.monotonic() < until:
-            time.sleep(0.05)
-        if f"in {here}" not in told.read_text() or "run-r1.scope" not in told.read_text():
-            failures.append(f"2: Joel wasn't told its scope and folder: {told.read_text()!r}")
-
-        terminal = joel.window("foot")
-        if joel.asked_to_close(terminal, CLOSING):
-            failures.append("3: an agent's terminal was closed")
+        # Case 5: the daemon goes, a prompt opens, and the daemon comes back, as at a switch.
+        running.terminate()
+        running.wait()
+        daemon.unlink(missing_ok=True)
+        waiting = joel.window("gcr-prompter")
+        running = subprocess.Popen([program, str(daemon)], env=env, stderr=journal)
+        heard_niri(daemon)
+        if not joel.asked_to_close(waiting, CLOSING):
+            failures.append("5: a prompt open as the daemon started again wasn't closed")
     finally:
         running.terminate()
         running.wait()
         journal.close()
     if failures:
         sys.exit("\n".join(failures))
-    print("an agent's password prompt closes, and neither Joel's nor its terminal does")
+    print("an agent's password prompts close, told once, and neither Joel's nor its terminal does")
 
 
 if __name__ == "__main__":

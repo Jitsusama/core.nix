@@ -142,15 +142,25 @@ opened. The line names the unit and its folder, so the agent behind it can
 be found.
 
 One that asks for a password is closed as it opens: a keyring's prompter,
-gpg's pinentry, ssh's askpass or a polkit agent, known by the app id each
-names itself with. On 2026-11-17 an agent's test started a keyring of its
-own, whose prompt opened on Joel's screen, and he typed his real password
-into it. The daemon asks niri to close the window, says so in the journal,
-and puts up a notice naming the scope and folder it came from, through
-libnotify's notify-send. Joel's own prompts come from his services and
-stay. One gap is known: gpg-agent starts on demand from whoever first runs
-gpg, so an agent that started it would make Joel's pinentry look like the
-agent's, and it would be closed, the notice saying where from.
+gpg's pinentry, ssh's askpass, KWallet or a polkit agent, known by the app
+id each names itself with. On 2026-11-17 an agent's test started a keyring
+of its own, whose prompt opened on Joel's screen, and he typed his real
+password into it. The daemon asks niri to close the window, says so in the
+journal, and puts up a notice naming the scope and folder it came from,
+through libnotify's notify-send, once a minute for a scope at most. Where
+niri refuses, the notice says the window is open and to type no password
+there. A prompt is weighed whenever niri says it, so one open as the daemon
+starts again, as after a switch, or one naming itself late, is closed too.
+Joel's own prompts come from his services and stay. The installed daemon
+reads processes from /proc alone; only the check's build reads a stand-in.
+
+It stops an agent's accident, not an agent set on getting past it: the
+cgroup is a label an agent could change. Three gaps are known. gpg-agent
+starts on demand from whoever first runs gpg, so an agent that started it
+would make Joel's pinentry look like the agent's, and it would be closed,
+the notice saying where from. An X11 prompter is missed, since niri gives
+the pid of xwayland-satellite, in niri's own unit. And a prompter the
+session bus starts runs in Joel's units, so it stays.
 
 ## Left Out, and Why
 

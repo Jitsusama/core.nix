@@ -347,6 +347,7 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
     // the desktop held, which it neither reads nor changes.
     let mut times = Timed::default();
     let mut watched = Watched::default();
+    let mut told = Told::default();
     let processes = unasked::processes();
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { return };
@@ -365,9 +366,9 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
         let folder = |pid| unasked::folder(&processes, pid);
         if let Some(unasked) = watched.heard(&event, cgroup, folder) {
             eprintln!("{}", unasked::line(&unasked));
-            if unasked::prompts(&unasked.app) {
-                shut(niri, &unasked);
-            }
+        }
+        for prompt in watched.prompting(&event, cgroup, folder) {
+            shut(niri, &prompt, &mut told);
         }
         // A screen coming or going changes the workspaces, so its outputs
         // are asked again then, before the lock is taken, so no ask waits
@@ -468,6 +469,12 @@ fn entries_changed(shared: &Shared) {
     refresh(&shared.served, &mut daemon);
 }
 
+/// When Joel was last told of each agent's unit's password prompt.
+type Told = std::collections::HashMap<String, Instant>;
+
+/// How long a unit's prompts go untold after one was told.
+const TOLD_AGAIN: Duration = Duration::from_mins(1);
+
 /// The program a notice is put up through, libnotify's notify-send as the
 /// package names it, so the daemon needs no bus of its own.
 const NOTIFY_SEND: &str = match option_env!("WINDOWS_NOTIFY_SEND") {
@@ -478,13 +485,25 @@ const NOTIFY_SEND: &str = match option_env!("WINDOWS_NOTIFY_SEND") {
 /// Closes an agent's password prompt through niri and tells Joel which
 /// unit it came from, off the stream's thread, so niri's next event isn't
 /// held while the notice goes up.
-fn shut(niri: &Path, unasked: &unasked::Unasked) {
+fn shut(niri: &Path, unasked: &unasked::Unasked, told: &mut Told) {
     let close = json!({"Action": {"CloseWindow": {"id": unasked.window}}});
-    match order::refused(niri, &close) {
+    let refused = order::refused(niri, &close);
+    match &refused {
         Some(why) => eprintln!("<3>niri didn't close an agent's password prompt: {why}"),
         None => eprintln!("{}", unasked::closed(unasked)),
     }
-    let (summary, body) = unasked::notice(unasked);
+    // An agent looping on its prompt is told once a minute for its unit,
+    // each prompt still closed, so a critical notice never floods; one
+    // niri refused is always told, since it's still open.
+    let now = Instant::now();
+    let lately = told
+        .get(&unasked.unit)
+        .is_some_and(|at| now.duration_since(*at) < TOLD_AGAIN);
+    if lately && refused.is_none() {
+        return;
+    }
+    told.insert(unasked.unit.clone(), now);
+    let (summary, body) = unasked::notice(unasked, refused.is_none());
     std::thread::spawn(move || {
         let told = std::process::Command::new(NOTIFY_SEND)
             .args([

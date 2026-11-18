@@ -267,7 +267,8 @@
   '';
   agents-password-prompts-are-closed = ''
     the windows daemon closes a password prompt an agent's scope opens on niri within a second,
-    says so in its journal and tells Joel the scope and folder it came from, while his own prompt
+    says so in its journal and tells Joel the scope and folder it came from, once for a second
+    prompt from that scope, and closes one already open as it starts again, while his own prompt
     and the scope's other windows stay open
   '';
   agents-runs-in-each-account = ''
