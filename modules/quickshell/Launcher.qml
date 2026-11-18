@@ -7293,7 +7293,11 @@ Scope {
         for (const copy of copies)
             flashed[copy.at] = true;
         flashing = flashed;
-        flash.restart();
+        // The flash is timed from the first frame that draws it, so a frame
+        // held back past the flash's length still shows it; a flash still
+        // running stops, so its end doesn't take this one before it's drawn.
+        flash.stop();
+        afterFrame(() => flash.restart());
         Report.say(`yanked ${copies.length}`);
     }
 

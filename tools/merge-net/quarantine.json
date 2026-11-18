@@ -16,19 +16,6 @@
     "test": "vm-desktop-launcher-answers"
   },
   {
-    "at": 1794519380,
-    "commit": "b0e3be7a0f1bf6c0be687e741bc129afcbb83cd7",
-    "due": "2026-11-19",
-    "due_why": "Its owner, the launcher's, fixes it by 2026-11-19 23:59 UTC: 5 of its 56 net runs from 15 Nov to 18 Nov 05:30 UTC named its subtest, so a rerun alone wouldn't take it off",
-    "owner_pr": 3794,
-    "owner_session": "Y2YBTS",
-    "reason": "failed, then passed, at b0e3be7a0f1b",
-    "subtests": [
-      "test_y_flashes_its_rows_and_a_waiting_d_says_what_it_takes"
-    ],
-    "test": "vm-desktop-looks-vi"
-  },
-  {
     "at": 1794631096,
     "commit": "580dc8dbd5803c7bea2650e02ecb099ec1408af3",
     "due": "2026-11-18",
