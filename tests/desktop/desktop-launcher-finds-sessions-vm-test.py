@@ -629,11 +629,20 @@ def wakes_parked_orchestrator(desktop: Desktop) -> None:
         "at": "2026-11-06T12:00:00Z", "wake": f"{held}/testqa.wake",
     }  # fmt: skip
     wanting = record | {"wants": {"kind": "question", "since": began, "said": "Which way?"}}
+    # The node wakes only a hold whose holder still runs, so one stands in:
+    # its record names a process of the account's that lasts the test, and
+    # its socket is there.
+    holder = int(desktop.as_account("pgrep -o -u jitsusama -x systemd").strip())
+    hold = {
+        "id": "testqa", "command": ["pi"], "folder": "/home/jitsusama/lighthouse",
+        "holder": holder, "pid": 0, "parked": True, "since": began,
+    }  # fmt: skip
     since = desktop.mark()
     desktop.as_account(
         f"mkdir -p {parked} {held} && echo '{json.dumps(wanting)}' > {PI_PRESENCE}/testqa.json"
         f' && printf \'{{"session":"s-testqa","wake":"%s"}}\' {held}/testqa.wake'
         f" > {parked}/s-testqa.json"
+        f" && echo '{json.dumps(hold)}' > {held}/testqa.json && touch {held}/testqa.sock"
     )
     desktop.reported("holds margin ", lambda rest: "forYou" in rest.split(), since)
     desktop.as_account("qs ipc call launcher toggle")
@@ -662,7 +671,10 @@ def wakes_parked_orchestrator(desktop: Desktop) -> None:
     desktop.down_to("Lighthouse")
     desktop.launcher_until(lambda shown: shown["selected"]["side"].endswith("listening"))
     desktop.close_launcher()
-    desktop.as_account(f"rm -rf {parked} {PI_PRESENCE}/testqa.json {held}/testqa.wake")
+    desktop.as_account(
+        f"rm -rf {parked} {PI_PRESENCE}/testqa.json {held}/testqa.wake"
+        f" {held}/testqa.json {held}/testqa.sock"
+    )
 
 
 def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -> None:
