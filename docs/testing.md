@@ -528,6 +528,15 @@ actions, so a page a provider keys by its id is there, and
 Return would start it: Chrome's page stepped in at 11 to 20 ms with its
 three rows (2026-11-16). A named program joins home's rows for the words
 typed, so those keys' medians aren't comparable with a run without it.
+Given `LAB_BACK` too, it steps back out of that place with - each round
+and prints that step's line. `LAB_CHORD`, a place's name as its chord asks
+for it, such as `windows`, opens that place from shut each round and steps
+out of it to home with nothing typed, as Super+Tab then - does, and
+`LAB_WINDOWS` opens that many windows first, so Windows holds some. Those
+windows join home's rows too, so the typed keys' medians change with them.
+Out of Windows over 10, holding fell from 7.5 to 5 ms once the foot was
+fitted once a step (2026-11-18). `LAB_COSTLIEST` says how many of the
+costliest bindings, handlers and functions each part lists.
 Given `LAB_WITHIN`, names of Launcher.qml's own functions split by spaces
 or commas, such as `keep pick`, each call of them is profiled apart as
 `within-<name>`, the call and what it ran, by own and whole time, so the

@@ -3446,6 +3446,16 @@ Scope {
         footFiguresWidest = footFiguresNow;
     }
 
+    // The keys `told` that fit the foot's `room`, those furthest from
+    // Return giving way first (Standing.keysFitted), counted for stepFits
+    // with the facts' fittings (standing.fitNow) in a plain object, since a
+    // property read and written as they're fitted would fit them again.
+    readonly property var footFitted: ({ keys: 0, facts: 0 })
+    function keysFittedIn(told, loose, room) {
+        footFitted.keys += 1;
+        return Standing.keysFitted(told, keys => keysWide(keys, loose), room, footYielding);
+    }
+
     // How wide a row's keys are, Return in its place, or loose (say) at
     // its own width.
     function keysWide(told, loose) {
@@ -6177,6 +6187,17 @@ Scope {
     readonly property bool canGoUp: held.length > 1
         || (held.length === 1 && held[0].row.from?.collection?.outermost !== true)
 
+    // Whether a step out is under way (back), as held, what's typed, the
+    // mode and the rows change in turn: the foot's keys and facts are
+    // fitted once, where it lands, rather than for each. A step out of
+    // Windows fitted the keys three times, and the status line laid out
+    // its keys about seven, most of it as held changed, before any row
+    // was found (the keys lab's profile, 2026-11-18).
+    property bool stepping: false
+    // How many times the last step out fitted the foot's keys and its
+    // facts, for the check that it's once.
+    property var stepFits: null
+
     // `pressedOut` when - asked for it, the one way out that's timed: a
     // daemon's answer, Escape out of an ask and :q go back too, and were
     // no key of Joel's or are timed as their own.
@@ -6201,6 +6222,31 @@ Scope {
         const thread = threadNow();
         const leaving = held[held.length - 1].row;
         const left = held[held.length - steps];
+        // The foot is fitted as stepping ends, before the step's parts
+        // are stamped, so its one fitting is timed with them.
+        const outer = stepping;
+        const fits = Object.assign({}, footFitted);
+        stepping = true;
+        let stepped = null;
+        try {
+            stepped = stepBack(left, steps, timed, { began, heard, pressed, collected, thread,
+                name: leaving.name });
+        } finally {
+            stepping = outer;
+            stepFits = { keys: footFitted.keys - fits.keys,
+                facts: footFitted.facts - fits.facts };
+        }
+        if (stepped === null)
+            return;
+        searchParts = trials.stepped(searchParts, { began, made: began, pushed: stepped,
+            opened: stepped, ended: Date.now(), making: {} });
+        keyTimed(`\u2190 ${leaving.name}`, began, heard, pressed, collected, true, thread);
+    }
+
+    // back's step itself, from leaving `left`, `steps` back, to its rows
+    // found and its row selected: when the step is timed as back's own,
+    // with no words put back to search, when held was set; otherwise null.
+    function stepBack(left, steps, timed, key) {
         // A talk's words put away are kept at once, not a moment later.
         if (left.row.draft)
             drafts.flush();
@@ -6217,10 +6263,17 @@ Scope {
         // the field times for them is this step, named and begun as one,
         // rather than the words alone and timed only from the field.
         stepOut = stepTimed && wordsBack
-            ? { text: `\u2190 ${leaving.name}`, began, heard, pressed, collected, thread } : null;
+            ? { text: `\u2190 ${key.name}`, began: key.began, heard: key.heard,
+                pressed: key.pressed, collected: key.collected, thread: key.thread } : null;
         backTo = left;
         list.steppedLast = null;
         let restarted = false;
+        // Words put back are timed as the field's key, within restart,
+        // whether or not the step is timed as back's own, so the foot is
+        // fitted as they're searched, in that key's own time, rather than
+        // after it was stamped.
+        if (wordsBack)
+            stepping = false;
         try {
             restart(words);
             restarted = true;
@@ -6234,11 +6287,7 @@ Scope {
         }
         placeCaret(onto);
         reselect(left);
-        if (!stepTimed || wordsBack)
-            return;
-        searchParts = trials.stepped(searchParts, { began, made: began, pushed,
-            opened: pushed, ended: Date.now(), making: {} });
-        keyTimed(`\u2190 ${leaving.name}`, began, heard, pressed, collected, true, thread);
+        return stepTimed && !wordsBack ? pushed : null;
     }
 
     // A step whose line holds its words, as a save's name, says where the
@@ -8505,7 +8554,8 @@ Scope {
                 y: Math.round(line.mapToItem(card, 0, 0).y), height: line.height,
                 ink: String(line.color) })),
             foot: wordsIn(foot, card), rows, selection, made: root.rowsMade,
-            drawn: root.rowsDrawn, built: root.rowsBuilt, factsMade: drawerCard.factsMade,
+            drawn: root.rowsDrawn, built: root.rowsBuilt, stepFits: root.stepFits,
+            factsMade: drawerCard.factsMade,
             factsHeld: drawerCard.facts.length, widthsAsked: drawerCard.widths.asked,
             widthsMade: drawerCard.widths.made,
             ahead: list.cacheBuffer, listed: list.count, firstAt, stepped: list.steppedLast,
@@ -14315,8 +14365,20 @@ Scope {
                         readonly property real keysRoom: width - card.inset
                             - statusLine.factsAt - standing.least - Theme.space.rung.groups
                             - (prompt.mode === "find" ? 0 : modeWord.room)
-                        readonly property var kept: Standing.keysFitted(told,
-                            told => root.keysWide(told, foot.loose), keysRoom, root.footYielding)
+                        // Fitted once a step out has landed (root.stepping):
+                        // while it's under way, this reads nothing else, so
+                        // nothing it reads changing fits them again. Kept
+                        // by its handler, which passes by the step's null:
+                        // a Binding's `when` turned after its value did, so
+                        // it set kept to null first.
+                        readonly property var keptNow: root.stepping ? null
+                            : root.keysFittedIn(told, foot.loose, keysRoom)
+                        property var kept: []
+                        onKeptNowChanged: {
+                            if (keptNow !== null)
+                                kept = keptNow;
+                        }
+                        Component.onCompleted: kept = keptNow ?? []
                         readonly property real returnPlace: told.length === 0 ? 0
                             : loose ? statusLine.keys.advance(told[0][0], told[0][1])
                             : root.returnPlace(told[0])
@@ -14590,13 +14652,23 @@ Scope {
                             // it leaves (VKCF3Z, 2026-11-05).
                             readonly property var waiting: root.waitingSaid === "" ? []
                                 : [{ entry: { name: "waiting" }, way: "", said: root.waitingSaid }]
-                            readonly property var fit: {
+                            // Fitted once a step out has landed, as the
+                            // keys are (foot.keptNow).
+                            readonly property var fitNow: {
+                                if (root.stepping)
+                                    return null;
+                                root.footFitted.facts += 1;
                                 const wide = facts => facts.reduce((sum, fact) => sum + place(fact), 0)
                                     + Math.max(0, facts.length - 1) * spacing;
                                 const left = foot.room - (waiting.length === 0 ? 0
                                     : place(waiting[0]) + spacing);
                                 return Standing.fittedFrom(facts, told => wide(told) <= left,
                                     root.footStage);
+                            }
+                            property var fit: ({ told: [], stage: 0 })
+                            onFitNowChanged: {
+                                if (fitNow !== null)
+                                    fit = fitNow;
                             }
                             readonly property var kept: fit.told.concat(waiting)
                             // The room they take at their least, the glyphs
@@ -14688,7 +14760,10 @@ Scope {
                             // the facts is hidden, which a Row leaves out.
                             property int made: 0
                             onKeptChanged: made = Math.max(made, kept.length)
-                            Component.onCompleted: made = Math.max(made, kept.length)
+                            Component.onCompleted: {
+                                fit = fitNow ?? fit;
+                                made = Math.max(made, kept.length);
+                            }
 
                             Repeater {
                                 model: standing.made

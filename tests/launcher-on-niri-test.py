@@ -5005,6 +5005,40 @@ def test_a_step_out_is_timed_to_its_frame_as_a_step_in_is(shell: Shell) -> None:
     assert str(steps[0]).startswith("\u2190 "), f"- wasn't timed as a step out: {presented}"
 
 
+def test_a_step_out_fits_the_foot_once(shell: Shell) -> None:
+    """- out of a place a chord opened fits the foot's keys and facts once, where it lands.
+
+    Fitted again as held changed, as the mode came back and as the rows were found, Joel's - out
+    of Windows spent 13 to 20 ms of its 53 and 58 ms before it searched anything (his journal,
+    2026-11-17 23:05:23 and 2026-11-18 10:43:47). Fitted for each, they were fitted three times.
+    Held, the keys must still read as the row they land on fits them, moved off and back. The
+    facts read nothing of the row: fitted as the hold ends, from what they read then, any later
+    change to it fits them again, which the count would show.
+    """
+    shell.launcher_until(lambda shown: not shown["open"])
+    shell.as_account(shell.ipc("collection", "windows"))
+    shell.launcher_until(lambda shown: shown["open"] and len(shown["held"]) > 0)
+    shell.launcher_ready()
+    shell.normal()
+    shell.send_chars("-")
+    shell.launcher_until(lambda shown: not shown["held"])
+    laid = laid_out(shell)
+    # Its identity, as a row's count or drawer may change under it while windows come and go.
+    landed_on = (shell.showing()["selected"] or {}).get("is")
+    shell.send_chars("j")
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("is") != landed_on)
+    shell.send_chars("k")
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == landed_on)
+    refitted = laid_out(shell)["foot"]
+    shell.close_launcher()
+    fits = laid["stepFits"]
+    assert fits == {"keys": 1, "facts": 1}, f"- out of Windows fitted the foot {fits}"
+    # The clock may turn between the two.
+    held = [word["text"] for word in laid["foot"] if not re.search("[0-9]", word["text"])]
+    fresh = [word["text"] for word in refitted if not re.search("[0-9]", word["text"])]
+    assert held == fresh, f"the foot held {held} where its row fits {fresh}"
+
+
 def test_a_step_out_putting_words_back_is_timed_as_the_step(shell: Shell) -> None:
     """- back onto what was typed is timed once, as the step out and the place it left.
 
