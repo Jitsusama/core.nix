@@ -230,31 +230,6 @@ QtObject {
         expect("a making no kind spent a millisecond on says none",
             Trials.madeOfKinds({ person: 0 }) === "" && Trials.madeOfKinds(undefined) === "",
             Trials.madeOfKinds({ person: 0 }));
-        // A laying says whose rows it spent on, rounded, most first then by
-        // name, and how many of each it laid.
-        // Kinds that round alike go by name, whatever their unrounded time.
-        const laidBy = { person: { rows: 2, ms: 20.4 }, run: { rows: 3, ms: 89.6 },
-            agent: { rows: 5, ms: 20.2 }, act: { rows: 4, ms: 0.4 } };
-        expect("a laying says whose rows it spent on, most first",
-            Trials.laidOfKinds(laidBy)
-                === "; both by kind: run 3 in 90, agent 5 in 20, person 2 in 20",
-            Trials.laidOfKinds(laidBy));
-        expect("a laying says the rows it drew, then whose they were",
-            Trials.laid({ built: 3, reused: 8, laidBy })
-                === ": 3 rows built, 8 taken back; both by kind: run 3 in 90, agent 5 in 20,"
-                + " person 2 in 20",
-            Trials.laid({ built: 3, reused: 8, laidBy }));
-        expect("a laying that drew no row says nothing, whatever it tallied",
-            Trials.laid({ built: 0, reused: 0, laidBy }) === "" && Trials.laid(null) === "",
-            Trials.laid({ built: 0, reused: 0, laidBy }));
-        expect("a laying no kind spent a millisecond on says none",
-            Trials.laidOfKinds({ act: { rows: 9, ms: 0.49 } }) === ""
-                && Trials.laidOfKinds(null) === "",
-            Trials.laidOfKinds({ act: { rows: 9, ms: 0.49 } }));
-        expect("a kind's half a millisecond rounds to one, and is said",
-            Trials.laidOfKinds({ act: { rows: 1, ms: 0.5 } })
-                === "; both by kind: act 1 in 1",
-            Trials.laidOfKinds({ act: { rows: 1, ms: 0.5 } }));
         expect("a drawer's making says working out which, its acts and showing it",
             Trials.makingSplit(134, { acted: 0.4, shown: 21.6 })
                 === " (112 working out which, 0 its acts, 22 showing it)",

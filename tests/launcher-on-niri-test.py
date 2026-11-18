@@ -2089,6 +2089,8 @@ def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) 
     laid_rows = [each for each in tallied if each is not None]
     assert laid_rows, f"no step laid a row: {tallied}"
     drew = [(rows, made + back) for rows, made, back in laid_rows]
+    # Else every step drew nothing, and the tally's matching proves nothing.
+    assert any(drawn > 0 for _, drawn in drew), f"no step drew a row: {drew}"
     assert all(rows == drawn for rows, drawn in drew), f"rows tallied, drawn: {drew}"
     names = {place: {row["reads"].split(" \u00b7 ")[0] for row in laid["rows"]}
              for place, laid in rounds}  # fmt: skip

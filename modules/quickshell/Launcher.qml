@@ -13731,14 +13731,18 @@ Scope {
                                         // whether it's selected, is worked
                                         // out again at the second.
                                         if (from > 0) {
-                                            const splitting = Date.now();
+                                            // Its rows are given none of
+                                            // the placing before, which the
+                                            // laying leaves out (laidUntil).
+                                            const splitting = KeyTimes.now();
+                                            list.laidUntil = splitting;
                                             list.contentY = list.rowY(0)
                                                 + list.rowHeight(from);
                                             rowsKept.insert(0, entries.slice(from));
                                             list.forceLayout();
                                             rowsKept.insert(0, entries.slice(0, from));
                                             list.forceLayout();
-                                            split = Date.now() - splitting;
+                                            split = KeyTimes.now() - splitting;
                                         } else {
                                             rowsKept.insert(step.insert, entries);
                                         }
