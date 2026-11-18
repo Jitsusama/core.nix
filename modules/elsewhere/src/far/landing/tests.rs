@@ -1,4 +1,4 @@
-use super::{SWEEPS_AFTER, land, opened_as_listed, opened_plain};
+use super::{Fault, SWEEPS_AFTER, land, opened_as_listed, opened_plain};
 use crate::far::MARK;
 use crate::far::tests::scratch;
 use std::collections::HashSet;
@@ -16,9 +16,9 @@ fn names(folder: &Path) -> Vec<String> {
 
 /// Lands `from` at `into` as a bring-back's first file into its folder,
 /// listed at the size it has.
-fn landed(from: &Path, into: &Path) -> std::io::Result<()> {
-    let source = opened_plain(from)?;
-    let size = source.metadata()?.len();
+fn landed(from: &Path, into: &Path) -> Result<(), Fault> {
+    let source = opened_plain(from).map_err(Fault::Share)?;
+    let size = source.metadata().map_err(Fault::Share)?.len();
     land(source, size, into, &mut HashSet::new())
 }
 
@@ -33,15 +33,22 @@ fn only_a_file_of_the_size_listed_is_taken_or_lands() {
             "a file of 5 bytes was taken as the {size} listed"
         );
     }
-    // One that shrank once opened, which only a read finds.
+    // One that shrank once opened, which only a read finds, and the
+    // share's doing, not the folder's.
     let into = root.join("short");
     let landing = land(opened_plain(&from).unwrap(), 6, &into, &mut HashSet::new());
     assert!(
-        landing
-            .as_ref()
-            .is_err_and(|error| error.kind() == std::io::ErrorKind::UnexpectedEof)
+        matches!(&landing, Err(Fault::Share(error)) if error.kind() == std::io::ErrorKind::UnexpectedEof)
             && !into.exists(),
-        "a read short of its size landed, or wasn't said as one: {landing:?}"
+        "a read short of its size landed, or wasn't the share's: {landing:?}"
+    );
+    // One read that fails, as of a folder, is the share's too.
+    let into = root.join("unread");
+    let folder = std::fs::File::open(&root).unwrap();
+    let landing = land(folder, 1, &into, &mut HashSet::new());
+    assert!(
+        matches!(&landing, Err(Fault::Share(_))) && !into.exists(),
+        "a source that couldn't be read wasn't the share's: {landing:?}"
     );
     let into = root.join("whole");
     land(

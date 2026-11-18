@@ -8,7 +8,7 @@ use super::MARK;
 use std::collections::HashSet;
 use std::ffi::c_int;
 use std::fs;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -47,44 +47,71 @@ static NEXT_LANDING: AtomicU32 = AtomicU32::new(0);
 /// any run killed in the last minute under the same process id leaves.
 const LANDING_TRIES: usize = 64;
 
+/// How much of a file brought back is read before it is written.
+const COPIES_AT_ONCE: usize = 64 << 10;
+
 /// Puts `from` at `into` under a name of its own first and then moves it
 /// there, so whatever is already at `into`, a hard link to a file
 /// elsewhere or a symbolic link, is replaced rather than written through.
-/// `source`, opened as listed, lands as every one of its `size` bytes; a
-/// read that ends short of them fails as `UnexpectedEof`, the file having
-/// changed since it crossed. A folder named in `swept` was swept already
-/// by this bring-back.
+/// `source`, opened as listed, lands as every one of its `size` bytes. A
+/// folder named in `swept` was swept already by this bring-back.
 pub(super) fn land(
-    source: fs::File,
+    mut source: fs::File,
     size: u64,
     into: &Path,
     swept: &mut HashSet<PathBuf>,
-) -> io::Result<()> {
+) -> Result<(), Fault> {
     let parent = into.parent().unwrap_or(Path::new("."));
-    fs::create_dir_all(parent)?;
+    fs::create_dir_all(parent).map_err(Fault::Folder)?;
     if swept.insert(parent.to_path_buf()) {
         sweep(parent);
     }
-    let bits = landing_bits(source.metadata()?.permissions().mode());
-    let (landing, mut to) = landing_name(parent, bits)?;
+    let opened = source.metadata().map_err(Fault::Share)?;
+    let bits = landing_bits(opened.permissions().mode());
+    let (landing, mut to) = landing_name(parent, bits).map_err(Fault::Folder)?;
     let landed = held(&to)
-        .and_then(|()| io::copy(&mut source.take(size), &mut to))
-        .and_then(|copied| {
-            if copied == size {
-                Ok(())
-            } else {
-                Err(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    format!("only {copied} of its {size} bytes could be read"),
-                ))
-            }
-        })
-        .and_then(|()| synced(&to))
-        .and_then(|()| fs::rename(&landing, into));
+        .map_err(Fault::Folder)
+        .and_then(|()| copied(&mut source, size, &mut to))
+        .and_then(|()| synced(&to).map_err(Fault::Folder))
+        .and_then(|()| fs::rename(&landing, into).map_err(Fault::Folder));
     landed.inspect_err(|_| {
         // What's left would be in the person's folder; it's spent anyway.
         let _ = fs::remove_file(&landing);
     })
+}
+
+/// What kept a file brought back from landing: the share it came home in,
+/// which another try may not meet, or the folder it lands in.
+#[derive(Debug)]
+pub(super) enum Fault {
+    /// It changed, or couldn't be read, after it crossed whole.
+    Share(io::Error),
+    /// The folder couldn't take it.
+    Folder(io::Error),
+}
+
+/// Copies `size` bytes of `source` to `to`, so a read that fails, or ends
+/// short of them, is the share's and a write that fails the folder's.
+fn copied(source: &mut fs::File, size: u64, to: &mut fs::File) -> Result<(), Fault> {
+    let mut buffer = vec![0; COPIES_AT_ONCE];
+    let mut left = size;
+    while left > 0 {
+        let most = usize::try_from(left).map_or(buffer.len(), |left| left.min(buffer.len()));
+        let read = match source.read(&mut buffer[..most]) {
+            Ok(0) => {
+                return Err(Fault::Share(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    format!("only {} of its {size} bytes could be read", size - left),
+                )));
+            }
+            Ok(read) => read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(Fault::Share(error)),
+        };
+        to.write_all(&buffer[..read]).map_err(Fault::Folder)?;
+        left -= u64::try_from(read).unwrap_or(left);
+    }
+    Ok(())
 }
 
 /// Asks the folder to keep what was written to `to`, since a network

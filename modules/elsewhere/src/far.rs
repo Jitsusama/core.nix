@@ -23,6 +23,7 @@
 //! the list.
 
 use crate::settings::{Copies, Kind};
+use landing::Fault;
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::fs;
@@ -459,8 +460,9 @@ fn too_many(files: &[Brought]) -> Option<String> {
 /// folder `job` into `folder`, once it has all crossed, or says why not.
 /// It waits up to `within` seconds past the last time more crossed, and
 /// then lands what did. Everything that can land does, whatever else
-/// didn't, unless the far side said it cut its list, when nothing the
-/// list says is trusted and nothing lands.
+/// didn't, unless the list itself can't be trusted: the far side said it
+/// cut it, or it is past what a share holds in one file or carries in all,
+/// when nothing lands.
 pub fn bring_back(
     job: &Path,
     folder: &Path,
@@ -477,7 +479,7 @@ pub fn bring_back(
         // try writes again.
         if u64::try_from(bytes.len()).map_or(true, |read| read > LARGEST_FILE) {
             return Err(Missed::Refused(format!(
-                "its list of what it brings back is past the {LARGEST_FILE} bytes a share holds in one file"
+                "its list of what it brings back is past the {LARGEST_FILE} bytes a share holds in one file, as a job making far more files than a share carries writes"
             )));
         }
         let text = readable(&bytes);
@@ -631,26 +633,22 @@ fn landed(
             continue;
         }
         let from = job.join(BACK).join(brought.number.to_string());
+        // A handover file only this user's share writes, each closed as it
+        // lands, so one that won't open as listed is the share's doing.
         let landing = landing::opened_as_listed(&from, brought.size)
-            .map_err(|error| (true, error))
+            .map_err(Fault::Share)
             .and_then(|source| {
-                landing::land(
-                    source,
-                    brought.size,
-                    &folder.join(&brought.path),
-                    &mut swept,
-                )
-                .map_err(|error| (error.kind() == io::ErrorKind::UnexpectedEof, error))
+                let into = folder.join(&brought.path);
+                landing::land(source, brought.size, &into, &mut swept)
             });
         match landing {
             Ok(()) => landed += 1,
-            // The share's fault rather than the folder's, so another try
-            // may not meet it.
-            Err((true, error)) => changed.push(format!(
+            // Another try may not meet it.
+            Err(Fault::Share(error)) => changed.push(format!(
                 "{} changed as it crossed home: {error}",
                 brought.path
             )),
-            Err((false, error)) => {
+            Err(Fault::Folder(error)) => {
                 lasting |= lasts(&error);
                 unlanded.push(format!("{} didn't land: {error}", brought.path));
             }

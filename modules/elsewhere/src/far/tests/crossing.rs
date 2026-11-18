@@ -155,10 +155,12 @@ fn a_list_that_couldn_t_be_written_whole_ends_cut() {
             ),
         ]);
     }
+    let freeing = freeing_first(":");
     for stand_ins in &cases {
         let refusal = stand_ins[0].1.lines().nth(1).unwrap_or_default();
         let stand_ins: Vec<_> = stand_ins
             .iter()
+            .chain([&freeing])
             .map(|(step, text)| (*step, text.as_str()))
             .collect();
         let (code, err, home) = far_line(
@@ -169,10 +171,9 @@ fn a_list_that_couldn_t_be_written_whole_ends_cut() {
             None,
             &stand_ins,
         );
-        assert_eq!(
-            code,
-            Some(0),
-            "the far line didn't end as its job did ({refusal}): {err}"
+        assert!(
+            code == Some(0) && !err.contains("before its room") && !err.contains("not freed with"),
+            "the far line didn't end as its job did, or cut before it freed its room ({refusal}, {code:?}): {err}"
         );
         let landed = bring_back(&handover(&home), &home.join("near"), &kind.brings_back, 1);
         assert!(
@@ -233,26 +234,33 @@ fn a_list_on_a_full_disk_is_never_said_whole() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// A stand-in for the free of the job's tree, the last thing before the
+/// list's end or cut, that says if either came first or the job's copy
+/// isn't freed with it, and then does `then` with the job's handover
+/// folder in `$job`.
+fn freeing_first(then: &str) -> (&'static str, String) {
+    refusing(
+        "rm",
+        &format!("*\"/{} \"*", super::super::TREE),
+        &format!(
+            "for a; do job=${{a%/{tree}}}; done\n\
+             case \" $* \" in *\" $HOME/s/1 \"*) ;; *) echo 'the copy was not freed with its tree' >&2 ;; esac\n\
+             grep -qxE 'end|cut' \"$job/{BROUGHT}\" && echo 'the list ended before its room was freed' >&2\n\
+             rm \"$@\"; {then}; exit 0",
+            tree = super::super::TREE
+        ),
+    )
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn a_list_whose_end_can_t_be_written_is_said_and_ends_after_the_room_is_freed() {
     let mut kind = kind("");
     kind.brings_back = vec!["out".into()];
     assert!(Path::new("/dev/full").exists(), "no full disk to stand in");
-    // The free of the tree, the last thing before the end, says if the end
-    // came first or the job's copy isn't freed with it, and then leaves the
-    // list's name on a full disk, so only the end's write fails.
-    let rm = refusing(
-        "rm",
-        &format!("*\"/{} \"*", super::super::TREE),
-        &format!(
-            "for a; do job=${{a%/{tree}}}; done\n\
-             case \" $* \" in *\" $HOME/s/1 \"*) ;; *) echo 'the copy was not freed with its tree' >&2 ;; esac\n\
-             grep -qx end \"$job/{BROUGHT}\" && echo 'the list ended before its room was freed' >&2\n\
-             rm \"$@\"; ln -sf /dev/full \"$job/{BROUGHT}\"; exit 0",
-            tree = super::super::TREE
-        ),
-    );
+    // Then leaves the list's name on a full disk, so only the end's write
+    // fails.
+    let rm = freeing_first(&format!("ln -sf /dev/full \"$job/{BROUGHT}\""));
     let (code, err, home) = far_line(
         "1\tx\nend\n",
         &[("x", "x")],
@@ -318,15 +326,33 @@ fn a_list_past_what_a_share_holds_in_one_file_is_refused() {
     let home = scratch("long-list");
     let job = handover(&home);
     std::fs::create_dir_all(&job).unwrap();
-    // Sparse, so it costs the disk nothing.
+    // Sparse, so it costs the disk nothing, and far past the bound, so a
+    // read of all of it would cost far more than one past it.
     std::fs::File::create(job.join(BROUGHT))
         .unwrap()
-        .set_len(super::super::LARGEST_FILE + 1)
+        .set_len(super::super::LARGEST_FILE * 64)
         .unwrap();
     let landed = bring_back(&job, &home.join("near"), &["out".into()], 1);
     assert!(
         matches!(&landed, Err(Missed::Refused(why)) if why.contains("its list of what it brings back is past")),
         "a list no share carries whole was waited on, or read: {landed:?}"
+    );
+    // One at the bound is read: its unreadable first line passed over, and
+    // its end ending it.
+    let list = std::fs::File::create(job.join(BROUGHT)).unwrap();
+    list.set_len(super::super::LARGEST_FILE - 5).unwrap();
+    std::io::Write::write_all(
+        &mut std::fs::OpenOptions::new()
+            .append(true)
+            .open(job.join(BROUGHT))
+            .unwrap(),
+        b"\nend\n",
+    )
+    .unwrap();
+    assert_eq!(
+        bring_back(&job, &home.join("near"), &["out".into()], 1),
+        Ok(0),
+        "a list of just what a share holds in one file was refused"
     );
     let _ = std::fs::remove_dir_all(&home);
 }
