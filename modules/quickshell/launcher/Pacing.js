@@ -461,18 +461,6 @@ function feltFramed(frame, what, from, to) {
     return { frame: { rows: frame.rows, syncFrom: -1 }, spans };
 }
 
-// What a frame has run that feltFramed hasn't said yet, as of `at`: rows
-// laid out for a frame not yet animating, and a sync not yet heard to end,
-// said up to `at`. A key's bound can end on the timer queued behind a
-// sync, ahead of the call that notes it, so the work it waited behind
-// would otherwise be said as unnamed (a council, 2026-11-18).
-function feltOpen(frame, at) {
-    const rows = frame.rows === null ? []
-        : [{ name: "laying out", from: frame.rows.from, to: frame.rows.to }];
-    return frame.syncFrom < 0 ? rows
-        : [{ name: "syncing", from: frame.syncFrom, to: at }].concat(rows);
-}
-
 // What of `from` to `to` each named span of work ran into, most first,
 // then what none did: Joel's kept openings drew in a median 48 ms and
 // then stalled a median 73 ms, over a fill, a frame and more the journal

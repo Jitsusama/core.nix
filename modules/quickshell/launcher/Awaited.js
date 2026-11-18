@@ -55,9 +55,10 @@ function waitedOf(held, now, bound, timedOut) {
 }
 
 // What a held key waited behind once its bound was out, from the work the
-// launcher noted while it was held (Launcher.qml's heldSpans), each
+// launcher noted while it was held (Launcher.qml's heldSpans), as
+// `listed`, `{ at, spans, collected }`, says them as it's listed: each span
 // `{ name, from, to }` by the shell's own clock, as `held.from` and `at`,
-// when the wait ended, are: most first, then what none named, as an
+// when the wait ended, are; most first, then what none named, as an
 // opening's stall is (Pacing.stallSpent). Joel's fastest letters spent
 // 730 of their 1,054 ms past 50 behind the shell's other work, which said
 // nothing of what (RTOIMQ, 2026-11-17). The collector's time, from
@@ -65,7 +66,8 @@ function waitedOf(held, now, bound, timedOut) {
 // since the count is read only as the key is held and listed, and it runs
 // inside whatever was running; left out where it took none. Ended on its
 // bound, or before, it names nothing.
-function behindOn(held, at, bound, spans, collected) {
+function behindOn(held, listed, bound) {
+    const { at, spans, collected } = listed;
     const past = held.from + bound;
     if (!(at > past)) {
         return "";
@@ -76,13 +78,27 @@ function behindOn(held, at, bound, spans, collected) {
         .filter(part => part !== "").join("; ");
 }
 
-// A held key's wait as its line says it, once it's listed at `at`: how
-// long, how far past its bound, and what that was behind, all from
-// `held.from` by the shell's clock, so the time behind and what it names
-// add up. Timed from `held.began`, the wall clock's, one said 2 ms behind
-// and named 1 (the keys lab, 2026-11-18).
-function heldFor(held, at, bound, spans, collected) {
+// A held key's wait as its line says it, once it's listed (behindOn's
+// `listed`): how long, how far past its bound, and what that was behind,
+// all from `held.from` by the shell's clock, so the time behind and what
+// it names add up. Timed from `held.began`, the wall clock's, one said
+// 2 ms behind and named 1 (the keys lab, 2026-11-18).
+function heldFor(held, listed, bound) {
     const timedOut = held.timedOut === true;
-    return Object.assign(waitedOf({ began: held.from }, at, bound, timedOut),
-        { behindOn: timedOut ? behindOn(held, at, bound, spans, collected) : "" });
+    return Object.assign(waitedOf({ began: held.from }, listed.at, bound, timedOut),
+        { behindOn: timedOut ? behindOn(held, listed, bound) : "" });
+}
+
+// What the frame being drawn has run that Pacing.feltFramed hasn't said
+// yet, as of `at`: rows laid out for a frame not yet animating, and a sync
+// not yet heard to end, said up to `at`. A key's bound can end on the
+// timer queued behind a sync, ahead of the call that notes it, so the work
+// it waited behind would otherwise be said as unnamed (a council,
+// 2026-11-18).
+function frameOpen(frame, at) {
+    const open = frame.syncFrom < 0 ? [] : [{ name: "syncing", from: frame.syncFrom, to: at }];
+    if (frame.rows !== null) {
+        open.push({ name: "laying out", from: frame.rows.from, to: frame.rows.to });
+    }
+    return open;
 }

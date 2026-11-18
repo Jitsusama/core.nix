@@ -328,17 +328,6 @@ QtObject {
             "animating", 90);
         check(failures, "a row made after a frame animates is the next frame's",
             said(next), JSON.stringify([{ name: "laying out", from: 72, to: 75 }]));
-        // What a key's bound may end inside, before its frame's sync is
-        // heard to end or its rows' frame animates.
-        const syncing = Pacing.feltFramed(Pacing.feltFramed(Pacing.feltUnframed(), "animating",
-            20).frame, "row", 30, 34).frame;
-        check(failures, "a sync not yet heard to end runs to now, beside rows laid out since",
-            JSON.stringify(Pacing.feltOpen(syncing, 50)), JSON.stringify([
-                { name: "syncing", from: 20, to: 50 }, { name: "laying out", from: 30, to: 34 }]));
-        const synced = Pacing.feltFramed(Pacing.feltFramed(Pacing.feltUnframed(), "animating",
-            60).frame, "synced", 70).frame;
-        check(failures, "a frame all said has nothing open",
-            JSON.stringify(Pacing.feltOpen(synced, 80)), "[]");
     }
 
     // Agents says how its sessions stand at home, and People is named

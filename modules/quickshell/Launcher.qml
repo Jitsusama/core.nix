@@ -7372,10 +7372,11 @@ Scope {
         steppedByKey = "";
         // Its key's time holds the wait, said apart in the journal, with
         // what the time past its bound went on, and the frame's work not
-        // yet noted (Pacing.feltOpen).
+        // yet noted (Awaited.frameOpen).
         if (waited && searchParts)
-            Object.assign(searchParts, Awaited.heldFor(waited, listedAt, answersWaitedFor,
-                heldSpans.concat(Pacing.feltOpen(feltFrame, listedAt)), collected));
+            Object.assign(searchParts, Awaited.heldFor(waited, { at: listedAt, collected,
+                spans: heldSpans.concat(Awaited.frameOpen(feltFrame, listedAt)) },
+                answersWaitedFor));
         heldSpans = [];
         if (asking)
             return;

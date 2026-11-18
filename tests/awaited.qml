@@ -113,15 +113,25 @@ QtObject {
             { name: "laying out", from: 1050, to: 1080 }
         ];
         Expect.same("a wait past its bound names what ran past it, most first",
-            Awaited.behindOn(held, 1098, 8, noted, 60),
+            Awaited.behindOn(held, { at: 1098, spans: noted, collected: 60 }, 8),
             "syncing 40, laying out 30, agents changing 2, 18 unnamed;"
                 + " collecting 10 over the whole wait");
         Expect.same("work done before the bound isn't what the key waited behind,"
             + " nor a collector that took none",
-            Awaited.behindOn(held, 1098, 8, [{ name: "showing", from: 1000, to: 1008 }], 50),
+            Awaited.behindOn(held, { at: 1098, collected: 50,
+                spans: [{ name: "showing", from: 1000, to: 1008 }] }, 8),
             "90 unnamed");
         Expect.same("a wait ended on its bound names nothing",
-            Awaited.behindOn(held, 1008, 8, noted, 60), "");
+            Awaited.behindOn(held, { at: 1008, spans: noted, collected: 60 }, 8), "");
+
+        // A bound can end on the timer queued behind a frame's sync, ahead
+        // of the call that notes it, as Pacing.feltFramed's frame then holds
+        // it: begun, not yet heard to end.
+        Expect.same("a sync not yet heard to end runs to the listing, beside rows laid out since",
+            Awaited.frameOpen({ rows: { from: 30, to: 34 }, syncFrom: 20 }, 50), [
+                { name: "syncing", from: 20, to: 50 }, { name: "laying out", from: 30, to: 34 }]);
+        Expect.same("a frame all said has nothing open",
+            Awaited.frameOpen({ rows: null, syncFrom: -1 }, 50), []);
 
         // A held key's line is timed from when it was held by the shell's
         // clock, never the wall clock's, which reads another time: timed
@@ -129,11 +139,12 @@ QtObject {
         // 2026-11-18).
         const late = { began: 1712000000000, from: 1000, collected: 50, timedOut: true };
         Expect.same("a key its bound ended says its wait and what held it, on one clock",
-            Awaited.heldFor(late, 1098, 8, noted, 50),
+            Awaited.heldFor(late, { at: 1098, spans: noted, collected: 50 }, 8),
             { waited: 98, behind: 90, behindOn: "syncing 40, laying out 30, agents changing 2,"
                 + " 18 unnamed" });
         Expect.same("a key its answers ended was behind nothing, whatever ran",
-            Awaited.heldFor({ began: 1712000000000, from: 1000, collected: 50 }, 1030, 8,
-                noted, 60), { waited: 30, behind: 0, behindOn: "" });
+            Awaited.heldFor({ began: 1712000000000, from: 1000, collected: 50 },
+                { at: 1030, spans: noted, collected: 60 }, 8), { waited: 30, behind: 0,
+                behindOn: "" });
     }
 }
