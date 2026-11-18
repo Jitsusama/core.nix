@@ -820,6 +820,10 @@ Provider {
             side: said(served.side),
             sideItems: served.side ?? [],
             note: String(held.note ?? ""),
+            // How it stands, as the daemon words it, without its figures,
+            // as For You's heading over the cell says it (Now.qml's
+            // cellHeading).
+            doing: String(held.doing ?? ""),
             depth: served.depth,
             gone: !!held.gone,
             // Return does the act its state makes harmless, one of those

@@ -1884,19 +1884,24 @@ Provider {
     // one, itself; what he can do now; what
     // he's to look at; and what the launcher's sources give, by the kind
     // its row says, a to-do where it says none. A session's row is Agents',
-    // so without Agents there is none, and none is counted.
+    // so without Agents there is none, and none is counted. Each `cell()`
+    // finds the session behind it, or null, read only as its rows are made
+    // (cellRows), since the sessions move far oftener than the items and
+    // the bands are kept while the items are the same.
     readonly property var forYouItems: (toReopen === null ? [] : [{
             // Each session to reopen waits on him until he does, so the row
             // blocks as many as there are, and he can do it now: after a
             // boot it's the first thing to do.
             kind: "do",
             thing: { kind: "todo", ready: true, blocks: Sessions.toReopen.length },
+            cell: () => null,
             make: () => provider.toReopen
         }]).concat((provider.source("agents") ? sessions : [])
         .map(session => ({
             // Gathered in Agents Asking once two ask (ForYou.js).
             kind: "agent",
             thing: { kind: "todo", blocks: 1, since: session.presence?.wants?.since ?? null },
+            cell: () => session,
             make: () => {
                 const agents = provider.source("agents");
                 const now = provider.wantingNow(session);
@@ -1906,10 +1911,12 @@ Provider {
         })).concat(WaitingOnYou.now.map(each => ({
             kind: "do",
             thing: provider.itemThing(each),
+            cell: () => WaitingOnYou.session(each),
             make: now => provider.item(each, now)
         })), looks.waiting.map(one => ({
             kind: "look",
             thing: provider.lookThing(one),
+            cell: () => provider.lookCell(one),
             // Read here so an answer given relists it, saying so.
             answered: provider.lookAnswers[one.id] ?? null,
             make: now => provider.keptLook(one, now)
@@ -1917,11 +1924,13 @@ Provider {
             // A look that asks nothing, To Read's, its row a look's as any.
             kind: "read",
             thing: provider.lookThing(one),
+            cell: () => provider.lookCell(one),
             answered: null,
             make: now => provider.keptLook(one, now)
         })), given.waiting.map(one => ({
             kind: one.row.forYou?.kind ?? "do",
             thing: one.thing,
+            cell: () => null,
             make: () => one.row
         }))))
     // How many each band holds, as they stand now (ForYou.js's banded):
@@ -1994,6 +2003,47 @@ Provider {
         return band.map(one => one.make(now)).filter(row => row !== null);
     }
 
+    // What needs Joel now, under a heading for each cell behind it, the
+    // cells by their heaviest row and each one's rows by weight, with what
+    // no session is behind under one heading of his own (ForYou.js's
+    // byCell; Joel, 2026-11-16: "one 'what needs me' view grouped by
+    // cell"). No heading while all of it is his own. A group whose rows all
+    // went as they were made says nothing. `asked`, Agents Asking's row or
+    // none, stands first while headings show, else at `agentAt` among the
+    // loose rows (ForYou.js's askedFirst).
+    function cellRows(band, now, asked, agentAt) {
+        const groups = ForYou.byCell(band, one => one.cell());
+        if (!ForYou.askedFirst(groups)) {
+            return bandRows(band.slice(0, agentAt), now).concat(asked,
+                bandRows(band.slice(agentAt), now));
+        }
+        return groups.reduce((rows, group) => {
+            const made = bandRows(group.items, now);
+            if (made.length === 0)
+                return rows;
+            return rows.concat([cellHeading(group.cell)], made);
+        }, asked);
+    }
+
+    // A cell's heading, its name and how it stands as the agents daemon
+    // words them for Agents' own row, so it says what the row in Agents
+    // does, never words made here (Y2YBTS, 2026-11-18); its title alone
+    // while Agents holds no row for it, and Joel's own heading where no
+    // cell is. Kept while it says the same.
+    function cellHeading(cell) {
+        const said = Words.of("on:waiting").said ?? {};
+        const address = cell === null ? "" : String(cell.address).toUpperCase();
+        const agents = cell === null ? null : provider.source("agents");
+        const served = agents ? agents.made(cell) : null;
+        const title = served?.name || cell?.title || address;
+        const doing = served?.doing ?? "";
+        const name = cell === null ? String(said.yours ?? "") : doing === "" ? title
+            : String(said.cell ?? "").replace("{title}", title).replace("{doing}", doing);
+        const key = `on:waiting:cell:${address === "" ? "yours" : address}`;
+        return keptAlike(cellsKept, key, [name], () => member({ key, name, heading: true }));
+    }
+    readonly property var cellsKept: keeper()
+
     // A kind's own row, To Look At, To Try or To Read, holding what of that kind
     // doesn't need Joel now (VKCF3Z, 2026-11-09; Joel: "there is no to look
     // at section"), none when it holds nothing: at its side how many, in
@@ -2041,7 +2091,8 @@ Provider {
     }
 
     // For You's own rows, each as it's for (ForYou.js's bands), the
-    // heaviest first in each: what needs Joel now, one by one, then To Look
+    // heaviest first in each: what needs Joel now, under the cell behind
+    // each (cellRows), then To Look
     // At, To Try and To Read, then Lately, Later and History (VKCF3Z,
     // 2026-11-09, and 2026-11-12 for To Read, which nothing counts).
     // Each asking is a pass of the to-dos', sessions' and kinds' keeping,
@@ -2050,15 +2101,14 @@ Provider {
     function waitingRows() {
         const now = Date.now();
         const bands = bandsAt(now);
-        const keeps = [itemsKept, wantsKept, kindsKept];
+        const keeps = [itemsKept, wantsKept, kindsKept, cellsKept];
         keeps.forEach(keeping => keepingBegun(keeping));
         for (const identity of Object.keys(itemsNow))
             delete itemsNow[identity];
         for (const address of Object.keys(wantsNow))
             delete wantsNow[address];
-        const rows = bandRows(bands.now.slice(0, bands.agentAt), now).concat(
-            kindRow("agent", bandRows(bands.agent, now)),
-            bandRows(bands.now.slice(bands.agentAt), now),
+        const asked = kindRow("agent", bandRows(bands.agent, now));
+        const rows = cellRows(bands.now, now, asked, bands.agentAt).concat(
             kindRow("look", bandRows(bands.look, now)),
             kindRow("try", bandRows(bands.try, now)), kindRow("read", bandRows(bands.read, now)),
             latelyRows(now),

@@ -667,6 +667,46 @@ QtObject {
             "ABCDEF");
         expect("nothing held, none", Looks.cellOf(lookLeft, undefined, undefined), null);
 
+        // What needs Joel now, grouped by the cell behind each (What Needs
+        // Me, 42P0R4 and Y2YBTS, 2026-11-18): a cell's rows under it in the
+        // order they came, so heaviest first, the cells by their heaviest,
+        // rows with no cell under one group of Joel's own, placed by its
+        // heaviest as any cell is.
+        const cellA = { address: "AAAAAA", title: "a" };
+        const cellB = { address: "BBBBBB", title: "b" };
+        const behind = { one: cellA, two: null, three: cellB, four: { address: "aaaaaa" },
+            five: null };
+        const grouped = ForYou.byCell(["one", "two", "three", "four", "five"]
+            .map(name => ({ name })), item => behind[item.name]);
+        expect("each cell's rows under it, the cells by their heaviest",
+            grouped.map(group => [group.cell?.address ?? null,
+                group.items.map(item => item.name)]),
+            [["AAAAAA", ["one", "four"]], [null, ["two", "five"]], ["BBBBBB", ["three"]]]);
+        expect("each group headed while there are cells", grouped.map(group => group.headed),
+            [true, true, true]);
+        expect("a lone cell is still named", ForYou.byCell([{ name: "one" }], () => cellA)
+            .map(group => [group.cell.address, group.headed]), [["AAAAAA", true]]);
+        expect("only Joel's own, no heading over them",
+            ForYou.byCell([{ name: "two" }, { name: "five" }], () => null)
+                .map(group => [group.cell, group.items.length, group.headed]),
+            [[null, 2, false]]);
+        expect("a cell with no address is Joel's own",
+            ForYou.byCell([{ name: "one" }], () => ({ title: "x" }))
+                .map(group => group.cell), [null]);
+        expect("nothing, no groups", ForYou.byCell(undefined, () => cellA), []);
+
+        // Agents Asking stands first, above every heading, while any shows,
+        // since a heading claims what's under it; with none, agentAt places
+        // it by weight among the loose rows (Y2YBTS, 2026-11-18 15:49).
+        expect("headings shown, it stands first", ForYou.askedFirst(grouped), true);
+        expect("only Joel's own, agentAt places it",
+            ForYou.askedFirst(ForYou.byCell([{ name: "two" }], () => null)), false);
+        expect("nothing needing him, agentAt places it", ForYou.askedFirst([]), false);
+        const lone = ForYou.banded([{ kind: "agent", thing: { kind: "todo", blocks: 1,
+            since: now - hour }, name: "a" }], now);
+        expect("a lone ask isn't gathered, so it stands under its cell as itself",
+            [lone.now.map(one => one.name), lone.agent.length], [["a"], 0]);
+
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);

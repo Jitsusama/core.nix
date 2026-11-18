@@ -375,6 +375,8 @@
         "minutes": "{minutes} min",
         "later": "nothing now, {count} later",
         "more": "{count} more",
+        "cell": "{title} \u00b7 {doing}",
+        "yours": "yours alone",
         "none": "nothing now",
         "toDo": "{count} to do",
         "toLookAt": "{count} to look at",
