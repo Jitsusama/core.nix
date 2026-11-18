@@ -528,7 +528,10 @@ Inside core, the two crates whose builds the initrd holds, hibernate-unlock
 and console-font, pin the kit the same way in their `package.nix`, so a
 change to the kit doesn't rebuild the initrd and need the boot tests.
 Their `Cargo.toml` keeps the path, so cargo in the dev shell still builds
-them against the working copy's kit.
+them against the working copy's kit. A bump moves the rev and hash
+together, runs the boot tests, and, when the kit's own dependencies
+changed between the two commits, brings each crate's `Cargo.lock` to
+match, since cargo reads the kit's dependencies from there.
 
 ## When a Command Doesn't Agree Yet
 
