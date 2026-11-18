@@ -360,14 +360,17 @@ it("a cell two ancestors list, naming neither, splits from the first alone", () 
   const { forages } = foragesOf(
     told([
       forage("KESTRL", { lineage: { split_into: ["TERNAA"] } }),
-      forage("OSPREY", { lineage: { split_into: ["TERNAA"] } }),
+      // A cell not standing here grows under neither, so both keep it.
+      forage("OSPREY", { lineage: { split_into: ["TERNAA", "FARAWAY"] } }),
+      forage("SKIFFS", { lineage: { split_into: ["FARAWAY"] } }),
       forage("TERNAA"),
     ]),
   );
   const cell = (address: string) => forages.find((each) => each.cell === address);
   assert.equal(cell("TERNAA")?.splitFrom, "KESTRL");
   assert.deepEqual(cell("KESTRL")?.splitInto, ["TERNAA"]);
-  assert.deepEqual(cell("OSPREY")?.splitInto, []);
+  assert.deepEqual(cell("OSPREY")?.splitInto, ["FARAWAY"]);
+  assert.deepEqual(cell("SKIFFS")?.splitInto, ["FARAWAY"]);
 });
 
 it("reads what it can of a split, and says what it couldn't", () => {

@@ -107,7 +107,9 @@ function bothEnds<Each extends Split>(found: readonly Each[]): readonly Each[] {
   return found.map((each) => {
     // A cell here grows under one ancestor, so only that one says it split into it.
     const ancestor = (cell: string) => named.get(cell) ?? listing.get(cell) ?? each.cell;
-    const listed = each.splitInto.filter((cell) => ancestor(cell) === each.cell);
+    const listed = each.splitInto.filter(
+      (cell) => !named.has(cell) || ancestor(cell) === each.cell,
+    );
     const into = [...new Set([...listed, ...(naming.get(each.cell) ?? [])])];
     return {
       ...each,
