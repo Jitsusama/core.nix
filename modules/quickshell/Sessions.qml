@@ -318,8 +318,13 @@ Singleton {
     // One at a time, in the order asked, so a second asked before the
     // first's file is read waits rather than taking its place.
     property var resuming: []
-    function resume(id, quest, folder, gone) {
-        resuming = resuming.concat([{ id: id, quest: quest, folder: folder, gone: gone }]);
+    // `kept`, where given, asks only for the session where it left off,
+    // never one started afresh in its folder: its `done` is told the
+    // folder it reopened in, and `gone` is told "" for where it started
+    // when there's no session file, or no folder it ran in, to open.
+    function resume(id, quest, folder, gone, kept) {
+        resuming = resuming.concat([{ id: id, quest: quest, folder: folder, gone: gone,
+            kept: kept ?? null }]);
         resumeNext();
     }
     function resumeNext() {
@@ -356,6 +361,11 @@ Singleton {
         lookFor([cwd, asked.folder], there => {
             if (there[0]) {
                 reopened({ id: asked.id }, cwd);
+                asked.kept?.done?.(cwd);
+                return;
+            }
+            if (asked.kept) {
+                asked.gone?.(cwd, "");
                 return;
             }
             if (there[1])
@@ -3032,8 +3042,9 @@ Singleton {
     // file of the holder keeping it here, which starts it again in its
     // window with its steer inbox read, so words left there first reach it
     // as it wakes (mycelium's PROTOCOL.md, its steer). One the node can't
-    // wake, parked on another machine or with no holder this boot, is said
-    // by `unsteered` with the node's reason. One asleep in pi's host with
+    // wake, parked on another machine, is said by `unsteered` with the
+    // node's reason; one parked here with no holder this boot is reopened
+    // where it left off (reopensUnwoken). One asleep in pi's host with
     // no window is viewed instead, since viewing it is what wakes it there
     // and the node's wake reaches only a holder's file: five such sleepers
     // on 14 November had their wake file in the host's own folder, which
@@ -3060,8 +3071,48 @@ Singleton {
         if (keptPlaces[id]?.slept === true)
             keepPlaces(Object.assign({}, keptPlaces, { [id]: Object.assign({}, keptPlaces[id],
                 { at: Date.now(), asked: true }) }));
-        if (session?.address)
-            steer(session.address, { act: "wake" });
+        if (!session?.address)
+            return;
+        const upper = String(session.address).toUpperCase();
+        PiSource.steer(upper, { act: "wake" }, answer => {
+            if (!reopensUnwoken(session, answer))
+                steered(upper, answer);
+        });
+    }
+    // Reopens where it left off one parked here that the node says no
+    // holder keeps this boot, as when the holder died or the machine started
+    // again, since nothing else will ever wake it and Joel asked for it:
+    // left to the node's refusal alone, it stayed asleep, said only on the
+    // launcher's foot. Only that refusal, and only here, since one a holder
+    // still keeps, or one on another machine, opened again here would be
+    // the same session run twice. Whether it does is answered.
+    // The node says why only in words, so its refusal is known by them
+    // (mycelium's steer_here); any other refusal is said as it was.
+    readonly property string unheld: "isn't parked with a holder to wake it this boot"
+    // Each session reopened so, by its id, with when, so a second Wake
+    // before pi is up opens no second (Sessions' startsWithin).
+    property var unwokenReopening: ({})
+    function reopensUnwoken(session, answer) {
+        const id = String(session?.presence?.session ?? "");
+        const why = String(answer?.error?.message ?? "");
+        if (id === "" || session.here === false || !why.endsWith(unheld))
+            return false;
+        const asked = unwokenReopening[id];
+        if (asked !== undefined && Date.now() - asked < startsWithin
+            || running.some(one => one.here && one.presence?.session === id))
+            return true;
+        unwokenReopening = Object.assign({}, unwokenReopening, { [id]: Date.now() });
+        const quest = session.presence?.questInfo?.id ?? session.presence?.quest ?? "";
+        const address = String(session.address).toUpperCase();
+        // Only its own session file, never one started afresh; with none,
+        // or no folder to open it in, it's said as the refusal was.
+        resume(id, String(quest), String(session.folder ?? ""), () => {
+            const left = Object.assign({}, unwokenReopening);
+            delete left[id];
+            unwokenReopening = left;
+            unsteered(session, why);
+        }, { done: cwd => Report.say(`reopened ${address}, which nothing held, in ${cwd}`) });
+        return true;
     }
     // Go To on `session`, waking `resting` first, its parked record, when
     // it's parked. One only viewing wakes is left to goTo's own viewer,

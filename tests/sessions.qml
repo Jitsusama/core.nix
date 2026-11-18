@@ -405,6 +405,25 @@ ShellRoot {
             JSON.stringify(marked));
         Sessions.keepPlaces({});
         Sessions.talk("napper", "what now?");
+        // One parked here that the node can't wake, its holder gone, is
+        // reopened where it left off, since Joel asked for it and nothing
+        // else will wake it; one parked on another machine never is, as
+        // that would run it twice.
+        const orphan = { address: "ORPHAN", here: true, window: null, held: null,
+            folder: "/tmp", presence: { session: "s-orphan", state: "parked",
+                quest: "QEST-ORPHAN", addresses: ["ORPHAN"] } };
+        Sessions.wake(orphan);
+        // Woken again before pi is up, it opens no second.
+        Sessions.wake(orphan);
+        // One with no session file is never started afresh in its place,
+        // though its folder is there.
+        Sessions.wake(Object.assign({}, orphan, { address: "NOFILE",
+            folder: `${root.state}/trees/karst`,
+            presence: Object.assign({}, orphan.presence, { session: "s-nofile",
+                quest: "QEST-NOFILE", addresses: ["NOFILE"] }) }));
+        Sessions.wake(Object.assign({}, orphan, { address: "STRAY", here: false,
+            presence: Object.assign({}, orphan.presence, { session: "s-stray",
+                addresses: ["STRAY"] }) }));
     }
 
     // One asleep in pi's host with no window wakes as it's viewed, which the
@@ -562,8 +581,22 @@ ShellRoot {
         const kitties = Niri.spawns.map(command => inSessions(command))
             .filter(command => command.startsWith("sessions ") && !command.includes("attach r-far")
                 && !command.includes("attach --host") && !command.includes('attach "$1"'));
-        if (kitties.length < 6 || unopened.length < 3 || !steered || !talked())
+        // Six reopened at once, and the one woken that no holder keeps.
+        if (kitties.length < 7 || unopened.length < 3 || !steered || !talked()
+            || !kitties.some(one => one.endsWith(" pi --session s-orphan"))
+            || root.unfiled === "" && !Niri.spawns.some(one => one.includes("QEST-NOFILE")))
             return;
+        expect("one parked that no holder keeps is reopened where it left off, once",
+            kitties.filter(one => one.startsWith(`${kitty} ${state}/trees/karst zsh -lic `)
+                && one.endsWith(" pi --session s-orphan")).length === 1, kitties.join("\n"));
+        expect("and one with no session file is never started afresh, said as refused",
+            !Niri.spawns.some(one => one.includes("s-nofile") || one.includes("QEST-NOFILE"))
+            && root.unfiled.startsWith("NOFILE isn't parked"),
+            `${root.unfiled}: ${Niri.spawns.join("\n")}`);
+        expect("and one parked elsewhere never is, said as the node refused it",
+            !Niri.spawns.some(one => one.includes("s-stray"))
+            && root.strayed === "STRAY isn't parked with a holder to wake it this boot",
+            `${root.strayed}: ${Niri.spawns.join("\n")}`);
         // Each window is opened with an app id of its own, which its process
         // is told, so the node's record of what it holds names it as niri
         // lists it; a hosted one's viewer, a sleeper's too, by its session's
@@ -611,7 +644,7 @@ ShellRoot {
         expect("one held elsewhere joined again by its words, in its folder here",
             kitties.includes(`${kitty} /tmp ssh -t lighthouse mycelium attach s-far`),
             kitties.join("\n"));
-        expect("six opened, none in the home folder nor a gone one", kitties.length === 6
+        expect("seven opened, none in the home folder nor a gone one", kitties.length === 7
             && !kitties.some(one => one.includes(`--directory ${Quickshell.env("HOME")} `)
                 || one.includes("given-back") || one.includes("QEST-NONE")),
             kitties.join("\n"));
@@ -771,6 +804,9 @@ ShellRoot {
     // The last that Go To couldn't open, in a terminal it can't reach.
     property string unreached: ""
     property bool steered: false
+    // What the node said of waking the one parked elsewhere.
+    property string strayed: ""
+    property string unfiled: ""
     // Each steer the node was asked, and whether the one parked had been
     // woken by then.
     property var steers: []
@@ -793,6 +829,17 @@ ShellRoot {
 
         function onUnsteered(session, why) {
             try {
+                // One parked elsewhere is said as the node refused it,
+                // never reopened (parks()); one parked here never is said.
+                if (session.address === "STRAY") {
+                    root.strayed = why;
+                    return;
+                }
+                // One with no session file to reopen is said so too.
+                if (session.address === "NOFILE") {
+                    root.unfiled = why;
+                    return;
+                }
                 root.expect("a steer elsewhere is refused by the node, saying why",
                     session.address === "FARAWY" && session.machine === "lighthouse"
                     && why === "lighthouse is out of reach, so FARAWY can't be told now", why);
@@ -860,10 +907,17 @@ ShellRoot {
                         answer = { id: ask.id, records: [] };
                     } else if (ask.ask === "steer") {
                         root.steers = root.steers.concat([{ ask: ask }]);
+                        // A wake of one no holder keeps this boot is
+                        // refused as the node refuses it.
+                        const unheld = ask.steer?.act === "wake"
+                            && ["ORPHAN", "STRAY", "NOFILE"].includes(ask.address);
                         answer = ask.address === "FARAWY" ? { id: ask.id, error: {
                             code: "refused",
                             message: "lighthouse is out of reach, so FARAWY can't be told now"
-                        } } : { id: ask.id, steered: { machine: Sessions.machine } };
+                        } } : unheld ? { id: ask.id, error: { code: "refused",
+                            message: `${ask.address} isn't parked with a holder to wake it`
+                                + " this boot" } }
+                        : { id: ask.id, steered: { machine: Sessions.machine } };
                         Qt.callLater(root.check);
                     } else {
                         root.fail(`an ask the shell has no need of: ${line}`);
