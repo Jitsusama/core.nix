@@ -213,7 +213,11 @@ it("joins repositories one cell works across, by the networks it's in", () => {
 });
 
 /** What core is joined to, with world named `name` and core's cell in `networks`. */
-function coreJoined(name: string, networks: string[], more: typeof records = []): readonly string[] {
+function coreJoined(
+  name: string,
+  networks: string[],
+  more: typeof records = [],
+): readonly string[] {
   const named = records.map((each) => (each === world ? { ...each, name } : each));
   const cell = { ...map.cells[0], networks: [...networks, "repo.core"] };
   const grove = groveOf(told([...named, ...more]), cellsOf({ cells: [cell] }), NOW);

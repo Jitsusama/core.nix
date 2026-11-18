@@ -1,8 +1,10 @@
 // How the cells at work join one repository to another. A cell is in a network for each
 // repository it works across, which the mesh names `repo.` and the repository's name as the
 // mesh spells a group's part: lower-cased, each run of anything but letters and digits one
-// hyphen, none at either end. So core.nix is repo.core-nix. Nothing here touches the page, so
-// each is tried in Node (tests/model.test.ts).
+// hyphen, none at either end, as part() in the harness's lib/mesh/scope.ts spells it. So
+// core.nix is repo.core-nix. A network names a repository by its name alone, so where two
+// repositories are spelled alike it names neither. Nothing here touches the page, so each is
+// tried in Node (tests/model.test.ts).
 
 import type { Cell, Repository } from "./model.ts";
 
@@ -22,15 +24,25 @@ function networked(cell: Cell): readonly string[] {
     .map((each) => each.slice(REPOSITORY_NETWORK.length));
 }
 
+/** The repositories by how the mesh spells each, each spelling with every repository it names. */
+function bySpelling(repositories: readonly Repository[]): Map<string, string[]> {
+  const spellings = new Map<string, string[]>();
+  for (const each of repositories) {
+    const spelling = spelled(each.name);
+    spellings.set(spelling, [...(spellings.get(spelling) ?? []), each.key]);
+  }
+  return spellings;
+}
+
 /** Each repository with the others its cells' networks name too. */
 function joined(repositories: readonly Repository[]): Repository[] {
-  const bySpelling = new Map(repositories.map((each) => [spelled(each.name), each.key]));
+  const spellings = bySpelling(repositories);
   return repositories.map((repository) => {
     const others = new Set<string>();
     for (const cell of repository.cells) {
       for (const name of networked(cell)) {
-        const key = bySpelling.get(name);
-        if (key !== undefined && key !== repository.key) {
+        const [key, ...alike] = name === "" ? [] : (spellings.get(name) ?? []);
+        if (key !== undefined && alike.length === 0 && key !== repository.key) {
           others.add(key);
         }
       }
