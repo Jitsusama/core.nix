@@ -93,8 +93,10 @@ pub struct Record {
     /// The Google account its meeting was on, by address, as the google
     /// program's daemon said it both before and after listing the
     /// meetings (meeting.rs); none when either read went unheard or they
-    /// differed, or for a call before this was kept. Only the daemon
-    /// writes it, beside the call, and the shell is never served it.
+    /// differed, or for a call before this was kept. This daemon writes
+    /// it, beside the call, from nothing an agent sends, and the shell is
+    /// never served it. It's read back as written: Joel's own files hold
+    /// no secret from what runs as him, which could run mycelium itself.
     pub account: Option<String>,
     pub folder: PathBuf,
     pub transcript: Option<PathBuf>,

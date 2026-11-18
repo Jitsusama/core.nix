@@ -221,13 +221,18 @@ mod tests {
     /// answering its one ask with `record`, and the google program's,
     /// holding Planning, on now, on `ACCOUNT`.
     fn runtime(name: &str, record: &Value) -> std::path::PathBuf {
-        on_accounts(name, record, json!(ACCOUNT), json!(ACCOUNT))
+        on_accounts(name, record, &json!(ACCOUNT), &json!(ACCOUNT))
     }
 
     /// A fresh runtime folder as [`runtime`] makes, but whose google
     /// daemon says the account is `before` until it lists its meetings,
     /// and `after` once it has.
-    fn on_accounts(name: &str, record: &Value, before: Value, after: Value) -> std::path::PathBuf {
+    fn on_accounts(
+        name: &str,
+        record: &Value,
+        before: &Value,
+        after: &Value,
+    ) -> std::path::PathBuf {
         let runtime = std::env::temp_dir().join(format!("meeting-{name}-{}", std::process::id()));
         std::fs::create_dir_all(runtime.join("daemons")).unwrap();
         let call = json!({"records": [record]});
@@ -247,9 +252,9 @@ mod tests {
         serving(
             &runtime.join("daemons/google.sock"),
             vec![
-                ("get", "keys", whose.clone(), account(&before)),
+                ("get", "keys", whose.clone(), account(before)),
                 ("list", "kind", json!("meeting"), meetings),
-                ("get", "keys", whose, account(&after)),
+                ("get", "keys", whose, account(after)),
             ],
         );
         runtime
@@ -314,7 +319,7 @@ mod tests {
             ("unheard-before", Value::Null, json!(ACCOUNT)),
             ("unheard-after", json!(ACCOUNT), Value::Null),
         ] {
-            let on_it = on(&on_accounts(name, &none, before, after), NOW);
+            let on_it = on(&on_accounts(name, &none, &before, &after), NOW);
             assert_eq!(
                 on_it.title, "Planning",
                 "{name}: the meeting is still the call"

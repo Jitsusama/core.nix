@@ -39,8 +39,9 @@
 //!     minding none of serve's manners
 //! ```
 //!
-//! How many calls there were, and nothing else of them, is said to the
-//! realm's mycelium node as its calls receptor, once a minute
+//! How many calls there were, and the calendar event of each the
+//! declared account's summary was written of, by its id alone, is said to
+//! the realm's mycelium node as its calls receptor, once a minute
 //! (receptor.rs).
 //!
 //! A call is what modules/calls counts as one: a program recording from a

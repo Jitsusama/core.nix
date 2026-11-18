@@ -213,10 +213,15 @@ impl Watch {
         let (from, to) = calendar::window(now);
         match self.asking(now, |google, token| google.events(token, from, to)) {
             Ok(mut answer) => {
+                let listed_as = self.asked_as();
                 match self.asking(now, Google::writable) {
                     Ok(calendars) => {
                         self.writable = calendars.writable;
-                        self.state.signed_in = calendars.primary;
+                        // Each ask reads the sign-in afresh, so one pi
+                        // changed between them would put one account's
+                        // address beside another's meetings: none is kept.
+                        self.state.signed_in =
+                            calendars.primary.filter(|_| self.asked_as() == listed_as);
                     }
                     // Whose account answered isn't known this look, so
                     // nothing that needs it is said of it.
@@ -512,6 +517,16 @@ impl Watch {
     fn makes_meetings(&self) -> bool {
         self.signed_in()
             .is_ok_and(|account| account.grants(MAKES_MEETINGS))
+    }
+
+    /// Which sign-in Google was last asked as, by its app and refresh
+    /// token, which differ between accounts and stay put while only its
+    /// access token is refreshed.
+    fn asked_as(&self) -> Option<(String, String)> {
+        self.last
+            .borrow()
+            .as_ref()
+            .map(|account| (account.client_id.clone(), account.refresh_token.clone()))
     }
 
     /// The account to ask as, read afresh, since pi rewrites its sign-in
