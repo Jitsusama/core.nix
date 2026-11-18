@@ -4893,16 +4893,8 @@ mod tests {
         fs::create_dir_all(&turns).unwrap();
         let boot = Command::new("sh").args(["-c", BOOT_READ]).output().unwrap();
         let boot = String::from_utf8(boot.stdout).unwrap().trim().to_owned();
-        // Killed as the test ends, however it ends.
-        struct Live(std::process::Child);
-        impl Drop for Live {
-            fn drop(&mut self) {
-                let _ = self.0.kill();
-                let _ = self.0.wait();
-            }
-        }
-        let live = Live(Command::new("sleep").arg("30").spawn().unwrap());
-        let pid = live.0.id();
+        let mut live = Command::new("sleep").arg("30").spawn().unwrap();
+        let pid = live.id();
         // Each holder but the first is passed over for one reason alone.
         let holders = [
             (format!("{pid} {boot}"), 1, "a live shell of this boot"),
@@ -4924,39 +4916,48 @@ mod tests {
                 "a pid past any machine's",
             ),
         ];
+        // Every count is read before any is judged, so the live shell is
+        // killed however the test ends.
+        let mut read = Vec::new();
         for shell in ["dash", "zsh"] {
             let counted = |turns: &Path| {
-                let said = Command::new(shell)
+                Command::new(shell)
                     .args(["-c", &building_read()])
                     .env("NIX_OFFLOAD_TURNS", turns)
                     .output()
-                    .unwrap();
-                String::from_utf8(said.stdout).unwrap()
+                    .map_or_else(
+                        |error| format!("{error}"),
+                        |said| String::from_utf8_lossy(&said.stdout).into_owned(),
+                    )
             };
             for (holder, building, what) in &holders {
                 let _ = fs::remove_file(turns.join("1"));
                 std::os::unix::fs::symlink(holder, turns.join("1")).unwrap();
-                assert_eq!(
+                read.push((
                     counted(&turns),
                     format!("{building}\n"),
-                    "{shell}: a turn held by {what} was counted wrongly"
-                );
+                    format!("{shell}: a turn held by {what} was counted wrongly"),
+                ));
             }
-            fs::remove_file(turns.join("1")).unwrap();
-            let past = NEARBY_AT_ONCE + 1;
-            std::os::unix::fs::symlink(format!("{pid} {boot}"), turns.join(past.to_string()))
-                .unwrap();
-            assert_eq!(
+            let _ = fs::remove_file(turns.join("1"));
+            let past = turns.join((NEARBY_AT_ONCE + 1).to_string());
+            std::os::unix::fs::symlink(format!("{pid} {boot}"), &past).unwrap();
+            read.push((
                 counted(&turns),
-                "0\n",
-                "{shell}: a link past the machine's turns was counted as one"
-            );
-            fs::remove_file(turns.join(past.to_string())).unwrap();
-            assert_eq!(
+                "0\n".to_owned(),
+                format!("{shell}: a link past the machine's turns was counted as one"),
+            ));
+            let _ = fs::remove_file(&past);
+            read.push((
                 counted(&folder.path().join("none")),
-                "0\n",
-                "{shell}: a Mac with no turns folder wasn't read as building nothing"
-            );
+                "0\n".to_owned(),
+                format!("{shell}: a Mac with no turns folder wasn't read as building nothing"),
+            ));
+        }
+        live.kill().unwrap();
+        live.wait().unwrap();
+        for (counted, building, why) in read {
+            assert_eq!(counted, building, "{why}");
         }
     }
 
