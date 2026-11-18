@@ -5,6 +5,7 @@
 //! ```text
 //! system          a line for each part and each machine, and where to go deeper
 //! system --json   the whole record, as system.view/1
+//! system machine NAME   one machine whole, and what can be done with it
 //! system serve    the record held ready on its socket (serve.rs)
 //! ```
 //!
@@ -12,6 +13,7 @@
 //! through the terminal kit.
 
 mod ask;
+mod said;
 mod serve;
 mod views;
 
@@ -44,10 +46,19 @@ fn help() -> Help {
     )
     .example("system --json", "the whole record, as system.view/1")
     .example(
+        "system machine NAME",
+        "one machine whole: its ties to the other parts, and what can be done with it",
+    )
+    .example(
         "system serve --socket SOCKET",
         "the record held ready there for the views, read again every 15 s",
     )
     .exit(Exit::Usage, "the words are unknown")
+    .exit(Exit::NotFound, "no part lists the machine named")
+    .exit(
+        Exit::Unavailable,
+        "which machines there are couldn't be read",
+    )
 }
 
 fn run(context: &Context) -> Result<(), Failure> {
@@ -56,16 +67,42 @@ fn run(context: &Context) -> Result<(), Failure> {
     {
         return serve::run(rest);
     }
-    if !context.args.is_empty() {
-        return Err(
-            Failure::new(Exit::Usage, "system doesn't know those words").try_this("system --help")
-        );
-    }
-    let system = read();
-    let written = if context.format().is_json() {
-        context.answer(&system.json())
-    } else {
-        context.say(&views::system(&system, &context.out, context.room))
+    let written = match context.args.as_slice() {
+        [] => {
+            let system = read();
+            if context.format().is_json() {
+                context.answer(&system.json())
+            } else {
+                context.say(&views::system(&system, &context.out, context.room))
+            }
+        }
+        [machine, name] if machine == "machine" => {
+            let system = read();
+            let missing = || match system.machines_unread() {
+                Some(why) => Failure::new(
+                    Exit::Unavailable,
+                    "system couldn't read which machines there are",
+                )
+                .because(why)
+                .try_this("mycelium machines"),
+                None => Failure::new(
+                    Exit::NotFound,
+                    format!("no part lists a machine named {name}"),
+                )
+                .try_this("system"),
+            };
+            if context.format().is_json() {
+                context.answer(&system.machine(name).ok_or_else(missing)?)
+            } else {
+                let drawn = views::machine(&system, name, &context.out, context.room, now())
+                    .ok_or_else(missing)?;
+                context.say(&drawn)
+            }
+        }
+        _ => {
+            return Err(Failure::new(Exit::Usage, "system doesn't know those words")
+                .try_this("system --help"));
+        }
     };
     written.or_else(|error| match error.kind() {
         // A reader that stopped early, as `head` does, ends the answer.
@@ -103,7 +140,13 @@ pub(crate) fn read() -> System {
         machine: terminal_kit::environment::machine(),
         read_at: terminal_kit::time::rfc3339(now()),
         parts: vec![
-            parts::machines(&machines, &health, net.as_ref().ok(), repos.as_ref().ok()),
+            parts::machines(
+                &machines,
+                &health,
+                net.as_ref().ok(),
+                repos.as_ref().ok(),
+                backup(),
+            ),
             parts::mycelium(&health),
             parts::network(&net),
             parts::code(&repos),
@@ -138,6 +181,22 @@ fn sites() -> Option<PathBuf> {
             std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share"))
         })?;
     Some(data.join("jitsusama/sites"))
+}
+
+/// How this machine's quest backup last landed, as the backup writes it
+/// under its state home (epoch seconds); none where this machine keeps no
+/// backup.
+fn backup() -> Option<parts::Backup> {
+    let state = std::env::var_os("XDG_STATE_HOME")
+        .filter(|state| !state.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state"))
+        })?;
+    parts::backup(
+        std::fs::read_to_string(state.join("quest-backup/landed")),
+        now(),
+    )
 }
 
 fn now() -> i64 {
