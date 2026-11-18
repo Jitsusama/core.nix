@@ -272,19 +272,46 @@ QtObject {
                 listed: { at: 1407, spans: sta, collected: 50 } }, swapHeld, 8),
             "waiting on the last swap 57, after the sync 6, before the sync 3,"
                 + " the sync itself 2, 1 unnamed");
+        // A burst held over several frames syncs in each: one span's own
+        // frame is the frame before of the next span, whose wait on its
+        // swap is told apart there.
+        const burst = [{ name: "syncing", from: 1338, to: 1350 },
+            { name: "syncing", from: 1355, to: 1406 }];
+        const burstFrames = [{ frame: 7, synchronizing: 1340, synchronized: 1342,
+            rendering: 1342, rendered: 1350, swapped: 1395 }, swapHeld[1]];
+        Expect.same("a burst's syncs each name their own frame and wait on the one before",
+            Awaited.syncsSplit(burst, burstFrames), [
+                { name: "before the sync", from: 1338, to: 1340 },
+                { name: "the sync itself", from: 1340, to: 1342 },
+                { name: "after the sync", from: 1342, to: 1350 },
+                { name: "waiting on the last swap", from: 1355, to: 1395 },
+                { name: "before the sync", from: 1395, to: 1398 },
+                { name: "the sync itself", from: 1398, to: 1400 },
+                { name: "after the sync", from: 1400, to: 1406 }]);
+        Expect.same("a burst's line adds its syncs' parts by name",
+            Awaited.behindSplit({ held: { from: 1330, timedOut: true, collected: 50 },
+                listed: { at: 1407, spans: burst, collected: 50 } }, burstFrames, 8),
+            "waiting on the last swap 40, after the sync 14, before the sync 5,"
+                + " the sync itself 4, 6 unnamed");
 
         // FramePresentation keeps the last sixteen frames' times, none for
         // the newest while it's begun and not yet rendered, and none for a
         // frame whose slot a newer one took, whatever older frame answers.
-        const kept = frame => frame === 2 || frame >= 6 && frame <= 19
+        const kept = frame => frame >= 7 && frame <= 19 && frame !== 9
             ? { rendered: frame * 10 } : {};
         Expect.same("the frames read are those still timed, oldest first, to the first gone",
             Awaited.framesTimed(20, kept).map(frame => frame.frame),
-            [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
+            [10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
         Expect.same("only the newest untimed frame is passed over; the next ends the read",
             Awaited.framesTimed(21, kept), []);
         Expect.same("a read whose every frame answers ends at the ring's sixteen",
             Awaited.framesTimed(1000, frame => ({ rendered: frame })).length, 16);
+        // While the newest is begun and not rendered, its slot still holds
+        // the frame sixteen before it, which the read still reaches.
+        const unrendered = Awaited.framesTimed(1000,
+            frame => frame === 1000 ? {} : { rendered: frame });
+        Expect.same("a newest frame not yet rendered leaves the ring's sixteen before it",
+            [unrendered.length, unrendered[0].frame], [16, 984]);
 
         // A key typed before an earlier held key's frame is swapped keeps
         // the earlier one's wait for it.

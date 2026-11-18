@@ -6766,8 +6766,8 @@ Scope {
 
     // A key's drawing said apart by the render thread's own times of its
     // frame (frame-presentation.patch's timesOf): from the frame's start to
-    // the end of its sync, the GUI thread's wait for the render thread and
-    // the sync (Awaited.syncSplit tells them apart for a held key); then its
+    // the end of its sync, the GUI thread's time to the sync and the sync
+    // itself (Awaited.syncSplit tells them apart for a held key); then its
     // render and swap; then how long the GUI thread, busy with other work,
     // took to hear the swap, which the frame never waited on. Its swap is
     // sent from the render thread and heard queued, so Joel's "meet" said
@@ -6790,7 +6790,10 @@ Scope {
     // frame is swapped, when the frames synced while it was held have
     // rendered, so its syncs are told apart by the render thread's times
     // (Awaited.behindSplit). Kept apart from its parts, which a felt key's
-    // trial keeps.
+    // trial keeps. Kept past a close too, since a frame in flight can
+    // still be swapped and say its key's line; the HELD_KEPT newest are
+    // kept, each matched by its parts, so one never taken, as a search made
+    // while asking, never splits a later key.
     property var heldBehind: []
 
     function keyDrawn(drawnKeys) {
@@ -10335,9 +10338,6 @@ Scope {
             // What waits on a frame runs, since no frame of the launcher's
             // is coming.
             afterFramesDue();
-            // Nor is any held key's line said again, so what each waited
-            // behind is let go, whatever frame it still waited for.
-            heldBehind = [];
             over = null;
             lastVisual = null;
             rowChanges = Changes.changes();

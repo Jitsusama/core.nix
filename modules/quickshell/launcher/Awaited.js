@@ -1,5 +1,6 @@
 .pragma library
 .import "Pacing.js" as Pacing
+.import "Trials.js" as Trials
 
 // What a search of what's typed does about the sources whose answers it
 // waits for (Launcher.qml's searchNow). A source such as the notices,
@@ -147,8 +148,9 @@ function drawingHeld(frames, from, to) {
 // else before the sync, which holds both the render thread beginning the
 // frame, where it can wait for a buffer (syncAndRender's beginFrame), and
 // the shell's own handlers of animating run after the span opened, and so
-// names neither's owner. Then the
-// sync itself, then what the shell's thread ran after it let go (its
+// names neither's owner. Those handlers can run while a frame before
+// still renders or swaps, so those waits are at most what it held. Then
+// the sync itself, then what the shell's thread ran after it let go (its
 // animations advanced, and what was queued ahead of the call ending the
 // span); on a loop rendering on the shell's thread, as in a sandbox, that
 // also holds the frame's own render and swap. Where no frame's sync began
@@ -218,20 +220,18 @@ function behindSplit(behind, frames, bound) {
 // The frames FramePresentation still has the times of, oldest first, each
 // with its number, read back from `last`, the newest begun. The newest
 // may be begun and not yet rendered, so has no times, and is passed over;
-// below it the read ends at the first a newer frame's slot took, as
-// Trials.begunBefore's does, or at FRAMES_READ, the frames FramePresentation
-// keeps (as Trials.FRAMES_KEPT), should timesOf ever give a slot's times
-// for a frame not its own.
-const FRAMES_READ = 16;
+// its slot then still holds the frame the ring's size before it, so the
+// ring's frames are counted from the newest rendered. The read ends at the
+// first a newer frame's slot took, as Trials.begunBefore's does, or at the
+// ring's size, should timesOf ever give a slot's times for a frame not its
+// own.
 function framesTimed(last, timesOf) {
     const frames = [];
-    for (let frame = last; frame > 0 && last - frame < FRAMES_READ; frame--) {
+    const newest = last > 0 && timesOf(last).rendered > 0 ? last : last - 1;
+    for (let frame = newest; frame > 0 && newest - frame < Trials.FRAMES_KEPT; frame--) {
         const times = timesOf(frame);
         if (!(times.rendered > 0)) {
-            if (frames.length > 0 || frame < last) {
-                break;
-            }
-            continue;
+            break;
         }
         frames.unshift(Object.assign({ frame }, times));
     }
