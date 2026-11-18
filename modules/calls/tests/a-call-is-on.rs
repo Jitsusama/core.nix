@@ -395,3 +395,75 @@ fn a_node_that_wont_answer_is_named_and_no_wait() {
         "it didn't name the silent node: {told:?}"
     );
 }
+
+/// A stand-in node for the account 1000 that takes each request and
+/// answers it with `says`, then holds the connection open for ten seconds.
+fn misbehaving(world: &World, says: Vec<u8>) {
+    let folder = world.runtimes.join("1000").join("mycelium");
+    fs::create_dir_all(&folder).expect("a node's folder");
+    let listener = UnixListener::bind(folder.join("work.sock")).expect("a socket");
+    thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let says = says.clone();
+            thread::spawn(move || {
+                let mut asked = String::new();
+                let _ = BufReader::new(&stream).read_line(&mut asked);
+                let _ = (&stream).write_all(&says);
+                thread::sleep(Duration::from_secs(10));
+            });
+        }
+    });
+}
+
+#[test]
+fn a_node_that_never_answers_is_named_once_its_time_is_up() {
+    let world = World::new();
+    world.account("1000", "[]");
+    misbehaving(&world, Vec::new());
+    let started = Instant::now();
+    let told = world.told(&[world.runtimes.to_str().expect("a folder as text")]);
+    assert!(
+        started.elapsed() < Duration::from_secs(8),
+        "a node that never answered held it: {:?}",
+        started.elapsed()
+    );
+    assert_eq!(
+        told.status.code(),
+        Some(1),
+        "a mute node was a wait: {told:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("answered nothing within"),
+        "it didn't say the node ran out of time: {told:?}"
+    );
+}
+
+#[test]
+fn a_node_answering_without_end_is_named_past_its_limit() {
+    let world = World::new();
+    world.account("1000", "[]");
+    misbehaving(&world, vec![b'a'; 5 << 20]);
+    let told = world.told(&[world.runtimes.to_str().expect("a folder as text")]);
+    assert_eq!(
+        told.status.code(),
+        Some(1),
+        "a flooding node was a wait: {told:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&told.stderr).contains("answered more than"),
+        "it didn't say the node answered too much: {told:?}"
+    );
+}
+
+#[test]
+fn a_yes_is_a_call_whatever_the_record_declares() {
+    let world = World::new();
+    world.account("1000", "[]");
+    node(&world, "1000", "work", &peer(10, false, r#"{"call":true}"#));
+    let told = world.told(&[world.runtimes.to_str().expect("a folder as text")]);
+    assert_eq!(
+        told.status.code(),
+        Some(0),
+        "a yes from a record declaring no probe wasn't a call: {told:?}"
+    );
+}

@@ -121,13 +121,17 @@ fn said(record: &Value, now: i64) -> Option<Said> {
     if !(now - FRESH..=now + 60).contains(&measured) {
         return None;
     }
+    let reached = &record["reached"]["call"];
+    if *reached == Value::Bool(true) {
+        return Some(Said::Call);
+    }
     if record["declared"]["probes"].get("call").is_none() {
         return Some(Said::Unseen);
     }
-    Some(match record["reached"]["call"] {
-        Value::Bool(true) => Said::Call,
-        Value::Bool(false) => Said::NoCall,
-        _ => Said::Untold,
+    Some(if *reached == Value::Bool(false) {
+        Said::NoCall
+    } else {
+        Said::Untold
     })
 }
 

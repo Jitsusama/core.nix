@@ -20,6 +20,11 @@ serde_json = "1.0"
 # The shape every command of ours takes: its flags, help, errors and exits.
 terminal-kit = { path = "../terminal-kit" }
 
+# Root's ask of the mycelium nodes: a connection that never waits, and who
+# answered it (src/nodes.rs).
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "1.1", features = ["net"] }
+
 [dev-dependencies]
 tempfile = "3"
 

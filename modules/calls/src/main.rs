@@ -16,9 +16,9 @@
 //! (src/nodes.rs, and src/elsewhere.rs for how a record is read). A node
 //! that won't answer, a peer whose probe said nothing lately and a peer
 //! declaring no call probe are each named on stderr, and none is a wait,
-//! since whatever asks would wait on it for ever. `--here` asks about this machine alone, as the node's own probe
-//! and the shaper must, or two machines would each hold up the other's
-//! call. A Mac's nodes keep their sockets where root can't find them, so a
+//! since whatever asks would wait on it for ever. `--here` asks about this
+//! machine alone, as the node's own probe and the shaper must, or two
+//! machines would each hold up the other's call. A Mac's nodes keep their sockets where root can't find them, so a
 //! Mac hears only itself.
 
 #[cfg(target_os = "macos")]
