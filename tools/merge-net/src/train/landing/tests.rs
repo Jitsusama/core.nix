@@ -206,7 +206,8 @@ fn landed_by(name: &str, hub: impl FnOnce(&Path, &Path) -> Fake) -> Landed {
         main_tree: tree(&origin, &main),
         tested_tree: tree(&checkout, &candidate),
         base_tree: tree(&checkout, &base),
-        under_main: git_in(&origin, &["rev-parse", "main^"]).unwrap(),
+        // A main GitHub never merged into holds one commit, with none under it.
+        under_main: git_in(&origin, &["rev-parse", "main^"]).unwrap_or_default(),
         holds: ["one", "two", "elsewhere"]
             .into_iter()
             .filter(|file| git_in(&origin, &["cat-file", "-e", &format!("main:{file}")]).is_ok())

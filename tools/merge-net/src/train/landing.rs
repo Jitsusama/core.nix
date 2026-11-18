@@ -1,6 +1,6 @@
 //! Landing a passed candidate: its riders merged through the hub once
-//! main is still its base, main's tree held to the candidate's, and the
-//! merges reverted when it isn't.
+//! main is still its base, the train's last merge held to the candidate's
+//! tree, and the merges reverted when it isn't.
 
 use std::path::Path;
 use std::process::Command;
@@ -81,17 +81,16 @@ fn main_of(git: &dyn Fn(&[&str]) -> Result<String, String>) -> Option<String> {
     })
 }
 
-/// Origin's main once it holds `head`, as GitHub may answer a merge a
-/// moment before a fetch sees it, which would read as main holding a tree
-/// no gate ran and revert merges that were right; main as it stands after
-/// `SHOWS_WITHIN`.
-fn main_holding(git: &dyn Fn(&[&str]) -> Result<String, String>, head: &str) -> Option<String> {
+/// Whether origin's main holds `merge`, fetched afresh until it does or
+/// `SHOWS_WITHIN` passes, as GitHub answers a merge a moment before a
+/// fetch may see it.
+fn shows(git: &dyn Fn(&[&str]) -> Result<String, String>, merge: &str) -> bool {
     let began = std::time::Instant::now();
     loop {
-        let main = main_of(git)?;
-        let holds = git(&["merge-base", "--is-ancestor", head, &main]).is_ok();
+        let holds = main_of(git)
+            .is_some_and(|main| git(&["merge-base", "--is-ancestor", merge, &main]).is_ok());
         if holds || began.elapsed() > SHOWS_WITHIN {
-            return Some(main);
+            return holds;
         }
         std::thread::sleep(Duration::from_secs(2));
     }
@@ -100,71 +99,108 @@ fn main_holding(git: &dyn Fn(&[&str]) -> Result<String, String>, head: &str) -> 
 /// How long a merge GitHub answered may take to show in a fetch of main.
 const SHOWS_WITHIN: Duration = Duration::from_secs(30);
 
+/// How many times a merge GitHub refuses as main moved under it is asked.
+const MERGE_TRIES: u32 = 3;
+
+/// Merge `merging` through `hub`, giving its merge's commit. GitHub
+/// refuses a merge as "Base branch was modified" while it still works out
+/// the train's own merge just before, so that one is asked again; and a
+/// merge whose answer was lost may have landed all the same, so one
+/// GitHub reads merged counts as made.
+fn merge(hub: &dyn Hub, merging: &Merging) -> Result<String, String> {
+    let mut tried = 0;
+    loop {
+        tried += 1;
+        let why = match hub.merge(merging) {
+            Ok(made) => return Ok(made),
+            Err(why) => why,
+        };
+        if let Some(made) = hub.merged(merging.number) {
+            return Ok(made);
+        }
+        if tried >= MERGE_TRIES || !why.contains("Base branch was modified") {
+            return Err(why);
+        }
+        std::thread::sleep(Duration::from_secs(2));
+    }
+}
+
 /// Merge each of `riding` through `hub`, in the order `candidate` merged
-/// them on main as it stands, until one is refused, then hold main's tree
-/// to the candidate's after as many merges. GitHub merges each on main as
-/// it is when asked, so one that landed meanwhile, or a merge GitHub
-/// works out otherwise than git, gives main a tree no gate ran; then each
-/// merge made is reverted, the newest first.
+/// them, then hold the tree of the train's own last merge to the
+/// candidate's. GitHub merges each on main as it is when asked, so one
+/// that landed meanwhile, or a merge GitHub works out otherwise than git,
+/// gives main a tree no gate ran, and so does stopping short at a merge
+/// GitHub refuses; then each merge made is reverted, the newest first. A
+/// change merged after the train's last merge leaves it landed, as that
+/// merge's tree is still the one tested.
 fn through(
     git: &dyn Fn(&[&str]) -> Result<String, String>,
     hub: &dyn Hub,
     candidate: &str,
     riding: &[Merging],
 ) -> Landing {
-    let mut made: Vec<&Merging> = Vec::new();
+    let mut made: Vec<(&Merging, String)> = Vec::new();
     let mut refused = None;
     for merging in riding {
-        match hub.merge(merging) {
-            Ok(_) => made.push(merging),
+        match merge(hub, merging) {
+            Ok(commit) => made.push((merging, commit)),
             Err(why) => {
-                refused = Some(why);
+                refused = Some(format!("GitHub refused #{}: {why}", merging.number));
                 break;
             }
         }
     }
-    if made.is_empty() {
+    let Some((_, last)) = made.last() else {
         return Landing::Refused(refused.unwrap_or_default());
+    };
+    if let Some(why) = refused {
+        return reverted(hub, &made, why);
     }
-    let tested = format!("{candidate}~{}^{{tree}}", riding.len() - made.len());
-    let main = main_holding(git, made.last().map_or("", |merging| &merging.head));
-    let tree_of = |commit: &str| git(&["rev-parse", commit]).ok();
-    let same = main.as_ref().is_some_and(|main| {
-        let (now, then) = (tree_of(&format!("{main}^{{tree}}")), tree_of(&tested));
-        now.is_some() && now == then
-    });
-    match main {
-        Some(main) if same => Landing::Landed(main),
-        main => {
-            let mut reverted = Vec::new();
-            let mut why = main.map_or_else(
-                || "origin's main couldn't be read after GitHub's merges".to_owned(),
-                |main| {
-                    format!(
-                        "main's tree at {} after GitHub's merges isn't the one the train tested \
-                         at {}",
-                        short(&main),
-                        short(candidate)
-                    )
-                },
-            );
-            for merging in made.iter().rev() {
-                match hub.revert(merging) {
-                    Ok(number) => reverted.push((merging.head.clone(), number)),
-                    Err(error) => {
-                        why = format!("{why}, and reverting #{} failed: {error}", merging.number);
-                        eprintln!("merge-net: {why}");
-                        break;
-                    }
-                }
-            }
-            println!("merge-net: {why}, so the train reverted its merges");
-            Landing::Reverted {
-                reverted,
-                kept: Vec::new(),
-                why,
+    let tree_of = |commit: &str| git(&["rev-parse", &format!("{commit}^{{tree}}")]).ok();
+    let why = if !shows(git, last) {
+        format!(
+            "GitHub's merge {} didn't show on origin's main within {} s",
+            short(last),
+            SHOWS_WITHIN.as_secs()
+        )
+    } else if tree_of(last).is_some() && tree_of(last) == tree_of(candidate) {
+        return Landing::Landed(last.clone());
+    } else {
+        format!(
+            "GitHub's merge {} doesn't hold the tree the train tested at {}",
+            short(last),
+            short(candidate)
+        )
+    };
+    reverted(hub, &made, why)
+}
+
+/// Revert each of `made` through `hub`, the newest first, for `why`,
+/// stopping at the first revert that fails, whose merge and those under it
+/// stay on main, since reverting one under a merge left there would
+/// leave main a tree nobody wrote.
+fn reverted(hub: &dyn Hub, made: &[(&Merging, String)], mut why: String) -> Landing {
+    let mut reverted = Vec::new();
+    let mut kept = Vec::new();
+    for (at, (merging, _)) in made.iter().enumerate().rev() {
+        match hub.revert(merging) {
+            Ok(number) => reverted.push((merging.head.clone(), number)),
+            Err(error) => {
+                why = format!("{why}, and reverting #{} failed: {error}", merging.number);
+                eprintln!("merge-net: {why}");
+                kept = made[..=at]
+                    .iter()
+                    .map(|(merging, _)| merging.head.clone())
+                    .collect();
+                break;
             }
         }
+    }
+    println!("merge-net: {why}, so the train reverted its merges");
+    Landing::Reverted {
+        reverted,
+        kept,
+        why,
     }
 }
 
