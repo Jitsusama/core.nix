@@ -796,11 +796,6 @@ QtObject {
             storm(100).each >= every, true);
     }
 
-    // A drawer comes in its key's own frame where its kind made in under
-    // 8 ms of late and no key is held, decided before it's made, never by
-    // timing it in the frame; otherwise the frame after, so the highlight
-    // never waits long on it (VKCF3Z, 2026-11-12, d4c660a6; Y2YBTS,
-    // 2026-11-16, from Joel's For You drawers made in 4 to 7 ms).
     // y's flash is timed from the frame that draws it, a turn after the
     // frame, and only the newest yank's frame starts it, so an earlier yank
     // still waiting can't end a later flash before it's drawn (2026-11-18).
@@ -841,6 +836,11 @@ QtObject {
         check(failures, "and only the newest yank's frame starts it", started.join(), "1,3");
     }
 
+    // A drawer comes in its key's own frame where its kind made in under
+    // 8 ms of late and no key is held, decided before it's made, never by
+    // timing it in the frame; otherwise the frame after, so the highlight
+    // never waits long on it (VKCF3Z, 2026-11-12, d4c660a6; Y2YBTS,
+    // 2026-11-16, from Joel's For You drawers made in 4 to 7 ms).
     function drawers(failures) {
         check(failures, "a kind not yet made comes the frame after",
             Pacing.drawerJoinsKey({}, "home", false), false);
