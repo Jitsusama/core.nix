@@ -58,7 +58,7 @@ use onepassword_manager::{
     passwords, period, reason, settings_file, value,
 };
 use serde_json::{Map, Value, json};
-use terminal_kit::{Exit, Failure, Help};
+use terminal_kit::{Exit, Failure, Help, flags};
 
 /// How long 1Password may take to start once its unit is asked to.
 const OPENS_WITHIN: Duration = Duration::from_secs(20);
@@ -69,8 +69,12 @@ const REACHES_WITHIN: Duration = Duration::from_secs(15);
 const REACHING_AGAIN: Duration = Duration::from_secs(1);
 
 fn main() -> ExitCode {
+    // Hardened before the kit reads anything, theme.json among it, which
+    // another process of the account could make block while this one is
+    // still open to it; the kit only says a failure to.
+    let hardened = harden();
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
-        harden().map_err(|error| {
+        hardened.map_err(|error| {
             Failure::new(
                 Exit::Failed,
                 "couldn't keep its memory from the account's other processes",
@@ -193,8 +197,19 @@ struct Opener {
     systemctl: String,
 }
 
+/// The flags the manager takes, each with a value.
+const FLAGS: [&str; 5] = [
+    "--op",
+    "--release",
+    "--open-unit",
+    "--opened",
+    "--systemctl",
+];
+
 /// What the manager was started with, read from the words the kit left,
-/// each flag with its value, or why it can't start.
+/// each flag with its value, or why it can't start. A flag's value is
+/// never another flag, so a value left out mid-line is refused under the
+/// flag that wanted it.
 fn given(args: &[String]) -> Result<Given, Failure> {
     let mut args = args.iter().cloned();
     let mut op = "op".to_owned();
@@ -204,10 +219,12 @@ fn given(args: &[String]) -> Result<Given, Failure> {
     let mut releases = Vec::new();
     while let Some(flag) = args.next() {
         let mut value = || {
-            args.next().ok_or_else(|| {
-                Failure::new(Exit::Usage, format!("{flag} wants a value"))
-                    .try_this("passwords-1password --help")
-            })
+            args.next()
+                .filter(|value| !value.starts_with("--"))
+                .ok_or_else(|| {
+                    Failure::new(Exit::Usage, format!("{flag} needs a value"))
+                        .try_this("passwords-1password --help")
+                })
         };
         match flag.as_str() {
             "--op" => op = value()?,
@@ -216,8 +233,12 @@ fn given(args: &[String]) -> Result<Given, Failure> {
             "--open-unit" => unit = Some(value()?),
             "--systemctl" => systemctl = value()?,
             _ => {
-                return Err(Failure::new(Exit::Usage, format!("it doesn't know {flag}"))
-                    .try_this("passwords-1password --help"));
+                let failure = Failure::new(Exit::Usage, format!("it doesn't know {flag}"));
+                let failure = match flags::nearest(&flag, &FLAGS) {
+                    Some(near) => failure.because(format!("did you mean {near}?")),
+                    None => failure.because(format!("its flags are {}", flags::and(&FLAGS))),
+                };
+                return Err(failure.try_this("passwords-1password --help"));
             }
         }
     }

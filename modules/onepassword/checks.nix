@@ -164,11 +164,41 @@ onLinux {
       "1Password's manager isn't given each op:// release, alone, after its own --release."
       (map (at: lib.elemAt command (at + 1)) releasedAt == released);
 
+  # The manager refuses a flag it doesn't know, so the command Passwords is
+  # given to start it, releases and all, is run as given: it starts, says
+  # how it stands and ends with its input, where a word wrong would exit
+  # 64 with nothing said. op isn't run until an ask, so no op is needed.
+  onepassword-manager-takes-its-command =
+    let
+      command =
+        (account (bareNixos [
+          self.nixosModules.graphical
+          {
+            home-manager.sharedModules = [
+              { jitsusama.passwords.releases = [ "op://Private/Kiln/password" ]; }
+            ];
+          }
+        ])).jitsusama.passwords.managers."1password".command;
+    in
+    pkgs.runCommandLocal "onepassword-manager-takes-its-command" { } ''
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/run
+      mkdir -p "$XDG_RUNTIME_DIR"
+      ${lib.escapeShellArgs command} < /dev/null > said
+      grep -q '"state"' said || {
+        echo "1Password's manager didn't say how it stands:" >&2
+        cat said >&2
+        exit 1
+      }
+      touch $out
+    '';
+
   # 1Password's manager for Passwords tests itself as it builds, against
   # op's own JSON: an entry carries no secret op gives, a password's
   # history included, a secret is read only for the detail asked,
   # 1Password's words become Passwords' own, and, run against a stand-in
-  # op, it says the setting to turn on while 1Password keeps op out.
+  # op, it says the setting to turn on while 1Password keeps op out, and
+  # started with a flag it doesn't know, or one without its value, it
+  # refuses as usage and says nothing on its line.
   onepassword-manager-passes-no-secret-on = pkgs.callPackage ./manager/package.nix { };
   # clippy finds nothing in 1Password's manager, its tests included.
   onepassword-manager-passes-clippy = passesClippy "onepassword-manager-passes-clippy" (

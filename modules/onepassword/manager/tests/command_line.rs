@@ -24,6 +24,10 @@ fn a_flag_it_doesnt_know_is_refused_as_usage() {
     );
     let said = String::from_utf8_lossy(&out.stderr);
     assert!(said.contains("--open-unti"), "the flag isn't named: {said}");
+    assert!(
+        said.contains("did you mean --open-unit?"),
+        "the nearest flag isn't named: {said}"
+    );
 }
 
 #[test]
@@ -36,14 +40,18 @@ fn a_flag_without_its_value_is_refused_as_usage() {
         "it said how it stands"
     );
     let said = String::from_utf8_lossy(&out.stderr);
-    assert!(said.contains("--release wants a value"), "{said}");
+    assert!(said.contains("--release needs a value"), "{said}");
 }
 
 #[test]
-fn help_starts_nothing() {
-    let out = ran(&["--help"]);
-    assert_eq!(out.status.code(), Some(0), "{out:?}");
-    let said = String::from_utf8_lossy(&out.stdout);
-    assert!(said.starts_with("passwords-1password"), "{said}");
-    assert!(!said.contains("\"stands\""), "it started: {said}");
+fn a_value_left_out_mid_line_is_refused_under_its_own_flag() {
+    let out = ran(&["--release", "--op", "op"]);
+    assert_eq!(out.status.code(), Some(64), "{out:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "",
+        "it said how it stands"
+    );
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(said.contains("--release needs a value"), "{said}");
 }

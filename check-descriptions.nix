@@ -2285,6 +2285,10 @@
     in the moment it's turned on; started with a flag it doesn't know or one with no value, it
     refuses as usage and says nothing on its line
   '';
+  onepassword-manager-takes-its-command = ''
+    1Password's manager, run with the very command Passwords is given to start it, releases
+    included, starts and says how it stands rather than refusing a word of it
+  '';
   onepassword-offers-its-quick-acts = ''
     the account's 1Password entry offers Quick Access and then Lock 1Password, through switches the
     installed 1Password takes
