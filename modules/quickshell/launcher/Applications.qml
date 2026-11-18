@@ -174,14 +174,55 @@ Provider {
     // program held from the top again (Launcher.qml's refreshed): Pause
     // turns to Play when a media key pauses its player, Previous comes
     // once there's a track before, and the volume's bar moves with Louder.
-    readonly property string playingNow: Playing.players.map(player => [player.dbusName,
-        player.isPlaying, player.canPlay, player.canPause, player.canGoNext,
-        player.canGoPrevious, player.trackTitle, player.trackArtist].join("\u241f"))
-        .concat((Playing.streams.concat(Playing.recorders ?? [])).map(node => node.audio
-            ? `${node.id} ${node.audio.volume} ${node.audio.muted}` : String(node.id)))
-        .join("\u241e")
+    // A player's names and a stream's are in it too, since they may be
+    // heard only once it's listed or bound, and they say whose it is
+    // (playerOf, streamsOf, recordersOf).
+    // JSON, since the names are other processes' and could hold any
+    // separator, and one change that moved a name across it would say
+    // nothing. Who plays is a binding of its own, so a title changing
+    // makes it again only when a node did, and the handler reads it there.
+    readonly property string playingWhoNow: playingWho()
+    readonly property string playingNow: JSON.stringify([
+        playingWhoNow,
+        Playing.players.map(player => [player.isPlaying, player.canPlay, player.canPause,
+            player.canGoNext, player.canGoPrevious, player.trackTitle, player.trackArtist]),
+        Playing.streams.concat(Playing.recorders ?? []).map(node => [node.audio?.volume,
+            node.audio?.muted])
+    ])
 
-    onPlayingNowChanged: redrawHeld()
+    onPlayingNowChanged: {
+        if (playingWhoNow !== playingHeard.who) {
+            playingHeard.who = playingWhoNow;
+            playingHeard.turn += 1;
+            startsTurn += 1;
+        }
+        redrawHeld();
+    }
+
+    // Who plays: each player's and stream's names, all a closed program's
+    // Media and Sound need to be there (startsOnly), not what plays or how
+    // loud; a node's audio is there from the start for every audio node,
+    // bound or not (Quickshell's PwNode, CONSTANT). A radio's titles
+    // came every few seconds and would let every held answer go between
+    // keys. Each change of who turns `turn`, which has each held answer
+    // ask again only whether anything plays for its program (playsAsHeld),
+    // since a chime's stream, an agent's done or a timer's ring, is no
+    // program's. Plain, kept as last heard from the start (onCompleted),
+    // so the first title after it isn't taken for a change of who; JSON,
+    // as playingNow is.
+    readonly property var playingHeard: ({ who: "", turn: 0 })
+    function playingWho() {
+        return JSON.stringify([
+            Playing.players.map(player => [player.dbusName, player.desktopEntry,
+                player.identity]),
+            Playing.streams.concat(Playing.recorders ?? []).map(node => {
+                const told = node.properties ?? {};
+                return [node.id, node.name, told["application.name"],
+                    told["application.process.binary"], told["node.link-group"],
+                    told["stream.monitor"]];
+            })
+        ]);
+    }
 
     // And a program found from the top, which lists what it holds under
     // it (`under`), is drawn again as that changes, as a Chrome's tabs
@@ -967,6 +1008,9 @@ Provider {
             required property var modelData
 
             target: modelData
+            // A giver may have no changed to say (holdsSafely holds nothing
+            // then), and that's no fault to warn of.
+            ignoreUnknownSignals: true
 
             function onChanged() {
                 provider.redrawHeld();
@@ -1297,8 +1341,9 @@ Provider {
     // own (`programActs(program)`), as Meet's Join by Code is given
     // (Meet.qml), listed after its desktop entry's actions and before its
     // Recent.
-    function givenActs(program) {
-        return hooked("programActs", program);
+    // Whether each gave any is told to `gave`, a Map, when one's given.
+    function givenActs(program, gave) {
+        return hooked("programActs", program, gave);
     }
 
     // What other providers say of a program as its row's note
@@ -1384,11 +1429,16 @@ Provider {
         .filter(other => other !== provider && typeof other.programNote === "function")
 
     // What every other provider with the hook `hook` gives `program`, each
-    // provider's answer timed by its name while a making is (`making`).
-    function hooked(hook, program) {
-        return (provider.hooking[hook] ?? provider.holders(hook))
-            .reduce((rows, other) => rows.concat(Program.timed(making.parts,
-                other.settings?.name ?? hook, provider.now, () => other[hook](program))), []);
+    // provider's answer timed by its name while a making is (`making`),
+    // and whether each gave anything told to `each`, a Map, when it's
+    // given, so startsOnly asks no giver twice.
+    function hooked(hook, program, each) {
+        return (provider.hooking[hook] ?? provider.holders(hook)).reduce((rows, other) => {
+            const given = Program.timed(making.parts, other.settings?.name ?? hook, provider.now,
+                () => other[hook](program));
+            each?.set(other, (given ?? []).length > 0);
+            return rows.concat(given);
+        }, []);
     }
 
     // One path a program had open lately, as Recent's row, made as every
@@ -1679,25 +1729,27 @@ Provider {
     // order, never starting.
     // Either way, what's given it to copy comes after everything, as Meet's
     // Copy a New Meeting's Link does, since Copy is last. Each made is
-    // counted (stepsCounted).
-    function controls(entry, start, below) {
+    // counted (stepsCounted). What it read that can change while its entry
+    // stays is told to `told` when it's given, as startsOnly does: whether
+    // each giver gave it any (`gave`) and whether anything plays (`plays`).
+    function controls(entry, start, below, told) {
         // A program held open as its desktop entries are read again, as on
         // a switch, keeps the entry that's gone, which has no id or name;
         // it offers nothing until the step is drawn from the new one.
         if (entry.id === undefined || entry.name === undefined)
             return [];
         stepsCounted.made += 1;
-        return timedMaking(`${entry.id}'s acts`, () => controlsMade(entry, start, below));
+        return timedMaking(`${entry.id}'s acts`, () => controlsMade(entry, start, below, told));
     }
 
     // Each part timed by its name, as a drawer's are: Google Calendar's
     // acts took 122 ms on Joel's shell with every part but other
     // providers' left in the rest (2026-11-13).
-    function controlsMade(entry, start, below) {
+    function controlsMade(entry, start, below, told) {
         const part = (name, work) => Program.timed(making.parts, name, provider.now, work);
         const looked = {};
         const same = given => provider.names(entry, given, looked);
-        const given = givenActs(entry.id);
+        const given = givenActs(entry.id, told?.gave);
         const copying = row => row.verb === "copy";
         // An act given to lead, as signing in again does while a program
         // is signed out, comes straight after Return's own, since it's
@@ -1719,9 +1771,9 @@ Provider {
             })] : []).concat([said("verb:start", "", { run: start }),
             said("verb:below", "", { chord: provider.launcher?.belowChord ?? [], run: below })]);
         const taken = provider.taken();
-        const player = part("the player", () => playerOf(same));
-        const streams = part("its sound", () => streamsOf(same));
-        const recorders = part("its sound", () => recordersOf(same));
+        const { player, streams, recorders, plays } = heardOf(same, part);
+        if (told)
+            told.plays = plays;
         return acts.slice(0, 1).concat(leading, acts.slice(1),
             part("its menu", () => menu(entry, taken)), doing, open(),
             part("its windows", () => windowsOf(entry, heldWindows(entry))), lately(), sent(),
@@ -1729,6 +1781,21 @@ Provider {
             player ? [media(player)] : [],
             streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : [],
             copies);
+    }
+
+    // A program's player, streams and recorders, and whether any is there,
+    // which its Media and Sound are made of (controlsMade) and a held
+    // answer asks again (playsOf), each part timed as `part` says.
+    function heardOf(same, part) {
+        const player = part("the player", () => playerOf(same));
+        const streams = part("its sound", () => streamsOf(same));
+        const recorders = part("its sound", () => recordersOf(same));
+        return {
+            player,
+            streams,
+            recorders,
+            plays: !!player || streams.length > 0 || recorders.length > 0
+        };
     }
 
     // Whether a program's step would hold only New Window and New Window
@@ -1750,8 +1817,197 @@ Provider {
         if (provider.keysOf(entry).length > 0
             || !provider.stepsIn(entry) && provider.ownActions(entry, provider.taken()).length > 0)
             return false;
-        return provider.controls(entry, start, below)
+        // Read so a binding that asked is asked again as the answers held
+        // are let go.
+        void provider.startsTurn;
+        const held = provider.startsHeld.by.get(entry.id);
+        // holdsSafely is read here too, for the moment between a giver with
+        // no changed joining and onHookingChanged letting every answer go.
+        if (held !== undefined && held.entry === entry && provider.holdsSafely
+            && provider.givesAsHeld(held, entry.id) && provider.sendsAsHeld(held, entry)
+            && provider.playsAsHeld(held, entry))
+            return held.only;
+        const told = { gave: new Map(), plays: false };
+        const only = provider.controls(entry, start, below, told)
             .every(one => one.key === "verb:start" || one.key === "verb:below");
+        // Held only once every giver was asked, which a step made of nothing
+        // didn't do.
+        if (provider.holdsSafely && told.gave.size === provider.hooking.programActs.length)
+            provider.startsHeld.by.set(entry.id, {
+                entry,
+                only,
+                gave: provider.givesTurned(told.gave),
+                sent: provider.sentTurned(entry),
+                plays: told.plays,
+                playsTurn: provider.playingHeard.turn
+            });
+        return only;
+    }
+
+    // Whether each giver of acts gave a program any, with the turn it had
+    // said it changed by: every act given is in the program's step
+    // (controls), so that's all of a giver its answer reads.
+    function givesTurned(gave) {
+        return new Map(Array.from(gave, ([other, gives]) => [other, {
+            turn: provider.givesTurns.by.get(other) ?? 0,
+            gives
+        }]));
+    }
+
+    // Whether the notices' collection holds any its program sent, with
+    // the turn the collection had said it changed by: a Notifications
+    // row is in its step only while it does (notices), and sentCount
+    // keeps each program's count until the counts change, so asking
+    // after the step was made counts nothing again.
+    function sentTurned(entry) {
+        const past = provider.hooking.sentBy[0] ?? null;
+        return {
+            turn: past ? provider.givesTurns.by.get(past) ?? 0 : 0,
+            sends: provider.sendsOf(past, entry)
+        };
+    }
+    function sendsOf(past, entry) {
+        sendsCounted.asked += 1;
+        if (!past)
+            return false;
+        const looked = {};
+        const same = given => provider.names(entry, given, looked);
+        return provider.sentCount(past, entry, same).count > 0;
+    }
+
+    // Whether a held program's notices are there or not as they were,
+    // asked again only once the collection said it changed since.
+    function sendsAsHeld(held, entry) {
+        const past = provider.hooking.sentBy[0] ?? null;
+        const turn = past ? provider.givesTurns.by.get(past) ?? 0 : 0;
+        if (turn === held.sent.turn)
+            return true;
+        if (provider.sendsOf(past, entry) !== held.sent.sends)
+            return false;
+        held.sent.turn = turn;
+        return true;
+    }
+
+    // Whether a player, a stream or a recorder is a program's, as its
+    // Media and Sound are found (controlsMade); one that steps in has
+    // neither.
+    function playsOf(entry) {
+        playsCounted.asked += 1;
+        if (stepsIn(entry))
+            return false;
+        const looked = {};
+        const same = given => provider.names(entry, given, looked);
+        return heardOf(same, (named, find) => find()).plays;
+    }
+    // How often a held answer asked whether its program plays, for the
+    // check that each asks once a change of who plays; plain, as
+    // stepsCounted is.
+    readonly property var playsCounted: ({ asked: 0 })
+    // And whether its notices are there, for the same check of the notices.
+    readonly property var sendsCounted: ({ asked: 0 })
+
+    // Whether anything plays for a held program as it did, asked again
+    // only once who plays changed since.
+    function playsAsHeld(held, entry) {
+        const turn = provider.playingHeard.turn;
+        if (held.playsTurn === turn)
+            return true;
+        if (provider.playsOf(entry) !== held.plays)
+            return false;
+        held.playsTurn = turn;
+        return true;
+    }
+
+    // Whether every giver that said it changed since an answer was held
+    // still gives its program acts or none as it did, each asked again
+    // only then.
+    function givesAsHeld(held, program) {
+        for (const [other, was] of held.gave) {
+            const turn = provider.givesTurns.by.get(other) ?? 0;
+            if (turn === was.turn)
+                continue;
+            if (((other.programActs(program) ?? []).length > 0) !== was.gives)
+                return false;
+            was.turn = turn;
+        }
+        return true;
+    }
+
+    // What startsOnly found of each closed program, by its desktop entry's
+    // id with the entry it was asked of, held until something its step
+    // reads says it changed (startsAgain). The foot weighs every row
+    // listed on each key, and a closed program made its whole step each
+    // time to say the same, about 1 ms a program: 160 of 536 ms of the
+    // keys lab's weighing over c, m and s, profiled (2026-11-18). Plain,
+    // so holding one wakes no binding; `startsTurn` counts the lettings go.
+    // Only a program with no windows, Recent, keys or actions of its own
+    // is held, each asked fresh above, so the windows and the Recents
+    // never let go: a closed program's step reads neither, and a title
+    // changing as Joel types would empty it between keys.
+    readonly property var startsHeld: ({ by: new Map() })
+    property int startsTurn: 0
+    // Lets go of every answer held, since no source says which program its
+    // change was for.
+    function startsAgain() {
+        startsHeld.by = new Map();
+        startsTurn += 1;
+    }
+    // A giver of acts saying it changed has only the answers it gives
+    // differently asked again (givesAsHeld), by a turn of its own: kitty
+    // says changed as any of its windows is retitled, which an agent's
+    // does with each command, and letting every answer go then brought
+    // each key's cost back. The notices' collection has a turn here too,
+    // each held answer asking only whether its program's notices are
+    // there (sendsAsHeld): it says changed as each notice comes, and
+    // they came about every 48 s through Joel's working day (2026-11-17).
+    readonly property var givesTurns: ({ by: new Map() })
+    function gaveAgain(other) {
+        givesTurns.by.set(other, (givesTurns.by.get(other) ?? 0) + 1);
+        startsTurn += 1;
+    }
+    // What a closed program's step reads that can change while its desktop
+    // entry stays: the acts and notices other providers give it, each
+    // provider's `changed` saying its own did (Provider.qml); the programs
+    // others declare hidden; a walk from outside, which some providers
+    // give less to; and who plays, above, each held answer asking only
+    // whether anything plays for it. Each opening starts afresh
+    // too, so the hold saves only the asks of one opening's keys: a giver
+    // may read only as it's asked, as Spotify does once an opening, and a
+    // change one forgot to say lasts no longer than the opening it came in.
+    onHookingChanged: startsAgain()
+    onDeclaredChanged: startsAgain()
+    Connections {
+        target: provider.launcher
+        ignoreUnknownSignals: true
+
+        function onOpenChanged() {
+            provider.startsAgain();
+        }
+
+        function onCataloguingChanged() {
+            provider.startsAgain();
+        }
+    }
+    // Whether every giver can say it changed; a source made by hand with
+    // no `changed` couldn't let its answers go, so none is held.
+    readonly property bool holdsSafely: provider.hooking.programActs
+        .concat(provider.hooking.sentBy)
+        .every(other => typeof other.changed === "function")
+    Variants {
+        model: (provider.launcher?.sources ?? []).filter(other => other !== provider
+            && typeof other.changed === "function"
+            && (provider.hooking.programActs.includes(other)
+                || provider.hooking.sentBy.includes(other)))
+
+        Connections {
+            required property var modelData
+
+            target: modelData
+
+            function onChanged() {
+                provider.gaveAgain(modelData);
+            }
+        }
     }
 
     // The desktop entry's actions its menu lists, each with the name it's
@@ -1790,10 +2046,21 @@ Provider {
         .map(other => other === provider ? [] : other.foundActs ?? []))
     property var optedIn: []
     onOptedSaidChanged: optedAgain()
-    Component.onCompleted: optedAgain()
+    Component.onCompleted: {
+        playingHeard.who = playingWhoNow;
+        optedAgain();
+    }
     // And as the desktop entries are read, which a program's own acts are
-    // made again on, since an act's program is found by its entry.
-    onOwnActsChanged: optedAgain()
+    // made again on, since an act's program is found by its entry. Held
+    // answers go then too: an entry read again as a new object is already
+    // refused, but a player's, a stream's or a notice's sender is found
+    // by its name among all the entries (names()), so one installed can
+    // make what plays or sends a held program's while its entry stays.
+    // No case reads the entries again, as DesktopEntries can't be stood in.
+    onOwnActsChanged: {
+        startsAgain();
+        optedAgain();
+    }
 
     function optedAgain() {
         optedIn = (provider.launcher?.sources ?? [])

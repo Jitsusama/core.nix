@@ -50,8 +50,16 @@
 // another provider gives to be found from the top makes its own row and
 // no program's own again, and none again as the same list is given anew
 // or what its acts read changes. A step asked again, as a held one is at each
-// change, makes none of its Recent's rows again. Typed inside Programs,
-// the rows holding its letters stand at once and the programs daemon's
+// change, makes none of its Recent's rows again. Whether a closed program
+// starts only makes its step once, and again as a provider's acts for it
+// come or go, a notice of its own comes or goes, or a player, stream or
+// recorder comes to be its own or stops being so (who plays changing
+// only asks that; a track, its play state or volume asks nothing), or as
+// every answer is let go: the hidden programs, a walk from outside, a
+// giver joining or leaving, or an opening or closing. Nothing is held
+// while a giver can't say it changed, and a provider saying it changed
+// while giving as it did makes none. Typed
+// inside Programs, the rows holding its letters stand at once and the programs daemon's
 // answer takes its own order; where the daemon can't search, typing on
 // looks only through what the last key found, and finds what looking
 // through everything would. It exits 0 once every case holds, and
@@ -99,6 +107,9 @@ ShellRoot {
         property var sources: [notices, keys, giver]
         property var entered: null
         property var went: null
+        // Whether it's walked from outside, as `qs ipc call launcher run`
+        // does.
+        property bool cataloguing: false
 
         // Nothing is drawn here, so what waits on a frame runs at once.
         function afterFrame(then) {
@@ -135,12 +146,14 @@ ShellRoot {
         // Join by Code is, none until a case gives one.
         property var foundActs: []
 
-        // How many times its acts were asked, so a case sees that the acts
-        // found from the top never ask them.
-        property int askedActs: 0
+        // How many times its acts, its Recent and what a program has open
+        // were asked, so a case sees that the acts found from the top never
+        // ask them, and a program's note asks each once. Plain, as a real
+        // provider's are, so a binding asking wakes nothing it reads.
+        readonly property var asked: ({ acts: 0, recent: 0, open: 0 })
 
         function programActs(program) {
-            askedActs += 1;
+            asked.acts += 1;
             return program === "tester" ? [
                 { key: "tester:link", name: "Copy a New Log's Link", verb: "copy" }
             ] : program !== "pair" ? [] : [
@@ -161,32 +174,44 @@ ShellRoot {
             ];
         }
 
-        // How many times it was asked a program's Recent and what a program
-        // has open, so a case sees a program's note asks each once.
-        property int askedRecent: 0
-        property int askedOpen: 0
-
         function programOpen(program) {
-            askedOpen += 1;
+            asked.open += 1;
             return [];
         }
 
         function recentOf(program) {
-            askedRecent += 1;
+            asked.recent += 1;
             return program === "tester" ? [{ key: "gdoc:plan", name: "Plan Doc", at: 200000 }]
                 : program === "pair" ? [{ key: "gdoc:notes", name: "Pair Notes" }] : [];
         }
     }
 
     // A provider that joins the launcher's sources once the programs are
-    // read, giving Lone an act of its own.
+    // read, giving Lone an act of its own while it `gives`, and saying so
+    // as that changes, as a provider's acts do.
     QtObject {
         id: joiner
 
+        property bool gives: true
+        signal changed
+        // How many times its acts were asked, plain, as the giver's are.
+        readonly property var asked: ({ acts: 0 })
+
         function programActs(program) {
-            return program !== "lone" ? [] : [
+            asked.acts += 1;
+            return program !== "lone" || !gives ? [] : [
                 { key: "lone:join", name: "Join Later", verb: "open" }
             ];
+        }
+    }
+
+    // A source made by hand that gives Lone nothing and can't say it
+    // changed, as no Provider is.
+    QtObject {
+        id: unheard
+
+        function programActs(program) {
+            return [];
         }
     }
 
@@ -211,7 +236,10 @@ ShellRoot {
 
         launcher: theLauncher
         settings: ({ name: "notices" })
-        onChanged: root.ready()
+        onChanged: {
+            root.ready();
+            root.noticed();
+        }
     }
 
     // The notices daemon, serving the history's rows, the tester's
@@ -319,6 +347,11 @@ ShellRoot {
 
     // How often the launcher heard the programs changed, as it would redraw.
     property int redrawn: 0
+
+    // A program's row whose answer a binding holds, as the launcher's
+    // selection does (Launcher.qml's selectedActsAlone).
+    property var loneRow: null
+    readonly property bool loneStartsOnly: loneRow !== null && loneRow.actsOnly === true
 
     Connections {
         target: applications
@@ -591,9 +624,71 @@ ShellRoot {
             same("the file stays where it was, dimmed and said closed, holding only its path",
                 `${shut.key} ${shut.gone} ${shut.side} | ${names(shut.verbs())}`,
                 `file:${root.home}/open.pdf true closed | Copy the Path`);
-            Qt.exit(0);
+            root.noticeLone();
         } catch (error) {
             fail(error.message);
+        }
+    }
+
+    // The notices' collection says it changed as each notice comes, which
+    // on Joel's came about every 48 s: only a program's own notice coming
+    // or going lets its answer go. A notice counts read or not, as its
+    // Notifications row does (Applications' notices()).
+    property int noticeAsked: 0
+    function noticeLone() {
+        same("before a notice, it starts only", program("lone").actsOnly, true);
+        root.noticeAsked = applications.stepsCounted.made;
+        notices.changed();
+        same("the notices' collection saying it changed leaves its answer held",
+            `${program("lone").actsOnly} ${applications.stepsCounted.made - root.noticeAsked}`,
+            "true 0");
+        root.waiting = "another's notice";
+        Notices.history = Notices.history.concat([{ id: 4, at: Date.now(), app: "Elsewhere",
+            summary: "Done", body: "", read: false, missed: false }]);
+    }
+
+    // Each step is asked once every handler of the change has heard it, as
+    // a key after it would be: this one may come before Applications'.
+    function noticed() {
+        const senders = notices.sentCounts();
+        const step = {
+            "another's notice": "Elsewhere" in senders,
+            "lone's notice": "Lone" in senders,
+            "lone's notice gone": !("Lone" in senders)
+        }[root.waiting];
+        if (!step)
+            return;
+        const at = root.waiting;
+        root.waiting = `after ${at}`;
+        Qt.callLater(() => {
+            try {
+                root.noticeStep(at);
+            } catch (error) {
+                fail(error.message);
+            }
+        });
+    }
+
+    function noticeStep(at) {
+        if (at === "another's notice") {
+            same("another program's notice coming leaves its answer held",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - root.noticeAsked}`,
+                "true 0");
+            const sendsAsked = applications.sendsCounted.asked;
+            same("and asked again, it isn't asked whether its notices are there",
+                `${program("lone").actsOnly} ${applications.sendsCounted.asked - sendsAsked}`,
+                "true 0");
+            root.waiting = "lone's notice";
+            Notices.history = Notices.history.concat([{ id: 5, at: Date.now(), app: "Lone",
+                summary: "Done", body: "", read: true, missed: false }]);
+        } else if (at === "lone's notice") {
+            same("and a notice of its own coming, read, it holds more",
+                program("lone").actsOnly, false);
+            root.waiting = "lone's notice gone";
+            Notices.history = Notices.history.filter(one => one.id !== 5);
+        } else {
+            same("and that notice going, it starts only again", program("lone").actsOnly, true);
+            Qt.exit(0);
         }
     }
 
@@ -915,6 +1010,175 @@ ShellRoot {
             same("as does one with keys of its own", program("keyed").actsOnly, false);
             same("and neither makes its step to say so", applications.stepsCounted.made - made, 0);
             same("one with neither starts only", program("lone").actsOnly, true);
+            // The foot weighs every program listed on each key, and a
+            // closed one made its whole step each time to say the same,
+            // about 1 ms a program: 160 of 536 ms of the keys lab's
+            // weighing over c, m and s, profiled (2026-11-18).
+            const askedAgain = applications.stepsCounted.made;
+            same("asked again over the same sources, it makes no step to say so",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - askedAgain}`,
+                "true 0");
+            // What a closed program's step can't read lets nothing go, as
+            // a window retitled while Joel types.
+            const retitled = applications.stepsCounted.made;
+            const untitled = Niri.windows;
+            const retitling = Object.keys(untitled)[0];
+            Niri.windows = Object.assign({}, untitled, {
+                [retitling]: Object.assign({}, untitled[retitling], { title: "retitled" })
+            });
+            windowsChanged();
+            same("nor as a window is retitled",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - retitled}`,
+                "true 0");
+            Niri.windows = untitled;
+            windowsChanged();
+            // And what it can read asks again, each the only thing that
+            // would: a stream or a player turning out to be its own, a
+            // walk from outside and its end, the programs others hide, a
+            // notice of its own (noticeLone), and an opening and a closing.
+            const holds = row => `${program("lone").actsOnly} ${names(program("lone").verbs())
+                .split(", ").includes(row)}`;
+            // Each name a stream is found by changes alone, from an answer
+            // held, so each is seen to be what asks again.
+            const playing = Launcher.Playing.streams[3];
+            const playingWas = playing.properties;
+            const owning = (name, value) => {
+                if (name === "node.name")
+                    playing.name = value;
+                else
+                    playing.properties = Object.assign({}, playingWas, { [name]: value });
+            };
+            for (const name of ["application.name", "application.process.binary", "node.name"]) {
+                same(`held before its ${name} is its own, it starts only`,
+                    program("lone").actsOnly, true);
+                owning(name, "Lone");
+                same(`a stream whose ${name} is its own asks again, and its Sound holds more`,
+                    holds("Sound"), "false true");
+                playing.properties = Object.assign({}, playing.properties,
+                    { "node.link-group": "filter" });
+                same(`and as it turns out a filter's, it starts only (${name})`,
+                    program("lone").actsOnly, true);
+                playing.name = "Other";
+                playing.properties = playingWas;
+            }
+            // A program's own stream is listed as it starts to play, after
+            // its answer was held.
+            const streamsWere = Launcher.Playing.streams;
+            Launcher.Playing.streams = streamsWere.filter(node => node !== playing);
+            same("held while a stream isn't listed, it starts only", program("lone").actsOnly,
+                true);
+            owning("application.name", "Lone");
+            Launcher.Playing.streams = streamsWere;
+            same("a stream of its own listed asks again, and its Sound holds more",
+                holds("Sound"), "false true");
+            playing.properties = playingWas;
+            // And a recorder: a level meter's monitor records nothing, so a
+            // meter of its own starts only, until it records.
+            const metering = Launcher.Playing.recorders[1];
+            const meteringWas = metering.properties;
+            metering.properties = { "application.name": "Lone", "stream.monitor": "true" };
+            same("a meter of its own records nothing, so it starts only",
+                program("lone").actsOnly, true);
+            metering.properties = { "application.name": "Lone" };
+            same("and as it records, it asks again, and its Sound holds more",
+                holds("Sound"), "false true");
+            metering.properties = meteringWas;
+            const playerNamed = Launcher.Playing.players[1];
+            for (const name of ["identity", "desktopEntry"]) {
+                same(`held before its player's ${name} is its own, it starts only`,
+                    program("lone").actsOnly, true);
+                const was = playerNamed[name];
+                playerNamed[name] = name === "identity" ? "Lone" : "lone";
+                same(`a player whose ${name} is its own asks again, and its Media holds more`,
+                    holds("Media"), "false true");
+                playerNamed[name] = was;
+                same(`and named another's again, it starts only (${name})`,
+                    program("lone").actsOnly, true);
+            }
+            // What's playing changes its title, its state and its volume
+            // far more often than whose it is, which is all a closed
+            // program's answer reads: a radio's titles came every few
+            // seconds.
+            const titled = applications.stepsCounted.made;
+            const titledTurn = applications.playingHeard.turn;
+            const playerTitled = Launcher.Playing.players[0];
+            const title = playerTitled.trackTitle;
+            const volumeWas = playing.volume;
+            playerTitled.trackTitle = "Another song of the test";
+            playerTitled.isPlaying = !playerTitled.isPlaying;
+            playing.volume = 0.2;
+            same("a track changing lets nothing go, nor its volume, nor says who plays changed",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - titled} `
+                + `${applications.playingHeard.turn - titledTurn}`, "true 0 0");
+            playerTitled.trackTitle = title;
+            playerTitled.isPlaying = !playerTitled.isPlaying;
+            playing.volume = volumeWas;
+            // A stream of no program's changing who plays, as an agent's done
+            // chime's does, asks each held answer only whether it plays: here
+            // one renamed, a listed stream's way in being Lone's own below.
+            const chimed = applications.stepsCounted.made;
+            const chimeAsked = applications.playsCounted.asked;
+            playing.name = "A chime";
+            same("a stream of no program's lets nothing go, asked once whether it plays",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - chimed} `
+                + `${applications.playsCounted.asked - chimeAsked}`, "true 0 1");
+            const chimeAgain = applications.playsCounted.asked;
+            same("and asked again, it isn't asked whether it plays",
+                `${program("lone").actsOnly} ${applications.playsCounted.asked - chimeAgain}`,
+                "true 0");
+            playing.name = "Other";
+            // A giver saying it changed asks again only of what it gives:
+            // kitty says so as any window of its is retitled, which an
+            // agent's is with each command.
+            const givenAsked = applications.stepsCounted.made;
+            const giverAsked = giver.asked.acts;
+            giver.changed();
+            same("a giver of others' acts saying it changed lets nothing go, asked once",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - givenAsked} `
+                + `${giver.asked.acts - giverAsked}`, "true 0 1");
+            const askedOnce = giver.asked.acts;
+            same("and asked again, that giver isn't",
+                `${program("lone").actsOnly} ${giver.asked.acts - askedOnce}`, "true 0");
+            for (const [said, change] of [
+                ["a walk from outside asks again", () => {
+                    theLauncher.cataloguing = true;
+                }],
+                ["and so does its end", () => {
+                    theLauncher.cataloguing = false;
+                }],
+                ["as do the programs others hide", () => {
+                    giver.hiddenPrograms = giver.hiddenPrograms.concat(["elsewhere"]);
+                }],
+                ["as does each opening", () => {
+                    theLauncher.open = true;
+                }],
+                ["and each closing", () => {
+                    theLauncher.open = false;
+                }]
+            ]) {
+                // Held before it, so the step made after is the change's.
+                const heldAsked = applications.stepsCounted.made;
+                same(`held before it: ${said}`,
+                    `${program("lone").actsOnly} ${applications.stepsCounted.made - heldAsked}`,
+                    "true 0");
+                change();
+                const asked = applications.stepsCounted.made;
+                const giverWas = giver.asked.acts;
+                // Each giver is asked once as the step is made.
+                same(said, `${program("lone").actsOnly} ${applications.stepsCounted.made - asked} `
+                    + `${giver.asked.acts - giverWas}`, "true 1 1");
+            }
+            giver.hiddenPrograms = ["pair"];
+            // A source made by hand that can't say it changed couldn't let
+            // an answer go, so none is held while it's among them.
+            theLauncher.sources = theLauncher.sources.concat([unheard]);
+            same("a giver that gives it nothing leaves it starting only",
+                program("lone").actsOnly, true);
+            const unheardAsked = applications.stepsCounted.made;
+            same("with a giver that can't say it changed, nothing is held",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - unheardAsked}`,
+                "true 1");
+            theLauncher.sources = theLauncher.sources.filter(source => source !== unheard);
             // Which providers hold each hook is found as the launcher's
             // sources change, so one joining later is asked, and one gone
             // isn't.
@@ -922,8 +1186,46 @@ ShellRoot {
             same("a provider joining later gives a program its acts",
                 names(program("lone").verbs()), "New Window, New Window Below, Join Later");
             same("so it no longer starts only", program("lone").actsOnly, false);
+            // Each giver has a turn of its own, so another saying it
+            // changed asks only that one again.
+            const joinerWas = joiner.asked.acts;
+            giver.changed();
+            same("another giver saying it changed leaves this one unasked",
+                `${program("lone").actsOnly} ${joiner.asked.acts - joinerWas}`, "false 0");
+            joiner.gives = false;
+            joiner.changed();
+            same("its giver's change asks again, and it starts only",
+                program("lone").actsOnly, true);
+            joiner.gives = true;
+            joiner.changed();
+            same("and given again, it holds more", program("lone").actsOnly, false);
+            // A giver that reads only as it's asked, as Spotify does once an
+            // opening, may change without saying so; the next opening asks.
+            joiner.gives = false;
+            theLauncher.open = true;
+            same("and asked afresh as the launcher opens again", program("lone").actsOnly, true);
+            theLauncher.open = false;
+            joiner.gives = true;
+            joiner.changed();
+            // The selection holds its answer in a binding, as Launcher's
+            // selectedActsAlone does, which a held answer must wake.
+            root.loneRow = program("lone");
+            joiner.gives = false;
+            joiner.changed();
+            same("and a binding over it is woken as its giver changes",
+                root.loneStartsOnly, true);
+            root.loneRow = null;
+            joiner.gives = true;
+            joiner.changed();
+            same("held as its giver gives, it holds more", program("lone").actsOnly, false);
+            const stillGiving = applications.stepsCounted.made;
+            joiner.changed();
+            same("its giver saying it changed, giving as it did, makes no step",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - stillGiving}`,
+                "false 0");
             theLauncher.sources = theLauncher.sources.filter(source => source !== joiner);
-            same("and once it's gone, it starts only again", program("lone").actsOnly, true);
+            same("and once it's gone, giving still, it starts only again",
+                program("lone").actsOnly, true);
 
             const quiet = program("quiet").verbs();
             same("a program with keys of its own holds them, and only its new windows besides",
@@ -1072,14 +1374,14 @@ ShellRoot {
             // An act another provider gives that's found from the top is
             // made as it comes, alone: no program's own act is made again.
             const madeBefore = applications.tally.rows;
-            const askedBefore = giver.askedActs;
+            const askedBefore = giver.asked.acts;
             giver.foundActs = [{ program: "pair", key: "pair:room" }];
             same("an act given to be found from the top makes its own row and no other",
                 applications.tally.rows - madeBefore, 1);
             // It's asked of the acts found from the top alone: asking every
             // act there let Neovim ask open-now inside the binding, a loop
             // on Joel's shell at each opening and closing (2026-11-09).
-            same("and it asks none of the giver's other acts", giver.askedActs - askedBefore, 0);
+            same("and it asks none of the giver's other acts", giver.asked.acts - askedBefore, 0);
             same("and it's found there", applications.things.filter(row => row.key
                 === "program-act:pair:pair:room").length, 1);
             // The same acts given anew, as a binding makes its list again,
@@ -1096,19 +1398,19 @@ ShellRoot {
             // for its Recent and what it has open once: it asked each twice,
             // and a row that doesn't step in reads its note for its count
             // too, on every row a step into Programs draws (2026-11-10).
-            const recentAsked = giver.askedRecent;
-            const openAsked = giver.askedOpen;
+            const recentAsked = giver.asked.recent;
+            const openAsked = giver.asked.open;
             same("a program's note counts what another provider gives its Recent",
                 program("pair").note, "1 recent");
-            same("asking that provider for its Recent once", giver.askedRecent - recentAsked, 1);
-            same("and for what it has open once", giver.askedOpen - openAsked, 1);
+            same("asking that provider for its Recent once", giver.asked.recent - recentAsked, 1);
+            same("and for what it has open once", giver.asked.open - openAsked, 1);
             // A closed program's count says what it is alone, having no
             // windows to count, so it asks no provider what it holds: a
             // step into Programs asked for every row it drew (2026-11-10).
-            const countAsked = giver.askedRecent + giver.askedOpen;
+            const countAsked = giver.asked.recent + giver.asked.open;
             const closedCount = program("radio").count;
             same("a closed program's count asks no provider what it holds",
-                `${closedCount}|${giver.askedRecent + giver.askedOpen - countAsked}`, "|0");
+                `${closedCount}|${giver.asked.recent + giver.asked.open - countAsked}`, "|0");
             // Typed inside Programs, the rows holding its letters stand at
             // once, and the daemon's answer, asked as the key comes, takes
             // its own order, shown again with the selection kept.
