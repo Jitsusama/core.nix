@@ -283,11 +283,10 @@ def test_a_cell_that_needs_you_takes_a_name_before_the_networks(
         )
         asking = CROWD_ASKING.replace("cell:", "c:")
         assert order[0] == asking, f"the cell that needs him is named after {order[:3]}"
-        # Drawn too small to read as its own at the whole map, it isn't
-        # named yet, so the networks there keep their names.
+        # Drawn at the whole map, small as it is, it is named there.
         expect(
-            labels.locator(f'.tag[data-name="{asking}"]'), "a cell too small to read was named"
-        ).to_be_hidden()
+            labels.locator(f'.tag[data-name="{asking}"]'), "the cell that needs him went unnamed"
+        ).to_be_visible()
     finally:
         opened.close()
 

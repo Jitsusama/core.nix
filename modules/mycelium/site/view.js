@@ -1594,8 +1594,8 @@
       // A cell that needs him is named before any network, among the seven,
       // unless something is open and the cell lies outside what it touches.
       const asking = s.standing === "asks" && !(near && !near.ids.has(s.id));
-      // An asking cell no one sought is named only once it is drawn large
-      // enough to read as its own (placeLabels).
+      // An asking cell no one sought is named only once it is drawn
+      // rather than folded (placeLabels).
       const small = s.standing === "asks" && !(strong || hovered || sought);
       out.push({ key, kind: "cell", rank: strong || hovered ? 0 : asking ? NEEDS_YOU_RANK : sought ? 2 : 4, at: p, r: R, out: [1, 0], name: [clipped(s.short)], sub, strong, small });
     }
@@ -1700,7 +1700,6 @@
   const MARK_PAD = 6;
   const MARK_SUB_Y = 26;
   const NAME_SUB_Y = 18;
-  const CELL_NAMED_PX = 15; // a cell's radius on screen once it is named
   const NAMES_ON_SCREEN = 7; // names at once beside the one he's engaged with
   const NEEDS_YOU_RANK = 0.5; // after what he's engaged with, before every network
   const HUB_NAMES_MOST = 40; // networks named once folding starts, busiest first
@@ -1887,10 +1886,10 @@
         g.setAttribute("transform", `translate(${dx.toFixed(1)},${dy.toFixed(1)})`);
         continue;
       }
-      // Names come with depth, as on a map: a cell that needs him is named
-      // once it is drawn large enough to read as its own, so the whole
-      // view names only machines, networks and where the keys are.
-      if (l.small && l.r * k < CELL_NAMED_PX) {
+      // A cell that needs him is named once it is drawn rather than
+      // folded into its network's ground: from there his eye can find it,
+      // and the cap keeps the screen to seven names whatever the zoom.
+      if (l.small && l.r * k < FOLD_PX) {
         hide(g);
         continue;
       }

@@ -38,8 +38,9 @@ Nothing on it acts on the network.
 - **How a cell stands:** a filled centre is moving (in a turn now); a
   hollow centre is quiet (waiting for its next word); a dashed ring is
   dormant (parked, its place kept). A magenta ring needs Joel, a red one
-  is stuck. A cell that needs him is named once the map is in close
-  enough to read it; a stuck one says so by its ring alone.
+  is stuck. A cell that needs him is named wherever it is drawn, before
+  any network and within the seven names; a stuck one says so by its
+  ring alone.
 - **A faint outer ring** marks a cell whose standing changed since Joel
   last had the page in view.
 - **One dot is one message.** When a cell sends a word on the mesh, a
