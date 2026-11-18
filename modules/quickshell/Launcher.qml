@@ -3278,6 +3278,20 @@ Scope {
     // said again before it opens, the newer takes its place.
     property var toldOnOpen: []
     property bool toldLoose: false
+
+    // Forgets what's told and not yet read, said in the foot or waiting
+    // for the next opening, as a share begins, since it may name what the
+    // share hides (secret-asks/Asks.qml). Not yet knowing whether the
+    // screen is shared counts as shared, so the journal says how many were
+    // forgotten, never their words, for the word lost in a gap to be found.
+    function untold() {
+        const forgotten = toldOnOpen.length + saying.length;
+        toldOnOpen = [];
+        say([]);
+        if (forgotten > 0)
+            console.info(`launcher: forgot ${forgotten} words told and unread, `
+                + "as the screen may be shared");
+    }
     function tellOnOpen(told, loose) {
         if (open) {
             say(told, loose);
@@ -7689,6 +7703,15 @@ Scope {
         // One with nothing to do of its own, only more inside, steps in.
         if (!choice.run && enter(choice))
             return;
+        // One with nothing to do, inside or opened, as an ask once
+        // answered, only says something, so Return only closes rather than
+        // throw on the run it hasn't, a place no longer giving each such
+        // row an empty run; one opened below another needs no run.
+        if (!choice.run && !choice.opens && !(below && choice.below)) {
+            learn(choice);
+            open = false;
+            return;
+        }
         // One that changes something, or whose outcome takes a while, keeps
         // the launcher, its row saying how it stands now; the right arrow
         // then Return does it and closes (stepRows).

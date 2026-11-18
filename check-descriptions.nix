@@ -3363,8 +3363,15 @@
     into a place, nor over rows a landing Return, the command line or an ask from outside left,
     Release It from its verbs counting from its line, typing or an ask from outside starts the
     time again and lets a frame asked for go, each case reads a yes it sent, a withheld yes says
-    why, the entries told over the connection leave the asks' rows be, and a yes walked from
-    outside the launcher is never sent
+    why, the entries told over the connection leave the asks' rows be, a yes walked from
+    outside the launcher is never sent, and while the screen is shared or niri hasn't said its
+    casts each ask's row names only that it's hidden, offers no act, times no frame and counts
+    nothing once shown again until his next move, For You's row hidden too, a yes from a row
+    made before the share is never sent and is told as hidden, the share withholding it or, before
+    niri has said, not knowing, a row held as it becomes from just before the share is held
+    again hidden and as itself once the share ends, another source's hold left be, what's told
+    and unread forgotten as the share begins, and the shell's own recording of one window hides
+    nothing
   '';
   the-asks-place-releases-through-its-daemon = ''
     the launcher's Asks lists what the secret-asks daemon serves, For You holds each waiting ask,
@@ -5045,8 +5052,10 @@
   vm-desktop-answers-secret-asks = ''
     the passwords daemon the shell runs answers an agent's secret ask drawn in the launcher's Asks:
     Joel's Return twice releases the stand-in value into the one command asked for, which no
-    journal holds, his r refuses it, a launcher opened from outside takes no yes until his key
-    moves over the rows, and a yes walked through the launcher's IPC releases nothing
+    journal holds, his r refuses it and a Return on it then closes, throwing nothing, a launcher
+    opened from outside takes no yes until his key moves over the rows, nor after an agent's run
+    or walk onto Asks until his own Escape comes after it, and a yes walked through the
+    launcher's IPC releases nothing
   '';
   vm-desktop-captures = ''
     the desktop takes a screen, a window, a region, a recording and the camera's pictures and

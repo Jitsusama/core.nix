@@ -26,6 +26,7 @@ import Quickshell
 import QtQuick
 import KeyTimes
 import "../Fuzzy.js" as Fuzzy
+import "Shared.js" as Shared
 import "Shown.js" as Shown
 
 Provider {
@@ -46,6 +47,11 @@ Provider {
         active: provider.overPasswords ? provider.passwordsLink !== null
             : !!Quickshell.env("XDG_RUNTIME_DIR")
         stamp: (key, ask) => provider.stamped(key, ask)
+        toldAs: key => provider.hiding ? Words.name("asks:hidden") : ready.served(key)?.name ?? ""
+        // Withheld while hidden for the share, or before niri has said
+        // whether there is one, which fails closed.
+        whyWithheld: () => !provider.hiding ? undefined
+            : Words.field.becoming?.[Niri.castsHeard ? "shared" : "unheard"]
         place: "asks"
         beside: ["summary"]
         make: (row, key) => provider.made(row, key)
@@ -54,6 +60,56 @@ Provider {
     }
 
     readonly property string summaryKey: "summary:asks"
+
+    // Whether each ask hides what it asks for: while niri says a call or
+    // any other program streams the screen, a recording of one window
+    // aside, and until niri has said which casts there are (Shared.js, as
+    // Copies hides a copy). Joel shows people his desktop through the
+    // launcher, and an ask names the secret, the tree and the why, so each
+    // row then says only that it's hidden. It has no act, since a yes for
+    // a line he can't read would release what he never saw, and no frame
+    // of it is timed, so shown again it counts nothing until his next
+    // move. It still waits in For You, hidden there too.
+    readonly property bool hiding: Shared.hidden(Niri.castsHeard, Niri.casts,
+        Recorder.windowSession)
+    onHidingChanged: {
+        forget();
+        ready.remade();
+        if (hiding)
+            launcher?.untold?.();
+        heldAgain();
+        changed();
+    }
+    // Niri saying its casts late, a share among them, leaves the rows
+    // hidden, but they no longer wait on knowing, so each is made again,
+    // and each held as it becomes with them.
+    readonly property bool unheard: hiding && !Niri.castsHeard
+    onUnheardChanged: {
+        if (!hiding)
+            return;
+        ready.remade();
+        heldAgain();
+        changed();
+    }
+
+    // Each row held as it becomes since an act of his, held again as its
+    // row is made now and named as it's told now: hidden as a share
+    // begins, so neither the row nor what's told if the daemon refuses it
+    // or is late names the secret on the shared screen, and itself again
+    // as one ends, so no hidden row is laid over a live one. What says
+    // it's done and how long it may take are kept; its wait starts again.
+    function heldAgain() {
+        const held = launcher?.becoming ?? {};
+        for (const key of Object.keys(held)) {
+            const one = held[key];
+            const shown = one.row?.shownKey;
+            if (one.from !== provider || shown === undefined)
+                continue;
+            const how = Object.assign(typeof one.done === "function" ? { done: one.done } : {},
+                one.within > 0 ? { within: one.within } : {});
+            provider.becomes(key, ready.rowAt(shown), ready.toldName(shown), one.act, how);
+        }
+    }
 
     // Whether the passwords daemon answers the asks, and the connection
     // Passwords holds to it, once it has one.
@@ -177,8 +233,15 @@ Provider {
     // A verb's ask as it's sent, a yes saying how long its line was shown,
     // or null for a yes walked from outside the launcher, which is never
     // sent. Only the passwords child reads the time; the experiments' own
-    // daemon is sent the ask as served.
+    // daemon is sent the ask as served. While hiding only what releases
+    // nothing is sent, a no or a revoke, by either daemon, since a row made
+    // before the share, as a step held into its verbs keeps, still offers
+    // its Release It, and a later ask act may grant too. It sees only what
+    // asks through here: an act's `also`, which ReadyRows sends itself,
+    // isn't, and no ask's row serves one.
     function stamped(key, ask) {
+        if (hiding && ask?.ask !== "refuse" && ask?.ask !== "revoke")
+            return null;
         const said = Shown.stamped(ask, seen, key, {
             now: KeyTimes.now(),
             opening: launcher?.openingsDrawn ?? 0,
@@ -241,18 +304,32 @@ Provider {
     // An ask's row, from the one the daemon serves, with what For You
     // reads of it: whether it waits on Joel, and since when.
     function made(served, key) {
-        return ready.thing(served, key, {
+        const hidden = Words.name("asks:hidden");
+        // Hidden before niri has said its casts, the row says it waits on
+        // knowing, so a windows daemon that never says is told apart from
+        // a share; while shared, its name says why.
+        const waits = Niri.castsHeard ? "" : Words.field.becoming?.unheard ?? "";
+        const drawn = !hiding ? served : Object.assign({}, served, {
+            name: hidden,
+            note: waits,
+            side: [],
+            acts: [],
+            keywords: [],
+            drawer: { eyebrow: "", title: hidden, body: waits, facts: [] }
+        });
+        return ready.thing(drawn, key, {
             thing: true,
             key: served.thing,
             // The record's key, by which a frame presenting it is noted.
             shownKey: key,
             // The ask as this row draws it, which a frame of it presents.
-            digest: served.digest,
+            digest: hiding ? null : served.digest,
             waiting: served.state === "waiting",
             asked: served.attention ?? null,
             // A waiting ask arms on its first Return, saying what a second
             // does; an answered one has no act to arm.
-            arms: served.state === "waiting" ? Words.of("verb:release").said?.arms ?? "" : "",
+            arms: served.state === "waiting" && !hiding
+                ? Words.of("verb:release").said?.arms ?? "" : "",
             // What it is and where it's from, which For You filters by.
             forYou: { kind: "do", source: "asks" }
         });

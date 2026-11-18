@@ -487,6 +487,8 @@
       "missing": "{program} is gone",
       "dropped": "nothing sent",
       "keyed": "not without your own key press",
+      "shared": "not while your screen is shared",
+      "unheard": "not until it's known whether your screen is shared",
       "objects": {
         "deskLight": "Desk Light",
         "recording": "Recording"

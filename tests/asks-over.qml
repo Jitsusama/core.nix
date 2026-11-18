@@ -12,8 +12,13 @@
 // says no time until a frame presents it as it is now, and a frame asked
 // for a line left before it came counts for nothing. Release It from the
 // right arrow's verbs counts from its ask's own line. A yes walked from
-// outside the launcher is never sent, and a no goes as served. It exits 0
-// once every case holds, and otherwise 1, saying which didn't.
+// outside the launcher is never sent, and a no goes as served. While the
+// screen is shared, or before niri has said its casts, an ask's row says
+// only that it's hidden, with no acts and no frame timed, and shown again it
+// counts nothing until his next move (Niri and Recorder stood in by the
+// check). It exits 0 once every case holds, and otherwise 1, saying which
+// didn't.
+import qs
 import Quickshell
 import QtQuick
 import KeyTimes
@@ -27,6 +32,9 @@ ShellRoot {
     readonly property string id: "0123456789abcdef0123456789abcdef"
     readonly property string key: `row:asks:${root.id}`
     readonly property var same: Expect.same
+    // The row as it was made before the screen was shared, as a step the
+    // launcher holds keeps it.
+    property var madeBefore: null
 
     // A waiting ask's record as the passwords daemon serves it (secret-asks'
     // src/row.rs), its line at `digest`.
@@ -36,10 +44,10 @@ ShellRoot {
         return { key: root.key, kind: "row", row: {
             key: root.key, thing, place: "asks", kind: "ask", state: "waiting",
             name: "op://Private/Kiln/password", glyph: "passwords", hue: "action",
-            note: "S1", side: [], attention: 1000, digest, order: 1024,
-            acts: [act("release"), act("refuse")],
+            note: "S1", side: [{ said: "from S1", keep: 2 }], attention: 1000, digest,
+            order: 1024, acts: [act("release"), act("refuse")],
             drawer: { eyebrow: "S1", title: "op://Private/Kiln/password",
-                body: "To fire the kiln.", facts: [] }
+                body: "To fire the kiln.", facts: [{ name: "Runs", said: "make kiln" }] }
         } };
     }
 
@@ -104,6 +112,8 @@ ShellRoot {
         property var awaiting: []
         property var toldNots: []
         property var toldWhys: []
+        property var toldNames: []
+        property var becameNames: []
 
         function presentedAwait(at, then) {
             awaiting = awaiting.concat([then]);
@@ -158,10 +168,27 @@ ShellRoot {
             return true;
         }
 
+        // Each row held as it becomes, by its key, as the launcher's own
+        // becoming holds it (Launcher.qml's becomesAll).
+        property var becoming: ({})
+
         function becomesAll(source, holds, how) {
+            becameNames = becameNames.concat([how?.name ?? ""]);
+            const now = Object.assign({}, becoming);
+            for (const one of holds) {
+                now[one.key] = Object.assign({ key: one.key, from: source, row: one.row },
+                    how);
+            }
+            becoming = now;
         }
 
         function becameNot(key, why) {
+        }
+
+        // How many times what was told and not yet read was forgotten.
+        property int untolds: 0
+        function untold() {
+            untolds += 1;
         }
 
         function afterFrame(then) {
@@ -171,6 +198,7 @@ ShellRoot {
         function toldNot(name, act, why) {
             toldNots = toldNots.concat([`${act} ${why}`]);
             toldWhys = toldWhys.concat([why ?? ""]);
+            toldNames = toldNames.concat([name]);
         }
     }
 
@@ -233,9 +261,12 @@ ShellRoot {
             returnedInto, returnedIntoShown, steeredOut, walkedInto, walkedIntoShown,
             walkedThenEscaped, walkedThenMoved, walkedThenMovedShown, toldInPlace, typing,
             typedAfter, movedAgain, typedBeforeItsFrame, typedThenShown, movedOnceMore,
-            typedWithReturn, typedWithReturnShown, movedThenOpened, movedThenOpenedShown, overRowsThenTold,
-            toldOverRows, toldOverRowsShown, landed, landedThenMoved, landedThenShown, commanded,
-            commandedThenRun, commandedThenMoved, commandedThenShown]);
+            typedWithReturn, typedWithReturnShown, movedThenOpened, movedThenOpenedShown,
+            overRowsThenTold, toldOverRows, toldOverRowsShown, landed, landedThenMoved,
+            landedThenShown, commanded, commandedThenRun, commandedThenMoved,
+            commandedThenShown, timedBeforeSharing, timedMove, sharing, sharedYes,
+            sharingMoved, sharingMovedAsked, unshared, unsharedShown, unsharedMoved,
+            unsharedMovedShown, unheard, ownRecording, sharedNo, heldThenShared]);
     }
 
     function arming() {
@@ -588,5 +619,173 @@ ShellRoot {
     function commandedThenShown() {
         stage.present(600);
         same("a move over rows the command line left times nothing", shownNow(), undefined);
+    }
+
+    // A line timed by his Escape and move, then the screen shared to a call.
+    function timedBeforeSharing() {
+        stage.open = false;
+        stage.opened();
+        stage.selected = row();
+        stage.toRows();
+    }
+
+    function timedMove() {
+        stage.press("j", true);
+    }
+
+    function sharing() {
+        stage.present(800);
+        same("the line is timed before the screen is shared", Object.keys(asks.seen),
+            [root.key]);
+        root.madeBefore = row();
+        Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
+        stage.selected = row();
+        const hidden = "Ask, Hidden While You Share";
+        same("while the screen is shared an ask's row names only that it's hidden",
+            row()?.name, hidden);
+        same("and says nothing of where it's from", [row()?.note, row()?.side], ["", ""]);
+        // A ready row's drawer is made as it's drawn (ReadyRows.qml's drawing).
+        const drawer = row()?.drawer?.() ?? {};
+        same("its drawer says neither what it asks for, where from, nor why",
+            [drawer.title, drawer.eyebrow, drawer.body, drawer.facts?.length],
+            [hidden, "", "", 0]);
+        same("it has no act, so no key answers it unseen",
+            [row()?.arms, typeof row()?.run, row()?.verbs ?? null], ["", "undefined", null]);
+        same("it still waits for him in For You, hidden there too",
+            asks.forYou.map(one => one.row.name), [hidden]);
+        same("and its line's time starts again", asks.seen, {});
+    }
+
+    // A yes from the row as it was before the share, as a step held into
+    // its verbs still offers, is never sent, and what's told of it names
+    // only that it's hidden.
+    function sharedYes() {
+        const before = link.sent.length;
+        const told = stage.toldNames.length;
+        root.madeBefore.run();
+        same("a yes from a row made before the share is never sent while it's shared",
+            link.sent.length, before);
+        same("and what's told of it names only that it's hidden", stage.toldNames.slice(told),
+            ["Ask, Hidden While You Share"]);
+        same("saying it's the share that withholds it, not a missing key press",
+            stage.toldWhys.slice(told), ["not while your screen is shared"]);
+        // Only what releases nothing goes while it's shared, so an act a
+        // daemon adds later that grants something is withheld too.
+        same("nor is any ask but a no or a revoke",
+            asks.stamped(root.key, { ask: "grant", thing: "op://Private/Kiln/password" }), null);
+        same("while a revoke, taking a standing yes away, still goes",
+            asks.stamped(root.key, { ask: "revoke", thing: "op://Private/Kiln/password" })?.ask,
+            "revoke");
+    }
+
+    function sharingMoved() {
+        stage.awaiting = [];
+        stage.press("k", true);
+    }
+
+    function sharingMovedAsked() {
+        same("a move over a hidden line asks no frame of it", stage.awaiting.length, 0);
+    }
+
+    function unshared() {
+        Niri.casts = {};
+        stage.selected = row();
+        same("the share over, the ask's row says what it asks for again", row()?.name,
+            "op://Private/Kiln/password");
+    }
+
+    function unsharedShown() {
+        stage.present(600);
+        same("a line shown again after a share counts nothing before his next move",
+            shownNow(), undefined);
+    }
+
+    function unsharedMoved() {
+        stage.press("j", true);
+    }
+
+    function unsharedMovedShown() {
+        stage.present(700);
+        same("and his next move times it from its next frame", since(shownNow(), 700), true);
+    }
+
+    function unheard() {
+        Niri.castsHeard = false;
+        same("before niri says its casts, an ask's row is hidden", row()?.name,
+            "Ask, Hidden While You Share");
+        const waiting = "not until it's known whether your screen is shared";
+        same("saying on the row that it waits on knowing, not on a share",
+            [row()?.note, row()?.drawer?.()?.body], [waiting, waiting]);
+        const told = stage.toldWhys.length;
+        root.madeBefore.run();
+        same("and a yes then is told it waits on knowing, not on a share",
+            stage.toldWhys.slice(told), ["not until it's known whether your screen is shared"]);
+        // A no from the row as it was is held as the row is now, saying it
+        // waits on knowing too.
+        stage.becoming = {};
+        root.sent(root.madeBefore.verbs()[1]);
+        const held = () => Object.values(stage.becoming).find(one => one.from !== stage) ?? {};
+        same("a no while it's unknown is held as a row waiting on knowing", held().row?.note,
+            waiting);
+        Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
+        Niri.castsHeard = true;
+        same("niri then saying there's a share, the row no longer says it waits on knowing",
+            [row()?.name, row()?.note], ["Ask, Hidden While You Share", ""]);
+        same("nor does the row it's held as", [held().row?.name, held().row?.note],
+            ["Ask, Hidden While You Share", ""]);
+        Niri.casts = {};
+        stage.becoming = {};
+    }
+
+    // The shell's own recording of one window shows nothing of the launcher.
+    function ownRecording() {
+        const before = Recorder.windowSession;
+        Recorder.windowSession = 7;
+        Niri.casts = { "2": { kind: "PipeWire", session_id: 7 } };
+        same("the shell's own recording of a window hides no ask", row()?.name,
+            "op://Private/Kiln/password");
+        Niri.casts = {};
+        Recorder.windowSession = before;
+    }
+
+    // A no from the row as it was before the share goes, since it releases
+    // nothing, but the row it's held as names only that it's hidden.
+    function sharedNo() {
+        Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
+        const said = root.sent(root.madeBefore.verbs()[1]);
+        same("a no from a row made before the share still goes", said.ask, "refuse");
+        same("and the row it's held as names only that it's hidden",
+            stage.becameNames.slice(-1), ["Ask, Hidden While You Share"]);
+        Niri.casts = {};
+    }
+
+    // A no from the line just before the share is held as the row it
+    // becomes until the daemon answers; the share hides that row too, and
+    // the name told if the no is refused or comes late.
+    function heldThenShared() {
+        // Another source's row keyed as the ask's, so only whose hold it
+        // is keeps it apart.
+        const other = { key: "wifi:kiln", from: stage, row: { name: "Kiln", shownKey: root.key },
+            name: "Kiln", act: "join" };
+        stage.becoming = { "wifi:kiln": other };
+        root.sent(row().verbs()[1]);
+        const held = () => Object.values(stage.becoming).find(one => one.from !== stage) ?? {};
+        const real = "op://Private/Kiln/password";
+        same("a no before the share is held under the ask's own name", held().name, real);
+        const act = held().act;
+        const done = held().done;
+        const untolds = stage.untolds;
+        Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
+        const hidden = "Ask, Hidden While You Share";
+        same("the share holds it again named only as hidden, its row hidden too",
+            [held().name, held().row?.name, held().act], [hidden, hidden, act]);
+        same("still saying when it's done, as it did", held().done === done, true);
+        same("what was told before the share is forgotten", stage.untolds, untolds + 1);
+        same("another source's hold is left as it was", stage.becoming["wifi:kiln"] === other,
+            true);
+        Niri.casts = {};
+        same("the share ended holds it again as itself", [held().name, held().row?.name],
+            [real, real]);
+        same("still saying when it's done after, as it did", held().done === done, true);
     }
 }

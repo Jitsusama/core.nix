@@ -10,8 +10,19 @@
   pkgs,
   qs,
   shellFolderLint,
+  singleton,
   ...
 }:
+let
+  # What Asks reads of niri and the recorder to hide an ask while the
+  # screen is shared (launcher/Shared.js): no cast, and niri having said so,
+  # unless a case says otherwise.
+  niri = singleton "Niri.qml" ''
+    property var casts: ({})
+    property bool castsHeard: true
+  '';
+  recorder = singleton "Recorder.qml" "property var windowSession: null";
+in
 {
   # A yes says how long its line was on the screen, from the first frame niri
   # presented it in this opening, and nothing where it wasn't, where the line changed
@@ -45,7 +56,9 @@
   # the command line or an ask from outside left, and a withheld yes says
   # why; entries
   # told over the connection leave the asks' rows be; a yes walked from
-  # outside is never sent; a no goes as served.
+  # outside is never sent; a no goes as served; and while the screen is
+  # shared, or niri hasn't said its casts, a row is hidden, with no act and
+  # no frame timed, counting nothing once shown until his next move.
   the-asks-say-how-long-each-was-shown-over-passwords =
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what the shell runs them with.
@@ -58,10 +71,13 @@
         "Words.qml"
         "launcher/Provider.qml"
         "launcher/ReadyRows.qml"
+        "launcher/Shared.js"
         "launcher/words.json"
       ]}
       cp ${../../secret-asks/Asks.qml} launcher/Asks.qml
       cp ${../../secret-asks/Shown.js} launcher/Shown.js
+      cp ${niri} Niri.qml
+      cp ${recorder} Recorder.qml
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${../../../tests/asks-over.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
@@ -96,10 +112,13 @@
         "Words.qml"
         "launcher/Provider.qml"
         "launcher/ReadyRows.qml"
+        "launcher/Shared.js"
         "launcher/words.json"
       ]}
       cp ${../../secret-asks/Asks.qml} launcher/Asks.qml
       cp ${../../secret-asks/Shown.js} launcher/Shown.js
+      cp ${niri} Niri.qml
+      cp ${recorder} Recorder.qml
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${../../../tests/asks-served.qml} shell.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
