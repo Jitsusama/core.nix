@@ -816,6 +816,11 @@ mod tests {
         for line in &lines {
             follow.take(&parse(line).expect("a sample"));
         }
+        assert_eq!(
+            follow.controller.up.limit(),
+            None,
+            "cut for a queue before the start"
+        );
         assert!(
             follow.last.is_none(),
             "stepped on a second before the start"
