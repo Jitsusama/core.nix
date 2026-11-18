@@ -2,9 +2,10 @@
 //! long chains land nothing shows on the card each hour rather than in a
 //! report someone has to ask for. From 10:00 to 22:00 on 17 November, 8
 //! of the 10 costliest quests that merged nothing were working sessions
-//! of 500 to 750 calls. The spend is spend-watch's own split of today's
-//! spend by quest, which the orchestrator ruled the card may show (18
-//! November), and the measure names it so a disagreement later is plain.
+//! of 500 to 750 calls. The spend is each quest's own today, without the
+//! quests under it, as spend-watch splits it, which the orchestrator
+//! ruled the card may show (18 November); the measure names where it
+//! comes from, so a disagreement later is plain.
 //! It has no target: it is read, never filed as a finding.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -25,7 +26,7 @@ const NAMED_FROM: f64 = 30.0;
 const CHANGES_NAMED: usize = 3;
 
 /// Where the measure's figures come from, as it says.
-pub const SOURCE: &str = " (spend-watch, own)";
+pub const SOURCE: &str = " (each quest's own spend, by spend-watch)";
 
 /// What the measure says when there is no figure for today to read.
 pub const UNREAD: &str = " (spend-watch unread, or not written this hour)";
@@ -45,7 +46,12 @@ fn spent_today(collection: &str) -> Option<BTreeMap<String, f64>> {
                     .chars()
                     .filter(|c| c.is_ascii_digit() || *c == '.')
                     .collect();
-                Some((short(quest).to_owned(), figure.parse().ok()?))
+                // A short id is what the card names; anything else isn't one.
+                let short = short(quest);
+                if short.is_empty() || !short.chars().all(|c| c.is_ascii_alphanumeric()) {
+                    return None;
+                }
+                Some((short.to_owned(), figure.parse().ok()?))
             })
             .collect(),
     )
@@ -207,7 +213,8 @@ mod tests {
         "QEST-20261111-UNDER1": {"own": "about $29.99"},
         "QEST-20261111-XY9H5C": {"own": "$216"},
         "QEST-20261023-Y2YBTS": {"all": "$828", "own": "$148", "under": "$680"},
-        "QEST-20261111-ZINAWZ": {"own": "$132"}
+        "QEST-20261111-ZINAWZ": {"own": "$132"},
+        "QEST-20261111-ODD · X": {"own": "$500"}
     }}"#;
 
     /// Every sender works on its own quest but one, a session going by
@@ -311,11 +318,11 @@ mod tests {
     fn spend_is_unjudged_and_names_its_source() {
         let m = beside(Some(COLLECTION), &landed(), "WCJQSG");
         assert_eq!(m.target, None, "spend with no target judged");
-        assert!(m.says.ends_with(SOURCE), "{}", m.says);
-        assert!(
-            m.says.starts_with("quests spending $30 or more"),
-            "{}",
-            m.says
+        assert_eq!(
+            m.says,
+            "quests spending $30 or more today that landed nothing \
+             (each quest's own spend, by spend-watch)",
+            "the measure doesn't say what it counts, or where its figures come from"
         );
         assert_eq!(m.past(), None, "it could be filed as a drag");
     }
