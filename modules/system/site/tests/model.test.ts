@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
 import { escaped, legend, partsOf } from "../draw.ts";
-import { systemOf } from "../model.ts";
+import { allTold, systemOf } from "../model.ts";
 
 /** The three watches, told `these` whole, each to its kind's. */
 function told(these: readonly { readonly key: string; readonly kind: string }[]) {
@@ -289,6 +289,24 @@ it("the page and its words for a model wear no weather words, nor in what is rea
 it("the legend is a list in every browser, so a screen reader hears its words apart", () => {
   const page = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   assert.match(page, LEGEND_LIST);
+});
+
+it("draws once every watch has told its records, or can't", () => {
+  const kinds = ["summary", "part", "machine"];
+  const live = new Map([
+    ["summary", { state: "live" }],
+    ["part", { state: "live" }],
+    ["machine", { state: "live" }],
+  ]);
+  assert.equal(allTold(kinds, new Set(), new Map()), false, "nothing told yet");
+  assert.equal(allTold(kinds, new Set(["summary", "part"]), live), false, "live is not told");
+  assert.equal(allTold(kinds, new Set(kinds), live), true, "every kind told");
+  for (const state of ["broken", "stale"]) {
+    const stuck = new Map([...live, ["machine", { state }]]);
+    assert.equal(allTold(kinds, new Set(["summary", "part"]), stuck), true, `machine ${state}`);
+  }
+  const connecting = new Map([...live, ["machine", { state: "connecting" }]]);
+  assert.equal(allTold(kinds, new Set(["summary", "part"]), connecting), false, "still connecting");
 });
 
 it("a record's words reach the page as text, never as markup", () => {

@@ -17,7 +17,7 @@ import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { bridgeOf } from "./bridge.ts";
 import { headlineOf, legend, MACHINES_DRAWN, machinesOf, partsOf, placesOf } from "./draw.ts";
 import { machineHeadline, machineLede } from "./machine.ts";
-import { type System, systemOf } from "./model.ts";
+import { allTold, type System, systemOf } from "./model.ts";
 
 /** The element `selector` finds, which the page's markup always holds. */
 function element<T extends Element>(selector: string, kind: new () => T): T {
@@ -47,6 +47,9 @@ const held: { [kind in (typeof KINDS)[number]]: Held } = {
   machine: new Held(),
 };
 const standings = new Map<string, Standing>();
+// The watches that have told their records whole, since a watch answers
+// every record it holds first, none included.
+const told = new Set<string>();
 // The last thing each watch couldn't read, said until it reads another.
 const heard = new Map<string, string>();
 
@@ -167,6 +170,10 @@ function markPlace(): void {
 }
 
 function draw(): void {
+  if (!allTold(KINDS, told, standings)) {
+    sayWhen();
+    return;
+  }
   system = systemOf(held.summary, held.part, held.machine);
   sayWhen();
   if (system === undefined) {
@@ -190,10 +197,15 @@ for (const kind of KINDS) {
   held[kind] = follow(
     { feed: "system", kind },
     {
-      moved: draw,
+      moved: () => {
+        told.add(kind);
+        draw();
+      },
       stands: (now) => {
         standings.set(kind, now);
-        sayWhen();
+        // A watch that breaks or goes stale first may be the last one the
+        // page was waiting on.
+        draw();
       },
       problem: (what) => {
         heard.set(kind, `${kind}: ${what}`);

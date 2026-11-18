@@ -123,7 +123,10 @@ html:not([data-theme="light"]) body {
 
 /* ---- The stage. ---- */
 
+/* The stage fills the screen before anything is drawn, so the foot starts
+   below it and the first drawing moves nothing in view. */
 .stage {
+  min-block-size: 100svh;
   max-inline-size: calc(var(--column) + 2 * var(--screen));
   margin-inline: auto;
   padding: var(--frames) var(--screen) var(--huge);

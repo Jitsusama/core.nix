@@ -193,5 +193,21 @@ function systemOf(summaries: Held, parts: Held, things: Held): System | undefine
   };
 }
 
+/**
+ * Whether the page may draw: once every watch in `kinds` has told its records
+ * whole, or can't, since it's broken or stale. Drawn sooner, a page paints
+ * the summary's half and then jumps as each later kind lands.
+ */
+function allTold(
+  kinds: readonly string[],
+  told: ReadonlySet<string>,
+  standings: ReadonlyMap<string, { readonly state: string }>,
+): boolean {
+  return kinds.every((kind) => {
+    const state = standings.get(kind)?.state;
+    return told.has(kind) || state === "broken" || state === "stale";
+  });
+}
+
 export type { Deeper, Health, Part, System, Thing };
-export { capital, named, numbered, systemOf, WORDS };
+export { allTold, capital, named, numbered, systemOf, WORDS };
