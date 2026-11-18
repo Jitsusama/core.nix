@@ -170,10 +170,6 @@ Provider {
     })
 
     things: provider.count > 0 ? [looking] : []
-    // Said too, since programActs gives `things` and Programs holds what a
-    // closed swayimg was given until it hears so; a handler on `galleries`
-    // could run before `things` caught up.
-    onThingsChanged: changed()
 
     // The key of a folder's gallery, by its whole path.
     function keyOf(folder) {

@@ -32,10 +32,6 @@ Provider {
     // The folder is there from login (home.nix), so it's read from the
     // start.
     things: editing ? [editing] : []
-    // So Programs › GIMP, held while no screenshot is taken, draws its act:
-    // said on what programActs reads, since a handler on `editing` could
-    // run before `things` caught up.
-    onThingsChanged: changed()
 
     // GIMP's own acts in Programs: the newest screenshot to edit.
     function programActs(program) {

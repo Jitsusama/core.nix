@@ -889,8 +889,6 @@ in
         "Copied.qml"
         "Daemon.qml"
         "Files.qml"
-        "Fuzzy.js"
-        "Taken.qml"
         "Words.qml"
         "launcher/Ago.js"
         "launcher/Captured.js"
@@ -911,7 +909,6 @@ in
       cp ${../../zathura/Zathura.js} launcher/Zathura.js
       cp ${../../reader/Reader.js} launcher/Reader.js
       cp ${../../gimp/CopiedPicture.qml} launcher/CopiedPicture.qml
-      cp ${../../gimp/Screenshot.qml} launcher/Screenshot.qml
       cp ${../../../tests/program-acts.qml} shell.qml
       cp ${../../../tests/lib/Frames.js} Frames.js
       export XDG_RUNTIME_DIR=$TMPDIR/runtime

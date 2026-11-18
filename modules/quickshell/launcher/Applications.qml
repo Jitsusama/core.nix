@@ -179,20 +179,18 @@ Provider {
     // (playerOf, streamsOf, recordersOf).
     // JSON, since the names are other processes' and could hold any
     // separator, and one change that moved a name across it would say
-    // nothing.
+    // nothing. Who plays comes first, made once, so each change reads a
+    // node's properties once and the handler reads who back from here.
     readonly property string playingNow: JSON.stringify([
-        Playing.players.map(player => [player.dbusName, player.desktopEntry, player.identity,
-            player.isPlaying, player.canPlay, player.canPause, player.canGoNext,
-            player.canGoPrevious, player.trackTitle, player.trackArtist]),
-        Playing.streams.concat(Playing.recorders ?? []).map(node => [node.id, node.name,
-            node.properties?.["application.name"],
-            node.properties?.["application.process.binary"],
-            node.properties?.["node.link-group"], node.properties?.["stream.monitor"],
-            node.audio?.volume, node.audio?.muted])
+        playingWho(),
+        Playing.players.map(player => [player.isPlaying, player.canPlay, player.canPause,
+            player.canGoNext, player.canGoPrevious, player.trackTitle, player.trackArtist]),
+        Playing.streams.concat(Playing.recorders ?? []).map(node => [node.audio?.volume,
+            node.audio?.muted])
     ])
 
     onPlayingNowChanged: {
-        const who = playingWho();
+        const who = JSON.parse(playingNow)[0];
         if (who !== playingHeard.who) {
             playingHeard.who = who;
             playingHeard.turn += 1;
@@ -215,10 +213,12 @@ Provider {
         return JSON.stringify([
             Playing.players.map(player => [player.dbusName, player.desktopEntry,
                 player.identity]),
-            Playing.streams.concat(Playing.recorders ?? []).map(node => [node.id, node.name,
-                node.properties?.["application.name"],
-                node.properties?.["application.process.binary"],
-                node.properties?.["node.link-group"], node.properties?.["stream.monitor"]])
+            Playing.streams.concat(Playing.recorders ?? []).map(node => {
+                const told = node.properties ?? {};
+                return [node.id, node.name, told["application.name"],
+                    told["application.process.binary"], told["node.link-group"],
+                    told["stream.monitor"]];
+            })
         ]);
     }
 
@@ -1819,8 +1819,8 @@ Provider {
         // are let go.
         void provider.startsTurn;
         const held = provider.startsHeld.by.get(entry.id);
-        // holdsSafely is read here too, since a giver with no changed may
-        // join as an answer is held, and nothing would let that one go.
+        // holdsSafely is read here too, for the moment between a giver with
+        // no changed joining and onHookingChanged letting every answer go.
         if (held !== undefined && held.entry === entry && provider.holdsSafely
             && provider.givesAsHeld(held, entry.id) && provider.playsAsHeld(held, entry))
             return held.only;

@@ -35,12 +35,6 @@ Provider {
     // stands now, and a program stepped into is drawn again as what's
     // unread or read changes.
     onNoteChanged: changed()
-    // And as Slack's daemon answers or stops, which the note says nothing
-    // of between "ok" and "none", since Unread and Sign In are given
-    // (programActs) by how it stands, and Programs holds what a closed
-    // Slack was given until it hears so.
-    readonly property string stands: SlackUnreads.stands
-    onStandsChanged: changed()
 
     // Unread's conversations and Recent's, as Slack's daemon serves them,
     // each change telling Programs to draw them again.
