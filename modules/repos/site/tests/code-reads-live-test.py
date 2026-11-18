@@ -541,6 +541,7 @@ def test_a_phone_shows_the_trees_keys_at_the_foot_of_the_window(
     assert line is not None, "the trees' keys weren't drawn"
     foot = line["y"] + line["height"]
     assert foot <= SHORT_PHONE + 1, f"the trees' keys sat below the window, at {line}"
+    assert foot >= SHORT_PHONE - 1, f"the trees' keys sat above the window's foot, at {line}"
 
 
 def test_a_redraw_keeps_focus_where_it_was(code_page: Page, repos_daemon: StandIn) -> None:
@@ -555,6 +556,57 @@ def test_a_redraw_keeps_focus_where_it_was(code_page: Page, repos_daemon: StandI
     expect(every, "the headline said again lost the link focused in it").to_be_focused()
 
 
+def redrawn_drawer(code_page: Page, repos_daemon: StandIn) -> None:
+    """Write the grove tree again, and wait for the drawer to be drawn anew for it."""
+    code_page.evaluate("() => { document.querySelector('#open .tree').dataset.before = ''; }")
+    grove_written_now(repos_daemon)
+    code_page.wait_for_function(
+        "() => document.querySelector('#open [data-before]') === null", timeout=PACE_MS
+    )
+
+
+def test_a_redraw_keeps_focus_on_a_link_in_a_tree(code_page: Page, repos_daemon: StandIn) -> None:
+    says_it_stands(code_page, "live")
+    grove_written_now(repos_daemon)
+    home = code_page.locator(f'#open a[href="../{CELL_HOME}"]').first
+    expect(home, "the cell's home wasn't linked").to_contain_text("E2ZIAQ", timeout=PACE_MS)
+    row(code_page, "github:owl/core").click()
+    code_page.keyboard.press("Enter")
+    expect(code_page.locator('#open .tree[aria-current="true"]')).to_be_focused()
+    home.focus()
+    redrawn_drawer(code_page, repos_daemon)
+    expect(home, "a redraw took focus off the link to the tree").to_be_focused()
+
+
+def test_a_redraw_keeps_focus_on_the_same_of_two_alike_links(
+    code_page: Page, repos_daemon: StandIn, mycelium_node: StandIn, tmp_path: Path
+) -> None:
+    says_it_stands(code_page, "live")
+    grove_written_now(repos_daemon)
+    beside: dict[str, object] = {
+        "key": "cell:Q3NEWS",
+        "name": "Q3NEWS",
+        "cwd": "/home/ada/trees/grove/modules",
+        "title": "Weigh the grove",
+        "standing": "moving",
+        "networks": ["repo.core"],
+    }
+    mycelium_node.tell("cell", changed=[beside])
+    # Both cells say one home, so the drawer links it twice, alike in every name.
+    things = [
+        {"kind": "cell", "key": key, "name": key, "address": CELL_HOME}
+        for key in ("E2ZIAQ", "Q3NEWS")
+    ]
+    (tmp_path / "documents" / CELLS_SITE / "homes.json").write_text(json.dumps({"things": things}))
+    alike = code_page.locator(f'#open a[href="../{CELL_HOME}"]')
+    expect(
+        alike.filter(has_text="Q3NEWS"), "the drawer didn't link both cells to one home"
+    ).to_be_visible(timeout=ASKED_AGAIN_MS)
+    alike.nth(1).focus()
+    redrawn_drawer(code_page, repos_daemon)
+    expect(alike.nth(1), "a redraw moved focus to the first of two alike links").to_be_focused()
+
+
 def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
     says_it_stands(code_page, "live")
     keys = code_page.locator(".head .keys [role=button]")
@@ -566,13 +618,17 @@ def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
     expect(keys.nth(1), "the right arrow didn't move to the next key").to_be_focused()
     code_page.keyboard.press("End")
     expect(keys.last, "End didn't move to the last key").to_be_focused()
+    after_end = chosen.get_attribute("data-key") if chosen.count() == 1 else None
+    assert after_end == cursor, "End on a key moved the list's cursor too"
     code_page.keyboard.press("Home")
     expect(keys.first, "Home didn't move to the first key").to_be_focused()
     now_chosen = chosen.get_attribute("data-key") if chosen.count() == 1 else None
-    assert now_chosen == cursor, "Home and End on a key moved the list's cursor too"
-    # A chord is the browser's or the reader's, never a step between the keys.
+    assert now_chosen == cursor, "Home on a key moved the list's cursor too"
+    # A chord is the browser's or the reader's, never a step between the keys, nor the page's.
     code_page.keyboard.press("Alt+ArrowRight")
     expect(keys.first, "a key took Alt with the arrow as its own step").to_be_focused()
+    code_page.keyboard.press("Shift+ArrowRight")
+    expect(keys.first, "Shift with an arrow on a key went to the page").to_be_focused()
     code_page.keyboard.press("ArrowRight")
     code_page.keyboard.press("Tab")
     left = code_page.evaluate("() => document.activeElement.closest('.head .keys') === null")
@@ -616,6 +672,13 @@ HELD_ROOM = """document.addEventListener("DOMContentLoaded", () => {
     ["title", "list", "open"].map((id) => [id, style.getPropertyValue(`--room-${id}`)]),
   );
   globalThis.loadedAt = performance.now();
+  addEventListener("resize", () => { globalThis.resizedAt ??= performance.now(); });
+  // When the list's room goes, read as it goes rather than whenever the test looks.
+  new MutationObserver(() => {
+    if (style.getPropertyValue("--room-list") === "") {
+      globalThis.roomWentAt ??= performance.now();
+    }
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
 });"""
 
 
@@ -688,11 +751,11 @@ def test_a_resize_before_the_feeds_arrive_lets_the_room_go(code_page: Page) -> N
     size = code_page.viewport_size or {"width": 1280, "height": 800}
     code_page.set_viewport_size({"width": size["width"] - 200, "height": size["height"]})
     # Well inside the 3 seconds the room is held for anyway, so only the resize can let it go.
-    let_go = "() => document.documentElement.style.getPropertyValue('--room-list') === ''"
-    code_page.wait_for_function(let_go, timeout=1000)
-    # A builder slow enough to reach here after the timer can't tell the two apart.
-    elapsed = code_page.evaluate("() => performance.now() - globalThis.loadedAt")
-    assert elapsed < ROOM_HELD_MS, f"the room went on its timer, at {elapsed} ms, not the resize"
+    code_page.wait_for_function("() => globalThis.roomWentAt !== undefined", timeout=1000)
+    # The timer starts after the page's clock does, so room gone before it can't be the timer's.
+    went, resized = code_page.evaluate("() => [globalThis.roomWentAt, globalThis.resizedAt]")
+    assert resized < ROOM_HELD_MS, f"the builder resized only at {resized} ms, proving nothing"
+    assert went < ROOM_HELD_MS, f"the room went on its timer, at {went} ms, not the resize"
 
 
 def test_a_burst_of_records_draws_the_list_a_few_times(

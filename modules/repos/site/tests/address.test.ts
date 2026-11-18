@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { addressed, forgotten, landing, outward } from "../address.ts";
-import type { Grove, Repository, Tree } from "../model.ts";
+import type { Grove, Repository, Season, Tree } from "../model.ts";
 
 function tree(path: string, season: Tree["season"], url?: string): Tree {
   return {
@@ -103,23 +103,47 @@ it("opens a tree's change, else the repository where GitHub keeps it", () => {
   assert.equal(outward({ ...core, key: "heron:src/notes" }, null), undefined);
 });
 
-const untouched = { query: "", place: "every", unfolded: new Set() } as const;
+// Core again with a tree gone, so z opens two seasons that each draw something.
+const felled: Repository = {
+  ...core,
+  trees: [...core.trees, tree("/home/ada/trees/lost", "gone")],
+  seasons: { ...core.seasons, gone: 1 },
+};
+const cleared: Grove = { ...grove, repositories: [felled] };
+
+const untouched = { query: "", place: "every", cursor: core.key, unfolded: new Map() } as const;
+
+/** What's drawn with `seasons` unfolded in core. */
+function unfolding(...seasons: Season[]): typeof untouched & { unfolded: Map<string, Set<Season>> } {
+  return { ...untouched, unfolded: new Map([[core.key, new Set(seasons)]]) };
+}
 
 it("forgets nothing a reload draws again as it's drawn now", () => {
   assert.deepEqual(forgotten("#repo=owl%2Fcore", grove, untouched), []);
   assert.deepEqual(forgotten("#growing", grove, { ...untouched, place: "growing" }), []);
   const old = addressed(core, "/home/ada/trees/old");
-  const reopened = { ...untouched, unfolded: new Set(["resting"] as const) };
+  const reopened = unfolding("resting");
   assert.deepEqual(forgotten(old, grove, reopened), [], "a tree's address opens its season");
+});
+
+it("forgets no unfolding that draws nothing more", () => {
+  const here = "#repo=owl%2Fcore";
+  // A season that never folds, as an address naming a tree written today leaves unfolded.
+  assert.deepEqual(forgotten(here, grove, unfolding("today")), [], "today never folds");
+  const old = addressed(core, "/home/ada/trees/old");
+  const both = unfolding("resting", "gone");
+  assert.deepEqual(forgotten(old, grove, both), [], "core has no gone tree to fold");
+  const elsewhere = { ...both, cursor: "github:owl/notes" };
+  assert.deepEqual(forgotten(here, grove, elsewhere), [], "core's seasons aren't the cursor's");
 });
 
 it("forgets the list a name or a place narrowed, and seasons only a key unfolded", () => {
   const here = "#repo=owl%2Fcore";
   assert.deepEqual(forgotten(here, grove, { ...untouched, query: "core" }), ["list"]);
   assert.deepEqual(forgotten(here, grove, { ...untouched, place: "growing" }), ["list"]);
-  const folded = { ...untouched, unfolded: new Set(["resting", "gone"] as const) };
+  const folded = unfolding("resting", "gone");
   assert.deepEqual(forgotten(here, grove, folded), ["open"]);
-  const old = addressed(core, "/home/ada/trees/old");
-  assert.deepEqual(forgotten(old, grove, folded), ["open"], "gone stays folded on a reload");
+  const old = addressed(felled, "/home/ada/trees/old");
+  assert.deepEqual(forgotten(old, cleared, folded), ["open"], "gone stays folded on a reload");
   assert.deepEqual(forgotten(here, undefined, { ...untouched, place: "growing" }), ["list"]);
 });
