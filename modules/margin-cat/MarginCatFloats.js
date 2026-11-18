@@ -164,14 +164,14 @@ function off(way, cols, to, at) {
     way.facing = end.dir;
     Ways.goes(way, end.dir > 0 ? from.right - at.wide : from.left, way.y);
     const ground = Falls.under({ x: end.x, y: way.y }, cols, at);
-    if (aStep(way, ground, at)) {
-        Ways.goes(way, end.x, way.y);
+    const noRoom = cramped(way, { x: end.x, y: way.y }, RISES, at);
+    if (aStep(way, ground, at) || noRoom && stepsDown(way, ground, at)) {
         walks(way, end.x, ground.y);
         return done();
     }
     // A hop clear of it, then a fall; with no room over it for the hop's
-    // arc, walked off its end and dropped (VKCF3Z 13d5bf97).
-    if (cramped(way, { x: end.x, y: way.y }, RISES, at)) {
+    // arc, walked clear of its end and dropped (VKCF3Z 13d5bf97).
+    if (noRoom) {
         Ways.goes(way, end.x, way.y);
     } else {
         Ways.leap(way, { x: end.x, y: way.y }, RISES, "hops");
@@ -327,13 +327,26 @@ function aStep(way, to, at) {
 // leap glided along the edge in a leap's pose for 350 ms (VKCF3Z
 // 299fb911, the GPU rig at 120 Hz, 2026-11-16); it steps up within its
 // walk instead, paws moving. Only up to its own height: a taller one
-// keeps its leap, held at the edge, rather than walk up a wall. Down,
-// past a step, it drops off rather than walk down through the air
-// (VKCF3Z 13d5bf97).
+// keeps its leap, held at the edge, rather than walk up a wall. Down
+// off a floating window's end, see stepsDown().
 function steps(way, to, at, { first = to, rises = RISES } = {}) {
     const rise = way.y - to.y;
     return aStep(way, to, at)
         || (rise > 0 && rise <= at.tall + 1e-6 && cramped(way, first, rises, at));
+}
+
+// Whether a drop off a floating window's end with no room for a hop is
+// small enough to step down from its edge, paws moving, as the screen
+// draws it: no deeper than half its height. Walked clear of its end on
+// the air first, a body-length for 190 ms at the GPU rig's 120 Hz,
+// then dropped 3 pixels, it read as a bug (WCJQSG 1ee24751: "Stepping
+// down a small ledge with its paws moving is what a cat does"); its
+// step crosses the corner of the window's face, a few pixels for a
+// fraction of a second, the smaller break. Deeper, it walks clear and
+// drops, never across the face (VKCF3Z 13d5bf97).
+function stepsDown(way, to, at) {
+    const drop = Math.max(to.y, 0) - Math.max(way.y, 0);
+    return drop >= 0 && drop <= at.tall / 2 + 1e-6;
 }
 
 // Whether a leap's apex, `rises` cells (RISES, or a hop's half) over the
@@ -360,6 +373,13 @@ function follows(way, stop, now) {
     if (stop.how === "goes") {
         way.facing = Math.sign(stop.x - way.x) || way.facing;
         Ways.goes(way, stop.x, stop.y);
+    } else if (stop.how === "hopsOff" && (aStep(way, landing, at)
+        || cramped(way, stop.via, RISES / 2, at) && stepsDown(way, landing, at))) {
+        // Down off its end from its edge within its walk, paws moving,
+        // its front paws landing as its back ones leave the corner.
+        way.facing = Math.sign(stop.via.x - way.x) || way.facing;
+        Ways.goes(way, stop.via.x - way.facing * at.wide, way.y);
+        walks(way, landing.x, landing.y);
     } else if ((stop.how === "leapsOn" || stop.how === "hopsOff")
         && steps(way, landing, at,
             { first: stop.via, rises: stop.how === "hopsOff" ? RISES / 2 : RISES })) {
