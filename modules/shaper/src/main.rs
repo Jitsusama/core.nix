@@ -1713,7 +1713,7 @@ mod tests {
             Some("eth0: held to 50.0 Mb/s up."),
             "{spell:?}"
         );
-        assert!(spell.told);
+        assert!(spell.told, "a clamped spell wasn't told");
     }
 
     #[test]
@@ -1726,14 +1726,14 @@ mod tests {
             Some("eth0: held to 9.0 Mb/s up. Upload queued 30 ms."),
             "{begun:?}"
         );
-        assert!(begun.told);
+        assert!(begun.told, "a spell said as it began wasn't told");
         let going = spell("eth0", (true, false), limited, MOST, Some(&holding));
         assert_eq!(going.said, None, "a spell under way was said again");
         assert!(going.told, "a spell under way wasn't kept told");
         let none = asked(None, None);
         let ended = spell("eth0", (true, false), none, MOST, Some(&holding));
         assert_eq!(ended.held, MOST, "no limit holds the whole link");
-        assert!(!ended.told);
+        assert!(!ended.told, "an ended spell was still told");
         assert_eq!(
             ended.said.as_deref(),
             Some("eth0: neither direction is held now, so the link's whole rate is kept")
@@ -1754,7 +1754,7 @@ mod tests {
         assert!(quiet.told && quiet.silent, "{quiet:?}");
         let still = spell("eth0", (true, true), ceiling, MOST, None);
         assert_eq!(still.said, None, "a ceiling still holding was said again");
-        assert!(still.silent);
+        assert!(still.silent, "a ceiling still holding alone was let go");
         let holding = reason(9_000);
         let limited = asked(Some(9_000), None);
         let heard = spell("eth0", (true, true), limited, MOST, Some(&holding));
