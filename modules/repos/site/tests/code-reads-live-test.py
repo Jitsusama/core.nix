@@ -39,6 +39,8 @@ HERE = Path(__file__).parent
 # Code draws on the frame after a record moves, then at most twice a second while records keep
 # coming, so a change must show well inside this.
 PACE_MS = 6000
+# Long enough for Code to ask three times again for a cell with no home, 14 s, with room.
+ASKED_AGAIN_MS = 20_000
 # How far the page may shift unasked: a tenth of the web's "good" bound, which a font
 # swapping in stays under, and a row or a sentence arriving doesn't.
 STILL = 0.01
@@ -53,17 +55,29 @@ BACK_MS = 15000
 UNREACHED = ["WebSocket connection to", "Failed to load resource: net::ERR_"]
 # The kinds the repos daemon serves, each told whole, as home.nix declares them.
 KINDS = ["reading", "repository", "checkout", "tree", "change"]
-# The sites' record as the home keeps it, each row named for people. The site
-# home to cells sits at a path of its own, and the row named and served as the
-# map claims nothing, so a cell links home only by the row that claims cells.
 CELLS_SITE = "cells/"
-SITES = {
-    "sites": [
-        {"path": "code/", "name": "Code", "homes": ["repository", "tree"]},
-        {"path": "mycelium/", "name": "mycelium"},
-        {"path": CELLS_SITE, "name": "Your cells, now", "homes": ["cell"]},
-    ]
-}
+
+
+def sites_homing_cells(claims: list[object]) -> dict[str, list[dict[str, object]]]:
+    """Give the sites' rows, each named for people, with `claims` as the cells site's homes.
+
+    The site home to cells sits at a path of its own, and the row named and served as the map
+    claims nothing, so a cell links home only by the row that claims cells.
+    """
+    return {
+        "sites": [
+            {"path": "code/", "name": "Code", "homes": ["repository", "tree"]},
+            {"path": "mycelium/", "name": "mycelium"},
+            {"path": CELLS_SITE, "name": "Your cells, now", "homes": claims},
+        ]
+    }
+
+
+# The rows as the home lists them, its declared rows as declared.
+SITES = sites_homing_cells(["cell"])
+# The sites' record as a session last wrote it, before the home's declared rows took the place
+# of its live ones: its cells row claims nothing, so a reader of it links no cell home.
+WRITTEN = sites_homing_cells([])
 # Where the cells' site says the cell at work is home.
 CELL_HOME = f"{CELLS_SITE}#cell=E2ZIAQ"
 # Where Code is home to each repository and present tree in repos.json, named as
@@ -119,9 +133,9 @@ def code_served(tmp_path: Path, repos_daemon: StandIn, mycelium_node: StandIn) -
     }
     with serving(tmp_path, {"code": os.environ["CODE_SITE"]}, feeds) as served:
         documents = tmp_path / "documents"
-        (documents / "sites.json").write_text(json.dumps(SITES))
-        # The rows the home lists, which it writes beside the record and the skill's link
-        # check reads.
+        (documents / "sites.json").write_text(json.dumps(WRITTEN))
+        # The rows the home lists, the declared ones as declared, which it writes beside the
+        # record for the readers of a row's homes.
         (documents / "rows.json").write_text(json.dumps(SITES))
         (documents / CELLS_SITE).mkdir()
         thing = {"kind": "cell", "key": "E2ZIAQ", "name": "E2ZIAQ", "address": CELL_HOME}
@@ -290,6 +304,77 @@ def test_a_cell_at_work_links_to_its_home_on_the_map(
     home = code_page.locator(f'#open a[href="../{CELL_HOME}"]')
     expect(home, "the cell at work wasn't linked to its home").to_contain_text(
         "E2ZIAQ", timeout=PACE_MS
+    )
+
+
+def test_a_home_without_its_rows_has_cells_linked_by_its_record(
+    code_opened: Opened, repos_daemon: StandIn, tmp_path: Path
+) -> None:
+    # A home from before it listed its rows apart keeps every row in its record.
+    documents = tmp_path / "documents"
+    (documents / "rows.json").unlink()
+    (documents / "sites.json").write_text(json.dumps(SITES))
+    code_opened.expecting("the server responded with a status of 404")
+    code_page = code_opened.page
+    code_page.reload()
+    says_it_stands(code_page, "live")
+    grove_written_now(repos_daemon)
+    home = code_page.locator(f'#open a[href="../{CELL_HOME}"]')
+    expect(home, "a record's cells row didn't link the cell home").to_contain_text(
+        "E2ZIAQ", timeout=PACE_MS
+    )
+
+
+def test_a_cell_is_linked_home_by_its_sites_pattern(
+    code_page: Page, repos_daemon: StandIn, tmp_path: Path
+) -> None:
+    # The page first opened reads the cells' record, so it's let finish before the record goes,
+    # or its read is answered not found and the page logs it.
+    says_it_stands(code_page, "live")
+    grove_written_now(repos_daemon)
+    home = code_page.locator(f'#open a[href="../{CELL_HOME}"]')
+    expect(home, "the record didn't link the cell home").to_contain_text("E2ZIAQ", timeout=PACE_MS)
+    # A site whose every cell has its page there says so as a pattern, keeping no record.
+    documents = tmp_path / "documents"
+    (documents / CELLS_SITE / "homes.json").unlink()
+    pattern = sites_homing_cells([{"kind": "cell", "address": "#cell={name}"}])
+    (documents / "rows.json").write_text(json.dumps(pattern))
+    code_page.reload()
+    says_it_stands(code_page, "live")
+    grove_written_now(repos_daemon)
+    expect(home, "the pattern didn't link the cell home").to_contain_text("E2ZIAQ", timeout=PACE_MS)
+
+
+def test_a_cell_that_starts_once_code_is_open_links_to_its_home(
+    code_page: Page, repos_daemon: StandIn, mycelium_node: StandIn, tmp_path: Path
+) -> None:
+    says_it_stands(code_page, "live")
+    grove_written_now(repos_daemon)
+    expect(code_page.locator(f'#open a[href="../{CELL_HOME}"]')).to_contain_text(
+        "E2ZIAQ", timeout=PACE_MS
+    )
+    started: dict[str, object] = {
+        "key": "cell:Q3NEWS",
+        "name": "Q3NEWS",
+        "cwd": "/home/ada/trees/grove/modules",
+        "title": "Weigh the grove",
+        "standing": "moving",
+        "networks": ["repo.core"],
+    }
+    mycelium_node.tell("cell", changed=[started])
+    # The cell is drawn before its site lists it, so the ask its start brings finds no home.
+    expect(code_page.locator("#open"), "the cell that started wasn't drawn").to_contain_text(
+        "Q3NEWS", timeout=PACE_MS
+    )
+    things = [
+        {"kind": "cell", "key": key, "name": key, "address": f"{CELLS_SITE}#cell={key}"}
+        for key in ("E2ZIAQ", "Q3NEWS")
+    ]
+    (tmp_path / "documents" / CELLS_SITE / "homes.json").write_text(json.dumps({"things": things}))
+    home = code_page.locator(f'#open a[href="../{CELLS_SITE}#cell=Q3NEWS"]')
+    # Code asks again 2 s after, then 4 s and 8 s, so the link lands within the third wait.
+    expect(home, "a cell that started later wasn't linked home").to_contain_text(
+        "Q3NEWS", timeout=ASKED_AGAIN_MS
     )
 
 
