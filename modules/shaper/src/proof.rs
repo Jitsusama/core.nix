@@ -379,7 +379,7 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     let mut idle: Vec<f64> = Vec::new();
     let windows = across_windows(
         asked.pairs,
-        || opened(|| gate.open(), deadline, &STOPPED),
+        || opened(|| gate.open(), || gate.lost(), deadline, &STOPPED),
         stop::shaper_on,
         |from, on| {
             stop::owning(marker.as_deref(), on, || {
@@ -387,6 +387,8 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
             })
         },
     );
+    // Asked before the gate ends, since ending it ends swayidle.
+    let lost = gate.lost();
     // Ended here, since a watch left unjoined still holds the gate.
     gate.end();
     let stopped = STOPPED.load(Ordering::Relaxed);
@@ -405,6 +407,15 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
         }),
     );
     windows.ending(paid, stopped)?;
+    // Said as itself, since waiting on would only time out and blame
+    // Joel's idle for it.
+    if lost && !windows.complete {
+        return Err(
+            Failure::new(Exit::Unavailable, "swayidle went away").because(
+                "nothing was left to hear whether Joel is away, so the proof stopped waiting",
+            ),
+        );
+    }
     let Some(verdict) = verdict else {
         return Err(Failure::new(Exit::TryAgain, "not loading the link")
             .because("Joel hasn't been idle two minutes, or a call, audio or a meeting is on"));

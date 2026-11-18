@@ -163,17 +163,22 @@ impl Gate {
     /// when Joel returns.
     pub fn open(&self) -> bool {
         self.mark.exists()
-            && self.watching()
+            && !self.lost()
             && exits(Command::new("a-call-is-on"), ASKED_FOR, signalled) == Some(1)
             && !audio_plays()
             && !busy(&self.waits, signalled)
     }
 
-    /// Whether swayidle still runs to hear Joel come back.
-    fn watching(&self) -> bool {
-        let mut idle = self.idle.lock().unwrap_or_else(PoisonError::into_inner);
-        matches!(idle.try_wait(), Ok(None))
+    /// Whether swayidle has gone, so nothing hears Joel come back and the
+    /// gate can never open again.
+    pub fn lost(&self) -> bool {
+        gone(&mut self.idle.lock().unwrap_or_else(PoisonError::into_inner))
     }
+}
+
+/// Whether `child` has ended, or can't be asked.
+fn gone(child: &mut Child) -> bool {
+    !matches!(child.try_wait(), Ok(None))
 }
 
 /// Whether audio plays, as `pw-dump` shows PipeWire's graph. Joel may
@@ -222,6 +227,17 @@ mod tests {
             "type": "PipeWire:Interface:Node",
             "info": { "state": state, "props": { "media.class": class } },
         })
+    }
+
+    #[test]
+    fn a_swayidle_ended_is_gone() {
+        let mut ended = Command::new("true").spawn().expect("true runs");
+        let _ = ended.wait();
+        assert!(gone(&mut ended), "an ended swayidle read as running");
+        let mut running = Command::new("sleep").arg("5").spawn().expect("sleep runs");
+        assert!(!gone(&mut running), "a running swayidle read as gone");
+        let _ = running.kill();
+        let _ = running.wait();
     }
 
     #[test]

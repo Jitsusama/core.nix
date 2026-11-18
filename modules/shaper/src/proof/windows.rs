@@ -125,10 +125,16 @@ fn put_back_or_stopped(back: bool, stopped: bool, found: Option<bool>) -> Result
     Ok(())
 }
 
-/// Waits for `open` to say the gate is open, until `deadline` or a stop.
-pub fn opened(open: impl Fn() -> bool, deadline: Instant, stopped: &AtomicBool) -> bool {
+/// Waits for `open` to say the gate is open, until `deadline`, a stop or
+/// the gate being `lost`, when it can never open again.
+pub fn opened(
+    open: impl Fn() -> bool,
+    lost: impl Fn() -> bool,
+    deadline: Instant,
+    stopped: &AtomicBool,
+) -> bool {
     while !stopped.load(Ordering::Relaxed) && !open() {
-        if Instant::now() >= deadline {
+        if Instant::now() >= deadline || lost() {
             return false;
         }
         // The gate is asked once a second while it's waited for.
@@ -159,11 +165,14 @@ mod tests {
         let stopped = AtomicBool::new(true);
         let deadline = Instant::now() + Duration::from_secs(5);
         assert!(
-            !opened(|| false, deadline, &stopped),
+            !opened(|| false, || false, deadline, &stopped),
             "opened while stopped"
         );
         // A stopped proof finding Joel away still opens no window.
-        assert!(!opened(|| true, deadline, &stopped), "opened once stopped");
+        assert!(
+            !opened(|| true, || false, deadline, &stopped),
+            "opened once stopped"
+        );
         // And a stop that comes while it waits.
         let stopped = Arc::new(AtomicBool::new(false));
         let later = Arc::clone(&stopped);
@@ -173,13 +182,33 @@ mod tests {
         });
         let began = Instant::now();
         assert!(
-            !opened(|| false, began + Duration::from_secs(15), &stopped),
+            !opened(
+                || false,
+                || false,
+                began + Duration::from_secs(15),
+                &stopped
+            ),
             "opened once stopped"
         );
         let _ = raiser.join();
         assert!(
             began.elapsed() < Duration::from_secs(2),
             "a stop on the way waited {:?}",
+            began.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_gate_that_cant_open_again_ends_the_wait_at_once() {
+        let stopped = AtomicBool::new(false);
+        let began = Instant::now();
+        assert!(
+            !opened(|| false, || true, began + Duration::from_secs(15), &stopped),
+            "opened a lost gate"
+        );
+        assert!(
+            began.elapsed() < Duration::from_secs(1),
+            "a lost gate was waited on for {:?}",
             began.elapsed()
         );
     }
