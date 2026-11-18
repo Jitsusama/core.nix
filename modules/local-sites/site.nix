@@ -11,8 +11,8 @@
 # modules/<name>/site/ and imports the kit as ../../local-sites/kit/<x>.ts,
 # which the compiler rewrites to .js; it is served at /<name>/, one folder
 # deep, where that address climbs to the root and lands on the kit's mount.
-# A site elsewhere, or served deeper, would need its imports rewritten,
-# which nothing here does.
+# A site served deeper would need its imports rewritten, which nothing here
+# does; one laid out to stand alone has them rewritten by `standalone`.
 { lib, pkgs }:
 let
   tsc = lib.getExe' pkgs.typescript "tsc";
@@ -67,7 +67,9 @@ in
       tint ? "action",
       looks ? webKit.looks,
     }:
-    pkgs.runCommandLocal "${name}-site" { } ''
+    # The site carries the web kit it was built on, so a folder laid out
+    # from it copies the same one in.
+    pkgs.runCommandLocal "${name}-site" { passthru = { inherit webKit; }; } ''
       ${lib.getExe pkgs.bash} ${./site.sh} ${
         lib.escapeShellArgs [
           tsc
@@ -84,5 +86,31 @@ in
           looks.light.${tint}
         ]
       }
+    '';
+
+  /**
+    The live site `site`, built by localSite as `name`, as one folder that
+    stands alone, for a host that serves a folder as it is: its page at the
+    root, the kit and the web kit it was built on copied in as kit/ and
+    web/, and every address its page and modules load relative and within
+    the folder, or the build fails (standalone.sh says how). The strip
+    goes, since the home it leads to stays here. Its feed is still asked of
+    /feed/<name>, so on a host that bridges none the page says the sites'
+    server can't be reached and keeps trying, rather than drawing nothing;
+    on a host that answers there, what answers is what it draws, as text,
+    the commands it offers to copy among them, so a folder belongs only on
+    a host whose /feed/ the reader trusts. How a folder reaches a host
+    stays outside core.
+  */
+  standalone =
+    { name, site }:
+    pkgs.runCommandLocal "${name}-standalone" { } ''
+      ${lib.getExe pkgs.bash} ${./standalone.sh} ${
+        lib.escapeShellArgs [
+          "${site}"
+          "${kit}/kit"
+          "${site.webKit}"
+        ]
+      } "$out"
     '';
 }
