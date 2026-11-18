@@ -84,7 +84,7 @@ enum State {
     Holding,
 }
 
-/// Where a network nobody has measured starts, in kbit/s: under most home
+/// Where a network with no anchor starts each stay, in kbit/s: under most home
 /// connections both ways, so its first seconds of load don't queue at the
 /// modem, until the controller's first second leaves it unlimited while
 /// no queue stands.
@@ -521,11 +521,11 @@ fn ceiling(link: &str) -> links::Ceiling {
 }
 
 /// Starts shaping an uplink: at the upload's rate its network's declared
-/// line holds it to, or else at what its upload learned, or else at
-/// `FIRST`, and at `FIRST`'s download, until the controller says more.
+/// line holds it to, or else at `FIRST`, and at `FIRST`'s download, until
+/// the controller says more.
 fn start(
     uplink: links::Uplink,
-    (learned, networks): (&Path, Option<&Path>),
+    networks: Option<&Path>,
     hosts: &[String],
     echoes: &std::sync::mpsc::Sender<Echo>,
 ) -> Option<Shaped> {
@@ -538,15 +538,8 @@ fn start(
     let ifb = qdisc::ifb(index);
     let network = network_of(&uplink);
     let mut held = FIRST;
-    // The rates the round trip's controller kept for each network, in
-    // connections.json, are no longer read: on 14 November a boot started
-    // at 15.4 Mbit/s, kept on 3 November, over a learned 10.1, and queued
-    // at the modem until a cut 2 s later.
-    if let Some(up) = live::starting_up(learned, &network) {
-        held.up = up;
-    }
     // A network whose line is declared starts at its hold, as its stay in
-    // the one-way controller does (src/oneway.rs), whatever was learned.
+    // the one-way controller does (src/oneway.rs).
     if let Some(up) = networks.and_then(|path| networks::hold(&networks::anchors(path), &network)) {
         held.up = up;
     }
@@ -772,11 +765,9 @@ fn refill(text: &str) {
     }
 }
 
-/// The one-way controller, started from what it learned and guarded by each
-/// network's anchor.
+/// The one-way controller, guarded by each network's anchor.
 fn started_live(options: &Options) -> live::Live {
-    let learned = options.state.join("learned.json");
-    let mut live = live::Live::new(&options.record, SystemTime::now(), &learned);
+    let mut live = live::Live::new(&options.record, SystemTime::now());
     live.anchor(
         options
             .networks
@@ -790,9 +781,12 @@ fn started_live(options: &Options) -> live::Live {
 fn run(options: &Options) -> Result<(), Failure> {
     let _ = fs::create_dir_all(&options.state);
     let _ = fs::create_dir_all(&options.runtime);
-    // Where the round trip's controller kept each network's rates, which
-    // nothing reads now.
-    let _ = fs::remove_file(options.state.join("connections.json"));
+    // Where each network's rates were kept from one stay to the next, by
+    // the round trip's controller and then the one-way one, which nothing
+    // reads now, with the half-written copy its writer could leave.
+    for kept in ["connections.json", "learned.json", "learned.json.new"] {
+        let _ = fs::remove_file(options.state.join(kept));
+    }
     let (send, echoes): (_, Receiver<Echo>) = channel();
     let mut shaped: BTreeMap<String, Shaped> = BTreeMap::new();
     let began = Instant::now();
@@ -1202,9 +1196,9 @@ fn look(
         match shaped.get_mut(&uplink.name) {
             None => {
                 let name = uplink.name.clone();
-                let learned = options.state.join("learned.json");
-                let kept = (learned.as_path(), options.networks.as_deref());
-                if let Some(mut s) = start(uplink, kept, &options.hosts, send) {
+                if let Some(mut s) =
+                    start(uplink, options.networks.as_deref(), &options.hosts, send)
+                {
                     if options.turn_download {
                         s.download = Download::Kept;
                     }

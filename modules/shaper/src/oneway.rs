@@ -40,13 +40,13 @@
 //! has.
 //!
 //! What a direction learned of its connection, its base and the plateau a
-//! router that queues flow by flow showed it, outlasts the stay: a network
-//! met again starts from it, so the first upload after a restart or a
-//! rejoin is held under that router at once rather than after it has been
-//! found again.
+//! router that queues flow by flow showed it, lasts the stay and no
+//! longer: a network met again is found again, since what a stay learned
+//! may be its cuts' own doing, as home's 4,586 was on 16 November, and a
+//! line moves between stays.
 //!
 //! A network whose line is declared, its anchor, starts at the anchor's
-//! hold instead, since what it learned may be the cuts' own doing. There a
+//! hold, its plateau counted as reached through the start. There a
 //! wait only the VPN's round trip meets is cut for only while the link
 //! carries near that hold: under it, the line has room, the router queues
 //! nothing, and the wait is the VPN's own, said in the why line and left
@@ -95,9 +95,9 @@ const UNSEEN_DRAIN_S: f64 = 5.0;
 /// only the VPN's round trip meets cuts it to: the line carried that, and
 /// a line that fell further is met by the probes on the link.
 const UNSEEN_FLOOR: f64 = 0.5;
-/// How long a start counts the plateau it learned before as reached: the
+/// How long a start counts the plateau an anchor gave it as reached: the
 /// seconds every flow takes to start again, after which a line that fell
-/// under what was learned is found from what the stay carries.
+/// under the anchor is found from what the stay carries.
 const STARTING_S: f64 = 30.0;
 /// How fast a full, clear direction climbs, and an idle one drifts, each
 /// second.
@@ -381,47 +381,6 @@ impl Ours {
     }
 }
 
-/// What a direction learned of its connection that outlasts a stay, in
-/// kbit/s: its base, and the plateau a router that queues flow by flow
-/// showed it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct Learned {
-    /// Kept as `line` since 11 November: a base kept before counted what
-    /// the link sent, a transfer across the home network included, and
-    /// held 282 Mbit/s of a 12 Mbit/s upload, so each network learns its
-    /// bases once more and keeps its plateaus.
-    #[serde(rename = "line", default)]
-    pub base: Option<f64>,
-    /// Kept as `held` since 11 November: cuts a second apart for a queue
-    /// only the VPN met saved a plateau of 1,424 on a 12 Mbit/s upload,
-    /// which held every later start there, so each network finds its
-    /// plateau once more.
-    #[serde(rename = "held", default)]
-    pub plateau: Option<f64>,
-}
-
-impl Learned {
-    /// What this says, and what `older` said where this says nothing: a
-    /// stay that learned no plateau, a replayed one among them, forgets
-    /// none.
-    pub fn over(self, older: Learned) -> Learned {
-        Learned {
-            base: self.base.or(older.base),
-            plateau: self.plateau.or(older.plateau),
-        }
-    }
-
-    /// Whether either rate moved by more than a twentieth from `from`, or
-    /// came or went.
-    pub fn moved(self, from: Learned) -> bool {
-        let far = |a: Option<f64>, b: Option<f64>| match (a, b) {
-            (Some(a), Some(b)) => (a - b).abs() * 20.0 > a.max(b),
-            (a, b) => a.is_some() != b.is_some(),
-        };
-        far(self.base, from.base) || far(self.plateau, from.plateau)
-    }
-}
-
 /// A held download's queue since it last moved: since when, and the
 /// least and the most its delay has been since it was first held.
 #[derive(Clone, Copy, Debug)]
@@ -459,8 +418,8 @@ pub struct Way {
     /// carried for that long, queue or not, in this stay.
     carrying: VecDeque<(f64, f64)>,
     reached: f64,
-    /// The plateau a start took from what it learned before, which counts
-    /// as reached until `STARTING_S` into the stay, and until when.
+    /// The plateau a start took from its anchor, which counts as reached
+    /// until `STARTING_S` into the stay, and until when.
     started_from: f64,
     starting_until: Option<f64>,
     /// Since when data has waited with our CAKE holding nothing, and what
@@ -489,8 +448,8 @@ pub struct Way {
 }
 
 impl Way {
-    /// A direction on a network whose base is `base`, if one was learned,
-    /// starting there; with none, it starts with no limit. A known base
+    /// A direction starting at `base`, where a test gives one; the shaper
+    /// starts each stay with none, and so with no limit. A known base
     /// counts as one of the connection's rates, so a single cut under
     /// another machine's flow doesn't replace it.
     pub fn new(base: Option<f64>) -> Way {
@@ -565,41 +524,10 @@ impl Way {
         self.tuning.most_kbit.is_some_and(|most| self.rate >= most)
     }
 
-    /// A direction starting from what it learned before: at its base, and
-    /// with a plateau, held under it and looking for more room as soon as
-    /// data waits, so a plateau gone stale either way is soon set right.
-    pub fn from_learned(learned: Learned) -> Way {
-        let mut way = Way::new(learned.base);
-        // A plateau under half the base would hold the stay where the
-        // guard lets go of it a minute in, and a stay shorter than that,
-        // as a proof's are, saves it again: proof 7 on 11 November left
-        // 2,620 on a base of 11,148. So a start lets go of it at once.
-        let plateau = learned
-            .plateau
-            .filter(|&plateau| learned.base.is_none_or(|base| plateau >= base * 0.5));
-        if let Some(plateau) = plateau {
-            way.plateau = Some(plateau);
-            way.rate = way.rate.min((plateau * HOLD).max(LEAST_KBIT));
-            // The link carried the plateau on this network, so the start
-            // counts it as reached. With nothing reached, the seconds after
-            // a start, while every flow starts again, passed for the line:
-            // at 03:41 on 14 November they taught a plateau of 1,404 over
-            // one of about 7,600.
-            way.started_from = plateau;
-        }
-        way
-    }
-
-    /// What this direction has learned that outlasts the stay.
-    pub fn learned(&self) -> Learned {
-        Learned {
-            // What a clear spell proved outlasts a lower base, so a base
-            // learned wrong is put right by the first fast, clear stay. It
-            // makes none where none was learned, which would hold a start
-            // the plateau sets.
-            base: self.base.map(|base| base.max(self.proven * 0.9)),
-            plateau: self.plateau,
-        }
+    /// What got through when a queue was last found past our CAKE, in
+    /// kbit/s, which the rate is held under; none before one was.
+    pub fn plateau(&self) -> Option<f64> {
+        self.plateau
     }
 
     /// The most the line is known to carry in this stay: what it carried,
@@ -1316,8 +1244,8 @@ pub struct Controller {
 }
 
 impl Controller {
-    /// A controller for a network whose bases, up and down, were learned
-    /// before, or not.
+    /// A controller starting at bases `up` and `down`, where a test gives
+    /// them; the shaper starts each stay with none.
     pub fn new(up: Option<f64>, down: Option<f64>) -> Controller {
         Controller {
             up: Way::new(up),
@@ -1358,7 +1286,7 @@ impl Controller {
     }
 
     /// Starts a stay on an anchored network at the anchor's hold, whatever
-    /// the network learned: what it learned may be the cuts' own doing, as
+    /// it holds now: a plateau held under cuts may be their own doing, as
     /// home's 4,586 was on 16 November, and the guard takes a minute to
     /// undo it. A controller already stepping is left as it is.
     pub fn start_at_the_anchor(&mut self) {
@@ -1388,19 +1316,6 @@ impl Controller {
         let at = self.last_at.unwrap_or(0.0);
         let since = self.why_since.unwrap_or(at);
         crate::why::say(self.why, self.up.limit(), self.anchor, at - since)
-    }
-
-    /// A controller for a network met before, from what each direction
-    /// learned of it.
-    pub fn from_learned(up: Learned, down: Learned) -> Controller {
-        Controller {
-            up: Way::from_learned(up),
-            down: Way {
-                download: true,
-                ..Way::from_learned(down)
-            },
-            ..Controller::new(None, None)
-        }
     }
 
     /// The least a call's round trip through the VPN is taken to be, in
@@ -1730,6 +1645,43 @@ mod tests {
     use super::*;
     use crate::replay::{self, Base, Stay};
 
+    /// Where a direction starts a test, in kbit/s: a base and a plateau,
+    /// as a stay reaches them partway through.
+    #[derive(Clone, Copy, Default)]
+    struct Learned {
+        base: Option<f64>,
+        plateau: Option<f64>,
+    }
+
+    impl Way {
+        /// A direction partway through a stay, at `learned`'s base and held
+        /// under its plateau, counting the plateau as reached. A start
+        /// builds its own (`start_at_the_anchor`, pinned by its test).
+        fn from_learned(learned: Learned) -> Way {
+            let mut way = Way::new(learned.base);
+            if let Some(plateau) = learned.plateau {
+                way.plateau = Some(plateau);
+                way.rate = way.rate.min((plateau * HOLD).max(LEAST_KBIT));
+                way.started_from = plateau;
+            }
+            way
+        }
+    }
+
+    impl Controller {
+        /// A controller whose directions start at `up` and `down`.
+        fn from_learned(up: Learned, down: Learned) -> Controller {
+            Controller {
+                up: Way::from_learned(up),
+                down: Way {
+                    download: true,
+                    ..Way::from_learned(down)
+                },
+                ..Controller::new(None, None)
+            }
+        }
+    }
+
     #[test]
     fn a_plateau_learned_before_holds_under_the_router_at_once() {
         let at = |held: &[(f64, Option<u64>)], s: f64| {
@@ -1820,29 +1772,6 @@ mod tests {
         assert!(
             near(limits, 5_700.0),
             "held under the fallen line: {limits:?}"
-        );
-    }
-
-    #[test]
-    fn what_a_direction_learned_outlasts_a_stay_that_learned_less() {
-        let old = Learned {
-            base: Some(10_000.0),
-            plateau: Some(12_000.0),
-        };
-        let replayed = Learned {
-            base: Some(10_200.0),
-            plateau: None,
-        };
-        let kept = replayed.over(old);
-        assert_eq!(kept.plateau, Some(12_000.0));
-        assert_eq!(kept.base, Some(10_200.0));
-        assert!(
-            !kept.moved(old),
-            "a base a fiftieth off was taken for a move"
-        );
-        assert!(
-            Learned::default().moved(old),
-            "forgetting both wasn't a move"
         );
     }
 
@@ -2267,7 +2196,7 @@ mod tests {
             });
             at += 0.1;
         }
-        let kept = c.down.learned().base.expect("a base");
+        let kept = c.down.connection().expect("a base");
         assert!(
             kept >= 170_000.0,
             "kept {kept}, after carrying 200,000 clear"
@@ -2515,40 +2444,10 @@ mod tests {
                 Tunnel::Unheard,
             );
         }
-        let base = way.learned().base.expect("a base");
+        let base = way.connection().expect("a base");
         assert!(base < 12_000.0, "proved {base} of a home transfer");
         let plateau = way.reached;
         assert!(plateau < 12_000.0, "reached {plateau} of a home transfer");
-    }
-
-    #[test]
-    fn a_base_or_plateau_kept_before_is_learned_again() {
-        let old = r#"{"base": 282090.8, "line": null, "plateau": 1423.7}"#;
-        let learned: Learned = serde_json::from_str(old).expect("a learned");
-        assert_eq!(learned.base, None, "kept a base a home transfer taught");
-        assert_eq!(learned.plateau, None, "kept a plateau hasty cuts taught");
-        let kept = Learned {
-            base: Some(11_148.0),
-            plateau: Some(10_759.0),
-        };
-        let again: Learned =
-            serde_json::from_str(&serde_json::to_string(&kept).expect("json")).expect("back");
-        assert_eq!(again, kept, "a base kept now is read back");
-    }
-
-    #[test]
-    fn a_start_lets_go_of_a_plateau_under_half_its_base() {
-        let way = Way::from_learned(Learned {
-            base: Some(11_148.0),
-            plateau: Some(2_620.0),
-        });
-        assert_eq!(way.plateau, None, "kept a plateau the guard lets go of");
-        assert_eq!(way.limit(), Some(11_148));
-        let way = Way::from_learned(Learned {
-            base: Some(16_373.0),
-            plateau: Some(10_020.0),
-        });
-        assert_eq!(way.limit(), Some(9_519), "a plateau over half is kept");
     }
 
     #[test]
@@ -3747,6 +3646,37 @@ mod tests {
         lowest
     }
 
+    #[test]
+    fn a_stay_on_a_declared_network_starts_at_its_anchor_s_hold() {
+        let mut c = Controller::new(None, None);
+        c.anchor(Some(12_000.0));
+        c.start_at_the_anchor();
+        let hold = 12_000.0 * ANCHOR_HOLD;
+        assert_eq!(
+            c.up.limit(),
+            Some(crate::rate::whole(hold)),
+            "not held at the anchor's hold"
+        );
+        let plateau = hold / c.up.tuning.hold;
+        assert_eq!(
+            c.up.plateau,
+            Some(plateau),
+            "its plateau isn't the anchor's"
+        );
+        assert!(
+            (c.up.started_from - plateau).abs() < 1e-9,
+            "the start's seconds wouldn't count the plateau as reached: {}",
+            c.up.started_from
+        );
+        let mut unanchored = Controller::new(None, None);
+        unanchored.start_at_the_anchor();
+        assert_eq!(
+            unanchored.up.limit(),
+            None,
+            "an undeclared network started held"
+        );
+    }
+
     fn anchored(plateau: f64) -> Controller {
         let mut c = Controller::from_learned(
             Learned {
@@ -4127,7 +4057,7 @@ mod tests {
         unanchored.start_at_the_anchor();
         assert!(
             unanchored.up.limit().is_some_and(|l| l < 5_000),
-            "with no anchor: {:?}",
+            "a start with no anchor moved the hold: {:?}",
             unanchored.up.limit()
         );
     }
