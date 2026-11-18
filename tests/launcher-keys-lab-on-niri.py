@@ -14,6 +14,10 @@ first, so a step into Programs is profiled over as many rows as Joel's. Given LA
 ids and names as `google-chrome=Google Chrome`, comma between, it installs those too, each with
 two actions, so a program's own page, whose provider keys it by its id, is there to step into,
 by Tab as Joel goes into one given LAB_STEP_KEY=tab (Return, the default, starts a program).
+Given LAB_BACK too, it steps back out of that place with - each round and prints that step's
+line, and given LAB_WINDOWS, it opens that many windows first, so Windows holds some. Given
+LAB_CHORD, a place's name as its chord asks for it, it opens that place from shut each round
+and steps out of it to home with nothing typed, as Joel's Super+Tab then - does.
 Given LAB_WITHIN too, names of the launcher's functions, it says what their calls took and what
 ran inside them. Given LAB_CHANGES, it
 leaves the first word typed at home each round while a window holding it in its title takes that
@@ -67,8 +71,8 @@ HEARD = 400
 # How many of the slowest searches' time before gathering is said apart.
 SLOWEST = 6
 
-# How many of a span's costliest places are said.
-COSTLIEST = 25
+# How many of a span's costliest places are said, unless LAB_COSTLIEST says otherwise.
+COSTLIEST = int(os.environ.get("LAB_COSTLIEST", "25"))
 
 # How long a window LAB_CHANGES retitles keeps each title, in seconds, longer than the pace a
 # change waits on, so each is a refresh of its own.
@@ -170,11 +174,13 @@ def named(given: str, step: str, key: str) -> None:
         )
 
 
-def stepped_from_home(shell: Shell, name: str, key: str = "ret") -> str | None:
+def stepped_from_home(shell: Shell, name: str, key: str = "ret") -> tuple[str | None, str | None]:
     """Open home, find the place by its name, step in by `key`, and give the step's line.
 
     The step's line is a key's, typed as an arrow and the place's name, said only for a step
-    Joel could feel (launcher/Trials.js's felt); one quicker gives none.
+    Joel could feel (launcher/Trials.js's felt); one quicker gives none. Given LAB_BACK, it then
+    steps back out with -, and gives that step's line second, as Joel's out of Windows took 53
+    and 58 ms to their frames (his journal, 2026-11-17 23:05 and 2026-11-18 10:43); else None.
     """
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     shell.as_account(shell.ipc("toggle"))
@@ -188,9 +194,44 @@ def stepped_from_home(shell: Shell, name: str, key: str = "ret") -> str | None:
     while step not in said and time.monotonic() < deadline:
         time.sleep(launcher_on_niri.POLL)
         said = keys_said(shell, since)
+    out = stepped_out(shell) if os.environ.get("LAB_BACK") else None
     shell.close_launcher()
     shell.launcher_until(lambda shown: not shown["open"])
-    return said.get(step)
+    return said.get(step), out
+
+
+def chorded_out(shell: Shell, place: str) -> str | None:
+    """Open the place from shut as its chord does, step out to home, and give the step's line.
+
+    Nothing is typed, so no words are put back and the step searches nothing, as Joel's out of
+    Windows spent 13 to 20 ms of its 53 and 58 ms before it searched (2026-11-17 and 18).
+    """
+    shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    shell.as_account(shell.ipc("collection", place))
+    shell.launcher_until(lambda shown: shown["open"] and len(shown["held"]) > 0)
+    out = stepped_out(shell)
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: not shown["open"])
+    return out
+
+
+def stepped_out(shell: Shell) -> str | None:
+    """Press - from normal in the place held, and give the step out's line, typed as ← and its name.
+
+    None when the step was quicker than Joel could feel, as a step in's is.
+    """
+    shell.normal()
+    depth = len(shell.showing()["held"])
+    since = shell.mark()
+    shell.send_chars("-")
+    shell.launcher_until(lambda shown: len(shown["held"]) < depth)
+    deadline = time.monotonic() + SAYING
+    while time.monotonic() < deadline:
+        out = [typed for typed in keys_said(shell, since) if typed.startswith("\u2190 ")]
+        if out:
+            return f"{out[0]}: {keys_said(shell, since)[out[0]]}"
+        time.sleep(launcher_on_niri.POLL)
+    return None
 
 
 def changed_under_words(shell: Shell, word: str, count: int, folder: Path) -> list[str]:
@@ -542,6 +583,8 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
             )
         # Typed once untimed first, as the openings' lab opens once, for what a fresh shell
         # pays only once: its first search compiles what Joel's has run since he logged in.
+        for nth in range(int(os.environ.get("LAB_WINDOWS", "0"))):
+            shell.opened(f"Lab {nth}", app="foot")
         typed_from_home(shell, words[0])
         rounds = changed_instead(shell, words[0], rounds, tmp_path, capsys)
         if step:
@@ -550,9 +593,15 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
             for word in words[round_ % len(words) :] + words[: round_ % len(words)]:
                 tallied(round_, word, typed_from_home(shell, word), parts, capsys)
             if step:
-                line = stepped_from_home(shell, step, step_key)
+                line, out = stepped_from_home(shell, step, step_key)
                 with capsys.disabled():
                     print(f"lab-step {round_} {step}: {line or 'under the felt'}", flush=True)
+                    if os.environ.get("LAB_BACK"):
+                        print(f"lab-back {round_}: {out or 'under the felt'}", flush=True)
+            if chord := os.environ.get("LAB_CHORD"):
+                out = chorded_out(shell, chord)
+                with capsys.disabled():
+                    print(f"lab-chord {round_}: {out or 'under the felt'}", flush=True)
         if profiler is not None:
             flushed(profiler, trace)
     heard: list[str] = []
