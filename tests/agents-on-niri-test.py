@@ -1866,7 +1866,8 @@ def test_what_a_link_opens_drops_keys_at_first_and_takes_no_return_before_a_key(
         shell.close_launcher()
         # An empty field's Return sends nothing anyway, so the Return that must wait for a key
         # is pressed on those kept words, past the quiet of the link that opened them.
-        assert followed(shell, "talkTo", "LISTEN")["done"]
+        did = followed(shell, "talkTo", "LISTEN")
+        assert did["done"], did
         shell.launcher_until(lambda shown: talking(shown) and shown["typed"] == LINK_KEYS)
         shell.send_key("ret")
         # A Return taken would send at once; this gives it the time to.
@@ -1916,7 +1917,7 @@ def typed_after_a_link(
         return up(field(shown))
 
     def heard(typed: Json) -> int:
-        return typed["quietDropped"] + len(typed["typed"]) - len(was[0])
+        return int(typed["quietDropped"]) + len(typed["typed"]) - len(was[0])
 
     shell.launcher_until(ready)
     shell.send_chars(LINK_KEYS)
