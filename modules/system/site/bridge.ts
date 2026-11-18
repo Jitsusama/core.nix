@@ -16,7 +16,7 @@
 
 import { escaped } from "./draw.ts";
 import { standing } from "./machine.ts";
-import type { Thing } from "./model.ts";
+import { type Thing, WORDS } from "./model.ts";
 import type { Place } from "./ties.ts";
 
 /** One way of drawing the bridge: how wide, how many piers, how many dots. */
@@ -173,22 +173,45 @@ function wherePlaces(thing: Thing): string {
   return places.map((place) => `<span>${escaped(placeWords(place))}</span>`).join("");
 }
 
-/** The bridge drawn one way: the names over it, the drawing, the places under it. */
+/** A machine's name, as it is said over or under its pier. */
+function nameOf(thing: Thing): string {
+  return `<span class="name" translate="no">${escaped(thing.name)}</span>`;
+}
+
+/** How a machine stands, after its health mark. */
+function standsOf(thing: Thing): string {
+  return `<span class="health ${thing.health}"><span class="mark ${thing.health}" aria-hidden="true"></span>${escaped(standing(thing, 1))}</span>`;
+}
+
+/**
+ * The bridge drawn one way: the names over it, the drawing, the places under
+ * it. A narrow pier is too slim to carry how its machine stands in words, so
+ * there only its name and health mark stand over it, and its standing goes
+ * under the bridge with its places, a machine to a line.
+ */
 function variantOf(things: readonly Thing[], variant: Variant): string {
   const shown = things.slice(0, variant.piers);
   const count = shown.length;
   const xs = shown.map((_, at) => centre(at, count, variant.width));
   const cells = shown.map((thing, at) => cellsAt(thing, xs[at] ?? 0, variant));
+  const narrow = variant.name === NARROW.name;
   const captions = shown
-    .map(
-      (thing) =>
-        `<li><span class="name" translate="no">${escaped(thing.name)}</span><span class="health ${thing.health}"><span class="mark ${thing.health}" aria-hidden="true"></span>${escaped(standing(thing, 1))}</span></li>`,
+    .map((thing) =>
+      narrow
+        ? `<li>${nameOf(thing)}<span class="mark ${thing.health}" aria-hidden="true"></span><span class="sr"> (${WORDS[thing.health].toLowerCase()})</span></li>`
+        : `<li>${nameOf(thing)}${standsOf(thing)}</li>`,
     )
     .join("");
   const thread = Math.min(...cells.map((one) => one.top)) - THREAD_OVER;
   const top = thread - CREST;
   const svg = `<svg viewBox="0 ${top} ${variant.width} ${HEIGHT - top}" aria-hidden="true" focusable="false">${threadOf(xs, thread)}${cells.map((one) => `<g class="cells">${one.dots}</g>`).join("")}<line class="deck" x1="${MARGIN}" y1="${DECK}" x2="${variant.width - MARGIN}" y2="${DECK}"/><line class="deck under" x1="${MARGIN}" y1="${UNDER}" x2="${variant.width - MARGIN}" y2="${UNDER}"/>${spansOf(xs, variant)}${shown.map((thing, at) => pierAt(thing, xs[at] ?? 0, variant)).join("")}${waterOf(variant.width)}</svg>`;
-  const places = shown.map((thing) => `<li>${wherePlaces(thing)}</li>`).join("");
+  const places = shown
+    .map((thing) =>
+      narrow
+        ? `<li>${nameOf(thing)}${standsOf(thing)}${wherePlaces(thing)}</li>`
+        : `<li>${wherePlaces(thing)}</li>`,
+    )
+    .join("");
   const more = things.length - count;
   const moreLine =
     more > 0

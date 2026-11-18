@@ -308,6 +308,35 @@ html:not([data-theme="light"]) body {
   font: var(--words-weight) var(--step-body) / 1.35 var(--serif);
 }
 
+/* A narrow pier carries only its name and mark; under the bridge each
+   machine then says how it stands and where it meets the network, a
+   machine to a line. */
+.bridge .narrow .over li {
+  grid-auto-flow: column;
+  justify-content: center;
+  align-items: center;
+  gap: var(--mark);
+}
+
+.bridge .narrow .under {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--tie);
+  margin-block-start: var(--items);
+  text-align: start;
+}
+
+.bridge .narrow .under li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--mark);
+}
+
+.bridge .narrow .under .name {
+  color: var(--strong);
+  font-weight: var(--title-weight);
+}
+
 .bridge .under .unread {
   color: var(--muted);
   font-style: italic;

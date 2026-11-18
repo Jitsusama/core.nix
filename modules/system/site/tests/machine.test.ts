@@ -169,10 +169,10 @@ it("its cells are counted busy and idle, with those ended aside", () => {
     cellsSaid(tiesOf({ cells: { busy: 4, idle: 0, ended: 0 } })).said,
     "4 busy and none idle",
   );
-  assert.equal(
-    cellsSaid(tiesOf({ cells: { busy: 0, idle: 0, ended: 1 } })).said,
-    "None busy or idle",
-  );
+  assert.deepEqual(cellsSaid(tiesOf({ cells: { busy: 0, idle: 0, ended: 1 } })), {
+    said: "None busy or idle",
+    aside: "And 1 that has ended.",
+  });
   assert.equal(cellsSaid(tiesOf({ cells: null })).said, "Not read");
 });
 
@@ -196,6 +196,17 @@ it("its network says where it meets it, by band or by wire, and how well", () =>
       device: "mac:d0",
     },
     "each place's figures stay with it, in the order the places are said",
+  );
+  const unmeasured = tiesOf({
+    network: [
+      { device: "mac:66", by: null, point: "Hall", bars: null, room_mbps: null },
+      { device: "mac:d0", by: "wired", point: "Den", bars: null, room_mbps: 941 },
+    ],
+  });
+  assert.equal(
+    networkSaid(unmeasured).aside,
+    "Not measured; 941 Mb/s of room.",
+    "a place not measured keeps its turn, so the next one's figure stays its own",
   );
   assert.deepEqual(networkSaid(tiesOf({ network: [] })), {
     said: "Not seen on the home network",

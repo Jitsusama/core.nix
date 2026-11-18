@@ -170,8 +170,7 @@ function cellsSaid(ties: Ties): Said {
   if (cells === undefined) {
     return { said: NOT_READ, aside: "The mycelium's health couldn't be had." };
   }
-  const counted = (count: number): string =>
-    count === 0 ? "none" : count.toLocaleString("en-CA");
+  const counted = (count: number): string => (count === 0 ? "none" : count.toLocaleString("en-CA"));
   const said =
     cells.busy === 0 && cells.idle === 0
       ? "None busy or idle"
@@ -181,7 +180,7 @@ function cellsSaid(ties: Ties): Said {
     aside:
       cells.ended === 0
         ? "None has ended."
-        : `And ${cells.ended.toLocaleString("en-CA")} that have ended.`,
+        : `And ${cells.ended.toLocaleString("en-CA")} that ${cells.ended === 1 ? "has" : "have"} ended.`,
   };
 }
 
@@ -241,11 +240,12 @@ function networkSaid(ties: Ties): Said & { readonly device: string | undefined }
     };
   }
   const said = places.map((place, at) => meets(place, at === 0)).join(", and ");
-  const reaches = places.map(reach).filter((reached) => reached !== undefined);
-  const aside =
-    reaches.length === 0
-      ? "How much room it has isn't measured."
-      : stopped(capital(reaches.join("; ")));
+  // A place not measured keeps its turn among those that are, so each
+  // figure stays beside the place it was said after.
+  const reaches = places.map(reach);
+  const aside = reaches.every((reached) => reached === undefined)
+    ? "How much room it has isn't measured."
+    : stopped(capital(reaches.map((reached) => reached ?? "not measured").join("; ")));
   return { said, aside, device: places[0]?.device };
 }
 

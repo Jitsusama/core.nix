@@ -97,10 +97,23 @@
 /* ---- The ties: each a name, what it says, what is aside, and the way to
    see it whole. ---- */
 
+/* Wide enough that none is squeezed, and one to a row on a phone; each
+   tie's parts share their rows with its neighbours', so a name, its words
+   and its aside read level across. */
 .ties {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
   gap: var(--groups);
+}
+
+@supports (grid-template-rows: subgrid) {
+  .tie {
+    display: grid;
+    grid-row: span 4;
+    grid-template-rows: subgrid;
+    row-gap: 0;
+    align-content: start;
+  }
 }
 
 .tie h3 {

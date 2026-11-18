@@ -57,6 +57,35 @@ it("names each machine over its pier, with its health in words", () => {
   assert.ok(drawn.includes("Hall, 2.4 GHz"));
 });
 
+/** What `drawn` lists in its `ol` of class `list`, over or under the drawing. */
+function listed(drawn: string, list: "over" | "under"): string {
+  const from = drawn.indexOf(`<ol class="${list}">`);
+  return drawn.slice(from, drawn.indexOf("</ol>", from));
+}
+
+it("keeps only each name and its health mark over a narrow pier", () => {
+  const { narrow } = variants(bridgeOf([machine("kestrel", 2, 1, "watch")]));
+  const over = listed(narrow, "over");
+  assert.ok(over.includes('translate="no">kestrel</span>'));
+  assert.ok(over.includes('class="mark watch"'));
+  assert.ok(over.includes("(watch)"));
+  assert.ok(!over.includes("filling disk"));
+});
+
+it("says each machine's name, standing and places under the narrow bridge", () => {
+  const { narrow } = variants(bridgeOf([machine("kestrel", 2, 1, "watch")]));
+  const under = listed(narrow, "under");
+  assert.ok(under.includes('translate="no">kestrel</span>'));
+  assert.ok(under.includes("Watch: filling disk, 135 GB free<"));
+  assert.ok(under.includes("Hall, 2.4 GHz"));
+});
+
+it("keeps each name and standing over a wide pier, and only places under it", () => {
+  const { wide } = variants(bridgeOf([machine("kestrel", 2, 1, "watch")]));
+  assert.ok(listed(wide, "over").includes("Watch: filling disk, 135 GB free<"));
+  assert.ok(!listed(wide, "under").includes("kestrel"));
+});
+
 it("sets a filled dot for each busy cell and a hollow one for each idle", () => {
   const { wide } = variants(bridgeOf([machine("kestrel", 3, 2, "good")]));
   assert.equal(count(wide, 'class="busy"'), 3);
