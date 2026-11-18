@@ -4827,6 +4827,15 @@ def test_an_ended_quest_is_found_read_and_followed(shell: Shell, quests: StandIn
         del quests.unserved[key]
 
 
+def test_a_process_gone_as_niri_is_looked_for_is_no_niri(tmp_path: Path) -> None:
+    """A process that ended between /proc's listing and its reading is passed, not a failure.
+
+    The shell's commands come and go while niri is held, so one ended just as niri was looked
+    for, and its cmdline, gone, failed the case holding niri.
+    """
+    assert not launcher_on_niri.nested_niri(tmp_path / "4242"), "a gone process was a niri"
+
+
 def test_a_daemons_change_niri_holds_back_is_presented_late(shell: Shell, quests: StandIn) -> None:
     """A change drawn while niri is held is said presented only once niri shows it, too late.
 

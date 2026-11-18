@@ -640,15 +640,27 @@ def placed(said: str) -> Json | None:
     return None if at == "nowhere" else cast("Json", json.loads(at))
 
 
+def nested_niri(process: Path) -> bool:
+    """Say whether the process at /proc's `process` is the nested niri, run with -c.
+
+    A process that ends between /proc's listing and this read is gone, so it's no niri: the
+    shell's own commands come and go throughout, and one ending then failed a case.
+    """
+    try:
+        return (process / "cmdline").read_bytes().split(b"\0")[1:2] == [b"-c"] and (
+            process / "comm"
+        ).read_text().strip() == "niri"
+    except FileNotFoundError, ProcessLookupError:
+        return False
+
+
 @contextlib.contextmanager
 def niri_held() -> Iterator[None]:
     """Hold the nested niri stopped while what's done inside it runs, so it answers no frame."""
     held = [
         int(process.name)
         for process in Path("/proc").iterdir()
-        if process.name.isdigit()
-        and (process / "cmdline").read_bytes().split(b"\0")[1:2] == [b"-c"]
-        and (process / "comm").read_text().strip() == "niri"
+        if process.name.isdigit() and nested_niri(process)
     ]
     assert len(held) == 1, f"there should be one niri to hold, not {held}"
     os.kill(held[0], signal.SIGSTOP)
