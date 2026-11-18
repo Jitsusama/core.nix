@@ -745,6 +745,11 @@ Provider {
     Connections {
         target: Sessions
 
+        // New work Joel started opens as soon as its session is up.
+        function onRunningChanged() {
+            provider.openSprouted();
+        }
+
         function onUnjoined(session) {
             provider.launcher?.tellOnOpen([[session.address,
                 provider.elsewhere(session.reachable ? "unheld" : "unreached", session),
@@ -1450,8 +1455,8 @@ Provider {
     // work was too hard to do at all): From a Link, then one row for each
     // repository the open quests work in, each asking for a link or a few
     // words and asking the agents daemon to sprout them (Sprouting.js), a
-    // quest of its own whose session starts held in no window, which Go To
-    // opens. Folded, found by its name, as Start a Session is.
+    // quest of its own whose session starts held, its window opened for him
+    // once it's up (openSprouted). Folded, found by its name, as Start a Session is.
     // Its rows are made only when it's stepped into (inside), so it costs
     // the first letter typed at home one folded row.
     readonly property var startNewWork: {
@@ -1550,7 +1555,7 @@ Provider {
         return Words.of("agents:start-new-work").said ?? {};
     }
     // How the running act ended, said on it and in the journal; another
-    // may start from here.
+    // may start from here. One started opens once its session is up.
     function sprouted(how) {
         const key = sprouting;
         sprouting = "";
@@ -1558,6 +1563,73 @@ Provider {
         sproutSays(key, Sprouting.told(how, sproutWords()));
         Report.say(how.started ? `sprouted new work on ${how.machine}`
             : `couldn't sprout new work: ${how.why}`);
+        if (how.started && how.held !== "") {
+            openings = openings.concat([{ key: key, held: how.held, machine: how.machine,
+                since: Date.now(), letters: provider.launcher?.lettersAt ?? 0 }]);
+            openSprouted();
+        }
+    }
+
+    // The sprouts waiting for their sessions, each `{ key, held, machine,
+    // since, letters }`, `letters` the launcher's lettersAt at the answer:
+    // Joel asked for each, so each opens for him, on the workspace a session
+    // goes to and focused (Sessions.goTo), rather than in no window (Joel,
+    // 18 November: "start new work does not seem to work from the
+    // launcher"). A list, so a second sprout never loses the first.
+    property var openings: []
+    readonly property int openingPatience: 60000
+    // Each that's up opens and goes, but takes the keys only while Joel
+    // still waits on its act in the launcher (Sprouting.waitsOn): once he's
+    // at something else, what he types could land in an agent's prompt, so
+    // the foot says it's up and Go To in Agents opens it. A session comes up
+    // in seconds; one not up within the minute is said unopened and opens no
+    // window later, when Joel may be at something else (Sprouting.settled).
+    // What a pass says goes to the foot in one tell, at once or when the
+    // launcher next opens, never as a notice.
+    function openSprouted() {
+        const stood = Sprouting.settled(openings, one => sessionOf(one), Date.now(),
+            openingPatience);
+        if (stood.late.length === 0 && stood.up.length === 0)
+            return;
+        openings = stood.waiting;
+        const told = stood.late.map(one => said(one, "unopened"));
+        stood.up.forEach(one => {
+            const text = openOne(one);
+            if (text !== "")
+                told.push(text);
+        });
+        if (told.length > 0)
+            provider.launcher?.tellOnOpen(told.map(text => [Words.name("agents:start-new-work"),
+                text]));
+    }
+    function sessionOf(one) {
+        return Sprouting.sproutedOf(Sessions.running, one.held, one.machine);
+    }
+    // Says `word` of `one` on its act, and gives the words for the foot.
+    function said(one, word) {
+        const text = String(sproutWords()[word] ?? "").replace("{machine}", one.machine);
+        sproutSays(one.key, text);
+        return text;
+    }
+    // Opens `one`'s session if Joel still waits on its act, giving "", or
+    // gives what the foot says of it left for Go To.
+    function openOne(one) {
+        const launcher = provider.launcher ?? null;
+        if (!Sprouting.waitsOn(launcher, one.key, one.letters)) {
+            Report.say(`new work's session ${one.session.address} is up; left for Go To`);
+            return said(one, "up");
+        }
+        said(one, "opening");
+        launcher.open = false;
+        Sessions.goTo(one.session);
+        Report.say(`opening new work's session ${one.session.address}`);
+        return "";
+    }
+    Timer {
+        interval: 5000
+        repeat: true
+        running: provider.openings.length > 0
+        onTriggered: provider.openSprouted()
     }
 
     // The sessions there are to reopen (Sessions.qml's toReopen): those the

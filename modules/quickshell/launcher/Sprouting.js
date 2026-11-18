@@ -6,8 +6,10 @@
 // asks the agents daemon, which asks the realm's node for a `Sprout`, the
 // request `mycelium sprout` makes, so the launcher and the command line
 // never choose differently: a quest of its own, seeded from what he said,
-// its session held in no window, which Go To opens when he wants it
-// (pivot of 16 November, 18:55: no session needs a window of its own).
+// its session held. He asked for it, so its window opens for him as soon
+// as it's up (Joel, 18 November: "start new work does not seem to work
+// from the launcher", when it started in no window and said so only on
+// the row he'd left); agents' own windows still go behind his.
 // The daemon asks only for the shell (modules/agents/src/asker.rs), since
 // the node takes it for Joel. The repositories come from the quests
 // daemon (modules/quests/src/folders.rs).
@@ -54,7 +56,8 @@ function refused(text, folder, said) {
 }
 
 // How it ended, from the daemon's `answer` (modules/agents/src/sprout.rs):
-// `{ started: true, machine }` once the node started it, else
+// `{ started: true, machine, held }` once the node started it, `held` the
+// id its holder keeps it by ("" where the node gave none), else
 // `{ started: false, why }` in the node's or the daemon's words, or
 // `said`'s where no daemon answered (null) or its answer can't be read.
 function ended(answer, said) {
@@ -63,7 +66,8 @@ function ended(answer, said) {
     }
     const begun = answer.sprouted;
     if (typeof begun?.machine === "string" && begun.machine !== "") {
-        return { started: true, machine: begun.machine };
+        return { started: true, machine: begun.machine,
+            held: typeof begun.held === "string" ? begun.held : "" };
     }
     const why = answer.error?.message;
     if (typeof why === "string" && why !== "") {
@@ -72,7 +76,65 @@ function ended(answer, said) {
     return { started: false, why: String(said.unread ?? "") };
 }
 
-// What the act that ran says of how it ended, in `said`'s words.
+// The session among `running` (Sessions.running) that the sprout held by
+// `held` on `machine` started, or null before it's up: here by its holder's
+// id, and elsewhere, which keeps no holder's id here, only on the machine the
+// node named, by the words that attach it, whose last names that id. A
+// session here whose attach words name it is another's, never this one.
+function sproutedOf(running, held, machine) {
+    if (held === "") {
+        return null;
+    }
+    const attaches = one => Array.isArray(one.attach) && one.attach[one.attach.length - 1] === held;
+    return (
+        running.find(one =>
+            one.here === false ? one.machine === machine && attaches(one) : one.held === held
+        ) ?? null
+    );
+}
+
+// Whether Joel still waits on the act `key` in `launcher`: open, on its row
+// or held in its ask, where Return leaves him with the field emptied, and no
+// letter typed since the answer, when its `lettersAt` was `letters`. Only
+// then may its window take the keys; otherwise what he types next, a new try
+// in the ask included, could go into an agent's prompt.
+function waitsOn(launcher, key, letters) {
+    const on = row => row?.key === key;
+    return (
+        launcher?.open === true &&
+        launcher.lettersAt === letters &&
+        (on(launcher.asking) || on(launcher.selected))
+    );
+}
+
+// How `openings` ({key, held, machine, since}) stand at `now`, `found`
+// giving each one's session or null: `late` have waited `patience`
+// milliseconds or more, and open nothing even if up by now, so a window
+// never comes past the minute it's said to; `up` came up within it, each
+// with its `session`; `waiting` are neither yet.
+function settled(openings, found, now, patience) {
+    const late = [];
+    const up = [];
+    const waiting = [];
+    for (const one of openings) {
+        const session = found(one);
+        if (now - one.since >= patience) {
+            late.push(one);
+        } else if (session) {
+            up.push(Object.assign({}, one, { session }));
+        } else {
+            waiting.push(one);
+        }
+    }
+    return { late, up, waiting };
+}
+
+// What the act that ran says of how it ended, in `said`'s words: one the node
+// started with no holder's id can't be found to open, so it promises none.
 function told(how, said) {
-    return how.started ? String(said.started ?? "").replace("{machine}", how.machine) : how.why;
+    if (!how.started) {
+        return how.why;
+    }
+    const words = how.held === "" ? said.unheld : said.started;
+    return String(words ?? "").replace("{machine}", how.machine);
 }
