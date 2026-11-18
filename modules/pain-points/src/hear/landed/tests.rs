@@ -175,6 +175,64 @@ fn a_note_to_a_group_takes_nothing_up_and_a_mention_grows_no_thread() {
 }
 
 #[test]
+fn a_status_note_naming_several_messages_closes_no_pain() {
+    let mut messages = tuple();
+    messages.insert(
+        1,
+        message("1-6LU6ZM-1-22222222", "6LU6ZM", "@WCJQSG", None, "in #e2"),
+    );
+    let status = "Z landed core #9, merged at 255494bb414c; on 186eeb39 and 22222222";
+    messages[5] = message("5-Z-1-cccccccc", "Z", "#orchestration/wcjqsg", None, status);
+    assert_eq!(
+        stands("e1", &["e1", "e2"], &messages, true),
+        taken("WCJQSG"),
+        "which of the two it answers isn't said"
+    );
+    messages[5].text = "Z landed core #9, merged at 255494bb414c, for 186eeb39".into();
+    assert_eq!(
+        stands("e1", &["e1", "e2"], &messages, true)
+            .closed_by
+            .as_deref(),
+        Some("255494bb414c"),
+        "one named, it answers that one"
+    );
+}
+
+#[test]
+fn a_pain_asked_again_is_followed_from_either_question() {
+    let mut messages = tuple();
+    messages.insert(
+        1,
+        message(
+            "1-6LU6ZM-2-33333333",
+            "6LU6ZM",
+            "@WCJQSG",
+            None,
+            "again: #e1",
+        ),
+    );
+    messages[2].re = Some("33333333".into());
+    assert_eq!(
+        stands("e1", &["e1"], &messages, false),
+        taken("WCJQSG"),
+        "the answer to the second ask"
+    );
+}
+
+#[test]
+fn an_entry_is_named_whole() {
+    let mut messages = tuple();
+    messages[0].text = "Joel hit something in mycelium:cell/LR3WMN#e10".into();
+    assert_eq!(
+        stands("e1", &["e1", "e10"], &messages, true),
+        Standing::default(),
+        "#e10 isn't #e1"
+    );
+    assert!(names("in #e1, and", "e1"), "before a comma");
+    assert!(names("in #e1", "e1"), "at the end");
+}
+
+#[test]
 fn a_note_of_two_landings_closes_nothing() {
     let mut two = tuple();
     two[4].text.push_str(", and #5343 merged at 3333333abcd");
@@ -257,11 +315,12 @@ fn messages_are_read_from_the_folder_and_its_days_in_order_sent() {
         dir.join("35-A-1-eeeeeeee.json"),
     )
     .expect("a link");
-    fs::write(
-        dir.join("36-A-1-ffffffff.json"),
-        " ".repeat(usize::try_from(READ_AT_MOST).expect("a size") + 1),
-    )
-    .expect("a big file");
+    // A message in every way but its size, so only the limit keeps it out.
+    let big = format!(
+        r#"{{"id":"36-A-1-ffffffff","from":"A","text":"{}"}}"#,
+        "t".repeat(usize::try_from(READ_AT_MOST).expect("a size"))
+    );
+    fs::write(dir.join("36-A-1-ffffffff.json"), big).expect("a big file");
     let ids: Vec<String> = messages(&dir, 10).into_iter().map(|m| m.id).collect();
     fs::remove_dir_all(&dir).expect("cleaned up");
     assert_eq!(

@@ -8,20 +8,23 @@
 //!
 //! The thread grows only by replies, and a note to a group takes nothing
 //! up: a status note names many messages, and following one would close
-//! pains its landings never touched. A question that held several pains
+//! pains its landings never touched. A landing that isn't a reply closes
+//! a pain only when the one message it names is in its thread, as a
+//! landing note names the pivot it answers. A question that held several pains
 //! is taken up by an answer but closed by no landing, since one rarely
 //! fixes them all; and the keeper's note of new pains asks nothing of
 //! anyone, so says nothing of any.
 
 use super::heard::Heard;
 use super::route::FOR_THE_KEEPER;
-use super::{ASK_AT_MOST, DAY_MS, Ears, ended_within, stalled};
+use super::{ASK_AT_MOST, DAY_MS, Ears, stalled};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::io::Read;
 use std::path::Path;
-use std::process::{Command, Stdio};
-use std::time::UNIX_EPOCH;
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
 /// The most of a message file read: the mesh's are a few kilobytes, and a
 /// run is held to 256 megabytes.
@@ -49,9 +52,9 @@ pub struct Standing {
 
 /// Takes up and closes, from the mesh and the machine, each pain of the
 /// last day still open to it; `asker` is who sent the questions. Says why
-/// none can close when the core the machine runs, or the git to ask of
-/// it, can't be read, so a fix that never closes doesn't read as one not
-/// on the machine yet.
+/// none can close when the messages, the core the machine runs, or the
+/// git to ask of it can't be read, so a fix that never closes doesn't
+/// read as one not on the machine yet.
 pub(super) fn stand(ears: &Ears, asker: Option<&str>, kept: &mut [Heard]) -> Option<String> {
     let still = |h: &Heard| h.closed_by.is_none() && !stalled::is(h) && h.at >= ears.at - DAY_MS;
     let since = kept
@@ -65,6 +68,9 @@ pub(super) fn stand(ears: &Ears, asker: Option<&str>, kept: &mut [Heard]) -> Opt
     let messages = messages(&ears.messages, since - 60_000);
     let core = core_on(&fs::read_to_string(&ears.switches).unwrap_or_default());
     let mut unclosed = match &core {
+        _ if !ears.messages.is_dir() => {
+            Some(format!("no messages are at {}", ears.messages.display()))
+        }
         None => Some(format!(
             "no switch's core is in {}",
             ears.switches.display()
@@ -79,26 +85,34 @@ pub(super) fn stand(ears: &Ears, asker: Option<&str>, kept: &mut [Heard]) -> Opt
         let (Some(core), None) = (&core, &unclosed) else {
             return false;
         };
-        *known.entry(commit.to_owned()).or_insert_with(|| {
-            let git = Command::new(&ears.git)
-                .arg("--git-dir")
-                .arg(&ears.core)
-                .args(["merge-base", "--is-ancestor", commit, core])
-                // The core's own settings alone, never the user's.
-                .env("GIT_CONFIG_GLOBAL", "/dev/null")
-                .env("GIT_CONFIG_NOSYSTEM", "1")
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn();
-            match git {
-                Ok(mut child) => ended_within(&mut child, ASK_AT_MOST),
-                Err(e) => {
-                    unclosed = Some(format!("{} wouldn't run: {e}", ears.git.display()));
-                    false
-                }
+        if let Some(&known) = known.get(commit) {
+            return known;
+        }
+        let child = Command::new(&ears.git)
+            .arg("--git-dir")
+            .arg(&ears.core)
+            .args(["merge-base", "--is-ancestor", commit, core])
+            // The core's own settings alone, never the user's.
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        let git = ears.git.display();
+        match git_said(child, ASK_AT_MOST) {
+            // An ancestor (0), or not (1); a commit the core doesn't hold
+            // (128) is another repository's, never on.
+            Ok(exit @ (0 | 1 | 128)) => *known.entry(commit.to_owned()).or_insert(exit == 0),
+            Ok(exit) => {
+                unclosed = Some(format!("{git} said {exit} of {commit} in {core}"));
+                false
             }
-        })
+            Err(why) => {
+                unclosed = Some(format!("{git} {why}"));
+                false
+            }
+        }
     };
     for h in kept.iter_mut().filter(|h| still(h)) {
         let found = standing(h, asker, &held, &messages, &mut on);
@@ -119,17 +133,26 @@ pub fn standing(
     messages: &[Message],
     on: &mut dyn FnMut(&str) -> bool,
 ) -> Standing {
-    let names = |text: &str, entry: &str| text.contains(&format!("#{entry}"));
-    let Some((at, first)) = messages.iter().enumerate().find_map(|(at, m)| {
-        let question = m.from.eq_ignore_ascii_case(asker)
-            && names(&m.text, &pain.entry)
-            && !m.text.contains(FOR_THE_KEEPER);
-        question.then(|| short(&m.id).map(|id| (at, id)))?
-    }) else {
+    // Each question naming the pain starts its thread, since a send that
+    // timed out after the node took it is sent again.
+    let questions: Vec<(usize, &str)> = messages
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| {
+            m.from.eq_ignore_ascii_case(asker)
+                && names(&m.text, &pain.entry)
+                && !m.text.contains(FOR_THE_KEEPER)
+        })
+        .filter_map(|(at, m)| short(&m.id).map(|id| (at, id)))
+        .collect();
+    let Some(&(at, _)) = questions.first() else {
         return Standing::default();
     };
-    let alone = held.iter().filter(|e| names(&messages[at].text, e)).count() == 1;
-    let mut thread = BTreeSet::from([first]);
+    let alone = questions
+        .iter()
+        .all(|&(at, _)| held.iter().filter(|e| names(&messages[at].text, e)).count() == 1);
+    let ids: BTreeSet<&str> = messages.iter().filter_map(|m| short(&m.id)).collect();
+    let mut thread: BTreeSet<&str> = questions.iter().map(|&(_, id)| id).collect();
     let mut standing = Standing::default();
     for m in &messages[at + 1..] {
         if m.from.eq_ignore_ascii_case(asker) {
@@ -139,14 +162,16 @@ pub fn standing(
             m.re.as_deref()
                 .and_then(short)
                 .is_some_and(|re| thread.contains(re));
-        let names_it = thread.iter().any(|id| m.text.contains(id));
+        let named: BTreeSet<&str> = words(&m.text).filter(|w| ids.contains(w)).collect();
+        let names_it = named.iter().any(|id| thread.contains(id));
         if replies || (names_it && m.to.iter().any(|to| to.starts_with('@'))) {
             standing.taken_by.get_or_insert_with(|| m.from.clone());
         }
-        // A note of two landings says which fixed nothing in particular.
+        // A note of two landings says which fixed nothing in particular,
+        // and one naming several messages which it answers.
         if let [commit] = merged_at(&m.text)[..]
             && alone
-            && (replies || names_it)
+            && (replies || (names_it && named.len() == 1))
             && standing.closed_by.is_none()
             && on(commit)
         {
@@ -157,6 +182,42 @@ pub fn standing(
         }
     }
     standing
+}
+
+/// Whether text names a log entry as `#entry`, and not one that begins
+/// with it.
+fn names(text: &str, entry: &str) -> bool {
+    let tag = format!("#{entry}");
+    text.match_indices(&tag).any(|(i, _)| {
+        !text[i + tag.len()..]
+            .chars()
+            .next()
+            .is_some_and(char::is_alphanumeric)
+    })
+}
+
+/// The words of a text that could be a message's short form.
+fn words(text: &str) -> impl Iterator<Item = &str> {
+    text.split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| w.len() == 8)
+}
+
+/// What a git asked of an ancestry says by its exit, within `limit`; one
+/// that won't start, is killed by a signal or runs past it says why.
+fn git_said(child: std::io::Result<Child>, limit: Duration) -> Result<i32, String> {
+    let mut child = child.map_err(|e| format!("wouldn't run: {e}"))?;
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.code().ok_or_else(|| format!("ended by {status}")),
+            Ok(None) if started.elapsed() < limit => std::thread::sleep(Duration::from_millis(50)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("ran past {} s", limit.as_secs()));
+            }
+        }
+    }
 }
 
 /// A message id's short form, its last eight hex letters, as peers name
@@ -187,8 +248,9 @@ fn merged_at(text: &str) -> Vec<&str> {
 
 /// The messages sent from `since_ms` on, in the order they were sent:
 /// the folder's own and its days', by the time each file's name opens
-/// with. What's being written, a link and a file too big to be a message
-/// are passed over, and so is a day's folder last written to before.
+/// with. A hidden file has no time to open with, so isn't read; a link
+/// and a file too big to be a message are passed over, and so is a day's
+/// folder last written to before.
 pub fn messages(folder: &Path, since_ms: i64) -> Vec<Message> {
     let mut found = Vec::new();
     let mut gather = |dir: &Path| {
@@ -196,16 +258,20 @@ pub fn messages(folder: &Path, since_ms: i64) -> Vec<Message> {
             let name = entry.file_name().to_string_lossy().into_owned();
             let sent = name.split('-').next().and_then(|ms| ms.parse::<i64>().ok());
             let json = entry.path().extension().is_some_and(|ext| ext == "json");
-            if name.starts_with('.') || !json || sent < Some(since_ms) {
+            if !json || sent < Some(since_ms) {
                 continue;
             }
-            // A dir entry's type and size are its own, never a link's.
-            let plain = entry.file_type().is_ok_and(|t| t.is_file())
-                && entry.metadata().is_ok_and(|m| m.len() <= READ_AT_MOST);
-            if let Some(m) = plain
-                .then(|| fs::read(entry.path()).ok())
+            // A dir entry's type is its own, never a link's; what's read
+            // is held to the limit however the file grew since.
+            let plain = entry.file_type().is_ok_and(|t| t.is_file());
+            let mut bytes = Vec::new();
+            let read = plain
+                && fs::File::open(entry.path())
+                    .and_then(|f| f.take(READ_AT_MOST + 1).read_to_end(&mut bytes))
+                    .is_ok_and(|n| u64::try_from(n).is_ok_and(|n| n <= READ_AT_MOST));
+            if let Some(m) = read
+                .then(|| serde_json::from_slice::<Message>(&bytes).ok())
                 .flatten()
-                .and_then(|bytes| serde_json::from_slice::<Message>(&bytes).ok())
             {
                 found.push((sent, m));
             }

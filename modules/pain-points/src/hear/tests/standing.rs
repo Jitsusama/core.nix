@@ -52,7 +52,8 @@ fn the_hour_leaves_out_of_open_what_was_said_to_the_void_taken_up_or_closed() {
 
 /// A machine switched to core cafe0123, and a git that says only commit
 /// 255494bb414c is in it, noting in the file it gives back each commit
-/// it's asked of.
+/// it's asked of. Asked of its core in any other way, or with the user's
+/// config, it says 9, which no git says of an ancestry.
 fn a_machine(place: &Place) -> (PathBuf, PathBuf) {
     fs::write(
         place.root.join("switches.jsonl"),
@@ -62,15 +63,69 @@ fn a_machine(place: &Place) -> (PathBuf, PathBuf) {
     fs::create_dir_all(place.root.join("core.git")).expect("a core");
     let git = place.root.join("git");
     let asks = place.root.join("asks");
+    let core = place.root.join("core.git");
     runnable(
         &git,
         &format!(
-            "#!{}\necho \"$5\" >> {}\n[ \"$4 $5 $6\" = \"--is-ancestor 255494bb414c cafe0123\" ]\n",
+            "#!{}\necho \"$5\" >> {}\n\
+             [ \"$GIT_CONFIG_GLOBAL $GIT_CONFIG_NOSYSTEM\" = \"/dev/null 1\" ] || exit 9\n\
+             [ \"$1 $2 $3 $4\" = \"--git-dir {} merge-base --is-ancestor\" ] || exit 9\n\
+             [ \"$5 $6\" = \"255494bb414c cafe0123\" ]\n",
             std::env::var("BASH").unwrap_or_else(|_| "/bin/sh".into()),
-            asks.display()
+            asks.display(),
+            core.display()
         ),
     );
     (git, asks)
+}
+
+#[test]
+fn a_git_that_fails_says_why_no_pain_closes() {
+    let place = Place::new("git-fails");
+    place.routes();
+    let messages = place.root.join("messages");
+    fs::create_dir_all(&messages).expect("a messages folder");
+    let kept = three_pains(&place);
+    let question = route::finding(&[&kept[0]], &route::cells(CELLS), 0);
+    let asked = format!("{}-EAR001-1-086eeb39", AT - 49_000);
+    let landed = format!("{}-ABC123-1-a85417d8", AT - 40_000);
+    for (id, from, re, text) in [
+        (asked.as_str(), "EAR001", "", question.as_str()),
+        (
+            landed.as_str(),
+            "ABC123",
+            asked.as_str(),
+            "merged at 255494bb414c",
+        ),
+    ] {
+        let message = json!({"id": id, "from": from, "to": ["@X"], "re": re, "text": text});
+        let at = messages.join(format!("{id}.json"));
+        fs::write(at, message.to_string()).expect("a message");
+    }
+    let (git, _) = a_machine(&place);
+    runnable(
+        &git,
+        &format!(
+            "#!{}\nexit 3\n",
+            std::env::var("BASH").unwrap_or_else(|_| "/bin/sh".into())
+        ),
+    );
+    let mut ears = place.ears();
+    ears.git = git.clone();
+    let hour = hear(&ears, CELLS, &mut |_, _| true).expect("a run");
+    assert_eq!(
+        (hour.taken, hour.closed),
+        (1, 0),
+        "taken, not closed: {hour:?}"
+    );
+    assert_eq!(
+        hour.unclosed,
+        Some(format!(
+            "{} said 3 of 255494bb414c in cafe0123",
+            git.display()
+        )),
+        "a git that fails isn't a fix not on"
+    );
 }
 
 /// Three pains sent to ABC123 a little before the run, kept as heard.
