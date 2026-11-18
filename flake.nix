@@ -368,6 +368,7 @@
         disk-loss-panic = ./modules/disk-loss-panic/nixos.nix;
         disko = moduleFrom ./modules/disko/nixos.nix { inherit disko; };
         ergodox = ./modules/ergodox/nixos.nix;
+        firmware-errors = ./modules/firmware-errors/nixos.nix;
         firmware-settings = ./modules/firmware-settings/nixos.nix;
         fonts = ./modules/fonts/nixos.nix;
         fwupd = ./modules/fwupd/nixos.nix;

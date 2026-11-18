@@ -4753,6 +4753,11 @@
   v4l2loopback-holders-passes-clippy = ''
     clippy finds nothing in the cameras' holders watcher or its tests
   '';
+  vm-firmware-records-reach-an-account = ''
+    a boot copies the firmware's platform health table, its boot error record table and the
+    error region that table points at under the boot's own folder, where an administrator
+    reads them and an account that isn't one reads none
+  '';
   vm-firmware-asks-an-administrator = ''
     in an administrator's active, local session, writing firmware, changing a device's settings and
     restarting into the firmware's setup need an administrator's answer, kept a few minutes, and a
