@@ -94,6 +94,12 @@ QtObject {
         const gone = Held.remade(steps, 1, [row("s2", "working", verbs)], ways);
         check("a step whose row is gone is kept as it was", read(gone.steps), read(steps));
         check("and isn't left", `${gone.all} ${gone.leave}`, "false -1");
+        // The step above shows a row gone as a copy marked so, as
+        // Steady.kept dims it, offering nothing; that's the row gone.
+        const goneCopy = Object.assign(row("s1", "working", []), { gone: true });
+        const dimmed = Held.remade(steps, 1, [goneCopy], ways);
+        check("a step whose row the step above shows gone is kept, not left",
+            `${dimmed.all} ${dimmed.leave} ${read(dimmed.steps)}`, `false -1 ${read(steps)}`);
 
         const nothing = Held.remade(steps, 1, [row("s1", "ended")], ways);
         check("a step whose row now offers nothing is left", nothing.leave, 1);
@@ -161,14 +167,14 @@ QtObject {
             side: "", verbs: () => []
         });
         // Its match, Look, is among what the source searches, not what it lists.
-        const looked = () => [offeredNow, row("look", "Look")];
+        const looked = () => [offeredNow, row("look", "Look now")];
         // The launcher's ways for a source that searches what `looked` gives.
         const lookingIn = all => Object.assign({}, ways, { looked: all });
         const ownGathered = Held.own(gathered, 1, [offeredNow], lookingIn(looked));
         const kept = ownGathered.steps[1].row;
         const keys = rows => rows.map(one => `${one.key}=${one.says}`).join(" ");
         check("a row found by a search keeps what the launcher gave it",
-            `${kept.side} ${keys(kept.verbs())} ${kept.says}`, "in Agents look=Look idle");
+            `${kept.side} ${keys(kept.verbs())} ${kept.says}`, "in Agents look=Look now idle");
         check("but not what the source offered then and doesn't now", kept.targets, undefined);
         check("asked what it offers at the step it is", askedAt.join(" "), "1");
         // `given` is a row's way of asking for words (Launcher.qml's
@@ -179,7 +185,7 @@ QtObject {
         const keptAgain = Held.own(ownGathered.steps, 1, [offeredNow], lookingIn(looked))
             .steps[1].row;
         check("made again twice, it still keeps what the launcher gave it",
-            `${keptAgain.side} ${keys(keptAgain.verbs())}`, "in Agents look=Look");
+            `${keptAgain.side} ${keys(keptAgain.verbs())}`, "in Agents look=Look now");
         // What the search found is each as the source offers it now, so an
         // ask hidden as a share begins is listed hidden, never as it was
         // found; one the source neither lists nor searches is kept as
