@@ -10,6 +10,72 @@ pub(super) fn root(name: &str) -> PathBuf {
     root
 }
 
+/// Two builds standing in for merge-net's, under the state folder `root`,
+/// and the link the watch follows, pointing at the first.
+fn builds(root: &Path) -> (PathBuf, PathBuf, PathBuf) {
+    let store = root.join("store");
+    fs::create_dir_all(&store).unwrap();
+    let (old, new) = (store.join("old"), store.join("new"));
+    fs::write(&old, "").unwrap();
+    fs::write(&new, "").unwrap();
+    let link = root.join("profile");
+    std::os::unix::fs::symlink(&old, &link).unwrap();
+    (
+        fs::canonicalize(old).unwrap(),
+        fs::canonicalize(new).unwrap(),
+        link,
+    )
+}
+
+#[test]
+fn the_train_starts_as_the_build_installed_not_the_askers() {
+    let root = root("starts-installed");
+    let (old, new, link) = builds(&root);
+    assert_eq!(
+        build(&root, Ok(new.clone())),
+        Some(new.clone()),
+        "with no installed build named, the train didn't start as the asker's"
+    );
+    install(&root, &link).unwrap();
+    assert_eq!(
+        build(&root, Ok(new.clone())),
+        Some(old.clone()),
+        "the train started as the asker's build, not the one the watch follows"
+    );
+    fs::remove_file(&link).unwrap();
+    assert_eq!(
+        build(&root, Ok(new.clone())),
+        Some(new),
+        "an installed build that can't be read didn't leave the asker's"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_ride_goes_on_as_the_build_a_switch_installed() {
+    let root = root("goes-on-installed");
+    let (old, new, link) = builds(&root);
+    assert_eq!(
+        newer(&root, Ok(old.clone())),
+        None,
+        "with no installed build named, a ride went on as another"
+    );
+    install(&root, &link).unwrap();
+    assert_eq!(
+        newer(&root, Ok(old.clone())),
+        None,
+        "a ride as the installed build went on as another"
+    );
+    fs::remove_file(&link).unwrap();
+    std::os::unix::fs::symlink(&new, &link).unwrap();
+    assert_eq!(
+        newer(&root, Ok(old)),
+        Some(new),
+        "a ride from before the switch didn't go on as the build it installed"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
 fn rider(head: &str, at: u64) -> Rider {
     Rider {
         head: head.to_owned(),

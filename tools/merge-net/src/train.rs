@@ -9,6 +9,11 @@
 //! a file under the net's state folder, `train/riders/<head>.json`, says
 //! its head, its branch and when it boarded, and `ready` starts the train
 //! as a user unit of its own, `merge-net ride`, unless it already goes.
+//! The train goes as the build the watch follows, which the watch names in
+//! the state folder's `installed` as it starts, never as the build that
+//! asked, which may be a tree's or a profile's from before the last
+//! switch; and between candidates a ride a switch replaced goes on as the
+//! new build, in the same unit.
 //! The train cuts a candidate at origin's main in a checkout of its own,
 //! merges every rider still its pull request's head into it in the order
 //! they boarded, as GitHub's merge button words a merge, and runs the gate
@@ -332,10 +337,57 @@ fn going() -> bool {
     state == "active" || state == "activating"
 }
 
+/// The file under the net's state folder `root` naming where the watch
+/// follows the merge-net installed.
+fn installed_file(root: &Path) -> PathBuf {
+    root.join("installed")
+}
+
+/// Say, under the net's state folder `root`, that the merge-net installed
+/// is at `path`, for the train to start as and follow. The watch says so
+/// as it starts.
+///
+/// # Errors
+///
+/// When the file can't be written.
+pub fn install(root: &Path, path: &Path) -> io::Result<()> {
+    fs::write(installed_file(root), format!("{}\n", path.display()))
+}
+
+/// The build installed where the watch follows, as it is now, when the
+/// watch named one that can be read.
+fn installed(root: &Path) -> Option<PathBuf> {
+    let named = fs::read_to_string(installed_file(root)).ok()?;
+    fs::canonicalize(named.trim()).ok()
+}
+
+/// The build the train starts as: the one installed, rather than the
+/// asker's own, which may be a tree's or a profile's from before the last
+/// switch; the asker's own only when the watch named none.
+fn build(root: &Path, running: io::Result<PathBuf>) -> Option<PathBuf> {
+    installed(root).or_else(|| running.ok())
+}
+
+/// The build installed when it is another than the `running` one, for the
+/// train to go on as.
+fn newer(root: &Path, running: io::Result<PathBuf>) -> Option<PathBuf> {
+    let installed = installed(root)?;
+    crate::world::replaced(Ok(installed.clone()), running).then_some(installed)
+}
+
+/// Go on riding as the build at `newer`, in this process and so this
+/// unit: what it hands over is on disk, but the search a split was in
+/// starts afresh. Only says why, when it couldn't.
+fn hand_over(newer: &Path) -> String {
+    use std::os::unix::process::CommandExt;
+    let why = Command::new(newer).arg("ride").exec();
+    format!("the train couldn't go on as {}: {why}", newer.display())
+}
+
 /// Start the train's unit, beside the asker in its slice: whether systemd
 /// took it.
 fn start(root: &Path) -> bool {
-    let Ok(merge_net) = std::env::current_exe() else {
+    let Some(merge_net) = build(root, std::env::current_exe()) else {
         return false;
     };
     let train = folder(root);
@@ -424,6 +476,18 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         if waiting.is_empty() {
             println!("merge-net: no one waits on the train");
             return Ok(ExitCode::SUCCESS);
+        }
+        // A ride started before a switch went on as the build from before
+        // it: on 18 November one pushed #5426, #5460 and #5321 to main
+        // itself, under Joel's key, after the switch that made the train
+        // merge through GitHub. Between candidates it goes on as the build
+        // installed instead.
+        if let Some(newer) = newer(&root, std::env::current_exe()) {
+            println!(
+                "merge-net: another merge-net is installed, so the train goes on as {}",
+                newer.display()
+            );
+            return Err(hand_over(&newer));
         }
         let mut mergings = aboard(&root, &git, &slug, &owner, &waiting);
         mergings.truncate(splitting.take());

@@ -143,6 +143,12 @@ fn watching(
 ) -> Result<ExitCode, String> {
     let state = State::from_env();
     state.make()?;
+    // The train starts as, and follows, the build the watch follows, not
+    // whichever build asked for it.
+    if let Some(installed) = &follow {
+        train::install(&state.root, installed)
+            .map_err(|error| format!("saying where merge-net is installed: {error}"))?;
+    }
     let world = Real {
         state: state.root.clone(),
         url: env::var("MERGE_NET_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned()),
