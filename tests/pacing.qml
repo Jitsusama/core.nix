@@ -821,18 +821,24 @@ QtObject {
         yank();
         check(failures, "a yank asks for no frame until its turn ends", frame.length, 0);
         drain(turn);
-        check(failures, "a yank's flash starts nothing before its frame", started.join(), "");
+        check(failures, "its turn's end asks for its frame", frame.length, 1);
+        drain(turn);
+        drain(turn);
+        check(failures, "turns alone start nothing before its frame", started.join(), "");
+        drain(frame);
+        check(failures, "nor does its frame, only the turn after", started.join(), "");
+        drain(turn);
+        check(failures, "the turn after its frame starts it", started.join(), "1");
         yank();
         drain(turn);
         drain(frame);
-        check(failures, "nor in its frame, only the turn after", started.join(), "");
-        drain(turn);
-        check(failures, "and only the newest yank's frame starts it", started.join(), "2");
         yank();
         drain(turn);
+        check(failures, "a yank between a frame and the turn after keeps that frame's flash"
+            + " from starting", started.join(), "1");
         drain(frame);
         drain(turn);
-        check(failures, "and a yank after starts it again", started.join(), "2,3");
+        check(failures, "and only the newest yank's frame starts it", started.join(), "1,3");
     }
 
     function drawers(failures) {
