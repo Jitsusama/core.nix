@@ -26,6 +26,11 @@ const DEBT_STANDS: Duration = Duration::from_mins(30);
 /// the proof died, not when the window began.
 const FRESHENS: Duration = Duration::from_mins(1);
 
+/// How far ahead of the clock a word may be dated and still count as just
+/// written: NTP's steps back on a running machine are a fraction of a
+/// second, and a word further ahead may be any age.
+const AHEAD: Duration = Duration::from_mins(1);
+
 /// How long a shaper starting or stopping is waited for before its state
 /// is read: a crash's restart waits 2 s, and a switch's is quicker.
 const SETTLES: Duration = Duration::from_secs(5);
@@ -242,16 +247,16 @@ fn debt_within(marker: &Path, takes: Duration, stands: Duration) -> Option<bool>
             Some("off") => Some(false),
             _ => None,
         });
-    // A word dated within `FRESHENS` ahead of the clock is one written
-    // just before a small step back. One further ahead, as a clock set
-    // well back leaves it, may be any age, so it's taken for an old one.
+    // A word dated within `AHEAD` of the clock is one written just before
+    // a small step back. One further ahead, as a clock set well back
+    // leaves it, may be any age, so it's taken for an old one.
     let age = file
         .metadata()
         .and_then(|m| m.modified())
         .ok()
         .and_then(|at| match at.elapsed() {
             Ok(age) => Some(age),
-            Err(ahead) => (ahead.duration() <= FRESHENS).then_some(Duration::ZERO),
+            Err(ahead) => (ahead.duration() <= AHEAD).then_some(Duration::ZERO),
         });
     if earlier.is_some() && age.is_none_or(|age| age > stands) {
         let when = age.map_or_else(

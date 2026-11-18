@@ -341,15 +341,15 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     stop::hear_stops();
     let asked =
         asked(args, std::env::var(SERVER_ENV).ok()).map_err(|e| crate::wrongly("proof", e))?;
-    let marker = stop::marker();
-    // Held to the end, released however the proof ends.
-    let _alone = marker.as_deref().map(alone).transpose()?;
     // Gone however this proof ends before its own is written, so an
-    // earlier proof's report is never read for this one's. Taken once
-    // the lock is, so a proof refused it leaves the running one's alone.
+    // earlier proof's report is never read for this one's, even when
+    // this one is refused the lock.
     if let Some(out) = &asked.out {
         let _ = fs::remove_file(out);
     }
+    let marker = stop::marker();
+    // Held to the end, released however the proof ends.
+    let _alone = marker.as_deref().map(alone).transpose()?;
     // Paid before anything else can end the proof, so a killed proof's
     // debt is paid by the next however far that one gets.
     let paid = marker
@@ -504,8 +504,6 @@ fn window(
         }
     }
     if halted(&stop) {
-        // One stopped before it touched the shaper leaves it as it found
-        // it, since a put-back then could only undo a change made since.
         return (Vec::new(), !touched || put_back(was_on));
     }
     let watch = {
@@ -529,12 +527,14 @@ fn window(
         })
     };
     load::start(asked.uploads, &asked.server);
-    let pairs = run_pairs(asked, link, &stop, from);
+    let pairs = run_pairs(asked, link, &stop, from, &mut touched);
     let closed = stop.swap(true, Ordering::Relaxed);
     stop_scopes();
     // Put back before the watch is joined, since it may be stuck asking
     // the gate; once stopped, it isn't waited for, ending with the proof.
-    let back = put_back(was_on);
+    // One stopped before it touched the shaper leaves it as it found it,
+    // since a put-back then could only undo a change made since.
+    let back = !touched || put_back(was_on);
     if !STOPPED.load(Ordering::Relaxed) {
         let _ = watch.join();
     }
@@ -548,8 +548,15 @@ fn window(
 }
 
 /// Measures the pairs, the shaper on for one block of each and off for the
-/// other, until they're done or the gate closes.
-fn run_pairs(asked: &Asked, link: &str, stop: &AtomicBool, from: u32) -> Vec<[Block; 2]> {
+/// other, until they're done or the gate closes, `touched` once an arm
+/// has started or stopped it.
+fn run_pairs(
+    asked: &Asked,
+    link: &str,
+    stop: &AtomicBool,
+    from: u32,
+    touched: &mut bool,
+) -> Vec<[Block; 2]> {
     let mut pairs: Vec<[Block; 2]> = Vec::new();
     'pairs: for pair in from..asked.pairs {
         tell(&format!("pair {} of {}", pair + 1, asked.pairs));
@@ -558,6 +565,7 @@ fn run_pairs(asked: &Asked, link: &str, stop: &AtomicBool, from: u32) -> Vec<[Bl
             if halted(stop) {
                 break 'pairs;
             }
+            *touched = true;
             systemctl(if arm == Arm::On { "start" } else { "stop" });
             settle(stop);
             if halted(stop) {
