@@ -146,7 +146,7 @@ onLinux {
       cp ${(import ../quickshell/launcher/words.nix).file} launcher/words.json
       cp ${./InkscapeProgram.qml} launcher/InkscapeProgram.qml
       cp ${./Inkscape.js} launcher/Inkscape.js
-      cp ${../../tests/inkscape-program.qml} shell.qml
+      cp ${./tests/inkscape-program.qml} shell.qml
       cp ${../../tests/lib/Expect.js} Expect.js
       cp ${../../tests/lib/Frames.js} Frames.js
       cp ${../../tests/lib/HeardWindows.js} HeardWindows.js

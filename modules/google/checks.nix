@@ -116,7 +116,7 @@ onLinux {
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-desktop-reads-the-documents" { } ''
-      cp ${../../tests/drive.qml} drive.qml
+      cp ${./tests/drive.qml} drive.qml
       cp ${./Drive.js} Drive.js
       cp ${./DrivePlaces.js} DrivePlaces.js
       cp ${../quickshell/FileFacts.js} FileFacts.js

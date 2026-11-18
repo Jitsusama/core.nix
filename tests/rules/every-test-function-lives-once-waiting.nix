@@ -110,7 +110,7 @@
   "tests/vm/keys/linux-id-vm-test.py" = 1;
   "modules/quickshell/tests/machine.qml" = 1;
   "tests/machines.qml" = 1;
-  "tests/mpv-program.qml" = 2;
+  "modules/mpv/tests/mpv-program.qml" = 2;
   "modules/quickshell/tests/now-moment.qml" = 1;
   "tests/order.qml" = 1;
   "tests/pacing.qml" = 1;
@@ -138,7 +138,7 @@
   "tests/vm/sound/speakers-vm-test.py" = 1;
   "tests/spotify-program.qml" = 2;
   "modules/quickshell/tests/status-line.qml" = 1;
-  "tests/swayimg-galleries.qml" = 1;
+  "modules/swayimg/tests/swayimg-galleries.qml" = 1;
   "modules/quickshell/tests/talks.qml" = 3;
   "modules/quickshell/tests/tuple-call.qml" = 3;
   "tests/vm/guide/guide-beside-vm-test.py" = 2;

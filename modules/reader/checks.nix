@@ -74,7 +74,7 @@ onLinux {
   # thread have ended, the rest skipped.
   reader-sets-its-pages = pkgs.callPackage ./package.nix { };
   # The reader's step in the launcher, its provider's as Applications.qml
-  # holds it (../../tests/reader-program.qml), over the reader's desktop
+  # holds it (tests/reader-program.qml), over the reader's desktop
   # entry, with niri, the shortcuts and what's playing stood in, the
   # shell's own watch of the clipboard with no history to hear,
   # and reader --places by a script that counts its runs: its Recent merges
@@ -175,7 +175,7 @@ onLinux {
       cp ${(import ../quickshell/launcher/words.nix).file} launcher/words.json
       cp ${./ReaderProgram.qml} launcher/ReaderProgram.qml
       cp ${./Reader.js} launcher/Reader.js
-      cp ${../../tests/reader-program.qml} shell.qml
+      cp ${./tests/reader-program.qml} shell.qml
       cp ${../../tests/lib/Expect.js} Expect.js
       cp ${../../tests/lib/Frames.js} Frames.js
       cp ${../../tests/lib/HeardWindows.js} HeardWindows.js

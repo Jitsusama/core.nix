@@ -28,7 +28,7 @@ onLinux {
     # cases, or sets what Qt's engine reads them with.
     pkgs.runCommandLocal "swayimg-leads-with-a-gallery" { } ''
       mkdir launcher
-      cp ${../../tests/swayimg-galleries.qml} swayimg-galleries.qml
+      cp ${./tests/swayimg-galleries.qml} swayimg-galleries.qml
       cp ${./Swayimg.js} launcher/Swayimg.js
       cp ${../quickshell/FileFacts.js} FileFacts.js
       cp ${../quickshell/When.js} When.js

@@ -13,7 +13,7 @@
 }:
 onLinux {
   # What zathura's provider says of what it has open, in Qt's own engine
-  # (../../tests/zathura-program.qml, over Zathura.js): open-now's lines
+  # (tests/zathura-program.qml, over Zathura.js): open-now's lines
   # read back, the page beside a document only one zathura has open, and
   # its drawer's facts saying each one's page and how far through it is.
   the-launcher-says-the-page-zathura-is-on =
@@ -21,7 +21,7 @@ onLinux {
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-says-the-page-zathura-is-on" { } ''
-      cp ${../../tests/zathura-program.qml} zathura-program.qml
+      cp ${./tests/zathura-program.qml} zathura-program.qml
       cp ${./Zathura.js} Zathura.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
