@@ -809,10 +809,9 @@ Floating {
     }
     // y's flash ends with the page it was given on: what it took is that
     // page's letters, so a page stepped into would wear them as its own.
-    // A start still waiting on its frame is no longer the newest yank's, so
-    // it starts nothing.
+    // A start still waiting on its frame only restarts a time with nothing
+    // left to end, and a yank on the new page is newer than it.
     function unflash() {
-        ++yanks;
         flash.stop();
         flashing = [];
     }
