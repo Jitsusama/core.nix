@@ -137,7 +137,9 @@ function land(row: HTMLAnchorElement | undefined): void {
     return;
   }
   cursor = row.dataset["row"] ?? null;
-  row.focus();
+  // Focus alone would centre a row out of sight; scrolled to its nearest edge
+  // instead, a step moves the page no further than it must.
+  row.focus({ preventScroll: true });
   row.scrollIntoView({ block: "nearest" });
 }
 
