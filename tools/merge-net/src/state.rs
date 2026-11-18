@@ -527,9 +527,12 @@ pub fn runs_in(text: &str, commit: &str, check: &str) -> Vec<Ran> {
 /// while they fit in `LOGS_BUDGET`.
 const LOGS_KEPT: Duration = Duration::from_hours(72);
 
-/// How long a run's log is kept whatever the budget: a search reads the
-/// logs of the runs it made, and the longest takes a few hours.
-const LOGS_READ: Duration = Duration::from_hours(6);
+/// How long a run's log is kept whatever the budget. A search reads the
+/// logs of its merges and their parents, and a settle queued behind
+/// others reads those of its head and base, each within hours of the
+/// runs; a day covers them, at the cost of a busy day's logs, about
+/// 6.5 GiB on 16 November, outgrowing the budget.
+const LOGS_READ: Duration = Duration::from_hours(24);
 
 /// How many bytes of runs' logs are kept, the newest first. Three days
 /// of logs grew to 14 GiB by 17 November on a disk 83% full, 13 GiB of
