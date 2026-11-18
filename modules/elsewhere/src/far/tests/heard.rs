@@ -140,14 +140,15 @@ fn the_far_wait_runs_from_the_last_of_a_file_that_crossed() {
                 .append(true)
                 .open(tree.join("x"))
                 .unwrap();
-            std::io::Write::write_all(&mut file, &vec![0; A_PIECE]).unwrap();
+            std::io::Write::write_all(&mut file, &vec![b'x'; A_PIECE]).unwrap();
         },
         &format!("{}\tx\nend\n", 3 * A_PIECE),
     );
     assert!(ran, "a file still crossing was given up on {why}");
 }
 
-/// What a file still crossing grows by in the test above: whole blocks, as
+/// What a file still crossing grows by in the test above, of letters a
+/// filesystem that compresses can't store as holes: whole blocks, as
 /// the far side counts what crossed by its kilobytes.
 const A_PIECE: usize = 64 << 10;
 
@@ -187,19 +188,22 @@ fn a_far_date_that_can_t_say_the_time_still_ends_the_wait() {
 }
 
 #[test]
-fn a_far_date_that_fails_once_doesn_t_end_the_wait() {
-    // One reading lost, as a date can fail on a busy machine, and the rest
-    // the real time, so a wait that mixed a count of passes with the clock
-    // would read the next as the whole limit gone: the first, before the
-    // wait has a time, and the third, inside it.
-    for lost in [0, 2] {
+fn a_far_date_that_fails_once_keeps_the_wait_on_the_clock() {
+    // One reading lost, as a date can fail on a busy machine, from a clock
+    // two seconds on at each reading, as when a pass over a large tree
+    // takes long: the first, before the wait has a time, whose pass and
+    // the next carry over to the clock, and the second, inside it, which
+    // costs the clock nothing. Either way the wait ends at its fourth
+    // reading, six seconds on, where one stuck counting passes would read
+    // the clock only once, one that dropped the pass that found it again
+    // five times, and one that counted from the lost reading five times.
+    for lost in [0, 1] {
         let date = format!(
             "n=$(cat \"$HOME/clock\" 2>/dev/null || echo 0)\n\
              echo $((n + 1)) > \"$HOME/clock\"\n\
              [ \"$n\" -eq {lost} ] && exit 1\n\
-             PATH=${{PATH#*:}}\nexec date \"$@\""
+             echo $((1000000 + 2 * n))"
         );
-        let started = std::time::Instant::now();
         let (code, err, home) = far_line(
             "3\tx\nend\n",
             &[("x", "x")],
@@ -212,9 +216,12 @@ fn a_far_date_that_fails_once_doesn_t_end_the_wait() {
             code == Some(75) && err.contains("didn't reach"),
             "a file that never crossed wasn't waited out ({code:?}): {err}"
         );
-        assert!(
-            started.elapsed() >= std::time::Duration::from_secs(super::WAITS),
-            "a date that failed at reading {lost} ended the wait early: {err}"
+        let readings = std::fs::read_to_string(home.join("clock")).unwrap_or_default();
+        assert_eq!(
+            readings.trim().parse::<u64>().ok(),
+            Some(4),
+            "a {}s wait whose date failed at reading {lost} read it wrongly often",
+            super::WAITS
         );
         let _ = std::fs::remove_dir_all(&home);
     }

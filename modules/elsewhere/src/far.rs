@@ -306,12 +306,12 @@ grown() {{
   kb=${{kb%%[!0-9]*}}
   got=$((${{kb:-0}} + ${{names:-0}}))
 }}
-# The time in seconds, or where a date can't say it, one more each pass,
-# the wait so far carried over when it can say it again.
+# The time in seconds, or where a date can't say it, one more each pass;
+# what was counted before it first could, with this pass, carries over.
 tick() {{
   t=$(date +%s 2>/dev/null)
-  case $t in ''|*[!0-9]*) now=$((now + 1)) counting=yes ;; *)
-    [ -n "$counting" ] && began=$((t - now + began)) counting=; now=$t ;; esac
+  case $t in ''|*[!0-9]*) now=$((now + 1)) ;; *)
+    [ -n "$counting" ] && began=$((t - now - 1 + began)) counting=; now=$t ;; esac
 }}
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
