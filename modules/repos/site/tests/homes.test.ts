@@ -43,7 +43,7 @@ it("finds no holder for a kind no row claims, or in a record that isn't one", ()
 it("takes a row's path only as steps of plain bytes under the sites' root", () => {
   const refused = ["../up/", "/rooted/", ".drafts/", "%2e%2e/", "https://x/", "a\\b/"];
   // One leading ./ is the root itself, as the system's homes take it; any more is a dotted step.
-  const dotted = ["./", "././here/", "./../up/", "./.drafts/"];
+  const dotted = ["./", "././here/", "./../up/", "./.drafts/", ".//here/", "a/./b/"];
   for (const path of [...refused, ...dotted, "a//b/", "", "/"]) {
     const sites = { sites: [{ path, homes: ["cell"] }] };
     assert.equal(holdingOf(sites, "cell"), undefined, `${path} was taken as a home`);
@@ -56,6 +56,17 @@ it("takes a row's path only as steps of plain bytes under the sites' root", () =
   assert.deepEqual(holdingOf(here, "cell"), { sites: ["code/"] }, "./code/ was refused");
   const herePattern = { sites: [{ path: "./mycelium/", homes: [machines] }] };
   assert.deepEqual(holdingOf(herePattern, "machine"), held, "./mycelium/'s pattern was refused");
+  const fromRoot = { ...machines, address: "mycelium/#machine={name}" };
+  const hereRoot = { sites: [{ path: "./mycelium/", homes: [fromRoot] }] };
+  assert.deepEqual(holdingOf(hereRoot, "machine"), held, "a root pattern on ./mycelium/ failed");
+});
+
+it("reads a row at ./code/ as the site at code/, its record and all", async () => {
+  const sites = { sites: [{ path: "./code/", homes: ["cell"] }] };
+  const records = { "code/": cells({ key: "E2ZIAQ", address: "code/#c=1" }) };
+  const { homes, whole } = await homesFrom(sites, "cell", reading(records));
+  assert.equal(whole, true, "code/'s record wasn't read");
+  assert.equal(homes("E2ZIAQ"), "code/#c=1");
 });
 
 it("takes a pattern a row says, written from its page or from the sites' root", () => {
