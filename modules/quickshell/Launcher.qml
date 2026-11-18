@@ -7360,7 +7360,6 @@ Scope {
         searchParts = null;
         // The wait ends as the search begins, so the search's own time
         // isn't said as time behind the shell's other work.
-        const listed = Date.now();
         const listedAt = KeyTimes.now();
         const collected = Heap.collected();
         steppedByKey = "";
@@ -7368,10 +7367,11 @@ Scope {
         const into = steppedByKey;
         steppedByKey = "";
         // Its key's time holds the wait, said apart in the journal, with
-        // what the time past its bound went on.
+        // what the time past its bound went on, both by the shell's clock,
+        // so the time behind and what it names add up.
         if (waited && searchParts)
-            Object.assign(searchParts, Awaited.waitedOf(waited, listed, answersWaitedFor,
-                waited.timedOut === true), { behindOn: waited.timedOut === true
+            Object.assign(searchParts, Awaited.waitedOf({ began: waited.from }, listedAt,
+                answersWaitedFor, waited.timedOut === true), { behindOn: waited.timedOut === true
                     ? Awaited.behindOn(waited, listedAt, answersWaitedFor, heldSpans, collected)
                     : "" });
         heldSpans = [];
