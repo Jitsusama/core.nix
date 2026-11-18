@@ -149,7 +149,7 @@ function bandBy(kind, thing, now, due) {
 // For You's items in their bands, { now, agent, look, try, read }, and
 // `agentAt`, where in `now` Agents Asking stands while no cell heading
 // shows (with headings it stands first, above them, since a heading claims
-// what's under it: ForYouCells.js's askedFirst), each item
+// what's under it: ForYouCells.js's laidOut), each item
 // { kind, thing } with whatever else its caller keeps, and given its
 // `weight`. Each band is heaviest first, those alike the oldest first,
 // then in the order they came (VKCF3Z, 2026-11-09). Each item's times are

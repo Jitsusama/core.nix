@@ -1,18 +1,18 @@
 // How For You weighs what needs Joel, run in Qt's own JavaScript engine, the
 // one the shell runs it in. The `for-you-weighs-what-needs-joel` check copies
-// modules/quickshell/launcher/ForYou.js, ForYouCells.js, Looks.js and Order.js beside
-// this file and
-// runs `qml -platform offscreen for-you.qml`. Each case is one of the design's
-// rules (VKCF3Z, 2026-11-08): what blocks a session counts most, then what's
-// due, what he can do now, its kind and how long it has waited; the heaviest
-// leads and ties keep the order they came in; a to-do, or a look or a thing to
-// try that blocks or is due, needs him now, and the rest stand in their kind's
-// row, the oldest first among ties; a row's side says its strongest
-// reason; the looks folder's files are read into what waits and what's
-// history, a file that can't be read left out, only one that changed
-// parsed again, and one waiting three days gone quiet; and what other sources give
-// For You, as Passwords' one to-do, is gathered into what waits and what's
-// done, and weighed beside the rest.
+// modules/quickshell/launcher/ForYou.js, ForYouCells.js, Looks.js and Order.js
+// beside this file and runs `qml -platform offscreen for-you.qml`. Each case
+// is one of the design's rules (VKCF3Z, 2026-11-08): what blocks a session
+// counts most, then what's due, what he can do now, its kind and how long it
+// has waited; the heaviest leads and ties keep the order they came in; a
+// to-do, or a look or a thing to try that blocks or is due, needs him now,
+// and the rest stand in their kind's row, the oldest first among ties; a
+// row's side says its strongest reason; the looks folder's files are read
+// into what waits and what's history, a file that can't be read left out,
+// only one that changed parsed again, and one waiting three days gone quiet;
+// what other sources give For You, as Passwords' one to-do, is gathered into
+// what waits and what's done, and weighed beside the rest; and what needs
+// him now stands under the cell behind each.
 import QtQuick
 import "ForYou.js" as ForYou
 import "ForYouCells.js" as Cells
@@ -684,26 +684,71 @@ QtObject {
             grouped.map(group => [group.cell?.address ?? null,
                 group.items.map(item => item.name)]),
             [["AAAAAA", ["one", "four"]], [null, ["two", "five"]], ["BBBBBB", ["three"]]]);
-        expect("each group headed while there are cells", grouped.map(group => group.headed),
-            [true, true, true]);
-        expect("a lone cell is still named", Cells.byCell([{ name: "one" }], () => cellA)
-            .map(group => [group.cell.address, group.headed]), [["AAAAAA", true]]);
-        expect("only Joel's own, no heading over them",
-            Cells.byCell([{ name: "two" }, { name: "five" }], () => null)
-                .map(group => [group.cell, group.items.length, group.headed]),
-            [[null, 2, false]]);
         expect("a cell with no address is Joel's own",
             Cells.byCell([{ name: "one" }], () => ({ title: "x" }))
                 .map(group => group.cell), [null]);
         expect("nothing, no groups", Cells.byCell(undefined, () => cellA), []);
 
+        // The groups laid out, each one's rows under its heading, a group
+        // whose rows all went as they were made left out, and no heading
+        // while only Joel's own are left: decided before the rows were made,
+        // his own heading stood alone once a cell's rows had all gone.
+        const rowsOf = items => items.filter(item => item.name !== "gone")
+            .map(item => item.name);
+        const headingOf = cell => `# ${cell?.address ?? "yours"}`;
+        const laid = groups => Cells.laidOut(groups, rowsOf, headingOf);
+        expect("each cell's heading over its rows, Joel's own too",
+            laid(grouped), ["# AAAAAA", "one", "four", "# yours", "two", "five", "# BBBBBB",
+                "three"]);
+        expect("a lone cell is still named", laid(Cells.byCell([{ name: "one" }], () => cellA)),
+            ["# AAAAAA", "one"]);
+        expect("only Joel's own, no heading over them",
+            laid(Cells.byCell([{ name: "two" }, { name: "five" }], () => null)), ["two", "five"]);
+        expect("a cell whose rows all went says nothing, and leaves Joel's own unheaded",
+            laid(Cells.byCell([{ name: "gone" }, { name: "two" }],
+                item => item.name === "gone" ? cellA : null)), ["two"]);
+        expect("nothing laid out, nothing", laid([]), []);
+
+        // A heading says its cell as Agents' row for it does, its name and
+        // how the agents daemon says it stands, never words made here; its
+        // title alone while the daemon says neither. A title is filled in
+        // once, as it reads: `$&` and `{doing}` in it stay as they are.
+        const said = { cell: "{title} \u00b7 {doing}", yours: "yours alone" };
+        expect("a cell's heading, its served name and how it stands",
+            Cells.headingName(cellA, { name: "Served A", doing: "needs you" }, said),
+            "Served A \u00b7 needs you");
+        expect("no row served, its title alone", Cells.headingName(cellA, null, said), "a");
+        expect("no title, its address",
+            Cells.headingName({ address: "cccccc" }, { doing: "" }, said), "CCCCCC");
+        expect("Joel's own heading", Cells.headingName(null, null, said), "yours alone");
+        expect("a title filled in as it reads",
+            Cells.headingName(cellA, { name: "$& and {doing}", doing: "working" }, said),
+            "$& and {doing} \u00b7 working");
+        expect("no words, nothing made up", Cells.headingName(cellA, { doing: "working" }, {}),
+            "");
+
         // Agents Asking stands first, above every heading, while any shows,
-        // since a heading claims what's under it; with none, agentAt places
-        // it by weight among the loose rows (Y2YBTS, 2026-11-18 15:49).
-        expect("headings shown, it stands first", Cells.askedFirst(grouped), true);
-        expect("only Joel's own, agentAt places it",
-            Cells.askedFirst(Cells.byCell([{ name: "two" }], () => null)), false);
-        expect("nothing needing him, agentAt places it", Cells.askedFirst([]), false);
+        // since a heading claims what's under it; with none, before the first
+        // loose row that weighs less, as agentAt places it (Y2YBTS,
+        // 2026-11-18 15:49).
+        const asking = weight => ({ rows: ["ASKED"], weight });
+        expect("headings shown, it stands first, though lighter",
+            Cells.laidOut(grouped, rowsOf, headingOf, asking(0)).slice(0, 2),
+            ["ASKED", "# AAAAAA"]);
+        const weighs = [{ name: "two", weight: 9 }, { name: "five", weight: 2 }];
+        const ownOnly = Cells.byCell(weighs, () => null);
+        expect("no heading, before the first lighter row",
+            Cells.laidOut(ownOnly, rowsOf, headingOf, asking(5)), ["two", "ASKED", "five"]);
+        expect("no heading, heaviest of all, first",
+            Cells.laidOut(ownOnly, rowsOf, headingOf, asking(10)), ["ASKED", "two", "five"]);
+        expect("no heading, lightest, last",
+            Cells.laidOut(ownOnly, rowsOf, headingOf, asking(1)), ["two", "five", "ASKED"]);
+        expect("a cell whose rows all went leaves no heading, so it goes by weight",
+            Cells.laidOut(Cells.byCell([{ name: "gone", weight: 9 }, weighs[1]],
+                item => item.name === "gone" ? cellA : null), rowsOf, headingOf, asking(5)),
+            ["ASKED", "five"]);
+        expect("nothing else, it alone", Cells.laidOut([], rowsOf, headingOf, asking(3)),
+            ["ASKED"]);
         const lone = ForYou.banded([{ kind: "agent", thing: { kind: "todo", blocks: 1,
             since: now - hour }, name: "a" }], now);
         expect("a lone ask isn't gathered, so it stands under its cell as itself",

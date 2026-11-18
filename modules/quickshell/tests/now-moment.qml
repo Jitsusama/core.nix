@@ -1230,11 +1230,42 @@ ShellRoot {
         WaitingOnYou.now = [];
         Sessions.wanting = [];
         now.lookTexts = {};
+        cellsHeaded(forYou, toDo, lookAt);
         answersInPlace(forYou);
         everyAskHasAWayOut(forYou, toDo);
         doneKept(toDo);
         shut(piece, toDo);
         remakesWhatChanged(toDo);
+    }
+
+    // What needs Joel now stands under the cell behind each (What Needs Me,
+    // 2026-11-18): a look a session left under that session's heading,
+    // beside what it wants, and each heading saying its cell as Agents'
+    // row for it does, its name and how the agents daemon says it stands,
+    // Joel's own heading over the to-dos no session is behind.
+    function cellsHeaded(forYou, toDo, lookAt) {
+        const left = { address: "LEFTC", title: "Session C", presence: { session: "s-c",
+            addresses: [], wants: { kind: "question", said: "Which?" } } };
+        Sessions.running = [left];
+        Sessions.wanting = [left];
+        agents.rows.LEFTC = { key: "agent:LEFTC", name: "Session C", side: "",
+            doing: "needs you" };
+        WaitingOnYou.now = [toDo("Sign In")];
+        now.lookTexts = { "c.json": lookAt("c", "Read C", "s-c") };
+        const rows = forYou();
+        const read = rows.slice(0, 5).map(row => [row.key, row.heading === true ? row.name : ""]);
+        const under = JSON.stringify(read.slice(1, 3).map(one => one[0]).sort());
+        expect("a look a session left stands under its heading, each heading saying its cell",
+            JSON.stringify(read[0]) === '["on:waiting:cell:LEFTC","Session C \u00b7 needs you"]'
+                && under === '["on:look:c","on:waiting:want:LEFTC"]'
+                && JSON.stringify(read[3]) === '["on:waiting:cell:yours","yours alone"]'
+                && read[4][0] === "on:waiting:Sign In",
+            JSON.stringify(read));
+        Sessions.running = [];
+        Sessions.wanting = [];
+        delete agents.rows.LEFTC;
+        WaitingOnYou.now = [];
+        now.lookTexts = {};
     }
 
     // History's done rows, the to-dos Joel said were done, what a piece
