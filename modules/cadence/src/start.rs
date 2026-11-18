@@ -331,6 +331,11 @@ fn seen(mesh: &Mesh) -> Vec<Seen> {
                     && p.owner.as_ref().and_then(|o| o.boot_id.as_ref()) == boot.as_ref(),
                 running: p.runs(is_pi, is_host),
                 parked: p.state == "parked" || mesh.is_parked(&p.session),
+                hosted: p
+                    .hosted
+                    .as_ref()
+                    .filter(|h| h.conversation == p.session)
+                    .map(|h| h.host.clone()),
                 address,
                 orchestrated_by: p.orchestrated_by,
                 quest: p.quest,

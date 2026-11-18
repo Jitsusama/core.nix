@@ -54,6 +54,8 @@ pub struct Seen {
     /// How its pi last ended on purpose, by pi's own record of the
     /// session (`ended_on_purpose`), if it did.
     pub ended: Option<String>,
+    /// The shared pi host its presence says it runs in, if one does.
+    pub hosted: Option<String>,
 }
 
 /// How a session's pi ended on purpose, by the record pi keeps of each
@@ -203,6 +205,12 @@ pub fn judge(
 ) -> Verdict {
     if seen.running || seen.parked {
         return Verdict::Alive;
+    }
+    // A host resumes its own conversations when it starts again, so one
+    // started here as well runs twice on one log, in a window Joel ruled
+    // out for them: on 18 November nine did, after the host's 03:23 end.
+    if let Some(host) = &seen.hosted {
+        return Verdict::Left(format!("its host, {host}, resumes it"));
     }
     let Some(quest) = quest else {
         return Verdict::Left("it has no quest".into());
@@ -516,6 +524,7 @@ mod tests {
             this_boot: true,
             orchestrates: false,
             ended: None,
+            hosted: None,
         }
     }
 
@@ -694,6 +703,24 @@ mod tests {
         assert_eq!(
             judge(&ended, Some(&q), |_| false, false),
             Verdict::Left("it ended with an earlier boot".into())
+        );
+    }
+
+    #[test]
+    fn a_hosted_conversation_is_left_to_its_host() {
+        // At 03:23 on 18 November the background host ran out of memory;
+        // cadence started 33 of its conversations again as pi processes of
+        // their own, in windows, and the host's own restart resumed them
+        // too, so nine had two writers on one log.
+        let gone = Seen {
+            hosted: Some("work-background".into()),
+            ..seen("A", None, false, "1")
+        };
+        let q = quest_with("active", "active", Some(9));
+        assert_eq!(
+            judge(&gone, Some(&q), |_| false, false),
+            Verdict::Left("its host, work-background, resumes it".into()),
+            "a host that died or restarts resumes its own conversations"
         );
     }
 
