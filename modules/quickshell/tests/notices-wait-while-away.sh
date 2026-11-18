@@ -1,16 +1,16 @@
 # shellcheck shell=bash
 # Starts the shell's notices (notices.qml, in the account's shell folder) on
-# the niri nested-niri.sh runs, with Joel counted away after a second of
-# nothing typed or moved. Nothing types here, so he's away before a notice
+# the niri tests/nested-niri.sh runs, with Joel counted away after a second
+# of nothing typed or moved. Nothing types here, so he's away before a notice
 # comes; the notice must then stay past the time its sender gave it. Nothing
-# here can bring him back (docs/testing.md, The Shell on niri), so a notice
+# here can bring him back (docs/testing.md, The Desktop on niri), so a notice
 # counting again once he is stays the desktop test's.
 # usage: notices-wait-while-away.sh <shell folder> <logs> <shell-says.sh>
 set -euo pipefail
 
 shell=$1
 logs=$2
-# shellcheck source=SCRIPTDIR/lib/shell-says.sh
+# shellcheck source=SCRIPTDIR/../../../tests/lib/shell-says.sh
 source "$3"
 said=$logs/shell.log
 # How long, in tenths of a second, the shell may take to say each thing.

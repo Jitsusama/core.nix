@@ -55,6 +55,7 @@
   "modules/quickshell/askpass.sh" = 3;
   "modules/quickshell/tests/askpass-waits.sh" = 3;
   "modules/quickshell/tests/imports-installed.sh" = 2;
+  "modules/quickshell/tests/notices-on-niri.sh" = 1;
   "modules/quickshell/tests/qml-compiles.sh" = 2;
   "modules/quickshell/tests/stand-ins/spend-session.sh" = 3;
   "modules/reader/tests/reader-takes-its-keys.sh" = 119;
@@ -76,7 +77,6 @@
   "tests/desktop/stand-in-virsh.sh" = 1;
   "tests/desktop/tuple-stand-in.sh" = 2;
   "tests/nested-niri.sh" = 1;
-  "tests/notices-on-niri.sh" = 1;
   "tests/stand-ins/spotify-recent-stand-in.sh" = 1;
   "tests/vm/guide/asahi-shaped-disk.sh" = 2;
   "tools/shots-changed/shots-changed.sh" = 12;

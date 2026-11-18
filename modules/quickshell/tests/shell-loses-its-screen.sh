@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # Starts the account's whole shell (its shell folder's shell.qml) on the
-# headless sway nested-niri.sh runs niri in, rather than on niri, since
+# headless sway tests/nested-niri.sh runs niri in, rather than on niri, since
 # nested niri's one output never goes while sway's can be unplugged and made
 # again. With a notice up on two screens, both go at once, as an undock takes
 # them, a second notice comes while there's none, and a screen comes back;
@@ -13,13 +13,13 @@ set -euo pipefail
 
 shell=$1
 logs=$2
-# shellcheck source=SCRIPTDIR/lib/shell-says.sh
+# shellcheck source=SCRIPTDIR/../../../tests/lib/shell-says.sh
 source "$3"
 said=$logs/shell.log
 # How long, in tenths of a second, the shell may take to say each thing.
 saying=300
 
-# sway's own socket, which nested-niri.sh started it on.
+# sway's own socket, which tests/nested-niri.sh started it on.
 sockets=("${XDG_RUNTIME_DIR:?}"/sway-ipc.*.sock)
 export SWAYSOCK=${sockets[0]}
 

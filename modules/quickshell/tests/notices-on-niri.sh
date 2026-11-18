@@ -1,11 +1,11 @@
 # shellcheck shell=bash
 # Starts the shell's notices (notices.qml, in the account's shell folder) on
-# the niri nested-niri.sh runs, sends a notice as a program does, and checks
-# the shell showed it on the arrival line, niri's notices layer, an overlay
-# that takes no keys and stays mapped, off the screen, while it's quiet. A
-# second, sent while the first shows, waits its turn and then has its time.
-# Then a critical one, which stays until it's dealt with, is put away by what
-# Super+Shift+N runs, and kept in the history unread. And a sender whose
+# the niri tests/nested-niri.sh runs, sends a notice as a program does, and
+# checks the shell showed it on the arrival line, niri's notices layer, an
+# overlay that takes no keys and stays mapped, off the screen, while it's
+# quiet. A second, sent while the first shows, waits its turn and then has its
+# time. Then a critical one, which stays until it's dealt with, is put away by
+# what Super+Shift+N runs, and kept in the history unread. And a sender whose
 # notices are missed until seen keeps one that answers what Joel just did,
 # said by the x-answers hint, unmissed, as Google Drive's saves are.
 # usage: notices-on-niri.sh <shell folder> <logs> <shell-says.sh>
@@ -14,7 +14,7 @@ set -euo pipefail
 
 shell=$1
 logs=$2
-# shellcheck source=SCRIPTDIR/lib/shell-says.sh
+# shellcheck source=SCRIPTDIR/../../../tests/lib/shell-says.sh
 source "$3"
 shift 3
 said=$logs/shell.log
