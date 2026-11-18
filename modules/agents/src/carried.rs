@@ -36,6 +36,10 @@
 //! what the first of them brought isn't told, since what came before it
 //! isn't said. The time is shown only for a merge the machine carries,
 //! so a switch back leaves no date on what it took away.
+//!
+//! Long because more than half of it is the tests beside it, which build
+//! real histories and records for each way an arrival is told; the code
+//! itself changes for one reason, what the machine carries and since when.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
