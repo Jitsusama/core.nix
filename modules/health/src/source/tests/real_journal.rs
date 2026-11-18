@@ -445,7 +445,7 @@ fn a_replay_hears_a_real_day_in_written_order_through_a_clock_stepped_back() {
         }
     };
     let (send, heard) = mpsc::channel();
-    let count = replayed_by(as_newest, reading, following, &send);
+    let count = replayed_by(as_newest, reading, following, &send, &Children::default());
     drop(send);
     let mut heard_said = Vec::new();
     let mut ended = 0;
