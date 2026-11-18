@@ -484,6 +484,26 @@ every-lock-agrees-with-its-manifests = core.lib.everyLockAgreesWithItsManifests 
 };
 ```
 
+Each folder's scripts find what they import when one changes alone, as
+core's do, through an eleventh, given only its Python, so an edit to
+anything else doesn't run it again, and its treefmt's settings, for the
+mypy it runs and the files it hands it. Core runs it on Linux alone, as
+its formatting check, since mypy reads that system's Python. Its Python is
+every `.py` and `.pyi` file, those mypy is handed and those it reads for
+what they import; a repository that hands mypy other names keeps them here
+too, or they go unjudged:
+
+```nix
+every-script-finds-what-it-imports = core.lib.everyScriptFindsWhatItImports pkgs {
+  src = pkgs.lib.fileset.toSource {
+    root = ./.;
+    fileset = pkgs.lib.fileset.fileFilter (file: file.hasExt "py" || file.hasExt "pyi") ./.;
+  };
+  inherit ((treefmt pkgs).config.settings) excludes;
+  inherit ((treefmt pkgs).config.settings.formatter) mypy;
+};
+```
+
 Its names say the glossary's words, as core's do, through a check that reads
 the glossary of the core it locks:
 

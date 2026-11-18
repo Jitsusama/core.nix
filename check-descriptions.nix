@@ -1049,6 +1049,10 @@
     every pose of the margin's cat has no lit pixel standing alone, a diagonal touching, and lit
     pixels within 15% of sitting's, and a leap's rise, tuck and fall are all drawn
   '';
+  every-script-finds-what-it-imports = ''
+    every folder's Python that nix fmt hands mypy passes it when handed to it alone, as a script
+    that changed alone is, after failing a planted script that imports from another folder
+  '';
   every-script-meets-shellcheck-at-its-strictest = ''
     every shell script meets shellcheck's optional checks for a hidden failure, a set -e turned
     off, an unset uppercase variable and a case with no default, but those still waiting
@@ -4251,6 +4255,15 @@
   a-live-notice-asks-the-daemon = ''
     a notice the notices daemon serves reads as Quickshell's own did, its urgency in Quickshell's
     numbers, and each act on it is an ask of the daemon, an action's with the token niri gave
+  '';
+  the-mypy-path-keeps-a-folders-stubs = ''
+    a folder named on jitsusama.mypy.paths reaches the mypy nix fmt runs with its stubs and its
+    Python alone, not the other files beside them
+  '';
+  the-mypy-path-refuses-what-it-cant-read = ''
+    jitsusama.mypy.paths takes a folder and a Python module or stub named alone, and refuses a
+    module that isn't there, a file that isn't Python and a place given as a string, as nix
+    fmt's wrapper is read
   '';
   the-notices-land-on-niri = ''
     the account's notices, on its real niri nested in a headless sway in the sandbox, draw a notice

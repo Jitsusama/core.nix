@@ -144,6 +144,9 @@
       # checks are one output and their files, for changed-checks, another.
       gathered = forEachSystem (
         pkgs:
+        let
+          inherit (treefmt pkgs) config;
+        in
         import ./checks.nix {
           inherit
             self
@@ -151,14 +154,18 @@
             nixpkgs
             nix-darwin
             rust-overlay
+            treefmt-nix
             ;
-          formatting = (treefmt pkgs).config.build.check self;
+          formatting = config.build.check self;
+          # Core's treefmt settings: each linter as it runs, with the files
+          # it's handed, and what no linter is.
+          treefmtSettings = config.settings;
           # What core's linters are told to leave unread, apart from what
           # treefmt-nix leaves for every repository: every-pattern-names-a-file
           # holds each to naming a file.
           formatterExcludes =
             let
-              inherit ((treefmt pkgs).config) settings;
+              inherit (config) settings;
               everyRepository = (treefmt-nix.lib.evalModule pkgs { }).config.settings.excludes;
             in
             nixpkgs.lib.subtractLists everyRepository settings.excludes
@@ -633,6 +640,15 @@
       # a waiting lock once it agrees.
       lib.everyLockAgreesWithItsManifests =
         pkgs: pkgs.callPackage ./tests/rules/every-lock-agrees-with-its-manifests.nix { };
+
+      # How a repository built on core keeps each folder's scripts finding what
+      # they import when one changes alone, as core does:
+      # `core.lib.everyScriptFindsWhatItImports pkgs { src = ...; excludes = ...;
+      # mypy = ...; }` is a check that hands the mypy its treefmt runs each
+      # folder's scripts alone, and fails on a folder whose scripts mypy fails
+      # then.
+      lib.everyScriptFindsWhatItImports =
+        pkgs: pkgs.callPackage ./tests/rules/every-script-finds-what-it-imports.nix { };
 
       # How a repository built on core holds its daemons to docs/daemons.md's
       # convention, as core does: `core.lib.daemonsAgree pkgs { src = ./.; home

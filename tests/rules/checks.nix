@@ -3,6 +3,7 @@
 # this says what each rule holds.
 {
   exampleLaptop,
+  treefmtSettings,
   onLinux,
   pkgs,
   self,
@@ -123,8 +124,24 @@
         };
       };
 }
-# The example laptop is a NixOS machine, which a Mac doesn't evaluate.
+# The example laptop is a NixOS machine, which a Mac doesn't evaluate, and
+# the linters read Linux's Python, as the formatting check does.
 // onLinux {
+  # `nix fmt` hands mypy only the scripts that changed, so a script that
+  # imports from another folder fails the first time it changes alone,
+  # as every session's did when the shell's cases moved. Each folder's
+  # scripts are handed to core's mypy alone. Every folder passed when the
+  # rule came in, so none waits. It's given only Python and core's treefmt
+  # settings, so an edit to anything else doesn't run it again.
+  every-script-finds-what-it-imports = self.lib.everyScriptFindsWhatItImports pkgs {
+    src = pkgs.lib.fileset.toSource {
+      root = ../..;
+      fileset = pkgs.lib.fileset.fileFilter (file: file.hasExt "py" || file.hasExt "pyi") ../..;
+    };
+    inherit (treefmtSettings) excludes;
+    inherit (treefmtSettings.formatter) mypy;
+  };
+
   # Every daemon keeps docs/daemons.md's convention, so `ps`, systemctl and
   # the socket all say one name and every client asks the same way. It reads
   # the example laptop's account, which carries every module Linux has, so a

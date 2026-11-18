@@ -4,9 +4,16 @@ The checks that hold every file in the repository to one rule of the quality
 standard. Each is three files: `<rule>.nix` builds the check, `<rule>.py`,
 beside it, says what breaks the rule, and `<rule>-waiting.nix` lists the files
 that broke it before the rule came in. A list only shrinks: fixing a file takes
-it off, and nothing new goes on. `every-lock-agrees-with-its-manifests` and
-`every-ruff-exception-hides-a-finding` have no list, since nothing broke them
-when they came in. `checks.nix` runs all twelve on core itself.
+it off, and nothing new goes on. `every-lock-agrees-with-its-manifests`,
+`every-ruff-exception-hides-a-finding` and
+`every-script-finds-what-it-imports` have no list, since nothing broke them
+when they came in. `checks.nix` runs all thirteen on core itself.
+Many entries because each rule keeps its three files side by side, where a
+reader opening one finds the others, rather than in a folder of its own.
+`every-script-finds-what-it-imports` first sees itself fail a planted tree
+and pass it once what it imports is on mypy's path, which
+`every-script-finds-what-it-imports.sh` writes, and runs on Linux, as the
+formatting check does, since core's mypy reads Linux's Python.
 `every-ruff-exception-hides-a-finding` keeps its planted tree's config in
 `every-ruff-exception-hides-a-finding-planted.toml`, a config it must refuse
 in `every-ruff-exception-hides-a-finding-refused.toml` and one ruff can't read
@@ -19,11 +26,15 @@ alone, so it's given a graphical machine's account too, and runs on Linux.
 given those commands built, and runs on Linux, where the first builds. It
 reads the scripts Nix wrappers build as well as the crates' programs.
 Every rule but `every-ruff-exception-hides-a-finding` is also given to other
-repositories built on core, through `core.lib` in `flake.nix`, with a waiting
-list of their own; they lint with core's ruff.toml, which that one reads.
-It reads core's tree alone, so an exception it tells you to take off may still
-hide a finding in theirs, since each pattern matches their files from their
-own root: such a removal shows in their treefmt check once they take core.
+repositories built on core, through `core.lib` in `flake.nix`, each but
+`every-script-finds-what-it-imports` with a waiting list of their own; that
+one judges only what their treefmt hands mypy, so it phases in by their
+excludes, and nothing fails an exclude that's no longer needed. Those
+repositories lint with core's ruff.toml, which
+`every-ruff-exception-hides-a-finding` reads. That rule reads core's tree
+alone, so an exception it tells you to take off may still hide a finding in
+theirs, since each pattern matches their files from their own root: such a
+removal shows in their treefmt check once they take core.
 
 | Rule                                             | Holds                                                         |
 | ------------------------------------------------ | ------------------------------------------------------------- |
@@ -37,6 +48,7 @@ own root: such a removal shows in their treefmt check once they take core.
 | `every-test-function-lives-once`                 | no function in test code is copied into another file          |
 | `every-lock-agrees-with-its-manifests`           | a Cargo.lock names what its crates' manifests take            |
 | `every-ruff-exception-hides-a-finding`           | each per-file exception in ruff.toml hides a finding          |
+| `every-script-finds-what-it-imports`             | each folder's scripts pass mypy handed to it alone            |
 | `daemons-agree`                                  | every daemon keeps docs/daemons.md's convention               |
 | `commands-agree`                                 | every command keeps docs/commands.md's convention             |
 

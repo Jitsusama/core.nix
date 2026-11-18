@@ -49,7 +49,7 @@ let
     ]
     ++ config.jitsusama.mypy.packages python
   );
-  # Only a folder's Python, or the one module named, so an edit to anything
+  # Only a folder's Python and stubs, or the one named, so an edit to anything
   # else beside it rebuilds no mypy; a fileset takes only a path, so a place
   # named as a string, which the sandboxed check couldn't read, is refused
   # as Nix reads it, and so is anything but a folder or a .py or .pyi file.
@@ -61,7 +61,7 @@ let
       else if lib.pathIsDirectory place then
         {
           root = place;
-          fileset = lib.fileset.fileFilter (file: file.hasExt "py") place;
+          fileset = lib.fileset.fileFilter (file: file.hasExt "py" || file.hasExt "pyi") place;
         }
       else if
         lib.pathIsRegularFile place

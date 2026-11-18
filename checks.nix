@@ -15,10 +15,9 @@
   pkgs,
   nixpkgs,
   nix-darwin,
-  rust-overlay,
   formatting,
-  formatterExcludes,
-}:
+  ...
+}@arguments:
 let
   inherit (pkgs) lib;
 
@@ -365,17 +364,11 @@ let
   # Checks for Linux alone, which a Mac neither builds nor evaluates.
   onLinux = lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "x86_64-linux");
 
-  # What every folder's checks.nix is given, of which each takes what it uses.
-  given = {
+  # What every folder's checks.nix is given, this file's arguments and the
+  # helpers here, of which each takes what it uses.
+  given = arguments // {
     inherit
-      self
-      pkgs
       lib
-      nixpkgs
-      nix-darwin
-      rust-overlay
-      formatting
-      formatterExcludes
       bareNixos
       bareDarwin
       evaluates
