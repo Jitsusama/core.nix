@@ -1,11 +1,11 @@
-//! The theme's marks the views draw, looked up by meaning: the account's
-//! own from its theme.json when a view starts, else the defaults the theme
-//! module carries (modules/theme/glyphs.nix), which the golden pages are
-//! set with.
+//! The theme's marks the views draw, looked up by meaning: the ones the
+//! terminal kit's pen draws when a view starts, the theme's own or their
+//! stand-ins on the console, else the defaults the theme module carries
+//! (modules/theme/glyphs.nix), which the golden pages are set with.
 
 use std::sync::OnceLock;
 
-use serde_json::Value;
+use terminal_kit::ink::Pen;
 
 #[derive(Debug, Clone)]
 pub struct Marks {
@@ -27,23 +27,84 @@ impl Default for Marks {
     }
 }
 
+impl Marks {
+    /// The marks as `pen` draws them, keeping a default for any it lacks.
+    fn drawn_by(pen: &Pen) -> Self {
+        let defaults = Self::default();
+        let mark = |name: &str, fallback: String| {
+            let drawn = pen.mark(name);
+            if drawn.is_empty() {
+                fallback
+            } else {
+                drawn.to_owned()
+            }
+        };
+        Self {
+            separator: mark("separator", defaults.separator),
+            failed: mark("failed", defaults.failed),
+            on: mark("on", defaults.on),
+        }
+    }
+}
+
 static MARKS: OnceLock<Marks> = OnceLock::new();
 
-/// Takes the theme's marks, where it names them, for every page after.
-pub fn take(theme: &Value) {
-    let defaults = Marks::default();
-    let mark = |name: &str, fallback: String| {
-        theme["marks"][name]["glyph"]
-            .as_str()
-            .map_or(fallback, str::to_owned)
-    };
-    _ = MARKS.set(Marks {
-        separator: mark("separator", defaults.separator),
-        failed: mark("failed", defaults.failed),
-        on: mark("on", defaults.on),
-    });
+/// Takes the marks `pen` draws, for every page after.
+pub fn take(pen: &Pen) {
+    _ = MARKS.set(Marks::drawn_by(pen));
 }
 
 pub fn marks() -> &'static Marks {
     MARKS.get_or_init(Marks::default)
+}
+
+#[cfg(test)]
+mod tests {
+    use terminal_kit::ink::{Colours, Ink, Pen};
+
+    use super::Marks;
+
+    #[test]
+    fn the_console_draws_each_marks_stand_in() {
+        let console = Ink {
+            colours: Colours::None,
+            console: true,
+        };
+        let marks = Marks::drawn_by(&Pen::new(console, None));
+        assert_eq!(
+            [marks.separator, marks.failed, marks.on],
+            [".", "x", "*"],
+            "the console was given marks its font can't draw"
+        );
+    }
+
+    #[test]
+    fn a_terminal_draws_each_marks_glyph() {
+        // Marks unlike the defaults, so a pen whose marks were ignored
+        // would read differently.
+        let mark = |glyph: &str| serde_json::json!({"glyph": glyph, "console": "?"});
+        let theme = serde_json::json!({"marks": {
+            "separator": mark("|"), "failed": mark("!"), "on": mark("+"),
+        }});
+        let marks = Marks::drawn_by(&Pen::new(Ink::plain(), Some(&theme)));
+        assert_eq!(
+            [marks.separator, marks.failed, marks.on],
+            ["|", "!", "+"],
+            "a terminal wasn't given the theme's own glyphs"
+        );
+    }
+
+    #[test]
+    fn a_mark_the_pen_lacks_keeps_its_default() {
+        // The kit holds all three marks, so only a theme's empty one leaves
+        // the pen without it.
+        let empty = serde_json::json!({"glyph": "", "console": ""});
+        let theme = serde_json::json!({"marks": {"on": empty}});
+        let marks = Marks::drawn_by(&Pen::new(Ink::plain(), Some(&theme)));
+        assert_eq!(
+            marks.on,
+            Marks::default().on,
+            "a mark the pen draws as nothing didn't keep its default"
+        );
+    }
 }

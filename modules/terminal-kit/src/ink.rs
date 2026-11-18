@@ -131,13 +131,14 @@ const AGREED: [(&str, &str); 6] = [
 /// terminal with no theme to read them from: modules/theme/glyphs.nix's,
 /// but for caution, whose own mark only the theme's font holds, so a
 /// terminal without the theme draws its stand-in.
-const MARKS: [(&str, &str, &str); 12] = [
+const MARKS: [(&str, &str, &str); 13] = [
     ("done", "\u{2713}", "v"),
     ("failed", "\u{2715}", "x"),
     ("running", "\u{2192}", ">"),
     ("active", "\u{25c8}", "@"),
     ("pending", "\u{25c7}", "o"),
     ("queued", "\u{25e6}", "o"),
+    ("on", "\u{25cf}", "*"),
     ("stopped", "\u{25a0}", "#"),
     ("cancelled", "\u{2212}", "-"),
     ("caution", "!", "!"),
@@ -476,6 +477,10 @@ mod tests {
         assert_eq!(pen.role("warning", "w"), "\u{1b}[93mw\u{1b}[0m");
         assert_eq!(pen.role("alert", "a"), "\u{1b}[31ma\u{1b}[0m");
         assert_eq!(pen.title("T"), "\u{1b}[1;97mT\u{1b}[0m");
+        // Its muted is nearest its white, and its rule, a dark green, is
+        // nearest the yellow slot, not the green one its name suggests.
+        assert_eq!(pen.role("muted", "m"), "\u{1b}[37mm\u{1b}[0m");
+        assert_eq!(pen.faint("rule", "r"), "\u{1b}[2;33mr\u{1b}[0m");
         // Its text is the terminal's own foreground, so it's left as it is.
         assert_eq!(pen.role("text", "t"), "t");
     }
@@ -594,6 +599,11 @@ mod tests {
         assert_eq!(pen.role("alert", "a"), "\u{1b}[31ma\u{1b}[0m");
         assert_eq!(pen.title("T"), "\u{1b}[1mT\u{1b}[0m");
         assert_eq!(pen.voice("v"), "\u{1b}[3;90mv\u{1b}[0m");
+        assert_eq!(
+            pen.faint("rule", "r"),
+            "\u{1b}[2;90mr\u{1b}[0m",
+            "a track or a rule is the agreed grey, faint, as every command's is"
+        );
     }
 
     #[test]

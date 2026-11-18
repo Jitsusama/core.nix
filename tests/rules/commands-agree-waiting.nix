@@ -7,7 +7,6 @@
     "inks"
     "helps"
   ];
-  eero = [ "inks" ];
   merge-net = [ "exits" ];
   nix-offload = [
     "kit"

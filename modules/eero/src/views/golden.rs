@@ -8,8 +8,9 @@ use std::path::Path;
 use jiff::tz::{self, TimeZone};
 use serde_json::Value;
 use terminal_kit::Room;
+use terminal_kit::ink::Pen;
 
-use super::text::{Ink, Palette};
+use super::text::Ink;
 use super::{Clock, View, json, text};
 use crate::model::{CloudState, HomeNetwork};
 
@@ -428,17 +429,11 @@ fn as_json_a_device_not_on_now_says_eeros_own_time() {
 
 #[test]
 fn on_a_terminal_every_line_keeps_its_text_and_only_gains_colour() {
-    let palette = Palette {
-        text: None,
-        strong: Some("1".into()),
-        muted: Some("37".into()),
-        track: Some("2".into()),
-        alert: Some("31".into()),
-        warning: Some("93".into()),
-    };
-    let ink = Ink {
-        palette: Some(palette),
-    };
+    let pen = Pen::new(terminal_kit::ink::Ink::sixteen(), None);
+    let ink = Ink::new(pen.clone());
+    // What opens a strong run, as the pen draws one.
+    let strong = pen.title("x");
+    let strong = strong.split('x').next().unwrap_or_default();
     for view in coloured() {
         let coloured = text(&view, &model(), &soon(), &ink, Room::Unbounded).unwrap();
         let plain = page(&view, &model());
@@ -446,7 +441,7 @@ fn on_a_terminal_every_line_keeps_its_text_and_only_gains_colour() {
         let stripped = strip(&coloured).replace('⣿', "⠀");
         assert_eq!(stripped, plain.replace('⣿', "⠀"), "{view:?}");
         assert!(
-            coloured.contains("\x1b[1m"),
+            !strong.is_empty() && coloured.contains(strong),
             "{view:?} draws nothing strong"
         );
     }

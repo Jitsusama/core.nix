@@ -20,12 +20,12 @@ rustPlatform.buildRustPackage rec {
       # The tests read eero's answers and the model drawn from them.
       ./contract
       ./home-network.json
-      # The theme the terminal's colours are tested on.
-      ./tests/osaka-jade.json
       # The launcher's words the rows are tested in.
       ./tests/words.json
       # The rows the desktop's tests serve, held to those the daemon makes.
       ./tests/rows.json
+      # eero run as the console runs it, for the marks it's given.
+      ./tests/console.rs
       ../ready-rows/Cargo.toml
       ../ready-rows/src
       ../terminal-kit/Cargo.toml

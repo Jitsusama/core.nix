@@ -201,19 +201,12 @@ fn next_change(model: &HomeNetwork, clock: &Clock) -> u64 {
         .map_or(60, |read| views::changes_in(clock.age(read)))
 }
 
-/// Writes a page. On a terminal it's drawn over the last one, each line
-/// cleared to its end and everything below it cleared, which doesn't
-/// blank the screen between pages as clearing it first would. Anywhere
-/// else each page follows the last, for a reader to take in turn.
+/// Writes a page. On a terminal the kit draws it over the last one, which
+/// doesn't blank the screen between pages as clearing it first would.
+/// Anywhere else each page follows the last, for a reader to take in turn.
 fn draw(room: Room, out: &mut impl Write, page: &str) -> Result<(), String> {
     let written = if room.cells().is_some() {
-        let mut over = String::from("\x1b[H");
-        for line in page.lines() {
-            over.push_str(line);
-            over.push_str("\x1b[K\n");
-        }
-        over.push_str("\x1b[J");
-        out.write_all(over.as_bytes())
+        out.write_all(terminal_kit::screen::over(page).as_bytes())
     } else {
         out.write_all(page.as_bytes())
     };
@@ -348,7 +341,14 @@ mod tests {
 
         draw(Room::Cells(80), &mut out, "one\ntwo\n").unwrap();
 
-        assert_eq!(out, b"\x1b[Hone\x1b[K\ntwo\x1b[K\n\x1b[J");
+        // The kit's own tests say what drawing over the last is; this one
+        // says a terminal's page is drawn that way and no other.
+        let out = String::from_utf8(out).expect("a page is words");
+        assert_eq!(
+            out,
+            terminal_kit::screen::over("one\ntwo\n"),
+            "a terminal's page isn't drawn as the kit draws one"
+        );
     }
 
     #[test]
@@ -381,12 +381,12 @@ mod tests {
         daemon.join().unwrap();
 
         let out = String::from_utf8(out).unwrap();
-        let widest: Vec<usize> = out
-            .split("\x1b[H")
+        let widest: Vec<usize> = terminal_kit::screen::pages(&out)
+            .iter()
             .filter(|page| page.contains(" · 3 nodes · "))
             .map(|page| {
                 page.lines()
-                    .map(|line| terminal_kit::layout::width(line.trim_end_matches("\x1b[K")))
+                    .map(terminal_kit::layout::width)
                     .max()
                     .unwrap_or(0)
             })

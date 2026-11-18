@@ -168,7 +168,7 @@ fn view(context: &Context, words: &[&str]) -> Result<(), Failure> {
         .map_err(|why| Failure::new(Exit::Usage, why).try_this("eero --help"))?;
     let json = context.format().is_json();
     let room = Room::of_stdout(&context.environment);
-    let page = live::show(&view, json, &views::theme::ink(context.out.inks()), room)?;
+    let page = live::show(&view, json, &views::theme::ink(&context.out), room)?;
     if context.format() == &terminal_kit::Format::Jsonl {
         let slice: Value = serde_json::from_str(&page).map_err(|error| {
             Failure::new(Exit::Bug, "a view's JSON didn't read back").because(error.to_string())
@@ -184,7 +184,7 @@ fn watch(context: &Context, words: &[&str]) -> Result<(), Failure> {
     let how = watch::Watch {
         view: &view,
         json: context.format().is_json(),
-        ink: &views::theme::ink(context.out.inks()),
+        ink: &views::theme::ink(&context.out),
         room: &|| Room::of_stdout(&context.environment),
     };
     watch::watch(&how, &mut io::stdout().lock())

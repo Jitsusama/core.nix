@@ -25,6 +25,7 @@ pub mod help;
 pub mod ink;
 pub mod layout;
 pub mod local;
+pub mod screen;
 pub mod time;
 pub mod tree;
 pub mod wait;
