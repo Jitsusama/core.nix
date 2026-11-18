@@ -527,12 +527,13 @@ to this page with `core.lib.commandsAgree`, as core does, given the
 commands it builds on the kit and a waiting list of its own.
 
 Inside core, the three crates whose builds the initrd holds,
-hibernate-unlock, console-font and boot-stopped, pin the kit to a commit of main too, though by
-`fetchgit` in their `package.nix` rather than a git dependency, so a
-change to the kit doesn't rebuild the initrd and need the boot tests.
-Their `Cargo.toml` keeps the path, so cargo in the dev shell, and each
-crate's clippy check, still build them against the working copy's kit: a
-kit change that would break either fails there, not at the next bump.
+hibernate-unlock, console-font and boot-stopped, pin the kit to a commit
+of main too, though by `fetchgit` in their `package.nix` rather than a
+git dependency, so a change to the kit doesn't rebuild the initrd and
+need the boot tests. Their `Cargo.toml` keeps the path, so cargo in the
+dev shell, and each crate's clippy check, still build them against the
+working copy's kit: a kit change that would break any of them fails
+there, not at the next bump.
 
 A bump moves the rev to a commit of main, never a branch's, which GitHub
 lets go once the branch is rebased. It sets the hash to `lib.fakeHash`

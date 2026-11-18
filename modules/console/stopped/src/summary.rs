@@ -88,18 +88,45 @@ fn heading(unit: &Failed, pen: &Pen, room: Room) -> String {
 }
 
 /// A line a unit said, wrapped between words to what's left of the room
-/// past its inset, each line without the space it broke at. Into a pipe
-/// it stays one line.
+/// past its inset, each line without the space it broke at. A word too
+/// long for a line of its own is broken across lines, as `fold -s` broke
+/// it, rather than shortened, since any of its characters, a device's
+/// path among them, may be what says why the unit failed. Into a pipe it
+/// stays one line.
 fn under(said: &str, room: Room) -> Vec<String> {
     let said = clean(said);
     let said = said.trim_end();
     match room {
-        Room::Cells(width) => layout::wrapped(said, width.saturating_sub(UNDER.len()).max(1))
-            .into_iter()
-            .map(|line| line.trim_end().to_owned())
-            .collect(),
+        Room::Cells(width) => {
+            let measure = width.saturating_sub(UNDER.len()).max(1);
+            let pieces: Vec<&str> = said
+                .split_whitespace()
+                .flat_map(|word| broken(word, measure))
+                .collect();
+            layout::wrapped(&pieces.join(" "), measure)
+                .into_iter()
+                .map(|line| line.trim_end().to_owned())
+                .collect()
+        }
         Room::Unbounded => vec![said.to_owned()],
     }
+}
+
+/// A word in pieces each at most `measure` cells wide, the last holding
+/// what's left; a word that fits is one piece.
+fn broken(word: &str, measure: usize) -> Vec<&str> {
+    let mut pieces = Vec::new();
+    let (mut start, mut used) = (0, 0);
+    for (at, c) in word.char_indices() {
+        let cells = layout::width(c.encode_utf8(&mut [0; 4]));
+        if used + cells > measure && at > start {
+            pieces.push(&word[start..at]);
+            (start, used) = (at, 0);
+        }
+        used += cells;
+    }
+    pieces.push(&word[start..]);
+    pieces
 }
 
 /// The keys out of a failed boot, as the console's greeting draws keys.
@@ -239,6 +266,56 @@ mod tests {
     }
 
     #[test]
+    fn a_description_sits_beside_its_name_only_while_the_line_holds_it() {
+        // Five cells of margin and mark, nine of the name and two between
+        // leave 64 of 80 for the description.
+        let fits = "d".repeat(64);
+        let over = "d".repeat(65);
+        let summary = text(
+            &[unit("a.service", &fits, &[]), unit("b.service", &over, &[])],
+            2,
+            &console(),
+            Room::Cells(80),
+        );
+        says(&summary, &format!("  x  a.service  {fits}"));
+        says(&summary, "  x  b.service");
+    }
+
+    #[test]
+    fn a_word_wider_than_the_console_is_broken_across_lines_whole() {
+        let path = format!("/dev/disk/by-id/{}", "x".repeat(60));
+        let said = format!("cannot open {path} for reading");
+        let summary = text(
+            &[unit("a.service", "A", &[&said])],
+            1,
+            &console(),
+            Room::Cells(40),
+        );
+        // What it said is the lines between its heading and the blank
+        // before the way out.
+        let under: Vec<&str> = lines(&summary)
+            .into_iter()
+            .skip_while(|line| !line.starts_with("  x  "))
+            .skip(1)
+            .take_while(|line| !line.is_empty())
+            .collect();
+        assert!(
+            under.iter().all(|line| layout::width(line) <= 40),
+            "a line is wider than the console: {summary}"
+        );
+        assert_eq!(
+            under
+                .iter()
+                .map(|line| line.trim_start())
+                .collect::<Vec<_>>()
+                .join(" ")
+                .replace(' ', ""),
+            said.replace(' ', ""),
+            "a character of what it said was lost: {summary}"
+        );
+    }
+
+    #[test]
     fn four_units_are_shown_and_the_rest_counted() {
         let failed: Vec<Failed> = ["a", "b", "c", "d", "e", "f"]
             .iter()
@@ -301,6 +378,7 @@ mod tests {
             summary.contains("\u{1b}[97ma.service\u{1b}[0m"),
             "{summary:?}"
         );
+        assert!(summary.contains("\u{1b}[37mA\u{1b}[0m"), "{summary:?}");
         assert!(summary.contains("\u{1b}[90msaid\u{1b}[0m"), "{summary:?}");
         assert!(
             summary.contains("\u{1b}[97mCtrl+Alt+Delete\u{1b}[0m"),

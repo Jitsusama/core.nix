@@ -26,6 +26,7 @@ mod summary;
 use std::fs;
 use std::process::{Command, ExitCode};
 
+use terminal_kit::flags::Format;
 use terminal_kit::{Context, Exit, Failure, Help, Ink, Pen, ink};
 
 use summary::Failed;
@@ -51,6 +52,15 @@ fn run(context: &Context) -> Result<(), Failure> {
         )
         .try_this("boot-stopped --help"));
     }
+    // It says what it says for a person at the console, and has no record
+    // to give a program, so a form for one is refused rather than met
+    // with text.
+    if context.shared.format != Format::Text {
+        return Err(
+            Failure::new(Exit::Usage, "boot-stopped says only text, for the console")
+                .try_this("boot-stopped"),
+        );
+    }
     let names = failed()?;
     let units: Vec<Failed> = names
         .iter()
@@ -72,13 +82,8 @@ fn run(context: &Context) -> Result<(), Failure> {
 /// The pen for stdout, drawing the marks' stand-ins where stdout is the
 /// console or a virtual terminal, whose font draws nothing else.
 fn on_the_console(context: &Context) -> Pen {
-    let on_a_console = fs::read_link("/proc/self/fd/1").is_ok_and(|path| {
-        let path = path.to_string_lossy();
-        path == "/dev/console"
-            || path.strip_prefix("/dev/tty").is_some_and(|number| {
-                !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit())
-            })
-    });
+    let on_a_console =
+        fs::read_link("/proc/self/fd/1").is_ok_and(|path| is_a_console(&path.to_string_lossy()));
     if !on_a_console || context.out.ink().console {
         return context.out.clone();
     }
@@ -87,6 +92,16 @@ fn on_the_console(context: &Context) -> Pen {
         ..context.out.ink()
     };
     Pen::new(ink, ink::theme(&context.environment).as_ref())
+}
+
+/// Whether a stream's path is the console or a virtual terminal, such as
+/// `/dev/tty1`, rather than a serial line, a pseudo-terminal or the
+/// terminal a process calls its own.
+fn is_a_console(path: &str) -> bool {
+    path == "/dev/console"
+        || path
+            .strip_prefix("/dev/tty")
+            .is_some_and(|number| !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// The units that failed, by name, as systemd lists them.
@@ -151,4 +166,25 @@ fn journal(matching: &str, lines: usize) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_a_console;
+
+    #[test]
+    fn only_the_console_and_a_virtual_terminal_are_the_console() {
+        for path in ["/dev/console", "/dev/tty1", "/dev/tty12"] {
+            assert!(is_a_console(path), "{path} wasn't taken for the console");
+        }
+        for path in [
+            "/dev/tty",
+            "/dev/ttyS0",
+            "/dev/pts/0",
+            "/dev/null",
+            "pipe:[7]",
+        ] {
+            assert!(!is_a_console(path), "{path} was taken for the console");
+        }
+    }
 }

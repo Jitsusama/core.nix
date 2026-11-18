@@ -426,12 +426,12 @@
     the TPM under PCR 7, leaves out devices only seen in a scan, seals unchanged pairings once and
     changed ones again, and takes the keys off once unpaired
   '';
-  boot-stopped-passes-clippy = ''
-    clippy finds nothing in what a failed boot's console says or its tests
-  '';
   boot-lock-is-whole = ''
     the splash's lock, at each scale, holds all the ink its glyph has drawn with room to spare, and
     is a line of text tall
+  '';
+  boot-stopped-passes-clippy = ''
+    clippy finds nothing in what a failed boot's console says or its tests
   '';
   booted-generation-stays-installed = ''
     a switch never removes the generation the machine booted

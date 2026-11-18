@@ -90,7 +90,13 @@ says "     quiet.service: Failed with result 'signal'."
 grep -q -F "status=9/KILL" "$work/said" && fails "it said more than systemd's last line"
 says "  x  nameless.service"
 says "     Ctrl+Alt+Delete restarts; hold Space as it starts for an older generation."
-grep -q -F $'\e[31mx\e[0m' "$work/raw" || fails "the mark isn't in the theme's alert colour"
+grep -q -F $'\e[31mx\e[0m' "$work/raw" || fails "the mark isn't in the console's red"
+# Without a theme the kit draws its sixteen own colours wherever it draws,
+# so only a theme's colours give a terminal of millions a colour by its
+# channels: that shows the wrapper pointed it at the account's theme.
+TERM=xterm-256color COLORTERM=truecolor FORCE_COLOR=1 "$BASH" "$work/stopped" \
+  < /dev/null > "$work/inked"
+grep -q $'\e\\[38;2;' "$work/inked" || fails "it didn't read the account's theme"
 grep -q $'\a' "$work/raw" && fails "it passed on a control character"
 
 for unit in a b c d e; do echo "$unit.service|$unit" >> "$work/failed"; done
