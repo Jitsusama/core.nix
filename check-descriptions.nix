@@ -1023,11 +1023,11 @@
     it, drawer and all, leaves nothing reading, and isn't loaded again at once, though waiting
     its turn, but a minute on, then twice as long if held up again, to an hour, held though its
     link changes or it's plugged in again, asked again once the clock steps back, and held up
-    no more once loaded; a fact loading isn't asked again, and one given up leaves nothing
-    reading and is held off as a card is, a minute, then twice as long, or given up once the
-    clock steps back, and let go once it lands; a fact that never lands, asked late beside facts
-    that do, is given up alone, two seconds after its own ask; and a card gone is forgotten,
-    though its load was under way
+    no more once loaded; a fact loading isn't asked again, keeping its ask's tick, and is given
+    up on the eighth of the watch's ticks after it, two seconds, not the seventh, alone beside
+    facts just asked; one given up leaves nothing reading and is held off as a card is, a
+    minute, then twice as long, and let go once it lands; the watch gives up a fact that never
+    lands; and a card gone is forgotten, though its load was under way
   '';
   traffic-reads-a-known-interface-once-after-a-gap = ''
     Traffic's answer says the counters, the shaper's status and the uptime as last loaded,

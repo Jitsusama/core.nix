@@ -163,36 +163,25 @@ ShellRoot {
     property var kept: []
 
     // A fact whose load never lands, since no file in a sandbox hangs a
-    // read, asked again each half second as the tick asks the facts.
+    // read, asked `ticksAgo` of the facts' watch's ticks back.
     QtObject {
         id: hungFact
 
         property string path: "a file that hangs"
     }
-    Timer {
-        id: asking
-
-        interval: 500
-        repeat: true
-        onTriggered: root.askHung()
-    }
-    function askHung() {
-        networks.reloadFacts();
-        if (networks.factsAsked.includes(hungFact)
-            || networks.factsStuck[hungFact.path] !== undefined)
-            return;
+    function askHung(ticksAgo) {
         const since = Object.assign(Object.create(null), networks.factsSince);
-        since[hungFact.path] = Date.now();
+        since[hungFact.path] = networks.factsTicks - ticksAgo;
         networks.factsSince = since;
         networks.factsAsked = networks.factsAsked.concat([hungFact]);
     }
 
-    // Every fact under way taken as asked `at`, as two seconds back or
-    // before the clock stepped back.
-    function askedAt(at) {
+    // Every fact under way taken as asked `ticksAgo` ticks back, eight
+    // being two seconds.
+    function askedAt(ticksAgo) {
         const since = Object.create(null);
         for (const path of Object.keys(networks.factsSince))
-            since[path] = at;
+            since[path] = networks.factsTicks - ticksAgo;
         networks.factsSince = since;
     }
 
@@ -416,16 +405,22 @@ ShellRoot {
 
     // The facts asked, and asked again while they load, then given up as
     // they would be two seconds on, before any lands: they're held off a
-    // minute, asked again once it's over, held twice as long if given up
-    // again, and given up once the clock steps back.
+    // minute, asked again once it's over, and held twice as long if given
+    // up again.
     function factsHeld() {
         networks.reloadFacts();
         const asked = networks.factsAsked.length;
+        root.askedAt(5);
         networks.reloadFacts();
         Expect.expect("a fact already loading isn't asked again",
-            asked > 0 && networks.factsAsked.length === asked,
-            JSON.stringify(networks.factsAsked.map(view => String(view.path))));
-        root.askedAt(Date.now() - 2000);
+            asked > 0 && networks.factsAsked.length === asked && networks.factsAsked.every(view =>
+                networks.factsSince[String(view.path)] === networks.factsTicks - 5),
+            JSON.stringify(networks.factsSince));
+        root.askedAt(7);
+        networks.factsGivenUp();
+        Expect.expect("a fact loading under two seconds isn't given up",
+            networks.factsAsked.length === asked, JSON.stringify(networks.factsStuck));
+        root.askedAt(8);
         networks.factsGivenUp();
         Expect.expect("facts given up leave nothing reading",
             !networks.stillReading, String(networks.stillReading));
@@ -442,52 +437,39 @@ ShellRoot {
         Expect.expect("a fact held up is asked again once its wait is over",
             networks.factsAsked.length === asked,
             JSON.stringify(networks.factsAsked.map(view => String(view.path))));
-        root.askedAt(Date.now() - 2000);
+        root.askedAt(8);
         networks.factsGivenUp();
         Expect.expect("a fact held up again waits twice as long",
             root.factHolds().every(held => held.wait === 120000),
             JSON.stringify(networks.factsStuck));
-        for (const held of root.factHolds())
-            held.at -= 121000;
-        networks.reloadFacts();
-        root.askedAt(Date.now() + 3600000);
-        networks.factsGivenUp();
-        Expect.expect("a fact asked before the clock stepped back is given up",
-            networks.factsAsked.length === 0, JSON.stringify(networks.factsStuck));
     }
 
-    // Facts held up are asked again once they land; one that never does,
-    // asked late beside facts that do, is given up two seconds after it
-    // was asked, alone, and leaves nothing reading.
+    // Facts held up are asked again once they land; one two seconds past
+    // its own ask is given up alone, beside facts just asked; and one
+    // that never lands is given up by the watch, leaving nothing reading.
     function watched() {
         waits.until("facts held up are let go once they land",
             within(2000, () => root.factHolds().length === 0), () => {
             networks.reloadFacts();
             Expect.expect("facts that landed are asked again", networks.factsAsked.length > 0,
                 JSON.stringify(networks.factsAsked.map(view => String(view.path))));
-            const first = Date.now();
+            const fresh = networks.factsAsked.slice();
+            root.askHung(8);
+            networks.factsGivenUp();
+            Expect.expect("a fact two seconds past its own ask is given up alone",
+                networks.factsStuck[hungFact.path] !== undefined && fresh.every(view =>
+                    networks.factsAsked.includes(view)
+                        && networks.factsStuck[String(view.path)] === undefined),
+                JSON.stringify(networks.factsStuck));
+            networks.factsStuck = Object.create(null);
             waits.until("the facts asked land",
                 within(1000, () => networks.factsAsked.length === 0), () => {
-                waits.until("a second and a half on",
-                    within(2500, () => Date.now() - first >= 1500), () => {
-                    root.askHung();
-                    asking.start();
-                    waits.until("two and a half seconds on",
-                        within(2000, () => Date.now() - first >= 2500), () => {
-                        Expect.expect("a fact asked late isn't given up on an earlier ask's watch",
-                            networks.factsStuck[hungFact.path] === undefined,
-                            JSON.stringify(networks.factsStuck));
-                        waits.until("a fact that never lands is given up two seconds on",
-                            within(3000, () => networks.factsStuck[hungFact.path] !== undefined
-                                && !networks.stillReading), () => {
-                            asking.stop();
-                            Expect.expect("facts that land beside one that hangs aren't given up",
-                                Object.keys(networks.factsStuck).join() === hungFact.path,
-                                JSON.stringify(networks.factsStuck));
-                            networks.factsStuck = Object.create(null);
-                            root.retried();
-                        });
-                    });
+                root.askHung(0);
+                waits.until("the watch gives up a fact that never lands",
+                    within(3000, () => networks.factsStuck[hungFact.path] !== undefined
+                        && !networks.stillReading), () => {
+                    networks.factsStuck = Object.create(null);
+                    root.retried();
                 });
             });
         });

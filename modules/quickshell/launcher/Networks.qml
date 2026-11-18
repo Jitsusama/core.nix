@@ -156,10 +156,11 @@ Provider {
     // have landed, a terminal's show asks again, so it prints what they
     // say now rather than what was loaded as the launcher last opened.
     // A fact already loading isn't asked again, so its load keeps the
-    // time it was asked (factsSince, by its path), and one given up is
+    // tick it was asked on (factsSince, by its path), and one given up is
     // passed over while it's held off.
     property var factsAsked: []
     property var factsSince: Object.create(null)
+    property int factsTicks: 0
     function reloadFacts() {
         const fresh = [resolv, resolved, up].filter(view => String(view.path) !== ""
             && !factsAsked.includes(view) && !holding(factsStuck[String(view.path)]));
@@ -167,19 +168,20 @@ Provider {
             return;
         const since = Object.assign(Object.create(null), factsSince);
         for (const view of fresh)
-            since[String(view.path)] = Date.now();
+            since[String(view.path)] = factsTicks;
         factsSince = since;
         factsAsked = factsAsked.concat(fresh);
         stillReading = true;
         for (const view of fresh)
             view.reload();
     }
-    // A fact still loading two seconds after it was asked, or asked
-    // before the clock stepped back, is said as last loaded, warned of,
-    // and held off as a card is (holdAfter), so a terminal isn't kept
-    // asking on a file that never lands, nor a thread taken on it each
-    // tick. Each is given up on its own two seconds, so a fact asked
-    // just before another is given up isn't given up with it.
+    // A fact still loading eight of the watch's ticks, two seconds,
+    // after it was asked is said as last loaded, warned of, and held off
+    // as a card is (holdAfter), so a terminal isn't kept asking on a file
+    // that never lands, nor a thread taken on it each tick. Each is given
+    // up on its own two seconds, so a fact asked just before another is
+    // given up isn't given up with it; they're counted in ticks rather
+    // than on the wall clock, which a resume or a clock step jumps.
     property var factsStuck: Object.create(null)
     Timer {
         id: factsWatch
@@ -187,13 +189,15 @@ Provider {
         interval: 250
         repeat: true
         running: provider.factsAsked.length > 0
-        onTriggered: provider.factsGivenUp()
+        onTriggered: provider.factsTicked()
+    }
+    function factsTicked() {
+        factsTicks += 1;
+        factsGivenUp();
     }
     function factsGivenUp() {
-        const late = factsAsked.filter(view => {
-            const since = Date.now() - (factsSince[String(view.path)] ?? 0);
-            return since >= 2000 || since < 0;
-        });
+        const late = factsAsked.filter(view =>
+            factsTicks - (factsSince[String(view.path)] ?? 0) >= 8);
         if (late.length === 0)
             return;
         const stuck = Object.assign(Object.create(null), factsStuck);
