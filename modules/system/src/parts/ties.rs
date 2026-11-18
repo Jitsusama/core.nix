@@ -7,9 +7,21 @@
 
 use serde_json::{Value, json};
 
+/// A gigabyte, the finest a machine's bytes are said in.
+const GIGABYTE: f64 = 1e9;
+
+/// The finest a share of a processor is said in: a tenth.
+const TENTHS: f64 = 10.0;
+
+/// The longest name mycelium-link takes for a machine.
+const LONGEST_NAME: usize = 64;
+
 /// The ties of one machine, as the node says it (`said`), with its
-/// sessions from `mycelium health`, the network's `net --json` and this
-/// machine's `repos --json`, each where it was read.
+/// sessions from `mycelium health` (`Null` for a health read that lists
+/// none on it), the network's `net --json` and this machine's
+/// `repos --json`, each where it was read. A figure is said only as finely
+/// as a view says it, so a watch is told a machine again only when what
+/// it would say of it moves, not at every reading's change.
 pub fn ties(
     said: &Value,
     sessions: Option<&Value>,
@@ -22,14 +34,45 @@ pub fn ties(
         "network": net.map(|net| places(name, net)),
         "code": repos.and_then(|repos| code(name, repos)),
         "figures": figures(said),
-        "acts": {
-            "link": format!("mycelium:machine/{name}?from=system"),
-            "commands": [
-                format!("mycelium sprout --on {name}"),
-                format!("mycelium update {name}"),
-            ],
-        },
+        "acts": acts(name),
     })
+}
+
+/// What Joel can do with a machine: the launcher's link to its row, and
+/// the commands, for a name mycelium-link would take (its `named`); none
+/// for any other, since the name is the node's and a page offers both.
+fn acts(name: &str) -> Value {
+    let shaped = name.len() <= LONGEST_NAME
+        && name.starts_with(|first: char| first.is_ascii_alphanumeric())
+        && name
+            .chars()
+            .all(|each| each.is_ascii_alphanumeric() || matches!(each, '.' | '_' | '-'));
+    if !shaped {
+        return Value::Null;
+    }
+    json!({
+        "link": format!("mycelium:machine/{name}?from=system"),
+        "commands": [
+            format!("mycelium sprout --on {name}"),
+            format!("mycelium update {name}"),
+        ],
+    })
+}
+
+/// `value` said in whole `unit`s, or as it was where it isn't a number.
+fn coarse(value: Option<&Value>, unit: f64) -> Value {
+    match value.and_then(Value::as_f64) {
+        // A figure here is a count of bytes, a share or a rate, all well
+        // inside what an f64 carries whole.
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "a machine's bytes and rates are positive and far below 2^53"
+        )]
+        Some(number) if unit >= 1.0 => json!(((number / unit).round() * unit) as u64),
+        Some(number) => json!((number / unit).round() * unit),
+        None => value.cloned().unwrap_or(Value::Null),
+    }
 }
 
 /// The mycelium's cells on a machine: the busy, the idle and the ended,
@@ -58,7 +101,12 @@ fn places(name: &str, net: &Value) -> Value {
     };
     devices
         .iter()
-        .filter(|device| device.get("name").and_then(Value::as_str) == Some(name))
+        .filter(|device| {
+            device
+                .get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|said| !name.is_empty() && said.eq_ignore_ascii_case(name))
+        })
         .map(|device| {
             let eero = device.pointer("/detail/eero");
             let wired = eero.and_then(|eero| eero.get("ethernet")?.as_bool()) == Some(true);
@@ -77,8 +125,7 @@ fn places(name: &str, net: &Value) -> Value {
                     .and_then(Value::as_str)
                     .map(point),
                 "bars": radio("bars"),
-                "signal_dbm": radio("signal_dbm"),
-                "room_mbps": device.pointer("/path/down/room_mbps"),
+                "room_mbps": coarse(device.pointer("/path/down/room_mbps"), 1.0),
             })
         })
         .collect()
@@ -133,20 +180,22 @@ fn listed<'a>(said: &'a Value, key: &str) -> &'a [Value] {
         .unwrap_or_default()
 }
 
-/// A machine's own figures, as the node says them; what it didn't say is
+/// A machine's own figures, as the node says them, its bytes in whole
+/// gigabytes and its processor's share in tenths; what it didn't say is
 /// said as unknown.
 fn figures(said: &Value) -> Value {
     let at = |pointer: &str| said.pointer(pointer).cloned().unwrap_or(Value::Null);
+    let bytes = |pointer: &str| coarse(said.pointer(pointer), GIGABYTE);
     json!({
         "model": at("/model_name"),
         "system": at("/system"),
         "os": at("/os"),
-        "disk": at("/disk"),
-        "disk_free": at("/disk_free"),
+        "disk": bytes("/disk"),
+        "disk_free": bytes("/disk_free"),
         "cores": at("/cpu/cores"),
-        "cpu_busy": at("/cpu/busy"),
-        "memory": at("/memory"),
-        "memory_available": at("/room/memory_available"),
+        "cpu_busy": coarse(said.pointer("/cpu/busy"), 1.0 / TENTHS),
+        "memory": bytes("/memory"),
+        "memory_available": bytes("/room/memory_available"),
         "charge": at("/power/charge"),
         "on_battery": at("/power/on_battery"),
         "updated_at": at("/updated/at"),
@@ -183,6 +232,9 @@ mod tests {
              "detail": {"eero": {"ethernet": true, "band": null, "bars": 5,
                                  "signal_dbm": 0}}},
             {"id": "mac:ff", "name": "kettle", "path": {"through": ["eero:2"]}},
+            {"id": "mac:3c", "name": "Laptop",
+             "path": {"through": ["switch:9"], "down": {"room_mbps": 941.2}},
+             "detail": {"eero": {"ethernet": true}}},
         ]})
     }
 
@@ -207,6 +259,12 @@ mod tests {
         assert_eq!(ties["cells"], json!({"busy": 45, "idle": 27, "ended": 50}));
         let unread = super::ties(&laptop(), None, None, None);
         assert_eq!(unread["cells"], Value::Null, "unread health says no cells");
+        let unlisted = super::ties(&laptop(), Some(&Value::Null), None, None);
+        assert_eq!(
+            unlisted["cells"],
+            json!({"busy": 0, "idle": 0, "ended": 0}),
+            "a health read that lists none on it says none"
+        );
     }
 
     #[test]
@@ -215,7 +273,11 @@ mod tests {
         assert_eq!(
             ties["network"],
             json!([{"device": "mac:a8", "by": "2.4 GHz", "point": "Hall",
-                    "bars": 5, "signal_dbm": -36, "room_mbps": 183.7}])
+                    "bars": 5, "room_mbps": 184},
+                   {"device": "mac:3c", "by": "wired", "point": "switch:9",
+                    "bars": null, "room_mbps": 941}]),
+            "each device named for it, whatever its case, in the network's order, a point \
+             the network doesn't list said by its id"
         );
         let mut desk = laptop();
         desk["name"] = json!("desk");
@@ -223,8 +285,8 @@ mod tests {
         assert_eq!(
             wired["network"],
             json!([{"device": "mac:d0", "by": "wired", "point": "Den",
-                    "bars": null, "signal_dbm": null, "room_mbps": 369.85}]),
-            "a wire has no bars or signal to say"
+                    "bars": null, "room_mbps": 370}]),
+            "a wire has no bars to say"
         );
         let unread = super::ties(&laptop(), None, None, None);
         assert_eq!(unread["network"], Value::Null, "unread net says no network");
@@ -256,9 +318,9 @@ mod tests {
             ties["figures"],
             json!({"model": "Example 14", "system": "linux",
                    "os": "NixOS 26.11 (Zokor)",
-                   "disk": 1_023_117_623_296_u64, "disk_free": 169_270_915_072_u64,
-                   "cores": 16, "cpu_busy": 0.89,
-                   "memory": 66_898_141_184_u64, "memory_available": 30_279_519_437_u64,
+                   "disk": 1_023_000_000_000_u64, "disk_free": 169_000_000_000_u64,
+                   "cores": 16, "cpu_busy": 0.9,
+                   "memory": 67_000_000_000_u64, "memory_available": 30_000_000_000_u64,
                    "charge": 79, "on_battery": false,
                    "updated_at": "2026-11-17T22:45:18Z", "update_step": "done"})
         );
@@ -276,12 +338,56 @@ mod tests {
     }
 
     #[test]
+    fn a_figure_moving_less_than_it_is_said_leaves_the_ties_as_they_were() {
+        let mut later = laptop();
+        later["disk_free"] = json!(169_301_000_000_u64);
+        later["cpu"]["busy"] = json!(0.91);
+        later["room"]["memory_available"] = json!(30_112_000_000_u64);
+        let mut moved = net();
+        moved["devices"][2]["path"]["down"]["room_mbps"] = json!(183.9);
+        moved["devices"][2]["detail"]["eero"]["signal_dbm"] = json!(-41);
+        assert_eq!(
+            ties(&laptop(), None, Some(&net()), None),
+            ties(&later, None, Some(&moved), None),
+            "a watch is told a machine again only when what it says of it moves"
+        );
+    }
+
+    #[test]
     fn a_machines_acts_go_through_the_launcher_and_its_commands() {
         let ties = ties(&laptop(), None, None, None);
         assert_eq!(
             ties["acts"],
             json!({"link": "mycelium:machine/laptop?from=system",
                    "commands": ["mycelium sprout --on laptop", "mycelium update laptop"]})
+        );
+        for misshaped in [
+            "",
+            "-h",
+            ".hidden",
+            "lap top",
+            "lap;rm",
+            "lap/top",
+            "\u{e9}t\u{e9}",
+        ] {
+            let mut machine = laptop();
+            machine["name"] = json!(misshaped);
+            let refused = super::ties(&machine, None, None, None);
+            assert_eq!(
+                refused["acts"],
+                Value::Null,
+                "{misshaped:?} names no machine"
+            );
+        }
+        let long = "a".repeat(65);
+        let mut machine = laptop();
+        machine["name"] = json!(long);
+        assert_eq!(super::ties(&machine, None, None, None)["acts"], Value::Null);
+        let nameless = super::ties(&json!({"state": "ready"}), None, None, None);
+        assert_eq!(
+            nameless["acts"],
+            Value::Null,
+            "a machine with no name has no acts"
         );
     }
 }

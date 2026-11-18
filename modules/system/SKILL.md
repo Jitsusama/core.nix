@@ -44,13 +44,17 @@ in a few words, as "21 devices", or null when it wasn't read), `things`
 `kind`, `name`, `health`, `says`, `address`, its home on the local
 sites as the site home to it gives it, or null while none is, and
 `ties`, what ties it to the other parts: `cells` (busy, idle and ended,
-or null when the mycelium's health wasn't read), `network` (a place for
-each device the network names for it: `by` its band or `wired`, the
-`point` it reaches through, `bars`, `signal_dbm`, `room_mbps` and the
+all 0 where the health lists none on it, or null when the mycelium's
+health wasn't read), `network` (a place for each device the network
+names for it, whatever the name's case: `by` its band or `wired`, the
+`point` it reaches through, `bars`, `room_mbps` in whole Mb/s and the
 `device` id; null when the network wasn't read), `code` (repositories,
 checkouts, trees, checkouts behind and open changes, for this machine
 only, since repos reads only its own; null for another), `figures` as
-the node says them, and `acts`, the launcher `link` and the `commands`;
+the node says them, bytes to the gigabyte and `cpu_busy` to the tenth,
+so a record moves only when what it says moves, and `acts`, the
+launcher `link` and the `commands`, or null for a name mycelium-link
+wouldn't take;
 empty for the other parts, for now) and `deeper`: the `command` that says more, the
 `site` (from the local sites' root, at <http://sites.localhost:8484/>) and
 where it is in the `launcher`.

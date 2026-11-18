@@ -57,7 +57,9 @@ pub fn machines(
             let others = (at > 0).then(|| said.get("health")).flatten();
             let its = sessions.and_then(|all| all.get(name_of(said)));
             let (mut thing, looks) = machine(said, its, others);
-            thing.ties = ties(said, its, net, repos);
+            // A health read that lists none on a machine says none there.
+            let cells = sessions.map(|_| its.unwrap_or(&Value::Null));
+            thing.ties = ties(said, cells, net, repos);
             (thing, looks)
         })
         .collect();
@@ -274,21 +276,52 @@ mod tests {
 
     #[test]
     fn each_machine_carries_its_ties_to_the_other_parts() {
-        let net = json!({"devices": [{"id": "mac:1", "name": "laptop",
-                                      "detail": {"eero": {"ethernet": true}}}]});
-        let repos = json!({"machine": "laptop", "repositories": []});
+        let net = json!({"devices": [
+            {"id": "mac:1", "name": "laptop", "detail": {"eero": {"ethernet": true}}},
+            {"id": "mac:2", "name": "studio",
+             "detail": {"eero": {"ethernet": false, "band": "5 GHz"}}}]});
+        let repos = json!({"machine": "studio", "repositories": []});
+        let studio = json!({"name": "studio", "state": "ready", "disk_band": "healthy",
+                            "power": {"charge": 100}, "room": {"over": []}});
+        let spare = json!({"name": "spare", "state": "ready", "disk_band": "healthy",
+                           "room": {"over": []}});
         let part = machines(
-            &Ok(realm(&[laptop(&[], "healthy")])),
+            &Ok(realm(&[studio, laptop(&[], "filling"), spare])),
             &Ok(said_health()),
             Some(&net),
             Some(&repos),
         );
-        let ties = &part.things[0].ties;
-        assert_eq!(ties["cells"], json!({"busy": 55, "idle": 33, "ended": 27}));
-        assert_eq!(ties["network"][0]["by"], "wired");
-        assert_eq!(ties["code"]["repositories"], 0);
-        assert_eq!(ties["figures"]["charge"], 76);
-        assert_eq!(ties["acts"]["link"], "mycelium:machine/laptop?from=system");
+        let of = |name: &str| {
+            let thing = part.things.iter().find(|thing| thing.name == name);
+            &thing.expect("each machine is a thing").ties
+        };
+        assert_eq!(
+            part.things[0].name, "laptop",
+            "sorted worst first, ties kept"
+        );
+        assert_eq!(
+            of("laptop")["cells"],
+            json!({"busy": 55, "idle": 33, "ended": 27})
+        );
+        assert_eq!(
+            of("studio")["cells"],
+            json!({"busy": 2, "idle": 1, "ended": 0})
+        );
+        assert_eq!(
+            of("spare")["cells"],
+            json!({"busy": 0, "idle": 0, "ended": 0}),
+            "a machine the health read lists none on says none, not unread"
+        );
+        assert_eq!(of("laptop")["network"][0]["by"], "wired");
+        assert_eq!(of("studio")["network"][0]["by"], "5 GHz");
+        assert_eq!(of("studio")["code"]["repositories"], 0);
+        assert_eq!(of("laptop")["code"], Value::Null);
+        assert_eq!(of("laptop")["figures"]["charge"], 76);
+        assert_eq!(of("studio")["figures"]["charge"], 100);
+        assert_eq!(
+            of("spare")["acts"]["link"],
+            "mycelium:machine/spare?from=system"
+        );
     }
 
     #[test]
