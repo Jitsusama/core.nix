@@ -1,8 +1,8 @@
 """Chromium says its open tabs: through the open-tabs extension, and in its session file.
 
-tests/chrome-extension.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
-and its opening comment says what the test proves. The extension's id is the `values`
-fixture's.
+chrome-extension.nix, beside this, runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says what the test proves. The extension's id
+is the `values` fixture's.
 """
 
 from __future__ import annotations

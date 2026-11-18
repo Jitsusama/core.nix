@@ -10,20 +10,22 @@ the tests not yet in an area.
 
 They are grouped by what they prove, a folder an area:
 
-| Folder     | Holds                                                              |
-| ---------- | ------------------------------------------------------------------ |
-| `guide/`   | the guide's sticks, installs and recovery, and Secure Boot         |
-| `sound/`   | calls, dictation, and each microphone's and speaker's tuning       |
-| `devices/` | desk speakers and lights, lids, idle sleep, USB wake and cameras   |
-| `network/` | Wi-Fi, the clock, names, mDNS, a network coming back, the shaper   |
-| `admin/`   | switching and updating, memory and slices, niri traces, VMs first  |
-| `keys/`    | the keyring, passkeys and security keys in the TPM, signed commits |
-| `disks/`   | disks and memory filling or failing, the disk guard, hibernation   |
-| `boot/`    | the boot theme's ask, a Bluetooth keyboard there, greeter, reboots |
-| `sites/`   | Joel's local sites' server reading the daemons its pages watch     |
+| Folder      | Holds                                                              |
+| ----------- | ------------------------------------------------------------------ |
+| `guide/`    | the guide's sticks, installs and recovery, and Secure Boot         |
+| `sound/`    | calls, dictation, and each microphone's and speaker's tuning       |
+| `devices/`  | desk speakers and lights, lids, idle sleep, USB wake and cameras   |
+| `network/`  | Wi-Fi, the clock, names, mDNS, a network coming back, the shaper   |
+| `admin/`    | switching and updating, memory and slices, niri traces, VMs first  |
+| `keys/`     | the keyring, passkeys and security keys in the TPM, signed commits |
+| `disks/`    | disks and memory filling or failing, the disk guard, hibernation   |
+| `boot/`     | the boot theme's ask, a Bluetooth keyboard there, greeter, reboots |
+| `sites/`    | Joel's local sites' server reading the daemons its pages watch     |
+| `programs/` | a program Joel runs saying what it has open, as Chrome its tabs    |
 
-The VM tests not yet grouped are still in `../`, and move into a folder
-here as their owners free them. Shared helpers are in `../lib/`, and
-stand-ins several tests use are in `../stand-ins/`, each saying what it
-stands in for. A check that needs no VM goes
-beside its module instead.
+Two VM tests aren't here yet, the desktop's and the screens': each is a
+`.nix` in `../` with its areas in a folder of its own, `../desktop/` and
+`../screens/`, and moves here as its owner frees it. Shared helpers are
+in `../lib/`, and stand-ins several tests use are in `../stand-ins/`,
+each saying what it stands in for. A check that needs no VM goes beside
+its module instead.

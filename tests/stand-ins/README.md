@@ -8,6 +8,7 @@ it answers and how a test drives it.
 | File                         | Stands in for                                                  |
 | ---------------------------- | -------------------------------------------------------------- |
 | `battery-stand-ins/`         | what a service following the battery talks to, in its README  |
+| `btvirt.nix` and its patch   | a Bluetooth radio, BlueZ's btvirt, with a buffer per client    |
 | `desk-light-stand-in.py`     | a Litra Glow or a Pebble's lights, made of uhid                |
 | `pi-stand-in.nix`, `.sh`     | pi, as the shell opens it, for the VM tests                    |
 | `spotify-recent-stand-in.sh` | spotify-recent, for Spotify's own check and the desktop        |
