@@ -195,7 +195,13 @@ fn gather(
         ],
     )
     .unwrap_or_default();
-    let card_text = text(&folder.join("card.txt"));
+    let card = folder.join("card.txt");
+    let drawn = fs::metadata(&card)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|d| i64::try_from(d.as_secs()).ok());
+    let card_text = measures::card_if_fresh(text(&card), drawn, now);
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
     let mut all = vec![
         measures::checked(misses, folder, checkouts)?,

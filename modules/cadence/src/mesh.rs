@@ -1,9 +1,9 @@
 //! The sessions' mesh, as the pi harness keeps it on disk: what each
 //! session says of itself (presence), the messages between them, and the
 //! markers of parked ones, with each pi host's roster. cadence reads
-//! them to know whether the session keeping the cycle fast is there and answering, and writes a question
-//! the way the harness's own folder transport does: one JSON file per
-//! message, renamed into place whole.
+//! them to know whether the session keeping the cycle fast is there and
+//! answering, and writes a question the way the harness's own folder
+//! transport does: one JSON file per message, renamed into place whole.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -52,16 +52,27 @@ pub struct Presence {
 /// The pi hosts' rosters, by host: the sessions each holds, or none when
 /// its roster can't be read now.
 #[derive(Debug, Clone, Default)]
-pub struct Rosters(BTreeMap<String, Option<BTreeSet<String>>>);
+pub struct Rosters(pub BTreeMap<String, Option<BTreeSet<String>>>);
 
 impl Rosters {
-    /// The host whose readable roster holds `session`, if one does.
+    /// The hosts whose readable rosters hold `session`.
     #[must_use]
-    pub fn holder(&self, session: &str) -> Option<&str> {
+    pub fn holders(&self, session: &str) -> Vec<&str> {
         self.0
             .iter()
-            .find(|(_, held)| held.as_ref().is_some_and(|h| h.contains(session)))
+            .filter(|(_, held)| held.as_ref().is_some_and(|h| h.contains(session)))
             .map(|(host, _)| host.as_str())
+            .collect()
+    }
+
+    /// The hosts whose rosters can't be read now, torn mid-rewrite.
+    #[must_use]
+    pub fn torn(&self) -> Vec<&str> {
+        self.0
+            .iter()
+            .filter(|(_, held)| held.is_none())
+            .map(|(host, _)| host.as_str())
+            .collect()
     }
 
     /// Whether `host`'s roster holds `session`. One torn mid-rewrite, or
@@ -543,10 +554,14 @@ mod tests {
         )
         .unwrap();
         fs::write(rosters.join("work-attended.json"), "{\"sessi").unwrap();
-        fs::write(rosters.join("work-background.json.lock"), "{}").unwrap();
+        fs::write(rosters.join("work-background.json.lock"), "pid 5").unwrap();
         let rostered = mesh.rostered();
-        assert_eq!(rostered.holder("a"), Some("work-background"));
-        assert_eq!(rostered.holder("b"), None, "no readable roster holds it");
+        assert_eq!(rostered.holders("a"), ["work-background"]);
+        assert!(
+            rostered.holders("b").is_empty(),
+            "no readable roster holds it"
+        );
+        assert_eq!(rostered.torn(), ["work-attended"], "a lock is no roster");
         assert!(
             rostered.holds("work-background", "a"),
             "a roster that lists it holds it"

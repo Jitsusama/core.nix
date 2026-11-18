@@ -15,6 +15,8 @@ use jiff::civil::DateTime;
 use jiff::tz::TimeZone;
 use serde::{Deserialize, Serialize};
 
+use crate::mesh::Rosters;
+
 /// No second start of one session within this long, so a slow start
 /// isn't doubled.
 pub const QUIET_FOR: i64 = 10 * 60;
@@ -73,12 +75,11 @@ pub struct Hosting {
 }
 
 /// Whether a host's unit, by its `ActiveState` and the jobs systemd has
-/// waiting on it, runs or is coming back, as pi-host-down judges it: one
-/// restarting after a crash is activating, or has a start waiting.
+/// waiting on it, runs or is coming back: as pi-host-down judges it, and
+/// deactivating too, since a host whose process died is deactivating
+/// while systemd stops what is left of it, before it starts again.
 #[must_use]
 pub fn back(state: &str, jobs: &str) -> bool {
-    // A host whose process died is deactivating while systemd stops what
-    // is left of it, before it starts again.
     matches!(
         state,
         "active" | "activating" | "reloading" | "deactivating"
@@ -86,12 +87,47 @@ pub fn back(state: &str, jobs: &str) -> bool {
 }
 
 /// Whether `id` is one pi or a pi host gives, letters, digits and
-/// hyphens, and so safe in a shell's words, a unit's name or a line sent
-/// under cadence's name: a presence is a file any of Joel's processes
-/// may write.
+/// hyphens after a letter or digit, and so safe in a shell's words, as
+/// an option's value, in a unit's name or a line sent under cadence's
+/// name: a presence is a file any of Joel's processes may write.
 #[must_use]
 pub fn plain(id: &str) -> bool {
-    !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    id.starts_with(|c: char| c.is_ascii_alphanumeric())
+        && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+/// The host a gone session is left to, if any, by the rosters, the host
+/// its presence `named`, and whether a host is `back`. A roster that
+/// holds it decides over the presence, one whose host is back over one
+/// whose host is down; then the presence; then a roster torn now, which
+/// can't rule it out until it reads again. A host named oddly is left to
+/// itself, unasked, since no advice about it could be followed.
+pub fn hosting(
+    rosters: &Rosters,
+    session: &str,
+    named: Option<&str>,
+    mut back: impl FnMut(&str) -> bool,
+) -> Option<Hosting> {
+    let listing = rosters.holders(session);
+    let host = listing
+        .iter()
+        .copied()
+        .find(|h| plain(h) && back(h))
+        .or_else(|| listing.first().copied())
+        .or(named)
+        .or_else(|| rosters.torn().first().copied())?;
+    if !plain(host) {
+        return Some(Hosting {
+            host: "a host named oddly".into(),
+            holds: true,
+            back: true,
+        });
+    }
+    Some(Hosting {
+        host: host.to_owned(),
+        holds: rosters.holds(host, session),
+        back: back(host),
+    })
 }
 
 /// How a session's pi ended on purpose, by the record pi keeps of each
@@ -189,6 +225,8 @@ pub struct Memory {
 /// noting it said when it is.
 pub fn strand(memory: &mut Memory, session: &str, now: i64) -> bool {
     let hour = now / 3600;
+    // An hour past a day is kept by nothing, so the memory stays small.
+    memory.stranded.retain(|_, said| hour - *said < 24);
     memory.stranded.insert(session.to_owned(), hour) != Some(hour)
 }
 
@@ -297,7 +335,7 @@ pub fn judge(
         // Started in a host while its own still holds it, it would run
         // twice once that host is back, so the host is what is asked for.
         let why = if h.holds {
-            "is down: bring the host back, which resumes it"
+            "is down or gone: bring the host back, which resumes it"
         } else {
             "no longer holds it: start it in a host again"
         };
@@ -812,7 +850,8 @@ mod tests {
         assert_eq!(
             judge(&hosted(true, false), Some(&q), |_| false, false),
             Verdict::Stranded(
-                "its host, work-background, is down: bring the host back, which resumes it".into()
+                "its host, work-background, is down or gone: bring the host back, which resumes it"
+                    .into()
             ),
             "a host left down resumes nothing, and no window opens for it"
         );
@@ -829,6 +868,20 @@ mod tests {
             Verdict::Left("its quest is concluded".into()),
             "one that would be left anyway isn't reported"
         );
+        let earlier = Seen {
+            this_boot: false,
+            ..hosted(true, false)
+        };
+        assert_eq!(
+            judge(&earlier, Some(&q), |_| false, false),
+            Verdict::Left("it ended with an earlier boot".into()),
+            "one an earlier boot ended is Joel's to reopen, not stranded"
+        );
+        assert_eq!(
+            judge(&hosted(true, false), Some(&q), |pid| pid == 9, false),
+            Verdict::Alive,
+            "one its quest's pid still runs is alive, wherever its host is"
+        );
     }
 
     #[test]
@@ -841,6 +894,7 @@ mod tests {
         assert!(plain("work-background"), "a host's name is plain");
         assert!(!plain("work-*"), "a glob isn't");
         assert!(!plain(""), "nor is nothing");
+        assert!(!plain("-c"), "nor an option");
         assert!(back("activating", ""), "systemd's restart after a crash");
         assert!(
             back("failed", "4 pi-host-work-background.service start waiting"),
@@ -848,6 +902,58 @@ mod tests {
         );
         assert!(!back("failed", ""), "left down past its start limit");
         assert!(!back("inactive", "\n"), "stopped, or no such unit");
+    }
+
+    #[test]
+    fn a_roster_names_the_host_over_a_presence_and_a_torn_one_rules_nothing_out() {
+        let rosters = |all: &[(&str, Option<&[&str]>)]| {
+            Rosters(
+                all.iter()
+                    .map(|(host, held)| {
+                        let held = held.map(|h| h.iter().map(|s| (*s).to_owned()).collect());
+                        ((*host).to_owned(), held)
+                    })
+                    .collect(),
+            )
+        };
+        let up = |h: &str| h != "down";
+        let host =
+            |r: &Rosters, named| hosting(r, "s", named, up).map(|h| (h.host, h.holds, h.back));
+        let listed = rosters(&[("work-background", Some(&["s"]))]);
+        assert_eq!(
+            host(&listed, None),
+            Some(("work-background".into(), true, true)),
+            "a roster holding it names its host when its presence names none"
+        );
+        assert_eq!(
+            host(&listed, Some("elsewhere")),
+            Some(("work-background".into(), true, true)),
+            "and over a host its presence names"
+        );
+        let both = rosters(&[("down", Some(&["s"])), ("work-background", Some(&["s"]))]);
+        assert_eq!(
+            host(&both, None),
+            Some(("work-background".into(), true, true)),
+            "of two rosters, the one whose host is back"
+        );
+        let torn = rosters(&[("work-background", None)]);
+        assert_eq!(
+            host(&torn, None),
+            Some(("work-background".into(), true, true)),
+            "a torn roster keeps it from a standalone start until it reads"
+        );
+        let none = rosters(&[("work-background", Some(&["t"]))]);
+        assert_eq!(host(&none, None), None, "one no host holds is standalone");
+        assert_eq!(
+            host(&none, Some("work-background")),
+            Some(("work-background".into(), false, true)),
+            "a presence a host left behind names a host that no longer holds it"
+        );
+        assert_eq!(
+            host(&none, Some("work-*")),
+            Some(("a host named oddly".into(), true, true)),
+            "an odd name is left alone, with no advice anyone could follow"
+        );
     }
 
     #[test]
@@ -864,6 +970,11 @@ mod tests {
             "it takes no defect's hour"
         );
         assert!(strand(&mut memory, "s", 10_800), "said again the next hour");
+        strand(&mut memory, "s", 10_800 + 24 * 3600);
+        assert!(
+            !memory.stranded.contains_key("t"),
+            "an hour a day gone is forgotten"
+        );
     }
 
     #[test]

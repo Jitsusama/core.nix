@@ -145,18 +145,31 @@ pub fn revive(
         said.push(line);
     }
     fs::write(&path, serde_json::to_vec_pretty(&memory)?)?;
-    for (to, text) in revive::gathered(&stranded, "are left down in a host") {
-        send(&to, "finding", text)?;
+    say(reviving, &stranded, &told, send).map(|()| said)
+}
+
+/// Sends the stranded and started-again lines, gathered per peer. Every
+/// line is tried, so one that can't be sent keeps none of the others from
+/// their peers; the first failure is still said.
+fn say(
+    reviving: &Reviving,
+    stranded: &[(String, String)],
+    told: &[(String, String)],
+    send: &dyn Fn(&str, &str, String) -> io::Result<()>,
+) -> io::Result<()> {
+    let mut failed = Ok(());
+    for (to, text) in revive::gathered(stranded, "are left down in a host") {
+        failed = failed.and(send(&to, "finding", text));
     }
-    for (to, text) in revive::gathered(&told, "were started again") {
+    for (to, text) in revive::gathered(told, "were started again") {
         let text = if reviving.watcher.as_ref() == Some(&to) {
             format!("Revived: {text}")
         } else {
             text
         };
-        send(&to, "fyi", text)?;
+        failed = failed.and(send(&to, "fyi", text));
     }
-    Ok(said)
+    failed
 }
 
 /// Whom `line`, of `s` started again, is for: the orchestrator, the session's
@@ -330,27 +343,16 @@ fn seen(mesh: &Mesh) -> Vec<Seen> {
         .map(|id| id.trim().to_owned());
     let zone = TimeZone::system();
     let records = mesh.root.join("quest-workflow/sessions");
-    // A roster that holds the session decides its host over what any
-    // presence says, so a session a host will resume is never started
-    // here; its unit is asked only for a session that doesn't run.
+    // A host's unit is asked once a look, and only for a session that
+    // doesn't run.
     let rosters = mesh.rostered();
     let mut hosts_back: BTreeMap<String, bool> = BTreeMap::new();
-    let mut hosting = |p: &Presence, running: bool| {
-        let host = rosters.holder(&p.session).or_else(|| p.host())?;
-        if !revive::plain(host) {
-            return Some(Hosting {
-                host: "a host named oddly".into(),
-                holds: false,
-                back: false,
-            });
-        }
-        Some(Hosting {
-            host: host.to_owned(),
-            holds: rosters.holds(host, &p.session),
-            back: running
+    let mut hosting = |p: &Presence, running: bool| -> Option<Hosting> {
+        revive::hosting(&rosters, &p.session, p.host(), |host| {
+            running
                 || *hosts_back
                     .entry(host.to_owned())
-                    .or_insert_with(|| host_back(host)),
+                    .or_insert_with(|| host_back(host))
         })
     };
     mesh.all()
