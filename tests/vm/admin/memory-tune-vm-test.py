@@ -2,8 +2,8 @@
 
 memory-tune.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py).
 An account in wheel sets the watermarks' spacing, transparent huge pages, the multi-gen LRU,
-swappiness, swap's read-ahead, proactive compaction and the free memory floor to a listed
-value, as an agent measuring them under load would, outside any session. An account outside
+swappiness, swap's read-ahead, proactive compaction, the free memory floor and defrag_mode to a
+listed value, as an agent measuring them under load would, outside any session. An account outside
 wheel can't, and an administrator can't set a value the rules don't list.
 Each test puts what it changed back as it ends, so any runs alone.
 """
@@ -26,6 +26,7 @@ SWAPPINESS = "/proc/sys/vm/swappiness"
 PAGE_CLUSTER = "/proc/sys/vm/page-cluster"
 COMPACTION = "/proc/sys/vm/compaction_proactiveness"
 MIN_FREE = "/proc/sys/vm/min_free_kbytes"
+DEFRAG = "/proc/sys/vm/defrag_mode"
 
 
 def start(machine: BaseMachine, account: str, unit: str) -> tuple[int, str]:
@@ -54,7 +55,9 @@ def reverted(machine: BaseMachine) -> Iterator[BaseMachine]:
     page_cluster = read(machine, PAGE_CLUSTER)
     compaction = read(machine, COMPACTION)
     min_free = read(machine, MIN_FREE)
+    defrag = read(machine, DEFRAG)
     yield machine
+    machine.succeed(f"sysctl -w vm.defrag_mode={defrag}")
     machine.succeed(f"sysctl -w vm.min_free_kbytes={min_free}")
     machine.succeed(f"sysctl -w vm.compaction_proactiveness={compaction}")
     machine.succeed(f"sysctl -w vm.page-cluster={page_cluster}")
@@ -122,6 +125,20 @@ def test_an_administrator_sets_the_free_memory_floor_without_a_password(
     status, said = start(reverted, "someone", "memory-min-free@131072")
     assert status == 0, said
     assert read(reverted, MIN_FREE) == "131072", "min_free_kbytes wasn't set"
+
+
+def test_an_administrator_turns_defrag_mode_on_and_off_without_a_password(
+    reverted: BaseMachine,
+) -> None:
+    for mode in ("1", "0"):
+        status, said = start(reverted, "someone", f"memory-defrag@{mode}")
+        assert status == 0, said
+        assert read(reverted, DEFRAG) == mode, f"defrag_mode wasn't set to {mode}"
+
+
+def test_the_machine_boots_letting_allocations_split_blocks(reverted: BaseMachine) -> None:
+    defrag = read(reverted, DEFRAG)
+    assert defrag == "0", f"booted with defrag_mode at {defrag}"
 
 
 def test_an_account_outside_wheel_is_refused(reverted: BaseMachine) -> None:
