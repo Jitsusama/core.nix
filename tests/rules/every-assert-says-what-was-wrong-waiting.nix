@@ -316,7 +316,6 @@
   "tests/vm/network/wifi/wifi-joins-when-asked-vm-test.py" = 1;
   "tools/merge-net/src/ready.rs" = 4;
   "tools/merge-net/src/rules.rs" = 17;
-  "tools/merge-net/src/state.rs" = 1;
   "tools/merge-net/src/watch.rs" = 24;
   "tools/merge-net/src/world.rs" = 11;
   "tools/run-subtests/run-subtests-test.py" = 5;

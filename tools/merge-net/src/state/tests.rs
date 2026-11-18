@@ -59,17 +59,18 @@ fn logs_past_three_days_go_and_the_nets_own_and_newer_ones_stay() {
 fn the_oldest_logs_past_the_budget_go_and_the_nets_own_stays() {
     let state = state("budget");
     let now = SystemTime::now();
-    let written =
-        |name: &str, minutes: u64, bytes: usize| written(&state, now, name, minutes, bytes);
+    let written = |name: &str, hours: u64, bytes: usize| {
+        log_aged(&state, now, name, Duration::from_hours(hours), bytes)
+    };
     // The names sort otherwise than their ages, so a budget kept by
     // name keeps the wrong ones; the net's log is the newest and
     // largest, so counting it takes logs that fit.
-    let newest = written("dddd-vm-a-1.log", 7 * 60, 40);
-    let newer = written("aaaa-vm-b-1.log", 8 * 60, 40);
-    let older = written("cccc-vm-c-1.log", 9 * 60, 40);
-    let oldest = written("bbbb-vm-d-1.log", 10 * 60, 40);
-    let aged = written("eeee-vm-e-1.log", 4 * 24 * 60, 1000);
-    let own = written("net.log", 1, 400);
+    let newest = written("dddd-vm-a-1.log", 25, 40);
+    let newer = written("aaaa-vm-b-1.log", 26, 40);
+    let older = written("cccc-vm-c-1.log", 27, 40);
+    let oldest = written("bbbb-vm-d-1.log", 28, 40);
+    let aged = written("eeee-vm-e-1.log", 4 * 24, 1000);
+    let own = written("net.log", 0, 400);
     assert_eq!(
         state.age_out_logs(now, 80),
         Aged { old: 1, over: 2 },
@@ -90,50 +91,47 @@ fn the_oldest_logs_past_the_budget_go_and_the_nets_own_stays() {
 fn the_budget_leaves_the_logs_the_net_still_reads() {
     let state = state("still-read");
     let now = SystemTime::now();
-    let (passed, round) = ("1".repeat(40), "2".repeat(40));
+    let (passed, seen, round) = ("1".repeat(40), "2".repeat(40), "3".repeat(40));
     write_json(
         &state.root.join("state.json"),
-        &json!({"passed": passed, "seen": passed, "round": round}),
+        &json!({"passed": passed, "seen": seen, "round": round}),
     )
     .expect("the heads");
-    let written = |name: &str, minutes: u64| written(&state, now, name, minutes, 40);
-    let base = written("111111111111-vm-a-1.log", 10 * 60);
-    let under_way = written("222222222222-vm-b-1.log", 11 * 60);
-    let young = written("333333333333-vm-c-1.log", 30);
-    let other = written("444444444444-vm-d-1.log", 12 * 60);
-    let newer = written("555555555555-vm-e-1.log", 7 * 60);
+    let written =
+        |name: &str, minutes: u64| log_aged(&state, now, name, Duration::from_mins(minutes), 40);
+    let day = 24 * 60;
+    let base = written("111111111111-vm-a-1.log", 2 * day);
+    let looked = written("222222222222-vm-b-1.log", 2 * day);
+    let under_way = written("333333333333-vm-c-1.log", 2 * day);
+    let young = written("444444444444-vm-d-1.log", day - 10);
+    let other = written("555555555555-vm-e-1.log", day + 10);
+    let newer = written("666666666666-vm-f-1.log", 2 * day);
     assert_eq!(
         state.age_out_logs(now, 0),
         Aged { old: 0, over: 2 },
         "not just the two logs the net no longer reads went for the budget"
     );
     assert!(
-        base.exists() && under_way.exists(),
+        base.exists() && looked.exists() && under_way.exists(),
         "a log of a head the net holds went for the budget"
     );
-    assert!(
-        young.exists(),
-        "a log under six hours old went for the budget"
-    );
+    assert!(young.exists(), "a log under a day old went for the budget");
     assert!(
         !other.exists() && !newer.exists(),
         "a log the net no longer reads stayed past the budget"
     );
 }
 
-/// A log `name` of `bytes` bytes, last written `minutes` before `now`.
-fn written(state: &State, now: SystemTime, name: &str, minutes: u64, bytes: usize) -> PathBuf {
-    {
-        let path = state.root.join("logs").join(name);
-        fs::write(&path, vec![b'x'; bytes]).expect("a log");
-        let file = fs::File::options()
-            .write(true)
-            .open(&path)
-            .expect("the log");
-        file.set_modified(now - Duration::from_mins(minutes))
-            .expect("its time");
-        path
-    }
+/// A log `name` of `bytes` bytes, last written `age` before `now`.
+fn log_aged(state: &State, now: SystemTime, name: &str, age: Duration, bytes: usize) -> PathBuf {
+    let path = state.root.join("logs").join(name);
+    fs::write(&path, vec![b'x'; bytes]).expect("a log");
+    let file = fs::File::options()
+        .write(true)
+        .open(&path)
+        .expect("the log");
+    file.set_modified(now - age).expect("its time");
+    path
 }
 
 #[test]
@@ -234,7 +232,7 @@ fn the_heads_and_the_hold_outlast_the_program() {
         "one hold stands at a time"
     );
     state.clear_hold().unwrap();
-    assert!(state.hold().is_none());
+    assert!(state.hold().is_none(), "a cleared hold still stands");
     state.clear_hold().unwrap();
     fs::remove_dir_all(&state.root).unwrap();
 }
