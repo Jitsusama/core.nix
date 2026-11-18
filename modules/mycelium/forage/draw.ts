@@ -5,11 +5,12 @@
 // is told by its shape and never by colour alone; a cell started by
 // another, or split from it, branches below it; a dotted arc joins a cell
 // to one serving a need of its; and a cap rises over a cell whose plans have
-// landed steps, its gills lit as they land. What a cell's quest waits on its
-// person for leads its panel and is counted in its row. Every word read from a record
-// is escaped before it reaches the page, and how far a plan has come is
-// said in words beside its marks.
+// landed steps, its gills lit as they land. What a cell's quest waits on
+// its person for leads its panel and is counted in its row. Every word
+// read from a record is escaped before it reaches the page, and how far a
+// plan has come is said in words beside its marks.
 
+import { clockTime } from "../../local-sites/kit/status.ts";
 import {
   type Document,
   type Forage,
@@ -28,6 +29,22 @@ const ESCAPES: { readonly [character: string]: string } = {
   '"': "&quot;",
   "'": "&#39;",
 };
+
+/** Each month as a need's since says it, when the need wasn't taken today. */
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
 
 /** Each stage of a document as the page says it. */
 const STAGES: { readonly [stage: string]: string } = {
@@ -239,7 +256,7 @@ function floorOf(forages: readonly Forage[], cursor: string | null, substrate: s
       if (one === undefined || other === undefined) {
         return "";
       }
-      // It bows below both cells, under the branches, so it never reads as one.
+      // It bows below both cells and is dotted, so it never reads as a branch.
       const low = Math.max(one.y, other.y) + FLOOR.drop;
       return `<path class="join" d="M${one.x} ${one.y + 6}Q${(one.x + other.x) / 2} ${low} ${other.x} ${other.y + 6}"/>`;
     })
@@ -341,23 +358,30 @@ function cellsStarted(
   return before === "" ? `${count}: ${last}` : `${count}: ${before} and ${last}`;
 }
 
-/** `cell` linked to its row when it is drawn here, else said to stand on another machine. */
+/**
+ * `cell` linked to its row when it is drawn here, else said not to stand
+ * here, since it may have ended or stand on another machine.
+ */
 function cellOrAway(cell: string, here: ReadonlySet<string>): string {
   return here.has(cell)
     ? cellLink(cell)
-    : `<span><code>${escaped(cell)}</code>, on another machine</span>`;
+    : `<span><code>${escaped(cell)}</code>, not standing here</span>`;
 }
 
-/** When `since` was, as a clock says it, or nothing when it isn't a time. */
-function sinceOf(since: string | undefined): string {
+/**
+ * When `since` was, by the clock when it was today and by the day and
+ * clock before, so a need held for days never reads as this morning's;
+ * nothing when it isn't a time. `now` is when the page draws.
+ */
+function sinceOf(since: string | undefined, now: number): string {
   const at = since === undefined ? Number.NaN : Date.parse(since);
   if (Number.isNaN(at)) {
     return "";
   }
   const when = new Date(at);
-  const two = (part: number) => String(part).padStart(2, "0");
-  const clock = `${two(when.getHours())}:${two(when.getMinutes())}`;
-  return `, since <time datetime="${escaped(since ?? "")}">${clock}</time>`;
+  const today = new Date(now).toDateString() === when.toDateString();
+  const day = today ? "" : `${when.getDate()} ${MONTHS[when.getMonth()]}, `;
+  return `, since <time datetime="${when.toISOString()}">${day}${clockTime(at)}</time>`;
 }
 
 /**
@@ -371,12 +395,18 @@ function needsOf(
   here: ReadonlySet<string>,
   asker: (join: Join) => string,
 ): string {
-  const lines = joins.map((join) => {
+  // As with the cells a cell started, a long list names six and counts the rest.
+  const named = joins.length > MOST_STARTED + 1 ? MOST_STARTED : joins.length;
+  const now = Date.now();
+  const lines = joins.slice(0, named).map((join) => {
     const need =
       join.need === "" ? "" : `, for <span${saidBy(asker(join))}>${escaped(join.need)}</span>`;
-    return `<span class="need">${cellOrAway(join.cell, here)}${need}${sinceOf(join.since)}</span>`;
+    const since = sinceOf(join.since, now);
+    return `<span class="need">${cellOrAway(join.cell, here)}${need}${since}</span>`;
   });
-  return lines.join("");
+  const rest = joins.length - named;
+  const more = rest === 0 ? "" : `<span class="need">and ${rest} more</span>`;
+  return lines.join("") + more;
 }
 
 /**

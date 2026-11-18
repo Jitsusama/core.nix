@@ -316,8 +316,35 @@ it("a cell split from another grows under it when nothing here started it", () =
       ["SKIFFS", 1],
     ],
   );
-  assert.deepEqual(forages[0]?.splitInto, ["TERNAA", "SKIFFS"]);
+  assert.deepEqual(forages[0]?.splitInto, ["SKIFFS", "TERNAA"]);
   assert.equal(forages[1]?.splitFrom, "KESTRL");
+});
+
+it("an ancestor's split takes in each cell here naming it, so both ends agree", () => {
+  const { forages } = foragesOf(
+    told([
+      forage("KESTRL", { lineage: { split_into: ["OSPREY"] } }),
+      forage("TERNAA", { lineage: { split_from: "KESTRL" } }),
+    ]),
+  );
+  assert.deepEqual(forages[0]?.splitInto, ["OSPREY", "TERNAA"]);
+});
+
+it("reads what it can of a split, and says what it couldn't", () => {
+  const { forages, unread } = foragesOf(
+    told([
+      forage("KESTRL", { lineage: { split_into: ["TERNAA", 7, "", "KESTRL"] } }),
+      forage("OSPREY", { lineage: { split_from: 7, split_into: "TERNAA" } }),
+    ]),
+  );
+  assert.deepEqual(forages[0]?.splitInto, ["TERNAA"]);
+  assert.equal(forages[1]?.splitFrom, undefined);
+  assert.deepEqual(forages[1]?.splitInto, []);
+  assert.deepEqual(unread, [
+    "3 of KESTRL's split_into named no other cell",
+    "OSPREY's split_from named no cell",
+    "OSPREY's split_into listed no cells",
+  ]);
 });
 
 it("the cell a cell grew from is its starter, else its ancestor, only when it's here", () => {
@@ -327,19 +354,26 @@ it("the cell a cell grew from is its starter, else its ancestor, only when it's 
   assert.equal(of("OSPREY", "KESTRL"), "OSPREY");
   assert.equal(of("FARAWAY", "KESTRL"), "KESTRL");
   assert.equal(of(undefined, "FARAWAY"), undefined);
+  // A cell naming itself its starter still grows from the cell it split from.
+  assert.equal(
+    grewFrom({ cell: "OSPREY", startedBy: "OSPREY", splitFrom: "KESTRL" }, here),
+    "KESTRL",
+  );
   assert.equal(
     grewFrom({ cell: "KESTRL", startedBy: "KESTRL", splitFrom: undefined }, here),
     undefined,
   );
 });
 
-it("reads the needs a cell serves and relies on, passing over one naming no cell", () => {
+it("reads the needs a cell serves and relies on, passing over one naming no other cell", () => {
   const { forages, unread } = foragesOf(
     told([
       forage("KESTRL", {
         serves: [
           { cell: "OSPREY", need: "a hover review", since: "2026-11-18T13:05:00Z" },
           { need: "lost" },
+          { cell: "", need: "nobody" },
+          { cell: "KESTRL", need: "itself" },
         ],
         relies: [{ cell: "TERNAA" }],
       }),
@@ -350,7 +384,7 @@ it("reads the needs a cell serves and relies on, passing over one naming no cell
     { cell: "OSPREY", need: "a hover review", since: "2026-11-18T13:05:00Z" },
   ]);
   assert.deepEqual(kestrel?.relies, [{ cell: "TERNAA", need: "", since: undefined }]);
-  assert.deepEqual(unread, ["1 of KESTRL's serves named no cell"]);
+  assert.deepEqual(unread, ["3 of KESTRL's serves named no other cell"]);
 });
 
 it("a forage the node sends no joins for has none, and splits from nothing", () => {
@@ -373,4 +407,23 @@ it("joins each pair a need ties once, however both ends keep it, and only cells 
     { from: "KESTRL", to: "OSPREY", need: "a review" },
     { from: "KESTRL", to: "TERNAA", need: "a plan" },
   ]);
+});
+
+it("joins a pair once even when its two ends word the need differently, or keep two", () => {
+  const { forages } = foragesOf(
+    told([
+      forage("KESTRL", {
+        serves: [
+          { cell: "OSPREY", need: "a review" },
+          { cell: "OSPREY", need: "a second look" },
+        ],
+      }),
+      forage("OSPREY", {
+        relies: [{ cell: "KESTRL", need: "review my hover" }],
+        // A need the other way round is still the same pair on the floor.
+        serves: [{ cell: "KESTRL" }],
+      }),
+    ]),
+  );
+  assert.deepEqual(joined(forages), [{ from: "KESTRL", to: "OSPREY", need: "a review" }]);
 });

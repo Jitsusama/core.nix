@@ -29,9 +29,9 @@ a terminal, `mycelium forage` gathers the realm's.
 - **One row per cell,** each set in under the cell that started it: its
   mark, its address, how many of its steps are done, its purpose, and
   what it keeps, such as "2 plans and one report", and how many things
-  its quest waits on you for, when any. A cell started by one
-  on another machine stands at the top, since that cell isn't drawn
-  here.
+  its quest waits on you for, when any. A cell started by, or split
+  from, one not standing here stands at the top, since that cell isn't
+  drawn here.
 - **Beside the list is the cell the cursor is on:** its purpose, then
   what its quest waits on you for, each with why, about how long it
   takes, when it's for and whether it's ready now, then each

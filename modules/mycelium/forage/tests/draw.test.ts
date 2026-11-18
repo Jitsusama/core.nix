@@ -5,6 +5,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
+import { clockTime } from "../../../local-sites/kit/status.ts";
 import { floorOf, forageRow, panelOf } from "../draw.ts";
 import type { Forage } from "../model.ts";
 
@@ -261,16 +262,40 @@ const SPLIT_FROM = /<dt>Split from<\/dt><dd><a href="#cell=TERNAA" data-cell="TE
 
 /** The panel's line for the two cells a cell split into, one here and one away. */
 const SPLIT_INTO =
-  /<dt>Split into<\/dt><dd><span>2 cells: <a href="#cell=TERNAA"[^>]*><code>TERNAA<\/code><\/a> and <span><code>FARAWAY<\/code>, on another machine<\/span><\/span>/u;
+  /<dt>Split into<\/dt><dd><span>2 cells: <a href="#cell=TERNAA"[^>]*><code>TERNAA<\/code><\/a> and <span><code>FARAWAY<\/code>, not standing here<\/span><\/span>/u;
 
 /** The panel's first need a cell serves, linked to the row of OSPREY, which asked it. */
 const SERVES = /<dt>Serves<\/dt><dd class="needs"><span class="need"><a href="#cell=OSPREY"/u;
 
-/** Since when a need was taken, as a clock says it. */
-const SINCE = /, since <time datetime="2026-11-18T13:05:00Z">\d\d:\d\d<\/time>/u;
+/** A need relied on of a cell not standing here, said with what it was for. */
+const AWAY_FOR = /<code>FARAWAY<\/code>, not standing here<\/span>, for /u;
 
-/** A need relied on of a cell on another machine, said with what it was for. */
-const AWAY_FOR = /<code>FARAWAY<\/code>, on another machine<\/span>, for /u;
+/** The floor's arc from the first cell on it to the second, at 30 apart. */
+const JOIN_FROM_FIRST_TO_SECOND = /<path class="join" d="M39 84Q54 \d+ 69 84"\/>/u;
+
+it("says a need taken today by the clock alone", () => {
+  const now = new Date().toISOString();
+  const panel = panelOf(
+    forage({ serves: [{ cell: "OSPREY", need: "", since: now }] }),
+    new Set(["KESTRL"]),
+    [],
+  );
+  assert.ok(panel.includes(`">${clockTime(Date.parse(now))}</time>`), panel);
+});
+
+it("escapes an address not standing here, and names six needs before counting the rest", () => {
+  const away = "<b>FAR</b>";
+  const serves = Array.from({ length: 9 }, (_, at) => ({
+    cell: at === 0 ? away : `CELL0${at}`,
+    need: "",
+    since: undefined,
+  }));
+  const panel = panelOf(forage({ serves }), new Set(["KESTRL"]), []);
+  assert.ok(panel.includes("<code>&lt;b&gt;FAR&lt;/b&gt;</code>, not standing here"));
+  assert.ok(!panel.includes(away));
+  assert.equal(panel.match(/class="need"/gu)?.length, 7);
+  assert.ok(panel.includes('<span class="need">and 3 more</span>'));
+});
 
 it("says the cell a cell split from and the cells it split into, linked when here", () => {
   const here = new Set(["KESTRL", "TERNAA"]);
@@ -287,7 +312,7 @@ it("says each need a cell serves and relies on, in the asking cell's words, esca
   const here = new Set(["KESTRL", "OSPREY"]);
   const panel = panelOf(
     forage({
-      serves: [{ cell: "OSPREY", need: "a <b>review</b>", since: "2026-11-18T13:05:00Z" }],
+      serves: [{ cell: "OSPREY", need: "a <b>review</b>", since: "2025-11-16T13:05:00Z" }],
       relies: [{ cell: "FARAWAY", need: "a plan", since: "not a time" }],
     }),
     here,
@@ -295,8 +320,11 @@ it("says each need a cell serves and relies on, in the asking cell's words, esca
   );
   assert.match(panel, SERVES);
   assert.deepEqual(saidBy(panel, "OSPREY"), ["a &lt;b&gt;review&lt;/b&gt;"]);
-  assert.match(panel, SINCE);
-  assert.deepEqual(saidBy(panel, "QEST-20261116-KESTRL").at(-1), "a plan");
+  // Taken on another day, so the day is said beside the clock.
+  const at = Date.parse("2025-11-16T13:05:00Z");
+  const day = `${new Date(at).getDate()} Nov, ${clockTime(at)}`;
+  assert.ok(panel.includes(`, since <time datetime="2025-11-16T13:05:00.000Z">${day}</time>`));
+  assert.ok(saidBy(panel, "QEST-20261116-KESTRL").includes("a plan"));
   assert.match(panel, AWAY_FOR);
   assert.ok(!panel.includes("not a time"));
 });
@@ -312,6 +340,8 @@ it("draws one dotted arc for each pair a need joins on the floor, and a branch f
     "kestrel",
   );
   assert.equal(floor.match(/class="join"/gu)?.length, 1);
+  // It runs from the cell relied on, first on the floor, to the one relying, next.
+  assert.match(floor, JOIN_FROM_FIRST_TO_SECOND);
   // The main line, then the split's branch.
   assert.equal(floor.match(/class="hypha"/gu)?.length, 2);
 });
