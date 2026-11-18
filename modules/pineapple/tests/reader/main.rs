@@ -76,10 +76,11 @@ impl Drop for Running {
         let _ = self.reader.kill();
         let _ = self.reader.wait();
         if thread::panicking() {
+            let said = std::fs::read_to_string(self.home.join(JOURNAL))
+                .unwrap_or_else(|why| format!("(its journal couldn't be read: {why})"));
             eprintln!(
-                "what the readers in {} said to their journal:\n{}",
-                self.home.display(),
-                journal(&self.home)
+                "what the readers in {} said to their journal:\n{said}",
+                self.home.display()
             );
         }
     }
@@ -95,9 +96,11 @@ fn journal_of(home: &Path) -> std::fs::File {
         .expect("its journal is opened")
 }
 
-/// What the readers started in `home` have said to its journal so far.
+/// What the readers started in `home` have said to its journal so far,
+/// which their start opened, so a journal that can't be read fails the
+/// case rather than reading as one that said nothing.
 fn journal(home: &Path) -> String {
-    std::fs::read_to_string(home.join(JOURNAL)).unwrap_or_default()
+    std::fs::read_to_string(home.join(JOURNAL)).expect("its journal is read")
 }
 
 /// The stand-in's Joel, and the colleagues who tag him.
@@ -453,13 +456,16 @@ fn a_case_failing_part_way_leaves_no_reader_running() {
     let home = home();
     let running = reader(&home, &origin);
     let pid = running.id();
+    // Its state follows the parenthesised name; Z is one gone but unreaped.
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
+    let state = stat.rsplit_once(')').map(|(_, rest)| rest.trim_start());
     assert!(
-        Path::new(&format!("/proc/{pid}")).exists(),
-        "the reader runs before the case fails"
+        state.is_some_and(|state| !state.starts_with('Z')),
+        "the reader runs before the case fails, not {stat:?}"
     );
     let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         let _held = running;
-        panic!("the case fails while its reader runs");
+        panic!("this case fails on purpose, to see its reader stopped");
     }));
     assert!(failed.is_err(), "the case failed");
     assert!(
