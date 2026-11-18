@@ -81,12 +81,14 @@ Provider {
         changed();
     }
     // Niri saying its casts late, a share among them, leaves the rows
-    // hidden, but they no longer wait on knowing, so each is made again.
+    // hidden, but they no longer wait on knowing, so each is made again,
+    // and each held as it becomes with them.
     readonly property bool unheard: hiding && !Niri.castsHeard
     onUnheardChanged: {
         if (!hiding)
             return;
         ready.remade();
+        heldAgain();
         changed();
     }
 

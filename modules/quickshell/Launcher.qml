@@ -3281,10 +3281,16 @@ Scope {
 
     // Forgets what's told and not yet read, said in the foot or waiting
     // for the next opening, as a share begins, since it may name what the
-    // share hides (secret-asks/Asks.qml).
+    // share hides (secret-asks/Asks.qml). Not yet knowing whether the
+    // screen is shared counts as shared, so the journal says how many were
+    // forgotten, never their words, for the word lost in a gap to be found.
     function untold() {
+        const forgotten = toldOnOpen.length + saying.length;
         toldOnOpen = [];
         say([]);
+        if (forgotten > 0)
+            console.info(`launcher: forgot ${forgotten} words told and unread, `
+                + "as the screen may be shared");
     }
     function tellOnOpen(told, loose) {
         if (open) {
