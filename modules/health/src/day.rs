@@ -203,10 +203,14 @@ pub struct Thing {
     /// Those at error or graver.
     pub errors: u64,
     /// Those of its errors agents' commands said, which were never put to
-    /// Joel; never a crash, nor security's.
+    /// Joel; never security's.
     #[serde(default)]
     pub agents_errors: u64,
-    /// Its stack traces.
+    /// Those of its lines agents' commands said, errors among them: kept to
+    /// read, but never ranked as his.
+    #[serde(default)]
+    pub agents_lines: u64,
+    /// Its stack traces, agents' not.
     pub traces: u64,
     /// Its restarts, as systemd scheduled them.
     pub restarts: u64,
@@ -287,12 +291,15 @@ impl Day {
             thing.say(entry);
             return;
         }
+        // A refusal the machine's security made counts whoever was refused.
+        let agents = entry.agents && thing.kind != Some(Kind::Security);
         thing.lines += 1;
+        if agents {
+            thing.agents_lines += 1;
+        }
         if entry.priority <= 3 && !sign::is_probe(&entry.message) {
             thing.errors += 1;
-            // A crash is counted as a crash, and a refusal the machine's
-            // security made counts whoever was refused.
-            if entry.agents && entry.crashed.is_none() && thing.kind != Some(Kind::Security) {
+            if agents {
                 thing.agents_errors += 1;
             }
         }
@@ -301,7 +308,7 @@ impl Day {
             if entry.whose == Some(Whose::His) {
                 thing.his_crashes += 1;
             }
-        } else if sign::is_trace(&entry.message) {
+        } else if !agents && sign::is_trace(&entry.message) {
             thing.traces += 1;
         }
         thing.say(entry);
@@ -450,7 +457,7 @@ impl Thing {
             traces: self.traces,
             errors: self.errors.saturating_sub(self.agents_errors),
             restarts: self.restarts,
-            lines: self.lines.saturating_sub(self.agents_errors),
+            lines: self.lines.saturating_sub(self.agents_lines),
             events: self.events,
             agents_errors: self.agents_errors,
         }
@@ -468,7 +475,7 @@ pub struct Badness {
     pub his_crashes: u64,
     /// Every crash.
     pub crashes: u64,
-    /// Stack traces.
+    /// Stack traces, agents' not.
     pub traces: u64,
     /// Lines at error or graver, crashes among them and agents' not.
     pub errors: u64,

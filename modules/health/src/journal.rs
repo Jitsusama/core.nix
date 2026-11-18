@@ -162,7 +162,9 @@ pub fn parse(line: &str) -> Option<Entry> {
         Some(UNIT_STARTED) => Some(Job::Started),
         _ => None,
     };
-    let crashed = text("COREDUMP_COMM");
+    // A real crash is told by systemd-coredump, which never runs in agents'
+    // work, so a crash said from there is a forgery and only a line.
+    let crashed = text("COREDUMP_COMM").filter(|_| !agents);
     let whose = crashed.as_ref().map(|_| whose(&fields));
     let micros = |name: &str| text(name).and_then(|value| value.parse().ok());
     let mark = match text("MESSAGE_ID").as_deref() {
@@ -409,6 +411,22 @@ mod tests {
             agents.whose,
             Some(Whose::Agents),
             "a job's program is agents'"
+        );
+    }
+
+    #[test]
+    fn a_crash_said_from_agents_work_is_only_a_line() {
+        let line = r#"{"__REALTIME_TIMESTAMP":"1","PRIORITY":"2",
+            "SYSLOG_IDENTIFIER":"systemd-coredump","COREDUMP_COMM":"kitty",
+            "COREDUMP_CGROUP":"/user.slice/user-1000.slice/user@1000.service/app.slice/k.scope",
+            "_SYSTEMD_CGROUP":"/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs.service",
+            "MESSAGE":"Process 1 (kitty) of user 1000 dumped core."}"#
+            .replace('\n', "");
+        let entry = parse(&line).expect("a journal line is an entry");
+        assert_eq!(
+            (entry.crashed, entry.agents),
+            (None, true),
+            "an agent's command can't make up a crash of his"
         );
     }
 

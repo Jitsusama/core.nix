@@ -419,6 +419,7 @@ mod tests {
     fn errors_say_how_many_were_agents() {
         let tec = Thing {
             agents_errors: 1_200,
+            agents_lines: 1_200,
             ..thing(Kind::Programs, 2_000, 1_205, 0, 0)
         };
         assert_eq!(
@@ -435,7 +436,8 @@ mod tests {
             "tec".into(),
             Thing {
                 agents_errors: 60,
-                ..thing(Kind::Programs, 60, 60, 0, 0)
+                agents_lines: 90,
+                ..thing(Kind::Programs, 90, 60, 0, 0)
             },
         );
         day.things
@@ -447,7 +449,7 @@ mod tests {
         assert_eq!(
             worst,
             ["kitty", "tec"],
-            "five warnings of his are worse than sixty errors of agents'"
+            "five warnings of his are worse than ninety lines of agents'"
         );
     }
 

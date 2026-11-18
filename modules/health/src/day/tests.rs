@@ -173,12 +173,18 @@ fn what_an_agents_command_said_is_kept_but_left_out_of_the_figure() {
 }
 
 #[test]
-fn an_agents_crash_and_refusal_are_not_left_out_as_agents_errors() {
+fn an_agents_abort_is_its_crash_once_and_a_refusal_counts() {
     let mut day = Day::new("2026-11-16");
+    // How tec aborted on 16 November: its own panic from agents' work,
+    // then systemd-coredump's report of the crash, from outside it.
+    day.take(&Entry {
+        ran_in: Some("work-9-1.scope".to_owned()),
+        agents: true,
+        ..entry("tec", 3, "thread 'main' panicked at src/version.rs:40:6")
+    });
     day.take(&Entry {
         crashed: Some("tec".to_owned()),
         whose: Some(Whose::Agents),
-        agents: true,
         ..entry(
             "systemd-coredump",
             2,
@@ -192,9 +198,19 @@ fn an_agents_crash_and_refusal_are_not_left_out_as_agents_errors() {
     });
     let tec = &day.things["tec"];
     assert_eq!(
-        (tec.crashes, tec.agents_errors, tec.figured_errors()),
-        (1, 0, 1),
-        "a crash is left out once, as a crash, not again as an agent's"
+        (
+            tec.crashes,
+            tec.traces,
+            tec.agents_errors,
+            tec.figured_errors()
+        ),
+        (1, 0, 1, 1),
+        "the crash and the agent's panic are each left out once; his own error counts"
+    );
+    assert_eq!(
+        (tec.badness().traces, tec.badness().lines),
+        (0, 2),
+        "an agent's panic ranks as neither a trace nor a line of his"
     );
     assert_eq!(
         day.things["sudo"].figured_errors(),
