@@ -160,10 +160,11 @@ QtObject {
             Awaited.heldFor(late, { at: 1098, spans: noted, collected: 50 }, 8),
             { waited: 98, behind: 90, behindOn: "syncing 40, laying out 30, agents changing 2,"
                 + " 18 unnamed" });
-        // The shell's thread is said syncing from its frame's animating to
-        // the sync letting it go, which holds its polish and its wait for a
-        // render thread still drawing the frame before. The render thread's
-        // own times say which, as "sta" said syncing 68 (Joel, 2026-11-18).
+        // The shell's thread is said syncing from its frame's animating,
+        // after its polish, to the sync letting it go, which holds its wait
+        // for a render thread still drawing the frame before. The render
+        // thread's own times say which, as "sta" said syncing 68 where its
+        // frame's sync took 1 (Joel, 2026-11-18).
         const sta = [{ name: "syncing", from: 1338, to: 1406 }];
         const swapHeld = [{ frame: 7, synchronizing: 1328, synchronized: 1330, rendering: 1330,
             rendered: 1336, swapped: 1395 }, { frame: 8, synchronizing: 1398, synchronized: 1400,
@@ -171,29 +172,88 @@ QtObject {
         Expect.same("a sync behind the last frame's swap says it waited on the swap",
             Awaited.syncsSplit(sta, swapHeld), [
                 { name: "waiting on the last swap", from: 1338, to: 1395 },
-                { name: "polishing", from: 1395, to: 1398 },
-                { name: "syncing", from: 1398, to: 1406 }]);
+                { name: "waiting on the render thread", from: 1395, to: 1398 },
+                { name: "syncing", from: 1398, to: 1400 },
+                { name: "after the sync", from: 1400, to: 1406 }]);
+        const renderHeld = [{ name: "syncing", from: 1338, to: 1380 }];
         Expect.same("a sync behind the last frame's render says it waited on the render",
-            Awaited.syncsSplit([{ name: "syncing", from: 1338, to: 1380 }], [
+            Awaited.syncsSplit(renderHeld, [
                 { frame: 7, synchronizing: 1330, synchronized: 1335, rendering: 1335,
                     rendered: 1360, swapped: 1362 },
-                { frame: 8, synchronizing: 1370, synchronized: 1372, rendering: 0, rendered: 0,
-                    swapped: 0 }]), [
+                { frame: 8, synchronizing: 1370, synchronized: 1372, rendering: 1372,
+                    rendered: 1376, swapped: 1378 }]), [
                 { name: "waiting on the last render", from: 1338, to: 1360 },
                 { name: "waiting on the last swap", from: 1360, to: 1362 },
-                { name: "polishing", from: 1362, to: 1370 },
-                { name: "syncing", from: 1370, to: 1380 }]);
-        Expect.same("a sync whose own frame isn't timed yet keeps what nothing told apart",
-            Awaited.syncsSplit(sta, swapHeld.slice(0, 1)), [
+                { name: "waiting on the render thread", from: 1362, to: 1370 },
+                { name: "syncing", from: 1370, to: 1372 },
+                { name: "after the sync", from: 1372, to: 1380 }]);
+        // A frame whose slot a newer frame took comes back with its number
+        // alone, so a sync whose own frame is gone says what's left untimed.
+        Expect.same("a sync whose own frame isn't timed says what nothing told apart",
+            Awaited.syncsSplit(sta, [swapHeld[0], { frame: 8 }]), [
                 { name: "waiting on the last swap", from: 1338, to: 1395 },
-                { name: "syncing", from: 1395, to: 1406 }]);
+                { name: "untimed syncing", from: 1395, to: 1406 }]);
+        // Given newest first, with a frame gone, one begun after the span
+        // and steps that cross the span's start and each other, each
+        // millisecond is said once, in order.
+        const jumbled = [swapHeld[1], { frame: 10, synchronizing: 1410, synchronized: 1411,
+            rendering: 1412, rendered: 1414, swapped: 1415 }, { frame: 9 },
+            { frame: 6, synchronizing: 1290, synchronized: 1300, rendering: 1300,
+                rendered: 1340, swapped: 1342 },
+            { frame: 7, synchronizing: 1320, synchronized: 1322, rendering: 1341,
+                rendered: 1390, swapped: 1395 }];
+        Expect.same("frames out of order, gone or overlapping are each said once, in order",
+            Awaited.syncsSplit(sta, jumbled), [
+                { name: "waiting on the last render", from: 1338, to: 1340 },
+                { name: "waiting on the last swap", from: 1340, to: 1342 },
+                { name: "waiting on the last render", from: 1342, to: 1390 },
+                { name: "waiting on the last swap", from: 1390, to: 1395 },
+                { name: "waiting on the render thread", from: 1395, to: 1398 },
+                { name: "syncing", from: 1398, to: 1400 },
+                { name: "after the sync", from: 1400, to: 1406 }]);
+        const tiles = (span, parts) => parts.length > 0 && parts[0].from === span.from
+            && parts[parts.length - 1].to === span.to
+            && parts.every((part, at) => part.to > part.from
+                && (at === 0 || part.from === parts[at - 1].to));
+        Expect.same("a sync's parts cover it, end to end, each once",
+            [Awaited.syncsSplit(sta, swapHeld), Awaited.syncsSplit(sta, jumbled),
+                Awaited.syncsSplit(sta, [swapHeld[0]]), Awaited.syncsSplit(sta, [{ frame: 8 }])]
+                .map(parts => tiles(sta[0], parts)), [true, true, true, true]);
         const others = [{ name: "laying out", from: 1300, to: 1320 }];
-        Expect.same("work other than a sync, or no frames timed, is said as it was",
-            [Awaited.syncsSplit(others, swapHeld), Awaited.syncsSplit(sta, [])], [others, sta]);
+        Expect.same("work other than a sync is said as it was",
+            Awaited.syncsSplit(others, swapHeld), others);
         Expect.same("a held key's line names the render thread's steps it waited behind",
             Awaited.behindSplit({ held: { from: 1330, timedOut: true, collected: 50 },
                 listed: { at: 1407, spans: sta, collected: 50 } }, swapHeld, 8),
-            "waiting on the last swap 57, syncing 8, polishing 3, 1 unnamed");
+            "waiting on the last swap 57, after the sync 6, waiting on the render thread 3,"
+                + " syncing 2, 1 unnamed");
+
+        // FramePresentation keeps the last sixteen frames' times, and none
+        // for a frame begun but not yet rendered.
+        const kept = frame => frame >= 5 && frame <= 18 ? { rendered: frame * 10 } : {};
+        Expect.same("the frames read are those still timed, oldest first",
+            Awaited.framesTimed(20, kept).map(frame => frame.frame),
+            [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
+        Expect.same("no frame is read past two newest not yet rendered",
+            Awaited.framesTimed(21, kept), []);
+
+        // A key typed before an earlier held key's frame is swapped keeps
+        // the earlier one's wait for it.
+        const first = { lists: 1 };
+        const second = { lists: 2 };
+        const both = Awaited.heldKept(Awaited.heldKept([], first, { held: 1 }), second,
+            { held: 2 });
+        Expect.same("a held key's wait is found by its own parts, and let go",
+            [Awaited.heldDrawn(both, first).behind.held, Awaited.heldDrawn(both, first).kept
+                .map(one => one.held)], [1, [2]]);
+        Expect.same("a key with no wait kept finds none, and keeps the rest",
+            [Awaited.heldDrawn(both, { lists: 1 }).behind,
+                Awaited.heldDrawn(both, { lists: 1 }).kept.length], [null, 2]);
+        let many = [];
+        for (let key = 0; key < 10; key++)
+            many = Awaited.heldKept(many, { key }, { held: key });
+        Expect.same("only the newest eight held keys' waits are kept",
+            many.map(one => one.held), [2, 3, 4, 5, 6, 7, 8, 9]);
 
         Expect.same("a key its answers ended was behind nothing, whatever ran",
             Awaited.heldFor({ began: 1712000000000, from: 1000, collected: 50 },

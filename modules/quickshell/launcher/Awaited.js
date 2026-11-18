@@ -139,17 +139,22 @@ function drawingHeld(frames, from, to) {
 }
 
 // One span the shell's thread was said syncing, told apart by the render
-// thread's times: from its frame's animating to the render thread taking
-// the sync is the shell's polish and its wait for that thread, still
-// drawing a frame before, so each of that frame's steps is said as waited
-// on and the rest as polishing; from there it's the sync. Where no frame's
-// sync began within it, as one not timed yet, the rest stays syncing.
+// thread's times. Qt's threaded loop polishes before it says animating,
+// then posts the sync and waits (qsgthreadedrenderloop.cpp's
+// polishAndSync), so until the render thread takes the sync the shell's
+// thread waits on it: on a frame before's render or swap where that ran,
+// else on the thread itself. Then the sync, then what the shell's thread
+// ran after it let go (its animations advanced, and what was queued ahead
+// of the call ending the span); on a loop rendering on the shell's thread,
+// as in a sandbox, that also holds the frame's own render and swap. Where
+// no frame's sync began within it, as one whose slot a newer frame took,
+// what no step names is said as untimed syncing.
 function syncSplit(span, frames) {
     const own = frames.filter(frame => frame.synchronizing >= span.from
         && frame.synchronizing <= span.to)
         .sort((one, other) => one.synchronizing - other.synchronizing)[0];
     const took = own === undefined ? span.to : own.synchronizing;
-    const rest = own === undefined ? "syncing" : "polishing";
+    const rest = own === undefined ? "untimed syncing" : "waiting on the render thread";
     const parts = [];
     let at = span.from;
     for (const step of drawingHeld(frames.filter(frame => frame !== own), span.from, took)) {
@@ -164,8 +169,15 @@ function syncSplit(span, frames) {
     if (took > at) {
         parts.push({ name: rest, from: at, to: took });
     }
-    if (own !== undefined && span.to > took) {
-        parts.push({ name: "syncing", from: took, to: span.to });
+    if (own === undefined) {
+        return parts;
+    }
+    const synced = own.synchronized > took ? Math.min(own.synchronized, span.to) : span.to;
+    if (synced > took) {
+        parts.push({ name: "syncing", from: took, to: synced });
+    }
+    if (span.to > synced) {
+        parts.push({ name: "after the sync", from: synced, to: span.to });
     }
     return parts;
 }
@@ -188,4 +200,45 @@ function syncsSplit(spans, frames) {
 function behindSplit(behind, frames, bound) {
     return behindOn(behind.held, Object.assign({}, behind.listed,
         { spans: syncsSplit(behind.listed.spans, frames) }), bound);
+}
+
+// The frames FramePresentation still has the times of, oldest first, each
+// with its number, read back from `last`, the newest begun. One begun but
+// not yet rendered has no times, so the newest two may be passed over;
+// below them the read ends at the first a newer frame's slot took, as
+// Trials.begunBefore's does, so it needs no count of the ring's slots.
+function framesTimed(last, timesOf) {
+    const frames = [];
+    for (let frame = last; frame > 0; frame--) {
+        const times = timesOf(frame);
+        if (!(times.rendered > 0)) {
+            if (frames.length > 0 || last - frame >= 2) {
+                break;
+            }
+            continue;
+        }
+        frames.unshift(Object.assign({ frame }, times));
+    }
+    return frames;
+}
+
+// How many held keys' waits are kept for their frames' swaps: more than a
+// burst types before the first's frame is swapped, which took 57 ms behind
+// a compositor's swap (Joel's "sta", 2026-11-18).
+const HELD_KEPT = 8;
+
+// The held keys' waits kept until each key's frame is swapped, with one
+// more, `behind` ({ held, listed }, as behindSplit takes it) for the key
+// whose search made `parts`; the oldest goes past HELD_KEPT. Each is kept
+// by its key's parts, so a key typed before an earlier one's frame was
+// swapped doesn't take its place.
+function heldKept(kept, parts, behind) {
+    return kept.slice(-(HELD_KEPT - 1)).concat([Object.assign({ parts }, behind)]);
+}
+
+// The wait kept for the key whose search made `parts`, as its frame is
+// swapped, or null, and what's kept without it.
+function heldDrawn(kept, parts) {
+    const behind = kept.find(one => one.parts === parts) ?? null;
+    return { behind, kept: kept.filter(one => one !== behind) };
 }
