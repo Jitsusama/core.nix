@@ -274,9 +274,12 @@ mod tests {
 
     #[test]
     fn a_credential_under_a_key_docker_folds_empties_the_file() {
-        // Docker's reader folds the long s to s and the Kelvin sign to k.
+        // Docker's reader folds the long s to s, the Kelvin sign to k, and
+        // the dotted capital I to I, by its single-letter lower case.
         for text in [
             r#"{"auth\u017f": {"registry.example": {"auth": "made-up"}}}"#,
+            r#"{"auths": {"registry.example": {"\u0130dentitytoken": "made-up"}}}"#,
+            r#"{"prox\u0130es": {"default": {"httpProxy": "http://joel:made-up@p.example"}}}"#,
             r#"{"cred\u017fStore": "secretservice"}"#,
             r#"{"auths": {"registry.example": {"identityto\u212aen": "made-up"}}}"#,
         ] {
@@ -305,11 +308,15 @@ mod tests {
 
     #[test]
     fn a_proxys_login_with_no_scheme_empties_the_file() {
-        let text = r#"{"proxies": {"default": {"httpProxy": "joel:made-up@proxy.example:3128"}}}"#;
-        assert!(
-            empties(text, &docker()),
-            "a proxy's login with no scheme was left: {text}"
-        );
+        for text in [
+            r#"{"proxies": {"default": {"httpProxy": "joel:made-up@proxy.example:3128"}}}"#,
+            r#"{"proxies": {"default": {"httpProxy": "joel:made-up@proxy.example/a://b"}}}"#,
+        ] {
+            assert!(
+                empties(text, &docker()),
+                "a proxy's login with no scheme was left: {text}"
+            );
+        }
     }
 
     #[test]
