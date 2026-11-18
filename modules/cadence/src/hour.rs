@@ -232,6 +232,8 @@ fn gather(
     let day = |at| text(&state_home.join(format!("mycelium/balance/{}.jsonl", today(at))));
     let minutes = [day(now - DAY), day(now)].join("\n");
     all.extend(measures::balanced(&minutes, now, NET_RULES));
+    let pains = fs::read_to_string(state_home.join("pain-points/hour.json")).ok();
+    all.push(measures::pains(pains.as_deref(), now, measures::ASKS));
     Ok(all)
 }
 

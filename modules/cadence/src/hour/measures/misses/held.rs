@@ -15,6 +15,7 @@ const JUDGES: &[&str] = &[
     "map-cells",
     "merge-to-on",
     "mycelium-to-lock",
+    "pains-open",
     "quarantine-undated",
     "quests-cells-ended",
     "quests-without-cells",
