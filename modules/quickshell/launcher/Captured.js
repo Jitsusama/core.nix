@@ -117,15 +117,14 @@ function readFound(records, listed, finds, room) {
     const named = [];
     const worded = [];
     for (const record of records) {
-        if (listed.has(record.path))
-            continue;
-        if (finds(record.path))
+        const fresh = !listed.has(record.path);
+        if (fresh && finds(record.path)) {
             named.push({ path: record.path, line: "" });
-        else if (worded.length < room)
+            listed.add(record.path);
+        } else if (fresh && worded.length < room) {
             worded.push(record);
-        else
-            continue;
-        listed.add(record.path);
+            listed.add(record.path);
+        }
     }
     return named.concat(worded);
 }
