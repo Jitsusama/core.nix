@@ -159,7 +159,10 @@ in
         the session whose mesh address is a dash-separated part of the
         unit's name, as `garbage-bound-mon-2af2dh.service`; any other
         goes to the watcher. A broken unit the tick finds goes the same
-        way, as `unit:google.service`.
+        way, as `unit:google.service`. The owner of `switch.` is also
+        asked the tick's alarms only a switch answers (a merge not on the
+        machine, updates failing, the follower held), in place of the
+        watcher, and only its replies settle them.
         The key `review` names who gets Friday's `cadence review` beside the
         orchestrator.
       '';

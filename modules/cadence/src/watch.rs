@@ -70,6 +70,14 @@ pub struct Snapshot {
     pub last_card: Option<i64>,
     /// The ids the watcher's messages answer.
     pub answered: Vec<String>,
+    /// Who switches the machine, as the `switch.` owner names it: the
+    /// alarms only a switch answers go to it, or to the watcher when no
+    /// one is named.
+    pub switcher: Option<String>,
+    /// The ids each session other than the watcher answers, by the address
+    /// a question still waiting was sent to, so a reply settles only what
+    /// its sender was asked, whoever owns switching now.
+    pub answered_by: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 /// A target missed: a key it is said under once, and what to say.
@@ -325,7 +333,7 @@ pub mod tests {
     use super::*;
     use crate::asking::{Question, State, To, tick};
 
-    fn merge(sha: &str, at: i64) -> Merge {
+    pub fn merge(sha: &str, at: i64) -> Merge {
         Merge {
             sha: sha.into(),
             at,
@@ -390,10 +398,11 @@ pub mod tests {
             merge: merge("abc", 100_000 - 25 * 60),
             on: None,
         }];
+        s.switcher = Some("SWITCH".into());
         let mut state = State::default();
         let first = tick(&s, &mut state);
-        assert_eq!(first.len(), 1);
-        assert_eq!(first[0].to, To::Watcher);
+        assert_eq!(first.len(), 1, "said once: {first:?}");
+        assert_eq!(first[0].to, To::Switcher, "only a switch gets it on");
         assert!(
             first[0].text.contains("#1 merged 25 min ago"),
             "{}",
