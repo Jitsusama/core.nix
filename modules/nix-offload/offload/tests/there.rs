@@ -324,8 +324,10 @@ fn given_to(folder: &Path) -> String {
 fn within_far(command: &str) -> &str {
     command
         .split_once("trap 'exit 143' HUP TERM; ")
-        .map(|(_, rest)| rest)
-        .unwrap_or_else(|| panic!("it doesn't end with its caller: {command}"))
+        .map_or_else(
+            || panic!("it doesn't end with its caller: {command}"),
+            |(_, rest)| rest,
+        )
 }
 
 fn journalled(folder: &Path) -> serde_json::Value {
