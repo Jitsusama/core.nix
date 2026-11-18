@@ -463,7 +463,7 @@ fn a_job_its_kind_doesnt_allow_is_refused_before_anything_runs() {
 #[test]
 fn a_far_job_whose_output_can_t_land_fails_and_writes_nothing_outside() {
     for (job, ends) in [
-        ("mkdir out; echo 7 > out/n", 75),
+        ("mkdir out; echo 7 > out/n", 77),
         ("mkdir out; echo 7 > out/n; exit 3", 3),
     ] {
         // A realm each, since the stand-in share never removes the far
@@ -480,9 +480,15 @@ fn a_far_job_whose_output_can_t_land_fails_and_writes_nothing_outside() {
             "a job whose output couldn't land didn't end {ends}: {err}"
         );
         assert!(
-            err.contains("out") && err.contains("link"),
+            err.contains("out/n would land through the link"),
             "it didn't say the output was refused for a link: {err}"
         );
+        if ends == 77 {
+            assert!(
+                err.contains("was refused as it came home") && err.contains("--here"),
+                "a passing job refused its output didn't say so, or point at --here: {err}"
+            );
+        }
         assert!(emptied(&outside), "what came back was written outside");
         assert!(
             emptied(&realm.handover()),
@@ -492,7 +498,7 @@ fn a_far_job_whose_output_can_t_land_fails_and_writes_nothing_outside() {
 }
 
 #[test]
-fn a_kind_bringing_back_what_can_t_come_home_is_refused_only_far() {
+fn a_kind_bringing_back_what_can_t_come_home_runs_here_and_says_why() {
     let realm = Realm::new(true);
     realm.bringing("far", &["out/.cache"]);
     let here = realm.check(&["--here"], "pwd");
@@ -501,17 +507,21 @@ fn a_kind_bringing_back_what_can_t_come_home_is_refused_only_far() {
         "a job run here was refused for what it would bring back: {:?}",
         said(&here)
     );
-    let far = realm.check(&[], "pwd");
-    let (_, err) = said(&far);
-    assert_eq!(
-        far.status.code(),
-        Some(78),
-        "a far job bringing back a hidden path wasn't refused: {err}"
-    );
-    assert!(err.contains("out/.cache"), "it didn't name the path: {err}");
+    for options in [&[][..], &["--there"][..]] {
+        let far = realm.check(options, "pwd");
+        let (_, err) = said(&far);
+        assert!(
+            far.status.success(),
+            "a job bringing back a hidden path didn't run here ({options:?}): {err}"
+        );
+        assert!(
+            err.contains("runs here") && err.contains("out/.cache"),
+            "it didn't say it ran here for the path ({options:?}): {err}"
+        );
+    }
     assert!(
         !realm.asked().contains("run "),
-        "a refused job ran far: {}",
+        "a job that can't bring back ran far: {}",
         realm.asked()
     );
 }

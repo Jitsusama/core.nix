@@ -29,6 +29,8 @@ pub enum Why {
     NotHeard(String),
     /// It was told where.
     Told,
+    /// Its kind brings back the path named, which couldn't come home.
+    CantComeHome(String),
 }
 
 impl Why {
@@ -42,6 +44,7 @@ impl Why {
             Why::NoMachines => "no-machines",
             Why::NotHeard(_) => "not-heard",
             Why::Told => "told",
+            Why::CantComeHome(_) => "cant-come-home",
         }
     }
 }

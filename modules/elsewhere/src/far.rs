@@ -59,13 +59,26 @@ const LARGEST_FILE: u64 = 64 << 20;
 /// a minute's worth of a busy link's looks, five times over.
 pub const CROSSES_WITHIN: u64 = 300;
 
+/// How many seconds the near side waits for what comes home before it
+/// says it is waiting: past a few looks, so a share keeping pace is quiet.
+const SAYS_IT_WAITS: u64 = 10;
+
 /// The mode bits a file brought back may land with: its own read, write
-/// and run bits, but never setuid, setgid, sticky or a write for anyone.
+/// and run bits, but never setuid, setgid, sticky or a write for anyone,
+/// and then only those the person's umask lets a new file have.
 const LANDS_WITH: u32 = 0o775;
 
 /// `O_NONBLOCK`, so opening a pipe that took a file's place returns at
-/// once rather than waiting for a writer.
-#[cfg(target_os = "linux")]
+/// once rather than waiting for a writer. Its value is the platform's, so
+/// a platform this doesn't name doesn't build rather than guessing.
+#[cfg(all(
+    target_os = "linux",
+    any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv64"
+    )
+))]
 const OPEN_NONBLOCKING: i32 = 0o4000;
 #[cfg(target_os = "macos")]
 const OPEN_NONBLOCKING: i32 = 0x4;
@@ -471,15 +484,53 @@ fn brought_back(path: &str, brings_back: &[String]) -> bool {
         })
 }
 
+/// Why what a job made didn't all come home.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Missed {
+    /// It would land somewhere it mustn't, which another try won't change.
+    Refused(String),
+    /// Some of it didn't cross, or didn't land, which another try may not
+    /// meet.
+    Lost(String),
+}
+
+impl Missed {
+    /// Why, in words.
+    pub fn why(&self) -> &str {
+        match self {
+            Missed::Refused(why) | Missed::Lost(why) => why,
+        }
+    }
+}
+
+/// What among `files` a share won't carry, so waiting for it is waiting
+/// for nothing.
+fn uncarried(files: &[Brought]) -> Option<String> {
+    if let Some(large) = files.iter().find(|brought| brought.size > LARGEST_FILE) {
+        return Some(format!(
+            "{} is {} bytes, past the {LARGEST_FILE} a share carries in one file",
+            large.path, large.size
+        ));
+    }
+    let bytes: u64 = files.iter().map(|brought| brought.size).sum();
+    if files.len() > MOST_FILES || bytes > MOST_BYTES {
+        return Some(format!(
+            "its {} files of {bytes} bytes are past the {MOST_FILES} files or {MOST_BYTES} bytes a share carries",
+            files.len()
+        ));
+    }
+    None
+}
+
 /// Copies what the far machine brought back for the job in the handover
 /// folder `job` into `folder`, once it has all crossed `within` seconds,
-/// or says why not.
+/// or says why not. Everything that can land does, whatever else didn't.
 pub fn bring_back(
     job: &Path,
     folder: &Path,
     brings_back: &[String],
     within: u64,
-) -> Result<usize, String> {
+) -> Result<usize, Missed> {
     if brings_back.is_empty() {
         return Ok(0);
     }
@@ -491,41 +542,76 @@ pub fn bring_back(
                 .is_ok_and(|meta| meta.is_file() && meta.len() == brought.size)
         })
     };
-    for _ in 0..=within {
+    for look in 0..=within {
         let text = fs::read_to_string(job.join(BROUGHT)).unwrap_or_default();
-        if let Some(files) = listed(&text, brings_back).filter(|files| arrived(files)) {
-            let through = files
-                .iter()
-                .find_map(|brought| linked(folder, &brought.path).map(|link| (brought, link)));
-            if let Some((brought, (link, leads))) = through {
-                return Err(format!(
-                    "{} would land through the link {}, which {leads}",
-                    brought.path,
-                    link.display()
-                ));
-            }
-            for brought in &files {
-                land(&numbered(brought), &folder.join(&brought.path))
-                    .map_err(|error| format!("{} didn't land: {error}", brought.path))?;
-            }
-            let lost: Vec<&str> = text
-                .lines()
-                .filter_map(|line| line.strip_prefix("-\t"))
-                .filter(|path| brought_back(path, brings_back))
-                .collect();
-            if !lost.is_empty() {
-                return Err(format!(
-                    "{} didn't come back from the far side",
-                    lost.join(", ")
-                ));
-            }
-            return Ok(files.len());
+        let files = listed(&text, brings_back);
+        if let Some(why) = files.as_deref().and_then(uncarried) {
+            return Err(Missed::Lost(why));
+        }
+        if let Some(files) = files.filter(|files| arrived(files)) {
+            return landed(job, folder, brings_back, &text, &files);
+        }
+        if look == SAYS_IT_WAITS {
+            eprintln!("waiting up to {within}s for what it made to come home");
         }
         // Each end of a shared quest looks once a second, so looking more
         // often finds nothing new.
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
-    Err(format!("it didn't cross home within {within}s"))
+    Err(Missed::Lost(format!(
+        "it didn't cross home within {within}s"
+    )))
+}
+
+/// Lands `files`, all crossed whole into the handover folder `job`, in
+/// `folder`, unless one would land through a link it mustn't, and says
+/// what didn't land or come back from the far side, `text` being its list.
+fn landed(
+    job: &Path,
+    folder: &Path,
+    brings_back: &[String],
+    text: &str,
+    files: &[Brought],
+) -> Result<usize, Missed> {
+    let through = files
+        .iter()
+        .find_map(|brought| linked(folder, &brought.path).map(|link| (brought, link)));
+    if let Some((brought, (link, leads))) = through {
+        return Err(Missed::Refused(format!(
+            "{} would land through the link {}, which {leads}",
+            brought.path,
+            link.display()
+        )));
+    }
+    let mut missed: Vec<String> = files
+        .iter()
+        .filter_map(|brought| {
+            let from = job.join(BACK).join(brought.number.to_string());
+            land(&from, &folder.join(&brought.path))
+                .err()
+                .map(|error| format!("{} didn't land: {error}", brought.path))
+        })
+        .collect();
+    let unlanded = missed.len();
+    let lost: Vec<&str> = text
+        .lines()
+        .filter_map(|line| line.strip_prefix("-\t"))
+        .filter(|path| brought_back(path, brings_back))
+        .collect();
+    if !lost.is_empty() {
+        missed.push(format!(
+            "{} didn't come back from the far side",
+            lost.join(", ")
+        ));
+    }
+    if missed.is_empty() {
+        return Ok(files.len());
+    }
+    // So nobody takes the folder for untouched, or for whole.
+    if unlanded < files.len() {
+        missed.push(format!("the other {} landed", files.len() - unlanded));
+    }
+    Err(Missed::Lost(missed.join("; ")))
 }
 
 /// Puts `from` at `into` under a name of its own first and then moves it
@@ -536,36 +622,60 @@ fn land(from: &Path, into: &Path) -> io::Result<()> {
     fs::create_dir_all(parent)?;
     // Made new, so nothing already at the name, a link perhaps, is opened,
     // and short, so any name that fits its folder lands.
+    swept(parent);
+    let mut source = opened_plain(from)?;
+    let bits = source.metadata()?.permissions().mode() & LANDS_WITH;
     let landing = parent.join(format!(
         "{MARK}-{}-{}",
         std::process::id(),
         NEXT_LANDING.fetch_add(1, Ordering::Relaxed)
     ));
-    let opened = || {
-        fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&landing)
-    };
-    let mut to = match opened() {
-        // Left by a run killed as it landed, under this process's id, so
-        // that run is over; removing the name follows nothing at it.
-        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-            fs::remove_file(&landing)?;
-            opened()?
-        }
-        opened => opened?,
-    };
-    let landed = opened_plain(from).and_then(|mut source| {
-        io::copy(&mut source, &mut to)?;
-        let bits = source.metadata()?.permissions().mode() & LANDS_WITH;
-        to.set_permissions(fs::Permissions::from_mode(bits))?;
-        fs::rename(&landing, into)
-    });
+    // Made with its bits, so the umask takes what it would from any new
+    // file, and held locked while it lands, so another run's sweep knows
+    // it is no leftover.
+    let mut to = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(bits)
+        .open(&landing)?;
+    let landed = to
+        .try_lock()
+        .map_err(io::Error::other)
+        .and_then(|()| io::copy(&mut source, &mut to))
+        .and_then(|_| fs::rename(&landing, into));
     landed.inspect_err(|_| {
         // What's left would be in the person's folder; it's spent anyway.
         let _ = fs::remove_file(&landing);
     })
+}
+
+/// Removes from `folder` each landing name a run killed as it landed left,
+/// which no live run holds locked, as the kernel lets a dead one's lock go.
+fn swept(folder: &Path) {
+    let Ok(names) = fs::read_dir(folder) else {
+        // Nothing to sweep in a folder that can't be read; the landing
+        // then says why it can't be written either.
+        return;
+    };
+    for name in names.flatten() {
+        let path = name.path();
+        let left = name
+            .file_name()
+            .to_str()
+            .and_then(|name| name.strip_prefix(&format!("{MARK}-")))
+            .and_then(|rest| rest.split_once('-'))
+            .is_some_and(|(pid, n)| {
+                [pid, n]
+                    .iter()
+                    .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+            });
+        let unheld = left && opened_plain(&path).is_ok_and(|file| file.try_lock().is_ok());
+        if unheld {
+            // One a live run took since is its own to fail on; the sweep
+            // only ever spares what's held.
+            let _ = fs::remove_file(&path);
+        }
+    }
 }
 
 /// Opens `path` only when it is a plain file, and the same file once open,

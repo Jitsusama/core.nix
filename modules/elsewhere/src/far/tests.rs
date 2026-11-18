@@ -1,4 +1,4 @@
-use super::{bring_back, crossing, listed, plain_quest, quoted, script, started, travels};
+use super::{Missed, bring_back, crossing, listed, plain_quest, quoted, script, started, travels};
 use crate::settings::{Copies, Kind};
 use std::path::{Path, PathBuf};
 
@@ -353,7 +353,9 @@ fn what_comes_back_comes_back_under_its_own_name_past_one_that_failed() {
     let into = home.join("near");
     assert_eq!(
         bring_back(&handover(&home), &into, &kind.brings_back, WAITS),
-        Err("early/b didn't come back from the far side".to_owned()),
+        Err(Missed::Lost(
+            "early/b didn't come back from the far side; the other 2 landed".to_owned()
+        )),
         "the near side didn't say what never crossed"
     );
     for (name, text) in [
@@ -379,7 +381,7 @@ fn scratch(what: &str) -> PathBuf {
 }
 
 #[test]
-fn only_a_plain_file_is_opened_to_land_and_a_pipe_never_waits() {
+fn only_a_plain_file_is_opened_to_land() {
     let root = scratch("opened");
     std::fs::write(root.join("file"), "a").unwrap();
     std::os::unix::fs::symlink(root.join("file"), root.join("link")).unwrap();
@@ -441,20 +443,36 @@ fn a_file_that_can_t_land_leaves_its_place_as_it_was() {
 fn a_file_lands_under_a_long_name_without_its_special_bits() {
     let root = scratch("long");
     std::fs::write(root.join("from"), "a").unwrap();
-    std::fs::set_permissions(
-        root.join("from"),
-        std::os::unix::fs::PermissionsExt::from_mode(0o4777),
-    )
-    .unwrap();
+    // Setuid where it may be set, which Nix's build sandbox refuses, and a
+    // write for anyone either way.
+    let allow = |bits| {
+        std::fs::set_permissions(
+            root.join("from"),
+            std::os::unix::fs::PermissionsExt::from_mode(bits),
+        )
+    };
+    allow(0o4777).or_else(|_| allow(0o777)).unwrap();
     let long = "n".repeat(250);
     super::land(&root.join("from"), &root.join(&long)).expect("a long name didn't land");
     let mode = std::os::unix::fs::PermissionsExt::mode(
         &std::fs::metadata(root.join(&long)).unwrap().permissions(),
     );
+    // What the umask leaves a new file asking for every bit, so the test
+    // holds whatever umask runs it.
+    let probe = root.join("probe");
+    std::os::unix::fs::OpenOptionsExt::mode(
+        std::fs::OpenOptions::new().write(true).create_new(true),
+        0o777,
+    )
+    .open(&probe)
+    .unwrap();
+    let allowed =
+        std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(&probe).unwrap().permissions())
+            & 0o777;
     assert_eq!(
         mode & 0o7777,
-        0o775,
-        "it landed with setuid or a write for anyone"
+        0o775 & allowed,
+        "it landed with setuid or a write for anyone, or past the umask: {mode:o}"
     );
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -463,20 +481,100 @@ fn a_file_lands_under_a_long_name_without_its_special_bits() {
 fn a_landing_name_a_killed_run_left_is_cleared() {
     let root = scratch("stale");
     std::fs::write(root.join("from"), "new").unwrap();
-    // Every landing name this process could take next, as a run killed
-    // under the same process id would have left one.
+    let left = |pid: &str| root.join(format!("{}-{pid}-0", super::MARK));
+    // Two left by runs killed as they landed, one of them under the id
+    // this process lands under next; one a live run holds; and the
+    // person's own, named like neither.
+    let own = std::process::id().to_string();
     let next = super::NEXT_LANDING.load(std::sync::atomic::Ordering::Relaxed);
-    for n in next..next + 64 {
-        let stale = root.join(format!("{}-{}-{n}", super::MARK, std::process::id()));
-        std::fs::write(stale, "old").unwrap();
+    let mine = root.join(format!("{}-{own}-{next}", super::MARK));
+    for path in [
+        left("1"),
+        mine.clone(),
+        left("2"),
+        root.join(".elsewhere-notes"),
+    ] {
+        std::fs::write(path, "old").unwrap();
     }
+    let held = std::fs::File::open(left("2")).unwrap();
+    held.try_lock().unwrap();
     super::land(&root.join("from"), &root.join("into")).expect("a stale name stopped it");
     assert_eq!(
         std::fs::read_to_string(root.join("into")).unwrap(),
         "new",
         "what landed wasn't what came back"
     );
+    assert!(
+        !left("1").exists() && !mine.exists(),
+        "a name a killed run left stayed: {:?}",
+        names(&root)
+    );
+    assert!(left("2").exists(), "a live run's landing was swept");
+    assert!(
+        root.join(".elsewhere-notes").exists(),
+        "the person's own file was swept"
+    );
+    drop(held);
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn what_a_share_can_t_carry_fails_at_once() {
+    let home = scratch("uncarried");
+    let job = handover(&home);
+    std::fs::create_dir_all(job.join(super::BACK)).unwrap();
+    let large = super::LARGEST_FILE + 1;
+    std::fs::write(job.join(super::BROUGHT), format!("{large}\tout/a\nend\n")).unwrap();
+    let started = std::time::Instant::now();
+    let landed = bring_back(&job, &home.join("near"), &["out".into()], WAITS);
+    assert!(
+        landed
+            .as_ref()
+            .is_err_and(|why| matches!(why, Missed::Lost(why) if why.contains("past the"))),
+        "a file past what a share carries wasn't refused as such: {landed:?}"
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(WAITS),
+        "it waited for a file a share can't carry"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_file_that_won_t_land_is_said_with_the_lost_and_the_rest_land() {
+    let home = scratch("partial");
+    let job = handover(&home);
+    std::fs::create_dir_all(job.join(super::BACK)).unwrap();
+    for (number, text) in ["a", "b"].iter().enumerate() {
+        std::fs::write(job.join(super::BACK).join(number.to_string()), text).unwrap();
+    }
+    std::fs::write(
+        job.join(super::BROUGHT),
+        "1\tout/a/x\n1\tout/b\n-\tout/c\nend\n",
+    )
+    .unwrap();
+    // A file where out/a/x needs a folder, so it can't land.
+    let into = home.join("near");
+    std::fs::create_dir_all(into.join("out")).unwrap();
+    std::fs::write(into.join("out/a"), "mine").unwrap();
+    let landed = bring_back(&job, &into, &["out".into()], WAITS);
+    let why = match &landed {
+        Err(Missed::Lost(why)) => why.clone(),
+        other => panic!("a file that couldn't land wasn't said as lost: {other:?}"),
+    };
+    for says in [
+        "out/a/x didn't land",
+        "out/c didn't come back",
+        "the other 1 landed",
+    ] {
+        assert!(why.contains(says), "it didn't say {says}: {why}");
+    }
+    assert_eq!(
+        std::fs::read_to_string(into.join("out/b")).ok().as_deref(),
+        Some("b"),
+        "one that failed to land stopped the rest"
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]
@@ -495,7 +593,7 @@ fn the_near_side_waits_for_each_file_at_its_listed_size() {
     assert!(
         landed
             .as_ref()
-            .is_err_and(|why| why.contains("didn't cross")),
+            .is_err_and(|why| why.why().contains("didn't cross")),
         "a copy short of its listed size was taken: {landed:?}"
     );
     assert!(!into.join("out/a").exists(), "a short copy landed");
@@ -509,7 +607,7 @@ fn the_near_side_waits_for_each_file_at_its_listed_size() {
     assert!(
         landed
             .as_ref()
-            .is_err_and(|why| why.contains("didn't cross")),
+            .is_err_and(|why| why.why().contains("didn't cross")),
         "a link in the handover was followed: {landed:?}"
     );
     assert!(!into.join("out/a").exists(), "a linked file landed");
@@ -544,7 +642,8 @@ fn what_comes_back_never_lands_through_a_link_out_of_its_folder() {
     assert!(
         landed
             .as_ref()
-            .is_err_and(|why| why.contains("the link") && why.contains("out of its folder")),
+            .is_err_and(|why| matches!(why, Missed::Refused(why)
+                if why.contains("the link") && why.contains("out of its folder"))),
         "a file came back through a folder linked away: {landed:?}"
     );
     assert!(
@@ -574,7 +673,9 @@ fn what_comes_back_never_lands_through_a_link_out_of_its_folder() {
         std::os::unix::fs::symlink(into.join(to), into.join("out")).unwrap();
         let landed = bring_back(&job, &into, &back, WAITS);
         assert!(
-            landed.as_ref().is_err_and(|why| why.contains(leads)),
+            landed
+                .as_ref()
+                .is_err_and(|why| matches!(why, Missed::Refused(why) if why.contains(leads))),
             "a link to {to} wasn't refused as leading {leads}: {landed:?}"
         );
         assert!(!into.join(".git/a").exists(), "a file landed in .git");

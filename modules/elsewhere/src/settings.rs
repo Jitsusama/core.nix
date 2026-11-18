@@ -239,6 +239,10 @@ mod tests {
                 "up": {"programs": ["x"], "brings_back": ["../up"]},
                 "option": {"programs": ["x"], "brings_back": ["-delete"]},
                 "not": {"programs": ["x"], "brings_back": ["!"]},
+                "open": {"programs": ["x"], "brings_back": ["(out"]},
+                "shut": {"programs": ["x"], "brings_back": [")"]},
+                "comma": {"programs": ["x"], "brings_back": [",out"]},
+                "empty": {"programs": ["x"], "brings_back": ["/"]},
                 "fine": {"programs": ["x"], "brings_back": ["/out/", "a/b"]}
             }}"#,
         )
@@ -248,6 +252,10 @@ mod tests {
             ("up", Some("../up")),
             ("option", Some("-delete")),
             ("not", Some("!")),
+            ("open", Some("(out")),
+            ("shut", Some(")")),
+            ("comma", Some(",out")),
+            ("empty", Some("/")),
             ("fine", None),
         ] {
             assert_eq!(

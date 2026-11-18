@@ -136,6 +136,14 @@ fn place(settings: &Settings, kind: &Kind, stay: bool, send: bool) -> Place {
     if stay {
         return told(None);
     }
+    // What it made couldn't come home, so it's made here, where it lands
+    // as it's made, rather than refused.
+    if let Some(odd) = kind.odd_brings_back() {
+        return Place {
+            machine: None,
+            why: Why::CantComeHome(odd.to_owned()),
+        };
+    }
     if send && let Some(first) = settings.machines.first() {
         return told(Some(first));
     }
@@ -173,6 +181,9 @@ fn because(place: &Place) -> String {
         Why::NoMachines => "it may send to no machine".to_owned(),
         Why::NotHeard(problem) => format!("mycelium couldn't say: {problem}"),
         Why::Told => "as told".to_owned(),
+        Why::CantComeHome(path) => {
+            format!("its brings_back names {path}, which isn't a plain place in the job's folder")
+        }
     }
 }
 
@@ -320,18 +331,6 @@ fn run(context: &Context, settings: &Settings) -> Result<(), Failure> {
         }
         return Err(here_now(&asked.command));
     };
-    // Only a job going far brings anything back, so only one going far is
-    // refused for it.
-    if let Some(odd) = kind.odd_brings_back() {
-        return Err(Failure::new(
-            Exit::Config,
-            format!(
-                "{}'s brings_back names {odd}, which isn't a plain place in the job's folder",
-                asked.kind
-            ),
-        )
-        .try_this("its brings_back in the machine's home-manager settings, or --here"));
-    }
     eprintln!("{} runs on {machine}: {}", asked.kind, because(&place));
     match there(settings, kind, &asked, machine)? {
         Sent::Ended(0) => Ok(()),
@@ -486,21 +485,32 @@ fn send(
         &kind.brings_back,
         far::CROSSES_WITHIN,
     );
-    let Err(why) = brought else {
+    let Err(missed) = brought else {
         return Ok(Sent::Ended(code));
     };
     if code != 0 {
-        eprintln!("couldn't bring back what it made on {machine}: {why}");
+        eprintln!(
+            "couldn't bring back what it made on {machine}: {}",
+            missed.why()
+        );
         return Ok(Sent::Ended(code));
     }
     // The job passed but its work never reached the folder, so it isn't
-    // done here; made here, it would be.
-    Err(Failure::new(
-        Exit::TryAgain,
-        format!("what it made on {machine} didn't come home"),
-    )
-    .because(why)
-    .try_this("--here, to make it here"))
+    // done here; made here, it would be. A refusal would refuse it again,
+    // so only a loss is worth another try.
+    let failure = match missed {
+        far::Missed::Refused(why) => Failure::new(
+            Exit::Refused,
+            format!("what it made on {machine} was refused as it came home"),
+        )
+        .because(why),
+        far::Missed::Lost(why) => Failure::new(
+            Exit::TryAgain,
+            format!("what it made on {machine} didn't come home"),
+        )
+        .because(why),
+    };
+    Err(failure.try_this("--here, to make it here"))
 }
 
 /// Whether mycelium, asked `words`, says yes.
