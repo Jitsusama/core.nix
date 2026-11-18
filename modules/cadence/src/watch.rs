@@ -74,9 +74,10 @@ pub struct Snapshot {
     /// alarms only a switch answers go to it, or to the watcher when no
     /// one is named.
     pub switcher: Option<String>,
-    /// The ids the switcher's messages answer, which settle only what it
-    /// was asked.
-    pub switcher_answered: Vec<String>,
+    /// The ids each session other than the watcher answers, by the address
+    /// a question still waiting was sent to, so a reply settles only what
+    /// its sender was asked, whoever owns switching now.
+    pub answered_by: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 /// A target missed: a key it is said under once, and what to say.

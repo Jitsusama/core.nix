@@ -71,7 +71,7 @@ mod units;
 mod unrun;
 mod watch;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fmt::Display;
 use std::fs;
@@ -290,7 +290,7 @@ fn run(args: &Args) -> io::Result<()> {
     {
         eprintln!("cadence: telling of reverts: {err}");
     }
-    let snapshot = gather(&folder, &state_home, &mesh, args, now)?;
+    let mut snapshot = gather(&folder, &state_home, &mesh, args, now)?;
     let card = card::card(&snapshot, clock);
     write_whole(&folder.join("card.txt"), &card)?;
 
@@ -302,18 +302,22 @@ fn run(args: &Args) -> io::Result<()> {
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
+    for by in state.askers().map(str::to_owned).collect::<BTreeSet<_>>() {
+        let answers = mesh.sent_by(&by).into_iter().filter_map(|m| m.re).collect();
+        snapshot.answered_by.insert(by, answers);
+    }
     for question in asking::tick(&snapshot, &mut state) {
         let to = match question.to {
             To::Watcher => watcher.as_str(),
             To::Switcher => snapshot.switcher.as_deref().unwrap_or(watcher),
             To::Orchestrator => orchestrator.as_str(),
         };
-        // Taken up, not handled, since a switch can outlast the twenty
-        // minutes before the orchestrator is told of a silence.
+        // An answer ends cadence's watch, so it's asked for once handled;
+        // a switch outlasting the twenty minutes says why it isn't yet.
         let text = match question.to {
             To::Watcher | To::Switcher => format!(
-                "{} Answer with re set to this question once you've taken it up: cadence looks \
-                 for that every five minutes.",
+                "{} Answer with re set to this question once handled, or to say why it can't be \
+                 yet: cadence looks for that every five minutes.",
                 question.text
             ),
             To::Orchestrator => question.text.clone(),
@@ -321,7 +325,8 @@ fn run(args: &Args) -> io::Result<()> {
         let message = message(to, question.to.intent(), text);
         mesh.send(&message)?;
         if let Some(key) = &question.key {
-            state.asked_as(key, &message.id, now, &question.text);
+            let by = (question.to == To::Switcher).then_some(to);
+            state.asked_as(key, &message.id, now, &question.text, by);
         }
     }
     if asking::card_due(&snapshot, &state) {
@@ -615,14 +620,6 @@ fn gather(
         .as_deref()
         .map(|a| mesh.sent_by(a))
         .unwrap_or_default();
-    let switcher = switcher(args);
-    let switcher_answered = switcher
-        .as_deref()
-        .map(|a| mesh.sent_by(a))
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|m| m.re)
-        .collect();
     let orchestrator = args.orchestrator.as_deref().map(|s| format!("@{s}"));
     Ok(Snapshot {
         now,
@@ -668,8 +665,8 @@ fn gather(
             .max()
             .map(|ms| ms / 1000),
         answered: sent.into_iter().filter_map(|m| m.re).collect(),
-        switcher,
-        switcher_answered,
+        switcher: switcher(args),
+        answered_by: BTreeMap::new(),
     })
 }
 

@@ -28,6 +28,11 @@ pub struct Asked {
     pub id: String,
     pub at: i64,
     pub text: String,
+    /// The switcher it went to, or none for the watcher: kept, since who
+    /// owns switching can change while it waits, and only the one asked
+    /// answers it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
 }
 
 /// What cadence remembers between ticks.
@@ -120,12 +125,10 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
         }
     }
 
-    let to_switcher = |key: &str| s.switcher.is_some() && switching(key);
-    state.asked.retain(|key, q| {
-        let answers = if to_switcher(key) {
-            &s.switcher_answered
-        } else {
-            &s.answered
+    state.asked.retain(|_, q| {
+        let answers = match &q.by {
+            Some(by) => s.answered_by.get(by).map_or(&[][..], Vec::as_slice),
+            None => &s.answered,
         };
         !answers.contains(&q.id)
     });
@@ -139,11 +142,9 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
         // The switcher's silence is said whether the watcher is there or
         // not; the watcher's only while it is, as its being gone is said
         // on its own.
-        let who = match &s.switcher {
-            Some(switcher) if switching(&key) => {
-                format!("{switcher}, the session that switches the machine,")
-            }
-            _ if s.watcher_alive => "The session keeping the delivery cycle fast".to_owned(),
+        let who = match &q.by {
+            Some(by) => format!("{by}, the session that switches the machine,"),
+            None if s.watcher_alive => "The session keeping the delivery cycle fast".to_owned(),
             _ => continue,
         };
         escalate(
@@ -161,7 +162,7 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
         if !state.seen.contains_key(&key) {
             state.seen.insert(key.clone(), s.now);
             out.push(Question {
-                to: if to_switcher(&key) {
+                to: if s.switcher.is_some() && switching(&key) {
                     To::Switcher
                 } else {
                     To::Watcher
@@ -205,17 +206,24 @@ pub fn card_due(s: &Snapshot, state: &State) -> bool {
 }
 
 impl State {
-    /// Remembers that the question asked under `key` went as `id`, so its
-    /// answer is known.
-    pub fn asked_as(&mut self, key: &str, id: &str, at: i64, text: &str) {
+    /// Remembers that the question asked under `key` went as `id`, to the
+    /// switcher `by` or else the watcher, so its answer is known.
+    pub fn asked_as(&mut self, key: &str, id: &str, at: i64, text: &str, by: Option<&str>) {
         self.asked.insert(
             key.to_owned(),
             Asked {
                 id: id.to_owned(),
                 at,
                 text: text.to_owned(),
+                by: by.map(str::to_owned),
             },
         );
+    }
+
+    /// The sessions other than the watcher that a question waits on, whose
+    /// answers are to be read.
+    pub fn askers(&self) -> impl Iterator<Item = &str> {
+        self.asked.values().filter_map(|q| q.by.as_deref())
     }
 }
 
@@ -260,14 +268,26 @@ mod tests {
         assert_eq!(To::Orchestrator.intent(), "finding", "wants nothing back");
     }
 
-    /// A switch alarm asked 25 minutes ago, and a snapshot of now.
+    /// A switch alarm asked 25 minutes ago of `switcher`, or of the watcher
+    /// with none, and a snapshot of now with that switcher named.
     fn a_switch_alarm_asked(switcher: Option<&str>) -> (Snapshot, State) {
         let mut state = State::default();
         let at = 100_000 - ANSWER_WITHIN - 300;
-        state.asked_as("alarm:noton:abc", "1-CADENCE-1-aa", at, "#1 isn't on.");
+        state.asked_as(
+            "alarm:noton:abc",
+            "1-CADENCE-1-aa",
+            at,
+            "#1 isn't on.",
+            switcher,
+        );
         let mut s = calm(100_000);
         s.switcher = switcher.map(Into::into);
         (s, state)
+    }
+
+    /// `s` with `by` having answered the question asked under `id`.
+    fn answered_by(s: &mut Snapshot, by: &str, id: &str) {
+        s.answered_by.insert(by.into(), vec![id.into()]);
     }
 
     #[test]
@@ -295,15 +315,71 @@ mod tests {
             "the watcher's reply settles no question the switcher was asked"
         );
         s.answered.clear();
-        s.switcher_answered = vec!["1-CADENCE-1-aa".into()];
-        tick(&s, &mut state);
-        assert!(state.asked.is_empty(), "the switcher's own does");
-        let (mut s, mut state) = a_switch_alarm_asked(None);
-        s.answered = vec!["1-CADENCE-1-aa".into()];
+        s.switcher = Some("LATER".into());
+        answered_by(&mut s, "LATER", "1-CADENCE-1-aa");
         tick(&s, &mut state);
         assert!(
-            state.asked.is_empty(),
-            "the watcher, asked with no switcher, settles it"
+            state.asked.contains_key("alarm:noton:abc"),
+            "nor does a later switcher's, which was never asked"
+        );
+        answered_by(&mut s, "SWITCH", "1-CADENCE-1-aa");
+        tick(&s, &mut state);
+        assert!(state.asked.is_empty(), "the switcher asked does");
+
+        let (mut s, mut state) = a_switch_alarm_asked(None);
+        s.switcher = Some("SWITCH".into());
+        answered_by(&mut s, "SWITCH", "1-CADENCE-1-aa");
+        tick(&s, &mut state);
+        assert!(
+            state.asked.contains_key("alarm:noton:abc"),
+            "the switcher's reply settles no question the watcher was asked"
+        );
+        s.answered = vec!["1-CADENCE-1-aa".into()];
+        tick(&s, &mut state);
+        assert!(state.asked.is_empty(), "the watcher's own does");
+    }
+
+    #[test]
+    fn only_those_with_a_question_waiting_are_read_for_answers() {
+        let (_, mut state) = a_switch_alarm_asked(Some("SWITCH"));
+        state.asked_as("alarm:cpu:1", "1-CADENCE-1-bb", 100_000, "hot", None);
+        assert_eq!(
+            state.askers().collect::<Vec<_>>(),
+            ["SWITCH"],
+            "the watcher aside"
+        );
+    }
+
+    #[test]
+    fn a_watcher_gone_is_said_as_gone_not_also_as_silent() {
+        let (mut s, mut state) = a_switch_alarm_asked(None);
+        s.watcher_alive = false;
+        assert_eq!(
+            tick(&s, &mut state),
+            [] as [Question; 0],
+            "not silent, and not yet gone"
+        );
+    }
+
+    #[test]
+    fn each_alarm_only_a_switch_answers_goes_to_the_switcher() {
+        let mut s = calm(100_000);
+        s.switcher = Some("SWITCH".into());
+        s.landings = vec![crate::watch::Landing {
+            merge: crate::watch::tests::merge("abc", 100_000 - 25 * 60),
+            on: None,
+        }];
+        s.follower.failed = Some((100_000 - 3600, "no space left".into()));
+        s.follower.held = Some((100_000 - 3600, "switching would change x".into()));
+        let asked = tick(&s, &mut State::default());
+        let keys: Vec<_> = asked.iter().filter_map(|q| q.key.as_deref()).collect();
+        assert!(
+            keys.len() >= 3,
+            "a merge not on, failing and held: {keys:?}"
+        );
+        assert!(
+            asked.iter().all(|q| q.to == To::Switcher),
+            "every one to the switcher: {asked:?}"
         );
     }
 
@@ -344,6 +420,7 @@ mod tests {
             "1-CADENCE-1-aa",
             100_000 - ANSWER_WITHIN - 1,
             "Cadence alarm: hot.",
+            None,
         );
         let s = calm(100_000);
         let asked = tick(&s, &mut state);
@@ -365,6 +442,7 @@ mod tests {
             "1-CADENCE-1-aa",
             100_000 - ANSWER_WITHIN - 1,
             "hot",
+            None,
         );
         let mut s = calm(100_000);
         s.answered = vec!["1-CADENCE-1-aa".into()];
