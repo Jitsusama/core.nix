@@ -241,12 +241,24 @@ Provider {
                     mixed.act(one.key, one.act);
             }
             provider.parting = [];
-            // The rows past the page go, kept only while they're listed.
-            for (const state of [provider.whole, provider.pastWhole]) {
-                state.kept = null;
-                state.of = null;
-                state.rows = [];
-            }
+            provider.pastPageLetGo();
+        }
+
+        // Shut again before its first frame was drawn, as a second press
+        // of the chord does, `open` never changed, so what came while it
+        // opened goes here.
+        function onOpeningChanged() {
+            if (provider.launcherShut())
+                provider.pastPageLetGo();
+        }
+    }
+
+    // The rows past the page go, kept only while they're listed.
+    function pastPageLetGo() {
+        for (const state of [whole, pastWhole]) {
+            state.kept = null;
+            state.of = null;
+            state.rows = [];
         }
     }
 
@@ -335,13 +347,27 @@ Provider {
     }
 
     // Asks the daemon for every row of a paged place, unless it's being
-    // asked.
+    // asked, or the launcher's shut, since an answer come while it's shut
+    // is let go (wholeAnswered). History's rows are made ahead while it's
+    // shut at each change the to-do daemon or the notices tell, so each
+    // asked for its 1.7 MB past the page and threw it away, about once a
+    // minute on Joel's shell: notices sent it 125 MB of the 206 MB it read
+    // in 69 minutes (the census, 2026-11-18). Made shut, History holds its
+    // page alone, as it did when each answer was let go.
     function wholeAsked(state) {
         const link = state.ready.link;
-        if (state.asking || !link || link.wire === null)
+        if (state.asking || !link || link.wire === null || launcherShut())
             return;
         state.asking = true;
         link.find(state.ask, answer => provider.wholeAnswered(state, answer));
+    }
+
+    // Whether the launcher's shut, so nothing it's asked for would be
+    // shown. One drawing its first frame isn't, though `open` follows only
+    // once that's drawn: what it asks then, and what comes then, is kept.
+    function launcherShut() {
+        const launcher = provider.launcher;
+        return launcher?.open === false && launcher?.opening !== true;
     }
 
     // Every row answered is kept, and what lists them told, so a list
@@ -349,7 +375,7 @@ Provider {
     // closed is let go at once.
     function wholeAnswered(state, answer) {
         state.asking = false;
-        if (!Array.isArray(answer?.keys) || provider.launcher?.open === false)
+        if (!Array.isArray(answer?.keys) || launcherShut())
             return;
         // A row past the page that reads as it did is kept as made, so a
         // notice read, which History asks again for, remakes none of the
@@ -574,6 +600,21 @@ Provider {
 
     function everything() {
         return listed(every(), []);
+    }
+
+    // Its rows' keys for a pick (Launcher.qml's knowing), as everything()
+    // gives them but asking for none: a pick learns as the launcher
+    // closes, so the rows past the page it asked for came once the
+    // launcher was shut and were let go, 1.7 MB of Joel's each pick. Until
+    // they're held, it's the page alone, as everything() then gave. A step
+    // learns once its frame is drawn, still open (learnAfterFrame), where
+    // its ask was kept, but asking 1.7 MB there to know which old picks of
+    // notices past the page to keep costs more than those picks are worth;
+    // the first pick of each opening read the page alone already. Once
+    // held, it's everything(), which asks again only if what's held has
+    // fallen behind the page, as it did before.
+    function keysKnown() {
+        return whole.kept === null ? listed(all(), []) : everything();
     }
 
     function looksThrough() {
