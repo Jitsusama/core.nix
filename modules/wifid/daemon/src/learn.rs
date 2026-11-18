@@ -11,6 +11,14 @@
 //! two away. The latest minutes weigh most, so tonight counts for more
 //! than last week.
 //!
+//! A minute the card brings a download down in is learned apart, as what
+//! the access point carries under load, and across the hours, since such
+//! minutes are few: at a desk on 18 Nov 2026 they were 40 of 645. Its slow
+//! end says how quickly the access point drains its queue for the card,
+//! which is no figure of how it answers idle: that night the 5 GHz radio
+//! answered at 22.6 ms idle and 68.2 under load, and the 2.4 GHz one at
+//! 10.4 and 37.5.
+//!
 //! Only a trusted network's figures are kept on the disk, as it alone is
 //! trusted to know the machine (network.rs). Any other's are learned while
 //! wifid runs and go with it, since which access points a machine was
@@ -61,15 +69,32 @@ struct Learnt {
     point: String,
     hour: u8,
     step: i16,
-    /// The gateway's p95, in milliseconds.
+    /// The gateway's p95, in milliseconds, over the minutes the card
+    /// brought little down.
     p95: f64,
-    /// The share of echoes lost, in percent.
+    /// The share of echoes lost, in percent, over every minute.
     lost: f64,
     minutes: u32,
+    /// How many minutes `p95` is of. Figures kept before it was counted
+    /// apart take `minutes`, as nearly all of theirs were idle.
+    #[serde(default)]
+    idle: u32,
+    /// The gateway's p95 over the minutes the card brought a download
+    /// down, where there were any.
+    #[serde(default)]
+    loaded: Option<Loaded>,
     /// Whether it goes on the disk: its network was trusted when last
     /// measured.
     #[serde(skip)]
     kept: bool,
+}
+
+/// What one access point carried under load, at one hour from one place.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct Loaded {
+    /// The gateway's p95, in milliseconds.
+    p95: f64,
+    minutes: u32,
 }
 
 /// What every access point carried, by hour and place.
@@ -87,6 +112,9 @@ impl Learned {
         let mut learnt = learnt.unwrap_or_default();
         for learnt in &mut learnt {
             learnt.kept = true;
+            if learnt.idle == 0 && learnt.loaded.is_none() {
+                learnt.idle = learnt.minutes;
+            }
         }
         Learned {
             file: file.to_path_buf(),
@@ -96,75 +124,88 @@ impl Learned {
 
     /// Folds in what the access point a card is on carried over the span,
     /// keeping it on the disk where its network is trusted. An echo never
-    /// answered counts as slow as it was waited for. A minute slowed by
-    /// what the card brings down teaches what it lost but not its slow
-    /// end, which says how much it brought down rather than what the access
-    /// point carries, so points are weighed against each other by minutes
-    /// alike.
+    /// answered counts as slow as it was waited for. A minute the card
+    /// brings a download down in teaches what it lost alike, and its slow
+    /// end as what the access point carries under load, so points are
+    /// weighed against each other by minutes alike.
     pub fn carried(&mut self, here: &Here, measured: &Measured) -> io::Result<()> {
         if measured.echoes < ECHOES {
             return Ok(());
         }
-        let queued = choose::slowed_by_its_own(measured);
+        let loaded = choose::loaded(measured);
         let p95 = measured.p95.unwrap_or(echo::LOST).as_secs_f64() * 1000.0;
         let step = here.signal.div_euclid(STEP);
-        let same = |learnt: &&mut Learnt| {
+        let same = |learnt: &Learnt| {
             learnt.point == here.point && learnt.hour == here.hour && learnt.step == step
         };
-        match self.learnt.iter_mut().find(same) {
-            Some(learnt) => {
-                if !queued {
-                    learnt.p95 += (p95 - learnt.p95) * LATEST;
-                }
-                learnt.lost += (measured.lost - learnt.lost) * LATEST;
-                learnt.minutes = learnt.minutes.saturating_add(1);
-                learnt.kept = here.trusted;
+        let learnt = match self.learnt.iter().position(same) {
+            Some(at) => &mut self.learnt[at],
+            None => {
+                self.learnt.push(Learnt {
+                    network: here.network.to_owned(),
+                    point: here.point.to_owned(),
+                    hour: here.hour,
+                    step,
+                    p95,
+                    lost: measured.lost,
+                    minutes: 0,
+                    idle: 0,
+                    loaded: None,
+                    kept: here.trusted,
+                });
+                self.learnt.last_mut().expect("just pushed")
             }
-            None if queued => return Ok(()),
-            None => self.learnt.push(Learnt {
-                network: here.network.to_owned(),
-                point: here.point.to_owned(),
-                hour: here.hour,
-                step,
-                p95,
-                lost: measured.lost,
-                minutes: 1,
-                kept: here.trusted,
-            }),
+        };
+        if loaded {
+            let under = learnt.loaded.get_or_insert(Loaded { p95, minutes: 0 });
+            under.p95 += (p95 - under.p95) * LATEST;
+            under.minutes = under.minutes.saturating_add(1);
+        } else {
+            if learnt.idle == 0 {
+                learnt.p95 = p95;
+            }
+            learnt.p95 += (p95 - learnt.p95) * LATEST;
+            learnt.idle = learnt.idle.saturating_add(1);
         }
+        if learnt.minutes == 0 {
+            learnt.lost = measured.lost;
+        }
+        learnt.lost += (measured.lost - learnt.lost) * LATEST;
+        learnt.minutes = learnt.minutes.saturating_add(1);
+        learnt.kept = here.trusted;
         if here.trusted { self.keep() } else { Ok(()) }
     }
 
     /// What an access point carried at this hour, heard about this loud,
-    /// once it's been measured long enough there to go by. Its figures
-    /// from a step louder or fainter count too, weighed by their minutes,
-    /// so a signal wavering across a step's edge isn't two places.
+    /// while the card brought little down, once it's been measured long
+    /// enough there to go by. Its figures from a step louder or fainter
+    /// count too, weighed by their minutes, so a signal wavering across a
+    /// step's edge isn't two places.
     pub fn of(&self, point: &str, hour: u8, signal: i16) -> Option<Measured> {
-        let step = signal.div_euclid(STEP);
-        let near = self.learnt.iter().filter(|learnt| {
-            learnt.point == point && learnt.hour == hour && (learnt.step - step).abs() <= 1
+        let near = self
+            .near(point, signal)
+            .filter(|learnt| learnt.hour == hour);
+        let figures = near.map(|learnt| (learnt.p95, learnt.idle, learnt.lost, learnt.minutes));
+        figured(figures, signal)
+    }
+
+    /// What an access point carried while the card brought a download
+    /// down, heard about this loud, at any hour, once there are enough
+    /// such minutes to go by.
+    pub fn loaded(&self, point: &str, signal: i16) -> Option<Measured> {
+        let figures = self.near(point, signal).filter_map(|learnt| {
+            let under = learnt.loaded.as_ref()?;
+            Some((under.p95, under.minutes, learnt.lost, learnt.minutes))
         });
-        let (mut minutes, mut p95, mut lost) = (0, 0.0, 0.0);
-        for learnt in near {
-            minutes += learnt.minutes;
-            p95 += learnt.p95 * f64::from(learnt.minutes);
-            lost += learnt.lost * f64::from(learnt.minutes);
-        }
-        if minutes < ENOUGH {
-            return None;
-        }
-        let whole = f64::from(minutes);
-        Some(Measured {
-            echoes: 0,
-            p50: None,
-            p95: Some(Duration::from_secs_f64(p95 / whole / 1000.0)),
-            lost: lost / whole,
-            retried: 0.0,
-            failed: 0.0,
-            signal: Some(i32::from(signal)),
-            moving: None,
-            room: None,
-        })
+        figured(figures, signal)
+    }
+
+    /// What's been learned of an access point heard about this loud.
+    fn near<'a>(&'a self, point: &'a str, signal: i16) -> impl Iterator<Item = &'a Learnt> {
+        let step = signal.div_euclid(STEP);
+        self.learnt
+            .iter()
+            .filter(move |learnt| learnt.point == point && (learnt.step - step).abs() <= 1)
     }
 
     /// Forgets what the access points of every network but these carried.
@@ -191,6 +232,33 @@ impl Learned {
         fs::set_permissions(&partial, fs::Permissions::from_mode(0o600))?;
         fs::rename(partial, &self.file)
     }
+}
+
+/// What figures learned at a few hours or places come to, each a p95 of
+/// so many minutes and a loss of so many, once the p95 is of `ENOUGH`
+/// minutes, as heard this loud.
+fn figured(figures: impl Iterator<Item = (f64, u32, f64, u32)>, signal: i16) -> Option<Measured> {
+    let (mut timed, mut p95, mut counted, mut lost) = (0, 0.0, 0, 0.0);
+    for (their_p95, their_timed, their_lost, their_counted) in figures {
+        timed += their_timed;
+        p95 += their_p95 * f64::from(their_timed);
+        counted += their_counted;
+        lost += their_lost * f64::from(their_counted);
+    }
+    if timed < ENOUGH {
+        return None;
+    }
+    Some(Measured {
+        echoes: 0,
+        p50: None,
+        p95: Some(Duration::from_secs_f64(p95 / f64::from(timed) / 1000.0)),
+        lost: lost / f64::from(counted.max(1)),
+        retried: 0.0,
+        failed: 0.0,
+        signal: Some(i32::from(signal)),
+        moving: None,
+        room: None,
+    })
 }
 
 /// The hour of the day here, by the machine's own time zone; midnight's
@@ -328,15 +396,23 @@ mod tests {
         assert!(learnt.lost > 99.0, "lost {}", learnt.lost);
     }
 
-    #[test]
-    fn a_minute_slowed_by_what_the_card_moves_teaches_nothing() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut learned = Learned::kept_in(&dir.path().join("carried"));
-        let downloading = Measured {
+    fn downloading(p95: u64, lost: f64) -> Measured {
+        Measured {
             p50: Some(Duration::from_micros(5800)),
             moving: Some(52),
-            ..carried(Some(143), 0.0)
-        };
+            ..carried(Some(p95), lost)
+        }
+    }
+
+    fn loaded_p95_of(learned: &Learned, point: &str, signal: i16) -> Option<u64> {
+        let measured = learned.loaded(point, signal)?;
+        Some(u64::try_from(measured.p95?.as_millis()).unwrap())
+    }
+
+    #[test]
+    fn a_minute_slowed_by_what_the_card_moves_teaches_nothing_of_it_idle() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join("carried"));
 
         minutes(
             &mut learned,
@@ -344,7 +420,9 @@ mod tests {
             &carried(Some(15), 0.0),
             10,
         );
-        learned.carried(&at(HALL, 20, -50), &downloading).unwrap();
+        learned
+            .carried(&at(HALL, 20, -50), &downloading(143, 0.0))
+            .unwrap();
 
         assert_eq!(
             p95_of(&learned, HALL, 20, -50),
@@ -354,14 +432,100 @@ mod tests {
     }
 
     #[test]
+    fn what_an_access_point_carried_under_load_is_learned_apart() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join("carried"));
+        let quick_download = Measured {
+            moving: Some(25),
+            ..carried(Some(20), 0.0)
+        };
+
+        minutes(
+            &mut learned,
+            &at(HALL, 20, -50),
+            &carried(Some(15), 0.0),
+            10,
+        );
+        minutes(&mut learned, &at(HALL, 20, -50), &quick_download, 10);
+        minutes(
+            &mut learned,
+            &at(HALL, 20, -50),
+            &carried(Some(30), 0.0),
+            10,
+        );
+
+        assert_eq!(
+            loaded_p95_of(&learned, HALL, -50),
+            Some(20),
+            "a minute moving 25 Mbit/s is under load, slowed or not"
+        );
+        let idle = p95_of(&learned, HALL, 20, -50).unwrap();
+        assert!(
+            (24..=26).contains(&idle),
+            "idle is of the idle minutes alone: {idle}"
+        );
+    }
+
+    #[test]
+    fn what_an_access_point_carried_under_load_is_learned_across_the_hours() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join("carried"));
+
+        minutes(&mut learned, &at(DESK, 6, -43), &downloading(60, 0.0), 3);
+        assert_eq!(
+            learned.loaded(DESK, -43),
+            None,
+            "three minutes aren't enough"
+        );
+        minutes(&mut learned, &at(DESK, 7, -43), &downloading(140, 0.0), 2);
+
+        let loaded = loaded_p95_of(&learned, DESK, -43).unwrap();
+        assert_eq!(loaded, 92, "weighed by their minutes");
+        assert_eq!(learned.loaded(DESK, -70), None, "a room or two away isn't");
+        assert_eq!(learned.loaded(HALL, -43), None, "nor another access point");
+        assert_eq!(
+            learned.of(DESK, 6, -43),
+            None,
+            "nor is it what it carries idle"
+        );
+    }
+
+    #[test]
+    fn what_an_access_point_carried_under_load_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("carried");
+        let mut learned = Learned::kept_in(&file);
+
+        minutes(&mut learned, &at(DESK, 7, -43), &downloading(136, 0.0), 5);
+
+        assert_eq!(
+            loaded_p95_of(&Learned::kept_in(&file), DESK, -43),
+            Some(136)
+        );
+    }
+
+    #[test]
+    fn figures_kept_before_load_was_learned_apart_are_gone_by_as_idle() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("carried");
+        let kept = r#"[{"network":"Lantern","point":"6c:ae:f6:c1:84:28","hour":20,
+            "step":-9,"p95":15.0,"lost":0.5,"minutes":10}]"#;
+        fs::write(&file, kept).unwrap();
+        let mut learned = Learned::kept_in(&file);
+
+        assert_eq!(p95_of(&learned, HALL, 20, -50), Some(15));
+        learned
+            .carried(&at(HALL, 20, -50), &carried(Some(15), 0.0))
+            .unwrap();
+        assert_eq!(p95_of(&Learned::kept_in(&file), HALL, 20, -50), Some(15));
+        assert_eq!(learned.loaded(HALL, -50), None);
+    }
+
+    #[test]
     fn a_minute_slowed_by_what_the_card_moves_still_teaches_what_it_lost() {
         let dir = tempfile::tempdir().unwrap();
         let mut learned = Learned::kept_in(&dir.path().join("carried"));
-        let downloading = Measured {
-            p50: Some(Duration::from_micros(5800)),
-            moving: Some(52),
-            ..carried(Some(143), 2.0)
-        };
+        let downloading = downloading(143, 2.0);
 
         minutes(
             &mut learned,
@@ -376,16 +540,12 @@ mod tests {
     }
 
     #[test]
-    fn a_first_minute_slowed_by_what_the_card_moves_starts_nothing() {
+    fn a_first_minute_slowed_by_what_the_card_moves_starts_nothing_idle() {
         let dir = tempfile::tempdir().unwrap();
         let mut learned = Learned::kept_in(&dir.path().join("carried"));
-        let downloading = Measured {
-            p50: Some(Duration::from_micros(5800)),
-            moving: Some(52),
-            ..carried(Some(143), 0.0)
-        };
 
-        minutes(&mut learned, &at(HALL, 20, -50), &downloading, 10);
+        minutes(&mut learned, &at(HALL, 20, -50), &downloading(143, 0.0), 10);
+        assert_eq!(learned.of(HALL, 20, -50), None, "nothing idle is known yet");
         minutes(
             &mut learned,
             &at(HALL, 20, -50),
@@ -394,6 +554,7 @@ mod tests {
         );
 
         assert_eq!(p95_of(&learned, HALL, 20, -50), Some(15));
+        assert_eq!(loaded_p95_of(&learned, HALL, -50), Some(143));
     }
 
     #[test]
