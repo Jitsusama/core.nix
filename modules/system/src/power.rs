@@ -26,11 +26,18 @@ use crate::parts::Answer;
 /// The kernel's line, up to its count (drivers/acpi/apei/bert.c).
 const LINE: &str = "BERT: Total records found: ";
 
+/// The kernel's first line in every boot's log (init/version.c), which the
+/// boot's records come after: the newest of the two is the count when
+/// there is one, and this when the kernel found no records and said none.
+const FIRST: &str = "Linux version ";
+
 /// What asks this boot's kernel log for the kernel's count of the boot
-/// error records, as one JSON document, the line's own. With `--grep`,
-/// `--lines` counts the newest matching entries (journalctl(1): it implies
-/// `--reverse`), not the boot's last lines. journalctl ends with 1 when no
-/// line matches, so a boot with none answers an error.
+/// error records, as one JSON document, the line's own, or the boot's
+/// first line when it has none, so a clean boot answers too and is asked
+/// no more. With `--grep`, `--lines` counts the newest matching entries
+/// (journalctl(1): it implies `--reverse`), not the boot's last lines.
+/// journalctl ends with 1 when no line matches, as when the journal can't
+/// be read or has lost the boot's start, so those answer an error.
 pub const ASK: &[&str] = &[
     "journalctl",
     "--dmesg",
@@ -38,13 +45,19 @@ pub const ASK: &[&str] = &[
     "--output=json",
     "--output-fields=MESSAGE",
     "--lines=1",
-    concat!("--grep=^", "BERT: Total records found: "),
+    concat!(
+        "--grep=^(?:",
+        "BERT: Total records found: ",
+        "|",
+        "Linux version ",
+        ")"
+    ),
 ];
 
-/// The count the kernel gave, once found. It says it once, at boot, so a
-/// process that has read it needn't ask the journal again, as `system
-/// serve` would every few seconds; a boot with a record takes the journal
-/// about two seconds to answer.
+/// The count the kernel gave, once found, none being a count of 0. It
+/// says it once, at boot, so a process that has read it needn't ask the
+/// journal again, as `system serve` would every few seconds; the journal
+/// takes one to two seconds to answer.
 pub type Found = OnceLock<u64>;
 
 /// How long after the boot an error kept before it is worth a look.
@@ -62,14 +75,19 @@ pub fn kept_before_boot(said: &Answer, since_boot: u64) -> Option<u64> {
 
 fn found_in(said: &Answer) -> Option<u64> {
     let line = said.as_ref().ok()?.get("MESSAGE")?.as_str()?;
+    if line.starts_with(FIRST) {
+        return Some(0);
+    }
     line.strip_prefix(LINE)?.trim().parse().ok()
 }
 
-/// Whether the journal is still worth asking: not after the day the news
-/// lasts, and not once this process has the kernel's count.
+/// Whether the journal is still worth asking: only while the time since
+/// the boot is known and within the day the news lasts, since an answer
+/// can't be judged without it, and not once this process has the
+/// kernel's count.
 #[must_use]
 pub fn worth_asking(found: &Found, since_boot: Option<u64>) -> bool {
-    found.get().is_none() && since_boot.is_none_or(|since| since <= NEWS_FOR)
+    found.get().is_none() && since_boot.is_some_and(|since| since <= NEWS_FOR)
 }
 
 /// The journal's answer, or the count already found as one when it
@@ -165,20 +183,45 @@ mod tests {
 
     #[test]
     fn the_journal_is_asked_for_the_line_that_is_read() {
-        assert_eq!(ASK.last(), Some(&format!("--grep=^{LINE}").as_str()));
+        assert_eq!(
+            ASK.last(),
+            Some(&format!("--grep=^(?:{LINE}|{FIRST})").as_str())
+        );
         assert!(ASK.contains(&"--lines=1"), "one line, the newest matching");
+    }
+
+    #[test]
+    fn a_clean_boot_is_a_count_of_none() {
+        let first = Ok(said("Linux version 7.3.4 (nixbld@localhost) #1-Nix"));
+        assert_eq!(kept_before_boot(&first, 60), None);
+        let found = Found::new();
+        let first = remembered(&found, Some(first));
+        assert_eq!(kept_before_boot(&first, 60), None, "passed on as it was");
+        assert_eq!(found.get(), Some(&0), "kept, so never asked again");
+        assert!(!worth_asking(&found, Some(60)));
+        assert_eq!(
+            kept_before_boot(&remembered(&found, None), 60),
+            None,
+            "none found answers as none"
+        );
     }
 
     #[test]
     fn a_count_found_is_kept_and_the_journal_asked_no_more() {
         let found = Found::new();
         assert!(worth_asking(&found, Some(60)), "nothing found yet, asked");
-        assert!(worth_asking(&found, None), "no uptime, still asked");
+        assert!(
+            !worth_asking(&found, None),
+            "no uptime, nothing to judge it by"
+        );
         assert!(!worth_asking(&found, Some(NEWS_FOR + 1)), "a day on");
 
         let none = remembered(&found, Some(Err("journalctl ended with 1".to_owned())));
         assert!(none.is_err(), "no line passes on as the journal's error");
-        assert!(worth_asking(&found, Some(60)), "no line yet, asked again");
+        assert!(
+            worth_asking(&found, Some(60)),
+            "unread, or its start lost: asked again"
+        );
 
         let one = remembered(&found, Some(Ok(said("BERT: Total records found: 1"))));
         assert_eq!(kept_before_boot(&one, 60), Some(60));
