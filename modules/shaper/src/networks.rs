@@ -104,7 +104,10 @@ mod tests {
         assert!(ceilings(&file).is_empty(), "a network with no ceiling");
         fs::write(
             &file,
-            r#"{"00:00:5E:00:53:01": {"up": 12000, "most": 9500}, "00:00:5e:00:53:02": {"up": 9000, "most": null}}"#,
+            concat!(
+                r#"{"00:00:5E:00:53:01": {"up": 12000, "most": 9500}, "#,
+                r#""00:00:5e:00:53:02": {"up": 9000, "most": null}}"#,
+            ),
         )
         .expect("the networks");
         assert_eq!(
