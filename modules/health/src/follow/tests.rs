@@ -122,6 +122,50 @@ fn a_shutdown_seen_is_timed_to_its_boots_end() {
     );
 }
 
+/// What's left unread of a follower's end, then three lines, once `run`
+/// ends with two followers running and its clock read by `now`.
+fn unread_after_a_follower_ends(now: impl FnMut() -> Instant) -> usize {
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let (lines, read) = mpsc::channel();
+    lines.send(None).expect("a follower's end sent");
+    for second in 0..3 {
+        lines
+            .send(Some(warning(NOON + second)))
+            .expect("a line sent");
+    }
+    drop(lines);
+    run(&mut follower, &read, 2, now, Looked::default).expect("the run");
+    read.try_iter().count()
+}
+
+#[test]
+fn a_follower_that_ends_ends_health_once_it_has_run_long_enough() {
+    // The first look at the clock is health's start, and every later one
+    // finds it has run long enough.
+    let start = Instant::now();
+    let mut asked = 0;
+    let unread = unread_after_a_follower_ends(|| {
+        asked += 1;
+        if asked == 1 { start } else { start + SETTLED }
+    });
+    assert_eq!(
+        unread, 3,
+        "health ran on after a follower ended, rather than starting again to follow every one"
+    );
+}
+
+#[test]
+fn a_follower_that_ends_soon_after_health_starts_leaves_it_running_till_then() {
+    let start = Instant::now();
+    assert_eq!(
+        unread_after_a_follower_ends(|| start),
+        0,
+        "health ended as a follower ended at its start, so a follower ending at every start \
+         would read the day again every few seconds"
+    );
+}
+
 #[test]
 fn a_busy_journal_still_ticks_every_half_minute() {
     let into = tempfile::tempdir().expect("a folder");

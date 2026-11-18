@@ -35,6 +35,13 @@ use crate::typing;
 /// nothing.
 const EVERY: Duration = Duration::from_secs(30);
 
+/// How long health runs before a follower's end ends it, for systemd or
+/// launchd to start it again with every follower and the day read again,
+/// which hears what went unheard meanwhile. A follower that ends at every
+/// start then costs a replay of the day every ten minutes, rather than
+/// one every few seconds.
+const SETTLED: Duration = Duration::from_secs(10 * 60);
+
 /// The day being tallied, and where it's written.
 pub struct Follower {
     source: Source,
