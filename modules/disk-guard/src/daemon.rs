@@ -1090,7 +1090,7 @@ impl Guard {
         self.marked_at = Some(tick.wall);
         let mut marked = Vec::new();
         for source in self.config.sources.values() {
-            let Source::Cargo { roots, depth } = source else {
+            let Source::Cargo { roots, depth, .. } = source else {
                 continue;
             };
             for root in roots {

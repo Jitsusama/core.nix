@@ -12,6 +12,7 @@ use crate::git;
 use crate::plan::{Candidate, Class};
 use crate::replaced::Uses;
 use crate::snapshots::Boot;
+use crate::units::Size;
 use crate::units::Span;
 use crate::{
     age, caches, coredumps, logs, nix_builds, scratch, snapshots, store_roots, temp, trash, trees,
@@ -282,11 +283,28 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
             return offers;
         }
         match source {
-            Source::Cargo { roots, depth } => {
+            Source::Cargo {
+                roots,
+                depth,
+                budget,
+            } => {
+                let start = offers.len();
                 for root in roots {
                     if let Some((root, device, found)) = walks.under(root, *depth, world) {
                         trees_under(&root, device, &found, Kind::Target, world, &mut offers);
                     }
+                }
+                // A share of a disk that can't be measured holds nothing
+                // to a budget, rather than everything to none.
+                let bytes = match (budget, roots.first()) {
+                    (Some(Size::Bytes(bytes)), _) => Some(*bytes),
+                    (Some(share), Some(root)) => crate::sys::space(root)
+                        .ok()
+                        .map(|space| share.of(space.total)),
+                    _ => None,
+                };
+                if let Some(bytes) = bytes {
+                    hold_to_budget(&mut offers[start..], bytes);
                 }
             }
             Source::Installs { roots, depth } => {
@@ -915,6 +933,28 @@ fn trees_under(
                     device,
                 });
             }
+        }
+    }
+}
+
+/// Spends the builds past `budget`, counting the most recently used
+/// first, so the least recently used go in any band. A build a cargo is
+/// running in was never offered, so it is never taken; one a shell sits
+/// in counts against the budget but stays. On 17 November a shared
+/// builds folder held 63 GiB in 3,298 builds, 59 GiB of it written within
+/// a day, which no idle window reaches.
+fn hold_to_budget(offers: &mut [Offer], budget: u64) {
+    let mut builds: Vec<&mut Candidate> = offers
+        .iter_mut()
+        .map(|offer| &mut offer.candidate)
+        .filter(|candidate| candidate.class == Class::Target)
+        .collect();
+    builds.sort_by(|a, b| a.idle.total_cmp(&b.idle));
+    let mut held: u64 = 0;
+    for build in builds {
+        held = held.saturating_add(build.size);
+        if held > budget && !build.occupied {
+            build.spent = true;
         }
     }
 }

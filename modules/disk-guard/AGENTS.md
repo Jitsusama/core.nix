@@ -73,7 +73,13 @@ or launchd, and [`home.nix`][2] the account's.
   a snapshot a crate's older build goes once an hour unused, even while
   the next gate builds, and its incremental sessions go while nobody sits
   in the tree, since rustc's locks keep the one a build uses. The guard
-  makes upkeep due the moment the soonest of these passes its hour. So
+  makes upkeep due the moment the soonest of these passes its hour. A
+  `cargo` source given a `budget` (a size, or a share of the disk its
+  first root is on) keeps its builds newest first while they fit; past
+  it, the least recently used go whatever the band, unless a session sits
+  in their tree, and a build a cargo runs in is never offered. Cargo's
+  shared builds folder held 63 GiB on 17 November, 59 of it written within
+  a day, which no idle window reached. So
   does a temp
   entry nothing has changed since the last boot, whatever its name, since
   whatever made it ended with that boot. A browser profile in the `tmp/`

@@ -1,7 +1,7 @@
 //! What cargo builds and package managers install in checkouts and trees,
 //! as the survey offers and sizes it.
 
-use crate::discover::{checkout, dir, file};
+use crate::discover::{CARGO_TAG, checkout, dir, file};
 use crate::survey::{
     DAY, config, find, now, offers, offers_using, real, src, surveyed, surveyed_pinned, written_ago,
 };
@@ -369,5 +369,62 @@ fn stale_incremental_variants_are_offered_as_variants() {
         Action::Variant {
             root: roots.clone()
         }
+    );
+}
+
+#[test]
+fn cargo_builds_past_their_budget_go_least_recently_used_first() {
+    // On 17 November cargo's own filesystem held 63 GiB in 3,298 builds,
+    // 59 GiB of it written within a day, so no idle window took it while
+    // the disk it lies on was 83% used.
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let builds = dir(&home.join("builds"));
+    let build = |name: &str, hours: f64| {
+        let build = dir(&builds.join(name));
+        file(&build.join("CACHEDIR.TAG"), CARGO_TAG);
+        let rlib = build.join("debug/deps/libapp-0123456789abcdef.rlib");
+        file(&rlib, &"x".repeat(8192));
+        let tag = build.join("CACHEDIR.TAG");
+        for path in [
+            &rlib,
+            &tag,
+            &build.join("debug/deps"),
+            &build.join("debug"),
+            &build,
+        ] {
+            written_ago(path, hours * 3600.0);
+        }
+        build
+    };
+    let newest = build("aa/0001", 1.0);
+    let older = build("bb/0002", 2.0);
+    let oldest = build("cc/0003", 3.0);
+    let source = |budget: &str| {
+        config(&format!(
+            r#""cargo-builds": {{ "kind": "cargo", "roots": ["{}"], "depth": 2{budget} }}"#,
+            builds.display()
+        ))
+    };
+    let unbudgeted = offers(&source(""), &[], &|_| false);
+    assert!(unbudgeted.iter().all(|offer| !offer.candidate.spent));
+    let size = |path: &Path| find(&unbudgeted, path).candidate.size;
+    let budget = size(&newest) + size(&older);
+    let found = offers(&source(&format!(r#", "budget": {budget}"#)), &[], &|_| {
+        false
+    });
+    let spent = |path: &Path| find(&found, path).candidate.spent;
+    assert!(
+        !spent(&newest) && !spent(&older),
+        "what fits, newest first, stays"
+    );
+    assert!(
+        spent(&oldest),
+        "the least recently used past the budget goes"
+    );
+    assert_eq!(
+        plan::windows(&find(&found, &oldest).candidate).0,
+        Group::Waste,
+        "in any band"
     );
 }
