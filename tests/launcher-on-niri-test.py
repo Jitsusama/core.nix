@@ -5005,6 +5005,24 @@ def test_a_step_out_is_timed_to_its_frame_as_a_step_in_is(shell: Shell) -> None:
     assert str(steps[0]).startswith("\u2190 "), f"- wasn't timed as a step out: {presented}"
 
 
+def test_a_step_out_fits_the_foots_keys_once(shell: Shell) -> None:
+    """- out of a place a chord opened fits the foot's keys to their room once, where it lands.
+
+    Fitted again as held changed, as the mode came back and as the rows were found, Joel's - out
+    of Windows spent 13 to 20 ms of its 53 and 58 ms before it searched anything (his journal,
+    2026-11-17 23:05:23 and 2026-11-18 10:43:47). Fitted for each, they were fitted three times.
+    """
+    shell.launcher_until(lambda shown: not shown["open"])
+    shell.as_account(shell.ipc("collection", "windows"))
+    shell.launcher_until(lambda shown: shown["open"] and len(shown["held"]) > 0)
+    shell.normal()
+    shell.send_chars("-")
+    shell.launcher_until(lambda shown: not shown["held"])
+    fits = laid_out(shell)["stepFits"]
+    shell.close_launcher()
+    assert fits == 1, f"- out of Windows fitted the foot's keys {fits} times"
+
+
 def test_a_step_out_putting_words_back_is_timed_as_the_step(shell: Shell) -> None:
     """- back onto what was typed is timed once, as the step out and the place it left.
 
