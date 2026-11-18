@@ -4070,8 +4070,7 @@
     they move to another, walks there a step every frame with none dropped, its strides in step
     with the ground it covers, never for h then l tapped; going down a workspace it rides up with
     its window and climbs to its seat, going up it stays as the new one slides under, and a second
-    move seats it at once; through a switch the screen shows it only where the shell put it, never
-    a second cat riding in on a workspace; on the overlay layer taking no keys, it
+    move seats it at once; on the overlay layer taking no keys, it
     leaves while a window is fullscreen, draws nothing for 30 s with no keys, then curls up
     asleep in a frame and wakes at
     a key, stretches for about half a second as the lock lets go, and is drawn in whole screen
