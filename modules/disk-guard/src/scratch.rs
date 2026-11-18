@@ -106,37 +106,116 @@ pub fn quest_candidate(
 /// evening, is never taken from under it.
 pub const LIVE_QUEST_UNWRITTEN: f64 = 2.0 * 86_400.0;
 
-/// Whether a live quest's `tmp/` entry holds what may be found nowhere
-/// else: a handover a leaving machine packed, or a repository, whose
-/// commits may be on no remote, which the guard can't ask git about. One
-/// with more in reach than can be read holds it too, so what can't be
-/// judged is kept.
-pub fn holds_work(path: &Path) -> bool {
+/// How many entries a live quest's `tmp/` entry may hold before it's kept
+/// as more than can be read: its walk goes as deep as the tree does, where
+/// the shallow dating stops at `DEPTH`.
+const LIVE_BUDGET: usize = 100_000;
+
+/// What a whole walk of a live quest's `tmp/` entry found.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Live {
+    /// Its newest write anywhere in it, in wall seconds.
+    Written(f64),
+    /// Why it stays whatever its age.
+    Holds(String),
+}
+
+/// Reads a live quest's `tmp/` entry whole: its newest write at any depth,
+/// since a session may edit a file in place far below where the shallow
+/// dating looks, unless it holds what may be found nowhere else. That is a
+/// handover a leaving machine packed, a repository, whose commits may be on
+/// no remote and which the guard can't ask git about, or a link into the
+/// store, whose build is the session's to drop. A folder that can't be
+/// listed, or more than `LIVE_BUDGET` entries, holds it too, so what can't
+/// be judged is kept. A link is dated by itself and never followed, as
+/// removing it removes only it.
+pub fn live_reading(path: &Path) -> Live {
+    let Ok(meta) = fs::symlink_metadata(path) else {
+        return Live::Holds("it can't be read".to_owned());
+    };
+    let mut newest = wall(&meta);
+    if let Some(why) = path.file_name().and_then(named_work) {
+        return Live::Holds(why.to_owned());
+    }
+    if !meta.is_dir() {
+        return Live::Written(newest);
+    }
     let mut level = vec![path.to_owned()];
     let mut seen = 0;
-    for _ in 0..DEPTH {
+    while !level.is_empty() {
         let mut deeper = Vec::new();
         for dir in level {
-            let Ok(listing) = fs::read_dir(&dir) else {
-                continue;
+            let listing = match fs::read_dir(&dir) {
+                Ok(listing) => listing,
+                // Gone since it was listed: nothing in it to keep.
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    return Live::Holds(format!("{} can't be read: {error}", dir.display()));
+                }
             };
+            let mut bare = [false; 3];
             for entry in listing.filter_map(Result::ok) {
                 seen += 1;
-                if seen > BUDGET {
-                    return true;
+                if seen > LIVE_BUDGET {
+                    return Live::Holds("it holds more than can be read".to_owned());
                 }
                 let name = entry.file_name();
-                if name == "handover" || name == ".git" {
-                    return true;
+                if let Some(why) = named_work(&name) {
+                    return Live::Holds(why.to_owned());
                 }
-                if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                // Not followed: a link's own metadata.
+                let Ok(meta) = entry.metadata() else { continue };
+                newest = newest.max(wall(&meta));
+                if meta.file_type().is_symlink() {
+                    if fs::read_link(entry.path()).is_ok_and(|to| to.starts_with("/nix/store")) {
+                        return Live::Holds("it holds a link into the store".to_owned());
+                    }
+                    continue;
+                }
+                match name.to_str() {
+                    Some("HEAD") => bare[0] |= meta.is_file(),
+                    Some("objects") => bare[1] |= meta.is_dir(),
+                    Some("refs") => bare[2] |= meta.is_dir(),
+                    _ => {}
+                }
+                if meta.is_dir() {
                     deeper.push(entry.path());
                 }
+            }
+            if bare == [true; 3] {
+                return Live::Holds("it holds a bare repository".to_owned());
             }
         }
         level = deeper;
     }
-    false
+    Live::Written(newest)
+}
+
+/// Dates a live quest's `tmp/` entry by [`live_reading`], as the shallow
+/// date can miss an edit far down: false, leaving it as it was, when it
+/// holds work and so stays whatever its age.
+pub fn dated_whole(entry: &mut Entry) -> bool {
+    match live_reading(&entry.path) {
+        Live::Written(written) => {
+            entry.written = written;
+            true
+        }
+        Live::Holds(_) => false,
+    }
+}
+
+/// Why an entry by this name is work, when it is.
+fn named_work(name: &std::ffi::OsStr) -> Option<&'static str> {
+    match name.to_str()? {
+        "handover" => Some("it holds a handover"),
+        ".git" | ".jj" => Some("it holds a repository"),
+        _ => None,
+    }
+}
+
+fn wall(meta: &fs::Metadata) -> f64 {
+    use std::os::unix::fs::MetadataExt;
+    crate::units::wall(meta.mtime(), meta.mtime_nsec())
 }
 
 /// How long what a quest at work left beside its `tmp/` must go unwritten,

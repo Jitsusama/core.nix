@@ -100,12 +100,16 @@ or launchd, and [`home.nix`][2] the account's.
   quest a live session works on keeps all it left beside `tmp/`, and in
   `tmp/` what it wrote within two days awake: on 16 November a laptop's
   guard took 188 entries of a working session's `tmp/`, a script it wrote
-  that evening among them. Past two days a live quest's `tmp/` entry goes
-  by the same windows, unless a process works in it, it's a link into the
-  store, or it holds a `handover` or a `.git` within four levels, since
-  the guard can't ask whether a clone's commits are on a remote: on 18
-  November quests' `tmp/` entries two days unwritten held 38 GB on one
-  laptop, kept while their sessions lived. Its browser profiles at rest
+  that evening among them. Past two days with nothing written anywhere in
+  it, however deep, a live quest's `tmp/` entry goes by the same windows,
+  unless a process works in it or it is or holds a `handover`, a
+  repository (`.git`, `.jj` or a bare one), a link into the store or a
+  folder that can't be read, at any depth, since the guard can't ask
+  whether a clone's commits are on a remote. One past 100,000 entries is
+  kept, as it can't be read whole. Each is read whole again just before it
+  goes, as a pass can reach it hours after its survey. On 18 November
+  quests' `tmp/` entries two days unwritten held 38 GB on one laptop, kept
+  while their sessions lived. Its browser profiles at rest
   go as any quest's do. A session lives while its process runs as the
   one that started then, told by its start ticks on Linux and by the
   second it noted on a Mac, or while a pi host's roster holds it.

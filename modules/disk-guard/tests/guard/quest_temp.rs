@@ -417,10 +417,13 @@ fn aged_all(path: &std::path::Path, seconds: f64) {
 // On 18 November a laptop's quests held 38 GB in tmp/ entries unwritten for
 // two days, which a quest a live session works on kept however old.
 // A live quest's tmp/ entry goes once two days pass awake with nothing
-// written in it, as a quest with no session's would. It stays while a
-// process works in it, or while it holds a handover or a repository, whose
-// commits may be on no remote. A link into the store stays, as its build is
-// the session's to drop, and so does all it left beside tmp/.
+// written anywhere in it, however deep, as a quest with no session's
+// would. It stays while a process works in it, or while it is or holds a
+// handover or a repository, bare or not, whose commits may be on no
+// remote, at any depth. A link into the store stays, at its top or within,
+// as its build is the session's to drop; so does a folder that can't be
+// read, and all it left beside tmp/. A link elsewhere isn't followed, as
+// removing it removes only it.
 #[test]
 fn a_live_quests_tmp_gives_up_what_it_left_two_days_unwritten() {
     let home = tempfile::tempdir().unwrap();
@@ -448,14 +451,36 @@ fn a_live_quests_tmp_gives_up_what_it_left_two_days_unwritten() {
         aged_all(&top, seconds);
         top
     };
-    let spent = tree("spent-lab", &["out/result.json"], 3.0 * DAY);
-    let lately = tree("lately-lab", &[], 1.5 * DAY);
+    let deep = "a/b/c/d/e";
+    let spent = tree("spent-lab", &["out/result.json"], 2.1 * DAY);
+    let lately = tree("lately-lab", &[], 1.9 * DAY);
     let handed = tree("handed", &["carry/handover/bundle"], 3.0 * DAY);
     let clone = tree("clone", &["repo/.git/HEAD"], 3.0 * DAY);
+    let handover = tree("handover", &["bundle"], 3.0 * DAY);
+    let own_git = tree(".git", &["HEAD"], 3.0 * DAY);
+    let bare = tree(
+        "mirror.git",
+        &["HEAD", "objects/pack/p", "refs/heads/main"],
+        3.0 * DAY,
+    );
+    let far_clone = tree("far-clone", &[&format!("{deep}/.git/HEAD")], 3.0 * DAY);
+    let far_edit = tree("far-edit", &[&format!("{deep}/f.txt")], 3.0 * DAY);
+    written_ago(&far_edit.join(deep).join("f.txt"), HOUR);
+    let built = tree("built", &[], 3.0 * DAY);
+    std::os::unix::fs::symlink("/nix/store/abc-app", built.join("result")).unwrap();
+    aged_all(&built, 3.0 * DAY);
+    let shut = tree("shut", &["inner/x"], 3.0 * DAY);
+    let inner = shut.join("inner");
+    std::fs::set_permissions(&inner, std::os::unix::fs::PermissionsExt::from_mode(0o000)).unwrap();
     let worked = tree("worked-lab", &[], 3.0 * DAY);
     let root = tmp.join("result");
     std::os::unix::fs::symlink("/nix/store/abc-app", &root).unwrap();
     written_ago(&root, 3.0 * DAY);
+    let elsewhere = dir(&home.join("elsewhere"));
+    file(&elsewhere.join(".git/HEAD"), "x");
+    let pointer = tmp.join("pointer");
+    std::os::unix::fs::symlink(&elsewhere, &pointer).unwrap();
+    written_ago(&pointer, 3.0 * DAY);
     let lab = dir(&workspace.join("lab"));
     file(&lab.join("run.log"), "x");
     aged_all(&lab, 8.0 * DAY);
@@ -475,21 +500,25 @@ fn a_live_quests_tmp_gives_up_what_it_left_two_days_unwritten() {
         ..Process::default()
     };
     let found = offers(&config, &[session], &|_| false);
-    let offered: Vec<_> = found.iter().map(|offer| &offer.candidate.path).collect();
+    std::fs::set_permissions(&inner, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let mut offered: Vec<_> = found.iter().map(|offer| &offer.candidate.path).collect();
+    offered.sort();
+    let kept = [
+        &lately, &handed, &clone, &handover, &own_git, &bare, &far_clone, &far_edit, &built, &shut,
+        &worked, &root, &lab,
+    ];
     assert_eq!(
         offered,
-        [&spent],
-        "only the lab two days unwritten, not {}, {}, {}, {}, {} or {}",
-        lately.display(),
-        handed.display(),
-        clone.display(),
-        worked.display(),
-        root.display(),
-        lab.display()
+        [&pointer, &spent],
+        "only the lab two days unwritten and a link elsewhere, not {kept:?}"
     );
     let offer = find(&found, &spent);
     assert_eq!(offer.candidate.class, Class::QuestTemp);
-    assert_eq!(offer.action, Action::Entry { root: tmp.clone() });
+    assert!(
+        matches!(&offer.action, Action::LiveEntry { root, .. } if *root == tmp),
+        "a live quest's entry isn't read again before it goes: {:?}",
+        offer.action
+    );
 }
 
 // Every machine's guard is now told where the harness keeps its session
