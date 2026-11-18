@@ -222,6 +222,13 @@ in
       "nix-command"
     ];
     nix.settings.extra-system-features = [ "uid-range" ];
+    # Every build runs in Nix's sandbox, and one that can't have it fails
+    # rather than running bare. NixOS does both by default, but a machine's
+    # builders trust its root, so the setting its daemon forwards with each
+    # build is the one they keep for it: a Mac that sandboxes optimus's
+    # builds is only as safe as what optimus sends.
+    nix.settings.sandbox = true;
+    nix.settings.sandbox-fallback = false;
 
     nix.settings.secret-key-files = [ "/etc/nix/signing-key" ];
 

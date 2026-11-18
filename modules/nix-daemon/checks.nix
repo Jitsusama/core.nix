@@ -59,6 +59,17 @@
           < (systemd.slices.user.sliceConfig.CPUWeight or 100)
       );
 
+  # A machine's builders trust its root, so each keeps the sandbox setting
+  # its daemon forwards. Exactly true, never "relaxed", where a derivation
+  # may ask its way out, and no fallback, which would build bare without one.
+  nix-builds-only-in-its-sandbox =
+    let
+      inherit (workstation.config.nix.settings) sandbox sandbox-fallback;
+    in
+    holds "nix-builds-only-in-its-sandbox"
+      "The Nix daemon builds outside its sandbox: sandbox is ${builtins.toJSON sandbox}, sandbox-fallback ${builtins.toJSON sandbox-fallback}."
+      (builtins.isBool sandbox && sandbox && builtins.isBool sandbox-fallback && !sandbox-fallback);
+
   # Nix collects garbage during a build once free space falls under min-free,
   # and stops at max-free. A max-free at or under min-free stops it before it
   # starts, and nothing says so. It's the last resort beneath the disk guard,

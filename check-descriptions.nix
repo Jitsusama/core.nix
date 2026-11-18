@@ -2043,6 +2043,10 @@
   nix-builds-yield-to-the-person = ''
     Nix's builds run at a lower weight than the person's programs
   '';
+  nix-builds-only-in-its-sandbox = ''
+    every build the machine's Nix runs or sends to a builder that trusts it is sandboxed, never
+    relaxed, and fails rather than build bare when no sandbox can be had
+  '';
   nix-collects-before-the-disk-fills = ''
     Nix collects garbage during a build that fills the disk
   '';
