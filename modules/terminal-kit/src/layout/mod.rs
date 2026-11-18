@@ -215,14 +215,16 @@ impl Row {
         self
     }
 
-    /// The same, its name, words and side each held to one line, so a
-    /// list measures what it draws.
+    /// Whether its name, words or side holds something the pen never
+    /// draws, so a list copies only the rows that need holding.
     fn holds_unseen(&self) -> bool {
         [&self.name, &self.words, &self.side]
             .into_iter()
             .any(|words| holds_unseen(words))
     }
 
+    /// The same, its name, words and side each held to one line, so a
+    /// list measures what it draws.
     fn on_one_line(&self) -> Self {
         Self {
             name: one_line(&self.name).into_owned(),

@@ -415,14 +415,21 @@ impl Pen {
     /// where there's ink, and the words alone where there's none. The
     /// words may be inked by this pen already, and keep its colour, but
     /// nothing else of the terminal's, and are held to one line with the
-    /// target, so neither can end the link early.
+    /// target, so neither can end the link early. A colour its words
+    /// leave open is closed with the link, so none runs on past it, and
+    /// a pen without ink draws no colour at all.
     pub fn link(&self, target: &str, words: &str) -> String {
-        let words = inked_on_one_line(words);
         if !self.inks() {
-            return words.into_owned();
+            return one_line(words).into_owned();
         }
+        let words = inked_on_one_line(words);
+        let close = if words.contains('\u{1b}') && !words.ends_with("\u{1b}[0m") {
+            "\u{1b}[0m"
+        } else {
+            ""
+        };
         let target = one_line(target);
-        format!("\u{1b}]8;;{target}\u{1b}\\{words}\u{1b}]8;;\u{1b}\\")
+        format!("\u{1b}]8;;{target}\u{1b}\\{words}{close}\u{1b}]8;;\u{1b}\\")
     }
 }
 
@@ -579,6 +586,16 @@ mod tests {
             pen.link("t", "\u{1b}[31mhall\u{1b}[2J\u{1b}[0m"),
             "\u{1b}]8;;t\u{1b}\\\u{1b}[31mhall[2J\u{1b}[0m\u{1b}]8;;\u{1b}\\",
             "a link kept an escape that isn't a colour"
+        );
+        assert_eq!(
+            pen.link("t", "\u{1b}[8mhall"),
+            "\u{1b}]8;;t\u{1b}\\\u{1b}[8mhall\u{1b}[0m\u{1b}]8;;\u{1b}\\",
+            "a colour its words left open ran on past the link"
+        );
+        assert_eq!(
+            Pen::plain().link("t", "\u{1b}[31mhall"),
+            "[31mhall",
+            "a pen without ink drew a colour in a link's words"
         );
     }
 
