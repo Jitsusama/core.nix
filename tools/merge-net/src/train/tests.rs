@@ -4,7 +4,7 @@
 use super::*;
 
 /// A state folder of the test's own.
-fn root(name: &str) -> PathBuf {
+pub(super) fn root(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("merge-net-train-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     root
@@ -362,7 +362,7 @@ fn a_merge_is_worded_as_githubs_merge_button_words_it() {
 
 /// Git in `repo` with no user's or system's config, as the other
 /// modules' tests run it, giving what it printed or why it failed.
-fn git_in(repo: &Path, arguments: &[&str]) -> Result<String, String> {
+pub(super) fn git_in(repo: &Path, arguments: &[&str]) -> Result<String, String> {
     let ran = Command::new("git")
         .arg("-C")
         .arg(repo)
@@ -383,7 +383,7 @@ fn git_in(repo: &Path, arguments: &[&str]) -> Result<String, String> {
 }
 
 /// A repository at `repo` holding one commit on main, which it gives.
-fn based(repo: &Path) -> String {
+pub(super) fn based(repo: &Path) -> String {
     fs::create_dir_all(repo).unwrap();
     git_in(repo, &["init", "--quiet", "-b", "main"]).unwrap();
     fs::write(repo.join("shared"), "main\n").unwrap();
@@ -393,7 +393,7 @@ fn based(repo: &Path) -> String {
 }
 
 /// Commit `words` as `file` in `repo` on `from`, giving the commit.
-fn change(repo: &Path, from: &str, file: &str, words: &str) -> String {
+pub(super) fn change(repo: &Path, from: &str, file: &str, words: &str) -> String {
     git_in(repo, &["checkout", "--quiet", "--detach", from]).unwrap();
     fs::write(repo.join(file), words).unwrap();
     git_in(repo, &["add", file]).unwrap();
@@ -401,52 +401,13 @@ fn change(repo: &Path, from: &str, file: &str, words: &str) -> String {
     git_in(repo, &["rev-parse", "HEAD"]).unwrap()
 }
 
-fn merging(head: &str, number: u64) -> Merging {
+pub(super) fn merging(head: &str, number: u64) -> Merging {
     Merging {
+        number,
         head: head.to_owned(),
         subject: subject(number, "o", head),
         title: format!("change {number}"),
     }
-}
-
-#[test]
-fn a_passed_candidate_lands_on_main_only_as_a_fast_forward() {
-    let place = root("land");
-    let (origin, checkout) = (place.join("origin.git"), place.join("checkout"));
-    let base = based(&checkout);
-    let url = origin.display().to_string();
-    git_in(&place, &["init", "--quiet", "--bare", "-b", "main", &url]).unwrap();
-    let git = |arguments: &[&str]| git_in(&checkout, arguments);
-    git(&["remote", "add", "origin", &url]).unwrap();
-    git(&["push", "--quiet", "origin", "main"]).unwrap();
-    git(&["fetch", "--quiet", "origin", "main"]).unwrap();
-    let head = change(&checkout, &base, "apart", "one\n");
-    let riding = [merging(&head, 1)];
-    let done = cut(&git, &base, &riding).unwrap();
-    let candidate = git(&["rev-parse", "HEAD"]).unwrap();
-    assert_eq!(
-        land(&checkout, &git, &candidate, &riding, &done.merged),
-        Landing::Landed(candidate.clone()),
-        "a passed candidate on a main that stood still didn't land"
-    );
-    assert_eq!(
-        git_in(&origin, &["rev-parse", "main"]).unwrap(),
-        candidate,
-        "origin's main isn't the candidate that landed"
-    );
-    git(&["remote", "set-url", "origin", "/nowhere"]).unwrap();
-    let next = change(&checkout, &candidate, "next", "two\n");
-    let more = [merging(&next, 2)];
-    let again = cut(&git, &candidate, &more).unwrap();
-    let refused = git(&["rev-parse", "HEAD"]).unwrap();
-    assert!(
-        matches!(
-            land(&checkout, &git, &refused, &more, &again.merged),
-            Landing::Refused(_)
-        ),
-        "a push refused while main stood still didn't fall back"
-    );
-    fs::remove_dir_all(&place).unwrap();
 }
 
 #[test]

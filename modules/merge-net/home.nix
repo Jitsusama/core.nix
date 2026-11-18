@@ -36,6 +36,8 @@ let
     "/run/current-system/sw/bin"
     (lib.makeBinPath [
       changed-checks
+      # The train gives each call to gh a time limit through timeout.
+      pkgs.coreutils
       pkgs.gh
       pkgs.git
     ])
