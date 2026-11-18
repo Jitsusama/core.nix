@@ -38,6 +38,7 @@ onLinux {
     let
       home = account (bareNixos [ { home-manager.sharedModules = [ self.homeModules.pineapple ]; } ]);
       unit = home.systemd.user.services.pineapple-slack;
+      waiting = "${home.xdg.stateHome}/mission/waiting/pineapple.json";
     in
     holds "pineapple-slack-starts-with-the-sign-in"
       "pineapple-slack lacks its login start, keyring, switch restart, restart, slice, name, --live or row cleanup."
@@ -52,9 +53,11 @@ onLinux {
         && lib.any (lib.hasSuffix "/bin/pineapple-slack pineapple-slack run --live") (
           lib.toList unit.Service.ExecStart
         )
+        # The program is handed the file its stop removes.
+        && lib.elem "SAFE_WORD_WAITING=${waiting}" (lib.toList unit.Service.Environment)
         && lib.all (row: lib.hasInfix row unit.Service.ExecStopPost) [
-          " %S/mission/waiting/pineapple.json"
-          " %S/mission/waiting/.writing/pineapple.json"
+          waiting
+          "${dirOf waiting}/.writing/${baseNameOf waiting}"
         ]
       );
   # pineapple-github starts at login, reads Joel's GitHub sign-in through

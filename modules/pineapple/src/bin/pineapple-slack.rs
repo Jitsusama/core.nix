@@ -356,8 +356,12 @@ fn run(how: &Run) -> Result<(), Failure> {
     // A locked keyring doesn't end a sign-in, so stops are still heard.
     let mut last = LastSignIn::new();
     // Where For You reads what waits on Joel: told there when Slack
-    // can't be heard, since the phone's alert goes through Slack.
-    let waiting = env_dir("XDG_STATE_HOME", ".local/state").join("mission/waiting/pineapple.json");
+    // can't be heard, since the phone's alert goes through Slack. The
+    // unit names it, as the file its stop removes (home.nix).
+    let waiting = std::env::var_os("SAFE_WORD_WAITING").map_or_else(
+        || env_dir("XDG_STATE_HOME", ".local/state").join("mission/waiting/pineapple.json"),
+        PathBuf::from,
+    );
     let mut deaf = Deaf::new();
     loop {
         let now = Instant::now();

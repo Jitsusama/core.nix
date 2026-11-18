@@ -20,6 +20,10 @@ let
   # Prints pi's Slack sign-in from the desktop's keyring, or says the
   # keyring is locked, as slack-unreads reads it (../slack/keyring.nix).
   keyring = pkgs.callPackage ../slack/keyring.nix { };
+  # Where the Slack reader tells For You it can't hear Slack, beside each
+  # quest's ask (WaitingOnYou.qml): named once, so the file the reader
+  # writes is the file its stop removes.
+  waiting = "${config.xdg.stateHome}/mission/waiting/pineapple.json";
   # Prints Joel's GitHub sign-in as gh keeps it, through gh itself, so
   # wherever gh keeps it stays gh's business; it fails while he has none.
   # Its output goes to the program alone.
@@ -170,18 +174,19 @@ in
           # The keyring's reader, run each round, so a sign-in made or renewed
           # while it runs is read without a restart. With none, it says so in
           # the journal and reads nothing until there is one.
-          Environment = [ "SIGN_IN_KEYRING=${keyring}" ];
+          Environment = [
+            "SIGN_IN_KEYRING=${keyring}"
+            "SAFE_WORD_WAITING=${waiting}"
+          ];
           Restart = "on-failure";
           RestartSec = 30;
           # Its row in For You saying it can't hear Slack (src/deaf.rs) goes
-          # however it stops, as eero's does, so a reader stopped or taken
-          # away leaves nothing standing that nothing would clear. %S is the
-          # user manager's state folder, where the program finds the row
-          # while XDG_STATE_HOME is the default, as it is on every machine.
+          # however it stops, as slack-unreads' does, so a reader stopped or
+          # taken away leaves nothing standing that nothing would clear.
           ExecStopPost = lib.concatStringsSep " " [
             "${pkgs.coreutils}/bin/rm -f"
-            "%S/mission/waiting/pineapple.json"
-            "%S/mission/waiting/.writing/pineapple.json"
+            (lib.escapeShellArg waiting)
+            (lib.escapeShellArg "${dirOf waiting}/.writing/${baseNameOf waiting}")
           ];
         };
         # Started at login rather than once a sign-in file appears, since pi
