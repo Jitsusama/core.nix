@@ -3918,6 +3918,11 @@
     bubblewrap's session, never the one claimed or what was copied; shell-preview's nested niri
     opens on the sandboxed display and takes wtype's keys, which the display itself refuses
   '';
+  pi-fence-census-loads = ''
+    pi-fence's census, as core builds pi-fence from the harness's source, loads every package it
+    imports and judges a machine with no sessions as holding, rather than refusing because it
+    couldn't load
+  '';
   pi-fence-never-runs-unfenced = ''
     pi-fence, the store's launcher for one command in pi's own fence, refuses a kind it doesn't
     know with its usage, and where it can't lay the fence, as in a build with neither bubblewrap
