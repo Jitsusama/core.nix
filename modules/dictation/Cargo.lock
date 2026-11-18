@@ -315,6 +315,7 @@ dependencies = [
  "png",
  "receptor-say",
  "rtrb",
+ "serde",
  "serde_json",
  "tempfile",
  "terminal-kit",

@@ -63,6 +63,7 @@ mod meeting;
 mod notices;
 mod private;
 mod receptor;
+mod rings;
 mod said;
 mod summarizer;
 mod summary;

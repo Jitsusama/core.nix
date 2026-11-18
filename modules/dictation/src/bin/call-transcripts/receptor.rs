@@ -3,8 +3,11 @@
 //! network (mycelium's PROTOCOL.md, Receptors).
 //!
 //! Only counts and fixed words leave: the calls started in the last hour
-//! and since local midnight, taken from the book's own start times, and
-//! whether the book could be read. No title, person, event or folder of a
+//! and since local midnight, taken from the book's own start times and
+//! from when each Tuple call Joel missed rang (rings.rs, which reads when
+//! alone and never who), and whether the book could be read. A missed
+//! ring is a call that asked for Joel as much as one he took, so it
+//! counts in each, and every one is addressed to him. No title, person, event or folder of a
 //! call is ever an argument, so nothing a call's files say reaches the
 //! node, whatever they hold. mycelium is run by its store path, its
 //! arguments given one by one and never through a shell, by the speaker
@@ -20,6 +23,7 @@ use std::time::Duration;
 use receptor_say::{Source, Speaker, Told};
 
 use crate::book;
+use crate::rings::{self, Rings};
 
 /// How often the receptor says how it stands, which is also how late the
 /// node lets it be before reading it as failing.
@@ -147,19 +151,39 @@ fn midnight(now: u64) -> u64 {
         .unwrap_or_else(|| now.saturating_sub(24 * HOUR))
 }
 
+/// The calls the book holds and the Tuple calls missed, counted at `now`.
+fn counted(held: &book::Book, rang: &Rings, now: u64, midnight: u64) -> Counts {
+    Counts::of(
+        held.starts().chain(rang.missed().iter().copied()),
+        now,
+        midnight,
+    )
+}
+
 /// Says how the calls stand, every `EVERY`, for as long as the daemon
-/// runs. A failure is said once, when it starts, rather than each round.
+/// runs. A failure is said once, when it starts, rather than each round,
+/// and so is a Tuple file that couldn't be trusted, which counts nothing.
 pub fn keep(receptor: &Receptor, book: &book::Shared) {
     let pid = std::process::id();
+    let tuple = rings::file();
     let mut said: Option<String> = None;
+    let mut unsound: Option<&'static str> = None;
     loop {
         let now = book::now();
+        let rang = tuple.as_deref().map_or(Rings::Missing, rings::read);
+        let why = match rang {
+            Rings::Unsound(why) => Some(why),
+            Rings::Missed(_) | Rings::Missing => None,
+        };
+        if why != unsound {
+            if let Some(why) = why {
+                eprintln!("call-transcripts: Tuple's missed calls aren't counted: {why}");
+            }
+            unsound = why;
+        }
         let (counts, failing) = {
             let held = book.lock();
-            (
-                Counts::of(held.starts(), now, midnight(now)),
-                held.failing(),
-            )
+            (counted(&held, &rang, now, midnight(now)), held.failing())
         };
         let outcome = receptor.say(State::of(counts, failing), counts, pid).err();
         if outcome != said {
@@ -362,6 +386,99 @@ mod tests {
             ]
         );
         assert_eq!(words[8], "1", "the planted call is still counted");
+    }
+
+    #[test]
+    fn a_missed_tuple_call_is_counted_and_who_rang_never_reaches_the_receptor() {
+        let folder = tempfile::tempdir().unwrap();
+        let calls = folder.path().join("calls");
+        std::fs::create_dir_all(&calls).unwrap();
+        let recent = folder.path().join("recent.jsonl");
+        let line = |missed: bool, since: u64| {
+            serde_json::json!({
+                "people": [{"id": "41", "name": "Skiff Tern", "email": "skiff@example.com"}],
+                "since": since, "ended": since + 1, "missed": missed,
+                "caller": "--realm personal",
+            })
+            .to_string()
+        };
+        std::fs::write(
+            &recent,
+            [
+                line(true, NOW - 5),
+                line(true, MIDNIGHT - 1),
+                line(false, NOW - 9),
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        let held = book::Book::read(&calls);
+        let rang = rings::read(&recent);
+        let counts = counted(&held, &rang, NOW, MIDNIGHT);
+        assert_eq!(
+            counts,
+            Counts { hour: 1, today: 1 },
+            "only today's missed call counts; one answered or yesterday's doesn't"
+        );
+        let (program, given) = stand_in(folder.path());
+        let receptor = receptor(program);
+        let state = State::of(counts, held.failing());
+        let mut said = receptor.say(state, counts, 4242);
+        for _ in 0..BUSY_TRIES {
+            match &said {
+                Err(why) if why.contains("os error 26") => {
+                    std::thread::yield_now();
+                    said = receptor.say(state, counts, 4242);
+                }
+                _ => break,
+            }
+        }
+        said.unwrap();
+        let said = std::fs::read_to_string(given).unwrap();
+        for planted in ["personal", "Skiff", "Tern", "skiff", "example", "41"] {
+            assert!(
+                !said.contains(planted),
+                "{planted} reached mycelium: {said}"
+            );
+        }
+        let words: Vec<&str> = said.lines().collect();
+        assert_eq!(
+            words[6..13],
+            ["reading", "--hour", "1", "--today", "1", "--addressed", "1"],
+            "the missed call wasn't said as one addressed to Joel"
+        );
+    }
+
+    #[test]
+    fn a_tuple_file_that_cant_be_trusted_counts_no_missed_call() {
+        let folder = tempfile::tempdir().unwrap();
+        let calls = folder.path().join("calls");
+        std::fs::create_dir_all(&calls).unwrap();
+        let recent = folder.path().join("recent.jsonl");
+        std::fs::write(
+            &recent,
+            format!(
+                "{}\nnot a call\n",
+                serde_json::json!({"missed": true, "since": NOW - 5})
+            ),
+        )
+        .unwrap();
+        let held = book::Book::read(&calls);
+        assert_eq!(
+            counted(&held, &rings::read(&recent), NOW, MIDNIGHT),
+            Counts::default(),
+            "a file holding a line that isn't a call was counted from"
+        );
+        assert_eq!(
+            counted(
+                &held,
+                &rings::read(&folder.path().join("none")),
+                NOW,
+                MIDNIGHT
+            ),
+            Counts::default(),
+            "no file was counted as calls"
+        );
     }
 
     #[test]
