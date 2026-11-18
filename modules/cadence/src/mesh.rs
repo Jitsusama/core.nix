@@ -382,6 +382,28 @@ pub fn alive(presence: Option<&Presence>, process_exists: impl Fn(u32) -> bool) 
     })
 }
 
+/// Whether the session a presence describes can take a turn now: its pi's
+/// process is there in this `boot`, since a pid from another boot may name
+/// some other process now, and a hosted one is still on its host's roster,
+/// since a host that dropped the conversation lives on under the same pid.
+#[must_use]
+pub fn running(
+    presence: &Presence,
+    boot: &str,
+    rosters: &Rosters,
+    process_exists: impl Fn(u32) -> bool,
+) -> bool {
+    let owner = presence.owner.as_ref();
+    let this_boot = owner
+        .and_then(|o| o.boot_id.as_deref())
+        .is_some_and(|b| b == boot);
+    let held = presence
+        .hosted
+        .as_ref()
+        .is_none_or(|h| rosters.holds(&h.host, &presence.session));
+    this_boot && held && owner.and_then(|o| o.pid).is_some_and(process_exists)
+}
+
 /// The stamp a message's id starts with, in milliseconds, as the harness
 /// stamps them: `<ms>-<from>-<pid>-<hex>`.
 #[must_use]
@@ -739,6 +761,37 @@ mod tests {
                 format!("{}-A-1-dd", midnight + 7_200_000)
             ],
             "one sent before the moment read, one since missed, or a day long past listed"
+        );
+    }
+
+    #[test]
+    fn a_session_runs_in_this_boot_and_on_its_hosts_roster() {
+        let presence = |boot: &str, host: Option<&str>| -> Presence {
+            serde_json::from_value(serde_json::json!({
+                "session": "s1",
+                "owner": {"pid": 7, "bootId": boot},
+                "hosted": host.map(|h| serde_json::json!({"host": h, "conversation": "s1"})),
+            }))
+            .expect("a presence is read from its record")
+        };
+        let rosters = Rosters(
+            [
+                ("holding".to_owned(), Some(["s1".to_owned()].into())),
+                ("dropped".to_owned(), Some(BTreeSet::new())),
+            ]
+            .into(),
+        );
+        let runs = |p: &Presence| running(p, "b1", &rosters, |pid| pid == 7);
+        assert_eq!(
+            [
+                runs(&presence("b1", None)),
+                runs(&presence("b0", None)),
+                runs(&presence("b1", Some("holding"))),
+                runs(&presence("b1", Some("dropped"))),
+                running(&presence("b1", None), "b1", &rosters, |_| false),
+            ],
+            [true, false, true, false, false],
+            "a session ran from another boot, off its host's roster or with no process"
         );
     }
 }

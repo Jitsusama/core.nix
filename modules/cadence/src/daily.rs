@@ -20,7 +20,7 @@ use crate::gate;
 use crate::health;
 use crate::judge;
 use crate::machine;
-use crate::mesh::Mesh;
+use crate::mesh::{self, Mesh};
 use crate::speed;
 use crate::{DAY, command, message, write_whole};
 use crate::{passed, phases};
@@ -50,12 +50,16 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
     };
     // An owner with no session to answer leaves its findings with the
     // watcher, and the orchestrator hears which flags to change.
-    let gone = findings::gone(
-        &told.owners,
-        &mesh.all(),
-        |pid| Path::new(&format!("/proc/{pid}")).exists(),
-        now,
-    );
+    let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
+        .map(|b| b.trim().to_owned())
+        .unwrap_or_default();
+    let rosters = mesh.rostered(now);
+    let running = |p: &mesh::Presence| {
+        mesh::running(p, &boot, &rosters, |pid| {
+            Path::new(&format!("/proc/{pid}")).exists()
+        })
+    };
+    let gone = findings::gone(&told.owners, &ledger, &mesh.all(), running, now);
     findings::update_without(
         &mut ledger,
         &today,
@@ -64,7 +68,6 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
         &mesh.known(),
         &gone,
     );
-    let mut said = findings::flags_gone(&told.owners, &gone, told.watcher.as_deref());
     // A typed run tells nobody, so it marks nobody told or late.
     let sending = told.orchestrator.is_some();
     let late = if sending {
@@ -78,8 +81,13 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
         Vec::new()
     };
     findings::keep(&kept_at, &ledger)?;
-    said.extend(late);
-    let note = judge::note(&today, &judged, before.len(), &said);
+    // Its own line past the note's room, so it crowds out no finding.
+    let mut note = judge::note(&today, &judged, before.len(), &late);
+    if let Some(line) = findings::flags_gone(&told.owners, &gone, told.watcher.as_deref()) {
+        note.push_str("- ");
+        note.push_str(&line);
+        note.push_str(".\n");
+    }
     let mut record = serde_json::to_value(&today)?;
     record["worse"] = serde_json::to_value(&judged.worse)?;
     record["better"] = serde_json::to_value(&judged.better)?;
