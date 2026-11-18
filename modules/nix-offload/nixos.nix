@@ -23,8 +23,9 @@
 # Once a machine says what `lines` trusts, root reads the lines from
 # /run/nix-offload-lines instead, which an account of their own writes
 # (src/lines.rs): it copies the lender's lines there, passing only those
-# naming a builder it can vouch for, so the lender's account needs no
-# trust to keep root safe. A build reaches the standing builders then
+# naming a builder it can vouch for, asking a standing one only for the
+# systems and builds at once it's trusted with, so the lender's account
+# needs no trust to keep root safe. A build reaches the standing builders then
 # through a door of root's, /run/nix-offload-standing.sock, since Nix
 # heeds builders named by a trusted account alone.
 {
@@ -84,6 +85,7 @@ let
         key
         hostKey
         systems
+        maxJobs
         ;
     }) lines.standing;
     lent = map (builder: {
@@ -183,7 +185,18 @@ in
                 options.systems = lib.mkOption {
                   type = lib.types.listOf lib.types.str;
                   default = [ pkgs.stdenv.hostPlatform.system ];
-                  description = "The systems it builds for; root proves it with the first.";
+                  description = ''
+                    The systems it builds for; root proves it with the first, and passes no
+                    line asking it for another.
+                  '';
+                };
+                options.maxJobs = lib.mkOption {
+                  type = lib.types.nullOr lib.types.ints.positive;
+                  default = null;
+                  description = ''
+                    The most builds at once a line may ask of it, or null for any number,
+                    so a line can't give a small machine more than it holds.
+                  '';
                 };
               }
             );

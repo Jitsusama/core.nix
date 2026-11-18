@@ -9,7 +9,8 @@
 //! runs as an account of its own and is the only writer of what root
 //! reads. The lender goes on choosing which builders to list, its proofs,
 //! stand-ins and floors included; this only refuses a line whose URI, key
-//! or host key it can't vouch for.
+//! or host key it can't vouch for, or that asks a standing builder for a
+//! system or more builds at once than the machine trusts it with.
 //!
 //! A line passes when its URI, compared whole since an `ssh-ng` query
 //! parameter overrides the line's own fields, its key and its host key
@@ -86,12 +87,19 @@ const REREAD: Duration = Duration::from_secs(600);
 const PATIENCE: Duration = Duration::from_secs(60);
 
 /// A builder root may trust, by the three fields of its line that say
-/// who root reaches and believes.
+/// who root reaches and believes, and what its line may ask of it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Trusted {
     pub uri: String,
     pub key: String,
     pub host_key: String,
+    /// The systems its line may name, a standing builder's from the
+    /// machine's settings, since its owner lent it for those alone; a lent
+    /// builder is the lender's own, made for whatever it names.
+    pub systems: Option<Vec<String>>,
+    /// The most jobs its line may ask of it at once, where the machine
+    /// says.
+    pub max_jobs: Option<u32>,
 }
 
 /// A lent builder: its URI, and the files its lender names its instance
@@ -177,10 +185,27 @@ pub fn settings(text: &str) -> Result<Settings, String> {
         .ok_or("standing is missing")?
         .iter()
         .map(|item| {
+            let systems = item["systems"]
+                .as_array()
+                .ok_or("a standing entry lacks systems")?
+                .iter()
+                .map(|system| system.as_str().map(str::to_owned))
+                .collect::<Option<_>>()
+                .ok_or("a standing entry's systems hold more than text")?;
+            let max_jobs = match &item["maxJobs"] {
+                Value::Null => None,
+                jobs => Some(
+                    jobs.as_u64()
+                        .and_then(|jobs| u32::try_from(jobs).ok())
+                        .ok_or("a standing entry's maxJobs isn't a count")?,
+                ),
+            };
             Ok(Trusted {
                 uri: field(item, "uri")?,
                 key: field(item, "key")?,
                 host_key: field(item, "hostKey")?,
+                systems: Some(systems),
+                max_jobs,
             })
         })
         .collect::<Result<_, String>>()?;
@@ -223,8 +248,25 @@ fn plain(field: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || "-_.,=:/+".contains(c))
 }
 
+impl Trusted {
+    /// Whether a line may ask this builder for `systems`, comma-separated,
+    /// and `jobs` at once: Nix's `-` for either is refused where they're
+    /// held, since it stands for this machine's own system and one job.
+    fn allows(&self, systems: &str, jobs: &str) -> bool {
+        let systems_held = self.systems.as_ref().is_none_or(|own| {
+            systems
+                .split(',')
+                .all(|system| own.iter().any(|trusted| trusted == system))
+        });
+        let jobs_held = self
+            .max_jobs
+            .is_none_or(|most| jobs.parse::<u32>().is_ok_and(|asked| asked <= most));
+        systems_held && jobs_held
+    }
+}
+
 /// Whether `line` names a builder `trusted` holds, in Nix's eight fields,
-/// each of the rest plain.
+/// asking it only for what it's trusted with, each of the rest plain.
 pub fn passes(line: &str, trusted: &[Trusted]) -> bool {
     let fields: Vec<&str> = line.split_whitespace().collect();
     let [
@@ -243,9 +285,12 @@ pub fn passes(line: &str, trusted: &[Trusted]) -> bool {
     [systems, jobs, speed, features, mandatory]
         .iter()
         .all(|field| plain(field))
-        && trusted
-            .iter()
-            .any(|one| one.uri == uri && one.key == key && one.host_key == host_key)
+        && trusted.iter().any(|one| {
+            one.uri == uri
+                && one.key == key
+                && one.host_key == host_key
+                && one.allows(systems, jobs)
+        })
 }
 
 /// The lines of `text` that pass, one a line, each ending in a newline.
@@ -873,6 +918,8 @@ fn trusted(
             uri: lent.uri.clone(),
             key: settings.key.clone(),
             host_key,
+            systems: None,
+            max_jobs: None,
         });
     }
     (trusted, lent_text)
@@ -1003,7 +1050,62 @@ mod tests {
             uri: URI.to_owned(),
             key: KEY.to_owned(),
             host_key: HOST.to_owned(),
+            systems: None,
+            max_jobs: None,
         }]
+    }
+
+    /// A standing builder the machine lets build `systems`, `max_jobs` at once.
+    fn standing(systems: &[&str], max_jobs: Option<u32>) -> Vec<Trusted> {
+        vec![Trusted {
+            systems: Some(systems.iter().map(|&system| system.to_owned()).collect()),
+            max_jobs,
+            ..lent().remove(0)
+        }]
+    }
+
+    #[test]
+    fn a_standing_line_passes_for_the_systems_and_jobs_it_is_trusted_with() {
+        let both = standing(&["x86_64-linux", "aarch64-linux"], Some(8));
+        assert!(
+            passes(&line(URI, KEY, HOST), &both),
+            "a trusted line was refused"
+        );
+        let two = format!("{URI} aarch64-linux,x86_64-linux {KEY} 4 1 - - {HOST}");
+        assert!(
+            passes(&two, &both),
+            "a line naming both its systems was refused"
+        );
+        let unpinned = standing(&["x86_64-linux"], None);
+        let many = format!("{URI} x86_64-linux {KEY} 64 1 - - {HOST}");
+        assert!(
+            passes(&many, &unpinned),
+            "jobs were held to a count no one set"
+        );
+    }
+
+    #[test]
+    fn a_standing_line_naming_a_system_it_isnt_trusted_with_is_refused() {
+        let linux = standing(&["x86_64-linux"], None);
+        for systems in ["aarch64-darwin", "x86_64-linux,aarch64-darwin", "-"] {
+            let text = format!("{URI} {systems} {KEY} 4 1 - - {HOST}");
+            assert!(
+                !passes(&text, &linux),
+                "{systems} passed for a Linux builder"
+            );
+        }
+    }
+
+    #[test]
+    fn a_standing_line_asking_more_jobs_than_it_is_trusted_with_is_refused() {
+        let four = standing(&["x86_64-linux"], Some(4));
+        for jobs in ["5", "-", "4x"] {
+            let text = format!("{URI} x86_64-linux {KEY} {jobs} 1 - - {HOST}");
+            assert!(
+                !passes(&text, &four),
+                "{jobs} jobs passed where 4 are allowed"
+            );
+        }
     }
 
     #[test]
@@ -1124,6 +1226,8 @@ mod tests {
                 uri: "ssh-ng://builder@home".to_owned(),
                 key: "/etc/nix/home_ed25519".to_owned(),
                 host_key: OTHER.to_owned(),
+                systems: Some(vec!["x86_64-linux".to_owned()]),
+                max_jobs: Some(4),
             }],
             lent: vec![Lent {
                 uri: URI.to_owned(),
@@ -1899,7 +2003,9 @@ mod tests {
     #[test]
     fn settings_are_read_from_json() {
         let text = r#"{"from":"/run/nix-offload","into":"/run/nix-offload-lines","files":["machines"],
-            "key":"/etc/nix/offload_ed25519","standing":[{"uri":"u","key":"k","hostKey":"h"}],
+            "key":"/etc/nix/offload_ed25519","standing":[
+                {"uri":"u","key":"k","hostKey":"h","systems":["x86_64-linux"],"maxJobs":4},
+                {"uri":"v","key":"k","hostKey":"h","systems":["aarch64-linux"],"maxJobs":null}],
             "lent":[{"uri":"l","instance":"/run/nix-offload/instance","token":"/run/nix-offload/token"}],
             "project":"p","prefix":"offload-","zones":["z"],"gcloud":"/bin/gcloud",
             "startupScript":"/etc/startup","hookKey":"/etc/nix/offload_ed25519.pub",
@@ -1913,6 +2019,25 @@ mod tests {
         assert_eq!(
             read.standing[0].host_key, "h",
             "the standing host key was misread"
+        );
+        assert_eq!(
+            (&read.standing[0].systems, read.standing[0].max_jobs),
+            (&Some(vec!["x86_64-linux".to_owned()]), Some(4)),
+            "what a standing builder may build was misread"
+        );
+        assert_eq!(
+            read.standing[1].max_jobs, None,
+            "a standing builder with no count was held to one"
+        );
+        let unpinned = text.replacen(r#""systems":["x86_64-linux"],"#, "", 1);
+        assert!(
+            settings(&unpinned).is_err(),
+            "a standing builder with no systems was taken"
+        );
+        let negative = text.replacen(r#""maxJobs":4"#, r#""maxJobs":-1"#, 1);
+        assert!(
+            settings(&negative).is_err(),
+            "a standing builder of -1 jobs was taken"
         );
         assert_eq!(
             (read.startup_script, read.hook_key, read.images),
