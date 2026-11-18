@@ -324,6 +324,22 @@ fn run(context: &Context, settings: &Settings) -> Result<(), Failure> {
         return Err(Failure::new(Exit::Config, "there's no machine to send to")
             .try_this("jitsusama.elsewhere.machines in the machine's home-manager settings"));
     }
+    // Told to keep it off this machine, it isn't made here instead.
+    if asked.there
+        && let Some(odd) = kind.odd_brings_back()
+    {
+        return Err(Failure::new(
+            Exit::Config,
+            format!(
+                "{} can't be sent: what it made couldn't come home",
+                asked.kind
+            ),
+        )
+        .because(format!(
+            "its brings_back names {odd}, which isn't a plain place in the job's folder"
+        ))
+        .try_this("the kind's brings_back, or --here"));
+    }
     let place = place(settings, kind, asked.here, asked.there);
     let Some(machine) = &place.machine else {
         if place.why != Why::Told {

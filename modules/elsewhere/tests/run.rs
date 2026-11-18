@@ -498,6 +498,23 @@ fn a_far_job_whose_output_can_t_land_fails_and_writes_nothing_outside() {
 }
 
 #[test]
+fn a_far_job_whose_output_won_t_land_ends_try_again() {
+    let realm = Realm::new(true);
+    // A folder where out/n would land, which no file replaces.
+    fs::create_dir_all(realm.folder().join("out/n/kept")).unwrap();
+    let output = realm.check(&[], "mkdir out; echo 7 > out/n");
+    let (_, err) = said(&output);
+    assert_eq!(
+        output.status.code(),
+        Some(75),
+        "a job whose output didn't land didn't end 75: {err}"
+    );
+    for says in ["didn't come home", "out/n didn't land", "--here"] {
+        assert!(err.contains(says), "it didn't say {says}: {err}");
+    }
+}
+
+#[test]
 fn a_kind_bringing_back_what_can_t_come_home_runs_here_and_says_why() {
     let realm = Realm::new(true);
     realm.bringing("far", &["out/.cache"]);
@@ -507,18 +524,34 @@ fn a_kind_bringing_back_what_can_t_come_home_runs_here_and_says_why() {
         "a job run here was refused for what it would bring back: {:?}",
         said(&here)
     );
-    for options in [&[][..], &["--there"][..]] {
-        let far = realm.check(options, "pwd");
-        let (_, err) = said(&far);
-        assert!(
-            far.status.success(),
-            "a job bringing back a hidden path didn't run here ({options:?}): {err}"
-        );
-        assert!(
-            err.contains("runs here") && err.contains("out/.cache"),
-            "it didn't say it ran here for the path ({options:?}): {err}"
-        );
-    }
+    let far = realm.check(&[], "pwd");
+    let (_, err) = said(&far);
+    assert!(
+        far.status.success(),
+        "a job bringing back a hidden path didn't run here: {err}"
+    );
+    assert!(
+        err.contains("runs here") && err.contains("out/.cache"),
+        "it didn't say it ran here for the path: {err}"
+    );
+    let (out, err) = said(&realm.run(&["where", "check", "--json"]));
+    let place: serde_json::Value = serde_json::from_str(&out).expect(&err);
+    assert!(
+        place["machine"].is_null() && place["because"] == "cant-come-home",
+        "where didn't say it stays because it can't come home: {out}"
+    );
+    // Told to send it, it isn't made here instead.
+    let sent = realm.check(&["--there"], "pwd");
+    let (_, err) = said(&sent);
+    assert_eq!(
+        sent.status.code(),
+        Some(78),
+        "--there with what can't come home didn't end 78: {err}"
+    );
+    assert!(
+        err.contains("out/.cache") && err.contains("--here") && !err.contains("runs here"),
+        "--there didn't say why it can't send, or ran it here: {err}"
+    );
     assert!(
         !realm.asked().contains("run "),
         "a job that can't bring back ran far: {}",

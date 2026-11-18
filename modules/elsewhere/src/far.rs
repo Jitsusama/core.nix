@@ -23,13 +23,12 @@
 //! the list.
 
 use crate::settings::{Copies, Kind};
+use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Where a job's folder lies within a quest's scratch.
 pub const HANDOVER: &str = "handover/elsewhere";
@@ -62,30 +61,6 @@ pub const CROSSES_WITHIN: u64 = 300;
 /// How many seconds the near side waits for what comes home before it
 /// says it is waiting: past a few looks, so a share keeping pace is quiet.
 const SAYS_IT_WAITS: u64 = 10;
-
-/// The mode bits a file brought back may land with: its own read, write
-/// and run bits, but never setuid, setgid, sticky or a write for anyone,
-/// and then only those the person's umask lets a new file have.
-const LANDS_WITH: u32 = 0o775;
-
-/// `O_NONBLOCK`, so opening a pipe that took a file's place returns at
-/// once rather than waiting for a writer. Its value is the platform's, so
-/// a platform this doesn't name doesn't build rather than guessing.
-#[cfg(all(
-    target_os = "linux",
-    any(
-        target_arch = "x86_64",
-        target_arch = "aarch64",
-        target_arch = "riscv64"
-    )
-))]
-const OPEN_NONBLOCKING: i32 = 0o4000;
-#[cfg(target_os = "macos")]
-const OPEN_NONBLOCKING: i32 = 0x4;
-
-/// The number the next landing name takes, so no two in this process
-/// share one.
-static NEXT_LANDING: AtomicU32 = AtomicU32::new(0);
 
 /// Whether `quest` is a quest's id as the harness mints it, so it names a
 /// folder and nothing more.
@@ -487,7 +462,8 @@ fn brought_back(path: &str, brings_back: &[String]) -> bool {
 /// Why what a job made didn't all come home.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Missed {
-    /// It would land somewhere it mustn't, which another try won't change.
+    /// It would land somewhere it mustn't, or is more than a share
+    /// carries, which another try won't change.
     Refused(String),
     /// Some of it didn't cross, or didn't land, which another try may not
     /// meet.
@@ -503,15 +479,9 @@ impl Missed {
     }
 }
 
-/// What among `files` a share won't carry, so waiting for it is waiting
-/// for nothing.
-fn uncarried(files: &[Brought]) -> Option<String> {
-    if let Some(large) = files.iter().find(|brought| brought.size > LARGEST_FILE) {
-        return Some(format!(
-            "{} is {} bytes, past the {LARGEST_FILE} a share carries in one file",
-            large.path, large.size
-        ));
-    }
+/// Whether `files` are more than a share carries at all, so waiting for
+/// them is waiting for nothing.
+fn too_many(files: &[Brought]) -> Option<String> {
     let bytes: u64 = files.iter().map(|brought| brought.size).sum();
     if files.len() > MOST_FILES || bytes > MOST_BYTES {
         return Some(format!(
@@ -544,12 +514,18 @@ pub fn bring_back(
     };
     for look in 0..=within {
         let text = fs::read_to_string(job.join(BROUGHT)).unwrap_or_default();
-        let files = listed(&text, brings_back);
-        if let Some(why) = files.as_deref().and_then(uncarried) {
-            return Err(Missed::Lost(why));
-        }
-        if let Some(files) = files.filter(|files| arrived(files)) {
-            return landed(job, folder, brings_back, &text, &files);
+        if let Some(files) = listed(&text, brings_back) {
+            if let Some(why) = too_many(&files) {
+                return Err(Missed::Refused(why));
+            }
+            // One past what a share carries in a file never crosses, so
+            // only the rest is waited for.
+            let (fits, large): (Vec<_>, Vec<_>) = files
+                .into_iter()
+                .partition(|brought| brought.size <= LARGEST_FILE);
+            if arrived(&fits) {
+                return landed(job, folder, brings_back, &text, &fits, &large);
+            }
         }
         if look == SAYS_IT_WAITS {
             eprintln!("waiting up to {within}s for what it made to come home");
@@ -565,17 +541,19 @@ pub fn bring_back(
 
 /// Lands `files`, all crossed whole into the handover folder `job`, in
 /// `folder`, unless one would land through a link it mustn't, and says
-/// what didn't land or come back from the far side, `text` being its list.
+/// what didn't land, come back from the far side or cross for being
+/// `large`, `text` being the far side's list.
 fn landed(
     job: &Path,
     folder: &Path,
     brings_back: &[String],
     text: &str,
     files: &[Brought],
+    large: &[Brought],
 ) -> Result<usize, Missed> {
     let through = files
         .iter()
-        .find_map(|brought| linked(folder, &brought.path).map(|link| (brought, link)));
+        .find_map(|brought| landing::linked(folder, &brought.path).map(|link| (brought, link)));
     if let Some((brought, (link, leads))) = through {
         return Err(Missed::Refused(format!(
             "{} would land through the link {}, which {leads}",
@@ -583,11 +561,12 @@ fn landed(
             link.display()
         )));
     }
+    let mut swept = HashSet::new();
     let mut missed: Vec<String> = files
         .iter()
         .filter_map(|brought| {
             let from = job.join(BACK).join(brought.number.to_string());
-            land(&from, &folder.join(&brought.path))
+            landing::land(&from, &folder.join(&brought.path), &mut swept)
                 .err()
                 .map(|error| format!("{} didn't land: {error}", brought.path))
         })
@@ -604,6 +583,12 @@ fn landed(
             lost.join(", ")
         ));
     }
+    for brought in large {
+        missed.push(format!(
+            "{} is {} bytes, past the {LARGEST_FILE} a share carries in one file",
+            brought.path, brought.size
+        ));
+    }
     if missed.is_empty() {
         return Ok(files.len());
     }
@@ -611,119 +596,13 @@ fn landed(
     if unlanded < files.len() {
         missed.push(format!("the other {} landed", files.len() - unlanded));
     }
-    Err(Missed::Lost(missed.join("; ")))
-}
-
-/// Puts `from` at `into` under a name of its own first and then moves it
-/// there, so whatever is already at `into`, a hard link to a file
-/// elsewhere or a symbolic link, is replaced rather than written through.
-fn land(from: &Path, into: &Path) -> io::Result<()> {
-    let parent = into.parent().unwrap_or(Path::new("."));
-    fs::create_dir_all(parent)?;
-    // Made new, so nothing already at the name, a link perhaps, is opened,
-    // and short, so any name that fits its folder lands.
-    swept(parent);
-    let mut source = opened_plain(from)?;
-    let bits = source.metadata()?.permissions().mode() & LANDS_WITH;
-    let landing = parent.join(format!(
-        "{MARK}-{}-{}",
-        std::process::id(),
-        NEXT_LANDING.fetch_add(1, Ordering::Relaxed)
-    ));
-    // Made with its bits, so the umask takes what it would from any new
-    // file, and held locked while it lands, so another run's sweep knows
-    // it is no leftover.
-    let mut to = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(bits)
-        .open(&landing)?;
-    let landed = to
-        .try_lock()
-        .map_err(io::Error::other)
-        .and_then(|()| io::copy(&mut source, &mut to))
-        .and_then(|_| fs::rename(&landing, into));
-    landed.inspect_err(|_| {
-        // What's left would be in the person's folder; it's spent anyway.
-        let _ = fs::remove_file(&landing);
-    })
-}
-
-/// Removes from `folder` each landing name a run killed as it landed left,
-/// which no live run holds locked, as the kernel lets a dead one's lock go.
-fn swept(folder: &Path) {
-    let Ok(names) = fs::read_dir(folder) else {
-        // Nothing to sweep in a folder that can't be read; the landing
-        // then says why it can't be written either.
-        return;
-    };
-    for name in names.flatten() {
-        let path = name.path();
-        let left = name
-            .file_name()
-            .to_str()
-            .and_then(|name| name.strip_prefix(&format!("{MARK}-")))
-            .and_then(|rest| rest.split_once('-'))
-            .is_some_and(|(pid, n)| {
-                [pid, n]
-                    .iter()
-                    .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
-            });
-        let unheld = left && opened_plain(&path).is_ok_and(|file| file.try_lock().is_ok());
-        if unheld {
-            // One a live run took since is its own to fail on; the sweep
-            // only ever spares what's held.
-            let _ = fs::remove_file(&path);
-        }
-    }
-}
-
-/// Opens `path` only when it is a plain file, and the same file once open,
-/// so a link put there after the look is never followed.
-fn opened_plain(path: &Path) -> io::Result<fs::File> {
-    let looked = fs::symlink_metadata(path)?;
-    if !looked.is_file() {
-        return Err(io::Error::other("it isn't a plain file"));
-    }
-    // Without blocking, so a pipe put there after the look can't hold the
-    // run; it is then refused as not the file looked at.
-    let file = fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(OPEN_NONBLOCKING)
-        .open(path)?;
-    let opened = file.metadata()?;
-    if opened.dev() != looked.dev() || opened.ino() != looked.ino() {
-        return Err(io::Error::other("it changed as it was opened"));
-    }
-    Ok(file)
-}
-
-/// The first folder on the way to `path` under `folder` that is a symbolic
-/// link a file brought back mustn't be written through, and where it
-/// leads: out of `folder`, nowhere, which would make what it names, or
-/// into a hidden folder, where nothing brought back may go. Any other link
-/// within the folder is the person's own. A link at the file's own name is
-/// replaced as it lands, never followed, so it isn't looked at.
-fn linked(folder: &Path, path: &str) -> Option<(PathBuf, &'static str)> {
-    let home = fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
-    let mut at = folder.to_path_buf();
-    let parts: Vec<_> = Path::new(path).components().collect();
-    let folders = parts.len().saturating_sub(1);
-    parts[..folders].iter().find_map(|part| {
-        at.push(part);
-        if !fs::symlink_metadata(&at).is_ok_and(|meta| meta.file_type().is_symlink()) {
-            return None;
-        }
-        let Ok(to) = fs::canonicalize(&at) else {
-            return Some((at.clone(), "leads nowhere"));
-        };
-        let Ok(within) = to.strip_prefix(&home) else {
-            return Some((at.clone(), "leads out of its folder"));
-        };
-        within
-            .components()
-            .any(|part| part.as_os_str().to_string_lossy().starts_with('.'))
-            .then(|| (at.clone(), "leads into a hidden folder"))
+    let missed = missed.join("; ");
+    // One too large is too large every time; a file that didn't land or
+    // cross may on another try.
+    Err(if large.is_empty() {
+        Missed::Lost(missed)
+    } else {
+        Missed::Refused(missed)
     })
 }
 
@@ -738,6 +617,8 @@ pub fn quoted(word: &str) -> String {
     }
     format!("'{}'", word.replace('\'', r"'\''"))
 }
+
+mod landing;
 
 #[cfg(test)]
 mod tests;

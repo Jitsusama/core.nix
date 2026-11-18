@@ -1,0 +1,176 @@
+//! Landing what a far job made in the person's folder: each file under a
+//! name of its own first, locked while it lands, then moved to its path,
+//! so nothing already there is written through and nothing half made is
+//! ever at the path. A run killed as it landed leaves its name behind,
+//! which the next landing in that folder sweeps.
+
+use super::MARK;
+use std::collections::HashSet;
+use std::fs;
+use std::io;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::Duration;
+
+/// The mode bits a file brought back may land with: its own read, write
+/// and run bits, but never setuid, setgid, sticky or a write for anyone,
+/// and then only those the person's umask lets a new file have.
+pub(super) const LANDS_WITH: u32 = 0o775;
+
+/// How old a landing name is before a sweep may take it: far past the
+/// moment between its run making it and locking it.
+pub(super) const SWEEPS_AFTER: Duration = Duration::from_secs(60);
+
+/// `O_NONBLOCK`, so opening a pipe that took a file's place returns at
+/// once rather than waiting for a writer. Its value is the platform's, so
+/// a platform this doesn't name doesn't build rather than guessing.
+#[cfg(all(
+    target_os = "linux",
+    any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv64"
+    )
+))]
+const OPEN_NONBLOCKING: i32 = 0o4000;
+#[cfg(target_os = "macos")]
+const OPEN_NONBLOCKING: i32 = 0x4;
+
+/// The number the next landing name takes, so no two in this process
+/// share one.
+static NEXT_LANDING: AtomicU32 = AtomicU32::new(0);
+
+/// Puts `from` at `into` under a name of its own first and then moves it
+/// there, so whatever is already at `into`, a hard link to a file
+/// elsewhere or a symbolic link, is replaced rather than written through.
+/// A folder named in `swept` was swept already by this bring-back.
+pub(super) fn land(from: &Path, into: &Path, swept: &mut HashSet<PathBuf>) -> io::Result<()> {
+    let parent = into.parent().unwrap_or(Path::new("."));
+    fs::create_dir_all(parent)?;
+    if swept.insert(parent.to_path_buf()) {
+        sweep(parent);
+    }
+    let mut source = opened_plain(from)?;
+    let bits = source.metadata()?.permissions().mode() & LANDS_WITH;
+    // Made new, so nothing already at the name, a link perhaps, is opened,
+    // and short, so any name that fits its folder lands.
+    let landing = parent.join(format!(
+        "{MARK}-{}-{}",
+        std::process::id(),
+        NEXT_LANDING.fetch_add(1, Ordering::Relaxed)
+    ));
+    // Made with its bits, so the umask takes what it would from any new
+    // file. They always let its owner read it, as it was read to land, so
+    // a sweep can open it if its run is killed.
+    let mut to = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(bits)
+        .open(&landing)?;
+    let landed = held(&to)
+        .and_then(|()| io::copy(&mut source, &mut to))
+        .and_then(|_| fs::rename(&landing, into));
+    landed.inspect_err(|_| {
+        // What's left would be in the person's folder; it's spent anyway.
+        let _ = fs::remove_file(&landing);
+    })
+}
+
+/// Locks a landing name while it lands, so a sweep knows it is no
+/// leftover. Where its folder's filesystem takes no locks, it lands
+/// unlocked, as a sweep removes only what it can lock.
+fn held(file: &fs::File) -> io::Result<()> {
+    match file.try_lock() {
+        Ok(()) | Err(fs::TryLockError::Error(_)) => Ok(()),
+        Err(held) => Err(io::Error::other(held)),
+    }
+}
+
+/// Removes from `folder` each landing name a run killed as it landed left:
+/// one no live run holds locked, as the kernel lets a dead one's lock go,
+/// and older than [`SWEEPS_AFTER`], so never one a live run has made and
+/// not yet locked.
+fn sweep(folder: &Path) {
+    let Ok(names) = fs::read_dir(folder) else {
+        // Nothing to sweep in a folder that can't be read; the landing
+        // then says why it can't be written either.
+        return;
+    };
+    for name in names.flatten() {
+        let path = name.path();
+        let landing = name
+            .file_name()
+            .to_str()
+            .and_then(|name| name.strip_prefix(&format!("{MARK}-")))
+            .and_then(|rest| rest.split_once('-'))
+            .is_some_and(|(pid, n)| {
+                [pid, n]
+                    .iter()
+                    .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+            });
+        let Some(file) = landing.then(|| opened_plain(&path).ok()).flatten() else {
+            continue;
+        };
+        let old = file
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .is_ok_and(|at| at.elapsed().is_ok_and(|age| age >= SWEEPS_AFTER));
+        if old && file.try_lock().is_ok() {
+            // Removed while still locked, so no run takes it between.
+            let _ = fs::remove_file(&path);
+        }
+    }
+}
+
+/// Opens `path` only when it is a plain file, and the same file once open,
+/// so a link put there after the look is never followed.
+pub(super) fn opened_plain(path: &Path) -> io::Result<fs::File> {
+    let looked = fs::symlink_metadata(path)?;
+    if !looked.is_file() {
+        return Err(io::Error::other("it isn't a plain file"));
+    }
+    // Without blocking, so a pipe put there after the look can't hold the
+    // run; it is then refused as not the file looked at.
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(OPEN_NONBLOCKING)
+        .open(path)?;
+    let opened = file.metadata()?;
+    if opened.dev() != looked.dev() || opened.ino() != looked.ino() {
+        return Err(io::Error::other("it changed as it was opened"));
+    }
+    Ok(file)
+}
+
+/// The first folder on the way to `path` under `folder` that is a symbolic
+/// link a file brought back mustn't be written through, and where it
+/// leads: out of `folder`, nowhere, which would make what it names, or
+/// into a hidden folder, where nothing brought back may go. Any other link
+/// within the folder is the person's own. A link at the file's own name is
+/// replaced as it lands, never followed, so it isn't looked at.
+pub(super) fn linked(folder: &Path, path: &str) -> Option<(PathBuf, &'static str)> {
+    let home = fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
+    let mut at = folder.to_path_buf();
+    let parts: Vec<_> = Path::new(path).components().collect();
+    let folders = parts.len().saturating_sub(1);
+    parts[..folders].iter().find_map(|part| {
+        at.push(part);
+        if !fs::symlink_metadata(&at).is_ok_and(|meta| meta.file_type().is_symlink()) {
+            return None;
+        }
+        let Ok(to) = fs::canonicalize(&at) else {
+            return Some((at.clone(), "leads nowhere"));
+        };
+        let Ok(within) = to.strip_prefix(&home) else {
+            return Some((at.clone(), "leads out of its folder"));
+        };
+        within
+            .components()
+            .any(|part| part.as_os_str().to_string_lossy().starts_with('.'))
+            .then(|| (at.clone(), "leads into a hidden folder"))
+    })
+}
+
+#[cfg(test)]
+mod tests;

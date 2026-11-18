@@ -381,161 +381,43 @@ fn scratch(what: &str) -> PathBuf {
 }
 
 #[test]
-fn only_a_plain_file_is_opened_to_land() {
-    let root = scratch("opened");
-    std::fs::write(root.join("file"), "a").unwrap();
-    std::os::unix::fs::symlink(root.join("file"), root.join("link")).unwrap();
-    let made = std::process::Command::new("mkfifo")
-        .arg(root.join("pipe"))
-        .status()
-        .unwrap();
-    assert!(made.success(), "mkfifo failed");
-    assert!(
-        super::opened_plain(&root.join("file")).is_ok(),
-        "a plain file wasn't opened"
-    );
-    assert!(
-        super::opened_plain(&root.join("link")).is_err(),
-        "a link was opened"
-    );
-    // Refused at the look, before any open; one put there after the look
-    // is opened without waiting, which no test here can time.
-    assert!(
-        super::opened_plain(&root.join("pipe")).is_err(),
-        "a pipe was opened"
-    );
-    let _ = std::fs::remove_dir_all(&root);
-}
-
-/// The names in `folder`, sorted.
-fn names(folder: &Path) -> Vec<String> {
-    let mut names: Vec<_> = std::fs::read_dir(folder)
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-        .collect();
-    names.sort();
-    names
-}
-
-#[test]
-fn a_file_that_can_t_land_leaves_its_place_as_it_was() {
-    let root = scratch("unlanded");
-    std::fs::write(root.join("there"), "mine").unwrap();
-    std::os::unix::fs::symlink("nowhere", root.join("from")).unwrap();
-    assert!(
-        super::land(&root.join("from"), &root.join("there")).is_err(),
-        "a link landed"
-    );
-    assert_eq!(
-        std::fs::read_to_string(root.join("there")).unwrap(),
-        "mine",
-        "a landing that failed touched what was there"
-    );
-    assert_eq!(
-        names(&root),
-        ["from", "there"],
-        "a landing that failed left a name of its own behind"
-    );
-    let _ = std::fs::remove_dir_all(&root);
-}
-
-#[test]
-fn a_file_lands_under_a_long_name_without_its_special_bits() {
-    let root = scratch("long");
-    std::fs::write(root.join("from"), "a").unwrap();
-    // Setuid where it may be set, which Nix's build sandbox refuses, and a
-    // write for anyone either way.
-    let allow = |bits| {
-        std::fs::set_permissions(
-            root.join("from"),
-            std::os::unix::fs::PermissionsExt::from_mode(bits),
-        )
-    };
-    allow(0o4777).or_else(|_| allow(0o777)).unwrap();
-    let long = "n".repeat(250);
-    super::land(&root.join("from"), &root.join(&long)).expect("a long name didn't land");
-    let mode = std::os::unix::fs::PermissionsExt::mode(
-        &std::fs::metadata(root.join(&long)).unwrap().permissions(),
-    );
-    // What the umask leaves a new file asking for every bit, so the test
-    // holds whatever umask runs it.
-    let probe = root.join("probe");
-    std::os::unix::fs::OpenOptionsExt::mode(
-        std::fs::OpenOptions::new().write(true).create_new(true),
-        0o777,
-    )
-    .open(&probe)
-    .unwrap();
-    let allowed =
-        std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(&probe).unwrap().permissions())
-            & 0o777;
-    assert_eq!(
-        mode & 0o7777,
-        0o775 & allowed,
-        "it landed with setuid or a write for anyone, or past the umask: {mode:o}"
-    );
-    let _ = std::fs::remove_dir_all(&root);
-}
-
-#[test]
-fn a_landing_name_a_killed_run_left_is_cleared() {
-    let root = scratch("stale");
-    std::fs::write(root.join("from"), "new").unwrap();
-    let left = |pid: &str| root.join(format!("{}-{pid}-0", super::MARK));
-    // Two left by runs killed as they landed, one of them under the id
-    // this process lands under next; one a live run holds; and the
-    // person's own, named like neither.
-    let own = std::process::id().to_string();
-    let next = super::NEXT_LANDING.load(std::sync::atomic::Ordering::Relaxed);
-    let mine = root.join(format!("{}-{own}-{next}", super::MARK));
-    for path in [
-        left("1"),
-        mine.clone(),
-        left("2"),
-        root.join(".elsewhere-notes"),
-    ] {
-        std::fs::write(path, "old").unwrap();
-    }
-    let held = std::fs::File::open(left("2")).unwrap();
-    held.try_lock().unwrap();
-    super::land(&root.join("from"), &root.join("into")).expect("a stale name stopped it");
-    assert_eq!(
-        std::fs::read_to_string(root.join("into")).unwrap(),
-        "new",
-        "what landed wasn't what came back"
-    );
-    assert!(
-        !left("1").exists() && !mine.exists(),
-        "a name a killed run left stayed: {:?}",
-        names(&root)
-    );
-    assert!(left("2").exists(), "a live run's landing was swept");
-    assert!(
-        root.join(".elsewhere-notes").exists(),
-        "the person's own file was swept"
-    );
-    drop(held);
-    let _ = std::fs::remove_dir_all(&root);
-}
-
-#[test]
-fn what_a_share_can_t_carry_fails_at_once() {
+fn what_a_share_can_t_carry_is_refused_and_the_rest_lands_at_once() {
     let home = scratch("uncarried");
     let job = handover(&home);
     std::fs::create_dir_all(job.join(super::BACK)).unwrap();
+    std::fs::write(job.join(super::BACK).join("1"), "b").unwrap();
     let large = super::LARGEST_FILE + 1;
-    std::fs::write(job.join(super::BROUGHT), format!("{large}\tout/a\nend\n")).unwrap();
+    std::fs::write(
+        job.join(super::BROUGHT),
+        format!("{large}\tout/a\n1\tout/b\nend\n"),
+    )
+    .unwrap();
+    let into = home.join("near");
     let started = std::time::Instant::now();
-    let landed = bring_back(&job, &home.join("near"), &["out".into()], WAITS);
-    assert!(
-        landed
-            .as_ref()
-            .is_err_and(|why| matches!(why, Missed::Lost(why) if why.contains("past the"))),
-        "a file past what a share carries wasn't refused as such: {landed:?}"
-    );
+    let landed = bring_back(&job, &into, &["out".into()], WAITS);
+    let why = match &landed {
+        Err(Missed::Refused(why)) => why.clone(),
+        other => panic!("a file past what a share carries wasn't refused: {other:?}"),
+    };
+    for says in ["out/a is", "past the", "the other 1 landed"] {
+        assert!(why.contains(says), "it didn't say {says}: {why}");
+    }
     assert!(
         started.elapsed() < std::time::Duration::from_secs(WAITS),
         "it waited for a file a share can't carry"
+    );
+    assert_eq!(
+        std::fs::read_to_string(into.join("out/b")).ok().as_deref(),
+        Some("b"),
+        "one too large for a share stopped the rest landing"
+    );
+    // More files than a share carries at all are refused at once too.
+    let many = "1\tout/x\n".repeat(super::MOST_FILES + 1);
+    std::fs::write(job.join(super::BROUGHT), format!("{many}end\n")).unwrap();
+    let landed = bring_back(&job, &into, &["out".into()], WAITS);
+    assert!(
+        matches!(&landed, Err(Missed::Refused(why)) if why.contains("files of")),
+        "more files than a share carries weren't refused: {landed:?}"
     );
     let _ = std::fs::remove_dir_all(&home);
 }
