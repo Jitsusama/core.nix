@@ -7,9 +7,13 @@
 //! from when each Tuple call Joel missed rang (rings.rs, which reads when
 //! alone and never who), and whether the book could be read. A missed
 //! ring is a call that asked for Joel as much as one he took, so it
-//! counts in each, and every one is addressed to him. No title, person,
-//! event or folder of a call is ever an argument, so nothing a call's
-//! files say reaches the node, whatever they hold. mycelium is run by
+//! counts in each, and every one is addressed to him. Beside them goes
+//! the calendar event of each call a summary was written of, by its id
+//! alone, so the node can tell the one cell whose quest claims that
+//! event (mycelium's PROTOCOL.md, Feeding): a pointer, never the
+//! summary. No title, person, quote or folder of a call is ever an
+//! argument, so nothing a call's files say reaches the node, whatever
+//! they hold. mycelium is run by
 //! its store path, its arguments given one by one and never through a
 //! shell, by the speaker every daemon's receptors share
 //! (../receptor-say).
@@ -19,6 +23,7 @@
 //! as on a machine in no realm, nothing is said.
 
 use std::ffi::OsString;
+use std::path::Path;
 use std::time::Duration;
 
 use receptor_say::{Source, Speaker, Told};
@@ -32,6 +37,75 @@ pub const EVERY: Duration = Duration::from_secs(60);
 
 /// An hour, in the book's milliseconds.
 const HOUR: u64 = 3_600_000;
+
+/// How long after a call ended its summary's event is named: a day short
+/// of the 30 mycelium keeps an item, so the node lets an event go only
+/// once it's no longer named, rather than keeping one named past its 30
+/// days as new and telling its cell again.
+const NAMED_FOR: u64 = 29 * 24 * HOUR;
+
+/// The most events named at once: as many items as mycelium keeps.
+const MOST_EVENTS: usize = 200;
+
+/// The longest event id named. Google's run to about sixty characters;
+/// at this bound the most events still fit the file mycelium reads,
+/// where its own bound of 1024 would not, and one longer is left out
+/// rather than refusing the whole say.
+const LONGEST_EVENT: usize = 200;
+
+/// The fewest characters Google gives an event's own id.
+const SHORTEST_EVENT: usize = 5;
+
+/// Whether mycelium takes `event` as an event's id: its own id in
+/// base32hex, lowercase `a` to `v` and digits, then any `_` parts of
+/// digits and `R`, `T` or `Z` a recurring event's splits and instances
+/// add, as mycelium's feed rule says. One it wouldn't take is left out,
+/// since one refused refuses the counts beside it.
+fn is_event(event: &str) -> bool {
+    let mut parts = event.split('_');
+    let own = parts.next().unwrap_or_default();
+    event.len() <= LONGEST_EVENT
+        && own.len() >= SHORTEST_EVENT
+        && own
+            .bytes()
+            .all(|each| matches!(each, b'a'..=b'v' | b'0'..=b'9'))
+        && parts.all(|part| {
+            !part.is_empty()
+                && part
+                    .bytes()
+                    .all(|each| matches!(each, b'0'..=b'9' | b'R' | b'T' | b'Z'))
+        })
+}
+
+/// The events to name at `now`, of `summarized` calls as the book gives
+/// them, each its event, when it ended and its folder: those that ended
+/// within [`NAMED_FOR`] and not after now, whose summary is still in
+/// their folder, so a call forgotten or moved away stops being named,
+/// and whose id mycelium takes; the newest first, at most
+/// [`MOST_EVENTS`], each once.
+fn named<'a>(
+    summarized: impl IntoIterator<Item = (&'a str, u64, &'a Path)>,
+    now: u64,
+) -> Vec<String> {
+    let mut held: Vec<(u64, &str)> = summarized
+        .into_iter()
+        .filter(|&(event, ended, folder)| {
+            ended <= now
+                && now - ended < NAMED_FOR
+                && is_event(event)
+                && std::fs::symlink_metadata(folder.join(book::SUMMARY))
+                    .is_ok_and(|summary| summary.is_file())
+        })
+        .map(|(event, ended, _)| (ended, event))
+        .collect();
+    held.sort_by(|one, other| other.cmp(one));
+    let mut seen = std::collections::BTreeSet::new();
+    held.into_iter()
+        .filter(|&(_, event)| seen.insert(event))
+        .take(MOST_EVENTS)
+        .map(|(_, event)| event.to_owned())
+        .collect()
+}
 
 /// How many calls started in the last hour, and since local midnight.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -125,22 +199,44 @@ impl Receptor {
         }
     }
 
-    /// What mycelium is given: fixed words, the realm the service named,
-    /// and integers, each count held to the most mycelium takes. `say`
-    /// hands the speaker the same, so only the tests read it here.
-    #[cfg(test)]
-    pub fn arguments(&self, state: State, counts: Counts, pid: u32) -> Vec<OsString> {
-        self.speaker
-            .arguments(Self::told(state, counts), EVERY, pid)
+    /// The words naming `events`, each after `--event`.
+    fn events(events: &[String]) -> Vec<OsString> {
+        events
+            .iter()
+            .flat_map(|event| [OsString::from("--event"), OsString::from(event)])
+            .collect()
     }
 
-    /// Says how the calls stand.
+    /// What mycelium is given: fixed words, the realm the service named,
+    /// integers, each count held to the most mycelium takes, and the
+    /// events named. `say` hands the speaker the same, so only the tests
+    /// read it here.
+    #[cfg(test)]
+    pub fn arguments(
+        &self,
+        state: State,
+        counts: Counts,
+        events: &[String],
+        pid: u32,
+    ) -> Vec<OsString> {
+        self.speaker
+            .arguments_with(Self::told(state, counts), EVERY, pid, Self::events(events))
+    }
+
+    /// Says how the calls stand, and the events of those summarized.
     ///
     /// # Errors
     ///
     /// When mycelium can't be run, or refuses what it's told.
-    pub fn say(&self, state: State, counts: Counts, pid: u32) -> Result<(), String> {
-        self.speaker.say(&[Self::told(state, counts)], EVERY, pid)
+    pub fn say(
+        &self,
+        state: State,
+        counts: Counts,
+        events: &[String],
+        pid: u32,
+    ) -> Result<(), String> {
+        self.speaker
+            .say_with(Self::told(state, counts), EVERY, pid, Self::events(events))
     }
 }
 
@@ -178,11 +274,29 @@ pub fn keep(receptor: &Receptor, book: &book::Shared) {
         if let Some(line) = logged {
             eprintln!("call-transcripts: {line}");
         }
-        let (counts, failing) = {
+        let (counts, failing, summarized) = {
             let held = book.lock();
-            (counted(&held, &missed, now, midnight), held.failing())
+            let summarized: Vec<(String, u64, std::path::PathBuf)> = held
+                .summarized()
+                .map(|(event, ended, folder)| (event.to_owned(), ended, folder.to_owned()))
+                .collect();
+            (
+                counted(&held, &missed, now, midnight),
+                held.failing(),
+                summarized,
+            )
         };
-        let outcome = receptor.say(State::of(counts, failing), counts, pid).err();
+        // The summaries are looked for with the book let go, so a slow
+        // disk holds up no one reading it.
+        let events = named(
+            summarized
+                .iter()
+                .map(|(event, ended, folder)| (event.as_str(), *ended, folder.as_path())),
+            now,
+        );
+        let outcome = receptor
+            .say(State::of(counts, failing), counts, &events, pid)
+            .err();
         if outcome != said {
             if let Some(why) = &outcome {
                 eprintln!("call-transcripts: saying the calls receptor: {why}");
@@ -243,6 +357,7 @@ mod tests {
         let said = receptor(PathBuf::from("/nix/store/x-mycelium/bin/mycelium")).arguments(
             State::Reading,
             Counts { hour: 1, today: 2 },
+            &[],
             4242,
         );
         let words: Vec<&str> = said.iter().map(|word| word.to_str().unwrap()).collect();
@@ -278,6 +393,7 @@ mod tests {
                 hour: u64::from(u32::MAX) + 1,
                 today: u64::MAX,
             },
+            &[],
             4242,
         );
         let counts: Vec<&str> = [8, 10, 12]
@@ -328,17 +444,28 @@ mod tests {
     /// What a stand-in in `folder` was given when told how the calls
     /// stand, a word a line.
     fn said_by(folder: &std::path::Path, state: State, counts: Counts) -> String {
+        said_naming(folder, state, counts, &[])
+    }
+
+    /// What a stand-in in `folder` was given when told how the calls
+    /// stand and the `events` named, a word a line.
+    fn said_naming(
+        folder: &std::path::Path,
+        state: State,
+        counts: Counts,
+        events: &[String],
+    ) -> String {
         let (program, given) = stand_in(folder);
         let receptor = receptor(program);
         // Another test's child, forked while the stand-in was still open
         // for writing, holds it busy until that child execs, which is
         // moments; so a busy stand-in is run again rather than failed.
-        let mut said = receptor.say(state, counts, 4242);
+        let mut said = receptor.say(state, counts, events, 4242);
         for _ in 0..BUSY_TRIES {
             match &said {
                 Err(why) if why.contains("os error 26") => {
                     std::thread::yield_now();
-                    said = receptor.say(state, counts, 4242);
+                    said = receptor.say(state, counts, events, 4242);
                 }
                 _ => break,
             }
@@ -455,15 +582,157 @@ mod tests {
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
         assert!(
             receptor(program)
-                .say(State::Quiet, Counts::default(), 1)
+                .say(State::Quiet, Counts::default(), &[], 1)
                 .is_err(),
             "a mycelium that refused wasn't a failure"
         );
         assert!(
             receptor(folder.path().join("missing"))
-                .say(State::Quiet, Counts::default(), 1)
+                .say(State::Quiet, Counts::default(), &[], 1)
                 .is_err(),
             "a missing mycelium wasn't a failure"
+        );
+    }
+
+    /// An event's id as Google gives a recurring one's instance.
+    const EVENT: &str = "6kq3ehb1c4p0bt2oq1i5u4tq4c_20261118T150000Z";
+
+    /// A call kept in `calls` under `name`, with `meta` as its record
+    /// and, when `summary` is some, that summary written beside it.
+    fn kept(calls: &std::path::Path, name: &str, meta: &serde_json::Value, summary: Option<&str>) {
+        let folder = calls.join(name);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("meta.json"), meta.to_string()).unwrap();
+        if let Some(summary) = summary {
+            std::fs::write(folder.join(book::SUMMARY), summary).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_summarized_call_is_named_by_its_event_alone() {
+        let folder = tempfile::tempdir().unwrap();
+        let calls = folder.path().join("calls");
+        kept(
+            &calls,
+            "2026-11-18 1500 Pay review with Skiff",
+            &serde_json::json!({
+                "key": format!("call:{EVENT}"), "started": NOW - HOUR, "ended": NOW - 5,
+                "title": "Pay review with Skiff", "person": "skiff@example.com",
+                "event": EVENT,
+            }),
+            Some("Skiff said: --realm personal, raise the budget"),
+        );
+        let held = book::Book::read(&calls);
+        let events = named(held.summarized(), NOW);
+        assert_eq!(events, [EVENT], "the summarized call's event wasn't named");
+        let counts = Counts::of(held.starts(), NOW, MIDNIGHT);
+        let said = said_naming(
+            folder.path(),
+            State::of(counts, held.failing()),
+            counts,
+            &events,
+        );
+        for planted in [
+            "Pay", "review", "Skiff", "skiff", "example", "personal", "budget", "with",
+        ] {
+            assert!(
+                !said.contains(planted),
+                "{planted} reached mycelium: {said}"
+            );
+        }
+        let words: Vec<&str> = said.lines().collect();
+        assert_eq!(
+            words[words.len() - 2..],
+            ["--event", EVENT],
+            "the event wasn't said after the counts"
+        );
+    }
+
+    #[test]
+    fn a_call_with_no_event_no_summary_or_not_ended_names_nothing() {
+        let folder = tempfile::tempdir().unwrap();
+        let calls = folder.path().join("calls");
+        let meta = |key: &str, event: Option<&str>, ended: Option<u64>| {
+            serde_json::json!({"key": key, "started": NOW - HOUR, "ended": ended,
+                "event": event})
+        };
+        kept(
+            &calls,
+            "no-event",
+            &meta("call:at:1", None, Some(NOW - 5)),
+            Some("a"),
+        );
+        kept(
+            &calls,
+            "no-summary",
+            &meta("call:abcdef1", Some("abcdef1"), Some(NOW - 5)),
+            None,
+        );
+        let held = book::Book::read(&calls);
+        assert!(
+            named(held.summarized(), NOW).is_empty(),
+            "a call with no event or no summary was named"
+        );
+        let unended = [("abcdef2", NOW + 1, calls.join("no-event"))];
+        assert!(
+            named(unended.iter().map(|(e, at, f)| (*e, *at, f.as_path())), NOW).is_empty(),
+            "a call ending after now was named"
+        );
+    }
+
+    #[test]
+    fn an_event_is_named_while_its_summary_stands_within_its_days_and_only_as_an_id() {
+        let folder = tempfile::tempdir().unwrap();
+        let with = folder.path().join("with");
+        std::fs::create_dir_all(&with).unwrap();
+        std::fs::write(with.join(book::SUMMARY), "kept").unwrap();
+        let gone = folder.path().join("gone");
+        let linked = folder.path().join("linked");
+        std::fs::create_dir_all(&linked).unwrap();
+        std::os::unix::fs::symlink(with.join(book::SUMMARY), linked.join(book::SUMMARY)).unwrap();
+        let held = [
+            (EVENT, NOW - 5, with.as_path()),
+            ("abcdef1", NOW - 5, gone.as_path()),
+            ("abcdef2", NOW - 5, linked.as_path()),
+            ("abcdef3", NOW - NAMED_FOR, with.as_path()),
+            ("abcdef4", NOW - NAMED_FOR + 1, with.as_path()),
+            ("Pay review", NOW - 5, with.as_path()),
+            ("pay_review", NOW - 5, with.as_path()),
+            (EVENT, NOW - 9, with.as_path()),
+        ];
+        assert_eq!(
+            named(held, NOW),
+            [EVENT, "abcdef4"],
+            "a summary gone or linked, one past its days, a title or a repeat was named"
+        );
+        let long = "a".repeat(LONGEST_EVENT + 1);
+        assert!(
+            named([(long.as_str(), NOW - 5, with.as_path())], NOW).is_empty(),
+            "an id past the longest was named"
+        );
+    }
+
+    #[test]
+    fn the_newest_events_are_named_and_no_more_than_mycelium_keeps() {
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::write(folder.path().join(book::SUMMARY), "kept").unwrap();
+        let ids: Vec<String> = (0..=MOST_EVENTS)
+            .map(|each| format!("abcde{each:04}"))
+            .collect();
+        let held = ids.iter().enumerate().map(|(at, id)| {
+            let at = u64::try_from(at).unwrap();
+            (id.as_str(), NOW - 10_000 + at, folder.path())
+        });
+        let events = named(held, NOW);
+        assert_eq!(
+            events.len(),
+            MOST_EVENTS,
+            "more events were named than kept"
+        );
+        assert_eq!(events[0], ids[MOST_EVENTS], "the newest wasn't first");
+        assert!(
+            !events.contains(&ids[0]),
+            "the oldest was named over a newer one"
         );
     }
 }

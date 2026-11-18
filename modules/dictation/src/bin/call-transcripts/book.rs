@@ -241,6 +241,21 @@ impl Book {
         self.records.iter().map(|record| record.started)
     }
 
+    /// The calendar event of each ended call whose summary was written,
+    /// with when it ended and its folder, for the calls receptor, which
+    /// says the event alone and looks in the folder only to see the
+    /// summary is still there.
+    pub fn summarized(&self) -> impl Iterator<Item = (&str, u64, &Path)> + '_ {
+        self.records.iter().filter_map(|record| {
+            record.summary.as_ref()?;
+            Some((
+                record.event.as_deref()?,
+                record.ended?,
+                record.folder.as_path(),
+            ))
+        })
+    }
+
     /// Whether the calls' folder couldn't be listed, or a call's record in
     /// it couldn't be read, as it was read at the start.
     pub fn failing(&self) -> bool {
