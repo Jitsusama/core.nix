@@ -157,6 +157,31 @@ in
         && !(unnamed ? CAMERA_CFG_PATH)
       );
 
+  # The XPS 14's camera service takes the loopback already there rather than
+  # adding one beside it, which a program holding the last one through a stop
+  # left in every list of cameras with no picture. Its start runs over a
+  # v4l2loopback-ctl stand-in (tests/camera-takes-its-loopback.sh), and the
+  # service is checked to start with it.
+  the-camera-takes-its-loopback =
+    let
+      stand-in = pkgs.writeShellApplication {
+        name = "v4l2loopback-ctl";
+        text = builtins.readFile ./tests/v4l2loopback-ctl-stand-in.sh;
+      };
+      start = pkgs.callPackage ./camera/loopback.nix { ctl = stand-in; };
+      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.systemd.services.camera)
+        preStart
+        ;
+    in
+    pkgs.runCommandLocal "the-camera-takes-its-loopback" { } ''
+      case ${lib.escapeShellArg preStart} in
+        */bin/camera-loopback" "*) ;;
+        *) echo "The camera service doesn't start with camera-loopback."; exit 1 ;;
+      esac
+      ${lib.getExe pkgs.bash} ${./tests/camera-takes-its-loopback.sh} ${lib.getExe start}
+      touch $out
+    '';
+
   # The image processor sends full-range video, and Chrome reads a camera's
   # frames as limited range whatever they're labelled, so the relay has to
   # squeeze them exactly, and neither of its converters may touch them after.

@@ -3305,6 +3305,10 @@
   the-camera-takes-its-boards-tuning = ''
     the XPS 14's camera reads Dell's tuning for the board a machine names, and Intel's otherwise
   '';
+  the-camera-takes-its-loopback = ''
+    the XPS 14's camera service takes the loopback of its name already there, held or not, adds one
+    only when there's none, and deletes the others of its name where nothing holds them
+  '';
   the-camera-takes-the-one-plugged-in = ''
     the camera program takes a camera on a removable USB port over the machine's own while it's
     plugged in, never a built-in one on a fixed port, and the machine's own with none
