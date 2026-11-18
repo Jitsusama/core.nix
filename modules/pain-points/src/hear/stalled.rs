@@ -19,6 +19,10 @@ pub const STALL_S: f64 = 60.0;
 /// from what he said.
 pub const KIND: &str = "stalled";
 
+/// The kind a stall the model provider caused is heard as too, which
+/// routes it to the provider's owner rather than the session's cell.
+pub const PROVIDER: &str = "the provider failing";
+
 /// What read keeps of pi's logs, by each log's file name.
 #[derive(Deserialize)]
 struct Kept {
@@ -64,7 +68,11 @@ pub fn stalls(log: &Log, session: &str, void: bool, since: i64, until: i64) -> V
                     "a turn of {:.0} s lost him {:.0} s, {why}",
                     p.seconds, p.lost_seconds
                 ),
-                kinds: vec![KIND.to_string()],
+                kinds: if p.slowed == "an error" {
+                    vec![KIND.to_string(), PROVIDER.to_string()]
+                } else {
+                    vec![KIND.to_string()]
+                },
                 looking_at: None,
                 tools: Vec::new(),
                 failed: Vec::new(),

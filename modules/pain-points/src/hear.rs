@@ -447,7 +447,8 @@ fn troubles(
 }
 
 /// What the routes say that keeps a run from sending as it should: no
-/// cell named never to send to, or a fallback or keeper that is one.
+/// cell named never to send to, or a fallback, keeper or provider owner
+/// that is one.
 fn refused(routes: &Routes) -> Vec<String> {
     let mut troubles = Vec::new();
     if routes.from.is_some() && routes.never.is_empty() {
@@ -459,6 +460,12 @@ fn refused(routes: &Routes) -> Vec<String> {
                 "routes.json's {what} {to} is one never to send to, so what goes to it waits"
             ));
         }
+    }
+    if let Some(to) = routes.provider.as_ref().filter(|to| routes.refuses(to)) {
+        troubles.push(format!(
+            "routes.json's provider {to} is one never to send to, so a provider stall goes to \
+             its session's cell"
+        ));
     }
     troubles
 }
@@ -516,7 +523,7 @@ fn route_waiting(
         {
             continue;
         }
-        if let Some(owner) = route::owner(&pain.session, pain.void, cells, routes) {
+        if let Some(owner) = route::owner_of(pain, cells, routes) {
             by_owner.entry(owner).or_default().push(n);
         }
     }

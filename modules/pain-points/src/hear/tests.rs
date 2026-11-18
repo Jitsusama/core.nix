@@ -679,6 +679,44 @@ fn a_turn_that_stalled_him_goes_to_its_cell_though_he_said_nothing() {
 }
 
 #[test]
+fn a_turn_the_provider_failed_goes_to_the_providers_owner_not_its_cell() {
+    let place = Place::new("provider");
+    fs::write(
+        place.root.join("state/routes.json"),
+        r#"{"from":"EAR001","fallback":"ORCH01","ledgers":"ORCH01",
+            "provider":"PROV01","never":["NEVER1"]}"#,
+    )
+    .expect("routes written");
+    let said = [user("a", "2026-11-16T19:50:00.000Z", "make the bar green")];
+    place.log("src", "s-live", Path::new("/home/j/src"), &said);
+    // 19:50 UTC: the provider failed at once, and the next try came two
+    // minutes later.
+    let enter = 1_794_858_600_000_i64;
+    let turns = json!([{"offset": 0, "enter": enter, "delivered": enter,
+        "calls": [{"start": enter + 500, "ms": 2000, "stop": "error"},
+                  {"start": enter + 120_500, "ms": 3000, "stop": "done"}],
+        "again": false, "correction": false, "status": false}]);
+    let name = "2026-11-16T10-00-00-000Z_s-live.jsonl";
+    let kept = json!({"reader": "r", "logs": {name: {"end": 0, "open": false, "turns": turns}}});
+    fs::write(place.root.join("state/pi-logs.json"), kept.to_string()).expect("written");
+    let mut sent: Vec<(String, String)> = Vec::new();
+    hear(&place.ears(), CELLS, &mut |to, text| {
+        sent.push((to.into(), text.into()));
+        true
+    })
+    .expect("a run");
+    assert!(
+        sent.iter()
+            .any(|(to, text)| to == "PROV01" && text.contains("the provider failing")),
+        "{sent:?}"
+    );
+    assert!(
+        !sent.iter().any(|(to, _)| to == "ABC123"),
+        "its cell can't fix its provider: {sent:?}"
+    );
+}
+
+#[test]
 fn a_short_wait_is_no_stall() {
     let place = Place::new("short-wait");
     place.routes();
