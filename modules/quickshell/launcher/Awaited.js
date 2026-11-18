@@ -119,3 +119,73 @@ function frameOpen(frame, at) {
 function heldOpen(frame, held, at) {
     return frameOpen(frame, held.firedAt ?? at);
 }
+
+// The render thread's steps of each frame in `frames`, as
+// FramePresentation's timesOf says them with the frame's number, that
+// held the shell's thread from `from` to `to`: its render, then its swap,
+// which waits on the compositor.
+function drawingHeld(frames, from, to) {
+    const steps = [];
+    for (const frame of frames) {
+        steps.push(
+            { name: "waiting on the last render", from: frame.rendering, to: frame.rendered },
+            { name: "waiting on the last swap", from: frame.rendered, to: frame.swapped });
+    }
+    return steps.filter(step => step.from > 0 && step.to > step.from)
+        .map(step => ({ name: step.name, from: Math.max(step.from, from),
+            to: Math.min(step.to, to) }))
+        .filter(step => step.to > step.from)
+        .sort((one, other) => one.from - other.from);
+}
+
+// One span the shell's thread was said syncing, told apart by the render
+// thread's times: from its frame's animating to the render thread taking
+// the sync is the shell's polish and its wait for that thread, still
+// drawing a frame before, so each of that frame's steps is said as waited
+// on and the rest as polishing; from there it's the sync. Where no frame's
+// sync began within it, as one not timed yet, the rest stays syncing.
+function syncSplit(span, frames) {
+    const own = frames.filter(frame => frame.synchronizing >= span.from
+        && frame.synchronizing <= span.to)
+        .sort((one, other) => one.synchronizing - other.synchronizing)[0];
+    const took = own === undefined ? span.to : own.synchronizing;
+    const rest = own === undefined ? "syncing" : "polishing";
+    const parts = [];
+    let at = span.from;
+    for (const step of drawingHeld(frames.filter(frame => frame !== own), span.from, took)) {
+        if (step.from > at) {
+            parts.push({ name: rest, from: at, to: step.from });
+        }
+        if (step.to > at) {
+            parts.push({ name: step.name, from: Math.max(step.from, at), to: step.to });
+            at = step.to;
+        }
+    }
+    if (took > at) {
+        parts.push({ name: rest, from: at, to: took });
+    }
+    if (own !== undefined && span.to > took) {
+        parts.push({ name: "syncing", from: took, to: span.to });
+    }
+    return parts;
+}
+
+// Each span said syncing told apart (syncSplit), the rest as they were.
+// The shell's thread is said syncing from its frame's animating to the
+// sync letting it go, so "sta" said syncing 68 where its own frame's sync
+// took 1 by the render thread (Joel, 2026-11-18).
+function syncsSplit(spans, frames) {
+    const split = [];
+    for (const span of spans) {
+        split.push(...(span.name === "syncing" ? syncSplit(span, frames) : [span]));
+    }
+    return split;
+}
+
+// What a held key waited behind (behindOn), with its syncs told apart by
+// the render thread's times of the frames around it, read as its line is
+// said, once the frames synced while it was held have rendered.
+function behindSplit(behind, frames, bound) {
+    return behindOn(behind.held, Object.assign({}, behind.listed,
+        { spans: syncsSplit(behind.listed.spans, frames) }), bound);
+}

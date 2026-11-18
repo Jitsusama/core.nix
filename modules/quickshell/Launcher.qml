@@ -6785,10 +6785,29 @@ Scope {
         return split.syncing >= 0 && split.heard >= 0 ? split : null;
     }
 
+    // What the last key held past its bound waited behind, kept until its
+    // frame is swapped, when the frames synced while it was held have
+    // rendered, so its syncs are told apart by the render thread's times
+    // (Awaited.behindSplit). Kept apart from its parts, which a felt key's
+    // trial keeps.
+    property var heldBehind: null
+    function framesTimed() {
+        const last = surface.FramePresentation.framesBegun;
+        const frames = [];
+        for (let frame = Math.max(1, last - 15); frame <= last; frame++)
+            frames.push(Object.assign({ frame }, surface.FramePresentation.timesOf(frame)));
+        return frames;
+    }
+
     function keyDrawn(drawnKeys) {
         const drawn = Date.now();
         const shown = KeyTimes.now();
         const newest = drawnKeys[drawnKeys.length - 1];
+        if (heldBehind !== null && heldBehind.parts === newest.parts) {
+            newest.parts.behindOn = Awaited.behindSplit(heldBehind, framesTimed(),
+                answersWaitedFor);
+            heldBehind = null;
+        }
         Report.say(`key framed ${newest.text}`);
         // Its time after its own work said apart, as a drawer's is: waiting
         // for the frame that drew it, then drawing it, so a key whose frame
@@ -7474,10 +7493,14 @@ Scope {
         // Its key's time holds the wait, said apart in the journal, with
         // what the time past its bound went on, and the frame's work not
         // yet noted (Awaited.frameOpen).
-        if (waited && searchParts)
-            Object.assign(searchParts, Awaited.heldFor(waited, { at: listedAt, collected,
-                spans: heldSpans.concat(Awaited.heldOpen(feltFrame, waited, listedAt)) },
-                answersWaitedFor));
+        heldBehind = null;
+        if (waited && searchParts) {
+            const listed = { at: listedAt, collected,
+                spans: heldSpans.concat(Awaited.heldOpen(feltFrame, waited, listedAt)) };
+            Object.assign(searchParts, Awaited.heldFor(waited, listed, answersWaitedFor));
+            heldBehind = searchParts.behindOn ? { parts: searchParts, held: waited, listed }
+                : null;
+        }
         heldSpans = [];
         if (asking)
             return;
