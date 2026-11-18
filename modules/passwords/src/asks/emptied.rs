@@ -140,16 +140,13 @@ fn addresses(value: &Said) -> Box<dyn Iterator<Item = &str> + '_> {
     }
 }
 
-/// Whether an address carries a name and password of its own: an `@`
-/// anywhere past its scheme, or in all of it with none, as a proxy's
-/// reader takes `joel:pw@proxy:3128` and `http://joel:pw@proxy:3128`
-/// alike. A password may hold a slash, so an `@` in what looks like a
-/// path counts too, which only ever hides settings holding no login.
+/// Whether an address may carry a name and password of its own: an `@`
+/// anywhere in it, as a proxy's reader takes `joel:pw@proxy:3128` and
+/// `http://joel:pw@proxy:3128` alike. A password may hold a slash, and a
+/// schemeless address a later `://`, so an `@` in what looks like a path
+/// counts too, which only ever hides settings holding no login.
 fn carries_login(address: &str) -> bool {
-    address
-        .split_once("://")
-        .map_or(address, |(_, rest)| rest)
-        .contains('@')
+    address.contains('@')
 }
 
 /// Whether a setting says nothing: null, or an empty string, list or
@@ -165,10 +162,13 @@ fn is_empty(value: &Said) -> bool {
 }
 
 /// A key as Docker's reader matches it, folded as Go folds: past case,
-/// the long s is an s and the Kelvin sign a k. Folding more than Go does
-/// only ever hides more.
+/// the long s is an s, the Kelvin sign a k, and the dotted capital I an
+/// i, since Go lowers each letter to one letter first, where Rust's full
+/// lowering makes the dotted I two. Folding more than Go does only ever
+/// hides more.
 fn folded(key: &str) -> String {
     key.chars()
+        .filter_map(|letter| letter.to_lowercase().next())
         .flat_map(char::to_uppercase)
         .flat_map(char::to_lowercase)
         .collect()
