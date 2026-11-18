@@ -62,6 +62,9 @@ const LISTENS_WITHIN: Duration = Duration::from_secs(10);
 /// How long the relay is given to hear the origin's goodbye on a
 /// connection before it's asked again, as a relay sent one moments ago is.
 const GOODBYE_HEARD_WITHIN: Duration = Duration::from_millis(200);
+/// How long the relay is given to hear that pi hung up mid-answer, which
+/// it reads on its own time as the origin's goodbye.
+const HANG_UP_HEARD_WITHIN: Duration = Duration::from_millis(200);
 /// How long the tests let the relay take to reach an origin, in seconds.
 const CONNECT_WITHIN: &str = "1";
 /// How often a test looks again for something it waits on.
@@ -704,6 +707,49 @@ async fn a_request_the_origin_resets_is_a_502_and_retires_its_connection() {
     assert!(
         !said.contains("sekrit"),
         "the relay logged a header or a body: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_reset_says_how_many_requests_pi_gave_up_on_its_connection() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+    assert_eq!(
+        ask(&relay.socket, request(&host, "/echo", b""))
+            .await
+            .status,
+        StatusCode::CREATED
+    );
+    let stream = UnixStream::connect(&relay.socket)
+        .await
+        .expect("the socket answers");
+    let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
+        .await
+        .expect("an HTTP/1.1 connection");
+    let pi = tokio::spawn(connection);
+    let long = sender
+        .send_request(request(&host, "/long", b""))
+        .await
+        .expect("an answer begun");
+
+    // pi gives up mid-answer, as it does when its person presses Escape.
+    drop(long);
+    drop(sender);
+    pi.abort();
+    tokio::time::sleep(HANG_UP_HEARD_WITHIN).await;
+    let got = ask(&relay.socket, request(&host, "/reset", b"")).await;
+
+    assert_eq!(
+        got.status,
+        StatusCode::BAD_GATEWAY,
+        "a request the origin reset"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("connection 0.0, so it's retired, after 3 asked and 1 cancelled on it"),
+        "the reset didn't say what its connection carried, or counted an answer pi read \
+         whole as given up on: {said}"
     );
 }
 
