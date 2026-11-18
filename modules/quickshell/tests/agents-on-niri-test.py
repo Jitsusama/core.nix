@@ -36,6 +36,7 @@ which cost more than all the cases, so splitting it would start them twice.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -509,6 +510,106 @@ def test_a_talks_words_come_back_after_the_shell_starts_again(shell: Shell) -> N
     shown = shell.showing()
     assert (shown["typed"], shown["caret"]) == (words, caret), shown
     # Emptied, the field keeps nothing for the next time it opens.
+    shell.send_key("ctrl-u")
+    shell.launcher_until(lambda shown: shown["typed"] == "")
+
+
+def test_a_talk_left_in_normal_opens_typing_after_its_last_letter(shell: Shell) -> None:
+    """A talk left with Escape opens again typing where insert would take it back.
+
+    Escape rests normal's caret on the last letter, one left of where it was typed, and that was
+    kept, so the next letter landed one short (RCTRF8, 2026-11-17: "hi" then x gave "hxi").
+    Stepped back a letter while typing first, so a caret kept nowhere ("hix", the line's end)
+    or kept where normal rests ("xhi") each types somewhere else. Where each caret is kept is
+    tests/query-keys.qml's.
+    """
+    found(shell, "listening quest", "Listening Quest")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["asking"])
+    try:
+        shell.send_chars("hi")
+        shell.launcher_until(lambda shown: shown["typed"] == "hi")
+        shell.send_key("left")
+        shell.launcher_until(lambda shown: shown["caret"] == 1)
+        shell.send_key("esc")
+        shell.launcher_until(lambda shown: shown["mode"] == "normal" and shown["caret"] == 0)
+        shell.close_launcher()
+        talk_opened(shell)
+        shell.send_chars("x")
+        shell.launcher_until(lambda shown: shown["typed"] in ("hix", "hxi", "xhi"))
+        assert shell.showing()["typed"] == "hxi", shell.showing()
+    finally:
+        talk_cleared(shell)
+
+
+def test_a_talk_left_after_i_opens_typing_where_i_took_it(shell: Shell) -> None:
+    """A talk left in insert by i, nothing typed, opens again typing before the letter it rests on.
+
+    Escape keeps the caret insert left from, after the letter, so i, back in insert where normal
+    rests, must keep its own caret rather than that one ("hxi" rather than "hix"). The shell
+    starts again with the talk open, as at a switch, since a shutting launcher leaves insert
+    through normal and keeps Escape's caret again.
+    """
+    found(shell, "listening quest", "Listening Quest")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["asking"])
+    try:
+        shell.send_chars("hi")
+        shell.launcher_until(lambda shown: shown["typed"] == "hi")
+        shell.send_key("esc")
+        shell.launcher_until(lambda shown: shown["mode"] == "normal" and shown["caret"] == 1)
+        shell.send_chars("i")
+        shell.launcher_until(lambda shown: shown["mode"] == "insert" and shown["caret"] == 1)
+        deadline = time.monotonic() + 10
+        while 1 not in drafted_carets("hi"):
+            assert time.monotonic() < deadline, f"i's caret was never kept: {drafted_carets('hi')}"
+            time.sleep(0.05)
+        shell.restart()
+        talk_opened(shell)
+        shell.send_chars("x")
+        shell.launcher_until(lambda shown: shown["typed"] in ("hix", "hxi", "xhi"))
+        assert shell.showing()["typed"] == "hxi", shell.showing()
+    finally:
+        talk_cleared(shell)
+
+
+def drafted_carets(words: str) -> list[int]:
+    """Each caret the shell's drafts file keeps with `words`, wherever in it they're kept."""
+    carets: list[int] = []
+
+    def walk(held: object) -> None:
+        if isinstance(held, dict):
+            if held.get("text") == words and isinstance(held.get("caret"), int):
+                carets.append(held["caret"])
+            for value in held.values():
+                walk(value)
+        elif isinstance(held, list):
+            for value in held:
+                walk(value)
+
+    for kept in (STATE / "quickshell/by-shell").glob("*/launcher-drafts.json"):
+        with contextlib.suppress(ValueError):
+            walk(json.loads(kept.read_text()))
+    return carets
+
+
+def talk_opened(shell: Shell) -> None:
+    """Open Listening Quest's talk again from a shut launcher, typing as it opens."""
+    found(shell, "listening quest", "Listening Quest")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["asking"])
+
+
+def talk_cleared(shell: Shell) -> None:
+    """Empty Listening Quest's talk whatever a failure left it in, so no case after inherits it.
+
+    The talk opens again typing however it was left, and Ctrl+U clears to the caret, which
+    five Rights take past what any case here types.
+    """
+    shell.close_launcher()
+    talk_opened(shell)
+    for _ in range(5):
+        shell.send_key("right")
     shell.send_key("ctrl-u")
     shell.launcher_until(lambda shown: shown["typed"] == "")
 
@@ -2465,6 +2566,8 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     shell.launcher_until(lambda shown: not shown["line"]["up"])
     shell.as_account(line)
     shell.launcher_until(lambda shown: shown["line"]["keys"] and shown["line"]["typed"] == words)
+    # Typing again where it left off, after the last letter, not on it as normal rested.
+    assert shell.showing()["line"]["caret"] == len(words), shell.showing()["line"]
     # Ctrl+R * attaches what's selected and Ctrl+R + what's copied, each a row under the
     # window's, the line's words as they were.
     attach_both(shell, said_over)

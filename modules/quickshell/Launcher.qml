@@ -5295,7 +5295,7 @@ Scope {
     readonly property string drafting: asking?.draft ?? ""
     function drafted() {
         if (drafting !== "")
-            drafts.typed(drafting, prompt.text, prompt.caret);
+            drafts.typed(drafting, prompt.text, prompt.keptCaret());
     }
 
     // A collection whose things changed while it's open is searched again,
@@ -12467,8 +12467,16 @@ Scope {
                                 String(root.matches.length))
                         onPressing: root.keyPressing()
                         // A talk's caret is kept with its words, moved by
-                        // a vi motion as much as by typing.
+                        // a vi motion as much as by typing, as insert would
+                        // take it back: as it moves, and as i or I types
+                        // where it rests, but never as the launcher shuts,
+                        // which goes back to typing with the caret where
+                        // normal left it and kept it one letter short again.
                         onCaretChanged: root.drafted()
+                        onTypingNowChanged: {
+                            if (root.open)
+                                root.drafted();
+                        }
                         // How the place it's in stands, where its source
                         // says that presses, as People's down daemon.
                         placeStands: root.held.length === 0 ? ""

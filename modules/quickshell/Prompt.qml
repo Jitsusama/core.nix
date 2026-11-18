@@ -481,12 +481,24 @@ Item {
             return;
         input.deselect();
         const at = input.cursorPosition;
+        // Before the move, which keptCaret's readers hear as it happens.
+        insertLeft = { at: at, text: input.text };
         mode = "normal";
         input.cursorPosition = Typing.caretAfter("normal", input.text, at);
     }
 
     // Where the caret is, between letters in insert or on one in normal.
     readonly property int caret: input.cursorPosition
+    // Where the caret is kept for the line to open on again, typing: after
+    // the letter normal rests on, as a would take it back (Typing.js). A
+    // function rather than a binding, so a handler of the caret's move
+    // never reads it before it has moved too.
+    function keptCaret() {
+        return Typing.kept(typingNow, input.text, input.cursorPosition, insertLeft);
+    }
+    // Where insert's caret was as normal was last entered, and on what
+    // words, for keptCaret to tell the line's start from one past it.
+    property var insertLeft: null
     // Whether what's typed is scrolled, its first letter off the field's
     // start, as it is once it's wider than the room the path leaves. Set
     // as the field moves rather than bound, since the mark it shows takes
@@ -764,6 +776,9 @@ Item {
                 input.cursorPosition = made.at;
                 return;
             }
+            // Before the move, which keptCaret's readers hear as it happens.
+            if (next === "normal")
+                insertLeft = { at: at, text: input.text };
             mode = next;
             input.cursorPosition = Typing.caretAfter(emptied ? "normal" : read.act,
                 input.text, at);

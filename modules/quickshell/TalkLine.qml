@@ -613,6 +613,8 @@ Scope {
                         onBackward: root.openedSince = 0
                         onTextChanged: root.typed()
                         onCaretChanged: root.typed()
+                        // And as i or I types where it rests (Launcher.qml's talk says why).
+                        onTypingNowChanged: root.typed()
                         onCommanded: range => {
                             root.commanding = true;
                             commandLine.take(range, "");
@@ -768,7 +770,7 @@ Scope {
 
     function typed() {
         if (up)
-            launcher.drafts.typed(key, prompt.text, prompt.caret);
+            launcher.drafts.typed(key, prompt.text, prompt.keptCaret());
     }
 
     // What the line shows, for the launcher's showing: whether it's up with the keys, what's
