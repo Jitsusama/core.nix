@@ -409,16 +409,27 @@ fn every_follower_asks_for_every_boot_last() {
     // journalctl follows only this boot unless asked otherwise, so the
     // day a reboot cut in two was counted from the reboot alone: on 17
     // November, 4834 warnings before it went uncounted. `-k` and `-b`
-    // choose a boot too, so every boot is asked for after them, where it
-    // holds whichever of them journalctl lets win.
+    // choose a boot too, so every boot is asked for after them, which
+    // holds wherever the last choice wins. They count however they're
+    // grouped, and a few are tried here whatever the followers hold
+    // today.
     let chooses_a_boot = |arg: &str| {
-        arg == "-k"
+        (arg.starts_with('-') && !arg.starts_with("--") && arg.contains(['k', 'b']))
             || arg == "--dmesg"
-            || arg.starts_with("-b")
             || arg.starts_with("--boot")
             || arg.starts_with("--this-boot")
     };
-    for asked in followed() {
+    let mut asked_for = followed();
+    asked_for.extend([
+        vec!["-k".to_owned()],
+        vec!["-kp".to_owned(), "notice..info".to_owned()],
+        vec!["-b".to_owned()],
+    ]);
+    for asked in asked_for {
+        assert!(
+            !asked.iter().any(|arg| arg.starts_with("_BOOT_ID=")),
+            "a follower matches one boot: {asked:?}"
+        );
         let journalctl = following(&asked);
         let args: Vec<String> = journalctl
             .get_args()
