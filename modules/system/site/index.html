@@ -41,9 +41,19 @@
 <a class="skip" href="#parts">Skip to each machine</a>
 
 <header class="mast">
-  <p class="wordmark">Your machines, <em>now</em></p>
+  <p class="wordmark">
+    <svg class="mark" width="40" height="40" viewBox="0 0 32 32" aria-hidden="true">
+      <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 11h28"/>
+        <path d="M9 11v14M23 11v14"/>
+        <path d="M9 19a7 6 0 0 1 14 0"/>
+        <path d="M3 28.5h7M13 28.5h16" opacity="0.5"/>
+      </g>
+    </svg>
+    <span>Your machines, <em>now</em></span>
+  </p>
   <nav class="places" id="places" aria-label="Each machine"></nav>
-  <button type="button" class="help" id="help" aria-haspopup="dialog" aria-controls="keys">Keys</button>
+  <p class="keys"><kbd>j</kbd> and <kbd>k</kbd> step through each machine and what it carries, <kbd>1</kbd> to <kbd>8</kbd> go to a machine, and <kbd>?</kbd> lists every key <button type="button" class="help" id="help" aria-haspopup="dialog" aria-controls="keys">Keys</button></p>
 </header>
 
 <main id="main" class="stage" tabindex="-1">

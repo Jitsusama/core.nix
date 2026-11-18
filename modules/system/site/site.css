@@ -56,10 +56,20 @@ html:not([data-theme="light"]) body {
 }
 
 .wordmark {
+  display: flex;
+  align-items: center;
+  gap: var(--apart);
   margin: 0 auto 0 0;
   color: var(--strong);
   font: var(--title-weight) var(--step-large) / 1.2 var(--serif);
   font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
+}
+
+/* The mark is the page's world in small: a deck on two piers over the
+   water. */
+.wordmark .mark {
+  color: var(--tint);
+  flex: none;
 }
 
 .wordmark em {
@@ -102,6 +112,23 @@ html:not([data-theme="light"]) body {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: var(--radius);
+}
+
+/* The key line is the head's quiet row, a whole row under the wordmark and
+   the machines, said once above the work rather than inside it. */
+.keys {
+  display: none;
+  flex: 1 0 100%;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--tie) var(--mark);
+  margin: 0;
+  color: var(--muted);
+  font: 400 var(--step-small) / 1.5 var(--serif);
+}
+
+.js .keys {
+  display: flex;
 }
 
 .help {
