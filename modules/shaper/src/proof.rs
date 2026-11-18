@@ -24,9 +24,10 @@
 //! Wayland's idle notice tells swayidle. The moment any of them changes,
 //! every load stops, the shaper goes back as it was, the pair under way
 //! is dropped, and it waits for his next idle stretch. SIGTERM, SIGINT,
-//! SIGHUP and SIGTSTP end it the same way, and so does a resume after a
-//! SIGSTOP its keeper took for its end, writing what it measured to
-//! `--out` and exiting 130. A proof
+//! SIGHUP and SIGTSTP end it the same way, and so does any SIGCONT, since
+//! a proof paused by SIGSTOP counts as gone and its keeper may already
+//! have put the shaper back; it writes what it measured to `--out` and
+//! exits 130. A proof
 //! killed outright can put nothing back itself, but its load and probes
 //! end within about two seconds, and a keeper beside it puts the shaper
 //! back as it found it, or, failing that, the next proof does. One proof
@@ -373,12 +374,19 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
         stop::keep(marker);
     }
     let mut idle: Vec<f64> = Vec::new();
+    // Only a window starts or stops the shaper, so a proof that never had
+    // one leaves it to whoever set it since: put back, it could undo a
+    // switch or Joel's own stop made while the proof waited.
+    let mut touched = false;
     let (pairs, complete) = across_windows(
         asked.pairs,
         || opened(|| gate.open(), deadline, &STOPPED),
-        |from| window(&asked, &link, &gate, was_on, from, &mut idle),
+        |from| {
+            touched = true;
+            window(&asked, &link, &gate, was_on, from, &mut idle)
+        },
     );
-    let back = put_back(was_on);
+    let back = !touched || put_back(was_on);
     if back && let Some(marker) = &marker {
         stop::forget(marker);
     }
@@ -388,14 +396,16 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     let verdict = (!pairs.is_empty()).then(|| judge(&idle, &pairs));
     if let Some(verdict) = &verdict {
         tell(&verdict.said());
-        if let Some(out) = &asked.out {
-            let report = serde_json::json!({
-                "verdict": verdict, "complete": complete, "stopped": stopped,
-                "idle_call_ms": idle, "pairs": pairs
-            });
-            if fs::write(out, report.to_string()).is_err() {
-                tell(&format!("couldn't write {}", out.display()));
-            }
+    }
+    // Written however the proof ends, its verdict null with no pairs, so
+    // a report left by an earlier proof is never read for this one's.
+    if let Some(out) = &asked.out {
+        let report = serde_json::json!({
+            "verdict": verdict, "complete": complete, "stopped": stopped,
+            "idle_call_ms": idle, "pairs": pairs
+        });
+        if fs::write(out, report.to_string()).is_err() {
+            tell(&format!("couldn't write {}", out.display()));
         }
     }
     put_back_or_stopped(back, stopped, was_on)?;

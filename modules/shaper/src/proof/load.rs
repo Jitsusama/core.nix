@@ -139,11 +139,20 @@ pub fn start(uploads: u32, server: &str) {
     }
     drop(loads);
     let asked = Instant::now();
-    while scopes("load*") < uploads as usize
+    let mut running = scopes("load*");
+    while running < uploads as usize
         && asked.elapsed() < Duration::from_secs(5)
         && !STOPPED.load(Ordering::Relaxed)
     {
         thread::sleep(Duration::from_millis(100));
+        running = scopes("load*");
+    }
+    // Said, since a block under a lighter load than asked compares the
+    // shaper with the router under less than the agents' traffic.
+    if running < uploads as usize && !STOPPED.load(Ordering::Relaxed) {
+        super::stop::tell(&format!(
+            "only {running} of {uploads} uploads started within 5 s; measuring on"
+        ));
     }
 }
 

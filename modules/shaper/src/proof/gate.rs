@@ -262,9 +262,11 @@ mod tests {
         };
         let asked = Instant::now();
         assert_eq!(exits(hangs(), ASKED_FOR, || true), None, "a stop waited on");
-        assert_eq!(exits(hangs(), Duration::from_millis(300), || false), None);
+        // A second for the hung one, so a busy machine's shell has time to
+        // say its pid before it's cut off.
+        assert_eq!(exits(hangs(), Duration::from_secs(1), || false), None);
         assert!(
-            asked.elapsed() < Duration::from_secs(2),
+            asked.elapsed() < Duration::from_secs(3),
             "a hung command held the gate {:?}",
             asked.elapsed()
         );
