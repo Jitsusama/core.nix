@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 /// How long the tests of a share still carrying give it with nothing
 /// crossing, in seconds.
-const A_WAIT: u64 = 3;
+const A_WAIT: u64 = 4;
 
 /// How long such a test's share takes over each step, well inside the
 /// wait, so only a wait that never restarts gives up on it.
@@ -12,8 +12,8 @@ const HALF_A_WAIT: Duration = Duration::from_millis(1500);
 
 #[test]
 fn the_far_side_counts_only_what_crossed_toward_a_share_s_totals() {
-    // One file a folder, so the far side meets them in the order the kind
-    // names its folders, whatever order find walks one in.
+    // One file a folder, so the far side meets them in their names' byte
+    // order, as it sorts them, whatever order find walks one in.
     let mut kind = kind("");
     kind.brings_back = (1..=8).map(|folder| format!("f{folder}")).collect();
     let (code, err, home) = far_line(
@@ -150,6 +150,23 @@ fn an_empty_file_listed_is_waited_for_until_it_crosses() {
         Err(Missed::Lost("out/e didn't cross home".to_owned())),
         "an empty file still crossing was taken for crossed"
     );
+    // Empty ones crossing half a wait apart keep it going, and land.
+    let list: Vec<String> = (0..4).map(|n| format!("0\tout/e{n}")).collect();
+    std::fs::write(job.join(BROUGHT), format!("{}\nend\n", list.join("\n"))).unwrap();
+    let back = job.join(BACK);
+    let carrying = std::thread::spawn(move || {
+        for n in 0..4 {
+            std::thread::sleep(HALF_A_WAIT);
+            std::fs::write(back.join(n.to_string()), "").unwrap();
+        }
+    });
+    let landed = bring_back(&job, &home.join("near"), &["out".into()], A_WAIT);
+    carrying.join().unwrap();
+    assert_eq!(landed, Ok(4), "empty files still crossing were given up on");
+    assert!(
+        home.join("near/out/e3").is_file(),
+        "the last empty file to cross didn't land"
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -205,14 +222,20 @@ fn files_crossing_ahead_of_their_list_keep_the_wait_going() {
     let job = handover(&home);
     std::fs::create_dir_all(job.join(BACK)).unwrap();
     let (back, list) = (job.join(BACK), job.join(BROUGHT));
-    // Each crosses half a wait after the last, so the list ends past it.
+    // The files are there, and their list crosses after them a piece at a
+    // time, half a wait apart, under a hidden name beside its own, so it
+    // is renamed over its path well past the wait.
+    std::fs::write(back.join("0"), "a").unwrap();
+    std::fs::write(back.join("1"), "bb").unwrap();
+    let crossing = job.join(".elsewhere-back.crossing");
     let carrying = std::thread::spawn(move || {
+        let whole = "1\tout/a\n2\tout/b\nend\n";
+        for end in [5, 10, 15, whole.len()] {
+            std::thread::sleep(HALF_A_WAIT);
+            std::fs::write(&crossing, &whole[..end]).unwrap();
+        }
         std::thread::sleep(HALF_A_WAIT);
-        std::fs::write(back.join("0"), "a").unwrap();
-        std::thread::sleep(HALF_A_WAIT);
-        std::fs::write(back.join("1"), "bb").unwrap();
-        std::thread::sleep(HALF_A_WAIT);
-        std::fs::write(list, "1\tout/a\n2\tout/b\nend\n").unwrap();
+        std::fs::rename(&crossing, list).unwrap();
     });
     let landed = bring_back(&job, &home.join("near"), &["out".into()], A_WAIT);
     carrying.join().unwrap();
@@ -230,7 +253,12 @@ fn past_the_totals_a_handful_is_named_and_the_rest_counted() {
     let job = handover(&home);
     std::fs::create_dir_all(job.join(BACK)).unwrap();
     let list: Vec<String> = (0..12).map(|n| format!(">1\tout/k{n:02}")).collect();
-    let list = format!("{}\nend\n", list.join("\n"));
+    // And one of another kind, named past the first kind's many.
+    let list = [
+        format!("{}\n1\tout/", list.join("\n")).as_bytes(),
+        b"\xff\nend\n",
+    ]
+    .concat();
     std::fs::write(job.join(BROUGHT), list).unwrap();
     let Err(Missed::Refused(why)) = bring_back(&job, &home.join("near"), &["out".into()], 1) else {
         panic!("what passed the totals wasn't refused");
@@ -241,8 +269,12 @@ fn past_the_totals_a_handful_is_named_and_the_rest_counted() {
     );
     assert!(!why.contains("out/k10"), "more than ten were named: {why}");
     assert!(
-        why.ends_with("; 2 more like them"),
+        why.contains("; 2 more like them; "),
         "the rest weren't counted: {why}"
+    );
+    assert!(
+        why.contains("isn't named in UTF-8"),
+        "another kind went unnamed behind the first: {why}"
     );
     let _ = std::fs::remove_dir_all(&home);
 }

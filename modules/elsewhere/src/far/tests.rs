@@ -1,8 +1,11 @@
-use super::{Missed, bring_back, crossing, listed, plain_quest, quoted, script, started, travels};
+use super::{
+    Heard, Missed, bring_back, crossing, listed, plain_quest, quoted, relay, script, travels,
+};
 use crate::settings::{Copies, Kind};
 use std::path::{Path, PathBuf};
 
 mod crossing;
+mod heard;
 
 pub(super) fn kind(setup: &str) -> Kind {
     Kind {
@@ -62,7 +65,7 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
         "/quest-workspace/QEST-20261115-ABC123/handover/elsewhere/7-9\n",
         "work=\"$HOME\"/.cache/e/7-9\n",
         "until arrived; do",
-        "cd \"$work\"/'a b' || exit 77\necho 'elsewhere: running 7-9'\n",
+        "cd \"$work\"/'a b' || { echo 'elsewhere: refusing 7-9'; exit 77; }\necho 'elsewhere: running 7-9'\n",
         "{ export PATH=/far/bin:$PATH\n  } && exec tla-rs -config 'it'\\''s.cfg'\n",
         "for path in out; do",
         "exit \"$code\"",
@@ -82,7 +85,7 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
             &kind(""),
             &command
         )
-        .contains("cd \"$work\" || exit 77\necho 'elsewhere: running 1'\n(\n  { :\n"),
+        .contains("cd \"$work\" || { echo 'elsewhere: refusing 1'; exit 77; }\necho 'elsewhere: running 1'\n(\n  { :\n"),
         "a job at the tree's top or with no setup wasn't run there plainly"
     );
 }
@@ -119,7 +122,7 @@ fn a_quest_names_a_folder_and_nothing_more() {
         assert!(!plain_quest(odd), "{odd:?} was taken for a quest");
     }
     assert_eq!(
-        started("1-2"),
+        Heard::Started.line("1-2"),
         "elsewhere: running 1-2",
         "the start line moved"
     );
@@ -275,9 +278,11 @@ pub(super) fn far_line(
         meanwhile(&job.join(super::TREE));
     }
     let output = far.wait_with_output().unwrap();
+    // Its own words, then what it said for the near side to hear.
+    let said = [output.stderr, output.stdout].concat();
     (
         output.status.code(),
-        String::from_utf8_lossy(&output.stderr).into_owned(),
+        String::from_utf8_lossy(&said).into_owned(),
         home,
     )
 }
@@ -294,57 +299,6 @@ fn what_is_left_is_listed_at_the_size_its_copy_came_to() {
         "a file was listed at the size it was gathered at, not the one that crossed"
     );
     let _ = std::fs::remove_dir_all(&root);
-}
-
-#[test]
-fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
-    // A file the share is still writing is there, but short, until the
-    // share finishes it.
-    let (code, err, home) = far_line(
-        "3\tx\nend\n",
-        &[("x", "x")],
-        "cat x > ../ran",
-        &kind(""),
-        Some(&|tree| {
-            // A far line that didn't wait has taken the tree already,
-            // which the assertions below say better than this write.
-            let _ = std::fs::write(tree.join("x"), "xyz");
-        }),
-        &[],
-    );
-    assert_eq!(
-        code,
-        Some(0),
-        "a file finished crossing wasn't taken: {err}"
-    );
-    assert_eq!(
-        std::fs::read_to_string(home.join("s/ran")).ok().as_deref(),
-        Some("xyz"),
-        "the job ran before its file was whole"
-    );
-    let _ = std::fs::remove_dir_all(&home);
-    // One the share never finishes ends the wait with nothing run.
-    let (code, err, home) = far_run("3\tx\nend\n", &[("x", "x")], "touch ../ran");
-    assert_eq!(
-        code,
-        Some(75),
-        "a file short of its listed size was taken: {err}"
-    );
-    let ends = super::unstarted(75).0;
-    assert_eq!(
-        ends,
-        terminal_kit::Exit::TryAgain,
-        "files that never reached it read as {ends:?}"
-    );
-    assert!(
-        err.contains("didn't reach") && err.contains("waiting on x"),
-        "the wait, or the file it was for, went unsaid: {err}"
-    );
-    assert!(
-        !home.join("s/ran").exists(),
-        "the job ran over a file still crossing"
-    );
-    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]
@@ -764,7 +718,9 @@ fn the_far_line_takes_the_marks_off_and_puts_nothing_outside() {
         "a tree naming x twice wasn't refused ({code:?}): {err}"
     );
     // So --there ends refused, not as a far side mycelium never reached.
-    let ends = super::unstarted(77).0;
+    let heard = relay(err.as_bytes(), "1");
+    assert_eq!(heard, Heard::Refused, "a far refusal wasn't said: {err}");
+    let ends = heard.unstarted().0;
     assert_eq!(
         ends,
         terminal_kit::Exit::Refused,

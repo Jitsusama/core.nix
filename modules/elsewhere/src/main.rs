@@ -498,13 +498,16 @@ fn send(
             ));
         }
     };
-    let started = child.stdout.take().is_some_and(|out| far::relay(out, id));
+    let heard = child
+        .stdout
+        .take()
+        .map_or(far::Heard::Nothing, |out| far::relay(out, id));
     let status = child.wait().map_err(|error| {
         Failure::new(Exit::Failed, "lost the far job").because(error.to_string())
     })?;
     let code = ended(status);
-    if !started {
-        let (exit, why) = far::unstarted(code);
+    if heard != far::Heard::Started {
+        let (exit, why) = heard.unstarted();
         return Ok(Sent::Stayed(
             exit,
             format!("{machine} {why} before it started, ending {code}"),

@@ -26,10 +26,9 @@ use crate::settings::{Copies, Kind};
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::fs;
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
-use terminal_kit::Exit;
 
 /// Where a job's folder lies within a quest's scratch.
 pub const HANDOVER: &str = "handover/elsewhere";
@@ -63,14 +62,6 @@ pub const CROSSES_WITHIN: u64 = 300;
 /// How many seconds the near side waits for what comes home before it
 /// says it is waiting: past a few looks, so a share keeping pace is quiet.
 const SAYS_IT_WAITS: u64 = 10;
-
-/// What the far line ends with when it refuses the job's tree before the
-/// job starts, as it would again on another try.
-pub const REFUSES: u8 = 77;
-
-/// What the far line ends with when the job's files never reached it
-/// before the job starts, which another try may not meet.
-pub const NEVER_REACHED: u8 = 75;
 
 /// What marks a name in the far list that isn't UTF-8, in place of its
 /// size.
@@ -250,12 +241,6 @@ pub fn left<'a>(
     fs::write(job.join(LEFT), list)
 }
 
-/// The line a job's far shell writes once its files are there and before
-/// anything of the job's, telling a job that ran from one that never did.
-pub fn started(id: &str) -> String {
-    format!("elsewhere: running {id}")
-}
-
 /// What the far machine runs for the job `id`, through `sh -c`: it waits
 /// for the job's files to cross, copies them to the far `scratch` and
 /// takes the mark off each name a share would have kept home, runs
@@ -315,7 +300,8 @@ copied() {{
       //*|*/../*|*/./*) printf "elsewhere: the job's list names %s, outside its folder\n" "$path" >&2; return 1 ;;
     esac
   done < "$job/{LEFT}"
-  cp -R "$job/{TREE}/." "$work/" || return 1
+  # 1 is the tree's own fault, which every try meets; 2 is this machine's.
+  cp -R "$job/{TREE}/." "$work/" || return 2
   # Deepest first, so a folder's contents are named before it is, and
   # shortest first within a folder, so target.elsewhere is target before
   # target.elsewhere.elsewhere takes its name.
@@ -329,7 +315,7 @@ copied() {{
         ''|.|..) printf "elsewhere: the job's tree names %s, outside its folder\n" "$name" >&2; exit 1 ;;
       esac
       [ -e "$to" ] && {{ printf "elsewhere: the job's tree names %s twice\n" "$to" >&2; exit 1; }}
-      mv "$name" "$to" || exit 1
+      mv "$name" "$to" || exit 2
     done
   )
 }}
@@ -337,16 +323,20 @@ waited=0
 until arrived; do
   if [ "$waited" -ge {CROSSES_WITHIN} ]; then
     printf "elsewhere: the job's files didn't reach %s within {CROSSES_WITHIN}s, waiting on %s\n" "$(uname -n)" "$waiting" >&2
-    exit {NEVER_REACHED}
+    echo {untaken}
+    exit {UNTAKEN}
   fi
   sleep 1
   waited=$((waited + 1))
 done
-rm -rf "$work" && mkdir -p "$work" && copied || {{
+if rm -rf "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
+if [ "$why" -ne 0 ]; then
   cd "$HOME" && rm -rf "$work" "$job/{TREE}"
-  exit {REFUSES}
-}}
-cd {folder} || exit {REFUSES}
+  [ "$why" -eq 1 ] && {{ echo {refused}; exit {REFUSES}; }}
+  echo {untaken}
+  exit {UNTAKEN}
+fi
+cd {folder} || {{ echo {refused}; exit {REFUSES}; }}
 echo {started}
 (
   {{ {setup}
@@ -359,7 +349,9 @@ rm -rf "$job/{BACK}" && mkdir -p "$job/{BACK}"
 cd "$HOME" && rm -rf "$work" "$job/{TREE}"
 exit "$code"
 "#,
-        started = quoted(&started(id)),
+        started = quoted(&Heard::Started.line(id)),
+        refused = quoted(&Heard::Refused.line(id)),
+        untaken = quoted(&Heard::Untaken.line(id)),
         setup = if setup.is_empty() { ":" } else { setup },
     )
 }
@@ -421,43 +413,6 @@ done | LC_ALL=C sort -u | {{
 }} > "$job/{BROUGHT}"
 "#
     )
-}
-
-/// Hands on what the far run says on `out`: what comes before the line
-/// saying the job started is the far shell's own, and goes to stderr; what
-/// comes after is the job's, and goes to stdout as it comes. Says whether
-/// the job started, which a stream lost after it did never unsays, so a
-/// job that ran is never run again here.
-pub fn relay(out: impl Read, id: &str) -> bool {
-    let mut out = BufReader::new(out);
-    let started = format!("{}\n", self::started(id));
-    let mut line = Vec::new();
-    loop {
-        line.clear();
-        match out.read_until(b'\n', &mut line) {
-            Ok(0) | Err(_) => return false,
-            Ok(_) if line == started.as_bytes() => break,
-            // The far shell's own words are worth no failure of the job's.
-            Ok(_) => drop(io::stderr().write_all(&line)),
-        }
-    }
-    let mut stdout = io::stdout();
-    // A reader of ours that has gone is the job's caller's business, and
-    // the job's code still says how it ended.
-    drop(io::copy(&mut out, &mut stdout).and_then(|_| stdout.flush()));
-    true
-}
-
-/// How a far run that ended `code` before the job started ends here, and
-/// what the far machine did: the far line's own refusal meets the next
-/// try again, files that never reached it may not, and anything else is
-/// mycelium's.
-pub fn unstarted(code: u8) -> (Exit, &'static str) {
-    match code {
-        REFUSES => (Exit::Refused, "refused its tree"),
-        NEVER_REACHED => (Exit::TryAgain, "never received its files"),
-        _ => (Exit::Unavailable, "wasn't reached through mycelium"),
-    }
 }
 
 /// A file brought back: its number in the far list, which names it in
@@ -648,22 +603,22 @@ fn crossed(job: &Path, brought: &Brought) -> Option<u64> {
         .map(|meta| meta.len().min(brought.size))
 }
 
-/// How much has reached the handover folder `job`: its list and every
-/// plain file in its back folder, under whatever name a share carries one,
-/// so a share still carrying is told from one that stopped.
+/// How much has reached the handover folder `job`: every plain file in it
+/// and in its back folder, under whatever name a share carries one, the
+/// list's included, each counting one more than its bytes, so a share
+/// still carrying, even empty files, is told from one that stopped.
 fn arrived(job: &Path) -> u64 {
-    let list = fs::symlink_metadata(job.join(BROUGHT))
-        .ok()
-        .filter(fs::Metadata::is_file)
-        .map_or(0, |meta| meta.len());
-    fs::read_dir(job.join(BACK))
-        .into_iter()
+    [job.to_owned(), job.join(BACK)]
+        .iter()
+        .filter_map(|folder| fs::read_dir(folder).ok())
         .flatten()
         .flatten()
         // An entry's metadata is its own, a link's never what it leads to.
         .filter_map(|entry| entry.metadata().ok())
         .filter(fs::Metadata::is_file)
-        .fold(list, |arrived, meta| arrived.saturating_add(meta.len()))
+        .fold(0, |arrived: u64, meta| {
+            arrived.saturating_add(meta.len()).saturating_add(1)
+        })
 }
 
 /// At most `NAMED` of `said`, and how many more, so one line can't name
@@ -706,18 +661,21 @@ fn landed(
             Err(error) => unlanded.push(format!("{} didn't land: {error}", brought.path)),
         }
     }
-    refused.extend(kept(text, brings_back).map(|(size, path)| {
+    // Each kind named apart, so one kind's many can't hide another's.
+    let mut refused = some_of(refused, " like them");
+    refused.extend(some_of(kept(text, brings_back).map(|(size, path)| {
         if size > LARGEST_FILE {
             format!("{path} is {size} bytes, past the {LARGEST_FILE} a share holds in one file")
         } else {
             format!("{path} is past the {MOST_FILES} files or {MOST_BYTES} bytes a share carries")
         }
-    }));
-    refused.extend(
+    }).collect(), " like them"));
+    refused.extend(some_of(
         marked(text, UNREADABLE, brings_back)
-            .map(|path| format!("{path} isn't named in UTF-8, so it can't land here")),
-    );
-    let refused = some_of(refused, " like them");
+            .map(|path| format!("{path} isn't named in UTF-8, so it can't land here"))
+            .collect(),
+        " like them",
+    ));
     let unlanded = some_of(unlanded, " like them");
     let mut missed: Vec<String> = refused.iter().chain(&unlanded).cloned().collect();
     let lost: Vec<String> = marked(text, "-", brings_back).map(str::to_owned).collect();
@@ -778,7 +736,10 @@ pub fn quoted(word: &str) -> String {
     format!("'{}'", word.replace('\'', r"'\''"))
 }
 
+mod heard;
 mod landing;
+
+pub use heard::{Heard, REFUSES, UNTAKEN, relay};
 
 #[cfg(test)]
 mod tests;
