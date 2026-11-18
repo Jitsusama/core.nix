@@ -5953,10 +5953,10 @@ Scope {
         // kept a row that had left it, undimmed, until it was left (PN2VZC,
         // a7b9d465: Work Network's row, past 30 s in one of four runs).
         const offered = from < 0 ? [] : source.everything();
-        // What a search found in it is read among all it searches too, so
-        // a match it no longer has goes (Held.js's foundNow).
+        // What a search found in it is read among all it searches too,
+        // only when it isn't listed (Held.js's foundNow).
         if (from >= 0 && !heldAgain(steps, Held.own(steps, from, offered, heldWays(),
-            source.looksThrough())))
+            () => source.looksThrough())))
             return false;
         const above = top ? own : offered;
         if (!remade(steps, top ? 0 : from < 0 ? held.length : from + 1, above))

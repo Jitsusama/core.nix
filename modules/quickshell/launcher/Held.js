@@ -62,17 +62,19 @@ function offers(rows, places, empty) {
 // else the row held then survives, so a field the source no longer offers
 // is gone. A row gone is kept, its rows made from it as it was, each gone
 // where it now offers nothing, as a collection's own row, never among what
-// it offers, is when its last row leaves; one still offered that offers
-// nothing now is left.
+// it offers, is when its last row leaves, though what its search found is
+// still each as offered now; one still offered that offers nothing now is
+// left. `looked` gives all the source searches, read only when a match
+// isn't among `offered`.
 function own(steps, at, offered, ways, looked) {
     const made = steps.slice();
     const step = made[at];
     const now = offered.find(one => ways.same(one, step.row));
     const foundAs = step.row.foundAs === undefined ? undefined
-        : foundNow(step.row.foundAs, offered, looked ?? offered, ways);
+        : foundNow(step.row.foundAs, offered, looked ?? (() => []), ways);
     const kept = foundAs !== undefined ? Object.assign({}, foundAs, { foundAs })
         : step.row.from === undefined ? {} : { from: step.row.from };
-    const row = now === undefined ? step.row : Object.assign({}, now, kept);
+    const row = Object.assign({}, now ?? step.row, kept);
     const into = ways.into(row, at, made);
     if (!into && now !== undefined) {
         return { steps: made, leave: at, all: false };
@@ -83,17 +85,24 @@ function own(steps, at, offered, ways, looked) {
 
 // What the launcher gave a row a search found, with each row the search
 // found, and the one it lands in, as the source offers it now among
-// `offered`: an ask hidden as a share begins is then listed hidden, never
-// as it was found. One gone from `looked`, all the source searches, is
-// gone from what the step offers too, as an answered ask is, so the step
-// shows it only as any row gone, dimmed until Joel's next key; one it
-// searches beyond what it lists, as Sound's, is kept as found.
+// `offered`, or else among all it searches, `looked`, as Sound's found by
+// ear are: an ask hidden as a share begins is then listed hidden, never as
+// it was found. A match ranked flat, as Agents' search gives its sessions,
+// is ranked as it stands. One found in neither is kept as found, never
+// dropped, since a source can find past both: Notices past its page,
+// People with a search Joel has typed past, or Agents inside a fold.
 function foundNow(foundAs, offered, looked, ways) {
-    const asNow = was => offered.find(one => ways.same(one, was))
-        ?? (looked.some(one => ways.same(one, was)) ? was : undefined);
+    let lookedNow = null;
+    const inLooked = was => {
+        lookedNow = lookedNow ?? looked();
+        return lookedNow.find(one => ways.same(one, was));
+    };
+    const asNow = was => offered.find(one => ways.same(one, was)) ?? inLooked(was);
+    const ranked = one => typeof one.ranked === "function" ? one.ranked() : one;
     const found = typeof foundAs.verbs !== "function" ? null
-        : foundAs.verbs().map(asNow).filter(one => one !== undefined);
-    const lands = foundAs.landsIn === undefined ? undefined : asNow(foundAs.landsIn);
+        : foundAs.verbs().map(was => { const now = asNow(was);
+            return now === undefined ? was : ranked(now); });
     return Object.assign({}, foundAs, found === null ? {} : { verbs: () => found },
-        foundAs.landsIn === undefined ? {} : { landsIn: lands });
+        foundAs.landsIn === undefined ? {} : { landsIn: asNow(foundAs.landsIn)
+            ?? foundAs.landsIn });
 }
