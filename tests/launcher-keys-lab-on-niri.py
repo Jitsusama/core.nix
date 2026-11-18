@@ -545,6 +545,41 @@ def say_heard(log: Path, capsys: pytest.CaptureFixture[str]) -> None:
                 print(f"lab-heard {line}", flush=True)
 
 
+def profiler_started(trace: Path, profiling: Path) -> subprocess.Popen[bytes]:
+    """Start qmlprofiler on the shell's debug port, writing its trace to `trace`."""
+    return subprocess.Popen(
+        [
+            os.environ["QMLPROFILER"],
+            "-a",
+            "localhost",
+            "-p",
+            PORT,
+            "--interactive",
+            "-o",
+            str(trace),
+            "--include",
+            "binding,javascript,handlingsignal,debugmessages",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=profiling.open("wb"),
+        stderr=subprocess.STDOUT,
+    )
+
+
+def stepped_round(shell: Shell, round_: int, step: str, capsys: pytest.CaptureFixture[str]) -> None:
+    """Step into `step` and back out, then out of LAB_CHORD's place, printing each line."""
+    if step:
+        line, out = stepped_from_home(shell, step, os.environ.get("LAB_STEP_KEY", "ret"))
+        with capsys.disabled():
+            print(f"lab-step {round_} {step}: {line or 'under the felt'}", flush=True)
+            if os.environ.get("LAB_BACK"):
+                print(f"lab-back {round_}: {out or 'under the felt'}", flush=True)
+    if chord := os.environ.get("LAB_CHORD"):
+        out = chorded_out(shell, chord)
+        with capsys.disabled():
+            print(f"lab-chord {round_}: {out or 'under the felt'}", flush=True)
+
+
 def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     """Type each word from home, round after round, and print each key's line and medians.
 
@@ -564,23 +599,7 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
     with launcher_on_niri.running() as shell:
         shell.launcher_until(lambda shown: shown.get("kept"))
         if os.environ.get("LAB_PROFILE"):
-            profiler = subprocess.Popen(
-                [
-                    os.environ["QMLPROFILER"],
-                    "-a",
-                    "localhost",
-                    "-p",
-                    PORT,
-                    "--interactive",
-                    "-o",
-                    str(trace),
-                    "--include",
-                    "binding,javascript,handlingsignal,debugmessages",
-                ],
-                stdin=subprocess.PIPE,
-                stdout=profiling.open("wb"),
-                stderr=subprocess.STDOUT,
-            )
+            profiler = profiler_started(trace, profiling)
         # Typed once untimed first, as the openings' lab opens once, for what a fresh shell
         # pays only once: its first search compiles what Joel's has run since he logged in.
         for nth in range(int(os.environ.get("LAB_WINDOWS", "0"))):
@@ -592,16 +611,7 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
         for round_ in range(rounds):
             for word in words[round_ % len(words) :] + words[: round_ % len(words)]:
                 tallied(round_, word, typed_from_home(shell, word), parts, capsys)
-            if step:
-                line, out = stepped_from_home(shell, step, step_key)
-                with capsys.disabled():
-                    print(f"lab-step {round_} {step}: {line or 'under the felt'}", flush=True)
-                    if os.environ.get("LAB_BACK"):
-                        print(f"lab-back {round_}: {out or 'under the felt'}", flush=True)
-            if chord := os.environ.get("LAB_CHORD"):
-                out = chorded_out(shell, chord)
-                with capsys.disabled():
-                    print(f"lab-chord {round_}: {out or 'under the felt'}", flush=True)
+            stepped_round(shell, round_, step, capsys)
         if profiler is not None:
             flushed(profiler, trace)
     heard: list[str] = []
