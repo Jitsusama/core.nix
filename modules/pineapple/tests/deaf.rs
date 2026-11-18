@@ -32,11 +32,7 @@ fn joel_is_told_once_two_rounds_running_hear_nothing() {
         Change::Untell,
         "hearing again takes it away"
     );
-    assert_eq!(
-        deaf.heard(Round::Heard, AT + 150_000),
-        Change::Keep,
-        "once"
-    );
+    assert_eq!(deaf.heard(Round::Heard, AT + 150_000), Change::Keep, "once");
 }
 
 #[test]
@@ -73,11 +69,19 @@ fn what_an_earlier_reader_told_goes_once_slack_is_heard() {
 
 #[test]
 fn only_a_refusal_of_the_sign_in_is_joels_to_fix() {
-    for word in ["invalid_auth", "not_authed", "token_revoked", "account_inactive"] {
+    for word in [
+        "invalid_auth",
+        "not_authed",
+        "token_revoked",
+        "account_inactive",
+    ] {
         assert!(refuses_the_sign_in(word), "{word}");
     }
     for word in ["ratelimited", "fatal_error", "not ok"] {
-        assert!(!refuses_the_sign_in(word), "{word} isn't fixed by signing in");
+        assert!(
+            !refuses_the_sign_in(word),
+            "{word} isn't fixed by signing in"
+        );
     }
 }
 

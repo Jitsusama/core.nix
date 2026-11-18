@@ -124,7 +124,7 @@ impl Deaf {
 }
 
 /// What a deaf reader asks of Joel, in the shape every quest's file of
-/// what waits on him takes (mesh_wait's), as slack-unreads' sign-in is:
+/// what waits on him takes (`mesh_wait`'s), as slack-unreads' sign-in is:
 /// one item he can do now, known done by the signal `signin:slack`.
 #[must_use]
 pub fn waits(why: Deafness, at: u64) -> Value {
