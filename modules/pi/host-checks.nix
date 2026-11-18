@@ -153,6 +153,8 @@ in
         && unit.Service.TimeoutAbortSec or null == "10s"
         && unit.Service.KillMode or null == "mixed"
         && unit.Service.TimeoutStopSec or null == "150s"
+        # A slow start under load still finishes.
+        && unit.Service.TimeoutStartSec or null == "20min"
         # Its core is kept until 20 November (host.nix says why).
         && unit.Service.LimitCORE or null == "infinity"
         && unit.Unit.StartLimitIntervalSec or null == 600
