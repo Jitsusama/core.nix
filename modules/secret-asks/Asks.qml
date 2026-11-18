@@ -236,7 +236,9 @@ Provider {
     // daemon is sent the ask as served. While hiding only what releases
     // nothing is sent, a no or a revoke, by either daemon, since a row made
     // before the share, as a step held into its verbs keeps, still offers
-    // its Release It, and an act a daemon adds later may grant too.
+    // its Release It, and a later ask act may grant too. It sees only what
+    // asks through here: an act's `also`, which ReadyRows sends itself,
+    // isn't, and no ask's row serves one.
     function stamped(key, ask) {
         if (hiding && ask?.ask !== "refuse" && ask?.ask !== "revoke")
             return null;

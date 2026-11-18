@@ -263,12 +263,13 @@ def test_r_refuses_an_ask(desktop: Desktop) -> None:
     desktop.as_account(f"! test -e {TREE}/released")
     # Return on the line once answered only closes, as on any row that only says something,
     # rather than closing by a Return that failed. It waits for the line to read refused, since
-    # until then it's held as it was, waiting, where Return arms the yes.
+    # until then it's held as it was, waiting, where Return arms the yes. Its side leads with
+    # what came of it, whatever follows.
     desktop.launcher_until(
         lambda shown: (
             shown["mode"] == "normal"
             and selects(shown, why)
-            and shown["selected"]["side"] == "refused"
+            and shown["selected"]["side"].startswith("refused")
         )
     )
     since = desktop.mark()
@@ -282,8 +283,9 @@ def test_r_refuses_an_ask(desktop: Desktop) -> None:
     said = desktop.as_account(
         f"journalctl --user -u quickshell --no-pager -o cat --after-cursor={shlex.quote(since)}"
     )
-    # Any error QML writes, by its shape, not only the one this guards.
-    thrown = re.search(r"\.(qml|js):\d+: \w*Error\b", said)
+    # Any error QML writes, not only the one this guards, as Quickshell
+    # writes one: "WARN scene: @Launcher.qml[7708:-1]: TypeError: ...".
+    thrown = re.search(r"\b\w*Error: ", said)
     assert thrown is None, f"a Return on the refused line threw: {said}"
 
 
