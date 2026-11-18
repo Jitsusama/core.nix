@@ -1441,6 +1441,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         shape
         space
         ;
+      linkedConfig = nodes.machine.home-manager.users.${account}.xdg.configFile;
 
       # A silent track with a title, an artist and a cover, for a player to
       # play through no sound card at all.
@@ -1525,6 +1526,13 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           }
           // pkgs.lib.optionalAttrs standsInForWarp {
             warp_contract = "${../modules/warp/contract}";
+          }
+          # The launcher's words, the very file the machine's account links,
+          # read here by finds-by-name: carried back through the machine's
+          # shell, their 150 to 220 KB came back broken under load (the net,
+          # 17 Nov).
+          // pkgs.lib.optionalAttrs (area == "launcher-finds-by-name") {
+            words = linkedConfig."quickshell/launcher/words.json".source;
           }
           # A document of twelve pages, for looks-programs to open twice and
           # shoot zathura's page saying the page each is on. Only there, so

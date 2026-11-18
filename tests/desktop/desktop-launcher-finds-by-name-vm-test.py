@@ -17,6 +17,7 @@ import datetime as dt
 import json
 import re
 import shlex
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -567,7 +568,12 @@ def opening_since(desktop: Desktop, since: int) -> Json:
 
 def test_every_name_a_thing_had_still_finds_it(desktop: Desktop) -> None:
     """Every name a thing had still finds it."""
-    words = json.loads(desktop.as_account("cat ~/.config/quickshell/launcher/words.json"))
+    # The words the account's launcher reads, as built: read here, since
+    # carried back through the machine's shell they came back broken under
+    # load (the net, 17 Nov). Only this area's values carry them
+    # (tests/desktop.nix), so the shared Values doesn't name them: naming
+    # them there would move every desktop test for this one.
+    words = json.loads(Path(cast("dict[str, str]", desktop.values)["words"]).read_text())
     kept = [
         (old, str(entry["name"]))
         for entry in [*words["things"], *words["categories"]]
