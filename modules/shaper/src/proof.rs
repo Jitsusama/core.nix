@@ -27,14 +27,16 @@
 //! SIGHUP and SIGTSTP end it the same way, and so does any SIGCONT, since
 //! a proof paused by SIGSTOP counts as gone and its keeper may already
 //! have put the shaper back; it writes what it measured to `--out` and
-//! exits 130. A proof
-//! killed outright can put nothing back itself, but its load and probes
-//! end within about two seconds, and a keeper beside it puts the shaper
-//! back as it found it, or, failing that, the next proof does. One proof
-//! runs at a time; another exits 75 at once. It waits `--wait` seconds
-//! from its start in all, and exits 75 if they run out before every pair is measured,
-//! writing what it measured to `--out`. It exits 69 if it couldn't put
-//! the shaper back, saying how to. The call's packets are src/call.rs's.
+//! exits 130. Each window reads the shaper afresh and owns it only while
+//! it runs, so a switch or Joel's own change between windows stands. A
+//! proof killed outright can put nothing back itself, but its load and
+//! probes end within about two seconds, and a keeper beside it puts the
+//! shaper back as its window found it, or, failing that, the next proof
+//! does before it waits. One proof runs at a time; another exits 75 at
+//! once. It waits `--wait` seconds from its start in all, and exits 75 if
+//! they run out before every pair is measured, writing what it measured
+//! to `--out`. It exits 69 if it couldn't put the shaper back, saying how
+//! to. The call's packets are src/call.rs's.
 //!
 //! It passes when, with the shaper on, the call's 99th percentile is
 //! within `CALL_MARGIN_MS` of its median through the shaper before the
@@ -55,6 +57,7 @@ mod verdict;
 use crate::qdisc;
 use gate::{Gate, WAITS_ENV, waits_while};
 use load::{end_group, stop_scopes};
+use std::cell::Cell;
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -357,40 +360,37 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     };
     let gate = Arc::new(gate);
     let deadline = Instant::now() + Duration::from_secs(asked.wait);
-    let active = || systemctl("is-active");
-    let mut was_on = marker
-        .as_deref()
-        .map_or_else(active, |m| stop::own_state(m, active));
-    // Only a window starts or stops the shaper, so until one does the
-    // shaper is whoever's sets it, a switch's or Joel's, and nothing puts
-    // it back; then its state is read afresh and claimed. A killed proof's
-    // that left it wrong is owed from the start.
-    let mut touched = was_on != active();
     if let Some(marker) = &marker {
-        if !touched {
+        // A killed proof whose keeper couldn't put the shaper back is paid
+        // for now, so the shaper isn't left wrong through this one's wait.
+        if let Some(on) = stop::debt(marker) {
+            put_back_or_stopped(put_back(on), false, Some(on))?;
             stop::forget(marker);
         }
         stop::keep(marker);
     }
+    // Only a window starts or stops the shaper, so each owns it only while
+    // it runs, reading it afresh first: between windows it is whoever's
+    // sets it, a switch's or Joel's, and nothing puts it back.
+    let back = Cell::new(true);
+    let mut found: Option<bool> = None;
     let mut idle: Vec<f64> = Vec::new();
     let (pairs, complete) = across_windows(
         asked.pairs,
-        || opened(|| gate.open(), deadline, &STOPPED),
+        // A window that couldn't put the shaper back leaves it for Joel,
+        // so no other reads its wrong state as the shaper's own.
+        || back.get() && opened(|| gate.open(), deadline, &STOPPED),
         |from| {
-            if !touched {
-                touched = true;
-                was_on = active();
-                if let Some(marker) = &marker {
-                    stop::claim(marker, was_on);
-                }
-            }
-            window(&asked, &link, &gate, was_on, from, &mut idle)
+            let on = systemctl("is-active");
+            found = Some(on);
+            let (pairs, put) = stop::owning(marker.as_deref(), on, || {
+                window(&asked, &link, &gate, on, from, &mut idle)
+            });
+            back.set(put);
+            pairs
         },
     );
-    let back = !touched || put_back(was_on);
-    if back && let Some(marker) = &marker {
-        stop::forget(marker);
-    }
+    let back = back.get();
     // Ended here, since a watch left unjoined still holds the gate.
     gate.end();
     let stopped = STOPPED.load(Ordering::Relaxed);
@@ -409,7 +409,7 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
             tell(&format!("couldn't write {}", out.display()));
         }
     }
-    put_back_or_stopped(back, stopped, was_on)?;
+    put_back_or_stopped(back, stopped, found)?;
     let Some(verdict) = verdict else {
         return Err(Failure::new(Exit::TryAgain, "not loading the link")
             .because("Joel hasn't been idle two minutes, or a call, audio or a meeting is on"));
@@ -449,22 +449,27 @@ fn alone(marker: &std::path::Path) -> Result<fs::File, Failure> {
 }
 
 /// How a proof ends before its verdict counts: 69 when the shaper isn't
-/// back as `was_on` says, which outranks a stop since it's Joel's to put
-/// right, else 130 when `stopped`.
-fn put_back_or_stopped(back: bool, stopped: bool, was_on: bool) -> Result<(), Failure> {
-    let state = if was_on { "on" } else { "off" };
-    if !back {
+/// back as the last window `found` it, which outranks a stop since it's
+/// Joel's to put right, else 130 when `stopped`. `found` is None when no
+/// window ran, the shaper never touched.
+fn put_back_or_stopped(back: bool, stopped: bool, found: Option<bool>) -> Result<(), Failure> {
+    let state = |on: bool| if on { "on" } else { "off" };
+    if !back && let Some(on) = found {
         return Err(
             Failure::new(Exit::Unavailable, "couldn't put the shaper back").because(format!(
-                "it should be {state}: systemctl {} shaper.service",
-                if was_on { "start" } else { "stop" }
+                "it should be {}: systemctl {} shaper.service",
+                state(on),
+                if on { "start" } else { "stop" }
             )),
         );
     }
     if stopped {
-        return Err(Failure::new(Exit::Interrupted, "stopped").because(format!(
-            "a signal asked it to; the shaper is back {state}, its load ended"
-        )));
+        let shaper = found.map_or_else(
+            || "no window ran, so the shaper is as it was".to_string(),
+            |on| format!("the shaper is back {}", state(on)),
+        );
+        return Err(Failure::new(Exit::Interrupted, "stopped")
+            .because(format!("a signal asked it to; {shaper}, its load ended")));
     }
     Ok(())
 }
@@ -503,8 +508,9 @@ fn opened(open: impl Fn() -> bool, deadline: Instant, stopped: &AtomicBool) -> b
 }
 
 /// One idle window: the load and the pairs from `from` on, until they're
-/// done or the gate closes, the shaper going back to `was_on` after. The
-/// call's quiet is heard first, in the run's first window.
+/// done or the gate closes, the shaper going back to `was_on` after, and
+/// whether it went back. The call's quiet is heard first, in the run's
+/// first window.
 fn window(
     asked: &Asked,
     link: &str,
@@ -512,7 +518,7 @@ fn window(
     was_on: bool,
     from: u32,
     idle: &mut Vec<f64>,
-) -> Vec<[Block; 2]> {
+) -> (Vec<[Block; 2]>, bool) {
     // The rest of the machine's traffic runs through the whole proof, and
     // with the router alone it bloats the router's queue: the first run's
     // idle median was 81 ms, where a loaded call through the shaper took
@@ -529,8 +535,7 @@ fn window(
         }
     }
     if halted(&stop) {
-        put_back(was_on);
-        return Vec::new();
+        return (Vec::new(), put_back(was_on));
     }
     let watch = {
         let (stop, gate) = (Arc::clone(&stop), Arc::clone(gate));
@@ -558,7 +563,7 @@ fn window(
     stop_scopes();
     // Put back before the watch is joined, since it may be stuck asking
     // the gate; once stopped, it isn't waited for, ending with the proof.
-    put_back(was_on);
+    let back = put_back(was_on);
     if !STOPPED.load(Ordering::Relaxed) {
         let _ = watch.join();
     }
@@ -568,7 +573,7 @@ fn window(
             from as usize + pairs.len()
         ));
     }
-    pairs
+    (pairs, back)
 }
 
 /// Measures the pairs, the shaper on for one block of each and off for the
@@ -738,10 +743,21 @@ mod tests {
 
     #[test]
     fn a_shaper_left_wrong_outranks_a_stop() {
-        let code = |back, stopped| put_back_or_stopped(back, stopped, true).map_err(|f| f.code());
-        assert_eq!(code(false, true), Err(69), "a stop hid a shaper left off");
-        assert_eq!(code(true, true), Err(130));
-        assert_eq!(code(true, false), Ok(()));
+        let code =
+            |back, stopped, found| put_back_or_stopped(back, stopped, found).map_err(|f| f.code());
+        assert_eq!(
+            code(false, true, Some(true)),
+            Err(69),
+            "a stop hid a shaper left off"
+        );
+        assert_eq!(code(true, true, Some(true)), Err(130));
+        assert_eq!(code(true, false, Some(true)), Ok(()));
+        // Stopped before any window, the shaper was never touched.
+        let untouched = put_back_or_stopped(true, true, None).expect_err("a stop");
+        assert!(
+            untouched.to_string().contains("no window ran"),
+            "said it put back a shaper it never touched: {untouched}"
+        );
     }
 
     #[test]

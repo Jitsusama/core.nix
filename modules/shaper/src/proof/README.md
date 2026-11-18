@@ -9,7 +9,7 @@ What `shaper proof` (`../proof.rs`) splits off from the run itself:
 - `probes.rs`: Joel's probes in each block, and how each ends: on its
   own, at a stop, or once it has run well past its block.
 - `stop.rs`: how it stops and puts the shaper back: a signal heard as a
-  stop, progress said safely, the shaper's own state kept on disk until
-  it's back, and a keeper that puts it back if the proof is killed.
+  stop, progress said safely, the shaper's state kept on disk while a
+  window owns it, and a keeper that puts it back if the proof is killed.
 - `verdict.rs`: what each block measured, which pairs are void, and the
   verdict on the shaper over the rest.

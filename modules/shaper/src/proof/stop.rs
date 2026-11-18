@@ -121,17 +121,15 @@ pub fn marker() -> Option<PathBuf> {
     std::env::var_os("XDG_RUNTIME_DIR").map(|d| PathBuf::from(d).join("shaper-proof-was-on"))
 }
 
-/// The shaper's own state: what `marker` holds, when a proof that didn't
-/// put it back left it there and maybe left the shaper off, else what
-/// `active` reads once any keeper is done. It stays in `marker`, with
-/// this proof's pid, so only this proof's keeper acts on it, until
-/// `forget`, once the shaper is back.
-pub fn own_state(marker: &Path, active: impl FnOnce() -> bool) -> bool {
-    state_within(marker, active, KEEPER_TAKES)
+/// What an earlier proof that didn't put the shaper back left in `marker`:
+/// how the shaper was before it, once any keeper of its is done, or None
+/// when nothing is owed.
+pub fn debt(marker: &Path) -> Option<bool> {
+    debt_within(marker, KEEPER_TAKES)
 }
 
-/// `own_state`, waiting `takes` for a keeper.
-fn state_within(marker: &Path, active: impl FnOnce() -> bool, takes: Duration) -> bool {
+/// `debt`, waiting `takes` for a keeper.
+fn debt_within(marker: &Path, takes: Duration) -> Option<bool> {
     // A killed proof's keeper puts the shaper back within about a second,
     // and forgets the marker: waited for, so its word isn't taken for the
     // shaper's own once it's back.
@@ -148,13 +146,26 @@ fn state_within(marker: &Path, active: impl FnOnce() -> bool, takes: Duration) -
         });
     if let Some(on) = earlier {
         tell(&format!(
-            "an earlier proof didn't put the shaper back: it goes back {} after this one",
+            "an earlier proof didn't put the shaper back: putting it back {} now",
             if on { "on" } else { "off" }
         ));
     }
-    let on = earlier.unwrap_or_else(active);
-    claim(marker, on);
-    on
+    earlier
+}
+
+/// Runs one window owning the shaper, found `on`: claimed in `marker`
+/// while it runs, so a keeper puts it back if the proof is killed, and
+/// given up once `window` says it put the shaper back. Between windows
+/// it is nobody's, so a switch or Joel's own change then stands.
+pub fn owning<T>(marker: Option<&Path>, on: bool, window: impl FnOnce() -> (T, bool)) -> (T, bool) {
+    if let Some(marker) = marker {
+        claim(marker, on);
+    }
+    let (got, back) = window();
+    if back && let Some(marker) = marker {
+        forget(marker);
+    }
+    (got, back)
 }
 
 /// Writes `on` to `marker` as this proof's word, with its pid, so only
@@ -495,18 +506,14 @@ mod tests {
             done.store(true, Ordering::Relaxed);
             forget(&keeping);
         });
-        assert!(
-            own_state(&marker, || on.load(Ordering::Relaxed)),
-            "read the shaper off, before its keeper had it on again"
-        );
+        assert_eq!(debt(&marker), None, "took a debt its keeper was paying");
         assert!(
             forgotten.load(Ordering::Relaxed),
-            "wrote its own marker before the keeper forgot the last"
+            "read the marker before the keeper forgot it"
         );
-        assert_eq!(
-            fs::read_to_string(&marker).expect("its own marker"),
-            format!("on {}\n", std::process::id()),
-            "a marker its keeper can't tell for its proof's"
+        assert!(
+            on.load(Ordering::Relaxed),
+            "done before the keeper had the shaper on"
         );
         keeper.join().expect("the keeper");
         let _ = fs::remove_dir_all(&dir);
@@ -518,19 +525,50 @@ mod tests {
         fs::create_dir_all(&dir).expect("a folder");
         let marker = dir.join("was-on");
         // With no keeper to wait for, as when one's scope was refused.
-        let state = |active: bool| state_within(&marker, || active, Duration::ZERO);
-        assert!(state(true), "the shaper's own state, with no proof before");
+        let owed = || debt_within(&marker, Duration::ZERO);
+        assert_eq!(owed(), None, "a debt with no proof before");
         // A proof killed in an on arm, the shaper left off: the next
         // finds it was on.
-        assert!(state(false), "took the killed proof's off as its own");
+        claim(&marker, true);
+        assert_eq!(owed(), Some(true), "lost the killed proof's word");
         forget(&marker);
-        assert!(!state(false), "remembered a proof that put it back");
-        forget(&marker);
+        assert_eq!(owed(), None, "remembered a proof that put it back");
         // A marker that says neither, as a write cut short leaves, is
-        // nobody's word: the shaper's own state stands.
+        // nobody's word, and nothing is owed.
         fs::write(&marker, "").expect("an empty marker");
-        assert!(state(true), "took an empty marker for off");
+        assert_eq!(owed(), None, "took an empty marker for a debt");
         forget(&marker);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_window_owns_the_shaper_only_while_it_runs() {
+        let dir = std::env::temp_dir().join(format!("shaper-owning-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("a folder");
+        let marker = dir.join("was-on");
+        let said = |m: &Path| fs::read_to_string(m).ok();
+        let ((), back) = owning(Some(&marker), true, || {
+            assert_eq!(
+                said(&marker),
+                Some(format!("on {}\n", std::process::id())),
+                "a window ran with no word for its keeper"
+            );
+            ((), true)
+        });
+        assert!(back, "a window put back said it wasn't");
+        assert_eq!(said(&marker), None, "held the shaper between windows");
+        // The next window finds the shaper off, as a switch or Joel left
+        // it, and claims that, not what the first found.
+        let ((), back) = owning(Some(&marker), false, || {
+            assert_eq!(
+                said(&marker),
+                Some(format!("off {}\n", std::process::id())),
+                "a window claimed what an earlier one found"
+            );
+            ((), false)
+        });
+        assert!(!back, "a window not put back said it was");
+        assert!(said(&marker).is_some(), "gave up a shaper not put back");
         let _ = fs::remove_dir_all(&dir);
     }
 }
