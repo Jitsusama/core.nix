@@ -772,6 +772,7 @@
   // cls, at, r} or a line {tag: "path", cls, w, line: [p, m, q]}.
   let groundLayers = [];
   let talkLayer = []; // talk of the last ten minutes, over the lines
+  let talkBetween = 0; // of it, the talk with two ends on the map to join
   let cellLayer = []; // the cells, over everything else on the ground
   // Each network's ground, [key, x, y, r], so a click on it opens it.
   let groundsAt = [];
@@ -950,12 +951,14 @@
   const LINE_STEP_PX = 3; // the most a said line moves between points
   const lineSteps = (xs, ys) => Math.max(LINE_STEPS, Math.ceil((Math.hypot(xs[1] - xs[0], ys[1] - ys[0]) + Math.hypot(xs[2] - xs[1], ys[2] - ys[1])) / LINE_STEP_PX));
   // How many lines the canvas paints, by kind, said for the site's own
-  // checks: the lines across networks, the talk arcs, the talk held, and
-  // how many networks are folded into their grounds.
+  // checks: the lines across networks, the talk arcs, the talk held, the
+  // talk with two ends to draw (talk inside one folded network has one),
+  // and how many networks are folded into their grounds.
   groundEl.painted = () => ({
     across: (groundLayers[1] || []).length,
     talk: talkLayer.length,
     said: talk.size,
+    between: talkBetween,
     folded: folded.size,
   });
   groundEl.dataset.lines = "";
@@ -1575,7 +1578,8 @@
     if (chosen?.kind === "cell") named.add(chosen.id);
     if (chosen?.kind === "talk") for (const end of chosen.id.split("|")) if (end.startsWith("c:")) named.add(end.slice(2));
     for (const key of foundSet) if (key[0] === "c") named.add(key.slice(2));
-    if (hover) named.add(m.byId.get(hover)?.address);
+    const hoverAddress = hover ? m.byId.get(hover)?.address : undefined;
+    if (hoverAddress) named.add(hoverAddress);
     if (pointed?.startsWith("c:")) named.add(pointed.slice(2));
     for (const address of named) {
       const s = m.byAddress.get(address);
@@ -1584,16 +1588,24 @@
       const key = `c:${address}`;
       const strong = (chosen?.kind === "cell" && chosen.id === address) || (chosen?.kind === "talk" && chosen.id.split("|").includes(key)) || key === pointed;
       const sub = s.standing === "asks" ? "needs you" : s.standing === "stuck" ? "stuck" : s.owes.length ? waitingWords(s.owes) : s.holds.length ? "holding" : "";
-      const sought = key === `c:${m.byId.get(hover)?.address}` || foundSet.has(key);
       // What he hovers is named beyond the cap, as what he points at is.
-      const hovered = key === `c:${m.byId.get(hover)?.address}`;
-      // A cell that needs him is named before any network, among the seven.
-      out.push({ key, kind: "cell", rank: strong || hovered ? 0 : s.standing === "asks" ? NEEDS_YOU_RANK : sought ? 2 : 4, at: p, r: R, out: [1, 0], name: [clipped(s.short)], sub, strong });
+      const hovered = address === hoverAddress;
+      const sought = foundSet.has(key);
+      // A cell that needs him is named before any network, among the seven,
+      // unless something is open and the cell lies outside what it touches.
+      const asking = s.standing === "asks" && !(near && !near.ids.has(s.id));
+      // An asking cell no one sought is named only once it is drawn large
+      // enough to read as its own (placeLabels).
+      const small = s.standing === "asks" && !(strong || hovered || sought);
+      out.push({ key, kind: "cell", rank: strong || hovered ? 0 : asking ? NEEDS_YOU_RANK : sought ? 2 : 4, at: p, r: R, out: [1, 0], name: [clipped(s.short)], sub, strong, small });
     }
     const open = chosen && (chosen.kind === "net" && knotsAt.has(chosen.id) ? "n" : { cell: "c", net: "h", machine: "m" }[chosen.kind]);
     const openKey = open && `${open}:${chosen.id}`;
     for (const l of out) if (!l.mark && (l.key === pointed || l.key === openKey)) l.rank = 0;
-    out.sort((a, b) => a.rank - b.rank || busier(a.busy, b.busy));
+    // Cells carry no busyness, so they tie by address: with more asking
+    // cells than names, the same ones keep their names from one reading to
+    // the next rather than jumping with the feed's order.
+    out.sort((a, b) => a.rank - b.rank || busier(a.busy, b.busy) || (a.kind === "cell" && b.kind === "cell" ? a.key.localeCompare(b.key) : 0));
     // A machine open can touch hundreds of networks: only the busiest of
     // them keep a name, after the machines' marks and what is open and
     // pointed at.
@@ -1844,6 +1856,9 @@
     // most, busiest first, since a person tracks about seven things at a
     // glance and a screen of names reads as a wall, not a map.
     let shownNames = 0;
+    // The names the cap left off, kept on the layer so a check can tell a
+    // name lost to the cap from one that found no clear place.
+    const capped = [];
     for (let i = 0; i < labels.length; i++) {
       const l = labels[i];
       const g = nodes[i];
@@ -1875,7 +1890,12 @@
       // Names come with depth, as on a map: a cell that needs him is named
       // once it is drawn large enough to read as its own, so the whole
       // view names only machines, networks and where the keys are.
-      if ((l.kind === "cell" && l.rank === 4 && l.r * k < CELL_NAMED_PX) || (l.rank > 0 && shownNames >= NAMES_ON_SCREEN)) {
+      if (l.small && l.r * k < CELL_NAMED_PX) {
+        hide(g);
+        continue;
+      }
+      if (l.rank > 0 && shownNames >= NAMES_ON_SCREEN) {
+        capped.push(l.key);
         hide(g);
         continue;
       }
@@ -1936,6 +1956,7 @@
       cuts.push(boxOf(spot));
       g.setAttribute("transform", `translate(${(spot[0] - bx).toFixed(1)},${(spot[1] - by).toFixed(1)})`);
     }
+    labelsEl.dataset.capped = capped.join(" ");
     // Only a plate over a line is knocked out, since elsewhere a knock-out
     // cuts nothing, and the ground paints again only when those plates
     // change: at thousands of cells a paint for nothing costs every press.
@@ -4216,6 +4237,7 @@
       const was = drawn.get(key);
       if (!was || was.n < n) drawn.set(key, { e, n, a, b });
     }
+    talkBetween = drawn.size;
     for (const [key, { e, n, a, b }] of drawn) {
       const faint = chosen?.kind === "talk" ? "" : !near || !(own ? key.split("|").includes(own) : key.split("|").every(touches)) ? " faint" : "";
       const arc = arcOf(a, b);

@@ -745,7 +745,7 @@ body {
 
 /* Talk the choice doesn't touch: faint and thinner, still as thick as it
    is warm, so the cells read first and no talk is lost. */
-.m-talk.faint:not(.far) {
+.m-talk.faint {
   opacity: 0.3;
 }
 

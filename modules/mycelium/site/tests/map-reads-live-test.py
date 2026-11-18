@@ -52,6 +52,10 @@ TWIN_NETWORKS = 200
 TWIN_RECEPTORS = 4
 # How long a twin of ten thousand cells may take to read and draw.
 TWIN_MS = 60_000
+# A crowd of networks, past the seven names a screen holds, around one cell
+# that needs him, which must take a name before any of them.
+CROWD_NETWORKS = 20
+CROWD_ASKING = "cell:ASKS01"
 
 
 @pytest.fixture
@@ -120,6 +124,58 @@ def twin() -> dict[str, list[dict[str, object]]]:
     return {**reading, "network": others + networks, "cell": cells}
 
 
+def crowd() -> dict[str, list[dict[str, object]]]:
+    """Node.json's realm as CROWD_NETWORKS orchestrations of two quiet cells, and one that asks.
+
+    More networks than the seven names a screen holds, so the cap is reached
+    at the whole map, and the asking cell is the one the cap must not take.
+    """
+    reading = json.loads((HERE / "node.json").read_text())["kinds"]
+    quiet = next(cell for cell in reading["cell"] if cell["standing"] == "quiet")
+    asking = next(cell for cell in reading["cell"] if cell["standing"] == "needs-you")
+    network = next(each for each in reading["network"] if each["shape"] == "orchestration")
+    networks, cells = [], []
+    for n in range(CROWD_NETWORKS):
+        name = f"orchestration.crowd{n:02d}"
+        members = [f"Q{n:02d}A", f"Q{n:02d}B"]
+        for at, member in enumerate(members):
+            cells.append(
+                {
+                    **copy.deepcopy(quiet),
+                    "key": f"cell:{member}",
+                    "id": f"01a1a877-0000-7000-8001-{n * 2 + at:012d}",
+                    "name": member,
+                    "leads": [],
+                    "networks": [name],
+                }
+            )
+        networks.append(
+            {
+                **copy.deepcopy(network),
+                "key": f"network:{name}",
+                "name": name,
+                "short": f"crowd-{n}",
+                "title": f"Crowd {n}",
+                "within": None,
+                "cells": members,
+            }
+        )
+    address = CROWD_ASKING.removeprefix("cell:")
+    cells.append(
+        {
+            **copy.deepcopy(asking),
+            "key": CROWD_ASKING,
+            "id": "01a1a877-0000-7000-8002-000000000001",
+            "name": address,
+            "leads": [],
+            "networks": [networks[0]["name"]],
+        }
+    )
+    networks[0]["cells"].append(address)
+    others = [each for each in reading["network"] if each["shape"] != "orchestration"]
+    return {**reading, "network": others + networks, "cell": cells}
+
+
 def serve(folder: Path, node: StandIn) -> Iterator[Served]:
     """Serve the map through the real server beside `node`, its feed as home.nix declares."""
     feed = {"socket": str(node.path), "kinds": json.loads(os.environ["NODE_KINDS"])}
@@ -135,6 +191,13 @@ def mycelium_served(tmp_path: Path, mycelium_node: StandIn) -> Iterator[Served]:
 @pytest.fixture
 def twin_served(tmp_path: Path) -> Iterator[Served]:
     stand_in = StandIn(tmp_path / "twin.sock", "node", twin()).start()
+    yield from serve(tmp_path, stand_in)
+    stand_in.leave()
+
+
+@pytest.fixture
+def crowd_served(tmp_path: Path) -> Iterator[Served]:
+    stand_in = StandIn(tmp_path / "crowd.sock", "node", crowd()).start()
     yield from serve(tmp_path, stand_in)
     stand_in.leave()
 
@@ -198,6 +261,29 @@ def test_the_map_reaches_every_cell_of_ten_thousand(browser: Browser, twin_serve
     judged = TWIN_CELLS + TWIN_RECEPTORS
     assert said["cells"] == judged, f"the map judged {said['cells']} of {judged} cells"
     assert said["failures"] == [], f"the map misses {said['failures'][:5]} of {said['count']}"
+
+
+def test_a_cell_that_needs_you_takes_a_name_before_the_networks(
+    browser: Browser, crowd_served: Served
+) -> None:
+    root, _ = crowd_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "light")
+    try:
+        the_map_stands(opened.page, "live")
+        # The map lists the names the cap left off; with more networks than
+        # names, it leaves some off, and never the cell that needs him.
+        labels = opened.page.locator("#labels")
+        expect(labels, "the crowd never reached the cap").to_have_attribute(
+            "data-capped", re.compile("."), timeout=PACE_MS
+        )
+        capped = (labels.get_attribute("data-capped") or "").split()
+        asking = CROWD_ASKING.replace("cell:", "c:")
+        assert asking not in capped, f"the cap left off the cell that needs him, among {capped}"
+        expect(
+            labels.locator(f'.tag[data-name="{asking}"]'), "the cell that needs him went unnamed"
+        ).to_be_visible()
+    finally:
+        opened.close()
 
 
 def test_a_cell_that_goes_leaves_the_map(mycelium_opened: Opened, mycelium_node: StandIn) -> None:
