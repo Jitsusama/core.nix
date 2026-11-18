@@ -32,6 +32,9 @@ ShellRoot {
     readonly property string id: "0123456789abcdef0123456789abcdef"
     readonly property string key: `row:asks:${root.id}`
     readonly property var same: Expect.same
+    // The row as it was made before the screen was shared, as a step the
+    // launcher holds keeps it.
+    property var madeBefore: null
 
     // A waiting ask's record as the passwords daemon serves it (secret-asks'
     // src/row.rs), its line at `digest`.
@@ -109,6 +112,7 @@ ShellRoot {
         property var awaiting: []
         property var toldNots: []
         property var toldWhys: []
+        property var toldNames: []
 
         function presentedAwait(at, then) {
             awaiting = awaiting.concat([then]);
@@ -176,6 +180,7 @@ ShellRoot {
         function toldNot(name, act, why) {
             toldNots = toldNots.concat([`${act} ${why}`]);
             toldWhys = toldWhys.concat([why ?? ""]);
+            toldNames = toldNames.concat([name]);
         }
     }
 
@@ -241,8 +246,8 @@ ShellRoot {
             typedWithReturn, typedWithReturnShown, movedThenOpened, movedThenOpenedShown, overRowsThenTold,
             toldOverRows, toldOverRowsShown, landed, landedThenMoved, landedThenShown, commanded,
             commandedThenRun, commandedThenMoved, commandedThenShown, timedBeforeSharing,
-            timedMove, sharing, sharingMoved, sharingMovedAsked, unshared, unsharedShown, unsharedMoved, unsharedMovedShown,
-            unheard, ownRecording]);
+            timedMove, sharing, sharedYes, sharingMoved, sharingMovedAsked, unshared,
+            unsharedShown, unsharedMoved, unsharedMovedShown, unheard, ownRecording]);
     }
 
     function arming() {
@@ -613,6 +618,7 @@ ShellRoot {
         stage.present(800);
         same("the line is timed before the screen is shared", Object.keys(asks.seen),
             [root.key]);
+        root.madeBefore = row();
         Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
         stage.selected = row();
         const hidden = "Ask, Hidden While You Share";
@@ -621,12 +627,26 @@ ShellRoot {
         same("and says nothing of where it's from", row()?.note, "");
         // A ready row's drawer is made as it's drawn (ReadyRows.qml's drawing).
         const drawer = row()?.drawer?.() ?? {};
-        same("its drawer says neither what it asks for nor why",
-            [drawer.title, drawer.body, drawer.facts?.length], [hidden, "", 0]);
+        same("its drawer says neither what it asks for, where from, nor why",
+            [drawer.title, drawer.eyebrow, drawer.body, drawer.facts?.length],
+            [hidden, "", "", 0]);
         same("it has no act, so no Return answers it unseen", [row()?.arms, typeof row()?.run],
             ["", "undefined"]);
         same("it still waits for him in For You", asks.forYou.length, 1);
         same("and its line's time starts again", asks.seen, {});
+    }
+
+    // A yes from the row as it was before the share, as a step held into
+    // its verbs still offers, is never sent, and what's told of it names
+    // only that it's hidden.
+    function sharedYes() {
+        const before = link.sent.length;
+        const told = stage.toldNames.length;
+        root.madeBefore.run();
+        same("a yes from a row made before the share is never sent while it's shared",
+            link.sent.length, before);
+        same("and what's told of it names only that it's hidden", stage.toldNames.slice(told),
+            ["Ask, Hidden While You Share"]);
     }
 
     function sharingMoved() {
