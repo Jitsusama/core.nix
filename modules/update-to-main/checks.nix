@@ -102,7 +102,7 @@ in
         ) nixos.jitsusama.update-to-main.refuseWhile
       );
   # A Mac's follower is its primary user's launchd agent, started again
-  # whenever follow ends, as it does for a newer update-to-main, and
+  # whenever follow ends, as it does when it can't start a newer one, and
   # naming no store path, so a switch never reloads it under its own ask.
   # Every Mac refuses an update during a call, and refuses the ask alone,
   # for two hours at most, while nix-offload says it's busy; and the

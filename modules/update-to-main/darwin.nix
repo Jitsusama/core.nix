@@ -147,9 +147,9 @@ in
       StandardErrorPath = "/var/log/update-to-main.log";
     };
 
-    # follow ends once the system's path holds another update-to-main, and
-    # launchd starts again only what ends unsuccessfully, so it ends 75
-    # for the newest to start.
+    # follow starts the system's newer update-to-main in its own place,
+    # ending only when that start fails, and launchd starts again only
+    # what ends unsuccessfully, so it ends 75 for the newest to start.
     launchd.user.agents.update-to-main-follows = lib.mkIf (cfg.follower != null) {
       serviceConfig = {
         Label = "org.jitsusama.update-to-main-follows";
