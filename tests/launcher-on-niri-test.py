@@ -4827,6 +4827,20 @@ def test_an_ended_quest_is_found_read_and_followed(shell: Shell, quests: StandIn
         del quests.unserved[key]
 
 
+def test_the_niri_held_is_the_one_its_socket_names() -> None:
+    """The niri held is read from its socket's name, the pid that niri itself writes there.
+
+    Looking for it among /proc's processes raced the shell's commands, one of which ended as it
+    was read and failed the case holding niri; the socket's name races nothing.
+    """
+    pid = 1923
+    socket = f"/run/user/1000/niri.wayland-2.{pid}.sock"
+    assert launcher_on_niri.niri_pid(socket) == pid, f"{socket} named another niri"
+    held = launcher_on_niri.niri_pid(os.environ["NIRI_SOCKET"])
+    named = Path(f"/proc/{held}/comm").read_text().strip()
+    assert named == "niri", f"NIRI_SOCKET named {held}, which is {named}"
+
+
 def test_a_daemons_change_niri_holds_back_is_presented_late(shell: Shell, quests: StandIn) -> None:
     """A change drawn while niri is held is said presented only once niri shows it, too late.
 
