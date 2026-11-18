@@ -62,9 +62,8 @@ const LISTENS_WITHIN: Duration = Duration::from_secs(10);
 /// How long the relay is given to hear the origin's goodbye on a
 /// connection before it's asked again, as a relay sent one moments ago is.
 const GOODBYE_HEARD_WITHIN: Duration = Duration::from_millis(200);
-/// How long the relay is given to hear that pi hung up mid-answer, which
-/// it reads on its own time as the origin's goodbye.
-const HANG_UP_HEARD_WITHIN: Duration = Duration::from_millis(200);
+/// What `/sized` answers, its length named.
+const SIZED: &[u8] = b"whole";
 /// How long the tests let the relay take to reach an origin, in seconds.
 const CONNECT_WITHIN: &str = "1";
 /// How often a test looks again for something it waits on.
@@ -248,11 +247,20 @@ fn origin_on(listener: TcpListener, answering: Serves, tls: Tls) -> Origin {
     }
 }
 
-type Answer = http_body_util::combinators::BoxBody<Bytes, Infallible>;
+type Answer = http_body_util::combinators::BoxBody<Bytes, io::Error>;
+
+/// `body`, as the origin answers, though it can't fail.
+fn boxed<B>(body: B) -> Answer
+where
+    B: hyper::body::Body<Data = Bytes, Error = Infallible> + Send + Sync + 'static,
+{
+    body.map_err(|never| match never {}).boxed()
+}
 
 /// The origin's answer: `/echo` hands the body back, `/held` waits a
 /// moment first, `/stream` sends its halves a gap apart and `/long` a
-/// longer one, `/bye` answers
+/// longer one, `/sized` names its length and ends in a frame of its own,
+/// `/broken` fails after its first half, `/bye` answers
 /// and lets its connection go, `/reset` reads the request and resets
 /// its stream rather than answer, and `/drop` reads it and lets the
 /// connection fall with no word at all.
@@ -298,6 +306,25 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
             });
             Response::builder()
                 .header("content-type", "text/event-stream")
+                .body(boxed(body))
+        }
+        "/sized" => {
+            let (mut sender, body) = Channel::<Bytes, Infallible>::new(1);
+            tokio::spawn(async move {
+                let _ = sender.send_data(Bytes::from_static(SIZED)).await;
+            });
+            Response::builder()
+                .header("content-length", SIZED.len().to_string())
+                .body(boxed(body))
+        }
+        "/broken" => {
+            let (mut sender, body) = Channel::<Bytes, io::Error>::new(1);
+            tokio::spawn(async move {
+                let _ = sender.send_data(Bytes::from_static(b"first\n")).await;
+                sender.abort(io::Error::other("the origin breaks off this answer"));
+            });
+            Response::builder()
+                .header("content-type", "text/event-stream")
                 .body(body.boxed())
         }
         "/held" => {
@@ -305,11 +332,11 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
             held.most.fetch_max(now, Ordering::SeqCst);
             tokio::time::sleep(HELD).await;
             held.now.fetch_sub(1, Ordering::SeqCst);
-            Response::builder().body(Full::new(Bytes::from_static(b"held")).boxed())
+            Response::builder().body(boxed(Full::new(Bytes::from_static(b"held"))))
         }
         "/bye" => {
             bye.notify_one();
-            Response::builder().body(Full::new(Bytes::from_static(b"bye")).boxed())
+            Response::builder().body(boxed(Full::new(Bytes::from_static(b"bye"))))
         }
         "/reset" => return Err(io::Error::other("the origin resets this stream")),
         "/drop" => {
@@ -319,7 +346,7 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
         _ => Response::builder()
             .status(StatusCode::CREATED)
             .header("x-origin-said", "echo")
-            .body(Full::new(Bytes::from(body)).boxed()),
+            .body(boxed(Full::new(Bytes::from(body)))),
     };
     Ok(answer.expect("an answer"))
 }
@@ -711,46 +738,82 @@ async fn a_request_the_origin_resets_is_a_502_and_retires_its_connection() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn a_reset_says_how_many_requests_pi_gave_up_on_its_connection() {
+async fn a_connection_says_how_many_requests_pi_gave_up_on_it() {
     let origin = origin().await;
     let host = origin.address.to_string();
-    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
-    assert_eq!(
-        ask(&relay.socket, request(&host, "/echo", b""))
-            .await
-            .status,
-        StatusCode::CREATED
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "1"],
     );
-    let stream = UnixStream::connect(&relay.socket)
+    // Answers read whole, one ending in its last frame of data and one
+    // after it, and one the origin broke off: none of them pi gave up on.
+    let echoed = ask(&relay.socket, request(&host, "/echo", b"hello")).await;
+    let sized = ask(&relay.socket, request(&host, "/sized", b"")).await;
+    let (mut pi, _) = pi_asks(&relay.socket).await;
+    let broken = pi
+        .send_request(request(&host, "/broken", b""))
         .await
-        .expect("the socket answers");
-    let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
-        .await
-        .expect("an HTTP/1.1 connection");
-    let pi = tokio::spawn(connection);
-    let long = sender
+        .expect("an answer begun")
+        .into_body()
+        .collect()
+        .await;
+
+    // pi gives up before an answer begins and partway through one, as it
+    // does when its person presses Escape.
+    let (mut pi, connection) = pi_asks(&relay.socket).await;
+    let waited =
+        tokio::time::timeout(HELD / 3, pi.send_request(request(&host, "/held", b""))).await;
+    drop(pi);
+    connection.abort();
+    let (mut pi, connection) = pi_asks(&relay.socket).await;
+    let long = pi
         .send_request(request(&host, "/long", b""))
         .await
         .expect("an answer begun");
-
-    // pi gives up mid-answer, as it does when its person presses Escape.
     drop(long);
-    drop(sender);
-    pi.abort();
-    tokio::time::sleep(HANG_UP_HEARD_WITHIN).await;
-    let got = ask(&relay.socket, request(&host, "/reset", b"")).await;
+    drop(pi);
+    connection.abort();
+    let reset = ask(&relay.socket, request(&host, "/reset", b"")).await;
+    let left = relay.left_within(LISTENS_WITHIN);
 
+    assert_eq!(echoed.body, b"hello");
+    assert_eq!(sized.body, SIZED);
+    assert!(broken.is_err(), "an answer the origin broke off came whole");
+    assert!(waited.is_err(), "pi was answered before it gave up");
     assert_eq!(
-        got.status,
+        reset.status,
         StatusCode::BAD_GATEWAY,
         "a request the origin reset"
     );
+    assert!(left.is_some(), "the relay didn't leave once idle");
     let said = relay.said();
     assert!(
-        said.contains("connection 0.0, so it's retired, after 3 asked and 1 cancelled on it"),
-        "the reset didn't say what its connection carried, or counted an answer pi read \
-         whole as given up on: {said}"
+        said.contains("connection 0.0, so it's retired, after 6 asked and"),
+        "the reset didn't say how many requests its connection carried: {said}"
     );
+    assert!(
+        said.contains("connection 0.0 carried 6 asked, 2 of them cancelled"),
+        "the connection didn't count as given up on just the two pi left, or counted a \
+         request handed back unsent: {said}"
+    );
+}
+
+/// A connection to the relay as pi makes one, and the task that runs it.
+async fn pi_asks(
+    socket: &Path,
+) -> (
+    hyper::client::conn::http1::SendRequest<Full<Bytes>>,
+    tokio::task::JoinHandle<hyper::Result<()>>,
+) {
+    let stream = UnixStream::connect(socket)
+        .await
+        .expect("the socket answers");
+    let (sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
+        .await
+        .expect("an HTTP/1.1 connection");
+    (sender, tokio::spawn(connection))
 }
 
 #[tokio::test(flavor = "current_thread")]

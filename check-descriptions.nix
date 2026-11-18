@@ -1684,7 +1684,8 @@
     model-relay, against an HTTP/2 origin of its tests' own, forwards a request's method, path,
     headers and body as they came, a body of many pieces whole, refuses any other host, carries many
     requests at once on a few connections, streams an answer as it comes, opens again a connection the origin lets go, says
-    a request the origin reset as a 502 and retires its connection, tells one a fallen
+    a request the origin reset as a 502 and retires its connection, counts on each connection the
+    requests pi gave up on and no answer read whole or broken off, tells one a fallen
     connection lost from a reset, the origin hearing each once, says an origin out of reach as a
     502 or a 504 without queueing, doesn't ask for a connection that won't open on every request, forgets a failure once the origin is back, sends pi direct with a
     421 when it can't trust the origin, answers beside an answer longer than its idle time, leaves

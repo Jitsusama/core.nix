@@ -70,7 +70,7 @@ use std::sync::{Arc, Mutex as Held, PoisonError};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant, SystemTime};
 
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use http_body_util::combinators::BoxBody;
 use http_body_util::{BodyExt, Full};
 use hyper::body::{Body as HttpBody, Frame, Incoming, SizeHint};
@@ -345,25 +345,57 @@ struct Counts {
 
 /// What one connection to the origin has carried: the requests sent down
 /// it, and how many of those pi gave up on before their answers ended.
-/// hyper cancels each of those at the origin, and on 18 November the
-/// origin reset every stream on a connection at once, several connections
-/// in the same second, whatever their age: an origin that counts the
-/// cancels a connection carries would do that, and a shared connection
-/// gathers the cancels of every session on it.
+/// hyper cancels each of those at the origin, if it had reached it, and on
+/// 18 November the origin reset every stream on a connection at once,
+/// several connections in the same second, whatever their age: an origin
+/// that counts the cancels a connection carries would do that, and a
+/// shared connection gathers the cancels of every session on it.
+///
+/// It says its last count once nothing holds it, the connection retired
+/// and every answer it carried ended or given up on, since an answer can
+/// still be read after its connection has gone.
 #[derive(Default)]
 struct Tally {
+    at: usize,
+    number: u64,
     asked: AtomicU64,
     cancelled: AtomicU64,
 }
 
 impl Tally {
-    /// How the log says it.
+    /// The tally of connection `at`'s `number`.
+    fn of(at: usize, number: u64) -> Tally {
+        Tally {
+            at,
+            number,
+            asked: AtomicU64::new(0),
+            cancelled: AtomicU64::new(0),
+        }
+    }
+
+    /// How the log says it so far.
     fn said(&self) -> String {
         format!(
             "after {} asked and {} cancelled on it",
             self.asked.load(Ordering::Relaxed),
             self.cancelled.load(Ordering::Relaxed)
         )
+    }
+}
+
+impl Drop for Tally {
+    fn drop(&mut self) {
+        let asked = self.asked.load(Ordering::Relaxed);
+        // A connection that never opened, or carried nothing, has nothing
+        // to say.
+        if asked > 0 {
+            eprintln!(
+                "model-relay: connection {}.{} carried {asked} asked, {} of them cancelled",
+                self.at,
+                self.number,
+                self.cancelled.load(Ordering::Relaxed)
+            );
+        }
     }
 }
 
@@ -391,6 +423,12 @@ impl OnTheWay {
     fn end(&self) {
         self.ended.store(true, Ordering::Relaxed);
     }
+
+    /// hyper handed it back unsent, so it was never this connection's.
+    fn unsent(&self) {
+        self.tally.asked.fetch_sub(1, Ordering::Relaxed);
+        self.end();
+    }
 }
 
 impl Drop for OnTheWay {
@@ -403,10 +441,26 @@ impl Drop for OnTheWay {
 }
 
 /// An answer's body, whose request ends once the body has: read to its
-/// end, or failed.
+/// end, or as far as its length said, or failed.
 struct Answering<B> {
     body: B,
     on_the_way: OnTheWay,
+    left: Option<u64>,
+}
+
+impl<B: HttpBody> Answering<B> {
+    /// `body`, the answer to the request `on_the_way`.
+    fn new(body: B, on_the_way: OnTheWay) -> Self {
+        let left = body.size_hint().exact();
+        if left == Some(0) {
+            on_the_way.end();
+        }
+        Self {
+            body,
+            on_the_way,
+            left,
+        }
+    }
 }
 
 impl<B> HttpBody for Answering<B>
@@ -421,8 +475,20 @@ where
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<B::Data>, B::Error>>> {
         let read = Pin::new(&mut self.body).poll_frame(cx);
-        if matches!(read, Poll::Ready(None | Some(Err(_)))) {
-            self.on_the_way.end();
+        match &read {
+            Poll::Ready(None | Some(Err(_))) => self.on_the_way.end(),
+            Poll::Ready(Some(Ok(frame))) => {
+                let length = frame.data_ref().map_or(0, |data| data.remaining() as u64);
+                // hyper stops reading an answer once it has written the
+                // length it was given, before the frame that ends it.
+                if let Some(left) = self.left.as_mut() {
+                    *left = left.saturating_sub(length);
+                    if *left == 0 {
+                        self.on_the_way.end();
+                    }
+                }
+            }
+            Poll::Pending => {}
         }
         read
     }
@@ -931,21 +997,25 @@ impl Relay {
             // it's counted as cancelled on this connection.
             let on_the_way = OnTheWay::sent(&tally, &self.counts);
             down = (at, number, tally);
-            let tried = sender.try_send_request(request).await;
-            if tried.is_err() {
-                on_the_way.end();
-            }
-            match tried {
+            match sender.try_send_request(request).await {
                 Ok(answer) => break Ok((answer, on_the_way)),
-                Err(mut failed) => match failed.take_message() {
-                    // Its connection was retired before the request went,
-                    // so it goes again, on a connection still open.
-                    Some(unread) if sent < SENT_AGAIN_AT_MOST => {
-                        sent += 1;
-                        request = unread;
+                Err(mut failed) => {
+                    let unread = failed.take_message();
+                    if unread.is_some() {
+                        on_the_way.unsent();
+                    } else {
+                        on_the_way.end();
                     }
-                    _ => break Err(failed.into_error()),
-                },
+                    match unread {
+                        // Its connection was retired before the request
+                        // went, so it goes again, on a connection still open.
+                        Some(unread) if sent < SENT_AGAIN_AT_MOST => {
+                            sent += 1;
+                            request = unread;
+                        }
+                        _ => break Err(failed.into_error()),
+                    }
+                }
             }
         };
         match answered {
@@ -955,7 +1025,7 @@ impl Relay {
                 without_connection_headers(&mut parts.headers);
                 // The request stays in hand until its answer is sent or
                 // given up on, so the relay never leaves mid-answer.
-                let body = Answering { body, on_the_way }.map_err(move |why| {
+                let body = Answering::new(body, on_the_way).map_err(move |why| {
                     let _ = &in_hand;
                     why
                 });
@@ -1100,8 +1170,8 @@ impl Relay {
     /// for whoever waited on the attempt. Its opener holds its lock.
     async fn open_now(&self, at: usize) -> Result<Kept, Unreachable> {
         let number = self.slots[at].next_number();
-        let tally = Arc::new(Tally::default());
-        match self.connect(at, number, Arc::clone(&tally)).await {
+        let tally = Arc::new(Tally::of(at, number));
+        match self.connect(at, number).await {
             Ok(sender) => {
                 let kept = self.slots[at].keep(number, sender, tally);
                 // The origin is back, so others may be opened behind.
@@ -1117,14 +1187,8 @@ impl Relay {
     }
 
     /// Opens connection `at` to the origin, saying so by its slot and its
-    /// `number` there, and says when it's retired, with what `tally` says
-    /// it carried.
-    async fn connect(
-        &self,
-        at: usize,
-        number: u64,
-        tally: Arc<Tally>,
-    ) -> Result<SendRequest<Sent>, Unreachable> {
+    /// `number` there, and says when it's retired.
+    async fn connect(&self, at: usize, number: u64) -> Result<SendRequest<Sent>, Unreachable> {
         let within = self.clocks.connect_within;
         let opening = async {
             let on_the_way = |why: io::Error| {
@@ -1206,16 +1270,14 @@ impl Relay {
             match ended {
                 Ok(()) => {
                     eprintln!(
-                        "model-relay: connection {at}.{number} retired {}, \
-                         {open} taking requests",
-                        tally.said()
+                        "model-relay: connection {at}.{number} retired, \
+                         {open} taking requests"
                     );
                 }
                 Err(why) => {
                     eprintln!(
-                        "model-relay: connection {at}.{number} retired {} on {}, \
+                        "model-relay: connection {at}.{number} retired on {}, \
                          {open} taking requests",
-                        tally.said(),
                         with_causes(&why)
                     );
                 }
@@ -1376,8 +1438,8 @@ async fn say_counts(counts: Arc<Counts>) {
         }
         last = asked;
         eprintln!(
-            "model-relay: {asked} asked, {} refused, {} failed, {} of them reset, \
-             {} cancelled; {} connections opened, {} taking requests",
+            "model-relay: {asked} asked, {} refused, {} failed, {} of them reset; \
+             pi cancelled {}; {} connections opened, {} taking requests",
             counts.refused.load(Ordering::Relaxed),
             counts.failed.load(Ordering::Relaxed),
             counts.reset.load(Ordering::Relaxed),
