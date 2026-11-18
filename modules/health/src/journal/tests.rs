@@ -431,7 +431,7 @@ fn every_follower_asks_for_every_boot_last() {
             "a follower matches one boot: {asked:?}"
         );
         for journalctl in [
-            reading(&asked, 1, 2),
+            reading(&asked, 1),
             following(&asked, None, 1),
             following(&asked, Some("s=1"), 1),
         ] {
@@ -448,6 +448,25 @@ fn every_follower_asks_for_every_boot_last() {
     }
 }
 
+#[test]
+fn the_journals_last_line_is_asked_for_alone_of_every_boot() {
+    // Every history ends at this line, so it's asked for word for word:
+    // any match would make it the last of only some of the journal, and
+    // more lines would give the same answer only after reading every
+    // boot whole, since the answer is taken as the last line said.
+    assert_eq!(
+        words(&newest()),
+        [
+            "--output=json".to_owned(),
+            "--no-pager".to_owned(),
+            "--lines=1".to_owned(),
+            format!("--output-fields={FIELDS}"),
+            "--boot=all".to_owned(),
+        ],
+        "the journal's last line wasn't asked for alone, as JSON, of the whole journal"
+    );
+}
+
 fn words(journalctl: &std::process::Command) -> Vec<String> {
     journalctl
         .get_args()
@@ -456,7 +475,7 @@ fn words(journalctl: &std::process::Command) -> Vec<String> {
 }
 
 #[test]
-fn a_history_reads_one_day_to_one_moment_and_its_follower_follows_on() {
+fn a_history_reads_its_day_to_the_journals_end_and_its_follower_follows_on() {
     let asked = ["-p".to_owned(), "warning".to_owned()];
     let has = |words: &[String], word: &str| words.iter().any(|said| said == word);
     let starts = |words: &[String]| {
@@ -465,14 +484,14 @@ fn a_history_reads_one_day_to_one_moment_and_its_follower_follows_on() {
             .filter(|word| word.starts_with("--since") || word.starts_with("--after-cursor"))
             .count()
     };
-    let history = words(&reading(&asked, 1_763_442_000, 1_763_460_000));
+    let history = words(&reading(&asked, 1_763_442_000));
     assert!(
         has(&history, "--since=@1763442000")
-            && has(&history, "--until=@1763460000")
+            && !history.iter().any(|word| word.starts_with("--until"))
             && !has(&history, "--follow")
             && starts(&history) == 1,
-        "a history doesn't read from the day's start it was given to the moment and end: \
-         {history:?}"
+        "a history doesn't read from the day's start it was given to the journal's end and \
+         end: {history:?}"
     );
     let after = words(&following(&asked, Some("s=abc;i=2"), 1_763_442_000));
     assert!(

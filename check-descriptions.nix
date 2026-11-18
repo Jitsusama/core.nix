@@ -1241,7 +1241,11 @@
     before its first look or a restart of it, names pi's sessions and their commands for the
     quest a presence or their slice says and the rest for their slice or service, finds the
     account's manager above its own service, tells Joel's crashes from ours, counts no refused
-    `sudo -n true` probe as an error, and says each figure's side
+    `sudo -n true` probe as an error, and says each figure's side; and on systemd's own
+    journalctl, over a journal journal-remote wrote, each follower reads its line of two boots
+    and follows on into the second, and a day whose clock was stepped back is replayed in the
+    order it was written, each history ending at the line it's given as the journal's last, and
+    the journal's last line is the one written last, by journald's number
   '';
   hibernate-unlock-lets-go-only-after-the-disk-asked = ''
     hibernate-unlock reads the TPM's counts, keeps them only for sleeps that write an image, takes a

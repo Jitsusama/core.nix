@@ -1,7 +1,7 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::panic::{self, AssertUnwindSafe};
-use std::sync::mpsc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex, mpsc};
+use std::time::{Duration, Instant};
 
 use jiff::Timestamp;
 use jiff::tz::{self, TimeZone};
@@ -28,7 +28,10 @@ fn writing(lines: &[String]) -> Command {
     if lines.is_empty() {
         return sh(":");
     }
-    let quoted: Vec<String> = lines.iter().map(|line| format!("'{line}'")).collect();
+    let quoted: Vec<String> = lines
+        .iter()
+        .map(|line| format!("'{}'", line.replace('\'', r"'\''")))
+        .collect();
     sh(&format!("printf '%s\\n' {}", quoted.join(" ")))
 }
 
@@ -36,6 +39,22 @@ fn numbered(number: u64, cursor: &str) -> String {
     format!(
         r#"{{"__CURSOR":"{cursor}","__SEQNUM_ID":"s","__SEQNUM":"{number}","__REALTIME_TIMESTAMP":"{number}"}}"#
     )
+}
+
+/// Every line and end sent on `heard` until its last sender is dropped,
+/// failing rather than waiting for good on one left behind, as health
+/// would.
+fn all_of(heard: &mpsc::Receiver<Option<String>>) -> Vec<Option<String>> {
+    let mut all = Vec::new();
+    loop {
+        match heard.recv_timeout(Duration::from_secs(10)) {
+            Ok(said) => all.push(said),
+            Err(mpsc::RecvTimeoutError::Disconnected) => return all,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                panic!("a sender was left behind, so health would wait on it for good: {all:?}")
+            }
+        }
+    }
 }
 
 fn history(lines: &[String]) -> History {
@@ -94,6 +113,7 @@ fn the_replay_sends_the_day_in_order_then_each_follows_on_from_its_own_end() {
     let (send, heard) = mpsc::channel();
     replay(
         histories,
+        None,
         |at, after| writing(&[format!("{at} after {}", after.unwrap_or("nothing"))]),
         &send,
     )
@@ -132,6 +152,7 @@ fn the_replay_starts_no_follower_once_nothing_hears_it() {
     let made = Cell::new(0);
     let replayed = replay(
         vec![(history(&[numbered(1, "a1")]), ())],
+        None,
         |(), _| {
             made.set(made.get() + 1);
             writing(&[])
@@ -149,6 +170,7 @@ fn a_follower_that_cant_follow_on_is_an_error_naming_it() {
     let (send, _heard) = mpsc::channel();
     let replayed = replay(
         vec![(history(&[numbered(1, "a1")]), ())],
+        None,
         |(), _| {
             let mut follower = Command::new("/nonexistent/journalctl");
             follower.args(["--follow", "-k"]);
@@ -175,7 +197,7 @@ fn a_history_and_its_follower_are_named_by_what_they_ask() {
     let name = "journalctl -p warning --output-x".to_owned();
     assert_eq!(
         (
-            named(&journal::reading(&asked, 1, 2)),
+            named(&journal::reading(&asked, 1)),
             named(&journal::following(&asked, Some("s=1"), 1)),
             named(&journal::following(&asked, None, 1)),
         ),
@@ -185,7 +207,7 @@ fn a_history_and_its_follower_are_named_by_what_they_ask() {
 }
 
 #[test]
-fn every_history_reads_from_the_days_start_to_now() {
+fn every_history_reads_from_the_days_start() {
     // 21:00 on 17 November, five hours behind UTC, where it's already
     // the 18th.
     let now = Timestamp::from_second(1_794_967_200)
@@ -193,8 +215,8 @@ fn every_history_reads_from_the_days_start_to_now() {
         .to_zoned(TimeZone::fixed(tz::offset(-5)));
     assert_eq!(
         day_of(&now).expect("the day has a start"),
-        (1_794_891_600, 1_794_967_200),
-        "the replay didn't read its own day, from its midnight to now"
+        1_794_891_600,
+        "the replay didn't read its own day, from its midnight"
     );
 }
 
@@ -207,7 +229,7 @@ fn ends_of(follow_on: impl Fn(&usize, Option<&str>) -> Command) -> usize {
     ];
     let (send, heard) = mpsc::channel();
     let _ = panic::catch_unwind(AssertUnwindSafe(|| {
-        replaying(histories, follow_on, &send);
+        replaying(histories, None, follow_on, &send);
     }));
     drop(send);
     heard.iter().filter(Option::is_none).count()
@@ -313,7 +335,7 @@ fn a_history_that_cant_start_is_an_error_naming_it() {
 fn every_history_and_follower_has_a_name_of_its_own() {
     let followed = journal::followed();
     let forms: [fn(&[String]) -> Command; 3] = [
-        |asked| journal::reading(asked, 1, 2),
+        |asked| journal::reading(asked, 1),
         |asked| journal::following(asked, Some("s=1"), 1),
         |asked| journal::following(asked, None, 1),
     ];
@@ -328,6 +350,249 @@ fn every_history_and_follower_has_a_name_of_its_own() {
             names.len(),
             followed.len(),
             "two histories or followers share a name: {names:?}"
+        );
+    }
+}
+
+#[test]
+fn the_journals_last_line_is_where_journald_numbered_its_last() {
+    // Where it was numbered, and what health said of it.
+    let told = |newest: Command| {
+        let name = named(&newest);
+        let said = asking(newest).expect("the shell starts").wait_with_output();
+        let notices = RefCell::new(Vec::new());
+        let last = last_of(&name, said, |words| {
+            notices.borrow_mut().push(words.to_owned());
+        });
+        (last, notices.into_inner())
+    };
+    let none: Vec<String> = Vec::new();
+    assert_eq!(
+        told(writing(&[numbered(1, "a"), numbered(7, "b")])),
+        (Some(("s".to_owned(), 7)), none.clone()),
+        "the last line's number wasn't the end, or was said as none"
+    );
+    assert_eq!(
+        told(writing(&[])),
+        (None, none),
+        "a journal with no lines had an end, or was said as a fault"
+    );
+    // Its line is numbered, so only its failure keeps it from the end.
+    let (last, notices) = told(sh(&format!(
+        "printf '%s\\n' '{}'; exit 1",
+        numbered(7, "b")
+    )));
+    assert!(
+        last.is_none() && notices.len() == 1 && notices[0].contains("exit status: 1"),
+        "a journalctl that failed gave an end, or wasn't said with how it ended: {notices:?}"
+    );
+    let (last, notices) = told(writing(&["not json".to_owned()]));
+    assert!(
+        last.is_none() && notices.len() == 1 && notices[0].contains("didn't number"),
+        "a line journald didn't number gave an end, or wasn't said: {notices:?}"
+    );
+    let notices = RefCell::new(Vec::new());
+    let last = last_of("newest", Err(io::Error::other("gone")), |words| {
+        notices.borrow_mut().push(words.to_owned());
+    });
+    let notices = notices.into_inner();
+    assert!(
+        last.is_none()
+            && notices.len() == 1
+            && notices[0].contains("newest")
+            && notices[0].contains("gone"),
+        "a journalctl that couldn't be read gave an end, or wasn't said: {notices:?}"
+    );
+    assert!(
+        last_written(Command::new("/nonexistent/journalctl"))
+            .is_err_and(|error| error.to_string().starts_with("/nonexistent/journalctl: ")),
+        "a journalctl that couldn't start wasn't an error naming it"
+    );
+}
+
+#[test]
+fn the_replay_asks_the_journals_last_line_first_off_healths_own_thread() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let answered = folder.path().join("answered");
+    // The path is the script's argument, not its words, so no quote in
+    // it can break the script.
+    let mut newest = sh("sleep 1; : > \"$1\"");
+    newest.arg("sh").arg(&answered);
+    let started = Arc::new(Mutex::new(Vec::new()));
+    let reading = {
+        let started = Arc::clone(&started);
+        move |_: &[String]| {
+            started
+                .lock()
+                .expect("the starts are kept")
+                .push(answered.exists());
+            writing(&[])
+        }
+    };
+    let (send, heard) = mpsc::channel();
+    let asked = Instant::now();
+    let count = replayed_by(newest, reading, |_, _| writing(&[]), &send);
+    assert!(
+        asked.elapsed() < Duration::from_millis(500),
+        "health's start waited on the journal's last line"
+    );
+    drop(send);
+    assert_eq!(
+        all_of(&heard).iter().filter(|said| said.is_none()).count(),
+        count,
+        "a follower ended without a word, or twice"
+    );
+    let started = started.lock().expect("the starts are kept");
+    assert_eq!(
+        started.len(),
+        journal::followed().len(),
+        "a history didn't start"
+    );
+    assert!(
+        started.iter().all(|answered| *answered),
+        "a history started before the journal's last line was answered, so could end before it"
+    );
+}
+
+#[test]
+fn a_replay_that_cant_start_ends_every_count() {
+    let nowhere = || Command::new("/nonexistent/journalctl");
+    for (newest, reading) in [
+        (nowhere(), None),
+        (writing(&[]), Some(nowhere as fn() -> Command)),
+    ] {
+        let (send, heard) = mpsc::channel();
+        let count = replayed_by(
+            newest,
+            move |_| reading.map_or_else(|| writing(&[]), |reading| reading()),
+            |_, _| writing(&[]),
+            &send,
+        );
+        drop(send);
+        let heard = all_of(&heard);
+        assert_eq!(
+            heard,
+            vec![None; count],
+            "a replay that couldn't start didn't end every count, so health would wait on it"
+        );
+    }
+}
+
+#[test]
+fn a_replay_that_panics_as_it_starts_ends_every_count() {
+    let (send, heard) = mpsc::channel();
+    let count = replayed_by(
+        writing(&[]),
+        |_| panic!("a stand-in history's panic"),
+        |_, _| writing(&[]),
+        &send,
+    );
+    drop(send);
+    let heard = all_of(&heard);
+    assert_eq!(
+        heard,
+        vec![None; count],
+        "a replay that panicked as it started would leave health waiting for good"
+    );
+}
+
+#[test]
+fn a_warning_or_failure_is_marked_one_only_in_the_journal() {
+    assert_eq!(
+        as_marked("health: w", true, WARNING),
+        "<4>health: w",
+        "a warning into the journal wasn't marked one"
+    );
+    assert_eq!(
+        as_marked("health: w\nand on", true, WARNING),
+        "<4>health: w\n<4>and on",
+        "a warning's second line into the journal wasn't marked one"
+    );
+    assert_eq!(
+        as_marked("health: f", true, ERROR),
+        "<3>health: f",
+        "a failure into the journal wasn't marked one"
+    );
+    assert_eq!(
+        as_marked("health: w", false, WARNING),
+        "health: w",
+        "a warning elsewhere carried the journal's mark"
+    );
+}
+
+#[test]
+fn only_a_macs_log_show_ends_whole_by_design() {
+    let [stream, show] = unified::commands("midnight", "now")
+        .try_into()
+        .expect("a Mac streams and shows");
+    assert!(ends_whole(&show), "log show's whole end was said");
+    assert!(
+        !ends_whole(&stream),
+        "log stream, which follows for as long as health runs, could end unsaid"
+    );
+    for asked in journal::followed() {
+        assert!(
+            !ends_whole(&journal::following(&asked, None, 1)),
+            "{asked:?}'s follower, which follows for as long as health runs, could end unsaid"
+        );
+    }
+}
+
+#[test]
+fn a_follower_ending_is_said_by_name_unless_it_ends_whole_by_design() {
+    let ended = |script: &str| follower_ended("journalctl -k", sh(script).status(), true);
+    assert_eq!(
+        ended(":"),
+        None,
+        "a follower that ends whole by design was said for ending so"
+    );
+    assert!(
+        follower_ended("journalctl -k", sh(":").status(), false)
+            .is_some_and(|said| said.contains("journalctl -k")),
+        "a follower that follows for as long as health runs wasn't said for ending whole"
+    );
+    assert!(
+        ended("exit 3").is_some_and(|said| said.contains("journalctl -k") && said.contains('3')),
+        "a follower ending in failure wasn't said by name and status"
+    );
+    assert!(
+        ended("kill -9 $$").is_some_and(|said| said.contains("journalctl -k")),
+        "a follower ended by a signal wasn't said"
+    );
+    assert!(
+        follower_ended("journalctl -k", Err(io::Error::other("gone")), true)
+            .is_some_and(|said| said.contains("journalctl -k") && said.contains("gone")),
+        "a follower that couldn't be waited on wasn't said"
+    );
+    if cfg!(target_os = "linux") {
+        assert!(
+            ended("exit 3").is_some_and(|said| said.contains("systemctl --user restart health")),
+            "a follower's end didn't say how health is started again, which nothing else does"
+        );
+    }
+}
+
+#[test]
+fn a_follower_that_ends_is_said_before_its_end_is_sent() {
+    // What's said goes on the follower's own channel, so its order with
+    // the follower's end is the order they were sent in: health ends at
+    // its last end, so a word sent after it could go unsaid.
+    for script in ["echo a", "echo a; exit 3"] {
+        let (send, heard) = mpsc::channel();
+        let tell = send.clone();
+        spawn_saying(sh(script), send, move |words| {
+            let _ = tell.send(Some(format!("said: {words}")));
+        })
+        .expect("the shell starts");
+        let heard = all_of(&heard);
+        let name = named(&sh(script));
+        assert!(
+            matches!(
+                heard.as_slice(),
+                [Some(line), Some(said), None]
+                    if line == "a\n" && said.starts_with("said: ") && said.contains(&name)
+            ),
+            "{name} ended and wasn't said by name before its end was sent: {heard:?}"
         );
     }
 }
