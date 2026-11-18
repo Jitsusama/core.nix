@@ -48,7 +48,10 @@ Provider {
             : !!Quickshell.env("XDG_RUNTIME_DIR")
         stamp: (key, ask) => provider.stamped(key, ask)
         toldAs: key => provider.hiding ? Words.name("asks:hidden") : ready.served(key)?.name ?? ""
-        whyWithheld: () => provider.hiding ? Words.field.becoming?.shared : undefined
+        // Withheld while hidden for the share, or before niri has said
+        // whether there is one, which fails closed.
+        whyWithheld: () => !provider.hiding ? undefined
+            : Words.field.becoming?.[Niri.castsHeard ? "shared" : "unheard"]
         place: "asks"
         beside: ["summary"]
         make: (row, key) => provider.made(row, key)
@@ -72,7 +75,27 @@ Provider {
     onHidingChanged: {
         forget();
         ready.remade();
+        if (hiding)
+            heldHidden();
         changed();
+    }
+
+    // Each row held as it becomes since an act of his just before the
+    // share, held again as its hidden row and named only as hidden, so
+    // neither the row nor what's told if the daemon refuses it or is late
+    // names the secret on the shared screen. What says it's done and how
+    // long it may take are kept; its wait starts again.
+    function heldHidden() {
+        const held = launcher?.becoming ?? {};
+        const name = Words.name("asks:hidden");
+        for (const key of Object.keys(held)) {
+            const one = held[key];
+            if (one.from !== provider)
+                continue;
+            const how = Object.assign(typeof one.done === "function" ? { done: one.done } : {},
+                one.within > 0 ? { within: one.within } : {});
+            provider.becomes(key, ready.rowAt(one.row?.shownKey ?? key), name, one.act, how);
+        }
     }
 
     // Whether the passwords daemon answers the asks, and the connection

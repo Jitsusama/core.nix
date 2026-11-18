@@ -3348,8 +3348,10 @@
     why, the entries told over the connection leave the asks' rows be, a yes walked from
     outside the launcher is never sent, and while the screen is shared or niri hasn't said its
     casts each ask's row names only that it's hidden, offers no act, times no frame and counts
-    nothing once shown again until his next move, a yes from a row made before the share is
-    never sent and is told as hidden, and the shell's own recording of one window hides nothing
+    nothing once shown again until his next move, For You's row hidden too, a yes from a row
+    made before the share is never sent and is told as hidden, the share withholding it or, before
+    niri has said, not knowing, a row held as it becomes from just before the share is held
+    again hidden, and the shell's own recording of one window hides nothing
   '';
   the-asks-place-releases-through-its-daemon = ''
     the launcher's Asks lists what the secret-asks daemon serves, For You holds each waiting ask,
