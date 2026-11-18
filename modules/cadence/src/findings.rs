@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::day::{self, Day};
 use crate::judge::Finding;
+use crate::mesh::{self, Presence};
 use crate::{DAY, holders, write_whole};
 
 /// One finding as the ledger keeps it.
@@ -238,6 +239,98 @@ pub fn late(ledger: &mut [Entry], now: i64) -> Vec<String> {
                 entry.words,
                 entry.first,
                 entry.owner.as_deref().unwrap_or("no owner")
+            )
+        })
+        .collect()
+}
+
+/// How long an owner may sit parked before its findings go to the
+/// watcher: half a day, so one the day's run finds still reaches a session
+/// that can answer it before it falls due.
+pub const PARKED_AT_MOST: i64 = DAY / 2;
+
+/// The owners `owners` names that have no session to answer them, by each
+/// address's newest presence: none at all, one whose process has gone, or
+/// one parked longer than `PARKED_AT_MOST`. The mesh counts a parked
+/// session alive, since its holder waits to start it again, but one parked
+/// all day answers nothing.
+pub fn gone(
+    owners: &BTreeMap<String, String>,
+    presences: &[Presence],
+    process_exists: impl Fn(u32) -> bool,
+    now: i64,
+) -> BTreeSet<String> {
+    owners
+        .values()
+        .filter(|address| {
+            let newest = presences
+                .iter()
+                .filter(|p| p.addresses.iter().any(|a| a == *address))
+                .max_by_key(|p| p.at.to_string());
+            let parked_since = newest
+                .filter(|p| p.state == "parked")
+                .and_then(|p| p.at.as_str()?.parse::<jiff::Timestamp>().ok())
+                .map(jiff::Timestamp::as_second);
+            !mesh::alive(newest, &process_exists)
+                || parked_since.is_some_and(|at| now - at > PARKED_AT_MOST)
+        })
+        .cloned()
+        .collect()
+}
+
+/// Brings `ledger` up to `day` as `update` does, as though the owners in
+/// `gone` weren't named: their open findings go back to nobody, with a day
+/// to answer, so the watcher is told them once, and stay with it until a
+/// flag names a session that answers. A must keeps the quest that filed it.
+pub fn update_without(
+    ledger: &mut Vec<Entry>,
+    day: &Day,
+    worse: &[Finding],
+    owners: &BTreeMap<String, String>,
+    known: &BTreeSet<String>,
+    gone: &BTreeSet<String>,
+) {
+    let there: BTreeMap<String, String> = owners
+        .iter()
+        .filter(|(_, address)| !gone.contains(*address))
+        .map(|(key, address)| (key.clone(), address.clone()))
+        .collect();
+    let known: BTreeSet<String> = known.difference(gone).cloned().collect();
+    update(ledger, day, worse, &there, &known);
+    for entry in ledger.iter_mut().filter(|e| e.open && e.kind.is_none()) {
+        if entry.owner.as_ref().is_some_and(|o| gone.contains(o)) {
+            entry.owner = None;
+            entry.due = day.to + DAY;
+            entry.told = None;
+            entry.late = false;
+        }
+    }
+}
+
+/// What the orchestrator is told of each owner in `gone`: the flags that
+/// name it, so they can be changed, and who has its findings meanwhile.
+pub fn flags_gone(
+    owners: &BTreeMap<String, String>,
+    gone: &BTreeSet<String>,
+    watcher: Option<&str>,
+) -> Vec<String> {
+    gone.iter()
+        .map(|address| {
+            let keys: Vec<&str> = owners
+                .iter()
+                .filter(|(_, a)| *a == address)
+                .map(|(key, _)| key.as_str())
+                .collect();
+            let flags = if keys.len() == 1 {
+                "that owner flag changes"
+            } else {
+                "those owner flags change"
+            };
+            format!(
+                "No live session answers as {address}, the owner of {}; {} has its findings \
+                 until {flags}",
+                keys.join(", "),
+                watcher.unwrap_or("the watcher")
             )
         })
         .collect()
@@ -574,6 +667,133 @@ pub(crate) mod tests {
         assert!(
             late(&mut ledger, 3 * DAY).is_empty(),
             "a late finding was said twice"
+        );
+    }
+
+    /// A session's presence as the mesh keeps it, last said at `at`.
+    fn presence(address: &str, state: &str, at: i64, pid: u32) -> Presence {
+        let at = jiff::Timestamp::from_second(at).expect("a time in range");
+        serde_json::from_value(serde_json::json!({
+            "addresses": [address],
+            "state": state,
+            "at": at.to_string(),
+            "owner": {"pid": pid},
+        }))
+        .expect("a presence is read from its record")
+    }
+
+    fn named() -> BTreeMap<String, String> {
+        [
+            ("checks", "DEAD01"),
+            ("crashes", "GONE01"),
+            ("crashes:chrome", "LIVE01"),
+            ("health", "RESTED"),
+            ("switch", "PARKED"),
+        ]
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .into()
+    }
+
+    #[test]
+    fn an_owner_with_no_session_or_parked_past_half_a_day_is_gone() {
+        let now = 10 * DAY;
+        let presences = [
+            presence("LIVE01", "busy", now - 60, 1),
+            presence("DEAD01", "busy", now - 60, 2),
+            // Its newest presence counts, not the first: it parked since.
+            presence("PARKED", "busy", now - DAY, 1),
+            presence("PARKED", "parked", now - PARKED_AT_MOST - 1, 3),
+            presence("RESTED", "parked", now - PARKED_AT_MOST, 3),
+        ];
+        let gone = gone(&named(), &presences, |pid| pid == 1, now);
+        assert_eq!(
+            gone.iter().map(String::as_str).collect::<Vec<_>>(),
+            ["DEAD01", "GONE01", "PARKED"],
+            "an owner that can't answer was kept, or one that can was taken"
+        );
+    }
+
+    #[test]
+    fn a_gone_owners_findings_go_to_the_watcher_until_it_answers_again() {
+        let mut ledger = Vec::new();
+        let worse = [found("crashes:tec"), found("crashes:chrome")];
+        let known = holders::tests::known();
+        let gone: BTreeSet<String> = ["GONE01".to_owned()].into();
+        let none = BTreeSet::new();
+        update_without(
+            &mut ledger,
+            &day("d1", DAY),
+            &worse,
+            &named(),
+            &known,
+            &none,
+        );
+        tell(&mut ledger, "d1", Some("WATCH1"));
+        ledger.push(Entry {
+            key: "security:s2".to_owned(),
+            kind: Some("hole".to_owned()),
+            ..ledger[0].clone()
+        });
+        let to = |ledger: &mut Vec<Entry>, date: &str| -> Vec<String> {
+            tell(ledger, date, Some("WATCH1"))
+                .into_iter()
+                .map(|(to, _)| to)
+                .collect()
+        };
+        update_without(
+            &mut ledger,
+            &day("d2", 2 * DAY),
+            &worse,
+            &named(),
+            &known,
+            &gone,
+        );
+        let owners: Vec<Option<&str>> = ledger.iter().map(|e| e.owner.as_deref()).collect();
+        assert_eq!(
+            (owners, ledger[0].due),
+            (vec![None, Some("LIVE01"), Some("GONE01")], 3 * DAY),
+            "a gone owner kept its finding, or a must left the quest that owes it"
+        );
+        assert_eq!(to(&mut ledger, "d2"), ["WATCH1"], "the watcher wasn't told");
+        update_without(
+            &mut ledger,
+            &day("d3", 3 * DAY),
+            &worse,
+            &named(),
+            &known,
+            &gone,
+        );
+        assert!(
+            to(&mut ledger, "d3").is_empty(),
+            "the watcher was told twice"
+        );
+        update_without(
+            &mut ledger,
+            &day("d4", 4 * DAY),
+            &worse,
+            &named(),
+            &known,
+            &none,
+        );
+        assert_eq!(
+            (ledger[0].owner.clone(), to(&mut ledger, "d4")),
+            (Some("GONE01".to_owned()), vec!["GONE01".to_owned()]),
+            "an owner back on the mesh didn't take its finding again"
+        );
+    }
+
+    #[test]
+    fn the_orchestrator_is_told_which_flags_name_a_gone_owner() {
+        let gone: BTreeSet<String> = ["GONE01".to_owned(), "PARKED".to_owned()].into();
+        assert_eq!(
+            flags_gone(&named(), &gone, Some("WATCH1")),
+            [
+                "No live session answers as GONE01, the owner of crashes; WATCH1 has its \
+                 findings until that owner flag changes",
+                "No live session answers as PARKED, the owner of switch; WATCH1 has its \
+                 findings until that owner flag changes",
+            ],
+            "the orchestrator wasn't told which flags to change"
         );
     }
 }

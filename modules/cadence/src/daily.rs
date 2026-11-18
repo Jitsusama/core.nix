@@ -48,13 +48,23 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
     let mesh = Mesh {
         root: state_home.join("pi/agentic-harness.pi"),
     };
-    findings::update(
+    // An owner with no session to answer leaves its findings with the
+    // watcher, and the orchestrator hears which flags to change.
+    let gone = findings::gone(
+        &told.owners,
+        &mesh.all(),
+        |pid| Path::new(&format!("/proc/{pid}")).exists(),
+        now,
+    );
+    findings::update_without(
         &mut ledger,
         &today,
         &judged.worse,
         &told.owners,
         &mesh.known(),
+        &gone,
     );
+    let mut said = findings::flags_gone(&told.owners, &gone, told.watcher.as_deref());
     // A typed run tells nobody, so it marks nobody told or late.
     let sending = told.orchestrator.is_some();
     let late = if sending {
@@ -68,7 +78,8 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
         Vec::new()
     };
     findings::keep(&kept_at, &ledger)?;
-    let note = judge::note(&today, &judged, before.len(), &late);
+    said.extend(late);
+    let note = judge::note(&today, &judged, before.len(), &said);
     let mut record = serde_json::to_value(&today)?;
     record["worse"] = serde_json::to_value(&judged.worse)?;
     record["better"] = serde_json::to_value(&judged.better)?;
