@@ -257,6 +257,9 @@ struct Shaped {
     follows: Option<String>,
     /// Whether the journal has been told of the connection's queue building now.
     told: bool,
+    /// Whether the spell told is held by a trial's ceiling alone, with
+    /// nothing the controller judged holding it.
+    ceiling: bool,
     /// Whether a call's or a screen share's traffic crosses the link.
     real_time: realtime::RealTime,
     /// What the upload's CAKE held when last read, and of the reads since
@@ -563,6 +566,7 @@ fn start(
         state: State::Resting,
         follows: None,
         told: false,
+        ceiling: false,
         real_time: realtime::RealTime::default(),
         holding: None,
         queued_reads: (0, 0),
@@ -1296,10 +1300,18 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Liv
         .collect();
     // The one-way controller holds the link the recorder follows; any
     // other goes at its whole rate, its traffic still sorted by CAKE.
-    let share = live.as_deref().map_or(1.0, live::Live::vpn_share);
-    let held = live.map(|l| match l.poll(SystemTime::now()) {
-        Some((link, rates)) => (Some(link.to_string()), rates),
-        None => (None, replay::Rates::default()),
+    let held = live.map(|l| {
+        // One moment for all three, after the poll reads what's new, so
+        // the rates, the reason and the VPN's share judge the recorder's
+        // silence alike.
+        let now = SystemTime::now();
+        let (link, rates) = match l.poll(now) {
+            Some((link, rates)) => (Some(link.to_string()), rates),
+            None => (None, replay::Rates::default()),
+        };
+        let why = l.why(now);
+        let share = l.vpn_share(now);
+        (link, rates, why, share)
     });
     for (name, (sent, received)) in links::connection_loads(&carried, &follows) {
         if let Some(s) = shaped.get_mut(&name) {
@@ -1307,17 +1319,19 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Liv
             // silent lets both go, unless a trial's ceiling holds the
             // upload, when the VPN has its whole share of it.
             s.vpn_share = match &held {
-                Some((link, rates))
+                Some((link, rates, _, share))
                     if link.as_deref() == Some(name.as_str()) && rates.up.is_some() =>
                 {
-                    share
+                    *share
                 }
                 _ => 1.0,
             };
             match &held {
                 None => step(s, t, sent, received),
-                Some((link, rates)) if link.as_deref() == Some(name.as_str()) => hold(s, *rates),
-                Some(_) => hold(s, replay::Rates::default()),
+                Some((link, rates, why, _)) if link.as_deref() == Some(name.as_str()) => {
+                    hold(s, *rates, why);
+                }
+                Some(_) => hold(s, replay::Rates::default(), &why::Judged::Nothing),
             }
         }
     }
@@ -1325,37 +1339,104 @@ fn step_links(shaped: &mut BTreeMap<String, Shaped>, live: Option<&mut live::Liv
 
 /// Holds a link to the rates the one-way controller answers, at its
 /// ceiling where it sets none, and tells the journal when a spell of limits
-/// begins and when it ends, rather than of each second's cut.
-fn hold(s: &mut Shaped, rates: replay::Rates) {
-    let held =
-        |rate: Option<u64>, floor: u64, max: u64| rate.map_or(max, |r| r.max(floor).min(max));
-    let (up_max, down_max) = (s.controller.up.bounds.max, s.controller.down.bounds.max);
-    let (up, down) = (
-        held(rates.up, FLOOR.up, up_max),
-        held(rates.down, FLOOR.down, down_max),
-    );
-    s.controller.up.rate = up;
-    s.controller.down.rate = down;
-    let limited = rates.up.is_some() || rates.down.is_some();
-    let name = &s.uplink.name;
-    if limited && !s.told {
-        eprintln!(
-            "{name}: a queue past CAKE was taken back, so the link is held to {} up and {} down",
-            mbit(up),
-            mbit(down)
-        );
-        s.told = true;
-    } else if !limited && s.told {
-        eprintln!("{name}: neither direction queues now, so the link's whole rate is kept");
-        s.told = false;
+/// begins, with the controller's reason `why`, and when it ends, rather
+/// than of each second's cut.
+fn hold(s: &mut Shaped, rates: replay::Rates, why: &why::Judged) {
+    let most = Held {
+        up: s.controller.up.bounds.max,
+        down: s.controller.down.bounds.max,
+    };
+    let spell = spell(&s.uplink.name, (s.told, s.ceiling), rates, most, why);
+    s.controller.up.rate = spell.held.up;
+    s.controller.down.rate = spell.held.down;
+    if let Some(line) = &spell.said {
+        eprintln!("{line}");
     }
-    s.state = if limited {
+    (s.told, s.ceiling) = spell.state();
+    // A spell waiting to be told holds the link as one told does.
+    s.state = if rates.up.is_some() || rates.down.is_some() {
         State::Holding
     } else {
         State::Resting
     };
     apply(s);
     go_straight(s, rates.down.is_none());
+}
+
+/// What a second's rates come to on a link: what each way is held to,
+/// whether a spell of limits is told, and whether nothing the controller
+/// judged holds it, a trial's ceiling alone, with the journal's line as
+/// one begins or ends, or as the controller's judgement stops holding it
+/// or holds it again.
+#[derive(Debug, PartialEq)]
+struct Spell {
+    held: Held,
+    told: bool,
+    ceiling: bool,
+    said: Option<String>,
+}
+
+impl Spell {
+    /// What the next second's spell is handed: whether it's told, and
+    /// whether a ceiling alone holds it.
+    fn state(&self) -> (bool, bool) {
+        (self.told, self.ceiling)
+    }
+}
+
+/// Holds each way to the rate asked, kept between the floor and `most`, or
+/// to `most` where none is asked, and says a spell beginning, with the
+/// controller's reason for the rate it held, or ending, a spell `told`
+/// already or not, and held then by a ceiling alone, `silent`, or not.
+/// `why` says what the controller's judgement holds: where nothing it
+/// judged does, a ceiling is credited only with the rate it asked.
+fn spell(
+    name: &str,
+    (told, silent): (bool, bool),
+    rates: replay::Rates,
+    most: Held,
+    why: &why::Judged,
+) -> Spell {
+    let held =
+        |rate: Option<u64>, floor: u64, max: u64| rate.map_or(max, |r| r.max(floor).min(max));
+    let held = Held {
+        up: held(rates.up, FLOOR.up, most.up),
+        down: held(rates.down, FLOOR.down, most.down),
+    };
+    let limited = rates.up.is_some() || rates.down.is_some();
+    if limited && *why == why::Judged::Waiting {
+        // The controller's rate from before a silence holds while its
+        // reason waits for a second heard since: no ceiling holds it, so
+        // the spell stays as told, or waits to be told with the reason.
+        return Spell {
+            held,
+            told,
+            ceiling: silent,
+            said: None,
+        };
+    }
+    let quiet = why.reason().is_none();
+    let said = if limited && (!told || quiet != silent) {
+        let up = rates.up.map(|_| held.up);
+        let down = rates.down.map(|_| held.down);
+        Some(if quiet && rates.up == Some(held.up) && down.is_none() {
+            why::ceiling(name, held.up)
+        } else {
+            why::holding(name, up, down, why.reason())
+        })
+    } else if !limited && told {
+        Some(format!(
+            "{name}: neither direction is held now, so the link's whole rate is kept"
+        ))
+    } else {
+        None
+    };
+    Spell {
+        held,
+        told: limited,
+        ceiling: limited && quiet,
+        said,
+    }
 }
 
 /// Lets what a link receives go straight in, past its IFB, or turns it
@@ -1612,5 +1693,218 @@ fn sweep(kept: &BTreeSet<String>) {
             let _ = sh(&words(&format!("tc qdisc del dev {name} root")));
             let _ = sh(&words(&format!("tc qdisc del dev {name} ingress")));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A wired link's most, from its speed: 50 Mb/s up and 2 Gb/s down.
+    const MOST: Held = Held {
+        up: 50_000,
+        down: 2_000_000,
+    };
+
+    fn asked(up: Option<u64>, down: Option<u64>) -> replay::Rates {
+        replay::Rates { up, down }
+    }
+
+    fn reason(up: u64) -> why::Reason {
+        why::Reason {
+            up: Some(up),
+            said: "Upload queued 30 ms.".to_owned(),
+        }
+    }
+
+    /// The controller's judgement holding the upload at `up`.
+    fn holds(up: u64) -> why::Judged {
+        why::Judged::Holds(reason(up))
+    }
+
+    const NOTHING: why::Judged = why::Judged::Nothing;
+    const WAITING: why::Judged = why::Judged::Waiting;
+
+    // The controller asked past the shaper's most, which holds the upload
+    // instead: the line names the rate held, and not the controller's
+    // reason, which speaks of the rate it asked.
+    #[test]
+    fn a_spell_held_under_what_was_asked_says_the_rate_held_without_its_reason() {
+        let spell = spell(
+            "eth0",
+            (false, false),
+            asked(Some(60_000), None),
+            MOST,
+            &holds(60_000),
+        );
+        assert_eq!(spell.held, MOST);
+        assert_eq!(
+            spell.said.as_deref(),
+            Some("eth0: held to 50.0 Mb/s up."),
+            "{spell:?}"
+        );
+        assert!(spell.told, "a clamped spell wasn't told");
+    }
+
+    #[test]
+    fn a_spell_is_said_once_as_it_begins_and_once_as_it_ends() {
+        let holding = holds(9_000);
+        let limited = asked(Some(9_000), None);
+        let begun = spell("eth0", (false, false), limited, MOST, &holding);
+        assert_eq!(
+            begun.said.as_deref(),
+            Some("eth0: held to 9.0 Mb/s up. Upload queued 30 ms."),
+            "{begun:?}"
+        );
+        assert!(begun.told, "a spell said as it began wasn't told");
+        let going = spell("eth0", (true, false), limited, MOST, &holding);
+        assert_eq!(going.said, None, "a spell under way was said again");
+        assert!(going.told, "a spell under way wasn't kept told");
+        let none = asked(None, None);
+        let ended = spell("eth0", (true, false), none, MOST, &holding);
+        assert_eq!(ended.held, MOST, "no limit holds the whole link");
+        assert!(!ended.told, "an ended spell was still told");
+        assert_eq!(
+            ended.said.as_deref(),
+            Some("eth0: neither direction is held now, so the link's whole rate is kept")
+        );
+        let resting = spell("eth0", (false, false), none, MOST, &holding);
+        assert_eq!(resting.said, None, "a link at rest was said to end a spell");
+    }
+
+    // A spell the controller began, its recorder then silent: a trial's
+    // ceiling holds what the controller's reason no longer speaks of, so
+    // the journal says so, and says the controller's reason again once the
+    // recorder is heard.
+    #[test]
+    fn a_spell_says_when_a_ceiling_holds_it_alone_and_when_it_no_longer_does() {
+        let ceiling = asked(Some(8_500), None);
+        let quiet = spell("eth0", (true, false), ceiling, MOST, &NOTHING);
+        assert_eq!(quiet.said, Some(why::ceiling("eth0", 8_500)));
+        assert!(quiet.told && quiet.ceiling, "{quiet:?}");
+        let still = spell("eth0", (true, true), ceiling, MOST, &NOTHING);
+        assert_eq!(still.said, None, "a ceiling still holding was said again");
+        assert!(still.ceiling, "a ceiling still holding alone was let go");
+        let limited = asked(Some(9_000), None);
+        let heard = spell("eth0", (true, true), limited, MOST, &holds(9_000));
+        assert_eq!(
+            heard.said.as_deref(),
+            Some("eth0: held to 9.0 Mb/s up. Upload queued 30 ms."),
+            "{heard:?}"
+        );
+        assert!(heard.told && !heard.ceiling, "{heard:?}");
+    }
+
+    // The controller's rate from before a silence holds the link while its
+    // reason waits for a second heard since: no trial need be on, so no
+    // ceiling is blamed, and the spell is told once the reason comes.
+    #[test]
+    fn a_rate_waiting_for_its_reason_says_nothing_new() {
+        let stale = asked(Some(11_500), None);
+        for state in [(false, false), (true, false), (true, true)] {
+            let waiting = spell("eth0", state, stale, MOST, &WAITING);
+            assert_eq!(waiting.said, None, "from {state:?}: {waiting:?}");
+            assert_eq!(waiting.state(), state, "from {state:?}: {waiting:?}");
+            assert_eq!(waiting.held.up, 11_500, "the rate from before let go");
+        }
+        let heard = spell("eth0", (false, false), stale, MOST, &holds(11_500));
+        assert_eq!(
+            heard.said.as_deref(),
+            Some("eth0: held to 11.5 Mb/s up. Upload queued 30 ms.")
+        );
+    }
+
+    #[test]
+    fn a_spell_begun_under_a_silent_recorder_says_the_ceiling_holds_it() {
+        let quiet = spell(
+            "eth0",
+            (false, false),
+            asked(Some(8_500), None),
+            MOST,
+            &NOTHING,
+        );
+        assert_eq!(quiet.said, Some(why::ceiling("eth0", 8_500)));
+    }
+
+    // A ceiling past what the link can carry asks for a rate the shaper's
+    // own most holds instead, which the ceiling isn't credited with.
+    #[test]
+    fn a_ceiling_held_under_what_it_asked_isn_t_credited() {
+        let quiet = spell(
+            "eth0",
+            (false, false),
+            asked(Some(60_000), None),
+            MOST,
+            &NOTHING,
+        );
+        assert_eq!(quiet.said.as_deref(), Some("eth0: held to 50.0 Mb/s up."));
+    }
+
+    #[test]
+    fn a_spell_ended_from_a_ceiling_alone_says_so() {
+        let ended = spell("eth0", (true, true), asked(None, None), MOST, &NOTHING);
+        assert_eq!(
+            ended.said.as_deref(),
+            Some("eth0: neither direction is held now, so the link's whole rate is kept")
+        );
+        assert_eq!(ended.state(), (false, false), "{ended:?}");
+    }
+
+    // The journal's lines over a run of seconds, each second's state
+    // carried into the next as `hold` carries it, so a state dropped
+    // between seconds says a line each second.
+    #[test]
+    fn a_spell_s_lines_over_its_seconds_are_said_once_each() {
+        let holding = holds(9_000);
+        let limited = asked(Some(9_000), None);
+        let ceiling = asked(Some(8_500), None);
+        let seconds = [
+            (limited, &holding),
+            (limited, &WAITING),
+            (limited, &holding),
+            (ceiling, &NOTHING),
+            (ceiling, &NOTHING),
+            (ceiling, &WAITING),
+            (ceiling, &NOTHING),
+            (limited, &holding),
+            (limited, &holding),
+            (asked(None, None), &holding),
+            (asked(None, None), &holding),
+        ];
+        let mut state = (false, false);
+        let said: Vec<Option<String>> = seconds
+            .iter()
+            .map(|&(rates, why)| {
+                let spell = spell("eth0", state, rates, MOST, why);
+                state = spell.state();
+                spell.said
+            })
+            .collect();
+        let held = Some("eth0: held to 9.0 Mb/s up. Upload queued 30 ms.".to_owned());
+        let ended = "eth0: neither direction is held now, so the link's whole rate is kept";
+        let ended = Some(ended.to_owned());
+        assert_eq!(
+            said,
+            vec![
+                held.clone(),
+                None,
+                None,
+                Some(why::ceiling("eth0", 8_500)),
+                None,
+                None,
+                None,
+                held,
+                None,
+                ended,
+                None,
+            ]
+        );
+    }
+
+    #[test]
+    fn a_rate_asked_under_the_floor_is_held_at_it() {
+        let floor = asked(Some(10), Some(10));
+        let spell = spell("eth0", (true, false), floor, MOST, &holds(10));
+        assert_eq!(spell.held, FLOOR);
     }
 }

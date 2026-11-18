@@ -702,8 +702,9 @@ body {
   opacity: 0.22;
 }
 
-/* A cross-hypha the choice doesn't touch, drawn faint beneath the cells. */
-.m-cross.faint {
+/* A cross-hypha the choice doesn't touch, drawn faint beneath the cells;
+   with something open, it steps back with the rest. */
+.m-cross.faint:not(.far) {
   opacity: 0.4;
 }
 

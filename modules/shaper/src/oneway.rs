@@ -1409,6 +1409,12 @@ impl Controller {
         self.vpn_base
     }
 
+    /// Whether the last second let the upload go, to a trial's ceiling or
+    /// none, since no reflector answered or the guard has given up.
+    pub fn lets_go(&self) -> bool {
+        matches!(self.why, Why::Unanswered | Why::GaveUp)
+    }
+
     /// Whether the guard has given up, for `GIVEN_UP_S`.
     pub fn given_up(&self) -> bool {
         self.returns >= GUARD_RETURNS
