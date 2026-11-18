@@ -240,7 +240,7 @@ def test_the_launcher_goes_to_a_kitty_tab_inside_its_window(desktop: Desktop) ->
     focused the window. Beside Tabs are the repositories fd finds under ~/src in zoxide's
     order, and the machines ssh's files name, by zsh's history: each read from the account's
     own files. No row of them is run, since each would open a window. Each case of the rows'
-    words and order is tests/kitty-tabs.qml's.
+    words and order is modules/kitty/tests/kitty-tabs.qml's.
     """
     machine = desktop.machine
     kitty_stand_ins(desktop)

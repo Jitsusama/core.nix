@@ -54,7 +54,7 @@ onLinux {
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "kitty-lists-its-tabs" { } ''
-      cp ${../../tests/kitty-tabs.qml} kitty-tabs.qml
+      cp ${./tests/kitty-tabs.qml} kitty-tabs.qml
       cp ${./Kitty.js} Kitty.js
       cp ${./KittyOpens.js} KittyOpens.js
       cp ${../quickshell/launcher/Ago.js} Ago.js

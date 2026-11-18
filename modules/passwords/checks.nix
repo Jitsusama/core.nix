@@ -214,7 +214,7 @@ onLinux {
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-passwords-show-every-figure-but-the-secret" { } ''
-      cp ${../../tests/passwords.qml} passwords.qml
+      cp ${./tests/passwords.qml} passwords.qml
       cp ${./Passwords.js} Passwords.js
       cp ${./Managers.js} Managers.js
       cp ${./Checked.js} Checked.js

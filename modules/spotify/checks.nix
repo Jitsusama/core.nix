@@ -88,7 +88,7 @@ onLinux {
       cp ${./Spotify.js} launcher/Spotify.js
       cp ${playing} launcher/Playing.qml
       cp ${niri} Niri.qml
-      cp ${../../tests/spotify-program.qml} shell.qml
+      cp ${./tests/spotify-program.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export STAND_IN=${standIn}
       mkdir -m 700 $XDG_RUNTIME_DIR

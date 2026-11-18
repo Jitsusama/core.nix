@@ -136,7 +136,7 @@
   "tests/vm/keys/signing-vm-test.py" = 1;
   "modules/quickshell/tests/sound.qml" = 2;
   "tests/vm/sound/speakers-vm-test.py" = 1;
-  "tests/spotify-program.qml" = 2;
+  "modules/spotify/tests/spotify-program.qml" = 2;
   "modules/quickshell/tests/status-line.qml" = 1;
   "modules/swayimg/tests/swayimg-galleries.qml" = 1;
   "modules/quickshell/tests/talks.qml" = 3;

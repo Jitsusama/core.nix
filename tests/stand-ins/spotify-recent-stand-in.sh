@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Stands in for spotify-recent (modules/spotify/spotify-recent) in
-# tests/spotify-program.qml: notes each run in $HOME/asked, a line each,
-# the way Spotify stands first, and answers as spotify-recent does for it.
+# modules/spotify/tests/spotify-program.qml: notes each run in
+# $HOME/asked, a line each, the way Spotify stands first, and answers as
+# spotify-recent does for it.
 #
 #   spotify-recent-stand-in.sh well|signed-out|offline|nowhere [ASKED...]
 #
