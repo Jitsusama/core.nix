@@ -234,7 +234,6 @@ fn follow_args(mut rest: &[&str]) -> Option<(PathBuf, u64)> {
 /// it for good (switch 1036 on 18 November).
 fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
     let started = std::env::current_exe().and_then(fs::canonicalize).ok();
-    let another = |program: &Path| fs::canonicalize(program).ok() != started;
     let mut follower = Follower::default();
     let mut unreadable = None;
     let mut unread = None;
@@ -247,8 +246,8 @@ fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
                 config
             }
             Err(e) => {
-                if let Some(program) = Config::program_in(file)
-                    && another(&program)
+                if let Some(program) =
+                    follow::newer(Config::program_in(file).as_deref(), started.as_deref())
                 {
                     return started_in_place(&program);
                 }
@@ -262,10 +261,8 @@ fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
                 continue;
             }
         };
-        if let Some(program) = &config.program
-            && another(program)
-        {
-            return started_in_place(program);
+        if let Some(program) = follow::newer(config.program.as_deref(), started.as_deref()) {
+            return started_in_place(&program);
         }
         match follow::heads(&config, seen.as_ref()) {
             Ok(heads) => {

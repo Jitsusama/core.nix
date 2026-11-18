@@ -449,7 +449,7 @@ mod tests {
             written(r#"{"program": "/run/current-system/sw/bin/update-to-main", "newer": 1}"#);
         assert!(
             Config::read(&path).is_err(),
-            "read refuses a field it doesn't know"
+            "read refuses this config, as an older update-to-main refuses a newer's"
         );
         assert_eq!(
             Config::program_in(&path),
