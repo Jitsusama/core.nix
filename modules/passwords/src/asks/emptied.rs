@@ -110,7 +110,8 @@ pub fn empties(text: &str, when: &[String]) -> bool {
 /// `auths`, an address in `proxies` carrying a name and password, and
 /// any other named setting by being there at all. What `auths` says in a
 /// shape Docker can't read counts by being there, and a registry's name
-/// carrying a login counts as a proxy's does, since cat reads both.
+/// or the address older logins wrote beside it carrying a login counts as
+/// a proxy's does, since cat reads them all.
 fn holds(name: &str, value: &Said) -> bool {
     match folded(name).as_str() {
         "auths" => {
@@ -127,6 +128,8 @@ fn holds(name: &str, value: &Said) -> bool {
                 LOGIN_FIELDS
                     .iter()
                     .any(|field_name| spelled(login, field_name).any(|said| !is_empty(said)))
+                    || spelled(login, "serveraddress")
+                        .any(|said| matches!(said, Said::Text(address) if carries_login(address)))
             })
         }
         "proxies" => addresses(value).any(carries_login),
