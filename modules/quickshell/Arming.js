@@ -10,7 +10,19 @@
 // keysTaken), which counts every key, Return too, before the launcher
 // hears it, so a Return counts itself (`counted` 1) and a click doesn't
 // (0).
+//
+// A row may also hold Return still (holdsStill), as a secret ask hidden
+// while Joel shares his screen, which neither arms nor acts.
 .pragma library
+
+// Whether Return on the row keeps the launcher open and does nothing, so
+// a second Return meant for a yes never reaches the window behind. Such a
+// row stays and has no run, so it has no act for the right arrow to step
+// into, and none that changes how things stand; one that opens a place
+// opens it.
+function holdsStill(row) {
+    return !!row && row.stays === true && typeof row.run !== "function" && !row.opens;
+}
 
 // Nothing armed.
 function rest() {

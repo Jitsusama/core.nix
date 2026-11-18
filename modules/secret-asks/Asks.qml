@@ -304,7 +304,7 @@ Provider {
 
     // What a hidden ask's row keeps of the one the daemon serves.
     readonly property var hiddenKeeps: ["key", "thing", "place", "kind", "state", "glyph",
-        "hue", "attention", "order"]
+        "hue", "attention", "order", "gone", "sure", "unfinished"]
 
     // An ask's row, from the one the daemon serves, with what For You
     // reads of it: whether it waits on Joel, and since when.
@@ -340,16 +340,13 @@ Provider {
             forYou: { kind: "do", source: "asks" }
         }, !hiding || served.state !== "waiting" ? {} : {
             // Hidden, a waiting ask's Return keeps the launcher open and
-            // does nothing, as the launcher closes on a row with no run,
-            // and his second Return, meant for a yes, would then reach the
-            // window behind.
+            // does nothing (Catalogue.holdsStill), since the launcher
+            // closes on a row with no run, and his second Return, meant
+            // for a yes, would then reach the window behind. It has no run,
+            // so nothing takes it for an act that changes things.
             stays: true,
-            run: provider.holdsHidden
+            changes: false
         }));
-    }
-
-    // A hidden waiting ask's Return, which answers nothing.
-    function holdsHidden() {
     }
 
     // Each waiting ask as For You weighs a thing to do: it blocks the

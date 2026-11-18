@@ -7877,6 +7877,11 @@ Scope {
         // Its thing has gone, so there's nothing left to do it to.
         if (choice.gone)
             return;
+        // One held still, as a secret ask hidden while Joel shares, keeps
+        // the launcher open and does nothing, so a second Return meant for
+        // a yes never reaches the window behind.
+        if (Arming.holdsStill(choice))
+            return;
         traces.began("act", { key: choice.key ?? "", depth: held.length });
         // A command puts its start in the field, to be finished there.
         if (choice.start !== undefined) {
