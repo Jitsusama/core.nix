@@ -4968,18 +4968,17 @@ mod tests {
         let bin = folder.path().join("bin");
         fs::create_dir_all(&bin).unwrap();
         let sysctl = bin.join("sysctl");
-        let path = format!(
-            "{}:{}",
-            bin.display(),
-            std::env::var("PATH").unwrap_or_default()
-        );
+        // The fake goes first on PATH inside the command, since zsh on a
+        // Mac reads /etc/zshenv first, which sets PATH afresh: handed in,
+        // the Mac's own sysctl answered, and on 18 November nix-offload
+        // didn't build on a Mac.
+        let reading = format!("PATH='{}':\"$PATH\"; {}", bin.display(), load_read());
         for shell in ["dash", "zsh"] {
             let read = |says: &str| {
                 fs::write(&sysctl, format!("#!/bin/sh\n{says}\n")).unwrap();
                 fs::set_permissions(&sysctl, fs::Permissions::from_mode(0o755)).unwrap();
                 let said = Command::new(shell)
-                    .args(["-c", &load_read()])
-                    .env("PATH", &path)
+                    .args(["-c", &reading])
                     .env("NIX_OFFLOAD_TURNS", folder.path().join("none"))
                     .output()
                     .unwrap();
