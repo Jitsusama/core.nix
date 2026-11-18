@@ -8562,7 +8562,7 @@ Scope {
             factsHeld: drawerCard.facts.length, widthsAsked: drawerCard.widths.asked,
             widthsMade: drawerCard.widths.made,
             ahead: list.cacheBuffer, listed: list.count, firstAt, stepped: list.steppedLast,
-            kept: list.keptLast, laying: list.laidBy !== null,
+            kept: list.keptLast, tallying: list.laidBy !== null,
             line: wordsIn(commandLoader.item, card),
             lines: wordsIn(commandRows, card) });
     }

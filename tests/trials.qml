@@ -310,7 +310,7 @@ QtObject {
         expect("a showing says whose rows it laid right after the rows it drew",
             Trials.keptPart(dearLaying, ", 5 weighing their keys")
                 === " (20 rows new, 30 laying them out: 2 rows built, 8 taken back,"
-                + " by kind program 3 rows in 10 and on 7 rows in 4, 5 weighing their keys;"
+                + ' by kind "program" 3 rows in 10 and "on" 7 rows in 4, 5 weighing their keys;'
                 + " 6 of the laying splitting them at row 10, back to row 17)",
             Trials.keptPart(dearLaying, ", 5 weighing their keys"));
         expect("a keeping that took time is shown",

@@ -2002,7 +2002,7 @@ def tallied_rows(laid: Json) -> tuple[int, int, int] | None:
     they take no more than the laying did; and none is tallied once it's done. None where the
     last keeping laid nothing.
     """
-    assert not laid["laying"], "a laying still listens for rows once it's done"
+    assert not laid["tallying"], "a laying still listens for rows once it's done"
     last = laid["kept"] or {}
     if "laidBy" not in last:
         return None
@@ -2055,8 +2055,10 @@ def test_a_letter_keeping_some_rows_builds_none_but_takes_those_let_go(shell: Sh
     assert any(back > 0 for _, _, back in laid_rows), f"no 'm' took a row back: {tallied}"
     drew = [(rows, made + back) for rows, made, back in laid_rows]
     assert all(rows == drawn for rows, drawn in drew), f"rows tallied, drawn: {drew}"
-    # Home's programs are tallied as what they are, not as the sort every row has.
-    assert "program" in kinds, f"no 'm' tallied a program, only {sorted(kinds)}"
+    # A row is tallied as what its provider says it is, such as a shortcut, where it says one,
+    # not only as the sort every row has.
+    own = kinds - {"act", "holds", "figure"}
+    assert own, f"no 'm' tallied a row as what it is, only {sorted(kinds)}"
 
 
 def test_a_step_into_a_place_builds_no_row_but_takes_those_let_go(shell: Shell) -> None:
@@ -2207,8 +2209,9 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
         # Fails loudly if the split is ever passed by, as the bound could hold without it.
         assert (laid["stepped"] or {}).get("from", 0) > 0, f"- didn't split: {laid['stepped']}"
         # Its rows are tallied too, those the split drew among them, in no more than it took,
-        # where its keeping is still the last; one changing no row may follow it.
-        tallied.append(tallied_rows(laid))
+        # where its keeping is still the last and split them; one changing no row may follow.
+        splitting = ((laid["kept"] or {}).get("split") or {}).get("from", 0) > 0
+        tallied.append(tallied_rows(laid) if splitting else None)
         was, now = band_of(standing, far), band_of(laid, far)
         assert was is not None, f"{far} wasn't drawn before stepping in"
         assert now == was, f"- back put {far} at {now}, not at {was} where it stood"
@@ -2222,7 +2225,7 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
     reach = len(standing["rows"])
     assert drawn[1] <= reach, f"rows drawn by each - back to {far}: {drawn}, {reach} in reach"
     laid_rows = [each for each in tallied if each is not None]
-    assert laid_rows, f"no - back tallied a row: {tallied}"
+    assert laid_rows, f"no - back's split tallied a row: {tallied}"
     drew = [(rows, made + back) for rows, made, back in laid_rows]
     assert all(rows == count for rows, count in drew), f"rows each - back tallied, drew: {drew}"
 
