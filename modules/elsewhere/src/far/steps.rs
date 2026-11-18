@@ -7,7 +7,9 @@
 //! a step failing would read as one that found nothing. The files lie
 //! beside the copy, not in the handover, since the handover crosses home.
 
-use super::{BACK, BROUGHT, END, LARGEST_FILE, LEFT, MARK, MOST_BYTES, MOST_FILES, TREE, quoted};
+use super::{
+    BACK, BROUGHT, CUT, END, LARGEST_FILE, LEFT, MARK, MOST_BYTES, MOST_FILES, TREE, quoted,
+};
 use crate::settings::Kind;
 
 /// The far line's step making the job's tree of its files, `copied`: 0
@@ -57,7 +59,8 @@ pub(super) fn copying() -> String {
 /// found or sorted is listed as lost, so the near side says so and the
 /// run doesn't pass as whole. The list gets its end only once every line
 /// of it was written, so a list cut short, as by a disk that filled, never
-/// reads as whole: the near side waits it out and says it didn't come.
+/// reads as whole: it ends cut where that can be written, and otherwise
+/// the near side waits it out and says it didn't come.
 pub(super) fn bringing(kind: &Kind) -> String {
     if kind.brings_back.is_empty() {
         return format!("echo {END} > \"$job/{BROUGHT}\"\n");
@@ -126,7 +129,7 @@ LC_ALL=C sort -u "$names" > "$names.in" ||
     files=$((files + 1)) bytes=$(($bytes + $copied))
     printf '%s\t%s\n' $(($copied)) "$file" || exit 1
     n=$((n + 1))
-  done < "$names.in"
+  done < "$names.in" || exit 1
   # Last, so no file's number moves.
   while IFS= read -r lost; do printf '%s\n' "$lost" || exit 1; done < "$names.lost"
 }} > "$job/{BROUGHT}"
@@ -134,7 +137,10 @@ else
   printf "elsewhere: couldn't list what to bring back beside %s\n" "$work" >&2
   lose > "$job/{BROUGHT}"
 fi
-) && echo {END} >> "$job/{BROUGHT}"
+) && echo {END} >> "$job/{BROUGHT}" || {{
+  printf "elsewhere: couldn't write down all it brings back\n" >&2
+  echo {CUT} >> "$job/{BROUGHT}"
+}}
 # Only once the end is written or not, as removing these frees room.
 rm -f "$names" "$names".*
 "#

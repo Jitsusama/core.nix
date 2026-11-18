@@ -39,6 +39,10 @@ pub const HANDOVER: &str = "handover/elsewhere";
 const LEFT: &str = "elsewhere-files";
 const BROUGHT: &str = "elsewhere-back";
 const END: &str = "end";
+/// The last line of a list of what's brought back that the far side knows
+/// it couldn't write whole, in place of [`END`], so the near side says so
+/// at once rather than waiting out what will never come.
+const CUT: &str = "cut";
 
 /// The folders the job's files lie in, under their paths as crossed, and
 /// what it brings back lies in, each named by its line in the list.
@@ -469,6 +473,11 @@ pub fn bring_back(
     let (mut waited, mut most, mut seen, mut said) = (0, 0, None, false);
     loop {
         let text = readable(&fs::read(job.join(BROUGHT)).unwrap_or_default());
+        if lines(&text).last() == Some(CUT) {
+            return Err(Missed::Lost(
+                "the far side couldn't write down all it would bring back".to_owned(),
+            ));
+        }
         if let Some(files) = listed(&text, brings_back) {
             if let Some(why) = too_many(&files) {
                 return Err(Missed::Refused(why));
