@@ -3911,6 +3911,34 @@ fn a_build_for_a_mac_busy_for_five_minutes_waits_though_its_last_minute_was_quie
 }
 
 #[test]
+fn a_build_for_a_mac_already_building_another_waits_though_its_load_has_room() {
+    // At 04:50 on 18 November the net's run for a Mac went at a five-minute
+    // load of 35 on 12 processors, under its room, beside a session's
+    // darwin build, and the two took the Mac to 60.
+    let changed = Changed::new();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    changed.mac_at(answering.local_addr().unwrap());
+    changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("load-mac"), "{ 20.00 35.00 30.00 }\n12\n1\n").unwrap();
+
+    let (ran, _) = changed.run(&FOR_A_MAC);
+    assert_eq!(ran.status.code(), Some(69), "{ran:?}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains(
+            "mac has no room, building 1 run sent to it already, at load 20.0 over a minute \
+             and 35.0 over five on 12 processors, so a run for its system waits"
+        ),
+        "it never said the build it waited on: {ran:?}"
+    );
+    let sent = fs::read_to_string(changed.bin.join("ssh-sent")).unwrap_or_default();
+    assert!(
+        !sent.contains("aarch64-darwin"),
+        "a run for a Mac went beside another's build: {sent}"
+    );
+}
+
+#[test]
 fn a_build_for_a_mac_with_room_says_the_load_it_went_at() {
     // A gate that let a run through said nothing of the load it read, so
     // on 17 November why two runs went to a busy Mac could only be guessed.
