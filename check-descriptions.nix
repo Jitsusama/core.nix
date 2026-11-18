@@ -2161,8 +2161,9 @@
   '';
   nix-offload-lines-reach-root-alone = ''
     with nix-offload's lines set, root's Nix reads its builders only from the folder their own
-    account writes, the service runs as it with its settings, and the lender's account needn't
-    be trusted; unset, root reads the lender's own and its account must be
+    account writes, the service runs as it with its settings, which carry each standing
+    builder's systems and most builds at once, and the lender's account needn't be trusted;
+    unset, root reads the lender's own and its account must be
   '';
   nix-offload-passes-clippy = ''
     clippy finds nothing in nix-offload or its tests

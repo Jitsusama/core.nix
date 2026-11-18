@@ -183,7 +183,7 @@ in
                   description = "Its host key as its line carries it, in base64.";
                 };
                 options.systems = lib.mkOption {
-                  type = lib.types.listOf lib.types.str;
+                  type = lib.types.nonEmptyListOf lib.types.str;
                   default = [ pkgs.stdenv.hostPlatform.system ];
                   description = ''
                     The systems it builds for; root proves it with the first, and passes no

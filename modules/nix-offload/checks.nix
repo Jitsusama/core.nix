@@ -63,6 +63,18 @@ onLinux {
               folder = "/run/nix-offload";
             }
           ];
+          standing = [
+            {
+              uri = "ssh-ng://a-standing-builder";
+              key = "/etc/nix/offload_ed25519";
+              hostKey = "SG9zdA==";
+              systems = [
+                "x86_64-linux"
+                "aarch64-linux"
+              ];
+              maxJobs = 4;
+            }
+          ];
         };
       };
       bare = machine { };
@@ -78,6 +90,7 @@ onLinux {
       (
         "with lines set, root's Nix reads builders the lender's account writes, "
         + "or the service doesn't run as its own account with its settings, "
+        + "or a standing builder's systems and most builds at once don't reach the copier, "
         + "or the folder isn't that account's alone, or the lender's account must still be trusted; "
         + "or, unset, an untrusted lender's account is let through."
       )
@@ -91,6 +104,19 @@ onLinux {
               uri = "ssh-ng://nix-offload?compress=true";
               instance = "/run/nix-offload/instance";
               token = "/run/nix-offload-tokens/nix-offload";
+            }
+          ]
+        &&
+          read.standing == [
+            {
+              uri = "ssh-ng://a-standing-builder";
+              key = "/etc/nix/offload_ed25519";
+              hostKey = "SG9zdA==";
+              systems = [
+                "x86_64-linux"
+                "aarch64-linux"
+              ];
+              maxJobs = 4;
             }
           ]
         && read.hookKey == "/etc/nix/offload_ed25519.pub"
