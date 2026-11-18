@@ -8,10 +8,12 @@
 //! shadow, is only written down. The reader let go live is in live.rs,
 //! with a keyring that hangs in keyring.rs, telling Joel in For You when
 //! Slack can't be heard in deaf.rs, and GitHub's reader, against its own
-//! stand-in, in github.rs.
+//! stand-in, in github.rs, and the guard each case holds its reader by
+//! in guard.rs.
 
 mod deaf;
 mod github;
+mod guard;
 mod keyring;
 mod live;
 
@@ -448,31 +450,6 @@ fn until_decided(home: &Path, count: usize) {
         // sees each round without spinning.
         thread::sleep(Duration::from_millis(50));
     }
-}
-
-#[test]
-fn a_case_failing_part_way_leaves_no_reader_running() {
-    let (origin, _) = stand_in();
-    let home = home();
-    let running = reader(&home, &origin);
-    let pid = running.id();
-    // Its state follows the parenthesised name; Z is one gone but unreaped.
-    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
-    let state = stat.rsplit_once(')').map(|(_, rest)| rest.trim_start());
-    assert!(
-        state.is_some_and(|state| !state.starts_with('Z')),
-        "the reader runs before the case fails, not {stat:?}"
-    );
-    let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-        let _held = running;
-        panic!("this case fails on purpose, to see its reader stopped");
-    }));
-    assert!(failed.is_err(), "the case failed");
-    assert!(
-        !Path::new(&format!("/proc/{pid}")).exists(),
-        "the failed case's reader still runs"
-    );
-    std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
 #[test]
