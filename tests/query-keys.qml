@@ -1303,12 +1303,13 @@ QtObject {
             holds(`an identifier laid: ${what}`, Identifier.laidWell(said, lines), want);
         // A cut is kept for the next drawer to ask (RTOIMQ, 2026-11-18),
         // and what one caller does to its answer reaches no other's.
-        for (const [what, cut, want] of [
-            ["at its marks", () => Identifier.cutAfter("mode=pseudo-gui", "="),
-                ["mode=", "pseudo-gui"]],
-            ["at its figures", () => Identifier.cutAtFigures("192.168.1.10"),
-                ["192.", "168.", "1.", "10"]]
+        for (const [what, key, cut, want] of [
+            ["at its marks", Identifier.cutKey("=", "mode=pseudo-gui"),
+                () => Identifier.cutAfter("mode=pseudo-gui", "="), ["mode=", "pseudo-gui"]],
+            ["at its figures", Identifier.cutKey(Identifier.FIGURES, "192.168.1.10"),
+                () => Identifier.cutAtFigures("192.168.1.10"), ["192.", "168.", "1.", "10"]]
         ]) {
+            holds(`a cut ${what} is made first`, Identifier.cutsHeld().includes(key), false);
             for (const ask of ["made", "kept"]) {
                 const got = cut();
                 got[0] = "changed";
@@ -1317,7 +1318,7 @@ QtObject {
             }
         }
         // The same words cut at their marks and at their figures stay apart.
-        holds("a cut at a dot keeps its figures whole",
+        holds("a cut at its marks and one at its figures stay apart",
             [Identifier.cutAtFigures("192.168.1.10"), Identifier.cutAfter("192.168.1.10", ".")],
             [["192.", "168.", "1.", "10"], ["192.168.1.10"]]);
         // A cut asked again is the one kept, moved to the newest, and

@@ -86,17 +86,20 @@ function cutWhere(words, breaksAfter) {
 }
 
 // The cuts made lately, by how they were cut and the words cut, the one
-// asked longest ago first. A drawer's facts are made again each time it's given, so its
-// store path, command and ids were cut letter by letter on every program
-// drawer shown: a quarter of the drawer's laying in Qt's profiler, and
-// keeping them took 23 to 31% off Chrome's, Slack's and kitty's drawers
-// (RTOIMQ, 2026-11-18). A cut depends on its words alone, never on a
-// width, so one kept is the one made again.
+// asked longest ago first. A drawer's facts are made again each time
+// it's given, so its store path, command and ids were cut letter by
+// letter on every program drawer shown: a quarter of the drawer's laying
+// in Qt's profiler, and keeping them took a fifth to a quarter off
+// Chrome's, Slack's and kitty's drawers (RTOIMQ, 2026-11-18). A cut
+// depends on its words alone, never on a width, so one kept is the one
+// made again.
 const cuts = new Map();
 // At most this many are kept, the one asked longest ago going first, so
-// what every drawer asks stays: a drawer cuts tens, so this holds a walk
-// down Programs' many.
-const CUTS_KEPT = 512;
+// what every drawer asks stays. A program's drawer makes 3 to 10 cuts
+// its neighbours don't, so this holds a dozen or more drawers' walk.
+// Qt's Map scans its keys on every ask, so more would cost each ask more
+// than it keeps: filled, 512 took 13 to 21% off where 128 took 18 to 25%.
+const CUTS_KEPT = 128;
 // How cutAtFigures' cuts are kept: a letter no marks hold, so they stay
 // apart from every cutAfter's.
 const FIGURES = "\u0001figures";
