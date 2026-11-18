@@ -124,16 +124,14 @@ function drawOpen(): void {
     write(opened, '<p class="quiet">Step onto a repository to open it here.</p>');
     return;
   }
-  if (inner !== null && !open.trees.some((each) => each.path === inner)) {
-    inner = null;
-  }
   const at = { now: Date.now(), home: mycelium.home, homes: mycelium.homes };
   write(opened, drawer(open, grove, at, unfolded.get(open.key) ?? new Set()));
-  markInner(false);
+  // A tree gone, or folded away as its season turned, is no longer one to step from.
+  inner = markInner(false) ? inner : null;
 }
 
 /** Marks the tree the cursor is on inside the open repository. */
-const markInner = (focus: boolean): void => markTree(opened, inner, focus);
+const markInner = (focus: boolean): boolean => markTree(opened, inner, focus);
 
 function draw(): void {
   grove = groveOf(held, mycelium.cells, Date.now());

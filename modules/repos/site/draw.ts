@@ -318,7 +318,9 @@ function rows(repositories: readonly Repository[], now: number, query: string): 
 function cellName(cell: Cell, homes: Homes): string {
   const home = homes(cell.name);
   const name = `<code class="cell-name">${escaped(cell.name)}</code>`;
-  return home === undefined ? name : `<a href="../${escaped(home)}">${name}</a>`;
+  // Its key names the link apart from another cell's to one home, so a redraw keeps focus on it.
+  const key = `data-key="cell:${escaped(cell.name)}"`;
+  return home === undefined ? name : `<a href="../${escaped(home)}" ${key}>${name}</a>`;
 }
 
 /** The cells at work in a folder, as a line under it. */

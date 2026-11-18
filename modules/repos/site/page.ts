@@ -135,19 +135,23 @@ function keepIn(opened: HTMLElement, inner: string | null): void {
     markTree(opened, inner, true);
   }
   if (!opened.contains(document.activeElement)) {
-    opened.focus({ preventScroll: true });
+    // The drawer around the body is what takes focus, as the body itself can't.
+    (opened.closest<HTMLElement>(".drawer") ?? opened).focus({ preventScroll: true });
   }
 }
 
-/** Marks the tree at `inner` inside `opened`, focusing it when asked. */
-function markTree(opened: HTMLElement, inner: string | null, focus: boolean): void {
+/** Marks the tree at `inner` inside `opened`, focusing it when asked, and says if it's drawn. */
+function markTree(opened: HTMLElement, inner: string | null, focus: boolean): boolean {
+  let drawn = false;
   for (const each of opened.querySelectorAll<HTMLElement>(".tree")) {
     const on = each.dataset["path"] === inner;
     each.setAttribute("aria-current", String(on));
+    drawn ||= on;
     if (on && focus) {
       each.focus();
     }
   }
+  return drawn;
 }
 
 /**
