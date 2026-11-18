@@ -525,3 +525,52 @@ fn serve(args: Args) -> Result<(), Failure> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod sprouts {
+    use std::io::{BufRead, BufReader, ErrorKind, Write};
+    use std::os::unix::net::{UnixListener, UnixStream};
+
+    use super::*;
+
+    /// The daemon's own socket, served as `serve` serves it, refuses a
+    /// sprout from a process that isn't the shell's, this test's, and asks
+    /// the node nothing.
+    #[test]
+    fn the_daemons_socket_takes_no_sprout_from_anyone_but_the_shell() {
+        let folder = std::env::temp_dir().join(format!("agents-sprouts-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder for the sockets");
+        // A node that would take any ask, so one that reached it shows.
+        let at_node = folder.join("node.sock");
+        let node = UnixListener::bind(&at_node).expect("a node's socket");
+        node.set_nonblocking(true).expect("the node never waits");
+        let shared = Shared::new(DOMAIN, Box::new(|_| None));
+        sprouts_for_the_shell(&shared, Some(at_node));
+        let socket = folder.join("agents.sock");
+        let listener = serve::listen(&socket).expect("the daemon's socket");
+        serve::accept(shared, listener);
+        let mut asking = UnixStream::connect(&socket).expect("the daemon takes a connection");
+        let ask = json!({"id": 1, "ask": sprout::ASK, "text": "https://github.com/o/r/issues/7"});
+        writeln!(asking, "{ask}").expect("the sprout is asked");
+        let mut line = String::new();
+        BufReader::new(&asking)
+            .read_line(&mut line)
+            .expect("an answer");
+        let answer: Value = serde_json::from_str(&line).expect("one line of JSON");
+        let why = answer["error"]["message"].as_str().unwrap_or_default();
+        // The lent builders run Linux 6.1, where who asked can't be told;
+        // there that refusal is what's held to.
+        assert!(
+            why == "only the launcher starts new work here"
+                || why.contains("names no peer by pidfd"),
+            "refused, saying why: {answer}"
+        );
+        assert!(
+            node.accept()
+                .is_err_and(|error| error.kind() == ErrorKind::WouldBlock),
+            "the node was never asked"
+        );
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+}
