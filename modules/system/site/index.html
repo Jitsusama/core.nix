@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Your system, now</title>
-<meta name="description" content="How everything you run stands: every machine on your mycelium, the mycelium itself, your home network and your code, each judged from its own owner's answer, with the way deeper into each.">
-<meta property="og:title" content="Your system, now">
-<meta property="og:description" content="How everything you run stands: every machine on your mycelium, the mycelium itself, your home network and your code, each judged from its own owner's answer, with the way deeper into each.">
+<title>Your machines, now</title>
+<meta name="description" content="Each machine you run, and what it carries: its cells on your mycelium, where it meets your home network, its code and the machine itself, each judged from its own owner's answer, with the way to see each whole.">
+<meta property="og:title" content="Your machines, now">
+<meta property="og:description" content="Each machine you run, and what it carries: its cells on your mycelium, where it meets your home network, its code and the machine itself, each judged from its own owner's answer, with the way to see each whole.">
 <meta property="og:type" content="website">
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="@dark-ground@">
@@ -37,33 +37,18 @@
 </head>
 <body>
 
-<a class="skip" href="#main">Skip to the four parts</a>
+<a class="skip" href="#parts">Skip to each machine</a>
 
 <header class="mast">
-  <p class="wordmark">
-    <svg class="mark" width="40" height="40" viewBox="0 0 32 32" aria-hidden="true">
-      <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M2 25h28"/>
-        <path d="M8.5 25a7.5 7.5 0 0 1 15 0"/>
-        <path d="M16 12V8.5M8.6 15.1 6.1 12.6M23.4 15.1l2.5-2.5"/>
-        <path d="M5 28.5h6M14 28.5h13" opacity="0.5"/>
-      </g>
-    </svg>
-    <span>Your system, <em>now</em></span>
-  </p>
-  <nav class="places" id="places" aria-label="The four parts">
-    <a class="place" href="#part-machines" data-place="machines">Machines</a>
-    <a class="place" href="#part-mycelium" data-place="mycelium">Mycelium</a>
-    <a class="place" href="#part-network" data-place="network">Network</a>
-    <a class="place" href="#part-code" data-place="code">Code</a>
-  </nav>
-  <p class="keys"><kbd>j</kbd> and <kbd>k</kbd> step through everything, <kbd>1</kbd> to <kbd>4</kbd> go to a part, and <kbd>?</kbd> lists every key <button type="button" class="help" id="help" aria-haspopup="dialog" aria-controls="keys">Keys</button></p>
+  <p class="wordmark">Your machines, <em>now</em></p>
+  <nav class="places" id="places" aria-label="Each machine"></nav>
+  <button type="button" class="help" id="help" aria-haspopup="dialog" aria-controls="keys">Keys</button>
 </header>
 
 <main id="main" class="stage" tabindex="-1">
   <header class="hero">
-    <p class="eyebrow">how everything you run stands</p>
-    <h1 class="headline" id="headline">Reading the <em>system.</em></h1>
+    <p class="eyebrow">Your machines, and what each carries</p>
+    <h1 class="headline" id="headline">Reading your <em>machines.</em></h1>
     <p class="lede" id="lede"></p>
     <p class="standing" id="standing" data-state="connecting"><span class="glyph" aria-hidden="true"></span><span id="standing-words">Reaching the system daemon.</span></p>
     <div class="switch" role="radiogroup" aria-label="Theme">
@@ -79,14 +64,11 @@
     </div>
   </header>
 
-  <figure class="outlook">
-    <ol class="stations" id="outlook" aria-label="The outlook"></ol>
-    <figcaption>Each part as its owner judges it.</figcaption>
-  </figure>
+  <figure class="bridge" id="bridge" aria-label="Your machines as a bridge"></figure>
 
   <div class="parts" id="parts"></div>
   <p class="note" id="note" role="status"></p>
-  <noscript><p class="note">The parts are drawn in the browser, live from the system daemon; without scripts, read <a href="index.md">the page as text</a>, or type <code>system</code> in a terminal.</p></noscript>
+  <noscript><p class="note">Your machines are drawn in the browser, live from the system daemon; without scripts, read <a href="index.md">the page as text</a>, or type <code>system</code> in a terminal.</p></noscript>
 
   <footer class="foot">
     <!-- biome-ignore lint/a11y/noRedundantRoles: the legend has no bullets, and Safari drops an unbulleted list's role and with it the list's name, so VoiceOver would hear neither the list nor its words apart. -->
@@ -98,14 +80,15 @@
   <h2 id="keys-title">Keys</h2>
   <h3>Getting Around</h3>
   <dl>
-    <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Step down or up through every part and what is worth a look in it</dd></div>
-    <div><dt><kbd>1</kbd> to <kbd>4</kbd></dt><dd>Go to Machines, Mycelium, Network or Code</dd></div>
+    <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Step down or up through every machine and what it carries</dd></div>
+    <div><dt><kbd>1</kbd> to <kbd>8</kbd></dt><dd>Go to a machine, in the order they're drawn</dd></div>
+    <div><dt><kbd>0</kbd></dt><dd>Go to the mycelium, the network and the code across them</dd></div>
     <div><dt><kbd>g</kbd> <kbd>G</kbd></dt><dd>Go to the first or the last</dd></div>
   </dl>
   <h3>Going</h3>
   <dl>
-    <div><dt><kbd>Return</kbd></dt><dd>Open what you're on: a part's site, or a machine's own place</dd></div>
-    <div><dt><kbd>y</kbd></dt><dd>Copy the command that says more of the part you're in</dd></div>
+    <div><dt><kbd>Return</kbd></dt><dd>Open what you're on: a machine on the map, the network or your code, or the launcher</dd></div>
+    <div><dt><kbd>y</kbd></dt><dd>Copy the first command of the machine or part you're in</dd></div>
     <div><dt><kbd>?</kbd> <kbd>F1</kbd></dt><dd>This list, and again to close it; <kbd>Esc</kbd> closes it too</dd></div>
   </dl>
   <form method="dialog"><button type="submit" class="close">Close</button></form>

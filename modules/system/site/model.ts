@@ -6,7 +6,7 @@
 
 import type { Held } from "../../local-sites/kit/records.ts";
 import { object, text, texts } from "../../local-sites/kit/records.ts";
-import { type Ties, tiesOf } from "./machine.ts";
+import { type Ties, tiesOf } from "./ties.ts";
 
 /** How a part or thing stands, as the daemon words it. */
 type Health = "good" | "watch" | "bad" | "unread";
@@ -20,7 +20,7 @@ interface Thing {
   readonly side: readonly string[];
   /** Its home's address from the sites' root, when its home publishes one. */
   readonly address: string | undefined;
-  /** What ties it to the other parts, a machine's (machine.ts). */
+  /** What ties it to the other parts, a machine's (ties.ts). */
   readonly ties: Ties;
 }
 
@@ -85,9 +85,6 @@ const WORDS: { readonly [health in Health]: string } = {
   unread: "Not read",
 };
 
-/** What a headline says when nothing anywhere is worth a look. */
-const CLEAR = "all good";
-
 /** The numbers a headline says in words, as a sentence would. */
 const NUMBERS = [
   "no",
@@ -102,15 +99,6 @@ const NUMBERS = [
   "nine",
   "ten",
 ];
-
-/** How the daemon closes a side that had more than it says (parts.rs's side_of). */
-const MORE = /^and (\d+) more worth a look$/u;
-
-/** Words that already end a sentence. */
-const ENDED = /[.?!]$/u;
-
-/** Healths from worst to best, as a lede picks the worst. */
-const WORST: readonly Health[] = ["bad", "watch"];
 
 /** The health the daemon's word `value` says, or unread when it says none. */
 function healthOf(value: string | undefined): Health {
@@ -130,78 +118,6 @@ function numbered(count: number): string {
 /** `said` with its first letter a capital, as a sentence starts. */
 function capital(said: string): string {
   return `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
-}
-
-/**
- * How many things in `part` are worth a look: its side's items, with the
- * last counted for as many as it says when it says "and N more". A part
- * not read has none, since what it says is why it wasn't.
- */
-function looksIn(part: Part): number {
-  if (part.health === "unread") {
-    return 0;
-  }
-  return part.side.reduce((sum, item) => sum + Number(MORE.exec(item)?.[1] ?? 1), 0);
-}
-
-/** The whole's headline, in its three clauses, the last two only when they count. */
-interface Headline {
-  /** How many parts: "Four parts". */
-  readonly parts: string;
-  /** How many things are worth a look, when any: "six worth a look". */
-  readonly looks: string | undefined;
-  /** How many parts couldn't be read, when any: "one not read". */
-  readonly unread: string | undefined;
-}
-
-/** The whole counted as its headline says it. */
-function headline(system: System): Headline {
-  const looks = system.parts.reduce((sum, part) => sum + looksIn(part), 0);
-  const unread = system.parts.filter((part) => part.health === "unread").length;
-  const { length } = system.parts;
-  return {
-    parts: capital(`${numbered(length)} ${length === 1 ? "part" : "parts"}`),
-    looks: looks === 0 ? undefined : `${numbered(looks)} worth a look`,
-    unread: unread === 0 ? undefined : `${numbered(unread)} not read`,
-  };
-}
-
-/** The headline as one plain sentence, for the title and the text twin. */
-function sentence(said: Headline): string {
-  const clauses = [said.looks, said.unread].filter((clause) => clause !== undefined);
-  return `${said.parts}, ${clauses.length === 0 ? CLEAR : and(clauses)}.`;
-}
-
-/**
- * The one thing the whole most wants a look at, as a sentence: the first
- * item of the worst part, led by the part's name, since an item may start
- * with a name a capital would change, a machine's; or why the first part
- * not read wasn't. None when every part is good.
- */
-function lede(system: System): string | undefined {
-  for (const health of WORST) {
-    const worst = system.parts.find((part) => part.health === health && part.side.length > 0);
-    if (worst !== undefined) {
-      return stopped(`${named(worst.part)}: ${worst.side[0] ?? ""}`);
-    }
-  }
-  const unread = system.parts.find((part) => part.health === "unread");
-  return unread === undefined
-    ? undefined
-    : stopped(`${named(unread.part)} couldn't be read: ${unread.says}`);
-}
-
-/** `words` ended as a sentence, once: an owner's words may end their own. */
-function stopped(words: string): string {
-  return ENDED.test(words) ? words : `${words}.`;
-}
-
-/** `words` joined as a sentence lists them: a, b and c. */
-function and(words: readonly string[]): string {
-  if (words.length < 2) {
-    return words.join("");
-  }
-  return `${words.slice(0, -1).join(", ")} and ${words.at(-1) ?? ""}`;
 }
 
 /**
@@ -277,5 +193,5 @@ function systemOf(summaries: Held, parts: Held, things: Held): System | undefine
   };
 }
 
-export type { Deeper, Headline, Health, Part, System, Thing };
-export { CLEAR, capital, headline, lede, looksIn, named, numbered, sentence, systemOf, WORDS };
+export type { Deeper, Health, Part, System, Thing };
+export { capital, named, numbered, systemOf, WORDS };

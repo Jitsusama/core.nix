@@ -241,7 +241,9 @@ function partsOf(system: System, when: (at: string) => string): string {
 function legend(): string {
   const healths: readonly Health[] = ["good", "watch", "bad", "unread"];
   return healths
-    .map((health) => `<li class="key">${mark(health)}<span class="word">${WORDS[health]}</span></li>`)
+    .map(
+      (health) => `<li class="key">${mark(health)}<span class="word">${WORDS[health]}</span></li>`,
+    )
     .join("");
 }
 

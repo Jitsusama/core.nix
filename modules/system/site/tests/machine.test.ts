@@ -13,8 +13,8 @@ import {
   machineHeadline,
   machineLede,
   networkSaid,
-  tiesOf,
 } from "../machine.ts";
+import { tiesOf } from "../ties.ts";
 import type { Part, System, Thing } from "../model.ts";
 
 const deeper = { command: "mycelium machines", site: "mycelium/", launcher: "Machines" };
@@ -123,6 +123,30 @@ it("the lede says what each machine worth a look has, then the worst of the rest
   assert.equal(machineLede(system([machine("heron", "good")])), undefined);
 });
 
+it("the lede ends each sentence once, keeping an owner's own mark", () => {
+  const stopped = [machine("kestrel", "watch", ["out of reach, 20 hours ago."])];
+  assert.equal(machineLede(system(stopped)), "kestrel: out of reach, 20 hours ago.");
+  const asked = part("network", "bad", ["is the modem on?"]);
+  assert.equal(
+    machineLede(system([machine("heron", "good")], [asked])),
+    "And on the network: is the modem on?",
+  );
+});
+
+it("the lede says why a part wasn't read when nothing else wants a look", () => {
+  const unread = { ...part("code", "unread", []), says: "repos timed out." };
+  assert.equal(
+    machineLede(system([machine("heron", "good")], [unread])),
+    "And your code couldn't be read: repos timed out.",
+  );
+  const network = part("network", "watch", ["the attic's radio is busy"]);
+  assert.equal(
+    machineLede(system([machine("heron", "good")], [unread, network])),
+    "And on the network: the attic's radio is busy.",
+    "a look comes before what wasn't read",
+  );
+});
+
 it("a machine's kind is its model and its system, and says which is this one", () => {
   const here = machine("kestrel", "good");
   assert.equal(kindOf(here, "kestrel"), "Example 14, Linux, this machine");
@@ -183,11 +207,14 @@ it("its code is counted on this machine and said not read from another", () => {
 });
 
 it("itself says its disk, then its processor, memory, power and update", () => {
-  assert.deepEqual(itselfSaid(tiesOf(ties), (at) => `at ${at.slice(11, 16)}`), {
-    said: "219 GB of 1 TB free",
-    aside:
-      "Processor 39% busy, 25 of 67 GB of memory free, 79% charged and plugged in. Updated at 02:19.",
-  });
+  assert.deepEqual(
+    itselfSaid(tiesOf(ties), (at) => `at ${at.slice(11, 16)}`),
+    {
+      said: "219 GB of 1 TB free",
+      aside:
+        "Processor 39% busy, 25 of 67 GB of memory free, 79% charged and plugged in. Updated at 02:19.",
+    },
+  );
   const mac = tiesOf({
     figures: {
       disk: 994_662_584_320,
@@ -198,13 +225,19 @@ it("itself says its disk, then its processor, memory, power and update", () => {
       update_step: "unchanged",
     },
   });
-  assert.deepEqual(itselfSaid(mac, (at) => `at ${at.slice(11, 16)}`), {
-    said: "185 GB of 995 GB free",
-    aside: "Fully charged and plugged in. Unchanged at its update at 02:38.",
-  });
+  assert.deepEqual(
+    itselfSaid(mac, (at) => `at ${at.slice(11, 16)}`),
+    {
+      said: "185 GB of 995 GB free",
+      aside: "Fully charged and plugged in. Unchanged at its update at 02:38.",
+    },
+  );
   const away = tiesOf({ figures: { charge: 12, on_battery: true } });
-  assert.deepEqual(itselfSaid(away, (at) => at), {
-    said: "Its disk not said",
-    aside: "12% charged, on battery.",
-  });
+  assert.deepEqual(
+    itselfSaid(away, (at) => at),
+    {
+      said: "Its disk not said",
+      aside: "12% charged, on battery.",
+    },
+  );
 });

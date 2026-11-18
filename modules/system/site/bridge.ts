@@ -15,8 +15,9 @@
 // is hidden from one, since every word in it is said by the sections below.
 
 import { escaped } from "./draw.ts";
-import { type Place, standing } from "./machine.ts";
+import { standing } from "./machine.ts";
 import type { Thing } from "./model.ts";
+import type { Place } from "./ties.ts";
 
 /** One way of drawing the bridge: how wide, how many piers, how many dots. */
 interface Variant {

@@ -1,11 +1,19 @@
-// What the system page says of each machine: the ties a machine record
-// carries to the other three parts (modules/system/src/parts/ties.rs), read
-// leniently, and the words each is said in, over all the machines and for
+// What the system page says of each machine: the words its ties to the
+// other three parts (ties.ts) are said in, over all the machines and for
 // each one. A machine is the bridge between the others (Joel, 2026-11-17),
 // so the page leads with them. Nothing here touches the page.
 
-import { type Fields, isObject, number, object, text, texts } from "../../local-sites/kit/records.ts";
-import { capital, type Health, named, numbered, type System, type Thing, WORDS } from "./model.ts";
+import {
+  capital,
+  type Health,
+  named,
+  numbered,
+  type Part,
+  type System,
+  type Thing,
+  WORDS,
+} from "./model.ts";
+import type { Figures, Place, Ties } from "./ties.ts";
 
 /** A gigabyte and a terabyte, as a node counts bytes. */
 const GIGABYTE = 1e9;
@@ -17,6 +25,9 @@ const FAIR_BARS = 3;
 
 /** A full charge. */
 const FULL = 100;
+
+/** How a sentence ends. */
+const ENDED = /[.?!]$/u;
 
 /** How each system a node names is said. */
 const SYSTEMS: { readonly [system: string]: string } = {
@@ -31,6 +42,13 @@ const WHERE: { readonly [part: string]: string } = {
   code: "in your code",
 };
 
+/** How the lede names another part as what couldn't be read. */
+const WHAT: { readonly [part: string]: string } = {
+  mycelium: "the mycelium",
+  network: "the network",
+  code: "your code",
+};
+
 /** How many machines the lede names, so thousands keep it a sentence or two. */
 const LEDE_MACHINES = 3;
 
@@ -40,64 +58,6 @@ const STANDS: readonly (readonly [Health, string])[] = [
   ["watch", "worth a look"],
   ["unread", "not read"],
 ];
-
-const EMPTY: Fields = {};
-
-/** The mycelium's cells on a machine. */
-interface Cells {
-  readonly busy: number;
-  readonly idle: number;
-  readonly ended: number;
-}
-
-/** Where a machine meets the network: one device the network names for it. */
-interface Place {
-  readonly device: string | undefined;
-  /** Its band, or "wired". */
-  readonly by: string | undefined;
-  readonly point: string | undefined;
-  readonly bars: number | undefined;
-  readonly room: number | undefined;
-}
-
-/** The code a machine holds, counted. */
-interface Code {
-  readonly repositories: number;
-  readonly checkouts: number;
-  readonly trees: number;
-  readonly behind: number;
-  readonly changes: number;
-}
-
-/** A machine's own figures, as its node says them. */
-interface Figures {
-  readonly model: string | undefined;
-  readonly system: string | undefined;
-  readonly disk: number | undefined;
-  readonly diskFree: number | undefined;
-  readonly cpuBusy: number | undefined;
-  readonly memory: number | undefined;
-  readonly memoryAvailable: number | undefined;
-  readonly charge: number | undefined;
-  readonly onBattery: boolean | undefined;
-  readonly updatedAt: string | undefined;
-  readonly updateStep: string | undefined;
-}
-
-/** What Joel can do with a machine: the launcher's link and the commands. */
-interface Acts {
-  readonly link: string | undefined;
-  readonly commands: readonly string[];
-}
-
-/** What ties a machine to the other parts; each tie none when it wasn't read. */
-interface Ties {
-  readonly cells: Cells | undefined;
-  readonly network: readonly Place[] | undefined;
-  readonly code: Code | undefined;
-  readonly figures: Figures;
-  readonly acts: Acts;
-}
 
 /** A tie said: its main words and what goes beside them. */
 interface Said {
@@ -111,88 +71,6 @@ interface MachineHeadline {
   readonly stand: string;
   /** The worst of them, which the way they stand is drawn in. */
   readonly health: Health;
-}
-
-/** A count the record says, or none when it says none or a negative. */
-function counted(record: Fields, field: string): number | undefined {
-  const value = number(record, field);
-  return value === undefined || value < 0 ? undefined : value;
-}
-
-/** A yes or no the record says, or none. */
-function flag(record: Fields, field: string): boolean | undefined {
-  const value = record[field];
-  return typeof value === "boolean" ? value : undefined;
-}
-
-function cellsOf(said: Fields | undefined): Cells | undefined {
-  if (said === undefined) {
-    return undefined;
-  }
-  return {
-    busy: counted(said, "busy") ?? 0,
-    idle: counted(said, "idle") ?? 0,
-    ended: counted(said, "ended") ?? 0,
-  };
-}
-
-function placesOf(said: unknown): readonly Place[] | undefined {
-  if (!Array.isArray(said)) {
-    return undefined;
-  }
-  return said.filter(isObject).map((place) => ({
-    device: text(place, "device"),
-    by: text(place, "by"),
-    point: text(place, "point"),
-    bars: counted(place, "bars"),
-    room: counted(place, "room_mbps"),
-  }));
-}
-
-function codeOf(said: Fields | undefined): Code | undefined {
-  if (said === undefined) {
-    return undefined;
-  }
-  const of = (field: string): number => counted(said, field) ?? 0;
-  return {
-    repositories: of("repositories"),
-    checkouts: of("checkouts"),
-    trees: of("trees"),
-    behind: of("behind"),
-    changes: of("changes"),
-  };
-}
-
-function figuresOf(said: Fields): Figures {
-  return {
-    model: text(said, "model"),
-    system: text(said, "system"),
-    disk: counted(said, "disk"),
-    diskFree: counted(said, "disk_free"),
-    cpuBusy: counted(said, "cpu_busy"),
-    memory: counted(said, "memory"),
-    memoryAvailable: counted(said, "memory_available"),
-    charge: counted(said, "charge"),
-    onBattery: flag(said, "on_battery"),
-    updatedAt: text(said, "updated_at"),
-    updateStep: text(said, "update_step"),
-  };
-}
-
-/**
- * A machine's ties as its record says them, each none that the record
- * doesn't say, so a daemon from before ties draws its machines bare.
- */
-function tiesOf(value: unknown): Ties {
-  const said = isObject(value) ? value : EMPTY;
-  const acts = object(said, "acts") ?? EMPTY;
-  return {
-    cells: cellsOf(object(said, "cells")),
-    network: placesOf(said["network"]),
-    code: codeOf(object(said, "code")),
-    figures: figuresOf(object(said, "figures") ?? EMPTY),
-    acts: { link: text(acts, "link"), commands: texts(acts, "commands") ?? [] },
-  };
 }
 
 /** `count` of `one`, its plural `many` past one, as a sentence says it. */
@@ -219,26 +97,25 @@ function machineHeadline(system: System): MachineHeadline {
   const stands = STANDS.map(([health, words]) => {
     const count = things.filter((thing) => thing.health === health).length;
     return { health, count, words };
-  }).filter((stand) => stand.count > 0);
+  }).filter((each) => each.count > 0);
   const worst = stands[0];
   if (worst === undefined) {
     return { machines, stand: "all ready", health: "good" };
   }
-  const stand = stands
-    .map((each) => `${howMany(each.count, length)} ${each.words}`)
-    .join(" and ");
+  const stand = stands.map((each) => `${howMany(each.count, length)} ${each.words}`).join(" and ");
   return { machines, stand, health: worst.health };
 }
 
 /** `words` ended as a sentence, once. */
 function stopped(words: string): string {
-  return /[.?!]$/u.test(words) ? words : `${words}.`;
+  return ENDED.test(words) ? words : `${words}.`;
 }
 
 /**
  * The lede: what each machine worth a look has, the worst first and its
  * name leading, since a name keeps its case; then the worst of the other
- * parts' first look. None when nothing anywhere wants a look.
+ * parts' first look, or else why one wasn't read. None when nothing
+ * anywhere wants a look.
  */
 function machineLede(system: System): string | undefined {
   const things = system.parts.find((part) => part.part === "machines")?.things ?? [];
@@ -246,16 +123,23 @@ function machineLede(system: System): string | undefined {
     .filter((thing) => thing.side.length > 0)
     .slice(0, LEDE_MACHINES)
     .map((thing) => stopped(`${thing.name}: ${thing.side.join("; ")}`));
-  const others = system.parts.filter((part) => part.part !== "machines");
+  const rest = restOf(system.parts.filter((part) => part.part !== "machines"));
+  const said = [...machines, ...(rest === undefined ? [] : [rest])];
+  return said.length === 0 ? undefined : said.join(" ");
+}
+
+/** The worst of the other parts' first look, or else why one wasn't read. */
+function restOf(others: readonly Part[]): string | undefined {
   const other = ["bad", "watch"]
     .map((health) => others.find((part) => part.health === health && part.side.length > 0))
     .find((part) => part !== undefined);
-  const rest =
-    other === undefined
-      ? []
-      : [stopped(`And ${WHERE[other.part] ?? `in ${named(other.part)}`}: ${other.side[0] ?? ""}`)];
-  const said = [...machines, ...rest];
-  return said.length === 0 ? undefined : said.join(" ");
+  if (other !== undefined) {
+    return stopped(`And ${WHERE[other.part] ?? `in ${named(other.part)}`}: ${other.side[0] ?? ""}`);
+  }
+  const unread = others.find((part) => part.health === "unread");
+  return unread === undefined
+    ? undefined
+    : stopped(`And ${WHAT[unread.part] ?? named(unread.part)} couldn't be read: ${unread.says}`);
 }
 
 /** What kind of machine it is: its model and its system, and whether it's this one. */
@@ -335,7 +219,7 @@ function networkSaid(ties: Ties): Said & { readonly device: string | undefined }
   }
   const said = places.map((place, at) => meets(place, at === 0)).join(", and ");
   const radio = places.find((place) => place.by !== "wired" && place.bars !== undefined);
-  const rooms = places.map((place) => place.room).filter((room) => room !== undefined);
+  const rooms = places.map((place) => place.room).filter((mbps) => mbps !== undefined);
   const room = rooms.length === 0 ? undefined : `${Math.round(Math.max(...rooms))} Mb/s of room`;
   const how = radio?.bars === undefined ? undefined : signal(radio.bars);
   const aside =
@@ -433,7 +317,7 @@ function itselfSaid(ties: Ties, when: (at: string) => string): Said {
   return { said, aside: sentences.join(" ") };
 }
 
-export type { Acts, Cells, Code, Figures, MachineHeadline, Place, Said, Ties };
+export type { MachineHeadline, Said };
 export {
   cellsSaid,
   codeSaid,
@@ -443,5 +327,4 @@ export {
   machineLede,
   networkSaid,
   standing,
-  tiesOf,
 };

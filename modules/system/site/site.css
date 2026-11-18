@@ -1,12 +1,13 @@
-/* Your system, now: how everything Joel runs stands. A night ground, the
-   sun's gold for what the page speaks in, and the accent only where the
-   keys are. The first screen is one sentence and one drawing: the headline
-   counts what is worth a look, and the outlook stands the four parts on one
-   horizon, each with its health's mark. Below it each part hangs its mark
-   in a gutter, so every name starts on one edge (parts.css). The display
-   serif names and is read; the mono only counts and labels. A health is
-   told by its shape and its word, never by hue alone. An interface to keep open, so
-   it sits at the interface size, as the sites each part leads to do. */
+/* Your machines, now: each machine Joel runs, and what it carries. A
+   night ground, the sun's gold for what the page speaks in, and the accent
+   only where something can be done. The first screen is one sentence and
+   one drawing: the headline counts the machines and says how they stand,
+   and the bridge stands each machine as a pier, its cells over it and the
+   network under it, its name and health above. Each machine's section and
+   the parts across them follow (parts.css). The display serif names and
+   is read; the mono is only for commands. A health is told by its mark's
+   shape and its word, never by hue alone. An interface to keep open, so
+   it sits at the interface size, as the sites it leads to do. */
 
 :root {
   /* Night: the grounds turned a little toward blue, no further,
@@ -14,14 +15,12 @@
   --turn: 30;
   /* Gold marks the site's emphasis: the action's hue, the sun's. */
   --tint: var(--action);
-  /* The marks hang in this, so every name starts on the main line. */
-  --gutter: 2.75rem;
-  --column: 62rem;
+  --column: 64rem;
   /* The tint deepened toward the strong ink, so words in it clear 7:1. */
   --said: color-mix(in oklab, var(--tint) 62%, var(--strong));
 }
 
-/* In the dark, the last of the light still sits over the horizon. */
+/* In the dark, the last of the light still sits over the deck. */
 html:not([data-theme="light"]) body {
   background-image: radial-gradient(
     ellipse 70rem 28rem at 50% -6rem,
@@ -41,7 +40,7 @@ html:not([data-theme="light"]) body {
   font-size: inherit;
 }
 
-/* ---- The masthead: the page's own ground, its places at the top. ---- */
+/* ---- The masthead: the page's name, each machine, and the keys. ---- */
 
 .mast {
   position: sticky;
@@ -57,27 +56,19 @@ html:not([data-theme="light"]) body {
 }
 
 .wordmark {
-  display: flex;
-  align-items: center;
-  gap: var(--apart);
   margin: 0 auto 0 0;
   color: var(--strong);
   font: var(--title-weight) var(--step-large) / 1.2 var(--serif);
   font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
 }
 
-.wordmark .mark {
-  color: var(--tint);
-  flex: none;
-}
-
 .wordmark em {
   color: var(--said);
 }
 
-/* The four places, each a word in the serif with its count in the mono.
-   The one the cursor is in is underlined, so moving changes colour and
-   never width. */
+/* Each machine, a word in the serif after its mark, then the parts across
+   them. The one the cursor is in is underlined, so moving changes colour
+   and never width. */
 .places {
   display: flex;
   flex-wrap: wrap;
@@ -86,12 +77,11 @@ html:not([data-theme="light"]) body {
 
 .place {
   display: inline-flex;
-  align-items: baseline;
-  gap: var(--tie);
+  align-items: center;
+  gap: var(--mark);
   min-block-size: 44px;
-  padding-block: var(--tie);
   color: var(--text);
-  font: var(--words-weight) var(--step-body) / 2 var(--serif);
+  font: var(--words-weight) var(--step-body) / 1.4 var(--serif);
   font-variation-settings: "SOFT" var(--words-soft), "WONK" var(--words-wonk);
   text-decoration: underline 1px transparent;
   text-underline-offset: 0.3em;
@@ -108,16 +98,27 @@ html:not([data-theme="light"]) body {
   text-decoration-thickness: 2px;
 }
 
-.place .n {
-  color: var(--warning);
-  font: 500 var(--step-small) / 1 var(--mono);
-  font-feature-settings: var(--mono-features);
-}
-
 .place:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: var(--radius);
+}
+
+.help {
+  min-block-size: 44px;
+  min-inline-size: 44px;
+  padding: 0 var(--items);
+  background: none;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: var(--words-weight) var(--step-small) / 1 var(--serif);
+  cursor: pointer;
+}
+
+.help:hover {
+  border-color: var(--rule);
+  color: var(--strong);
 }
 
 /* ---- The stage. ---- */
@@ -134,37 +135,22 @@ html:not([data-theme="light"]) body {
 
 /* ---- The hero: the eyebrow, the one sentence, and how it stands. ---- */
 
-.hero {
-  padding-inline-start: var(--gutter);
-}
-
 .eyebrow {
   margin: 0 0 var(--apart);
   color: var(--said);
-  font: 500 var(--step-small) / 1.4 var(--mono);
-  font-feature-settings: var(--mono-features);
-  letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  font: var(--voice-weight) var(--step-body) / 1.4 var(--serif);
+  font-style: italic;
 }
 
-/* The one focal point: the whole in a sentence whose counts lead to what
-   they count. */
+/* The one focal point: the machines counted, and how they stand in the
+   worst health's own colour. */
 .headline {
-  max-inline-size: 22ch;
+  max-inline-size: 18ch;
   margin: 0 0 var(--items);
   color: var(--strong);
-  font: var(--title-weight) var(--step-display) / 1.04 var(--serif);
+  font: var(--title-weight) var(--step-hero) / 1 var(--serif);
   font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
-}
-
-.headline a {
-  color: inherit;
-  text-decoration: underline 1px var(--rule);
-  text-underline-offset: 0.12em;
-}
-
-.headline a:hover {
-  text-decoration-color: currentColor;
+  letter-spacing: var(--title-tracking);
 }
 
 .headline em {
@@ -172,21 +158,27 @@ html:not([data-theme="light"]) body {
   font-style: italic;
 }
 
-/* A count of what is worth a look is in watch's hue, not the sun's. */
-.headline a[data-to="look"] em {
+.headline em.watch {
   color: var(--warning);
 }
 
-/* Under it, the one thing that most wants a look, in the reading voice.
-   A line is held for it from the first paint, so its arrival moves what
-   is below by a second line at most; only all good lets it go. */
+.headline em.bad {
+  color: var(--alert);
+}
+
+.headline em.unread {
+  color: var(--muted);
+}
+
+/* Under it, what most wants a look, in the reading voice. A line is held
+   for it from the first paint, so its arrival moves what is below by a
+   second line at most; only all ready lets it go. */
 .lede {
   min-block-size: 1lh;
   max-inline-size: var(--measure);
   margin: 0 0 var(--items);
   color: var(--text);
   font: var(--voice-weight) var(--step-large) / 1.45 var(--serif);
-  font-style: italic;
 }
 
 /* Where it was read, when, and whether it's live, after a half-lit dot. */
@@ -196,13 +188,12 @@ html:not([data-theme="light"]) body {
   gap: var(--mark);
   margin: 0 0 var(--tie);
   color: var(--muted);
-  font: 400 var(--step-small) / 1.5 var(--mono);
-  font-feature-settings: var(--mono-features);
+  font: 400 var(--step-small) / 1.5 var(--serif);
 }
 
 .standing .glyph {
-  inline-size: 0.7em;
-  block-size: 0.7em;
+  inline-size: 0.6em;
+  block-size: 0.6em;
   flex: none;
   align-self: center;
   border: 1.5px solid var(--tint);
@@ -225,41 +216,6 @@ html:not([data-theme="light"]) body {
   background: transparent;
 }
 
-/* The key line is the head's quiet row, a whole row under the wordmark and
-   the places, said once above the work rather than inside it. */
-.keys {
-  display: none;
-  flex: 1 0 100%;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--tie) var(--mark);
-  margin: 0;
-  color: var(--muted);
-  font: 400 var(--step-small) / 1.5 var(--serif);
-}
-
-.js .keys {
-  display: flex;
-}
-
-.help {
-  min-block-size: 44px;
-  min-inline-size: 44px;
-  padding: 0 var(--mark);
-  background: none;
-  border: 1px solid var(--edge);
-  border-radius: var(--radius);
-  color: var(--text);
-  font: 500 var(--step-small) / 1 var(--mono);
-  font-feature-settings: var(--mono-features);
-  cursor: pointer;
-}
-
-.help:hover {
-  border-color: var(--rule);
-  color: var(--strong);
-}
-
 .hero .switch {
   margin-block-start: var(--tie);
 }
@@ -272,92 +228,157 @@ html:not([data-theme="light"]) body {
 
 @supports (text-wrap: pretty) {
   .lede,
-  .items .line {
+  .tie .aside {
     text-wrap: pretty;
   }
 }
 
-/* ---- The outlook: the four parts on one horizon. ---- */
+/* ---- The bridge: each machine a pier, its words over and under it. ---- */
 
-.outlook {
-  /* One part's height on the outlook, from what it is made of: its padding, a large
-     mark, a name and its words with a tie between each. An empty horizon
-     holds this much, so the parts' arrival moves nothing below. */
-  --station: calc(
-    var(--items) + var(--mark) + 3rem + 2 * var(--tie) + 1.2 * var(--step-large) + 1.4 *
-    var(--step-small)
-  );
-  --station-rows: 1;
-
-  margin: var(--frames) 0 0;
+.bridge {
+  margin: var(--items) 0 var(--frames);
 }
 
-.stations {
+/* Drawn wide and narrow; the one that fits is shown, and the other,
+   never displayed, is kept from a screen reader too. */
+.bridge .variant.narrow {
+  display: none;
+}
+
+.bridge .over,
+.bridge .under {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  list-style: none;
+  grid-template-columns: repeat(var(--piers), minmax(0, 1fr));
   margin: 0;
   padding: 0;
-  border-block-end: 1px solid var(--rule);
+  list-style: none;
+  text-align: center;
 }
 
-.stations:empty {
-  min-block-size: calc(var(--station-rows) * var(--station));
-}
-
-.station {
+.bridge .over li {
   display: grid;
   justify-items: center;
+  align-content: end;
   gap: var(--tie);
-  padding: var(--items) var(--mark) var(--mark);
-  border-radius: var(--radius) var(--radius) 0 0;
-  color: var(--text);
-  text-align: center;
-  text-decoration: none;
+  padding-inline: var(--mark);
 }
 
-.station:hover {
-  background: var(--sunken);
-}
-
-.station:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.station .place {
-  min-block-size: 0;
-  padding: 0;
+.bridge .over .name {
   color: var(--strong);
-  font: italic var(--words-weight) var(--step-large) / 1.2 var(--serif);
+  font: var(--title-weight) var(--step-title) / 1.05 var(--serif);
+  font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
+  overflow-wrap: anywhere;
 }
 
-.station .forecast {
-  color: var(--muted);
-  font: 400 var(--step-small) / 1.4 var(--mono);
-  font-feature-settings: var(--mono-features);
-}
-
-.station.watch .forecast,
-.station.bad .forecast {
+.bridge .under li {
+  display: grid;
+  gap: var(--tie);
+  padding-inline: var(--mark);
   color: var(--text);
+  font: var(--words-weight) var(--step-body) / 1.35 var(--serif);
 }
 
-.outlook figcaption {
-  margin-block-start: var(--mark);
-  padding-inline-start: var(--gutter);
+.bridge .under .unread {
   color: var(--muted);
-  font: var(--voice-weight) var(--step-small) / 1.5 var(--serif);
   font-style: italic;
 }
 
-/* ---- A phone: a narrower gutter, and the outlook two by two. ---- */
+.bridge svg {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  margin-block: calc(-1 * var(--mark)) 0;
+}
+
+.bridge .thread path {
+  fill: none;
+  stroke: var(--said);
+  stroke-width: 1;
+  stroke-dasharray: 2 5;
+  opacity: 0.7;
+}
+
+.bridge .cells .busy {
+  fill: var(--strong);
+}
+
+.bridge .cells .idle {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.2;
+}
+
+.bridge .deck {
+  stroke: var(--strong);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.bridge .deck.under {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.bridge .span path {
+  fill: none;
+  stroke: var(--rule);
+  stroke-width: 1.5;
+}
+
+.bridge .pier {
+  --hue: var(--success);
+}
+
+.bridge .pier.watch {
+  --hue: var(--warning);
+}
+
+.bridge .pier.bad {
+  --hue: var(--alert);
+}
+
+.bridge .pier.unread {
+  --hue: var(--muted);
+}
+
+.bridge .pier rect {
+  fill: color-mix(in oklab, var(--hue) 14%, var(--background));
+  stroke: var(--hue);
+  stroke-width: 1.5;
+}
+
+.bridge .pier.unread rect {
+  stroke-dasharray: 4 3;
+}
+
+.bridge .pier .fill {
+  fill: color-mix(in oklab, var(--hue) 45%, var(--background));
+  stroke: none;
+}
+
+.bridge .water path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.2;
+  opacity: 0.55;
+}
+
+.bridge .more,
+.bridge .key {
+  max-inline-size: var(--measure);
+  margin: var(--mark) 0 0;
+  color: var(--muted);
+  font: var(--note-weight) var(--step-small) / 1.5 var(--serif);
+  font-style: italic;
+}
+
+.bridge .more {
+  color: var(--text);
+}
+
+/* ---- A phone: the narrow bridge, and a headline that fits. ---- */
 
 @media (max-width: 40rem) {
-  :root {
-    --gutter: 2rem;
-  }
-
   .mast {
     position: static;
   }
@@ -366,17 +387,20 @@ html:not([data-theme="light"]) body {
     font-size: var(--step-title);
   }
 
-  .stations {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .bridge .variant.wide {
+    display: none;
   }
 
-  .outlook {
-    --station-rows: 2;
+  .bridge .variant.narrow {
+    display: block;
+  }
+
+  .bridge .over .name {
+    font-size: var(--step-large);
   }
 }
 
 @media (forced-colors: active) {
-  .station:focus-visible,
   .place:focus-visible {
     outline: 2px solid Highlight;
   }
