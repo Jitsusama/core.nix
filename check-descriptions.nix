@@ -2617,7 +2617,7 @@
     PATH, left stopped after refusing
     what it was given and left running through a switch and through the kernel killing one of its
     commands for memory, watched by a two-minute watchdog whose abort is followed by a kill 10 s
-    on, given 150 s to park its conversations
+    on, given 20 minutes to start and 150 s to park its conversations
     when stopped and told that limit, its main process signalled first and what is left ended
     with it, with no core limit, soft or hard, until 20 November, sixteen codemode workers for its
     conversations to share, node's heap limit set to its realm's heapMb, and pi's SSH agent proxy as their agent wherever the proxy runs,

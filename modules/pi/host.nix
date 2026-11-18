@@ -250,6 +250,16 @@ let
         # (modules/systemd), on purpose, so a shutdown stays quick.
         KillMode = "mixed";
         TimeoutStopSec = "${toString stopSeconds}s";
+        # A start resumes each conversation in turn. Under load one takes 8 to
+        # 9 minutes: at 09:12 on 18 November a 5 minute limit ended a start at
+        # 76 of 81 conversations while it still moved. systemd weighs the
+        # host's asks for two more minutes (EXTEND_TIMEOUT_USEC) only past this
+        # limit, and then ends the start when one isn't renewed in time, which
+        # that start's was not. Twenty minutes lets a slow start finish on the
+        # limit alone; past it, the start lives only while the host renews its
+        # ask every 30 s, so a stuck one still ends. A default, so a machine
+        # may give its hosts longer.
+        TimeoutStartSec = lib.mkDefault "20min";
         # Its conversations are agents' sessions, so they run among the
         # sessions rather than among Joel's programs (modules/slices).
         Slice = "agents.slice";
