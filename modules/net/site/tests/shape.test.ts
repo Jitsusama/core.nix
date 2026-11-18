@@ -102,6 +102,12 @@ it("a name in a command is quoted so pasting it runs nothing else", () => {
     ["`reboot`", "'`reboot`'"],
     ["Joel's | sh", "'Joel'\\''s | sh'"],
     ["=ls", "'=ls'"],
+    ["a&b", "'a&b'"],
+    ["*?", "'*?'"],
+    ["~", "'~'"],
+    ["hi!", "'hi!'"],
+    ["<in >out", "'<in >out'"],
+    ["back\\slash", "'back\\slash'"],
     ["", "''"],
   ]) {
     assert.equal(shellWord(name), typed, `${name} wasn't one word that runs nothing`);
