@@ -407,7 +407,10 @@ fn cargo_builds_past_their_budget_go_least_recently_used_first() {
         ))
     };
     let unbudgeted = offers(&source(""), &[], &|_| false);
-    assert!(unbudgeted.iter().all(|offer| !offer.candidate.spent));
+    assert!(
+        unbudgeted.iter().all(|offer| !offer.candidate.spent),
+        "with no budget, builds an hour or more unused aren't spent"
+    );
     let size = |path: &Path| find(&unbudgeted, path).candidate.size;
     let budget = size(&newest) + size(&older);
     let found = offers(&source(&format!(r#", "budget": {budget}"#)), &[], &|_| {
