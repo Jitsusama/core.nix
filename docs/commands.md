@@ -167,6 +167,16 @@ without a rebuild:
 - **Links.** A URL or a path shown into a terminal with ink is a kitty
   hyperlink (OSC 8) on the words that name it, so it opens on a click
   without being printed twice.
+- **Only the command's escapes.** Words a command shows are anyone's to
+  set: a device's name, a network's, a path, a message from a server.
+  Words drawn through the kit's pen, its layout or its wait lose every
+  control character but the line break, with or without ink, and a tab
+  is drawn as a space, so none can retitle the window, clear the screen
+  or draw over a line. A table's cell, a list's row, a fact, a link and a
+  wait's words are held to one line, a line break drawn as a space, so no
+  field draws a record of its own. A command that writes words another
+  way, through `say`, draws them through the pen first. The JSON forms
+  keep the words as they are, escaped as JSON escapes them.
 
 ## How It Reads
 
@@ -503,6 +513,9 @@ It gives:
 - help set in the levels from what the command declares, and the same
   declaration as JSON for the check;
 - tables and lists set to How It Reads, fitting the width and giving way;
+- words drawn without their control characters, as Only the command's
+  escapes says, `layout::drawn` and `layout::one_line` for a command
+  laying out its own;
 - the error's three parts, as text and as JSON, and the exit codes as a
   type;
 - the wait line and its meter, drawn only into a terminal;
