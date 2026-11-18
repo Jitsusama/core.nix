@@ -1,4 +1,4 @@
-// Drives Ethernet's answer through Quickshell itself, over a card's folder,
+// Drives Ethernet's answer through Quickshell itself, over cards' folders,
 // a resolv.conf and an uptime of the case's own beside it, to show an answer
 // waits on none of their files. Docked with one card, a step into Network
 // asked Ethernet, which read the cable's twenty files twice, resolv.conf
@@ -6,21 +6,26 @@
 // Joel's laptop under load (2026-11-17), of a step that has 50 ms for all
 // of it; and read them all again each second while a cable was shown. So an
 // answer says each as last loaded, and they're loaded again in the
-// background as the launcher opens and each second while a cable's shown:
-// a change is said once that load lands, and not before. It exits 0 once
-// every case holds, and otherwise 1, saying which didn't.
+// background as the launcher opens, as a terminal asks after a gap, and
+// each second while a cable's shown: a change is said once that load lands,
+// and not before. A second card's load is given up as the watchdog gives
+// up one a busy driver holds up, since FileView refuses a pipe at once
+// and nothing else in a sandbox hangs a read. It exits 0 once every case
+// holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
 import "Expect.js" as Expect
+import "Written.js" as Written
 
 ShellRoot {
     id: root
 
     readonly property string dir: Quickshell.shellDir
     readonly property string card: `${dir}/sys/enp0s1`
+    readonly property string stuck: `${dir}/sys/enp0s2`
 
     // The launcher, as much of it as Network reads: whether it's open and
     // what's held.
@@ -48,61 +53,67 @@ ShellRoot {
         settings: ({ lookups: false })
     }
 
-    FileView {
+    // A file the case writes, loaded by nothing of its own.
+    component Case: FileView {
+        blockWrites: true
+        printErrors: false
+        preload: false
+    }
+
+    Case {
         id: speed
         path: `${root.card}/speed`
-        blockWrites: true
-        printErrors: false
     }
-    FileView {
+    Case {
         id: carrier
         path: `${root.card}/carrier`
-        blockWrites: true
-        printErrors: false
     }
-    FileView {
+    Case {
         id: duplex
         path: `${root.card}/duplex`
-        blockWrites: true
-        printErrors: false
     }
-    FileView {
+    Case {
+        id: errorsIn
+        path: `${root.card}/statistics/rx_errors`
+    }
+    Case {
+        id: errorsOut
+        path: `${root.card}/statistics/tx_errors`
+    }
+    Case {
+        id: stuckCarrier
+        path: `${root.stuck}/carrier`
+    }
+    Case {
         id: resolv
         path: `${root.dir}/etc/resolv.conf`
-        blockWrites: true
-        printErrors: false
     }
-    FileView {
+    Case {
         id: up
         path: `${root.dir}/uptime`
-        blockWrites: true
-        printErrors: false
     }
-    FileView {
+    Case {
         id: route
         path: `${root.dir}/net/route`
-        blockWrites: true
-        printErrors: false
     }
 
-    function written(file, text) {
-        file.setText(text);
-        file.waitForJob();
+    // A cable as the machine daemon would tell it (Interfaces.js), with an
+    // address, the way out by its route.
+    function cable(name, state, address) {
+        return {
+            name: name,
+            kind: "wired",
+            state: state,
+            mtu: 1500,
+            mac: "00:1b:21:aa:bb:cc",
+            own: "",
+            assigned: "own",
+            four: [{ address: address, prefix: 22 }],
+            six: []
+        };
     }
-
-    // One cable with an address, as the machine daemon would tell it
-    // (Interfaces.js), the way out by its route.
-    readonly property var links: [{
-        name: "enp0s1",
-        kind: "wired",
-        state: "up",
-        mtu: 1500,
-        mac: "00:1b:21:aa:bb:cc",
-        own: "",
-        assigned: "own",
-        four: [{ address: "192.168.4.52", prefix: 22 }],
-        six: []
-    }]
+    readonly property var docked: cable("enp0s1", "up", "192.168.4.52")
+    readonly property var second: cable("enp0s2", "up", "192.168.4.53")
 
     // Its lease, ending 7,230 s after the uptime the case first writes.
     readonly property var leases: ({
@@ -114,13 +125,20 @@ ShellRoot {
         "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n"
         + "enp0s1\t00000000\t0104A8C0\t0003\t0\t0\t100\t00000000\t0\t0\t0\n"
 
-    // What Ethernet says now: its headline, its name servers and its
-    // lease, as "headline | servers | lease".
+    // What Ethernet says now: its headline, and its speed's, name servers'
+    // and lease's rows, as "headline | speed | servers | lease".
     function said() {
         const ethernet = networks.answer("ethernet");
         const side = key => (ethernet?.rows ?? []).find(row => row.key === `networks:enp0s1:${key}`)
             ?.side ?? "";
-        return `${ethernet?.headline ?? ""} | ${side("dns")} | ${side("lease")}`;
+        return `${ethernet?.headline ?? ""} | ${side("speed")} | ${side("dns")} | ${side("lease")}`;
+    }
+
+    // What the cable's errors a step in say came in broken, or "" with
+    // none said.
+    function brokenIn() {
+        return networks.errorParts("enp0s1").find(row => row.key.endsWith(":errors-in"))?.side
+            ?? "";
     }
 
     // What Ethernet said each time Network told the launcher it had
@@ -153,26 +171,37 @@ ShellRoot {
         };
     }
 
+    // Whether nothing is loading for a cable.
+    function swept() {
+        return networks.cableLoading === null && networks.cablesAsked.length === 0;
+    }
+
     Component.onCompleted: Qt.callLater(root.begun)
 
-    // The card linked at 1 Gb/s, full duplex, its lease from networkd and
-    // a name server in resolv.conf, the uptime not yet written: before its
-    // files land, Ethernet says the link as the daemon told it, and its
-    // drawer isn't made, so neither grows; it says it's still reading, so a
-    // terminal's show asks again; and the lease says its server until the
-    // time since boot lands.
+    // The card linked at 1 Gb/s, full duplex, three frames in broken, its
+    // lease from networkd and a name server in resolv.conf, the uptime not
+    // yet written: before its files land, Ethernet says the link as the
+    // daemon told it, with no row of the cable's, and its drawer isn't
+    // made, so none grows; it says it's still reading, so a terminal's
+    // show asks again; and the lease says its server until the time since
+    // boot lands.
     function begun() {
         try {
-            written(carrier, "1\n");
-            written(speed, "1000\n");
-            written(duplex, "full\n");
-            written(resolv, "nameserver 192.168.4.1\n");
-            written(route, table);
+            Written.written(carrier, "1\n");
+            Written.written(speed, "1000\n");
+            Written.written(duplex, "full\n");
+            Written.written(errorsIn, "3\n");
+            Written.written(errorsOut, "0\n");
+            Written.written(stuckCarrier, "1\n");
+            Written.written(resolv, "nameserver 192.168.4.1\n");
+            Written.written(route, table);
             networks.leases = leases;
-            networks.links = links;
+            networks.links = [docked];
             const first = said();
             Expect.expect("before its files land, a cable says its link as the daemon told it",
-                first.startsWith("up | "), first);
+                first.startsWith("up |  | "), first);
+            Expect.expect("before its files land, a cable's errors aren't said",
+                brokenIn() === "", brokenIn());
             Expect.expect("before its files land, a cable says it's still reading",
                 networks.stillReading, String(networks.stillReading));
             // Made now, rather than in the turn of their own they wait for.
@@ -180,7 +209,8 @@ ShellRoot {
             Expect.expect("before its files land, a cable's drawer isn't made",
                 networks.glances.enp0s1 === undefined, JSON.stringify(networks.glances));
             waits.until("the cable's files and the name servers land",
-                within(2000, () => said().startsWith("1 Gb/s | 192.168.4.1 | ")), root.landed);
+                within(2000, () => said() === "1 Gb/s | 1 Gb/s | 192.168.4.1 | 192.168.4.1"),
+                root.landed);
         } catch (error) {
             Expect.fail(error.message ?? error);
         }
@@ -189,36 +219,73 @@ ShellRoot {
     function landed() {
         Expect.expect("once they land, it's read",
             !networks.stillReading, String(networks.stillReading));
-        Expect.expect("before the time since boot lands, a lease says its server",
-            said().endsWith(" | 192.168.4.1"), said());
-        written(up, "1000.00 4000.00\n");
+        Expect.expect("once they land, a cable's errors are said", brokenIn() === "3",
+            brokenIn());
+        Written.written(up, "1000.00 4000.00\n");
         networks.uptimeFile = `${root.dir}/uptime`;
         waits.until("the lease's time left from the uptime loaded",
             within(2000, () => said().endsWith(" | ends in 2 h")), root.glanced);
     }
 
+    // The drawer, made whole once the files land; and the uptime counted
+    // on from when it was loaded, an hour back, by the clock.
     function glanced() {
         waits.until("the cable's drawer made whole once its files land", within(2000, () => {
             const facts = (networks.glances.enp0s1 ?? []).map(f => `${f.label}=${f.value}`);
             return facts.includes("Speed=1 Gb/s") && facts.includes("Duplex=full");
-        }), root.changed);
+        }), () => {
+            networks.upAt -= 3600 * 1000;
+            Expect.expect("the uptime is counted on from its last load",
+                said().endsWith(" | ends in 1 h"), said());
+            root.changed();
+        });
     }
 
-    // The card renegotiated to 100 Mb/s, the name server changed and the
-    // machine up two hours on, the launcher shut: an answer straight after
-    // says them as last loaded, since it reads nothing. Opened, they load
-    // in the background, and once they land the launcher is told.
+    // The card renegotiated to 100 Mb/s with two frames more in broken,
+    // the name server changed and the machine up two hours on, the launcher
+    // shut: an answer straight after says them as last loaded, since it
+    // reads nothing. Asked by a terminal after a gap, they load again, and
+    // it's still reading until they've landed, so the terminal asks on
+    // until it's told what they say now.
     function changed() {
-        written(speed, "100\n");
-        written(resolv, "nameserver 9.9.9.9\n");
-        written(up, "8000.00 4000.00\n");
+        Written.written(speed, "100\n");
+        Written.written(errorsIn, "5\n");
+        Written.written(resolv, "nameserver 9.9.9.9\n");
+        Written.written(up, "8000.00 4000.00\n");
         const now = said();
         Expect.expect("an answer says the cable, name servers and uptime as last loaded",
-            now === "1 Gb/s | 192.168.4.1 | ends in 2 h", now);
+            now === "1 Gb/s | 1 Gb/s | 192.168.4.1 | ends in 1 h", now);
+        Expect.expect("an answer says a cable's errors as last loaded", brokenIn() === "3",
+            brokenIn());
+        networks.lookedAt = 0;
+        said();
+        Expect.expect("asked after a gap, it's still reading until they land again",
+            networks.stillReading, String(networks.stillReading));
+        waits.until("a terminal asking on told what they say now", within(2000, () =>
+            !networks.stillReading && said() === "100 Mb/s | 100 Mb/s | 9.9.9.9 | ends in 3 min"
+                && brokenIn() === "5"), root.opening);
+    }
+
+    // The uptime stepped back by more than a minute, and nothing else
+    // changed: opened, the launcher is told once its load lands, though
+    // the uptime was counted on.
+    function opening() {
+        Written.written(up, "4600.00 4000.00\n");
         told = [];
         shown.open = true;
-        waits.until("the launcher told of the change once the opening's loads land",
-            within(2000, () => told.includes("100 Mb/s | 9.9.9.9 | ends in 3 min")), root.opened);
+        waits.until("the launcher told of the uptime once the opening's load lands",
+            within(2000, () => told.includes("100 Mb/s | 100 Mb/s | 9.9.9.9 | ends in 1 h")),
+            root.recabled);
+    }
+
+    // Open, with no cable shown, so nothing loads it each second: once its
+    // files load again and land, changed, the launcher is told.
+    function recabled() {
+        told = [];
+        Written.written(speed, "2500\n");
+        networks.recable();
+        waits.until("the launcher told once a cable's load lands changed",
+            within(2000, () => told.some(each => each.startsWith("2.5 Gb/s | "))), root.opened);
     }
 
     // A cable shown, held as a step into it: its link loads again each
@@ -226,17 +293,62 @@ ShellRoot {
     function opened() {
         shown.held = [{ row: { key: "networks:enp0s1" } }];
         told = [];
-        written(speed, "2500\n");
+        Written.written(speed, "1000\n");
         waits.until("while a cable's shown, its link loads again each second",
-            within(2500, () => told.some(each => each.startsWith("2.5 Gb/s | "))), root.unplugged);
+            within(2500, () => told.some(each => each.startsWith("1 Gb/s | "))), root.relinked);
     }
 
-    // The card pulled out: what its files said is forgotten.
-    function unplugged() {
+    // The daemon says the cable has lost its link, newer than the files
+    // last loaded: it's said as the daemon says until they land again.
+    function relinked() {
         shown.held = [];
+        networks.links = [Object.assign({}, docked, { state: "no link" })];
+        Expect.expect("a cable the daemon says has changed is said as it says",
+            said().startsWith("nothing at the other end | "), said());
+        waits.until("the changed cable loaded again", within(2000, root.swept), root.held);
+    }
+
+    // A second card plugged in, its load held up and given up: it's said
+    // as the daemon tells it, the first card as loaded; nothing is left
+    // reading, and asked again it's not loaded again at once.
+    function held() {
+        networks.links = [second, docked];
+        networks.answer("ethernet");
+        Expect.expect("a card plugged in between looks says it's still reading",
+            networks.stillReading, String(networks.stillReading));
+        Expect.expect("the second card's load is under way",
+            networks.cableLoading?.name === "enp0s2", JSON.stringify(networks.cableLoading));
+        networks.cableGivenUp();
+        waits.until("the other card loaded", within(2000, root.swept), () => {
+            const ethernet = networks.answer("ethernet");
+            const side = name => (ethernet?.rows ?? []).find(row => row.key
+                === `networks:${name}`)?.side ?? "";
+            const both = `${ethernet?.headline} | ${side("enp0s1")} | ${side("enp0s2")}`;
+            Expect.expect("a card held up is said as the daemon tells it, the other as loaded",
+                both === "2 cards | 1 Gb/s | up", both);
+            Expect.expect("a card held up isn't loaded", networks.cables.enp0s2 === undefined,
+                JSON.stringify(networks.cables.enp0s2));
+            Expect.expect("a card held up leaves nothing reading",
+                !networks.stillReading, String(networks.stillReading));
+            networks.recable();
+            Expect.expect("a card held up isn't loaded again at once",
+                networks.cableLoading?.name !== "enp0s2"
+                    && !networks.cablesAsked.includes("enp0s2"),
+                JSON.stringify([networks.cableLoading, networks.cablesAsked]));
+            root.unplugged();
+        });
+    }
+
+    // The cards pulled out as the first's files load again: what they
+    // said is forgotten, and the load under way isn't kept once it lands.
+    function unplugged() {
+        networks.links = [docked];
         networks.links = [];
-        Expect.expect("a card gone is forgotten",
-            networks.cables.enp0s1 === undefined, JSON.stringify(networks.cables));
-        Qt.exit(0);
+        waits.until("the load under way as the cards went landed", within(2000, root.swept),
+            () => {
+            Expect.expect("a card gone is forgotten, though its load was under way",
+                networks.cables.enp0s1 === undefined, JSON.stringify(networks.cables));
+            Qt.exit(0);
+        });
     }
 }

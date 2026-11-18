@@ -623,9 +623,8 @@ Provider {
     // A file that never lands, or a turn that throws, would leave the
     // probe waiting for good and every interface after it left out, so
     // one that takes this long is given up; the next load asks again.
-    // A read that lands after it's given up is taken for the probe then
-    // under way, if any, and corrected when that interface is next asked,
-    // after the next gap.
+    // Pointed at no file, the probe lets go of the read under way, so one
+    // that lands after it's given up is dropped.
     Timer {
         id: probeWatch
         interval: 2 * provider.second

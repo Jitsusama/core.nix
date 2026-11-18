@@ -156,6 +156,7 @@ in
         cp ${../tests/traffic-reads.qml} shell.qml
         cp ${../../../tests/lib/Expect.js} Expect.js
         cp ${../../../tests/lib/Until.qml} Until.qml
+        cp ${../../../tests/lib/Written.js} Written.js
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export FONTCONFIG_FILE=${noFonts}
         ${shellFolderLint}
@@ -195,16 +196,17 @@ in
   # boot as last loaded, waiting on none, and loads them again in the
   # background as the launcher opens and each second while a cable's shown,
   # telling the launcher once a load changes them; a cable's drawer is made
-  # only once its files land (modules/quickshell/tests/network-docked-reads.qml),
-  # since docked with one card a step into Network read over forty files. The
-  # case writes its own card's folder, resolv.conf and uptime, in folders made
-  # here.
+  # only once its files land, a card gone or changed has its load let go, and a
+  # card whose load is given up isn't asked again at once
+  # (modules/quickshell/tests/network-docked-reads.qml), since docked with one
+  # card a step into Network read over forty files. The case writes its two
+  # cards' folders, resolv.conf and uptime, in folders made here.
   ethernet-waits-on-no-cable-file =
     pkgs.runCommandLocal "ethernet-waits-on-no-cable-file" { }
       # Kept in Nix because each line copies a file Nix gives it beside the
       # case, or sets what the shell runs it with.
       ''
-        mkdir -p launcher runtime net etc sys/enp0s1 && chmod 700 runtime
+        mkdir -p launcher runtime net etc sys/enp0s1/statistics sys/enp0s2 && chmod 700 runtime
         ${copied [
           "Daemon.qml"
           "Words.qml"
@@ -216,6 +218,7 @@ in
         cp ${../tests/network-docked-reads.qml} shell.qml
         cp ${../../../tests/lib/Expect.js} Expect.js
         cp ${../../../tests/lib/Until.qml} Until.qml
+        cp ${../../../tests/lib/Written.js} Written.js
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export FONTCONFIG_FILE=${noFonts}
         ${shellFolderLint}

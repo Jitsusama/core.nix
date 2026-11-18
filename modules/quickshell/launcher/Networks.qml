@@ -152,11 +152,26 @@ Provider {
     // The name servers and the time since boot loaded again in the
     // background, as the routes are; with Ethernet's answer reading a
     // cable's twenty files twice, a docked step into Network made over
-    // forty reads where it waited on each.
+    // forty reads where it waited on each. Until they and every cable
+    // have landed, a terminal's show asks again, so it prints what they
+    // say now rather than what was loaded as the launcher last opened.
+    property var factsAsked: []
     function reloadFacts() {
-        resolv.reload();
-        resolved.reload();
-        up.reload();
+        const views = [resolv, resolved, up].filter(view => String(view.path) !== "");
+        factsAsked = views;
+        if (views.length > 0)
+            stillReading = true;
+        for (const view of views)
+            view.reload();
+    }
+    function factLanded(view) {
+        factsAsked = factsAsked.filter(each => each !== view);
+        settled();
+    }
+    // Read once nothing loading for an answer is still under way.
+    function settled() {
+        if (factsAsked.length === 0 && cableLoading === null && cablesAsked.length === 0)
+            stillReading = false;
     }
 
     // Each interface's default gateway and its cost, IPv4's and IPv6's, as
@@ -234,7 +249,10 @@ Provider {
         for (const link of listed(now)) {
             // A cable whose files haven't landed keeps what it was, or
             // none, rather than being made without its link, which would
-            // then grow under Joel's eye.
+            // then grow under Joel's eye. The name servers and the uptime
+            // need no such wait: they load as the shell starts, a file
+            // each, long before the machine daemon's first word on the
+            // links and the second's gathering after it.
             if (link.kind === "wired" && cables[link.name] === undefined) {
                 if (glances[link.name] !== undefined)
                     made[link.name] = glances[link.name];
@@ -332,8 +350,13 @@ Provider {
 
     // Each cable's link as its card's files said when last loaded
     // (Interfaces.cable), by the card's name; one not loaded yet isn't
-    // here, and one gone from the links is forgotten.
-    property var cables: ({})
+    // here, and one gone from the links, or whose link the daemon says has
+    // changed since, is forgotten. Kept with no prototype, so a card
+    // named as one of an object's own members is a card like any other.
+    property var cables: Object.create(null)
+    // The daemon's word on each cable's link as its files last began to
+    // load.
+    property var cableStates: Object.create(null)
     // The files a cable's link is read from, in its card's folder, as
     // Interfaces.cable reads them.
     readonly property var cableFiles: {
@@ -345,9 +368,18 @@ Provider {
         return files;
     }
     // The cards whose files are still to be loaded, in turn, and the one
-    // under way, { name, at, texts }, or null with none.
+    // under way, { name, at, texts, state, stale }, or null with none:
+    // `state` is the daemon's word on its link as it began, and `stale`
+    // whether that word has changed since, or the card gone, so what it
+    // loads isn't kept.
     property var cablesAsked: []
     property var cableLoading: null
+    // When each card whose files last took too long was given up, by its
+    // name (cableGivenUp).
+    property var cablesStuck: Object.create(null)
+    function stuck(name) {
+        return Date.now() - (cablesStuck[name] ?? 0) < 60000;
+    }
 
     // A cable's link as last loaded, or null before its files first land,
     // which are asked for then, and a terminal's show asks again.
@@ -355,8 +387,10 @@ Provider {
         const cable = cables[name];
         if (cable !== undefined)
             return cable;
-        stillReading = true;
-        recable();
+        if (!stuck(name)) {
+            stillReading = true;
+            recable();
+        }
         return null;
     }
 
@@ -366,7 +400,8 @@ Provider {
     function recable() {
         const cards = (links ?? []).filter(link => link.kind === "wired")
             .map(link => link.name)
-            .filter(name => !cablesAsked.includes(name) && cableLoading?.name !== name);
+            .filter(name => !cablesAsked.includes(name) && !stuck(name)
+                && (cableLoading === null || cableLoading.stale || cableLoading.name !== name));
         if (cards.length === 0)
             return;
         cablesAsked = cablesAsked.concat(cards);
@@ -378,10 +413,12 @@ Provider {
         if (cablesAsked.length === 0) {
             cableLoading = null;
             cableWatch.stop();
-            stillReading = false;
+            settled();
             return;
         }
-        cableLoading = { name: cablesAsked[0], at: 0, texts: {} };
+        const name = cablesAsked[0];
+        const state = (links ?? []).find(link => link.name === name)?.state ?? "";
+        cableLoading = { name: name, at: 0, texts: {}, state: state, stale: false };
         cablesAsked = cablesAsked.slice(1);
         Qt.callLater(cableFile);
     }
@@ -411,37 +448,84 @@ Provider {
             Qt.callLater(cableFile);
             return;
         }
-        const now = Interfaces.cable(file => loading.texts[file] ?? "");
-        if (JSON.stringify(now) !== JSON.stringify(cables[loading.name])) {
-            const all = Object.assign({}, cables);
-            all[loading.name] = now;
-            cables = all;
-            glanceSoon();
-            if (provider.launcher?.open)
-                answered();
+        if (cablesStuck[loading.name] !== undefined) {
+            const still = Object.assign(Object.create(null), cablesStuck);
+            delete still[loading.name];
+            cablesStuck = still;
         }
+        if (!loading.stale)
+            keepCable(loading.name, loading.state,
+                Interfaces.cable(file => loading.texts[file] ?? ""));
         nextCable();
     }
 
-    // The cables of cards no longer among the links, forgotten.
-    function forgetCables() {
-        const cards = (links ?? []).filter(link => link.kind === "wired").map(link => link.name);
-        const kept = {};
-        for (const name of Object.keys(cables))
-            if (cards.includes(name))
-                kept[name] = cables[name];
-        if (Object.keys(kept).length !== Object.keys(cables).length)
-            cables = kept;
+    // A card's cable kept as its files said, with the daemon's word on
+    // its link as they began to load, said again where it's shown if it
+    // changed.
+    function keepCable(name, state, now) {
+        const states = Object.assign(Object.create(null), cableStates);
+        states[name] = state;
+        cableStates = states;
+        if (JSON.stringify(now) === JSON.stringify(cables[name]))
+            return;
+        const all = Object.assign(Object.create(null), cables);
+        all[name] = now;
+        cables = all;
+        glanceSoon();
+        if (provider.launcher?.open)
+            answered();
     }
 
-    // A file that takes two seconds is given up as unreadable, and the
-    // card goes on; one that lands after is taken for the next file, and
-    // put right when the card is next loaded, a second on while it's shown.
+    // The cables of cards no longer among the links, or whose link the
+    // daemon says has changed since their files began to load, forgotten,
+    // so its newer word is said until they're loaded again; and a card
+    // gone, or changed, under way or waiting, isn't kept once loaded.
+    function forgetCables() {
+        const cards = Object.create(null);
+        for (const link of links ?? [])
+            if (link.kind === "wired")
+                cards[link.name] = link.state;
+        const kept = Object.create(null);
+        const states = Object.create(null);
+        for (const name of Object.keys(cables))
+            if (cards[name] !== undefined && cards[name] === cableStates[name]) {
+                kept[name] = cables[name];
+                states[name] = cableStates[name];
+            }
+        if (Object.keys(kept).length !== Object.keys(cables).length) {
+            cables = kept;
+            cableStates = states;
+        }
+        cablesAsked = cablesAsked.filter(name => cards[name] !== undefined);
+        if (cableLoading !== null && cards[cableLoading.name] !== cableLoading.state)
+            cableLoading.stale = true;
+    }
+
+    // A file that takes two seconds, as one a busy driver holds up does,
+    // gives up its card's load, its cable said as last loaded, or as the
+    // daemon says its link before any has landed, rather than as a file
+    // that said nothing, and warned of. Pointed at no file, the view lets
+    // go of the load, so one landing late is dropped rather than taken
+    // for another file's. The card is asked again a minute on, not each
+    // second, since a read that hangs holds one of the threads every
+    // view in the shell loads on for as long as it does.
     Timer {
         id: cableWatch
 
         interval: 2000
-        onTriggered: provider.cableLanded("")
+        onTriggered: provider.cableGivenUp()
+    }
+    function cableGivenUp() {
+        const loading = cableLoading;
+        if (loading === null)
+            return;
+        const still = Object.assign(Object.create(null), cablesStuck);
+        still[loading.name] = Date.now();
+        cablesStuck = still;
+        console.warn(`Networks: ${loading.name}'s ${cableFiles[loading.at]} took two seconds`
+            + " to load, so its cable is said as last loaded, and asked again in a minute");
+        cableProbe.path = "";
+        nextCable();
     }
 
     Connections {
@@ -723,9 +807,9 @@ Provider {
                 gateway && six !== "" ? `IPv6 by ${six}` : "where traffic for elsewhere goes"));
         }
         if (name === now.out) {
-            const servers = nameServers();
-            if (servers.length > 0)
-                rows.push(part(key("dns"), "dns", servers.join(", "),
+            const asked = nameServers();
+            if (asked.length > 0)
+                rows.push(part(key("dns"), "dns", asked.join(", "),
                     "what this machine asks names of"));
         }
         const cable = link.kind === "wired" ? cableOf(name) : null;
@@ -741,8 +825,8 @@ Provider {
         if (link.mtu > 0)
             rows.push(part(key("mtu"), "mtu", `${grouped(link.mtu)} bytes`,
                 "the largest packet it sends whole", String(link.mtu)));
-        // A cable's carrier is read as its link is, so it's said as it is
-        // now rather than as the daemon last said.
+        // A cable's carrier, loaded since the daemon last said its link
+        // changed, is the newer word, so it's said over the daemon's.
         rows.push(part(key("state"), "state", stateSaid[cable?.state ?? link.state], "", ""));
         return rows;
     }
@@ -840,11 +924,15 @@ Provider {
     function uptime() {
         return upAt === 0 ? null : upLoaded + Math.max(0, Date.now() - upAt) / 1000;
     }
+    // Said again where a lease is shown the first time it lands, and when
+    // a load moves it from what was counted on by more than a minute, as
+    // a clock stepped does.
     function upLanded() {
-        const first = upAt === 0;
+        const counted = uptime();
         upLoaded = Number(up.text().trim().split(/\s+/)[0]) || 0;
         upAt = Date.now();
-        if (first && Object.keys(leases).length > 0) {
+        const moved = counted === null || Math.abs(counted - upLoaded) > 60;
+        if (moved && Object.keys(leases).length > 0) {
             glanceSoon();
             if (provider.launcher?.open)
                 answered();
@@ -1137,21 +1225,37 @@ Provider {
         id: resolv
         path: provider.resolvFile
         printErrors: false
-        onLoaded: provider.resolvLanded()
-        onLoadFailed: provider.resolvLanded()
+        onLoaded: {
+            provider.resolvLanded();
+            provider.factLanded(resolv);
+        }
+        onLoadFailed: {
+            provider.resolvLanded();
+            provider.factLanded(resolv);
+        }
     }
     FileView {
         id: resolved
         path: provider.resolvedFile
         printErrors: false
-        onLoaded: provider.resolvLanded()
-        onLoadFailed: provider.resolvLanded()
+        onLoaded: {
+            provider.resolvLanded();
+            provider.factLanded(resolved);
+        }
+        onLoadFailed: {
+            provider.resolvLanded();
+            provider.factLanded(resolved);
+        }
     }
     FileView {
         id: up
         path: provider.uptimeFile
         printErrors: false
-        onLoaded: provider.upLanded()
+        onLoaded: {
+            provider.upLanded();
+            provider.factLanded(up);
+        }
+        onLoadFailed: provider.factLanded(up)
     }
     // Each cable's files in turn (recable).
     FileView {

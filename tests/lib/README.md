@@ -29,6 +29,7 @@ For other checks:
 | `Watch.js`                   | a change a stand-in daemon tells the watch the shell holds on it  |
 | `Memory.js`                  | a QML test's own anonymous memory, read from /proc               |
 | `Until.qml`                  | a QML test's wait for what a daemon it runs has yet to do         |
+| `Written.js`                 | a file a QML test writes whole before it goes on                  |
 | `qml-in-time.sh`             | a QML test that times itself, judged by its fastest of five runs  |
 | `qmllint-counted.{nix,sh}`   | qmllint, printing every message it counted                        |
 | `shell-folder-lint.{nix,sh}` | qmllint over a check's laid-out shell, against Quickshell's types |
