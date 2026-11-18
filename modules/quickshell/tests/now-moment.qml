@@ -1145,7 +1145,21 @@ ShellRoot {
         const heldFirst = forYou();
         expect("For You holds the session, the to-dos and To Look At", keys(heldFirst)
             === JSON.stringify(["on:waiting:Say Yes", "on:waiting:Sign In",
-                "on:waiting:want:WANTB", "on:waitingOnYou:kind:look"]), keys(heldFirst));
+                "on:waiting:cell:WANTB", "on:waiting:cell:yours", "on:waiting:want:WANTB",
+                "on:waitingOnYou:kind:look"]), keys(heldFirst));
+        // What needs Joel now stands by the cell behind it (What Needs Me,
+        // 2026-11-18): the session's heading, then what it wants, which
+        // blocks it and so weighs most, then Joel's own heading over the
+        // to-dos no session is behind, and To Look At after them all.
+        const placed = key => heldFirst.findIndex(row => row.key === key);
+        const heldOrder = ["on:waiting:cell:WANTB", "on:waiting:want:WANTB",
+            "on:waiting:cell:yours"].map(placed);
+        const toDosAt = ["on:waiting:Say Yes", "on:waiting:Sign In"].map(placed);
+        expect("each cell's heading over its rows, the heaviest cell first",
+            heldOrder.every((at, index) => at >= 0 && (index === 0 || at > heldOrder[index - 1]))
+                && toDosAt.every(at => at > heldOrder[2])
+                && placed("on:waitingOnYou:kind:look") > Math.max(...toDosAt),
+            heldFirst.map(row => row.key));
         // Two asking stand together in Agents Asking, never loose among the
         // to-dos (Joel, 2026-11-18 10:18), ahead of them, since each blocks
         // its session, in the hue of what it holds and counting them; one

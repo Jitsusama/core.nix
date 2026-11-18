@@ -25,6 +25,7 @@ import "../Marks.js" as Marks
 import "../When.js" as When
 import "Ago.js" as Ago
 import "ForYou.js" as ForYou
+import "ForYouCells.js" as Cells
 import "ForYouFilter.js" as Filter
 import "Lately.js" as Lately
 import "Looks.js" as Looks
@@ -2005,15 +2006,15 @@ Provider {
 
     // What needs Joel now, under a heading for each cell behind it, the
     // cells by their heaviest row and each one's rows by weight, with what
-    // no session is behind under one heading of his own (ForYou.js's
+    // no session is behind under one heading of his own (ForYouCells.js's
     // byCell; Joel, 2026-11-16: "one 'what needs me' view grouped by
     // cell"). No heading while all of it is his own. A group whose rows all
     // went as they were made says nothing. `asked`, Agents Asking's row or
     // none, stands first while headings show, else at `agentAt` among the
-    // loose rows (ForYou.js's askedFirst).
+    // loose rows (ForYouCells.js's askedFirst).
     function cellRows(band, now, asked, agentAt) {
-        const groups = ForYou.byCell(band, one => one.cell());
-        if (!ForYou.askedFirst(groups)) {
+        const groups = Cells.byCell(band, one => one.cell());
+        if (!Cells.askedFirst(groups)) {
             return bandRows(band.slice(0, agentAt), now).concat(asked,
                 bandRows(band.slice(agentAt), now));
         }
