@@ -3,7 +3,9 @@
 # and still make the next vblank (nixos.nix's renders-by-the-deadline.patch),
 # which Joel tries by turns on his own screen. It asks the running niri over
 # IPC (render-deadline-action.patch), so neither way needs a restart, and it
-# lasts until niri stops; niri starts with it off. Its help and failures
+# lasts until niri stops; niri starts with it on, as home.nix asks. Either
+# way a screen faster than 60 Hz renders at once
+# (renders-by-the-deadline-up-to-a-rate.patch). Its help and failures
 # take the shape every command of ours does (docs/commands.md), by hand.
 
 case "${1:-}" in
@@ -14,8 +16,8 @@ off) want=false ;;
 niri-deadline  whether niri draws frames as late as it can
 
 EXAMPLES
-  niri-deadline on   draw by the deadline, until niri stops
-  niri-deadline off  draw as soon as something changes
+  niri-deadline on   draw by the deadline on 60 Hz screens, as niri starts
+  niri-deadline off  draw as soon as something changes, until niri stops
 
 EXIT
   0   done
@@ -40,5 +42,5 @@ fi
 if [ "$want" = true ]; then
   echo "niri renders by its deadline now; niri-deadline off puts it back"
 else
-  echo "niri renders as soon as something changes, as it always has"
+  echo "niri renders as soon as something changes, until it stops"
 fi
