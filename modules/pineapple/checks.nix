@@ -52,7 +52,10 @@ onLinux {
         && lib.any (lib.hasSuffix "/bin/pineapple-slack pineapple-slack run --live") (
           lib.toList unit.Service.ExecStart
         )
-        && lib.hasInfix "rm -f %S/mission/waiting/pineapple.json %S/mission/waiting/.writing/pineapple.json" unit.Service.ExecStopPost
+        && lib.all (row: lib.hasInfix row unit.Service.ExecStopPost) [
+          " %S/mission/waiting/pineapple.json"
+          " %S/mission/waiting/.writing/pineapple.json"
+        ]
       );
   # pineapple-github starts at login, reads Joel's GitHub sign-in through
   # gh, comes back as the new one after a switch and after it fails, runs

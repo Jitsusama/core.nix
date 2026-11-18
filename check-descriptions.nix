@@ -2659,7 +2659,7 @@
   pineapple-slack-starts-with-the-sign-in = ''
     the reader of Slack for the safe word starts at login, reads pi's Slack sign-in from the
     keyring, comes back after a switch and a failure, runs in the background slice, reads as
-    its own name in ps and runs live
+    its own name in ps, runs live and takes its row in For You with it as it stops
   '';
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with

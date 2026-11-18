@@ -176,8 +176,13 @@ in
           # Its row in For You saying it can't hear Slack (src/deaf.rs) goes
           # however it stops, as eero's does, so a reader stopped or taken
           # away leaves nothing standing that nothing would clear. %S is the
-          # XDG_STATE_HOME the program reads its path from.
-          ExecStopPost = "${pkgs.coreutils}/bin/rm -f %S/mission/waiting/pineapple.json %S/mission/waiting/.writing/pineapple.json";
+          # user manager's state folder, where the program finds the row
+          # while XDG_STATE_HOME is the default, as it is on every machine.
+          ExecStopPost = lib.concatStringsSep " " [
+            "${pkgs.coreutils}/bin/rm -f"
+            "%S/mission/waiting/pineapple.json"
+            "%S/mission/waiting/.writing/pineapple.json"
+          ];
         };
         # Started at login rather than once a sign-in file appears, since pi
         # keeps its sign-in in the keyring now and the file may never come.
