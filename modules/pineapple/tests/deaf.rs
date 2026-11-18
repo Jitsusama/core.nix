@@ -85,6 +85,24 @@ fn a_change_that_couldnt_be_made_is_made_again() {
 }
 
 #[test]
+fn a_row_left_by_a_tell_that_failed_after_it_is_still_taken_away() {
+    let mut deaf = Deaf::new();
+    let _ = deaf.heard(Round::Heard, AT);
+    let refused = Round::Deaf(Deafness::Refused);
+    let _ = deaf.heard(refused, AT);
+    assert!(matches!(deaf.heard(refused, AT + 30_000), Change::Tell(_)));
+    // Written; then a new why, whose rewrite fails.
+    let rewrite = deaf.heard(Round::Deaf(Deafness::NoSignIn), AT + 60_000);
+    assert!(matches!(rewrite, Change::Tell(_)), "retold: {rewrite:?}");
+    deaf.failed(&rewrite);
+    assert_eq!(
+        deaf.heard(Round::Heard, AT + 90_000),
+        Change::Untell,
+        "the first row still stands, so hearing Slack takes it away"
+    );
+}
+
+#[test]
 fn a_round_slack_couldnt_be_asked_in_counts_neither_way() {
     let mut deaf = Deaf::new();
     let refused = Round::Deaf(Deafness::Refused);

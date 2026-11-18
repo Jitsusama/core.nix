@@ -93,7 +93,12 @@ impl Deaf {
     /// away once Slack is heard.
     pub fn failed(&mut self, change: &Change) {
         match change {
-            Change::Tell(_) => self.told = None,
+            // What an earlier tell wrote may still stand, so it's taken
+            // away once Slack is heard even if no tell lands before.
+            Change::Tell(_) => {
+                self.told = None;
+                self.left = true;
+            }
             Change::Untell => self.left = true,
             Change::Keep => {}
         }
@@ -138,10 +143,7 @@ impl Deaf {
 #[must_use]
 pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
     let (said, first) = match why {
-        Deafness::Refused => (
-            "Slack refused the safe word's sign-in two rounds running",
-            None,
-        ),
+        Deafness::Refused => ("Slack refused the safe word's sign-in", None),
         Deafness::NoSignIn => (
             "The safe word has no Slack sign-in it can read, signed out or with the keyring \
              locked",

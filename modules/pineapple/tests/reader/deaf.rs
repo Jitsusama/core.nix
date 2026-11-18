@@ -77,25 +77,32 @@ fn a_refused_sign_in_is_told_in_for_you_until_slack_is_heard_again() {
 
 #[test]
 fn a_refusal_in_either_search_is_told_though_the_other_cant_be_asked() {
-    // The phrase's search is refused and the mention's can't be asked, so
-    // the refusal, which Joel can mend, is what the round comes to.
-    let (origin, _) = answering_whole(|line, _| {
-        if line.contains("query=pineapple") {
-            Answered::ok(json!({"ok": false, "error": "invalid_auth"}))
-        } else {
-            Answered {
-                status: 500,
-                headers: Vec::new(),
-                body: json!({}),
+    // One search is refused and the other can't be asked, so the refusal,
+    // which Joel can mend, is what the round comes to, whichever it is.
+    for phrase_refused in [true, false] {
+        let (origin, _) = answering_whole(move |line, _| {
+            if line.contains("query=pineapple") == phrase_refused {
+                Answered::ok(json!({"ok": false, "error": "invalid_auth"}))
+            } else {
+                Answered {
+                    status: 500,
+                    headers: Vec::new(),
+                    body: json!({}),
+                }
             }
-        }
-    });
-    let home = home();
-    let mut reader = reader(&home, &origin);
-    let told = until(&waiting(&home), true);
-    reader.kill().expect("the reader stops");
-    reader.wait().expect("the reader is gone");
-    assert!(told, "a refusal isn't hidden by a search that wasn't asked");
+        });
+        let home = home();
+        let mut reader = reader(&home, &origin);
+        let told = until(&waiting(&home), true);
+        let row = row(&home);
+        reader.kill().expect("the reader stops");
+        reader.wait().expect("the reader is gone");
+        assert!(
+            told && says(&row, "Slack refused the safe word's sign-in"),
+            "a refusal isn't hidden by a search that wasn't asked \
+             (the phrase's refused: {phrase_refused}): {row}"
+        );
+    }
 }
 
 #[test]
@@ -118,32 +125,67 @@ fn no_sign_in_to_read_is_told_too() {
 }
 
 #[test]
-fn a_slack_that_cant_be_reached_isnt_told_as_deaf() {
-    let asked = Arc::new(AtomicUsize::new(0));
-    let asks = Arc::clone(&asked);
-    let (origin, _) = answering_whole(move |line, _| {
-        if line.contains("search.messages") {
-            asks.fetch_add(1, Ordering::SeqCst);
-        }
-        Answered {
-            status: 500,
-            headers: Vec::new(),
-            body: json!({}),
-        }
-    });
+fn a_sign_in_that_doesnt_say_who_joel_is_is_told_as_none() {
+    let (origin, _) = answering_whole(|line, now| Answered::ok(answer(line, now)));
     let home = home();
-    let mut reader = reader(&home, &origin);
-    // Three rounds of both searches, more than the two rounds that tell.
-    let began = Instant::now();
-    while asked.load(Ordering::SeqCst) < 6 && began.elapsed() < PATIENCE {
-        thread::sleep(Duration::from_millis(20));
-    }
-    let searches = asked.load(Ordering::SeqCst);
+    std::fs::remove_file(home.join("config/agentic-harness/slack/credentials.json"))
+        .expect("the file's sign-in taken away");
+    let nobody = json!({"token": {
+        "accessToken": "xoxc-stand-in", "cookie": "stand-in", "teamId": "T0TEAM0001",
+        "userId": "",
+    }});
+    let mut reader = reading_with_keyring(&home, &origin, &format!("printf '%s\\n' '{nobody}'"));
+    let told = until(&waiting(&home), true);
+    let row = row(&home);
     reader.kill().expect("the reader stops");
     reader.wait().expect("the reader is gone");
-    assert!(searches >= 6, "Slack was asked only {searches} times");
     assert!(
-        !waiting(&home).exists(),
-        "nothing of Joel's to do while Slack can't be reached"
+        told && says(&row, "The safe word has no Slack sign-in it can read"),
+        "a sign-in naming nobody can't be read for him: {row}"
     );
+}
+
+#[test]
+fn a_slack_failing_in_ways_signing_in_cant_mend_isnt_told_as_deaf() {
+    // A server error, and an error word of Slack's that isn't a refusal
+    // of the sign-in.
+    for (failing, status, body) in [
+        ("a server error", 500, json!({})),
+        (
+            "an error word",
+            200,
+            json!({"ok": false, "error": "fatal_error"}),
+        ),
+    ] {
+        let asked = Arc::new(AtomicUsize::new(0));
+        let asks = Arc::clone(&asked);
+        let (origin, _) = answering_whole(move |line, _| {
+            if line.contains("search.messages") {
+                asks.fetch_add(1, Ordering::SeqCst);
+            }
+            Answered {
+                status,
+                headers: Vec::new(),
+                body: body.clone(),
+            }
+        });
+        let home = home();
+        let mut reader = reader(&home, &origin);
+        // Three rounds of both searches, more than the two rounds that tell.
+        let began = Instant::now();
+        while asked.load(Ordering::SeqCst) < 6 && began.elapsed() < PATIENCE {
+            thread::sleep(Duration::from_millis(20));
+        }
+        let searches = asked.load(Ordering::SeqCst);
+        reader.kill().expect("the reader stops");
+        reader.wait().expect("the reader is gone");
+        assert!(
+            searches >= 6,
+            "{failing}: Slack was asked only {searches} times"
+        );
+        assert!(
+            !waiting(&home).exists(),
+            "{failing}: nothing of Joel's to do that signing in would mend"
+        );
+    }
 }
