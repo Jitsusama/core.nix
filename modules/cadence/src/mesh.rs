@@ -547,7 +547,10 @@ mod tests {
         let rostered = mesh.rostered();
         assert_eq!(rostered.holder("a"), Some("work-background"));
         assert_eq!(rostered.holder("b"), None, "no readable roster holds it");
-        assert!(rostered.holds("work-background", "a"));
+        assert!(
+            rostered.holds("work-background", "a"),
+            "a roster that lists it holds it"
+        );
         assert!(
             !rostered.holds("work-background", "b"),
             "a roster that reads and doesn't list it doesn't hold it"
