@@ -2012,7 +2012,10 @@ def tallied_rows(laid: Json) -> tuple[int, int, int] | None:
     took = [float(each["ms"]) for each in by.values()]
     assert min(took, default=0) >= 0, f"a kind's rows took less than nothing: {by}"
     laying = float(last["laying"])
-    assert sum(took) <= laying + 0.5, f"rows took {took} of a {laying} ms laying"
+    # The journal says it in whole milliseconds, as its readers parse it.
+    assert laying.is_integer(), f"a laying of {laying} ms isn't said whole"
+    # Rounded, the laying may say up to half a millisecond less than its rows took.
+    assert sum(took) <= laying + 0.5 + 1e-6, f"rows took {took} of a {laying} ms laying"
     rows = sum(int(each["rows"]) for each in by.values())
     return rows, int(last["built"]), int(last["reused"])
 
