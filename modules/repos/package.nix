@@ -9,46 +9,47 @@
   rustPlatform,
   stdenv,
 }:
-rustPlatform.buildRustPackage rec {
-  pname = "repos";
-  version = "0.1.0";
-  src = lib.fileset.toSource {
-    root = ../.;
-    fileset = lib.fileset.unions [
-      ./Cargo.toml
-      ./Cargo.lock
-      ./src
-      ./tests
-      ../daemon-serve/Cargo.toml
-      ../daemon-serve/src
-      ../receptor-say/Cargo.toml
-      ../receptor-say/src
-      ../terminal-kit/Cargo.toml
-      ../terminal-kit/src
-    ];
-  };
-  sourceRoot = "${src.name}/repos";
-  cargoLock.lockFile = ./Cargo.lock;
-  # The counting's test counts over a small repository it builds with git,
-  # and the weighing's weighs one git wrote and gathered.
-  nativeCheckInputs = [ git ];
+rustPlatform.buildRustPackage (
+  rec {
+    pname = "repos";
+    version = "0.1.0";
+    src = lib.fileset.toSource {
+      root = ../.;
+      fileset = lib.fileset.unions [
+        ./Cargo.toml
+        ./Cargo.lock
+        ./src
+        ./tests
+        ../daemon-serve/Cargo.toml
+        ../daemon-serve/src
+        ../receptor-say/Cargo.toml
+        ../receptor-say/src
+        ../terminal-kit/Cargo.toml
+        ../terminal-kit/src
+      ];
+    };
+    sourceRoot = "${src.name}/repos";
+    cargoLock.lockFile = ./Cargo.lock;
+    # The counting's test counts over a small repository it builds with git,
+    # and the weighing's weighs one git wrote and gathered.
+    nativeCheckInputs = [ git ];
+    meta = {
+      description = "Lists every repository on the machine once, with its checkouts and trees";
+      license = lib.licenses.mit;
+      mainProgram = "repos";
+    };
+  }
   # A Mac's Nix sandbox lets a build bind no TCP listener, even on the
-  # loopback, so the redirect's test fails in a Mac's Nix build alone; it
-  # still runs under cargo test on a Mac, and in every Linux build.
-  # `--exact` skips that whole name only, so a test added later still
-  # runs. A Mac runs only the unit tests, since no sandboxed Mac run has
-  # reached the one in tests/ yet.
-  cargoTestFlags = lib.optionals stdenv.hostPlatform.isDarwin [
-    "--lib"
-    "--bins"
-  ];
-  checkFlags = lib.optionals stdenv.hostPlatform.isDarwin [
-    "--exact"
-    "--skip=github::gh_tests::a_redirect_is_refused_not_followed"
-  ];
-  meta = {
-    description = "Lists every repository on the machine once, with its checkouts and trees";
-    license = lib.licenses.mit;
-    mainProgram = "repos";
-  };
-}
+  # loopback, so a sandboxed Mac build skips the redirect's test, which
+  # binds two. It knows the sandbox by /Users, which only a sandboxed build
+  # can't list, so a Mac building outside it runs every test, as Linux
+  # does. `--exact` skips that whole name alone.
+  // lib.optionalAttrs stdenv.hostPlatform.isDarwin {
+    preCheck = ''
+      if ! ls /Users > /dev/null 2>&1; then
+        echo "In a Mac's Nix sandbox: skipping the test that binds a listener"
+        checkFlags="''${checkFlags-} --exact --skip=github::gh_tests::a_redirect_is_refused_not_followed"
+      fi
+    '';
+  }
+)
