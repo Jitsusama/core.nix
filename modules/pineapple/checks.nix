@@ -55,6 +55,7 @@ onLinux {
         )
         # The program is handed the file its stop removes.
         && lib.elem ''"SAFE_WORD_WAITING=${waiting}"'' (lib.toList unit.Service.Environment)
+        && lib.hasInfix "/bin/rm -f " unit.Service.ExecStopPost
         && lib.all (row: lib.hasInfix row unit.Service.ExecStopPost) [
           waiting
           "${dirOf waiting}/.writing/${baseNameOf waiting}"

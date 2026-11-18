@@ -330,10 +330,11 @@ fn reader_with(home: &Path, origin: &str, more: &[&str]) -> Child {
 
 /// The reader, telling For You in `waiting` when it names one, as its
 /// unit does, and finding its own file otherwise, whatever the run's
-/// own environment names.
+/// own environment names. It runs in its home, so a relative name lands
+/// there rather than in the crate.
 fn reading(home: &Path, origin: &str, more: &[&str], waiting: Option<&Path>) -> Child {
     let mut reader = Command::new(env!("CARGO_BIN_EXE_pineapple-slack"));
-    reader.env_remove("SAFE_WORD_WAITING");
+    reader.current_dir(home).env_remove("SAFE_WORD_WAITING");
     if let Some(waiting) = waiting {
         reader.env("SAFE_WORD_WAITING", waiting);
     }
