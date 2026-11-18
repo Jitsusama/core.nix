@@ -92,6 +92,12 @@ it("says each row's ties, the most cells first, and its cells by name", () => {
   assert.equal(saidOf(map, 1), "Joined to core by 1\u00a0cell.");
 });
 
+it("writes each other row's name as it's asked, so the page can link it home", () => {
+  const map = mapOf(grove);
+  const linked = saidOf(map, 1, (row) => `[${row.name}](${row.address})`);
+  assert.equal(linked, `Joined to [core](${map.rows[0]?.address}) by 1\u00a0cell.`);
+});
+
 it("steps up and down the rows, stays at either end, and never goes sideways", () => {
   const map = mapOf(grove);
   assert.equal(walked(map, 0, "down"), 1);
