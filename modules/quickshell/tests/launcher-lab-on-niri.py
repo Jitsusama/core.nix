@@ -66,6 +66,8 @@ PRIMED_S = 6
 # How long a presented opening waits to say it's usable, in seconds: its sources wake a few a
 # frame after it fills in, well inside this on a loaded builder.
 USABLE_S = 3
+# The lines an opening says once a key could act on it, or that none could in time.
+USABLE_SAID = ("opening usable", "opening not usable")
 
 # How many notices are on screen as it runs, when it times Super+N's opening ("notices").
 NOTICES = 3
@@ -107,10 +109,12 @@ def latest(timed: list[Json]) -> int:
     return cast("int", timed[-1].get("nth", len(timed))) if timed else 0
 
 
-def opened(shell: Shell, place: str) -> Json:
+def opened(shell: Shell, place: str, mark: int | None = None) -> Json:
     """Open a place from shut as its chord asks, and give that opening once niri presented it.
 
     It's asked once the shut launcher has kept home, as Joel's openings come seconds apart.
+    Given the log's mark from before the ask, it asks the shell nothing until the opening says
+    whether it was usable, as the shell answers on the thread whose stall the lab times.
     """
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     before = latest(openings(shell))
@@ -119,6 +123,10 @@ def opened(shell: Shell, place: str) -> Json:
     else:
         words = ("toggle",) if place == "home" else ("collection", place)
         shell.as_account(shell.ipc(*words))
+    if mark is not None:
+        giving_up = time.monotonic() + USABLE_S
+        while not said_after(shell, mark, *USABLE_SAID) and time.monotonic() < giving_up:
+            time.sleep(launcher_on_niri.POLL)
     each: list[Json] = []
 
     def presented(_: Json) -> bool:
@@ -138,10 +146,10 @@ def usable_after(shell: Shell, nth: int, mark: int) -> tuple[Json, list[str]]:
     stall it times.
     """
     giving_up = time.monotonic() + USABLE_S
-    said = said_after(shell, mark, "opening usable")
+    said = said_after(shell, mark, *USABLE_SAID)
     while not said and time.monotonic() < giving_up:
         time.sleep(launcher_on_niri.POLL)
-        said = said_after(shell, mark, "opening usable")
+        said = said_after(shell, mark, *USABLE_SAID)
     each = [one for one in openings(shell) if one.get("nth") == nth]
     return (each[0] if each else {}), said[:1]
 
@@ -237,7 +245,7 @@ def test_each_chord_opening_is_timed(
         # Each round starts one place further on, so no place always follows the same one.
         for place in places[round_ % len(places) :] + places[: round_ % len(places)]:
             mark = shell.mark()
-            opening = opened(shell, place)
+            opening = opened(shell, place, mark)
             said = {
                 "place": place,
                 "round": round_,
@@ -286,11 +294,13 @@ def stall_of(
 
 
 def said_after(shell: Shell, mark: int, *wanted: str) -> list[str]:
-    """Give the shell's log lines since the mark that hold any of the words wanted."""
+    """Give the shell's whole log lines since the mark that hold any of the words wanted."""
     with shell.log.open("rb") as log:
         log.seek(mark)
         written = log.read().decode(errors="replace")
-    return [line for line in written.splitlines() if any(word in line for word in wanted)]
+    # Only lines ended, as the last may be read while it's still being written.
+    whole = written[: written.rfind("\n") + 1]
+    return [line for line in whole.splitlines() if any(word in line for word in wanted)]
 
 
 def stepped(shell: Shell, name: str) -> tuple[Json, list[str]]:
