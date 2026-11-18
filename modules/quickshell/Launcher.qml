@@ -6968,6 +6968,9 @@ Scope {
     // The rows y just copied, by their place, flashed for the key timing's
     // yank-flash as his Neovim's on_yank flashes a yank.
     property var flashing: ({})
+    // How many yanks have flashed, so only the last one's frame starts
+    // the flash's time.
+    property int yanks: 0
 
     Timer {
         id: flash
@@ -7293,7 +7296,19 @@ Scope {
         for (const copy of copies)
             flashed[copy.at] = true;
         flashing = flashed;
-        flash.restart();
+        // The flash is timed from the first frame that draws it, so a frame
+        // held back past the flash's length still shows it. An earlier
+        // flash's timer stops, and an earlier yank still waiting on its
+        // frame starts nothing, so neither ends this one before it's drawn.
+        // Its time is asked for the way the showing report is
+        // (showingTurnDue), a turn later on each side of the frame, so it
+        // never starts before the report that says it flashed is made.
+        flash.stop();
+        const yank = ++yanks;
+        Qt.callLater(() => afterFrame(() => Qt.callLater(() => {
+            if (yank === yanks)
+                flash.restart();
+        })));
         Report.say(`yanked ${copies.length}`);
     }
 
