@@ -286,11 +286,18 @@ impl Follow {
 
     /// Why the controller holds the upload where it does, and the upload
     /// that reason speaks of: the one answered, when it's the controller's
-    /// own rate. Judged at a moment in ms since 1970, and none once the
-    /// recorder has gone silent, when what holds is no longer what it heard.
+    /// own rate. Judged at a moment in ms since 1970, and none when nothing
+    /// it judged holds: once the recorder has gone silent, while it lets
+    /// the upload go, and until it steps on a second heard after a silence.
     pub fn why(&self, at_ms: u64) -> Option<crate::why::Reason> {
         let own = self.controller.up.limit();
-        (!self.silent(at_ms)).then(|| crate::why::Reason {
+        // The second last stepped on is within the silence of the last line
+        // read, or the reason is from before a silence just ended.
+        let fresh = self
+            .last_at
+            .is_some_and(|s| s.saturating_mul(1_000).saturating_add(SILENT_MS) >= self.last_ms);
+        let judged = fresh && !self.silent(at_ms) && !self.controller.lets_go();
+        judged.then(|| crate::why::Reason {
             up: self.rates.up.filter(|&up| Some(up) == own),
             said: self.controller.why(),
         })
@@ -427,9 +434,10 @@ impl Live {
 
     /// The share of its lane the VPN riding the link is held to (src/tunnel.rs).
     /// A recorder gone silent judges no wait, so the VPN has its whole
-    /// share then, under a trial's ceiling as under none.
-    pub fn vpn_share(&self) -> f64 {
-        if ms(SystemTime::now()).saturating_sub(self.follow.last_ms) > SILENT_MS {
+    /// share then, under a trial's ceiling as under none. Judged at `now`,
+    /// the moment the rates and the reason were.
+    pub fn vpn_share(&self, now: SystemTime) -> f64 {
+        if self.follow.silent(ms(now)) {
             return 1.0;
         }
         self.follow.controller.tunnel_share()
@@ -685,19 +693,76 @@ mod tests {
         assert!(line.ends_with(&reason.said), "{line}");
     }
 
-    // A guard that gives up, or a second no reflector answers, answers the
-    // trial's ceiling or no limit, while the controller's own rate stays
-    // the connection's: its reason then speaks of no upload held.
+    /// `seconds` of the upload carried on, each 0.1 s answered by the
+    /// gateway alone, from `from` ms, after `flow_queued`'s ten.
+    fn gateway_only(from: u64, seconds: u64) -> Vec<String> {
+        (0..seconds * 10)
+            .map(|i| {
+                json!({"at": from + 100 * (i + 1), "gateway": 5.0, "rx": 100_000 + i,
+                       "tx": 15_000_000 + 150_000 * (i + 1)})
+                .to_string()
+            })
+            .collect()
+    }
+
+    // A second no reflector answers, as one the guard has given up in,
+    // lets the upload go to a trial's ceiling: the controller holds
+    // nothing then, whatever its own rate reads, so it gives no reason.
     #[test]
-    fn a_reason_speaks_of_no_upload_when_the_answer_isn_t_the_controller_s() {
+    fn a_controller_letting_go_gives_no_reason() {
+        let mut follow = waiting(Known::new());
+        follow.tune(Some(Tuning {
+            most_kbit: Some(8_500.0),
+            ..Tuning::default()
+        }));
+        let mut lines = flow_queued(NOV3);
+        lines.extend(gateway_only(NOV3 + 10_000, 15));
+        for line in &lines {
+            follow.take(&parse(line).expect("a sample"));
+        }
+        let last = follow.last_ms;
+        let (_, rates) = follow.now(last).expect("a link");
+        assert_eq!(rates.up, Some(8_500), "the ceiling wasn't let go to");
+        assert_eq!(
+            follow.why(last),
+            None,
+            "a controller letting go gave a reason"
+        );
+    }
+
+    // A recorder heard again after a minute, past the gap a reading spreads
+    // seconds across, has its first lines read before any second after
+    // its silence is stepped on, and the controller's reason then is still
+    // the one from before.
+    #[test]
+    fn a_recorder_heard_again_gives_no_reason_until_a_second_after_is_stepped() {
         let mut follow = waiting(Known::new());
         for line in &flow_queued(NOV3) {
             follow.take(&parse(line).expect("a sample"));
         }
-        follow.rates.up = Some(8_500);
-        assert_ne!(follow.controller.up.limit(), Some(8_500));
-        let reason = follow.why(follow.last_ms).expect("a reason");
-        assert_eq!(reason.up, None, "{reason:?}");
+        let back = NOV3 + 10_000 + 70_000;
+        let lines: Vec<String> = (0..50_u64)
+            .map(|i| {
+                json!({"at": back + 100 * i, "reflector": "9.9.9.9", "operator": "Quad9",
+                       "out": 10.0, "back": 10.0, "rtt": 20.0, "rx": 100_000 + 1_000 * i,
+                       "tx": 15_000_000 + 150_000 * (i + 1)})
+                .to_string()
+            })
+            .collect();
+        let first = parse(&lines[0]).expect("a sample");
+        follow.take(&first);
+        assert_eq!(
+            follow.why(follow.last_ms),
+            None,
+            "the first line heard again gave the reason from before"
+        );
+        for line in &lines[1..] {
+            follow.take(&parse(line).expect("a sample"));
+        }
+        assert!(
+            follow.why(follow.last_ms).is_some(),
+            "seconds heard again gave no reason"
+        );
     }
 
     // A trial set before a stay begins tunes it too: the A/B it serves

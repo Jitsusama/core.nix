@@ -135,11 +135,12 @@ pub fn holding(link: &str, up: Option<u64>, down: Option<u64>, reason: Option<&R
 }
 
 /// The journal's line when a trial's ceiling alone holds `link`'s upload,
-/// at `up` kbit/s, since the recorder has gone silent and the controller
-/// hears nothing to hold it by.
-pub fn silent(link: &str, up: u64) -> String {
+/// at `up` kbit/s: the recorder has gone silent, or the controller lets
+/// the upload go, so nothing it judged holds it.
+pub fn ceiling(link: &str, up: u64) -> String {
     format!(
-        "{link}: held to {} up by a trial's ceiling alone, since the recorder is silent.",
+        "{link}: held to {} up by a trial's ceiling alone, while the controller holds \
+         nothing.",
         mbit(lossless(up))
     )
 }
@@ -307,15 +308,15 @@ mod tests {
         );
     }
 
-    // Under a silent recorder the controller hears nothing, so what holds
-    // is a trial's ceiling, and the line says so rather than naming no
-    // cause.
+    // Under a silent recorder, or a controller letting go, nothing the
+    // controller judged holds the upload, so what holds is a trial's
+    // ceiling, and the line says so rather than naming no cause.
     #[test]
-    fn a_ceiling_holding_alone_says_the_recorder_is_silent() {
+    fn a_ceiling_holding_alone_says_the_controller_holds_nothing() {
         assert_eq!(
-            silent("wlp0s20f3", 8_500),
-            "wlp0s20f3: held to 8.5 Mb/s up by a trial's ceiling alone, since the recorder \
-             is silent."
+            ceiling("wlp0s20f3", 8_500),
+            "wlp0s20f3: held to 8.5 Mb/s up by a trial's ceiling alone, while the controller \
+             holds nothing."
         );
     }
 
