@@ -375,12 +375,16 @@ fn newer(root: &Path, running: io::Result<PathBuf>) -> Option<PathBuf> {
     crate::world::replaced(Ok(installed.clone()), running).then_some(installed)
 }
 
+/// What a ride sets for the build it hands over to, which then keeps the
+/// right of way the ride held.
+const HANDED_OVER: &str = "MERGE_NET_HANDED_OVER";
+
 /// Go on riding as the build at `newer`, in this process and so this
-/// unit: what it hands over is on disk, but the search a split was in
-/// starts afresh. Only says why, when it couldn't.
+/// unit: the riders and the right of way are on disk, but the search a
+/// split was in starts afresh. Only says why, when it couldn't.
 fn hand_over(newer: &Path) -> String {
     use std::os::unix::process::CommandExt;
-    let why = Command::new(newer).arg("ride").exec();
+    let why = Command::new(newer).arg("ride").env(HANDED_OVER, "1").exec();
     format!("the train couldn't go on as {}: {why}", newer.display())
 }
 
@@ -449,8 +453,10 @@ pub fn ride(url: &str) -> Result<ExitCode, String> {
     let root = crate::state::State::from_env().root;
     // A train that was killed left its right of way behind, so one
     // starting afresh holds none, and however it stops, changes merge
-    // alone again.
-    way(&root, &Ended::Otherwise);
+    // alone again. One a ride handed over to holds what the ride held.
+    if std::env::var_os(HANDED_OVER).is_none() {
+        way(&root, &Ended::Otherwise);
+    }
     let ridden = ride_from(&root, url);
     way(&root, &Ended::Otherwise);
     ridden
