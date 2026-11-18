@@ -13,6 +13,9 @@
 //! would carry better and moves the card there. What each carried is
 //! learned by the hour too (learn.rs), for those the card hasn't been on
 //! in the span.
+//!
+//! Long because its cases, near half of it, stay beside the private
+//! figures they prove one by one, as every module in wifid keeps them.
 
 use std::collections::{HashMap, VecDeque};
 
