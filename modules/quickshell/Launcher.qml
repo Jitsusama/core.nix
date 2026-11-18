@@ -3278,6 +3278,14 @@ Scope {
     // said again before it opens, the newer takes its place.
     property var toldOnOpen: []
     property bool toldLoose: false
+
+    // Forgets what's told and not yet read, said in the foot or waiting
+    // for the next opening, as a share begins, since it may name what the
+    // share hides (secret-asks/Asks.qml).
+    function untold() {
+        toldOnOpen = [];
+        say([]);
+    }
     function tellOnOpen(told, loose) {
         if (open) {
             say(told, loose);
@@ -7675,11 +7683,12 @@ Scope {
         if (!choice.run && enter(choice))
             return;
         // One with nothing to do, inside or opened, as an ask once
-        // answered, keeps the launcher, where running it threw and closed
-        // it, and says Return is not here, as a key with no meaning does;
-        // one opened below another needs no run.
+        // answered, only says something, so Return only closes, as on a
+        // machine's facts (Machine.qml), where running it threw as it
+        // closed; one opened below another needs no run.
         if (!choice.run && !choice.opens && !(below && choice.below)) {
-            say([[hintKey("run"), (Words.field.hints ?? {}).notHere ?? ""]]);
+            learn(choice);
+            open = false;
             return;
         }
         // One that changes something, or whose outcome takes a while, keeps

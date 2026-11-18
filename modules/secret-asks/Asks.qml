@@ -76,25 +76,27 @@ Provider {
         forget();
         ready.remade();
         if (hiding)
-            heldHidden();
+            launcher?.untold?.();
+        heldAgain();
         changed();
     }
 
-    // Each row held as it becomes since an act of his just before the
-    // share, held again as its hidden row and named only as hidden, so
-    // neither the row nor what's told if the daemon refuses it or is late
-    // names the secret on the shared screen. What says it's done and how
-    // long it may take are kept; its wait starts again.
-    function heldHidden() {
+    // Each row held as it becomes since an act of his, held again as its
+    // row is made now and named as it's told now: hidden as a share
+    // begins, so neither the row nor what's told if the daemon refuses it
+    // or is late names the secret on the shared screen, and itself again
+    // as one ends, so no hidden row is laid over a live one. What says
+    // it's done and how long it may take are kept; its wait starts again.
+    function heldAgain() {
         const held = launcher?.becoming ?? {};
-        const name = Words.name("asks:hidden");
         for (const key of Object.keys(held)) {
             const one = held[key];
-            if (one.from !== provider)
+            const shown = one.row?.shownKey;
+            if (one.from !== provider || shown === undefined)
                 continue;
             const how = Object.assign(typeof one.done === "function" ? { done: one.done } : {},
                 one.within > 0 ? { within: one.within } : {});
-            provider.becomes(key, ready.rowAt(one.row?.shownKey ?? key), name, one.act, how);
+            provider.becomes(key, ready.rowAt(shown), ready.toldName(shown), one.act, how);
         }
     }
 
