@@ -241,7 +241,7 @@ ShellRoot {
             typedWithReturn, typedWithReturnShown, movedThenOpened, movedThenOpenedShown, overRowsThenTold,
             toldOverRows, toldOverRowsShown, landed, landedThenMoved, landedThenShown, commanded,
             commandedThenRun, commandedThenMoved, commandedThenShown, timedBeforeSharing,
-            timedMove, sharing, sharingMoved, unshared, unsharedShown, unsharedMoved, unsharedMovedShown,
+            timedMove, sharing, sharingMoved, sharingMovedAsked, unshared, unsharedShown, unsharedMoved, unsharedMovedShown,
             unheard, ownRecording]);
     }
 
@@ -619,19 +619,23 @@ ShellRoot {
         same("while the screen is shared an ask's row names only that it's hidden",
             row()?.name, hidden);
         same("and says nothing of where it's from", row()?.note, "");
+        // A ready row's drawer is made as it's drawn (ReadyRows.qml's drawing).
+        const drawer = row()?.drawer?.() ?? {};
         same("its drawer says neither what it asks for nor why",
-            [row()?.drawer?.title, row()?.drawer?.body, row()?.drawer?.facts?.length],
-            [hidden, "", 0]);
-        same("it has no act, so no Return answers it unseen", [row()?.arms, row()?.run],
-            ["", undefined]);
+            [drawer.title, drawer.body, drawer.facts?.length], [hidden, "", 0]);
+        same("it has no act, so no Return answers it unseen", [row()?.arms, typeof row()?.run],
+            ["", "undefined"]);
         same("it still waits for him in For You", asks.forYou.length, 1);
         same("and its line's time starts again", asks.seen, {});
     }
 
     function sharingMoved() {
-        const waiting = stage.awaiting.length;
+        stage.awaiting = [];
         stage.press("k", true);
-        same("a move over a hidden line asks no frame of it", stage.awaiting.length, waiting);
+    }
+
+    function sharingMovedAsked() {
+        same("a move over a hidden line asks no frame of it", stage.awaiting.length, 0);
     }
 
     function unshared() {
