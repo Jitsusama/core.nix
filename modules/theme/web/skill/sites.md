@@ -45,8 +45,9 @@ that is awesome" (2026-11-11).
   `sites.json`. The system's and Code's readers of the homes read
   `rows.json`, and `sites.json` only where a home has none yet;
   `homes.js` reads `rows.json` too, and checks `sites.json` beside it.
-  So a change to a live site's homes is made in `home.nix` alone. Leave its `sites.json` row as it is: a home from before
-  `rows.json` still reads it. A document's row in `sites.json` is still
+  So a change to a live site's homes is made in `home.nix` alone. Leave
+  its `sites.json` row as it is: a home from before `rows.json` still
+  reads it. A document's row in `sites.json` is still
   the whole job.
 - **A document on the kit.** A document takes its keys and its theme
   switch from the kit, never a script file of its own (the lines in its
