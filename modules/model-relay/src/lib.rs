@@ -32,7 +32,10 @@
 //! after it went is said as a 502, for pi's retry. After the machine
 //! sleeps, the connections it held are retired and opened afresh, since
 //! the network they ran on may be gone and pings would take their time to
-//! say so.
+//! say so. A ping is what finds a lost connection, and an unanswered one
+//! fails every request on it, so below h2 each layer holds little ahead
+//! of one: a body goes in short frames, through few records and a kernel
+//! holding little unsent, and on a slow uplink a ping is answered in time.
 //!
 //! It says on stderr only what a reader may keep: each connection opened
 //! and retired, why one couldn't be made, and counts of what it served.
@@ -58,14 +61,16 @@ use std::convert::Infallible;
 use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as Held, PoisonError};
+use std::task::{Context, Poll};
 use std::time::{Duration, Instant, SystemTime};
 
 use bytes::Bytes;
 use http_body_util::combinators::BoxBody;
 use http_body_util::{BodyExt, Full};
-use hyper::body::Incoming;
+use hyper::body::{Body as HttpBody, Frame, Incoming, SizeHint};
 use hyper::client::conn::http2::SendRequest;
 use hyper::header::{self, HeaderMap, HeaderName};
 use hyper::http::uri::{Authority, PathAndQuery, Scheme};
@@ -91,16 +96,25 @@ const PING_EVERY: Duration = Duration::from_secs(20);
 /// How long a ping may wait for its answer before the connection is closed,
 /// with every request on it. Long enough for a lossy uplink's resends to
 /// back off a few times, since closing a live connection fails each request
-/// it carries, while one the network lost is still found within a minute.
+/// it carries. One the network lost is found at most a minute after its
+/// last frame was read, `PING_EVERY` and this together.
 const PING_ANSWERED_WITHIN: Duration = Duration::from_secs(40);
-/// The most bytes the kernel may hold unsent on a connection to the
-/// origin. hyper pings once nothing has been read for `PING_EVERY`, which
-/// on an upload is the whole send, and the ping goes behind whatever the
-/// kernel already holds: measured on 17 November, 128 KB waited on a
-/// connection moving 70 kbit/s, the ping went unanswered, and hyper closed
-/// the connection with every request on it. Held to a few frames, the
-/// rest waits in h2, which sends a ping before the next frame of data.
-const UNSENT_AT_MOST: u32 = 16 * 1024;
+/// The most each layer beneath h2's queue holds ahead of a ping: the one
+/// DATA frame h2 is writing, rustls's records, and the kernel's unsent
+/// bytes. hyper pings once nothing has been read for `PING_EVERY`, which
+/// on an upload is the whole send, and h2 writes a pending ping before its
+/// next frame, but behind whatever those layers already hold. Left alone,
+/// a frame is as long as the stream's window (the origin allows 64 KiB
+/// and frames to 16 MiB), rustls holds 64 KiB, and the kernel what
+/// `net.ipv4.tcp_notsent_lowat` says, 128 KiB on our machines: measured on
+/// 17 November, 128 KB waited on a connection moving 70 kbit/s, the ping
+/// went unanswered within 20 s, and hyper closed the connection with every
+/// request on it. At 16 KiB a layer, 48 KiB at most is ahead of a ping,
+/// about six seconds at that rate.
+const HELD_AHEAD_AT_MOST: usize = 16 * 1024;
+/// The most of an error's account the journal keeps for one line, since
+/// the origin's goodbye carries debug data of its choosing.
+const SAID_AT_MOST: usize = 300;
 /// How often the counts are said, when anything was asked since.
 const COUNTS_EVERY: Duration = Duration::from_secs(600);
 /// How long it waits before accepting again after an accept fails, so a
@@ -123,6 +137,80 @@ const SLEPT_AT_LEAST: Duration = Duration::from_secs(10);
 
 /// What a relay answers with: the origin's body, or a line of its own.
 type Body = BoxBody<Bytes, hyper::Error>;
+/// What a relay sends to its origin: pi's body, in pieces.
+type Sent = InPieces<Incoming>;
+
+/// A body handed on in pieces of at most `HELD_AHEAD_AT_MOST`, so that no
+/// DATA frame h2 writes is longer, since h2 cuts a frame from one piece
+/// and never joins two.
+pub struct InPieces<B> {
+    body: B,
+    rest: Bytes,
+}
+
+impl<B> InPieces<B> {
+    /// `body`, to be handed on in pieces.
+    pub fn new(body: B) -> Self {
+        Self {
+            body,
+            rest: Bytes::new(),
+        }
+    }
+
+    /// The next piece of what's left of the last frame read, if any is.
+    fn piece(&mut self) -> Option<Bytes> {
+        if self.rest.is_empty() {
+            return None;
+        }
+        let length = self.rest.len().min(HELD_AHEAD_AT_MOST);
+        Some(self.rest.split_to(length))
+    }
+}
+
+impl<B> HttpBody for InPieces<B>
+where
+    B: HttpBody<Data = Bytes> + Unpin,
+{
+    type Data = Bytes;
+    type Error = B::Error;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Bytes>, B::Error>>> {
+        if let Some(piece) = self.piece() {
+            return Poll::Ready(Some(Ok(Frame::data(piece))));
+        }
+        let read = Pin::new(&mut self.body).poll_frame(cx);
+        let Poll::Ready(Some(Ok(frame))) = read else {
+            return read;
+        };
+        match frame.into_data() {
+            Ok(data) => {
+                self.rest = data;
+                // An empty frame read stays an empty frame.
+                let piece = self.piece().unwrap_or_default();
+                Poll::Ready(Some(Ok(Frame::data(piece))))
+            }
+            Err(trailers) => Poll::Ready(Some(Ok(trailers))),
+        }
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.rest.is_empty() && self.body.is_end_stream()
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        let left = self.body.size_hint();
+        let held = self.rest.len() as u64;
+        let mut hint = SizeHint::new();
+        hint.set_lower(left.lower() + held);
+        if let Some(upper) = left.upper() {
+            hint.set_upper(upper + held);
+        }
+        hint
+    }
+}
 
 /// The one https origin a relay forwards to.
 #[derive(Clone, Debug)]
@@ -366,13 +454,13 @@ impl Drop for Holding {
 /// One of the connections a relay keeps: the sender of the one open, if
 /// it is, and the lock whoever opens it holds, so it's opened once.
 struct Slot {
-    open: Held<Option<SendRequest<Incoming>>>,
+    open: Held<Option<SendRequest<Sent>>>,
     opening: Mutex<()>,
 }
 
 impl Slot {
     /// A sender down this connection, while it takes requests.
-    fn sender(&self) -> Option<SendRequest<Incoming>> {
+    fn sender(&self) -> Option<SendRequest<Sent>> {
         self.open
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -382,7 +470,7 @@ impl Slot {
     }
 
     /// Keeps `sender` as this connection's.
-    fn keep(&self, sender: SendRequest<Incoming>) {
+    fn keep(&self, sender: SendRequest<Sent>) {
         *self.open.lock().unwrap_or_else(PoisonError::into_inner) = Some(sender);
     }
 }
@@ -618,7 +706,7 @@ impl Relay {
         parts.version = Version::HTTP_2;
         without_connection_headers(&mut parts.headers);
 
-        let mut request = Request::from_parts(parts, body);
+        let mut request = Request::from_parts(parts, InPieces::new(body));
         let mut sent = 0;
         let answered = loop {
             let mut sender = match self.sender().await {
@@ -673,7 +761,7 @@ impl Relay {
     /// A connection to send down: the next in turn if it's open, or any
     /// other that is while the next is opened behind it, or, with none
     /// open, the next not being opened already, once it's opened.
-    async fn sender(self: &Arc<Relay>) -> Result<SendRequest<Incoming>, Unreachable> {
+    async fn sender(self: &Arc<Relay>) -> Result<SendRequest<Sent>, Unreachable> {
         self.retire_after_a_sleep();
         let count = self.slots.len();
         let at = self.next.fetch_add(1, Ordering::Relaxed) % count;
@@ -740,7 +828,7 @@ impl Relay {
     /// Connection `at`, opened by this request or by the one before it
     /// that was opening it. A request that waited on an attempt that
     /// failed hears that failure, rather than making its own.
-    async fn open(&self, at: usize) -> Result<SendRequest<Incoming>, Unreachable> {
+    async fn open(&self, at: usize) -> Result<SendRequest<Sent>, Unreachable> {
         let waited_from = Instant::now();
         let _opening = self.slots[at].opening.lock().await;
         if let Some(sender) = self.slots[at].sender() {
@@ -757,7 +845,7 @@ impl Relay {
 
     /// Opens connection `at` and keeps it, or keeps why it couldn't be,
     /// for whoever waited on the attempt. Its opener holds its lock.
-    async fn open_now(&self, at: usize) -> Result<SendRequest<Incoming>, Unreachable> {
+    async fn open_now(&self, at: usize) -> Result<SendRequest<Sent>, Unreachable> {
         match self.connect(at).await {
             Ok(sender) => {
                 self.slots[at].keep(sender.clone());
@@ -775,7 +863,7 @@ impl Relay {
 
     /// Opens connection `at` to the origin, saying so, and says when it's
     /// retired.
-    async fn connect(&self, at: usize) -> Result<SendRequest<Incoming>, Unreachable> {
+    async fn connect(&self, at: usize) -> Result<SendRequest<Sent>, Unreachable> {
         let within = self.clocks.connect_within;
         let opening = async {
             let on_the_way = |why: io::Error| {
@@ -789,21 +877,27 @@ impl Relay {
             let tcp = reach(&self.origin.host, self.origin.port, within)
                 .await
                 .map_err(on_the_way)?;
-            fit(&tcp).map_err(on_the_way)?;
             let name = ServerName::try_from(self.origin.host.clone())
                 .map_err(|why| (io::Error::other(why), Unreachable::Unfit))?;
-            let tls = self.tls.connect(name, tcp).await.map_err(|why| {
-                // rustls refusing the origin is the relay's own doing; the
-                // network failing beneath it isn't.
-                if why
-                    .get_ref()
-                    .is_some_and(<dyn std::error::Error + Send + Sync>::is::<rustls::Error>)
-                {
-                    (why, Unreachable::Unfit)
-                } else {
-                    on_the_way(why)
-                }
-            })?;
+            let held_ahead = |tls: &mut rustls::ClientConnection| {
+                tls.set_buffer_limit(Some(HELD_AHEAD_AT_MOST));
+            };
+            let tls = self
+                .tls
+                .connect_with(name, tcp, held_ahead)
+                .await
+                .map_err(|why| {
+                    // rustls refusing the origin is the relay's own doing; the
+                    // network failing beneath it isn't.
+                    if why
+                        .get_ref()
+                        .is_some_and(<dyn std::error::Error + Send + Sync>::is::<rustls::Error>)
+                    {
+                        (why, Unreachable::Unfit)
+                    } else {
+                        on_the_way(why)
+                    }
+                })?;
             if tls.get_ref().1.alpn_protocol() != Some(b"h2") {
                 return Err((
                     io::Error::other("the origin doesn't speak HTTP/2"),
@@ -863,10 +957,11 @@ impl Relay {
 }
 
 /// Readies a connection to the origin: each frame goes as it's written,
-/// and the kernel holds no more than `UNSENT_AT_MOST` of them unsent.
+/// and the kernel holds no more than `HELD_AHEAD_AT_MOST` of them unsent.
 fn fit(tcp: &TcpStream) -> io::Result<()> {
     tcp.set_nodelay(true)?;
-    socket2::SockRef::from(tcp).set_tcp_notsent_lowat(UNSENT_AT_MOST)
+    let unsent = u32::try_from(HELD_AHEAD_AT_MOST).map_err(io::Error::other)?;
+    socket2::SockRef::from(tcp).set_tcp_notsent_lowat(unsent)
 }
 
 /// `why`, with every error beneath it, since hyper says only the kind of
@@ -880,6 +975,14 @@ fn with_causes(why: &dyn std::error::Error) -> String {
         said.push_str(&cause.to_string());
         beneath = cause.source();
     }
+    if said.len() > SAID_AT_MOST {
+        let mut end = SAID_AT_MOST;
+        while !said.is_char_boundary(end) {
+            end -= 1;
+        }
+        said.truncate(end);
+        said.push_str("...");
+    }
     said
 }
 
@@ -890,7 +993,9 @@ async fn reach(host: &str, port: u16, within: Duration) -> io::Result<TcpStream>
     if addresses.is_empty() {
         return Err(io::Error::other(format!("{host} resolved to no address")));
     }
-    reach_any(&addresses, within).await
+    let tcp = reach_any(&addresses, within).await?;
+    fit(&tcp)?;
+    Ok(tcp)
 }
 
 /// A TCP connection to one of `addresses`, trying each in turn with an
@@ -1002,7 +1107,13 @@ async fn say_counts(counts: Arc<Counts>) {
 mod tests {
     use std::time::{Duration, Instant, SystemTime};
 
-    use super::{Origin, SLEPT_AT_LEAST, UNSENT_AT_MOST, fit, reach_any, slept, with_causes};
+    use bytes::Bytes;
+    use http_body_util::{BodyExt, Full};
+
+    use super::{
+        HELD_AHEAD_AT_MOST, InPieces, Origin, SAID_AT_MOST, SLEPT_AT_LEAST, reach, reach_any,
+        slept, with_causes,
+    };
 
     #[test]
     fn an_origin_is_an_https_host_alone() {
@@ -1098,15 +1209,18 @@ mod tests {
         let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a port");
-        let tcp = tokio::net::TcpStream::connect(origin.local_addr().expect("its address"))
+        let port = origin.local_addr().expect("its address").port();
+
+        let tcp = reach("127.0.0.1", port, Duration::from_secs(2))
             .await
             .expect("a connection");
 
-        fit(&tcp).expect("a connection readied");
-
         assert_eq!(
-            socket2::SockRef::from(&tcp).tcp_notsent_lowat().ok(),
-            Some(UNSENT_AT_MOST),
+            socket2::SockRef::from(&tcp)
+                .tcp_notsent_lowat()
+                .ok()
+                .map(|lowat| lowat as usize),
+            Some(HELD_AHEAD_AT_MOST),
             "a ping would wait behind whatever the kernel holds unsent"
         );
         assert_eq!(
@@ -1116,15 +1230,57 @@ mod tests {
         );
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_body_goes_on_in_pieces_no_frame_may_be_longer_than() {
+        let whole: Vec<u8> = (0..=u8::MAX)
+            .cycle()
+            .take(2 * HELD_AHEAD_AT_MOST + 99)
+            .collect();
+        let mut body = InPieces::new(Full::new(Bytes::from(whole.clone())));
+        let mut pieces = Vec::new();
+        let mut sent = Vec::new();
+
+        while let Some(frame) = body.frame().await {
+            let piece = frame.expect("a frame").into_data().expect("data");
+            pieces.push(piece.len());
+            sent.extend_from_slice(&piece);
+        }
+
+        assert_eq!(
+            pieces,
+            [HELD_AHEAD_AT_MOST, HELD_AHEAD_AT_MOST, 99],
+            "a frame would hold more ahead of a ping"
+        );
+        assert!(sent == whole, "the body would change on its way");
+    }
+
     #[test]
     fn an_error_is_said_with_what_lies_beneath_it() {
-        let beneath = std::io::Error::other("keep-alive timed out");
+        let beneath = std::io::Error::other(Beneath(
+            "keep-alive timed out",
+            std::io::Error::other("no answer"),
+        ));
         let why = std::io::Error::other(Beneath("http2 error", beneath));
 
         assert_eq!(
             with_causes(&why),
-            "http2 error: keep-alive timed out",
+            "http2 error: keep-alive timed out: no answer",
             "the journal would say only the kind of failure, never which"
+        );
+    }
+
+    #[test]
+    fn an_error_says_no_more_than_a_line_may_hold() {
+        // Two bytes a character, so the cut has to find a character's edge.
+        let goodbye = "\u{e9}".repeat(SAID_AT_MOST);
+        let why = std::io::Error::other(Beneath("http2 error", std::io::Error::other(goodbye)));
+
+        let said = with_causes(&why);
+
+        assert!(
+            said.len() <= SAID_AT_MOST + "...".len() && said.ends_with("..."),
+            "the origin's goodbye would fill the journal: {} bytes",
+            said.len()
         );
     }
 
