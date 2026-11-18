@@ -70,7 +70,7 @@ use std::sync::{Arc, Mutex as Held, PoisonError};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant, SystemTime};
 
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use http_body_util::combinators::BoxBody;
 use http_body_util::{BodyExt, Full};
 use hyper::body::{Body as HttpBody, Frame, Incoming, SizeHint};
@@ -338,8 +338,174 @@ struct Counts {
     refused: AtomicU64,
     failed: AtomicU64,
     reset: AtomicU64,
+    cancelled: AtomicU64,
     opened: AtomicU64,
     open: AtomicUsize,
+}
+
+/// What one connection to the origin has carried: the requests sent down
+/// it, and how many of those pi gave up on before their answers ended.
+/// hyper cancels each of those at the origin, if it had reached it, and on
+/// 18 November the origin reset every stream on a connection at once,
+/// several connections in the same second, whatever their age: an origin
+/// that counts the cancels a connection carries would do that, and a
+/// shared connection gathers the cancels of every session on it.
+///
+/// It says its last count once nothing holds it, the connection retired
+/// and every answer it carried ended or given up on, since an answer can
+/// still be read after its connection has gone.
+#[derive(Default)]
+struct Tally {
+    at: usize,
+    number: u64,
+    asked: AtomicU64,
+    cancelled: AtomicU64,
+}
+
+impl Tally {
+    /// The tally of connection `at`'s `number`.
+    fn of(at: usize, number: u64) -> Tally {
+        Tally {
+            at,
+            number,
+            asked: AtomicU64::new(0),
+            cancelled: AtomicU64::new(0),
+        }
+    }
+
+    /// How the log says it so far.
+    fn said(&self) -> String {
+        format!(
+            "after {} asked and {} cancelled on it",
+            self.asked.load(Ordering::Relaxed),
+            self.cancelled.load(Ordering::Relaxed)
+        )
+    }
+}
+
+impl Drop for Tally {
+    fn drop(&mut self) {
+        let asked = self.asked.load(Ordering::Relaxed);
+        // A connection that never opened, or carried nothing, has nothing
+        // to say.
+        if asked > 0 {
+            eprintln!(
+                "model-relay: connection {}.{} carried {asked} asked, {} of them cancelled",
+                self.at,
+                self.number,
+                self.cancelled.load(Ordering::Relaxed)
+            );
+        }
+    }
+}
+
+/// One request on a connection, from when it's sent down it until its
+/// answer ends or fails. Dropped before either, pi gave up on it, and it's
+/// counted as cancelled.
+struct OnTheWay {
+    tally: Arc<Tally>,
+    counts: Arc<Counts>,
+    ended: AtomicBool,
+}
+
+impl OnTheWay {
+    /// A request sent down the connection `tally` counts for.
+    fn sent(tally: &Arc<Tally>, counts: &Arc<Counts>) -> OnTheWay {
+        tally.asked.fetch_add(1, Ordering::Relaxed);
+        OnTheWay {
+            tally: Arc::clone(tally),
+            counts: Arc::clone(counts),
+            ended: AtomicBool::new(false),
+        }
+    }
+
+    /// It came to an end of its own: answered whole, or failed.
+    fn end(&self) {
+        self.ended.store(true, Ordering::Relaxed);
+    }
+
+    /// hyper handed it back unsent, so it was never this connection's.
+    fn unsent(&self) {
+        self.tally.asked.fetch_sub(1, Ordering::Relaxed);
+        self.end();
+    }
+}
+
+impl Drop for OnTheWay {
+    fn drop(&mut self) {
+        if !self.ended.load(Ordering::Relaxed) {
+            self.tally.cancelled.fetch_add(1, Ordering::Relaxed);
+            self.counts.cancelled.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+/// An answer's body, whose request ends once the body has: read to its
+/// end, or as far as its length said, or failed.
+struct Answering<B> {
+    body: B,
+    on_the_way: OnTheWay,
+    left: Option<u64>,
+}
+
+impl<B: HttpBody> Answering<B> {
+    /// `body`, the answer to the request `on_the_way`.
+    fn new(body: B, on_the_way: OnTheWay) -> Self {
+        let left = body.size_hint().exact();
+        if left == Some(0) {
+            on_the_way.end();
+        }
+        Self {
+            body,
+            on_the_way,
+            left,
+        }
+    }
+}
+
+impl<B> HttpBody for Answering<B>
+where
+    B: HttpBody + Unpin,
+{
+    type Data = B::Data;
+    type Error = B::Error;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<B::Data>, B::Error>>> {
+        let read = Pin::new(&mut self.body).poll_frame(cx);
+        match &read {
+            Poll::Ready(None | Some(Err(_))) => self.on_the_way.end(),
+            Poll::Ready(Some(Ok(frame))) => {
+                let length = frame.data_ref().map_or(0, |data| data.remaining() as u64);
+                // hyper stops reading an answer once it has written the
+                // length it was given, before the frame that ends it.
+                if let Some(left) = self.left.as_mut() {
+                    *left = left.saturating_sub(length);
+                    if *left == 0 {
+                        self.on_the_way.end();
+                    }
+                }
+            }
+            Poll::Pending => {}
+        }
+        read
+    }
+
+    fn is_end_stream(&self) -> bool {
+        // hyper stops reading a body that says it has ended, so this is
+        // where an answer read whole may be heard of last.
+        let ended = self.body.is_end_stream();
+        if ended {
+            self.on_the_way.end();
+        }
+        ended
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        self.body.size_hint()
+    }
 }
 
 /// What a relay is doing now: the requests it has in hand, their answers
@@ -473,12 +639,13 @@ struct Slot<S = SendRequest<Sent>> {
 /// reset, where it means to hold a few.
 const RETIRED_FOR_A_RESET_AT_MOST_EVERY: Duration = Duration::from_secs(60);
 
-/// A connection a slot keeps: its sender, and which of the slot's it is,
-/// so what retires it can't retire one opened since.
+/// A connection a slot keeps: its sender, which of the slot's it is, so
+/// what retires it can't retire one opened since, and what it has carried.
 #[derive(Clone)]
 struct Kept<S = SendRequest<Sent>> {
     number: u64,
     sender: S,
+    tally: Arc<Tally>,
 }
 
 /// What a slot keeps of a connection: something to send down, which says
@@ -522,9 +689,13 @@ impl<S: Sender> Slot<S> {
             .cloned()
     }
 
-    /// Keeps `sender` as this connection's.
-    fn keep(&self, number: u64, sender: S) -> Kept<S> {
-        let kept = Kept { number, sender };
+    /// Keeps `sender` as this connection's, counted by `tally`.
+    fn keep(&self, number: u64, sender: S, tally: Arc<Tally>) -> Kept<S> {
+        let kept = Kept {
+            number,
+            sender,
+            tally,
+        };
         *self.open.lock().unwrap_or_else(PoisonError::into_inner) = Some(kept.clone());
         kept
     }
@@ -808,47 +979,70 @@ impl Relay {
         let mut sent = 0;
         let mut down;
         let answered = loop {
-            let (at, Kept { number, mut sender }) = match self.sender().await {
+            let (
+                at,
+                Kept {
+                    number,
+                    mut sender,
+                    tally,
+                },
+            ) = match self.sender().await {
                 Ok(taken) => taken,
                 Err(why) => {
                     self.counts.failed.fetch_add(1, Ordering::Relaxed);
                     return why.said();
                 }
             };
-            down = (at, number);
+            // Dropped while it waits for the answer, as when pi hangs up,
+            // it's counted as cancelled on this connection.
+            let on_the_way = OnTheWay::sent(&tally, &self.counts);
+            down = (at, number, tally);
             match sender.try_send_request(request).await {
-                Ok(answer) => break Ok(answer),
-                Err(mut failed) => match failed.take_message() {
-                    // Its connection was retired before the request went,
-                    // so it goes again, on a connection still open.
-                    Some(unread) if sent < SENT_AGAIN_AT_MOST => {
-                        sent += 1;
-                        request = unread;
+                Ok(answer) => break Ok((answer, on_the_way)),
+                Err(mut failed) => {
+                    let unread = failed.take_message();
+                    if unread.is_some() {
+                        on_the_way.unsent();
+                    } else {
+                        on_the_way.end();
                     }
-                    _ => break Err(failed.into_error()),
-                },
+                    match unread {
+                        // Its connection was retired before the request
+                        // went, so it goes again, on a connection still open.
+                        Some(unread) if sent < SENT_AGAIN_AT_MOST => {
+                            sent += 1;
+                            request = unread;
+                        }
+                        _ => break Err(failed.into_error()),
+                    }
+                }
             }
         };
         match answered {
-            Ok(answer) => {
+            Ok((answer, on_the_way)) => {
                 let (mut parts, body) = answer.into_parts();
                 parts.version = Version::HTTP_11;
                 without_connection_headers(&mut parts.headers);
                 // The request stays in hand until its answer is sent or
                 // given up on, so the relay never leaves mid-answer.
-                let body = body.map_err(move |why| {
+                let body = Answering::new(body, on_the_way).map_err(move |why| {
                     let _ = &in_hand;
                     why
                 });
                 Response::from_parts(parts, body.boxed())
             }
-            Err(why) => self.not_carried(&why, down),
+            Err(why) => self.not_carried(&why, &down),
         }
     }
 
     /// What pi is answered for a request that went down connection `at`'s
-    /// `number` and came back with no answer.
-    fn not_carried(&self, why: &hyper::Error, (at, number): (usize, u64)) -> Response<Body> {
+    /// `number`, which `tally` counts, and came back with no answer.
+    fn not_carried(
+        &self,
+        why: &hyper::Error,
+        (at, number, tally): &(usize, u64, Arc<Tally>),
+    ) -> Response<Body> {
+        let (at, number) = (*at, *number);
         // hyper's error says what failed, never what was sent, which a
         // test holds it to.
         self.counts.failed.fetch_add(1, Ordering::Relaxed);
@@ -861,11 +1055,15 @@ impl Relay {
             // 421 sending pi direct, since only a reset saying the stream
             // was refused promises the origin acted on nothing, and these
             // said a protocol error. The number says whether a fresh
-            // connection is reset too, which one bad one wouldn't be.
+            // connection is reset too, which one bad one wouldn't be, and
+            // the tally whether the connections reset carried more of pi's
+            // cancels than those left be.
             let done = self.slots[at].retire(number).said();
             self.counts.reset.fetch_add(1, Ordering::Relaxed);
             eprintln!(
-                "model-relay: the origin reset a request on connection {at}.{number}, {done}: {}",
+                "model-relay: the origin reset a request on connection {at}.{number}, {done}, \
+                 {}: {}",
+                tally.said(),
                 with_causes(why)
             );
         } else {
@@ -972,9 +1170,10 @@ impl Relay {
     /// for whoever waited on the attempt. Its opener holds its lock.
     async fn open_now(&self, at: usize) -> Result<Kept, Unreachable> {
         let number = self.slots[at].next_number();
+        let tally = Arc::new(Tally::of(at, number));
         match self.connect(at, number).await {
             Ok(sender) => {
-                let kept = self.slots[at].keep(number, sender);
+                let kept = self.slots[at].keep(number, sender, tally);
                 // The origin is back, so others may be opened behind.
                 *self.failed.lock().unwrap_or_else(PoisonError::into_inner) = None;
                 Ok(kept)
@@ -1240,10 +1439,11 @@ async fn say_counts(counts: Arc<Counts>) {
         last = asked;
         eprintln!(
             "model-relay: {asked} asked, {} refused, {} failed, {} of them reset; \
-             {} connections opened, {} taking requests",
+             pi cancelled {}; {} connections opened, {} taking requests",
             counts.refused.load(Ordering::Relaxed),
             counts.failed.load(Ordering::Relaxed),
             counts.reset.load(Ordering::Relaxed),
+            counts.cancelled.load(Ordering::Relaxed),
             counts.opened.load(Ordering::Relaxed),
             counts.open.load(Ordering::Relaxed),
         );
@@ -1285,8 +1485,8 @@ mod tests {
     #[test]
     fn a_reset_retires_only_the_connection_still_taking_requests() {
         let slot = Slot::new();
-        let reset = slot.keep(slot.next_number(), Line::default());
-        let since = slot.keep(slot.next_number(), Line::default());
+        let reset = slot.keep(slot.next_number(), Line::default(), Arc::default());
+        let since = slot.keep(slot.next_number(), Line::default(), Arc::default());
         assert_eq!(
             slot.retire(reset.number),
             Retiring::Gone,
@@ -1317,14 +1517,14 @@ mod tests {
     fn a_reset_on_a_connection_the_origin_closed_spends_no_allowance() {
         let slot = Slot::new();
         let closed = Line::default();
-        let kept = slot.keep(slot.next_number(), closed.clone());
+        let kept = slot.keep(slot.next_number(), closed.clone(), Arc::default());
         closed.close();
         assert_eq!(
             slot.retire(kept.number),
             Retiring::Gone,
             "a reset on a connection the origin closed wasn't said as gone"
         );
-        let fresh = slot.keep(slot.next_number(), Line::default());
+        let fresh = slot.keep(slot.next_number(), Line::default(), Arc::default());
         assert_eq!(
             slot.retire(fresh.number),
             Retiring::Retired,
@@ -1335,13 +1535,13 @@ mod tests {
     #[test]
     fn a_slot_retires_a_connection_for_a_reset_at_most_so_often() {
         let slot = Slot::new();
-        let first = slot.keep(slot.next_number(), Line::default());
+        let first = slot.keep(slot.next_number(), Line::default(), Arc::default());
         assert_eq!(
             slot.retire(first.number),
             Retiring::Retired,
             "a connection's first reset didn't retire it"
         );
-        let fresh = slot.keep(slot.next_number(), Line::default());
+        let fresh = slot.keep(slot.next_number(), Line::default(), Arc::default());
         assert_eq!(
             slot.retire(fresh.number),
             Retiring::Kept,
