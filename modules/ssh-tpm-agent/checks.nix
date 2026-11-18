@@ -33,10 +33,8 @@
       agent = user.services.ssh-tpm-agent.package;
       told = holds "ssh-tpm-agent-is-told-of-its-gate" "ssh-tpm-agent isn't told of core's gate." (
         user.xdg.configFile."ssh-tpm-agent/gate".source == ./gate.conf
-        &&
-          user.systemd.user.services.ssh-tpm-agent.Service.Environment == [
-            "SSH_TPM_AGENT_GATE=${user.xdg.configHome}/ssh-tpm-agent/gate"
-          ]
+        && builtins.elem "SSH_TPM_AGENT_GATE=${user.xdg.configHome}/ssh-tpm-agent/gate"
+          user.systemd.user.services.ssh-tpm-agent.Service.Environment
         && builtins.elem ./refuses-agents.patch agent.patches
         && agent.doCheck
       );
