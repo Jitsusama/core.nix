@@ -16,8 +16,9 @@
 //! every session of one whose pi died is started again on its own log, its window put back, and the
 //! orchestrator told (revive.rs says which are left down).
 //!
-//! Given an orchestrator, each tick also tells an orchestrator of any session of
-//! its that has sat idle two hours, once for each idle spell (idle.rs), and
+//! Given an orchestrator, each tick also wakes any session of an orchestrator's
+//! idle twenty minutes with a next step, and tells the orchestrator of one
+//! idle two hours, once for each idle spell (idle.rs), and
 //! tells it and the unit's owner (by `--owner`, else the watcher) of any of
 //! the account's units restarting in a loop, failed, or a daemon whose
 //! socket reads signed out or doesn't answer, once for each spell
@@ -276,7 +277,7 @@ fn run(args: &Args) -> io::Result<()> {
         // pi's own folder, where it keeps each session's log.
         let agent = env::var_os("PI_CODING_AGENT_DIR")
             .map_or_else(|| home.join(".pi/agent"), PathBuf::from);
-        if let Err(err) = tell_idle(&mesh, &agent.join("sessions"), &folder, now) {
+        if let Err(err) = idle::tell_idle(&mesh, &agent.join("sessions"), &folder, now) {
             eprintln!("cadence: telling of idle sessions: {err}");
         }
     }
@@ -425,56 +426,6 @@ fn tell_units(
             }
         } else {
             println!("{} (to {})", tell.text, to.join(", "));
-        }
-    }
-    write_whole(&path, &serde_json::to_string_pretty(&told)?)?;
-    failed.map_or(Ok(()), Err)
-}
-
-/// Tells each orchestrator of its sessions that have sat idle two hours,
-/// remembering in `idle.json` which spells were told.
-fn tell_idle(mesh: &Mesh, logs: &Path, folder: &Path, now: i64) -> io::Result<()> {
-    let path = folder.join("idle.json");
-    let mut told: idle::Told = fs::read(&path)
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default();
-    let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
-        .ok()
-        .map(|id| id.trim().to_owned());
-    let logged = mesh::logs_written(logs);
-    let sessions: Vec<idle::Quiet> = mesh
-        .all()
-        .iter()
-        .filter_map(|p| {
-            idle::Quiet::from(
-                p,
-                logged.get(&p.session).copied(),
-                boot.as_deref(),
-                mesh.is_parked(&p.session),
-                |p| p.runs(start::is_pi, start::is_host),
-            )
-        })
-        .collect();
-    let tells = idle::due(&sessions, &mut told, now, clock);
-    let mut failed = None;
-    for tell in &tells {
-        if failed.is_some() {
-            told.spells.remove(&tell.session);
-            continue;
-        }
-        // Told as the orchestrator is: nothing waits on its answer.
-        match mesh.send(&message(
-            &tell.to,
-            To::Orchestrator.intent(),
-            tell.text.clone(),
-        )) {
-            Ok(()) => println!("{}", tell.text),
-            Err(err) => {
-                // Not told, so the next tick tells it again.
-                told.spells.remove(&tell.session);
-                failed = Some(err);
-            }
         }
     }
     write_whole(&path, &serde_json::to_string_pretty(&told)?)?;
