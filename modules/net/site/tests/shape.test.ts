@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { networkOf } from "../model.ts";
 import { study } from "../shape.ts";
-import { lasted, linkSpeed, possessive, rank, rate, slug } from "../words.ts";
+import { lasted, linkSpeed, possessive, rank, rate, shellWord, slug } from "../words.ts";
 import { told } from "./house.ts";
 
 function shaped() {
@@ -91,4 +91,19 @@ it("a name becomes an address's fragment, and owns things as English writes it",
   assert.equal(slug("Joel's Café TV"), "joel-s-cafe-tv");
   assert.equal(possessive("Upstairs"), "Upstairs'");
   assert.equal(possessive("Basement"), "Basement's");
+});
+
+it("a name in a command is quoted so pasting it runs nothing else", () => {
+  for (const [name, typed] of [
+    ["Study", "Study"],
+    ["Main Floor", "'Main Floor'"],
+    ["lamp;reboot", "'lamp;reboot'"],
+    ["$(reboot)", "'$(reboot)'"],
+    ["`reboot`", "'`reboot`'"],
+    ["Joel's | sh", "'Joel'\\''s | sh'"],
+    ["=ls", "'=ls'"],
+    ["", "''"],
+  ]) {
+    assert.equal(shellWord(name), typed, `${name} wasn't one word that runs nothing`);
+  }
 });

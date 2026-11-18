@@ -183,6 +183,24 @@ function rank(name: string): number {
   return FLOORS.mid;
 }
 
+/** The characters a shell reads as themselves, wherever they sit. */
+const PLAIN = /^[A-Za-z0-9_@%+=:,./-]+$/u;
+
+/**
+ * A word as a shell reads it back whole and runs nothing of, as the
+ * terminal kit's `shell_word` writes it: as it is where it's plain and
+ * doesn't open with `=`, which zsh turns into a command's path, and
+ * otherwise in single quotes, each quote of its own closed, escaped and
+ * opened again. A device's name is anyone's to set, so a hint naming it
+ * as a command would otherwise run what the name holds when pasted.
+ */
+function shellWord(word: string): string {
+  if (PLAIN.test(word) && !word.startsWith("=")) {
+    return word;
+  }
+  return `'${word.replaceAll("'", "'\\''")}'`;
+}
+
 export {
   ago,
   clock,
@@ -197,6 +215,7 @@ export {
   rank,
   rate,
   roleWords,
+  shellWord,
   slug,
   v4,
 };
