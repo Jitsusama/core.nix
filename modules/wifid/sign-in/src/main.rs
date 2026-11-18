@@ -15,7 +15,8 @@
 //! through the terminal kit, and asks wifid and starts its proxy before
 //! any window: with no network wanting a sign-in it says so and exits 0,
 //! where wifid can't say it exits 69, and where the proxy won't start, or
-//! GTK ends before its window closes, it exits 1. The window runs once
+//! GTK ends before its window closes, it exits 1. It says only text, so
+//! a form for a program is refused as usage. The window runs once
 //! the kit's body has ended, since a panic in one of GTK's callbacks ends
 //! the process at GTK's edge, where the kit's catch never sees it and
 //! would only keep its words back.
@@ -42,6 +43,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use serde_json::{Value, json};
 use socket2::{Domain, Socket, Type};
+use terminal_kit::flags::Format;
 use terminal_kit::layout::Room;
 use terminal_kit::{Exit, Failure, Help, Ink, Pen};
 use webkit6::prelude::*;
@@ -94,7 +96,8 @@ fn main() -> ExitCode {
     let mut window = None;
     let ended = terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
         takes_no_words(&context.args)?;
-        match prepared(Path::new(wifi::SOCKET))? {
+        says_only_text(&context.shared.format)?;
+        match prepared(Path::new(wifi::SOCKET), PATIENCE)? {
             Some(prepared) => window = Some(prepared),
             None => {
                 let _ = context.tell("done", "muted", "no network wants a sign-in");
@@ -109,15 +112,23 @@ fn main() -> ExitCode {
 }
 
 /// The portal of the network that wants a sign-in, as wifid at `socket`
-/// says, and the proxy its window's traffic goes through; nothing when no
-/// network wants one.
-fn prepared(socket: &Path) -> Result<Option<(Portal, String)>, Failure> {
-    let described = wifi::call_within(socket, "Describe", PATIENCE).map_err(|error| {
+/// says within `patience`, and the proxy its window's traffic goes
+/// through; nothing when no network wants one.
+fn prepared(socket: &Path, patience: Duration) -> Result<Option<(Portal, String)>, Failure> {
+    let described = wifi::call_within(socket, "Describe", patience).map_err(|error| {
+        // A read that runs out of patience says only "temporarily
+        // unavailable", so it's said as what it means.
+        let why = match error.kind() {
+            io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut => {
+                format!("wifid didn't answer within {} ms", patience.as_millis())
+            }
+            _ => error.to_string(),
+        };
         Failure::new(
             Exit::Unavailable,
             "wifid didn't say which network wants a sign-in",
         )
-        .because(error.to_string())
+        .because(why)
     })?;
     let Some(portal) = wanting(&described) else {
         return Ok(None);
@@ -141,6 +152,19 @@ fn takes_no_words(words: &[String]) -> Result<(), Failure> {
     }
 }
 
+/// Refuses a form for a program, since what it gives is a window, not a
+/// record, and the kit would end a stream before the window had opened.
+fn says_only_text(format: &Format) -> Result<(), Failure> {
+    if *format == Format::Text {
+        return Ok(());
+    }
+    Err(Failure::new(
+        Exit::Usage,
+        "wifid-sign-in opens a window, and says only text",
+    )
+    .try_this("wifid-sign-in"))
+}
+
 /// Shows the window onto the portal's page until it closes. Another
 /// activation, a second run's, brings the open window forward.
 fn show(portal: Portal, proxy: String) -> ExitCode {
@@ -158,10 +182,7 @@ fn show(portal: Portal, proxy: String) -> ExitCode {
     // opened, having said why; GTK that can't reach a display ends the
     // process itself as it starts. Past the kit's body, so said as the
     // kit says a failure, plainly, and ended with the kit's own code.
-    let failure = Failure::new(
-        Exit::Failed,
-        "GTK ended before the sign-in window closed",
-    );
+    let failure = Failure::new(Exit::Failed, "GTK ended before the sign-in window closed");
     eprint!(
         "{}",
         failure.text(&Pen::new(Ink::plain(), None), Room::Unbounded, false)
@@ -385,26 +406,68 @@ mod tests {
     fn a_wifid_that_cant_be_reached_ends_it_as_unavailable() {
         let dir = tempfile::TempDir::new().unwrap();
 
-        let refused = prepared(&dir.path().join("wifi")).map(|_| ());
+        let refused = prepared(&dir.path().join("wifi"), PATIENCE).map(|_| ());
 
         assert_eq!(refused.map_err(|failure| failure.code()), Err(69));
     }
 
     #[test]
+    fn a_wifid_that_never_answers_is_given_up_on_and_said_so() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let socket = dir.path().join("wifi");
+        // Bound and never accepted: a call connects and is written, and
+        // no answer comes.
+        let _stuck = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+
+        let refused = prepared(&socket, Duration::from_millis(200)).map(|_| ());
+
+        let failure = refused.expect_err("a stuck wifid was waited on forever");
+        let said = failure.text(&Pen::plain(), Room::Unbounded, false);
+        assert_eq!(failure.code(), 69, "{said}");
+        assert!(
+            said.contains("wifid didn't answer within 200 ms"),
+            "the wait wasn't said as what it means: {said}"
+        );
+    }
+
+    #[test]
     fn a_wifid_that_refuses_ends_it_as_unavailable() {
-        let (_dir, socket, _wifid) =
+        let (_dir, socket, wifid) =
             wifi::tests::wifid(vec![json!({"error": "io.jitsusama.Wifi.Failed"})]);
 
-        let refused = prepared(&socket).map(|_| ());
+        let refused = prepared(&socket, PATIENCE).map(|_| ());
 
-        assert_eq!(refused.map_err(|failure| failure.code()), Err(69));
+        let failure = refused.expect_err("a refusal was taken as an answer");
+        let said = failure.text(&Pen::plain(), Room::Unbounded, false);
+        assert_eq!(failure.code(), 69, "{said}");
+        assert!(
+            said.contains("io.jitsusama.Wifi.Failed"),
+            "why wifid refused wasn't said: {said}"
+        );
+        assert_eq!(
+            wifid.join().unwrap()["method"],
+            "io.jitsusama.Wifi.Describe",
+            "wifid was asked something other than which network wants a sign-in"
+        );
+    }
+
+    #[test]
+    fn only_text_is_said() {
+        assert!(says_only_text(&Format::Text).is_ok(), "text was refused");
+        for program in [Format::Json, Format::Jsonl] {
+            assert_eq!(
+                says_only_text(&program).map_err(|failure| failure.code()),
+                Err(64),
+                "{program:?} wasn't refused as asked wrongly"
+            );
+        }
     }
 
     #[test]
     fn no_window_is_wanted_when_no_network_wants_a_sign_in() {
         let (_dir, socket, _wifid) = wifi::tests::wifid(vec![json!({"parameters": inn("online")})]);
 
-        let prepared = prepared(&socket).map_err(|failure| failure.code());
+        let prepared = prepared(&socket, PATIENCE).map_err(|failure| failure.code());
 
         assert_eq!(prepared.map(|wanted| wanted.is_none()), Ok(true));
     }
@@ -413,7 +476,7 @@ mod tests {
     fn a_network_wanting_a_sign_in_gets_its_window_and_its_proxy() {
         let (_dir, socket, _wifid) = wifi::tests::wifid(vec![json!({"parameters": inn("signIn")})]);
 
-        let (wanted, proxy) = prepared(&socket)
+        let (wanted, proxy) = prepared(&socket, PATIENCE)
             .map_err(|failure| failure.code())
             .expect("a sign-in was wanted")
             .expect("a window was wanted");
