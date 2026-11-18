@@ -13,6 +13,7 @@ QtObject {
 
     readonly property var said: ({
         started: "started on {machine}",
+        unheld: "started on {machine}; in Agents once up",
         unanswered: "its node didn't answer",
         unread: "its node's answer couldn't be read",
         empty: "say what the work is",
@@ -83,14 +84,14 @@ QtObject {
         const other = { address: "THREE", here: true, held: "h3",
             attach: ["mycelium", "attach", "h3"] };
         Expect.same("one held here is found by its holder's id",
-            Sprouting.sproutedOf([other, here], "h1", "optimus")?.address, "ONE");
+            Sprouting.sproutedOf([other, here], "h1", "heron")?.address, "ONE");
         Expect.same("one on another machine is found by its attach words",
             Sprouting.sproutedOf([other, there], "h2", "kestrel")?.address, "TWO");
         Expect.same("none is found before it's up",
-            Sprouting.sproutedOf([other], "h1", "optimus"), null);
+            Sprouting.sproutedOf([other], "h1", "heron"), null);
         Expect.same("no id finds none, never the first held",
             Sprouting.sproutedOf([{ address: "FOUR", here: true, held: "", attach: [] }], "",
-                "optimus"), null);
+                "heron"), null);
         Expect.same("the same id on another machine than the node named finds none",
             Sprouting.sproutedOf([there], "h2", "falcon"), null);
         Expect.same("a session here whose attach words name the id isn't it",
@@ -102,29 +103,45 @@ QtObject {
 
         // Whether Joel still waits on the act in the launcher, so it may close for its
         // window and take the keys: open, on the act itself or held in its ask, where
-        // Return leaves him with the field emptied for another try.
+        // Return leaves him with the field emptied for another try, and no letter typed
+        // since the answer (its lettersAt then), so a new try he's typing keeps its keys.
         const act = "verb:agents:start-new-work:link";
+        const at = (open, asking, selected, lettersAt) => ({ open, asking, selected,
+            lettersAt });
         Expect.same("held in the act's ask, it waits",
-            Sprouting.waitsOn({ open: true, asking: { key: act }, selected: null }, act), true);
+            Sprouting.waitsOn(at(true, { key: act }, null, 5), act, 5), true);
         Expect.same("on the act's row, it waits",
-            Sprouting.waitsOn({ open: true, asking: null, selected: { key: act } }, act), true);
+            Sprouting.waitsOn(at(true, null, { key: act }, 5), act, 5), true);
+        Expect.same("a letter typed since, in its ask, it doesn't",
+            Sprouting.waitsOn(at(true, { key: act }, null, 9), act, 5), false);
         Expect.same("on another row, it doesn't",
-            Sprouting.waitsOn({ open: true, asking: null, selected: { key: "other" } }, act),
-            false);
+            Sprouting.waitsOn(at(true, null, { key: "other" }, 5), act, 5), false);
         Expect.same("closed, it doesn't",
-            Sprouting.waitsOn({ open: false, asking: { key: act }, selected: null }, act), false);
-        Expect.same("no launcher, it doesn't", Sprouting.waitsOn(null, act), false);
+            Sprouting.waitsOn(at(false, { key: act }, null, 5), act, 5), false);
+        Expect.same("no launcher, it doesn't", Sprouting.waitsOn(null, act, 5), false);
 
-        // Which waiting to open are past the minute, at `now`, and which still wait.
+        // How the waiting stand at `now`: those past the minute are late even when up by
+        // then, so none opens past it; those up within it open; the rest wait on.
         const openings = [{ key: "a", held: "h1", since: 1000 }, { key: "b", held: "h2",
-            since: 50000 }];
-        Expect.same("past the minute, one goes",
-            Sprouting.overdue(openings, 62000, 60000).map(one => one.key), ["a"]);
-        Expect.same("within it, none goes", Sprouting.overdue(openings, 30000, 60000), []);
+            since: 50000 }, { key: "c", held: "h3", since: 55000 }];
+        const upAre = new Set(["h1", "h2"]);
+        const found = one => upAre.has(one.held) ? { address: one.held } : null;
+        const stood = Sprouting.settled(openings, found, 61000, 60000);
+        Expect.same("one past the minute is late, though up",
+            stood.late.map(one => one.key), ["a"]);
+        Expect.same("one up within it opens, with its session",
+            stood.up.map(one => [one.key, one.session.address]), [["b", "h2"]]);
+        Expect.same("one not up within it waits on", stood.waiting.map(one => one.key), ["c"]);
+        Expect.same("at the minute's own end, it's late",
+            Sprouting.settled([openings[0]], () => null, 61000, 60000).late.length, 1);
 
         // What the act that ran says.
         Expect.same("started names the machine",
-            Sprouting.told({ started: true, machine: "kestrel" }, said), "started on kestrel");
+            Sprouting.told({ started: true, machine: "kestrel", held: "h1" }, said),
+            "started on kestrel");
+        Expect.same("started with no holder's id promises no window",
+            Sprouting.told({ started: true, machine: "kestrel", held: "" }, said),
+            "started on kestrel; in Agents once up");
         Expect.same("refused says why",
             Sprouting.told({ started: false, why: "no machine can take it" }, said),
             "no machine can take it");

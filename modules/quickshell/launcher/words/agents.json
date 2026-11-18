@@ -236,6 +236,7 @@
       "said": {
         "starting": "starting",
         "started": "started on {machine}; its window opens once it's up",
+        "unheld": "started on {machine}; it shows in Agents once it's up",
         "opening": "started on {machine}; opening it",
         "up": "started on {machine} and up; Go To in Agents opens it",
         "unopened": "started on {machine}, but not up within a minute; it shows in Agents once it is",

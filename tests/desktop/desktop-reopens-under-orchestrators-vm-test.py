@@ -931,8 +931,13 @@ def opened_focused(desktop: Desktop, before: set[int]) -> None:
             and (focused or {}).get("id") == brought[0]["id"]
         ):
             return
+        # Each window's id and app_id, the focused one, and where the launcher stood
+        # say which part failed: none brought, the wrong one, or the keys left behind.
         assert time.monotonic() < deadline, (
-            f"its window didn't open focused: brought {brought}, focused {focused}"
+            "its window didn't open focused: brought "
+            f"{[(one['id'], one.get('app_id')) for one in brought]}, focused "
+            f"{(focused or {}).get('id')} {(focused or {}).get('app_id')}, launcher "
+            f"{desktop.showing()}"
         )
         # Each look at niri is cheap; half a second apart sees it open well within the wait.
         time.sleep(0.5)
