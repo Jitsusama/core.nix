@@ -41,12 +41,14 @@ onLinux {
   # node by its location, each device by its name or, where another shares
   # it, its address, each profile, what a node or profile holds after its
   # name, an act's own words, the old spellings as they were, and --json
-  # after a view (tests/eero-completion.zsh).
+  # after a view (tests/eero-completion.zsh). One profile's name is given
+  # a backslash, which zsh takes off unless eero escapes it.
   eero-completes-in-zsh =
     pkgs.runCommandLocal "eero-completes-in-zsh"
       {
         nativeBuildInputs = [
           (pkgs.callPackage ./package.nix { })
+          pkgs.jq
           pkgs.zsh
         ];
       }
@@ -54,7 +56,8 @@ onLinux {
         export HOME=$PWD XDG_RUNTIME_DIR=$PWD/run
         mkdir -m 700 run
         mkdir run/eero
-        cp ${./home-network.json} run/eero/home-network.json
+        jq '.profiles[2].name = "profile\\3"' ${./home-network.json} \
+          > run/eero/home-network.json
         zsh -f ${./tests/eero-completion.zsh} \
           ${pkgs.callPackage ./completion.nix { }}/share/zsh/site-functions/_eero
         touch $out

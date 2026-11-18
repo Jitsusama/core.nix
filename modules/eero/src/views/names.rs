@@ -323,6 +323,75 @@ mod tests {
     }
 
     #[test]
+    fn a_miss_lists_a_name_that_draws_as_nothing_by_its_id() {
+        let mut model = model();
+        model.nodes[2].location = Some("\u{7}\u{200d}".into());
+
+        assert_eq!(
+            find_node(&model, "nope").map(|node| &node.id),
+            Err(format!(
+                "no node is called nope; the nodes are Hall, Study and {}",
+                model.nodes[2].id
+            )),
+            "a name drawn as nothing was listed as an empty name"
+        );
+    }
+
+    #[test]
+    fn names_that_differ_only_by_what_draws_nothing_are_refused_as_two() {
+        let mut model = model();
+        for (at, name) in [(0, "Lamp"), (1, "Lamp\u{ad}\u{fe0f}")] {
+            model.devices_off[at].name = Some(name.into());
+            model.devices_off[at].nickname = None;
+            model.devices_off[at].hostname = None;
+        }
+
+        assert!(
+            off_device(&model, "lamp").is_none(),
+            "one of two names drawn alike was taken for the other"
+        );
+    }
+
+    #[test]
+    fn two_profiles_named_the_same_are_refused_and_offered_by_their_ids() {
+        let mut model = model();
+        model.profiles[0].name = Some("Kids".into());
+        model.profiles[1].name = Some("kids\u{7}".into());
+        let ids = [model.profiles[0].id.clone(), model.profiles[1].id.clone()];
+
+        assert_eq!(
+            find_profile(&model, "Kids").map(|profile| &profile.id),
+            Err(format!(
+                "2 profiles are called Kids: {} and {}; name one by its id",
+                ids[0], ids[1]
+            )),
+            "one of two profiles drawn alike was picked for the other"
+        );
+        let offered = profiles(&model);
+        for id in &ids {
+            assert!(
+                names(&offered).contains(&id.as_str()),
+                "{id} wasn't offered by its id: {offered:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_off_devices_address_finds_it_though_a_device_on_now_is_so_named() {
+        let mut model = model();
+        let off = model.devices_off[0].mac.clone();
+        model.devices[0].hostname = Some(off.clone());
+
+        let found = find_device(&model, &off, None).map(|device| &device.mac);
+        assert!(
+            found
+                .as_ref()
+                .is_err_and(|why| why.contains("isn't on now")),
+            "a device on now named for an off one's address was taken for it: {found:?}"
+        );
+    }
+
+    #[test]
     fn zsh_offers_a_backslash_in_a_name_as_it_is() {
         let named = vec![("Den\\Hall:2".to_owned(), "a node".to_owned())];
 

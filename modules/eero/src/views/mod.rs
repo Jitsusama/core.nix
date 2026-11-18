@@ -422,12 +422,38 @@ pub fn listed(names: &[&str]) -> String {
 }
 
 /// Whether a name eero holds is the one asked for, in any case, read as
-/// the kit draws it and without the space at its ends, so a name shown
-/// without its controls, or ending in a break, finds what it names. A
-/// name that draws as nothing names nothing, so it's asked for by its id.
+/// `spelled` reads it, so a name shown without its controls, or ending in
+/// a break, finds what it names, and two drawn alike answer alike. A name
+/// that draws as nothing names nothing, so it's asked for by its id.
 fn is_named(held: &str, asked: &str) -> bool {
-    let held = shown(held);
-    !held.is_empty() && held.eq_ignore_ascii_case(&shown(asked))
+    let held = spelled(held);
+    !held.is_empty() && held.eq_ignore_ascii_case(&spelled(asked))
+}
+
+/// A name as it's compared: as it's shown, without the characters the
+/// kit keeps because they shape a word or an emoji but which draw
+/// nothing beside a plain letter, so `Lamp` and `Lamp` with a soft hyphen
+/// or a variation selector are one name, refused as two rather than one
+/// taken for the other. Look-alike letters from other scripts, and one
+/// letter spelled two ways, still differ.
+fn spelled(name: &str) -> String {
+    shown(name)
+        .chars()
+        .filter(|c| {
+            !matches!(
+                c,
+                '\u{ad}'
+                    | '\u{115f}'
+                    | '\u{1160}'
+                    | '\u{180b}'..='\u{180f}'
+                    | '\u{200c}'
+                    | '\u{200d}'
+                    | '\u{fe00}'..='\u{fe0f}'
+                    | '\u{e0020}'..='\u{e007f}'
+                    | '\u{e0100}'..='\u{e01ef}'
+            )
+        })
+        .collect()
 }
 
 /// A name as a page shows it and `is_named` reads it: held to one line,
@@ -458,7 +484,18 @@ fn named_one<'a, T>(
     match called.as_slice() {
         [one] => Ok(one),
         [] => {
-            let names: Vec<String> = things.iter().map(|thing| shown(name(thing))).collect();
+            // Each as it's shown, or by the id that finds it where its
+            // name draws as nothing.
+            let names: Vec<String> = things
+                .iter()
+                .map(|thing| {
+                    if spelled(name(thing)).is_empty() {
+                        id(thing).to_owned()
+                    } else {
+                        shown(name(thing))
+                    }
+                })
+                .collect();
             let names: Vec<&str> = names.iter().map(String::as_str).collect();
             Err(format!(
                 "no {kind} is called {asked}; the {kinds} are {}",
@@ -515,6 +552,15 @@ fn find_device<'a>(
         .find(|d| d.mac.eq_ignore_ascii_case(name))
     {
         return Ok(device);
+    }
+    // Every hardware address before any name, so a device on now whose
+    // name spells an off one's address isn't taken for it.
+    if model
+        .devices_off
+        .iter()
+        .any(|device| device.mac.eq_ignore_ascii_case(name))
+    {
+        return Err(off_now(model, name, clock).unwrap_or_else(|| format!("{name} isn't on now")));
     }
     let called =
         |device: &&Device| answers_to(name, [&device.name, &device.nickname, &device.hostname]);
@@ -605,12 +651,19 @@ fn off_devices<'a>(model: &'a HomeNetwork, name: &str) -> Vec<&'a DeviceOff> {
 }
 
 /// Whether a device on now answers to a name, so `eero device` shows it
-/// rather than one that's off.
+/// rather than one that's off. An off device's hardware address is its
+/// own before any name, as `find_device` reads it.
 fn on_now_answers_to(model: &HomeNetwork, name: &str) -> bool {
-    model.devices.iter().any(|device| {
-        device.mac.eq_ignore_ascii_case(name)
-            || answers_to(name, [&device.name, &device.nickname, &device.hostname])
-    })
+    let is_address = |mac: &String| mac.eq_ignore_ascii_case(name);
+    model.devices.iter().any(|device| is_address(&device.mac))
+        || !model
+            .devices_off
+            .iter()
+            .any(|device| is_address(&device.mac))
+            && model
+                .devices
+                .iter()
+                .any(|device| answers_to(name, [&device.name, &device.nickname, &device.hostname]))
 }
 
 /// A count and its noun, the noun made plural past one: 1 device, 15 devices.

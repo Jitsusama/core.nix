@@ -101,7 +101,9 @@ refuse 'eero devices ' 'thermostat\ 1'
 # A device not on now is offered too, since its page says where it last was,
 # and by its address where one on now shares its name.
 expect 'eero devices ' 'phone\ 2' 02:00:00:00:00:19
-expect 'eero profiles ' 'profile\ 1' 'profile\ 2' 'profile\ 3'
+# A backslash in a name is offered escaped, so it's typed as it reads.
+expect 'eero profiles ' 'profile\ 1' 'profile\ 2' 'profile\\3'
+refuse 'eero profiles ' 'profile3'
 # After a name, what it holds.
 expect 'eero nodes Study ' devices radios
 expect 'eero profiles profile\ 1 ' devices
