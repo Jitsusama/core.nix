@@ -1789,13 +1789,38 @@ Provider {
         // are let go.
         void provider.startsTurn;
         const held = provider.startsHeld.by.get(entry.id);
-        if (held !== undefined && held.entry === entry)
+        if (held !== undefined && held.entry === entry && provider.givesAsHeld(held, entry.id))
             return held.only;
         const only = provider.controls(entry, start, below)
             .every(one => one.key === "verb:start" || one.key === "verb:below");
         if (provider.holdsSafely)
-            provider.startsHeld.by.set(entry.id, { entry, only });
+            provider.startsHeld.by.set(entry.id, { entry, only, gave: provider.givesNow(entry.id) });
         return only;
+    }
+
+    // Whether each giver of acts gives a program any now, with the turn it
+    // had said it changed by: every act given is in the program's step
+    // (controls), so that's all of a giver its answer reads.
+    function givesNow(program) {
+        return new Map(provider.hooking.programActs.map(other => [other, {
+            turn: provider.givesTurns.by.get(other) ?? 0,
+            gives: (other.programActs(program) ?? []).length > 0
+        }]));
+    }
+
+    // Whether every giver that said it changed since an answer was held
+    // still gives its program acts or none as it did, each asked again
+    // only then.
+    function givesAsHeld(held, program) {
+        for (const [other, was] of held.gave) {
+            const turn = provider.givesTurns.by.get(other) ?? 0;
+            if (turn === was.turn)
+                continue;
+            if (((other.programActs(program) ?? []).length > 0) !== was.gives)
+                return false;
+            was.turn = turn;
+        }
+        return true;
     }
 
     // What startsOnly found of each closed program, by its desktop entry's
@@ -1815,6 +1840,20 @@ Provider {
     // change was for.
     function startsAgain() {
         startsHeld.by = new Map();
+        startsTurn += 1;
+    }
+    // A giver of acts saying it changed has only the answers it gives
+    // differently asked again (givesAsHeld), by a turn of its own: kitty
+    // says changed as any of its windows is retitled, which an agent's
+    // does with each command, and letting every answer go then brought
+    // each key's cost back. A sender of notices still lets every one go.
+    readonly property var givesTurns: ({ by: new Map() })
+    function gaveAgain(other) {
+        if (provider.hooking.sentBy.includes(other)) {
+            startsAgain();
+            return;
+        }
+        givesTurns.by.set(other, (givesTurns.by.get(other) ?? 0) + 1);
         startsTurn += 1;
     }
     // What a closed program's step reads that can change while its desktop
@@ -1856,7 +1895,7 @@ Provider {
             target: modelData
 
             function onChanged() {
-                provider.startsAgain();
+                provider.gaveAgain(modelData);
             }
         }
     }
@@ -1897,7 +1936,12 @@ Provider {
         .map(other => other === provider ? [] : other.foundActs ?? []))
     property var optedIn: []
     onOptedSaidChanged: optedAgain()
-    Component.onCompleted: optedAgain()
+    Component.onCompleted: {
+        optedAgain();
+        // Who plays as it's made, so a first change, even to nobody
+        // playing, is heard as one.
+        playingHeard.who = playingWho();
+    }
     // And as the desktop entries are read, which a program's own acts are
     // made again on, since an act's program is found by its entry.
     onOwnActsChanged: {

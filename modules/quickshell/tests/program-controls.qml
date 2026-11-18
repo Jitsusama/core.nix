@@ -965,16 +965,40 @@ ShellRoot {
             // closing.
             const holds = row => `${program("lone").actsOnly} ${names(program("lone").verbs())
                 .split(", ").includes(row)}`;
+            // Each name a stream is found by changes alone, from an answer
+            // held, so each is seen to be what asks again.
             const playing = Launcher.Playing.streams[3];
-            for (const name of ["application.name", "application.process.binary"]) {
-                playing.properties = { [name]: "Lone" };
+            const playingWas = playing.properties;
+            const owning = (name, value) => {
+                if (name === "node.name")
+                    playing.name = value;
+                else
+                    playing.properties = Object.assign({}, playingWas, { [name]: value });
+            };
+            for (const name of ["application.name", "application.process.binary", "node.name"]) {
+                same(`held before its ${name} is its own, it starts only`,
+                    program("lone").actsOnly, true);
+                owning(name, "Lone");
                 same(`a stream whose ${name} is its own asks again, and its Sound holds more`,
                     holds("Sound"), "false true");
-                playing.properties = { [name]: "Lone", "node.link-group": "filter" };
+                playing.properties = Object.assign({}, playing.properties,
+                    { "node.link-group": "filter" });
                 same(`and as it turns out a filter's, it starts only (${name})`,
                     program("lone").actsOnly, true);
-                playing.properties = { [name]: "Other" };
+                playing.name = "Other";
+                playing.properties = playingWas;
             }
+            // And a recorder: a level meter's monitor records nothing, so a
+            // meter of its own starts only, until it records.
+            const metering = Launcher.Playing.recorders[1];
+            const meteringWas = metering.properties;
+            metering.properties = { "application.name": "Lone", "stream.monitor": "true" };
+            same("a meter of its own records nothing, so it starts only",
+                program("lone").actsOnly, true);
+            metering.properties = { "application.name": "Lone" };
+            same("and as it records, it asks again, and its Sound holds more",
+                holds("Sound"), "false true");
+            metering.properties = meteringWas;
             const playerNamed = Launcher.Playing.players[1];
             for (const name of ["identity", "desktopEntry"]) {
                 const was = playerNamed[name];
@@ -992,13 +1016,24 @@ ShellRoot {
             const titled = applications.stepsCounted.made;
             const playerTitled = Launcher.Playing.players[0];
             const title = playerTitled.trackTitle;
+            const volumeWas = playing.volume;
             playerTitled.trackTitle = "Another song of the test";
             playerTitled.isPlaying = !playerTitled.isPlaying;
-            same("a track changing lets nothing go",
+            playing.volume = 0.2;
+            same("a track changing lets nothing go, nor its volume",
                 `${program("lone").actsOnly} ${applications.stepsCounted.made - titled}`,
                 "true 0");
             playerTitled.trackTitle = title;
             playerTitled.isPlaying = !playerTitled.isPlaying;
+            playing.volume = volumeWas;
+            // A giver saying it changed asks again only of what it gives:
+            // kitty says so as any window of its is retitled, which an
+            // agent's is with each command.
+            const givenAsked = applications.stepsCounted.made;
+            giver.changed();
+            same("a giver of others' acts saying it changed lets nothing go",
+                `${program("lone").actsOnly} ${applications.stepsCounted.made - givenAsked}`,
+                "true 0");
             for (const [said, change] of [
                 ["a walk from outside asks again", () => {
                     theLauncher.cataloguing = true;
@@ -1050,8 +1085,6 @@ ShellRoot {
             // A giver that reads only as it's asked, as Spotify does once an
             // opening, may change without saying so; the next opening asks.
             joiner.gives = false;
-            same("a giver's change it didn't say is held through the opening",
-                program("lone").actsOnly, false);
             theLauncher.open = true;
             same("and asked afresh as the launcher opens again", program("lone").actsOnly, true);
             theLauncher.open = false;
