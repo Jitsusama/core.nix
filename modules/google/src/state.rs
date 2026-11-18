@@ -55,6 +55,13 @@ pub struct State {
     pub drive: Drive,
     /// The Meet calls the shell follows, each as Meet last said it.
     pub calls: Vec<Call>,
+    /// The address of the account signed in, as its calendar list last
+    /// said it, or none since it couldn't be heard. It goes with the rest
+    /// when the account does, so it is never an account's gone before.
+    /// Only the account's record serves it, for the receptors that may
+    /// say nothing of another account's.
+    #[serde(skip)]
+    pub signed_in: Option<String>,
 }
 
 /// Making a Meet meeting to copy its link: whether the sign-in lets this

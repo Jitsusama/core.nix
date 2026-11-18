@@ -39,6 +39,19 @@ pub fn on(runtime: &Path, now: u64) -> Meeting {
         .unwrap_or_default()
 }
 
+/// The address of the Google account the meetings are from, as the google
+/// program's daemon in `runtime` serves it; or none when it isn't there,
+/// doesn't answer in time or can't say whose account it holds.
+pub fn signed_in(runtime: &Path) -> Option<String> {
+    let said = asked(
+        &runtime.join("daemons/google.sock"),
+        &json!({"id": 1, "ask": "get", "keys": ["account:google"]}),
+    )?;
+    said["records"][0]["account"]["address"]
+        .as_str()
+        .map(str::to_owned)
+}
+
 /// tuple-call's record of the call; or none when it isn't there or
 /// doesn't answer in time.
 fn tuple_call(socket: &Path) -> Option<Value> {
@@ -260,6 +273,49 @@ mod tests {
         std::fs::remove_file(bare.join("daemons/tuple-call.sock")).unwrap();
         std::fs::remove_file(bare.join("daemons/google.sock")).unwrap();
         assert_eq!(on(&bare, NOW), Meeting::default());
+    }
+
+    #[test]
+    fn the_account_signed_in_is_as_the_google_daemon_serves_it_or_unknown() {
+        /// A runtime folder whose google daemon answers the account's ask
+        /// with `answer`.
+        fn serving(name: &str, answer: Value) -> std::path::PathBuf {
+            let runtime =
+                std::env::temp_dir().join(format!("account-{name}-{}", std::process::id()));
+            std::fs::create_dir_all(runtime.join("daemons")).unwrap();
+            answering(
+                &runtime.join("daemons/google.sock"),
+                "get",
+                "keys",
+                json!(["account:google"]),
+                answer,
+            );
+            runtime
+        }
+        let account = |address: Value| {
+            json!({"records": [
+                {"key": "account:google", "kind": "account",
+                 "account": {"standing": "ready", "address": address}},
+            ]})
+        };
+        assert_eq!(
+            signed_in(&serving("held", account(json!("jsama@example.com")))).as_deref(),
+            Some("jsama@example.com"),
+            "the address served is the one signed in"
+        );
+        for (name, answer) in [
+            ("unheard", account(Value::Null)),
+            ("no-record", json!({"records": []})),
+            ("not-text", account(json!(7))),
+        ] {
+            assert_eq!(
+                signed_in(&serving(name, answer)),
+                None,
+                "{name}: an account no one can say is unknown"
+            );
+        }
+        let gone = std::env::temp_dir().join(format!("account-gone-{}", std::process::id()));
+        assert_eq!(signed_in(&gone), None, "with no daemon, unknown");
     }
 
     #[test]

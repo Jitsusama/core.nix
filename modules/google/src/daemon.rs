@@ -74,6 +74,10 @@ const ACCOUNT: &str = "account:google";
 #[derive(Serialize)]
 struct Account<'a> {
     standing: Standing,
+    /// Whose account it is, as its calendar list last said, for the
+    /// calls receptor, which names a call's event only to the realm that
+    /// declares this account.
+    address: Option<&'a str>,
     unread: Option<u64>,
     fetched: &'a Option<Fetched>,
     meet: &'a Meet,
@@ -124,6 +128,7 @@ pub fn records(state: &State) -> Vec<(String, Value)> {
     }
     let account = Account {
         standing: state.account,
+        address: state.signed_in.as_deref(),
         unread: state.unread,
         fetched: &state.fetched,
         meet: &state.meet,
@@ -542,6 +547,26 @@ mod tests {
         assert_eq!(key, ACCOUNT);
         assert_eq!(record["kind"], "account");
         assert_eq!(record["account"]["standing"], "signedOut");
+        assert_eq!(
+            record["account"]["address"],
+            Value::Null,
+            "a signed-out account is no one's"
+        );
+    }
+
+    #[test]
+    fn the_account_s_record_says_whose_it_is_as_its_calendar_list_said() {
+        let state = State {
+            account: Standing::Ready,
+            signed_in: Some("jsama@example.com".to_owned()),
+            ..State::default()
+        };
+        let made = records(&state);
+        let (_, record) = made
+            .iter()
+            .find(|(key, _)| key == ACCOUNT)
+            .expect("the account has a record");
+        assert_eq!(record["account"]["address"], "jsama@example.com");
     }
 
     #[test]

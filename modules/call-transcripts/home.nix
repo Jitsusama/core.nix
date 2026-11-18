@@ -49,7 +49,9 @@
 # receptor, a cell on the mycelium map: it runs mycelium by its store
 # path, given only fixed words, counts and ids, never a title, person or
 # summary (src/bin/call-transcripts/receptor.rs). A machine in no realm
-# says nothing.
+# says nothing, and an event is named only while the Google account
+# signed in is the one the realm declares (jitsusama.google.receptorAccount),
+# so another account's meetings never reach it.
 {
   mycelium,
   people,
@@ -72,6 +74,7 @@ let
   model = pkgs.callPackage ../dictation/parakeet.nix { };
   device = config.jitsusama.call-transcripts.summarizerDevice;
   realm = config.jitsusama.mycelium.realm or null;
+  account = config.jitsusama.google.receptorAccount or null;
   myceliumProgram = lib.getExe mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
   # The program the daemon asks a summary's questions of.
   summarizer = pkgs.writeShellScript "call-summarizer" ''
@@ -166,6 +169,7 @@ in
         "MYCELIUM=${myceliumProgram}"
         "MYCELIUM_REALM=${realm}"
       ]
+      ++ lib.optional (realm != null && account != null) "MYCELIUM_ACCOUNT=${account}"
       ++ [
         # The profile's last, for the program a transcript opens in:
         # xdg-open finds it by its desktop entry, which names it bare. A
