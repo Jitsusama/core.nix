@@ -563,8 +563,11 @@ Provider {
     // screenshot whose words hold every word typed, the line that holds
     // them below it, as a source that reads them says (`takenByText`,
     // modules/screen-text). A screenshot found both ways is listed once,
-    // by its name. What's read comes a moment later, when the source says
-    // it found more. Inside Recent (`looking`), below them all come the
+    // by its name, among the names, even when its words were answered
+    // first (Captured.js's readFound): shown rows are held still once the
+    // names come, so one listed by its words would stay below the rest.
+    // What's read comes a moment later, when the source says it found
+    // more. Inside Recent (`looking`), below them all come the
     // few pictures that look like what's typed, as a source that sees them
     // says (`takenBySight`, modules/meaning), each saying only that it was
     // found by its meaning; never at the top, where Recent gathered by a
@@ -577,13 +580,9 @@ Provider {
         const readers = (launcher?.sources ?? [])
             .filter(other => other !== provider && typeof other.takenByText === "function");
         for (const reader of readers)
-            for (const record of reader.takenByText(letters) ?? []) {
-                if (listed.has(record.path))
-                    continue;
-                listed.add(record.path);
-                if (rows.length < provider.most * 2)
-                    rows.push(provider.takenRow(record.path, record.line));
-            }
+            for (const record of Captured.readFound(reader.takenByText(letters) ?? [], listed,
+                path => Taken.finds(path, letters), provider.most * 2 - rows.length))
+                rows.push(provider.takenRow(record.path, record.line));
         const seers = !looking ? [] : (launcher?.sources ?? [])
             .filter(other => other !== provider && typeof other.takenBySight === "function");
         for (const seer of seers)

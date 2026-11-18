@@ -125,12 +125,37 @@ Singleton {
     // takes its own with it when the folders are read again.
     property var prepared: ({})
 
+    // Whether what's typed finds the file at `path` by its own name, as
+    // `named` and the programs daemon's search (taken.rs) find one: so
+    // Capture lists a screenshot its words found among those its name
+    // found, whichever answered first (Captured.js's readFound). Its name
+    // is made ready once, beside the others.
+    function finds(path, typed) {
+        const words = Fuzzy.words(typed);
+        if (words.length === 0)
+            return false;
+        let item = root.byName[path];
+        if (item === undefined)
+            item = root.byName[path] = Fuzzy.prepare(path.slice(path.lastIndexOf("/") + 1));
+        const need = Fuzzy.letters(words);
+        return (item.mask & need) === need && Fuzzy.match(item, words, false).score >= 0;
+    }
+
+    // Each name `finds` made ready, by its path: its name alone, as the
+    // daemon matches it, where `prepared` holds its path in its folder.
+    property var byName: ({})
+
     onFilesChanged: {
         const kept = {};
-        for (const file of root.files)
+        const named = {};
+        for (const file of root.files) {
             if (file.path in root.prepared)
                 kept[file.path] = root.prepared[file.path];
+            if (file.path in root.byName)
+                named[file.path] = root.byName[file.path];
+        }
         root.prepared = kept;
+        root.byName = named;
     }
 
     // What searched rests, as the launcher does once it closes: the

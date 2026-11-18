@@ -103,6 +103,32 @@ function newest(files, folder) {
         .reduce((last, file) => last === null || file.at > last.at ? file : last, null);
 }
 
+// What screen-text's reading found for what's typed, as Recent lists it
+// below the names found (launcher/Capture.qml): `records` its [{ path,
+// line }], best first, `listed` the Set of paths listed already, which
+// each one given back joins, and `finds` whether a path's name finds what's
+// typed. Those whose names find it come first, with no line, as the names
+// found list them, then the rest by their words, in the order read, up to
+// `room` of them. So a screenshot found both ways is listed by its name
+// whichever daemon answered first: the launcher holds shown rows still, so
+// one listed by its words before its name was answered stayed below one
+// found only by its words.
+function readFound(records, listed, finds, room) {
+    const named = [];
+    const worded = [];
+    for (const record of records) {
+        const fresh = !listed.has(record.path);
+        if (fresh && finds(record.path)) {
+            named.push({ path: record.path, line: "" });
+            listed.add(record.path);
+        } else if (fresh && worded.length < room) {
+            worded.push(record);
+            listed.add(record.path);
+        }
+    }
+    return named.concat(worded);
+}
+
 // Where one of Capture's acts lands, as its drawer's Lands In says it:
 // the folder by its own name, as drawers.md's Act example has it
 // (Y2YBTS, #3579's review), then `also`, the clipboard beside it where
