@@ -41,8 +41,10 @@ it("finds no holder for a kind no row claims, or in a record that isn't one", ()
 });
 
 it("takes a row's path only as steps of plain bytes under the sites' root", () => {
-  const refused = ["../up/", "/rooted/", "./here/", ".drafts/", "%2e%2e/", "https://x/", "a\\b/"];
-  for (const path of [...refused, "a//b/", "", "/"]) {
+  const refused = ["../up/", "/rooted/", ".drafts/", "%2e%2e/", "https://x/", "a\\b/"];
+  // One leading ./ is the root itself, as the system's homes take it; any more is a dotted step.
+  const dotted = ["./", "././here/", "./../up/", "./.drafts/"];
+  for (const path of [...refused, ...dotted, "a//b/", "", "/"]) {
     const sites = { sites: [{ path, homes: ["cell"] }] };
     assert.equal(holdingOf(sites, "cell"), undefined, `${path} was taken as a home`);
   }
@@ -50,6 +52,10 @@ it("takes a row's path only as steps of plain bytes under the sites' root", () =
     const sites = { sites: [{ path, homes: ["cell"] }] };
     assert.deepEqual(holdingOf(sites, "cell"), { sites: [path] }, `${path} was refused`);
   }
+  const here = { sites: [{ path: "./code/", homes: ["cell"] }] };
+  assert.deepEqual(holdingOf(here, "cell"), { sites: ["code/"] }, "./code/ was refused");
+  const herePattern = { sites: [{ path: "./mycelium/", homes: [machines] }] };
+  assert.deepEqual(holdingOf(herePattern, "machine"), held, "./mycelium/'s pattern was refused");
 });
 
 it("takes a pattern a row says, written from its page or from the sites' root", () => {
