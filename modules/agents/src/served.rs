@@ -17,12 +17,12 @@ use serde_json::{Map, Value, json};
 
 use crate::figures::Item;
 use crate::row::{Row, Shown};
+use crate::spacing::spaced;
+// The places that space their own rows read it here, beside `PLACE`.
+pub use crate::spacing::SPACING;
 
 /// The launcher's place the rows are in.
 pub const PLACE: &str = "agents";
-/// How far apart each row's `order` is set, so one row moving between
-/// two takes a number between theirs and the rest keep their own.
-pub const SPACING: i64 = 1024;
 /// The key of the record saying how the sessions stand together, its
 /// kind's own, since it's no row and is read where Agents' row is, home
 /// included.
@@ -242,71 +242,6 @@ pub fn made(shown: &[Shown], summary: &str) -> Made {
         wants: Vec::new(),
         talks: Vec::new(),
     }
-}
-
-/// The `order` each row takes, in the order shown, from the order each
-/// had before (`was`): the most rows that can keep theirs do (the longest
-/// run still rising), and the rest take numbers spaced between their
-/// neighbours, so one row moving changes one row. Where no room is left
-/// between two, every row is spaced again.
-pub fn spaced(was: &[Option<i64>]) -> Vec<i64> {
-    let kept = rising(was);
-    let mut order = vec![0; was.len()];
-    let mut at = 0;
-    let mut below: Option<i64> = None;
-    for upto in kept.iter().copied().chain(std::iter::once(was.len())) {
-        let above = was.get(upto).copied().flatten();
-        let between = upto - at;
-        let count = i64::try_from(between).unwrap_or(i64::MAX);
-        let room = match (below, above) {
-            (Some(low), Some(high)) => {
-                (high - low > count).then(|| (low, (high - low) / (count + 1)))
-            }
-            (None, Some(high)) => Some((high - SPACING * (count + 1), SPACING)),
-            (Some(low), None) => Some((low, SPACING)),
-            (None, None) => Some((0, SPACING)),
-        };
-        let Some((from, step)) = room else {
-            return (1..=i64::try_from(was.len()).unwrap_or(i64::MAX))
-                .map(|n| n * SPACING)
-                .collect();
-        };
-        for (step_at, one) in (1..).zip(at..upto) {
-            order[one] = from + step * step_at;
-        }
-        if let Some(high) = above {
-            order[upto] = high;
-            below = Some(high);
-        }
-        at = upto + 1;
-    }
-    order
-}
-
-/// The places of the longest run of orders still rising, among those
-/// that had one.
-fn rising(was: &[Option<i64>]) -> Vec<usize> {
-    // Patience: `tails[n]` is the place ending the best run of n + 1.
-    let mut tails: Vec<usize> = Vec::new();
-    let mut before = vec![None; was.len()];
-    for (place, order) in was.iter().enumerate() {
-        let Some(order) = order else { continue };
-        let at = tails.partition_point(|tail| was[*tail].is_some_and(|tail| tail < *order));
-        before[place] = at.checked_sub(1).map(|one| tails[one]);
-        if at == tails.len() {
-            tails.push(place);
-        } else {
-            tails[at] = place;
-        }
-    }
-    let mut run = Vec::new();
-    let mut place = tails.last().copied();
-    while let Some(one) = place {
-        run.push(one);
-        place = before[one];
-    }
-    run.reverse();
-    run
 }
 
 impl Served {
@@ -586,46 +521,6 @@ mod tests {
             orders(&served, &["C", "D", "A", "B"]),
             [0, 512, 1024, 2048],
             "D between"
-        );
-    }
-
-    #[test]
-    fn spacing_keeps_the_longest_rising_run_and_spaces_again_when_full() {
-        assert_eq!(spaced(&[None, None]), [1024, 2048]);
-        assert_eq!(
-            spaced(&[Some(5), Some(3), Some(4), None]),
-            [-1021, 3, 4, 1028]
-        );
-        assert_eq!(
-            spaced(&[Some(1), None, Some(2)]),
-            [-2046, -1022, 2],
-            "no room between, so the row below lets go of its order to make some"
-        );
-    }
-
-    #[test]
-    fn a_full_gap_moves_only_the_rows_it_widens_over() {
-        // Every row whole was told again each time one gap filled, about
-        // every 100 s on Joel's laptop: 460 rows, 405 KB, for one row placed
-        // (agents-top, 2026-11-18).
-        assert_eq!(
-            spaced(&[Some(1024), Some(2048), None, Some(2049), Some(4096), Some(5120)]),
-            [1024, 1365, 1706, 2049, 4096, 5120],
-            "only the row below the full gap moves with the one placed"
-        );
-        assert_eq!(
-            spaced(&[Some(1024), Some(2048), None, None, Some(2050), Some(4096)]),
-            [1024, 1280, 1536, 1792, 2050, 4096],
-            "two placed in a full gap move only the row below it too"
-        );
-    }
-
-    #[test]
-    fn spacing_again_is_left_for_when_no_widening_fits() {
-        assert_eq!(
-            spaced(&[Some(i64::MAX - 1), None]),
-            [1024, 2048],
-            "past the last order there's no room, and no row to let go of but it"
         );
     }
 }

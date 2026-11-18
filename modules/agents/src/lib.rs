@@ -14,6 +14,7 @@
 //! - `row`: a session's row, and every row laid out, folds and all.
 //! - `shape`: the shape each orchestration's row wears, as the map draws it.
 //! - `served`: every record served by key, and only what moved sent.
+//! - `spacing`: each row's `order`, so a row moving changes few others.
 //! - `session`: a session as the node tells of it, and their order.
 //! - `file`: files another program writes whole, heard as each lands.
 //! - `inputs`: what every source last said, and every record made of it.
@@ -69,6 +70,7 @@ pub mod served;
 pub mod session;
 pub mod shape;
 pub mod sources;
+pub mod spacing;
 pub mod sprout;
 pub mod standing;
 pub mod summary;
