@@ -7564,10 +7564,6 @@ Scope {
         answersWaited.stop();
         if (waited === null || !open) {
             heldSpans = [];
-            // Closed, no frame of its keys will be said, so what each
-            // held key waited behind is let go.
-            if (!open)
-                heldBehind = [];
             return;
         }
         searchedNow(waited.due, waited);
@@ -10339,6 +10335,9 @@ Scope {
             // What waits on a frame runs, since no frame of the launcher's
             // is coming.
             afterFramesDue();
+            // Nor is any held key's line said again, so what each waited
+            // behind is let go, whatever frame it still waited for.
+            heldBehind = [];
             over = null;
             lastVisual = null;
             rowChanges = Changes.changes();

@@ -144,15 +144,17 @@ function drawingHeld(frames, from, to) {
 // then posts the sync and waits (qsgthreadedrenderloop.cpp's
 // polishAndSync), so until the render thread takes the sync the shell's
 // thread waits on it: on a frame before's render or swap where that ran,
-// else on the thread itself, which begins the frame before it syncs and
-// can wait there for a buffer (syncAndRender's beginFrame), with the
-// shell's own handlers of animating run after the span opened. Then the
+// else before the sync, which holds both the render thread beginning the
+// frame, where it can wait for a buffer (syncAndRender's beginFrame), and
+// the shell's own handlers of animating run after the span opened, and so
+// names neither's owner. Then the
 // sync itself, then what the shell's thread ran after it let go (its
 // animations advanced, and what was queued ahead of the call ending the
 // span); on a loop rendering on the shell's thread, as in a sandbox, that
 // also holds the frame's own render and swap. Where no frame's sync began
-// within it, as one whose window wasn't ready to render or whose slot a
-// newer frame took, what no step names is said as untimed syncing. Its own
+// within it, as one whose window wasn't ready to render, whose slot a
+// newer frame took, or one synced longer before the key's frame than the
+// ring's sixteen, what no step names is said as untimed syncing. Its own
 // step isn't said as syncing, which names the whole span where it isn't
 // told apart, as an opening's stall does (Pacing.stallSpent).
 function syncSplit(span, frames) {
@@ -160,13 +162,15 @@ function syncSplit(span, frames) {
         && frame.synchronizing <= span.to)
         .sort((one, other) => one.synchronizing - other.synchronizing)[0];
     const took = own === undefined ? span.to : own.synchronizing;
-    const rest = own === undefined ? "untimed syncing" : "waiting on the render thread";
+    const rest = own === undefined ? "untimed syncing" : "before the sync";
     const parts = [];
     let at = span.from;
     for (const step of drawingHeld(frames.filter(frame => frame !== own), span.from, took)) {
         if (step.from > at) {
             parts.push({ name: rest, from: at, to: step.from });
         }
+        // A step wholly inside one already said is passed over, so no
+        // millisecond is said twice.
         if (step.to > at) {
             parts.push({ name: step.name, from: Math.max(step.from, at), to: step.to });
             at = step.to;
@@ -178,8 +182,9 @@ function syncSplit(span, frames) {
     if (own === undefined) {
         return parts;
     }
-    // A sync with no end said is said as taking none, so the time after
-    // isn't put back under the sync.
+    // The patch sets both sync times on the render thread at once, so a
+    // sync with no end comes only from a read gone wrong; it's said as
+    // taking none, so the time after isn't put back under the sync.
     const synced = own.synchronized > took ? Math.min(own.synchronized, span.to) : took;
     if (synced > took) {
         parts.push({ name: "the sync itself", from: took, to: synced });
@@ -214,9 +219,10 @@ function behindSplit(behind, frames, bound) {
 // with its number, read back from `last`, the newest begun. The newest
 // may be begun and not yet rendered, so has no times, and is passed over;
 // below it the read ends at the first a newer frame's slot took, as
-// Trials.begunBefore's does, or at FRAMES_READ, should timesOf ever give
-// a slot's times for a frame not its own.
-const FRAMES_READ = 32;
+// Trials.begunBefore's does, or at FRAMES_READ, the frames FramePresentation
+// keeps (as Trials.FRAMES_KEPT), should timesOf ever give a slot's times
+// for a frame not its own.
+const FRAMES_READ = 16;
 function framesTimed(last, timesOf) {
     const frames = [];
     for (let frame = last; frame > 0 && last - frame < FRAMES_READ; frame--) {
