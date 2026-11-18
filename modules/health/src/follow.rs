@@ -94,9 +94,6 @@ const GUARD_STOPPED: &str = "the disk guard stopped saying it's there";
 /// What the day calls a lid that's wrong.
 const LID_WRONG: &str = "the lid reads shut while the laptop's screen is on and its keys are typed";
 
-/// What the day calls a machine whose calls go unseen.
-const CALL_UNSEEN: &str = "it declares no call probe, so a call there goes unseen";
-
 impl Follower {
     /// A follower starting `date` empty, writing into `into`. It starts
     /// empty each time it runs, since the journals are read again from the
@@ -396,49 +393,6 @@ impl Follower {
         };
         let day = &mut self.day;
         self.changed |= reader.pool(&mut day.launcher, &day.date, &self.zone);
-    }
-
-    /// Ask the mycelium nodes under `runtimes` which of the person's other
-    /// machines declare no call probe.
-    #[must_use]
-    pub fn hearing_peers(self, runtimes: PathBuf) -> Self {
-        Self {
-            peers: Some(runtimes),
-            ..self
-        }
-    }
-
-    /// Hear the nodes' peers at `at`, on Linux, where a-call-is-on hears
-    /// them too. A node that won't answer changes nothing.
-    pub fn hear_peers(&mut self, at: i64) {
-        #[cfg(target_os = "linux")]
-        if let Some(runtimes) = &self.peers
-            && let Ok(heard) = calls::elsewhere::hear(runtimes)
-        {
-            self.see_unseen_calls(heard.unseen, at);
-        }
-        #[cfg(not(target_os = "linux"))]
-        let _ = at;
-    }
-
-    /// Keep which machines' calls go `unseen` at `at`: a-call-is-on can't
-    /// hear a call on one, and names it only to whoever asked, so each
-    /// counts once as a service's fault, and again only after it's seen
-    /// or gone quiet, a start between them or not.
-    pub fn see_unseen_calls(&mut self, unseen: Vec<String>, at: i64) {
-        if date_of(at, &self.zone) != self.day.date {
-            return;
-        }
-        for machine in &unseen {
-            if !self.day.seeing.unseen_calls.contains(machine) {
-                self.day.fault(machine, Kind::Services, CALL_UNSEEN, at);
-                self.changed = true;
-            }
-        }
-        if self.day.seeing.unseen_calls != unseen {
-            self.day.seeing.unseen_calls = unseen;
-            self.changed = true;
-        }
     }
 
     /// Judge a look at the lid, taken at `at`. A lid gone wrong counts once
@@ -805,6 +759,10 @@ fn run(
 // A spell of failed writes, and what health says of it, in a file of
 // its own so the follower reads whole.
 mod spell;
+
+// How the follower hears the person's other machines' calls, in a file of
+// its own, follow/peers.rs.
+mod peers;
 
 // The tests keep a file of their own, follow/tests.rs, so the follower
 // reads whole.

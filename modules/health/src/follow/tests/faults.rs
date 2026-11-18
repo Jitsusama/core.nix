@@ -244,10 +244,15 @@ fn a_disk_guard_that_stopped_is_a_services_fault_once() {
 fn a_machine_whose_calls_go_unseen_is_a_standing_fault_each() {
     let into = tempfile::tempdir().expect("a folder");
     let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
-    let unseen = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect();
-    follower.see_unseen_calls(unseen(&["skiff", "dinghy"]), NOON);
-    follower.see_unseen_calls(unseen(&["skiff", "dinghy"]), NOON + 30_000_000);
-    follower.see_unseen_calls(unseen(&["skiff"]), NOON + 60_000_000);
+    let unheard = |names: &[&str]| {
+        names
+            .iter()
+            .map(|name| ((*name).to_owned(), peers::CALL_UNSEEN))
+            .collect()
+    };
+    follower.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON);
+    follower.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 30_000_000);
+    follower.see_unheard_calls(unheard(&["skiff"]), NOON + 60_000_000);
     follower.write().expect("the day is written");
     let day = read(into.path(), "2026-11-12");
     let errors = |day: &Day, name: &str| day.things.get(name).map(|thing| thing.errors);
@@ -266,11 +271,11 @@ fn a_machine_whose_calls_go_unseen_is_a_standing_fault_each() {
         .values()
         .map(|said| said.example.as_str())
         .collect();
-    assert_eq!(said, [CALL_UNSEEN], "said the way Joel reads it");
+    assert_eq!(said, [peers::CALL_UNSEEN], "said the way Joel reads it");
 
     // A restart keeps what's still unseen, so it isn't counted again.
     let mut again = Follower::new("2026-11-12", into.path(), TimeZone::UTC).resuming(day);
-    again.see_unseen_calls(unseen(&["skiff"]), NOON + 90_000_000);
+    again.see_unheard_calls(unheard(&["skiff"]), NOON + 90_000_000);
     assert_eq!(
         errors(&again.day, "skiff"),
         Some(1),
@@ -278,10 +283,33 @@ fn a_machine_whose_calls_go_unseen_is_a_standing_fault_each() {
     );
 
     // dinghy, seen again since, counts again once it's unseen again.
-    again.see_unseen_calls(unseen(&["skiff", "dinghy"]), NOON + 120_000_000);
+    again.see_unheard_calls(unheard(&["skiff", "dinghy"]), NOON + 120_000_000);
     assert_eq!(
         errors(&again.day, "dinghy"),
         Some(2),
         "a machine unseen again wasn't counted again"
+    );
+}
+
+#[test]
+fn each_machine_and_the_nodes_whose_calls_go_unheard_are_a_thing_apart() {
+    let heard = calls::elsewhere::Heard {
+        unseen: vec!["skiff".to_owned()],
+        untold: vec!["dinghy".to_owned()],
+        unanswered: vec!["one".to_owned(), "two".to_owned()],
+        ..calls::elsewhere::Heard::default()
+    };
+    assert_eq!(
+        peers::unheard(&heard),
+        [
+            ("calls on skiff".to_owned(), peers::CALL_UNSEEN),
+            ("calls on dinghy".to_owned(), peers::CALL_UNTOLD),
+            (peers::NODES.to_owned(), peers::NODE_SILENT),
+        ],
+        "whose calls go unheard wasn't each a thing of its own"
+    );
+    assert!(
+        peers::unheard(&calls::elsewhere::Heard::default()).is_empty(),
+        "everything heard was still a fault"
     );
 }
