@@ -84,11 +84,15 @@ QtObject {
             "armed armed | armed");
 
         // Return held still, as on an ask hidden while Joel shares: a row
-        // saying it has nothing to do yet, with no run; never a still row
-        // that runs, nor one with no run whose Return does something else.
+        // saying it has nothing to do yet, with no run, whatever else it
+        // holds; never a still row that runs, nor one not still with no run
+        // whose Return does something else.
         const nothing = () => {};
         const still = [
             ["a hidden ask, still with no run", { still: true }, true],
+            ["a still row with no run that asks for words", { still: true, given: nothing },
+                true],
+            ["a still row with no run that starts a command", { still: true, start: "x" }, true],
             ["a still row that runs, as the file chooser's", { still: true, stays: true,
                 run: nothing }, false],
             ["one staying with no run that asks for words", { stays: true, given: nothing },
@@ -107,12 +111,12 @@ QtObject {
         // its own reason, or the launcher's when it gives none; any other
         // row isn't refused for it.
         expect("a row held still is refused for its own reason",
-            Arming.heldWhy({ still: true, held: "not while shared" }, "nothing sent"),
+            Arming.heldWhy({ still: true, stillWhy: "not while shared" }, "nothing sent"),
             "not while shared");
         expect("or the launcher's, giving none",
             Arming.heldWhy({ still: true }, "nothing sent"), "nothing sent");
         expect("while a row that acts isn't refused for it",
-            Arming.heldWhy({ still: true, run: nothing, held: "x" }, "nothing sent"), "");
+            Arming.heldWhy({ still: true, run: nothing, stillWhy: "x" }, "nothing sent"), "");
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

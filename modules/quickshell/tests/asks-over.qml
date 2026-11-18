@@ -24,7 +24,6 @@ import QtQuick
 import KeyTimes
 import "launcher" as Launcher
 import "Arming.js" as Arming
-import "launcher/Catalogue.js" as Catalogue
 import "Expect.js" as Expect
 
 ShellRoot {
@@ -48,6 +47,7 @@ ShellRoot {
             note: "S1", side: [{ said: "from S1", keep: 2 }], attention: 1000, digest,
             // Fields no hidden row draws, as a daemon may serve more later.
             reads: "op://Private/Kiln/password", graph: { shape: "bar", values: [1] },
+            keywords: ["kilnfiring"],
             order: 1024, acts: [act("release"), act("refuse")],
             drawer: { eyebrow: "S1", title: "op://Private/Kiln/password",
                 body: "To fire the kiln.", facts: [{ name: "Runs", said: "make kiln" }] }
@@ -665,20 +665,22 @@ ShellRoot {
             [hidden, "", "", 0]);
         same("nor anything else the daemon serves, only what it may show",
             [row()?.reads, row()?.graph], ["", null]);
-        const kept = one => [one?.glyph, one?.hue, one?.place, one?.kind, one?.asked];
-        same("while keeping what says it's an ask and where it's listed",
-            kept(row()), kept(root.madeBefore));
+        // The words it's found by go too, so no search finds it by what it
+        // asks for; they were there before the share.
+        const finds = one => JSON.stringify(one?.keywords ?? []).includes("kilnfiring");
+        same("nor its search words", [finds(root.madeBefore), finds(row())], [true, false]);
+        // What a ready row draws of the kept fields: its glyph and hue.
+        same("while keeping what says it's an ask",
+            [row()?.glyph, row()?.hue], [root.madeBefore?.glyph, root.madeBefore?.hue]);
         same("it has no act, so no key answers it unseen",
             [row()?.arms, row()?.verbs ?? null], ["", null]);
         // The launcher closes on a Return with no run, so his second
         // Return, meant for a yes, would reach the window behind. It's
         // held still instead, the foot naming no Return, with no run for
-        // the right arrow to step into, nor taken for a change a Return
-        // from the find lands on.
+        // the right arrow to step into.
         same("a Return on it keeps the launcher open, doing nothing",
-            [Arming.holdsStill(row()), row()?.still, typeof row()?.run,
-                Catalogue.changesState(row())],
-            [true, true, "undefined", false]);
+            [Arming.holdsStill(row()), row()?.still, typeof row()?.run],
+            [true, true, "undefined"]);
         // Walked to from a terminal, it's refused, saying why, rather than
         // said done for nothing or thrown on the run it hasn't.
         same("asked from outside, it's refused while the screen is shared",
@@ -830,8 +832,11 @@ ShellRoot {
         link.tellEnded();
         same("an ask ended while the screen is shared is hidden", row()?.name,
             "Ask, Hidden While You Share");
-        same("and its Return closes the launcher, as an ended ask's does",
-            [Arming.holdsStill(row()), row()?.still === true], [false, false]);
+        // Hidden, it looks as a waiting one does, so Return on it holds
+        // still too, rather than closing for his next to land behind.
+        same("and its Return keeps the launcher open too, saying why",
+            [Arming.holdsStill(row()), Arming.heldWhy(row(), "nothing sent")],
+            [true, "not while your screen is shared"]);
         Niri.casts = {};
     }
 }
