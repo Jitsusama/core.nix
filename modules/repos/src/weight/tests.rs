@@ -283,18 +283,46 @@ fn a_folder_with_no_objects_isnt_weighed() {
     assert_eq!(weigh(&store, &Limits::default()), None);
 }
 
+/// The weight of `store` while `folder` under it can't be read, and
+/// whether it could be read anyway, as root may, which sees it whole.
+fn weighed_closed(store: &Path, folder: &str) -> (Option<Weight>, bool) {
+    let folder = store.join(folder);
+    fs::set_permissions(&folder, fs::Permissions::from_mode(0o000)).expect("closed");
+    let readable = fs::read_dir(&folder).is_ok();
+    let weight = weigh(store, &Limits::default());
+    fs::set_permissions(&folder, fs::Permissions::from_mode(0o755)).expect("opened");
+    (weight, readable)
+}
+
 #[test]
 fn a_loose_folder_that_cant_be_read_leaves_the_store_unweighed() {
     let store = store("unreadable");
     loose(&store, "17", 3, 10);
-    let folder = store.join("objects/17");
-    fs::set_permissions(&folder, fs::Permissions::from_mode(0o000)).expect("closed");
-    let readable = fs::read_dir(&folder).is_ok();
-    let weight = weigh(&store, &Limits::default());
-    fs::set_permissions(&folder, fs::Permissions::from_mode(0o755)).expect("opened");
-    // Whoever may read any folder, as root may, sees it whole.
+    let (weight, readable) = weighed_closed(&store, "objects/17");
     if !readable {
         assert_eq!(weight, None, "not said as an empty store");
+    }
+}
+
+#[test]
+fn any_loose_folder_counted_whole_that_cant_be_read_leaves_the_store_unweighed() {
+    // The sampled folder holds few, so every folder is counted, `aa` among them.
+    let store = store("unreadable-whole");
+    loose(&store, "17", 3, 10);
+    loose(&store, "aa", 3, 10);
+    let (weight, readable) = weighed_closed(&store, "objects/aa");
+    if !readable {
+        assert_eq!(weight, None, "not said lighter than it is");
+    }
+}
+
+#[test]
+fn a_pack_folder_that_cant_be_read_leaves_the_store_unweighed() {
+    let store = store("unreadable-packs");
+    pack(&store, "a", 100, false);
+    let (weight, readable) = weighed_closed(&store, "objects/pack");
+    if !readable {
+        assert_eq!(weight, None, "not said as a store with no packs");
     }
 }
 
@@ -326,10 +354,12 @@ fn a_store_git_wrote_weighs_each_loose_object_and_once_gathered_one_pack() {
 }
 
 #[test]
-fn a_store_said_due_is_one_git_gathers_when_it_next_runs_its_upkeep() {
+fn a_store_said_due_is_one_git_gathers_when_it_next_runs_its_upkeep_though_a_gather_failed() {
     // The rule is git's, copied: this holds it to the git the machine runs,
     // so a git whose defaults moved fails here rather than saying a store is
-    // due that git never gathers.
+    // due that git never gathers. Nor does a failed gather's fresh gc.log
+    // hold it back, which only a detached `git gc --auto` reads: a git that
+    // read it on its own upkeep's way would fail here too.
     let dir = store("git-due").join("work");
     fs::create_dir_all(&dir).expect("a work folder");
     git(&dir, &["init", "--quiet"]);
@@ -354,14 +384,17 @@ fn a_store_said_due_is_one_git_gathers_when_it_next_runs_its_upkeep() {
     );
     let before = weighed(&dir.join(".git"));
     assert!(before.due, "past git's limit: {before:?}");
+    fs::write(
+        dir.join(".git/gc.log"),
+        "warning: There are too many unreachable loose objects\n",
+    )
+    .expect("a failed gather's log");
     // As git runs it after a commit, but here, not detached.
     git(
         &dir,
         &[
             "-c",
             "maintenance.autoDetach=false",
-            "-c",
-            "gc.autoDetach=false",
             "maintenance",
             "run",
             "--auto",

@@ -14,11 +14,13 @@
 //!
 //! Whether it's due is git's own rule for its `gc` task, at the checkout's
 //! own config or git's defaults, as no machine of Joel's sets them
-//! anywhere else; includes aren't followed. A store a failed gather holds
-//! back (its `gc.log`) is still said due, since that's when it most needs
-//! a look. It's weighed again when the checkout is read again: as a ref
-//! moves, and at the daemon's whole reading each minute, which is when a
-//! gather is seen, since git packs the refs before it gathers objects.
+//! anywhere else; includes aren't followed. A failed gather's `gc.log`
+//! doesn't change it: only a detached `git gc --auto` reads one, and git's
+//! own upkeep, `maintenance run --auto`, runs gc not detached, so it still
+//! gathers a store whatever log a gather left. It's weighed again when
+//! the checkout is read again: as a ref moves, and at the daemon's whole
+//! reading each minute, which is when a gather is seen, since git packs
+//! the refs before it gathers objects.
 
 use std::fs::{self, Metadata};
 use std::io::ErrorKind;
