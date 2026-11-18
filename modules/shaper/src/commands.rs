@@ -44,7 +44,7 @@ fn run() -> Help {
             "--networks FILE",
             "each network's upload rate, to guard it by",
         )
-        .option("--state DIR", "where each network's rate is kept")
+        .option("--state DIR", "where what it heard each second is kept")
         .option("--runtime DIR", "where its status is written")
         .option("--cgroups DIR", "where the slices' cgroups are")
         .option("--proc DIR", "where processes are listed")

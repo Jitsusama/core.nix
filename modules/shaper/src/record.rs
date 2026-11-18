@@ -501,9 +501,9 @@ mod tests {
             "two links beside swapping places would read as the set changing"
         );
         assert_eq!(
-            counted_links("eth0", names(&["wlan0"])),
-            names(&["eth0", "wlan0"]),
-            "the recorded link comes first, then those beside it"
+            counted_links("wlan0", names(&["eth1", "eth0"])),
+            names(&["wlan0", "eth0", "eth1"]),
+            "the recorded link comes first, then those beside it in name order"
         );
         assert_ne!(
             counted_links("eth0", names(&["wlan0"])),
