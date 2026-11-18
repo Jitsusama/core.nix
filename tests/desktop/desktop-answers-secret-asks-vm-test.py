@@ -251,7 +251,7 @@ def test_an_asks_opened_from_outside_takes_no_yes_without_a_move(desktop: Deskto
 
 
 def test_r_refuses_an_ask(desktop: Desktop) -> None:
-    """R on an ask's line refuses it, releasing nothing, and a Return on it then does nothing."""
+    """R on an ask's line refuses it, releasing nothing, and a Return on it then is not here."""
     ask = "1123456789abcdef0123456789abcdef"
     why = "To glaze the pots."
     put_up(desktop, ask, why)
@@ -260,13 +260,14 @@ def test_r_refuses_an_ask(desktop: Desktop) -> None:
     answer = answered(desktop, ask)
     assert (answer["state"], answer["why"]) == ("refused", "refused by Joel"), answer
     desktop.as_account(f"! test -e {TREE}/released")
-    # Return on the line once answered has nothing to do, so it keeps the launcher: the / after
-    # it finds the launcher still open on the line, rather than closed by a Return that failed.
+    # Return on the line once answered has nothing to do, so it keeps the launcher, saying so as
+    # a key with no meaning does, rather than closing it by a Return that failed.
     desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
     desktop.machine.send_key("ret")
-    desktop.machine.send_chars("/")
     desktop.launcher_until(
-        lambda shown: shown["open"] and shown["mode"] == "find" and selects(shown, why)
+        lambda shown: (
+            shown["open"] and shown["saying"] == ["\u21b5 not here"] and selects(shown, why)
+        )
     )
 
 
