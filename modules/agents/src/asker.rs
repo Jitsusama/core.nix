@@ -5,9 +5,12 @@
 //! would start work with more than the agent's own reach. The kernel
 //! names the process at the other end by pidfd (`SO_PEERPIDFD`), never a
 //! pid an ask says, and its cgroup says which unit runs it: only the
-//! shell's unit, under this daemon's own account, and only quickshell's
-//! own program in it, since other programs run there too (pi-ask while
-//! Super+S talks, the shell's helpers), as pineapple's peer.rs holds.
+//! shell's unit, under this daemon's own account, and only the unit's
+//! main process, as its manager names it, running quickshell's own
+//! program. Other programs run in that unit too (pi-ask while Super+S
+//! talks, the shell's helpers, their children and orphans), and any of
+//! them could run a program named quickshell, so the program alone is a
+//! second line, as pineapple's peer.rs holds it (ISXEG8 on #5456).
 //! The shell in turn starts new work only from Joel's own Return, never
 //! a walk from outside (Agents.qml's sprout).
 //!
@@ -21,10 +24,17 @@ use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::process::Command;
 
 /// The names quickshell's program goes by: Nix's wrapper runs the real
 /// one under this name, and an unwrapped build runs as itself.
 const SHELL_PROGRAMS: [&str; 2] = [".quickshell-wrapped", "quickshell"];
+
+/// The shell's unit, whose main process alone may ask.
+const SHELL_UNIT: &str = "quickshell.service";
+
+/// What a refusal says, whichever check refused.
+const REFUSED: &str = "only the launcher starts new work here";
 
 /// `SO_PEERPIDFD` (Linux 6.5), the same on every architecture the
 /// machines run, which the libc crate names only in its newer layout.
@@ -38,14 +48,72 @@ const SO_PEERPIDFD: libc::c_int = 77;
 /// Why: it isn't the shell's, it ended before its cgroup could be known
 /// to be its own, or the kernel names no peer by pidfd.
 pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
-    let (cgroup, exe) = peer_of(stream).map_err(|why| format!("who asked can't be told: {why}"))?;
+    let untold = |why: io::Error| format!("who asked can't be told: {why}");
+    let (pidfd, seen) = peer_of(stream).map_err(untold)?;
     // SAFETY: getuid has no failure and touches no memory.
     let uid = unsafe { libc::getuid() };
-    if of_the_shell(&cgroup, uid) && the_shells_program(&exe) {
+    if !takes(&seen, uid, shells_main_pid).map_err(untold)? {
+        return Err(REFUSED.to_owned());
+    }
+    // Read last, so a pid taken again since any read above can't answer.
+    if alive(&pidfd) {
         Ok(())
     } else {
-        Err("only the launcher starts new work here".to_owned())
+        Err(untold(gone()))
     }
+}
+
+/// What was read of the process at the other end of a socket.
+#[derive(Debug)]
+pub struct Seen {
+    /// Its pid, as its pidfd names it.
+    pub pid: u32,
+    /// Its `/proc/<pid>/cgroup`.
+    pub cgroup: String,
+    /// Where its `/proc/<pid>/exe` points.
+    pub exe: String,
+}
+
+/// Whether `seen` is the shell under account `uid`: in its unit, running
+/// its program, and the unit's main process, which `main_pid` asks the
+/// manager for only once the rest holds, so nothing else costs a call.
+///
+/// # Errors
+///
+/// What `main_pid` gave when the manager couldn't be asked.
+pub fn takes(
+    seen: &Seen,
+    uid: u32,
+    main_pid: impl FnOnce() -> io::Result<u32>,
+) -> io::Result<bool> {
+    if !(of_the_shell(&seen.cgroup, uid) && the_shells_program(&seen.exe)) {
+        return Ok(false);
+    }
+    // 0 when the unit has no main process, which no peer's pid is.
+    Ok(main_pid()? == seen.pid)
+}
+
+/// The shell's unit's main process, as this account's manager says it.
+fn shells_main_pid() -> io::Result<u32> {
+    let said = Command::new("systemctl")
+        .args([
+            "--user",
+            "show",
+            "--property=MainPID",
+            "--value",
+            SHELL_UNIT,
+        ])
+        .output()?;
+    if !said.status.success() {
+        return Err(io::Error::other(format!(
+            "systemd couldn't say the shell's main process: {}",
+            String::from_utf8_lossy(&said.stderr).trim()
+        )));
+    }
+    String::from_utf8_lossy(&said.stdout)
+        .trim()
+        .parse()
+        .map_err(|_| io::Error::other("systemd named no main process for the shell"))
 }
 
 /// Whether `exe`, as `/proc/<pid>/exe` points, is quickshell's own
@@ -80,10 +148,10 @@ pub fn of_the_shell(cgroup: &str, uid: u32) -> bool {
     }
 }
 
-/// The cgroup and program of the process at the other end of `stream`,
-/// read while its pidfd showed it alive, so a pid taken again since
-/// can't answer.
-fn peer_of(stream: &UnixStream) -> io::Result<(String, String)> {
+/// The pidfd of the process at the other end of `stream`, and its pid,
+/// cgroup and program, read through that pid: `alive` on the pidfd after
+/// they're judged says whether they were its own.
+fn peer_of(stream: &UnixStream) -> io::Result<(OwnedFd, Seen)> {
     let mut fd: libc::c_int = -1;
     let mut length = libc::socklen_t::try_from(size_of::<libc::c_int>())
         .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
@@ -127,11 +195,7 @@ fn peer_of(stream: &UnixStream) -> io::Result<(String, String)> {
     let exe = std::fs::read_link(format!("/proc/{pid}/exe"))?
         .to_string_lossy()
         .into_owned();
-    if alive(&pidfd) {
-        Ok((cgroup, exe))
-    } else {
-        Err(gone())
-    }
+    Ok((pidfd, Seen { pid, cgroup, exe }))
 }
 
 /// Whether the process a pidfd stands for still runs: its pidfd reads
@@ -211,6 +275,60 @@ mod tests {
         }
     }
 
+    fn in_the_shells_unit(pid: u32, exe: &str) -> Seen {
+        Seen {
+            pid,
+            cgroup: format!("{SESSION}/quickshell.service\n"),
+            exe: exe.to_owned(),
+        }
+    }
+
+    const WRAPPED: &str = "/nix/store/2mr2gyg6-quickshell-0.3.2/bin/.quickshell-wrapped";
+
+    #[test]
+    fn only_the_shells_main_process_is_the_shell() {
+        let shell = in_the_shells_unit(4_106_561, WRAPPED);
+        assert!(
+            takes(&shell, 1000, || Ok(4_106_561)).expect("asked"),
+            "the unit's main process"
+        );
+        // A helper in the unit, or its child or orphan, running a program
+        // named quickshell: the store's own with its own QML, or a copy.
+        assert!(
+            !takes(&in_the_shells_unit(4_200_000, WRAPPED), 1000, || Ok(
+                4_106_561
+            ))
+            .expect("asked"),
+            "a process beside the main one isn't the shell"
+        );
+        assert!(
+            !takes(&shell, 1000, || Ok(0)).expect("asked"),
+            "no main process, as while the shell restarts, is no shell"
+        );
+        assert!(
+            takes(&shell, 1000, || Err(io::Error::other("no bus"))).is_err(),
+            "a manager that can't be asked refuses"
+        );
+    }
+
+    #[test]
+    fn the_manager_is_asked_only_once_the_rest_holds() {
+        let asked = || -> io::Result<u32> { panic!("the manager was asked") };
+        let node = in_the_shells_unit(4_106_561, "/nix/store/giny1jia-nodejs-22.23.5/bin/node");
+        assert!(
+            !takes(&node, 1000, asked).expect("not asked"),
+            "pi-ask's pi"
+        );
+        let elsewhere = Seen {
+            cgroup: format!("{SESSION}/not-quickshell.service\n"),
+            ..in_the_shells_unit(4_106_561, WRAPPED)
+        };
+        assert!(
+            !takes(&elsewhere, 1000, asked).expect("not asked"),
+            "another unit"
+        );
+    }
+
     #[test]
     fn a_process_not_the_shells_is_refused() {
         let (ours, _theirs) = UnixStream::pair().expect("a socket pair");
@@ -218,8 +336,7 @@ mod tests {
         // The lent builders run Linux 6.1, where who asked can't be told;
         // there that refusal is what's held to.
         assert!(
-            refused == "only the launcher starts new work here"
-                || refused.contains("names no peer by pidfd"),
+            refused == REFUSED || refused.contains("names no peer by pidfd"),
             "it says why: {refused}"
         );
     }

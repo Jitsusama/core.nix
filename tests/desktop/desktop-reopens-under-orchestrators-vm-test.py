@@ -858,6 +858,17 @@ def test_new_work_from_a_link_starts_its_session_in_no_window(desktop: Desktop) 
             )
         )
         assert walked.get("done") is not True, f"a walk from outside sprouted: {walked}"
+        # The launcher in a terminal walks the same way, even told --yes.
+        status, said = machine.execute(
+            desktop.in_session(
+                "launcher do agents start-new-work from-a-link --yes"
+                f" -- {shlex.quote(link)} </dev/null 2>&1"
+            )
+        )
+        assert status != 0, f"launcher do sprouted: {status} {said}"
+        assert "new work starts only from your own Return" in said, (
+            f"launcher do wasn't told why: {status} {said}"
+        )
         # Watched for a while, since a sprout that went would reach the stand-in in seconds.
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:

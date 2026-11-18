@@ -20,6 +20,16 @@ QtObject {
     })
 
     function cases() {
+        // Only Joel's own Return sprouts, failing closed.
+        Expect.same("his Return in the launcher sprouts",
+            Sprouting.fromJoel({ cataloguing: false }), true);
+        Expect.same("a walk from outside starts nothing",
+            Sprouting.fromJoel({ cataloguing: true }), false);
+        Expect.same("no launcher starts nothing", Sprouting.fromJoel(null), false);
+        Expect.same("an unset launcher starts nothing", Sprouting.fromJoel(undefined), false);
+        Expect.same("a launcher that doesn't say it isn't walked starts nothing",
+            Sprouting.fromJoel({}), false);
+
         // What it asks the agents daemon.
         Expect.same("a link alone is sprouted where its repository is checked out",
             Sprouting.ask("https://github.com/owner/repo/pull/7", ""),

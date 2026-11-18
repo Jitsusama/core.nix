@@ -15,6 +15,16 @@
 // Only a sprout is asked, and only its own shape: what he said as one,
 // and a folder only when it's a whole path.
 
+// Whether a sprout pressed now is Joel's own Return in `launcher`, never
+// a walk from outside (`qs ipc call launcher runWith`, `launcher do`),
+// which any program of his can ask, an agent's among them. The agents
+// daemon can't tell those apart, since the shell asks for both, so this
+// is their only guard and fails closed: no launcher, or one that doesn't
+// say it isn't walked, is no Return of his (Y2YBTS and ISXEG8 on #5456).
+function fromJoel(launcher) {
+    return launcher !== null && launcher !== undefined && launcher.cataloguing === false;
+}
+
 // The ask that sprouts `text`, trimmed, in `folder` when one is given, or
 // null when nothing is said or the folder isn't a whole path (refused
 // says which).
