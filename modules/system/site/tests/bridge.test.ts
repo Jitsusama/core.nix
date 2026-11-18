@@ -8,6 +8,12 @@ import { bridgeOf } from "../bridge.ts";
 import { tiesOf } from "../ties.ts";
 import type { Thing } from "../model.ts";
 
+/** Where the wide drawing starts, where its thread runs and where its dots sit. */
+const VIEW_TOP = /viewBox="0 (?<top>\d+(?:\.\d+)?) /u;
+const THREAD_Y = /class="thread"><path d="M[\d.]+ (?<y>[\d.]+) /u;
+const DOT_Y = /cy="(?<y>[\d.]+)"/gu;
+const DOT = /cx="(?<x>[\d.]+)" cy="(?<y>[\d.]+)"/gu;
+
 function machine(name: string, busy: number, idle: number, health: Thing["health"]): Thing {
   return {
     name,
@@ -63,11 +69,51 @@ it("lets a dot stand for several cells past what a pier holds, and says so", () 
   assert.ok(wide.includes("each dot is 3 cells"));
 });
 
+it("stacks the dots up from the deck, full rows lowest and a part row centred on them", () => {
+  const { narrow } = variants(bridgeOf([machine("kestrel", 4, 5, "good")]));
+  const dots = [...narrow.matchAll(DOT)].map((one) => ({
+    x: Number(one.groups?.["x"]),
+    y: Number(one.groups?.["y"]),
+  }));
+  const lowest = Math.max(...dots.map((dot) => dot.y));
+  const low = dots.filter((dot) => dot.y === lowest);
+  const high = dots.filter((dot) => dot.y !== lowest);
+  assert.equal(low.length, 8, JSON.stringify(dots));
+  assert.equal(high.length, 1, JSON.stringify(dots));
+  const middle = low.reduce((sum, dot) => sum + dot.x, 0) / low.length;
+  assert.equal(high[0]?.x, middle, JSON.stringify(dots));
+});
+
 it("keeps the drawing itself from a screen reader and escapes every name", () => {
   const drawn = bridgeOf([machine("<b>&", 1, 0, "bad")]);
   assert.ok(drawn.includes('aria-hidden="true" focusable="false">'));
   assert.ok(!drawn.includes("<b>&"));
   assert.ok(drawn.includes("&lt;b&gt;&amp;"));
+});
+
+it("marks each machine's health beside its name", () => {
+  const drawn = bridgeOf([machine("kestrel", 1, 0, "watch"), machine("osprey", 0, 0, "good")]);
+  assert.ok(drawn.includes('<span class="mark watch" aria-hidden="true">'));
+  assert.ok(drawn.includes('<span class="mark good" aria-hidden="true">'));
+});
+
+/** Where the wide drawing's view starts, its thread's height, and its highest dot's. */
+function heights(drawn: string): { top: number; thread: number; dot: number } {
+  const { wide } = variants(drawn);
+  const top = Number(VIEW_TOP.exec(wide)?.groups?.["top"]);
+  const thread = Number(THREAD_Y.exec(wide)?.groups?.["y"]);
+  const dots = [...wide.matchAll(DOT_Y)].map((one) => Number(one.groups?.["y"]));
+  return { top, thread, dot: Math.min(...dots) };
+}
+
+it("starts the drawing just over its highest row of cells, the thread between", () => {
+  for (const busy of [1, 30]) {
+    const { top, thread, dot } = heights(
+      bridgeOf([machine("kestrel", busy, 0, "good"), machine("osprey", 1, 0, "good")]),
+    );
+    assert.ok(thread < dot && dot - thread <= 16, `thread ${thread} over dot ${dot}`);
+    assert.ok(top < thread - 9 && thread - top <= 24, `view ${top} over thread ${thread}`);
+  }
 });
 
 it("draws nothing for no machine", () => {

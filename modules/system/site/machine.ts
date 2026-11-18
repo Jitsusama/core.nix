@@ -98,7 +98,7 @@ function machineHeadline(system: System): MachineHeadline {
     const count = things.filter((thing) => thing.health === health).length;
     return { health, count, words };
   }).filter((each) => each.count > 0);
-  const worst = stands[0];
+  const [worst] = stands;
   if (worst === undefined) {
     return { machines, stand: "all ready", health: "good" };
   }
@@ -222,13 +222,16 @@ function networkSaid(ties: Ties): Said & { readonly device: string | undefined }
   const rooms = places.map((place) => place.room).filter((mbps) => mbps !== undefined);
   const room = rooms.length === 0 ? undefined : `${Math.round(Math.max(...rooms))} Mb/s of room`;
   const how = radio?.bars === undefined ? undefined : signal(radio.bars);
-  const aside =
-    how === undefined
-      ? room === undefined
-        ? "How much room it has isn't measured."
-        : `With ${room}.`
-      : `${how}${room === undefined ? "" : `, with ${room}`}.`;
+  const aside = asideOf(how, room);
   return { said, aside, device: places[0]?.device };
+}
+
+/** The aside under a machine's network line: its signal, then its room, as known. */
+function asideOf(how: string | undefined, room: string | undefined): string {
+  if (how !== undefined) {
+    return `${how}${room === undefined ? "" : `, with ${room}`}.`;
+  }
+  return room === undefined ? "How much room it has isn't measured." : `With ${room}.`;
 }
 
 /** A machine's code, counted where it was read, and said not read from another. */

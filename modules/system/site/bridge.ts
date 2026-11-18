@@ -39,8 +39,23 @@ const DECK = 176;
 const UNDER = 184;
 const FOOT = 316;
 const SPRING = 300;
-const WATER = [262, 286];
-const THREAD = 96;
+const HIGH_WATER = 262;
+const LOW_WATER = 286;
+const WATER = [HIGH_WATER, LOW_WATER];
+/**
+ * How high an arch rises over the deck, how far a bank runs out from its
+ * pier, and where, just under the deck, the banks meet the shore.
+ */
+const ARCH_RISE = 36;
+const BANK_REACH = 64;
+const SHORE = 196;
+/**
+ * How far the thread runs over the highest row of dots, and how far the
+ * drawing starts over the thread, its arc's crest and the stroke included,
+ * so the deck sits just under the names however few rows are drawn.
+ */
+const THREAD_OVER = 12;
+const CREST = 18;
 /** The rows of dots a pier carries over the deck, the lowest just above it. */
 const ROWS = 6;
 const LOWEST = 166;
@@ -55,10 +70,14 @@ function centre(at: number, count: number, width: number): number {
 }
 
 /** The cells over a pier at `x`: a dot each, or each for several past what it holds. */
-function cellsAt(thing: Thing, x: number, variant: Variant): { dots: string; each: number } {
-  const cells = thing.ties.cells;
+function cellsAt(
+  thing: Thing,
+  x: number,
+  variant: Variant,
+): { dots: string; each: number; top: number } {
+  const { cells } = thing.ties;
   if (cells === undefined) {
-    return { dots: "", each: 1 };
+    return { dots: "", each: 1, top: DECK };
   }
   const holds = variant.across * ROWS;
   const total = cells.busy + cells.idle;
@@ -66,14 +85,19 @@ function cellsAt(thing: Thing, x: number, variant: Variant): { dots: string; eac
   const busy = Math.ceil(cells.busy / each);
   const shown = busy + Math.ceil(cells.idle / each);
   const rows = Math.ceil(shown / variant.across);
-  const left = x - ((variant.across - 1) * variant.gap) / 2;
+  // Rows stack up from the deck, so a row only part filled sits on full ones,
+  // centred over the pier.
   const dots = Array.from({ length: shown }, (_, at) => {
+    const row = Math.floor(at / variant.across);
+    const inRow = Math.min(variant.across, shown - row * variant.across);
+    const left = x - ((inRow - 1) * variant.gap) / 2;
     const cx = left + (at % variant.across) * variant.gap;
-    const cy = LOWEST - (rows - 1 - Math.floor(at / variant.across)) * variant.gap;
+    const cy = LOWEST - row * variant.gap;
     const kind = at < busy ? "busy" : "idle";
     return `<circle cx="${cx}" cy="${cy}" r="${DOT}" class="${kind}"/>`;
   });
-  return { dots: dots.join(""), each };
+  const top = shown === 0 ? DECK : LOWEST - (rows - 1) * variant.gap;
+  return { dots: dots.join(""), each, top };
 }
 
 /** A pier at `x`, in its machine's health, filled as far as its disk is. */
@@ -99,23 +123,25 @@ function spansOf(xs: readonly number[], variant: Variant): string {
   const arches = xs.slice(1).map((x, at) => {
     const from = (xs[at] ?? 0) + half;
     const to = x - half;
-    return `<path d="M${from} ${SPRING} Q ${(from + to) / 2} ${DECK - 36} ${to} ${SPRING}"/>`;
+    return `<path d="M${from} ${SPRING} Q ${(from + to) / 2} ${DECK - ARCH_RISE} ${to} ${SPRING}"/>`;
   });
+  const near = Math.max(MARGIN, first - BANK_REACH);
+  const far = Math.min(end, last + BANK_REACH);
   const banks = [
-    `<path d="M${MARGIN} ${UNDER + 12} Q ${Math.max(MARGIN, first - 64)} ${UNDER + 12} ${first} ${SPRING}"/>`,
-    `<path d="M${last} ${SPRING} Q ${Math.min(end, last + 64)} ${UNDER + 12} ${end} ${UNDER + 12}"/>`,
+    `<path d="M${MARGIN} ${SHORE} Q ${near} ${SHORE} ${first} ${SPRING}"/>`,
+    `<path d="M${last} ${SPRING} Q ${far} ${SHORE} ${end} ${SHORE}"/>`,
   ];
   return `<g class="span">${[banks[0], ...arches, banks[1]].join("")}</g>`;
 }
 
-/** The thread joining each pier's cells to the next. */
-function threadOf(xs: readonly number[]): string {
+/** The thread joining each pier's cells to the next, at height `y`. */
+function threadOf(xs: readonly number[], y: number): string {
   if (xs.length < 2) {
     return "";
   }
   const steps = xs.slice(1).map((x, at) => {
     const from = xs[at] ?? 0;
-    return `M${from} ${THREAD} Q ${(from + x) / 2} ${THREAD - 18} ${x} ${THREAD}`;
+    return `M${from} ${y} Q ${(from + x) / 2} ${y - CREST} ${x} ${y}`;
   });
   return `<g class="thread"><path d="${steps.join(" ")}"/></g>`;
 }
@@ -141,6 +167,7 @@ function wherePlaces(thing: Thing): string {
     return '<span class="unread">The network not read</span>';
   }
   if (places.length === 0) {
+    // biome-ignore lint/security/noSecrets: words on the page, not a secret.
     return '<span class="unread">Not on the home network</span>';
   }
   return places.map((place) => `<span>${escaped(placeWords(place))}</span>`).join("");
@@ -155,10 +182,12 @@ function variantOf(things: readonly Thing[], variant: Variant): string {
   const captions = shown
     .map(
       (thing) =>
-        `<li><span class="name" translate="no">${escaped(thing.name)}</span><span class="health ${thing.health}"><span class="mark" aria-hidden="true"></span>${escaped(standing(thing, 1))}</span></li>`,
+        `<li><span class="name" translate="no">${escaped(thing.name)}</span><span class="health ${thing.health}"><span class="mark ${thing.health}" aria-hidden="true"></span>${escaped(standing(thing, 1))}</span></li>`,
     )
     .join("");
-  const svg = `<svg viewBox="0 0 ${variant.width} ${HEIGHT}" aria-hidden="true" focusable="false">${threadOf(xs)}${cells.map((one) => `<g class="cells">${one.dots}</g>`).join("")}<line class="deck" x1="${MARGIN}" y1="${DECK}" x2="${variant.width - MARGIN}" y2="${DECK}"/><line class="deck under" x1="${MARGIN}" y1="${UNDER}" x2="${variant.width - MARGIN}" y2="${UNDER}"/>${spansOf(xs, variant)}${shown.map((thing, at) => pierAt(thing, xs[at] ?? 0, variant)).join("")}${waterOf(variant.width)}</svg>`;
+  const thread = Math.min(...cells.map((one) => one.top)) - THREAD_OVER;
+  const top = thread - CREST;
+  const svg = `<svg viewBox="0 ${top} ${variant.width} ${HEIGHT - top}" aria-hidden="true" focusable="false">${threadOf(xs, thread)}${cells.map((one) => `<g class="cells">${one.dots}</g>`).join("")}<line class="deck" x1="${MARGIN}" y1="${DECK}" x2="${variant.width - MARGIN}" y2="${DECK}"/><line class="deck under" x1="${MARGIN}" y1="${UNDER}" x2="${variant.width - MARGIN}" y2="${UNDER}"/>${spansOf(xs, variant)}${shown.map((thing, at) => pierAt(thing, xs[at] ?? 0, variant)).join("")}${waterOf(variant.width)}</svg>`;
   const places = shown.map((thing) => `<li>${wherePlaces(thing)}</li>`).join("");
   const more = things.length - count;
   const moreLine =

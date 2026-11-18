@@ -22,6 +22,10 @@
   font-variation-settings: "SOFT" var(--title-soft), "WONK" var(--title-wonk);
 }
 
+.across .name {
+  margin-block-end: var(--items);
+}
+
 .across .name em {
   color: var(--said);
   font-style: italic;
@@ -205,6 +209,15 @@
   align-items: center;
   gap: var(--tie);
   color: var(--text);
+}
+
+/* The link to a whole part and its command: set apart so the arrow ends the
+   link, and flush at the start when the command wraps under it. */
+.onward {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--groups);
 }
 
 .command code {

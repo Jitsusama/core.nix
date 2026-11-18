@@ -116,7 +116,7 @@
           "network": [{ "device": "mac:0b", "by": "wired", "point": "Den", "room_mbps": 900 }],
           "code": null,
           "figures": {
-            "system": "darwin",
+            "system": "macos",
             "disk": 500000000000,
             "disk_free": 178000000000,
             "cpu_busy": 0.2
