@@ -193,7 +193,7 @@ mod tests {
         );
         assert_eq!(
             worst_of(&format!("{aaa}bbbbbb tail"), 2),
-            [format!("the worst, said 2 times: \"{}...\"", aaa)],
+            [format!("the worst, said 2 times: \"{aaa}...\"")],
             "a word the cut fell inside was kept in part"
         );
         assert_eq!(
@@ -219,9 +219,15 @@ mod tests {
     #[test]
     fn the_summary_is_fresh_to_fifteen_minutes_and_never_ahead() {
         let fresh = pains(Some(&summary(NOW - STALE_AFTER, "")), NOW, "WCJQSG");
-        assert!(fresh.target.is_some(), "a summary 15 min old went stale: {fresh:?}");
+        assert!(
+            fresh.target.is_some(),
+            "a summary 15 min old went stale: {fresh:?}"
+        );
         let stale = pains(Some(&summary(NOW - STALE_AFTER - 1, "")), NOW, "WCJQSG");
-        assert!(stale.target.is_none(), "a summary past 15 min was judged: {stale:?}");
+        assert!(
+            stale.target.is_none(),
+            "a summary past 15 min was judged: {stale:?}"
+        );
     }
 
     #[test]
@@ -259,10 +265,7 @@ mod tests {
             (None, "couldn't be read"),
             (Some("{\"at\": 17949".to_owned()), "couldn't be read"),
             (Some(summary(NOW - 20 * 60, "")), "20 min old"),
-            (
-                Some(json!({"open": 2}).to_string()),
-                "summary isn't dated",
-            ),
+            (Some(json!({"open": 2}).to_string()), "summary isn't dated"),
             (
                 Some(json!({"at": (NOW - 60) * 1000, "open": "many"}).to_string()),
                 "names no count",
