@@ -180,7 +180,8 @@ pub fn agents_unit(cgroup: &str) -> Option<&str> {
     });
     let fenced = parts
         .iter()
-        .any(|part| part.starts_with("pi-jobs-") && part.ends_with(".scope"));
+        .filter_map(|part| part.strip_prefix("pi-jobs-"))
+        .any(|scope| scope.strip_suffix(".scope").is_some());
     let agents = within || fenced;
     agents
         .then(|| path.rsplit('/').next())
