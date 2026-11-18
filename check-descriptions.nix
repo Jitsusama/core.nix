@@ -265,6 +265,12 @@
   agents-passes-clippy = ''
     clippy finds nothing in the agents daemon or its tests
   '';
+  agents-password-prompts-are-closed = ''
+    the windows daemon closes a password prompt an agent's scope opens on niri within a second,
+    says so in its journal and tells Joel the scope and folder it came from, once for a second
+    prompt from that scope, and closes one already open as it starts again, while his own prompt
+    and the scope's other windows stay open
+  '';
   agents-runs-in-each-account = ''
     the agents daemon runs in each account of a machine in a realm, following its node and the
     to-do daemon and reading the launcher's words, its socket systemd's, a switch restarting it,

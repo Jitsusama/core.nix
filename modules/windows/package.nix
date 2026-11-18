@@ -9,13 +9,24 @@
 # them all, and built from this one.
 {
   lib,
+  libnotify,
   rustPlatform,
   systemd,
   words ? null,
+  # What puts up a notice, which a check swaps for one that keeps what it
+  # was told.
+  notifySend ? lib.getExe' libnotify "notify-send",
+  # Whether it reads processes where WINDOWS_PROC says, which only a
+  # check's build does, so nothing can blind the installed daemon.
+  readsAStandIn ? false,
 }:
 rustPlatform.buildRustPackage rec {
   pname = "windows";
-  env = lib.optionalAttrs (words != null) { WINDOWS_TEST_WORDS = "${words}"; };
+  env = {
+    WINDOWS_NOTIFY_SEND = notifySend;
+  }
+  // lib.optionalAttrs (words != null) { WINDOWS_TEST_WORDS = "${words}"; }
+  // lib.optionalAttrs readsAStandIn { WINDOWS_TEST_PROC = "1"; };
   version = "0.1.0";
   src = lib.fileset.toSource {
     root = ../.;

@@ -290,7 +290,7 @@ fn move_back(niri: &Path, kept: &[u64], newest: &AtomicU64, mine: u64) {
 }
 
 /// Why niri didn't do one request, or none where it did.
-fn refused(niri: &Path, request: &Value) -> Option<String> {
+pub fn refused(niri: &Path, request: &Value) -> Option<String> {
     match answer(niri, request) {
         None => Some("no answer".to_owned()),
         Some(answer) => answer["Err"].as_str().map(str::to_owned),

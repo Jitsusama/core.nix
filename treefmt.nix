@@ -149,7 +149,12 @@ in
 
   # What the live sites' page tests share, which each page's test imports
   # by name, as their checks put the folder on Python's path.
-  jitsusama.mypy.paths = [ ./modules/local-sites/tests ];
+  # niri's stand-in client too, which the windows daemon's prompt check
+  # imports beside niri's own checks.
+  jitsusama.mypy.paths = [
+    ./modules/local-sites/tests
+    ./modules/niri/tests
+  ];
 
   # The JavaScript QML imports is read as core's linters read every
   # repository's (modules/treefmt/treefmt.nix), but for these.

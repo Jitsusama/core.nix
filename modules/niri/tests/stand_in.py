@@ -62,6 +62,8 @@ class Connection:
         # Every such event in the order it came, its object, opcode and payload, for a check
         # that has to see each one, as every type a selection is offered as.
         self.heard: list[tuple[int, int, bytes]] = []
+        # Each window's toplevel, by its surface's id.
+        self.toplevels: dict[int, int] = {}
         self.keyboard = 0
         self.pool = 0
         # The registry, and each global it listed: its interface, name and version.
@@ -172,6 +174,7 @@ class Connection:
         self.send(self.bound["xdg_wm_base"], 2, struct.pack("<II", role, surface))
         self.send(role, 1, struct.pack("<I", toplevel))
         self.send(toplevel, 3, string(app_id))
+        self.toplevels[surface] = toplevel
         self.send(surface, 6)
         _, configured = self.wait_for(role, "a window's first configure")
         asked = self.said.pop(toplevel, (0, b"\0" * 8))[1]
@@ -187,6 +190,18 @@ class Connection:
         self.send(surface, 6)
         self.roundtrip()
         return surface
+
+    def asked_to_close(self, surface: int, within: float) -> bool:
+        """Whether niri asks this window to close within `within` seconds, as a close does."""
+        toplevel = self.toplevels[surface]
+        until = time.monotonic() + within
+        while True:
+            # A toplevel's close is its event 1.
+            if any(source == toplevel and opcode == 1 for source, opcode, _ in self.heard):
+                return True
+            if time.monotonic() >= until:
+                return False
+            self.pump(min(until, time.monotonic() + 0.05))
 
     def token(self, surface: int) -> str:
         """Make an activation token from this connection's newest keyboard enter, if it had one."""

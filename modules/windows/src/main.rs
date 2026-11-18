@@ -55,6 +55,7 @@ use programs::{now_ms, xdg};
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 use terminal_kit::{Exit, Failure, Help};
+use windows::closing::{self, Told};
 use windows::desktop::{Desktop, Heard, Names};
 use windows::entries::{self, Entries};
 use windows::interface::DOMAIN;
@@ -333,6 +334,9 @@ fn follow(shared: &Shared, niri: &Path) {
 /// Hears each event of one stream until it ends. niri describes the
 /// whole desktop as the stream begins, so what's held from a stream
 /// before is replaced by it.
+///
+/// An agent's password prompt is closed as it opens, and Joel told, since
+/// what he types there goes to the agent (unasked.rs).
 fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
     let Ok(reading) = stream.try_clone() else {
         return;
@@ -344,6 +348,8 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
     // the desktop held, which it neither reads nor changes.
     let mut times = Timed::default();
     let mut watched = Watched::default();
+    let mut told = Told::default();
+    let processes = unasked::processes();
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { return };
         let Ok(event) = serde_json::from_str::<Value>(&line) else {
@@ -357,8 +363,15 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
         if let Some(timing) = times.heard(&event, timed::now, timed::started) {
             timed::say(timing);
         }
-        if let Some(unasked) = watched.heard(&event, unasked::cgroup, unasked::folder) {
+        let cgroup = |pid| unasked::cgroup(&processes, pid);
+        let folder = |pid| unasked::folder(&processes, pid);
+        if let Some(unasked) = watched.heard(&event, cgroup, folder) {
             eprintln!("{}", unasked::line(&unasked));
+        }
+        for prompt in watched.prompting(&event, cgroup, folder) {
+            if !closing::shut(niri, &prompt, &mut told) {
+                watched.ask_again(prompt.window);
+            }
         }
         // A screen coming or going changes the workspaces, so its outputs
         // are asked again then, before the lock is taken, so no ask waits

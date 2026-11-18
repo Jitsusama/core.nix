@@ -85,6 +85,52 @@ onLinux {
           python3 ${./tests/every-window-says-what-it-holds.py} "reader $PWD/tides.md" kitty
         touch $out
       '';
+  # A password prompt an agent opens is closed as it opens, and Joel told
+  # which scope it came from, while his own prompt and an agent's other
+  # windows stay: the account's niri, nested in the sandbox, gets
+  # gcr-prompter from app.slice and from a job's scope, a terminal from
+  # the scope, and a prompt open as the daemon starts again, through a
+  # stand-in /proc and notify-send (tests/closes-agents-password-prompts.py).
+  # The installed daemon reads only /proc; this build alone reads the
+  # stand-in.
+  agents-password-prompts-are-closed =
+    let
+      files = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) (account graphical).xdg.configFile;
+      # A notice is kept where the test says, rather than put up.
+      keeps = pkgs.writeShellScript "notify-send" ''printf '%s\n' "$@" >> "$WINDOWS_TOLD"'';
+      # The daemon's own tests already run in windows-hears-niris-windows.
+      built = pkgs.callPackage ./package.nix {
+        notifySend = "${keeps}";
+        readsAStandIn = true;
+      };
+      told = built.overrideAttrs {
+        doCheck = false;
+      };
+      inherit (pkgs) mesa;
+    in
+    pkgs.runCommandLocal "agents-password-prompts-are-closed"
+      {
+        nativeBuildInputs = [
+          graphical.config.programs.niri.package
+          pkgs.dbus
+          pkgs.python3
+          pkgs.sway-unwrapped
+        ];
+        __EGL_VENDOR_LIBRARY_FILENAMES = "${mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+        LIBGL_DRIVERS_PATH = "${mesa}/lib/dri";
+        GBM_BACKENDS_PATH = "${mesa}/lib/gbm";
+        LIBGL_ALWAYS_SOFTWARE = 1;
+        PYTHONPATH = ../niri/tests;
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD
+        ${lib.concatLines (
+          lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
+        )}
+        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+          python3 ${./tests/closes-agents-password-prompts.py} ${lib.getExe told}
+        touch $out
+      '';
   # clippy finds nothing in the windows daemon, its tests included.
   windows-passes-clippy = passesClippy "windows-passes-clippy" daemon;
   # The shell brings the daemon, on the socket the shell's daemons share,
