@@ -485,6 +485,7 @@ mod tests {
         for (at, job) in [(1_000_000, Job::Stopping), (1_064_000, Job::Started)] {
             day.take(&Entry {
                 at,
+                since_boot: at,
                 job: Some(job),
                 ..entry("google.service", 6, "")
             });

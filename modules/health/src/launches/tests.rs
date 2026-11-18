@@ -160,6 +160,7 @@ fn a_service_saying_no_ready_line_after_its_restarts_is_named() {
     let mut day = Day::new("2026-11-13");
     let job = |unit: &str, at, job| Entry {
         at,
+        since_boot: at,
         job: Some(job),
         ..entry(unit, 6, "")
     };
@@ -171,6 +172,7 @@ fn a_service_saying_no_ready_line_after_its_restarts_is_named() {
     day.take(&job("dictation.service", 2_200_000, Job::Started));
     day.take(&Entry {
         at: 3_300_000,
+        since_boot: 3_300_000,
         ..entry("dictation", 6, "dictation: ready in 1065 ms")
     });
     assert_eq!(
@@ -188,6 +190,7 @@ fn a_oneshot_finishing_after_a_stop_is_no_restart() {
     let mut day = Day::new("2026-11-13");
     let job = |at, job, message: &str| Entry {
         at,
+        since_boot: at,
         job: Some(job),
         ..entry("home-manager-jitsusama.service", 6, message)
     };
@@ -213,11 +216,13 @@ fn a_restart_is_timed_from_stopping_to_its_ready_line_or_else_its_start() {
     let mut day = Day::new("2026-11-12");
     let job = |unit: &str, at, job| Entry {
         at,
+        since_boot: at,
         job: Some(job),
         ..entry(unit, 6, "")
     };
     let said = |thing: &str, at, message: &str, mark| Entry {
         at,
+        since_boot: at,
         mark,
         ..entry(thing, 6, message)
     };
@@ -280,18 +285,179 @@ fn a_restart_is_timed_from_stopping_to_its_ready_line_or_else_its_start() {
 }
 
 #[test]
+fn a_restart_is_timed_on_its_boots_clock_whatever_the_wall_clock_does() {
+    // A clock synced back a second, one stepped forward within the window
+    // a stop may be a restart's, and a ready line said after a step back:
+    // the boot's clock, which no step moves, times each. The wall clock
+    // reads as it does on a machine, far past the boot's, so a figure
+    // taken from the two at once is seen.
+    const WALL: i64 = 1_794_978_000_000_000;
+    let mut day = Day::new("2026-11-18");
+    let clocked = |thing: &str, since_boot, at, job, message: &str| Entry {
+        at: WALL + at,
+        since_boot,
+        job,
+        ..entry(thing, 6, message)
+    };
+    for (unit, since_boot, at, job) in [
+        ("back.service", 500_000_000, 10_000_000, Job::Stopping),
+        ("back.service", 500_300_000, 9_000_000, Job::Started),
+        ("forward.service", 600_000_000, 20_000_000, Job::Stopping),
+        ("forward.service", 600_400_000, 80_000_000, Job::Started),
+        ("ready.service", 700_000_000, 30_000_000, Job::Stopping),
+        ("ready.service", 700_100_000, 30_100_000, Job::Started),
+        // Ten minutes on the boot's clock with the wall clock synced back
+        // as long: too long to be a restart, whatever the wall clock says.
+        ("late.service", 800_000_000, 40_000_000, Job::Stopping),
+        ("late.service", 1_400_000_000, 40_500_000, Job::Started),
+    ] {
+        day.take(&clocked(unit, since_boot, at, Some(job), ""));
+    }
+    day.take(&clocked(
+        "ready",
+        700_900_000,
+        29_000_000,
+        None,
+        "ready: ready in 5 ms",
+    ));
+    assert_eq!(
+        day.launches.restarted,
+        BTreeMap::from([
+            ("back.service".to_owned(), vec![300]),
+            ("forward.service".to_owned(), vec![400]),
+            ("ready.service".to_owned(), vec![900]),
+        ]),
+        "a restart was timed by the wall clock, so a step read as too short or too long, \
+         or as a ready line before its stop"
+    );
+    assert_eq!(
+        day.launches.unstamped(),
+        BTreeMap::from([("back.service", 1), ("forward.service", 1)]),
+        "a ready line after a step back didn't stamp its restart"
+    );
+}
+
+#[test]
+fn a_restart_isnt_timed_across_a_sleep_or_out_of_order() {
+    const WALL: i64 = 1_794_978_000_000_000;
+    let mut day = Day::new("2026-11-18");
+    let clocked = |thing: &str, since_boot, at, job, message: &str| Entry {
+        at: WALL + at,
+        since_boot,
+        job,
+        ..entry(thing, 6, message)
+    };
+    for (unit, since_boot, at, job) in [
+        // Stopped as the lid closed and started an hour later as it
+        // opened: the boot's clock stood still, the wall clock didn't.
+        ("slept.service", 500_000_000, 10_000_000, Job::Stopping),
+        ("slept.service", 500_400_000, 3_610_400_000, Job::Started),
+        // A start read without the boot's stamp, which reads as 0.
+        (
+            "unstamped.service",
+            600_000_000,
+            3_620_000_000,
+            Job::Stopping,
+        ),
+        ("unstamped.service", 0, 3_620_300_000, Job::Started),
+        // A ready line written before its start and heard after it, as
+        // one follower ran ahead of another; and one more said after its
+        // start, which the early one mustn't keep from timing it.
+        ("early.service", 700_000_000, 3_630_000_000, Job::Stopping),
+        ("early.service", 700_200_000, 3_630_200_000, Job::Started),
+        ("twice.service", 800_000_000, 3_640_000_000, Job::Stopping),
+        ("twice.service", 800_200_000, 3_640_200_000, Job::Started),
+        // Two restarts in a row, the second program's ready line written
+        // before its start: it isn't the first restart's either.
+        ("again.service", 900_000_000, 3_650_000_000, Job::Stopping),
+        ("again.service", 900_100_000, 3_650_100_000, Job::Started),
+        ("again.service", 900_200_000, 3_650_200_000, Job::Stopping),
+        // Two restarts in a row again, the first program's ready line
+        // written before the second stop and heard after it.
+        (
+            "lagged.service",
+            1_000_000_000,
+            3_660_000_000,
+            Job::Stopping,
+        ),
+        ("lagged.service", 1_000_100_000, 3_660_100_000, Job::Started),
+        (
+            "lagged.service",
+            1_000_400_000,
+            3_660_400_000,
+            Job::Stopping,
+        ),
+    ] {
+        day.take(&clocked(unit, since_boot, at, Some(job), ""));
+    }
+    for (thing, since_boot) in [
+        ("early", 700_100_000),
+        ("twice", 800_100_000),
+        ("twice", 800_500_000),
+        ("lagged", 1_000_300_000),
+    ] {
+        day.take(&clocked(
+            thing,
+            since_boot,
+            since_boot + 2_930_000_000,
+            None,
+            &format!("{thing}: ready in 5 ms"),
+        ));
+    }
+    day.take(&clocked(
+        "again",
+        900_250_000,
+        3_650_250_000,
+        None,
+        "again: ready in 5 ms",
+    ));
+    day.take(&clocked(
+        "again.service",
+        900_300_000,
+        3_650_300_000,
+        Some(Job::Started),
+        "",
+    ));
+    day.take(&clocked(
+        "lagged.service",
+        1_000_500_000,
+        3_660_500_000,
+        Some(Job::Started),
+        "",
+    ));
+    assert_eq!(
+        day.launches.restarted,
+        BTreeMap::from([
+            ("again.service".to_owned(), vec![100, 100]),
+            ("early.service".to_owned(), vec![200]),
+            ("lagged.service".to_owned(), vec![300, 100]),
+            ("twice.service".to_owned(), vec![500]),
+        ]),
+        "a stop and a start across a sleep, or before it on the boot's clock, were timed as a \
+         restart, or a ready line from before its start re-timed one or kept one after from it"
+    );
+    assert_eq!(
+        day.launches.unstamped(),
+        BTreeMap::from([("again.service", 2), ("early.service", 1)]),
+        "a ready line from before its start stamped a restart, its own or the one before"
+    );
+}
+
+#[test]
 fn a_stop_at_shutdown_and_a_start_in_the_next_boot_are_no_restart() {
     // The day is read through every boot, so a shutdown's stops come
     // before the next boot's starts, a reboot's length apart.
     let mut day = Day::new("2026-11-17");
     let job = |boot: &str, at, job| Entry {
         at,
+        since_boot: at,
         job: Some(job),
         boot: boot.to_owned(),
         ..entry("google.service", 6, "")
     };
     let ready = |boot: &str, at| Entry {
         at,
+        since_boot: at,
         boot: boot.to_owned(),
         ..entry("google", 6, "google: ready in 5 ms")
     };
