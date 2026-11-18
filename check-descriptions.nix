@@ -1049,6 +1049,10 @@
     every pose of the margin's cat has no lit pixel standing alone, a diagonal touching, and lit
     pixels within 15% of sitting's, and a leap's rise, tuck and fall are all drawn
   '';
+  every-puppy-pose-reads-as-one-puppy = ''
+    every pose of the margin's puppy has no lit pixel standing alone, a diagonal touching, and lit
+    pixels within 15% of its own sitting's, and its sitting, bow and two strides are all drawn
+  '';
   every-script-finds-what-it-imports = ''
     every folder's Python that nix fmt hands mypy passes it when handed to it alone, as a script
     that changed alone is, after failing a planted script that imports from another folder
