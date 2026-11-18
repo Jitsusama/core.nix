@@ -257,6 +257,19 @@ function take(into, changed, gone) {
     return told;
 }
 
+// Whether the casts held are what the screen's sharing is now, so the
+// shell can tell nothing sees it (launcher/Shared.js): only once whatever
+// tells them now has said them whole. That is the windows daemon's whole
+// answer to its watch of places, `placesAnswered`, or while niri's own
+// stream stands in, `standIn`, the casts that stream said since it
+// connected, `streamed`. Heard once and kept, the casts a daemon held
+// before it dropped stood as heard through the gap and a stream's start,
+// so a share begun there showed what copies hold (ISXEG8's review of
+// #5360, 2026-11-17).
+function castsHeard(standIn, streamed, placesAnswered) {
+    return standIn ? streamed === true : placesAnswered === true;
+}
+
 // Every cast by its stream's id, as niri says each.
 function castsFrom(records) {
     const all = {};

@@ -93,10 +93,14 @@ Singleton {
     // (WlrScreencopy), as wf-recorder does. Replaced whole on each change,
     // since they're few and change seldom.
     property var casts: ({})
-    // Whether niri, or the windows daemon in its place, has said which
-    // casts there are, so what hides itself from a share hides until it
-    // has: until then the shell can't tell that nothing sees the screen.
-    property bool castsHeard: false
+    // Whether the windows daemon, or niri's stream in its place, has said
+    // which casts there are since it last began telling, so what hides
+    // itself from a share hides until it has: until then the shell can't
+    // tell that nothing sees the screen (NiriRecords.castsHeard).
+    readonly property bool castsHeard: NiriRecords.castsHeard(standIn, castsStreamed,
+        placesHeard.answeredThisWatch)
+    // Whether niri's stream has said its casts since it connected.
+    property bool castsStreamed: false
 
     // Whether niri's last load of its settings failed, which it says as the
     // stream begins and at every reload. niri then keeps the settings it
@@ -267,10 +271,8 @@ Singleton {
             windows = kept.windows;
         if (workspaces !== kept.workspaces)
             workspaces = kept.workspaces;
-        if (told.casts) {
+        if (told.casts)
             casts = kept.casts;
-            castsHeard = true;
-        }
         overview = kept.overview;
         settingsFailed = kept.settingsFailed;
         if (focused !== kept.focused)
@@ -313,12 +315,6 @@ Singleton {
         kind: ["workspace", "focus", "desktop", "cast", "screenshot"]
         answersWhole: true
         onHeard: (changed, gone) => root.took(placesHeard, changed, gone)
-        // Its whole answer says every cast there is, none when it holds no
-        // cast's record, which no record's coming or going would tell.
-        onAnsweredChanged: {
-            if (answered && !root.standIn)
-                root.castsHeard = true;
-        }
     }
 
     // Each window's tile, only while something draws tiles, and the one
@@ -408,7 +404,7 @@ Singleton {
             for (const cast of event.CastsChanged.casts)
                 all[cast.stream_id] = cast;
             casts = all;
-            castsHeard = true;
+            castsStreamed = true;
         } else if (event.CastStartedOrChanged) {
             const cast = event.CastStartedOrChanged.cast;
             casts = Object.assign({}, casts, { [cast.stream_id]: cast });
@@ -505,6 +501,9 @@ Singleton {
         path: Quickshell.env("NIRI_SOCKET")
         connected: root.standIn
         onConnectionStateChanged: {
+            // A stream begun again says its casts again, and until it has
+            // what was said before may be stale.
+            root.castsStreamed = false;
             if (connected) {
                 write('"EventStream"\n');
                 flush();
