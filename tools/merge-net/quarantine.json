@@ -18,10 +18,10 @@
   {
     "at": 1794631096,
     "commit": "580dc8dbd5803c7bea2650e02ecb099ec1408af3",
-    "due": "2026-11-18",
-    "due_why": "Its owner, the call shaper's, reruns it three times on an idle builder by 2026-11-18 23:59 UTC and takes it off if all three hold, or fixes it: 3 of its 35 net runs from listing to 17 Nov 11:00 UTC failed, the last on 16 Nov",
+    "due": "2026-11-20",
+    "due_why": "Its owner, the call shaper's, fixes what the next failure's trace names by 2026-11-20 23:59 UTC: 2 of 16 gate runs on 18 Nov failed on loaded builders, once the shaper never holding the link in 60 s, which also left test_unshaped its loads, and once the router alone losing 396 datagrams down, so three reruns wouldn't take it off",
     "owner_pr": 4228,
-    "owner_session": "B8RBNW",
+    "owner_session": "6EAC3DA6",
     "reason": "failed, then passed, at 580dc8dbd580",
     "subtests": [
       "test_a_call_loses_little",

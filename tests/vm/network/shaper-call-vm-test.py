@@ -193,6 +193,14 @@ def received(result: Json, way: str) -> Json:
     return summary
 
 
+def holds(rig: Rig, *, last_try: bool) -> bool:
+    """Give whether the controller holds the link, with the trace on the last try if not."""
+    held = rig.holding()
+    if last_try and not held:
+        print(f"the controller never held the link:\n{rig.trace()}")
+    return held
+
+
 def under_load(rig: Rig, *, shaped: bool) -> dict[str, dict[str, int]]:
     """Hold both calls while the jobs and an app fill the connection, and give what each lost.
 
@@ -200,7 +208,8 @@ def under_load(rig: Rig, *, shaped: bool) -> dict[str, dict[str, int]]:
     a connection that's full, as a busy afternoon's is, rather than one with room to spare.
     Shaped, they run on until the controller holds the link too, as it has all day on a
     connection the jobs keep full: a call that starts in the seconds before it does crosses
-    the router's queue as an unshaped one would.
+    the router's queue as an unshaped one would. The loads stop however the calls end, so a
+    test that fails here leaves the next its own loads to start.
     """
     download = f"{BIN}/cat < /dev/tcp/{FAR}/{SOURCE_PORT} > /dev/null"
     upload = f"{BIN}/cat /dev/zero > /dev/tcp/{FAR}/{SINK_PORT}"
@@ -209,11 +218,13 @@ def under_load(rig: Rig, *, shaped: bool) -> dict[str, dict[str, int]]:
     rig.start("jobs-downloads", "jobs.slice", JOBS_DOWNLOADS, download)
     rig.start("jobs-uploads", "jobs.slice", JOBS_UPLOADS, upload)
     rig.start("app-downloads", "app.slice", APP_DOWNLOADS, download)
-    retry(lambda _: int(rig.client.succeed(rx)) - first >= FULL_BYTES, timeout=FILLING)
-    if shaped:
-        retry(lambda _: rig.holding(), timeout=FILLING)
-    results = rig.calls()
-    rig.stop("jobs-downloads", "jobs-uploads", "app-downloads")
+    try:
+        retry(lambda _: int(rig.client.succeed(rx)) - first >= FULL_BYTES, timeout=FILLING)
+        if shaped:
+            retry(lambda last_try: holds(rig, last_try=last_try), timeout=FILLING)
+        results = rig.calls()
+    finally:
+        rig.stop("jobs-downloads", "jobs-uploads", "app-downloads")
     lost: dict[str, dict[str, int]] = {}
     for name, result in results.items():
         assert "error" not in result, f"the {name} call failed: {result['error']}"
@@ -292,7 +303,12 @@ def test_unshaped(rig: Rig) -> None:
     """
     rig.client.succeed("systemctl stop shaper.service")
     lost = under_load(rig, shaped=False)
-    for name, ways in lost.items():
-        assert ways["down"] <= DOWN_MOST, (
-            f"the {name} call lost {ways['down']} datagrams down unshaped, over {DOWN_MOST}"
-        )
+    if any(ways["down"] > DOWN_MOST for ways in lost.values()):
+        # Unshaped, only the router's queues and the machines' own gaps are left to lose
+        # them, which its counts and the client's tell apart.
+        trace = rig.trace()
+        for name, ways in lost.items():
+            assert ways["down"] <= DOWN_MOST, (
+                f"the {name} call lost {ways['down']} datagrams down unshaped,"
+                f" over {DOWN_MOST}\n{trace}"
+            )
