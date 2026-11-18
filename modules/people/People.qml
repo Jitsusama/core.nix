@@ -706,41 +706,8 @@ Provider {
         if (listedRows.from === listed)
             return listedRows.rows;
         keepingBegun(keptListed);
-        // Those a source holds something of its own for, as a favourite
-        // changed here until Tuple says it, are the only ones drawn here
-        // while they're merged here; everyone else is drawn as the daemon
-        // serves them and kept by its stamp either way. Kept by a key of
-        // each way's own, every listed row was made again at each
-        // Favourite flipped and once more when Tuple said it.
-        const own = {};
-        for (const source of sources) {
-            for (const id in source.standing ?? {})
-                own[source.standing[id].key] = true;
-        }
-        const rows = listed.map(person => {
-            // One the daemon listed comes with their row ready, kept while
-            // their record says what it said, by the stamp the daemon
-            // gives it (listing.rs's `listing`) rather than by the record
-            // held: started again, the daemon tells each source's part as
-            // it comes, each a new record, though the last says all the
-            // first did. So nothing about them is written out again to
-            // find it the same, and nothing of the row is worded here.
-            // Their row reads only what their record says, but for its
-            // order, which places it and is read no further, so it's kept
-            // by the record's stamp.
-            const record = own[`person:${person.key}`] ? null
-                : lister.held[`person:${person.key}`];
-            const ready = record ? rowsHeld[`row:people:${person.key}`] : null;
-            // One saying their time is kept through the minutes too,
-            // since it runs on as it's drawn (`ticking`).
-            if (ready)
-                return keptAlike(keptListed, person.key, [record.stamp ?? record],
-                    () => made(person, person.stood, ready,
-                        () => Ready.drawerServed(ready, lister.held)));
-            const stood = person.stood ?? standOf(person);
-            return keptOr(keptListed, person.key, JSON.stringify([person, stood]),
-                () => made(person, stood));
-        });
+        const own = ownedHere();
+        const rows = listed.map(person => listedRow(person, own));
         keptOnly(keptListed);
         // A listing that changed no one's row leaves the rows as they
         // were, so it tells the launcher nothing.
@@ -751,6 +718,44 @@ Provider {
             return listedRows.rows;
         listedRows.rows = rows;
         return rows;
+    }
+    // Those a source holds something of its own for, as a favourite
+    // changed here until Tuple says it, are the only ones drawn here while
+    // they're merged here; everyone else is drawn as the daemon serves them
+    // and kept by its stamp either way. Kept by a key of each way's own,
+    // every listed row was made again at each Favourite flipped and once
+    // more when Tuple said it.
+    function ownedHere() {
+        const own = {};
+        for (const source of sources) {
+            for (const id in source.standing ?? {})
+                own[source.standing[id].key] = true;
+        }
+        return own;
+    }
+    // One listed person's row, kept while it reads the same.
+    function listedRow(person, own) {
+        // One the daemon listed comes with their row ready, kept while
+        // their record says what it said, by the stamp the daemon gives it
+        // (listing.rs's `listing`) rather than by the record held: started
+        // again, the daemon tells each source's part as it comes, each a
+        // new record, though the last says all the first did. So nothing
+        // about them is written out again to find it the same, and nothing
+        // of the row is worded here. Their row reads only what their
+        // record says, but for its order, which places it and is read no
+        // further, so it's kept by the record's stamp.
+        const record = own[`person:${person.key}`] ? null
+            : lister.held[`person:${person.key}`];
+        const ready = record ? rowsHeld[`row:people:${person.key}`] : null;
+        // One saying their time is kept through the minutes too, since it
+        // runs on as it's drawn (`ticking`).
+        if (ready)
+            return keptAlike(keptListed, person.key, [record.stamp ?? record],
+                () => made(person, person.stood, ready,
+                    () => Ready.drawerServed(ready, lister.held)));
+        const stood = person.stood ?? standOf(person);
+        return keptOr(keptListed, person.key, JSON.stringify([person, stood]),
+            () => made(person, stood));
     }
     readonly property var keptListed: keeper()
     readonly property var listedRows: ({ from: null, rows: [] })
@@ -1627,25 +1632,52 @@ Provider {
     // rows and took 57 to 164 ms, against 18 to 35 for letters that made
     // none (Joel's journal, 2026-11-14 to 17; ZINAWZ, 88718678). Waiting
     // out the waking keeps it out of the slices the opening's rows fill
-    // in. Those that read the same keep their rows, so this makes only
-    // those that changed. Opened into a place, typing searches that place
-    // alone, so nothing is.
+    // in, and it's made a slice a frame within the waking's own budget, so
+    // a key comes in at most one slice late. Those that read the same keep
+    // their rows, so this makes only those that changed, and the letter's
+    // listing finds every row it reached kept. Opened into a place or a
+    // viewer's command line, typing searches there alone, so nothing is.
     property bool listingAhead: false
-    function listAhead() {
+    readonly property real aheadBudget: 8
+    // The listing being made ahead, how far it's got, and which opening's
+    // run is making it, so one shut and opened again runs once.
+    readonly property var ahead: ({ of: null, at: 0, run: 0 })
+    function listingHome() {
         const launcher = provider.launcher;
-        const home = () => !!launcher?.open && (launcher.held?.length ?? 0) === 0
-            && !launcher.entering && !provider.wanted && heardRevision >= 0;
+        return !!launcher?.open && (launcher.held?.length ?? 0) === 0 && !launcher.entering
+            && !launcher.viewing && !provider.wanted;
+    }
+    function listAhead() {
         listingAhead = false;
-        if (!home() || typeof launcher.afterFrame !== "function")
+        if (!listingHome() || typeof provider.launcher.afterFrame !== "function")
             return;
-        if (launcher.waking) {
+        if (provider.launcher.waking) {
             listingAhead = true;
             return;
         }
-        launcher.afterFrame(() => {
-            if (home())
-                listedNow();
-        });
+        ahead.run += 1;
+        ahead.of = null;
+        const run = ahead.run;
+        provider.launcher.afterFrame(() => listAheadNext(run));
+    }
+    function listAheadNext(run) {
+        if (run !== ahead.run || !listingHome())
+            return;
+        const listed = listedPersons();
+        if (listed === listedRows.from)
+            return;
+        if (ahead.of !== listed) {
+            ahead.of = listed;
+            ahead.at = 0;
+        }
+        const own = ownedHere();
+        const began = Date.now();
+        while (ahead.at < listed.length && Date.now() - began < aheadBudget) {
+            listedRow(listed[ahead.at], own);
+            ahead.at += 1;
+        }
+        if (ahead.at < listed.length)
+            provider.launcher.afterFrame(() => listAheadNext(run));
     }
 
     Connections {

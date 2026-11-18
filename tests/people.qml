@@ -63,6 +63,8 @@ ShellRoot {
         // Whether an opening's sources are still waking, as the
         // launcher's are a slice a frame (Launcher.qml's wakeNext).
         property bool waking: false
+        // Whether it's a viewer's command line (Launcher.qml's viewing).
+        property bool viewing: false
 
         function wants(source) {
             return wanting;
@@ -939,20 +941,50 @@ ShellRoot {
             // so the first letter made every one changed: 111 to 154
             // rows, keys of 57 to 164 ms against 18 to 35 for letters
             // that made none (Joel's journal, 2026-11-14 to 17). Opened
-            // at home, they're made the frame after, once its sources
-            // have woken. Cal, listed as called lately, favoured here
-            // stands for it.
-            what: "one listed who changed while shut is made as the launcher opens",
+            // at home, they're made once its sources have woken. Cal,
+            // listed as called lately, favoured here stands for it.
+            // Opened over a viewer's command line, where typing never
+            // searches People, nobody is made.
+            what: "one listed who changed while shut isn't made over a viewer",
             run: () => {
                 launcher.open = false;
                 launcher.wanting = false;
                 // Tuple's id for him (checks/people.nix's snapshot).
                 tuple().favoured = ({ "105": { wanted: true, key: "person:cal@example.com" } });
                 root.shutRows = people.tally.rows;
+                launcher.viewing = true;
                 root.opensAt = Date.now();
                 launcher.open = true;
             },
             // A few frames' room for what's made after it opens.
+            holds: () => Date.now() - root.opensAt > 200,
+            check: () => {
+                launcher.open = false;
+                launcher.viewing = false;
+                expect("nobody made", people.tally.rows === root.shutRows,
+                    `${people.tally.rows - root.shutRows} rows made`);
+            }
+        },
+        {
+            // As the launcher keeps an opening, its sources wake a slice a
+            // frame before it opens and until after, and nobody is made
+            // until they have.
+            what: "one listed who changed while shut waits out the waking",
+            run: () => {
+                launcher.waking = true;
+                root.opensAt = Date.now();
+                launcher.open = true;
+            },
+            holds: () => Date.now() - root.opensAt > 200,
+            check: () => {
+                expect("nobody made while waking", people.tally.rows === root.shutRows,
+                    `${people.tally.rows - root.shutRows} rows made`);
+                root.opensAt = Date.now();
+                launcher.waking = false;
+            }
+        },
+        {
+            what: "one listed who changed while shut is made once the opening's woken",
             holds: () => Date.now() - root.opensAt > 200,
             check: () => {
                 const listed = people.listedPersons().map(person => person.key);
