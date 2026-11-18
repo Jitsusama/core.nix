@@ -346,7 +346,9 @@ pub struct Run {
     /// commit, `.` for a checkout as it stood.
     #[serde(default)]
     pub flake: String,
-    /// The checks it built, as `checks.x86_64-linux.<name>`.
+    /// What it was asked to build: most often checks, as
+    /// `checks.x86_64-linux.<name>`, but any attribute or derivation, such
+    /// as run-subtests' `legacyPackages.x86_64-linux.subtests`.
     #[serde(default)]
     pub attributes: Vec<String>,
 }
