@@ -2,6 +2,9 @@
 //! each access point it hears, from what was measured lately
 //! (measure.rs) or learned at this hour (learn.rs), handed to the card's
 //! chooser (choose.rs), with each move logged with what it went by.
+//!
+//! Long because its cases, over half of it, stay beside the private
+//! rules they prove, as every module in wifid keeps them.
 
 use tokio::sync::{mpsc, watch};
 use tokio::time::Instant;
@@ -23,30 +26,58 @@ enum Whence {
     Lately,
     /// Learned at this hour, heard about as loud.
     Learned,
+    /// Learned while the card brought a download down, heard about as
+    /// loud.
+    Loaded,
 }
 
-/// What's known of how an access point carries from here: what it carried
-/// in the span, else what it's carried at this hour, heard about as loud.
+/// Whose figures are asked for: the card's own point's or another's, as
+/// loaded as the card is.
+#[derive(Clone, Copy, Debug)]
+struct Asked {
+    /// The card's own point, whose last minutes are the card's own.
+    own: bool,
+    /// The card brings a download down.
+    loaded: bool,
+}
+
+/// What's known of how an access point carries from here, as loaded as
+/// the card is now, so the chooser weighs like with like: what it carried
+/// in the span, else what it's learned to carry under load, loaded, or at
+/// this hour, not. For the card's own point, what's learned alone, as
+/// what it usually carries. Under load, one learned to carry badly idle
+/// and never learned under load is known by that, since a radio slow
+/// idle is no quicker bringing a download down, and isn't tried blind.
 fn known<'a>(
     lately: &'a Measures,
     learned: &'a Learned,
-    now: Instant,
-    hour: u8,
-) -> impl Fn(&str, i16) -> Option<(Measured, Whence)> + 'a {
-    move |point, signal| {
+    (now, hour): (Instant, u8),
+) -> impl Fn(&str, i16, Asked) -> Option<(Measured, Whence)> + 'a {
+    move |point, signal, Asked { own, loaded }| {
         let lately = lately
             .of(point, now)
+            .filter(|measured| !own && choose::loaded(measured) == loaded)
             .map(|measured| (measured, Whence::Lately));
-        lately.or_else(|| {
+        let idle = || {
             learned
                 .of(point, hour, signal)
                 .map(|measured| (measured, Whence::Learned))
+        };
+        lately.or_else(|| {
+            if loaded {
+                learned
+                    .loaded(point, signal)
+                    .map(|measured| (measured, Whence::Loaded))
+                    .or_else(|| idle().filter(|(measured, _)| choose::badly(measured)))
+            } else {
+                idle()
+            }
         })
     }
 }
 
-/// What's known of an access point heard this loud, and whence.
-type Known<'a> = dyn Fn(&str, i16) -> Option<(Measured, Whence)> + 'a;
+/// What's known of an access point heard this loud, as asked, and whence.
+type Known<'a> = dyn Fn(&str, i16, Asked) -> Option<(Measured, Whence)> + 'a;
 
 /// Asks a card's chooser where it should be, from what the access point
 /// it's on carried, what it hears of its network and what's known of each,
@@ -64,7 +95,7 @@ pub fn choose(
     ),
     call: bool,
 ) {
-    let known = known(lately, learned, now, hour);
+    let known = known(lately, learned, (now, hour));
     match chosen(chooser, now, (on, measured), around, &known, call) {
         Some(Next::Move(to)) => {
             tokio::spawn(roam(asks.clone(), air.clone(), on.card.clone(), to));
@@ -97,12 +128,14 @@ fn chosen(
     call: bool,
 ) -> Option<Next> {
     let here = around.iter().find(|heard| heard.bssid == on.point)?;
+    let loaded = choose::loaded(measured);
     // The card's own point goes along too, since how busy it says its
     // channel is tells the chooser whether there's more room elsewhere.
     let (others, whence): (Vec<Other>, Vec<Option<Whence>>) = around
         .iter()
         .map(|heard| {
-            let known = known(&heard.bssid, heard.signal);
+            let own = heard.bssid == on.point;
+            let known = known(&heard.bssid, heard.signal, Asked { own, loaded });
             let whence = known.as_ref().map(|(_, whence)| *whence);
             let other = Other {
                 point: heard.bssid.clone(),
@@ -234,6 +267,12 @@ fn tried(
                 measure::ms(known.p95)
             )
         }
+        (Some(known), Some(Whence::Loaded)) => {
+            format!(
+                "carried {} at p95 under load before",
+                measure::ms(known.p95)
+            )
+        }
         (Some(known), _) => format!(
             "carried {} at p95 in the last two minutes",
             measure::ms(known.p95)
@@ -247,6 +286,9 @@ fn tried(
             && !choose::badly(measured) =>
         {
             ", on a narrower band, as the card moves little".to_owned()
+        }
+        _ if choose::wider(frequency, to.frequency) && choose::loaded(measured) => {
+            ", on a narrower band, during a download".to_owned()
         }
         (Some(busy), Some(theirs))
             if busy > choose::BUSIEST
@@ -277,8 +319,8 @@ mod tests {
 
     use super::*;
     use crate::learn::Here;
-    use crate::measure::Echo;
     use crate::measure::tests::joined;
+    use crate::measure::{Counts, Echo};
     use crate::radio::{Load, Radio};
     use crate::state::Security;
 
@@ -315,20 +357,54 @@ mod tests {
         }
     }
 
-    /// What the hall carried for ten minutes at eight in the evening.
+    /// What a card carried bringing little down.
+    fn idle(p95: u64) -> Measured {
+        Measured {
+            moving: Some(10),
+            ..carried(p95)
+        }
+    }
+
+    /// What the hall carried for ten minutes at eight in the evening,
+    /// idle.
     fn the_hall_at_eight(dir: &Path, p95: u64) -> Learned {
         let mut learned = Learned::kept_in(&dir.join("carried"));
+        hall_carried(&mut learned, 20, &idle(p95));
+        learned
+    }
+
+    /// Figures asked for another point, idle or under load, and for the
+    /// card's own.
+    const IDLE: Asked = Asked {
+        own: false,
+        loaded: false,
+    };
+    const LOADED: Asked = Asked {
+        own: false,
+        loaded: true,
+    };
+    const OWN: Asked = Asked {
+        own: true,
+        loaded: false,
+    };
+
+    /// What the hall carried for ten minutes at this hour.
+    fn hall_carried(learned: &mut Learned, hour: u8, measured: &Measured) {
+        point_carried(learned, HALL, hour, measured);
+    }
+
+    /// What an access point carried for ten minutes at this hour.
+    fn point_carried(learned: &mut Learned, point: &str, hour: u8, measured: &Measured) {
         let here = Here {
             network: "Lantern",
-            point: HALL,
-            hour: 20,
+            point,
+            hour,
             signal: -50,
             trusted: true,
         };
         for _ in 0..10 {
-            learned.carried(&here, &carried(p95)).unwrap();
+            learned.carried(&here, measured).unwrap();
         }
-        learned
     }
 
     /// Has a card look, the main loop answering that it's looking and
@@ -373,13 +449,128 @@ mod tests {
         let learned = the_hall_at_eight(dir.path(), 15);
         let lately = Measures::default();
 
-        let at_eight = known(&lately, &learned, Instant::now(), 20);
-        let at_nine = known(&lately, &learned, Instant::now(), 21);
+        let at_eight = known(&lately, &learned, (Instant::now(), 20));
+        let at_nine = known(&lately, &learned, (Instant::now(), 21));
 
-        let (hall, whence) = at_eight(HALL, -50).expect("the hall was learned at eight");
+        let (hall, whence) = at_eight(HALL, -50, IDLE).expect("the hall was learned at eight");
         assert_eq!(hall.p95, Some(ms(15)), "what it carried then is known");
         assert_eq!(whence, Whence::Learned, "and known as learned");
-        assert_eq!(at_nine(HALL, -50), None, "nothing was learned at nine");
+        assert_eq!(
+            at_nine(HALL, -50, IDLE),
+            None,
+            "nothing was learned at nine"
+        );
+    }
+
+    #[test]
+    fn under_load_an_access_point_is_known_by_what_it_carried_under_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = the_hall_at_eight(dir.path(), 15);
+        hall_carried(&mut learned, 3, &carried(80));
+        let lately = Measures::default();
+
+        let known = known(&lately, &learned, (Instant::now(), 20));
+
+        let (hall, whence) = known(HALL, -50, LOADED).expect("the hall was learned under load");
+        assert_eq!(
+            hall.p95,
+            Some(ms(80)),
+            "what it carried under load, at any hour"
+        );
+        assert_eq!(whence, Whence::Loaded, "and known as learned under load");
+        let (hall, _) = known(HALL, -50, IDLE).expect("the hall was learned idle");
+        assert_eq!(hall.p95, Some(ms(15)), "idle, what it carried idle");
+        let own = Asked {
+            own: true,
+            ..LOADED
+        };
+        let (hall, whence) = known(HALL, -50, own).expect("the card's own was learned");
+        assert_eq!(hall.p95, Some(ms(80)), "the card's own under load too");
+        assert_eq!(whence, Whence::Loaded);
+    }
+
+    #[test]
+    fn under_load_an_access_point_learned_to_carry_badly_idle_is_known_by_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let learned = the_hall_at_eight(dir.path(), 119);
+        let lately = Measures::default();
+
+        let known = known(&lately, &learned, (Instant::now(), 20));
+
+        let (hall, whence) = known(HALL, -50, LOADED).expect("119 ms idle is slow loaded");
+        assert_eq!(hall.p95, Some(ms(119)), "so it isn't tried as untried");
+        assert_eq!(whence, Whence::Learned);
+    }
+
+    #[test]
+    fn under_load_nothing_learned_idle_is_gone_by() {
+        let dir = tempfile::tempdir().unwrap();
+        let learned = the_hall_at_eight(dir.path(), 15);
+        let lately = Measures::default();
+
+        let known = known(&lately, &learned, (Instant::now(), 20));
+
+        assert_eq!(
+            known(HALL, -50, LOADED),
+            None,
+            "15 ms idle says nothing of a download"
+        );
+    }
+
+    #[test]
+    fn what_an_access_point_carried_lately_under_another_load_is_not_gone_by() {
+        let dir = tempfile::tempdir().unwrap();
+        let learned = the_hall_at_eight(dir.path(), 15);
+        let mut lately = Measures::default();
+        let start = Instant::now();
+        for second in 0..100 {
+            let at = start + Duration::from_secs(second);
+            lately.echoed(HALL, at, Echo::Answered(ms(40)));
+            let counts = Counts {
+                sent: 0,
+                retries: 0,
+                failed: 0,
+                signal: Some(-50),
+                moved: Some(second * 12_500_000),
+                link: None,
+            };
+            lately.counted(HALL, at, counts);
+        }
+
+        let known = known(&lately, &learned, (start + Duration::from_secs(99), 20));
+
+        let (hall, whence) = known(HALL, -50, IDLE).expect("the hall was learned idle");
+        assert_eq!(hall.p95, Some(ms(15)), "40 ms moving 100 Mbit/s isn't idle");
+        assert_eq!(whence, Whence::Learned);
+        let (hall, whence) = known(HALL, -50, LOADED).expect("the hall was measured lately");
+        assert_eq!(
+            hall.p95,
+            Some(ms(40)),
+            "under load it's what it carried lately"
+        );
+        assert_eq!(whence, Whence::Lately);
+    }
+
+    #[test]
+    fn the_card_s_own_access_point_is_known_by_what_it_usually_carries() {
+        let dir = tempfile::tempdir().unwrap();
+        let learned = the_hall_at_eight(dir.path(), 15);
+        let mut lately = Measures::default();
+        let start = Instant::now();
+        for second in 0..100 {
+            let at = start + Duration::from_secs(second);
+            lately.echoed(HALL, at, Echo::Answered(ms(40)));
+        }
+
+        let known = known(&lately, &learned, (start + Duration::from_secs(99), 20));
+
+        let (hall, whence) = known(HALL, -50, OWN).expect("the hall was learned");
+        assert_eq!(
+            hall.p95,
+            Some(ms(15)),
+            "its last two minutes are the card's own"
+        );
+        assert_eq!(whence, Whence::Learned);
     }
 
     #[test]
@@ -393,9 +584,9 @@ mod tests {
             lately.echoed(HALL, at, Echo::Answered(ms(40)));
         }
 
-        let known = known(&lately, &learned, start + Duration::from_secs(99), 20);
+        let known = known(&lately, &learned, (start + Duration::from_secs(99), 20));
 
-        let (hall, whence) = known(HALL, -50).expect("the hall was measured lately");
+        let (hall, whence) = known(HALL, -50, IDLE).expect("the hall was measured lately");
         assert_eq!(hall.p95, Some(ms(40)), "what it carried lately is known");
         assert_eq!(whence, Whence::Lately, "and known as measured lately");
     }
@@ -426,6 +617,16 @@ mod tests {
             ),
             format!("{why} carried 10.0 ms at p95 at this hour before"),
             "a move made on what was learned says so"
+        );
+        assert_eq!(
+            tried(
+                &on,
+                (&carried(30), 2437, None),
+                &other(HALL, quick.clone()),
+                Some(Whence::Loaded)
+            ),
+            format!("{why} carried 10.0 ms at p95 under load before"),
+            "a move made on what was learned under load says so"
         );
         assert_eq!(
             tried(
@@ -473,12 +674,28 @@ mod tests {
             ..carried(52)
         };
 
+        let downloading = Measured {
+            moving: Some(52),
+            ..carried(136)
+        };
+
         let why = tried(&on, (&resting, 5260, None), &narrow, None);
         let failing = tried(&on, (&bad, 5260, None), &narrow, None);
+        let loaded = tried(
+            &on,
+            (&downloading, 5260, None),
+            &narrow,
+            Some(Whence::Loaded),
+        );
 
         let alone = "two minutes, on a narrower band, as the card moves little";
         assert!(why.ends_with(alone), "says why it left: {why}");
         assert!(!failing.contains("band"), "it moves as bad: {failing}");
+        let queued = "under load before, on a narrower band, during a download";
+        assert!(
+            loaded.ends_with(queued),
+            "says it left mid-download: {loaded}"
+        );
     }
 
     #[test]
@@ -543,7 +760,7 @@ mod tests {
             ..heard(HALL, -45)
         };
         let around = [heard(DESK, -34), wide];
-        let known = known(&lately, &learned, now, 20);
+        let known = known(&lately, &learned, (now, 20));
 
         let to = chosen(
             &mut Chooser::default(),
@@ -567,12 +784,12 @@ mod tests {
         let learned = the_hall_at_eight(dir.path(), 10);
         let (lately, now) = (Measures::default(), Instant::now());
         let around = [heard(DESK, -50), heard(HALL, -50)];
-        let known = known(&lately, &learned, now, 20);
+        let known = known(&lately, &learned, (now, 20));
 
         let to = chosen(
             &mut Chooser::default(),
             now,
-            (&joined(DESK), &carried(30)),
+            (&joined(DESK), &idle(30)),
             &around,
             &known,
             false,
@@ -586,12 +803,71 @@ mod tests {
     }
 
     #[test]
+    fn a_card_bringing_a_download_down_goes_by_nothing_learned_idle() {
+        let dir = tempfile::tempdir().unwrap();
+        let learned = the_hall_at_eight(dir.path(), 10);
+        let (lately, now) = (Measures::default(), Instant::now());
+        let around = [heard(DESK, -50), heard(HALL, -50)];
+        let known = known(&lately, &learned, (now, 20));
+        let downloading = Measured {
+            moving: Some(50),
+            ..carried(30)
+        };
+
+        let to = chosen(
+            &mut Chooser::default(),
+            now,
+            (&joined(DESK), &downloading),
+            &around,
+            &known,
+            false,
+        );
+
+        assert_eq!(
+            to, None,
+            "10 ms idle says nothing of 30 ms moving 50 Mbit/s"
+        );
+    }
+
+    #[test]
+    fn a_card_weighs_5_ghz_against_what_its_own_point_usually_carries() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join("carried"));
+        point_carried(&mut learned, DESK, 20, &idle(11));
+        hall_carried(&mut learned, 20, &idle(20));
+        let mut lately = Measures::default();
+        let start = Instant::now();
+        for second in 0..100 {
+            let at = start + Duration::from_secs(second);
+            lately.echoed(DESK, at, Echo::Answered(ms(26)));
+        }
+        let now = start + Duration::from_secs(99);
+        let wide = Heard {
+            frequency: 5260,
+            ..heard(HALL, -50)
+        };
+        let around = [heard(DESK, -50), wide];
+        let known = known(&lately, &learned, (now, 20));
+
+        let to = chosen(
+            &mut Chooser::default(),
+            now,
+            (&joined(DESK), &idle(26)),
+            &around,
+            &known,
+            false,
+        );
+
+        assert_eq!(to, None, "the desk usually carries 11 ms, and 5 GHz 20");
+    }
+
+    #[test]
     fn a_card_carrying_badly_and_hearing_no_other_looks() {
         let dir = tempfile::tempdir().unwrap();
         let learned = Learned::kept_in(&dir.path().join("carried"));
         let (lately, now) = (Measures::default(), Instant::now());
         let around = [heard(DESK, -50)];
-        let known = known(&lately, &learned, now, 20);
+        let known = known(&lately, &learned, (now, 20));
 
         let next = chosen(
             &mut choose::tests::after_a_bad_minute(DESK),
@@ -615,7 +891,7 @@ mod tests {
             ..heard(bssid, -50)
         };
         let around = [on_5_ghz(DESK), on_5_ghz(HALL)];
-        let known = known(&lately, &learned, now, 20);
+        let known = known(&lately, &learned, (now, 20));
 
         let to = chosen(
             &mut Chooser::default(),
@@ -643,7 +919,7 @@ mod tests {
             ..heard(bssid, -42)
         };
         let around = [on_5_ghz(HALL, 5745, 56), on_5_ghz(DESK, 5260, 20)];
-        let known = known(&lately, &learned, now, 20);
+        let known = known(&lately, &learned, (now, 20));
 
         let to = chosen(
             &mut Chooser::default(),
@@ -673,7 +949,7 @@ mod tests {
             },
             ..heard(HALL, -41)
         };
-        let known = known(&lately, &learned, now, 20);
+        let known = known(&lately, &learned, (now, 20));
 
         let next = chosen(
             &mut Chooser::default(),

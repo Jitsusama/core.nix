@@ -7,7 +7,13 @@
 //! when it carries badly two minutes running, or fails, or when one
 //! measured lately carried far better. A card on a wider band slowed by
 //! its own download keeps off a narrower band, which has less room to
-//! bring the download down, and its trial waits for the download to end.
+//! bring the download down, unless one is known quicker under load and
+//! the card isn't using the room; its trial waits for the download to end,
+//! unless it was made under load too. Figures are weighed like with like:
+//! under load against what others carried under load, and a wider band
+//! from a narrower one carrying well against what the card's own access
+//! point usually carries as well as its last two minutes, since one slow
+//! minute isn't how a point carries.
 //! A wider band, 5 or 6 GHz, is kept to while it carries well, unless the
 //! card is known to move little and 2.4 GHz is known far quicker, and
 //! tried from 2.4 GHz while the card moves enough to use its room, or when
@@ -144,6 +150,11 @@ const QUICKER: Duration = Duration::from_millis(10);
 const WORSE: Duration = Duration::from_millis(10);
 const WORSE_LOSS: f64 = 2.0;
 
+/// How much of what a download moved before a trial made under load must
+/// still move for the trial to stand. The 17 Nov 2026 moves to 2.4 GHz
+/// left downloads moving 67 to 69% of what they had.
+const MOVED_BY: f64 = 0.7;
+
 /// What another access point of the network is known by.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Other {
@@ -154,7 +165,10 @@ pub struct Other {
     pub busy: Option<u8>,
     /// Its channel, by frequency in MHz; 0 where wpa_supplicant doesn't say.
     pub frequency: u32,
-    /// What it carried while the card was last on it, within the span.
+    /// What it carried while the card was last on it, within the span, or
+    /// was learned to carry, as loaded as the card is now: under load
+    /// where the card moves `LEAST` or more, else not. For the card's own
+    /// access point it's what that usually carries, never the span.
     pub measured: Option<Measured>,
 }
 
@@ -271,15 +285,39 @@ impl Chooser {
         // access point's 2.4 GHz radio answered quicker than its 5 GHz one
         // in four of five hours. Between `LEAST` and `used`'s bar the card
         // keeps to whichever band it's on, so use near the bar can't swap it.
+        // Slowed by its own download, it may take a narrower radio known
+        // quicker under load while it isn't using the wider band's room:
+        // on 18 Nov 2026 at a desk the access point's 5 GHz radio carried
+        // downloads of 25 to 65 Mbit/s at 76 to 136 ms, and twice the card
+        // kept off its 2.4 GHz radio, which had carried 25 to 81 at a mean
+        // 37.5 ms. A narrower band may bring the download down slower, so
+        // its trial goes back where it does (`MOVED_BY`).
         let resting = resting(measured);
+        let may_narrow = queued && !used(measured);
         let untried = others.iter().filter(|other| {
             other.point != point
                 && !self.spurned.contains_key(&other.point)
-                && ((bad && !queued) || resting || wide(other.frequency) || !wide(frequency))
+                && ((bad && !queued)
+                    || resting
+                    || wide(other.frequency)
+                    || !wide(frequency)
+                    || (may_narrow && other.measured.is_some()))
         });
+        // Carrying well on a narrower band, the card weighs a wider one
+        // against what its own point usually carries too: on 18 Nov 2026 it
+        // left a 2.4 GHz radio three times for the 5 GHz one's learned 14.5
+        // to 27.7 ms on a minute of 21.1 to 35.7, where its own usually
+        // carried about 10 to 12, and 5 GHz was slower each time. The
+        // quicker rule goes by the span alone, so a point slow now is left
+        // however well it usually carries.
+        let usual = others
+            .iter()
+            .find(|other| other.point == point)
+            .and_then(|other| other.measured.as_ref());
         let narrow = frequency != 0 && !wide(frequency);
         let banded = if narrow && !bad {
-            for_the_band(untried.clone(), (signal, frequency), measured)
+            let ours = quickest(measured, usual);
+            for_the_band(untried.clone(), (signal, frequency), (measured, ours))
         } else {
             None
         };
@@ -349,6 +387,10 @@ impl Chooser {
     /// A trial over while the card brings a download down waits for it to
     /// end, as its figures aren't the ones the move was made on, until a
     /// settle past the trial, when it ends unjudged and choosing goes on.
+    /// One made under load and over under load is judged at once, like
+    /// with like, and goes back where it brings the download down slower
+    /// too; one made for a wider band's room is left to wait, since its
+    /// download's queue there says nothing of the room.
     fn judge(
         &mut self,
         now: Instant,
@@ -374,7 +416,8 @@ impl Chooser {
             self.trial = Some(trial);
             return Some(Choice::Stay);
         }
-        if queued && !failing {
+        let under_load = !trial.banded && loaded(&trial.before) && loaded(measured);
+        if queued && !failing && !under_load {
             let waited = self
                 .moved
                 .is_some_and(|moved| now.duration_since(moved) >= TRIAL + SETTLE);
@@ -387,7 +430,7 @@ impl Chooser {
         let back = if trial.banded {
             badly(measured)
         } else {
-            worse(measured, &trial.before)
+            worse(measured, &trial.before) || (under_load && slower(measured, &trial.before))
         };
         back.then(|| {
             self.spurned.insert(point.to_owned(), now);
@@ -478,17 +521,25 @@ fn crowding((point, frequency): (&str, u32), others: &[Other]) -> Option<u8> {
 /// as any trial, so it goes back if it carries worse. One known wins over a
 /// louder one untried, since what it carried was learnt at this hour heard
 /// about this loud, and a banded trial goes back if it carries badly.
+/// Using the room, the card is handed what each carried under load, which
+/// is past `SLOW` as often as not, so one known no slower than its own
+/// under load is gone to too, as one untried would be.
 fn for_the_band<'a>(
     untried: impl Iterator<Item = &'a Other> + Clone,
     (signal, frequency): (i16, u32),
-    ours: &Measured,
+    (measured, ours): (&Measured, &Measured),
 ) -> Option<&'a Other> {
-    let using = used(ours);
+    let using = used(measured);
     let on_it = untried.filter(|other| in_band_reach(other, signal, frequency));
     let known = on_it.clone().filter_map(|other| {
         let theirs = other.measured.as_ref()?;
-        let worth = using || slowness(theirs) <= slowness(ours);
-        (!badly(theirs) && worth).then_some((slowness(theirs), other))
+        let no_slower = slowness(theirs) <= slowness(ours);
+        let worth = if using {
+            no_slower || !badly(theirs)
+        } else {
+            no_slower && !badly(theirs)
+        };
+        worth.then_some((slowness(theirs), other))
     });
     let heard = on_it.filter(|other| {
         using && other.measured.is_none() && other.busy.is_none_or(|busy| busy <= BUSIEST)
@@ -557,6 +608,21 @@ pub fn resting(measured: &Measured) -> bool {
     measured.moving.is_some_and(|moving| moving < LEAST)
 }
 
+/// Whether a card is known to bring a download down, `LEAST` or more, so
+/// what its access point carries is what it carries under load.
+pub fn loaded(measured: &Measured) -> bool {
+    measured.moving.is_some_and(|moving| moving >= LEAST)
+}
+
+/// The quicker of what the card's point carried lately and what it
+/// usually carries, where that's known: the one the card's gone by.
+fn quickest<'a>(lately: &'a Measured, usual: Option<&'a Measured>) -> &'a Measured {
+    match usual {
+        Some(usual) if slowness(usual) < slowness(lately) => usual,
+        _ => lately,
+    }
+}
+
 /// An access point's p95, where nothing answered as slow as can be.
 fn slowness(measured: &Measured) -> Duration {
     measured.p95.unwrap_or(Duration::MAX)
@@ -569,6 +635,16 @@ fn quicker(theirs: &Measured, ours: &Measured) -> bool {
     theirs.lost <= ours.lost.max(LOSSY)
         && their_p95 <= our_p95.mul_f64(QUICKER_BY)
         && our_p95.saturating_sub(their_p95) >= QUICKER
+}
+
+/// Whether a trial brought a download down slower than what it left, by
+/// more than `MOVED_BY` allows: on 17 Nov 2026 moves from 5 to 2.4 GHz cut
+/// downloads of 39 to 55 Mbit/s to 26 to 38.
+fn slower(trial: &Measured, before: &Measured) -> bool {
+    match (trial.moving, before.moving) {
+        (Some(trial), Some(before)) => f64::from(trial) < f64::from(before) * MOVED_BY,
+        _ => false,
+    }
 }
 
 /// Whether a trial carried worse than what it left.
@@ -843,22 +919,169 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_download_on_a_wider_band_keeps_off_a_narrower_one_known_quicker() {
+    fn a_download_on_a_wider_band_takes_a_narrower_one_known_quicker_under_load() {
         let mut chooser = Chooser::default();
-        let quick = [near_at(-36, Some(resting(carried(15, 0.0))))];
+        let quick = [near_at(-35, Some(downloading(37)))];
 
         let choice = chooser.choose(
             Instant::now(),
-            (DESK, &downloading(143), -40, CH52),
+            (DESK, &downloading(136), -43, CH52),
             &quick,
             false,
         );
 
         assert_eq!(
             choice,
-            Choice::Stay,
-            "15 ms idle on 2.4 GHz says nothing of bringing a download down"
+            Choice::Try(NEAR.into()),
+            "2.4 GHz brought downloads down at 37 ms against 136, as on 18 Nov"
         );
+    }
+
+    #[test]
+    fn a_download_using_a_wider_band_s_room_keeps_off_a_narrower_one_known_quicker() {
+        let mut chooser = Chooser::default();
+        let quick = [near_at(-35, Some(downloading(37)))];
+        let using = Measured {
+            moving: Some(100),
+            ..downloading(136)
+        };
+
+        let choice = chooser.choose(Instant::now(), (DESK, &using, -43, CH52), &quick, false);
+
+        assert_eq!(
+            choice,
+            Choice::Stay,
+            "100 Mbit/s wants the room 2.4 GHz lacks, however quick it is"
+        );
+    }
+
+    #[test]
+    fn a_trial_made_under_load_is_judged_under_load() {
+        let mut chooser = after_a_bad_minute(NEAR);
+        let start = Instant::now();
+        let wider = [desk_at(-43, None)];
+        let tried = chooser.choose(start, (NEAR, &downloading(89), -35, CH6), &wider, false);
+        assert_eq!(tried, Choice::Try(DESK.into()), "the first move is asked");
+
+        let judged = chooser.choose(
+            start + TRIAL,
+            (DESK, &downloading(136), -43, CH52),
+            &[],
+            false,
+        );
+
+        assert_eq!(
+            judged,
+            Choice::Back(NEAR.into()),
+            "136 ms under load is worse than the 89 it left under load"
+        );
+    }
+
+    #[test]
+    fn a_trial_made_under_load_and_carrying_no_worse_under_load_stands() {
+        let mut chooser = after_a_bad_minute(NEAR);
+        let start = Instant::now();
+        let wider = [desk_at(-43, None)];
+        let tried = chooser.choose(start, (NEAR, &downloading(89), -35, CH6), &wider, false);
+        assert_eq!(tried, Choice::Try(DESK.into()), "the first move is asked");
+
+        let judged = chooser.choose(
+            start + TRIAL,
+            (DESK, &downloading(99), -43, CH52),
+            &[],
+            false,
+        );
+
+        assert_eq!(judged, Choice::Stay, "99 ms is within 10 of the 89 it left");
+        assert_eq!(
+            chooser.choose(
+                start + TRIAL + TAIL + Duration::from_secs(30),
+                (DESK, &carried(200, 1.0), -43, CH52),
+                &[],
+                false,
+            ),
+            Choice::Stay,
+            "its trial was judged, not held for the download's tail, and a settle keeps it"
+        );
+    }
+
+    #[test]
+    fn a_trial_made_under_load_bringing_the_download_down_slower_goes_back() {
+        let start = Instant::now();
+        let quick = [near_at(-35, Some(downloading(37)))];
+        let back_to = [desk_at(-43, None)];
+        let slower = Measured {
+            moving: Some(30),
+            ..downloading(40)
+        };
+        let as_fast = Measured {
+            moving: Some(45),
+            ..downloading(40)
+        };
+        let judged = |moving: &Measured| {
+            let mut chooser = Chooser::default();
+            let on = (DESK, &downloading(136), -43, CH52);
+            assert_eq!(
+                chooser.choose(start, on, &quick, false),
+                Choice::Try(NEAR.into())
+            );
+            chooser.choose(start + TRIAL, (NEAR, moving, -35, CH6), &back_to, false)
+        };
+
+        assert_eq!(
+            judged(&slower),
+            Choice::Back(DESK.into()),
+            "30 Mbit/s of the 52 it left is a download cut, as on 17 Nov"
+        );
+        assert_eq!(judged(&as_fast), Choice::Stay, "45 of 52 is as fast");
+    }
+
+    #[test]
+    fn a_trial_made_for_a_wider_band_s_room_waits_out_its_download_s_queue() {
+        let mut chooser = Chooser::default();
+        let start = Instant::now();
+        let wider = [desk_at(-43, None)];
+        let using = on_a_link(150, 286);
+        let tried = chooser.choose(start, (NEAR, &using, -35, CH6), &wider, false);
+        assert_eq!(tried, Choice::Try(DESK.into()), "the move is for the room");
+
+        let judged = chooser.choose(
+            start + TRIAL,
+            (DESK, &downloading(68), -43, CH52),
+            &[],
+            false,
+        );
+
+        assert_eq!(
+            judged,
+            Choice::Stay,
+            "68 ms is the download's own queue, which says nothing of the room"
+        );
+    }
+
+    #[test]
+    fn a_card_using_2_4_ghz_s_room_takes_5_ghz_no_slower_under_load() {
+        let known = || [desk_at(-43, Some(downloading(68)))];
+        let slow = Measured {
+            p95: Some(Duration::from_millis(77)),
+            ..on_a_link(150, 286)
+        };
+        let quick = Measured {
+            p95: Some(Duration::from_millis(30)),
+            ..on_a_link(150, 286)
+        };
+
+        let took =
+            Chooser::default().choose(Instant::now(), (NEAR, &slow, -35, CH6), &known(), false);
+        let kept =
+            Chooser::default().choose(Instant::now(), (NEAR, &quick, -35, CH6), &known(), false);
+
+        assert_eq!(
+            took,
+            Choice::Try(DESK.into()),
+            "68 ms under load is no slower than 77"
+        );
+        assert_eq!(kept, Choice::Stay, "68 is slower than 30, and past `SLOW`");
     }
 
     #[test]
@@ -866,7 +1089,8 @@ pub(crate) mod tests {
         let mut chooser = after_a_bad_minute(DESK);
         let start = Instant::now();
         let near = [hall(-53, Some(20), None)];
-        let tried = chooser.choose(start, (DESK, &carried(119, 0.5), -50, CH52), &near, false);
+        let off_load = resting(carried(119, 0.5));
+        let tried = chooser.choose(start, (DESK, &off_load, -50, CH52), &near, false);
         assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
 
         let minute = Duration::from_secs(60);
@@ -907,7 +1131,8 @@ pub(crate) mod tests {
         let mut chooser = after_a_bad_minute(DESK);
         let start = Instant::now();
         let near = [hall(-53, Some(20), None)];
-        let tried = chooser.choose(start, (DESK, &carried(119, 0.5), -50, CH52), &near, false);
+        let off_load = resting(carried(119, 0.5));
+        let tried = chooser.choose(start, (DESK, &off_load, -50, CH52), &near, false);
         assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
 
         let minute = Duration::from_secs(60);
@@ -1476,6 +1701,61 @@ pub(crate) mod tests {
         let choice = chooser.choose(Instant::now(), on, &[quick], false);
 
         assert_eq!(choice, Choice::Try(NEAR.into()), "its room goes unused");
+    }
+
+    #[test]
+    fn a_card_slow_now_leaves_however_well_its_point_usually_carries() {
+        let mut chooser = Chooser::default();
+        let slow = resting(carried(40, 0.0));
+        let usual = near_at(-34, Some(carried(12, 0.0)));
+        let quicker = desk_at(-45, Some(carried(15, 0.0)));
+
+        let on = (NEAR, &slow, -34, CH6);
+        let choice = chooser.choose(Instant::now(), on, &[usual, quicker], false);
+
+        assert_eq!(
+            choice,
+            Choice::Try(DESK.into()),
+            "15 ms is slower than the usual 12, but far quicker than 40 now"
+        );
+    }
+
+    #[test]
+    fn a_card_on_2_4_ghz_weighs_5_ghz_against_what_its_point_usually_carries() {
+        let well = idle(carried(21, 0.0));
+        let wider = desk_at(-45, Some(carried(14, 0.0)));
+        let usual = near_at(-34, Some(carried(11, 0.0)));
+        let on = (NEAR, &well, -34, CH6);
+
+        let weighed = Chooser::default().choose(Instant::now(), on, &[usual, wider.clone()], false);
+        let unweighed = Chooser::default().choose(Instant::now(), on, &[wider], false);
+
+        assert_eq!(
+            weighed,
+            Choice::Stay,
+            "5 GHz's 14 ms is slower than the 11 its own usually carries, as at 08:49 on 18 Nov"
+        );
+        assert_eq!(
+            unweighed,
+            Choice::Try(DESK.into()),
+            "with nothing usual known, its last minute is gone by"
+        );
+    }
+
+    #[test]
+    fn a_card_on_2_4_ghz_slower_than_usual_still_takes_5_ghz_known_quicker_still() {
+        let well = idle(carried(21, 0.0));
+        let wider = desk_at(-45, Some(carried(10, 0.0)));
+        let usual = near_at(-34, Some(carried(11, 0.0)));
+
+        let on = (NEAR, &well, -34, CH6);
+        let choice = Chooser::default().choose(Instant::now(), on, &[usual, wider], false);
+
+        assert_eq!(
+            choice,
+            Choice::Try(DESK.into()),
+            "10 ms is no slower than 11"
+        );
     }
 
     #[test]
