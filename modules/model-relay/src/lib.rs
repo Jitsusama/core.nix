@@ -462,7 +462,16 @@ struct Slot<S = SendRequest<Sent>> {
     open: Held<Option<Kept<S>>>,
     kept: AtomicU64,
     opening: Mutex<()>,
+    retired: Held<Option<Instant>>,
 }
+
+/// How seldom a slot retires a connection for a reset, at most. One bad
+/// connection is retired at its first reset, and its fresh one isn't
+/// retired again for this long. A retired connection stays up while its
+/// answers stream, minutes for a long one, so an origin resetting on every
+/// connection would otherwise have the relay hold a connection for each
+/// reset, where it means to hold a few.
+const RETIRED_FOR_A_RESET_AT_MOST_EVERY: Duration = Duration::from_secs(60);
 
 /// A connection a slot keeps: its sender, and which of the slot's it is,
 /// so what retires it can't retire one opened since.
@@ -485,6 +494,23 @@ impl Sender for SendRequest<Sent> {
     }
 }
 
+impl<S> Slot<S> {
+    /// A slot with no connection yet.
+    fn new() -> Self {
+        Slot {
+            open: Held::new(None),
+            kept: AtomicU64::new(0),
+            opening: Mutex::new(()),
+            retired: Held::new(None),
+        }
+    }
+
+    /// The number the next connection opened in this slot is known by.
+    fn next_number(&self) -> u64 {
+        self.kept.fetch_add(1, Ordering::Relaxed)
+    }
+}
+
 impl<S: Sender> Slot<S> {
     /// This connection, while it takes requests.
     fn sender(&self) -> Option<Kept<S>> {
@@ -497,22 +523,26 @@ impl<S: Sender> Slot<S> {
     }
 
     /// Keeps `sender` as this connection's.
-    fn keep(&self, sender: S) -> Kept<S> {
-        let kept = Kept {
-            number: self.kept.fetch_add(1, Ordering::Relaxed),
-            sender,
-        };
+    fn keep(&self, number: u64, sender: S) -> Kept<S> {
+        let kept = Kept { number, sender };
         *self.open.lock().unwrap_or_else(PoisonError::into_inner) = Some(kept.clone());
         kept
     }
 
-    /// Takes no more requests down connection `number`, if it's still the
-    /// one kept. Answers already on it carry on.
-    fn retire(&self, number: u64) {
+    /// Takes no more requests down connection `number` for a reset, if
+    /// it's still the one kept and the slot hasn't retired one within
+    /// `RETIRED_FOR_A_RESET_AT_MOST_EVERY`, and says whether it did.
+    /// Answers already on it carry on.
+    fn retire(&self, number: u64) -> bool {
         let mut open = self.open.lock().unwrap_or_else(PoisonError::into_inner);
-        if open.as_ref().is_some_and(|kept| kept.number == number) {
-            *open = None;
+        let mut retired = self.retired.lock().unwrap_or_else(PoisonError::into_inner);
+        let lately = retired.is_some_and(|when| when.elapsed() < RETIRED_FOR_A_RESET_AT_MOST_EVERY);
+        if lately || open.as_ref().is_none_or(|kept| kept.number != number) {
+            return false;
         }
+        *open = None;
+        *retired = Some(Instant::now());
+        true
     }
 }
 
@@ -561,13 +591,7 @@ impl Relay {
             origin,
             tls: TlsConnector::from(Arc::new(config)),
             clocks,
-            slots: (0..connections.max(1))
-                .map(|_| Slot {
-                    open: Held::new(None),
-                    kept: AtomicU64::new(0),
-                    opening: Mutex::new(()),
-                })
-                .collect(),
+            slots: (0..connections.max(1)).map(|_| Slot::new()).collect(),
             next: AtomicUsize::new(0),
             failed: Held::new(None),
             asked_at: Held::new((Instant::now(), SystemTime::now())),
@@ -806,11 +830,14 @@ impl Relay {
             // was refused promises the origin acted on nothing, and these
             // said a protocol error. The number says whether a fresh
             // connection is reset too, which one bad one wouldn't be.
-            self.slots[at].retire(number);
+            let done = if self.slots[at].retire(number) {
+                "so it's retired"
+            } else {
+                "kept, as one was retired lately"
+            };
             self.counts.reset.fetch_add(1, Ordering::Relaxed);
             eprintln!(
-                "model-relay: the origin reset a request on connection {at}.{number}, \
-                 so it's retired: {}",
+                "model-relay: the origin reset a request on connection {at}.{number}, {done}: {}",
                 with_causes(why)
             );
         } else {
@@ -916,9 +943,10 @@ impl Relay {
     /// Opens connection `at` and keeps it, or keeps why it couldn't be,
     /// for whoever waited on the attempt. Its opener holds its lock.
     async fn open_now(&self, at: usize) -> Result<Kept, Unreachable> {
-        match self.connect(at).await {
+        let number = self.slots[at].next_number();
+        match self.connect(at, number).await {
             Ok(sender) => {
-                let kept = self.slots[at].keep(sender);
+                let kept = self.slots[at].keep(number, sender);
                 // The origin is back, so others may be opened behind.
                 *self.failed.lock().unwrap_or_else(PoisonError::into_inner) = None;
                 Ok(kept)
@@ -931,9 +959,9 @@ impl Relay {
         }
     }
 
-    /// Opens connection `at` to the origin, saying so, and says when it's
-    /// retired.
-    async fn connect(&self, at: usize) -> Result<SendRequest<Sent>, Unreachable> {
+    /// Opens connection `at` to the origin, saying so by its slot and its
+    /// `number` there, and says when it's retired.
+    async fn connect(&self, at: usize, number: u64) -> Result<SendRequest<Sent>, Unreachable> {
         let within = self.clocks.connect_within;
         let opening = async {
             let on_the_way = |why: io::Error| {
@@ -1003,7 +1031,7 @@ impl Relay {
         };
         self.counts.opened.fetch_add(1, Ordering::Relaxed);
         let open = self.counts.open.fetch_add(1, Ordering::Relaxed) + 1;
-        eprintln!("model-relay: connection {at} opened, {open} taking requests");
+        eprintln!("model-relay: connection {at}.{number} opened, {open} taking requests");
         let counts = Arc::clone(&self.counts);
         tokio::spawn(async move {
             // This ends once the connection takes no new requests, which
@@ -1013,10 +1041,16 @@ impl Relay {
             let ended = connection.await;
             let open = counts.open.fetch_sub(1, Ordering::Relaxed) - 1;
             match ended {
-                Ok(()) => eprintln!("model-relay: connection {at} retired, {open} taking requests"),
+                Ok(()) => {
+                    eprintln!(
+                        "model-relay: connection {at}.{number} retired, \
+                         {open} taking requests"
+                    );
+                }
                 Err(why) => {
                     eprintln!(
-                        "model-relay: connection {at} retired on {}, {open} taking requests",
+                        "model-relay: connection {at}.{number} retired on {}, \
+                         {open} taking requests",
                         with_causes(&why)
                     );
                 }
@@ -1197,8 +1231,8 @@ mod tests {
     use hyper::body::Body as _;
 
     use super::{
-        HELD_AHEAD_AT_MOST, Held, InPieces, Mutex, Origin, SAID_AT_MOST, SLEPT_AT_LEAST, Sender,
-        Slot, reach, reach_any, slept, with_causes,
+        HELD_AHEAD_AT_MOST, InPieces, Origin, SAID_AT_MOST, SLEPT_AT_LEAST, Sender, Slot, reach,
+        reach_any, slept, with_causes,
     };
 
     /// A connection kept for a test, which never closes.
@@ -1213,24 +1247,42 @@ mod tests {
 
     #[test]
     fn retiring_a_connection_spares_one_opened_since() {
-        let slot = Slot {
-            open: Held::new(None),
-            kept: std::sync::atomic::AtomicU64::new(0),
-            opening: Mutex::new(()),
-        };
-        let reset = slot.keep(Line);
-        let since = slot.keep(Line);
-        slot.retire(reset.number);
+        let slot = Slot::new();
+        let reset = slot.keep(slot.next_number(), Line);
+        let since = slot.keep(slot.next_number(), Line);
+        assert!(
+            !slot.retire(reset.number),
+            "a late reset said it retired a connection"
+        );
         assert_eq!(
             slot.sender().map(|kept| kept.number),
             Some(since.number),
             "a reset that came late retired the connection opened since it"
         );
-        slot.retire(since.number);
+        assert!(
+            slot.retire(since.number),
+            "a connection's own reset didn't retire it"
+        );
         assert!(
             slot.sender().is_none(),
             "a connection its own reset retired is still taking requests"
         );
+    }
+
+    #[test]
+    fn a_slot_retires_a_connection_for_a_reset_at_most_so_often() {
+        let slot = Slot::new();
+        let first = slot.keep(slot.next_number(), Line);
+        assert!(
+            slot.retire(first.number),
+            "a connection's first reset didn't retire it"
+        );
+        let fresh = slot.keep(slot.next_number(), Line);
+        assert!(
+            !slot.retire(fresh.number),
+            "a fresh connection was retired at once, so resets everywhere would open one each"
+        );
+        assert_eq!(slot.sender().map(|kept| kept.number), Some(fresh.number));
     }
 
     #[test]

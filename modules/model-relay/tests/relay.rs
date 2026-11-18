@@ -4,8 +4,10 @@
 //! Each test asks the relay's socket as pi does, in HTTP/1.1, and reads
 //! what the origin was handed: a request passes whole, only the origin is
 //! reached, many requests share a few connections at once, answers stream
-//! as they come, a connection the origin lets go is opened again, an
-//! origin out of reach is said as a 502 or a 504 without queueing, a
+//! as they come, a connection the origin lets go is opened again, a
+//! request the origin resets is a 502 and retires its connection, one a
+//! fallen connection lost is a 502 and no reset, the origin hearing each
+//! once, an origin out of reach is said as a 502 or a 504 without queueing, a
 //! connection that won't open isn't asked for again on every request, nor
 //! does a failure outlast the origin coming back, the relay leaves once
 //! idle but never mid-answer, even while refusing other hosts, its socket
@@ -67,6 +69,17 @@ const LOOK_EVERY: Duration = Duration::from_millis(20);
 /// How far apart the tests that ask over a stretch of time ask, close
 /// enough that a relay counting the asks would never see quiet.
 const ASK_EVERY: Duration = Duration::from_millis(100);
+
+/// How many requests for `path` the origin was handed.
+fn handed_to(origin: &Origin, path: &str) -> usize {
+    origin
+        .handed
+        .lock()
+        .expect("the origin's record")
+        .iter()
+        .filter(|handed| handed.uri.ends_with(path))
+        .count()
+}
 
 /// What the origin was handed, one request at a time.
 #[derive(Clone, Debug)]
@@ -680,6 +693,15 @@ async fn a_request_the_origin_resets_is_a_502_and_retires_its_connection() {
         "the reset, or the connection it came on, went unsaid: {said}"
     );
     assert!(
+        said.contains("connection 0.1 opened"),
+        "the connection opened after the reset went unsaid by its number: {said}"
+    );
+    assert_eq!(
+        handed_to(&origin, "/reset"),
+        1,
+        "the origin heard a request it reset more than once"
+    );
+    assert!(
         !said.contains("sekrit"),
         "the relay logged a header or a body: {said}"
     );
@@ -691,12 +713,22 @@ async fn a_connection_that_falls_mid_request_is_a_502_and_no_reset() {
     let host = origin.address.to_string();
     let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
 
-    let got = ask(&relay.socket, request(&host, "/drop", SECRET_BODY)).await;
+    let mut asked = request(&host, "/drop", SECRET_BODY);
+    asked
+        .headers_mut()
+        .insert("authorization", SECRET_TOKEN.parse().expect("a value"));
+
+    let got = ask(&relay.socket, asked).await;
 
     assert_eq!(
         got.status,
         StatusCode::BAD_GATEWAY,
         "a request its connection lost"
+    );
+    assert_eq!(
+        handed_to(&origin, "/drop"),
+        1,
+        "the origin heard a request its connection lost more than once"
     );
     let said = relay.said();
     assert!(
