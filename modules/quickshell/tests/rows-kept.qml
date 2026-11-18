@@ -289,13 +289,19 @@ QtObject {
         for (const [what, back, down, tall, from] of cases)
             Expect.same(what, RowsKept.splitFrom(back, down, tall), from);
         const whole = count => [{ insert: 0, keys: Array.from({ length: count }, (_, at) => at) }];
+        // The steps putting rows in, as keep() takes them from steps().
+        const putting = (was, now) => RowsKept.steps(was, now, 8)
+            .filter(one => one.remove === undefined);
         // [what, the steps putting rows in, how many rows the list holds, afresh]
         const puts = [
             ["one run of all the rows is the list afresh", whole(30), 30, true],
             ["a run short of the list isn't", whole(20), 30, false],
-            ["nor all the rows put in two runs", [{ insert: 0, keys: [0] }, { insert: 1,
-                keys: [1, 2] }], 3, false],
-            ["nor a row moved alone", [{ move: 2, to: 0 }], 3, false]
+            ["nor a row moved alone", [{ move: 2, to: 0 }], 3, false],
+            ["rows into an empty list are", putting([], ["a", "b", "c"]), 3, true],
+            ["so are rows sharing none with those they replace",
+                putting(["x", "y"], ["a", "b", "c"]), 3, true],
+            ["rows keeping one of those before aren't",
+                putting(["b"], ["a", "b", "c"]), 3, false]
         ];
         for (const [what, steps, count, afresh] of puts)
             Expect.same(what, RowsKept.allAfresh(steps, count), afresh);

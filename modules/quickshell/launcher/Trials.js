@@ -137,6 +137,19 @@ function steppedMaking(making, split) {
     return ` (${each.map(([name, ms]) => `${name} ${ms}`).join(", ")})`;
 }
 
+// The rows a laying drew, where it drew any, and where a step back out
+// split a list put in afresh (Launcher.qml's keep), the row it put them in
+// from and how much of the laying that took, so a slow step back says
+// whether the split or the layout after it spent the time.
+function keptSaid(kept) {
+    const rows = (kept.built ?? 0) + (kept.reused ?? 0) > 0
+        ? `: ${kept.built} rows built, ${kept.reused} taken back` : "";
+    const split = (kept.split?.from ?? 0) > 0
+        ? `, ${Math.round(kept.split.took)} of it putting them in from row ${kept.split.from} up`
+        : "";
+    return rows + split;
+}
+
 // How long a showing's rows spent reading what each program holds, as
 // their counts and notes are drawn, beside its weighing: Programs showed
 // 20 new rows in 132 ms under load, 54 of them weighing and 20 laying out,

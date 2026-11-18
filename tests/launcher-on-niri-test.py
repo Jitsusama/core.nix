@@ -2119,7 +2119,9 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
     ms, 41 of it after the rows were shown (his journal, 2026-11-17 16:39:52). Sixteen down is
     twice the rows a card shows, as far as the twenty rows the shell says of its list. The rows it
     draws are counted the second time, as the first may build what the notices never showed, and
-    held to those drawn while the row was selected before, not to those it drew itself.
+    held to those drawn while the row was selected before, not to those it drew itself. The
+    selection moves down the drawer first, as a search coming back selects its first row and
+    showing that one scrolled to the list's top.
     """
     # Each rests at once, so the line has none left to show by the last.
     with shell.told(f"rests Heron {NOTICES_MANY - 1:02}", timedelta(seconds=90)):
@@ -2143,8 +2145,14 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
         far = shell.showing()["rows"][NOTICES_DOWN]
         shell.down_to(far)
         standing = laid_out(shell)
+        # Else the list's top is in reach, and the case can't tell a split from none.
+        assert standing["firstAt"] is None, f"the first row was drawn with {far}: {standing}"
         # Into its drawer, nothing that sent it being there to go to (PastNotices.qml).
         shell.step_in()
+        inside = shell.showing()["rows"]
+        # Else the selection can't move off the drawer's first row.
+        assert len(inside) > 1, f"{far}'s drawer holds {inside}"
+        shell.down_to(inside[-1])
         laid = laid_out(shell)
         before = int(laid["drawn"])
         depth = len(shell.showing()["held"])
@@ -2155,6 +2163,11 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
         was, now = band_of(standing, far), band_of(laid, far)
         assert was is not None, f"{far} wasn't drawn before stepping in"
         assert now == was, f"- back put {far} at {now}, not at {was} where it stood"
+        assert (laid["selection"] or {}).get("row") == now, f"{far} isn't lit: {laid['selection']}"
+        for row in laid["rows"]:
+            name = row["reads"].split(" \u00b7 ")[0]
+            texts = {word["text"] for word in row["words"]}
+            assert name in texts, f"{row['is']} doesn't say {name}: {sorted(texts)}"
         shell.close_launcher()
     # The rows drawn around the row before, the one built ahead each way among them.
     reach = len(standing["rows"])

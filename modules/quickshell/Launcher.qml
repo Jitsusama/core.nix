@@ -4986,7 +4986,7 @@ Scope {
     // lands on none, as on the line, or isn't a step back out: the list
     // goes to its beginning then, as for any search.
     function backRow() {
-        return backTo === null ? -1 : leftAt(backTo, matches);
+        return backTo === null || matches.length === 0 ? -1 : leftAt(backTo, matches);
     }
     readonly property var offered: held.length > 0 ? held[held.length - 1].rows : []
 
@@ -7569,7 +7569,11 @@ Scope {
         }
         currentWas = current;
         list.pick();
-        if (current >= 0)
+        // A step back out's search selects its first row, or the line,
+        // after keep() has laid the rows out at the row it lands on:
+        // showing that one would scroll to the list's top and lay them out
+        // there too, and reselect stands the row it lands on anyway.
+        if (current >= 0 && backTo === null)
             list.reveal(current);
     }
 
@@ -13472,7 +13476,7 @@ Scope {
                                 // after, every row of a step in from home
                                 // was laid out again for it.
                                 root.rowsPlaced(false);
-                                const back = root.backTo === null ? -1
+                                const back = root.backTo === null || rows.length === 0 ? -1
                                     : root.leftAt(root.backTo, rows);
                                 const puts = steps.filter(one => one.remove === undefined);
                                 const from = back > 0 && RowsKept.allAfresh(puts, rows.length)
@@ -13553,7 +13557,7 @@ Scope {
                                     fresh: steps.reduce((all, step) => all
                                         + (step.keys ?? []).length, 0),
                                     laying: Date.now() - laying + aside + split,
-                                    split: from,
+                                    split: { from, took: split },
                                     built: root.rowsBuilt - built,
                                     reused: root.rowsDrawn - drawn - (root.rowsBuilt - built)
                                 };
