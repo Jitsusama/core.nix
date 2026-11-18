@@ -612,9 +612,8 @@ Scope {
                         // - back to the list from a thread, its line still picked.
                         onBackward: root.openedSince = 0
                         onTextChanged: root.typed()
-                        // Kept as the caret moves and as i or I types where
-                        // it rests (Launcher.qml's talk says why).
                         onCaretChanged: root.typed()
+                        // And as i or I types where it rests (Launcher.qml's talk says why).
                         onTypingNowChanged: root.typed()
                         onCommanded: range => {
                             root.commanding = true;
