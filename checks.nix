@@ -23,7 +23,7 @@ let
   inherit (pkgs) lib;
 
   # The least machine of each class with the given modules added, and the
-  # check that one evaluates and warns of nothing, from what core gives a
+  # check that one evaluates and no module warns, from what core gives a
   # repository built on it (tests/lib/bare-nixos.nix, bare-darwin.nix and
   # evaluates.nix).
   bareNixos = modules: nixpkgs.lib.nixosSystem { modules = [ self.lib.bareNixosModule ] ++ modules; };

@@ -3,7 +3,10 @@
 # home-manager and nixpkgs' settings, which every machine has, and one
 # account, someone, for home-manager to configure, so the home half of a role
 # or module is evaluated too. A check calls `nixpkgs.lib.nixosSystem` with it
-# and the modules it checks, since core builds no machine itself.
+# and the modules it checks, since core builds no machine itself. It is only
+# for checks, never a machine's base: it allows unfree packages, as core's
+# nixpkgs settings do, and its account has no password. Its platform, boot
+# loader and disk are defaults, so a module checked on it may set its own.
 { self }:
 { lib, ... }:
 {
@@ -12,9 +15,8 @@
     self.nixosModules.nixpkgs
   ];
 
-  nixpkgs.hostPlatform = "x86_64-linux";
-  boot.loader.grub.enable = false;
-  # A module that lays out the disk replaces this.
+  nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
+  boot.loader.grub.enable = lib.mkDefault false;
   fileSystems."/" = lib.mkDefault {
     device = "none";
     fsType = "tmpfs";

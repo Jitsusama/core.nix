@@ -26,24 +26,68 @@ in
         touch $out
       '';
 
-  # The other half of core.lib.evaluates, which every machine core checks
-  # passes: a machine that warns fails it, saying the warning.
-  a-machine-that-warns-fails-to-evaluate =
+  # The halves of core.lib.evaluates that every machine core checks passes,
+  # and that a repository built on core relies on: a machine that warns
+  # fails it, saying the check and each warning, and so does one that
+  # doesn't evaluate.
+  evaluates-refuses-a-machine-that-warns =
     let
-      warning = "a setting here does nothing";
+      said = [
+        "warning-machine warns:"
+        "a setting here does nothing"
+        "another does nothing either"
+      ];
       failed = pkgs.testers.testBuildFailure (
-        evaluates "warning-machine" (bareNixos [ { warnings = [ warning ]; } ])
+        evaluates "warning-machine" (bareNixos [
+          {
+            warnings = [
+              "a setting here does nothing"
+              "another does nothing either"
+            ];
+          }
+        ])
       );
     in
-    pkgs.runCommandLocal "a-machine-that-warns-fails-to-evaluate" { } ''
-      if ! grep -qF ${pkgs.lib.escapeShellArg "warning-machine warns: ${warning}"} \
-        ${failed}/testBuildFailure.log; then
-        echo "evaluates failed without naming the warning; its log:"
-        cat ${failed}/testBuildFailure.log
-        exit 1
-      fi
+    # Kept in Nix because it only looks for the words set just above in the
+    # failed build's log, which a file of its own would take back as
+    # arguments.
+    pkgs.runCommandLocal "evaluates-refuses-a-machine-that-warns" { } ''
+      for words in ${pkgs.lib.escapeShellArgs said}; do
+        if ! grep -qF "$words" ${failed}/testBuildFailure.log; then
+          echo "evaluates failed without saying '$words'; its log:"
+          cat ${failed}/testBuildFailure.log
+          exit 1
+        fi
+      done
       touch $out
     '';
+
+  # A failed assertion throws as the machine evaluates, before anything is
+  # built, so tryEval is what sees evaluates refuse it.
+  evaluates-refuses-a-machine-that-fails =
+    let
+      tried =
+        builtins.tryEval
+          (evaluates "failing-machine" (bareNixos [
+            {
+              assertions = [
+                {
+                  assertion = false;
+                  message = "a setting here is wrong";
+                }
+              ];
+            }
+          ])).drvPath;
+    in
+    pkgs.runCommandLocal "evaluates-refuses-a-machine-that-fails" { } (
+      if tried.success then
+        ''
+          echo "evaluates passed a machine whose assertion fails"
+          exit 1
+        ''
+      else
+        "touch $out"
+    );
 }
 # The qemu wrapper waits on its sockets with inotify, which only Linux has.
 // onLinux {

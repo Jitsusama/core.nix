@@ -664,7 +664,8 @@
       # add a module to, for a repository built on core to check its own
       # modules the same way: it calls `nixosSystem` or `darwinSystem` with
       # the bare module and its own, and `core.lib.evaluates pkgs name
-      # machine` is a check that the machine evaluates and warns of nothing.
+      # machine` is a check that the machine evaluates and no module warns.
+      # The bare modules are for checks only, never a machine's base.
       lib.bareNixosModule = moduleFrom ./tests/lib/bare-nixos.nix { inherit self; };
       lib.bareDarwinModule = moduleFrom ./tests/lib/bare-darwin.nix { inherit self; };
       lib.evaluates = pkgs: pkgs.callPackage ./tests/lib/evaluates.nix { };

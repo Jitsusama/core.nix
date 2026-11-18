@@ -36,13 +36,14 @@ For other checks:
 | `page.nix`                   | the smallest PDF a viewer opens, for checks that open documents   |
 | `bare-nixos.nix`             | the least NixOS machine, as a module a check adds others to       |
 | `bare-darwin.nix`            | the least nix-darwin machine, as a module a check adds others to  |
-| `evaluates.nix`              | the check that a machine evaluates and warns of nothing           |
+| `evaluates.nix`              | the check that a machine evaluates and no module warns            |
 
 Those three are also core's exports `core.lib.bareNixosModule`,
 `core.lib.bareDarwinModule` and `core.lib.evaluates`, so a repository built
 on core checks its own modules on the same machines. `checks.nix` here holds
-the one check `evaluates` has of its own, that a machine that warns fails
-it; the rest are proven by every machine core's checks evaluate.
+the checks `evaluates` has of its own, that a machine that warns fails it and
+one that doesn't evaluate does too; the rest are proven by every machine
+core's checks evaluate.
 
 What belongs here is shared by more than one check. A helper one check needs
 stays in that check's own files.

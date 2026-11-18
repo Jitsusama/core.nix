@@ -97,10 +97,6 @@
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
-  a-machine-that-warns-fails-to-evaluate = ''
-    core.lib.evaluates fails on a bare machine that warns, and its log names the machine and the
-    warning
-  '';
   a-notice-comes-forward = ''
     once a notice is opened, its sender's window comes forward, the one used last, unless one of
     its own is in front already or it has none open
@@ -928,6 +924,13 @@
   '';
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux
+  '';
+  evaluates-refuses-a-machine-that-fails = ''
+    core.lib.evaluates refuses a bare machine whose assertion fails, as it evaluates
+  '';
+  evaluates-refuses-a-machine-that-warns = ''
+    core.lib.evaluates fails on a bare machine with two warnings, and its log names the check
+    and each warning
   '';
   every-assert-says-what-was-wrong = ''
     every Rust assert! and every Python assert of anything but a comparison carries a message

@@ -50,15 +50,23 @@ It checks each module alone, as core checks its own, so one that quietly
 needs another fails in its checks rather than on a machine.
 `core.lib.bareNixosModule` and `core.lib.bareDarwinModule` are the least
 machine of each class, with one account, `someone`, for the check to add the
-module to, and `core.lib.evaluates` is a check that a machine evaluates and
-warns of nothing:
+module to. They are for checks only, never a machine's base: they allow
+unfree packages and the account has no password. Their platform, boot loader
+and disk are defaults a checked module may replace. `core.lib.evaluates` is a
+check that a machine evaluates and no module warns. The module is given
+`core` through `importApply`, as core gives its own, so an error names its
+file:
 
 ```nix
 home-on-nixos-personal = core.lib.evaluates pkgs "home-on-nixos-personal" (
   nixpkgs.lib.nixosSystem {
     modules = [
       core.lib.bareNixosModule
-      { home-manager.users.someone.imports = [ (import ./personal/home.nix { inherit core; }) ]; }
+      {
+        home-manager.users.someone.imports = [
+          (nixpkgs.lib.modules.importApply ./personal/home.nix { inherit core; })
+        ];
+      }
     ];
   }
 );
