@@ -63,9 +63,15 @@
   # whatever it finds there first. On 17 November a private bus an agent
   # ran for a test started one twice, and Joel's portal stayed down for 9
   # and 6 minutes after it noticed, until something asked for it again.
-  # It comes back in a second, with the mount.
-  systemd.user.services.xdg-document-portal.serviceConfig = {
-    Restart = "on-failure";
-    RestartSec = "1s";
+  # It comes back in a second, with the mount. Declaring the unit here
+  # would also give it NixOS's short PATH, without /run/wrappers/bin, where
+  # the fusermount3 it unmounts and mounts with lives, so the manager's PATH
+  # is kept.
+  systemd.user.services.xdg-document-portal = {
+    environment.PATH = lib.mkForce null;
+    serviceConfig = {
+      Restart = "on-failure";
+      RestartSec = "1s";
+    };
   };
 }

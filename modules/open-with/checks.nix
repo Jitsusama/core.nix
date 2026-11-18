@@ -107,6 +107,21 @@ onLinux {
         && lib.hasInfix "org.freedesktop.impl.portal.FileChooser;" described
       );
 
+  # A graphical machine's document portal starts again a second after it
+  # fails, as when another portal took its mount (nixos.nix), and its unit
+  # sets no PATH of NixOS's, which would hide fusermount3 in the wrappers.
+  the-document-portal-comes-back =
+    let
+      unit = graphical.config.systemd.user.units."xdg-document-portal.service".text;
+    in
+    holds "the-document-portal-comes-back"
+      "A graphical machine's document portal doesn't start again a second after it fails, or its unit hides the fusermount3 it mounts with."
+      (
+        lib.hasInfix "Restart=on-failure" unit
+        && lib.hasInfix "RestartSec=1s" unit
+        && !lib.hasInfix "PATH=" unit
+      );
+
   # xdg-open opens a kind by the kinds it's a case of, in its declared
   # program, and a program that runs in a terminal in the terminal named for
   # it: markdown in the editor declared for text, in the terminal, and a
