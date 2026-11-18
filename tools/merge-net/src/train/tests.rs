@@ -1,11 +1,10 @@
 //! What the train does, case by case, the git cases against repositories
 //! of their own.
 
-use super::hub::Hub;
 use super::*;
 
 /// A state folder of the test's own.
-fn root(name: &str) -> PathBuf {
+pub(super) fn root(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("merge-net-train-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     root
@@ -363,7 +362,7 @@ fn a_merge_is_worded_as_githubs_merge_button_words_it() {
 
 /// Git in `repo` with no user's or system's config, as the other
 /// modules' tests run it, giving what it printed or why it failed.
-fn git_in(repo: &Path, arguments: &[&str]) -> Result<String, String> {
+pub(super) fn git_in(repo: &Path, arguments: &[&str]) -> Result<String, String> {
     let ran = Command::new("git")
         .arg("-C")
         .arg(repo)
@@ -384,7 +383,7 @@ fn git_in(repo: &Path, arguments: &[&str]) -> Result<String, String> {
 }
 
 /// A repository at `repo` holding one commit on main, which it gives.
-fn based(repo: &Path) -> String {
+pub(super) fn based(repo: &Path) -> String {
     fs::create_dir_all(repo).unwrap();
     git_in(repo, &["init", "--quiet", "-b", "main"]).unwrap();
     fs::write(repo.join("shared"), "main\n").unwrap();
@@ -394,7 +393,7 @@ fn based(repo: &Path) -> String {
 }
 
 /// Commit `words` as `file` in `repo` on `from`, giving the commit.
-fn change(repo: &Path, from: &str, file: &str, words: &str) -> String {
+pub(super) fn change(repo: &Path, from: &str, file: &str, words: &str) -> String {
     git_in(repo, &["checkout", "--quiet", "--detach", from]).unwrap();
     fs::write(repo.join(file), words).unwrap();
     git_in(repo, &["add", file]).unwrap();
@@ -402,277 +401,13 @@ fn change(repo: &Path, from: &str, file: &str, words: &str) -> String {
     git_in(repo, &["rev-parse", "HEAD"]).unwrap()
 }
 
-fn merging(head: &str, number: u64) -> Merging {
+pub(super) fn merging(head: &str, number: u64) -> Merging {
     Merging {
         number,
         head: head.to_owned(),
         subject: subject(number, "o", head),
         title: format!("change {number}"),
     }
-}
-
-/// GitHub as the train asks it, merging and reverting pull requests in a
-/// clone of the test's origin, and noting each ask.
-struct Fake {
-    clone: PathBuf,
-    asked: std::cell::RefCell<Vec<String>>,
-    /// The pull request whose merge GitHub refuses.
-    refuses: Option<u64>,
-    /// The pull request before whose merge another change lands on main.
-    moved_before: Option<u64>,
-}
-
-impl Fake {
-    fn of(place: &Path, origin: &Path) -> Self {
-        let clone = place.join("github");
-        let (from, to) = (origin.display().to_string(), clone.display().to_string());
-        git_in(place, &["clone", "--quiet", &from, &to]).unwrap();
-        Self {
-            clone,
-            asked: std::cell::RefCell::default(),
-            refuses: None,
-            moved_before: None,
-        }
-    }
-
-    /// Git in the clone, on origin's main as it stands.
-    fn on_main(&self) -> Result<(), String> {
-        git_in(&self.clone, &["fetch", "--quiet", "origin"])?;
-        git_in(
-            &self.clone,
-            &["checkout", "--quiet", "-B", "main", "origin/main"],
-        )
-        .map(|_| ())
-    }
-
-    fn push(&self) -> Result<(), String> {
-        git_in(&self.clone, &["push", "--quiet", "origin", "main"]).map(|_| ())
-    }
-}
-
-impl Hub for Fake {
-    fn merge(&self, merging: &Merging) -> Result<(), String> {
-        self.asked
-            .borrow_mut()
-            .push(format!("merge {}", merging.number));
-        if self.refuses == Some(merging.number) {
-            return Err("Pull Request is not mergeable".to_owned());
-        }
-        self.on_main()?;
-        if self.moved_before == Some(merging.number) {
-            fs::write(self.clone.join("elsewhere"), "theirs\n").unwrap();
-            git_in(&self.clone, &["add", "elsewhere"])?;
-            git_in(&self.clone, &["commit", "--quiet", "-m", "elsewhere"])?;
-            self.push()?;
-        }
-        git_in(
-            &self.clone,
-            &[
-                "merge",
-                "--quiet",
-                "--no-ff",
-                "-m",
-                &merging.subject,
-                "-m",
-                &merging.title,
-                // GitHub's merge is a commit of its own, not the
-                // candidate's, though its tree is the same.
-                "-m",
-                "Merged by GitHub",
-                &merging.head,
-            ],
-        )?;
-        self.push()
-    }
-
-    fn revert(&self, number: u64) -> Result<(), String> {
-        self.asked.borrow_mut().push(format!("revert {number}"));
-        self.on_main()?;
-        let merge = git_in(
-            &self.clone,
-            &[
-                "log",
-                "-1",
-                "--format=%H",
-                "--fixed-strings",
-                "--grep",
-                &format!("Merge pull request #{number} "),
-            ],
-        )?;
-        git_in(&self.clone, &["revert", "--no-edit", "-m", "1", &merge])?;
-        self.push()
-    }
-}
-
-/// A checkout and the bare origin it pushes to, under a folder named
-/// `name`, both on one commit of main, which it gives last.
-fn hubbed(name: &str) -> (PathBuf, PathBuf, PathBuf, String) {
-    let place = root(name);
-    let (origin, checkout) = (place.join("origin.git"), place.join("checkout"));
-    let base = based(&checkout);
-    let url = origin.display().to_string();
-    git_in(&place, &["init", "--quiet", "--bare", "-b", "main", &url]).unwrap();
-    git_in(&checkout, &["remote", "add", "origin", &url]).unwrap();
-    git_in(&checkout, &["push", "--quiet", "origin", "main"]).unwrap();
-    git_in(&checkout, &["fetch", "--quiet", "origin", "main"]).unwrap();
-    (place, origin, checkout, base)
-}
-
-/// A rider's change of `file` on `base`, pushed as pull request
-/// `number`'s branch, as a change on GitHub is.
-fn proposed(checkout: &Path, base: &str, file: &str, number: u64) -> String {
-    let head = change(checkout, base, file, &format!("{file}\n"));
-    let branch = format!("{head}:refs/heads/pull-{number}");
-    git_in(checkout, &["push", "--quiet", "origin", &branch]).unwrap();
-    head
-}
-
-/// The tree `commit` holds in `repo`.
-fn tree(repo: &Path, commit: &str) -> String {
-    git_in(repo, &["rev-parse", &format!("{commit}^{{tree}}")]).unwrap()
-}
-
-/// Two riders, pull requests 1 and 2, cut into a candidate on main by
-/// the test's `name`, with what landing them through `hub` did.
-fn landed_by(name: &str, hub: impl FnOnce(&Path, &Path) -> Fake) -> Landed {
-    let (place, origin, checkout, base) = hubbed(name);
-    let git = |arguments: &[&str]| git_in(&checkout, arguments);
-    let one = proposed(&checkout, &base, "one", 1);
-    let two = proposed(&checkout, &base, "two", 2);
-    let riding = [merging(&one, 1), merging(&two, 2)];
-    let done = cut(&git, &base, &riding).unwrap();
-    let candidate = git(&["rev-parse", "HEAD"]).unwrap();
-    let hub = hub(&place, &origin);
-    let landing = land(
-        &checkout,
-        &git,
-        &hub,
-        &base,
-        &candidate,
-        &riding,
-        &done.merged,
-    );
-    let main = git_in(&origin, &["rev-parse", "main"]).unwrap();
-    let landed = Landed {
-        landing,
-        asked: hub.asked.take(),
-        main_tree: tree(&origin, &main),
-        tested_tree: tree(&checkout, &candidate),
-        first_tree: tree(&checkout, &format!("{candidate}^")),
-        holds: ["one", "two", "elsewhere"]
-            .into_iter()
-            .filter(|file| git_in(&origin, &["cat-file", "-e", &format!("main:{file}")]).is_ok())
-            .collect(),
-        main,
-        one,
-        candidate,
-        base,
-    };
-    fs::remove_dir_all(&place).unwrap();
-    landed
-}
-
-/// What landing two riders did: how it went, what GitHub was asked,
-/// origin's main after, and the trees to judge it by.
-struct Landed {
-    landing: Landing,
-    asked: Vec<String>,
-    main: String,
-    main_tree: String,
-    tested_tree: String,
-    /// The candidate's tree after its first rider's merge alone.
-    first_tree: String,
-    /// Which of the riders' files, and another change's, main holds.
-    holds: Vec<&'static str>,
-    one: String,
-    candidate: String,
-    base: String,
-}
-
-#[test]
-fn a_passed_candidate_lands_through_githubs_merges() {
-    let landed = landed_by("github-merges", Fake::of);
-    assert_eq!(
-        landed.landing,
-        Landing::Landed(landed.main.clone()),
-        "a passed candidate on a main that stood still didn't land as GitHub's merges"
-    );
-    assert_eq!(
-        landed.asked,
-        ["merge 1", "merge 2"],
-        "GitHub wasn't asked to merge each rider, in the order the candidate did"
-    );
-    assert_ne!(
-        landed.main, landed.candidate,
-        "the train pushed its own candidate to main, whose key main doesn't trust"
-    );
-    assert_eq!(
-        landed.main_tree, landed.tested_tree,
-        "main's tree after GitHub's merges isn't the one the train tested"
-    );
-}
-
-#[test]
-fn githubs_merges_onto_a_main_that_moved_are_reverted() {
-    let landed = landed_by("github-moved", |place, origin| Fake {
-        moved_before: Some(2),
-        ..Fake::of(place, origin)
-    });
-    assert!(
-        matches!(landed.landing, Landing::Reverted(_)),
-        "merges onto a main the train didn't test were kept: {:?}",
-        landed.landing
-    );
-    assert_eq!(
-        landed.asked,
-        ["merge 1", "merge 2", "revert 2", "revert 1"],
-        "each merge the train made wasn't reverted, the newest first"
-    );
-    assert_eq!(
-        landed.holds,
-        ["elsewhere"],
-        "main after the reverts doesn't hold just the other change"
-    );
-}
-
-#[test]
-fn a_first_merge_github_refuses_leaves_main_alone() {
-    let landed = landed_by("github-refuses", |place, origin| Fake {
-        refuses: Some(1),
-        ..Fake::of(place, origin)
-    });
-    assert!(
-        matches!(landed.landing, Landing::Refused(_)),
-        "a merge GitHub refused didn't fall back: {:?}",
-        landed.landing
-    );
-    assert_eq!(
-        landed.asked,
-        ["merge 1"],
-        "the train went on, or reverted, after GitHub refused its first merge"
-    );
-    assert_eq!(landed.main, landed.base, "main moved though nothing merged");
-}
-
-#[test]
-fn the_riders_merged_before_one_github_refuses_land() {
-    let landed = landed_by("github-partly", |place, origin| Fake {
-        refuses: Some(2),
-        ..Fake::of(place, origin)
-    });
-    assert_eq!(
-        landed.landing,
-        Landing::Partly {
-            landed: landed.main.clone(),
-            heads: vec![landed.one.clone()],
-            why: "Pull Request is not mergeable".to_owned(),
-        },
-        "the rider GitHub merged before refusing the next didn't land alone"
-    );
-    assert_eq!(
-        landed.main_tree, landed.first_tree,
-        "main's tree isn't the candidate's after its first merge"
-    );
 }
 
 #[test]

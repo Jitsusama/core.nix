@@ -13,18 +13,17 @@ use crate::state::short;
 /// How a passed candidate's landing went.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Landing {
-    /// It landed as this commit.
+    /// It landed as this commit, the train's last merge.
     Landed(String),
-    /// Its first riders, `heads`, landed as `landed`; GitHub refused the
-    /// next for `why`.
-    Partly {
-        landed: String,
-        heads: Vec<String>,
+    /// What GitHub merged wasn't what the train tested, for `why`, so it
+    /// reverted its merges, the newest first: each rider's head beside
+    /// the pull request that reverted it, and, when a revert failed, the
+    /// heads of the merges it couldn't revert, left on main.
+    Reverted {
+        reverted: Vec<(String, u64)>,
+        kept: Vec<String>,
         why: String,
     },
-    /// What GitHub merged wasn't what the train tested, for this reason,
-    /// so it reverted every merge it made.
-    Reverted(String),
     /// Main moved beside it, so its riders ride the next run.
     Moved,
     /// Main refused it for this reason, though main stood still.
@@ -117,7 +116,7 @@ fn through(
     let mut refused = None;
     for merging in riding {
         match hub.merge(merging) {
-            Ok(()) => made.push(merging),
+            Ok(_) => made.push(merging),
             Err(why) => {
                 refused = Some(why);
                 break;
@@ -134,14 +133,10 @@ fn through(
         let (now, then) = (tree_of(&format!("{main}^{{tree}}")), tree_of(&tested));
         now.is_some() && now == then
     });
-    match (main, refused) {
-        (Some(main), None) if same => Landing::Landed(main),
-        (Some(landed), Some(why)) if same => Landing::Partly {
-            landed,
-            heads: made.iter().map(|merging| merging.head.clone()).collect(),
-            why,
-        },
-        (main, _) => {
+    match main {
+        Some(main) if same => Landing::Landed(main),
+        main => {
+            let mut reverted = Vec::new();
             let mut why = main.map_or_else(
                 || "origin's main couldn't be read after GitHub's merges".to_owned(),
                 |main| {
@@ -154,14 +149,21 @@ fn through(
                 },
             );
             for merging in made.iter().rev() {
-                if let Err(error) = hub.revert(merging.number) {
-                    why = format!("{why}, and reverting #{} failed: {error}", merging.number);
-                    eprintln!("merge-net: {why}");
-                    break;
+                match hub.revert(merging) {
+                    Ok(number) => reverted.push((merging.head.clone(), number)),
+                    Err(error) => {
+                        why = format!("{why}, and reverting #{} failed: {error}", merging.number);
+                        eprintln!("merge-net: {why}");
+                        break;
+                    }
                 }
             }
             println!("merge-net: {why}, so the train reverted its merges");
-            Landing::Reverted(why)
+            Landing::Reverted {
+                reverted,
+                kept: Vec::new(),
+                why,
+            }
         }
     }
 }
@@ -190,3 +192,6 @@ fn still_passes(checkout: &Path, candidate: &str, main: &str) -> bool {
         )
     })
 }
+
+#[cfg(test)]
+mod tests;

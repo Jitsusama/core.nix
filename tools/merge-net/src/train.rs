@@ -516,25 +516,25 @@ fn after_landing(
             way(root, &Ended::Moved);
             return;
         }
-        Landing::Partly { landed, heads, why } => {
-            for head in &heads {
-                alight(root, head);
-            }
-            keep_landed(root, &landed, &heads, crate::state::now() - began);
-            println!(
-                "merge-net: the train landed {} of {} riders on main at {}",
-                heads.len(),
-                merged.len(),
-                short(&landed)
-            );
-            for head in merged.iter().filter(|head| !heads.contains(head)) {
-                let _ = fall(root, head, &format!("GitHub didn't merge it: {why}"));
+        Landing::Reverted {
+            reverted,
+            kept,
+            why,
+        } => {
+            for head in merged {
+                let said = if let Some((_, revert)) = reverted.iter().find(|(at, _)| at == head) {
+                    format!(
+                        "the train reverted its merge, as {why}; its pull request reads merged, \
+                         so it lands again only through a revert of #{revert}, GitHub's revert"
+                    )
+                } else if kept.contains(head) {
+                    format!("its merge stays on main though no gate ran that tree, as {why}")
+                } else {
+                    format!("the train stopped before merging it, as {why}")
+                };
+                let _ = fall(root, head, &said);
             }
         }
-        Landing::Reverted(why) => falls(&format!(
-            "the train's merges were reverted: {why}; its pull request reads merged, so it \
-             goes to main again only proposed again"
-        )),
         Landing::Refused(why) => falls(&format!("the train couldn't reach main: {why}")),
     }
     way(root, &Ended::Otherwise);

@@ -3,27 +3,35 @@
 //! or a test's stand-in.
 
 use std::process::Command;
+use std::time::Duration;
 
 use serde_json::Value;
 
-use super::Merging;
+use super::{Merging, subject};
 
 /// Where a passed candidate's riders merge: GitHub, whose merges main
 /// trusts by its own key, or a test's stand-in.
 pub trait Hub {
-    /// Merge `merging`'s pull request at its head, worded as it says.
+    /// Merge `merging`'s pull request at its head, worded as it says,
+    /// giving the merge's commit.
     ///
     /// # Errors
     ///
     /// Why the merge was refused.
-    fn merge(&self, merging: &Merging) -> Result<(), String>;
+    fn merge(&self, merging: &Merging) -> Result<String, String>;
 
-    /// Revert pull request `number`'s merge on main.
+    /// The merge's commit of pull request `number`, once it reads merged,
+    /// as a merge whose answer was lost may have landed all the same.
+    fn merged(&self, number: u64) -> Option<String>;
+
+    /// Revert `merging`'s merge on main through a pull request of its
+    /// own, merged, giving that pull request's number.
     ///
     /// # Errors
     ///
-    /// Why the revert didn't land.
-    fn revert(&self, number: u64) -> Result<(), String>;
+    /// Why the revert didn't land, naming its pull request if one was
+    /// opened and left open.
+    fn revert(&self, merging: &Merging) -> Result<u64, String>;
 }
 
 /// GitHub, for the repository `slug`, through `gh` and its own login.
@@ -32,7 +40,7 @@ pub struct GitHub {
 }
 
 impl Hub for GitHub {
-    fn merge(&self, merging: &Merging) -> Result<(), String> {
+    fn merge(&self, merging: &Merging) -> Result<String, String> {
         merge_at(
             &self.slug,
             merging.number,
@@ -42,7 +50,19 @@ impl Hub for GitHub {
         )
     }
 
-    fn revert(&self, number: u64) -> Result<(), String> {
+    fn merged(&self, number: u64) -> Option<String> {
+        let read = gh(&[
+            "api",
+            &format!("repos/{}/pulls/{number}", self.slug),
+            "--jq",
+            "select(.merged) | .merge_commit_sha",
+        ])
+        .ok()?;
+        (!read.is_empty()).then_some(read)
+    }
+
+    fn revert(&self, merging: &Merging) -> Result<u64, String> {
+        let number = merging.number;
         let node = gh(&[
             "api",
             &format!("repos/{}/pulls/{number}", self.slug),
@@ -54,7 +74,7 @@ impl Hub for GitHub {
             "graphql",
             "-f",
             "query=mutation($id: ID!) { revertPullRequest(input: {pullRequestId: $id}) \
-             { revertPullRequest { number headRefOid title } } }",
+             { revertPullRequest { number headRefOid headRefName title } } }",
             "-f",
             &format!("id={node}"),
             "--jq",
@@ -62,26 +82,46 @@ impl Hub for GitHub {
         ])?;
         let opened: Value = serde_json::from_str(&opened)
             .map_err(|error| format!("GitHub's revert of #{number} read as {error}"))?;
-        let (Some(reverting), Some(head), Some(title)) = (
+        let (Some(reverting), Some(head), Some(branch), Some(title)) = (
             opened["number"].as_u64(),
             opened["headRefOid"].as_str(),
+            opened["headRefName"].as_str(),
             opened["title"].as_str(),
         ) else {
             return Err(format!("GitHub opened no revert of #{number}: {opened}"));
         };
-        merge_at(
-            &self.slug,
-            reverting,
-            head,
-            &format!("Revert #{number}, whose merge the train didn't test"),
-            title,
-        )
+        let owner = self.slug.split('/').next().unwrap_or_default();
+        let worded = subject(reverting, owner, branch);
+        let mut tried = 0;
+        loop {
+            tried += 1;
+            match merge_at(&self.slug, reverting, head, &worded, title) {
+                Ok(_) => return Ok(reverting),
+                Err(error) if tried >= REVERT_TRIES => {
+                    return Err(format!(
+                        "GitHub's revert, pull request #{reverting}, stays open: {error}"
+                    ));
+                }
+                // GitHub works out whether a pull request just opened can
+                // merge a moment after it opens, refusing it until then.
+                Err(_) => std::thread::sleep(Duration::from_secs(2)),
+            }
+        }
     }
 }
 
+/// How many times a revert's pull request is asked to merge.
+const REVERT_TRIES: u32 = 6;
+
 /// Merge pull request `number` of `slug` at `head` through GitHub's merge,
-/// as `subject` and `title` word it.
-fn merge_at(slug: &str, number: u64, head: &str, subject: &str, title: &str) -> Result<(), String> {
+/// as `subject` and `title` word it, giving the merge's commit.
+fn merge_at(
+    slug: &str,
+    number: u64,
+    head: &str,
+    subject: &str,
+    title: &str,
+) -> Result<String, String> {
     gh(&[
         "api",
         "-X",
@@ -95,13 +135,17 @@ fn merge_at(slug: &str, number: u64, head: &str, subject: &str, title: &str) -> 
         &format!("commit_title={subject}"),
         "-f",
         &format!("commit_message={title}"),
+        "--jq",
+        ".sha",
     ])
-    .map(|_| ())
 }
 
-/// What `gh` says, or why it failed.
+/// What `gh` says, or why it failed, given two minutes, as a stalled
+/// call would otherwise hold the train between merges.
 fn gh(arguments: &[&str]) -> Result<String, String> {
-    let ran = Command::new("gh")
+    let ran = Command::new("timeout")
+        .arg("120")
+        .arg("gh")
         .args(arguments)
         .output()
         .map_err(|error| format!("running gh: {error}"))?;
