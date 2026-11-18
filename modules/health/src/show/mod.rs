@@ -271,10 +271,11 @@ pub(super) fn counted(bad: &Badness, things: usize) -> String {
     }
     // A crash is said at an error's priority, so it's counted once, as a
     // crash.
+    let errors = errors + agents;
     let other_errors = errors.saturating_sub(crashes);
     if other_errors > 0 {
         let agents = if agents > 0 {
-            format!(" ({agents} agents')")
+            format!(" ({} agents')", grouped(agents))
         } else {
             String::new()
         };
@@ -415,13 +416,36 @@ mod tests {
     #[test]
     fn errors_say_how_many_were_agents() {
         let tec = Thing {
-            agents_errors: 7,
-            ..thing(Kind::Programs, 20, 12, 0, 0)
+            agents_errors: 1_200,
+            ..thing(Kind::Programs, 2_000, 1_205, 0, 0)
         };
         assert_eq!(
             counted(&tec.badness(), 0),
-            "12 errors (7 agents'), 8 warnings",
+            "1,205 errors (1,200 agents'), 795 warnings",
             "what agents' commands said is told apart, as Joel's crashes are"
+        );
+    }
+
+    #[test]
+    fn agents_errors_rank_below_his() {
+        let mut day = Day::new("2026-11-16");
+        day.things.insert(
+            "tec".into(),
+            Thing {
+                agents_errors: 60,
+                ..thing(Kind::Programs, 60, 60, 0, 0)
+            },
+        );
+        day.things
+            .insert("kitty".into(), thing(Kind::Programs, 2, 2, 0, 0));
+        let worst: Vec<&str> = worst_of(&day, Kind::Programs)
+            .into_iter()
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(
+            worst,
+            ["kitty", "tec"],
+            "two errors of his are worse than sixty of agents'"
         );
     }
 

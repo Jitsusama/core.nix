@@ -143,12 +143,13 @@ pub fn parse(line: &str) -> Option<Entry> {
     };
     let text = |name: &str| fields.get(name).and_then(said);
     let at = text("__REALTIME_TIMESTAMP")?.parse().ok()?;
-    let agents = agents_ran(&text("_SYSTEMD_CGROUP").unwrap_or_default());
+    let cgroup = text("_SYSTEMD_CGROUP").unwrap_or_default();
+    let agents = agents_work(&cgroup);
     let priority = text("PRIORITY").and_then(|p| p.parse().ok()).unwrap_or(6);
     let message = text("MESSAGE").unwrap_or_default();
     let identifier = text("SYSLOG_IDENTIFIER").or_else(|| text("_COMM"));
     let unit = text("USER_UNIT").or_else(|| text("UNIT"));
-    let asked_joel = identifier.as_deref() == Some(asks::IDENTIFIER) && !agents;
+    let asked_joel = identifier.as_deref() == Some(asks::IDENTIFIER) && !agents_ran(&cgroup);
     let ask = asked_joel.then(|| asks::of(text)).flatten();
     let thing = match (identifier.as_deref(), unit) {
         (Some("systemd") | None, Some(unit)) => unit,
@@ -258,6 +259,21 @@ fn whose(fields: &Map<String, Value>) -> Whose {
 /// what it says was never put to Joel.
 fn agents_ran(cgroup: &str) -> bool {
     cgroup.contains("/agents.slice") || cgroup.contains("/jobs.slice")
+}
+
+/// Whether a line came from agents' work: a command run in the jobs slice,
+/// but for the work Joel waits on at a terminal (`jobs-awaited`) and the
+/// machine's timed work (`jobs-timed`). An agent itself, and the terminal
+/// Joel reads its sessions in, run in agents.slice, and what they say is
+/// the machine's to answer for, so it counts.
+fn agents_work(cgroup: &str) -> bool {
+    let mut below = cgroup
+        .split('/')
+        .skip_while(|segment| *segment != "jobs.slice")
+        .skip(1);
+    below
+        .next()
+        .is_some_and(|kind| !matches!(kind, "jobs-awaited.slice" | "jobs-timed.slice"))
 }
 
 /// What each journal follower asks journalctl for.
@@ -410,12 +426,28 @@ mod tests {
             "a line from his own terminal is his"
         );
         assert!(
-            from("jobs.slice/jobs-work.slice/work-9-1.scope"),
+            from("jobs.slice/jobs-work.slice/jobs-work-delta.slice/work-9-1.scope"),
             "a line from an agent's command is agents'"
         );
         assert!(
-            from("agents.slice/pi-1.scope"),
-            "a line from an agent itself is agents'"
+            from("jobs.slice/jobs.service"),
+            "a line from an agent's shell is agents'"
+        );
+        assert!(
+            !from("jobs.slice/jobs-awaited.slice/awaited.service"),
+            "what he waits on at a terminal is his"
+        );
+        assert!(
+            !from("jobs.slice/jobs-timed.slice/keeps.service"),
+            "the machine's timed work is the machine's"
+        );
+        assert!(
+            !from("agents.slice/sessions-kitty.service"),
+            "the terminal he reads sessions in, and the agents themselves, answer to him"
+        );
+        assert!(
+            !from("app.slice/notjobs.slice/x.scope"),
+            "a slice is matched whole, not by its name's end"
         );
     }
 
