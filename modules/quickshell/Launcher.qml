@@ -8573,8 +8573,14 @@ Scope {
         }
         drawerMakingsMoved = false;
         drawerMakingsWanted = false;
+        // What the file already holds is never written again, as Drafts
+        // doesn't: FileView says no saved for it, which would leave every
+        // write after it waiting.
+        const text = JSON.stringify(drawerMakings);
+        if (text === drawerMakingsFile.text())
+            return;
         drawerMakingsWriting = true;
-        drawerMakingsFile.setText(JSON.stringify(drawerMakings));
+        drawerMakingsFile.setText(text);
     }
     function drawerMakingsWritten() {
         drawerMakingsWriting = false;
@@ -8952,8 +8958,12 @@ Scope {
         // Its making is learnt as a followed one's is, working out its row's
         // drawer alone and not its coming out, or a kind first reached with
         // no drawer out would never come in its key's frame.
-        if (drawerAskedFor === drawerRow)
+        // Learnt once a follow, so a later settle on the same row, its
+        // drawer put away and brought out again, adds no copy of it.
+        if (drawerAskedFor === drawerRow) {
             drawerMakings = Pacing.drawerMade(drawerMakings, drawerKindOf(drawerRow), drawerAsked);
+            drawerAskedFor = null;
+        }
         drawerMade(began - drawerAsked, Math.round(KeyTimes.now() - began) + drawerAsked);
         feltSpan("the drawer", began);
     }
@@ -8985,10 +8995,14 @@ Scope {
         if (!open || selected === null)
             return;
         drawerFollowDue = false;
-        const began = KeyTimes.now();
-        drawerRow = selected;
-        drawerAsked = Math.round(KeyTimes.now() - began);
-        drawerAskedFor = drawerRow;
+        // Timed only when it moves to the row, since setting the row it's
+        // on makes nothing and would teach a making of no time.
+        if (drawerRow !== selected) {
+            const began = KeyTimes.now();
+            drawerRow = selected;
+            drawerAsked = Math.round(KeyTimes.now() - began);
+            drawerAskedFor = drawerRow;
+        }
         drawerResting.stop();
         drawerSettled();
         if (drawerOut)
