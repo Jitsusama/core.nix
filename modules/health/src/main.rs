@@ -104,7 +104,7 @@ fn run(context: &Context) -> Result<(), Failure> {
     let into = into.unwrap_or_else(kept_in);
     if view == View::Follow {
         return follow::follow(&into).map_err(|fault| {
-            Failure::new(Exit::Failed, "the journals stopped being followed")
+            Failure::new(Exit::Failed, "health stopped following the journals")
                 .because(fault.to_string())
         });
     }

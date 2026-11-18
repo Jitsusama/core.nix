@@ -5,6 +5,8 @@ use crate::journal;
 
 // The faults health sees itself, rather than hears.
 mod faults;
+// A day health can't write, as on a full disk.
+mod writes;
 
 /// A warning line at a moment in microseconds.
 fn warning(at: i64) -> String {
@@ -131,13 +133,19 @@ fn a_shutdown_seen_is_timed_to_its_boots_end() {
 /// leaves health's ticks off the half minute.
 const OVERSLEPT: Duration = Duration::from_secs(1);
 
-/// A run of health over followers that send `before` lines, `ends` ends
-/// and `after` lines, all at once, every sender then gone unless one is
+/// A run of health over followers that send `before` lines, `ends` ends,
+/// `after` lines and `tomorrow` lines of the next day, all at once, every
+/// sender then gone unless one is
 /// held, as a quiet follower holds it, until the clock passes `held_for`.
 /// Each look at the clock moves it on `step`, and each wait as far as it
 /// asks and `OVERSLEPT` more. While a sender is held `run` never waits,
 /// so only a `step` of a half minute or more moves the clock past each
-/// half minute for it to hear at once, rather than in real time.
+/// half minute for it to hear at once, rather than in real time. The day
+/// can't be written, as on a full disk, until the lid has been looked at
+/// `unwritable_for` times, or ever at `usize::MAX`; then a held sender
+/// sends `tomorrow_after_room` more of the next day's lines. A `busy`
+/// held sender sends a line of the day at every look, as a busy journal
+/// does, and one sends a line of the day at look `late`, if any.
 #[derive(Default)]
 struct Ran {
     before: i64,
@@ -145,20 +153,60 @@ struct Ran {
     after: i64,
     held_for: Duration,
     step: Duration,
+    unwritable_for: usize,
+    tomorrow: i64,
+    tomorrow_after_room: i64,
+    busy: bool,
+    late: usize,
+}
+
+/// What a `Ran` came to: what `run` returned, what it left unread, how
+/// long health ran, how often it looked at the lid, what it said, how
+/// often it waited nothing, how many lines a busy journal sent, and the
+/// day and the next as written.
+struct Outcome {
+    result: io::Result<()>,
+    unread: usize,
+    ran: Duration,
+    looks: usize,
+    said: Vec<String>,
+    idle_waits: usize,
+    busy_sent: u64,
+    today: Option<Day>,
+    tomorrow: Option<Day>,
 }
 
 impl Ran {
     /// What `run` left unread, how long health ran, from its first look
-    /// at the clock to its last, and how often it looked at the lid. A
-    /// run that would never end fails at two hours, or at ten thousand
-    /// looks at the clock, for one that spins with the clock still.
+    /// at the clock to its last, and how often it looked at the lid, of a
+    /// run that ended well.
     fn ran(&self) -> (usize, Duration, usize) {
+        let Outcome {
+            result,
+            unread,
+            ran,
+            looks,
+            ..
+        } = self.outcome();
+        result.expect("the run");
+        (unread, ran, looks)
+    }
+
+    /// What the run came to. A run that would never end fails at two
+    /// hours, or at ten thousand looks at the clock, for one that spins
+    /// with the clock still.
+    fn outcome(&self) -> Outcome {
         assert!(
             self.held_for.is_zero() || self.step >= EVERY,
             "a held sender with a step under the half minute waits in real time"
         );
         let into = tempfile::tempdir().expect("a folder");
-        let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+        // A file where the day's folder goes, so no day can be written.
+        let days = into.path().join("days");
+        if self.unwritable_for > 0 {
+            fs::write(&days, "").expect("a file in the folder's place");
+        }
+        let mut follower = Follower::new("2026-11-12", &days, TimeZone::UTC);
         let (send, read) = mpsc::channel();
         let line = |second| Some(warning(NOON + second));
         for second in 0..self.before {
@@ -169,6 +217,9 @@ impl Ran {
         }
         for second in 0..self.after {
             send.send(line(self.before + second)).expect("a line sent");
+        }
+        for second in 0..self.tomorrow {
+            send.send(line(DAY + second)).expect("a line sent");
         }
         let held = RefCell::new((self.held_for > Duration::ZERO).then(|| send.clone()));
         drop(send);
@@ -196,20 +247,55 @@ impl Ran {
             clock.get()
         };
         let now = || moved(self.step);
-        let wait = |time| {
+        let idle_waits = Cell::new(0);
+        let wait = |time: Duration| {
+            idle_waits.set(idle_waits.get() + usize::from(time.is_zero()));
             moved(time + OVERSLEPT);
+        };
+        let busy_sent = Cell::new(0);
+        let send_held = |line: Option<String>| {
+            if let Some(send) = held.borrow().as_ref() {
+                send.send(line).expect("a line sent");
+            }
         };
         let look = || {
             looks.set(looks.get() + 1);
+            if looks.get() == self.unwritable_for {
+                fs::remove_file(&days).expect("room made for the day");
+                for second in 0..self.tomorrow_after_room {
+                    send_held(line(DAY + self.tomorrow + second));
+                }
+            }
+            if self.late > 0 && looks.get() == self.late {
+                send_held(line(self.before + self.after));
+            }
+            if self.busy && held.borrow().is_some() {
+                let second = i64::try_from(looks.get()).expect("a few looks");
+                send_held(line(self.before + self.after + second));
+                busy_sent.set(busy_sent.get() + 1);
+            }
             Looked::default()
         };
-        run(&mut follower, &read, now, wait, look).expect("the run");
+        let said = RefCell::new(Vec::new());
+        let say = |words: &str| said.borrow_mut().push(words.to_owned());
+        let result = run(&mut follower, &read, now, wait, look, &say);
         let started = first.get().expect("a look at the clock");
-        (
-            read.try_iter().count(),
-            clock.get().saturating_duration_since(started),
-            looks.get(),
-        )
+        let day = |date| {
+            fs::read(file_of(&days, date))
+                .ok()
+                .map(|file| serde_json::from_slice(&file).expect("the day's file is a day"))
+        };
+        Outcome {
+            result,
+            unread: read.try_iter().count(),
+            ran: clock.get().saturating_duration_since(started),
+            looks: looks.get(),
+            said: said.take(),
+            idle_waits: idle_waits.get(),
+            busy_sent: busy_sent.get(),
+            today: day("2026-11-12"),
+            tomorrow: day("2026-11-13"),
+        }
     }
 }
 
@@ -391,6 +477,7 @@ fn a_busy_journal_still_ticks_every_half_minute() {
             }
             Looked::default()
         },
+        &|_| {},
     )
     .expect("the run");
     assert!(
