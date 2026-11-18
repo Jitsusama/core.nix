@@ -12,6 +12,9 @@ use super::*;
 #[cfg(target_os = "linux")]
 mod real_journal;
 
+// The followers health ends as it ends.
+mod followers;
+
 /// A shell running `script`: the build's own where it gives one, which
 /// a build's sandbox has where it has no /bin/sh.
 fn sh(script: &str) -> Command {
@@ -116,6 +119,7 @@ fn the_replay_sends_the_day_in_order_then_each_follows_on_from_its_own_end() {
         None,
         |at, after| writing(&[format!("{at} after {}", after.unwrap_or("nothing"))]),
         &send,
+        &Children::default(),
     )
     .expect("every follower starts");
     drop(send);
@@ -158,6 +162,7 @@ fn the_replay_starts_no_follower_once_nothing_hears_it() {
             writing(&[])
         },
         &send,
+        &Children::default(),
     );
     assert!(
         replayed.is_ok() && made.get() == 0,
@@ -177,6 +182,7 @@ fn a_follower_that_cant_follow_on_is_an_error_naming_it() {
             follower
         },
         &send,
+        &Children::default(),
     );
     assert!(
         replayed.is_err_and(|error| error
@@ -229,7 +235,7 @@ fn ends_of(follow_on: impl Fn(&usize, Option<&str>) -> Command) -> usize {
     ];
     let (send, heard) = mpsc::channel();
     let _ = panic::catch_unwind(AssertUnwindSafe(|| {
-        replaying(histories, None, follow_on, &send);
+        replaying(histories, None, follow_on, &send, &Children::default());
     }));
     drop(send);
     heard.iter().filter(Option::is_none).count()
@@ -436,7 +442,13 @@ fn the_replay_asks_the_journals_last_line_first_off_healths_own_thread() {
     };
     let (send, heard) = mpsc::channel();
     let asked = Instant::now();
-    let count = replayed_by(newest, reading, |_, _| writing(&[]), &send);
+    let count = replayed_by(
+        newest,
+        reading,
+        |_, _| writing(&[]),
+        &send,
+        &Children::default(),
+    );
     assert!(
         asked.elapsed() < Duration::from_millis(500),
         "health's start waited on the journal's last line"
@@ -472,6 +484,7 @@ fn a_replay_that_cant_start_sends_every_followers_end() {
             move |_| reading.map_or_else(|| writing(&[]), |reading| reading()),
             |_, _| writing(&[]),
             &send,
+            &Children::default(),
         );
         drop(send);
         let heard = all_of(&heard);
@@ -493,6 +506,7 @@ fn a_replay_that_panics_as_it_starts_sends_every_followers_end() {
         |_| panic!("a stand-in history's panic"),
         |_, _| writing(&[]),
         &send,
+        &Children::default(),
     );
     drop(send);
     let heard = all_of(&heard);
@@ -611,7 +625,7 @@ fn a_macs_log_that_cant_start_is_an_error_naming_it() {
     let (send, _heard) = mpsc::channel();
     assert!(
         Source::UnifiedLog
-            .start(&now, &send)
+            .start(&now, &send, &Followers::default())
             .is_err_and(|error| error.to_string().starts_with(&format!("{first}: "))),
         "a Mac's log that couldn't start wasn't named"
     );
@@ -625,9 +639,15 @@ fn a_follower_that_ends_is_said_before_its_end_is_sent() {
     for script in ["echo a", "echo a; exit 3"] {
         let (send, heard) = mpsc::channel();
         let tell = send.clone();
-        spawn_saying(sh(script), send, true, move |words| {
-            let _ = tell.send(Some(format!("said: {words}")));
-        })
+        spawn_saying(
+            sh(script),
+            send,
+            true,
+            move |words| {
+                let _ = tell.send(Some(format!("said: {words}")));
+            },
+            &Children::default(),
+        )
         .expect("the shell starts");
         let heard = all_of(&heard);
         let name = named(&sh(script));
@@ -650,9 +670,15 @@ fn a_reader_that_ends_whole_by_design_sends_an_end_only_once_it_fails() {
     for (script, failed) in [("echo a", false), ("echo a; exit 3", true)] {
         let (send, heard) = mpsc::channel();
         let tell = send.clone();
-        spawn_saying(sh(script), send, false, move |words| {
-            let _ = tell.send(Some(format!("said: {words}")));
-        })
+        spawn_saying(
+            sh(script),
+            send,
+            false,
+            move |words| {
+                let _ = tell.send(Some(format!("said: {words}")));
+            },
+            &Children::default(),
+        )
         .expect("the shell starts");
         let heard = all_of(&heard);
         let ok = match heard.as_slice() {

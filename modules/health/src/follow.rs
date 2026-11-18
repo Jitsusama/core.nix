@@ -27,7 +27,7 @@ use crate::lid::{self, Looked};
 use crate::memory;
 use crate::reports;
 use crate::sessions;
-use crate::source::Source;
+use crate::source::{Followers, Source};
 use crate::trials;
 use crate::typing;
 
@@ -579,7 +579,13 @@ pub fn follow(into: &Path) -> io::Result<()> {
         follower = follower.resuming(kept);
     }
     let (lines, read) = mpsc::channel();
-    let ended = ended_by(source.start(&now, &lines), &lines, crate::source::fail);
+    // Dropped however this returns, ending every follower still running.
+    let followers = Followers::default();
+    let ended = ended_by(
+        source.start(&now, &lines, &followers),
+        &lines,
+        crate::source::fail,
+    );
     drop(lines);
     run(
         &mut follower,

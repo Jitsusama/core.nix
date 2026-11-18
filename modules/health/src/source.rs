@@ -7,10 +7,11 @@
 use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::io::{self, BufRead as _, BufReader, Write as _};
+use std::mem;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdout, Command, ExitStatus, Output, Stdio};
-use std::sync::OnceLock;
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::thread;
 
 use jiff::Zoned;
@@ -60,10 +61,17 @@ impl Source {
     ///
     /// When a Mac's log can't start, or the day's start can't be told. A
     /// journal's history or follower that can't start is said, and sends
-    /// every follower's end (`replayed_by`).
-    pub fn start(self, now: &Zoned, lines: &Sender<Option<String>>) -> io::Result<()> {
+    /// every follower's end (`replayed_by`). Each follower is kept in
+    /// `followers`, to end as they do.
+    pub fn start(
+        self,
+        now: &Zoned,
+        lines: &Sender<Option<String>>,
+        followers: &Followers,
+    ) -> io::Result<()> {
+        let children = &followers.children;
         let asked = match self {
-            Self::Journal => return replayed(now, lines),
+            Self::Journal => return replayed(now, lines, children),
             Self::UnifiedLog => {
                 let midnight = format!("{} 00:00:00", now.date());
                 let now = now.strftime("%Y-%m-%d %H:%M:%S").to_string();
@@ -72,7 +80,7 @@ impl Source {
         };
         for command in asked {
             let name = named(&command);
-            spawn(command, lines.clone())
+            spawn(command, lines.clone(), children)
                 .map_err(|error| io::Error::new(error.kind(), format!("{name}: {error}")))?;
         }
         Ok(())
@@ -154,13 +162,14 @@ impl Source {
 /// once their followers follow on, each at its own pace, as every line
 /// after the replay is: a switch writes its reload before the restarts
 /// it asks for.
-fn replayed(now: &Zoned, lines: &Sender<Option<String>>) -> io::Result<()> {
+fn replayed(now: &Zoned, lines: &Sender<Option<String>>, children: &Children) -> io::Result<()> {
     let since = day_of(now)?;
     replayed_by(
         journal::newest(),
         move |asked| journal::reading(asked, since),
         move |asked, after| journal::following(asked, after, since),
         lines,
+        children,
     );
     Ok(())
 }
@@ -181,9 +190,11 @@ fn replayed_by(
     reading: impl Fn(&[String]) -> Command + Send + 'static,
     following: impl Fn(&[String], Option<&str>) -> Command + Send + 'static,
     lines: &Sender<Option<String>>,
+    children: &Children,
 ) -> usize {
     let count = journal::followed().len();
     let lines = lines.clone();
+    let children = children.clone();
     thread::spawn(move || {
         let mut ends = Ends {
             lines: lines.clone(),
@@ -204,6 +215,7 @@ fn replayed_by(
                     last.as_ref(),
                     |asked: &Vec<String>, after| following(asked, after),
                     &lines,
+                    &children,
                 );
             }
             Err(error) => fail(&format!(
@@ -295,12 +307,13 @@ fn replaying<A>(
     last: Option<&replay::Numbered>,
     follow_on: impl Fn(&A, Option<&str>) -> Command,
     lines: &Sender<Option<String>>,
+    children: &Children,
 ) {
     let mut ends = Ends {
         lines: lines.clone(),
         left: histories.len(),
     };
-    match replay(histories, last, follow_on, lines) {
+    match replay(histories, last, follow_on, lines, children) {
         Ok(()) => ends.left = 0,
         Err(error) => {
             fail(&format!(
@@ -348,6 +361,7 @@ fn replay<A>(
     last: Option<&replay::Numbered>,
     follow_on: impl Fn(&A, Option<&str>) -> Command,
     lines: &Sender<Option<String>>,
+    children: &Children,
 ) -> io::Result<()> {
     let (histories, asked): (Vec<_>, Vec<_>) = histories.into_iter().unzip();
     let mut heard = true;
@@ -361,7 +375,7 @@ fn replay<A>(
     for (asked, end) in asked.iter().zip(&ends) {
         let command = follow_on(asked, end.as_deref());
         let name = named(&command);
-        spawn(command, lines.clone())
+        spawn(command, lines.clone(), children)
             .map_err(|error| io::Error::new(error.kind(), format!("{name}: {error}")))?;
     }
     Ok(())
@@ -503,31 +517,109 @@ impl Drop for History {
     }
 }
 
+/// The followers health started, ended as `follow` returns: each still
+/// running is killed and waited on once this is dropped, as a `History`
+/// is, and none starts after. Once one follower has ended, health ends,
+/// and the others, following a journal no line comes to, would otherwise
+/// wait for their next line, outliving it where no service manager ends
+/// them with it, as when `health follow` is run by hand. A signal that
+/// ends health unwinds nothing, so it ends none of them: a service
+/// manager's stop does, ending health's whole group.
+#[derive(Default)]
+pub struct Followers {
+    children: Children,
+}
+
+impl Drop for Followers {
+    fn drop(&mut self) {
+        self.children.end();
+    }
+}
+
+/// The children of `Followers`, shared with each follower's thread.
+#[derive(Clone, Default)]
+struct Children(Arc<Mutex<Running>>);
+
+/// What `Children` holds: each follower still running, by its process's
+/// id, and whether they've been ended.
+#[derive(Default)]
+struct Running {
+    children: BTreeMap<u32, Child>,
+    ended: bool,
+}
+
+impl Children {
+    fn running(&self) -> MutexGuard<'_, Running> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Start `command`, its output piped, kept until its thread takes it
+    /// back: its process's id and output, or none once they've been
+    /// ended, when it isn't started. It starts under the lock, so health's
+    /// end can't come between its start and its keeping, where health's
+    /// exit would leave it unkept and running.
+    fn start(&self, command: &mut Command) -> io::Result<Option<(u32, ChildStdout)>> {
+        let mut running = self.running();
+        if running.ended {
+            return Ok(None);
+        }
+        let mut child = command.stdout(Stdio::piped()).spawn()?;
+        let out = child.stdout.take();
+        let id = child.id();
+        // Kept even without its output, so health's end still ends it.
+        running.children.insert(id, child);
+        out.map(|out| Some((id, out)))
+            .ok_or_else(|| io::Error::other("no output"))
+    }
+
+    /// The child whose process is `id`, for its thread to wait on once
+    /// its output ends, or none once they've been ended.
+    fn take(&self, id: u32) -> Option<Child> {
+        self.running().children.remove(&id)
+    }
+
+    /// Kill and wait on each child still running, and start none after.
+    fn end(&self) {
+        let children = {
+            let mut running = self.running();
+            running.ended = true;
+            mem::take(&mut running.children)
+        };
+        for mut child in children.into_values() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
 /// Start `command`, its output's lines sent on, and a `None` when it ends
 /// if it `follows`, or if it failed, so health ends to start it again.
+/// It's kept in `children` until then.
 ///
 /// Health says so when one ends, unless it ends whole by design and did
 /// (`follower_ended`).
-fn spawn(command: Command, lines: Sender<Option<String>>) -> io::Result<()> {
+fn spawn(command: Command, lines: Sender<Option<String>>, children: &Children) -> io::Result<()> {
     let following = follows(&command);
-    spawn_saying(command, lines, following, warn)
+    spawn_saying(command, lines, following, warn, children)
 }
 
 /// `spawn`, with what it says of its end said through `say`, before its
 /// `None`, sent if it `follows` for as long as health runs, or if it
-/// didn't end whole, so health starts again and reads it again.
+/// didn't end whole, so health starts again and reads it again. One that
+/// `children` ended, as health ends, says nothing and sends nothing, and
+/// one asked once they're ended isn't started.
 fn spawn_saying(
     mut command: Command,
     lines: Sender<Option<String>>,
     follows: bool,
     say: impl Fn(&str) + Send + 'static,
+    children: &Children,
 ) -> io::Result<()> {
     let name = named(&command);
-    let mut child = command.stdout(Stdio::piped()).spawn()?;
-    let out = child
-        .stdout
-        .take()
-        .ok_or_else(|| io::Error::other("no output"))?;
+    let Some((id, out)) = children.start(&mut command)? else {
+        return Ok(());
+    };
+    let children = children.clone();
     thread::spawn(move || {
         let mut out = BufReader::new(out);
         let mut line = Vec::new();
@@ -542,6 +634,9 @@ fn spawn_saying(
             }
             line.clear();
         }
+        let Some(mut child) = children.take(id) else {
+            return;
+        };
         let waited = child.wait();
         let whole = matches!(&waited, Ok(status) if status.success());
         if let Some(said) = follower_ended(&name, waited, follows) {
