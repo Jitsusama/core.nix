@@ -394,8 +394,8 @@ mod tests {
     }
 
     #[test]
-    fn a_file_queued_on_every_day_is_worse_past_a_fifth_and_its_floor() {
-        let file = "tests/launcher-on-niri-test.py";
+    fn a_zone_queued_on_every_day_is_worse_past_a_fifth_and_its_floor() {
+        let file = "held:tests/launcher";
         // A day it held nothing counts as none, so its median is 4.
         let before = vec![
             queued(&[(file, 4)]),
@@ -407,13 +407,13 @@ mod tests {
         let words: Vec<&str> = more.worse.iter().map(|f| f.words.as_str()).collect();
         assert_eq!(
             words,
-            ["changes held back or run again on tests/launcher-on-niri-test.py went from 4 to 11"],
-            "a file holding nearly three times its usual wasn't said worse"
+            ["changes queued on held:tests/launcher went from 4 to 11"],
+            "a zone holding nearly three times its usual wasn't said worse"
         );
         assert_eq!(
             more.worse[0].key,
             format!("code.queued-on:{file}"),
-            "the finding wasn't keyed by its kind and file"
+            "the finding wasn't keyed by its kind, cause and zone"
         );
         let inside = judge(&queued(&[(file, 6)]), &before);
         assert!(
@@ -423,8 +423,8 @@ mod tests {
         let gone = judge(&queued(&[]), &before);
         assert_eq!(
             gone.better,
-            ["changes held back or run again on tests/launcher-on-niri-test.py went from 4 to 0"],
-            "a file that stopped holding changes back wasn't said better"
+            ["changes queued on held:tests/launcher went from 4 to 0"],
+            "a zone that stopped holding changes back wasn't said better"
         );
         let crashing: Vec<Day> = (0..3).map(|_| day(&[], &["tec"])).collect();
         let mut often = day(&[], &[]);
@@ -439,21 +439,21 @@ mod tests {
     }
 
     #[test]
-    fn a_file_new_to_the_queue_is_worse_only_from_its_floor() {
+    fn a_zone_new_to_the_queue_is_worse_only_from_its_floor() {
         // Y9XISP counted 139 such findings by 01:40 on 15 November, 127
         // of them a file that held a change back once or twice.
         let before: Vec<Day> = (0..3).map(|_| queued(&[])).collect();
-        let once = judge(&queued(&[("modules/sun/src/main.rs", 2)]), &before);
+        let once = judge(&queued(&[("again:modules/sun", 2)]), &before);
         assert!(
             once.worse.is_empty(),
-            "a file new to the queue, under its floor of three, was worse: {once:?}"
+            "a zone new to the queue, under its floor of three, was worse: {once:?}"
         );
-        let often = judge(&queued(&[("modules/sun/src/main.rs", 3)]), &before);
+        let often = judge(&queued(&[("again:modules/sun", 3)]), &before);
         let words: Vec<&str> = often.worse.iter().map(|f| f.words.as_str()).collect();
         assert_eq!(
             words,
-            ["changes held back or run again on modules/sun/src/main.rs, new, 3 times"],
-            "a file new to the queue, at its floor, wasn't said worse"
+            ["changes queued on again:modules/sun, new, 3 times"],
+            "a zone new to the queue, at its floor, wasn't said worse"
         );
     }
 

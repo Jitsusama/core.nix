@@ -1,10 +1,15 @@
 //! The merge gate's figures for the day, from what merge-net's `ready`
 //! answered each change asking to merge (`net/answers.jsonl`): the share
 //! held back for an earlier gate sharing a file, the share sent to run
-//! their checks again for a file main moved, and the files each turned
-//! on. A file that holds changes back is one every change queues on, so
-//! one newly doing so is a finding the day it starts. On 12 November, by
-//! 07:00, four lists a new module adds a line to had held 23 changes back.
+//! their checks again for a file main moved, and where each turned on, by
+//! cause and zone. A zone that holds changes back is one every change
+//! queues on, so one newly doing so is a finding the day it starts. On 12
+//! November, by 07:00, four lists a new module adds a line to had held 23
+//! changes back.
+//!
+//! The files are grouped by zone, a module's or a tool's folder, because
+//! one cause turns on a change's every file at once: keyed by file, 17
+//! November's queue made 474 open findings for a handful of causes.
 //!
 //! A change is counted by its head, once whatever it was answered how
 //! often: a change held back asks again every few minutes until it goes.
@@ -97,23 +102,41 @@ pub fn figures(answers: &[Answer], from: i64, to: i64) -> BTreeMap<String, f64> 
     figures
 }
 
-/// Each file that held a change back or sent it to run again within the
-/// day, and how many heads it did so to.
+/// Each cause and zone that held a change back or sent it to run again
+/// within the day, as `held:modules/repos` or `again:flake.nix`, and how
+/// many heads it did so to.
 pub fn queued_on(answers: &[Answer], from: i64, to: i64) -> BTreeMap<String, u32> {
-    let costly = answers.iter().filter(|answer| {
-        (from..to).contains(&answer.at) && matches!(answer.verdict.as_str(), "hold" | "regate")
-    });
-    let mut heads: BTreeSet<(&str, &str)> = BTreeSet::new();
-    for answer in costly {
+    let mut heads: BTreeSet<(String, &str)> = BTreeSet::new();
+    for answer in answers
+        .iter()
+        .filter(|answer| (from..to).contains(&answer.at))
+    {
+        let why = match answer.verdict.as_str() {
+            "hold" => "held",
+            "regate" => "again",
+            _ => continue,
+        };
         for file in &answer.files {
-            heads.insert((file.as_str(), answer.head.as_str()));
+            heads.insert((format!("{why}:{}", zone(file)), answer.head.as_str()));
         }
     }
     let mut named = BTreeMap::new();
-    for (file, _) in heads {
-        *named.entry(file.to_owned()).or_insert(0) += 1;
+    for (name, _) in heads {
+        *named.entry(name).or_insert(0) += 1;
     }
     named
+}
+
+/// The zone a file is in: its first two folders, as `modules/repos`, for
+/// a file two folders down or more; its folder, as `docs`, for one a
+/// folder down; and the file itself at the root, as `flake.nix`.
+fn zone(file: &str) -> &str {
+    let mut slashes = file.match_indices('/').map(|(at, _)| at);
+    match (slashes.next(), slashes.next()) {
+        (Some(_), Some(second)) => &file[..second],
+        (Some(first), None) => &file[..first],
+        _ => file,
+    }
 }
 
 #[cfg(test)]
@@ -169,19 +192,51 @@ mod tests {
     }
 
     #[test]
-    fn each_file_names_the_heads_it_held_back_or_sent_again() {
+    fn each_cause_and_zone_names_the_heads_it_held_back_or_sent_again() {
         let named = queued_on(&day(), 10, 100);
         let expected: BTreeMap<String, u32> = [
-            ("checks.nix", 1),
-            ("flake.nix", 1),
-            ("modules/quickshell/checks/imports.nix", 1),
+            ("again:modules/quickshell", 1),
+            ("held:checks.nix", 1),
+            ("held:flake.nix", 1),
         ]
         .into_iter()
         .map(|(file, heads)| (file.to_owned(), heads))
         .collect();
         assert_eq!(
             named, expected,
-            "a file was counted for a pass, the day before or twice for one head"
+            "a zone was counted for a pass, the day before or twice for one head"
+        );
+    }
+
+    #[test]
+    fn a_change_held_on_many_files_of_one_zone_counts_once_there() {
+        let answers = [
+            answer(
+                10,
+                "a",
+                "hold",
+                &[
+                    "modules/repos/src/kept.rs",
+                    "modules/repos/src/views/apart_tests.rs",
+                    "modules/repos/Cargo.toml",
+                    "docs/hardware.md",
+                ],
+            ),
+            answer(20, "b", "hold", &["modules/repos/src/kept.rs"]),
+            answer(30, "b", "regate", &["modules/repos/src/kept.rs"]),
+        ];
+        let named = queued_on(&answers, 0, 100);
+        let expected: BTreeMap<String, u32> = [
+            ("again:modules/repos", 1),
+            ("held:docs", 1),
+            ("held:modules/repos", 2),
+        ]
+        .into_iter()
+        .map(|(name, heads)| (name.to_owned(), heads))
+        .collect();
+        assert_eq!(
+            named, expected,
+            "a zone's files were counted apart, or held and run again were mixed"
         );
     }
 }
