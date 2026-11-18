@@ -113,6 +113,7 @@ ShellRoot {
         property var toldNots: []
         property var toldWhys: []
         property var toldNames: []
+        property var becameNames: []
 
         function presentedAwait(at, then) {
             awaiting = awaiting.concat([then]);
@@ -168,6 +169,7 @@ ShellRoot {
         }
 
         function becomesAll(source, holds, how) {
+            becameNames = becameNames.concat([how?.name ?? ""]);
         }
 
         function becameNot(key, why) {
@@ -244,10 +246,10 @@ ShellRoot {
             walkedThenEscaped, walkedThenMoved, walkedThenMovedShown, toldInPlace, typing,
             typedAfter, movedAgain, typedBeforeItsFrame, typedThenShown, movedOnceMore,
             typedWithReturn, typedWithReturnShown, movedThenOpened, movedThenOpenedShown,
-            overRowsThenTold, toldOverRows, toldOverRowsShown, landed, landedThenMoved, landedThenShown, commanded,
-            commandedThenRun, commandedThenMoved, commandedThenShown, timedBeforeSharing,
+            overRowsThenTold, toldOverRows, toldOverRowsShown, landed, landedThenMoved,
+            landedThenShown, commanded, commandedThenRun, commandedThenMoved, commandedThenShown, timedBeforeSharing,
             timedMove, sharing, sharedYes, sharingMoved, sharingMovedAsked, unshared,
-            unsharedShown, unsharedMoved, unsharedMovedShown, unheard, ownRecording]);
+            unsharedShown, unsharedMoved, unsharedMovedShown, unheard, ownRecording, sharedNo]);
     }
 
     function arming() {
@@ -647,6 +649,8 @@ ShellRoot {
             link.sent.length, before);
         same("and what's told of it names only that it's hidden", stage.toldNames.slice(told),
             ["Ask, Hidden While You Share"]);
+        same("saying it's the share that withholds it, not a missing key press",
+            stage.toldWhys.slice(told), ["not while your screen is shared"]);
     }
 
     function sharingMoved() {
@@ -693,6 +697,17 @@ ShellRoot {
         Niri.casts = { "2": { kind: "PipeWire", session_id: 7 } };
         same("the shell's own recording of a window hides no ask", row()?.name,
             "op://Private/Kiln/password");
+        Niri.casts = {};
+    }
+
+    // A no from the row as it was before the share goes, since it releases
+    // nothing, but the row it's held as names only that it's hidden.
+    function sharedNo() {
+        Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
+        const said = root.sent(root.madeBefore.verbs()[1]);
+        same("a no from a row made before the share still goes", said.ask, "refuse");
+        same("and the row it's held as names only that it's hidden",
+            stage.becameNames.slice(-1), ["Ask, Hidden While You Share"]);
         Niri.casts = {};
     }
 }
