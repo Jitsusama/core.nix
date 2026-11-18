@@ -4,8 +4,10 @@
 //! Each test asks the relay's socket as pi does, in HTTP/1.1, and reads
 //! what the origin was handed: a request passes whole, only the origin is
 //! reached, many requests share a few connections at once, answers stream
-//! as they come, a connection the origin lets go is opened again, an
-//! origin out of reach is said as a 502 or a 504 without queueing, a
+//! as they come, a connection the origin lets go is opened again, a
+//! request the origin resets is a 502 and retires its connection, one a
+//! fallen connection lost is a 502 and no reset, the origin hearing each
+//! once, an origin out of reach is said as a 502 or a 504 without queueing, a
 //! connection that won't open isn't asked for again on every request, nor
 //! does a failure outlast the origin coming back, the relay leaves once
 //! idle but never mid-answer, even while refusing other hosts, its socket
@@ -68,6 +70,17 @@ const LOOK_EVERY: Duration = Duration::from_millis(20);
 /// enough that a relay counting the asks would never see quiet.
 const ASK_EVERY: Duration = Duration::from_millis(100);
 
+/// How many requests for `path` the origin was handed.
+fn handed_to(origin: &Origin, path: &str) -> usize {
+    origin
+        .handed
+        .lock()
+        .expect("the origin's record")
+        .iter()
+        .filter(|handed| handed.uri.ends_with(path))
+        .count()
+}
+
 /// What the origin was handed, one request at a time.
 #[derive(Clone, Debug)]
 struct Handed {
@@ -110,12 +123,14 @@ struct Held {
 }
 
 /// What one of the origin's connections shares with its requests: what
-/// the origin keeps, and a way for `/bye` to let the connection go.
+/// the origin keeps, a way for `/bye` to let the connection go, and one for
+/// `/drop` to let it fall.
 #[derive(Clone)]
 struct Served {
     kept: Arc<Mutex<Vec<Handed>>>,
     held: Arc<Held>,
     bye: Arc<Notify>,
+    gone: Arc<Notify>,
 }
 
 /// Which connections the origin answers.
@@ -194,12 +209,14 @@ fn origin_on(listener: TcpListener, answering: Serves, tls: Tls) -> Origin {
                 kept: Arc::clone(&kept),
                 held: Arc::clone(&holding),
                 bye: Arc::new(Notify::new()),
+                gone: Arc::new(Notify::new()),
             };
             tokio::spawn(async move {
                 let Ok(tls) = acceptor.accept(stream).await else {
                     return;
                 };
                 let bye = Arc::clone(&served.bye);
+                let gone = Arc::clone(&served.gone);
                 let service =
                     hyper::service::service_fn(move |request| answer(request, served.clone()));
                 let connection = hyper::server::conn::http2::Builder::new(TokioExecutor::new())
@@ -211,6 +228,7 @@ fn origin_on(listener: TcpListener, answering: Serves, tls: Tls) -> Origin {
                         connection.as_mut().graceful_shutdown();
                         let _ = connection.await;
                     }
+                    () = gone.notified() => {}
                 }
                 finished.fetch_add(1, Ordering::SeqCst);
             });
@@ -232,10 +250,16 @@ type Answer = http_body_util::combinators::BoxBody<Bytes, Infallible>;
 /// The origin's answer: `/echo` hands the body back, `/held` waits a
 /// moment first, `/stream` sends its halves a gap apart and `/long` a
 /// longer one, `/bye` answers
-/// and lets its connection go, and `/reset` reads the request and resets
-/// its stream rather than answer.
+/// and lets its connection go, `/reset` reads the request and resets
+/// its stream rather than answer, and `/drop` reads it and lets the
+/// connection fall with no word at all.
 async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<Answer>, io::Error> {
-    let Served { kept, held, bye } = served;
+    let Served {
+        kept,
+        held,
+        bye,
+        gone,
+    } = served;
     let (parts, body) = request.into_parts();
     let body = body
         .collect()
@@ -285,6 +309,10 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
             Response::builder().body(Full::new(Bytes::from_static(b"bye")).boxed())
         }
         "/reset" => return Err(io::Error::other("the origin resets this stream")),
+        "/drop" => {
+            gone.notify_one();
+            return std::future::pending().await;
+        }
         _ => Response::builder()
             .status(StatusCode::CREATED)
             .header("x-origin-said", "echo")
@@ -632,7 +660,7 @@ async fn a_connection_the_origin_lets_go_is_opened_again() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn a_request_the_origin_resets_is_a_502_and_nothing_of_it_is_logged() {
+async fn a_request_the_origin_resets_is_a_502_and_retires_its_connection() {
     let origin = origin().await;
     let host = origin.address.to_string();
     let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
@@ -643,11 +671,73 @@ async fn a_request_the_origin_resets_is_a_502_and_nothing_of_it_is_logged() {
 
     let got = ask(&relay.socket, asked).await;
 
-    assert_eq!(got.status, StatusCode::BAD_GATEWAY);
+    // A 502, never a 421 sending pi direct: this origin read the request
+    // before it reset it, as a real one may have acted on it.
+    assert_eq!(
+        got.status,
+        StatusCode::BAD_GATEWAY,
+        "a request the origin reset, maybe acted on, was sent again direct"
+    );
+    for _ in 0..2 {
+        let again = ask(&relay.socket, request(&host, "/echo", b"again")).await;
+        assert_eq!(again.status, StatusCode::CREATED, "a request after a reset");
+    }
+    assert_eq!(
+        origin.connections.load(Ordering::SeqCst),
+        2,
+        "the connection that reset a request kept taking them, or more were opened"
+    );
     let said = relay.said();
     assert!(
-        said.contains("couldn't be carried"),
+        said.contains("the origin reset a request on connection 0.0, so it's retired"),
+        "the reset, or the connection it came on, went unsaid: {said}"
+    );
+    assert!(
+        said.contains("connection 0.1 opened"),
+        "the connection opened after the reset went unsaid by its number: {said}"
+    );
+    assert_eq!(
+        handed_to(&origin, "/reset"),
+        1,
+        "the origin heard a request it reset more than once"
+    );
+    assert!(
+        !said.contains("sekrit"),
+        "the relay logged a header or a body: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_connection_that_falls_mid_request_is_a_502_and_no_reset() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+
+    let mut asked = request(&host, "/drop", SECRET_BODY);
+    asked
+        .headers_mut()
+        .insert("authorization", SECRET_TOKEN.parse().expect("a value"));
+
+    let got = ask(&relay.socket, asked).await;
+
+    assert_eq!(
+        got.status,
+        StatusCode::BAD_GATEWAY,
+        "a request its connection lost"
+    );
+    assert_eq!(
+        handed_to(&origin, "/drop"),
+        1,
+        "the origin heard a request its connection lost more than once"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("a request couldn't be carried"),
         "the failure went unsaid: {said}"
+    );
+    assert!(
+        !said.contains("the origin reset"),
+        "a connection that fell was taken for a reset: {said}"
     );
     assert!(
         !said.contains("sekrit"),
