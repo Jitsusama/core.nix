@@ -819,6 +819,7 @@ QtObject {
                 () => at === yanks, () => started.push(at));
         };
         yank();
+        check(failures, "a yank asks for no frame until its turn ends", frame.length, 0);
         drain(turn);
         check(failures, "a yank's flash starts nothing before its frame", started.join(), "");
         yank();
