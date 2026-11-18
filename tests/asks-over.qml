@@ -185,6 +185,12 @@ ShellRoot {
         function becameNot(key, why) {
         }
 
+        // How many times what was told and not yet read was forgotten.
+        property int untolds: 0
+        function untold() {
+            untolds += 1;
+        }
+
         function afterFrame(then) {
             then();
         }
@@ -733,16 +739,26 @@ ShellRoot {
     // becomes until the daemon answers; the share hides that row too, and
     // the name told if the no is refused or comes late.
     function heldThenShared() {
-        stage.becoming = {};
+        const other = { key: "wifi:kiln", from: stage, row: { name: "Kiln" }, name: "Kiln",
+            act: "join" };
+        stage.becoming = { "wifi:kiln": other };
         root.sent(row().verbs()[1]);
-        const held = () => Object.values(stage.becoming)[0] ?? {};
-        same("a no before the share is held under the ask's own name", held().name,
-            "op://Private/Kiln/password");
+        const held = () => Object.values(stage.becoming).find(one => one.from !== stage) ?? {};
+        const real = "op://Private/Kiln/password";
+        same("a no before the share is held under the ask's own name", held().name, real);
         const act = held().act;
+        const untolds = stage.untolds;
         Niri.casts = { "1": { kind: "PipeWire", session_id: 1 } };
         const hidden = "Ask, Hidden While You Share";
         same("the share holds it again named only as hidden, its row hidden too",
             [held().name, held().row?.name, held().act], [hidden, hidden, act]);
+        same("still saying when it's done", typeof held().done, "function");
+        same("what was told before the share is forgotten", stage.untolds, untolds + 1);
+        same("another source's hold is left as it was", stage.becoming["wifi:kiln"] === other,
+            true);
         Niri.casts = {};
+        same("the share ended holds it again as itself", [held().name, held().row?.name],
+            [real, real]);
+        same("still saying when it's done after", typeof held().done, "function");
     }
 }

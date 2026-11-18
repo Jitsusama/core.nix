@@ -251,7 +251,7 @@ def test_an_asks_opened_from_outside_takes_no_yes_without_a_move(desktop: Deskto
 
 
 def test_r_refuses_an_ask(desktop: Desktop) -> None:
-    """R on an ask's line refuses it, releasing nothing, and a Return on it then is not here."""
+    """R on an ask's line refuses it, releasing nothing, and a Return on it then closes."""
     ask = "1123456789abcdef0123456789abcdef"
     why = "To glaze the pots."
     put_up(desktop, ask, why)
@@ -260,13 +260,23 @@ def test_r_refuses_an_ask(desktop: Desktop) -> None:
     answer = answered(desktop, ask)
     assert (answer["state"], answer["why"]) == ("refused", "refused by Joel"), answer
     desktop.as_account(f"! test -e {TREE}/released")
-    # Return on the line once answered has nothing to do, so it keeps the launcher, saying so as
-    # a key with no meaning does, rather than closing it by a Return that failed.
-    desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
-    desktop.machine.send_key("ret")
+    # Return on the line once answered only closes, as on any row that only says something,
+    # rather than closing by a Return that failed. It waits for the line to read refused, since
+    # until then it's held as it was, waiting, where Return arms the yes.
     desktop.launcher_until(
         lambda shown: (
-            shown["open"] and shown["saying"] == ["\u21b5 not here"] and selects(shown, why)
+            shown["mode"] == "normal"
+            and selects(shown, why)
+            and shown["selected"]["side"] == "refused"
+        )
+    )
+    since = desktop.mark()
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.machine.fail(
+        desktop.in_session(
+            f"journalctl --user -u quickshell --no-pager -o cat --after-cursor={shlex.quote(since)}"
+            " | grep -q TypeError"
         )
     )
 
