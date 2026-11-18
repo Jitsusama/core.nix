@@ -116,37 +116,11 @@ pub fn eased(share: f64, clock: f64) -> f64 {
     share + (clock - share).clamp(-step, step)
 }
 
-/// glibc's broken-down time.
-#[repr(C)]
-#[derive(Default)]
-struct Tm {
-    sec: i32,
-    min: i32,
-    hour: i32,
-    mday: i32,
-    mon: i32,
-    year: i32,
-    wday: i32,
-    yday: i32,
-    isdst: i32,
-    gmtoff: i64,
-    zone: usize,
-}
-
-unsafe extern "C" {
-    fn localtime_r(time: *const i64, out: *mut Tm) -> *mut Tm;
-}
-
 /// Minutes past midnight by the local clock, for `wall` milliseconds since
 /// 1970 began.
 pub fn local_minute(wall: i64) -> Option<f64> {
-    let seconds = wall.div_euclid(1000);
-    let mut tm = Tm::default();
-    // SAFETY: both pointers are to values alive across the call.
-    if unsafe { localtime_r(&raw const seconds, &raw mut tm) }.is_null() {
-        return None;
-    }
-    Some(f64::from(tm.hour) * 60.0 + f64::from(tm.min) + f64::from(tm.sec) / 60.0)
+    let local = terminal_kit::local::at(wall.div_euclid(1000))?;
+    Some(f64::from(local.minute_of_day()) + f64::from(local.second) / 60.0)
 }
 
 #[cfg(test)]
@@ -251,6 +225,11 @@ mod tests {
         assert!(
             (0.0..DAY).contains(&minute),
             "{minute} isn't a minute of a day"
+        );
+        let later = local_minute(30_000).expect("half a minute on reads locally");
+        assert!(
+            (later - minute - 0.5).abs() < 1e-9,
+            "half a minute on read {later} after {minute}, its seconds not counted"
         );
     }
 }

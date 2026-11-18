@@ -130,43 +130,13 @@ pub fn folder(started: u64, title: &str) -> String {
     }
 }
 
-/// glibc's broken-down time.
-#[repr(C)]
-#[derive(Default)]
-struct Tm {
-    sec: i32,
-    min: i32,
-    hour: i32,
-    mday: i32,
-    mon: i32,
-    year: i32,
-    wday: i32,
-    yday: i32,
-    isdst: i32,
-    gmtoff: i64,
-    zone: usize,
-}
-
-unsafe extern "C" {
-    fn localtime_r(time: *const i64, out: *mut Tm) -> *mut Tm;
-}
-
 /// A time in milliseconds as the machine's local date and time, as
 /// "2026-10-31 09.30".
 fn local(ms: u64) -> String {
     let seconds = i64::try_from(ms / 1000).unwrap_or(i64::MAX);
-    let mut tm = Tm::default();
-    // SAFETY: both pointers are to values alive across the call.
-    if unsafe { localtime_r(&raw const seconds, &raw mut tm) }.is_null() {
-        return "a call".to_owned();
-    }
-    format!(
-        "{}-{:02}-{:02} {:02}.{:02}",
-        tm.year + 1900,
-        tm.mon + 1,
-        tm.mday,
-        tm.hour,
-        tm.min
+    terminal_kit::local::at(seconds).map_or_else(
+        || "a call".to_owned(),
+        |local| format!("{} {:02}.{:02}", local.date(), local.hour, local.minute),
     )
 }
 

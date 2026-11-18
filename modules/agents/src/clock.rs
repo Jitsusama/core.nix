@@ -133,20 +133,7 @@ pub fn now_ms() -> u128 {
 /// The date where Joel is of `ms` since 1970, `2026-11-10`; none where it
 /// can't say.
 pub fn date_of(ms: i64) -> String {
-    let seconds = libc::time_t::try_from(ms.div_euclid(1000)).unwrap_or(0);
-    // SAFETY: tm is plain data, zeroed is a valid value, and localtime_r
-    // writes only the struct it's given.
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    // SAFETY: as above; seconds lives for the call.
-    if unsafe { libc::localtime_r(&raw const seconds, &raw mut tm) }.is_null() {
-        return String::new();
-    }
-    format!(
-        "{:04}-{:02}-{:02}",
-        tm.tm_year + 1900,
-        tm.tm_mon + 1,
-        tm.tm_mday
-    )
+    terminal_kit::local::at(ms.div_euclid(1000)).map_or_else(String::new, |local| local.date())
 }
 
 #[cfg(test)]

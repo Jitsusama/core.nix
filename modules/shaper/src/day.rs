@@ -424,33 +424,17 @@ fn bounds(date: &str) -> Option<(u64, u64)> {
     let mut parts = date.splitn(3, '-').map(|p| p.parse::<i32>().ok());
     let (y, m, d) = (parts.next()??, parts.next()??, parts.next()??);
     let midnight = |day: i32| {
-        // SAFETY: tm is plain data, zeroed is a valid value, and mktime
-        // only reads and normalises the one it is handed.
-        let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-        tm.tm_year = y - 1900;
-        tm.tm_mon = m - 1;
-        tm.tm_mday = day;
-        tm.tm_isdst = -1;
-        // SAFETY: as above.
-        let at = unsafe { libc::mktime(&raw mut tm) };
+        let at = terminal_kit::local::moment(y, m, day, 0, 0, 0)?;
         u64::try_from(at).ok().map(|s| s * 1_000)
     };
     Some((midnight(d)?, midnight(d + 1)?))
 }
 
-/// The local date a moment falls on, in ms since 1970.
-fn local_date(ms: u64) -> String {
-    let at = libc::time_t::try_from(ms / 1_000).unwrap_or(0);
-    // SAFETY: tm is plain data, and localtime_r writes only into it.
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    // SAFETY: both pointers are to live values of their types.
-    unsafe { libc::localtime_r(&raw const at, &raw mut tm) };
-    format!(
-        "{:04}-{:02}-{:02}",
-        tm.tm_year + 1900,
-        tm.tm_mon + 1,
-        tm.tm_mday
-    )
+/// The local date a moment falls on, in ms since 1970; none where the C
+/// library can't place it.
+fn local_date(ms: u64) -> Option<String> {
+    let at = i64::try_from(ms / 1_000).ok()?;
+    terminal_kit::local::at(at).map(|local| local.date())
 }
 
 fn now_ms() -> u64 {
@@ -509,7 +493,11 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     }
     let now = now_ms();
     if dates.is_empty() {
-        let yesterday = local_date(now - 86_400_000);
+        let unread = || {
+            Failure::new(Exit::Failed, "today's date couldn't be read")
+                .because("the C library couldn't place the clock in its zone")
+        };
+        let yesterday = local_date(now - 86_400_000).ok_or_else(unread)?;
         let written = fs::read_to_string(out.join(format!("{yesterday}.json")))
             .ok()
             .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
@@ -517,7 +505,7 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
         if bounds(&yesterday).is_some_and(|(_, end)| written.is_none_or(|w| w < end)) {
             dates.push(yesterday);
         }
-        dates.push(local_date(now));
+        dates.push(local_date(now).ok_or_else(unread)?);
     }
     // Each date is written though another fails, and every failure said.
     let failed: Vec<String> = dates

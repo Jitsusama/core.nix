@@ -67,44 +67,19 @@ impl When {
     }
 }
 
-/// glibc's broken-down time.
-#[repr(C)]
-#[derive(Default)]
-struct Tm {
-    sec: i32,
-    min: i32,
-    hour: i32,
-    mday: i32,
-    mon: i32,
-    year: i32,
-    wday: i32,
-    yday: i32,
-    isdst: i32,
-    gmtoff: i64,
-    zone: usize,
-}
-
-unsafe extern "C" {
-    fn localtime_r(time: *const i64, out: *mut Tm) -> *mut Tm;
-}
-
 /// A moment in milliseconds since 1970 as the machine's local time reads
 /// it, or the world's where glibc can't say.
 pub fn local(ms: i64) -> When {
-    let seconds = ms.div_euclid(1000);
-    let mut tm = Tm::default();
-    // SAFETY: both pointers are to values alive across the call.
-    if unsafe { localtime_r(&raw const seconds, &raw mut tm) }.is_null() {
+    let Some(local) = terminal_kit::local::at(ms.div_euclid(1000)) else {
         return utc(ms);
-    }
-    let whole = |value: i32| u32::try_from(value).unwrap_or(0);
+    };
     When {
-        year: tm.year + 1900,
-        month: whole(tm.mon + 1),
-        day: whole(tm.mday),
-        weekday: whole(tm.wday),
-        hour: whole(tm.hour),
-        minute: whole(tm.min),
+        year: local.year,
+        month: local.month,
+        day: local.day,
+        weekday: local.weekday,
+        hour: local.hour,
+        minute: local.minute,
     }
 }
 

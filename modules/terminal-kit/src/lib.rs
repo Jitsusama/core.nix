@@ -14,7 +14,9 @@
 //!
 //! It depends on `serde_json` and `unicode-width` alone, since a parser crate
 //! would be most of a small command's dependencies: the command reads
-//! what's left of its arguments its own way.
+//! what's left of its arguments its own way. Where a command says a local
+//! time, `local` reads it through the C library, the one copy of its
+//! `struct tm` every command shares.
 
 pub mod environment;
 pub mod failure;
@@ -22,6 +24,7 @@ pub mod flags;
 pub mod help;
 pub mod ink;
 pub mod layout;
+pub mod local;
 pub mod time;
 pub mod tree;
 pub mod wait;

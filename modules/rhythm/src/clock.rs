@@ -1,5 +1,5 @@
-//! The local clock, by glibc's own reckoning of the zone, as the
-//! backlight's evening reads it (modules/backlight/src/evening.rs), and
+//! The local clock, by glibc's own reckoning of the zone, as every command
+//! reads it (modules/terminal-kit/src/local.rs), and
 //! the civil calendar's days, for the dates pi writes and the sun's days.
 
 /// A moment by the local clock.
@@ -14,41 +14,16 @@ pub struct Local {
     pub minute: u32,
 }
 
-/// glibc's broken-down time.
-#[repr(C)]
-#[derive(Default)]
-struct Tm {
-    sec: i32,
-    min: i32,
-    hour: i32,
-    mday: i32,
-    mon: i32,
-    year: i32,
-    wday: i32,
-    yday: i32,
-    isdst: i32,
-    gmtoff: i64,
-    zone: usize,
-}
-
-unsafe extern "C" {
-    fn localtime_r(time: *const i64, out: *mut Tm) -> *mut Tm;
-}
-
 /// The local clock at `seconds` since 1970 began in UTC, or none where
 /// glibc can't say it.
 pub fn local(seconds: i64) -> Option<Local> {
-    let mut tm = Tm::default();
-    // SAFETY: both pointers are to values alive across the call.
-    if unsafe { localtime_r(&raw const seconds, &raw mut tm) }.is_null() {
-        return None;
-    }
+    let local = terminal_kit::local::at(seconds)?;
     Some(Local {
-        year: tm.year + 1900,
-        month: u32::try_from(tm.mon + 1).ok()?,
-        day: u32::try_from(tm.mday).ok()?,
-        weekday: u32::try_from(tm.wday).ok()?,
-        minute: u32::try_from(tm.hour * 60 + tm.min).ok()?,
+        year: local.year,
+        month: local.month,
+        day: local.day,
+        weekday: local.weekday,
+        minute: local.minute_of_day(),
     })
 }
 
