@@ -15,6 +15,7 @@ import {
   seasonOf,
   treeAddress,
 } from "./model.ts";
+import type { Homes } from "./homes.ts";
 import { weighedBriefly, weighedFully, weightOfAll } from "./weight.ts";
 
 /** What every part of the drawer reads besides its own: the time it's drawn at, the home
@@ -22,7 +23,7 @@ import { weighedBriefly, weighedFully, weightOfAll } from "./weight.ts";
 interface Context {
   readonly now: number;
   readonly home: string | undefined;
-  readonly homes: ReadonlyMap<string, string>;
+  readonly homes: Homes;
 }
 
 const GITHUB_KEY = /^github:/u;
@@ -306,14 +307,14 @@ function rows(repositories: readonly Repository[], now: number, query: string): 
 }
 
 /** A cell's name, linked to its home when the mycelium's homes name it. */
-function cellName(cell: Cell, homes: ReadonlyMap<string, string>): string {
-  const home = homes.get(cell.name);
+function cellName(cell: Cell, homes: Homes): string {
+  const home = homes(cell.name);
   const name = `<code class="cell-name">${escaped(cell.name)}</code>`;
   return home === undefined ? name : `<a href="../${escaped(home)}">${name}</a>`;
 }
 
 /** The cells at work in a folder, as a line under it. */
-function cellsLine(cells: readonly Cell[], homes: ReadonlyMap<string, string>): string {
+function cellsLine(cells: readonly Cell[], homes: Homes): string {
   const working = atWork(cells);
   if (working.length === 0) {
     return "";
