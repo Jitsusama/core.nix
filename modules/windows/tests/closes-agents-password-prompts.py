@@ -117,7 +117,7 @@ def only_prompts_close(joel: Connection, lines: Path) -> list[str]:
     """Cases 3 and 4: the job's terminal stays, and a second prompt is closed but not told."""
     failures: list[str] = []
     terminal = joel.window("foot")
-    if not said(lines, "an agent opened a window over Joel's work: foot"):
+    if not said(lines, 'an agent opened a window over Joel\'s work: "foot"'):
         failures.append(f"3: the journal never said the terminal: {lines.read_text()!r}")
     if joel.asked_to_close(terminal, CLOSING):
         failures.append("3: an agent's terminal was closed")

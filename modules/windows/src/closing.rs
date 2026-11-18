@@ -104,7 +104,10 @@ mod tests {
         let start = Instant::now();
         let first = prompt(4, "run-r1.scope", Some("/trees/keyring"));
         let rerun = prompt(5, "run-r2.scope", Some("/trees/keyring"));
-        assert!(telling(&mut told, &told_for(&first, true), start));
+        assert!(
+            telling(&mut told, &told_for(&first, true), start),
+            "a folder's first closed prompt wasn't told"
+        );
         assert!(
             !telling(&mut told, &told_for(&rerun, true), start),
             "a rerun in the same folder, in a fresh scope, was told again within a minute"
