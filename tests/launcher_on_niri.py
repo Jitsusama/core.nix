@@ -640,34 +640,26 @@ def placed(said: str) -> Json | None:
     return None if at == "nowhere" else cast("Json", json.loads(at))
 
 
-def nested_niri(process: Path) -> bool:
-    """Say whether the process at /proc's `process` is the nested niri, run with -c.
+def niri_pid(socket: str) -> int:
+    """Give the pid of the niri listening at `socket`, which niri names niri.<display>.<pid>.sock.
 
-    A process that ends between /proc's listing and this read is gone, so it's no niri: the
-    shell's own commands come and go throughout, and one ending then failed a case.
+    Read from the name rather than found among /proc's processes, since the shell's commands
+    come and go throughout, and one ending between the listing and its reading failed a case.
     """
-    try:
-        return (process / "cmdline").read_bytes().split(b"\0")[1:2] == [b"-c"] and (
-            process / "comm"
-        ).read_text().strip() == "niri"
-    except FileNotFoundError, ProcessLookupError:
-        return False
+    return int(Path(socket).name.split(".")[-2])
 
 
 @contextlib.contextmanager
 def niri_held() -> Iterator[None]:
     """Hold the nested niri stopped while what's done inside it runs, so it answers no frame."""
-    held = [
-        int(process.name)
-        for process in Path("/proc").iterdir()
-        if process.name.isdigit() and nested_niri(process)
-    ]
-    assert len(held) == 1, f"there should be one niri to hold, not {held}"
-    os.kill(held[0], signal.SIGSTOP)
+    held = niri_pid(os.environ["NIRI_SOCKET"])
+    named = Path(f"/proc/{held}/comm").read_text().strip()
+    assert named == "niri", f"NIRI_SOCKET names {held}, which is {named}, not niri"
+    os.kill(held, signal.SIGSTOP)
     try:
         yield
     finally:
-        os.kill(held[0], signal.SIGCONT)
+        os.kill(held, signal.SIGCONT)
 
 
 def laid_whole(path: Path, text: str) -> None:
