@@ -60,14 +60,26 @@ pub(super) fn land(from: &Path, into: &Path, swept: &mut HashSet<PathBuf>) -> io
     let (landing, mut to) = landing_name(parent, bits)?;
     let landed = held(&to)
         .and_then(|()| io::copy(&mut source, &mut to))
-        // A network folder may say it is full only once asked to keep
-        // what was written, which a close that is dropped never hears.
-        .and_then(|_| to.sync_all())
+        .and_then(|_| kept(&to))
         .and_then(|()| fs::rename(&landing, into));
     landed.inspect_err(|_| {
         // What's left would be in the person's folder; it's spent anyway.
         let _ = fs::remove_file(&landing);
     })
+}
+
+/// Asks the folder to keep what was written to `to`, since a network
+/// folder may say it is full, or past a quota, only then, and a close that
+/// is dropped never hears it. Not on Apple's systems, where a sync flushes
+/// the drive's own cache (`F_FULLFSYNC`): one a file makes a large
+/// bring-back crawl, and some network folders refuse it outright, which
+/// would fail every landing.
+fn kept(to: &fs::File) -> io::Result<()> {
+    if cfg!(target_vendor = "apple") {
+        Ok(())
+    } else {
+        to.sync_data()
+    }
 }
 
 /// The bits a file of `mode` lands with, before the umask: never setuid,

@@ -58,7 +58,7 @@ pub(super) fn copying() -> String {
 /// run doesn't pass as whole.
 pub(super) fn bringing(kind: &Kind) -> String {
     if kind.brings_back.is_empty() {
-        return format!(": > \"$job/{BROUGHT}\"\n");
+        return format!("true > \"$job/{BROUGHT}\"\n");
     }
     let paths = kind
         .brings_back
@@ -67,9 +67,11 @@ pub(super) fn bringing(kind: &Kind) -> String {
         .collect::<Vec<_>>()
         .join(" ");
     format!(
+        // `true` rather than `:`, which a shell that isn't interactive
+        // exits on when its redirection fails, as a special builtin.
         r#"names="$work.back"
 lose() {{ for path in {paths}; do printf '%s\t%s\n' - "$path"; done; }}
-if : > "$names" && : > "$names.lost"; then
+if true > "$names" && true > "$names.lost"; then
 for path in {paths}; do
   [ -e "$path" ] || continue
   find "$path" -type l ! -path '*/.*' ! -name '.*' \
@@ -78,7 +80,7 @@ for path in {paths}; do
     printf '%s\t%s\n' - "$path" >> "$names.lost"
 done
 # A file two of the paths hold crosses once, and counts once.
-LC_ALL=C sort -u "$names" > "$names.in" || {{ : > "$names.in"; lose >> "$names.lost"; }}
+LC_ALL=C sort -u "$names" > "$names.in" || {{ true > "$names.in"; lose >> "$names.lost"; }}
 {{
   n=0 files=0 bytes=0 most_files={MOST_FILES} most_bytes={MOST_BYTES}
   # One that can't be read or copied keeps its number, listed with no

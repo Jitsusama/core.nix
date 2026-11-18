@@ -33,11 +33,12 @@ fn a_copy_longer_than_listed_never_lands() {
 fn what_couldn_t_be_found_or_sorted_to_bring_back_is_lost_not_whole() {
     let mut kind = kind("");
     kind.brings_back = vec!["out".into()];
-    // Each failing only at the bring-back, and passing the rest to the
-    // far machine's own, the stand-in's folder first on the path.
+    // Each failing only at the bring-back, having said all it would, as a
+    // find stopped part way does, and passing the rest to the far
+    // machine's own, the stand-in's folder first on the path.
     for (step, when) in [("find", "*\" -type f \"*"), ("sort", "*\" -u \"*")] {
         let stand_in = format!(
-            "case \" $* \" in {when}) exit 1 ;; esac\nPATH=${{PATH#*:}} exec {step} \"$@\""
+            "PATH=${{PATH#*:}}\ncase \" $* \" in {when}) {step} \"$@\"; exit 1 ;; esac\nexec {step} \"$@\""
         );
         let (code, err, home) = far_line(
             "1\tx\nend\n",
@@ -53,8 +54,35 @@ fn what_couldn_t_be_found_or_sorted_to_bring_back_is_lost_not_whole() {
             matches!(&landed, Err(Missed::Lost(why)) if why.contains("out didn't come back")),
             "a {step} that failed passed what it lost as whole: {landed:?}"
         );
+        // What a find listed before it stopped still lands.
+        assert!(
+            step == "sort" || home.join("near/out/a").exists(),
+            "what the find listed before it stopped didn't land"
+        );
         let _ = std::fs::remove_dir_all(&home);
     }
+}
+
+#[test]
+fn a_bring_back_with_nowhere_to_list_its_names_loses_every_path() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // A folder where the far line lists its names, so it can't.
+    let (code, err, home) = far_line(
+        "1\tx\nend\n",
+        &[("x", "x")],
+        "mkdir \"$PWD.back\" out && printf a > out/a",
+        &kind,
+        None,
+        &[],
+    );
+    assert_eq!(code, Some(0), "the job didn't run: {err}");
+    let landed = bring_back(&handover(&home), &home.join("near"), &kind.brings_back, 1);
+    assert!(
+        matches!(&landed, Err(Missed::Lost(why)) if why.contains("out didn't come back")),
+        "names that couldn't be listed passed as none to bring back: {landed:?}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]
