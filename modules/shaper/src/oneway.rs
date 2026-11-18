@@ -775,9 +775,13 @@ impl Way {
     /// flows backing off in any moment of it, our CAKE holding a queue in
     /// under half its moments, or less than a queue elsewhere is taken back
     /// at. Behind a VPN heard clear its flows count as backing off, so
-    /// there, as with `elsewhere`, a probe keeps the plateau.
-    fn met(&mut self, at: f64, plateau: f64, ceiling: bool, backing_off: bool) -> Option<f64> {
-        let probed = std::mem::take(&mut self.probed);
+    /// there, as with `elsewhere`, a probe keeps the plateau. Live, where
+    /// the controller steps by whole seconds, one second decides it, as one
+    /// decides the room a probe finds; a line read high is taken back by
+    /// the next probe, which, pushed past it, is held back and found
+    /// `elsewhere`.
+    fn met(&self, at: f64, plateau: f64, ceiling: bool, backing_off: bool) -> Option<f64> {
+        let probed = self.probed;
         if ceiling || backing_off || probed.backed_off || probed.queued * 2 < probed.moments {
             return None;
         }
@@ -3523,18 +3527,18 @@ mod tests {
     /// sends again what the router dropped, and `cake_drops` of the rate
     /// CAKE dropped itself. Answers the rate held at the end.
     fn many_flows(c: &mut Controller, to: f64, line: f64, cake_drops: f64) -> Option<u64> {
-        many_flows_heard_late(c, to, line, cake_drops, 0, 0.1)
+        many_flows_heard_late(c, to, |_| line, cake_drops, 0, 0.1)
     }
 
-    /// Steps a controller as `many_flows` does, a moment of `step` seconds
-    /// at a time, with what the router drops sent again `late` moments
-    /// after it was sent, a round trip or more later, as TCP hears of a
-    /// loss: until then the link carries all of a rate over the line with
-    /// nothing yet sent again.
+    /// Steps a controller as `many_flows` does, behind a router carrying
+    /// `line(at)`, a moment of `step` seconds at a time, with what the
+    /// router drops sent again `late` moments after it was sent, a round
+    /// trip or more later, as TCP hears of a loss: until then the link
+    /// carries all of a rate over the line with nothing yet sent again.
     fn many_flows_heard_late(
         c: &mut Controller,
         to: f64,
-        line: f64,
+        line: impl Fn(f64) -> f64,
         cake_drops: f64,
         late: usize,
         step: f64,
@@ -3547,6 +3551,7 @@ mod tests {
             down: None,
         };
         while at < to {
+            let line = line(at);
             let rate = c.up.limit().map_or(line * 2.0, crate::rate::float);
             sent.push_back(rate);
             let heard = if sent.len() > late {
@@ -3628,7 +3633,7 @@ mod tests {
             plateau: Some(8_000.0),
         };
         let mut c = Controller::from_learned(learned, Learned::default());
-        let held = many_flows_heard_late(&mut c, 10.0, 8_370.0, 0.03, 10, 0.1);
+        let held = many_flows_heard_late(&mut c, 10.0, |_| 8_370.0, 0.03, 10, 0.1);
         assert!(
             held.is_some_and(|kbit| (7_930..=7_970).contains(&kbit)),
             "not held under the line met: {held:?}"
@@ -3652,10 +3657,52 @@ mod tests {
             plateau: Some(8_000.0),
         };
         let mut c = Controller::from_learned(learned, Learned::default());
-        let held = many_flows_heard_late(&mut c, 10.0, 8_370.0, 0.03, 1, 1.0);
+        let held = many_flows_heard_late(&mut c, 10.0, |_| 8_370.0, 0.03, 1, 1.0);
         assert!(
             held.is_some_and(|kbit| (7_930..=7_970).contains(&kbit)),
             "not held under the line met: {held:?}"
+        );
+    }
+
+    // A dip of a second and a half, the air or another machine taking the
+    // link, is shorter than a queue elsewhere is taken back after. Read by
+    // a probe's few moments as the line, it would bring the plateau down.
+    #[test]
+    fn a_dip_a_probe_meets_leaves_the_plateau_where_it_stood() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(8_000.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        let line = |at: f64| {
+            if (1.5..3.0).contains(&at) {
+                7_000.0
+            } else {
+                8_500.0
+            }
+        };
+        let held = many_flows_heard_late(&mut c, 10.0, line, 0.03, 0, 0.1);
+        assert!(near(held, 7_600.0), "held off the plateau: {held:?}");
+        assert_eq!(c.up.plateau, Some(8_000.0), "a dip was learned as the line");
+    }
+
+    // A probe a trial's ceiling holds carries the ceiling, not the line.
+    #[test]
+    fn a_probe_a_ceiling_holds_learns_no_line_from_it() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(8_000.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        c.up.tune(Tuning {
+            most_kbit: Some(8_400.0),
+            ..Tuning::default()
+        });
+        many_flows(&mut c, 10.0, 8_500.0, 0.03);
+        assert_eq!(
+            c.up.plateau,
+            Some(8_000.0),
+            "the ceiling was learned as the line"
         );
     }
 
