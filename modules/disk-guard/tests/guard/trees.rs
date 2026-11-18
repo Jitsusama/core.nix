@@ -144,7 +144,10 @@ fn a_pinned_snapshots_build_is_spent_once_nobody_has_used_it_for_an_hour() {
         10_000.0,
     )
     .unwrap();
-    assert!(sat_in.occupied && sat_in.spent);
+    assert!(
+        sat_in.occupied && sat_in.spent,
+        "a snapshot past its hour is spent, and occupied while a gate sits in it"
+    );
     assert_eq!(
         plan::windows(&sat_in).0,
         Group::Occupied,

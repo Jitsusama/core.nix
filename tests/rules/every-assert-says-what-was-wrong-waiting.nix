@@ -94,7 +94,7 @@
   "modules/disk-guard/tests/guard/snapshots.rs" = 7;
   "modules/disk-guard/tests/guard/socket.rs" = 5;
   "modules/disk-guard/tests/guard/state.rs" = 2;
-  "modules/disk-guard/tests/guard/survey.rs" = 8;
+  "modules/disk-guard/tests/guard/survey.rs" = 4;
   "modules/disk-guard/tests/guard/temp.rs" = 3;
   "modules/disk-guard/tests/guard/trash.rs" = 5;
   "modules/disk-guard/tests/guard/trees.rs" = 5;

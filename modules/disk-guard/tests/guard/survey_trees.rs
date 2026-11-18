@@ -58,7 +58,10 @@ fn an_older_build_is_offered_once_its_deps_is_watched() {
         }
     );
     let newest = deps.join("app-0123456789abcdef");
-    assert!(found.iter().all(|offer| offer.candidate.path != newest));
+    assert!(
+        found.iter().all(|offer| offer.candidate.path != newest),
+        "the newest build of a crate is never offered as replaced"
+    );
 }
 
 #[test]
@@ -93,7 +96,10 @@ fn targets_and_installs_are_offered_under_their_roots() {
         }
     );
     let unfinished = offers(&config, &[], &|_| false);
-    assert!(!find(&unfinished, &target).candidate.spent);
+    assert!(
+        !find(&unfinished, &target).candidate.spent,
+        "a build whose checkout's work goes on isn't spent"
+    );
 }
 
 #[test]
@@ -206,7 +212,8 @@ fn a_tree_a_build_runs_in_is_never_offered() {
     assert!(
         offers(&config, &[], &|_| false)
             .iter()
-            .any(|offer| offer.candidate.path == variant)
+            .any(|offer| offer.candidate.path == variant),
+        "incremental state is offered while nothing builds there"
     );
     let cargo = Process {
         pid: 4242,
@@ -221,7 +228,8 @@ fn a_tree_a_build_runs_in_is_never_offered() {
     assert!(
         !found
             .iter()
-            .any(|offer| offer.candidate.path.starts_with(&target))
+            .any(|offer| offer.candidate.path.starts_with(&target)),
+        "nothing under a target cargo is building in is offered"
     );
 }
 
