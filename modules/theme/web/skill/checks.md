@@ -53,8 +53,8 @@ through axe-core and its own console.
    the page's own links on the sites and `data-home` reach through the
    pattern, each then measured everywhere else on the page; a name the
    page never links isn't measured. A row or a record the system's
-   or Code's reader would drop is named, never missed, and so is a `sites.json`
-   the home hasn't built into `rows.json` yet. A name that is a plain
+   or Code's reader would drop is named, never missed, and so is a
+   `sites.json` the home hasn't built into `rows.json` yet. A name that is a plain
    lower-case word, a repository called `documents`, counts only in code
    or a link, since in prose it's the word (2026-11-16). A page with a
    picture runs `svgtext.js` too: each word

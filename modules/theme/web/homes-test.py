@@ -3,8 +3,9 @@
 Each case writes a small sites folder, a sites.json, any rows.json and
 homes.json, and a page, serves it, runs the probe in the page as checks.md
 runs it, and reads what it names. The rules a row and a record are held to
-are the system reader's (modules/system/src/homes.rs), so a row or a record
-the reader would drop is named here. Where the rows come from is the
+are the system's reader's (modules/system/src/homes.rs) and Code's
+(modules/repos/site/homes.ts), so a row or a record either would drop is
+named here. Where the rows come from is the
 probe's own: rows.json, which the home writes (modules/local-sites/home),
 or sites.json where the sites serve none.
 The probe's path comes from WEB_SKILL, as the check running this sets it.
