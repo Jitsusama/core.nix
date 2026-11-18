@@ -89,8 +89,14 @@ class Rig:
         return f"shaper{index:x}"
 
     def holding(self) -> bool:
-        """Give whether the controller holds eth1 under a queue it took back."""
-        links: list[Json] = json.loads(self.client.succeed("cat /run/shaper/status.json"))
+        """Give whether the controller holds eth1 under a queue it took back.
+
+        A shaper with no status, gone or starting again, holds nothing.
+        """
+        status, text = self.client.execute("cat /run/shaper/status.json")
+        if status:
+            return False
+        links: list[Json] = json.loads(text)
         return any(link["name"] == "eth1" and link["state"] == "holding" for link in links)
 
     def start(self, unit: str, slice_name: str, flows: int, script: str) -> None:
@@ -101,14 +107,20 @@ class Rig:
             " done) & done; wait'"
         )
 
-    def stop(self, *units: str) -> None:
-        """Stop units the loads run in, each tried before any that wouldn't stop fails it."""
-        stuck = [
-            unit
-            for unit in units
-            if self.client.execute(f"systemctl -M alice@ --user stop {unit}.service")[0]
-        ]
-        assert not stuck, f"the loads in {stuck} wouldn't stop"
+    def stop(self, *units: str) -> list[str]:
+        """Stop units the loads run in, each tried, and give those that wouldn't stop.
+
+        It fails nothing itself, so a stop after a failure never takes its place.
+        """
+        stuck = []
+        for unit in units:
+            status, reply = self.client.execute(
+                f"systemctl -M alice@ --user stop {unit}.service 2>&1"
+            )
+            if status:
+                print(f"the loads in {unit} wouldn't stop: {reply.strip()}")
+                stuck.append(unit)
+        return stuck
 
     def calls(self, names: list[str] | None = None, seconds: int = CALL_SECONDS) -> dict[str, Json]:
         """Hold calls at once from an app, both unless named, and give what iperf3 made of each."""
@@ -133,12 +145,16 @@ class Rig:
         medians of the delays out and back, in ms, as the controller reads them before
         taking the reflector's least off.
         """
-        status, text = self.client.execute("cat /var/lib/shaper-record/*.jsonl")
+        status, text = self.client.execute("cat /var/lib/shaper-record/*.jsonl 2>&1")
         if status:
             return f"the recorder's samples couldn't be read: {text.strip()}"
         seconds: dict[int, list[Json]] = {}
         for line in text.splitlines():
-            sample: Json = json.loads(line)
+            try:
+                sample: Json = json.loads(line)
+            except json.JSONDecodeError:
+                # The recorder keeps writing while a trace reads, so its last line may be half.
+                continue
             if "tx" in sample:
                 seconds.setdefault(sample["at"] // 1000, []).append(sample)
         rows = []
@@ -179,7 +195,7 @@ class Rig:
 
 def said(machine: BaseMachine, command: str) -> str:
     """Give what a command printed, or that it failed and what it said, for a trace."""
-    status, output = machine.execute(command)
+    status, output = machine.execute(f"( {command} ) 2>&1")
     return output if status == 0 else f"{command} failed ({status}): {output.strip()}"
 
 
@@ -244,15 +260,18 @@ def under_load(rig: Rig, *, shaped: bool) -> dict[str, dict[str, int]]:
             retry(lambda last_try: holds(rig, last_try=last_try), timeout=FILLING)
         results = rig.calls()
     finally:
-        rig.stop(*started)
+        stuck = rig.stop(*started)
+    assert not stuck, f"the loads in {stuck} wouldn't stop"
     lost: dict[str, dict[str, int]] = {}
     for name, result in results.items():
-        assert "error" not in result, f"the {name} call failed: {result['error']}"
+        # The messages are made only on a failure, so the trace is taken only then.
+        assert "error" not in result, f"the {name} call failed: {result['error']}\n{rig.trace()}"
         lost[name] = {}
         for way in ["up", "down"]:
             summary = received(result, way)
             assert summary.get("packets", 0) >= CALL_LEAST, (
-                f"the {name} call took {summary.get('packets')} datagrams {way}, under {CALL_LEAST}"
+                f"the {name} call took {summary.get('packets')} datagrams {way},"
+                f" under {CALL_LEAST}\n{rig.trace()}"
             )
             lost[name][way] = int(summary["lost_packets"])
     print(f"lost by call and way: {lost}")
@@ -266,11 +285,11 @@ def test_a_call_to_443_goes_as_video_while_one_is_on(rig: Rig) -> None:
     from a page's QUIC: on 12 November one went as best effort while the jobs filled the
     upload, and its picture went blocky.
     """
-    rig.client.succeed(f"touch {CALL_FLAG}")
-    rig.client.wait_until_succeeds(
-        "journalctl -u shaper -o cat | grep -q 'a call is on'", timeout=HEARING
-    )
     try:
+        rig.client.succeed(f"touch {CALL_FLAG}")
+        rig.client.wait_until_succeeds(
+            "journalctl -u shaper -o cat | grep -q 'a call is on'", timeout=HEARING
+        )
         before = rig.counts("eth1", "sent_packets")
         result = rig.calls(["page"], seconds=ALONE_SECONDS)["page"]
         after = rig.counts("eth1", "sent_packets")
