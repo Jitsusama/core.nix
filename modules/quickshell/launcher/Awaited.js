@@ -1,4 +1,5 @@
 .pragma library
+.import "Pacing.js" as Pacing
 
 // What a search of what's typed does about the sources whose answers it
 // waits for (Launcher.qml's searchNow). A source such as the notices,
@@ -51,4 +52,70 @@ function next(now, waitingOn) {
 function waitedOf(held, now, bound, timedOut) {
     const waited = Math.max(0, Math.round(now - held.began));
     return { waited, behind: timedOut ? Math.max(0, waited - bound) : 0 };
+}
+
+// What a held key waited behind once its bound was out, from the work the
+// launcher noted while it was held (Launcher.qml's heldSpans), as
+// `listed`, `{ at, spans, collected }`, says them as it's listed: each span
+// `{ name, from, to }` by the shell's own clock, as `held.from` and `at`,
+// when the wait ended, are; most first, then what none named, as an
+// opening's stall is (Pacing.stallSpent). Joel's fastest letters spent
+// 730 of their 1,054 ms past 50 behind the shell's other work, which said
+// nothing of what (RTOIMQ, 2026-11-17). The collector's time, from
+// `held.collected` to `collected`, is said after as the whole wait's,
+// since the count is read only as the key is held and listed, and it runs
+// inside whatever was running; left out where it took none. Ended on its
+// bound, or before, it names nothing.
+function behindOn(held, listed, bound) {
+    const { at, spans, collected } = listed;
+    const past = held.from + bound;
+    if (!(at > past)) {
+        return "";
+    }
+    const collecting = Math.round(collected - held.collected);
+    return [Pacing.stallSpent(spans, past, at),
+        collecting > 0 ? `collecting ${collecting} over the whole wait` : ""]
+        .filter(part => part !== "").join("; ");
+}
+
+// A held key's wait as its line says it, once it's listed (behindOn's
+// `listed`): how long, how far past its bound, and what that was behind,
+// all from `held.from` by the shell's clock, so the time behind and what
+// it names add up. Timed from `held.began`, the wall clock's, one said
+// 2 ms behind and named 1 (the keys lab, 2026-11-18).
+function heldFor(held, listed, bound) {
+    const timedOut = held.timedOut === true;
+    return Object.assign(waitedOf({ began: held.from }, listed.at, bound, timedOut),
+        { behindOn: timedOut ? behindOn(held, listed, bound) : "" });
+}
+
+// The frame a key held, or an opening felt, goes on noting: the one in
+// flight where a hold or an opening was already `listening`, as a key
+// typed over a held one is, since a frame begun then was being noted;
+// else a fresh one, as a frame begun while nothing listened would be
+// noted from then.
+function frameHeld(frame, listening) {
+    return listening ? frame : Pacing.feltUnframed();
+}
+
+// What the frame being drawn has run that Pacing.feltFramed hasn't said
+// yet, as of `at`: rows laid out for a frame not yet animating, and a sync
+// not yet heard to end, said up to `at`, the bound's timer firing, the
+// first the shell's thread is heard after it. A key's bound can end on the
+// timer queued behind a sync, ahead of the call that notes it, so the work
+// it waited behind would otherwise be said as unnamed (a council,
+// 2026-11-18).
+function frameOpen(frame, at) {
+    const open = frame.syncFrom < 0 ? [] : [{ name: "syncing", from: frame.syncFrom, to: at }];
+    if (frame.rows !== null) {
+        open.push({ name: "laying out", from: frame.rows.from, to: frame.rows.to });
+    }
+    return open;
+}
+
+// What a held key's frame still had open when its wait ended: said up to
+// the bound's timer firing, where the bound ended it, since the timer's
+// own work after that isn't the sync; else up to the listing `at`.
+function heldOpen(frame, held, at) {
+    return frameOpen(frame, held.firedAt ?? at);
 }

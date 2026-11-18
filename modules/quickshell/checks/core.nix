@@ -313,14 +313,15 @@ in
   # for it, a key typed over it drops its search, and Return searches it at
   # once (Y2YBTS, 2026-11-11). Return inside those milliseconds can't be
   # timed on niri, so tests/awaited.qml holds launcher/Awaited.js, which
-  # decides each, in Qt's own engine.
+  # decides each and names what a key held past its bound waited behind,
+  # in Qt's own engine.
   the-launcher-holds-a-key-for-its-answers =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-holds-a-key-for-its-answers" { } ''
       cp ${../../../tests/awaited.qml} awaited.qml
-      cp ${../launcher/Awaited.js} Awaited.js
+      ${copied [ "launcher/Awaited.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

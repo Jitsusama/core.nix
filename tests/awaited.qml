@@ -1,14 +1,14 @@
 // What a search does about the answers it waits for, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-launcher-holds-a-key-for-its-answers` check copies
-// modules/quickshell/launcher/Awaited.js and tests/lib/Expect.js beside
-// this file and runs it offscreen. A key typed and Return pressed inside
-// the few milliseconds a key is held can't be timed on niri, so each case
-// here is the state Launcher.qml's searchNow finds as a key or a setter
-// comes.
+// modules/quickshell/launcher/Awaited.js, with what it imports, into
+// launcher/ and tests/lib/Expect.js beside this file, and runs it
+// offscreen. A key typed and Return pressed inside the few milliseconds a
+// key is held can't be timed on niri, so each case here is the state
+// Launcher.qml's searchNow finds as a key or a setter comes.
 import QtQuick
 import "Expect.js" as Expect
-import "Awaited.js" as Awaited
+import "launcher/Awaited.js" as Awaited
 
 QtObject {
     // A case that doesn't hold throws, and ends the test as a failure.
@@ -99,5 +99,70 @@ QtObject {
             Awaited.waitedOf(asked98, 1008, 8, true), { waited: 8, behind: 0 });
         Expect.same("a wait an answer ended is behind nothing, however long",
             Awaited.waitedOf(asked98, 1030, 8, false), { waited: 30, behind: 0 });
+
+        // What held the shell's thread past the bound is named by the work
+        // noted while the key was held, by the shell's own clock: Joel's
+        // "mut" waited 77 ms on answers, 69 of it behind the shell's other
+        // work, unnamed (RTOIMQ, 2026-11-17). Where two run at once, the
+        // one begun last has the time, so none counts twice; the collector
+        // is said of the whole wait, since it may run inside any of them.
+        const held = { from: 1000, collected: 50 };
+        const noted = [
+            { name: "agents changing", from: 1000, to: 1012 },
+            { name: "syncing", from: 1010, to: 1050 },
+            { name: "laying out", from: 1050, to: 1080 }
+        ];
+        Expect.same("a wait past its bound names what ran past it, most first",
+            Awaited.behindOn(held, { at: 1098, spans: noted, collected: 60 }, 8),
+            "syncing 40, laying out 30, agents changing 2, 18 unnamed;"
+                + " collecting 10 over the whole wait");
+        Expect.same("work done before the bound isn't what the key waited behind,"
+            + " nor a collector that took none",
+            Awaited.behindOn(held, { at: 1098, collected: 50,
+                spans: [{ name: "showing", from: 1000, to: 1008 }] }, 8),
+            "90 unnamed");
+        Expect.same("a wait ended on its bound names nothing",
+            Awaited.behindOn(held, { at: 1008, spans: noted, collected: 60 }, 8), "");
+
+        // A bound can end on the timer queued behind a frame's sync, ahead
+        // of the call that notes it, as Pacing.feltFramed's frame then holds
+        // it: begun, not yet heard to end.
+        Expect.same("a sync not yet heard to end runs to the time asked, beside rows laid out",
+            Awaited.frameOpen({ rows: { from: 30, to: 34 }, syncFrom: 20 }, 50), [
+                { name: "syncing", from: 20, to: 50 }, { name: "laying out", from: 30, to: 34 }]);
+        Expect.same("a frame all said has nothing open",
+            Awaited.frameOpen({ rows: null, syncFrom: -1 }, 50), []);
+        const syncing = { rows: null, syncFrom: 1010 };
+        Expect.same("a sync still open when the bound fired is what the key waited behind",
+            Awaited.heldFor({ began: 0, from: 1000, collected: 50, timedOut: true },
+                { at: 1060, collected: 50, spans: Awaited.frameOpen(syncing, 1050) }, 8),
+            { waited: 60, behind: 52, behindOn: "syncing 40, 12 unnamed" });
+        Expect.same("a held key's open sync ends where its bound's timer fired",
+            Awaited.heldOpen(syncing, { firedAt: 1050 }, 1060),
+            [{ name: "syncing", from: 1010, to: 1050 }]);
+        Expect.same("a held key all answered has its open sync run to the listing",
+            Awaited.heldOpen(syncing, {}, 1060), [{ name: "syncing", from: 1010, to: 1060 }]);
+
+        // A key typed over a held one, or an opening felt while a key is
+        // held, goes on noting the frame in flight; one held with nothing
+        // listening notes a fresh one.
+        Expect.same("a hold begun while another listened keeps the frame in flight",
+            Awaited.frameHeld(syncing, true), syncing);
+        Expect.same("a hold begun with nothing listening notes a fresh frame",
+            Awaited.frameHeld(syncing, false), { rows: null, syncFrom: -1 });
+
+        // A held key's line is timed from when it was held by the shell's
+        // clock, never the wall clock's, which reads another time: timed
+        // apart, one said 2 ms behind and named 1 (the keys lab,
+        // 2026-11-18).
+        const late = { began: 1712000000000, from: 1000, collected: 50, timedOut: true };
+        Expect.same("a key its bound ended says its wait and what held it, on one clock",
+            Awaited.heldFor(late, { at: 1098, spans: noted, collected: 50 }, 8),
+            { waited: 98, behind: 90, behindOn: "syncing 40, laying out 30, agents changing 2,"
+                + " 18 unnamed" });
+        Expect.same("a key its answers ended was behind nothing, whatever ran",
+            Awaited.heldFor({ began: 1712000000000, from: 1000, collected: 50 },
+                { at: 1030, spans: noted, collected: 60 }, 8), { waited: 30, behind: 0,
+                behindOn: "" });
     }
 }

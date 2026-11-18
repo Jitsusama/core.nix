@@ -262,6 +262,15 @@ QtObject {
             Trials.readingSaid(12.6) === ", 13 reading what they hold"
                 && Trials.readingSaid(0.4) === "" && Trials.readingSaid(undefined) === "",
             Trials.readingSaid(12.6));
+        expect("a key held past its bound says what it was behind",
+            Trials.behindSaid({ behind: 69, behindOn: "syncing 40, 29 unnamed" })
+                === " (69 of it behind the shell's other work: syncing 40, 29 unnamed)",
+            Trials.behindSaid({ behind: 69, behindOn: "syncing 40, 29 unnamed" }));
+        expect("one with nothing named says only how far",
+            Trials.behindSaid({ behind: 3, behindOn: "" })
+                === " (3 of it behind the shell's other work)"
+                && Trials.behindSaid({ behind: 0, behindOn: "" }) === "",
+            Trials.behindSaid({ behind: 3, behindOn: "" }));
         const bare = Trials.stepped(null, { began: 0, made: 4, pushed: 4, opened: 5, ended: 9 });
         expect("a step with no search said", bare.answers === 0 && bare.rows === 4
             && bare.composing === null, JSON.stringify(bare));

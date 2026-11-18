@@ -145,6 +145,14 @@ function readingSaid(ms) {
     return ms >= 0.5 ? `, ${Math.round(ms)} reading what they hold` : "";
 }
 
+// How much of a key's wait for answers was past its bound, behind the
+// shell's other work (Awaited.waitedOf), and what that work was
+// (Awaited.behindOn), or nothing when none was.
+function behindSaid(parts) {
+    return parts.behind ? ` (${parts.behind} of it behind the shell's other work`
+        + `${parts.behindOn ? `: ${parts.behindOn}` : ""})` : "";
+}
+
 // The rows a key made as it set what's typed, by the source that made
 // them, most first, as its line says them beside its typed part: those that
 // want rows only while something's typed make them on the key that starts
