@@ -561,17 +561,27 @@ fn offer_workspaces(
             Worked::Any => true,
             Worked::These(quests) => id.is_some_and(|id| quests.contains(id)),
         };
-        if live {
-            continue;
-        }
+        // A quest a live session works on keeps what it wrote lately, what
+        // may be found nowhere else, its build roots and all beside tmp/:
+        // only what it left two days unwritten in tmp/ goes.
+        let unwritten = if live {
+            scratch::LIVE_QUEST_UNWRITTEN
+        } else {
+            scratch::QUEST_UNWRITTEN
+        };
         let a_profile = |path: &Path| profiles.iter().any(|profile| profile.path == path);
         for entry in scratch::entries(&tmp) {
-            let young = scratch::idle(&entry, world.awake, world.now) < scratch::QUEST_UNWRITTEN;
+            let young = scratch::idle(&entry, world.awake, world.now) < unwritten;
             if young || a_profile(&entry.path) || worked_in(&entry.path) {
                 continue;
             }
+            if live && scratch::holds_work(&entry.path) {
+                continue;
+            }
             let size = || sized(&entry.path, entry.written, world);
-            if let Some(candidate) = scratch::quest_candidate(&entry, size, world.awake, world.now)
+            let candidate = scratch::quest_candidate(&entry, size, world.awake, world.now);
+            if let Some(candidate) =
+                candidate.filter(|found| !live || found.class == Class::QuestTemp)
             {
                 offers.push(Offer {
                     candidate,
@@ -581,6 +591,9 @@ fn offer_workspaces(
                     device,
                 });
             }
+        }
+        if live {
+            continue;
         }
         for entry in scratch::beside_tmp(&workspace.path) {
             let idle = scratch::idle(&entry, world.awake, world.now);

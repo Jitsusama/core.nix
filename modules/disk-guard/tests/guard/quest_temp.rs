@@ -324,14 +324,14 @@ fn lstart_wall(year: i32, month: i32, day: i32, [hour, minute, second]: [i32; 3]
 // On 16 November a laptop's guard took 188 entries of a quest's tmp/ while
 // its session worked in it, a script it had written that evening among
 // them: a pass begun hours before judged each entry by its own age. A
-// quest a live session works on keeps all it left, in tmp/ and beside it,
-// whatever each entry's age; its browser profiles at rest still go, as
-// their own lock says. A session lives while its process runs as the one
-// that started then: by its start ticks where the harness keeps them, as
-// on Linux, else by the start time it noted, as on a Mac. One whose
-// process ended keeps nothing.
+// quest a live session works on keeps what it wrote to its tmp/ within two
+// days, and all it left beside it, whatever its age; its browser profiles
+// at rest still go, as their own lock says. A session lives while its
+// process runs as the one that started then: by its start ticks where the
+// harness keeps them, as on Linux, else by the start time it noted, as on
+// a Mac. One whose process ended keeps nothing.
 #[test]
-fn a_quest_a_live_session_works_on_keeps_what_it_left_whatever_its_age() {
+fn a_quest_a_live_session_works_on_keeps_what_it_left_lately() {
     let home = tempfile::tempdir().unwrap();
     let home = real(home.path());
     let quests = dir(&home.join("quests"));
@@ -349,7 +349,7 @@ fn a_quest_a_live_session_works_on_keeps_what_it_left_whatever_its_age() {
         let workspace = dir(&workspaces.join(id));
         let script = workspace.join("tmp/splice.sh");
         file(&script, "x");
-        written_ago(&script, 8.0 * DAY);
+        written_ago(&script, 1.5 * DAY);
         let lab = dir(&workspace.join("lab"));
         file(&lab.join("run.log"), "x");
         written_ago(&lab.join("run.log"), 8.0 * DAY);
@@ -402,6 +402,94 @@ fn a_quest_a_live_session_works_on_keeps_what_it_left_whatever_its_age() {
             path.display()
         );
     }
+}
+
+/// Ages a folder and all within it, so none of it counts as written lately.
+fn aged_all(path: &std::path::Path, seconds: f64) {
+    if path.is_dir() && !path.is_symlink() {
+        for entry in std::fs::read_dir(path).unwrap() {
+            aged_all(&entry.unwrap().path(), seconds);
+        }
+    }
+    written_ago(path, seconds);
+}
+
+// On 18 November a laptop's quests held 38 GB in tmp/ entries unwritten for
+// two days, which a quest a live session works on kept however old.
+// A live quest's tmp/ entry goes once two days pass awake with nothing
+// written in it, as a quest with no session's would. It stays while a
+// process works in it, or while it holds a handover or a repository, whose
+// commits may be on no remote. A link into the store stays, as its build is
+// the session's to drop, and so does all it left beside tmp/.
+#[test]
+fn a_live_quests_tmp_gives_up_what_it_left_two_days_unwritten() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let quests = dir(&home.join("quests"));
+    let workspaces = dir(&home.join("workspaces"));
+    let sessions = dir(&home.join("sessions"));
+    let id = "QEST-20200101-LIVEAA";
+    file(
+        &quests.join(format!("{id}/README.md")),
+        &format!("---\nid: {id}\nstatus: active\nupdated: 2020-01-01\n---\n# At work\n"),
+    );
+    file(
+        &sessions.join(format!("{id}.json")),
+        &format!(r#"{{"quest":"{id}","process":{{"pid":41,"startTicks":500}}}}"#),
+    );
+    let workspace = dir(&workspaces.join(id));
+    let tmp = dir(&workspace.join("tmp"));
+    let tree = |name: &str, within: &[&str], seconds: f64| {
+        let top = dir(&tmp.join(name));
+        file(&top.join("run.log"), "x");
+        for path in within {
+            file(&top.join(path), "x");
+        }
+        aged_all(&top, seconds);
+        top
+    };
+    let spent = tree("spent-lab", &["out/result.json"], 3.0 * DAY);
+    let lately = tree("lately-lab", &[], 1.5 * DAY);
+    let handed = tree("handed", &["carry/handover/bundle"], 3.0 * DAY);
+    let clone = tree("clone", &["repo/.git/HEAD"], 3.0 * DAY);
+    let worked = tree("worked-lab", &[], 3.0 * DAY);
+    let root = tmp.join("result");
+    std::os::unix::fs::symlink("/nix/store/abc-app", &root).unwrap();
+    written_ago(&root, 3.0 * DAY);
+    let lab = dir(&workspace.join("lab"));
+    file(&lab.join("run.log"), "x");
+    aged_all(&lab, 8.0 * DAY);
+    let config = config(&format!(
+        r#""workspaces": {{ "kind": "workspaces", "path": "{}", "quests": "{}",
+            "sessions": "{}" }}"#,
+        workspaces.display(),
+        quests.display(),
+        sessions.display()
+    ));
+    let session = Process {
+        pid: 41,
+        uid: unsafe { libc::geteuid() },
+        start_ticks: 500,
+        cwd: Some(worked.clone()),
+        readable: true,
+        ..Process::default()
+    };
+    let found = offers(&config, &[session], &|_| false);
+    let offered: Vec<_> = found.iter().map(|offer| &offer.candidate.path).collect();
+    assert_eq!(
+        offered,
+        [&spent],
+        "only the lab two days unwritten, not {}, {}, {}, {}, {} or {}",
+        lately.display(),
+        handed.display(),
+        clone.display(),
+        worked.display(),
+        root.display(),
+        lab.display()
+    );
+    let offer = find(&found, &spent);
+    assert_eq!(offer.candidate.class, Class::QuestTemp);
+    assert_eq!(offer.action, Action::Entry { root: tmp.clone() });
 }
 
 // Every machine's guard is now told where the harness keeps its session

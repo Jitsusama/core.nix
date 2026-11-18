@@ -100,6 +100,45 @@ pub fn quest_candidate(
     })
 }
 
+/// How long an entry of a quest a live session works on must go unwritten
+/// in its `tmp/`, in awake seconds, before it's offered: long enough that
+/// a session pausing over a weekend's work, or a script it wrote that
+/// evening, is never taken from under it.
+pub const LIVE_QUEST_UNWRITTEN: f64 = 2.0 * 86_400.0;
+
+/// Whether a live quest's `tmp/` entry holds what may be found nowhere
+/// else: a handover a leaving machine packed, or a repository, whose
+/// commits may be on no remote, which the guard can't ask git about. One
+/// with more in reach than can be read holds it too, so what can't be
+/// judged is kept.
+pub fn holds_work(path: &Path) -> bool {
+    let mut level = vec![path.to_owned()];
+    let mut seen = 0;
+    for _ in 0..DEPTH {
+        let mut deeper = Vec::new();
+        for dir in level {
+            let Ok(listing) = fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in listing.filter_map(Result::ok) {
+                seen += 1;
+                if seen > BUDGET {
+                    return true;
+                }
+                let name = entry.file_name();
+                if name == "handover" || name == ".git" {
+                    return true;
+                }
+                if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                    deeper.push(entry.path());
+                }
+            }
+        }
+        level = deeper;
+    }
+    false
+}
+
 /// How long what a quest at work left beside its `tmp/` must go unwritten,
 /// in awake seconds, before it's offered: the plan's shortest window for
 /// one.
