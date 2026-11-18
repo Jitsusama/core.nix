@@ -8,6 +8,10 @@ use jiff::tz::{self, TimeZone};
 
 use super::*;
 
+// systemd's journal, which a Mac doesn't have.
+#[cfg(target_os = "linux")]
+mod real_journal;
+
 /// A shell running `script`: the build's own where it gives one, which
 /// a build's sandbox has where it has no /bin/sh.
 fn sh(script: &str) -> Command {
