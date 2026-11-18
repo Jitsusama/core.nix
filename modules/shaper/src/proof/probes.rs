@@ -39,20 +39,20 @@ pub fn scripts(seconds: u64) -> [String; 4] {
     // server refuses one of 10 MB or more once it has sent many.
     let up = repeated(
         &s,
-        "head -c 4000000000 /dev/zero | curl -s -o /dev/null -X POST -T - \
+        "head -c 4000000000 /dev/zero | curl -s -g -o /dev/null -X POST -T - \
          --max-time $((end - SECONDS + 1)) -w '%{http_code} %{size_upload}\\n' \
          \"$1/__up\"",
         "",
     );
     let down = repeated(
         &s,
-        "curl -s -o /dev/null --max-time $((end - SECONDS + 1)) \
+        "curl -s -g -o /dev/null --max-time $((end - SECONDS + 1)) \
          -w '%{http_code} %{size_download}\\n' \"$1/__down?bytes=5000000\"",
         "",
     );
     let first = repeated(
         &s,
-        "curl -s -o /dev/null --max-time 10 -w '%{http_code} %{time_starttransfer}\\n' \
+        "curl -s -g -o /dev/null --max-time 10 -w '%{http_code} %{time_starttransfer}\\n' \
          \"$1/__down?bytes=0\"",
         // A fresh connection a second, as a page's would be.
         "sleep 1;",

@@ -57,7 +57,6 @@ mod verdict;
 use crate::qdisc;
 use gate::{Gate, WAITS_ENV, waits_while};
 use load::{end_group, stop_scopes};
-use std::cell::Cell;
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -360,37 +359,35 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     };
     let gate = Arc::new(gate);
     let deadline = Instant::now() + Duration::from_secs(asked.wait);
+    let mut paid = None;
     if let Some(marker) = &marker {
         // A killed proof whose keeper couldn't put the shaper back is paid
         // for now, so the shaper isn't left wrong through this one's wait.
-        if let Some(on) = stop::debt(marker) {
-            put_back_or_stopped(put_back(on), false, Some(on))?;
-            stop::forget(marker);
-        }
+        // Its word goes either way: once paid, or once Joel is told.
+        let paying = pay(stop::debt(marker), put_back);
+        stop::forget(marker);
+        paid = paying?;
         stop::keep(marker);
     }
     // Only a window starts or stops the shaper, so each owns it only while
     // it runs, reading it afresh first: between windows it is whoever's
     // sets it, a switch's or Joel's, and nothing puts it back.
-    let back = Cell::new(true);
-    let mut found: Option<bool> = None;
     let mut idle: Vec<f64> = Vec::new();
-    let (pairs, complete) = across_windows(
+    let Windows {
+        pairs,
+        complete,
+        back,
+        found,
+    } = across_windows(
         asked.pairs,
-        // A window that couldn't put the shaper back leaves it for Joel,
-        // so no other reads its wrong state as the shaper's own.
-        || back.get() && opened(|| gate.open(), deadline, &STOPPED),
-        |from| {
-            let on = systemctl("is-active");
-            found = Some(on);
-            let (pairs, put) = stop::owning(marker.as_deref(), on, || {
+        || opened(|| gate.open(), deadline, &STOPPED),
+        stop::shaper_on,
+        |from, on| {
+            stop::owning(marker.as_deref(), on, || {
                 window(&asked, &link, &gate, on, from, &mut idle)
-            });
-            back.set(put);
-            pairs
+            })
         },
     );
-    let back = back.get();
     // Ended here, since a watch left unjoined still holds the gate.
     gate.end();
     let stopped = STOPPED.load(Ordering::Relaxed);
@@ -403,13 +400,13 @@ pub fn command(args: &[String]) -> Result<(), Failure> {
     if let Some(out) = &asked.out {
         let report = serde_json::json!({
             "verdict": verdict, "complete": complete, "stopped": stopped,
-            "idle_call_ms": idle, "pairs": pairs
+            "shaper_back": back, "idle_call_ms": idle, "pairs": pairs
         });
         if fs::write(out, report.to_string()).is_err() {
             tell(&format!("couldn't write {}", out.display()));
         }
     }
-    put_back_or_stopped(back, stopped, found)?;
+    put_back_or_stopped(back, stopped, found.or(paid))?;
     let Some(verdict) = verdict else {
         return Err(Failure::new(Exit::TryAgain, "not loading the link")
             .because("Joel hasn't been idle two minutes, or a call, audio or a meeting is on"));
@@ -448,10 +445,20 @@ fn alone(marker: &std::path::Path) -> Result<fs::File, Failure> {
     })
 }
 
+/// Pays an earlier proof's debt, `owed`, with `put_back`: how the shaper
+/// was put back, or 69 when it couldn't be.
+fn pay(owed: Option<bool>, put_back: impl FnOnce(bool) -> bool) -> Result<Option<bool>, Failure> {
+    let Some(on) = owed else {
+        return Ok(None);
+    };
+    put_back_or_stopped(put_back(on), false, Some(on))?;
+    Ok(Some(on))
+}
+
 /// How a proof ends before its verdict counts: 69 when the shaper isn't
-/// back as the last window `found` it, which outranks a stop since it's
-/// Joel's to put right, else 130 when `stopped`. `found` is None when no
-/// window ran, the shaper never touched.
+/// back as it was `found`, which outranks a stop since it's Joel's to put
+/// right, else 130 when `stopped`. `found` is None when no window ran and
+/// nothing was owed, the shaper never touched.
 fn put_back_or_stopped(back: bool, stopped: bool, found: Option<bool>) -> Result<(), Failure> {
     let state = |on: bool| if on { "on" } else { "off" };
     if !back && let Some(on) = found {
@@ -466,7 +473,7 @@ fn put_back_or_stopped(back: bool, stopped: bool, found: Option<bool>) -> Result
     if stopped {
         let shaper = found.map_or_else(
             || "no window ran, so the shaper is as it was".to_string(),
-            |on| format!("the shaper is back {}", state(on)),
+            |on| format!("the shaper was put back {}", state(on)),
         );
         return Err(Failure::new(Exit::Interrupted, "stopped")
             .because(format!("a signal asked it to; {shaper}, its load ended")));
@@ -476,23 +483,49 @@ fn put_back_or_stopped(back: bool, stopped: bool, found: Option<bool>) -> Result
 
 /// Gathers the pairs across Joel's idle windows, `opened` waiting for the
 /// next and `window` measuring from the pair it's given until the gate
-/// closes. Each window starts after the last pair kept, since a pair's
-/// arms run back to back and so compare alike in any window. Returns the
-/// pairs and whether all were measured before the wait ran out.
+/// closes, with the shaper as `shaper_on` reads it as the window opens,
+/// and saying whether it put the shaper back. Each window starts after
+/// the last pair kept, since a pair's arms run back to back and so
+/// compare alike in any window.
 fn across_windows(
     pairs: u32,
     mut opened: impl FnMut() -> bool,
-    mut window: impl FnMut(u32) -> Vec<[Block; 2]>,
-) -> (Vec<[Block; 2]>, bool) {
-    let mut kept: Vec<[Block; 2]> = Vec::new();
-    while kept.len() < pairs as usize {
-        if !opened() {
-            return (kept, false);
+    mut shaper_on: impl FnMut() -> bool,
+    mut window: impl FnMut(u32, bool) -> (Vec<[Block; 2]>, bool),
+) -> Windows {
+    let mut done = Windows {
+        pairs: Vec::new(),
+        complete: false,
+        back: true,
+        found: None,
+    };
+    while done.pairs.len() < pairs as usize {
+        // A window that couldn't put the shaper back leaves it for Joel,
+        // so no other reads its wrong state as the shaper's own.
+        if !done.back || !opened() {
+            return done;
         }
-        let from = u32::try_from(kept.len()).unwrap_or(pairs);
-        kept.extend(window(from));
+        let on = shaper_on();
+        done.found = Some(on);
+        let from = u32::try_from(done.pairs.len()).unwrap_or(pairs);
+        let (got, back) = window(from, on);
+        done.pairs.extend(got);
+        done.back = back;
     }
-    (kept, true)
+    done.complete = true;
+    done
+}
+
+/// How a proof's windows went.
+struct Windows {
+    /// The pairs kept, in the order measured.
+    pairs: Vec<[Block; 2]>,
+    /// Whether every pair asked for was measured.
+    complete: bool,
+    /// Whether the shaper went back after every window.
+    back: bool,
+    /// How the last window found the shaper, or None when none ran.
+    found: Option<bool>,
 }
 
 /// Waits for `open` to say the gate is open, until `deadline` or a stop.
@@ -685,15 +718,16 @@ mod tests {
     fn pairs_measured_in_three_windows_are_kept_as_one_run() {
         let mut froms = Vec::new();
         let mut windows = [5, 0, 7].into_iter();
-        let (kept, complete) = across_windows(
+        let done = across_windows(
             12,
             || true,
-            |from| {
+            || true,
+            |from, _| {
                 froms.push(from);
-                pairs(windows.next().unwrap_or(0), 0.8, 0.05)
+                (pairs(windows.next().unwrap_or(0), 0.8, 0.05), true)
             },
         );
-        assert_eq!((kept.len(), complete), (12, true));
+        assert_eq!((done.pairs.len(), done.complete), (12, true));
         assert_eq!(
             froms,
             [0, 5, 5],
@@ -704,12 +738,76 @@ mod tests {
     #[test]
     fn a_wait_that_runs_out_keeps_the_pairs_measured() {
         let mut opens = [true, false].into_iter();
-        let (kept, complete) = across_windows(
+        let done = across_windows(
             12,
             || opens.next().unwrap_or(false),
-            |_| pairs(4, 0.8, 0.05),
+            || true,
+            |_, _| (pairs(4, 0.8, 0.05), true),
         );
-        assert_eq!((kept.len(), complete), (4, false));
+        assert_eq!((done.pairs.len(), done.complete), (4, false));
+    }
+
+    #[test]
+    fn each_window_reads_the_shaper_afresh() {
+        // A switch or Joel turns the shaper off between the two windows.
+        let mut states = [true, false].into_iter();
+        let mut found = Vec::new();
+        let done = across_windows(
+            4,
+            || true,
+            || states.next().unwrap_or(true),
+            |_, on| {
+                found.push(on);
+                (pairs(2, 0.8, 0.05), true)
+            },
+        );
+        assert_eq!(found, [true, false], "a window took an earlier one's state");
+        assert_eq!((done.back, done.found), (true, Some(false)));
+    }
+
+    #[test]
+    fn a_window_that_couldnt_put_the_shaper_back_ends_the_run() {
+        let mut opens = 0;
+        let done = across_windows(
+            12,
+            || {
+                opens += 1;
+                true
+            },
+            || true,
+            |_, _| (pairs(2, 0.8, 0.05), false),
+        );
+        assert_eq!(opens, 1, "another window read the shaper left wrong");
+        assert_eq!(
+            (done.pairs.len(), done.complete, done.back),
+            (2, false, false)
+        );
+        assert_eq!(
+            put_back_or_stopped(done.back, false, done.found).map_err(|f| f.code()),
+            Err(69)
+        );
+    }
+
+    #[test]
+    fn an_earlier_proofs_debt_is_paid_or_said() {
+        assert!(
+            matches!(pay(None, |_| panic!("paid nothing owed")), Ok(None)),
+            "nothing owed"
+        );
+        let mut asked = None;
+        let paid = pay(Some(false), |on| {
+            asked = Some(on);
+            true
+        });
+        assert!(matches!(paid, Ok(Some(false))), "a debt paid unsaid");
+        assert_eq!(asked, Some(false), "put back otherwise than owed");
+        assert_eq!(pay(Some(true), |_| false).map_err(|f| f.code()), Err(69));
+        // A stop after paying says how this proof put the shaper back.
+        let stopped = put_back_or_stopped(true, true, None.or(Some(true))).expect_err("a stop");
+        assert!(
+            stopped.to_string().contains("put back on"),
+            "a stop after a debt said nothing moved: {stopped}"
+        );
     }
 
     #[test]

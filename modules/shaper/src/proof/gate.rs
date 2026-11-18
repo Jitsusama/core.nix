@@ -120,8 +120,9 @@ impl Gate {
             .args(["resume", &format!("rm -f {shown}")])
             .stdin(Stdio::null())
             .stdout(Stdio::null());
-        // SAFETY: prctl(2) and getppid(2) are async-signal-safe, so fit
-        // to run between fork and exec. It ends swayidle once the thread
+        // SAFETY: prctl(2) and getppid(2) are async-signal-safe, and an
+        // error from a raw errno allocates nothing, so fit to run between
+        // fork and exec. It ends swayidle once the thread
         // that started it, the proof's main one, ends, however the proof
         // ends; a proof gone before the prctl is caught by its parent
         // being another, and swayidle never starts.
@@ -132,7 +133,7 @@ impl Gate {
                 if libc::getppid() == parent {
                     Ok(())
                 } else {
-                    Err(std::io::Error::other("the proof is gone"))
+                    Err(std::io::Error::from_raw_os_error(libc::ESRCH))
                 }
             });
         }

@@ -1,8 +1,8 @@
 //! How a proof stops and puts the shaper back: a signal heard as a stop
 //! by every thread, progress said without dying when nothing reads it,
-//! and the shaper's own state kept on disk until it's back, so a keeper
-//! beside a proof killed outright, or failing that the next proof, puts
-//! it back as the killed one found it.
+//! and the shaper's state kept on disk while a window owns it, so a
+//! keeper beside a proof killed outright, or failing that the next proof,
+//! puts it back as the killed one's window found it.
 
 use std::fs;
 use std::io::Write;
@@ -14,6 +14,15 @@ use std::time::{Duration, Instant};
 
 /// How long a killed proof's keeper is waited for.
 const KEEPER_TAKES: Duration = Duration::from_secs(3);
+
+/// How long a killed proof's word stands when its keeper couldn't act.
+/// Past it, Joel or a switch has likely set the shaper as they mean it
+/// since, and putting it back would undo them.
+const DEBT_STANDS: Duration = Duration::from_mins(30);
+
+/// How long a shaper starting or stopping is waited for before its state
+/// is read: a crash's restart waits 2 s, and a switch's is quicker.
+const SETTLES: Duration = Duration::from_secs(5);
 
 /// Set once a signal asks the proof to stop.
 pub static STOPPED: AtomicBool = AtomicBool::new(false);
@@ -106,12 +115,52 @@ pub fn systemctl(verb: &str) -> bool {
 pub fn put_back(on: bool) -> bool {
     for _ in 0..3 {
         systemctl(if on { "start" } else { "stop" });
-        if systemctl("is-active") == on {
+        if shaper_on() == on {
             return true;
         }
         thread::sleep(Duration::from_secs(1));
     }
     false
+}
+
+/// Whether the shaper is on, as systemd has it once any start or stop
+/// under way is done. `is-active` reads a shaper restarting after a crash
+/// or at a switch as off, and a window that took that for its state would
+/// stop it for good.
+pub fn shaper_on() -> bool {
+    settled(active_state, SETTLES, Duration::from_millis(250))
+}
+
+/// The shaper's `ActiveState`, as systemd says it, or nothing.
+fn active_state() -> String {
+    use std::os::unix::process::CommandExt;
+    Command::new("systemctl")
+        .args([
+            "show",
+            "--property=ActiveState",
+            "--value",
+            "shaper.service",
+        ])
+        .process_group(0)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+        .unwrap_or_default()
+}
+
+/// Reads `state` every `every` until it's neither starting nor stopping,
+/// or `takes` runs out: then one still starting counts as on, since it's
+/// on its way there, and one still stopping as off.
+fn settled(mut state: impl FnMut() -> String, takes: Duration, every: Duration) -> bool {
+    let asked = Instant::now();
+    loop {
+        match state().as_str() {
+            "activating" | "deactivating" if asked.elapsed() < takes => thread::sleep(every),
+            "active" | "reloading" | "refreshing" | "activating" => return true,
+            _ => return false,
+        }
+    }
 }
 
 /// Where the shaper's own state waits while a proof may have it off:
@@ -124,12 +173,13 @@ pub fn marker() -> Option<PathBuf> {
 /// What an earlier proof that didn't put the shaper back left in `marker`:
 /// how the shaper was before it, once any keeper of its is done, or None
 /// when nothing is owed.
+/// A word older than `DEBT_STANDS` is dropped, the shaper left as it is.
 pub fn debt(marker: &Path) -> Option<bool> {
-    debt_within(marker, KEEPER_TAKES)
+    debt_within(marker, KEEPER_TAKES, DEBT_STANDS)
 }
 
-/// `debt`, waiting `takes` for a keeper.
-fn debt_within(marker: &Path, takes: Duration) -> Option<bool> {
+/// `debt`, waiting `takes` for a keeper, and taking a word `stands` old.
+fn debt_within(marker: &Path, takes: Duration, stands: Duration) -> Option<bool> {
     // A killed proof's keeper puts the shaper back within about a second,
     // and forgets the marker: waited for, so its word isn't taken for the
     // shaper's own once it's back.
@@ -144,6 +194,20 @@ fn debt_within(marker: &Path, takes: Duration) -> Option<bool> {
             Some("off") => Some(false),
             _ => None,
         });
+    let age = fs::metadata(marker)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|at| at.elapsed().ok())
+        .unwrap_or_default();
+    if earlier.is_some() && age > stands {
+        tell(&format!(
+            "an earlier proof didn't put the shaper back {} min ago: left as it is now, \
+             since Joel or a switch has likely set it since",
+            age.as_secs() / 60
+        ));
+        forget(marker);
+        return None;
+    }
     if let Some(on) = earlier {
         tell(&format!(
             "an earlier proof didn't put the shaper back: putting it back {} now",
@@ -155,17 +219,18 @@ fn debt_within(marker: &Path, takes: Duration) -> Option<bool> {
 
 /// Runs one window owning the shaper, found `on`: claimed in `marker`
 /// while it runs, so a keeper puts it back if the proof is killed, and
-/// given up once `window` says it put the shaper back. Between windows
-/// it is nobody's, so a switch or Joel's own change then stands.
-pub fn owning<T>(marker: Option<&Path>, on: bool, window: impl FnOnce() -> (T, bool)) -> (T, bool) {
+/// given up once it ends, with the shaper put back or, failing that, left
+/// to Joel by the proof's 69. Between windows it is nobody's, so a switch
+/// or Joel's own change then stands.
+pub fn owning<T>(marker: Option<&Path>, on: bool, window: impl FnOnce() -> T) -> T {
     if let Some(marker) = marker {
         claim(marker, on);
     }
-    let (got, back) = window();
-    if back && let Some(marker) = marker {
+    let got = window();
+    if let Some(marker) = marker {
         forget(marker);
     }
-    (got, back)
+    got
 }
 
 /// Writes `on` to `marker` as this proof's word, with its pid, so only
@@ -261,7 +326,7 @@ fn keeper(pid: u32, began: &str) -> String {
         began,
         &format!(
             "{mine} || exit 0; case $v in on) v=start;; off) v=stop;; *) exit 0;; esac; \
-             \"$2\" \"$v\" shaper.service && {{ {mine} && rm -f \"$1\"; }}"
+             \"$2\" --no-ask-password \"$v\" shaper.service && {{ {mine} && rm -f \"$1\"; }}"
         ),
     )
 }
@@ -361,8 +426,8 @@ mod tests {
         let began = super::super::load::began_of(&pid.to_string());
         gone.wait().expect("true to end");
         for (was, asks) in [
-            ("on", "start shaper.service\n"),
-            ("off", "stop shaper.service\n"),
+            ("on", "--no-ask-password start shaper.service\n"),
+            ("off", "--no-ask-password stop shaper.service\n"),
         ] {
             fs::write(&marker, format!("{was} {pid}\n")).expect("a marker");
             assert_eq!(kept(pid, &began), asks, "the shaper wasn't put back {was}");
@@ -525,7 +590,7 @@ mod tests {
         fs::create_dir_all(&dir).expect("a folder");
         let marker = dir.join("was-on");
         // With no keeper to wait for, as when one's scope was refused.
-        let owed = || debt_within(&marker, Duration::ZERO);
+        let owed = || debt_within(&marker, Duration::ZERO, DEBT_STANDS);
         assert_eq!(owed(), None, "a debt with no proof before");
         // A proof killed in an on arm, the shaper left off: the next
         // finds it was on.
@@ -538,7 +603,56 @@ mod tests {
         fs::write(&marker, "").expect("an empty marker");
         assert_eq!(owed(), None, "took an empty marker for a debt");
         forget(&marker);
+        // A word left long ago is dropped: the shaper stands as Joel or a
+        // switch has set it since.
+        claim(&marker, true);
+        let long_ago = std::time::SystemTime::now() - DEBT_STANDS - Duration::from_secs(60);
+        fs::File::options()
+            .write(true)
+            .open(&marker)
+            .and_then(|f| f.set_modified(long_ago))
+            .expect("an old marker");
+        assert_eq!(owed(), None, "undid what was set since an old proof");
+        assert!(!marker.exists(), "kept a word too old to act on");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_shaper_starting_or_stopping_is_read_once_settled() {
+        let read = |states: &[&str], takes: Duration| {
+            let mut states = states.iter().map(ToString::to_string);
+            let mut last = String::new();
+            settled(
+                || {
+                    last = states.next().unwrap_or_else(|| last.clone());
+                    last.clone()
+                },
+                takes,
+                Duration::ZERO,
+            )
+        };
+        let long = Duration::from_secs(60);
+        // A restart after a crash, or at a switch, is on its way back on.
+        assert!(
+            read(&["activating", "activating", "active"], long),
+            "a restart read as off"
+        );
+        assert!(
+            read(&["deactivating", "activating", "active"], long),
+            "a switch read as off"
+        );
+        assert!(
+            !read(&["deactivating", "inactive"], long),
+            "a stop read as on"
+        );
+        assert!(!read(&["failed"], long), "a failed shaper read as on");
+        assert!(!read(&[""], long), "no answer read as on");
+        // Never settling, it is read as where it was heading.
+        assert!(read(&["activating"], Duration::ZERO), "a start read as off");
+        assert!(
+            !read(&["deactivating"], Duration::ZERO),
+            "a stop read as on"
+        );
     }
 
     #[test]
@@ -547,28 +661,26 @@ mod tests {
         fs::create_dir_all(&dir).expect("a folder");
         let marker = dir.join("was-on");
         let said = |m: &Path| fs::read_to_string(m).ok();
-        let ((), back) = owning(Some(&marker), true, || {
+        owning(Some(&marker), true, || {
             assert_eq!(
                 said(&marker),
                 Some(format!("on {}\n", std::process::id())),
                 "a window ran with no word for its keeper"
             );
-            ((), true)
         });
-        assert!(back, "a window put back said it wasn't");
         assert_eq!(said(&marker), None, "held the shaper between windows");
         // The next window finds the shaper off, as a switch or Joel left
         // it, and claims that, not what the first found.
-        let ((), back) = owning(Some(&marker), false, || {
+        owning(Some(&marker), false, || {
             assert_eq!(
                 said(&marker),
                 Some(format!("off {}\n", std::process::id())),
                 "a window claimed what an earlier one found"
             );
-            ((), false)
         });
-        assert!(!back, "a window not put back said it was");
-        assert!(said(&marker).is_some(), "gave up a shaper not put back");
+        // One that couldn't put the shaper back leaves it to Joel, told
+        // by the proof's 69, so no later proof undoes what he does.
+        assert_eq!(said(&marker), None, "left a word Joel was told to act on");
         let _ = fs::remove_dir_all(&dir);
     }
 }

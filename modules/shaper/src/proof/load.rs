@@ -22,7 +22,7 @@ fn script(pid: u32, began: &str) -> String {
         pid,
         began,
         "while alive; do head -c 400000000 /dev/zero \
-         | curl -s -o /dev/null -X POST -T - --max-time 120 \"$1/__up\" || sleep 1; done",
+         | curl -s -g -o /dev/null -X POST -T - --max-time 120 \"$1/__up\" || sleep 1; done",
     )
 }
 
