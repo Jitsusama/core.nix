@@ -213,7 +213,6 @@
   "modules/quickshell/timekeeping/src/chrony.rs" = 3;
   "modules/quickshell/timekeeping/src/service.rs" = 7;
   "modules/quickshell/timers/src/lib.rs" = 20;
-  "modules/quickshell/timers/tests/daemon.rs" = 1;
   "modules/quickshell/whereabouts/src/fix.rs" = 16;
   "modules/quickshell/whereabouts/src/named.rs" = 2;
   "modules/shaper/src/classes.rs" = 6;

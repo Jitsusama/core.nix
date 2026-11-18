@@ -94,7 +94,7 @@ struct Bus {
 }
 
 /// The bus's config, listening at `socket`; one that doesn't let it listen
-/// turns away every match rule asked for, as AddMatch failing does however
+/// turns away every match rule asked for, as `AddMatch` failing does however
 /// it fails, a late answer under load among them.
 fn bus_config(socket: &Path, lets_listen: bool) -> String {
     let denial = if lets_listen {
