@@ -63,7 +63,7 @@ pi build; ordinary interactive pi stays unchanged.
 +	 * call and its result. A run that fails to start, and work that fails or is aborted, keep what
 +	 * they held for the next turn or run, since the transcript may still owe a tool result: a held
 +	 * message written after that call would get it a stand-in result, and the real one after it
-+	 * would be refused. agent_settled fires as
++	 * would be refused. They wait in memory, and pi's dispose writes none. agent_settled fires as
 +	 * the work ends. Inside a run of pi's own, the work joins it, is handed nothing, and pi's run
 +	 * settles it. Nothing in pi calls this.
 +	 */
