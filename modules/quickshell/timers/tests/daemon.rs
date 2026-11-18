@@ -1,3 +1,4 @@
+//! Long because each case runs the daemon whole, on a bus of its own.
 //! The daemon over its socket, on a bus of its own with a stand-in
 //! notifications server: a timer started is told to every watch and rings
 //! as a critical notice once its end passes; the notice's Again sets it
@@ -175,6 +176,14 @@ impl Bus {
         self.daemon = bus_daemon(&self.config, &self.socket);
     }
 
+    /// A connection of the test's own, to come first on the bus.
+    fn first(&self) -> Connection {
+        Builder::address(self.address.as_str())
+            .unwrap()
+            .build()
+            .unwrap()
+    }
+
     /// The stand-in, serving on this bus under the notifications' name.
     fn serve(&self) -> (Connection, Server) {
         let server = Server::default();
@@ -323,6 +332,15 @@ fn waits_for(done: impl Fn() -> bool) {
         assert!(began.elapsed() < PATIENCE, "it never came");
         std::thread::sleep(Duration::from_millis(20));
     }
+}
+
+/// Waits for the daemon to be on the bus `first` came first to.
+fn dialled(first: &Connection) {
+    let proxy = DBusProxy::new(first).unwrap();
+    waits_for(|| {
+        let names = proxy.list_names().unwrap();
+        names.iter().filter(|name| name.starts_with(':')).count() == 2
+    });
 }
 
 /// Says a signal about notice `body.0` as the notifications server would,
@@ -494,15 +512,29 @@ fn a_bus_that_wont_let_it_listen_is_tried_again_until_it_does() {
 fn a_bus_that_goes_and_comes_back_is_heard_again() {
     let folder = folder("redials");
     let mut bus = Bus::new(&folder);
-    let (connection, server) = bus.serve();
+    // On each bus the test's own connection comes first, the daemon's
+    // second and the server's third, so the bus begun again names its
+    // server as the last did, and only the bus's own id tells the card
+    // shown on the last one from a new one's.
+    let first = bus.first();
     let running = Running::start(&folder, &bus);
     let mut client = running.client();
     client.ask(&json!({"id": "all", "ask": "watch", "kind": "timer"}));
     client.ask(&json!({"id": 1, "ask": "start", "span": 100, "name": "tea"}));
-    waits_for(|| server.shown.lock().unwrap().len() == 1);
-    drop(connection);
-    bus.again();
+    dialled(&first);
     let (connection, server) = bus.serve();
+    waits_for(|| server.shown.lock().unwrap().len() == 1);
+    let named = connection.unique_name().unwrap().to_string();
+    drop((connection, first));
+    bus.again();
+    let first = bus.first();
+    dialled(&first);
+    let (connection, server) = bus.serve();
+    assert_eq!(
+        connection.unique_name().unwrap().as_str(),
+        named,
+        "the server's name repeats"
+    );
     // The rung timer is said to the bus come back, so the daemon dialled it.
     waits_for(|| server.shown.lock().unwrap().len() == 1);
     signal(&folder, &connection, "ActionInvoked", &(1u32, "again"));

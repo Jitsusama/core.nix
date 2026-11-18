@@ -835,7 +835,7 @@ mod tests {
         held.due(MINUTE);
         held.timers[0].notice = Some(Notice {
             id: 7,
-            server: ":1.4".to_owned(),
+            server: on_bus("b1", ":1.4"),
         });
         let again = held.again("timer:1", 5 * MINUTE).unwrap();
         assert_eq!(again.standing, Standing::Running { ends: 6 * MINUTE });
