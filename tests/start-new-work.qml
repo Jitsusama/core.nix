@@ -9,14 +9,7 @@ import "launcher/Sprouting.js" as Sprouting
 
 QtObject {
     // A case that doesn't hold throws, and ends the test as a failure.
-    Component.onCompleted: {
-        try {
-            cases();
-            Qt.exit(0);
-        } catch (error) {
-            Expect.fail(error.message ?? String(error));
-        }
-    }
+    Component.onCompleted: Expect.run(cases)
 
     readonly property var said: ({
         started: "started on {machine}",

@@ -18,6 +18,18 @@ function same(what, said, meant) {
     expect(what, was === JSON.stringify(meant), `said ${was}, meant ${JSON.stringify(meant)}`);
 }
 
+// Runs a test's cases once it's made, as `Component.onCompleted:
+// Expect.run(cases)`: Quickshell exits with 0 when they all hold, and the
+// first that doesn't fails the test.
+function run(cases) {
+    try {
+        cases();
+        Qt.exit(0);
+    } catch (error) {
+        fail(error.message ?? String(error));
+    }
+}
+
 function fail(message) {
     // biome-ignore lint/suspicious/noConsole: a QML test's failure is said on its log.
     console.warn(`FAIL ${message}`);

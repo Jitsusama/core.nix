@@ -12,14 +12,7 @@ import "Awaited.js" as Awaited
 
 QtObject {
     // A case that doesn't hold throws, and ends the test as a failure.
-    Component.onCompleted: {
-        try {
-            cases();
-            Qt.exit(0);
-        } catch (error) {
-            Expect.fail(error.message ?? String(error));
-        }
-    }
+    Component.onCompleted: Expect.run(cases)
 
     // A key as Launcher.qml's keysDue holds it, named by what it typed.
     function key(text) {
