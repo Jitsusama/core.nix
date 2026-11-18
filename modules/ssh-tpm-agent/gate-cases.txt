@@ -1,6 +1,6 @@
 # What the gate beside this must decide, which the agent's build checks
 # (TestMachineGate): a verdict, then the cgroups of the peer and each of its
-# parents in turn, as optimus had them on 18 November.
+# parents in turn, as a workstation had them on 18 November.
 # Joel's ssh in a kitty window, and once the sorter has moved it.
 serve /user.slice/user-1000.slice/user@1000.service/agents.slice/kitty-4336-3.scope /user.slice/user-1000.slice/user@1000.service/agents.slice/sessions-kitty.service
 serve /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-awaited.slice/awaited-40-5.scope /user.slice/user-1000.slice/user@1000.service/agents.slice/kitty-4336-3.scope

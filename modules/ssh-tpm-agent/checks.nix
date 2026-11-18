@@ -31,10 +31,10 @@
     let
       user = account workstation;
       agent = user.services.ssh-tpm-agent.package;
+      gate = "SSH_TPM_AGENT_GATE=${user.xdg.configHome}/ssh-tpm-agent/gate";
       told = holds "ssh-tpm-agent-is-told-of-its-gate" "ssh-tpm-agent isn't told of core's gate." (
         user.xdg.configFile."ssh-tpm-agent/gate".source == ./gate.conf
-        && builtins.elem "SSH_TPM_AGENT_GATE=${user.xdg.configHome}/ssh-tpm-agent/gate"
-          user.systemd.user.services.ssh-tpm-agent.Service.Environment
+        && builtins.elem gate user.systemd.user.services.ssh-tpm-agent.Service.Environment
         && builtins.elem ./refuses-agents.patch agent.patches
         && agent.doCheck
       );
