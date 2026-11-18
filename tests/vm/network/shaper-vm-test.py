@@ -11,7 +11,8 @@ held, a WireGuard tunnel to the server, the default route moved to the client's 
 that link unplugged and plugged back in. A fixture's work is done once a run, however many
 tests ask for it, so any test runs alone with `-k`, and all of them run in the order they're
 written, each after what it needs. The tests need no value from Nix: they ask the machines
-for their addresses.
+for their addresses. Long because its tests share the one rig's fixtures, which a split would
+boot again for each part.
 """
 
 from __future__ import annotations
@@ -326,10 +327,17 @@ def replugged(on_eth2: Connection) -> Replugged:
     client = on_eth2.client
     device = client.succeed("basename $(readlink /sys/class/net/eth2/device)").strip()
     unplugged_ifb = on_eth2.ifb("eth2")
+    # Plugged back while eth2's address unit still stops, systemd refuses to start it again
+    # ("Requested transaction contradicts existing jobs") and eth2 comes back with no address,
+    # so the replug waits for the stop, as a person's seconds between the two allow. The unit
+    # is seen up first: systemd calls one it doesn't know inactive, which would wait for nothing.
+    client.succeed("systemctl is-active -q network-addresses-eth2")
     client.succeed(f"echo {device} > /sys/bus/virtio/drivers/virtio_net/unbind")
-    # Plugged back while its address unit still stops, eth2 would come back with no address.
-    stopped = "systemctl show -P ActiveState network-addresses-eth2 | grep -qx inactive"
-    client.wait_until_succeeds(f"! ip link show eth2 && {stopped}", timeout=SHAPING)
+    client.wait_until_succeeds("! ip link show eth2", timeout=SHAPING)
+    client.wait_until_succeeds(
+        "systemctl show -P ActiveState network-addresses-eth2 | grep -Eqx 'inactive|failed'",
+        timeout=SHAPING,
+    )
     client.wait_until_succeeds(
         "journalctl -u shaper | grep -q 'eth2 no longer routes'", timeout=SHAPING
     )
