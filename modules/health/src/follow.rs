@@ -31,6 +31,8 @@ use crate::source::{Followers, Source};
 use crate::trials;
 use crate::typing;
 
+use spell::Spell;
+
 /// How often a changed day is written out and the lid looked at: often
 /// enough that what `health` shows is a moment old, seldom enough to cost
 /// nothing.
@@ -594,6 +596,7 @@ pub fn follow(into: &Path) -> io::Result<()> {
         thread::sleep,
         lid::look,
         &crate::source::fail,
+        &crate::source::notice,
     )?;
     Err(ended)
 }
@@ -636,15 +639,15 @@ fn ended_by(
 /// every half minute. What went unheard that day is heard from the day's
 /// replay once health starts again.
 ///
-/// A day that can't be written, as on a full disk, is said through `say`
-/// once a spell and written again every half minute, and health runs on
-/// until it can be, keeping the day, for as long as `GIVES_UP`: starting
-/// again frees no room, and a start past midnight would lose the old
-/// day's end. A new day's lines can't be taken meanwhile, so such a lost
-/// line ends health as a follower's end does, once the day is written,
-/// for the replay to hear it. Most of what the ticks see meanwhile, such
-/// as the disk guard's and memory's readings, is dated the new day and
-/// so kept in neither.
+/// A day that can't be written, as on a full disk, is said through `say`,
+/// and once written again through `notice`, as `Spell` decides; health
+/// tries every half minute and runs on until it can, keeping the day,
+/// for as long as `GIVES_UP`: starting again frees no room, and a start
+/// past midnight would lose the old day's end. A new day's lines can't be
+/// taken meanwhile, so such a lost line ends health as a follower's end
+/// does, once the day is written, for the replay to hear it. Most of what
+/// the ticks see meanwhile, such as the disk guard's and memory's
+/// readings, is dated the new day and so kept in neither.
 ///
 /// # Errors
 ///
@@ -657,20 +660,20 @@ fn run(
     mut wait: impl FnMut(Duration),
     mut look: impl FnMut() -> Looked,
     say: &dyn Fn(&str),
+    notice: &dyn Fn(&str),
 ) -> io::Result<()> {
     let started = now();
     let mut ticked = started;
     let mut ended = false;
     let mut hearing = true;
-    // Since when the day couldn't be written, while it can't.
-    let mut failing = None;
+    let mut spell = Spell::default();
     let mut lost = None;
     let mut gave_up;
     loop {
         let at = now();
         let ran = at.saturating_duration_since(started);
-        gave_up = failing.is_some_and(|since| at.saturating_duration_since(since) >= GIVES_UP);
-        if ((ended && failing.is_none()) || gave_up) && ran >= SETTLED {
+        gave_up = spell.gave_up(at);
+        if ((ended && !spell.is_on()) || gave_up) && ran >= SETTLED {
             break;
         }
         let left = EVERY.saturating_sub(at.saturating_duration_since(ticked));
@@ -680,9 +683,9 @@ fn run(
                     // Only a new day's line writes, so a line taken without
                     // one leaves the write's failure as it was.
                     if let Err(error) = follower.take(&line) {
-                        failing = unwritten(Some(&error), failing, at, &follower.into, say);
+                        spell.tried(Some(&error), at, &follower.into, say, notice);
                         ended = true;
-                        lost.get_or_insert(error);
+                        lost.get_or_insert_with(|| spell.lost(&error, &follower.into));
                     }
                 }
                 Ok(None) => ended = true,
@@ -719,16 +722,13 @@ fn run(
             follower.pool_keys();
             follower.hear(SESSIONS_A_TICK);
             let written = follower.write();
-            failing = unwritten(written.err().as_ref(), failing, at, &follower.into, say);
+            spell.tried(written.err().as_ref(), at, &follower.into, say, notice);
         }
     }
     let written = follower.write();
     // A start that gave up says so, whatever its last try came to.
     if gave_up {
-        return Err(io::Error::other(format!(
-            "health gave up writing the day after {} minutes of trying",
-            GIVES_UP.as_secs() / 60
-        )));
+        return Err(spell.given_up(&follower.into));
     }
     written.map_err(|error| {
         io::Error::new(
@@ -747,29 +747,9 @@ fn run(
     })
 }
 
-/// Since when the day has been left unwritten, given the write's `error`
-/// at `at`, if any, and since when it was. The first failure of a spell
-/// is said through `say`, naming the folder `into`, since the next half
-/// minute's will most likely say the same.
-fn unwritten(
-    error: Option<&io::Error>,
-    since: Option<Instant>,
-    at: Instant,
-    into: &Path,
-    say: &dyn Fn(&str),
-) -> Option<Instant> {
-    let error = error?;
-    if since.is_none() {
-        say(&format!(
-            "health: can't write the day into {}: {error}, so it keeps the day and tries again \
-             every half minute for up to {} minutes; a new day's lines that come meanwhile are \
-             heard at health's next start",
-            into.display(),
-            GIVES_UP.as_secs() / 60
-        ));
-    }
-    Some(since.unwrap_or(at))
-}
+// A spell of failed writes, and what health says of it, in a file of
+// its own so the follower reads whole.
+mod spell;
 
 // The tests keep a file of their own, follow/tests.rs, so the follower
 // reads whole.

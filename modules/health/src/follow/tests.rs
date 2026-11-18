@@ -24,6 +24,11 @@ fn read(into: &Path, date: &str) -> Day {
     serde_json::from_slice(&file).expect("the day's file is a day")
 }
 
+/// The day written into `into` for `date`, if one was.
+fn written(into: &Path, date: &str) -> Option<Day> {
+    file_of(into, date).exists().then(|| read(into, date))
+}
+
 #[test]
 fn a_day_is_written_only_once_something_changed() {
     let into = tempfile::tempdir().expect("a folder");
@@ -161,15 +166,16 @@ struct Ran {
 }
 
 /// What a `Ran` came to: what `run` returned, what it left unread, how
-/// long health ran, how often it looked at the lid, what it said, how
-/// often it waited nothing, how many lines a busy journal sent, and the
-/// day and the next as written.
+/// long health ran, how often it looked at the lid, what it said and
+/// noticed, how often it waited nothing, how many lines a busy journal
+/// sent, and the day and the next as written.
 struct Outcome {
     result: io::Result<()>,
     unread: usize,
     ran: Duration,
     looks: usize,
     said: Vec<String>,
+    noticed: Vec<String>,
     idle_waits: usize,
     busy_sent: u64,
     today: Option<Day>,
@@ -278,23 +284,21 @@ impl Ran {
         };
         let said = RefCell::new(Vec::new());
         let say = |words: &str| said.borrow_mut().push(words.to_owned());
-        let result = run(&mut follower, &read, now, wait, look, &say);
+        let noticed = RefCell::new(Vec::new());
+        let notice = |words: &str| noticed.borrow_mut().push(words.to_owned());
+        let result = run(&mut follower, &read, now, wait, look, &say, &notice);
         let started = first.get().expect("a look at the clock");
-        let day = |date| {
-            fs::read(file_of(&days, date))
-                .ok()
-                .map(|file| serde_json::from_slice(&file).expect("the day's file is a day"))
-        };
         Outcome {
             result,
             unread: read.try_iter().count(),
             ran: clock.get().saturating_duration_since(started),
             looks: looks.get(),
             said: said.take(),
+            noticed: noticed.take(),
             idle_waits: idle_waits.get(),
             busy_sent: busy_sent.get(),
-            today: day("2026-11-12"),
-            tomorrow: day("2026-11-13"),
+            today: written(&days, "2026-11-12"),
+            tomorrow: written(&days, "2026-11-13"),
         }
     }
 }
@@ -477,6 +481,7 @@ fn a_busy_journal_still_ticks_every_half_minute() {
             }
             Looked::default()
         },
+        &|_| {},
         &|_| {},
     )
     .expect("the run");

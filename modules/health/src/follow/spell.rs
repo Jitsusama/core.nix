@@ -1,0 +1,162 @@
+//! A spell of the day's writes failing, as on a full disk, and what
+//! health says of it: once as it starts and once as it ends, and of a
+//! disk flapping at its edge, no more than once every ten minutes. A
+//! spell lasts only as long as health's run, so a start after one says
+//! the next spell at once, and a spell that outlasts a run, as one given
+//! up on does, is never told ended.
+
+use std::io;
+use std::path::Path;
+use std::time::{Duration, Instant};
+
+use super::{GIVES_UP, SETTLED};
+
+/// How long after a spell's end was told that a new one goes unsaid, as a
+/// disk at the edge of full flaps between the two: such a spell is said
+/// once this much has passed, and its end then told too. It's as long as
+/// `SETTLED`, the least a run lasts, since each start says a spell at
+/// once, so health's starts alone say a flapping disk no more often. A
+/// told end can let a run that has had its follower end or a line lost
+/// end at once, though, and the start that follows says the next spell
+/// within a minute.
+const QUIET_FOR: Duration = SETTLED;
+
+/// A spell of the day's writes failing: since when and for what, while
+/// they do, whether it was said, and when a spell's end was last told.
+#[derive(Debug, Default)]
+pub(super) struct Spell {
+    since: Option<Instant>,
+    cause: String,
+    said: bool,
+    told: Option<Instant>,
+}
+
+impl Spell {
+    /// Whether a spell is on: the day's writes failing.
+    pub(super) fn is_on(&self) -> bool {
+        self.since.is_some()
+    }
+
+    /// Whether health has tried to write the day for `GIVES_UP` by `at`,
+    /// and so gives up.
+    pub(super) fn gave_up(&self, at: Instant) -> bool {
+        self.since
+            .is_some_and(|since| at.saturating_duration_since(since) >= GIVES_UP)
+    }
+
+    /// What health ends on once it has given up writing the day into
+    /// `into`, with the spell's cause, since its start was said long ago.
+    pub(super) fn given_up(&self, into: &Path) -> io::Error {
+        io::Error::other(format!(
+            "health gave up writing the day into {} after {} minutes of trying: {}",
+            into.display(),
+            GIVES_UP.as_secs() / 60,
+            self.cause
+        ))
+    }
+
+    /// Take a write's `error` at `at`, if any. A spell's start is said
+    /// through `say`, naming the folder `into` and the spell's first
+    /// error, and its end through `notice`, once each, since the next
+    /// half minute's would most likely say the same. Only the first error
+    /// is a write's own: within a spell, a new day's line is refused with
+    /// one of health's. A spell starting within `QUIET_FOR` of the last
+    /// end told is said only once `QUIET_FOR` has passed since, with how
+    /// long it has lasted, so a flapping disk is said at most once in each
+    /// `QUIET_FOR`, however short its spells, and a lasting one soon.
+    pub(super) fn tried(
+        &mut self,
+        error: Option<&io::Error>,
+        at: Instant,
+        into: &Path,
+        say: &dyn Fn(&str),
+        notice: &dyn Fn(&str),
+    ) {
+        match (error, self.since) {
+            (Some(error), None) => {
+                self.since = Some(at);
+                self.cause = error.to_string();
+                self.said = self
+                    .told
+                    .is_none_or(|told| at.saturating_duration_since(told) >= QUIET_FOR);
+                if self.said {
+                    say(&unwritten(&self.cause, into, Duration::ZERO));
+                }
+            }
+            (Some(_), Some(since)) => {
+                let quiet = self
+                    .told
+                    .is_some_and(|told| at.saturating_duration_since(told) < QUIET_FOR);
+                if !self.said && !quiet {
+                    self.said = true;
+                    say(&unwritten(
+                        &self.cause,
+                        into,
+                        at.saturating_duration_since(since),
+                    ));
+                }
+            }
+            (None, Some(since)) => {
+                if self.said {
+                    notice(&format!(
+                        "health: writes the day into {} again, after trying for {}",
+                        into.display(),
+                        lasting(at.saturating_duration_since(since))
+                    ));
+                    self.told = Some(at);
+                }
+                self.since = None;
+                self.cause.clear();
+                self.said = false;
+            }
+            (None, None) => {}
+        }
+    }
+
+    /// `error`, a new day's line refused within the spell, with the folder
+    /// `into` and the spell's own cause where it differs, since a spell
+    /// kept quiet may have said neither before health ends on it. Health
+    /// ends on it only once the day is written, so it's over.
+    pub(super) fn lost(&self, error: &io::Error, into: &Path) -> io::Error {
+        let words = if self.cause == error.to_string() {
+            format!(
+                "writing the day into {} failed for a time: {error}",
+                into.display()
+            )
+        } else {
+            format!(
+                "{error}, as writing it into {} failed for a time: {}",
+                into.display(),
+                self.cause
+            )
+        };
+        io::Error::new(error.kind(), words)
+    }
+}
+
+/// What health says of a day it can't write into `into` for `cause`, its
+/// writes having failed for `lasted`, if said late, with the time left.
+fn unwritten(cause: &str, into: &Path, lasted: Duration) -> String {
+    let already = if lasted.is_zero() {
+        String::new()
+    } else {
+        format!(" having tried for {},", lasting(lasted))
+    };
+    format!(
+        "health: can't write the day into {}: {cause},{already} so it keeps the day and tries \
+         again every half minute for up to {} minutes; a new day's lines that come meanwhile \
+         are heard at health's next start",
+        into.display(),
+        GIVES_UP.saturating_sub(lasted).as_secs() / 60
+    )
+}
+
+/// How long `lasted` was, to the minute: time health was awake to try,
+/// since a sleeping machine's clock stands still.
+pub(super) fn lasting(lasted: Duration) -> String {
+    match lasted.as_secs() / 60 {
+        0 => "less than a minute".to_owned(),
+        1 => "a minute".to_owned(),
+        minutes => format!("{minutes} minutes"),
+    }
+}

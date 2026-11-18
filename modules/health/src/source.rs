@@ -706,6 +706,23 @@ pub(crate) fn fail(words: &str) {
     say_marked(words, ERROR);
 }
 
+/// Say `words` on stderr as a notice (`as_marked`), which health's
+/// warnings follower doesn't count: what's well again, such as a day
+/// written once more after a spell it couldn't be.
+pub(crate) fn notice(words: &str) {
+    say_marked(words, NOTICE);
+}
+
+/// sd-daemon(3)'s mark for a notice.
+const NOTICE: u8 = 5;
+
+// A notice is below a warning, or health's warnings follower, which reads
+// `-p warning`, would count each as one of health's own.
+const _: () = assert!(
+    NOTICE > WARNING,
+    "a notice isn't below a warning, so health's warnings follower would count it"
+);
+
 /// sd-daemon(3)'s mark for a warning.
 const WARNING: u8 = 4;
 
