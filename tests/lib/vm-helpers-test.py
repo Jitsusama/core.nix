@@ -337,3 +337,50 @@ def test_the_reason_says_where_the_picture_last_changed() -> None:
 
     why = settled(FadingGuest(frames=0, apart=1.0, other=True), 0.5, 5, at_the_corner) or ""
     assert why.endswith("it last changed at 0,0 to 8,8, the shell drawing nothing meanwhile"), why
+
+
+def picture(*rows: str) -> bytes:
+    """Give a picture as QEMU's screendump writes one, a PPM, a pixel a letter, grey as it."""
+    width = len(rows[0])
+    pixels = b"".join(bytes([ord(letter)] * 3) for row in rows for letter in row)
+    return f"P6\n{width} {len(rows)}\n255\n".encode() + pixels
+
+
+def test_pictures_changed_only_above_and_below_the_rows_read_are_alike() -> None:
+    # The margin cat walking along the windows' tops, then sitting at the screen's foot.
+    alike = vm_helpers.alike_between_rows(1, 3)
+    assert alike(picture("c.", "ww", "ww", ".."), picture(".c", "ww", "ww", "c."))
+
+
+def test_pictures_changed_within_the_rows_read_differ() -> None:
+    # A column's edge moving, which crosses every row a full-height window stands in.
+    alike = vm_helpers.alike_between_rows(1, 3)
+    assert not alike(picture("..", "ww", "ww", ".."), picture("..", "w.", "ww", ".."))
+
+
+def test_pixels_that_read_as_whitespace_are_still_pixels() -> None:
+    # A picture opening on a row of bytes that read as spaces, which mustn't count as the
+    # header's end, or every row after it is read short.
+    alike = vm_helpers.alike_between_rows(1, 2)
+    assert not alike(picture("  ", "ww"), picture("  ", "w "))
+
+
+def test_pictures_of_other_sizes_differ_however_alike_their_rows() -> None:
+    alike = vm_helpers.alike_between_rows(1, 3)
+    assert not alike(picture("..", "ww", "ww", ".."), picture("...", "www", "www", "..."))
+
+
+def test_a_cat_walking_on_the_tops_is_rest_for_a_wait_on_the_rows_between() -> None:
+    looked = iter(range(1000))
+    clock = FadingGuest(frames=0, apart=1.0)
+
+    def walking() -> bytes:
+        clock.now += FadingGuest.LOOKING
+        return picture(".c" if next(looked) % 2 else "c.", "ww", "ww", "..")
+
+    def nothing_counted() -> dict[str, int]:
+        return {}
+
+    alike = vm_helpers.alike_between_rows(1, 3)
+    why = vm_helpers.settled(walking, nothing_counted, 0.5, 5, clock=clock.clock, alike=alike)
+    assert why is None, why

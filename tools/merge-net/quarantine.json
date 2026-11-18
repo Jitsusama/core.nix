@@ -43,19 +43,6 @@
     "test": "vm-a-call-keeps-its-packets"
   },
   {
-    "at": 1794709157,
-    "commit": "25e508c84df2ad15f66044c588f1529630a3b870",
-    "due": "2026-11-19",
-    "due_why": "Its owner, the launcher's, fixes it by 2026-11-19 23:59 UTC: 6 of its 38 net runs from 15 Nov to 18 Nov 05:30 UTC named its subtest, so a rerun alone wouldn't take it off",
-    "owner_pr": 671,
-    "owner_session": "Y2YBTS",
-    "reason": "failed, then passed, at 1242616f and at e5dbb0d1 on 14 Nov",
-    "subtests": [
-      "test_swipes_on_the_touchscreen_move_through_the_workspaces_not_the_window"
-    ],
-    "test": "vm-desktop-starts-clean"
-  },
-  {
     "at": 1794792122,
     "commit": "75aaf29a37d911bbea9a5b3648cb8490ff52f821",
     "due": "2026-11-19",

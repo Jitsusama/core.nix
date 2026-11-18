@@ -8,6 +8,7 @@ takes the machine it acts on, since a module can't see the driver's globals.
 import datetime as dt
 import operator
 import os
+import re
 import shlex
 import time
 from typing import TYPE_CHECKING, Any, Protocol
@@ -148,6 +149,35 @@ STILL_SPANS = 2
 def nowhere(_before: bytes, _now: bytes) -> str:
     """Say nothing of where two pictures differ, for a screen with no picture to read."""
     return ""
+
+
+# The header of a binary PPM, the kind QEMU's screendump writes.
+PPM_HEADER = re.compile(rb"P6\s+(?P<width>\d+)\s+\d+\s+\d+\s")
+
+
+def alike_between_rows(top: int, bottom: int) -> Callable[[bytes, bytes], bool]:
+    """Say two of QEMU's pictures, PPMs, are alike in the rows from top up to bottom.
+
+    For a screen where something moves by design above or below what a wait is about, as the
+    margin cat walks along the windows' tops and sits at the screen's foot.
+    """
+
+    def rows(shot: bytes) -> tuple[bytes, bytes]:
+        # A PPM opens with four words, its kind, width, height and greatest level, and one
+        # whitespace byte after them; its pixels follow, three bytes each, and may start with
+        # a byte that reads as whitespace too.
+        header = PPM_HEADER.match(shot)
+        if header is None:
+            message = f"not a PPM: {shot[:16]!r}"
+            raise ValueError(message)
+        across = int(header["width"]) * 3
+        pixels = shot[header.end() :]
+        return header[0], pixels[top * across : bottom * across]
+
+    def alike(before: bytes, now: bytes) -> bool:
+        return rows(before) == rows(now)
+
+    return alike
 
 
 def settled(  # noqa: PLR0913 # The clock is the stand-ins' way in; where and alike read pictures.
