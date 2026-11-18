@@ -1504,6 +1504,15 @@ Provider {
     }
     function sprout(key, said, folder) {
         const words = Words.of("agents:start-new-work").said ?? {};
+        // Asked from outside (`qs ipc call launcher runWith`, `launcher do`),
+        // as any program of Joel's can ask the shell, an agent's among them,
+        // it starts nothing: the agents daemon takes a sprout only from the
+        // shell, so the shell takes one only from Joel's own Return.
+        if (provider.launcher?.cataloguing ?? false) {
+            sproutSays(key, words.outside);
+            provider.launcher.walkRefused(words.outside);
+            return;
+        }
         if (sprouting !== "") {
             sproutSays(key, words.busy);
             return;

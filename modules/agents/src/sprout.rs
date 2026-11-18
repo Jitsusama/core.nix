@@ -7,9 +7,10 @@
 //! code. Only the shell may ask (asker.rs), since the node takes this
 //! daemon for Joel.
 //!
-//! Only a sprout's own shape is sent: the words as one, a folder only as
-//! a whole path, and never a `cwd`, since this daemon's own working
-//! folder says nothing of where Joel is.
+//! Only what the launcher says is sent: the words as one, a folder only
+//! as a whole path, and never a `cwd`, since this daemon's own working
+//! folder says nothing of where Joel is, nor the machine or cell a
+//! sprout may name, which the launcher never asks for.
 
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -25,6 +26,11 @@ pub const ASK: &str = "sprout";
 /// is placed, in a second or two, and the launcher waits a minute, so the
 /// node's silence is said before the launcher stops waiting.
 const PATIENCE: Duration = Duration::from_secs(50);
+
+/// What a node that took the ask but said nothing in time is told as:
+/// it may still start the work, so asking again could start it twice.
+const SILENT: &str =
+    "the node didn't answer in time; it may still start it, so look in Agents before asking again";
 
 /// The node's `Sprout` for what the launcher said, or why it asks for
 /// nothing: no words, or a folder that isn't a whole path.
@@ -45,11 +51,6 @@ pub fn request_of(said: &Value) -> Result<Value, String> {
         }
         sprout["folder"] = json!(folder);
     }
-    for field in ["on", "from"] {
-        if let Some(name) = named(said, field)? {
-            sprout[field] = json!(name);
-        }
-    }
     Ok(json!({"Sprout": sprout}))
 }
 
@@ -60,7 +61,7 @@ fn named<'a>(said: &'a Value, field: &str) -> Result<Option<&'a str>, String> {
         Value::Null => Ok(None),
         Value::String(name) if name.is_empty() => Ok(None),
         Value::String(name) => Ok(Some(name)),
-        _ => Err(format!("a sprout's {field} is a name")),
+        _ => Err(format!("a sprout's {field} is a path")),
     }
 }
 
@@ -76,14 +77,22 @@ pub fn answer(said: &Value, asker: Result<(), String>, node: Option<&Path>) -> V
         Ok(request) => request,
         Err(why) => return refused(&why),
     };
-    match asked(node, &request) {
+    match asked(node, &request, PATIENCE) {
         Ok(reply) => match (&reply["Ok"]["Started"], &reply["Err"]) {
             (Value::Object(started), _) => json!({"sprouted": started}),
             (_, Value::String(why)) => refused(why),
             _ => refused(&format!("the node's answer couldn't be read: {reply}")),
         },
-        Err(why) => refused(&format!("the node didn't answer: {why}")),
+        Err(Unanswered::Unreached(why)) => refused(&format!("the node couldn't be reached: {why}")),
+        Err(Unanswered::Silent) => refused(SILENT),
     }
+}
+
+/// Why the node gave no answer: it couldn't be reached, so nothing was
+/// asked, or it took the ask and fell silent, so the work may yet start.
+enum Unanswered {
+    Unreached(io::Error),
+    Silent,
 }
 
 fn refused(why: &str) -> Value {
@@ -91,14 +100,20 @@ fn refused(why: &str) -> Value {
 }
 
 /// Asks the node at `socket` for `request`, one line of its own protocol
-/// with no hello, and gives its one line back.
-fn asked(socket: &Path, request: &Value) -> io::Result<Value> {
-    let mut stream = UnixStream::connect(socket)?;
-    stream.set_read_timeout(Some(PATIENCE))?;
-    writeln!(stream, "{request}")?;
+/// with no hello, waiting up to `patience` on each step, and gives its
+/// one line back, or a line it couldn't read as null.
+fn asked(socket: &Path, request: &Value, patience: Duration) -> Result<Value, Unanswered> {
+    let mut stream = UnixStream::connect(socket).map_err(Unanswered::Unreached)?;
+    stream
+        .set_read_timeout(Some(patience))
+        .and_then(|()| stream.set_write_timeout(Some(patience)))
+        .map_err(Unanswered::Unreached)?;
+    writeln!(stream, "{request}").map_err(|_| Unanswered::Silent)?;
     let mut line = String::new();
-    BufReader::new(stream).read_line(&mut line)?;
-    Ok(serde_json::from_str(&line)?)
+    match BufReader::new(stream).read_line(&mut line) {
+        Ok(read) if read > 0 => Ok(serde_json::from_str(&line).unwrap_or(Value::Null)),
+        _ => Err(Unanswered::Silent),
+    }
 }
 
 #[cfg(test)]
@@ -128,12 +143,12 @@ mod tests {
                 "from": "P9R1KI", "cwd": "/home/j/elsewhere"}))),
             Ok(
                 json!({"Sprout": {"words": ["https://github.com/o/r/issues/7"],
-                "folder": "/home/j/src/r", "on": "skiff", "from": "P9R1KI"}})
+                "folder": "/home/j/src/r"}})
             ),
-            "a folder, a machine and a cell it comes from go as said; a cwd never does"
+            "a folder goes as said; a machine, a cell and a cwd never do"
         );
         assert_eq!(
-            request_of(&ask(&json!({"folder": "", "on": "", "from": null}))),
+            request_of(&ask(&json!({"folder": ""}))),
             Ok(json!({"Sprout": {"words": ["https://github.com/o/r/issues/7"]}})),
             "an empty one is none"
         );
@@ -150,7 +165,6 @@ mod tests {
                 "a folder that isn't a whole path",
             ),
             (ask(&json!({"folder": 7})), "a folder that isn't a path"),
-            (ask(&json!({"on": 7})), "a machine that isn't a name"),
         ] {
             assert!(
                 request_of(&said).is_err_and(|refused| !refused.is_empty()),
@@ -228,6 +242,56 @@ mod tests {
     }
 
     #[test]
+    fn a_node_that_took_the_ask_and_fell_silent_may_yet_start_it() {
+        let socket =
+            std::env::temp_dir().join(format!("agents-sprout-silent-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&socket);
+        let listener = UnixListener::bind(&socket).expect("a socket to stand in for the node");
+        let held = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("the sprout asks the node");
+            // Held open, saying nothing, past the patience below.
+            thread::sleep(Duration::from_millis(600));
+            drop(stream);
+        });
+        let request = request_of(&ask(&json!({}))).expect("a sprout");
+        let silent = asked(&socket, &request, Duration::from_millis(200));
+        assert!(
+            matches!(silent, Err(Unanswered::Silent)),
+            "a node that took the ask and said nothing is silent, never unreached"
+        );
+        assert_eq!(
+            refused(SILENT)["error"]["message"],
+            json!(SILENT),
+            "and is said as one that may still start it"
+        );
+        assert!(
+            SILENT.contains("may still start it"),
+            "it says so: {SILENT}"
+        );
+        let _ = held.join();
+        let _ = std::fs::remove_file(&socket);
+    }
+
+    #[test]
+    fn a_node_answer_that_isnt_a_sprouts_is_unread() {
+        for (name, reply) in [
+            ("other", r#"{"Ok": {"Other": 1}}"#),
+            ("garbled", "not json"),
+        ] {
+            let (socket, asked) = node(name, reply);
+            let answer = answer(&ask(&json!({})), Ok(()), Some(&socket));
+            assert!(
+                answer["error"]["message"]
+                    .as_str()
+                    .is_some_and(|why| why.starts_with("the node's answer couldn't be read")),
+                "{name}: {answer}"
+            );
+            let _ = asked.join();
+            let _ = std::fs::remove_file(&socket);
+        }
+    }
+
+    #[test]
     fn a_sprout_not_the_shells_or_with_no_node_isnt_asked() {
         let gone = std::env::temp_dir().join("agents-sprout-no-node.sock");
         let not_shell = answer(
@@ -248,12 +312,12 @@ mod tests {
                 .is_some_and(|why| why.contains("whole path")),
             "a sprout it can't send says why: {nowhere}"
         );
-        let silent = answer(&ask(&json!({})), Ok(()), Some(&gone));
+        let unreached = answer(&ask(&json!({})), Ok(()), Some(&gone));
         assert!(
-            silent["error"]["message"]
+            unreached["error"]["message"]
                 .as_str()
-                .is_some_and(|why| why.starts_with("the node didn't answer")),
-            "a node that isn't there didn't answer: {silent}"
+                .is_some_and(|why| why.starts_with("the node couldn't be reached: ")),
+            "a node that isn't there wasn't reached, so nothing started: {unreached}"
         );
         let none = answer(&ask(&json!({})), Ok(()), None);
         assert_eq!(

@@ -847,6 +847,22 @@ def test_new_work_from_a_link_starts_its_session_in_no_window(desktop: Desktop) 
     )
     before = {window["id"] for window in desktop.windows()}
     try:
+        # Any program of Joel's can ask the shell's catalogue, an agent among them, so From a
+        # Link asked that way starts nothing: only his own Return sprouts (#5456's council).
+        listed = json.loads(desktop.as_account("qs ipc call launcher list"))
+        from_a_link = [one["id"] for one in listed if one["words"] == "From a Link"]
+        assert len(from_a_link) == 1, f"From a Link isn't in the catalogue once: {from_a_link}"
+        walked = json.loads(
+            desktop.as_account(
+                f"qs ipc call launcher runWith {shlex.quote(from_a_link[0])} {shlex.quote(link)}"
+            )
+        )
+        assert walked.get("done") is not True, f"a walk from outside sprouted: {walked}"
+        # Watched for a while, since a sprout that went would reach the stand-in in seconds.
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            desktop.as_account(f"test ! -e {opened}")
+            time.sleep(0.5)
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in("new work", selecting="Start New Work")

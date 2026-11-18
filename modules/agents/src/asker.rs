@@ -5,7 +5,11 @@
 //! would start work with more than the agent's own reach. The kernel
 //! names the process at the other end by pidfd (`SO_PEERPIDFD`), never a
 //! pid an ask says, and its cgroup says which unit runs it: only the
-//! shell's, the launcher and the commands it runs, is taken.
+//! shell's unit, under this daemon's own account, and only quickshell's
+//! own program in it, since other programs run there too (pi-ask while
+//! Super+S talks, the shell's helpers), as pineapple's peer.rs holds.
+//! The shell in turn starts new work only from Joel's own Return, never
+//! a walk from outside (Agents.qml's sprout).
 //!
 //! What this holds to: a fenced command can't move itself out of its own
 //! cgroup, but an unfenced process of Joel's could write itself into the
@@ -16,10 +20,11 @@
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
+use std::path::Path;
 
-/// The shell's unit, as Home Manager names it (../quickshell/home.nix),
-/// in the slice the user manager runs it in.
-pub const SHELL: &str = "session.slice/quickshell.service";
+/// The names quickshell's program goes by: Nix's wrapper runs the real
+/// one under this name, and an unwrapped build runs as itself.
+const SHELL_PROGRAMS: [&str; 2] = [".quickshell-wrapped", "quickshell"];
 
 /// `SO_PEERPIDFD` (Linux 6.5), the same on every architecture the
 /// machines run, which the libc crate names only in its newer layout.
@@ -33,20 +38,31 @@ const SO_PEERPIDFD: libc::c_int = 77;
 /// Why: it isn't the shell's, it ended before its cgroup could be known
 /// to be its own, or the kernel names no peer by pidfd.
 pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
-    let cgroup = cgroup_of(stream).map_err(|why| format!("who asked can't be told: {why}"))?;
-    if of_the_shell(&cgroup) {
+    let (cgroup, exe) = peer_of(stream).map_err(|why| format!("who asked can't be told: {why}"))?;
+    // SAFETY: getuid has no failure and touches no memory.
+    let uid = unsafe { libc::getuid() };
+    if of_the_shell(&cgroup, uid) && the_shells_program(&exe) {
         Ok(())
     } else {
         Err("only the launcher starts new work here".to_owned())
     }
 }
 
+/// Whether `exe`, as `/proc/<pid>/exe` points, is quickshell's own
+/// program.
+pub fn the_shells_program(exe: &str) -> bool {
+    Path::new(exe)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| SHELL_PROGRAMS.contains(&name))
+}
+
 /// Whether `cgroup`, as `/proc/<pid>/cgroup` says it, is the shell's own
-/// unit: its unified line, the user manager's session slice and the
-/// shell's unit in it, never a unit inside it, nor one merely named like
-/// it in another slice, as `systemd-run --user --unit quickshell` could
-/// start while the shell isn't running.
-pub fn of_the_shell(cgroup: &str) -> bool {
+/// unit under account `uid`: its unified line, that account's manager's
+/// session slice and the shell's unit in it, never a unit inside it, nor
+/// one merely named like it in another slice, as `systemd-run --user
+/// --unit quickshell` could start while the shell isn't running.
+pub fn of_the_shell(cgroup: &str, uid: u32) -> bool {
     let Some(path) = cgroup.lines().find_map(|line| line.strip_prefix("0::")) else {
         return false;
     };
@@ -59,22 +75,15 @@ pub fn of_the_shell(cgroup: &str) -> bool {
             manager,
             "session.slice",
             "quickshell.service",
-        ] => {
-            account
-                .strip_prefix("user-")
-                .and_then(|uid| uid.strip_suffix(".slice"))
-                == manager
-                    .strip_prefix("user@")
-                    .and_then(|uid| uid.strip_suffix(".service"))
-                && account.len() > "user-.slice".len()
-        }
+        ] => *account == format!("user-{uid}.slice") && *manager == format!("user@{uid}.service"),
         _ => false,
     }
 }
 
-/// The cgroup of the process at the other end of `stream`, read while
-/// its pidfd showed it alive, so a pid taken again since can't answer.
-fn cgroup_of(stream: &UnixStream) -> io::Result<String> {
+/// The cgroup and program of the process at the other end of `stream`,
+/// read while its pidfd showed it alive, so a pid taken again since
+/// can't answer.
+fn peer_of(stream: &UnixStream) -> io::Result<(String, String)> {
     let mut fd: libc::c_int = -1;
     let mut length = libc::socklen_t::try_from(size_of::<libc::c_int>())
         .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
@@ -115,8 +124,11 @@ fn cgroup_of(stream: &UnixStream) -> io::Result<String> {
         .filter(|pid| *pid > 0)
         .ok_or_else(gone)?;
     let cgroup = std::fs::read_to_string(format!("/proc/{pid}/cgroup"))?;
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe"))?
+        .to_string_lossy()
+        .into_owned();
     if alive(&pidfd) {
-        Ok(cgroup)
+        Ok((cgroup, exe))
     } else {
         Err(gone())
     }
@@ -148,8 +160,12 @@ mod tests {
     #[test]
     fn only_the_shells_own_unit_is_the_shell() {
         assert!(
-            of_the_shell(&format!("{SESSION}/quickshell.service\n")),
+            of_the_shell(&format!("{SESSION}/quickshell.service\n"), 1000),
             "the shell's unit"
+        );
+        assert!(
+            !of_the_shell(&format!("{SESSION}/quickshell.service\n"), 1001),
+            "the shell's unit under another account"
         );
         for other in [
             "0::/user.slice/user-1000.slice/user@1000.service/app.slice/pi-host.service\n"
@@ -164,11 +180,34 @@ mod tests {
             "0::/system.slice/session.slice/quickshell.service\n".to_owned(),
             "0::/x/user.slice/user-1000.slice/user@1000.service/session.slice/quickshell.service\n"
                 .to_owned(),
+            "0::/user.slice/user-someone.slice/user@someone.service/session.slice/quickshell.service\n"
+                .to_owned(),
+            "0::/user.slice/user-.slice/user@.service/session.slice/quickshell.service\n".to_owned(),
             "0::/\n".to_owned(),
             String::new(),
             "1:name=systemd:/quickshell.service\n".to_owned(),
         ] {
-            assert!(!of_the_shell(&other), "{other:?} isn't the shell");
+            assert!(!of_the_shell(&other, 1000), "{other:?} isn't the shell");
+        }
+    }
+
+    #[test]
+    fn only_quickshells_own_program_is_the_shell() {
+        for shell in [
+            "/nix/store/2mr2gyg6-quickshell-0.3.2/bin/.quickshell-wrapped",
+            "/nix/store/2mr2gyg6-quickshell-0.3.2/bin/quickshell",
+        ] {
+            assert!(the_shells_program(shell), "{shell} is the shell's");
+        }
+        // What runs beside it in its unit: pi-ask's pi and bash, its helpers.
+        for other in [
+            "/nix/store/giny1jia-nodejs-22.23.5/bin/node",
+            "/nix/store/hasnvc0j-bash-5.3p20/bin/bash",
+            "/run/current-system/sw/bin/litra",
+            "/nix/store/x/bin/quickshell-helper",
+            "",
+        ] {
+            assert!(!the_shells_program(other), "{other:?} isn't the shell's");
         }
     }
 
