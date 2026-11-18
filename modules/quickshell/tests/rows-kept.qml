@@ -265,6 +265,47 @@ QtObject {
                 afresh || steps.filter(step => step.insert !== undefined).length <= most, true);
         }
 
+        splitting();
         Qt.exit(0);
+    }
+
+    // A step back out to a row well down a list put in afresh splits it at
+    // the first row of the view it lands in, and only then (Launcher.qml's
+    // keep): rows ten tall, or a heading of twenty first.
+    function splitting() {
+        const even = () => 10;
+        const headed = at => at === 0 ? 20 : 10;
+        // [what, the row back to, how far down the view stands from the first
+        // row's top, how tall each is, from]
+        const cases = [
+            ["a view standing on a row's top starts at it", 16, 100, even, 10],
+            ["a row cut by the view's top is its first", 16, 105, even, 10],
+            ["the row back to, standing at the top, is the first", 16, 160, even, 16],
+            ["a heading's height is counted", 5, 25, headed, 1],
+            ["a view at the list's top isn't split", 4, 0, even, 0],
+            ["nor a step back to the first row", 0, 0, even, 0],
+            ["nor one onto the line", -1, 0, even, 0]
+        ];
+        for (const [what, back, down, tall, from] of cases)
+            Expect.same(what, RowsKept.splitFrom(back, down, tall), from);
+        const whole = count => [{ insert: 0, keys: Array.from({ length: count }, (_, at) => at) }];
+        // The steps putting rows in, as keep() takes them from steps().
+        const putting = (was, now) => RowsKept.steps(was, now, 8)
+            .filter(one => one.remove === undefined);
+        // [what, the steps putting rows in, how many rows the list holds, afresh]
+        const puts = [
+            ["one run of all the rows is the list afresh", whole(30), 30, true],
+            ["a run short of the list isn't", whole(20), 30, false],
+            ["nor a row moved alone", [{ move: 2, to: 0 }], 3, false],
+            ["rows into an empty list are", putting([], ["a", "b", "c"]), 3, true],
+            ["so are rows sharing none with those they replace",
+                putting(["x", "y"], ["a", "b", "c"]), 3, true],
+            ["nor rows keeping one of those before, put in around it",
+                putting(["b"], ["a", "b", "c"]), 3, false],
+            ["but the same rows turned round past most moving are",
+                putting("abcdefghijk".split(""), "kjihgfedcba".split("")), 11, true]
+        ];
+        for (const [what, steps, count, afresh] of puts)
+            Expect.same(what, RowsKept.allAfresh(steps, count), afresh);
     }
 }

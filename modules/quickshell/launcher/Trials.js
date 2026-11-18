@@ -137,6 +137,44 @@ function steppedMaking(making, split) {
     return ` (${each.map(([name, ms]) => `${name} ${ms}`).join(", ")})`;
 }
 
+// The rows a laying drew, where it drew any, what else the showing took
+// (others), then where a step back out came to (Launcher.qml's keep), so a
+// slow step back says whether its split or the layout after spent the time.
+function keptSaid(kept, others = "") {
+    const rows = (kept.built ?? 0) + (kept.reused ?? 0) > 0
+        ? `: ${kept.built} rows built, ${kept.reused} taken back` : "";
+    return rows + others + landedSaid(kept.split ?? {});
+}
+
+// How a key's showing kept its rows, where laying them out took time or it
+// was a step back out, even one that kept every row; else nothing.
+function keptPart(kept, others = "") {
+    return kept && (kept.fresh + kept.laying > 0 || kept.split?.stepping === true)
+        ? ` (${kept.fresh} rows new, ${kept.laying} laying them out${keptSaid(kept, others)})`
+        : "";
+}
+
+// Where a step back out came to and how its rows went in, or nothing for a
+// keeping that was no step back. Rows count from 1 among the list's own,
+// a heading taking one, so past a heading the number runs ahead of the
+// card's. One that comes to no row stands above them, on the line or an
+// answer's headline, unless the place has none left. A list put in afresh
+// with its view at its top has nothing above to split off.
+function landedSaid({ back = -1, from = 0, took = 0, whole = false, stepping = false,
+    empty = false }) {
+    if (!stepping) {
+        return "";
+    }
+    if (back < 0) {
+        return empty ? "; back to no rows" : "; back above the rows";
+    }
+    const to = `back to row ${back + 1}`;
+    if (from > 0) {
+        return `; ${Math.round(took)} of the laying splitting them at row ${from + 1}, ${to}`;
+    }
+    return whole ? `; ${to}, the view at the list's top` : `; ${to} among rows kept`;
+}
+
 // How long a showing's rows spent reading what each program holds, as
 // their counts and notes are drawn, beside its weighing: Programs showed
 // 20 new rows in 132 ms under load, 54 of them weighing and 20 laying out,
