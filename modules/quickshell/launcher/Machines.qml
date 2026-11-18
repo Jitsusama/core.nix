@@ -106,15 +106,15 @@ Provider {
         return all;
     }
 
-    // What RealmMachines.js needs to say them: the words, the realms, now, this
-    // machine's core, how the disk guard bands a disk, and a moment's day and
-    // time as the launcher says them everywhere (When.js).
     // The row a mycelium:machine/ link lands on, by its key, or none for a
     // name no node lists (RealmMachines.js's linked).
     function linked(said) {
         return Listed.linked(records, said);
     }
 
+    // What RealmMachines.js needs to say them: the words, the realms, now, this
+    // machine's core, how the disk guard bands a disk, and a moment's day and
+    // time as the launcher says them everywhere (When.js).
     function placeNow(listed) {
         const here = listed.find(record => record.here === true);
         const said = Words.of("machines").said ?? {};
@@ -169,7 +169,7 @@ Provider {
         const items = Listed.hereItems(record, place);
         const row = member({
             thing: true,
-            key: `machines:${record.name}`,
+            key: Listed.rowKey(record.name),
             name: record.name,
             side: items.map(item => item.said).join(" \u00b7 "),
             sideItems: items,
@@ -192,7 +192,7 @@ Provider {
         const drawn = Listed.drawer(record, place);
         const reached = Listed.reached(record);
         const row = thingRow({
-            key: `machines:${record.name}`,
+            key: Listed.rowKey(record.name),
             name: record.name,
             note: Listed.note(record, place),
             side: Listed.side(record, place),

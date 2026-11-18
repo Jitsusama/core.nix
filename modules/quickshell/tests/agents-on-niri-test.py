@@ -365,7 +365,7 @@ LINK_TRIES = 5
 
 
 def followed(shell: Shell, verb: str, said: str, *, quiet: bool = True) -> Json:
-    """Ask the launcher what a mycelium: link asks, talkTo or network, and give its answer.
+    """Ask the launcher what a mycelium: link asks (talkTo, goTo, network, machine), and answer.
 
     What a link opens drops every key for a moment, so unless the case is that moment, it's
     waited out before the case presses one.
@@ -1899,12 +1899,13 @@ def test_machine_opens_on_its_row_in_machines_selected_and_on_nothing_none_has(
     """Machine and a machine's name opens Machines, that machine's row selected.
 
     The system page's Open in the Launcher asks it (BMDYSH and XUBK2E, 2026-11-17), since a
-    page can't act. Only the first word names one; a name no node lists is said as one the
-    launcher hasn't, and opens nothing. Here one node lists only this machine, which Machines
-    lists first, so the case proves the call reaches Machines, not which row it lands on:
-    tests/machines.qml holds which row a link names, over several realms' machines.
+    page can't act. Only the first word names one; a name no node lists opens Machines, its
+    foot saying the machine isn't among Joel's yet. Here one node lists only this machine,
+    which Machines lists first, so the case proves the call reaches Machines, not which row it
+    lands on: tests/machines.qml holds which row a link names, over several realms' machines,
+    by the one key Machines gives its rows.
     """
-    name = shell.as_account("uname -n").strip()
+    name = here()
 
     def on(wanted: str) -> Callable[[Json], bool]:
         return lambda shown: (
@@ -1915,12 +1916,17 @@ def test_machine_opens_on_its_row_in_machines_selected_and_on_nothing_none_has(
 
     for said in (name, f"{name} update"):
         did = followed(shell, "machine", said)
-        assert did == {"done": True, "said": f"opened Machines \u203a {name}"}, did
+        assert did == {"done": True, "said": f"opening Machines \u203a {name}"}, did
         shell.launcher_until(on(name))
         shell.close_launcher()
     did = followed(shell, "machine", "skiff.gone")
-    assert did == {"error": "the launcher has no machine called skiff.gone"}, did
-    assert not shell.showing()["open"], shell.showing()
+    assert did == {
+        "done": False,
+        "said": "skiff.gone isn't among your machines yet: "
+        "no node has said it has a machine by that name",
+    }, did
+    shell.launcher_until(lambda shown: shown["open"] and shown["held"] == ["machines"])
+    shell.close_launcher()
 
 
 def test_a_link_opens_nothing_over_the_launcher_or_the_line_joel_has_up(shell: Shell) -> None:

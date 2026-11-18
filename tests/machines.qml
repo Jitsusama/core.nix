@@ -257,16 +257,24 @@ QtObject {
                 "couldn't update skiff: its node didn't answer"]), JSON.stringify(ended));
 
         // The row a mycelium:machine/ link lands on: any realm's machine,
-        // named by the first word said, and none for a name no node lists.
-        const linked = ["lantern", "  hermit update ", "anchor", "skiff.gone", "lant", ""]
-            .map(asked => Machines.linked(records, asked));
+        // tern listed by the work realm alone, named by the first word said,
+        // and none for a name no node lists. Its key is the one Machines
+        // gives the row (rowKey), so a link can't name a row by another.
+        const realms = [...records,
+            { name: "tern", realm: "work", state: "ready", system: "linux", measured_at: at(1, 57) }];
+        const linked = ["lantern", "  hermit update ", "anchor", "tern", "skiff.gone", "lant", ""]
+            .map(asked => Machines.linked(realms, asked));
         expect("a link lands on the row of the machine its first word names, any realm's",
             JSON.stringify(linked) === JSON.stringify([
                 { name: "lantern", key: "machines:lantern" },
                 { name: "hermit", key: "machines:hermit" },
                 { name: "anchor", key: "machines:anchor" },
+                { name: "tern", key: "machines:tern" },
                 { name: "skiff.gone", key: null },
                 { name: "lant", key: null },
                 { name: "", key: null }]), JSON.stringify(linked));
+        expect("a link's key is the key Machines gives that machine's row",
+            linked.filter(one => one.key !== null).every(one => one.key === Machines.rowKey(one.name)),
+            JSON.stringify(linked));
     }
 }

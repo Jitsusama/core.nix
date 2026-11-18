@@ -1547,7 +1547,7 @@ Scope {
     }
 
     // Whether Joel has the launcher or the void's line up, which a mycelium: link, asking
-    // talkTo or network, never opens over: what he's typed, and where he is, stay as they are,
+    // talkTo, goToCell, showNetwork or showMachine, never opens over: what he's typed, and where he is, stay as they are,
     // and the link opens nothing (ISXEG8's ruling, 2026-11-15 [dd375f5e]). A link opens either
     // only from closed, holding his first keys back (Prompt.qml's linked). One still opening
     // counts, since open is set only once its first frame is drawn, and his keys are
@@ -1598,19 +1598,28 @@ Scope {
     // Opens Machines on the row of the machine `said` names, selected, as `qs ipc call launcher
     // machine` asks, the way a machine's Open in the Launcher on the system page does: its
     // row's own acts, Start a Session Here and Update It, are Joel's to pick there, since a page
-    // can't act (BMDYSH and XUBK2E, 2026-11-17). Only the first word said names one. Says what
-    // it did as JSON, as talkTo does, a name no node lists opening nothing.
+    // can't act (BMDYSH and XUBK2E, 2026-11-17). Only the first word said names one. A name
+    // no node lists yet, as every other machine is just after the shell starts and before its
+    // nodes answer, opens Machines with its foot saying so, as goToCell does for a session
+    // gone, so Joel's click never goes nowhere unsaid. Says what it did as JSON, as talkTo
+    // does: "opening", since the row is landed on once Machines lists it.
     function showMachine(said) {
         const machines = collections.find(one => one.settings.name === "machines") ?? null;
         const { name, key } = machines ? machines.linked(said) : { name: String(said ?? ""), key: null };
         console.info(`launcher: asked from outside to show the machine ${name}`);
-        if (key === null)
-            return { error: `the launcher has no machine called ${name}` };
         if (inUse())
             return inUseSaid;
+        if (key === null) {
+            const what = name === "" ? "the link named no machine" : `${name} isn't among your machines yet`;
+            const why = "no node has said it has a machine by that name";
+            toldThat(what, why);
+            into("machines");
+            prompt.linked();
+            return { done: false, said: `${what}: ${why}` };
+        }
         intoOn("machines", row => row.key === key);
         prompt.linked();
-        return { done: true, said: `opened Machines \u203a ${name}` };
+        return { done: true, said: `opening Machines \u203a ${name}` };
     }
 
     function catalogueRunWalked(id, words) {
