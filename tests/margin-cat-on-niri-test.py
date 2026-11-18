@@ -10,7 +10,8 @@ the check's result, that its layer is one taking no keys, that it goes in fullsc
 gap it sits in is gone, that it dozes off after a minute with no keys and stretches as the
 screen unlocks, that niri draws it in whole pixels at 1.5 and at 2, each screen kept as the
 check's result, and that a move between workspaces has it ride the one it leaves off the screen
-and come in beyond, a second move cutting it short holding on from where the first got to, that
+and come in beyond, the screen showing it through the switch only where the shell drew it, a
+second move cutting it short holding on from where the first got to, that
 on a workspace with no windows it sits on the floor until one opens there, that a row of a
 column closed under it has it fall at once, and that a pointer moved onto it leans it in while
 one it came to under doesn't, a click beside it reaching the window.
@@ -105,6 +106,11 @@ PETTED_FROM = 0.3
 # What a PNG's header says of niri's screenshot: eight bits a channel, in red, green and
 # blue, with alpha or without.
 BYTE, RGB, RGBA = 8, 2, 6
+# How many shots of the screen are taken as a switch between workspaces begins, one after
+# another, and how many of the cat's places said before each it may be showing: a shot is
+# niri's newest frame, which holds the shell's last drawing, and a place is said as it's set,
+# a frame before it's drawn.
+SWITCH_SHOTS, DRAWN_BEHIND = 12, 2
 
 
 @pytest.fixture(scope="module")
@@ -900,6 +906,118 @@ def test_the_cat_walks_between_workspaces_as_if_on_one_screen(shell: Shell) -> N
     kept = Path(os.environ["out"])  # noqa: SIM112, the check's own result, as Nix names it
     kept.mkdir(exist_ok=True)
     (kept / "moves.json").write_text(json.dumps({"up": up, "down": down}))
+
+
+def shot(shell: Shell, taken: Path) -> None:
+    """Have niri take the screen into a file and wait until it's written, reading none of it."""
+    shell.as_account(f"niri msg action screenshot-screen --show-pointer false --path {taken}")
+    deadline = time.monotonic() + LAYERED
+    while not taken.exists() or taken.stat().st_size == 0:
+        assert time.monotonic() < deadline, f"niri wrote no screenshot to {taken}"
+        time.sleep(POLL / 5)
+
+
+def places_between(shell: Shell, start: int, end: int) -> list[Json]:
+    """Give each place the cat said from one mark of the shell's log to another, in order."""
+    with shell.log.open("rb") as log:
+        log.seek(start)
+        written = log.read(end - start)
+    said = [
+        line[line.find("report[") + len("report[") : -1]
+        for line in written.decode(errors="replace").splitlines()
+        if "report[" in line and line.endswith("]")
+    ]
+    places = [placed(report[len(SITS) :]) for report in said if report.startswith(SITS)]
+    return [at for at in places if at is not None]
+
+
+def down_the_screen(width: int, pixels: bytes, x: int) -> bytes:
+    """Give one column of a screen's pixels, top to bottom."""
+    return b"".join(
+        pixels[(row * width + x) * 3 : (row * width + x) * 3 + 3]
+        for row in range(len(pixels) // (width * 3))
+    )
+
+
+def strays(width: int, pixels: bytes, hue: str, boxes: list[Json]) -> list[tuple[int, int]]:
+    """Give the pixels near the cat's hue in none of the boxes, each a place it was said at.
+
+    A box is the cat's size and a pixel around it, at scale 1, as the nested screen is.
+    """
+    spans = [
+        (at["x"] - 1, at["y"] - 1, at["x"] + at["size"] + 1, at["y"] + at["size"] + 1)
+        for at in boxes
+    ]
+    found = []
+    for spot in range(len(pixels) // 3):
+        if near(pixels[spot * 3 : spot * 3 + 3].hex(), hue):
+            x, y = spot % width, spot // width
+            if not any(
+                left <= x < right and top <= y < bottom for left, top, right, bottom in spans
+            ):
+                found.append((x, y))
+    return found
+
+
+def test_through_a_switch_the_screen_shows_the_cat_only_where_the_shell_drew_it(
+    shell: Shell,
+) -> None:
+    """Through a switch between workspaces, the cat is seen only where the shell said it was.
+
+    niri drew each bottom layer surface once on every workspace, moved with it, so a second
+    cat rode in sitting on the incoming window as the switch began and the one sitting rode
+    off with the outgoing one, both somewhere the shell never put it (the GPU rig,
+    2026-11-16). niri's unit names the cat's surface to be drawn once on its screen
+    (modules/niri's fixed-to-output.patch), so all it shows is the shell's one cat, cut only
+    by the screen's edge or a window over it (Joel, 2026-11-15 23:34: "the whole kitty should
+    not have to be rendered when you are seeing it come on to your screen"). Shots are taken
+    one after another as the switch begins and read once the cat sits: every pixel of the
+    cat's hue in each is in a box where the cat was said to be about then, and at least one
+    shows the windows partway, apart from the screen before and after, or the case never saw
+    the switch it judges.
+    """
+    since = shell.mark()
+    upper = shell.opened("a workspace a switch is shot from")
+    sits_over(shell, upper, since)
+    shell.as_account("niri msg action focus-workspace-down")
+    since = shell.mark()
+    lower = shell.opened("a workspace a switch is shot to")
+    sits_over(shell, lower, since)
+    at, _ = seated(shell, since)
+    hue = at["hue"][-6:].lower()
+    width, before = picture(shell, screen())
+    stray = strays(width, before, hue, [at])
+    assert not stray, f"at rest the cat's hue is drawn outside it too, at {stray[:4]}"
+    shots = Path(os.environ["TMPDIR"]) / "switch"
+    shots.mkdir(exist_ok=True)
+    since = shell.mark()
+    shell.as_account("niri msg action focus-workspace-up")
+    taken = []
+    for number in range(SWITCH_SHOTS):
+        path, start = shots / f"switch-{number}.png", shell.mark()
+        shot(shell, path)
+        taken.append((path, start, shell.mark()))
+    sits_over(shell, upper, since)
+    _, after = picture(shell, screen())
+    # Two columns of pixels through the lone window, a quarter of it apart, where the cat is
+    # never in both at once: both unlike the screen before and after, the windows had moved.
+    lines = (width * 3 // 8, width * 5 // 8)
+    rest = [(down_the_screen(width, before, x), down_the_screen(width, after, x)) for x in lines]
+    partway, wrong = 0, []
+    for path, start, end in taken:
+        _, pixels = decoded(path.read_bytes())
+        boxes = places_between(shell, 0, start)[-DRAWN_BEHIND:] + places_between(shell, start, end)
+        stray = strays(width, pixels, hue, boxes)
+        partway += all(
+            down_the_screen(width, pixels, x) not in still
+            for x, still in zip(lines, rest, strict=True)
+        )
+        if stray:
+            wrong.append(f"{path.name}: {len(stray)} from {stray[0]} to {stray[-1]}")
+    assert partway, "no shot caught the switch partway, so none judged it"
+    assert not wrong, f"the cat was drawn where the shell never put it: {wrong}"
+    for window in (upper, lower):
+        shell.close(window)
 
 
 def on_the_floor(said: str) -> bool:
