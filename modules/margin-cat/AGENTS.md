@@ -188,7 +188,8 @@ closes or loses focus"
 It's never over a floating window's face but where the screen's top draws it there, as deep
 as its feet sit, and at its corner: with no room over one for its hop, it steps down off the
 end within its own height, paws moving, crossing the corner for a body-length's walk, under
-a fifth of a second, or up to half a second on a short way, the smaller break than walking
+a fifth of a second on its way over, under three tenths off a seat, where it eases to its
+stop, or up to half a second on a short way, the smaller break than walking
 one on the air (WCJQSG 1ee24751, 2026-11-18: "Stepping down a small ledge with its paws
 moving is what a cat does"). With room for its hop, a drop of a cell or two still walks clear
 of the end, its feet that far over the tops, and steps down, as it did before the ruling.
@@ -207,8 +208,6 @@ of the end, its feet that far over the tops, and steps down, as it did before th
 - Held by `margin-cat-floats.qml`: "never over its face, on or off it"
 - Held by `margin-cat-floats.qml`: "crossing the corner of its face 3 deep, for a
   body-length's walk"
-- Held by `margin-cat-floats.qml`: "down into its corner before it goes along, it's seen
-  past its feet"
 - Held by `margin-cat-floats.qml`: "cramped a step down, it steps off from its edge rather
   than walk clear first"
 - Held by `margin-cat-floats.qml`: "cramped a step down on its way over one, it steps off

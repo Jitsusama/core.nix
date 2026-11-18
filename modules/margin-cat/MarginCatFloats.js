@@ -360,8 +360,9 @@ function steps(way, to, at, { first = to, rises = RISES } = {}) {
 // sit in the face; lower, up to its air over it, so the crossing is
 // fresh, and still the smaller break than the walk on the air. Its walk
 // is timed by the ground it covers along and down, so the deeper the
-// step the longer: under 200 ms on a long way, up to 500 ms on a short
-// one, ambling and easing to its stop. For that walk its
+// step the longer: under 200 ms on a long way over it, under 300 ms off
+// a seat on a long way, where it eases to its stop before it turns, and
+// up to 500 ms on a short one, ambling. For that walk its
 // cells take the pointer over the corner, often the window's title bar,
 // as they do wherever it stands. Standing over the top, as a workspace
 // move can draw it sliding with the screen, its step starts from the
