@@ -26,6 +26,29 @@ PanelWindow {
     id: window
 
     required property ShellScreen modelData
+    // The screen while Quickshell still lists it, and null once it's gone.
+    // Qt drops a screen from the list before it frees it, and this surface
+    // outlives both a moment, while modelData stays a screen whose every
+    // read warns of a dangling object: a niri event then woke the column,
+    // the seat and the workspace, which read its name and width
+    // (vm-screens-keep-the-launcher, 12 to 27 warnings a run on
+    // 2026-11-17). Whatever an event can wake reads this instead, and
+    // modelData is read only as the surface's screen and within a walk,
+    // whose clocks stop as the screen goes.
+    readonly property ShellScreen present: Quickshell.screens.includes(modelData)
+        ? modelData : null
+    onPresentChanged: {
+        if (present !== null)
+            return;
+        walker.stop();
+        mover.stop();
+        resting.stop();
+        leaving.stop();
+    }
+    // The screen's name, taken once as the surface is made, since a
+    // screen keeps its name: what it says and asks of niri reads this,
+    // so neither reads the screen once it's gone.
+    readonly property string named: modelData?.name ?? ""
     // The scene every screen's cat shares: how lively it is, the pose it
     // holds, and the stroll or hop under way (MarginCat.qml).
     required property var scene
@@ -174,7 +197,7 @@ PanelWindow {
     // its new seat (VKCF3Z, 074321bd, 4d18ade4), and the one it showed.
     readonly property var space: {
         void Niri.revision;
-        const name = modelData?.name ?? "";
+        const name = present?.name ?? "";
         const shows = Object.values(Niri.workspaces)
             .find(workspace => workspace.output === name && workspace.is_active);
         return shows ? { id: shows.id, idx: shows.idx } : null;
@@ -190,8 +213,8 @@ PanelWindow {
     property int turn: 0
     // The margin's marks, where they're drawn (Paths.marks), which it
     // hops across one at a time, perched on each.
-    readonly property var marksLit: modelData === null ? null
-        : Paths.marks(MarginMarks.drawn, modelData.width, Theme.gap)
+    readonly property var marksLit: present === null ? null
+        : Paths.marks(MarginMarks.drawn, present.width, Theme.gap)
     // What it's drawn as: a pose of its walk, turned the way it
     // goes and the way it climbs, leaning into a pointer, or the
     // scope's, sitting, asleep or stretching, or swatting after one;
@@ -225,7 +248,7 @@ PanelWindow {
         if (gone)
             return;
         if (travels && wantsAs === "") {
-            wantsAs = `cat ${modelData?.name ?? ""}`;
+            wantsAs = `cat ${named}`;
             Niri.wantTiles(wantsAs, true);
         } else if (!travels && wantsAs !== "") {
             Niri.wantTiles(wantsAs, false);
@@ -561,7 +584,7 @@ PanelWindow {
         // Which of those kept it from moving, so a test that waits on a
         // move it never made says why (Y2YBTS, 2026-11-14, a0cd2ad5).
         if (Options.reports)
-            Report.say(`moves cat ${modelData?.name ?? ""} ${JSON.stringify({
+            Report.say(`moves cat ${named} ${JSON.stringify({
                 from: was, to: space, way, kept, walking: going !== null,
                 moving: moving !== null })}`);
         // A move begun on a move under way holds where it's got to,
@@ -586,7 +609,7 @@ PanelWindow {
             frameMs = told.said.median;
         if (Options.reports)
             Report.say(`${what === "walk" || what === "move" ? "walked" : "played"} cat `
-                + `${modelData?.name ?? ""} ${JSON.stringify(told.said)}`);
+                + `${named} ${JSON.stringify(told.said)}`);
     }
     // Counted among the screens that draw it, so a cat drawn on none
     // keeps still.
@@ -784,14 +807,14 @@ PanelWindow {
 
     // Held with Joel's hand at `hand`, in the screen's logical pixels.
     function hold(hand: point): void {
-        if (!holding || modelData === null)
+        if (!holding || present === null)
             return;
         place = MarginCat.held(hand, {
             cell,
             wide: size,
             tall: size,
-            across: modelData.width,
-            height: modelData.height
+            across: present.width,
+            height: present.height
         });
     }
 
@@ -808,7 +831,7 @@ PanelWindow {
     // screen's workspace, the floating windows too; it stays where it lands,
     // its seat for any change of the windows until the keys move.
     function drops(): void {
-        if (place === null || modelData === null)
+        if (place === null || present === null)
             return;
         const tiles = tilesOf(space?.id);
         const playing = Games.drop(Object.assign(playsFrom(0), { air: cell }),
@@ -983,12 +1006,12 @@ PanelWindow {
     }
 
     // A window's tile where it's on this screen's shown workspace
-    // (MarginCatTiles.js); null while the screen itself is null, as
+    // (MarginCatTiles.js); null while the screen is null or gone, as
     // Variants leaves it a moment as screens come and go (Joel's shell,
     // 2026-11-12 20:11, "Cannot read property 'name' of null").
     function tile(id: var): var {
-        return modelData === null ? null
-            : Tiles.tile(Niri.windows, Niri.workspaces, modelData.name, id);
+        return present === null ? null
+            : Tiles.tile(Niri.windows, Niri.workspaces, present.name, id);
     }
 
     // The tiles of a workspace's windows, as Paths.columns takes them.
@@ -1000,12 +1023,12 @@ PanelWindow {
     // is null (vm-screens-keep-the-launcher, "Cannot read property
     // 'width' of null", 4 runs of 4 on 2026-11-12).
     function seat(over: var): var {
-        if (!over || modelData === null)
+        if (!over || present === null)
             return null;
         return MarginCat.sits({
             column: over,
             // The screen's, since the window's own is 0 until it's shown.
-            across: modelData.width,
+            across: present.width,
             marks: MarginMarks.drawn,
             cell: Theme.gap,
             wide: size,
@@ -1014,7 +1037,7 @@ PanelWindow {
         });
     }
 
-    Counted { name: `cat ${window.modelData?.name ?? ""}` }
+    Counted { name: `cat ${window.named}` }
 
     screen: modelData
     // A place is undefined, not null, while a binding works it out
@@ -1029,9 +1052,10 @@ PanelWindow {
     // niri's new size, so its ride began out of sight and showed only as
     // it ended (the GPU rig, 2026-11-13: 141, 331, then 801 px down).
     // Only its own cells take the pointer, and Qt draws it only as it moves.
-    // Its screen is null for a moment as the screen goes, and the binding
-    // reads it again then (vm-screens-keep-the-launcher, 2026-11-15).
-    implicitHeight: modelData?.height ?? 0
+    // Its screen is null or gone for a moment as the screen goes, and the
+    // binding reads it again then (vm-screens-keep-the-launcher, 2026-11-15
+    // and 2026-11-17), so it reads the screen only while it's listed.
+    implicitHeight: present?.height ?? 0
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
     // Under the margin's marks, the launcher and notices, on Overlay, so
@@ -1190,7 +1214,7 @@ PanelWindow {
             // wherever its way takes it.
             reach: window.implicitHeight
         });
-        Report.say(`sits cat ${modelData?.name ?? ""} ${at} over ${JSON.stringify(column)}`);
+        Report.say(`sits cat ${named} ${at} over ${JSON.stringify(column)}`);
     }
     onPlaceChanged: say()
     onColumnChanged: say()
