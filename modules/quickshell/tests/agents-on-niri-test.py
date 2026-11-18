@@ -573,6 +573,35 @@ def test_a_talk_left_after_i_opens_typing_where_i_took_it(shell: Shell) -> None:
         talk_cleared(shell)
 
 
+def test_a_talk_left_from_its_start_opens_typing_at_its_start(shell: Shell) -> None:
+    """A talk whose insert was left at the line's start opens again typing there, not a letter on.
+
+    Normal rests on the first letter whether insert was left before it or after it, so only
+    where insert was as Escape came (Prompt.qml's insertLeft, set before the mode moves) tells
+    the start from one past it; kept from the caret alone, x lands after the h ("hxi").
+    """
+    found(shell, "listening quest", "Listening Quest")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["asking"])
+    try:
+        shell.send_chars("hi")
+        shell.launcher_until(lambda shown: shown["typed"] == "hi")
+        # A talk's normal edits no words, there being no row to name them, so its line's start
+        # is reached in insert, as the line's own caret moves.
+        shell.send_key("left")
+        shell.send_key("left")
+        shell.launcher_until(lambda shown: shown["mode"] == "insert" and shown["caret"] == 0)
+        shell.send_key("esc")
+        shell.launcher_until(lambda shown: shown["mode"] == "normal" and shown["caret"] == 0)
+        shell.close_launcher()
+        talk_opened(shell)
+        shell.send_chars("x")
+        shell.launcher_until(lambda shown: shown["typed"] in ("xhi", "hxi", "hix"))
+        assert shell.showing()["typed"] == "xhi", shell.showing()
+    finally:
+        talk_cleared(shell)
+
+
 def drafted_carets(words: str) -> list[int]:
     """Each caret the shell's drafts file keeps with `words`, wherever in it they're kept."""
     carets: list[int] = []
