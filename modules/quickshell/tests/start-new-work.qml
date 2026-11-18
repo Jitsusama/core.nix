@@ -145,5 +145,25 @@ QtObject {
         Expect.same("refused says why",
             Sprouting.told({ started: false, why: "no machine can take it" }, said),
             "no machine can take it");
+
+        // Where each end is said beyond its own row, which Joel may have left.
+        const refusedEnd = { started: false, why: "/home/j isn't a repository's folder" };
+        const startedEnd = { started: true, machine: "kestrel", held: "h1" };
+        Expect.same("one refused with the launcher open is said in the foot, and journalled",
+            Sprouting.reach(refusedEnd, true), {
+                journal: "new work wasn't started: /home/j isn't a repository's folder",
+                foot: true, notice: false
+            });
+        Expect.same("one refused with the launcher shut is a notice, and journalled",
+            Sprouting.reach(refusedEnd, false), {
+                journal: "new work wasn't started: /home/j isn't a repository's folder",
+                foot: false, notice: true
+            });
+        Expect.same("one unanswered is no start, so it's said as one refused is",
+            Sprouting.reach({ started: false, why: said.unanswered }, false).notice, true);
+        for (const open of [true, false])
+            Expect.same(`one started is journalled, and says itself as it comes up (${open})`,
+                Sprouting.reach(startedEnd, open),
+                { journal: "new work started on kestrel", foot: false, notice: false });
     }
 }

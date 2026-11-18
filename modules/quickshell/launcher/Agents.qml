@@ -1520,15 +1520,21 @@ Provider {
         if (!Sprouting.fromJoel(launcher)) {
             sproutSays(key, words.outside);
             launcher?.walkRefused(words.outside);
+            // The walk is told, and it isn't Joel's, so only the journal
+            // says it: a notice would let any program put one on his screen.
+            console.info(`launcher: new work wasn't started: ${words.outside}`);
             return;
         }
         if (sprouting !== "") {
             sproutSays(key, words.busy);
+            sproutReaches({ started: false, why: words.busy });
             return;
         }
         const ask = Sprouting.ask(said, folder);
         if (ask === null) {
-            sproutSays(key, Sprouting.refused(said, folder, words));
+            const why = Sprouting.refused(said, folder, words);
+            sproutSays(key, why);
+            sproutReaches({ started: false, why: why });
             return;
         }
         sprouting = key;
@@ -1566,6 +1572,7 @@ Provider {
         sprouting = "";
         sproutPatience.stop();
         sproutSays(key, Sprouting.told(how, sproutWords()));
+        sproutReaches(how);
         Report.say(how.started ? `sprouted new work on ${how.machine}`
             : `couldn't sprout new work: ${how.why}`);
         if (how.started && how.held !== "") {
@@ -1573,6 +1580,23 @@ Provider {
                 since: Date.now(), letters: provider.launcher?.lettersAt ?? 0 }]);
             openSprouted();
         }
+    }
+
+    // Says how a start ended beyond its own row (Sprouting.reach): in the
+    // journal always, and when it started nothing, in the foot while the
+    // launcher is open or as a notice while it's shut, so no start Joel
+    // gives ends unseen. That's a notice where an act's end is otherwise
+    // the foot's alone, since a shut launcher may not open for hours
+    // (Joel, 18 November: "things I send in must be seen through").
+    function sproutReaches(how) {
+        const launcher = provider.launcher ?? null;
+        const reach = Sprouting.reach(how, launcher?.open === true);
+        console.info(`launcher: ${reach.journal}`);
+        const name = Words.name("agents:start-new-work");
+        if (reach.foot)
+            launcher.tellOnOpen([[name, how.why]], true);
+        else if (reach.notice)
+            Niri.spawn(["notify-send", "--app-name=Agents", name, how.why]);
     }
 
     // The sprouts waiting for their sessions, each `{ key, held, machine,

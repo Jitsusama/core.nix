@@ -138,3 +138,20 @@ function told(how, said) {
     const words = how.held === "" ? said.unheld : said.started;
     return String(words ?? "").replace("{machine}", how.machine);
 }
+
+// Where how a start ended is said beyond its own row, which Joel may have
+// left: a start refused at 17:11 on 18 November was said only there, in a
+// launcher he'd shut five seconds after his Return, and so it vanished
+// ("That can never happen, things I send in must be seen through"). Every
+// end is journalled, without his words, so the next one missed can be
+// found. One that started nothing is said in the foot while the launcher
+// is open, and as a notice while it's shut, since it may not open again
+// for hours. One that started says itself as its session comes up
+// (Agents' openSprouted).
+function reach(how, open) {
+    const journal = how.started
+        ? `new work started on ${how.machine}`
+        : `new work wasn't started: ${how.why}`;
+    const refused = how.started !== true;
+    return { journal, foot: refused && open === true, notice: refused && open !== true };
+}

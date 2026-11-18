@@ -915,6 +915,51 @@ def test_new_work_from_a_link_opens_its_session_focused(desktop: Desktop) -> Non
         desktop.as_account("rm -rf ~/src/github.com/harbour")
 
 
+def test_new_work_that_starts_nothing_is_told_once_the_launcher_is_shut(
+    desktop: Desktop,
+) -> None:
+    """A start that started nothing says so as a notice when it ends with the launcher shut.
+
+    Joel, 2026-11-18 17:15, of a start the launcher said the end of only on its row, in a
+    launcher he'd shut five seconds after his Return: "That can never happen, things I send in
+    must be seen through." Here the node takes the ask and falls silent, so the end comes after
+    he's gone, as the agents daemon's patience runs out; the shell's journal says it too.
+    """
+    machine = desktop.machine
+    # A repository with no checkout, so the ask the node reads once it runs again starts nothing.
+    link = "https://github.com/harbour/nowhere/issues/8"
+    since = desktop.mark()
+    desktop.as_account("systemctl --user kill --signal=STOP mycelium")
+    try:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("new work", selecting="Start New Work")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["From a Link"])
+        desktop.step_in("ret")
+        desktop.launcher_until(lambda shown: shown["mode"] == "insert")
+        machine.send_chars(link)
+        machine.send_key("ret")
+        # Return empties the field once it's taken the words, and then he leaves.
+        desktop.launcher_until(lambda shown: shown["typed"] == "")
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_until(lambda shown: shown["open"] is False)
+        # The daemon gives up on a silent node within 50 s, the shell on the daemon within 60.
+        machine.wait_until_succeeds(
+            desktop.notice_kept('.app == "Agents" and .summary == "Start New Work"'),
+            timeout=dt.timedelta(seconds=90),
+        )
+        said = desktop.as_account(
+            "journalctl --user --unit=quickshell --no-pager --output=cat"
+            f" --after-cursor={shlex.quote(since)}"
+        )
+        assert "launcher: new work wasn't started: " in said, f"its end wasn't journalled: {said}"
+        assert link not in said, "the journal kept his words"
+    finally:
+        desktop.as_account("systemctl --user kill --signal=CONT mycelium")
+        desktop.launcher_left_closed()
+
+
 def opened_focused(desktop: Desktop, before: set[int]) -> None:
     """Wait for one window more than `before`, a pi session's, holding the keys.
 
