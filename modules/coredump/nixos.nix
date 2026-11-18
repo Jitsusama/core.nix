@@ -8,4 +8,22 @@
 # the filesystem, so a core is never what fills the disk.
 {
   systemd.coredump.settings.Coredump.MaxUse = "4G";
+
+  # A node's core holds what its process held: a pi host's holds every
+  # hosted conversation's keys and tokens, and a plain pi's its own. Six
+  # hours is long enough to read one for where it faulted, and the stack
+  # trace systemd-coredump wrote to the journal outlives it, so the core goes
+  # then, rather than staying the two weeks or 4 GB the rest may. Checked each
+  # quarter hour, so none stays much past it. Root's job, since the cores are.
+  systemd.services.coredump-forget-node = {
+    description = "Remove node's cores six hours after they were kept";
+    serviceConfig.Type = "oneshot";
+    script = ''
+      find /var/lib/systemd/coredump -maxdepth 1 -type f -name 'core.node.*' -mmin +360 -delete
+    '';
+  };
+  systemd.timers.coredump-forget-node = {
+    wantedBy = [ "timers.target" ];
+    timerConfig.OnCalendar = "*:0/15";
+  };
 }

@@ -153,7 +153,7 @@ in
         && unit.Service.TimeoutAbortSec or null == "10s"
         && unit.Service.KillMode or null == "mixed"
         && unit.Service.TimeoutStopSec or null == "150s"
-        && unit.Service.LimitCORE or null == "0"
+        && unit.Service.LimitCORE or null == "infinity"
         && unit.Unit.StartLimitIntervalSec or null == 600
         && unit.Unit.StartLimitBurst or null == 3
         && unit.Unit.OnFailure or null == [ "pi-host-down@%N.service" ]
