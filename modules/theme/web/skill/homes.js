@@ -217,11 +217,12 @@
     if (claims.length === 0) {
       continue;
     }
-    // The home lists a row written ./code/, as sessions write it, but the
-    // system's homes take its path as written and refuse the dot step.
+    // The home lists a row written ./code/, as sessions write it, and so do
+    // the system's homes, but Code's take its path as written and refuse the
+    // dot step. Once Code's take one ./ too, this goes.
     if (typeof path === "string" && path.startsWith("./") && plainPath(path.slice(2))) {
       missing.push(
-        `${JSON.stringify(path)} in ${record} homes things, which the system's homes refuse: `
+        `${JSON.stringify(path)} in ${record} homes things, which Code's homes refuse: `
           + "drop its ./ in sites.json",
       );
       continue;

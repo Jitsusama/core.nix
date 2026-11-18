@@ -284,13 +284,13 @@ def test_no_record_at_all_is_a_fault(browser: Browser, tmp_path: Path) -> None:
     ]
 
 
-def test_a_leading_dot_step_is_named_for_the_system(browser: Browser, tmp_path: Path) -> None:
-    """The home lists a row written ./code/, which the system's homes refuse, so it's named."""
+def test_a_leading_dot_step_is_named_for_code(browser: Browser, tmp_path: Path) -> None:
+    """The home lists a row written ./code/, which Code's homes refuse, so it's named."""
     dotted = [{"path": "./code/", "homes": ["repository"]}]
     rows = json.dumps({"sites": dotted})
     assert probed(browser, tmp_path, dotted, NOTHING, rows, code=[NOTEBOOK]) == [
         (
-            '"./code/" in rows.json homes things, which the system\'s homes refuse: '
+            '"./code/" in rows.json homes things, which Code\'s homes refuse: '
             "drop its ./ in sites.json"
         ),
         "a row in rows.json home to a kind, for any mention to be measured",
