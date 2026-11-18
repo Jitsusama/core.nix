@@ -797,9 +797,19 @@ def chosen_and_copied_as_vim_does(desktop: Desktop) -> None:
     told = desktop.showing()["selected"]["told"]
     assert told == [], f"in visual the foot says {told}"
     page.until("l l l l l", chose("letters", len("Deploy")))
+    since = desktop.mark()
     page.pressed_until(
         "y",
         lambda shown: shown["mode"] == "page" and shown["drawer"]["chosen"]["copied"] == "# Deploy",
+    )
+    # The flash is drawn: a frame that drew it is said in a showing report, however far apart
+    # a loaded builder's frames come.
+    desktop.reported(
+        "showing ",
+        lambda said: (
+            ((json.loads(said).get("drawer") or {}).get("chosen") or {}).get("flashing") is True
+        ),
+        since,
     )
     desktop.machine.wait_until_succeeds(
         desktop.in_session("[ \"$(wl-paste --no-newline)\" = '# Deploy' ]"),

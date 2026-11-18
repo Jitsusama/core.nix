@@ -3874,7 +3874,8 @@
     which another act refreshed while that frame is drawn never holds back; and an opening says what its own work
     went on slowest first, and weighs the foot's room for Return's verbs again only once the
     words file or the face has changed; and a daemon's changes are timed from the first line
-    its draw shows, and said a place a line, with where their time went as a key's is
+    its draw shows, and said a place a line, with where their time went as a key's is; and y's
+    flash starts its time a turn after the frame that draws it, and only for the newest yank
   '';
   the-launcher-places-each-row-it-is-served = ''
     the rows a daemon serves ready are kept in the order each says, each a change names placed
