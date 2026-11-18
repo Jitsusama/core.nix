@@ -85,6 +85,74 @@ function keepTime(redraw: () => void): void {
   }, 60_000);
 }
 
+/**
+ * `act`, on the next frame once asked for, then, once `pacing` says so, at most once each `gap`
+ * milliseconds while asks keep coming, so a burst of records draws a few times rather than every
+ * frame, and its last record always lands. A page out of sight draws nothing until it's back,
+ * since frames wait.
+ */
+function paced(act: () => void, gap: number, pacing: () => boolean): () => void {
+  let last = Number.NEGATIVE_INFINITY;
+  let asked = false;
+  return () => {
+    if (asked) {
+      return;
+    }
+    asked = true;
+    const wait = pacing() ? Math.max(0, last + gap - performance.now()) : 0;
+    setTimeout(() => {
+      requestAnimationFrame(() => {
+        asked = false;
+        last = performance.now();
+        act();
+      });
+    }, wait);
+  };
+}
+
+// The parts whose height the feeds decide, each held at index.html's --room-<id> until they draw.
+const ROOMS = ["title", "lede", "grove", "list", "open"] as const;
+// The longest a part's room is held, so a feed that never answers, or a daemon away, leaves the
+// page fitting what it holds, the trouble said where it's seen, rather than the last visit.
+const ROOM_HELD_MS = 3000;
+
+/**
+ * Keeps the room each part the feeds draw took when the page was left, at this width, so the
+ * next load holds it from its first paint (index.html puts it back) and nothing shifts as the
+ * feeds arrive. Returns what's told of each draw, which lets the room go once every feed has
+ * drawn, so the parts fit what they hold again.
+ */
+function keepRoom(): (everyFeed: boolean) => void {
+  const root = document.documentElement.style;
+  let held = ROOMS.some((id) => root.getPropertyValue(`--room-${id}`) !== "");
+  const letGo = (): void => {
+    for (const id of ROOMS) {
+      root.removeProperty(`--room-${id}`);
+    }
+    held = false;
+  };
+  setTimeout(letGo, ROOM_HELD_MS);
+  globalThis.addEventListener("pagehide", () => {
+    // Room still held is the last visit's, not this one's, so it isn't kept again.
+    if (held) {
+      return;
+    }
+    const heights = Object.fromEntries(
+      ROOMS.map((id) => [id, document.getElementById(id)?.offsetHeight ?? 0]),
+    );
+    try {
+      localStorage.setItem("code-room", JSON.stringify({ width: innerWidth, heights }));
+    } catch {
+      // A browser that keeps nothing draws the next load from nothing, shifting as it did.
+    }
+  });
+  return (everyFeed) => {
+    if (everyFeed && held) {
+      letGo();
+    }
+  };
+}
+
 /** Copies `path` and says so on `note`, or says it whole when it can't be copied. */
 function copyFolder(path: string, note: HTMLElement): void {
   navigator.clipboard.writeText(path).then(
@@ -97,4 +165,4 @@ function copyFolder(path: string, note: HTMLElement): void {
   );
 }
 
-export { copyFolder, element, keepTime, markRows, markTree, write };
+export { copyFolder, element, keepRoom, keepTime, markRows, markTree, paced, write };
