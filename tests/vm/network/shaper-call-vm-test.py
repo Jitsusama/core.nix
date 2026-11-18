@@ -102,9 +102,13 @@ class Rig:
         )
 
     def stop(self, *units: str) -> None:
-        """Stop units the loads run in."""
-        for unit in units:
-            self.client.succeed(f"systemctl -M alice@ --user stop {unit}.service")
+        """Stop units the loads run in, each tried before any that wouldn't stop fails it."""
+        stuck = [
+            unit
+            for unit in units
+            if self.client.execute(f"systemctl -M alice@ --user stop {unit}.service")[0]
+        ]
+        assert not stuck, f"the loads in {stuck} wouldn't stop"
 
     def calls(self, names: list[str] | None = None, seconds: int = CALL_SECONDS) -> dict[str, Json]:
         """Hold calls at once from an app, both unless named, and give what iperf3 made of each."""
@@ -129,7 +133,9 @@ class Rig:
         medians of the delays out and back, in ms, as the controller reads them before
         taking the reflector's least off.
         """
-        text = self.client.succeed("cat /var/lib/shaper-record/*.jsonl")
+        status, text = self.client.execute("cat /var/lib/shaper-record/*.jsonl")
+        if status:
+            return f"the recorder's samples couldn't be read: {text.strip()}"
         seconds: dict[int, list[Json]] = {}
         for line in text.splitlines():
             sample: Json = json.loads(line)
@@ -153,19 +159,28 @@ class Rig:
         return "\n".join(rows)
 
     def trace(self) -> str:
-        """Give what the shaper said, held and heard, and every queue's counts, for a failure."""
+        """Give what the shaper said, held and heard, and every queue's counts, for a failure.
+
+        Each part that can't be read says so rather than raising, since a failure's trace is
+        taken when things are wrong: with the shaper stopped, its status and IFB are gone.
+        """
         return "\n".join(
             [
                 self.seconds(),
-                self.client.succeed("journalctl -u shaper -o cat --no-pager"),
-                self.client.succeed("cat /run/shaper/status.json"),
-                self.client.succeed(
-                    f"tc -s qdisc show dev eth1; tc -s qdisc show dev {self.ifb()}"
-                ),
-                self.client.succeed("nstat -az Udp* Ip*Discards; cat /proc/net/softnet_stat"),
-                self.router.succeed("tc -s qdisc show dev eth1; tc -s qdisc show dev eth2"),
+                said(self.client, "journalctl -u shaper -o cat --no-pager"),
+                said(self.client, "cat /run/shaper/status.json"),
+                said(self.client, "tc -s qdisc show dev eth1"),
+                said(self.client, f"tc -s qdisc show dev {self.ifb()}"),
+                said(self.client, "nstat -az Udp* Ip*Discards; cat /proc/net/softnet_stat"),
+                said(self.router, "tc -s qdisc show dev eth1; tc -s qdisc show dev eth2"),
             ]
         )
+
+
+def said(machine: BaseMachine, command: str) -> str:
+    """Give what a command printed, or that it failed and what it said, for a trace."""
+    status, output = machine.execute(command)
+    return output if status == 0 else f"{command} failed ({status}): {output.strip()}"
 
 
 @pytest.fixture(scope="module")
@@ -215,16 +230,21 @@ def under_load(rig: Rig, *, shaped: bool) -> dict[str, dict[str, int]]:
     upload = f"{BIN}/cat /dev/zero > /dev/tcp/{FAR}/{SINK_PORT}"
     rx = "cat /sys/class/net/eth1/statistics/rx_bytes"
     first = int(rig.client.succeed(rx))
-    rig.start("jobs-downloads", "jobs.slice", JOBS_DOWNLOADS, download)
-    rig.start("jobs-uploads", "jobs.slice", JOBS_UPLOADS, upload)
-    rig.start("app-downloads", "app.slice", APP_DOWNLOADS, download)
+    started: list[str] = []
     try:
+        for unit, slice_name, flows, script in [
+            ("jobs-downloads", "jobs.slice", JOBS_DOWNLOADS, download),
+            ("jobs-uploads", "jobs.slice", JOBS_UPLOADS, upload),
+            ("app-downloads", "app.slice", APP_DOWNLOADS, download),
+        ]:
+            rig.start(unit, slice_name, flows, script)
+            started.append(unit)
         retry(lambda _: int(rig.client.succeed(rx)) - first >= FULL_BYTES, timeout=FILLING)
         if shaped:
             retry(lambda last_try: holds(rig, last_try=last_try), timeout=FILLING)
         results = rig.calls()
     finally:
-        rig.stop("jobs-downloads", "jobs-uploads", "app-downloads")
+        rig.stop(*started)
     lost: dict[str, dict[str, int]] = {}
     for name, result in results.items():
         assert "error" not in result, f"the {name} call failed: {result['error']}"
@@ -250,10 +270,13 @@ def test_a_call_to_443_goes_as_video_while_one_is_on(rig: Rig) -> None:
     rig.client.wait_until_succeeds(
         "journalctl -u shaper -o cat | grep -q 'a call is on'", timeout=HEARING
     )
-    before = rig.counts("eth1", "sent_packets")
-    result = rig.calls(["page"], seconds=ALONE_SECONDS)["page"]
-    after = rig.counts("eth1", "sent_packets")
-    rig.client.succeed(f"rm {CALL_FLAG}")
+    try:
+        before = rig.counts("eth1", "sent_packets")
+        result = rig.calls(["page"], seconds=ALONE_SECONDS)["page"]
+        after = rig.counts("eth1", "sent_packets")
+    finally:
+        # A call left on would put the next tests' calls in the video tin by the flag alone.
+        rig.client.succeed(f"rm -f {CALL_FLAG}")
     sent = dict(zip(TINS, (a - b for a, b in zip(after, before, strict=True)), strict=True))
     call = int(received(result, "up").get("packets", 0))
     assert call > 0, f"the call sent nothing up: {result}"

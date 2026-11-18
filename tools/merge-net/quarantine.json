@@ -19,7 +19,7 @@
     "at": 1794631096,
     "commit": "580dc8dbd5803c7bea2650e02ecb099ec1408af3",
     "due": "2026-11-20",
-    "due_why": "Its owner, the call shaper's, fixes what the next failure's trace names by 2026-11-20 23:59 UTC: 2 of 16 gate runs on 18 Nov failed on loaded builders, once the shaper never holding the link in 60 s, which also left test_unshaped its loads, and once the router alone losing 396 datagrams down, so three reruns wouldn't take it off",
+    "due_why": "Its owner, the call shaper's, fixes what the next failure's trace names by 2026-11-20 23:59 UTC and takes it off once three runs after the fix hold: 2 of 16 gate runs on 18 Nov failed on loaded builders, once the shaper never holding the link in 60 s, which also left test_unshaped its loads, and once a call losing 396 datagrams down with the shaper stopped, so three reruns alone wouldn't take it off",
     "owner_pr": 4228,
     "owner_session": "6EAC3DA6",
     "reason": "failed, then passed, at 580dc8dbd580",
