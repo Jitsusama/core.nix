@@ -197,11 +197,11 @@ fn a_far_date_that_loses_readings_keeps_the_wait_on_the_clock() {
     // takes to end. The first two, before the wait has a time, whose
     // passes carry over to the clock with the one that found it: one that
     // forgot either takes seven, and one that chose its clock once reads
-    // it once. The same on a clock two on a reading: one that kept
-    // counting while it read the clock takes six. One inside it, on a clock two on a reading, which costs the
-    // clock nothing: one that went back to counting takes five. Five in a
-    // row inside it, each a pass: one that let a lost pass go uncounted
-    // takes seven.
+    // it once. The same two on a clock two on a reading catch one that
+    // kept counting while it read the clock, which takes six. One inside
+    // it, on a clock two on a reading, which costs the clock nothing: one
+    // that went back to counting takes five. Five in a row inside it,
+    // each a pass: one that let a lost pass go uncounted takes seven.
     assert_eq!(super::WAITS, 5, "these counts are worked out for a 5s wait");
     let cases = [
         ("0 1", 1, 6),
