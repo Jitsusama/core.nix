@@ -270,18 +270,24 @@ def test_a_cell_that_needs_you_takes_a_name_before_the_networks(
     opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "light")
     try:
         the_map_stands(opened.page, "live")
-        # The map lists the names the cap left off; with more networks than
-        # names, it leaves some off, and never the cell that needs him.
         labels = opened.page.locator("#labels")
+        # With more networks than names, the cap leaves some off.
         expect(labels, "the crowd never reached the cap").to_have_attribute(
             "data-capped", re.compile("."), timeout=PACE_MS
         )
-        capped = (labels.get_attribute("data-capped") or "").split()
+        # Names are laid out in the order the cap takes them: the cell that
+        # needs him comes before every network, so the cap never leaves it.
+        order = labels.evaluate(
+            "(el) => [...el.querySelectorAll(':scope > .tag:not(.t-mark)')]"
+            ".map((g) => g.dataset.name)"
+        )
         asking = CROWD_ASKING.replace("cell:", "c:")
-        assert asking not in capped, f"the cap left off the cell that needs him, among {capped}"
+        assert order[0] == asking, f"the cell that needs him is named after {order[:3]}"
+        # Drawn too small to read as its own at the whole map, it isn't
+        # named yet, so the networks there keep their names.
         expect(
-            labels.locator(f'.tag[data-name="{asking}"]'), "the cell that needs him went unnamed"
-        ).to_be_visible()
+            labels.locator(f'.tag[data-name="{asking}"]'), "a cell too small to read was named"
+        ).to_be_hidden()
     finally:
         opened.close()
 
