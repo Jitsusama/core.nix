@@ -1,5 +1,6 @@
 use super::{SHARE_BYTES, SHARE_FILES, WAITS, far_line, handover, kind, scratch};
 use crate::far::{BACK, BROUGHT, Missed, bring_back};
+use std::io::ErrorKind;
 use std::time::{Duration, Instant};
 
 /// How long the tests of a share still carrying give it with nothing
@@ -9,6 +10,41 @@ const A_WAIT: u64 = 4;
 /// How long such a test's share takes over each step, well inside the
 /// wait, so only a wait that never restarts gives up on it.
 const HALF_A_WAIT: Duration = Duration::from_millis(1500);
+
+#[test]
+fn a_copy_longer_than_listed_never_lands() {
+    let home = scratch("longer");
+    let job = handover(&home);
+    std::fs::create_dir_all(job.join(BACK)).unwrap();
+    std::fs::write(job.join(BACK).join("0"), "12345").unwrap();
+    std::fs::write(job.join(BROUGHT), "1\tout/a\nend\n").unwrap();
+    let into = home.join("near");
+    assert_eq!(
+        bring_back(&job, &into, &["out".into()], 1),
+        Err(Missed::Lost("out/a didn't cross home".into())),
+        "a copy longer than its list said was taken"
+    );
+    assert!(!into.join("out/a").exists(), "a longer copy landed");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn only_a_disk_with_no_room_is_worth_another_landing() {
+    for (kind, lasts) in [
+        (ErrorKind::StorageFull, false),
+        (ErrorKind::QuotaExceeded, false),
+        (ErrorKind::ReadOnlyFilesystem, false),
+        (ErrorKind::NotADirectory, true),
+        (ErrorKind::PermissionDenied, true),
+    ] {
+        assert_eq!(
+            super::super::lasts(&kind.into()),
+            lasts,
+            "{kind:?} read as lasting {}",
+            !lasts
+        );
+    }
+}
 
 #[test]
 fn the_far_side_counts_only_what_crossed_toward_a_share_s_totals() {

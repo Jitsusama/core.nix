@@ -546,6 +546,11 @@ fn send(
             format!("what it made on {machine} couldn't land here"),
         )
         .because(why),
+        far::Missed::Roomless(why) => Failure::new(
+            Exit::TryAgain,
+            format!("what it made on {machine} found no room here"),
+        )
+        .because(why),
         far::Missed::Lost(why) => Failure::new(
             Exit::TryAgain,
             format!("what it made on {machine} didn't come home"),

@@ -61,24 +61,39 @@ impl Heard {
 /// after it never unsays, so a job that ran is never run again here.
 pub fn relay(out: impl Read, id: &str) -> Heard {
     let says = [Heard::Started, Heard::Refused, Heard::Untaken]
-        .map(|heard| (format!("{}\n", heard.line(id)).into_bytes(), heard));
+        .map(|heard| (heard.line(id).into_bytes(), heard));
     let mut out = BufReader::new(out);
     let mut line = Vec::new();
-    loop {
+    let heard = loop {
         line.clear();
         match out.read_until(b'\n', &mut line) {
             Ok(0) | Err(_) => return Heard::Nothing,
-            Ok(_) => match says.iter().find(|(said, _)| *said == line) {
-                Some((_, Heard::Started)) => break,
-                Some((_, heard)) => return *heard,
-                // The far shell's own words are worth no failure of the job's.
-                None => drop(io::stderr().write_all(&line)),
-            },
+            Ok(_) => {
+                // As a terminal would end it, too, should mycelium give
+                // the far side one.
+                let bare = line.strip_suffix(b"\n").unwrap_or(&line);
+                let bare = bare.strip_suffix(b"\r").unwrap_or(bare);
+                match says.iter().find(|(said, _)| *said == bare) {
+                    Some((_, heard)) => break *heard,
+                    // The blank line each word follows is the far line's.
+                    None if bare.is_empty() => {}
+                    // The far shell's own words are worth no failure of
+                    // the job's.
+                    None => drop(io::stderr().write_all(&line)),
+                }
+            }
         }
-    }
-    let mut stdout = io::stdout();
+    };
+    // Whatever follows is the job's once it started, and otherwise the
+    // far side's, read to its end so mycelium never writes to nobody.
+    let drained = if heard == Heard::Started {
+        let mut stdout = io::stdout();
+        io::copy(&mut out, &mut stdout).and_then(|_| stdout.flush())
+    } else {
+        io::copy(&mut out, &mut io::stderr()).map(drop)
+    };
     // A reader of ours that has gone is the job's caller's business, and
     // the job's code still says how it ended.
-    drop(io::copy(&mut out, &mut stdout).and_then(|_| stdout.flush()));
-    Heard::Started
+    drop(drained);
+    heard
 }

@@ -61,7 +61,7 @@ fn run() -> Help {
     )
     .exit(
         Exit::TryAgain,
-        "what it made didn't all cross home, or under --there the far machine never received its files or couldn't copy them",
+        "what it made didn't all cross home or found no room here, or under --there the far machine never received its files or couldn't copy them",
     )
     .exit(
         Exit::Config,

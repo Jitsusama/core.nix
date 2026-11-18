@@ -65,7 +65,8 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
         "/quest-workspace/QEST-20261115-ABC123/handover/elsewhere/7-9\n",
         "work=\"$HOME\"/.cache/e/7-9\n",
         "until arrived; do",
-        "cd \"$work\"/'a b' || { echo 'elsewhere: refusing 7-9'; exit 77; }\necho 'elsewhere: running 7-9'\n",
+        "cd \"$work\"/'a b' || {\n",
+        "  say 'elsewhere: refusing 7-9'\n  exit 77\n}\nsay 'elsewhere: running 7-9'\n",
         "{ export PATH=/far/bin:$PATH\n  } && exec tla-rs -config 'it'\\''s.cfg'\n",
         "for path in out; do",
         "exit \"$code\"",
@@ -85,7 +86,19 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
             &kind(""),
             &command
         )
-        .contains("cd \"$work\" || { echo 'elsewhere: refusing 1'; exit 77; }\necho 'elsewhere: running 1'\n(\n  { :\n"),
+        .contains("cd \"$work\" || {\n"),
+        "a job at the tree's top wasn't run there plainly"
+    );
+    assert!(
+        script(
+            "QEST-20261115-ABC123",
+            "1",
+            "s",
+            Path::new(""),
+            &kind(""),
+            &command
+        )
+        .contains("}\nsay 'elsewhere: running 1'\n(\n  { :\n"),
         "a job at the tree's top or with no setup wasn't run there plainly"
     );
 }
@@ -177,6 +190,11 @@ pub(super) const WAITS: u64 = 5;
 pub(super) const SHARE_FILES: usize = 4;
 pub(super) const SHARE_BYTES: u64 = 1000;
 
+/// What a far run in `home` said on stdout, for the near side to hear.
+pub(super) fn said(home: &Path) -> Vec<u8> {
+    std::fs::read(home.join("said")).unwrap()
+}
+
 /// The job's handover folder in a far run's `home`.
 pub(super) fn handover(home: &Path) -> PathBuf {
     home.join(format!(
@@ -198,11 +216,25 @@ pub(super) fn far_run(
     far_line(list, files, run, &kind(""), None, &[])
 }
 
+/// Runs the far line as `far_line_in` does, for a job at the tree's top.
+pub(super) fn far_line(
+    list: &str,
+    files: &[(&str, &str)],
+    run: &str,
+    kind: &Kind,
+    meanwhile: Option<&dyn Fn(&Path)>,
+    programs: &[(&str, &str)],
+) -> (Option<i32>, String, PathBuf) {
+    far_line_in(Path::new(""), list, files, run, kind, meanwhile, programs)
+}
+
 /// Runs the far line as `far_run` does, for a job of `kind`, doing any
 /// `meanwhile` to the job's tree a second after it starts, as a share
 /// still crossing would, with each of `programs`, a name and its script,
-/// ahead of the rest on its path.
-pub(super) fn far_line(
+/// ahead of the rest on its path, in the tree's `folder`. What it said
+/// for the near side to hear, on stdout, is left in the home's `said`.
+pub(super) fn far_line_in(
+    folder: &Path,
     list: &str,
     files: &[(&str, &str)],
     run: &str,
@@ -242,14 +274,7 @@ pub(super) fn far_line(
     );
     let command = ["sh", "-c", run].map(str::to_owned);
     let waits = format!("-ge {}", super::CROSSES_WITHIN);
-    let line = script(
-        "QEST-20261115-ABC123",
-        "1",
-        "s",
-        Path::new(""),
-        kind,
-        &command,
-    );
+    let line = script("QEST-20261115-ABC123", "1", "s", folder, kind, &command);
     assert!(line.contains(&waits), "the far line's wait moved:\n{line}");
     let line = line.replace(&waits, &format!("-ge {WAITS}"));
     let most = format!(
@@ -278,6 +303,7 @@ pub(super) fn far_line(
         meanwhile(&job.join(super::TREE));
     }
     let output = far.wait_with_output().unwrap();
+    std::fs::write(home.join("said"), &output.stdout).unwrap();
     // Its own words, then what it said for the near side to hear.
     let said = [output.stderr, output.stdout].concat();
     (
@@ -718,7 +744,7 @@ fn the_far_line_takes_the_marks_off_and_puts_nothing_outside() {
         "a tree naming x twice wasn't refused ({code:?}): {err}"
     );
     // So --there ends refused, not as a far side mycelium never reached.
-    let heard = relay(err.as_bytes(), "1");
+    let heard = relay(said(&home).as_slice(), "1");
     assert_eq!(heard, Heard::Refused, "a far refusal wasn't said: {err}");
     let ends = heard.unstarted().0;
     assert_eq!(

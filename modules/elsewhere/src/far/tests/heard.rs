@@ -1,5 +1,6 @@
-use super::{far_line, far_run, kind};
+use super::{far_line, far_line_in, far_run, kind, said};
 use crate::far::{Heard, relay};
+use std::path::Path;
 use terminal_kit::Exit;
 
 #[test]
@@ -36,7 +37,7 @@ fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
         Some(75),
         "a file short of its listed size was taken: {err}"
     );
-    let heard = relay(err.as_bytes(), "1");
+    let heard = relay(said(&home).as_slice(), "1");
     assert_eq!(
         heard,
         Heard::Untaken,
@@ -59,27 +60,113 @@ fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
 }
 
 #[test]
-fn a_far_machine_that_can_t_copy_the_tree_says_so_and_not_that_it_refused() {
-    // A cp that fails, as a full disk or a fenced scratch would, ahead of
-    // the far machine's own on its path.
-    let (code, err, home) = far_line(
+fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
+    // Each step of making the tree failing, as a full disk, a fenced
+    // scratch or a program missing would, ahead of the far machine's own
+    // on its path, over a tree with a mark to take off.
+    for step in ["cp", "mkdir", "mv", "find", "awk", "sort", "cut"] {
+        let (code, err, home) = far_line(
+            "1\ttarget.elsewhere/a\nend\n",
+            &[("target.elsewhere/a", "x")],
+            "touch ../ran",
+            &kind(""),
+            None,
+            &[(step, "exit 1")],
+        );
+        let heard = relay(said(&home).as_slice(), "1");
+        assert!(
+            code == Some(75) && heard == Heard::Untaken,
+            "a tree it couldn't make for {step} read as {heard:?}, ending {code:?}: {err}"
+        );
+        assert!(
+            !home.join("s/ran").exists() && !home.join("s/1").exists(),
+            "a tree it couldn't make for {step} was run, or left behind"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[test]
+fn a_job_s_folder_that_never_crossed_is_refused_and_said_and_swept() {
+    let (code, err, home) = far_line_in(
+        Path::new("drafts"),
         "1\tx\nend\n",
         &[("x", "x")],
         "touch ../ran",
         &kind(""),
         None,
-        &[("cp", "exit 1")],
+        &[],
     );
-    let heard = relay(err.as_bytes(), "1");
+    let heard = relay(said(&home).as_slice(), "1");
     assert!(
-        code == Some(75) && heard == Heard::Untaken,
-        "a tree it couldn't copy read as {heard:?}, ending {code:?}: {err}"
+        code == Some(77) && heard == Heard::Refused,
+        "a folder that never crossed read as {heard:?}, ending {code:?}: {err}"
     );
     assert!(
-        !home.join("s/ran").exists() && !home.join("s/1").exists(),
-        "a tree it couldn't copy was run, or left behind"
+        err.contains("holds nothing that travels"),
+        "why it was refused went unsaid: {err}"
+    );
+    assert!(
+        !home.join("s/1").exists(),
+        "a refused job's copy of its tree was left behind"
     );
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// A stream handing out a byte a read, as a slow pipe may, so how far it
+/// was read says how far its reader wanted it.
+struct Trickle<'a>(&'a [u8], usize);
+
+impl std::io::Read for Trickle<'_> {
+    fn read(&mut self, into: &mut [u8]) -> std::io::Result<usize> {
+        match (self.0.get(self.1), into.first_mut()) {
+            (Some(byte), Some(first)) => {
+                *first = *byte;
+                self.1 += 1;
+                Ok(1)
+            }
+            _ => Ok(0),
+        }
+    }
+}
+
+#[test]
+fn the_far_line_s_word_is_heard_whatever_came_before_or_after_it() {
+    // A banner with no newline of its own, and a terminal's line ends.
+    let glued = far_line("1\tx\nend\n", &[("x", "x")], "true", &kind(""), None, &[]);
+    let mut out = b"a welcome with no end".to_vec();
+    out.extend(said(&glued.2));
+    assert_eq!(
+        relay(out.as_slice(), "1"),
+        Heard::Started,
+        "a start after a banner with no newline went unheard: {}",
+        String::from_utf8_lossy(&out)
+    );
+    let _ = std::fs::remove_dir_all(&glued.2);
+    assert_eq!(
+        relay(&b"welcome\r\n\r\nelsewhere: refusing 1\r\n"[..], "1"),
+        Heard::Refused,
+        "a refusal a terminal ended went unheard"
+    );
+    // What follows a refusal is read to its end, so mycelium never
+    // writes to a pipe nobody reads.
+    let words = b"\nelsewhere: refusing 1\nmycelium's own last words\n";
+    let mut out = Trickle(words, 0);
+    assert_eq!(relay(&mut out, "1"), Heard::Refused);
+    assert_eq!(
+        out.1,
+        words.len(),
+        "what followed a refusal was left unread"
+    );
+    // Once it started, what follows is the job's, refusal or not.
+    assert_eq!(
+        relay(
+            &b"\nelsewhere: running 1\n\nelsewhere: refusing 1\n"[..],
+            "1"
+        ),
+        Heard::Started,
+        "a job's own words unsaid that it started"
+    );
 }
 
 #[test]

@@ -275,6 +275,7 @@ pub fn script(
         .map(|word| quoted(word))
         .collect::<Vec<_>>()
         .join(" ");
+    let copying = copying();
     let bringing = bringing(kind);
     let setup = kind.setup.trim();
     format!(
@@ -293,37 +294,14 @@ arrived() {{
   done < "$job/{LEFT}"
   return 1
 }}
-copied() {{
-  while IFS="$tab" read -r size path; do
-    [ "$size" = {END} ] && break
-    case "/$path/" in
-      //*|*/../*|*/./*) printf "elsewhere: the job's list names %s, outside its folder\n" "$path" >&2; return 1 ;;
-    esac
-  done < "$job/{LEFT}"
-  # 1 is the tree's own fault, which every try meets; 2 is this machine's.
-  cp -R "$job/{TREE}/." "$work/" || return 2
-  # Deepest first, so a folder's contents are named before it is, and
-  # shortest first within a folder, so target.elsewhere is target before
-  # target.elsewhere.elsewhere takes its name.
-  find "$work" -name '*{MARK}' |
-    awk -F/ '{{ print NF "\t" length($NF) "\t" $0 }}' |
-    sort -t "$tab" -k1,1nr -k2,2n | cut -f3- | (
-    # A subshell of its own, so its exit ends only the loop in every sh.
-    while IFS= read -r name; do
-      to=${{name%{MARK}}}
-      case "${{to##*/}}" in
-        ''|.|..) printf "elsewhere: the job's tree names %s, outside its folder\n" "$name" >&2; exit 1 ;;
-      esac
-      [ -e "$to" ] && {{ printf "elsewhere: the job's tree names %s twice\n" "$to" >&2; exit 1; }}
-      mv "$name" "$to" || exit 2
-    done
-  )
-}}
+{copying}
+# Each word for the near side on a line of its own, whatever came before.
+say() {{ printf '\n%s\n' "$1"; }}
 waited=0
 until arrived; do
   if [ "$waited" -ge {CROSSES_WITHIN} ]; then
     printf "elsewhere: the job's files didn't reach %s within {CROSSES_WITHIN}s, waiting on %s\n" "$(uname -n)" "$waiting" >&2
-    echo {untaken}
+    say {untaken}
     exit {UNTAKEN}
   fi
   sleep 1
@@ -332,12 +310,17 @@ done
 if rm -rf "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
 if [ "$why" -ne 0 ]; then
   cd "$HOME" && rm -rf "$work" "$job/{TREE}"
-  [ "$why" -eq 1 ] && {{ echo {refused}; exit {REFUSES}; }}
-  echo {untaken}
+  [ "$why" -eq 1 ] && {{ say {refused}; exit {REFUSES}; }}
+  say {untaken}
   exit {UNTAKEN}
 fi
-cd {folder} || {{ echo {refused}; exit {REFUSES}; }}
-echo {started}
+cd {folder} || {{
+  printf "elsewhere: the job's folder holds nothing that travels\n" >&2
+  cd "$HOME" && rm -rf "$work" "$job/{TREE}"
+  say {refused}
+  exit {REFUSES}
+}}
+say {started}
 (
   {{ {setup}
   }} && exec {job_line}
@@ -353,6 +336,47 @@ exit "$code"
         refused = quoted(&Heard::Refused.line(id)),
         untaken = quoted(&Heard::Untaken.line(id)),
         setup = if setup.is_empty() { ":" } else { setup },
+    )
+}
+
+/// The far line's step making the job's tree of its files, `copied`: 0
+/// once made, 1 for the tree's own fault, which every try meets, and 2
+/// for this machine's, which another may not.
+fn copying() -> String {
+    format!(
+        r#"copied() {{
+  while IFS="$tab" read -r size path; do
+    [ "$size" = {END} ] && break
+    case "/$path/" in
+      //*|*/../*|*/./*) printf "elsewhere: the job's list names %s, outside its folder\n" "$path" >&2; return 1 ;;
+    esac
+  done < "$job/{LEFT}"
+  cp -R "$job/{TREE}/." "$work/" || return 2
+  # Deepest first, so a folder's contents are named before it is, and
+  # shortest first within a folder, so target.elsewhere is target before
+  # target.elsewhere.elsewhere takes its name. Each step to a file of its
+  # own, since a pipe's status is only its last command's in an sh with no
+  # pipefail, and a step failing must not read as no names to strip.
+  marks="$work.marks"
+  find "$work" -name '*{MARK}' > "$marks" &&
+    awk -F/ '{{ print NF "\t" length($NF) "\t" $0 }}' "$marks" > "$marks.by" &&
+    sort -t "$tab" -k1,1nr -k2,2n "$marks.by" > "$marks.in" &&
+    cut -f3- "$marks.in" > "$marks" || {{ rm -f "$marks" "$marks".*; return 2; }}
+  (
+    # A subshell of its own, so its exit ends only the loop in every sh.
+    while IFS= read -r name; do
+      to=${{name%{MARK}}}
+      case "${{to##*/}}" in
+        ''|.|..) printf "elsewhere: the job's tree names %s, outside its folder\n" "$name" >&2; exit 1 ;;
+      esac
+      [ -e "$to" ] && {{ printf "elsewhere: the job's tree names %s twice\n" "$to" >&2; exit 1; }}
+      mv "$name" "$to" || exit 2
+    done
+  ) < "$marks"
+  stripped=$?
+  rm -f "$marks" "$marks".*
+  return "$stripped"
+}}"#
     )
 }
 
@@ -483,6 +507,9 @@ pub enum Missed {
     /// Some of it crossed but couldn't land in the folder, which another
     /// try meets the same way until the folder changes.
     Unlanded(String),
+    /// Some of it crossed but found no room here, a disk full or one that
+    /// writes nothing, which another try may not meet once it is freed.
+    Roomless(String),
     /// Some of it didn't cross, which another try may not meet.
     Lost(String),
 }
@@ -491,7 +518,10 @@ impl Missed {
     /// Why, in words.
     pub fn why(&self) -> &str {
         match self {
-            Missed::Refused(why) | Missed::Unlanded(why) | Missed::Lost(why) => why,
+            Missed::Refused(why)
+            | Missed::Unlanded(why)
+            | Missed::Roomless(why)
+            | Missed::Lost(why) => why,
         }
     }
 }
@@ -593,14 +623,15 @@ fn lines(text: &str) -> impl Iterator<Item = &str> {
     text.split_terminator('\n')
 }
 
-/// How much of `brought` has crossed into the handover folder `job`, up
-/// to its listed size, or nothing while none of it has: a plain file
-/// only, since a link crossing would be followed.
+/// How much of `brought` has crossed into the handover folder `job`, or
+/// nothing while none of it has: a plain file only, since a link crossing
+/// would be followed. A copy longer than its list says isn't the file
+/// listed, so only its size exactly is whole.
 fn crossed(job: &Path, brought: &Brought) -> Option<u64> {
     fs::symlink_metadata(job.join(BACK).join(brought.number.to_string()))
         .ok()
         .filter(fs::Metadata::is_file)
-        .map(|meta| meta.len().min(brought.size))
+        .map(|meta| meta.len())
 }
 
 /// How much has reached the handover folder `job`: every plain file in it
@@ -645,6 +676,7 @@ fn landed(
     short: &[Brought],
 ) -> Result<usize, Missed> {
     let (mut refused, mut unlanded, mut landed) = (Vec::new(), Vec::new(), 0);
+    let mut lasting = false;
     let mut swept = HashSet::new();
     for brought in files {
         if let Some((link, leads)) = landing::linked(folder, &brought.path) {
@@ -658,7 +690,10 @@ fn landed(
         let from = job.join(BACK).join(brought.number.to_string());
         match landing::land(&from, &folder.join(&brought.path), &mut swept) {
             Ok(()) => landed += 1,
-            Err(error) => unlanded.push(format!("{} didn't land: {error}", brought.path)),
+            Err(error) => {
+                lasting |= lasts(&error);
+                unlanded.push(format!("{} didn't land: {error}", brought.path));
+            }
         }
     }
     // Each kind named apart, so one kind's many can't hide another's.
@@ -701,14 +736,28 @@ fn landed(
     }
     let missed = missed.join("; ");
     // What is refused is refused every time, and what couldn't land meets
-    // the same folder; only what didn't cross may on another try.
+    // the same folder; only what didn't cross, or met no room, may on
+    // another try.
     Err(if !refused.is_empty() {
         Missed::Refused(missed)
-    } else if !unlanded.is_empty() {
+    } else if lasting {
         Missed::Unlanded(missed)
+    } else if !unlanded.is_empty() {
+        Missed::Roomless(missed)
     } else {
         Missed::Lost(missed)
     })
+}
+
+/// Whether what kept a file from landing meets another try too: anything
+/// but a disk that filled or that writes nothing, which may be freed.
+fn lasts(error: &io::Error) -> bool {
+    !matches!(
+        error.kind(),
+        io::ErrorKind::StorageFull
+            | io::ErrorKind::QuotaExceeded
+            | io::ErrorKind::ReadOnlyFilesystem
+    )
 }
 
 /// The paths the far side's list `text` marks with `mark` in place of a
