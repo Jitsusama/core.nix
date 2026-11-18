@@ -29,7 +29,7 @@
 //! switch before To Try holds it (carried.rs; the core is kept beside
 //! KEPT, in carried.json), and with neither nothing waits; HARNESS is
 //! where pi-packages installs the harness, which says the same of its
-//! landings, and when each of its versions came; SWITCHES the
+//! landings; SWITCHES the
 //! integration's record of switches, a line each, which says when each
 //! of core's merges reached the machine. A machine with no realm runs no node,
 //! so it's started with none, and serves the sessions to reopen alone.

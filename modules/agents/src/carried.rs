@@ -32,8 +32,9 @@
 //! newest back, the first line that can't be read, or pair git can't
 //! say, ends what is told, since a switch back across it may have taken
 //! a merge away and brought it again. The time is shown only for a merge
-//! the machine is known to carry, so a switch back leaves no date on
-//! what it took away. The harness's merges carry no time yet: the
+//! the machine is known to carry, and only while the record's newest
+//! switch ran the core that runs, so a switch back leaves no date on
+//! what it took away, nor does one the record hasn't told. The harness's merges carry no time yet: the
 //! markers pi-packages leaves in `retired` go with a version it sweeps,
 //! and one is written for a build never swapped to, so they don't say
 //! each swap.
@@ -107,6 +108,7 @@ impl Carried {
             eprintln!("agents: can't keep {}: {why}", said.kept.display());
         }
         let core = done.or(was);
+        let running = core.clone();
         let (core, mycelium) = match (said.clone, core) {
             (Some(clone), Some(core)) => (
                 git(clone, &["log", "--first-parent", "--format=%s", &core])
@@ -129,7 +131,9 @@ impl Carried {
             // A stray byte costs its line, never the record.
             let lines = fs::read(switches).unwrap_or_default();
             let switches = switched(&String::from_utf8_lossy(&lines));
-            since.insert("core.nix", brought(&switches, between(clone)));
+            if ends_on(&switches, running.as_deref()) {
+                since.insert("core.nix", brought(&switches, between(clone)));
+            }
         }
         Self {
             core,
@@ -142,16 +146,12 @@ impl Carried {
     /// When the switch that brought landing `one` happened, in ms: one of
     /// core's the machine is known to carry, where that's told. With what
     /// runs unknown, a merge a switch back took away would keep its date.
+    /// Only core's are dated.
     pub fn since(&self, one: &Value) -> Option<i64> {
         let (name, number) = numbered(one);
         let number = number?;
         let at = self.since.get(name)?.get(&number).copied()?;
-        let merged = match name {
-            "core.nix" => self.core.as_ref(),
-            "agentic-harness.pi" => self.harness.as_ref(),
-            _ => None,
-        };
-        merged?.contains(&number).then_some(at)
+        self.core.as_ref()?.contains(&number).then_some(at)
     }
 
     /// Whether landing `one` is on the running system: one of core's or
@@ -257,6 +257,16 @@ fn brought(arrivals: &[Arrival], log: impl Fn(&str, &str) -> Option<String>) -> 
         }
     }
     since
+}
+
+/// Whether the newest of `arrivals` ran the core `running`: past a
+/// switch the record hasn't told yet, or one it never will, as a boot
+/// into an older generation, its dates may be from before a switch back.
+fn ends_on(arrivals: &[Arrival], running: Option<&str>) -> bool {
+    match (arrivals.last(), running) {
+        (Some(Some((_, _, now))), Some(running)) => now == running,
+        _ => false,
+    }
 }
 
 /// Each switch in the integration's record `lines`, when, the core
@@ -515,6 +525,23 @@ mod tests {
     }
 
     #[test]
+    fn dates_are_told_only_while_the_records_last_switch_ran_what_runs() {
+        let (a, b) = ("a".repeat(40), "b".repeat(40));
+        let record = vec![Some((200, a.clone(), b.clone()))];
+        assert!(ends_on(&record, Some(&b)), "the last switch ran what runs");
+        assert!(
+            !ends_on(&record, Some(&a)),
+            "a switch the record hasn't told since"
+        );
+        assert!(!ends_on(&record, None), "what runs unknown");
+        assert!(
+            !ends_on(&[Some((200, a, b.clone())), None], Some(&b)),
+            "a last line that can't be read"
+        );
+        assert!(!ends_on(&[], Some(&b)), "no switch on record");
+    }
+
+    #[test]
     fn nothing_is_told_from_before_what_the_record_or_git_cant_say() {
         let (a, b, c) = ("a".repeat(40), "b".repeat(40), "c".repeat(40));
         let log = |was: &str, now: &str| match (&was[..1], &now[..1]) {
@@ -540,7 +567,7 @@ mod tests {
         assert_eq!(
             brought(&unsaid, log),
             HashMap::from([(11, 300)]),
-            "nor is a merge dated across a pair git can't say"
+            "nor is a merge dated across a pair git can't say, as a commit gone from the clone"
         );
     }
 
@@ -691,7 +718,8 @@ mod tests {
             git_here(&repo, &["commit", "-q", "--allow-empty", "-m", subject]);
             git_here(&repo, &["rev-parse", "HEAD"])
         };
-        let first = commit("init");
+        commit("init");
+        let nine = commit("Merge pull request #9 from x/nine");
         let ten = commit("Merge pull request #10 from x/ten");
         let eleven = commit("Merge pull request #11 from x/eleven");
 
@@ -699,7 +727,12 @@ mod tests {
         let line = |at: i64, core: &str| json!({"at": at, "revs": {"core": core}}).to_string();
         fs::write(
             &switches,
-            format!("{}\n{}\n", line(1_000, &first), line(2_000, &eleven)),
+            format!(
+                "{}\n{}\n{}\n",
+                line(1_000, &nine),
+                line(2_000, &ten),
+                line(3_000, &eleven)
+            ),
         )
         .expect("the switches");
         // The harness's install is the same history, current naming `ten`,
@@ -730,19 +763,24 @@ mod tests {
         };
 
         let running = read(&eleven);
-        let rolled_back = read(&first);
+        let rolled_back = read(&ten);
         fs::remove_dir_all(&folder).expect("the test's folder gone");
 
         for (one, since, why) in [
             (
+                landing("Jitsusama/core.nix", 9),
+                None,
+                "the first switch on record brought nothing it can say",
+            ),
+            (
                 landing("Jitsusama/core.nix", 10),
                 Some(2_000),
-                "core's by its switch",
+                "core's by the switch that brought it",
             ),
             (
                 landing("Jitsusama/core.nix", 11),
-                Some(2_000),
-                "both came in one",
+                Some(3_000),
+                "and not by an earlier one",
             ),
             (
                 landing("Jitsusama/agentic-harness.pi", 10),
@@ -756,10 +794,19 @@ mod tests {
             running.carries(&landing("Jitsusama/agentic-harness.pi", 10)),
             "though its install carries it"
         );
+        assert!(
+            running.carries(&landing("Jitsusama/core.nix", 9)),
+            "though the machine carries it"
+        );
         assert_eq!(
             rolled_back.since(&landing("Jitsusama/core.nix", 11)),
             None,
             "once core runs the commit before, its merge isn't on the machine"
+        );
+        assert_eq!(
+            rolled_back.since(&landing("Jitsusama/core.nix", 10)),
+            None,
+            "nor is any date told while the record's last switch isn't what runs"
         );
     }
 

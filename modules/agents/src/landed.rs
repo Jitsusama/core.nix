@@ -376,8 +376,8 @@ pub fn waiting_for_switch(records: &mut Vec<Value>, carried: &Carried) {
 /// address; its ref and its quest's id are nerdy bits, folded away
 /// where y copies them, since no identifier stands among what Joel
 /// reads (VKCF3Z, 2026-11-12). Its time goes out for the shell to word,
-/// and so does since when the machine has had it, where the switch or
-/// install that brought it is told (`carried`), since a landing is only
+/// and so does since when the machine has had it, where the switch that
+/// brought it is told (`carried`), since a landing is only
 /// worth trying once it runs. Each drawer is a record of its own,
 /// `landed-drawer:agents:<key>`, its landing naming it by that key in
 /// `drawer`.
