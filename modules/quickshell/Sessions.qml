@@ -228,19 +228,30 @@ Singleton {
     // run by a case of its own (the-sessions-kitty-is-asked-only-its-own-way).
     readonly property string opening: String(Qt.resolvedUrl("opens-in-sessions.sh"))
         .replace(/^file:\/\//, "")
-    // Each window Go To opened focused, by its app id, with when it was
-    // asked, until niri lists it. Plain, so holding it notifies nothing.
-    readonly property var focusing: ({})
-    // Focuses the window Go To opened once niri lists it, as long as it
-    // comes within the patience a second Go To waits, so a window that
-    // took longer than that, after Joel has moved on, doesn't take the
-    // focus from what he's doing by then.
+    // The window the last Go To opened focused, until niri lists it: its
+    // app id, when it was asked, and the window that had the focus then.
+    // Only the last, so a later Go To takes the place of an earlier one
+    // still opening, which then opens where it was told and no more.
+    property var goingTo: null
+    // How long a Go To's window may take to list and still be focused:
+    // long enough for the sessions kitty to start again under it, since
+    // a Joel who moves the focus himself meanwhile stops it anyway. Cases
+    // shorten it to see one too late.
+    property int goToPatience: 30000
+    // Focuses the window Go To opened once niri lists it, unless the focus
+    // has moved since he asked, as when he went on to other work himself,
+    // or it came too late, either of which leaves it where it opened, said.
     function focusOpened(window) {
-        const asked = focusing[window.opened ?? ""];
-        if (asked === undefined)
+        const going = goingTo;
+        if (going === null || window.opened !== going.app)
             return;
-        delete focusing[window.opened];
-        if (Date.now() - asked < attachPatience)
+        goingTo = null;
+        const waited = Date.now() - going.at;
+        if (Niri.focused !== going.from)
+            Report.say(`Go To's window ${window.id} left where it opened: the focus moved`);
+        else if (waited >= goToPatience)
+            Report.say(`Go To's window ${window.id} left where it opened: it took ${waited} ms`);
+        else
             Niri.act({ FocusWindow: { id: window.id } });
     }
     function inSessions(kind, rest, into, named) {
@@ -253,7 +264,7 @@ Singleton {
                 asked.column = into.column;
             Niri.act({ OpenNextWindowOn: asked });
             if (into.focused === true)
-                focusing[classed] = Date.now();
+                goingTo = { app: classed, at: Date.now(), from: Niri.focused };
         }
         const untold = kind === "pi-spawned" || (placed && into.focused !== true)
             ? ["env", "-u", "XDG_ACTIVATION_TOKEN", "-u", "DESKTOP_STARTUP_ID"] : [];
