@@ -118,6 +118,25 @@ it("holds a count to its own word only, never a part ending in a digit to the ne
   assert.ok(markup.includes("v2 · 3\u00a0behind"), `a branch was held to the separator: ${markup}`);
 });
 
+it("names each cell's link to one home apart, so a redraw finds the cell's own again", () => {
+  const two = cellsOf({
+    cells: ["E2ZIAQ", "Q3NEWS"].map((name) => ({
+      name,
+      title: "at work",
+      standing: "moving",
+      cwd: `${tree}/src`,
+    })),
+  });
+  const whole = groveOf(told(records), two, NOW);
+  const [opened] = whole?.repositories ?? [];
+  assert.ok(whole !== undefined && opened !== undefined, "the records drew no repository");
+  const context = { now: NOW, home: "/home/ada", homes: () => "cells/#c=1" };
+  const markup = drawer(opened, whole, context, new Set(["today"]));
+  for (const name of ["E2ZIAQ", "Q3NEWS"]) {
+    assert.ok(markup.includes(`data-key="cell:${name}"`), `${name}'s link wasn't named: ${markup}`);
+  }
+});
+
 it("puts what was searched for as words when nothing is named like it", () => {
   const markup = rows([], NOW, HOSTILE);
   assert.ok(asWords(markup), `the list put what was searched for in as markup: ${markup}`);
