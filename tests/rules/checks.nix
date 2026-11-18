@@ -196,6 +196,7 @@
             { };
         disk-order = script "disk-order" ../../modules/slices/disk-order.sh { };
         ergodox = script "ergodox" ../../modules/ergodox/ergodox.sh { };
+        firmware-errors-keep = script "firmware-errors-keep" ../../modules/firmware-errors/keep.sh { };
         gnome-keyring-unlock = script "gnome-keyring-unlock" ../../modules/gnome-keyring/unlock.sh { };
         google-opens = script "google-opens" ../../modules/google/opens.sh {
           words = "a-window an-opener";
