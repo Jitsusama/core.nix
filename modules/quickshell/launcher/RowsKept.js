@@ -321,3 +321,24 @@ function steps(was, now, most) {
     }
     return done;
 }
+
+// A tally of what a laying spent on each kind of row, to add to as each
+// row is built or taken back (tallied).
+function untallied() {
+    return bare();
+}
+
+// `tally` with one more row of `kind` that took `ms`, added in place, as
+// `{ kind: { rows, ms } }`, so a laying long for the rows it drew says
+// whose rows it spent on. Added in place, since a row adds to it as it's
+// laid and a new tally a row would be made for every row of a key.
+function tallied(tally, kind, ms) {
+    const was = tally[kind];
+    if (was === undefined) {
+        tally[kind] = { rows: 1, ms };
+    } else {
+        was.rows += 1;
+        was.ms += ms;
+    }
+    return tally;
+}

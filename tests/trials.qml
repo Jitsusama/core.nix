@@ -230,6 +230,17 @@ QtObject {
         expect("a making no kind spent a millisecond on says none",
             Trials.madeOfKinds({ person: 0 }) === "" && Trials.madeOfKinds(undefined) === "",
             Trials.madeOfKinds({ person: 0 }));
+        // A laying says whose rows it spent on, rounded, most first then by
+        // name, and how many of each it laid.
+        const laidBy = { person: { rows: 2, ms: 20.2 }, run: { rows: 3, ms: 89.6 },
+            agent: { rows: 5, ms: 20.4 }, answer: { rows: 4, ms: 0.4 } };
+        expect("a laying says whose rows it spent on, most first",
+            Trials.laidOfKinds(laidBy) === " (run 3 in 90, agent 5 in 20, person 2 in 20)",
+            Trials.laidOfKinds(laidBy));
+        expect("a laying no kind spent a millisecond on says none",
+            Trials.laidOfKinds({ answer: { rows: 9, ms: 0.4 } }) === ""
+                && Trials.laidOfKinds(null) === "",
+            Trials.laidOfKinds({ answer: { rows: 9, ms: 0.4 } }));
         expect("a drawer's making says working out which, its acts and showing it",
             Trials.makingSplit(134, { acted: 0.4, shown: 21.6 })
                 === " (112 working out which, 0 its acts, 22 showing it)",

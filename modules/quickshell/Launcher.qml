@@ -11986,10 +11986,13 @@ Scope {
         }
     }
     // A row made or taken again while an opening is felt, from when it
-    // began.
+    // began, giving back the time it read, so a laying can say what the row
+    // took without reading the clock again (list.laidBy).
     function feltRow(from) {
+        const to = KeyTimes.now();
         if (from >= 0)
-            feltFramed("row", from, KeyTimes.now());
+            feltFramed("row", from, to);
+        return to;
     }
     // Queued at a frame's animating, inside Qt's polishAndSync, it runs
     // once the sync lets the shell's thread go, ahead of the sync's own
@@ -13523,6 +13526,11 @@ Scope {
                             // until one is kept, those that change no
                             // row included.
                             property var steppedLast: null
+                            // What the laying in hand spent on each kind of
+                            // row it built or took back, `{ kind: { rows, ms
+                            // } }` (RowsKept.tallied), or null outside one,
+                            // so no other row's drawing adds to it.
+                            property var laidBy: null
                             // Whether keeping them last put every row in
                             // again (RowsKept.afresh), so they stand from
                             // the list's start, whatever it was scrolled to.
@@ -13591,6 +13599,13 @@ Scope {
                                 const asideFrom = Date.now();
                                 const built = root.rowsBuilt;
                                 const drawn = root.rowsDrawn;
+                                // Whose rows it spends on is said too, since
+                                // Joel's "aq" took 8 rows back in 112 ms, 14
+                                // a row, where the keys lab's take 0.9
+                                // (2026-11-18), and the lab holds none of his
+                                // agents, runs or people.
+                                const laidBy = RowsKept.untallied();
+                                list.laidBy = laidBy;
                                 if (steps.some(one => one.remove !== undefined)
                                     && steps.some(one => one.insert !== undefined))
                                     list.forceLayout();
@@ -13676,16 +13691,21 @@ Scope {
                                 // in or moved above it puts this off by its
                                 // height, and reselect lays them out again
                                 // where the row stands: twice, as before.
-                                if (landing >= 0)
-                                    list.contentY = root.scrollFor(landing, root.backTo.above);
-                                list.forceLayout();
+                                try {
+                                    if (landing >= 0)
+                                        list.contentY = root.scrollFor(landing, root.backTo.above);
+                                    list.forceLayout();
+                                } finally {
+                                    list.laidBy = null;
+                                }
                                 list.keptLast = {
                                     fresh: steps.reduce((all, step) => all
                                         + (step.keys ?? []).length, 0),
                                     laying: Date.now() - laying + aside + split,
                                     split: Object.assign({ from, took: split, whole }, arrival),
                                     built: root.rowsBuilt - built,
-                                    reused: root.rowsDrawn - drawn - (root.rowsBuilt - built)
+                                    reused: root.rowsDrawn - drawn - (root.rowsBuilt - built),
+                                    laidBy
                                 };
                                 if (root.backTo !== null)
                                     list.steppedLast = list.keptLast.split;
@@ -14057,12 +14077,20 @@ Scope {
                                     const taken = KeyTimes.now();
                                     entry.aside = false;
                                     root.rowsDrawn += 1;
-                                    root.feltRow(taken);
+                                    entry.laid(taken, root.feltRow(taken));
                                 }
                                 Component.onCompleted: {
                                     root.rowsDrawn += 1;
                                     root.rowsBuilt += 1;
-                                    root.feltRow(entry.feltBegun);
+                                    entry.laid(entry.feltBegun, root.feltRow(entry.feltBegun));
+                                }
+                                // What it took, from `from` to `to`, added to
+                                // its kind's while a laying listens, so a
+                                // dear one says whose rows were dear.
+                                function laid(from, to) {
+                                    if (list.laidBy !== null)
+                                        RowsKept.tallied(list.laidBy,
+                                            entry.modelData.what || "answer", to - from);
                                 }
                                 // Its own glyph, or the glyph of what it's
                                 // inside (rowsGlyph), for an act.
