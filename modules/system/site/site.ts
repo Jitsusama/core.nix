@@ -16,7 +16,7 @@ import { clockTime, said } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { bridgeOf } from "./bridge.ts";
 import { headlineOf, legend, MACHINES_DRAWN, machinesOf, partsOf, placesOf } from "./draw.ts";
-import { machineHeadline, machineLede } from "./machine.ts";
+import { machineHeadline, machineLede, whenSaid } from "./machine.ts";
 import { allTold, type System, systemOf } from "./model.ts";
 
 /** The element `selector` finds, which the page's markup always holds. */
@@ -62,10 +62,9 @@ let drawnParts = "";
 let drawnBridge = "";
 let drawnPlaces = "";
 
-/** A time as the ties say it: "at 02:19", or that it's unknown. */
+/** A time as the ties say it, from now. */
 function when(at: string): string {
-  const time = Date.parse(at);
-  return Number.isNaN(time) ? "at an unknown time" : `at ${clockTime(time)}`;
+  return whenSaid(at, Date.now());
 }
 
 /** The worst of the three watches' states, the one the page says. */

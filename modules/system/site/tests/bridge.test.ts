@@ -49,6 +49,16 @@ it("draws a pier for each machine, four at most wide and two narrow", () => {
   assert.ok(narrow.includes("And 3 more machines, below."));
 });
 
+it("counts the machines past its piers as below up to eight, and the rest on the map", () => {
+  const many = (length: number) =>
+    Array.from({ length }, (_, at) => machine(`m${at}`, 1, 1, "good"));
+  const twelve = variants(bridgeOf(many(12)));
+  assert.ok(twelve.wide.includes("And 4 more below, and 4 more on the map."), twelve.wide);
+  assert.ok(twelve.narrow.includes("And 6 more below, and 4 more on the map."));
+  const { wide } = variants(bridgeOf(many(1200)));
+  assert.ok(wide.includes("And 4 more below, and 1,192 more on the map."));
+});
+
 it("names each machine over its pier, with its health in words", () => {
   const drawn = bridgeOf([machine("kestrel", 2, 1, "watch"), machine("osprey", 0, 0, "good")]);
   assert.ok(drawn.includes('translate="no">kestrel</span>'));
@@ -68,7 +78,6 @@ it("keeps only each name and its health mark over a narrow pier", () => {
   const over = listed(narrow, "over");
   assert.ok(over.includes('translate="no">kestrel</span>'));
   assert.ok(over.includes('class="mark watch"'));
-  assert.ok(over.includes("(watch)"));
   assert.ok(!over.includes("filling disk"));
 });
 
@@ -95,6 +104,14 @@ it("sets a filled dot for each busy cell and a hollow one for each idle", () => 
 it("lets a dot stand for several cells past what a pier holds, and says so", () => {
   const { wide } = variants(bridgeOf([machine("kestrel", 150, 30, "good")]));
   assert.equal(count(wide, "<circle "), 60);
+  assert.ok(wide.includes("each dot is 3 cells"));
+});
+
+it("counts every pier's dots on the one scale it says", () => {
+  const { wide } = variants(
+    bridgeOf([machine("kestrel", 150, 30, "good"), machine("osprey", 3, 2, "good")]),
+  );
+  assert.equal(count(wide, "<circle "), 62);
   assert.ok(wide.includes("each dot is 3 cells"));
 });
 

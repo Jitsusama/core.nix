@@ -6,13 +6,15 @@ a summary, four parts and two machines under test names, system.json. It must
 say it's live with every machine drawn and counted, follow a machine that
 turns and one that goes, say broken when the daemon stops and live again
 when it's back, say stale when the server goes, and pass the web-design skill's
-page checks at a phone's width and a desk's in both looks. Anything the page
+page checks at a phone's width and a desk's in both looks. Its keys and places
+must move the cursor from section to section. Anything the page
 logs fails it, since that is how it drew four empty parts unseen on 16 November.
 The server, the browser and the tab are modules/local-sites/tests/live_page.py's.
 """
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -32,7 +34,7 @@ RETRY_MS = 35000
 # What system.json comes to: two machines, each with a filling disk.
 COUNTED = "Two machines, both worth a look."
 # What a first visit to the page may cost, drawn from system.json.
-BUDGET = Budget(files=24, kilobytes=450, elements=370)
+BUDGET = Budget(files=24, kilobytes=470, elements=370)
 
 
 @pytest.fixture
@@ -79,6 +81,34 @@ def test_the_system_page_draws_every_machine_live(system_page: Page) -> None:
     for machine in ["kestrel", "osprey"]:
         row = system_page.locator(f'#parts a[data-row="machine:{machine}"]')
         expect(row, f"the page drew no row for {machine}").to_be_visible()
+
+
+def section_of_the_cursor(page: Page) -> str | None:
+    """Say which section holds what has focus, by its id, or None."""
+    return page.evaluate("document.activeElement?.closest('section[id]')?.id ?? null")
+
+
+def test_the_keys_and_places_move_the_cursor(system_page: Page) -> None:
+    says_it_stands(system_page, "live")
+    counted(system_page)
+    keyboard = system_page.keyboard
+    keyboard.press("j")
+    assert section_of_the_cursor(system_page) == "machine-1"
+    keyboard.press("2")
+    assert section_of_the_cursor(system_page) == "machine-2"
+    keyboard.press("k")
+    assert section_of_the_cursor(system_page) == "machine-1"
+    place = system_page.locator('#places a[data-place="machine-2"]')
+    place.click()
+    assert section_of_the_cursor(system_page) == "machine-2"
+    expect(place, "the place the cursor is in wasn't marked").to_have_attribute(
+        "aria-current", "location"
+    )
+    keyboard.press("y")
+    # A headless browser may refuse the clipboard; either way y says what it did.
+    expect(system_page.locator("#note"), "y said nothing of its copy").to_have_text(
+        re.compile(r"^(Copied|Couldn't copy)")
+    )
 
 
 def test_a_machine_that_turns_is_counted(system_page: Page, system_daemon: StandIn) -> None:

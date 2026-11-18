@@ -11,11 +11,15 @@ draws them.
   the keys step through, what a screen reader hears, and that the page's
   own files wear no weather words.
 - `machine.test.ts` tries the words a machine is said in: the headline
-  over the machines, the lede, its kind, and each of its ties.
+  over the machines, the lede, its kind, each of its ties, and when it
+  was updated, today, yesterday or on a date.
 - `bridge.test.ts` tries the bridge drawing: a pier for each machine, wide
   and narrow, its name and health over it, a dot for each cell and one
-  for several past what a pier holds, and every name escaped.
-- Node's own test runner runs all three as the local sites build the
+  for several past what a pier holds, on one scale, what lies past its
+  piers, and every name escaped.
+- `page.test.ts` tries that the page preloads every module of its own
+  that it reaches only through another, so its first draw comes whole.
+- Node's own test runner runs all four as the local sites build the
   page, so `system-site-holds` fails when one does.
 - `reads-live-test.py` reads the page Nix builds in a headless browser, beside
   a stand-in daemon holding `system.json`: the page as the records change,

@@ -64,7 +64,8 @@
 /* ---- Marks: each health its own shape, so none is told by hue: good a
    filled disc, watch half filled, bad a diamond, not read a dashed ring. ---- */
 
-.mark {
+/* A span, so the masthead's drawn mark keeps its own look. */
+span.mark {
   inline-size: 0.7em;
   block-size: 0.7em;
   flex: none;

@@ -165,6 +165,7 @@ const TIE = /<section class="tie"><h3>(?<name>[^<]*)<\/h3>/gu;
 
 /** A row the keys step through, by its key. */
 const ROW = /data-row="(?<key>[^"]*)"/gu;
+const HIDDEN_BRIDGE = /<figure class="bridge" id="bridge" aria-hidden="true">/u;
 
 /** A time, as the page says one. */
 const when = (at: string): string => `at ${at}`;
@@ -242,6 +243,15 @@ it("goes to a machine's place on the network, and offers the launcher only with 
   assert.equal(drawn.split("Open in the Launcher").length - 1, 1, "kestrel has no act");
 });
 
+it("offers the launcher only by its own scheme", () => {
+  const system = systemWith((record) =>
+    record.key === "machine:osprey"
+      ? { ...record, ties: { acts: { link: "javascript:alert(1)", commands: [] } } }
+      : record,
+  );
+  assert.ok(!partsOf(system, when).includes("Open in the Launcher"));
+});
+
 it("draws eight machines whole, and sends the rest to the map", () => {
   const system = systemWith();
   const [machines] = system.parts;
@@ -289,6 +299,11 @@ it("the page and its words for a model wear no weather words, nor in what is rea
 it("the legend is a list in every browser, so a screen reader hears its words apart", () => {
   const page = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   assert.match(page, LEGEND_LIST);
+});
+
+it("keeps the whole bridge from a screen reader, since the sections under it say it all", () => {
+  const page = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(page, HIDDEN_BRIDGE);
 });
 
 it("draws once every watch has told its records, or can't", () => {

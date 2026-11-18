@@ -110,9 +110,12 @@ function named(part: string): string {
   return NAMES[part] ?? part;
 }
 
+/** Figures as en-CA writes them, their thousands grouped. */
+const FIGURES = new Intl.NumberFormat("en-CA");
+
 /** `count` as a sentence says it: in words to ten, then in figures. */
 function numbered(count: number): string {
-  return NUMBERS[count] ?? String(count);
+  return NUMBERS[count] ?? FIGURES.format(count);
 }
 
 /** `said` with its first letter a capital, as a sentence starts. */

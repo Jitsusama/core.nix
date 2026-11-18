@@ -11,12 +11,12 @@
 // under the drawing, whose piers stand at the columns' centres, so a name
 // is never squeezed into a drawing scaled down. It is drawn twice, wide
 // and narrow, and the page shows the one that fits; the other is never
-// displayed, which keeps it from a screen reader too. The drawing itself
-// is hidden from one, since every word in it is said by the sections below.
+// displayed. The whole of it is hidden from a screen reader, by the figure
+// it is drawn in, since every word in it is said by the sections below.
 
-import { escaped } from "./draw.ts";
+import { escaped, MACHINES_DRAWN } from "./draw.ts";
 import { standing } from "./machine.ts";
-import { type Thing, WORDS } from "./model.ts";
+import type { Thing } from "./model.ts";
 import type { Place } from "./ties.ts";
 
 /** One way of drawing the bridge: how wide, how many piers, how many dots. */
@@ -69,19 +69,30 @@ function centre(at: number, count: number, width: number): number {
   return (width * (2 * at + 1)) / (2 * count);
 }
 
-/** The cells over a pier at `x`: a dot each, or each for several past what it holds. */
+/**
+ * How many cells a dot stands for over every pier of `shown`: one, or as
+ * many as the fullest pier needs to fit, so each pier's dots are counted on
+ * the one scale the key says.
+ */
+function scaleOf(shown: readonly Thing[], variant: Variant): number {
+  const holds = variant.across * ROWS;
+  const totals = shown.map(({ ties: { cells } }) =>
+    cells === undefined ? 0 : cells.busy + cells.idle,
+  );
+  return Math.max(1, ...totals.map((total) => Math.ceil(total / holds)));
+}
+
+/** The cells over a pier at `x`, a dot for every `each` of them, and how high they reach. */
 function cellsAt(
   thing: Thing,
   x: number,
   variant: Variant,
-): { dots: string; each: number; top: number } {
+  each: number,
+): { dots: string; top: number } {
   const { cells } = thing.ties;
   if (cells === undefined) {
-    return { dots: "", each: 1, top: DECK };
+    return { dots: "", top: DECK };
   }
-  const holds = variant.across * ROWS;
-  const total = cells.busy + cells.idle;
-  const each = Math.max(1, Math.ceil(total / holds));
   const busy = Math.ceil(cells.busy / each);
   const shown = busy + Math.ceil(cells.idle / each);
   const rows = Math.ceil(shown / variant.across);
@@ -97,7 +108,7 @@ function cellsAt(
     return `<circle cx="${cx}" cy="${cy}" r="${DOT}" class="${kind}"/>`;
   });
   const top = shown === 0 ? DECK : LOWEST - (rows - 1) * variant.gap;
-  return { dots: dots.join(""), each, top };
+  return { dots: dots.join(""), top };
 }
 
 /** A pier at `x`, in its machine's health, filled as far as its disk is. */
@@ -183,6 +194,26 @@ function standsOf(thing: Thing): string {
   return `<span class="health ${thing.health}"><span class="mark ${thing.health}" aria-hidden="true"></span>${escaped(standing(thing, 1))}</span>`;
 }
 
+/** A count as en-CA writes it, its thousands grouped. */
+const counted = new Intl.NumberFormat("en-CA");
+
+/**
+ * What lies past the piers: the machines the sections below draw, up to
+ * their eight, and the rest the map shows.
+ */
+function moreOf(total: number, piers: number): string {
+  const below = Math.max(0, Math.min(total, MACHINES_DRAWN) - piers);
+  const beyond = total - Math.max(piers, MACHINES_DRAWN);
+  if (below === 0 && beyond <= 0) {
+    return "";
+  }
+  const said =
+    beyond > 0
+      ? `And ${counted.format(below)} more below, and ${counted.format(beyond)} more on the map.`
+      : `And ${counted.format(below)} more ${below === 1 ? "machine" : "machines"}, below.`;
+  return `<p class="more">${said}</p>`;
+}
+
 /**
  * The bridge drawn one way: the names over it, the drawing, the places under
  * it. A narrow pier is too slim to carry how its machine stands in words, so
@@ -193,12 +224,13 @@ function variantOf(things: readonly Thing[], variant: Variant): string {
   const shown = things.slice(0, variant.piers);
   const count = shown.length;
   const xs = shown.map((_, at) => centre(at, count, variant.width));
-  const cells = shown.map((thing, at) => cellsAt(thing, xs[at] ?? 0, variant));
+  const each = scaleOf(shown, variant);
+  const cells = shown.map((thing, at) => cellsAt(thing, xs[at] ?? 0, variant, each));
   const narrow = variant.name === NARROW.name;
   const captions = shown
     .map((thing) =>
       narrow
-        ? `<li>${nameOf(thing)}<span class="mark ${thing.health}" aria-hidden="true"></span><span class="sr"> (${WORDS[thing.health].toLowerCase()})</span></li>`
+        ? `<li>${nameOf(thing)}<span class="mark ${thing.health}"></span></li>`
         : `<li>${nameOf(thing)}${standsOf(thing)}</li>`,
     )
     .join("");
@@ -212,12 +244,7 @@ function variantOf(things: readonly Thing[], variant: Variant): string {
         : `<li>${wherePlaces(thing)}</li>`,
     )
     .join("");
-  const more = things.length - count;
-  const moreLine =
-    more > 0
-      ? `<p class="more">And ${more} more ${more === 1 ? "machine" : "machines"}, below.</p>`
-      : "";
-  const each = Math.max(...cells.map((one) => one.each));
+  const moreLine = moreOf(things.length, count);
   const scaled = each > 1 ? ` Past what a pier holds, each dot is ${each} cells.` : "";
   return `<div class="variant ${variant.name}" style="--piers: ${count}"><ol class="over">${captions}</ol>${svg}<ol class="under">${places}</ol>${moreLine}<p class="key">A filled dot for each busy cell, a hollow one for each idle; each pier filled as far as its disk is.${scaled}</p></div>`;
 }

@@ -88,7 +88,11 @@ function howMany(count: number, all: number): string {
 
 /** The headline over the machines: how many there are, then how they stand. */
 function machineHeadline(system: System): MachineHeadline {
-  const things = system.parts.find((part) => part.part === "machines")?.things ?? [];
+  const part = system.parts.find((each) => each.part === "machines");
+  if (part?.health === "unread") {
+    return { machines: "Your machines", stand: "not read", health: "unread" };
+  }
+  const things = part?.things ?? [];
   const { length } = things;
   const machines = capital(`${numbered(length)} ${length === 1 ? "machine" : "machines"}`);
   if (length === 0) {
@@ -118,12 +122,16 @@ function stopped(words: string): string {
  * anywhere wants a look.
  */
 function machineLede(system: System): string | undefined {
-  const things = system.parts.find((part) => part.part === "machines")?.things ?? [];
+  const part = system.parts.find((each) => each.part === "machines");
+  if (part?.health === "unread") {
+    return stopped(`The machines couldn't be read: ${part.says}`);
+  }
+  const things = part?.things ?? [];
   const machines = things
     .filter((thing) => thing.side.length > 0)
     .slice(0, LEDE_MACHINES)
     .map((thing) => stopped(`${thing.name}: ${thing.side.join("; ")}`));
-  const rest = restOf(system.parts.filter((part) => part.part !== "machines"));
+  const rest = restOf(system.parts.filter((other) => other.part !== "machines"));
   const said = [...machines, ...(rest === undefined ? [] : [rest])];
   return said.length === 0 ? undefined : said.join(" ");
 }
@@ -142,10 +150,18 @@ function restOf(others: readonly Part[]): string | undefined {
     : stopped(`And ${WHAT[unread.part] ?? named(unread.part)} couldn't be read: ${unread.says}`);
 }
 
+/** How a node's system is said, its own word for one the page doesn't know. */
+function systemSaid(system: string | undefined): string | undefined {
+  if (system === undefined) {
+    return undefined;
+  }
+  return Object.hasOwn(SYSTEMS, system) ? SYSTEMS[system] : system;
+}
+
 /** What kind of machine it is: its model and its system, and whether it's this one. */
 function kindOf(thing: Thing, here: string): string | undefined {
   const { model, system } = thing.ties.figures;
-  const words = [model, system === undefined ? undefined : (SYSTEMS[system] ?? system)];
+  const words = [model, systemSaid(system)];
   const said = words.filter((word) => word !== undefined);
   if (said.length === 0) {
     return undefined;
@@ -222,8 +238,8 @@ function reach(place: Place): string | undefined {
 }
 
 /**
- * Where a machine meets the network, a clause for each place, wired first
- * as the network lists them, and how well each reaches, in the same order,
+ * Where a machine meets the network, a clause for each place in the order
+ * its record lists them, and how well each reaches, in the same order,
  * so no place's figure is said as another's. Its device is the first
  * place's, to go to.
  */
@@ -345,6 +361,41 @@ function itselfSaid(ties: Ties, when: (at: string) => string): Said {
   return { said, aside: sentences.join(" ") };
 }
 
+/** The months as a date says them, short. */
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** A day's milliseconds. */
+const DAY = 86_400_000;
+
+/** The start of the local day `time` falls in. */
+function dayOf(time: number): number {
+  const day = new Date(time);
+  day.setHours(0, 0, 0, 0);
+  return day.getTime();
+}
+
+/**
+ * A time as the ties say it, seen from `now`, locally: "at 02:19" today,
+ * "yesterday at 23:05", or "on 12 Nov at 09:00" before then, so an update
+ * from days ago never reads as this morning's.
+ */
+function whenSaid(at: string, now: number): string {
+  const time = Date.parse(at);
+  if (Number.isNaN(time)) {
+    return "at an unknown time";
+  }
+  const when = new Date(time);
+  const clock = `${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}`;
+  const today = dayOf(now);
+  if (time >= today) {
+    return `at ${clock}`;
+  }
+  if (time >= dayOf(today - DAY / 2)) {
+    return `yesterday at ${clock}`;
+  }
+  return `on ${when.getDate()} ${MONTHS[when.getMonth()] ?? ""} at ${clock}`;
+}
+
 export type { MachineHeadline, Said };
 export {
   cellsSaid,
@@ -355,4 +406,5 @@ export {
   machineLede,
   networkSaid,
   standing,
+  whenSaid,
 };

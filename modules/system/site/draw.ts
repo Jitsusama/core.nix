@@ -79,7 +79,7 @@ function machinesOf(system: System): readonly Thing[] {
 
 /** The headline: how many machines, then how they stand in their worst health's colour. */
 function headlineOf(heading: MachineHeadline): string {
-  return `${escaped(heading.machines)}, <em class="health ${heading.health}">${escaped(heading.stand)}.</em>`;
+  return `${escaped(heading.machines)}, <em class="${heading.health}">${escaped(heading.stand)}.</em>`;
 }
 
 /** The places at the top: the machines drawn whole, then the parts across them. */

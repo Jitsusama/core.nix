@@ -13,6 +13,7 @@ import {
   machineHeadline,
   machineLede,
   networkSaid,
+  whenSaid,
 } from "../machine.ts";
 import { tiesOf } from "../ties.ts";
 import type { Part, System, Thing } from "../model.ts";
@@ -281,4 +282,40 @@ it("itself says its disk, then its processor, memory, power and update", () => {
     { said: "Its disk not said", aside: "40% charged." },
     "a charge whose node doesn't say its plug says no plug",
   );
+});
+
+it("a machines part that wasn't read says so, over the machines and in the lede", () => {
+  const read = system([]);
+  const unread: System = {
+    ...read,
+    parts: read.parts.map((each) =>
+      each.part === "machines"
+        ? { ...each, health: "unread", says: "the mycelium couldn't be reached" }
+        : each,
+    ),
+  };
+  assert.deepEqual(machineHeadline(unread), {
+    machines: "Your machines",
+    stand: "not read",
+    health: "unread",
+  });
+  assert.equal(
+    machineLede(unread),
+    "The machines couldn't be read: the mycelium couldn't be reached.",
+  );
+});
+
+it("counts thousands of machines with their digits grouped", () => {
+  const many = Array.from({ length: 1200 }, (_, at) => machine(`m${at}`, "good"));
+  assert.equal(machineHeadline(system(many)).machines, "1,200 machines");
+});
+
+it("says a time on its clock today, yesterday by name, and earlier by its date", () => {
+  const now = new Date(2026, 10, 18, 13, 40).getTime();
+  const at = (day: number, hour: number, minute: number) =>
+    new Date(2026, 10, day, hour, minute).toISOString();
+  assert.equal(whenSaid(at(18, 2, 19), now), "at 02:19");
+  assert.equal(whenSaid(at(17, 23, 5), now), "yesterday at 23:05");
+  assert.equal(whenSaid(at(12, 9, 0), now), "on 12 Nov at 09:00");
+  assert.equal(whenSaid("soon", now), "at an unknown time");
 });

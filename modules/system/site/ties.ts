@@ -2,8 +2,8 @@
 // (modules/system/src/parts/ties.rs): the mycelium's cells on it, where it
 // meets the network, the code it holds, its own figures and what Joel can
 // do with it. Read leniently, each tie none that the record doesn't say,
-// so a daemon from before ties draws its machines bare. How each is said
-// is machine.ts's; this only reads.
+// so a machine from a daemon before ties draws with each tie not read,
+// and no act. How each is said is machine.ts's; this only reads.
 
 import {
   type Fields,
@@ -147,8 +147,16 @@ function tiesOf(value: unknown): Ties {
     network: placesOf(said["network"]),
     code: codeOf(object(said, "code")),
     figures: figuresOf(object(said, "figures") ?? EMPTY),
-    acts: { link: text(acts, "link"), commands: texts(acts, "commands") ?? [] },
+    acts: { link: launcherLink(text(acts, "link")), commands: texts(acts, "commands") ?? [] },
   };
+}
+
+/** The scheme the launcher answers, the only one a machine's act may go by. */
+const LAUNCHER = "mycelium:";
+
+/** `link`, when it goes to the launcher; none otherwise, so a record can't send Joel elsewhere. */
+function launcherLink(link: string | undefined): string | undefined {
+  return link?.startsWith(LAUNCHER) === true ? link : undefined;
 }
 
 export type { Acts, Cells, Code, Figures, Place, Ties };
