@@ -340,6 +340,21 @@ fn github_a_site_with_no_notifications_is_read_by_what_joel_opened() {
     let home = home();
     let mut reading = github_reader(&home, &origin, &CODE_SITE);
     until_decided(&home, 4);
+    // Its round marks the site read only once it has decided, so the
+    // reader stops once the mark is there, not at the last decision.
+    let began = std::time::Instant::now();
+    let read = loop {
+        let read = Command::new(env!("CARGO_BIN_EXE_pineapple-github"))
+            .arg("--json")
+            .env("XDG_STATE_HOME", home.join("state"))
+            .output()
+            .expect("it answers");
+        let read: Value = serde_json::from_slice(&read.stdout).expect("its answer is JSON");
+        if read["sites"]["code"].as_u64().is_some() || began.elapsed() > PATIENCE {
+            break read;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    };
     reading.kill().expect("the reader stops");
     reading.wait().expect("the reader is gone");
 
@@ -368,12 +383,6 @@ fn github_a_site_with_no_notifications_is_read_by_what_joel_opened() {
         "it searches the repository named, by his address: {asked:?}"
     );
     drop(asked);
-    let read = Command::new(env!("CARGO_BIN_EXE_pineapple-github"))
-        .arg("--json")
-        .env("XDG_STATE_HOME", home.join("state"))
-        .output()
-        .expect("it answers");
-    let read: Value = serde_json::from_slice(&read.stdout).expect("its answer is JSON");
     assert!(
         read["sites"]["code"].as_u64().is_some(),
         "it says when the site was read: {read}"
