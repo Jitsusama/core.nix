@@ -5463,10 +5463,16 @@
   vm-pebble-speakers-are-tuned = ''
     a Pebble X Plus hears its tuning, again once it's plugged back in, and headphones don't
   '';
+  vm-cores-stay-from-their-owner = ''
+    an account aborts two of its own processes, a stand-in pi host named node and sleep, and can
+    neither open nor dump either core, the cores' folder being root's alone, while the journal
+    still shows it, in wheel, each crash's stack trace; six hours on the removal takes the node's core and
+    leaves the other's
+  '';
   vm-a-wedged-pi-starts-again = ''
     a realm's background pi host, its unit as the module renders it on a stand-in node, is
-    killed by the watchdog and started again once its loop stops pinging, its abort recorded by
-    systemd-coredump with no core kept, and killed 10 s on when it ignores that abort, and one that
+    killed by the watchdog and started again once its loop stops pinging, its abort's core kept by
+    systemd-coredump, and killed 10 s on when it ignores that abort, and one that
     crashes
     at every start is started three times, then left failed with start-limit-hit, and one that
     refuses what it was given is left down at once, each saying which host is down and why, and

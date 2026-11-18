@@ -226,7 +226,9 @@ let
         # before the watchdog's kill, so a crash restarts the host that much
         # later. The commands a host runs inherit the limit, as any command a
         # plain pi in a terminal runs does, so their cores are kept too, up
-        # to the coredump module's MaxUse. Back to 0 once the fault is found.
+        # to the coredump module's MaxUse; the coredump module keeps them all
+        # in a folder only root enters. Back to 0 once the fault is found, or
+        # by 18:00 on Friday 20 November, whichever comes first.
         LimitCORE = "infinity";
         # The host exits 78 when what it was given is refused (its kind, its
         # realm, a pi missing a host patch), which another start would only
