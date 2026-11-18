@@ -192,41 +192,15 @@ ShellRoot {
         }
     }
 
-    // Waits for `holds`, five seconds at most, then goes on to `then`, or
-    // fails saying `what`; `then` failing fails too.
-    function until(what, holds, then) {
-        waits.what = what;
-        waits.holds = holds;
-        waits.then = then;
-        waits.left = 100;
-        waits.start();
+    // Each wait for the socket, as the test library waits: ten seconds at
+    // most, since a builder running many checks at once can hold this one
+    // back for seconds.
+    Until {
+        id: waits
     }
 
-    Timer {
-        id: waits
-
-        property string what: ""
-        property var holds: null
-        property var then: null
-        property int left: 0
-
-        interval: 50
-        repeat: true
-        onTriggered: {
-            try {
-                if (holds()) {
-                    stop();
-                    then();
-                } else if (--left === 0) {
-                    stop();
-                    throw new Error(`${what} never held`);
-                }
-            } catch (error) {
-                stop();
-                console.warn(`FAIL ${error.message}`);
-                Qt.callLater(() => Qt.exit(1));
-            }
-        }
+    function until(what, holds, then) {
+        waits.until(what, holds, then);
     }
 
     // First what the files say, as the shell reads them while the socket
