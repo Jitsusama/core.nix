@@ -37,8 +37,9 @@ const JOURNAL: &str = "journal";
 
 /// A reader a case started in `home`, stopped once the case is done with
 /// it, whether the case passes or fails part way, so a failed case leaves
-/// no reader still asking its stand-in. A case failing while it runs is
-/// shown its home's journal too, whichever wait or check gave up.
+/// no reader still asking its stand-in. A case failing while it holds the
+/// guard is shown its home's journal too, whichever wait or check gave up;
+/// one failing in a helper that has already dropped it is not.
 struct Running {
     reader: Child,
     home: PathBuf,
@@ -452,6 +453,10 @@ fn a_case_failing_part_way_leaves_no_reader_running() {
     let home = home();
     let running = reader(&home, &origin);
     let pid = running.id();
+    assert!(
+        Path::new(&format!("/proc/{pid}")).exists(),
+        "the reader runs before the case fails"
+    );
     let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         let _held = running;
         panic!("the case fails while its reader runs");
