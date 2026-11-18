@@ -521,8 +521,9 @@ mod tests {
             true,
         )["side"]
             .clone();
-        assert!(
-            side[0]["keep"].as_u64() > side[1]["keep"].as_u64(),
+        assert_eq!(
+            (side[0]["keep"].as_u64(), side[1]["keep"].as_u64()),
+            (Some(2), Some(1)),
             "how an answered ask stands gives way before when it came: {side}"
         );
         // The shell words an item as a time only where the item itself
