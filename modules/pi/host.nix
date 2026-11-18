@@ -128,6 +128,11 @@ let
           ]
           ++ [
             host.node
+            # Any process of the account may send SIGUSR1, which would open
+            # node's inspector and let it run code as the host. mycelium
+            # takes the host's word for which conversation each pi-spawner
+            # serves, and hears no host whose node lacks this.
+            "--disable-sigusr1"
             # The harness's package.json names no module type, on purpose.
             "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
             "--max-old-space-size=${toString host.heapMb}"

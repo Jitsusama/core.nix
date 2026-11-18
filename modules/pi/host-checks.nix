@@ -84,6 +84,14 @@ in
 }
 # The hosts run as Linux's systemd user units, in slices a Mac has none of.
 // onLinux {
+  # A node given the flag a host's unit gives it outlives SIGUSR1 with its
+  # inspector shut, where one without opens it; on node 22, which pi is
+  # built with and a host runs.
+  pi-host-ignores-sigusr1 = pkgs.runCommandLocal "pi-host-ignores-sigusr1" { } ''
+    ${lib.getExe pkgs.nodejs_22} ${./tests/pi-host-ignores-sigusr1.mjs} ${lib.getExe pkgs.nodejs_22}
+    touch $out
+  '';
+
   # A realm a machine names gets two hosts, attended and background, started
   # with the account's session once the harness is installed, run by the
   # host's own pi and node, said ready by the host, among the agents'
@@ -138,6 +146,14 @@ in
       mac = naming bareDarwin self.darwinModules.workstation;
       # home-manager keeps a unit's settings as lists.
       first = value: lib.head (lib.toList value);
+      # Whether words name a node option that opens its inspector, as node
+      # reads them, with underscores for dashes.
+      opensInspector =
+        words:
+        let
+          read = lib.replaceStrings [ "_" ] [ "-" ] words;
+        in
+        lib.hasInfix "--inspect" read || lib.hasInfix "--enable-sigusr1" read;
       starts =
         kind:
         let
@@ -167,6 +183,13 @@ in
         && unit.Unit.X-SwitchMethod == "keep-old"
         && unit.Install.WantedBy == [ "default.target" ]
         && lib.hasPrefix "${node} " (first unit.Service.ExecStart)
+        # Any process of Joel's may send SIGUSR1, which would open node's
+        # inspector and let it run code as the host, whose word the node
+        # takes for which conversation a spawner serves; so node is told
+        # to ignore it, and nothing here opens the inspector another way.
+        && lib.hasPrefix "${node} --disable-sigusr1 " (first unit.Service.ExecStart)
+        && !(opensInspector (first unit.Service.ExecStart))
+        && !lib.any (entry: lib.hasPrefix ''"NODE_OPTIONS='' entry && opensInspector entry) environment
         # Room for the heap of every conversation it holds, past node's 4 GB,
         # given before the entry, as node reads only flags there; quoted for
         # its =, which systemd unquotes.
@@ -211,7 +234,7 @@ in
         && lib.hasSuffix "/bin/pi-host-down %i" (first (unit.Service.ExecStart or ""));
     in
     holds "pi-hosts-start-with-the-session"
-      "A realm's pi host isn't started with the session, runs another pi or node, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 20 minutes to start, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, has only node's default heap rather than its realm's, points its conversations at no SSH agent where pi's proxy runs, passes them the TPM agent's own variable, or leaves its commands' processes behind, can't keep its core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
+      "A realm's pi host isn't started with the session, runs another pi or node, leaves its inspector open to SIGUSR1 or opens it another way, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 20 minutes to start, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, has only node's default heap rather than its realm's, points its conversations at no SSH agent where pi's proxy runs, passes them the TPM agent's own variable, or leaves its commands' processes behind, can't keep its core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
       (
         starts "attended"
         && starts "background"

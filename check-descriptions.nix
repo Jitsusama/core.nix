@@ -2630,7 +2630,8 @@
   '';
   pi-hosts-start-with-the-session = ''
     each realm a machine names gets an attended and a background pi host, started with the
-    account's session where the harness is installed, run by the host's pi and its own node, ready
+    account's session where the harness is installed, run by the host's pi and its own node, its
+    inspector shut to SIGUSR1 and opened by none of its options or its NODE_OPTIONS, ready
     once it says so, in agents.slice with its realm's environment and its folders first on its
     PATH, left stopped after refusing
     what it was given and left running through a switch and through the kernel killing one of its
@@ -2642,6 +2643,10 @@
     proxy as their agent wherever the proxy runs, never given the TPM agent's own variable,
     started at most three times in ten minutes and said to be down once left down, never at a
     restart, and a machine naming none, or a Mac, gets none
+  '';
+  pi-host-ignores-sigusr1 = ''
+    node 22, given the --disable-sigusr1 a pi host's unit gives it, outlives SIGUSR1 with its
+    inspector shut, beside a node without it whose inspector the same signal opens
   '';
   pi-hosts-refuse-an-unproven-runtime = ''
     a realm's pi reaches its hosts only with the proof that pnpm test:host passed on the runtime
