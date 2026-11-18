@@ -131,14 +131,9 @@ def test_an_administrator_turns_defrag_mode_on_and_off_without_a_password(
     reverted: BaseMachine,
 ) -> None:
     for mode in ("1", "0"):
-        status, said = start(reverted, "someone", f"memory-defrag@{mode}")
+        status, said = start(reverted, "someone", f"memory-defrag-mode@{mode}")
         assert status == 0, said
         assert read(reverted, DEFRAG) == mode, f"defrag_mode wasn't set to {mode}"
-
-
-def test_the_machine_boots_letting_allocations_split_blocks(reverted: BaseMachine) -> None:
-    defrag = read(reverted, DEFRAG)
-    assert defrag == "0", f"booted with defrag_mode at {defrag}"
 
 
 def test_an_account_outside_wheel_is_refused(reverted: BaseMachine) -> None:
@@ -153,3 +148,10 @@ def test_a_value_the_rules_dont_list_needs_a_password(reverted: BaseMachine) -> 
     status, said = start(reverted, "someone", "memory-watermarks@3000")
     assert status != 0, said
     assert read(reverted, SCALE) == before
+
+
+def test_a_defrag_mode_the_rules_dont_list_needs_a_password(reverted: BaseMachine) -> None:
+    before = read(reverted, DEFRAG)
+    status, said = start(reverted, "someone", "memory-defrag-mode@2")
+    assert status != 0, said
+    assert read(reverted, DEFRAG) == before, "an unlisted defrag_mode was written"

@@ -8,6 +8,9 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
 
   nodes.machine = {
     imports = [ self.nixosModules.memory ];
+    # The module offers defrag_mode only on a kernel with both its fixes,
+    # 7.3.4 on, newer than nixpkgs' default.
+    boot.kernelPackages = pkgs.linuxPackages_latest;
     users.users.someone = {
       isNormalUser = true;
       extraGroups = [ "wheel" ];

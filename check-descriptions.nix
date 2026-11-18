@@ -4855,7 +4855,7 @@
     an account in wheel sets the watermarks' spacing, transparent huge pages, the multi-gen LRU,
     swappiness, swap's read-ahead, proactive compaction, the free memory floor and defrag_mode to a
     listed value with no password; one outside wheel can't, and an unlisted value needs one; the
-    machine boots swapping at 60, compacting ahead at 40 and with defrag_mode off
+    machine boots swapping at 60 and compacting ahead at 40
   '';
   vm-admins-tune-the-work-slices = ''
     an account in wheel sets build.slice's and machine.slice's weight and cores for the boot with no
