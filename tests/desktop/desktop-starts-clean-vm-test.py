@@ -274,11 +274,19 @@ class Touchscreen:
         try:
             retry(tapped, timeout=TAKING)
         except Exception as error:
+            # Whether the stand-in still reads its taps tells a dead stand-in from a Cage that
+            # never took the device; the error says what stopped the wait.
             given = TAKING.total_seconds() * pace
-            message = f"wev heard none of {taps.sent} taps in about {given:.0f} s: Cage had none"
+            _, standing = self.desktop.machine.execute("systemctl is-active touchscreen")
+            message = (
+                f"wev heard none of {taps.sent} taps in about {given:.0f} s, the stand-in"
+                f" {standing.strip()}: {error}"
+            )
             raise AssertionError(message) from error
-        # Twice the gap, as the wait's own pace stretches it, is room for the last to land.
-        retry(lambda _: taps.landed(self.touches("up")), timeout=2 * HEARING)
+        # The gap the taps were sent at, and a spare one, however quiet the host has grown: the
+        # wait's own pace only stretches it.
+        landing = timedelta(seconds=taps.gap) + HEARING
+        retry(lambda _: taps.landed(self.touches("up")), timeout=landing)
 
     def settled(self) -> None:
         """Wait for the windows to stand still, whatever the margin cat does along their tops."""

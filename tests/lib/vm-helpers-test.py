@@ -417,6 +417,18 @@ def test_where_the_rows_read_changed_is_said_in_the_screens_own_rows() -> None:
     assert said == " from 1,2 to 3,3", f"the edge in row 2, columns 1 and 2, was said as {said!r}"
 
 
+def test_a_change_over_several_rows_read_is_boxed_from_its_first_to_its_last() -> None:
+    where = vm_helpers.changed_between_rows(1, 4)
+    said = where(picture("...", "...", "...", "..."), picture("...", "..w", "...", "w.."))
+    assert said == " from 0,1 to 3,4", f"changes in rows 1 and 3 were said as {said!r}"
+
+
+def test_pictures_of_other_sizes_are_said_to_differ_in_size() -> None:
+    where = vm_helpers.changed_between_rows(1, 3)
+    said = where(picture("..", "ww", "ww", ".."), picture("..", "ww", "ww", "..", ".."))
+    assert said == " in its size", f"a picture 4 high against one 5 high was said as {said!r}"
+
+
 def test_a_change_only_outside_the_rows_read_is_said_as_none() -> None:
     where = vm_helpers.changed_between_rows(1, 3)
     said = where(picture("c.", "ww", "ww", ".."), picture(".c", "ww", "ww", "c."))
