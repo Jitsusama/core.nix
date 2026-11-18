@@ -1301,6 +1301,23 @@ QtObject {
         ];
         for (const [what, said, lines, want] of laid)
             holds(`an identifier laid: ${what}`, Identifier.laidWell(said, lines), want);
+        // A cut is kept for the next drawer to ask (RTOIMQ, 2026-11-18),
+        // and what one caller does to its answer reaches no other's.
+        for (const [what, cut, want] of [
+            ["at its marks", () => Identifier.cutAfter("mode=pseudo-gui", "="),
+                ["mode=", "pseudo-gui"]],
+            ["at its figures", () => Identifier.cutAtFigures("192.168.1.10"),
+                ["192.", "168.", "1.", "10"]]
+        ]) {
+            const first = cut();
+            first[0] = "changed";
+            first.push("added");
+            holds(`a kept cut ${what} is the next ask's whole`, cut(), want);
+        }
+        // However many are asked, the kept stay bounded.
+        for (let at = 0; at < Identifier.CUTS_KEPT + 20; at++)
+            Identifier.cutAfter(`kept-${at}`, "-");
+        holds("the cuts kept stay bounded", Identifier.cutsHeld(), Identifier.CUTS_KEPT);
         // The words an identifier is read as, each to stand whole, so a
         // UUID broken at its hyphens reads as whole (RTOIMQ, 2026-11-09).
         const hash = "0c8vy4kd2hxq7rm5ppa6f3jz1nbsw9li";

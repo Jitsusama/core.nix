@@ -85,17 +85,50 @@ function cutWhere(words, breaksAfter) {
     return pieces.filter(piece => piece !== "");
 }
 
+// The cuts made lately, by how they were cut and the words cut, oldest
+// first. A drawer's facts are made again each time it's given, so its
+// store path, command and ids were cut letter by letter on every program
+// drawer shown: a quarter of the drawer's laying in Qt's profiler, and
+// keeping them took 23 to 31% off Chrome's, Slack's and kitty's drawers
+// (RTOIMQ, 2026-11-18). A cut depends on its words alone, never on a
+// width, so one kept is the one made again.
+const cuts = new Map();
+// At most this many are kept, the oldest going first: a drawer cuts tens,
+// so this holds a walk down Programs' many.
+const CUTS_KEPT = 512;
+
+// How many cuts are kept now, which tests/query-keys.qml holds to CUTS_KEPT.
+function cutsHeld() {
+    return cuts.size;
+}
+
+// The cut `how` makes of `words`, kept, as a copy of its own, so a caller
+// changing what it's handed changes no later answer.
+function kept(how, words, cut) {
+    const key = `${how}\u0000${words}`;
+    let pieces = cuts.get(key);
+    if (pieces === undefined) {
+        pieces = cut();
+        if (cuts.size >= CUTS_KEPT) {
+            cuts.delete(cuts.keys().next().value);
+        }
+        cuts.set(key, pieces);
+    }
+    return pieces.slice();
+}
+
 // Words cut after each of `marks`, a figure's dot never among them.
 function cutAfter(words, marks) {
-    return cutWhere(words, (letters, at) => marks.includes(letters[at])
-        && !figureDot(letters, at));
+    return kept(marks, words, () => cutWhere(words, (letters, at) => marks.includes(letters[at])
+        && !figureDot(letters, at)));
 }
 
 // Words cut after their figures' dots, "192." and "168.", so a number
 // too long for a line breaks between its figures before inside one
-// (Y2YBTS, 2026-11-09).
+// (Y2YBTS, 2026-11-09). Kept apart from every cutAfter by a key no marks
+// make.
 function cutAtFigures(words) {
-    return cutWhere(words, figureDot);
+    return kept("\u0001figures", words, () => cutWhere(words, figureDot));
 }
 
 // Words cut to their letters, each mark kept with the letter before it
