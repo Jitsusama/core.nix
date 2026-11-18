@@ -525,26 +525,66 @@ def test_a_talk_left_in_normal_opens_typing_after_its_last_letter(shell: Shell) 
     found(shell, "listening quest", "Listening Quest")
     shell.send_key("ret")
     shell.launcher_until(lambda shown: shown["asking"])
-    shell.send_chars("hi")
-    shell.launcher_until(lambda shown: shown["typed"] == "hi")
     try:
+        shell.send_chars("hi")
+        shell.launcher_until(lambda shown: shown["typed"] == "hi")
         shell.send_key("left")
         shell.launcher_until(lambda shown: shown["caret"] == 1)
         shell.send_key("esc")
         shell.launcher_until(lambda shown: shown["mode"] == "normal" and shown["caret"] == 0)
-        shell.close_launcher()
-        found(shell, "listening quest", "Listening Quest")
-        shell.send_key("ret")
-        shell.launcher_until(lambda shown: shown["asking"])
-        shell.send_chars("x")
+        talked_again(shell, "x")
         shell.launcher_until(lambda shown: shown["typed"] in ("hix", "hxi", "xhi"))
         assert shell.showing()["typed"] == "hxi", shell.showing()
     finally:
-        # Ctrl+U clears to the caret, wherever the talk's three letters left it.
-        for _ in range(3):
-            shell.send_key("right")
-        shell.send_key("ctrl-u")
-        shell.launcher_until(lambda shown: shown["typed"] == "")
+        talk_cleared(shell)
+
+
+def test_a_talk_left_after_i_opens_typing_where_i_took_it(shell: Shell) -> None:
+    """A talk left in insert by i, nothing typed, opens again typing before the letter it rests on.
+
+    i goes into insert without moving the caret, so only the save as the mode changes keeps
+    it; without it, Escape's keeps it after the letter ("hix" rather than "hxi").
+    """
+    found(shell, "listening quest", "Listening Quest")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["asking"])
+    try:
+        shell.send_chars("hi")
+        shell.launcher_until(lambda shown: shown["typed"] == "hi")
+        shell.send_key("esc")
+        shell.launcher_until(lambda shown: shown["mode"] == "normal" and shown["caret"] == 1)
+        shell.send_chars("i")
+        shell.launcher_until(lambda shown: shown["mode"] == "insert" and shown["caret"] == 1)
+        talked_again(shell, "x")
+        shell.launcher_until(lambda shown: shown["typed"] in ("hix", "hxi", "xhi"))
+        assert shell.showing()["typed"] == "hxi", shell.showing()
+    finally:
+        talk_cleared(shell)
+
+
+def talked_again(shell: Shell, letters: str) -> None:
+    """Shut the launcher, open Listening Quest's talk again, and type `letters` as it opens."""
+    shell.close_launcher()
+    found(shell, "listening quest", "Listening Quest")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["asking"])
+    shell.send_chars(letters)
+
+
+def talk_cleared(shell: Shell) -> None:
+    """Empty Listening Quest's talk whatever a failure left it in, so no case after inherits it.
+
+    The talk opens again typing however it was left, and Ctrl+U clears to the caret, which
+    five Rights take past what any case here types.
+    """
+    shell.close_launcher()
+    found(shell, "listening quest", "Listening Quest")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["asking"])
+    for _ in range(5):
+        shell.send_key("right")
+    shell.send_key("ctrl-u")
+    shell.launcher_until(lambda shown: shown["typed"] == "")
 
 
 @pytest.mark.usefixtures("at_shots_scale")
@@ -2499,6 +2539,8 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     shell.launcher_until(lambda shown: not shown["line"]["up"])
     shell.as_account(line)
     shell.launcher_until(lambda shown: shown["line"]["keys"] and shown["line"]["typed"] == words)
+    # Typing again where it left off, after the last letter, not on it as normal rested.
+    assert shell.showing()["line"]["caret"] == len(words), shell.showing()["line"]
     # Ctrl+R * attaches what's selected and Ctrl+R + what's copied, each a row under the
     # window's, the line's words as they were.
     attach_both(shell, said_over)

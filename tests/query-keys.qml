@@ -2450,8 +2450,15 @@ QtObject {
         // between (RCTRF8, 2026-11-17).
         holds("a caret kept from insert stays where it is", Typing.kept(true, "hi", 1), 1);
         holds("one kept from normal goes after its letter", Typing.kept(false, "hi", 1), 2);
-        holds("and on its first letter, after that", Typing.kept(false, "hi", 0), 1);
         holds("but never past an empty line", Typing.kept(false, "", 0), 0);
+        // Escape at the line's start leaves normal on 0, as one past it does.
+        const atStart = { at: 0, text: "hi" };
+        holds("left from the line's start, it opens there",
+            Typing.kept(false, "hi", 0, atStart), 0);
+        holds("left from one past it, after the first letter",
+            Typing.kept(false, "hi", 0, { at: 1, text: "hi" }), 1);
+        holds("moved since, after its letter", Typing.kept(false, "hi", 1, atStart), 2);
+        holds("or the words changed since", Typing.kept(false, "i", 0, atStart), 1);
         holds("normal's caret rests on the last letter", Typing.resting("sound", 5), 4);
         holds("and on an empty line at its start", Typing.resting("", 0), 0);
         holds("a find narrowed says how far", Typing.noteOf("", "3 found", true), "3 found");
