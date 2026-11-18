@@ -169,14 +169,17 @@ without a rebuild:
   without being printed twice.
 - **Only the command's escapes.** Words a command shows are anyone's to
   set: a device's name, a network's, a path, a message from a server.
-  Words drawn through the kit's pen, its layout or its wait lose every
-  control character but the line break, with or without ink, and a tab
-  is drawn as a space, so none can retitle the window, clear the screen
-  or draw over a line. A table's cell, a list's row, a fact, a link and a
-  wait's words are held to one line, a line break drawn as a space, so no
-  field draws a record of its own. A command that writes words another
-  way, through `say`, draws them through the pen first. The JSON forms
-  keep the words as they are, escaped as JSON escapes them.
+  Words drawn through the kit's pen lose every control character but
+  the line break, with or without ink, a tab drawn as a space, and the
+  marks that reorder text right to left, so none can retitle the window,
+  clear the screen, draw over a line or draw a name backwards. The kit's
+  layout and its wait hold the words they're given to one line besides,
+  a line break drawn as a space: a table's cell, a list's row, a fact, a
+  link, prose wrapped at its inset and a wait's words, so no field draws
+  a record of its own. `say` writes what it's given as it is, so a
+  command saying words from outside through it draws them through the
+  pen or `layout::one_line` first. The JSON forms keep the words as they
+  are, escaped as JSON escapes them.
 
 ## How It Reads
 
