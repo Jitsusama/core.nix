@@ -16,24 +16,36 @@
 //! so to everything the command started: on 17 November a cargo test
 //! ended at 18:20 and two of its shells, one ignoring TERM, kept the turn
 //! until they were killed by hand at 19:26, holding a switch Joel waited
-//! on for 51 minutes. Now night-shift stays as the command's parent and
-//! the parent of whatever it leaves, as a child subreaper, and once the
-//! command ends it sends TERM to all of that, kills what is left after
-//! `LEFTOVERS_GRACE`, and lets go. The same happens when night-shift is
-//! sent HUP, INT or TERM, and when its caller dies, which the kernel tells
-//! it with TERM, so a killed session takes its turn's work with it.
+//! on for 51 minutes. Now night-shift stays as the command's parent and,
+//! as a child subreaper, the parent of whatever it leaves. Once the
+//! command ends it sends TERM to what is left, kills what is still there
+//! after `LEFTOVERS_GRACE`, and lets go.
+//!
+//! HUP and TERM sent to night-shift go on to the command, which gets the
+//! grace to end before what is left is ended the same way, and
+//! night-shift then ends by the signal, as the command it once became
+//! would have. INT isn't passed on: a terminal's Ctrl-C reaches the
+//! command itself, in night-shift's process group, and the command
+//! decides. A turn's caller dying ends it as TERM does, the kernel saying
+//! so, so a killed session takes its turn's work with it; work meant to
+//! outlive its caller starts the turn under systemd, as
+//! `systemd-run --user night-shift turn ...`. Killed outright,
+//! night-shift can end nothing, but the lock goes with it and the command
+//! is sent TERM.
 //!
 //! `--ahead` marks a job Joel waits on, such as a switch's build: while
-//! one waits, others leave a free turn to it, so it goes next whoever
-//! asked first.
+//! one waits, others leave a free turn to it for up to
+//! `AHEAD_IS_LEFT_AT_MOST`, so it goes next whoever asked first, and one
+//! that is stopped or stuck holds nobody back for long.
 //!
 //! The command's output is its own: what night-shift says goes to stderr,
-//! and its status is the command's, or 128 and the signal's number when a
-//! signal ended it. `--wait-at-most SECONDS` gives up waiting with status
-//! 75, so a caller can try again later.
+//! and its status is the command's. `--wait-at-most SECONDS` gives up
+//! waiting with status 75, so a caller can try again later.
 
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::fs::{self, File, TryLockError};
+use std::io;
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
@@ -44,6 +56,14 @@ use terminal_kit::{Exit, Failure};
 /// How often a waiting job looks whether the turn is free: a heavy job
 /// runs minutes, so a second's lateness taking it costs nothing.
 pub const LOOK_EVERY: Duration = Duration::from_secs(1);
+
+/// How often a job Joel waits on looks, so it takes a turn the moment
+/// it's free.
+const AHEAD_LOOKS_EVERY: Duration = Duration::from_millis(100);
+
+/// How long a free turn is left to a job Joel waits on, in which it
+/// looks 30 times: one that hasn't taken it by then is stopped or stuck.
+pub const AHEAD_IS_LEFT_AT_MOST: Duration = Duration::from_secs(3);
 
 /// How long what a command leaves running gets to end on TERM before it
 /// is killed: git and the like give back their locks in well under it.
@@ -139,43 +159,34 @@ fn stat(pid: &str) -> Option<Vec<String>> {
     Some(after.split(' ').map(str::to_owned).collect())
 }
 
-/// When a process started, in the kernel's ticks since boot, which tells
-/// it apart from a later one given the same number.
-fn started(pid: &str) -> Option<String> {
-    stat(pid)?.get(19).cloned()
+/// When a process started, in the kernel's ticks since boot, the 22nd
+/// field of its stat, which tells it apart from a later one given the
+/// same number.
+fn started(pid: &str) -> Option<u64> {
+    stat(pid)?.get(19)?.parse().ok()
 }
 
 /// The name of a job Joel waits on that waits for the turn, other than
-/// this process, so it goes next. A file whose process has gone is
-/// removed.
+/// this process. A file whose process has gone, or that this process
+/// can't see, as from another PID namespace, is passed over but left,
+/// since it may be another's to remove.
 pub fn next(runtime: &Path) -> Option<String> {
     let own = std::process::id().to_string();
     let files = fs::read_dir(aheads(runtime)).ok()?;
     for file in files.flatten() {
         let pid = file.file_name().to_string_lossy().into_owned();
-        if pid == own {
+        if pid == own || pid.starts_with('.') {
             continue;
         }
         let noted = fs::read_to_string(file.path()).unwrap_or_default();
         let Some((name, since)) = noted.trim().split_once('\t') else {
             continue;
         };
-        if started(&pid).as_deref() == Some(since) {
+        if started(&pid).is_some_and(|ticks| since.parse() == Ok(ticks)) {
             return Some(name.to_owned());
         }
-        let _ = fs::remove_file(file.path());
     }
     None
-}
-
-/// Who a waiting job waits for: the holder, and a job Joel waits on
-/// that goes before it.
-pub fn whose(runtime: &Path) -> String {
-    let has = holder(runtime);
-    match next(runtime) {
-        Some(next) => format!("{has}, then {next}, which Joel waits on"),
-        None => has,
-    }
 }
 
 /// A job waiting `--ahead`'s file, there from before its first look
@@ -183,13 +194,18 @@ pub fn whose(runtime: &Path) -> String {
 struct Ahead(PathBuf);
 
 impl Ahead {
-    fn wait(runtime: &Path, name: &str) -> std::io::Result<Self> {
+    fn wait(runtime: &Path, name: &str) -> io::Result<Self> {
         let pid = std::process::id().to_string();
-        let since =
-            started(&pid).ok_or_else(|| std::io::Error::other("can't read its own start"))?;
+        let since = started(&pid).ok_or_else(|| io::Error::other("can't read its own start"))?;
         fs::create_dir_all(aheads(runtime))?;
+        // Written whole beside it, then named, so a reader never finds
+        // half of it.
+        let writing = aheads(runtime).join(format!(".{pid}"));
+        fs::write(&writing, format!("{name}\t{since}\n"))?;
         let file = aheads(runtime).join(&pid);
-        fs::write(&file, format!("{name}\t{since}\n"))?;
+        fs::rename(&writing, &file).inspect_err(|_| {
+            let _ = fs::remove_file(&writing);
+        })?;
         Ok(Ahead(file))
     }
 }
@@ -200,11 +216,52 @@ impl Drop for Ahead {
     }
 }
 
+/// What one look at the turn found.
+pub enum Look {
+    /// This process has the turn.
+    Had,
+    /// Another job has it.
+    Taken,
+    /// It's free, and left to this job Joel waits on, which goes first.
+    Left(String),
+}
+
+/// Looks once at the turn, taking it when it's free, unless a job Joel
+/// waits on waits for it too. `left` is when this job first left it so,
+/// which bounds how long it does.
+pub fn look(
+    lock: &File,
+    runtime: &Path,
+    ahead: bool,
+    left: &mut Option<Instant>,
+) -> io::Result<Look> {
+    match lock.try_lock() {
+        Ok(()) => {}
+        Err(TryLockError::WouldBlock) => {
+            *left = None;
+            return Ok(Look::Taken);
+        }
+        Err(TryLockError::Error(error)) => return Err(error),
+    }
+    if ahead {
+        return Ok(Look::Had);
+    }
+    let Some(next) = next(runtime) else {
+        return Ok(Look::Had);
+    };
+    if left.get_or_insert_with(Instant::now).elapsed() >= AHEAD_IS_LEFT_AT_MOST {
+        return Ok(Look::Had);
+    }
+    lock.unlock()?;
+    Ok(Look::Left(next))
+}
+
 // std links libc, so these come from it.
 unsafe extern "C" {
     fn prctl(option: i32, ...) -> i32;
-    fn getppid() -> i32;
     fn kill(pid: i32, signal: i32) -> i32;
+    fn raise(signal: i32) -> i32;
+    fn signal(signal: i32, handler: usize) -> usize;
     fn waitpid(pid: i32, status: *mut i32, options: i32) -> i32;
     fn sigemptyset(set: *mut SignalSet) -> i32;
     fn sigaddset(set: *mut SignalSet, signal: i32) -> i32;
@@ -229,8 +286,10 @@ const SIG_SETMASK: i32 = 2;
 const SIGHUP: i32 = 1;
 const SIGINT: i32 = 2;
 const SIGKILL: i32 = 9;
+const SIGPIPE: i32 = 13;
 const SIGTERM: i32 = 15;
 const SIGCHLD: i32 = 17;
+const SIG_DFL: usize = 0;
 const WNOHANG: i32 = 1;
 
 /// Asks the kernel for TERM when this process's parent dies.
@@ -256,7 +315,10 @@ fn hold_signals() -> SignalSet {
 }
 
 /// Lets every signal through again, as a command expects to start: a
-/// held signal stays held across exec, and std doesn't let it go.
+/// held signal stays held across exec, and std's spawn keeps the
+/// parent's on purpose ("Inherit the signal mask from the parent rather
+/// than resetting it", in 1.97's sys/process/unix/unix.rs), so the
+/// command saw HUP, INT and TERM held until this did.
 fn hold_none() {
     let mut none = SignalSet([0; 16]);
     // SAFETY: both calls are async-signal-safe and write only the set
@@ -279,18 +341,17 @@ fn signal_within(set: &SignalSet, most: Duration) -> Option<i32> {
     (signal > 0).then_some(signal)
 }
 
-/// Reaps every child that has ended, giving `top`'s status if it was one.
-fn reap(top: i32) -> Option<ExitStatus> {
-    let mut status = None;
+/// Reaps every child that has ended, keeping `top`'s status if it was one.
+fn reap(top: i32, status: &mut Option<ExitStatus>) {
     loop {
         let mut raw = 0;
         // SAFETY: waitpid writes only the status it is given.
         let pid = unsafe { waitpid(-1, &raw mut raw, WNOHANG) };
         if pid <= 0 {
-            return status;
+            return;
         }
         if pid == top {
-            status = Some(ExitStatus::from_raw(raw));
+            *status = Some(ExitStatus::from_raw(raw));
         }
     }
 }
@@ -331,112 +392,103 @@ fn descendants() -> Vec<i32> {
     below
 }
 
-fn signal_all(pids: &[i32], signal: i32) {
-    for pid in pids {
-        // SAFETY: kill takes any pid and signal, and only reports errors.
-        unsafe { kill(*pid, signal) };
-    }
+fn send(pid: i32, signal: i32) {
+    // SAFETY: kill takes any pid and signal, and only reports errors.
+    unsafe { kill(pid, signal) };
 }
 
-/// Ends everything below this process: TERM, then KILL once the grace
-/// passes, reaping as it goes. Gives how many there were, and `top`'s
-/// status if it ended meanwhile.
-fn end_what_is_left(top: i32) -> (usize, Option<ExitStatus>) {
-    let mut status = reap(top);
-    let left = descendants();
-    if left.is_empty() {
-        return (0, status);
-    }
-    signal_all(&left, SIGTERM);
+/// What ending everything below this process found.
+struct Ended {
+    /// Processes other than the command, which it left running.
+    left: usize,
+    /// Those that hadn't ended even once killed.
+    stuck: Vec<i32>,
+}
+
+/// Ends everything below this process, reaping as it goes. Those there
+/// at the first look are sent TERM; each is killed once it has been seen
+/// for the grace, so a process started meanwhile, such as a TERM trap's
+/// cleanup, gets the grace too. Gives up after three graces, since a
+/// process stuck in the kernel can't be ended and the turn mustn't wait
+/// on it.
+fn end_what_is_left(top: i32, status: &mut Option<ExitStatus>) -> Ended {
     let began = Instant::now();
+    let mut seen: HashMap<i32, Instant> = HashMap::new();
+    let mut stuck = Vec::new();
+    let mut first = true;
     loop {
-        status = status.or(reap(top));
+        reap(top, status);
         let now = descendants();
         if now.is_empty() {
             break;
         }
-        if began.elapsed() >= LEFTOVERS_GRACE {
-            signal_all(&now, SIGKILL);
+        for pid in &now {
+            seen.entry(*pid).or_insert_with(|| {
+                if first {
+                    send(*pid, SIGTERM);
+                }
+                Instant::now()
+            });
+            if seen[pid].elapsed() >= LEFTOVERS_GRACE {
+                send(*pid, SIGKILL);
+            }
         }
-        if began.elapsed() >= LEFTOVERS_GRACE * 2 {
+        first = false;
+        if began.elapsed() >= LEFTOVERS_GRACE * 3 {
+            stuck = now;
             break;
         }
         // Polled: a process ending says so only to its parent, and these
         // may be any process's below.
         thread::sleep(Duration::from_millis(50));
     }
-    (left.len(), status.or(reap(top)))
+    reap(top, status);
+    Ended {
+        left: seen.keys().filter(|pid| **pid != top).count(),
+        stuck,
+    }
 }
 
-/// Waits for the turn in `runtime`, runs the job's command, and ends the
-/// process with its status once it and whatever it left have ended.
-/// Returns only when the job doesn't start, with why: waiting as long as
-/// it was let is worth trying again, 75.
-pub fn take(turn: &Turn, runtime: &Path) -> Result<(), Failure> {
-    let say = |what: &str| eprintln!("night-shift {}: {what}", turn.name);
-    let failed = |what: &str, error: &dyn std::fmt::Display| {
-        Failure::new(Exit::Failed, format!("night-shift {}: {what}", turn.name))
-            .because(error.to_string())
-    };
-    let caller = std::os::unix::process::parent_id();
-    term_when_parent_dies();
-    fs::create_dir_all(runtime)
-        .map_err(|error| failed(&format!("can't make {}", runtime.display()), &error))?;
-    // Opened close-on-exec, as std opens every file, so it stays here.
-    let lock = File::create(runtime.join("lock"))
-        .map_err(|error| failed("can't open the lock", &error))?;
-    let ahead = if turn.ahead {
-        Some(Ahead::wait(runtime, &turn.name).map_err(|error| failed("can't go ahead", &error))?)
-    } else {
-        None
-    };
-    let began = Instant::now();
-    let mut told: Option<String> = None;
-    loop {
-        let tried = if ahead.is_none() && next(runtime).is_some() {
-            Err(TryLockError::WouldBlock)
-        } else {
-            lock.try_lock()
-        };
-        match tried {
-            Ok(()) => break,
-            Err(TryLockError::WouldBlock) => {
-                let who = whose(runtime);
-                if told.as_ref() != Some(&who) {
-                    say(&format!("waiting for the turn, which {who} has"));
-                    told = Some(who);
-                }
-                if turn
-                    .wait_at_most
-                    .is_some_and(|most| began.elapsed() >= most)
-                {
-                    return Err(Failure::new(
-                        Exit::TryAgain,
-                        format!(
-                            "night-shift {}: not started, having waited as long as it was let",
-                            turn.name
-                        ),
-                    )
-                    .because("another heavy job still has the turn; try again later"));
-                }
-                thread::sleep(LOOK_EVERY);
-            }
-            Err(TryLockError::Error(error)) => {
-                return Err(failed("can't take the lock", &error));
-            }
+/// Ends this process by `signal`, as the command it stands for was, for
+/// the signals that end a process without a core; for others, or should
+/// it live on, it fails with 128 and the signal's number, as a shell
+/// would say.
+fn end_by(name: &str, ended: i32) -> Failure {
+    if [SIGHUP, SIGINT, SIGKILL, SIGPIPE, SIGTERM].contains(&ended) {
+        // SAFETY: signal sets the default action, std having ignored
+        // SIGPIPE, and raise then sends it; both only report errors.
+        unsafe {
+            signal(ended, SIG_DFL);
+            hold_none();
+            raise(ended);
         }
     }
-    drop(ahead);
-    note(runtime, &turn.name);
-    if told.is_some() {
-        say(&format!(
-            "has the turn after {} s of waiting",
-            began.elapsed().as_secs()
-        ));
-    }
-    let held = hold_signals();
-    // SAFETY: getppid only reads.
-    if u32::try_from(unsafe { getppid() }).ok() != Some(caller) {
+    Failure::passed(
+        u8::try_from(128 + ended).unwrap_or(u8::MAX),
+        format!("night-shift {name}: the command was ended by signal {ended}"),
+    )
+}
+
+/// Says `what` for the turn named `name`, on stderr, where night-shift
+/// says everything.
+fn say(name: &str, what: &str) {
+    eprintln!("night-shift {name}: {what}");
+}
+
+/// A failure of the turn named `name` to do `what`, for `error`.
+fn failed(name: &str, what: &str, error: &dyn std::fmt::Display) -> Failure {
+    Failure::new(Exit::Failed, format!("night-shift {name}: {what}")).because(error.to_string())
+}
+
+/// Waits for the turn in `runtime`, runs the job's command, and ends as
+/// the command ended, once it and whatever it left have. Waiting as long
+/// as it was let is worth trying again, 75.
+pub fn take(turn: &Turn, runtime: &Path) -> Result<(), Failure> {
+    let caller = std::os::unix::process::parent_id();
+    term_when_parent_dies();
+    // A caller gone before the kernel was asked is no longer this one's
+    // parent, and its death sends nothing.
+    if std::os::unix::process::parent_id() != caller {
         return Err(Failure::new(
             Exit::Failed,
             format!(
@@ -445,6 +497,84 @@ pub fn take(turn: &Turn, runtime: &Path) -> Result<(), Failure> {
             ),
         ));
     }
+    fs::create_dir_all(runtime).map_err(|error| {
+        failed(
+            &turn.name,
+            &format!("can't make {}", runtime.display()),
+            &error,
+        )
+    })?;
+    // Opened close-on-exec, as std opens every file, so it stays here,
+    // and held until this process ends, however it ends.
+    let lock = File::create(runtime.join("lock"))
+        .map_err(|error| failed(&turn.name, "can't open the lock", &error))?;
+    wait_for(turn, runtime, &lock)?;
+    note(runtime, &turn.name);
+    run(turn)
+}
+
+/// Waits until this job has the turn, saying once why each time that
+/// changes.
+fn wait_for(turn: &Turn, runtime: &Path, lock: &File) -> Result<(), Failure> {
+    let ahead = if turn.ahead {
+        Some(
+            Ahead::wait(runtime, &turn.name)
+                .map_err(|error| failed(&turn.name, "can't go ahead", &error))?,
+        )
+    } else {
+        None
+    };
+    let every = if turn.ahead {
+        AHEAD_LOOKS_EVERY
+    } else {
+        LOOK_EVERY
+    };
+    let began = Instant::now();
+    let mut told: Option<String> = None;
+    let mut left = None;
+    loop {
+        let said = match look(lock, runtime, turn.ahead, &mut left) {
+            Ok(Look::Had) => break,
+            Ok(Look::Taken) => format!("waiting for the turn, which {} has", holder(runtime)),
+            Ok(Look::Left(next)) => format!("leaving the turn to {next}, which Joel waits on"),
+            Err(error) => return Err(failed(&turn.name, "can't take the lock", &error)),
+        };
+        if told.as_ref() != Some(&said) {
+            say(&turn.name, &said);
+            told = Some(said);
+        }
+        if turn
+            .wait_at_most
+            .is_some_and(|most| began.elapsed() >= most)
+        {
+            return Err(Failure::new(
+                Exit::TryAgain,
+                format!(
+                    "night-shift {}: not started, having waited as long as it was let",
+                    turn.name
+                ),
+            )
+            .because("another heavy job still has the turn; try again later"));
+        }
+        thread::sleep(every);
+    }
+    drop(ahead);
+    if told.is_some() {
+        say(
+            &turn.name,
+            &format!(
+                "has the turn after {} s of waiting",
+                began.elapsed().as_secs()
+            ),
+        );
+    }
+    Ok(())
+}
+
+/// Runs the job's command below this process, and ends as it ended once
+/// it and whatever it left have.
+fn run(turn: &Turn) -> Result<(), Failure> {
+    let held = hold_signals();
     // SAFETY: prctl with these arguments only marks this process.
     unsafe { prctl(PR_SET_CHILD_SUBREAPER, 1u64) };
     let mut command = Command::new(&turn.command[0]);
@@ -458,38 +588,85 @@ pub fn take(turn: &Turn, runtime: &Path) -> Result<(), Failure> {
             Ok(())
         });
     }
-    let child = command
-        .spawn()
-        .map_err(|error| failed(&format!("can't start {}", turn.command[0]), &error))?;
+    let child = command.spawn().map_err(|error| {
+        failed(
+            &turn.name,
+            &format!("can't start {}", turn.command[0]),
+            &error,
+        )
+    })?;
     let top = i32::try_from(child.id()).unwrap_or(i32::MAX);
-    let mut ended_by = None;
+    let (mut status, ended_by) = watch(top, &held);
+    let ended = end_what_is_left(top, &mut status);
+    if ended.left > 0 {
+        say(
+            &turn.name,
+            &format!(
+                "ended {} process{} its command left running",
+                ended.left,
+                if ended.left == 1 { "" } else { "es" }
+            ),
+        );
+    }
+    if !ended.stuck.is_empty() {
+        let pids: Vec<String> = ended.stuck.iter().map(i32::to_string).collect();
+        say(
+            &turn.name,
+            &format!(
+                "lets go of the turn though {} didn't end even when killed",
+                pids.join(", ")
+            ),
+        );
+    }
+    if let Some(signal) = ended_by {
+        return Err(end_by(&turn.name, signal));
+    }
+    let Some(status) = status else {
+        return Err(Failure::new(
+            Exit::Failed,
+            format!(
+                "night-shift {}: the command's end couldn't be read",
+                turn.name
+            ),
+        ));
+    };
+    match (status.code(), status.signal()) {
+        (Some(0), _) => Ok(()),
+        (Some(code), _) => Err(Failure::passed(
+            u8::try_from(code).unwrap_or(1),
+            format!("night-shift {}: the command failed: {status}", turn.name),
+        )),
+        (None, Some(signal)) => Err(end_by(&turn.name, signal)),
+        (None, None) => Err(Failure::new(
+            Exit::Failed,
+            format!(
+                "night-shift {}: the command ended as nothing says: {status}",
+                turn.name
+            ),
+        )),
+    }
+}
+
+/// Waits for the command `top` to end, giving its status, or for a
+/// signal that ends the turn, which goes on to the command and gives it
+/// the grace to end; INT is the command's to hear from its terminal.
+fn watch(top: i32, held: &SignalSet) -> (Option<ExitStatus>, Option<i32>) {
     let mut status = None;
     while status.is_none() {
-        match signal_within(&held, LOOK_EVERY) {
-            Some(SIGCHLD) | None => status = reap(top),
+        match signal_within(held, LOOK_EVERY) {
+            Some(SIGCHLD | SIGINT) | None => reap(top, &mut status),
             Some(signal) => {
-                ended_by = Some(signal);
-                break;
+                send(top, signal);
+                let given = Instant::now();
+                while status.is_none() && given.elapsed() < LEFTOVERS_GRACE {
+                    signal_within(held, Duration::from_millis(100));
+                    reap(top, &mut status);
+                }
+                return (status, Some(signal));
             }
         }
     }
-    let (left, late) = end_what_is_left(top);
-    let status = status.or(late);
-    if left > 0 {
-        say(&format!(
-            "ended {left} process{} its command left running",
-            if left == 1 { "" } else { "es" }
-        ));
-    }
-    let code = match (ended_by, status) {
-        (Some(signal), _) => 128 + signal,
-        (None, Some(status)) => status
-            .code()
-            .or_else(|| status.signal().map(|signal| 128 + signal))
-            .unwrap_or(1),
-        (None, None) => 1,
-    };
-    std::process::exit(code)
+    (status, None)
 }
 
 #[cfg(test)]
@@ -514,8 +691,21 @@ mod tests {
     }
 
     #[test]
-    fn a_process_reads_its_own_start() {
-        let own = std::process::id().to_string();
-        assert!(started(&own).is_some_and(|ticks| ticks.parse::<u64>().is_ok()));
+    fn a_process_reads_its_own_start_as_the_kernel_counts_it() {
+        // The kernel counts 100 ticks a second, and this test's process
+        // started within the hour before uptime was read.
+        let ticks = started(&std::process::id().to_string()).unwrap();
+        let uptime: f64 = fs::read_to_string("/proc/uptime")
+            .unwrap()
+            .split(' ')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let age = uptime - f64::from(u32::try_from(ticks / 100).unwrap());
+        assert!(
+            (0.0..3600.0).contains(&age),
+            "it read {ticks} ticks, {age} s ago"
+        );
     }
 }
