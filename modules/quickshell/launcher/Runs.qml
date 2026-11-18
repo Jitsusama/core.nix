@@ -92,13 +92,32 @@ Provider {
         stack: "stack"
     })
 
+    // Each state compared in turn, rather than looked up in a list made at
+    // each call: the sort of every run asks at each comparison. Not a
+    // list kept as a property either, since reading one inside a binding
+    // records it as something the binding hangs on at each reading.
     function running(state) {
-        return ["queued", "starting", "running", "idle"].includes(state);
+        return state === "queued" || state === "starting" || state === "running"
+            || state === "idle";
     }
 
     function failed(state) {
-        return ["failed", "errored", "timeout", "idle-timeout", "soft-deadline", "gone"]
-            .includes(state);
+        return state === "failed" || state === "errored" || state === "timeout"
+            || state === "idle-timeout" || state === "soft-deadline" || state === "gone";
+    }
+
+    // Whether any of a run's participants is still at work. Stepped by
+    // index with no function made inside it, since the sort of every run
+    // asks it at each comparison, and the function each asking made was
+    // 22,282 of what Joel's shell made between two collections
+    // (2026-11-17).
+    function busy(run) {
+        const participants = run.participants;
+        for (let at = 0; at < participants.length; at += 1) {
+            if (running(participants[at].state))
+                return true;
+        }
+        return false;
     }
 
     // How a run or participant stands, as a glyph's meaning.
@@ -156,7 +175,7 @@ Provider {
     // work are gone. Read where the rows are, so a session coming or going
     // makes them once.
     function settled(run, sessions) {
-        if (sessions[run.parent] || !run.participants.some(p => running(p.state)))
+        if (sessions[run.parent] || !busy(run))
             return run;
         return Object.assign({}, run, { participants: run.participants.map(p => (running(p.state)
             ? Object.assign({}, p, { state: "gone" }) : p)) });
@@ -165,12 +184,12 @@ Provider {
     // Running first, then the newest.
     readonly property var all: {
         const sorted = Order.sorted(runs.map(run => settled(run, started)), Order.stream(
-            run => String(run.started ?? ""), run => run.participants.some(p => running(p.state))));
+            run => String(run.started ?? ""), busy));
         const sharing = Quiet.sharing;
         const sessions = started;
         const next = {};
         const rows = sorted.map(run => {
-            if (run.participants.some(p => running(p.state)))
+            if (busy(run))
                 return made(run);
             const address = sessions[run.parent]?.live ? sessions[run.parent].address : "";
             const from = [run, address, sharing];
