@@ -1434,6 +1434,78 @@ in
       "..###.##"
     ];
   };
+  # The margin's puppy, a second animal beside the cat, which nothing draws
+  # yet: its poses come first, its own answers to the mouse after the cat
+  # peeks in (WCJQSG, d62dc771). Sitting faces him: a flat crown, its ears
+  # flaring off it and hanging past the muzzle either side where the cat's
+  # stand in points, and its tail up beside it. It's stockier than the cat,
+  # so its poses are held to its own sitting. Its glyph is the dog's, its
+  # poses sharing it as the cat's share the paw.
+  puppySitting = {
+    glyph = nerd "f0a43";
+    console = "d";
+    means = "the margin's puppy, in one of its own poses";
+    pixels = [
+      ".#####.."
+      "#######."
+      "##.#.##."
+      "#######."
+      "#.###.#."
+      "..###..#"
+      ".#####.#"
+      ".##.###."
+    ];
+  };
+  # A play bow in profile, facing along the ground as the cat's walk does:
+  # head low, forelegs flat, rump and tail high, which reads as play.
+  puppyBowing = {
+    glyph = nerd "f0a43";
+    console = "d";
+    means = "the margin's puppy, in one of its own poses";
+    pixels = [
+      "......#."
+      ".....##."
+      "....####"
+      "##.#####"
+      "#.#####."
+      "####.###"
+      "..##.#.#"
+      "#####.##"
+    ];
+  };
+  # Walking as the cat's stride does, legs apart (A) then gathered (B), its
+  # round head and hanging ear keeping it from reading as the cat, on
+  # stubbier legs.
+  puppyWalkingA = {
+    glyph = nerd "f0a43";
+    console = "d";
+    means = "the margin's puppy, in one of its own poses";
+    pixels = [
+      ".......#"
+      "###...#."
+      "####.#.."
+      "#.######"
+      "#######."
+      ".######."
+      ".##..##."
+      "#..##..#"
+    ];
+  };
+  puppyWalkingB = {
+    glyph = nerd "f0a43";
+    console = "d";
+    means = "the margin's puppy, in one of its own poses";
+    pixels = [
+      "......#."
+      "###...#."
+      "####.#.."
+      "#.######"
+      "#######."
+      ".######."
+      ".##..##."
+      ".##..##."
+    ];
+  };
   # The padlock, as locked's is, beside anything typed that stays hidden.
   secret = {
     glyph = nerd "f023";

@@ -11,6 +11,63 @@
   workstation,
   ...
 }:
+let
+  # Whether every pose of one of the margin's animals reads as that one
+  # animal (RSCH-20261113-24R2QV's rule 3, with VKCF3Z's c234c1d4): no lit
+  # pixel stands alone, a diagonal counting as touching, since a lone pixel
+  # at this size reads as dirt, not detail; and each pose's lit pixels are
+  # within 15% of its sitting's, so a tuck or a stretch doesn't read as a
+  # smaller or bigger animal. Each is held to its own sitting, as a puppy is
+  # stockier than the cat.
+  readsAsOne =
+    {
+      check,
+      animal,
+      sitting,
+      poses,
+    }:
+    let
+      glyphs = import ./glyphs.nix { inherit lib; };
+      drawn = lib.filter (name: (glyphs.${name}.pixels or [ ]) != [ ]) poses;
+      missing = lib.subtractLists drawn poses;
+      # Each lit pixel, as its column and row.
+      lit =
+        rows:
+        lib.concatLists (
+          lib.imap0 (
+            y: row:
+            map (x: { inherit x y; }) (
+              lib.filter (x: builtins.substring x 1 row == "#") (lib.range 0 (lib.stringLength row - 1))
+            )
+          ) rows
+        );
+      alone =
+        cells: at:
+        !lib.any (
+          other:
+          other != at
+          && lib.max (other.x - at.x) (at.x - other.x) <= 1
+          && lib.max (other.y - at.y) (at.y - other.y) <= 1
+        ) cells;
+      stray = lib.filter (
+        name: lib.any (alone (lit glyphs.${name}.pixels)) (lit glyphs.${name}.pixels)
+      ) drawn;
+      sat = lib.length (lit (glyphs.${sitting}.pixels or [ ]));
+      # Within 15% of sitting's, in whole pixels: 100 times the gap at most 15
+      # times sitting's.
+      unlike = lib.filter (
+        name:
+        let
+          gap = lib.length (lit glyphs.${name}.pixels) - sat;
+        in
+        100 * lib.max gap (-gap) > 15 * sat
+      ) drawn;
+      said = "stray ${builtins.toJSON stray}, unlike ${builtins.toJSON unlike}, undrawn ${builtins.toJSON missing}";
+    in
+    holds check "The ${animal}'s poses must read as one ${animal}: ${said}." (
+      stray == [ ] && unlike == [ ] && missing == [ ]
+    );
+in
 {
   # Most of the icon font's marks lie past U+FFFF, which a single JSON escape
   # can't reach: written as one, U+F075D read as U+F075 and a stray "d".
@@ -51,6 +108,12 @@
           "walkingB"
           "walkingC"
           "walkingD"
+        ]
+        [
+          "puppyBowing"
+          "puppySitting"
+          "puppyWalkingA"
+          "puppyWalkingB"
         ]
         [
           "heat"
@@ -122,6 +185,10 @@
         "nothingFound"
         "nothingHere"
         "pouncing"
+        "puppyBowing"
+        "puppySitting"
+        "puppyWalkingA"
+        "puppyWalkingB"
         "scruffed"
         "stretching"
         "tailSwish"
@@ -139,16 +206,13 @@
       crooked == [ ] && missing == [ ]
     );
 
-  # Every pose of the margin's cat reads as the same cat (RSCH-20261113-24R2QV's
-  # rule 3, with VKCF3Z's c234c1d4): no lit pixel stands alone, a diagonal
-  # counting as touching, since a lone pixel at this size reads as dirt, not
-  # detail; and each pose's lit pixels are within 15% of sitting's, so a
-  # tuck or a stretch doesn't read as a smaller or bigger animal. A leap's
-  # rise, tuck and fall are drawn, so every fall can take the last.
-  every-cat-pose-reads-as-one-cat =
-    let
-      glyphs = import ./glyphs.nix { inherit lib; };
-      poses = [
+  # Every pose of the margin's cat reads as the same cat (readsAsOne). A
+  # leap's rise, tuck and fall are drawn, so every fall can take the last.
+  every-cat-pose-reads-as-one-cat = readsAsOne {
+    check = "every-cat-pose-reads-as-one-cat";
+    animal = "cat";
+    sitting = "nothingHere";
+    poses = [
         "batting"
         "blinking"
         "curled"
@@ -168,46 +232,22 @@
         "walkingB"
         "walkingC"
         "walkingD"
-      ];
-      drawn = lib.filter (name: (glyphs.${name}.pixels or [ ]) != [ ]) poses;
-      missing = lib.subtractLists drawn poses;
-      # Each lit pixel, as its column and row.
-      lit =
-        rows:
-        lib.concatLists (
-          lib.imap0 (
-            y: row:
-            map (x: { inherit x y; }) (
-              lib.filter (x: builtins.substring x 1 row == "#") (lib.range 0 (lib.stringLength row - 1))
-            )
-          ) rows
-        );
-      alone =
-        cells: at:
-        !lib.any (
-          other:
-          other != at
-          && lib.max (other.x - at.x) (at.x - other.x) <= 1
-          && lib.max (other.y - at.y) (at.y - other.y) <= 1
-        ) cells;
-      stray = lib.filter (
-        name: lib.any (alone (lit glyphs.${name}.pixels)) (lit glyphs.${name}.pixels)
-      ) drawn;
-      sitting = lib.length (lit glyphs.nothingHere.pixels);
-      # Within 15% of sitting's, in whole pixels: 100 times the gap at most 15
-      # times sitting's.
-      unlike = lib.filter (
-        name:
-        let
-          gap = lib.length (lit glyphs.${name}.pixels) - sitting;
-        in
-        100 * lib.max gap (-gap) > 15 * sitting
-      ) drawn;
-      said = "stray ${builtins.toJSON stray}, unlike ${builtins.toJSON unlike}, undrawn ${builtins.toJSON missing}";
-    in
-    holds "every-cat-pose-reads-as-one-cat" "The cat's poses must read as one cat: ${said}." (
-      stray == [ ] && unlike == [ ] && missing == [ ]
-    );
+    ];
+  };
+
+  # Every pose of the margin's puppy reads as the same puppy (readsAsOne),
+  # held to its own sitting, as the cat's are to the cat's.
+  every-puppy-pose-reads-as-one-puppy = readsAsOne {
+    check = "every-puppy-pose-reads-as-one-puppy";
+    animal = "puppy";
+    sitting = "puppySitting";
+    poses = [
+      "puppyBowing"
+      "puppySitting"
+      "puppyWalkingA"
+      "puppyWalkingB"
+    ];
+  };
 
   # A theme that draws text too faint to read doesn't build, by WCAG's ratio
   # or by APCA's lightness contrast. WCAG's black on white is 21:1, and
