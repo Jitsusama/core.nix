@@ -86,6 +86,9 @@ def test_the_system_page_draws_every_machine_live(system_page: Page) -> None:
 # How far under the masthead's foot a row scrolled up to it may land, its
 # own margin and a rounding: further, and it never scrolled to the edge.
 SCROLLED_TO = 40
+# How far over its foot a row may land, from the browser snapping a scroll
+# to whole pixels; a row under the masthead would be over by its height.
+SNAPPED = 1
 
 
 def section_of_the_cursor(page: Page) -> str | None:
@@ -120,7 +123,7 @@ def test_the_keys_and_places_move_the_cursor(system_page: Page) -> None:
         " - document.querySelector('.mast').getBoundingClientRect().bottom"
     )
     assert isinstance(gap, int | float), f"the gap measured {gap!r}, not a number"
-    assert 0 <= gap < SCROLLED_TO, f"the row landed {gap}px below the masthead's foot"
+    assert -SNAPPED < gap < SCROLLED_TO, f"the row landed {gap}px below the masthead's foot"
     if size is not None:
         system_page.set_viewport_size(size)
     keyboard.press("2")
