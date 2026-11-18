@@ -13,7 +13,8 @@
 //! count is read at each of the watch's wakes, once a second while anyone
 //! streams, and added up, so a program that stops and starts the stream
 //! between two lines, as a call does when it changes resolution, is still
-//! counted whole rather than from its last start.
+//! counted whole rather than from its last start. A pause shorter than a
+//! stretch keeps the stretch, so a wake that lands in one loses nothing.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
@@ -196,16 +197,21 @@ pub struct Asked {
     pub controls: Vec<v4l2::Value>,
 }
 
-/// The line said of a streaming camera: its streams by interface, each
-/// named only when there are several, and what was asked of it, or why
-/// that couldn't be read.
+/// The line said of a streaming camera: who streams, each name quoted so
+/// a program can't name itself into the figures, its streams by
+/// interface, each named only when there are several, and what was asked
+/// of it, or why that couldn't be read.
 pub fn line(
     holders: &[String],
     asked: Result<&Asked, &str>,
     gave: &BTreeMap<u32, Result<Gave, String>>,
 ) -> String {
     // Writing to a String can't fail, so what write! returns is dropped.
-    let mut said = format!("streams to {}", holders.join(", "));
+    let mut said = "streams to ".to_owned();
+    for (index, holder) in holders.iter().enumerate() {
+        let between = if index == 0 { "" } else { ", " };
+        let _ = write!(said, "{between}{holder:?}");
+    }
     match asked {
         Ok(asked) => {
             if let Some(format) = &asked.format {
@@ -262,7 +268,7 @@ pub fn line(
 }
 
 /// A camera's stream as the record follows it, from when anyone streams
-/// until nobody does.
+/// until nobody has for a stretch.
 #[derive(Default)]
 struct Stream {
     since: Option<Instant>,
@@ -271,7 +277,8 @@ struct Stream {
     /// The node, held while the stream is, so asking it every ten seconds
     /// doesn't open it each time and wake the watch's own inotify.
     file: Option<File>,
-    unanswered: BTreeSet<u32>,
+    /// Since when nobody has streamed, in a pause.
+    paused: Option<Instant>,
 }
 
 /// What the record follows of a camera's stream.
@@ -279,6 +286,9 @@ pub struct Record {
     sysfs: PathBuf,
     debugfs: PathBuf,
     stream: Stream,
+    /// The controls that didn't answer, kept while the camera is plugged
+    /// in, so each new stream doesn't wait on them again.
+    unanswered: BTreeSet<u32>,
 }
 
 impl Record {
@@ -287,23 +297,29 @@ impl Record {
             sysfs: sysfs.to_owned(),
             debugfs: debugfs.to_owned(),
             stream: Stream::default(),
+            unanswered: BTreeSet::new(),
         }
     }
 
     /// While the camera streams, counts what it gave and, once ten seconds
     /// have passed since the last line, the line to say; the first of a
     /// stream counts from its first wake. A camera not streaming lets go
-    /// of the node and starts afresh.
+    /// of the node at once, and starts afresh once it's been a stretch.
     pub fn now(&mut self, node: &Path, holders: &[String]) -> Option<String> {
         self.at(Instant::now(), node, holders)
     }
 
     fn at(&mut self, at: Instant, node: &Path, holders: &[String]) -> Option<String> {
         if holders.is_empty() {
-            self.stream = Stream::default();
+            self.stream.file = None;
+            let paused = *self.stream.paused.get_or_insert(at);
+            if at.duration_since(paused) >= EVERY {
+                self.stream = Stream::default();
+            }
             return None;
         }
         let stream = &mut self.stream;
+        stream.paused = None;
         let since = *stream.since.get_or_insert_with(|| {
             stream.counted = counted(&self.sysfs, &self.debugfs, node);
             at
@@ -313,9 +329,9 @@ impl Record {
             match fs::read_to_string(stats) {
                 Ok(text) => match counts(&text) {
                     Some(counts) => tally.add(counts, at),
-                    None => tally.unread = Some("uvcvideo's count didn't read".to_owned()),
+                    None => tally.unread = Some(format!("{} didn't read", stats.display())),
                 },
-                Err(error) => tally.unread = Some(error.to_string()),
+                Err(error) => tally.unread = Some(format!("{}: {error}", stats.display())),
             }
         }
         if at.duration_since(since) < EVERY {
@@ -337,7 +353,7 @@ impl Record {
         let asked = Asked {
             format: v4l2::format(file).ok(),
             rate: v4l2::asked_rate(file).ok(),
-            controls: v4l2::controls(file, &mut stream.unanswered),
+            controls: v4l2::controls(file, &mut self.unanswered),
         };
         Some(line(holders, Ok(&asked), &gave))
     }
@@ -465,7 +481,7 @@ mod tests {
         )]);
         assert_eq!(
             line(&["chrome".to_owned()], Ok(&asked), &gave),
-            "streams to chrome; MJPG 1920x1080 at 30.0 fps asked; \
+            "streams to \"chrome\"; MJPG 1920x1080 at 30.0 fps asked; \
              gave 15.0 fps, 0 packets in error; \
              auto_exposure=3 (Aperture Priority Mode) exposure_dynamic_framerate=1"
         );
@@ -486,7 +502,7 @@ mod tests {
         ]);
         assert_eq!(
             line(&["chrome".to_owned()], Err("No such device"), &gave),
-            "streams to chrome; can't ask the camera: No such device; \
+            "streams to \"chrome\"; can't ask the camera: No such device; \
              interface 1 gave 30.0 fps, 4 packets in error, restarted; \
              interface 3 gave unknown: Permission denied (os error 13)"
         );
@@ -496,37 +512,97 @@ mod tests {
                 Ok(&Asked::default()),
                 &BTreeMap::new()
             ),
-            "streams to chrome; gave unknown: uvcvideo's count wasn't found"
+            "streams to \"chrome\"; gave unknown: uvcvideo's count wasn't found"
         );
     }
 
     #[test]
-    fn a_stream_is_said_every_ten_seconds_once_it_has_been_counted() {
-        let camera = Camera::new("record-every", "MX Brio 705 for Business");
+    fn a_holder_cant_name_itself_into_the_figures() {
+        let holders = ["x; gave 30.0 fps".to_owned(), "zoom\u{202e}".to_owned()];
+        assert_eq!(
+            line(&holders, Ok(&Asked::default()), &BTreeMap::new()),
+            "streams to \"x; gave 30.0 fps\", \"zoom\\u{202e}\"; \
+             gave unknown: uvcvideo's count wasn't found"
+        );
+    }
+
+    /// A stand-in camera, uvcvideo's count of its stream, and a record.
+    fn streaming(test: &str) -> (Camera, PathBuf, Record) {
+        let camera = Camera::new(test, "MX Brio 705 for Business");
         let debugfs = camera.root.join("debug");
         let stats = debugfs.join("usb/uvcvideo/2-7-10");
         fs::create_dir_all(&stats).unwrap();
-        let count = |frames: u64, errors: u64| {
-            let text = format!("frames:  {frames}\nerrors:  {errors}\ninvalid: 0\n");
-            fs::write(stats.join("stats"), text).unwrap();
-        };
-        let mut record = Record::new(&camera.sysfs, &debugfs);
+        let record = Record::new(&camera.sysfs, &debugfs);
+        (camera, stats.join("stats"), record)
+    }
+
+    fn count(stats: &Path, frames: u64, errors: u64) {
+        let text = format!("frames:  {frames}\nerrors:  {errors}\ninvalid: 0\n");
+        fs::write(stats, text).unwrap();
+    }
+
+    #[test]
+    fn a_stream_is_said_every_ten_seconds_once_it_has_been_counted() {
+        let (camera, stats, mut record) = streaming("record-every");
         let holders = ["chrome".to_owned()];
         let start = Instant::now();
-        count(10, 0);
+        count(&stats, 10, 0);
         assert_eq!(record.at(start, &camera.node, &holders), None);
-        count(160, 0);
+        count(&stats, 160, 0);
         let soon = start + Duration::from_secs(5);
         assert_eq!(record.at(soon, &camera.node, &holders), None);
-        count(160, 2);
+        count(&stats, 160, 2);
         let later = start + Duration::from_secs(12);
         // The stand-in node is a folder, which answers no V4L2 call.
         assert_eq!(
             record.at(later, &camera.node, &holders).as_deref(),
-            Some("streams to chrome; gave 12.5 fps, 2 packets in error")
+            Some("streams to \"chrome\"; gave 12.5 fps, 2 packets in error")
         );
-        // Once nobody streams, the next stream counts from its own start.
+        assert!(record.stream.file.is_some(), "the node isn't held");
+        // Nobody streams: the node is let go of at once, and after a
+        // stretch the next stream counts from its own start.
         assert_eq!(record.at(later, &camera.node, &[]), None);
-        assert_eq!(record.at(later + EVERY, &camera.node, &holders), None);
+        assert!(record.stream.file.is_none(), "the node is still held");
+        assert_eq!(record.at(later + EVERY, &camera.node, &[]), None);
+        let again = later + EVERY + Duration::from_secs(1);
+        assert_eq!(record.at(again, &camera.node, &holders), None);
+    }
+
+    #[test]
+    fn a_pause_shorter_than_a_stretch_keeps_its_frames() {
+        let (camera, stats, mut record) = streaming("record-pause");
+        let holders = ["chrome".to_owned()];
+        let start = Instant::now();
+        count(&stats, 0, 0);
+        assert_eq!(record.at(start, &camera.node, &holders), None);
+        count(&stats, 120, 0);
+        let paused = start + Duration::from_secs(4);
+        assert_eq!(record.at(paused, &camera.node, &holders), None);
+        assert_eq!(record.at(paused, &camera.node, &[]), None);
+        // It starts again at a new size, and uvcvideo counts afresh.
+        count(&stats, 90, 0);
+        let later = start + Duration::from_secs(10);
+        assert_eq!(
+            record.at(later, &camera.node, &holders).as_deref(),
+            Some("streams to \"chrome\"; gave 21.0 fps, 0 packets in error, restarted")
+        );
+    }
+
+    #[test]
+    fn a_count_that_cant_be_read_says_where_it_was_looked_for() {
+        let (camera, stats, mut record) = streaming("record-unread");
+        let holders = ["chrome".to_owned()];
+        let start = Instant::now();
+        assert_eq!(record.at(start, &camera.node, &holders), None);
+        let said = record.at(start + EVERY, &camera.node, &holders).unwrap();
+        let missing = format!("gave unknown: {}: No such file", stats.display());
+        assert!(said.contains(&missing), "{said}");
+        // Once it can be read, the next stretch counts from there.
+        count(&stats, 0, 0);
+        let later = start + EVERY + Duration::from_secs(1);
+        assert_eq!(record.at(later, &camera.node, &holders), None);
+        count(&stats, 300, 0);
+        let said = record.at(later + EVERY, &camera.node, &holders).unwrap();
+        assert!(said.contains("gave 30.0 fps"), "{said}");
     }
 }

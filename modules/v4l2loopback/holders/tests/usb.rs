@@ -5,7 +5,7 @@
 
 use std::fs::{self, File};
 use std::os::unix::fs::symlink;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::thread::sleep;
 use std::time::Duration;
@@ -29,8 +29,14 @@ struct Watch {
 
 impl Watch {
     /// A camera with its control and streaming interfaces, and the watch
-    /// started on it.
+    /// started on it, its node standing in as a folder.
     fn start(name: &str) -> Self {
+        Self::on(name, None)
+    }
+
+    /// The same, with a real device's node for the camera's, which a
+    /// program holding it is seen holding, as only a node under /dev is.
+    fn on(name: &str, device: Option<&Path>) -> Self {
         let root = std::env::temp_dir().join(format!("holders-usb-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let sysfs = root.join("sys");
@@ -48,13 +54,17 @@ impl Watch {
             fs::write(folder.join("bInterfaceSubClass"), format!("{sub}\n")).unwrap();
             fs::write(folder.join("bAlternateSetting"), " 0\n").unwrap();
         }
-        let video = sysfs.join("class/video4linux/video0");
+        // The node stands in as a folder, which inotify watches the same.
+        let node = device.map_or_else(|| root.join("dev/video0"), Path::to_owned);
+        if device.is_none() {
+            fs::create_dir_all(&node).unwrap();
+        }
+        let video = sysfs
+            .join("class/video4linux")
+            .join(node.file_name().unwrap());
         fs::create_dir_all(&video).unwrap();
         symlink(usb.join("2-1:1.0"), video.join("device")).unwrap();
         fs::write(video.join("name"), "MX Brio 705 for Business\n").unwrap();
-        // The node stands in as a folder, which inotify watches the same.
-        let node = root.join("dev/video0");
-        fs::create_dir_all(&node).unwrap();
         let folder = root.join("camera-holders");
         fs::create_dir_all(&folder).unwrap();
         // What a run killed mid-write would have left.
@@ -132,26 +142,43 @@ fn the_file_is_there_while_the_camera_is_and_names_nobody_idle() {
 
 #[test]
 fn while_the_camera_streams_its_log_says_what_it_gave() {
-    let watch = Watch::start("record");
+    // /dev/full stands in for the camera's node: nothing else holds it.
+    let watch = Watch::on("record", Some(Path::new("/dev/full")));
     watch.until_there(true, "no file while the camera's there");
     watch.count(0);
     // This test holds the camera, and it streams.
     let _held = File::open(&watch.node).unwrap();
     fs::write(&watch.streaming, " 1\n").unwrap();
+    for _ in 0..100 {
+        if !fs::read_to_string(&watch.file).unwrap().is_empty() {
+            break;
+        }
+        sleep(Duration::from_millis(50));
+    }
+    assert_ne!(
+        fs::read_to_string(&watch.file).unwrap(),
+        "",
+        "the test isn't named"
+    );
     sleep(Duration::from_secs(2));
     watch.count(300);
-    // The first line comes ten seconds after the stream was first seen.
-    for _ in 0..300 {
+    // The first line comes ten seconds after the stream was first seen, so
+    // it has counted 300 frames over ten to eleven seconds.
+    for _ in 0..600 {
         let log = fs::read_to_string(&watch.log).unwrap();
         if let Some(line) = log.lines().next() {
-            assert!(line.starts_with("streams to "), "{line}");
-            assert!(line.contains(" fps, 0 packets in error"), "{line}");
-            assert!(!line.contains("unknown"), "{line}");
+            assert!(line.starts_with("streams to \""), "{line}");
+            let rate: f64 = line
+                .split_once("gave ")
+                .and_then(|(_, rest)| rest.split_once(" fps, 0 packets in error"))
+                .and_then(|(rate, _)| rate.parse().ok())
+                .unwrap_or_else(|| panic!("{line}"));
+            assert!((25.0..=30.0).contains(&rate), "{line}");
             return;
         }
         sleep(Duration::from_millis(50));
     }
-    panic!("nothing said of the stream in fifteen seconds");
+    panic!("nothing said of the stream in thirty seconds");
 }
 
 #[test]

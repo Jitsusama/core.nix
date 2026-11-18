@@ -239,8 +239,12 @@ fn watch(
         // keep waiting, so it comes after the file is right.
         if let Some(record) = record.as_deref_mut() {
             let streaming: Vec<String> = shown.iter().cloned().collect();
-            if let Some(line) = record.now(node, &streaming) {
-                println!("{line}");
+            // A log that can't be written to mustn't stop the watch, which
+            // would leave the file naming whoever streamed.
+            if let Some(line) = record.now(node, &streaming)
+                && let Err(error) = writeln!(io::stdout().lock(), "{line}")
+            {
+                eprintln!("can't say how it streams: {error}");
             }
         }
         said = Some(shown);
