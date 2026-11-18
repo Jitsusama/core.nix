@@ -126,6 +126,30 @@ impl System {
         })
     }
 
+    /// One machine's record, as `system.machine/1`: its record as the
+    /// daemon holds it (`records`), with where and when it was read; none
+    /// when no part lists a machine by that name.
+    pub fn machine(&self, name: &str) -> Option<Value> {
+        let key = format!("machine:{name}");
+        let mut said = self
+            .records()
+            .into_iter()
+            .find(|record| record["key"] == key.as_str())?;
+        said["schema"] = json!("system.machine/1");
+        said["machine"] = json!(self.machine);
+        said["read_at"] = json!(self.read_at);
+        Some(said)
+    }
+
+    /// Why the machines couldn't be read, when they couldn't, so a machine
+    /// asked for by name is said unanswered rather than unknown.
+    pub fn machines_unread(&self) -> Option<&str> {
+        self.parts
+            .iter()
+            .find(|part| part.name == "machines" && part.health == Health::Unread)
+            .map(|part| part.says.as_str())
+    }
+
     /// The record split as the daemon holds it, in the shell's daemon
     /// interface: the whole's `summary`, a `part` record for each part and
     /// one for each thing in a part, a `machine` for now. Each holds only
@@ -239,6 +263,32 @@ mod tests {
             address: None,
             ties: Value::Null,
         }
+    }
+
+    #[test]
+    fn one_machine_answers_its_record_where_and_when_it_was_read() {
+        let mut machines = part("machines", Health::Good);
+        machines.things = vec![machine("laptop", Health::Watch)];
+        let system = system(vec![machines]);
+        let said = system.machine("laptop").expect("the laptop is listed");
+        assert_eq!(said["schema"], "system.machine/1");
+        assert_eq!(said["key"], "machine:laptop");
+        assert_eq!(said["health"], "watch");
+        assert_eq!(said["part"], "machines", "the part that lists it");
+        assert!(said.get("ties").is_some(), "its ties, as SKILL.md says");
+        assert_eq!(said["machine"], system.machine);
+        assert_eq!(said["read_at"], system.read_at);
+        assert_eq!(system.machine("Laptop"), None, "named as the node names it");
+        assert_eq!(system.machines_unread(), None);
+    }
+
+    #[test]
+    fn machines_that_couldnt_be_read_say_why() {
+        let mut machines = part("machines", Health::Unread);
+        machines.says = "mycelium isn't answering".to_owned();
+        let system = system(vec![machines]);
+        assert_eq!(system.machine("laptop"), None);
+        assert_eq!(system.machines_unread(), Some("mycelium isn't answering"));
     }
 
     #[test]
