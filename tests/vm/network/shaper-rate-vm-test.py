@@ -147,37 +147,38 @@ class Rig:
         )
         return self.answered(name)
 
-    def ping_reading(self, name: str) -> tuple[float, list[int], list[str]]:
-        """Give an app's median round trip, the rates the shaper sent at meanwhile, and why.
+    def ping_reading(self, name: str, said: list[str]) -> tuple[float, list[int]]:
+        """Give an app's median round trip, and the rates the shaper sent at meanwhile.
 
         The rate is read once a second while the pings go, since any one reading can
         find the shaper just past a cut, under where it settles: on a busy builder, one
-        reading taken after the pings was 5974 kbit/s, against 6000. Each reading whose
-        plateau or reason differs from the one before is kept, as the journal tells only
-        where a spell of limits begins and ends.
+        reading taken after the pings was 5974 kbit/s, against 6000. Each reading's
+        plateau and reason go into `said` as they're read, under the guest's second as
+        the trace names it, as the journal tells only where a spell of limits begins
+        and ends, and a reading that fails partway still leaves what it heard.
         """
         self.client.succeed(
             f"systemd-run -M alice@ --user --collect --slice=app.slice --unit=ping-{name}"
             f" -p StandardOutput=file:/tmp/{name}.txt {BIN}/ping -n -c 40 -i 0.25 {self.far}"
         )
         rates: list[int] = []
-        said: list[str] = []
 
         def ended(_last_try: bool) -> bool:
             """Read the rate and why, and say whether the pings are done."""
+            second = int(self.client.succeed("date +%s")) % 1000
             link = self.link()
             rates.append(int(link.get("up", 0)))
             heard = link.get("heard") or {}
-            line = f"plateau {heard.get('plateau')}: {heard.get('why')}"
-            if not said or not said[-1].endswith(line):
-                said.append(f"{rates[-1]} kbit/s, {line}")
+            plateau = heard.get("plateau")
+            plateau = None if plateau is None else round(plateau)
+            said.append(f"{second:03d} {rates[-1]} kbit/s, plateau {plateau}: {heard.get('why')}")
             status, _ = self.client.execute(
                 f"systemctl -M alice@ --user is-active --quiet ping-{name}"
             )
             return status != 0
 
         retry(ended, timeout=SENDING)
-        return self.answered(name), rates, said
+        return self.answered(name), rates
 
     def answered(self, name: str) -> float:
         """Give the median round trip of the pings an app wrote to its file, in ms."""
@@ -287,13 +288,16 @@ def returned(dropped: Rig) -> Rig:
 
 def test_finds_the_connection(loaded: Rig) -> None:
     """The shaper finds the connection and an app's pings stay near it."""
-    shaped, rates, said = loaded.ping_reading("shaped")
-    rate = statistics.median(rates)
-    # The rates show where it settled, not what took it there.
-    if not SETTLED < rate < PROBED or shaped >= SHAPED:
+    said: list[str] = []
+    try:
+        shaped, rates = loaded.ping_reading("shaped", said)
+        rate = statistics.median(rates)
+        assert SETTLED < rate < PROBED, rates
+        assert shaped < SHAPED, f"{shaped} ms shaped at {rates} kbit/s"
+    except Exception:
+        # The rates show where it settled, not what took it there.
         print("while the pings went, the shaper said:", *said, loaded.trace(), sep="\n")
-    assert SETTLED < rate < PROBED, rates
-    assert shaped < SHAPED, f"{shaped} ms shaped at {rates} kbit/s"
+        raise
 
 
 def test_app_upload(loaded: Rig) -> None:
