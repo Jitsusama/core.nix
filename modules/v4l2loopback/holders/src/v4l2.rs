@@ -185,11 +185,19 @@ pub struct Controls {
 /// uvcvideo asks the camera itself for a control that changes on its own,
 /// such as exposure while it's automatic, and waits five seconds on one
 /// that doesn't answer. Any other failure is asked again next time, since
-/// a camera may refuse a control only while its stream starts.
+/// a camera may refuse a control only while its stream starts. Asking
+/// what the next control is asks the camera its range the first time, so
+/// one that times out there is kept too, by the id it was asked after,
+/// and the list ends there from then on.
 pub fn controls(file: &File, unanswered: &mut BTreeSet<u32>) -> Controls {
     let mut values = Vec::new();
     let mut id = NEXT;
     loop {
+        // An id asked after carries NEXT, which no control's own id does.
+        if unanswered.contains(&id) {
+            let cut_short = Some("the next control was unanswered".to_owned());
+            return Controls { values, cut_short };
+        }
         let mut queried = Queried {
             id,
             kind: 0,
@@ -203,10 +211,10 @@ pub fn controls(file: &File, unanswered: &mut BTreeSet<u32>) -> Controls {
         };
         // SAFETY: QUERY_CONTROL names a v4l2_queryctrl, as Queried is.
         if let Err(error) = unsafe { ask(file, QUERY_CONTROL, &mut queried) } {
-            // The list ends with EINVAL, and a node that isn't V4L2's has
-            // none; anything else ends it early, with the control unknown.
-            let ended = matches!(error.raw_os_error(), Some(EINVAL | ENOTTY));
-            let cut_short = (!ended).then(|| error.to_string());
+            if unanswering(&error) {
+                unanswered.insert(id);
+            }
+            let cut_short = (!ends_the_list(&error)).then(|| error.to_string());
             return Controls { values, cut_short };
         }
         id = queried.id | NEXT;
@@ -229,7 +237,7 @@ pub fn controls(file: &File, unanswered: &mut BTreeSet<u32>) -> Controls {
         };
         // SAFETY: GET_CONTROL names a v4l2_control, as Control is.
         if let Err(error) = unsafe { ask(file, GET_CONTROL, &mut control) } {
-            let timed_out = error.kind() == io::ErrorKind::TimedOut;
+            let timed_out = unanswering(&error);
             if timed_out {
                 unanswered.insert(queried.id);
             }
@@ -258,6 +266,18 @@ pub fn controls(file: &File, unanswered: &mut BTreeSet<u32>) -> Controls {
             item: item.flatten(),
         });
     }
+}
+
+/// Whether the camera didn't answer at all, which uvcvideo says after
+/// waiting five seconds, rather than refusing for now.
+fn unanswering(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::TimedOut
+}
+
+/// Whether a failed query is the list's end: EINVAL past the last control,
+/// or ENOTTY from a node that isn't V4L2's and has none.
+fn ends_the_list(error: &io::Error) -> bool {
+    matches!(error.raw_os_error(), Some(EINVAL | ENOTTY))
 }
 
 #[cfg(test)]
@@ -310,5 +330,45 @@ mod tests {
         assert_eq!(text(b"MJPG"), "MJPG");
         assert_eq!(text(b"Exposure\0junk"), "Exposure");
         assert_eq!(text(b"Auto\nMode"), "Auto?Mode");
+    }
+
+    #[test]
+    fn only_a_control_that_timed_out_is_kept_as_unanswered() {
+        const ETIMEDOUT: i32 = 110;
+        const EBUSY: i32 = 16;
+        const EPIPE: i32 = 32;
+        const EIO: i32 = 5;
+        let error = io::Error::from_raw_os_error;
+        assert!(unanswering(&error(ETIMEDOUT)));
+        for refused in [EBUSY, EPIPE, EIO, EINVAL] {
+            assert!(!unanswering(&error(refused)), "{refused}");
+        }
+    }
+
+    #[test]
+    fn the_list_ends_with_einval_or_a_node_that_isnt_v4l2s_and_is_cut_short_else() {
+        let error = io::Error::from_raw_os_error;
+        assert!(ends_the_list(&error(EINVAL)));
+        assert!(ends_the_list(&error(ENOTTY)));
+        assert!(!ends_the_list(&error(110)));
+        assert!(!ends_the_list(&error(5)));
+        // /dev/full is no V4L2 node: it has no controls, and isn't cut short.
+        let full = File::open("/dev/full").unwrap();
+        let controls = controls(&full, &mut BTreeSet::new());
+        assert!(controls.values.is_empty());
+        assert_eq!(controls.cut_short, None);
+    }
+
+    #[test]
+    fn a_list_that_stalled_ends_where_it_stalled_from_then_on() {
+        // /dev/full stands in: what's kept is asked before the node is.
+        let full = File::open("/dev/full").unwrap();
+        let mut unanswered = BTreeSet::from([NEXT]);
+        let controls = controls(&full, &mut unanswered);
+        assert!(controls.values.is_empty());
+        assert_eq!(
+            controls.cut_short.as_deref(),
+            Some("the next control was unanswered")
+        );
     }
 }

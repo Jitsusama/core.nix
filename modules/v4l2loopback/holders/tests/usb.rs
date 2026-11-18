@@ -37,6 +37,16 @@ impl Watch {
     /// The same, with a real device's node for the camera's, which a
     /// program holding it is seen holding, as only a node under /dev is.
     fn on(name: &str, device: Option<&Path>) -> Self {
+        Self::saying(name, device, false)
+    }
+
+    /// The same, its log and complaints going to /dev/full, which takes no
+    /// write, as a journal stream that has gone takes none.
+    fn unheard(name: &str, device: &Path) -> Self {
+        Self::saying(name, Some(device), true)
+    }
+
+    fn saying(name: &str, device: Option<&Path>, unheard: bool) -> Self {
         let root = std::env::temp_dir().join(format!("holders-usb-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let sysfs = root.join("sys");
@@ -73,17 +83,22 @@ impl Watch {
         let stats = debugfs.join("usb/uvcvideo/2-7-1/stats");
         fs::create_dir_all(stats.parent().unwrap()).unwrap();
         let log = root.join("log");
-        let program = Command::new(env!("CARGO_BIN_EXE_loopback-holders"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_loopback-holders"));
+        command
             .arg("--usb")
             .arg("--sysfs")
             .arg(&sysfs)
             .arg("--debugfs")
             .arg(&debugfs)
             .arg(&node)
-            .arg(&folder)
-            .stdout(File::create(&log).unwrap())
-            .spawn()
-            .unwrap();
+            .arg(&folder);
+        if unheard {
+            let full = || File::options().write(true).open("/dev/full").unwrap();
+            command.stdout(full()).stderr(full());
+        } else {
+            command.stdout(File::create(&log).unwrap());
+        }
+        let program = command.spawn().unwrap();
         Self {
             file: folder.join("MX Brio 705 for Business"),
             streaming: usb.join("2-1:1.1/bAlternateSetting"),
@@ -110,6 +125,25 @@ impl Watch {
             sleep(Duration::from_millis(50));
         }
         panic!("{what}");
+    }
+
+    /// Waits up to five seconds for the camera's file to name someone, or
+    /// nobody.
+    fn until_named(&self, someone: bool, what: &str) {
+        for _ in 0..100 {
+            if fs::read_to_string(&self.file).is_ok_and(|named| named.is_empty() != someone) {
+                return;
+            }
+            sleep(Duration::from_millis(50));
+        }
+        panic!("{what}");
+    }
+
+    /// Stops the program as systemd does.
+    fn stop(&self) {
+        let pid = i32::try_from(self.program.id()).unwrap();
+        // SAFETY: a plain call, to our own child.
+        assert_eq!(unsafe { kill(pid, SIGTERM) }, 0);
     }
 
     fn ended(&mut self) -> Option<i32> {
@@ -143,23 +177,13 @@ fn the_file_is_there_while_the_camera_is_and_names_nobody_idle() {
 #[test]
 fn while_the_camera_streams_its_log_says_what_it_gave() {
     // /dev/full stands in for the camera's node: nothing else holds it.
-    let watch = Watch::on("record", Some(Path::new("/dev/full")));
+    let mut watch = Watch::on("record", Some(Path::new("/dev/full")));
     watch.until_there(true, "no file while the camera's there");
     watch.count(0);
     // This test holds the camera, and it streams.
     let _held = File::open(&watch.node).unwrap();
     fs::write(&watch.streaming, " 1\n").unwrap();
-    for _ in 0..100 {
-        if !fs::read_to_string(&watch.file).unwrap().is_empty() {
-            break;
-        }
-        sleep(Duration::from_millis(50));
-    }
-    assert_ne!(
-        fs::read_to_string(&watch.file).unwrap(),
-        "",
-        "the test isn't named"
-    );
+    watch.until_named(true, "the test isn't named");
     sleep(Duration::from_secs(2));
     watch.count(300);
     // The first line comes ten seconds after the stream was first seen, so
@@ -174,11 +198,36 @@ fn while_the_camera_streams_its_log_says_what_it_gave() {
                 .and_then(|(rate, _)| rate.parse().ok())
                 .unwrap_or_else(|| panic!("{line}"));
             assert!((25.0..=30.0).contains(&rate), "{line}");
+            // Stopped mid-stream, it says the stream's end as it goes.
+            watch.stop();
+            assert_eq!(watch.ended(), Some(0));
+            let log = fs::read_to_string(&watch.log).unwrap();
+            let last = log.lines().last().unwrap();
+            assert!(last.ends_with("; then the watch stopped"), "{log}");
             return;
         }
         sleep(Duration::from_millis(50));
     }
     panic!("nothing said of the stream in thirty seconds");
+}
+
+#[test]
+fn a_log_that_takes_no_write_doesnt_stop_the_watch() {
+    let mut watch = Watch::unheard("unheard", Path::new("/dev/full"));
+    watch.until_there(true, "no file while the camera's there");
+    watch.count(0);
+    let held = File::open(&watch.node).unwrap();
+    fs::write(&watch.streaming, " 1\n").unwrap();
+    watch.until_named(true, "the test isn't named");
+    // Its first line, and its complaint, come ten seconds on; neither lands.
+    sleep(Duration::from_secs(11));
+    assert!(
+        watch.program.try_wait().unwrap().is_none(),
+        "the watch stopped"
+    );
+    drop(held);
+    fs::write(&watch.streaming, " 0\n").unwrap();
+    watch.until_named(false, "the watch no longer follows the camera");
 }
 
 #[test]
@@ -194,9 +243,7 @@ fn the_file_goes_with_the_node() {
 fn the_file_goes_when_it_is_stopped() {
     let mut watch = Watch::start("stopped");
     watch.until_there(true, "no file while the camera's there");
-    let pid = i32::try_from(watch.program.id()).unwrap();
-    // SAFETY: a plain call, to our own child.
-    assert_eq!(unsafe { kill(pid, SIGTERM) }, 0);
+    watch.stop();
     assert_eq!(watch.ended(), Some(0));
     assert!(!watch.file.exists());
 }

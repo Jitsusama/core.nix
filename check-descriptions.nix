@@ -5017,15 +5017,17 @@
     goes or the watch is stopped; a holder's name is one printable line, and only a unit in its
     cgroup is left out; and while it streams, the running watch says every ten seconds the frames a
     second uvcvideo counted it giving to a holder it sees; its line adds them up across a stream
-    started afresh between wakes, says a stopped stream once more and counts the next from its
-    own start, quotes each holder, gives the packets in error, each interface by number when
-    there are several, why a count is unknown, and the format and controls under the names
-    v4l2-ctl gives them, a control it can't read said so, asked by the kernel's own call numbers
-    and fields
+    started afresh between wakes, says a stream's end, as it stops, the camera goes or the watch
+    is stopped, up to the last wake that saw it, even with no count, and counts the next from its
+    own start, survives a log that takes no write, quotes each holder, gives the packets in
+    error, each interface by number when there are several, why a count is unknown, and the
+    format and controls under the names v4l2-ctl gives them, a control it can't read said so, one that timed out, or a list that
+    stalled, not asked again, asked by the kernel's own call numbers and fields
   '';
   usb-camera-holders-may-open-the-camera = ''
     the USB camera watch's unit lets it open a camera to read, under its ProtectClock, with no
-    private devices or closed device policy hiding the camera, and no write to one allowed
+    private devices hiding the camera, and no device it names given write or mknod, an entry
+    without access counting as all of it
   '';
   v4l2loopback-holders-passes-clippy = ''
     clippy finds nothing in the cameras' holders watcher or its tests

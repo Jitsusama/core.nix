@@ -201,6 +201,14 @@ fn complain(what: std::fmt::Arguments) {
     let _ = writeln!(io::stderr().lock(), "{what}");
 }
 
+/// Says a line of how the camera streams. A log that can't be written to
+/// mustn't stop the watch.
+fn say(line: &str) {
+    if let Err(error) = writeln!(io::stdout().lock(), "{line}") {
+        complain(format_args!("can't say how it streams: {error}"));
+    }
+}
+
 /// Says who holds the node until it goes. With sysfs, the node is a USB
 /// camera's, named only while it streams, and with a record, said in the
 /// log as it does.
@@ -247,11 +255,8 @@ fn watch(
         // keep waiting, so it comes after the file is right.
         if let Some(record) = record.as_deref_mut() {
             let streaming: Vec<String> = shown.iter().cloned().collect();
-            // A log that can't be written to mustn't stop the watch.
-            if let Some(line) = record.now(node, &streaming)
-                && let Err(error) = writeln!(io::stdout().lock(), "{line}")
-            {
-                complain(format_args!("can't say how it streams: {error}"));
+            if let Some(line) = record.now(node, &streaming) {
+                say(&line);
             }
         }
         said = Some(shown);
@@ -278,7 +283,7 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
     })?;
     tidy(&output);
     let mut record = Record::new(&options.sysfs, &options.debugfs);
-    watch(
+    let ended = watch(
         events,
         &node,
         &output,
@@ -286,6 +291,15 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
         Some(&options.sysfs),
         Some(&mut record),
     );
+    // A stream the watch ends during has its last seconds said too, since
+    // a camera dropping off mid-call is what the record is for.
+    let then = match ended {
+        Ended::Gone => "the camera went",
+        Ended::Stopped => "the watch stopped",
+    };
+    if let Some(line) = record.ended(then) {
+        say(&line);
+    }
     match fs::remove_file(&output) {
         Err(error) if error.kind() != io::ErrorKind::NotFound => Err(Failure::new(
             Exit::Failed,
@@ -301,7 +315,7 @@ fn loopback(events: &mut Events, options: &Options) {
     let nobody = BTreeSet::new();
     let say_nobody = || {
         if let Err(error) = write(&options.output, &nobody) {
-            eprintln!("{}: {error}", options.output.display());
+            complain(format_args!("{}: {error}", options.output.display()));
         }
     };
     tidy(&options.output);

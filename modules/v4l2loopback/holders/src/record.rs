@@ -210,11 +210,7 @@ pub fn line(
     gave: &BTreeMap<u32, Result<Gave, String>>,
 ) -> String {
     // Writing to a String can't fail, so what write! returns is dropped.
-    let mut said = "streams to ".to_owned();
-    for (index, holder) in holders.iter().enumerate() {
-        let between = if index == 0 { "" } else { ", " };
-        let _ = write!(said, "{between}{holder:?}");
-    }
+    let mut said = named(holders);
     match asked {
         Ok(asked) => {
             if let Some(format) = &asked.format {
@@ -281,11 +277,24 @@ pub fn line(
     said
 }
 
+/// Who streams, each name quoted.
+fn named(holders: &[String]) -> String {
+    let mut said = "streams to ".to_owned();
+    for (index, holder) in holders.iter().enumerate() {
+        let between = if index == 0 { "" } else { ", " };
+        let _ = write!(said, "{between}{holder:?}");
+    }
+    said
+}
+
 /// A camera's stream as the record follows it, from when anyone streams
 /// until a wake sees nobody does.
 #[derive(Default)]
 struct Stream {
+    /// When its stretch since the last line began.
     since: Option<Instant>,
+    /// The last wake that saw it streaming.
+    seen: Option<Instant>,
     counted: BTreeMap<u32, PathBuf>,
     tallies: BTreeMap<u32, Tally>,
     /// Who streamed when it was last seen, for the line said once it stops.
@@ -342,24 +351,20 @@ impl Record {
     /// While the camera streams, counts what it gave and, once ten seconds
     /// have passed since the last line, the line to say; the first of a
     /// stream counts from its first wake. Once it stops, the last line
-    /// says what it gave since, the node is let go of, and the next stream
-    /// starts afresh.
+    /// says so, the node is let go of, and the next stream starts afresh.
     pub fn now(&mut self, node: &Path, holders: &[String]) -> Option<String> {
         self.at(Instant::now(), node, holders)
     }
 
+    /// The last line of a stream the watch ends during, saying what then
+    /// happened, such as the camera going.
+    pub fn ended(&mut self, then: &str) -> Option<String> {
+        self.stop(then)
+    }
+
     fn at(&mut self, at: Instant, node: &Path, holders: &[String]) -> Option<String> {
         if holders.is_empty() {
-            let mut stopped = std::mem::take(&mut self.stream);
-            stopped.since?;
-            // uvcvideo keeps a stopped stream's count until the next starts.
-            stopped.count(at);
-            let gave = stopped.take(at);
-            if !gave.values().any(Result::is_ok) {
-                return None;
-            }
-            let asked = Asked::default();
-            return Some(line(&stopped.holders, Ok(&asked), &gave) + "; then stopped");
+            return self.stop("stopped");
         }
         let stream = &mut self.stream;
         holders.clone_into(&mut stream.holders);
@@ -368,6 +373,7 @@ impl Record {
             at
         });
         stream.count(at);
+        stream.seen = Some(at);
         if at.duration_since(since) < EVERY {
             return None;
         }
@@ -386,6 +392,26 @@ impl Record {
             controls: v4l2::controls(file, &mut self.unanswered),
         };
         Some(line(holders, Ok(&asked), &gave))
+    }
+
+    /// Says a stream followed has ended, with what it gave since its last
+    /// line up to the last wake that saw it, so none of the time after it
+    /// stopped is in the rate; a stretch begun at that wake is left out.
+    /// It's said even when nothing was counted, so a stream's end is told
+    /// from the watch's.
+    fn stop(&mut self, then: &str) -> Option<String> {
+        let mut stopped = std::mem::take(&mut self.stream);
+        let seen = stopped.seen?;
+        stopped.tallies.retain(|_, tally| {
+            tally.unread.is_some() || tally.last.is_some_and(|(_, from)| seen > from)
+        });
+        let gave = stopped.take(seen);
+        let said = if gave.is_empty() && !stopped.counted.is_empty() {
+            named(&stopped.holders)
+        } else {
+            line(&stopped.holders, Ok(&Asked::default()), &gave)
+        };
+        Some(format!("{said}; then {then}"))
     }
 }
 
@@ -598,22 +624,32 @@ mod tests {
             Some("streams to \"chrome\"; gave 12.5 fps, 2 packets in error")
         );
         assert!(record.stream.file.is_some(), "the node isn't held");
-        // Nobody streams: what it gave since is said, the node let go of.
         count(&stats, 190, 2);
-        let stopped = later + Duration::from_secs(2);
+        let last = later + Duration::from_secs(1);
+        assert_eq!(record.at(last, &camera.node, &holders), None);
+        // Nobody streams: what it gave up to the last wake that saw it is
+        // said, none of the second since, and the node is let go of.
+        let stopped = last + Duration::from_secs(1);
         assert_eq!(
             record.at(stopped, &camera.node, &[]).as_deref(),
-            Some("streams to \"chrome\"; gave 15.0 fps, 0 packets in error; then stopped")
+            Some("streams to \"chrome\"; gave 30.0 fps, 0 packets in error; then stopped")
         );
         assert!(record.stream.file.is_none(), "the node is still held");
         assert_eq!(record.at(stopped, &camera.node, &[]), None);
         // An hour on, with no wake between, the next stream counts from its
-        // own start rather than the last one's.
+        // own start rather than the last one's: carried on from 190, its
+        // 300 would read 11.0 fps.
         count(&stats, 0, 0);
         let again = stopped + Duration::from_secs(3600);
         assert_eq!(record.at(again, &camera.node, &holders), None);
+        count(&stats, 150, 0);
         let soon = again + Duration::from_secs(5);
         assert_eq!(record.at(soon, &camera.node, &holders), None);
+        count(&stats, 300, 0);
+        assert_eq!(
+            record.at(again + EVERY, &camera.node, &holders).as_deref(),
+            Some("streams to \"chrome\"; gave 30.0 fps, 0 packets in error")
+        );
     }
 
     #[test]
@@ -623,18 +659,23 @@ mod tests {
         let start = Instant::now();
         count(&stats, 0, 0);
         assert_eq!(record.at(start, &camera.node, &holders), None);
-        // A stream seen stopped before it was counted says nothing.
-        assert_eq!(record.at(start, &camera.node, &[]), None);
+        // A stream seen stopped before it was counted says only that.
+        assert_eq!(
+            record.at(start, &camera.node, &[]).as_deref(),
+            Some("streams to \"chrome\"; then stopped")
+        );
         assert_eq!(record.at(start, &camera.node, &holders), None);
         count(&stats, 120, 0);
-        let stopped = start + Duration::from_secs(4);
+        let last = start + Duration::from_secs(4);
+        assert_eq!(record.at(last, &camera.node, &holders), None);
+        let stopped = last + Duration::from_secs(1);
         assert_eq!(
             record.at(stopped, &camera.node, &[]).as_deref(),
             Some("streams to \"chrome\"; gave 30.0 fps, 0 packets in error; then stopped")
         );
         // It starts again at a new size, and uvcvideo counts afresh, past
         // where the last stream's count was; none of the pause is counted.
-        let again = start + Duration::from_secs(5);
+        let again = stopped + Duration::from_secs(1);
         count(&stats, 10, 0);
         assert_eq!(record.at(again, &camera.node, &holders), None);
         count(&stats, 310, 0);
@@ -660,5 +701,37 @@ mod tests {
         count(&stats, 300, 0);
         let said = record.at(later + EVERY, &camera.node, &holders).unwrap();
         assert!(said.contains("gave 30.0 fps"), "{said}");
+    }
+
+    #[test]
+    fn a_stream_is_said_to_end_though_its_count_cant_be_read() {
+        let (camera, stats, mut record) = streaming("record-unread-end");
+        let holders = ["chrome".to_owned()];
+        let start = Instant::now();
+        assert_eq!(record.at(start, &camera.node, &holders), None);
+        let soon = start + Duration::from_secs(3);
+        assert_eq!(record.at(soon, &camera.node, &holders), None);
+        let said = record.at(soon, &camera.node, &[]).unwrap();
+        let missing = format!("gave unknown: {}: No such file", stats.display());
+        assert!(said.contains(&missing), "{said}");
+        assert!(said.ends_with("; then stopped"), "{said}");
+    }
+
+    #[test]
+    fn a_stream_the_watch_ends_during_says_what_it_gave_and_what_happened() {
+        let (camera, stats, mut record) = streaming("record-ended");
+        let holders = ["chrome".to_owned()];
+        let start = Instant::now();
+        assert_eq!(record.ended("the camera went"), None);
+        count(&stats, 0, 0);
+        assert_eq!(record.at(start, &camera.node, &holders), None);
+        count(&stats, 60, 0);
+        let last = start + Duration::from_secs(2);
+        assert_eq!(record.at(last, &camera.node, &holders), None);
+        assert_eq!(
+            record.ended("the camera went").as_deref(),
+            Some("streams to \"chrome\"; gave 30.0 fps, 0 packets in error; then the camera went")
+        );
+        assert_eq!(record.ended("the camera went"), None);
     }
 }
