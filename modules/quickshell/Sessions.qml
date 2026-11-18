@@ -207,8 +207,13 @@ Singleton {
     // scope in the slice it runs in, so every session goes with it. One
     // opened aside, or where it goes, goes without the activation token
     // niri hands what it spawns, which kitty would spend on taking the
-    // focus once its window shows; but one Go To opens `focused` keeps it,
-    // since taking Joel to it is what he asked.
+    // focus once its window shows. One Go To opens `focused` is focused by
+    // the shell itself once niri lists it (focusOpened), since taking Joel
+    // to it is what he asked, and the token can't take him: the kitty that
+    // draws the window was started long before, by its unit, and the token
+    // stays with the client asking it, so the window opened where it was
+    // told, unfocused (Joel, 2026-11-18 10:44: "it isn't coming to the
+    // forefront").
     // They're numbered on from the moment this shell started, in
     // milliseconds, not from nought: a shell started again, as every switch
     // does, would otherwise name its first window as one still open from
@@ -223,6 +228,21 @@ Singleton {
     // run by a case of its own (the-sessions-kitty-is-asked-only-its-own-way).
     readonly property string opening: String(Qt.resolvedUrl("opens-in-sessions.sh"))
         .replace(/^file:\/\//, "")
+    // Each window Go To opened focused, by its app id, with when it was
+    // asked, until niri lists it. Plain, so holding it notifies nothing.
+    readonly property var focusing: ({})
+    // Focuses the window Go To opened once niri lists it, as long as it
+    // comes within the patience a second Go To waits, so a window that
+    // took longer than that, after Joel has moved on, doesn't take the
+    // focus from what he's doing by then.
+    function focusOpened(window) {
+        const asked = focusing[window.opened ?? ""];
+        if (asked === undefined)
+            return;
+        delete focusing[window.opened];
+        if (Date.now() - asked < attachPatience)
+            Niri.act({ FocusWindow: { id: window.id } });
+    }
     function inSessions(kind, rest, into, named) {
         openings++;
         const classed = named ?? `${kind}.${openings}`;
@@ -232,6 +252,8 @@ Singleton {
             if (into.column !== null)
                 asked.column = into.column;
             Niri.act({ OpenNextWindowOn: asked });
+            if (into.focused === true)
+                focusing[classed] = Date.now();
         }
         const untold = kind === "pi-spawned" || (placed && into.focused !== true)
             ? ["env", "-u", "XDG_ACTIVATION_TOKEN", "-u", "DESKTOP_STARTUP_ID"] : [];
@@ -718,6 +740,7 @@ Singleton {
         // The window a session being reopened opens in, placed once niri
         // has laid it out, and the next begun; never a terminal of Joel's.
         function onWindowOpenedOrChanged(window) {
+            root.focusOpened(window);
             if (root.reopening && window.session === true)
                 root.reopenedWindow(window.id);
             root.placeOpened();
