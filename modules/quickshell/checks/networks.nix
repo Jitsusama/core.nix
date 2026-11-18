@@ -131,12 +131,16 @@ in
     touch $out
   '';
 
-  # Traffic, asked after a gap as each step into Network asks it, reads one
-  # sysfs file for an interface it already knows rather than all four again
-  # (modules/quickshell/tests/traffic-reads.qml), since each is a blocking read.
-  # A build has no sysfs, so the case writes lo's folder in sys/lo, made here.
+  # Traffic, asked after a gap as each step into Network asks it, reads no
+  # file and waits on none, and loads one sysfs file in the background for
+  # an interface it already knows rather than all four again
+  # (modules/quickshell/tests/traffic-reads.qml), since a blocking read of
+  # each cost the step up to 133 ms under load. A build has no sysfs, so the
+  # case writes lo's folder in sys/lo, made here.
   traffic-reads-a-known-interface-once-after-a-gap =
     pkgs.runCommandLocal "traffic-reads-a-known-interface-once-after-a-gap" { }
+      # Kept in Nix because each line copies a file Nix gives it beside the
+      # case, or sets what the shell runs it with.
       ''
         mkdir -p launcher runtime sys/lo && chmod 700 runtime
         ${copied [
@@ -150,6 +154,7 @@ in
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         cp ${../tests/traffic-reads.qml} shell.qml
         cp ${../../../tests/lib/Expect.js} Expect.js
+        cp ${../../../tests/lib/Until.qml} Until.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export FONTCONFIG_FILE=${noFonts}
         ${shellFolderLint}

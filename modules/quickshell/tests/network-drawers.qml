@@ -94,8 +94,9 @@ ShellRoot {
             drawerOf(address.rows[0]) === null, JSON.stringify(drawerOf(address.rows[0])));
         Expect.expect("a connection's drawer not yet made says it's still to be read",
             address.rows[0].drawerUnread?.() === true, String(address.rows[0].drawerUnread));
-        waits.until("the connections' facts made unasked",
-            () => glanced(0).length > 0 && glanced(1).length > 0, root.made);
+        waits.until("the connections' facts made unasked, and the counters loaded",
+            () => glanced(0).length > 0 && glanced(1).length > 0 && traffic.reads !== null,
+            root.made);
     }
 
     function made() {
@@ -182,11 +183,12 @@ ShellRoot {
         networks.links = links;
 
         // Two reads a second apart, sparked, as the traffic shown each
-        // second keeps them.
+        // second keeps them, the last load among them.
         Expect.expect("the machine's own traffic is named Traffic",
             Words.name("traffic") === "Traffic", Words.name("traffic"));
         traffic.series = { moved: [1000, 3000], in: [1000, 2000], out: [0, 1000],
             at: [0, 1000] };
+        traffic.sparked = traffic.reads.last;
         const speed = traffic.answer("speed");
         Expect.expect("speed answers", speed !== null && speed.rows.length >= 3, JSON.stringify(speed));
         sayMore("Traffic", [speed].map(said => Object.assign({}, said, { name: "Traffic",

@@ -6,13 +6,15 @@
 // the internet takes to answer while the line is quiet, each server a step
 // in), what's Dropped, and each Connection, the tunnels and bridges too.
 //
-// The counters are read from one kernel file, /proc/net/dev, when asked,
-// and a rate is the difference between two reads, so the last is kept with
-// its time. While the answer is shown it's read again once a second, and
-// never more: nothing is read for a key, and nothing is spawned. What the
-// line can carry is never measured here; it's read from the file the shaper
-// writes, and a machine without the shaper simply has no Connection or
-// Round trip.
+// The counters are read from one kernel file, /proc/net/dev, and a rate is
+// the difference between two reads, so the last is kept with its time. It's
+// loaded in the background as the launcher opens and once a second while
+// it's open, and an answer says what was last loaded, or, when that's
+// old, that it's from when last read while it loads again: nothing is
+// read or waited on for a key, and nothing is spawned. What the line can carry is
+// never measured here; it's read from the file the shaper writes, loaded
+// beside the counters, and a machine without the shaper simply has no
+// Connection or Round trip.
 import qs
 import Quickshell.Io
 import QtQuick
@@ -92,9 +94,9 @@ Provider {
     }
 
     // The last two reads, { last, before }, each { at, all }, where `all`
-    // is every interface's counters by name. Read again once a second at
-    // most, or a moment after a read with nothing recent before it, so a
-    // rate stands for now as soon as it can.
+    // is every interface's counters by name, or null until the first load
+    // lands. Loaded again a moment after a load with nothing recent before
+    // it, so a rate stands for now as soon as it can.
     property var reads: null
     // Each spark's reads, the newest last, when each was read, and the
     // read they last took.
@@ -108,10 +110,13 @@ Provider {
     // again then, which names its index. The kernel gives each interface
     // made a new index unless whoever makes it asks for one, which none of
     // the tunnels here do, so the same uevent is the same interface; one
-    // that can't be read proves nothing and has all four read again. A
-    // step into Network asks
-    // after a gap each time, and four files for each interface, each a
-    // blocking read, took a median 6 ms and up to 49 ms of it (2026-11-17).
+    // that can't be read proves nothing and has all four read again. Each
+    // file is loaded in the background, one after another, never while an
+    // answer waits: a step into Network asks after a gap each time, and a
+    // blocking read of each took a median 6 to 14 ms and up to 133 under
+    // load (2026-11-17), of a step that has 50 ms for all of it. Until its
+    // files land, an interface first seen is left out, and one no longer
+    // sure is what it was.
     property var interfaceKinds: ({})
     readonly property int second: 1000
     readonly property int soonest: 200
@@ -123,68 +128,186 @@ Provider {
         return kept !== null && kept.before !== null && kept.last.at - kept.before.at <= stale;
     }
 
-    function sample() {
+    // Whether the last load is recent enough to say what's happening now.
+    // An answer asked when it isn't, as a terminal's `launcher show` asks
+    // with the launcher closed, or as it opens before its load lands, says
+    // its figures are from when they were last read, loads them again, and
+    // is still reading (Provider.stillReading), so a terminal asks again,
+    // until a rate of now has landed and every interface's files with it.
+    // A load stamped ahead of now, as a clock stepped back leaves it, isn't.
+    function current() {
+        const age = reads === null ? Infinity : Date.now() - reads.last.at;
+        return age >= 0 && age <= stale;
+    }
+
+    // Reading ends once a rate of now has landed and every interface's
+    // files with it, though they took long enough that it's old again: an
+    // answer asked then reads afresh.
+    function caughtUp() {
+        if (stillReading && settled(reads) && probing === null && asking.length === 0)
+            stillReading = false;
+    }
+
+    // Whether the counters' last load failed, so an answer asked for
+    // figures loads again without reading on, as there's nothing coming to
+    // wait for.
+    property bool unreadable: false
+
+    // The seconds since the machine started, as last loaded, or 0 before
+    // they have been.
+    function uptime() {
+        const seconds = Number(up.text().trim().split(/\s+/)[0]);
+        return seconds > 0 ? seconds : 0;
+    }
+
+    // Where each file is, which its case points at files of its own
+    // (tests/traffic-reads.qml), so it can tell an answer reads none.
+    property string counterFile: "/proc/net/dev"
+    property string statusFile: "/run/shaper/status.json"
+    property string uptimeFile: "/proc/uptime"
+
+    // When the load in flight was asked, or 0 with none; each FileView
+    // starts one as it's made.
+    property real loadAsked: Date.now()
+
+    // Loads the counters and the shaper's status again, in the background.
+    // A FileView asked again while it loads loads again, and both land a
+    // moment apart, a rate over that moment; so while one asked within the
+    // last second is in flight, as an opening and an answer both ask, or
+    // for a tenth of a second after one lands, nothing more is loaded.
+    function look() {
+        const now = Date.now();
+        if (now - loadAsked < second
+            || reads !== null && Math.abs(now - reads.last.at) < soonest / 2)
+            return;
+        loadAsked = now;
+        netdev.reload();
+        shaper.reload();
+    }
+
+    // A load of the counters landed: it's the last read now, and the one
+    // it follows is before it. Each interface not sure what it is has its
+    // files asked, and an answer shown is told.
+    function counted() {
         const now = Date.now();
         const kept = reads;
         const age = kept ? now - kept.last.at : Infinity;
-        if (age >= second || (!settled(kept) && age >= soonest)) {
-            const all = Traffic.counters(read(netdev));
-            const known = {};
-            for (const name of Object.keys(all)) {
-                const kept = interfaceKinds[name];
-                if (kept !== undefined)
-                    known[name] = age <= stale ? kept : Object.assign({}, kept, { sure: false });
-            }
-            interfaceKinds = known;
-            reads = {
-                last: { at: now, all: all },
-                before: kept ? kept.last : null
-            };
-            if (!settled(reads))
-                soon.restart();
+        loadAsked = 0;
+        unreadable = false;
+        const all = Traffic.counters(netdev.text());
+        const known = {};
+        for (const name of Object.keys(all)) {
+            const kind = interfaceKinds[name];
+            if (kind !== undefined)
+                known[name] = age <= stale ? kind : Object.assign({}, kind, { sure: false });
         }
-        return reads;
+        interfaceKinds = known;
+        reads = {
+            last: { at: now, all: all },
+            // A clock stepped back makes no rate; the read starts afresh.
+            before: kept && age > 0 ? kept.last : null
+        };
+        const mirrors = Traffic.mirrors(parsed(shaper.text()));
+        probeFor(Object.keys(all).filter(name => !mirrors.includes(name) && !known[name]?.sure));
+        if (!settled(reads))
+            soon.restart();
+        caughtUp();
+        if (shown)
+            answered();
+    }
+
+    // The counters couldn't be loaded: nothing more is coming to wait for.
+    function uncounted() {
+        loadAsked = 0;
+        unreadable = true;
+        stillReading = false;
     }
 
     // Where sysfs keeps each interface's folder; its case gives a folder
     // of its own, since a build has no sysfs (tests/traffic-reads.qml).
     property string interfaces: "/sys/class/net"
-    // How many sysfs files it has read of each interface, each a blocking
-    // read, so its case holds a step to reading few.
+    // How many sysfs files it has loaded of each interface, so its case
+    // holds it to loading few.
     property var probed: ({})
 
-    // What a file in an interface's sysfs folder says, or "".
-    function sysSaid(name, file) {
+    // The interfaces whose files are still to be asked, in turn, and the
+    // one being asked, { name, files, said, done }: its uevent first, and
+    // the other three only when that isn't the uevent its kind was read
+    // from. One whose files have all landed is done, so it's asked again
+    // if a load wants it.
+    property var asking: []
+    property var probing: null
+
+    function probeFor(names) {
+        const queued = asking.map(one => one.name)
+            .concat(probing && !probing.done ? [probing.name] : []);
+        asking = asking.concat(names.filter(name => !queued.includes(name))
+            .map(name => ({ name: name, files: ["uevent"], said: {} })));
+        if (probing === null)
+            probeNext();
+    }
+
+    function probeNext() {
+        probing = asking[0] ?? null;
+        asking = asking.slice(1);
+        if (probing !== null)
+            probeFile();
+        else
+            caughtUp();
+    }
+
+    function probeFile() {
+        probeWatch.restart();
+        const name = probing.name;
         probed[name] = (probed[name] ?? 0) + 1;
-        const path = `${interfaces}/${name}/${file}`;
-        // Asked again for the path it holds, the probe gives back the text
-        // it read before, though the file has changed, as an interface made
-        // again with one other interface probed has; let go of it first.
+        const path = `${interfaces}/${name}/${probing.files[0]}`;
+        // Set again to the path it holds, the probe loads nothing, though
+        // the file has changed, as an interface made again with no other
+        // interface probed between has; let go of it first.
         if (probe.path === path)
             probe.path = "";
         probe.path = path;
-        return read(probe).trim();
+    }
+
+    // A file of the interface being asked landed, saying `text`, or ""
+    // when it can't be read: the next file is asked, or the next
+    // interface, and an answer shown is told once a kind has changed.
+    function probeSaid(text) {
+        const one = probing;
+        if (one === null)
+            return;
+        one.said[one.files[0]] = text.trim();
+        one.files = one.files.slice(1);
+        const kept = interfaceKinds[one.name];
+        const uevent = one.said.uevent;
+        if (one.said.type === undefined && one.files.length === 0
+            && (uevent === "" || kept?.uevent !== uevent))
+            one.files = ["type", "tun_flags", "device/uevent"];
+        if (one.files.length > 0) {
+            Qt.callLater(probeFile);
+            return;
+        }
+        const kind = one.said.type === undefined ? kept.kind : Interfaces.sysKind(one.name, {
+            uevent: uevent,
+            type: one.said.type,
+            tun: one.said.tun_flags !== "",
+            card: one.said["device/uevent"] !== ""
+        });
+        // One gone from the counters while it was asked is forgotten.
+        if (reads?.last.all[one.name] !== undefined)
+            interfaceKinds[one.name] = { kind: kind, uevent: uevent, sure: true };
+        one.done = true;
+        probeWatch.stop();
+        Qt.callLater(probeNext);
+        if (kind !== kept?.kind && shown)
+            answered();
     }
 
     // What an interface is, as the addresses name it (Interfaces.js), so a
-    // cable is Wired here as there, and a tunnel a VPN.
+    // cable is Wired here as there, and a tunnel a VPN: as its files last
+    // said, or "", left out, until they've been read.
     function interfaceKind(name) {
-        const kept = interfaceKinds[name];
-        if (kept?.sure)
-            return kept.kind;
-        const uevent = sysSaid(name, "uevent");
-        const same = uevent !== "" && kept?.uevent === uevent;
-        interfaceKinds[name] = same ? Object.assign({}, kept, { sure: true }) : {
-            kind: Interfaces.sysKind(name, {
-                uevent: uevent,
-                type: sysSaid(name, "type"),
-                tun: sysSaid(name, "tun_flags") !== "",
-                card: sysSaid(name, "device/uevent") !== ""
-            }),
-            uevent: uevent,
-            sure: true
-        };
-        return interfaceKinds[name].kind;
+        return interfaceKinds[name]?.kind ?? "";
     }
 
     // What each interface is, beside its counters, leaving out the
@@ -207,8 +330,7 @@ Provider {
     }
 
     function moved(kept, mirrors) {
-        const seconds = kept.before ? (kept.last.at - kept.before.at) / 1000
-            : Number(read(up).trim().split(/\s+/)[0]);
+        const seconds = kept.before ? (kept.last.at - kept.before.at) / 1000 : uptime();
         return Traffic.rates(described(kept.last.all, mirrors),
             kept.before ? countersOf(kept.before.all) : null, seconds);
     }
@@ -281,6 +403,7 @@ Provider {
 
     function since(kept) {
         return !kept.before ? "since the machine started"
+            : !current() ? "when last read"
             : settled(kept) ? "just now" : "since you last asked";
     }
 
@@ -310,10 +433,21 @@ Provider {
     })
 
     function told() {
-        const kept = sample();
-        if (Object.keys(kept.last.all).length === 0)
+        const kept = reads;
+        if (!current()) {
+            stillReading = !unreadable;
+            look();
+        }
+        // A first read is a rate since the machine started, so it says
+        // nothing until the uptime has landed too, as before any load.
+        if (kept !== null && kept.before === null && uptime() === 0) {
+            stillReading = true;
+            up.reload();
+        }
+        if (kept === null || Object.keys(kept.last.all).length === 0
+            || kept.before === null && uptime() === 0)
             return null;
-        const status = parsed(read(shaper));
+        const status = parsed(shaper.text());
         const now = moved(kept, Traffic.mirrors(status));
         push(kept, now);
         const when = since(kept);
@@ -456,49 +590,76 @@ Provider {
         };
     }
 
-    // While one of its answers is shown, it's asked again each second, so
-    // its figures move; and once a moment after a first read, so a rate
-    // stands for now as soon as it can.
+    // While one of its answers is shown, each load tells it, so its figures
+    // move.
     readonly property bool shown: launcher !== null && launcher.open && launcher.held.length === 0
         && launcher.answer?.live === provider
 
+    Connections {
+        target: provider.launcher
+
+        function onOpenChanged() {
+            if (provider.launcher.open)
+                provider.look();
+        }
+    }
+
+    // Loaded again each second while the launcher's open, so an answer
+    // asked then says a rate of now, and a moment after a load with nothing
+    // recent before it.
     Timer {
         interval: provider.second
         repeat: true
-        running: provider.shown
-        onTriggered: provider.answered()
+        running: provider.launcher !== null && provider.launcher.open
+        onTriggered: provider.look()
     }
 
     Timer {
         id: soon
         interval: provider.soonest
+        onTriggered: provider.look()
+    }
+
+    // A file that never lands, or a turn that throws, would leave the
+    // probe waiting for good and every interface after it left out, so
+    // one that takes this long is given up; the next load asks again.
+    // A read that lands after it's given up is taken for the probe then
+    // under way, if any, and corrected when that interface is next asked,
+    // after the next gap.
+    Timer {
+        id: probeWatch
+        interval: 2 * provider.second
         onTriggered: {
-            if (provider.shown)
-                provider.answered();
+            provider.probing = null;
+            probe.path = "";
+            provider.probeNext();
         }
     }
 
+    // None blocks, even on its first load, so nothing is ever waited on;
+    // each loads as it's made, and uptime only then, for the first rate,
+    // since the machine started.
     FileView {
         id: netdev
-        path: "/proc/net/dev"
-        blockLoading: true
+        path: provider.counterFile
         printErrors: false
+        onLoaded: provider.counted()
+        onLoadFailed: provider.uncounted()
     }
     FileView {
         id: shaper
-        path: "/run/shaper/status.json"
-        blockLoading: true
+        path: provider.statusFile
         printErrors: false
     }
     FileView {
         id: up
-        path: "/proc/uptime"
-        blockLoading: true
+        path: provider.uptimeFile
         printErrors: false
     }
     FileView {
         id: probe
-        blockLoading: true
         printErrors: false
+        onLoaded: provider.probeSaid(probe.text())
+        onLoadFailed: provider.probeSaid("")
     }
 }
