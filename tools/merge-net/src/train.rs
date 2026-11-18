@@ -271,7 +271,8 @@ pub fn offer(head: &str, branch: &str) -> Option<String> {
         "merge-net put {} on the merge train with {others} others, which merge to main \
          together once one run of changed-checks over all of them passes, its words going \
          to {}; merge-net started the train, so push nothing to this branch until it lands, \
-         and once it has, the pull request reads merged",
+         and ask `merge-net ready` again to learn whether it did, as a pull request the \
+         train merged and then reverted reads merged too",
         short(head),
         folder(&root).display()
     ))
@@ -297,8 +298,9 @@ pub fn riding(head: &str) -> Option<String> {
 fn rides_said(root: &Path) -> String {
     format!(
         "it waits on the train, {} riders in all, for one run of changed-checks over them to \
-         pass, its words going to {}; push nothing to this branch until it lands, and once \
-         it has, the pull request reads merged",
+         pass, its words going to {}; push nothing to this branch until it lands, and ask \
+         again to learn whether it did, as a pull request the train merged and then \
+         reverted reads merged too",
         riders(root).len(),
         folder(root).display()
     )
@@ -653,23 +655,27 @@ fn aboard(
 
 /// The open pull request from `branch`: its number, title and head.
 fn pull_of(slug: &str, branch: &str) -> Option<(u64, String, String)> {
-    let out = Command::new("gh")
-        .args([
-            "pr",
-            "list",
-            "--repo",
-            slug,
-            "--head",
-            branch,
-            "--state",
-            "open",
-            "--json",
-            "number,title,headRefOid",
-        ])
-        .output()
-        .ok()?;
-    let pulls: Value = serde_json::from_slice(&out.stdout).ok()?;
-    let pull = pulls.as_array()?.first()?;
+    let out = hub::gh(&[
+        "pr",
+        "list",
+        "--repo",
+        slug,
+        "--head",
+        branch,
+        "--state",
+        "open",
+        "--json",
+        "number,title,headRefOid,headRepositoryOwner",
+    ])
+    .ok()?;
+    let pulls: Value = serde_json::from_str(&out).ok()?;
+    // A fork's pull request may name a branch of the same name; only the
+    // repository's own are the rider's.
+    let owner = slug.split('/').next().unwrap_or_default();
+    let pull = pulls
+        .as_array()?
+        .iter()
+        .find(|pull| pull["headRepositoryOwner"]["login"].as_str() == Some(owner))?;
     Some((
         pull["number"].as_u64()?,
         pull["title"].as_str()?.to_owned(),

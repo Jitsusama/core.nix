@@ -123,8 +123,12 @@ impl Hub for GitHub {
         let mut tried = 0;
         loop {
             tried += 1;
-            match merge_at(&self.slug, reverting, head, &worded, title) {
+            let merging = merge_at(&self.slug, reverting, head, &worded, title);
+            // A revert whose answer was lost may have merged all the same.
+            let landed = || matches!(self.merged(reverting), Ok(Some(_)));
+            match merging {
                 Ok(_) => return Ok(reverting),
+                Err(_) if landed() => return Ok(reverting),
                 Err(error) if tried >= REVERT_TRIES => {
                     return Err(format!(
                         "GitHub's revert, pull request #{reverting}, stays open: {error}"
@@ -170,7 +174,7 @@ fn merge_at(
 
 /// What `gh` says, or why it failed, given two minutes, as a stalled
 /// call would otherwise hold the train between merges.
-fn gh(arguments: &[&str]) -> Result<String, String> {
+pub(super) fn gh(arguments: &[&str]) -> Result<String, String> {
     let ran = Command::new("timeout")
         .arg("120")
         .arg("gh")
