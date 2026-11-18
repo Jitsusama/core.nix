@@ -285,14 +285,28 @@ def test_no_record_at_all_is_a_fault(browser: Browser, tmp_path: Path) -> None:
     ]
 
 
-def test_a_leading_dot_step_is_named_for_code(browser: Browser, tmp_path: Path) -> None:
-    """The home lists a row written ./code/, which Code's homes refuse, so it's named."""
+def test_a_leading_dot_step_is_read_as_its_folder(browser: Browser, tmp_path: Path) -> None:
+    """A row written ./code/ is home at code/, as Code's homes and the system's both read it."""
     dotted = [{"path": "./code/", "homes": ["repository"]}]
+    rows = json.dumps({"sites": dotted})
+    page = "<p>See <code>notebook</code>.</p>"
+    assert probed(browser, tmp_path, dotted, page, rows, code=[NOTEBOOK]) == [
+        unlinked("notebook", "See notebook.", "repository", "code/#repo=example%2Fnotebook"),
+    ]
+
+
+def test_a_second_dot_step_is_refused(browser: Browser, tmp_path: Path) -> None:
+    """Only one leading ./ is a row's own folder; one more is a dot step, refused by both."""
+    dotted = [{"path": "././code/", "homes": ["repository"]}]
     rows = json.dumps({"sites": dotted})
     assert probed(browser, tmp_path, dotted, NOTHING, rows, code=[NOTEBOOK]) == [
         (
-            '"./code/" in rows.json homes things, which Code\'s homes refuse: '
-            "drop its ./ in sites.json"
+            '"././code/" in sites.json homes things on no plain path, so the home leaves it '
+            "out: steps of letters, digits and -._~, none starting with a dot"
+        ),
+        (
+            '"././code/" in rows.json homes things on no plain path: '
+            "steps of letters, digits and -._~, none starting with a dot"
         ),
         "a row in rows.json home to a kind, for any mention to be measured",
     ]

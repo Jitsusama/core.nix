@@ -206,7 +206,10 @@
     }
   }
   for (const site of sites.sites) {
-    const path = site.path;
+    // A row written ./code/ is home at code/, as Code's homes and the system's both read it;
+    // only the one ./ goes, so a second is a dot step and refused below.
+    const row = site.path;
+    const path = typeof row === "string" && row.startsWith("./") ? row.slice(2) : row;
     const claims = site.homes ?? [];
     if (!Array.isArray(claims)) {
       missing.push(
@@ -218,19 +221,9 @@
     if (claims.length === 0) {
       continue;
     }
-    // The home lists a row written ./code/, as sessions write it, and so do
-    // the system's homes, but Code's take its path as written and refuse the
-    // dot step. Once Code's take one ./ too, this goes.
-    if (typeof path === "string" && path.startsWith("./") && plainPath(path.slice(2))) {
-      missing.push(
-        `${JSON.stringify(path)} in ${record} homes things, which Code's homes refuse: `
-          + "drop its ./ in sites.json",
-      );
-      continue;
-    }
     if (!plainPath(path)) {
       missing.push(
-        `${JSON.stringify(path)} in ${record} homes things on no plain path: `
+        `${JSON.stringify(row)} in ${record} homes things on no plain path: `
           + "steps of letters, digits and -._~, none starting with a dot",
       );
       continue;
