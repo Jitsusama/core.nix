@@ -8,8 +8,10 @@
 {
   bash,
   fetchFromGitHub,
+  fetchurl,
   lib,
   nodejs,
+  runCommandLocal,
   writeShellApplication,
 }:
 let
@@ -19,6 +21,22 @@ let
     rev = "53426e4b17edcd72ddf0edebca374ae4a7b06229";
     hash = "sha256-NXaM4jqo+YEoTCgXGbyXEUilsmmXL5M5el/hE+ymUis=";
   };
+  # The census (`pi-fence census`) loads yaml, the one package anything
+  # pi-fence runs takes at run time; its other imports are only types. It
+  # is the version the harness's pnpm-lock.yaml locks, which the build
+  # below holds it to, so moving the pin past a move of yaml's fails
+  # until this follows: the same tarball as the lock's sha512, named
+  # here by its sha256.
+  yamlVersion = "2.9.0";
+  yaml = fetchurl {
+    url = "https://registry.npmjs.org/yaml/-/yaml-${yamlVersion}.tgz";
+    hash = "sha256-AI+iBMsbpwDgJyugRau/Cab/5jRW6BRrqXysbCrR75E=";
+  };
+  # Node looks for a package in node_modules beside the real path of the
+  # file importing it, so the harness is copied in beside it, not linked.
+  program = runCommandLocal "pi-fence-harness" { } ''
+    ${lib.getExe bash} ${./harness.sh} ${harness} ${yaml} ${yamlVersion} $out
+  '';
 in
 writeShellApplication {
   name = "pi-fence";
@@ -28,7 +46,7 @@ writeShellApplication {
   runtimeInputs = [ bash ];
   text = ''
     exec ${lib.getExe nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON \
-      ${harness}/scripts/pi-fence.ts "$@"
+      ${program}/scripts/pi-fence.ts "$@"
   '';
   passthru = { inherit harness; };
   meta = {

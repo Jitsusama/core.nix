@@ -6,6 +6,14 @@
   ...
 }:
 onLinux {
+  # pi-fence's census, as core builds pi-fence, loads and judges a
+  # machine, counting none of its sessions there.
+  pi-fence-census-loads = pkgs.runCommandLocal "pi-fence-census-loads" { } ''
+    ${pkgs.lib.getExe pkgs.bash} ${./census-loads.sh} \
+      ${pkgs.lib.getExe (pkgs.callPackage ./package.nix { })}
+    touch $out
+  '';
+
   # pi-fence reads how it was asked, and where it can't lay the fence, as in
   # a build with neither bubblewrap nor landrun, it refuses and says why
   # rather than running the command unfenced, in either kind.
